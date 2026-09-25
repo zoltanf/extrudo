@@ -8,6 +8,8 @@ import type { IconName, ToolCategory } from '../design-system';
 export interface Tool {
   id: string;
   label: string;
+  /** Toolbar label when `label` is too long for a tile. */
+  short?: string;
   icon: IconName;
   category: ToolCategory;
   /** One sentence for the tooltip. */
@@ -24,7 +26,149 @@ export const TOOLS = {
     icon: 'create-sketch',
     category: 'sketch',
     hint: 'Draw a 2D profile on a plane or a flat face.',
-    comesWith: 'P1-01',
+  },
+  finishSketch: {
+    id: 'finishSketch',
+    label: 'Finish Sketch',
+    icon: 'finish-sketch',
+    category: 'sketch',
+    hint: 'Leave the sketch; its changes become one undo step.',
+  },
+  line: {
+    id: 'line',
+    label: 'Line',
+    icon: 'line',
+    category: 'sketch',
+    hint: 'Lines from point to point; drag from an end for a tangent arc.',
+    shortcut: 'L',
+    comesWith: 'P1-04',
+  },
+  rectangle: {
+    id: 'rectangle',
+    label: 'Rectangle',
+    icon: 'rectangle',
+    category: 'sketch',
+    hint: 'From two corners, three points or the center.',
+    shortcut: 'R',
+    comesWith: 'P1-04',
+  },
+  circle: {
+    id: 'circle',
+    label: 'Circle',
+    icon: 'circle',
+    category: 'sketch',
+    hint: 'From the center, two points or three points.',
+    shortcut: 'C',
+    comesWith: 'P1-04',
+  },
+  arc: {
+    id: 'arc',
+    label: 'Arc',
+    icon: 'arc',
+    category: 'sketch',
+    hint: 'Through three points, from the center, or tangent to a curve.',
+    shortcut: 'A',
+    comesWith: 'P1-04',
+  },
+  point: {
+    id: 'point',
+    label: 'Point',
+    icon: 'point',
+    category: 'sketch',
+    hint: 'A sketch point, for construction and hole centers.',
+    comesWith: 'P1-04',
+  },
+  polygon: {
+    id: 'polygon',
+    label: 'Polygon',
+    icon: 'polygon',
+    category: 'sketch',
+    hint: 'Regular polygons: inscribed, circumscribed or from an edge.',
+    comesWith: 'P1-05',
+  },
+  slot: {
+    id: 'slot',
+    label: 'Slot',
+    icon: 'slot',
+    category: 'sketch',
+    hint: 'Slots, center to center or overall.',
+    comesWith: 'P1-05',
+  },
+  ellipse: {
+    id: 'ellipse',
+    label: 'Ellipse',
+    icon: 'ellipse',
+    category: 'sketch',
+    hint: 'An ellipse from its center and two axes.',
+    comesWith: 'P1-05',
+  },
+  spline: {
+    id: 'spline',
+    label: 'Spline',
+    icon: 'spline',
+    category: 'sketch',
+    hint: 'A smooth curve through points.',
+    comesWith: 'P1-05',
+  },
+  dimension: {
+    id: 'dimension',
+    label: 'Sketch Dimension',
+    short: 'Dimension',
+    icon: 'sketch-dimension',
+    category: 'sketch',
+    hint: 'Lengths, radii and angles that drive the sketch.',
+    shortcut: 'D',
+    comesWith: 'P1-07',
+  },
+  trim: {
+    id: 'trim',
+    label: 'Trim',
+    icon: 'trim',
+    category: 'sketch',
+    hint: 'Cut curves back to where they cross.',
+    shortcut: 'T',
+    comesWith: 'P1-10',
+  },
+  sketchOffset: {
+    id: 'sketchOffset',
+    label: 'Offset',
+    icon: 'sketch-offset',
+    category: 'sketch',
+    hint: 'Copy curves at a distance.',
+    shortcut: 'O',
+    comesWith: 'P1-10',
+  },
+  coincident: {
+    id: 'coincident',
+    label: 'Coincident',
+    icon: 'coincident',
+    category: 'sketch',
+    hint: 'Join two points, or put a point on a curve.',
+    comesWith: 'P1-06',
+  },
+  parallel: {
+    id: 'parallel',
+    label: 'Parallel',
+    icon: 'parallel',
+    category: 'sketch',
+    hint: 'Make lines parallel.',
+    comesWith: 'P1-06',
+  },
+  perpendicular: {
+    id: 'perpendicular',
+    label: 'Perpendicular',
+    icon: 'perpendicular',
+    category: 'sketch',
+    hint: 'Make two lines meet at a right angle.',
+    comesWith: 'P1-06',
+  },
+  tangent: {
+    id: 'tangent',
+    label: 'Tangent',
+    icon: 'tangent',
+    category: 'sketch',
+    hint: 'Make a curve touch another without a corner.',
+    comesWith: 'P1-06',
   },
   extrude: {
     id: 'extrude',
@@ -63,6 +207,7 @@ export const TOOLS = {
   pattern: {
     id: 'pattern',
     label: 'Rectangular Pattern',
+    short: 'Pattern',
     icon: 'rectangular-pattern',
     category: 'create',
     hint: 'Copies in rows and columns.',
@@ -168,7 +313,13 @@ export interface ToolGroup {
   more?: ToolId[];
 }
 
-export const TABS: { id: 'solid' | 'print'; label: string; groups: ToolGroup[] }[] = [
+export type TabId = 'solid' | 'sketch' | 'print';
+
+/**
+ * Toolbar tabs (UI spec §2). `sketch` shows only while a sketch is open, in
+ * place of `solid`; Finish Sketch sits after its groups.
+ */
+export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
   {
     id: 'solid',
     label: 'Solid',
@@ -183,6 +334,20 @@ export const TABS: { id: 'solid' | 'print'; label: string; groups: ToolGroup[] }
       { label: 'Inspect', tools: ['measure'] },
       { label: 'Insert', tools: ['insertSvg'] },
       { label: 'Export', tools: ['export'] },
+    ],
+  },
+  {
+    id: 'sketch',
+    label: 'Sketch',
+    groups: [
+      {
+        label: 'Create',
+        tools: ['line', 'rectangle', 'circle', 'arc', 'dimension'],
+        more: ['point', 'polygon', 'slot', 'ellipse', 'spline'],
+      },
+      { label: 'Modify', tools: ['trim', 'sketchOffset'] },
+      { label: 'Constraints', tools: ['coincident', 'parallel', 'perpendicular', 'tangent'] },
+      { label: 'Inspect', tools: ['measure'] },
     ],
   },
   {

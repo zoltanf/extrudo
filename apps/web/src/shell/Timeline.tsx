@@ -1,4 +1,4 @@
-import { type DocumentStore, moveTimelineMarker } from '@extrudo/core';
+import { type DocumentStore, type FeatureId, moveTimelineMarker, readSketch } from '@extrudo/core';
 import {
   ChevronDown,
   ChevronFirst,
@@ -16,6 +16,10 @@ export interface TimelineProps {
   store: DocumentStore;
   collapsed: boolean;
   onToggle(): void;
+  /** Name of the sketch being edited. The marker can't move meanwhile (it could roll the sketch back). */
+  activeSketch?: string;
+  /** Opens a sketch: double-click its chip. */
+  onEditSketch?(id: FeatureId): void;
 }
 
 /**
@@ -23,10 +27,17 @@ export interface TimelineProps {
  * the playback buttons move the rollback marker (FR-TL-02) as undoable
  * commands. Dragging the marker and the chip menus come with P2-11.
  */
-export function Timeline({ store, collapsed, onToggle }: TimelineProps) {
+export function Timeline({
+  store,
+  collapsed,
+  onToggle,
+  activeSketch,
+  onEditSketch,
+}: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
   const marker = doc.timelineMarker;
   const count = doc.features.length;
+  const locked = activeSketch !== undefined;
   const move = (index: number) => store.getState().dispatch(moveTimelineMarker({ index }));
 
   return (
@@ -37,22 +48,30 @@ export function Timeline({ store, collapsed, onToggle }: TimelineProps) {
       {!collapsed && (
         <>
           <fieldset className="m-0 flex border-0 p-0" aria-label="Playback">
-            <IconButton label="Roll back to start" disabled={marker === 0} onClick={() => move(0)}>
+            <IconButton
+              label="Roll back to start"
+              disabled={locked || marker === 0}
+              onClick={() => move(0)}
+            >
               <ChevronFirst size={16} />
             </IconButton>
-            <IconButton label="Step back" disabled={marker === 0} onClick={() => move(marker - 1)}>
+            <IconButton
+              label="Step back"
+              disabled={locked || marker === 0}
+              onClick={() => move(marker - 1)}
+            >
               <ChevronLeft size={16} />
             </IconButton>
             <IconButton
               label="Step forward"
-              disabled={marker === count}
+              disabled={locked || marker === count}
               onClick={() => move(marker + 1)}
             >
               <ChevronRight size={16} />
             </IconButton>
             <IconButton
               label="Roll forward to end"
-              disabled={marker === count}
+              disabled={locked || marker === count}
               onClick={() => move(count)}
             >
               <ChevronLast size={16} />
@@ -65,6 +84,7 @@ export function Timeline({ store, collapsed, onToggle }: TimelineProps) {
             {doc.features.map((feature, index) => {
               const tool = toolForFeature(feature.type);
               const rolledBack = index >= marker;
+              const editable = !rolledBack && readSketch(feature) !== undefined;
               return (
                 <Fragment key={feature.id}>
                   {index === marker && <Marker />}
@@ -77,6 +97,7 @@ export function Timeline({ store, collapsed, onToggle }: TimelineProps) {
                       <button
                         type="button"
                         aria-label={`${feature.name}${rolledBack ? ' (rolled back)' : ''}`}
+                        onDoubleClick={editable ? () => onEditSketch?.(feature.id) : undefined}
                         className="grid size-[30px] place-items-center rounded-control border"
                         style={{
                           background: `color-mix(in srgb, var(--x-cat-${tool.category}) 16%, var(--x-bg))`,
@@ -97,6 +118,7 @@ export function Timeline({ store, collapsed, onToggle }: TimelineProps) {
       )}
       <span className="flex-1" />
       <output className="font-mono text-[11px] whitespace-nowrap text-muted" aria-label="Status">
+        {activeSketch ? `Editing ${activeSketch} · ` : ''}
         {count} {count === 1 ? 'feature' : 'features'} · {doc.settings.units} · kernel idle
       </output>
       <IconButton label={collapsed ? 'Show timeline' : 'Hide timeline'} onClick={onToggle}>

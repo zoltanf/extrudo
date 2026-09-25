@@ -59,11 +59,15 @@ export function perspectiveDistance(size: number): number {
  * An orientation whose camera sits in `direction` from the target. `up` is
  * world +Z, except when looking straight down (+Y up, front at the bottom of
  * the screen) or straight up (−Y up, as if the front view were tilted down).
+ * An explicit `up` (a sketch plane's Y) wins unless it is parallel to
+ * `direction`.
  */
-export function orientationFor(direction: Vec3): Quat {
+export function orientationFor(direction: Vec3, preferredUp?: Vec3): Quat {
   const back = v3(direction).normalize();
   let up: Vector3;
-  if (Math.abs(back.z) > 0.999999) up = new Vector3(0, back.z > 0 ? 1 : -1, 0);
+  const given = preferredUp && v3(preferredUp).normalize();
+  if (given && given.lengthSq() > 0 && Math.abs(given.dot(back)) < 0.999999) up = given;
+  else if (Math.abs(back.z) > 0.999999) up = new Vector3(0, back.z > 0 ? 1 : -1, 0);
   else up = new Vector3(0, 0, 1);
   const m = new Matrix4().lookAt(back, new Vector3(), up);
   return tuple4(new Quaternion().setFromRotationMatrix(m));

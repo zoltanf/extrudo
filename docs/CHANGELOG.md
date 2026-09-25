@@ -2,6 +2,16 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-25 · **P1-01** Sketch feature and sketch mode: `SketchData` schema
+  in core (points, lines, circles, arcs; every FR-SK-07 constraint and FR-SK-08
+  dimension; records keyed by ID; reference checks on load), origin plane
+  frames, the `sketch` feature definition (plane `ref` input + sketch data),
+  `createSketch`, v0 sketch data migrated to records. Web: Create Sketch
+  picks an origin plane in the view (hover highlight) or in a prompt; Look
+  At; sketch mode as one undo transaction; the Sketch tab with Finish Sketch;
+  the sketch palette; the grid on the sketch plane; sketches drawn in the
+  viewport; browser and timeline open sketches; 17 new sketch icons. The Wall
+  bracket template has real sketches. ADR-0010.
 - 2026-09-25 · **P0-08** Project storage: `packages/storage` with the
   `ProjectStore` interface over an IndexedDB index and OPFS files (IndexedDB
   fallback), `.extrudo` zip read/write through core's migrations, and

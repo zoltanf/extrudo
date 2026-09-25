@@ -66,8 +66,44 @@ describe('migrations', () => {
       ['Extrude1', false],
       ['Fillet1', true],
     ]);
-    // Inputs are carried over untouched.
+    // Inputs are carried over untouched, except sketch data, which is keyed by ID in v1.
     expect(doc.features[1]?.inputs).toEqual(v0Bracket.features[1]?.inputs);
+    expect(doc.features[0]?.inputs).toEqual({
+      plane: { kind: 'ref', refs: [{ kind: 'plane', id: 'origin:xy' }] },
+      sketch: { kind: 'sketchData', sketch: { entities: {}, constraints: {}, dimensions: {} } },
+    });
+  });
+
+  it('key v0 sketch entities and constraints by their IDs', () => {
+    const raw = JSON.parse(JSON.stringify(v0Bracket)) as {
+      features: { inputs: Record<string, unknown> }[];
+    };
+    const [sketch] = raw.features;
+    if (!sketch) throw new Error('fixture has no sketch');
+    sketch.inputs.sketch = {
+      kind: 'sketchData',
+      sketch: {
+        entities: [
+          { id: 'p1', type: 'point', x: 0, y: 0 },
+          { id: 'p2', type: 'point', x: 10, y: 0 },
+          { id: 'l1', type: 'line', start: 'p1', end: 'p2', construction: false },
+        ],
+        constraints: [{ id: 'c1', type: 'horizontal', a: 'l1' }],
+      },
+    };
+    const { doc } = loadDocument(raw);
+    expect(doc.features[0]?.inputs.sketch).toEqual({
+      kind: 'sketchData',
+      sketch: {
+        entities: {
+          p1: { type: 'point', x: 0, y: 0 },
+          p2: { type: 'point', x: 10, y: 0 },
+          l1: { type: 'line', start: 'p1', end: 'p2', construction: false },
+        },
+        constraints: { c1: { type: 'horizontal', a: 'l1' } },
+        dimensions: {},
+      },
+    });
   });
 
   it('do not modify the input', () => {

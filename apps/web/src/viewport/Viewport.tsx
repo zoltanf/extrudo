@@ -1,4 +1,4 @@
-import type { BodyId, BodyMeta } from '@extrudo/core';
+import type { BodyId, BodyMeta, OriginPlaneId, SketchFrame } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
@@ -9,12 +9,14 @@ import { useShortcuts } from '../commands/shortcuts';
 import { Bodies } from './Bodies';
 import { CameraRig } from './CameraRig';
 import { basis, orbit, pan, type View, zoomAt } from './camera';
-import { type SceneColors, useSceneColors } from './colors';
-import { Grid } from './Grid';
+import { type Rgba, type SceneColors, useSceneColors } from './colors';
+import { Grid, XY_FRAME } from './Grid';
 import { NavBar } from './NavBar';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
 import { Origin } from './Origin';
-import type { ViewportStore } from './store';
+import { Sketches } from './Sketches';
+import { type SketchDrawing, sketchSegments, unionBounds } from './sketchGeometry';
+import type { Bounds, OriginItem, ViewportStore } from './store';
 import { ViewCube } from './ViewCube';
 import { namedDirection } from './viewcube';
 
@@ -24,10 +26,24 @@ export interface ViewportProps {
   bodies?: Record<BodyId, BodyMesh>;
   /** Body names, colours and visibility from the document. */
   meta?: Record<BodyId, BodyMeta>;
+  /** Sketches to draw (P1-01). */
+  sketches?: readonly SketchDrawing[];
+  /** The plane of the sketch being edited: the grid lies on it. */
+  sketchPlane?: SketchFrame;
+  /** Present while Create Sketch waits for a plane: the origin planes become pickable. */
+  planePicker?: PlanePicker;
+}
+
+export interface PlanePicker {
+  hover: OriginPlaneId | undefined;
+  onHover(plane: OriginPlaneId): void;
+  onLeave(plane: OriginPlaneId): void;
+  onPick(plane: OriginPlaneId): void;
 }
 
 const NO_BODIES: Record<BodyId, BodyMesh> = {};
 const NO_META: Record<BodyId, BodyMeta> = {};
+const NO_SKETCHES: readonly SketchDrawing[] = [];
 
 /** A middle double-click within this many ms fits the view (Fusion). */
 const DOUBLE_CLICK_MS = 400;
@@ -38,7 +54,14 @@ const DOUBLE_CLICK_MS = 400;
  * the nav bar. Navigation input is handled here, on the canvas's wrapper,
  * and turned into view changes in the viewport store.
  */
-export function Viewport({ viewport, bodies = NO_BODIES, meta = NO_META }: ViewportProps) {
+export function Viewport({
+  viewport,
+  bodies = NO_BODIES,
+  meta = NO_META,
+  sketches = NO_SKETCHES,
+  sketchPlane,
+  planePicker,
+}: ViewportProps) {
   const section = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const colors = useSceneColors();
@@ -93,7 +116,13 @@ export function Viewport({ viewport, bodies = NO_BODIES, meta = NO_META }: Viewp
 
   useNavigation(surface, viewport, setDragging);
 
-  const cursor = dragging ? 'cursor-grabbing' : tool ? 'cursor-grab' : '';
+  const cursor = dragging
+    ? 'cursor-grabbing'
+    : tool
+      ? 'cursor-grab'
+      : planePicker?.hover
+        ? 'cursor-pointer'
+        : '';
 
   return (
     <section
@@ -116,6 +145,9 @@ export function Viewport({ viewport, bodies = NO_BODIES, meta = NO_META }: Viewp
             colors={colors}
             bodies={bodies}
             meta={meta}
+            sketches={sketches}
+            sketchPlane={sketchPlane}
+            planePicker={planePicker}
             onFirstFrame={() => setReady(true)}
           />
         </Canvas>
@@ -148,21 +180,28 @@ function Scene({
   colors,
   bodies,
   meta,
+  sketches,
+  sketchPlane,
+  planePicker,
   onFirstFrame,
 }: {
   viewport: ViewportStore;
   colors: SceneColors;
   bodies: Record<BodyId, BodyMesh>;
   meta: Record<BodyId, BodyMeta>;
+  sketches: readonly SketchDrawing[];
+  sketchPlane: SketchFrame | undefined;
+  planePicker: PlanePicker | undefined;
   onFirstFrame(): void;
 }) {
-  const { projection, visualStyle, grid, origin } = useStore(
+  const { projection, visualStyle, grid, origin, sketchPoints } = useStore(
     viewport,
-    useShallow(({ projection, visualStyle, grid, origin }) => ({
+    useShallow(({ projection, visualStyle, grid, origin, sketchPoints }) => ({
       projection,
       visualStyle,
       grid,
       origin,
+      sketchPoints,
     })),
   );
   const invalidate = useThree((s) => s.invalidate);
@@ -180,6 +219,24 @@ function Scene({
     });
     return () => viewport.getState().setSnapshot(undefined);
   }, [viewport, get]);
+
+  // "Fit" frames the bodies and the sketches.
+  const [bodyBounds, setBodyBounds] = useState<Bounds>();
+  const sketchBounds = useMemo(
+    () =>
+      sketches.reduce<Bounds | undefined>(
+        (bounds, s) => unionBounds(bounds, sketchSegments(s.data, s.frame).bounds),
+        undefined,
+      ),
+    [sketches],
+  );
+  useEffect(
+    () => viewport.getState().setBounds(unionBounds(bodyBounds, sketchBounds)),
+    [viewport, bodyBounds, sketchBounds],
+  );
+
+  const gridFrame = sketchPlane ?? XY_FRAME;
+  const gridAxes = [gridFrame.x, gridFrame.y].map((axis) => worldAxis(axis, colors, origin));
 
   const first = useRef(true);
   useFrame(() => {
@@ -200,16 +257,24 @@ function Scene({
         style={visualStyle}
         body={colors.body}
         edge={colors.edge}
-        onBounds={viewport.getState().setBounds}
+        onBounds={setBodyBounds}
+      />
+      <Sketches
+        store={viewport}
+        sketches={sketches}
+        sketch={colors.sketch}
+        construction={colors.sketchConstruction}
+        showPoints={sketchPoints}
       />
       <Grid
         store={viewport}
+        frame={gridFrame}
         grid={colors.grid}
-        axisX={colors.axisX}
-        axisY={colors.axisY}
+        axisX={gridAxes[0]?.color ?? colors.axisX}
+        axisY={gridAxes[1]?.color ?? colors.axisY}
         showGrid={grid}
-        showX={origin.x}
-        showY={origin.y}
+        showX={gridAxes[0]?.show ?? origin.x}
+        showY={gridAxes[1]?.show ?? origin.y}
       />
       <Origin
         store={viewport}
@@ -217,9 +282,33 @@ function Scene({
         point={colors.origin}
         axisZ={colors.axisZ}
         construct={colors.construct}
+        picking={planePicker !== undefined}
+        hover={planePicker?.hover}
+        highlight={{ ...colors.preselect, a: 1 }}
+        onHover={planePicker?.onHover}
+        onLeave={planePicker?.onLeave}
+        onPick={planePicker?.onPick}
       />
     </>
   );
+}
+
+/**
+ * The colour and visibility of a grid axis that runs along a world axis:
+ * a sketch on the XZ plane has world X and Z as its axes. Other directions
+ * (faces, P2) take the sketch colour and show with the grid.
+ */
+function worldAxis(
+  axis: readonly [number, number, number],
+  colors: SceneColors,
+  origin: Record<OriginItem, boolean>,
+): { color: Rgba; show: boolean } {
+  const names = ['x', 'y', 'z'] as const;
+  const index = axis.findIndex((c) => Math.abs(c) > 0.999999);
+  const name = names[index];
+  if (!name) return { color: colors.sketch, show: true };
+  const color = { x: colors.axisX, y: colors.axisY, z: colors.axisZ }[name];
+  return { color, show: origin[name] };
 }
 
 /** Thumbnail size in px (docs/02-architecture.md §6.2). */

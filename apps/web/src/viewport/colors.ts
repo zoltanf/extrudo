@@ -21,6 +21,12 @@ export interface SceneColors {
   construct: Rgba;
   body: Rgba;
   edge: Rgba;
+  /** Under-constrained sketch geometry. */
+  sketch: Rgba;
+  /** Construction sketch geometry, drawn dashed. */
+  sketchConstruction: Rgba;
+  /** Hover highlight; drawn at 45 % (docs/05-brand.md §3.4). */
+  preselect: Rgba;
 }
 
 const TOKENS: Record<keyof SceneColors, string> = {
@@ -32,6 +38,9 @@ const TOKENS: Record<keyof SceneColors, string> = {
   construct: '--x-cat-construct',
   body: '--x-body-default',
   edge: '--x-edge',
+  sketch: '--x-sketch',
+  sketchConstruction: '--x-muted',
+  preselect: '--x-accent',
 };
 
 const FALLBACK: Rgba = { r: 0.5, g: 0.5, b: 0.5, a: 1 };

@@ -9,7 +9,8 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-25):** Phase 0 is done (P0-01 to P0-09). ADR-0001 chose
+**Status (2026-09-25):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
+started with P1-01. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -33,8 +34,15 @@ as preferences. ADR-0009 (P0-08) set storage (`packages/storage`):
 core's migrations; in the web app, an async `webPlatform()` with projects,
 persistent storage and file download/pick, autosave (`project/autosave.ts`),
 routes `#/` (home screen, `home/`) and `#/p/<id>` (`project/ProjectPage.tsx`).
-Next: Phase 1. **P1-01** (sketch feature and sketch mode) and **P1-03**
-(solver integration) can start in parallel. See `docs/03-roadmap.md`.
+ADR-0010 (P1-01) set the sketch data model in `packages/core/src/sketch/`:
+the plane is a `ref` input, `SketchData` holds points, lines, circles and
+arcs (each point owned by at most one curve; coincident constraints join
+them) plus every constraint and dimension type, as records keyed by ID;
+origin plane frames match the ViewCube. Sketch mode (`apps/web/src/sketch/`)
+is session state plus one undo transaction; the viewport draws sketches,
+makes the origin planes pickable and puts the grid on the sketch plane.
+Next: **P1-03** (solver integration) and **P1-02** (sketch tool framework).
+See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -62,7 +70,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -209,5 +217,14 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 - **SolveSpace's `slvs` npm package (3.1.0-dev.14)** is an old dev build:
   fixed heap, `tangent()` aborts, no `setParamValue`, entity objects without
   `point`. Rejected in P0-03; don't re-evaluate it without a newer build.
+- **`LineSegments2.computeLineDistances()` throws on an empty geometry**
+  ("reading 'count'": no `instanceStart` attribute yet). Call it only after
+  `setPositions` with at least one segment.
+- **R3F can deliver `pointerout` for the plane behind after `pointermove` on
+  the one in front** (propagation stopped). Clear a hover only if it still
+  names the object that was left (read the store, not the render closure).
+- **The dev server takes an assigned port** (`.claude/launch.json` has
+  `autoPort` and `--port "${PORT:-5173}"`), so a second session can run its
+  own server while another holds 5173.
 - OCCT's STEP writer prints a banner to stdout from inside WASM. Route
   Emscripten's `print` to a logger (or ignore it in tests).

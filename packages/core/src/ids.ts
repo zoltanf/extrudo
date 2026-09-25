@@ -18,14 +18,29 @@ export const FeatureIdSchema = id.brand<'FeatureId'>();
 export const ParameterIdSchema = id.brand<'ParameterId'>();
 export const BodyIdSchema = id.brand<'BodyId'>();
 export const ViewIdSchema = id.brand<'ViewId'>();
+/** Sketch geometry: points, lines, circles, arcs. Unique within the sketch. */
+export const SketchEntityIdSchema = id.brand<'SketchEntityId'>();
+export const ConstraintIdSchema = id.brand<'ConstraintId'>();
+export const DimensionIdSchema = id.brand<'DimensionId'>();
 
 export type DocumentId = z.infer<typeof DocumentIdSchema>;
 export type FeatureId = z.infer<typeof FeatureIdSchema>;
 export type ParameterId = z.infer<typeof ParameterIdSchema>;
 export type BodyId = z.infer<typeof BodyIdSchema>;
 export type ViewId = z.infer<typeof ViewIdSchema>;
+export type SketchEntityId = z.infer<typeof SketchEntityIdSchema>;
+export type ConstraintId = z.infer<typeof ConstraintIdSchema>;
+export type DimensionId = z.infer<typeof DimensionIdSchema>;
 
-type AnyId = DocumentId | FeatureId | ParameterId | BodyId | ViewId;
+type AnyId =
+  | DocumentId
+  | FeatureId
+  | ParameterId
+  | BodyId
+  | ViewId
+  | SketchEntityId
+  | ConstraintId
+  | DimensionId;
 
 /**
  * A new random ID. Call it where an entity is created (a command's caller),

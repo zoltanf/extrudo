@@ -47,6 +47,8 @@ export interface ViewportSettings {
   grid: boolean;
   preset: NavPreset;
   origin: Record<OriginItem, boolean>;
+  /** Show the points of the sketch being edited (sketch palette). */
+  sketchPoints: boolean;
 }
 
 export const DEFAULT_SETTINGS: ViewportSettings = {
@@ -56,6 +58,7 @@ export const DEFAULT_SETTINGS: ViewportSettings = {
   preset: 'fusion',
   // Like Fusion, the origin planes stay hidden until something needs them.
   origin: { point: true, xy: false, xz: false, yz: false, x: true, y: true, z: true },
+  sketchPoints: true,
 };
 
 /** The part of the scene that "fit" frames. */
@@ -96,8 +99,8 @@ export interface ViewportState extends ViewportSettings {
   animateTo(view: View): void;
   /** Advances the animation to time `now` (ms, `performance.now()` clock). */
   step(now: number): void;
-  /** Looks from `direction` (target → camera) and fits the scene. */
-  lookFrom(direction: Vec3): void;
+  /** Looks from `direction` (target → camera) and fits the scene. `up` defaults as in `orientationFor`. */
+  lookFrom(direction: Vec3, up?: Vec3): void;
   fit(): void;
   /** The home view (front, right, top), fitted. `instant` skips the animation. */
   home(instant?: boolean): void;
@@ -109,6 +112,7 @@ export interface ViewportState extends ViewportSettings {
   setGrid(grid: boolean): void;
   setPreset(preset: NavPreset): void;
   setOrigin(item: OriginItem, visible: boolean): void;
+  setSketchPoints(visible: boolean): void;
   setSnapshot(snapshot: (() => Promise<Blob | null>) | undefined): void;
 }
 
@@ -174,8 +178,8 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         if (progress >= 1) set({ view: t.to, transition: undefined });
         else set({ view: interpolate(t.from, t.to, easeCamera(Math.max(0, progress))) });
       },
-      lookFrom(direction) {
-        get().animateTo(fitted({ ...get().view, orientation: orientationFor(direction) }));
+      lookFrom(direction, up) {
+        get().animateTo(fitted({ ...get().view, orientation: orientationFor(direction, up) }));
       },
       fit() {
         get().animateTo(fitted(get().view));
@@ -208,6 +212,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       setOrigin(item, visible) {
         set({ origin: { ...get().origin, [item]: visible } });
       },
+      setSketchPoints(sketchPoints) {
+        set({ sketchPoints });
+      },
       setSnapshot(snapshot) {
         set({ snapshot });
       },
@@ -220,10 +227,18 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       s.visualStyle !== prev.visualStyle ||
       s.grid !== prev.grid ||
       s.preset !== prev.preset ||
-      s.origin !== prev.origin
+      s.origin !== prev.origin ||
+      s.sketchPoints !== prev.sketchPoints
     ) {
-      const { projection, visualStyle, grid, preset, origin } = s;
-      preferences.set(PREFERENCES_KEY, { projection, visualStyle, grid, preset, origin });
+      const { projection, visualStyle, grid, preset, origin, sketchPoints } = s;
+      preferences.set(PREFERENCES_KEY, {
+        projection,
+        visualStyle,
+        grid,
+        preset,
+        origin,
+        sketchPoints,
+      });
     }
   });
 

@@ -1,12 +1,15 @@
+import { type SketchFrame, worldToSketch } from '@extrudo/core';
 import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
-import { Color, type Mesh, ShaderMaterial, Vector2 } from 'three';
+import { Color, Matrix4, type Mesh, ShaderMaterial, Vector2, Vector3 } from 'three';
 import type { Rgba } from './colors';
 import type { ViewportStore } from './store';
 
 /**
  * The adaptive, infinite-looking grid on the XY plane (FR-VP-04,
- * docs/05-brand.md §3.1), with the X and Y axes drawn along it.
+ * docs/05-brand.md §3.1), with the X and Y axes drawn along it. In sketch
+ * mode it lies on the sketch plane instead, with the sketch's axes (UI spec
+ * §4).
  *
  * One quad under the camera target, drawn by a shader: each pixel picks its
  * grid level from its own footprint (`fwidth`), so spacing adapts to zoom
@@ -20,6 +23,14 @@ import type { ViewportStore } from './store';
 const PIXELS = 60;
 /** The grid has faded out this many view sizes from the target. */
 export const GRID_RADIUS = 0.95;
+
+/** The world XY plane, the grid's plane outside sketch mode. */
+export const XY_FRAME: SketchFrame = {
+  origin: [0, 0, 0],
+  x: [1, 0, 0],
+  y: [0, 1, 0],
+  normal: [0, 0, 1],
+};
 
 const vertexShader = /* glsl */ `
   varying vec3 vWorld;
@@ -39,6 +50,10 @@ const fragmentShader = /* glsl */ `
   uniform vec2 uShowAxes;
   uniform vec2 uCenter;
   uniform float uRadius;
+  uniform vec3 uOrigin;
+  uniform vec3 uU;
+  uniform vec3 uV;
+  uniform vec3 uN;
   varying vec3 vWorld;
 
   // Coverage of grid lines 1 px wide with the given spacing (mm).
@@ -54,7 +69,8 @@ const fragmentShader = /* glsl */ `
   }
 
   void main() {
-    vec2 uv = vWorld.xy;
+    vec3 rel = vWorld - uOrigin;
+    vec2 uv = vec2(dot(rel, uU), dot(rel, uV));
     vec2 dudv = max(fwidth(uv), vec2(1e-6));
     float perPixel = max(dudv.x, dudv.y);
 
@@ -77,7 +93,7 @@ const fragmentShader = /* glsl */ `
 
     // Fade radially around the target, and where the plane is seen edge-on.
     float radial = 1.0 - smoothstep(uRadius * 0.1, uRadius, distance(uv, uCenter));
-    float facing = abs(normalize(cameraPosition - vWorld).z);
+    float facing = abs(dot(normalize(cameraPosition - vWorld), uN));
     float grazing = smoothstep(0.0, 0.2, facing);
     float visible = radial * grazing;
 
@@ -97,6 +113,8 @@ const color = (c: Rgba) => new Color().setRGB(c.r, c.g, c.b, 'srgb');
 
 export interface GridProps {
   store: ViewportStore;
+  /** The plane the grid lies on; `axisX` and `axisY` colour its X and Y axes. */
+  frame?: SketchFrame;
   grid: Rgba;
   axisX: Rgba;
   axisY: Rgba;
@@ -105,7 +123,16 @@ export interface GridProps {
   showY: boolean;
 }
 
-export function Grid({ store, grid, axisX, axisY, showGrid, showX, showY }: GridProps) {
+export function Grid({
+  store,
+  frame = XY_FRAME,
+  grid,
+  axisX,
+  axisY,
+  showGrid,
+  showX,
+  showY,
+}: GridProps) {
   const mesh = useRef<Mesh>(null);
   const { material, u } = useMemo(() => {
     const u = {
@@ -117,6 +144,10 @@ export function Grid({ store, grid, axisX, axisY, showGrid, showX, showY }: Grid
       uShowAxes: { value: new Vector2(1, 1) },
       uCenter: { value: new Vector2() },
       uRadius: { value: 1 },
+      uOrigin: { value: new Vector3() },
+      uU: { value: new Vector3(1, 0, 0) },
+      uV: { value: new Vector3(0, 1, 0) },
+      uN: { value: new Vector3(0, 0, 1) },
     };
     const material = new ShaderMaterial({
       vertexShader,
@@ -134,14 +165,35 @@ export function Grid({ store, grid, axisX, axisY, showGrid, showX, showY }: Grid
   u.uAxisX.value = color(axisX);
   u.uAxisY.value = color(axisY);
   u.uShowAxes.value.set(showX ? 1 : 0, showY ? 1 : 0);
+  u.uOrigin.value.set(...frame.origin);
+  u.uU.value.set(...frame.x);
+  u.uV.value.set(...frame.y);
+  u.uN.value.set(...frame.normal);
+  const rotation = useMemo(
+    () =>
+      new Matrix4().makeBasis(
+        new Vector3(...frame.x),
+        new Vector3(...frame.y),
+        new Vector3(...frame.normal),
+      ),
+    [frame],
+  );
 
   useFrame(() => {
     const { view } = store.getState();
     const radius = view.size * GRID_RADIUS;
-    u.uCenter.value.set(view.target[0], view.target[1]);
+    // The quad sits under the camera target, projected onto the plane.
+    const [cu, cv] = worldToSketch(frame, view.target);
+    u.uCenter.value.set(cu, cv);
     u.uRadius.value = radius;
-    mesh.current?.position.set(view.target[0], view.target[1], 0);
-    mesh.current?.scale.set(radius, radius, 1);
+    const m = mesh.current;
+    if (!m) return;
+    m.quaternion.setFromRotationMatrix(rotation);
+    m.position
+      .set(...frame.origin)
+      .addScaledVector(u.uU.value, cu)
+      .addScaledVector(u.uV.value, cv);
+    m.scale.set(radius, radius, 1);
   });
 
   return (

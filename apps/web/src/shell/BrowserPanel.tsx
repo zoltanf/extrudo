@@ -1,4 +1,10 @@
-import { type BodyId, type DocumentStore, updateBody } from '@extrudo/core';
+import {
+  type BodyId,
+  type DocumentStore,
+  type FeatureId,
+  readSketch,
+  updateBody,
+} from '@extrudo/core';
 import {
   Box,
   ChevronDown,
@@ -7,6 +13,7 @@ import {
   EyeOff,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Settings2,
   Video,
 } from 'lucide-react';
@@ -23,15 +30,29 @@ export interface BrowserPanelProps {
   width: number;
   collapsed: boolean;
   onToggle(): void;
+  /** The sketch being edited, marked in the tree. */
+  activeSketchId?: FeatureId;
+  /** Opens a sketch (double-click or its pencil button). */
+  onEditSketch?(id: FeatureId): void;
 }
 
 /**
  * The browser (UI spec §2): document settings, views, origin, sketches and
  * bodies. Built from the document; the eye on a body is a real, undoable
  * visibility change. The origin's eyes are viewport settings (P0-05), not
- * document changes. Hover highlighting and renaming come with P2-08.
+ * document changes. A sketch opens with a double-click or its pencil button
+ * (P1-01). Sketch visibility, hover highlighting and renaming come with
+ * P1-12 and P2-08.
  */
-export function BrowserPanel({ store, viewport, width, collapsed, onToggle }: BrowserPanelProps) {
+export function BrowserPanel({
+  store,
+  viewport,
+  width,
+  collapsed,
+  onToggle,
+  activeSketchId,
+  onEditSketch,
+}: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
 
@@ -96,7 +117,30 @@ export function BrowserPanel({ store, viewport, width, collapsed, onToggle }: Br
           {sketches.length === 0 ? (
             <Leaf muted>No sketches yet</Leaf>
           ) : (
-            sketches.map((s) => <Leaf key={s.id}>{s.name}</Leaf>)
+            sketches.map((s) => {
+              const valid = readSketch(s) !== undefined;
+              const active = s.id === activeSketchId;
+              return (
+                <Leaf
+                  key={s.id}
+                  muted={!valid}
+                  active={active}
+                  onDoubleClick={valid ? () => onEditSketch?.(s.id) : undefined}
+                >
+                  <span className="min-w-0 truncate">{s.name}</span>
+                  {active && <span className="text-xs text-muted">editing</span>}
+                  {valid && !active && onEditSketch && (
+                    <IconButton
+                      label={`Edit ${s.name}`}
+                      className="ml-auto size-6"
+                      onClick={() => onEditSketch(s.id)}
+                    >
+                      <Pencil size={13} />
+                    </IconButton>
+                  )}
+                </Leaf>
+              );
+            })
           )}
         </Folder>
         <Folder label="Bodies" icon={<Box size={14} />}>
@@ -175,10 +219,22 @@ function Folder({
   );
 }
 
-function Leaf({ muted, children }: { muted?: boolean; children: ReactNode }) {
+function Leaf({
+  muted,
+  active,
+  onDoubleClick,
+  children,
+}: {
+  muted?: boolean;
+  active?: boolean;
+  onDoubleClick?(): void;
+  children: ReactNode;
+}) {
   return (
     <li
-      className={`flex h-7 items-center gap-1.5 rounded-input pr-1 pl-[46px] ${muted ? 'text-muted' : ''}`}
+      aria-current={active || undefined}
+      onDoubleClick={onDoubleClick}
+      className={`flex h-7 items-center gap-1.5 rounded-input pr-1 pl-[46px] ${muted ? 'text-muted' : ''} ${active ? 'bg-accent-soft' : ''}`}
     >
       {children}
     </li>

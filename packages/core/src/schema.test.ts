@@ -78,11 +78,16 @@ describe('document schema v1', () => {
           e: { kind: 'enum', value: 'symmetric' },
           b: { kind: 'bool', value: true },
           r: { kind: 'ref', refs: [{ kind: 'face', id: 'extrude:f2:cap:end' }] },
-          s: { kind: 'sketchData', sketch: { entities: [] } },
+          s: { kind: 'sketchData', sketch: { entities: {}, constraints: {}, dimensions: {} } },
         }),
       ),
     ).toEqual([]);
     expect(issues(withInputs({ d: { kind: 'number', value: 3 } }))).toHaveLength(1);
+    expect(issues(withInputs({ s: { kind: 'sketchData', sketch: { entities: [] } } }))).toEqual([
+      'features.0.inputs.s.sketch.entities: Invalid input: expected record, received array',
+      'features.0.inputs.s.sketch.constraints: Invalid input: expected record, received undefined',
+      'features.0.inputs.s.sketch.dimensions: Invalid input: expected record, received undefined',
+    ]);
     expect(
       issues(withInputs({ r: { kind: 'ref', refs: [{ kind: 'face', id: 3 }] } })),
     ).toHaveLength(1);

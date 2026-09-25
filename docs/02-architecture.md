@@ -155,10 +155,20 @@ marker lies within the timeline, IDs and parameter names are unique. Loading
 goes through `loadDocument`, which refuses newer format versions and runs the
 migrations (one step per version, on raw JSON) before validating.
 
-Sketch features hold their own `SketchData`: entities, constraints, dimensions
-and plane reference. The **solved coordinates are stored** too, so a sketch
-renders instantly and the solver starts from the last solution. That keeps
-solutions stable: no flipping between equivalent solutions on reload.
+Sketch features hold their own `SketchData`: entities, constraints and
+dimensions; the sketch's plane is a separate `ref` input. The **solved
+coordinates are stored** too, so a sketch renders instantly and the solver
+starts from the last solution. That keeps solutions stable: no flipping
+between equivalent solutions on reload.
+
+As built in P1-01 (ADR-0010, `packages/core/src/sketch/`): entities are
+points, lines, circles and arcs; curves refer to their own points (a point
+belongs to at most one curve, coincident constraints join them). Entities,
+constraints and dimensions are records keyed by ID, one ID space per sketch.
+Every FR-SK-07 constraint and FR-SK-08 dimension has a shape; dimension
+values are expressions. The schema checks references (existence, kinds) on
+load; geometry is the solver's job. Origin planes have fixed 2D frames that
+match the ViewCube views.
 
 ### 4.2 Feature registry (extension point)
 
@@ -449,3 +459,7 @@ bundle-size budget. Every agent task must leave CI green.
   2026-09-25** (P0-08): `ProjectStore` over an IndexedDB index and OPFS
   files, `.extrudo` zip through core's migrations, autosave with a save
   state, thumbnails from the viewport, hash routes, home screen.
+- **ADR-0010** Sketch data model and sketch mode. **Written 2026-09-25**
+  (P1-01): plane as a `ref` input, points as entities owned by one curve,
+  records keyed by ID, every constraint and dimension type, origin plane
+  frames, sketch mode as an undo transaction.

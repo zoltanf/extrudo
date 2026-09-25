@@ -1,4 +1,5 @@
-import { useFrame } from '@react-three/fiber';
+import type { OriginPlaneId } from '@extrudo/core';
+import { type ThreeElements, useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import {
   BufferAttribute,
@@ -10,6 +11,7 @@ import {
   ShaderMaterial,
 } from 'three';
 import type { Rgba } from './colors';
+import { createDotMaterial } from './dots';
 import { GRID_RADIUS } from './Grid';
 import type { OriginItem, ViewportStore } from './store';
 
@@ -30,9 +32,40 @@ export interface OriginProps {
   point: Rgba;
   axisZ: Rgba;
   construct: Rgba;
+  /** Create Sketch is waiting for a plane: show all three and make them pickable. */
+  picking?: boolean;
+  /** The plane under the pointer (or under the prompt's button) while picking. */
+  hover?: OriginPlaneId;
+  /** Hover colour (`preselect`). */
+  highlight?: Rgba;
+  onHover?(plane: OriginPlaneId): void;
+  /** The pointer left `plane`. Clear the hover only if it is still `plane`: events can arrive out of order. */
+  onLeave?(plane: OriginPlaneId): void;
+  onPick?(plane: OriginPlaneId): void;
 }
 
-export function Origin({ store, visible, point, axisZ, construct }: OriginProps) {
+const PLANES: readonly { item: 'xy' | 'xz' | 'yz'; rotation: [number, number, number] }[] = [
+  { item: 'xy', rotation: [0, 0, 0] },
+  { item: 'xz', rotation: [Math.PI / 2, 0, 0] },
+  { item: 'yz', rotation: [0, Math.PI / 2, 0] },
+];
+
+/** A click that moved further than this (px) was a drag, not a pick. */
+const CLICK_SLOP = 4;
+
+export function Origin({
+  store,
+  visible,
+  point,
+  axisZ,
+  construct,
+  picking = false,
+  hover,
+  highlight = construct,
+  onHover,
+  onLeave,
+  onPick,
+}: OriginProps) {
   const axis = useRef<Group>(null);
   const planes = useRef<Group>(null);
 
@@ -49,9 +82,36 @@ export function Origin({ store, visible, point, axisZ, construct }: OriginProps)
         <ZAxis color={axisZ} />
       </group>
       <group ref={planes}>
-        {visible.xy && <Plane color={construct} rotation={[0, 0, 0]} />}
-        {visible.xz && <Plane color={construct} rotation={[Math.PI / 2, 0, 0]} />}
-        {visible.yz && <Plane color={construct} rotation={[0, Math.PI / 2, 0]} />}
+        {PLANES.map(({ item, rotation }) => {
+          const id = `origin:${item}` as const;
+          if (!picking && !visible[item]) return null;
+          const hovered = picking && hover === id;
+          return (
+            <Plane
+              key={item}
+              color={hovered ? highlight : construct}
+              strong={hovered}
+              rotation={rotation}
+              events={
+                picking
+                  ? {
+                      onPointerMove: (e) => {
+                        // The nearest plane under the pointer wins.
+                        e.stopPropagation();
+                        onHover?.(id);
+                      },
+                      onPointerOut: () => onLeave?.(id),
+                      onClick: (e) => {
+                        if (e.delta > CLICK_SLOP) return;
+                        e.stopPropagation();
+                        onPick?.(id);
+                      },
+                    }
+                  : undefined
+              }
+            />
+          );
+        })}
       </group>
     </>
   );
@@ -64,37 +124,7 @@ function OriginPoint({ color: c }: { color: Rgba }) {
     g.setAttribute('position', new BufferAttribute(new Float32Array([0, 0, 0]), 3));
     return g;
   }, []);
-  const uniforms = useMemo(
-    () => ({ uColor: { value: new Color() }, uAlpha: { value: 1 }, uSize: { value: 7 } }),
-    [],
-  );
-  const material = useMemo(
-    () =>
-      new ShaderMaterial({
-        transparent: true,
-        depthTest: false,
-        uniforms,
-        vertexShader: /* glsl */ `
-          uniform float uSize;
-          void main() {
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-            gl_PointSize = uSize;
-          }
-        `,
-        fragmentShader: /* glsl */ `
-          uniform vec3 uColor;
-          uniform float uAlpha;
-          void main() {
-            float r = length(gl_PointCoord - 0.5) * 2.0;
-            float a = 1.0 - smoothstep(0.7, 1.0, r);
-            if (a <= 0.0) discard;
-            gl_FragColor = vec4(uColor, a * uAlpha);
-            #include <colorspace_fragment>
-          }
-        `,
-      }),
-    [uniforms],
-  );
+  const { material, uniforms } = useMemo(createDotMaterial, []);
   uniforms.uColor.value = color(c);
   uniforms.uAlpha.value = c.a * 0.9;
   return (
@@ -156,8 +186,20 @@ function ZAxis({ color: c }: { color: Rgba }) {
   return <primitive object={line} frustumCulled={false} renderOrder={2} />;
 }
 
+type PlaneEvents = Pick<ThreeElements['mesh'], 'onPointerMove' | 'onPointerOut' | 'onClick'>;
+
 /** A square origin plane from −1 to 1 (scaled by the parent): a faint fill and an outline. */
-function Plane({ color: c, rotation }: { color: Rgba; rotation: [number, number, number] }) {
+function Plane({
+  color: c,
+  rotation,
+  strong = false,
+  events,
+}: {
+  color: Rgba;
+  rotation: [number, number, number];
+  strong?: boolean;
+  events?: PlaneEvents;
+}) {
   const outline = useMemo(() => {
     const g = new BufferGeometry();
     const corners = [-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, 1, 0];
@@ -167,18 +209,18 @@ function Plane({ color: c, rotation }: { color: Rgba; rotation: [number, number,
   const col = color(c);
   return (
     <group rotation={rotation}>
-      <mesh renderOrder={2}>
+      <mesh renderOrder={2} {...events}>
         <planeGeometry args={[2, 2]} />
         <meshBasicMaterial
           color={col}
           transparent
-          opacity={0.1}
+          opacity={strong ? 0.3 : 0.1}
           side={DoubleSide}
           depthWrite={false}
         />
       </mesh>
       <lineLoop geometry={outline} renderOrder={2}>
-        <lineBasicMaterial color={col} transparent opacity={0.6} depthWrite={false} />
+        <lineBasicMaterial color={col} transparent opacity={strong ? 1 : 0.6} depthWrite={false} />
       </lineLoop>
     </group>
   );

@@ -14,6 +14,23 @@ const sources = import.meta.glob<string>('./svg/*.svg', {
 
 export const ICON_NAMES = [
   'create-sketch',
+  'finish-sketch',
+  'line',
+  'rectangle',
+  'circle',
+  'arc',
+  'point',
+  'polygon',
+  'slot',
+  'ellipse',
+  'spline',
+  'sketch-dimension',
+  'trim',
+  'sketch-offset',
+  'coincident',
+  'parallel',
+  'perpendicular',
+  'tangent',
   'extrude',
   'revolve',
   'fillet',
@@ -59,11 +76,13 @@ export interface ToolIconProps {
   category: ToolCategory;
   /** 24 toolbar · 18 timeline chips, dialog titles · 16 menus, browser tree. */
   size?: 16 | 18 | 24;
+  /** Overrides the category colour: Finish Sketch is `success` green (UI spec §4). */
+  color?: string;
   className?: string;
 }
 
 /** A two-tone tool icon in its category colour. Decorative: label the control, not the icon. */
-export function ToolIcon({ name, category, size = 24, className = '' }: ToolIconProps) {
+export function ToolIcon({ name, category, size = 24, color, className = '' }: ToolIconProps) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -71,7 +90,7 @@ export function ToolIcon({ name, category, size = 24, className = '' }: ToolIcon
       height={size}
       aria-hidden="true"
       className={`x-tool-icon shrink-0 ${className}`}
-      style={{ color: `var(--x-cat-${category})` }}
+      style={{ color: color ?? `var(--x-cat-${category})` }}
       // Our own build-time sources (svg/*.svg), checked by icons.test.ts.
       // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted, bundled SVG.
       dangerouslySetInnerHTML={{ __html: ICON_MARKUP[name] ?? '' }}

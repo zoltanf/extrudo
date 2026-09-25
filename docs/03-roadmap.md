@@ -111,11 +111,14 @@ a test solid.
 Goal: full parametric 2D sketching with constraints, dimensions and SVG export.
 Benchmark **B1** buildable.
 
-- [ ] **P1-01 Sketch feature and sketch mode.** `sketch` feature type and
+- [x] **P1-01 Sketch feature and sketch mode.** `sketch` feature type and
   `SketchData` schema; "Create Sketch" (pick an origin plane with hover
   highlight) → Look At animation → sketch-mode UI (toolbar swaps to the Sketch
   tab, sketch palette, green "Finish Sketch"). Browser tree "Sketches" folder.
   *Deps:* P0-05, P0-06. *AC:* FR-SK-01 (origin planes), FR-VP-07 (partial).
+  Done 2026-09-25 (ADR-0010): the plane is a `ref` input, `SketchData` holds
+  points, lines, circles, arcs and every constraint and dimension type as
+  records; sketches open by double-click in the browser or timeline too.
 - [ ] **P1-02 Sketch tool framework.** Tool state-machine base, sketch-plane
   raycasting, snapping/inference engine (endpoint, midpoint, center, on-curve,
   intersection, H/V alignment with dashed guides, grid), heads-up numeric input

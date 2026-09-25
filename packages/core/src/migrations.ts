@@ -55,15 +55,19 @@ export interface LoadResult {
  *   rather than a unit kind;
  * - features have an optional `disabled` instead of `suppressed`;
  * - no `timelineMarker`, `bodies`, `views` or `meta`; `created` and
- *   `appVersion` sit at the top level.
+ *   `appVersion` sit at the top level;
+ * - sketch data holds `entities` and `constraints` as arrays of objects with
+ *   an `id`, and no `dimensions`.
  */
 const v0ToV1: Migration = {
   from: 0,
-  description: 'settings object, parameter IDs and unit kinds, suppressed flag, timeline marker',
+  description:
+    'settings object, parameter IDs and unit kinds, suppressed flag, timeline marker, sketch records',
   migrate(doc, ctx) {
     const { units, created, appVersion, parameters, features, ...rest } = doc;
     const featureList = asArray(features).map((raw) => {
       const { disabled, ...feature } = asObject(raw);
+      if (feature.type === 'sketch') feature.inputs = sketchInputsV1(asObject(feature.inputs));
       return { ...feature, suppressed: disabled === true };
     });
     const createdAt = typeof created === 'string' ? created : ctx.now;
@@ -88,6 +92,32 @@ const v0ToV1: Migration = {
     };
   },
 };
+
+/** v0 sketch data kept its lists as arrays; v1 keys them by ID. */
+function sketchInputsV1(inputs: JsonObject): JsonObject {
+  const input = asObject(inputs.sketch);
+  if (input.kind !== 'sketchData') return inputs;
+  const { entities, constraints, dimensions, ...rest } = asObject(input.sketch);
+  const byId = (list: unknown) =>
+    Object.fromEntries(
+      asArray(list).map((raw) => {
+        const { id, ...item } = asObject(raw);
+        return [String(id), item];
+      }),
+    );
+  return {
+    ...inputs,
+    sketch: {
+      ...input,
+      sketch: {
+        ...rest,
+        entities: byId(entities),
+        constraints: byId(constraints),
+        dimensions: byId(dimensions),
+      },
+    },
+  };
+}
 
 function unitKindOfSymbol(symbol: unknown): string {
   if (symbol === 'deg' || symbol === 'rad') return 'angle';

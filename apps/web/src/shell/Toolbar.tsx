@@ -1,18 +1,26 @@
 import { ChevronDown, MousePointer2 } from 'lucide-react';
-import { type ButtonHTMLAttributes, forwardRef, useState } from 'react';
+import { type ButtonHTMLAttributes, forwardRef, useEffect, useState } from 'react';
 import { shortcutLabel } from '../commands/shortcuts';
 import { Menu, MenuItem, MenuLabel, ToolIcon, Tooltip } from '../design-system';
-import { TABS, TOOLS, type Tool, type ToolId } from './tools';
+import { TABS, type TabId, TOOLS, type Tool, type ToolId } from './tools';
 
 export interface ToolbarProps {
+  /** `sketch` while a sketch is open: the Sketch tab replaces Solid (UI spec §2). */
+  mode?: 'model' | 'sketch';
+  /** The running tool, shown pressed (Create Sketch while it waits for a plane). */
+  activeTool?: ToolId;
   /** Runs a tool that works today (see `Tool.comesWith`). */
   onRun(tool: ToolId): void;
 }
 
 /** Workspace switcher, tabs and tool groups (UI spec §2). */
-export function Toolbar({ onRun }: ToolbarProps) {
-  const [tab, setTab] = useState(TABS[0]?.id ?? 'solid');
-  const active = TABS.find((t) => t.id === tab) ?? TABS[0];
+export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
+  const home: TabId = mode === 'sketch' ? 'sketch' : 'solid';
+  const [tab, setTab] = useState<TabId>(home);
+  // Entering or leaving a sketch brings its tab forward.
+  useEffect(() => setTab(home), [home]);
+  const tabs = TABS.filter((t) => (mode === 'sketch' ? t.id !== 'solid' : t.id !== 'sketch'));
+  const active = tabs.find((t) => t.id === tab) ?? tabs[0];
 
   return (
     <div className="border-b border-line bg-bg">
@@ -33,13 +41,13 @@ export function Toolbar({ onRun }: ToolbarProps) {
           <MenuItem>Design</MenuItem>
         </Menu>
         <div role="tablist" aria-label="Toolbar tabs" className="flex gap-1 pl-2">
-          {TABS.map((t) => (
+          {tabs.map((t) => (
             <button
               key={t.id}
               type="button"
               role="tab"
               id={`tab-${t.id}`}
-              aria-selected={t.id === tab}
+              aria-selected={t.id === active?.id}
               aria-controls="toolbar-groups"
               onClick={() => setTab(t.id)}
               className="h-7 border-b-2 border-transparent px-2.5 text-xs font-semibold tracking-[0.08em] text-muted uppercase hover:text-ink aria-selected:border-accent aria-selected:text-ink"
@@ -53,7 +61,7 @@ export function Toolbar({ onRun }: ToolbarProps) {
       <div
         id="toolbar-groups"
         role="tabpanel"
-        aria-labelledby={`tab-${tab}`}
+        aria-labelledby={`tab-${active?.id}`}
         className="flex min-h-[70px] items-stretch gap-1 overflow-x-auto px-2 pt-1 pb-1"
       >
         {active?.groups.map((group, i) => (
@@ -65,7 +73,12 @@ export function Toolbar({ onRun }: ToolbarProps) {
             >
               <div className="flex gap-0.5">
                 {group.tools.map((id) => (
-                  <ToolButton key={id} tool={TOOLS[id]} onRun={() => onRun(id)} />
+                  <ToolButton
+                    key={id}
+                    tool={TOOLS[id]}
+                    pressed={activeTool === id}
+                    onRun={() => onRun(id)}
+                  />
                 ))}
               </div>
               <Menu
@@ -99,7 +112,27 @@ export function Toolbar({ onRun }: ToolbarProps) {
             </fieldset>
           </div>
         ))}
-        {tab === 'solid' && (
+        {active?.id === 'sketch' && (
+          <div className="flex items-stretch">
+            <div className="mx-1.5 my-1.5 w-px bg-line" aria-hidden="true" />
+            <fieldset aria-label="Finish" className="m-0 flex flex-col items-center border-0 p-0">
+              <Tooltip label={TOOLS.finishSketch.label} hint={TOOLS.finishSketch.hint}>
+                <ToolTile className="text-ink" onClick={() => onRun('finishSketch')}>
+                  <ToolIcon
+                    name={TOOLS.finishSketch.icon}
+                    category="sketch"
+                    color="var(--x-success)"
+                  />
+                  <span>{TOOLS.finishSketch.label}</span>
+                </ToolTile>
+              </Tooltip>
+              <span className="mt-auto px-1.5 text-[9.5px] font-semibold tracking-[0.08em] text-muted uppercase">
+                Finish
+              </span>
+            </fieldset>
+          </div>
+        )}
+        {active?.id === 'solid' && (
           <div className="flex items-stretch">
             <div className="mx-1.5 my-1.5 w-px bg-line" aria-hidden="true" />
             <fieldset aria-label="Select" className="m-0 flex flex-col items-center border-0 p-0">
@@ -123,7 +156,7 @@ export function Toolbar({ onRun }: ToolbarProps) {
   );
 }
 
-function ToolButton({ tool, onRun }: { tool: Tool; onRun(): void }) {
+function ToolButton({ tool, pressed, onRun }: { tool: Tool; pressed: boolean; onRun(): void }) {
   const unavailable = tool.comesWith !== undefined;
   return (
     <Tooltip
@@ -133,11 +166,12 @@ function ToolButton({ tool, onRun }: { tool: Tool; onRun(): void }) {
     >
       <ToolTile
         aria-disabled={unavailable || undefined}
+        aria-pressed={pressed || undefined}
         onClick={unavailable ? undefined : onRun}
         className={unavailable ? 'opacity-55' : ''}
       >
         <ToolIcon name={tool.icon} category={tool.category} />
-        <span>{tool.label.replace('Rectangular ', '')}</span>
+        <span>{tool.short ?? tool.label}</span>
       </ToolTile>
     </Tooltip>
   );

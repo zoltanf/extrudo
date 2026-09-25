@@ -9,6 +9,11 @@
  */
 import { z } from 'zod';
 import { FORMAT_NAME, FORMAT_VERSION } from './format';
+import { PARAMETER_NAME } from './names';
+import { SketchDataSchema } from './sketch/schema';
+
+export { PARAMETER_NAME } from './names';
+
 import {
   BodyIdSchema,
   DocumentIdSchema,
@@ -23,9 +28,6 @@ export type LengthUnit = z.infer<typeof LengthUnitSchema>;
 /** What a parameter or expression measures; P0-07 checks expressions against it. */
 export const UnitKindSchema = z.enum(['length', 'angle', 'unitless']);
 export type UnitKind = z.infer<typeof UnitKindSchema>;
-
-/** Parameter names are identifiers, so expressions can refer to them. */
-export const PARAMETER_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export const ParameterSchema = z.strictObject({
   id: ParameterIdSchema,
@@ -60,10 +62,6 @@ export const GeomRefSchema = z.strictObject({
 });
 export type GeomRef = z.infer<typeof GeomRefSchema>;
 
-/** Placeholder: P1-01 defines the sketch schema (entities, constraints, dimensions, plane). */
-export const SketchDataSchema = z.record(z.string(), z.unknown());
-export type SketchData = z.infer<typeof SketchDataSchema>;
-
 export const ExprInputSchema = z.strictObject({
   kind: z.literal('expr'),
   expr: z.string(),
@@ -78,6 +76,7 @@ export const RefInputSchema = z.strictObject({
   kind: z.literal('ref'),
   refs: z.array(GeomRefSchema),
 });
+/** A sketch's 2D content (`sketch/schema.ts`); its plane is a separate `ref` input. */
 export const SketchDataInputSchema = z.strictObject({
   kind: z.literal('sketchData'),
   sketch: SketchDataSchema,

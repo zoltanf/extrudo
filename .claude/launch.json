@@ -3,17 +3,13 @@
   "configurations": [
     {
       "name": "web",
-      "runtimeExecutable": "node",
+      "runtimeExecutable": "sh",
       "runtimeArgs": [
-        "apps/web/node_modules/vite/bin/vite.js",
-        "apps/web",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "5173",
-        "--strictPort"
+        "-c",
+        "exec node apps/web/node_modules/vite/bin/vite.js apps/web --host 127.0.0.1 --port \"${PORT:-5173}\" --strictPort"
       ],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

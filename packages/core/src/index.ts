@@ -35,6 +35,10 @@ export {
   type MigrationContext,
 } from './migrations';
 export * from './schema';
+export * from './sketch/commands';
+export * from './sketch/feature';
+export * from './sketch/planes';
+export * from './sketch/schema';
 export {
   createDocumentStore,
   createModelStore,

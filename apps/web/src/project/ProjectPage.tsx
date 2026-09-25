@@ -1,6 +1,7 @@
 import {
   createDocumentStore,
   createModelStore,
+  createSessionStore,
   type DocumentStore,
   type ExtrudoDocument,
 } from '@extrudo/core';
@@ -84,6 +85,7 @@ function ProjectEditor({
   platform: Platform;
 }) {
   const store = useMemo(() => createDocumentStore(doc), [doc]);
+  const session = useMemo(() => createSessionStore(), []);
   // Filled by the recompute pipeline (Phase 2); empty until then.
   const model = useMemo(() => createModelStore<BodyMesh>(), []);
   const viewport = useMemo(
@@ -123,6 +125,7 @@ function ProjectEditor({
     <>
       <AppShell
         store={store}
+        session={session}
         model={model}
         viewport={viewport}
         autosave={autosave}

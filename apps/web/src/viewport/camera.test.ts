@@ -57,6 +57,20 @@ describe('orientationFor', () => {
     expect(b.right.z).toBeCloseTo(0, 9);
   });
 
+  it('takes a preferred up, unless it is parallel to the view direction', () => {
+    const q = (direction: Vec3, up: Vec3) => ({
+      target: [0, 0, 0] as Vec3,
+      orientation: orientationFor(direction, up),
+      size: 1,
+    });
+    const b = basis(q([0, 0, 1], [-1, 0, 0]));
+    near(b.up, [-1, 0, 0]);
+    near(b.right, [0, 1, 0]);
+    // A sketch plane's normal and Y: the XZ plane seen from the front.
+    near(basis(q([0, -1, 0], [0, 0, 1])).right, [1, 0, 0]);
+    near(basis(q([0, 0, 1], [0, 0, 5])).up, [0, 1, 0]);
+  });
+
   it('gives a unit quaternion', () => {
     const q = orientationFor([3, -4, 12]);
     expect(Math.hypot(...q)).toBeCloseTo(1, 12);
