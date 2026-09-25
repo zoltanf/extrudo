@@ -42,7 +42,8 @@ see *Open decisions* in `03-roadmap.md`).
 │  React app shell  ─ toolbar, browser tree, timeline, dialogs, palettes    │
 │        │                                                                  │
 │  Zustand stores:  documentStore (the saved design, JSON, undoable)        │
-│                   sessionStore  (selection, active tool, camera, UI)      │
+│                   sessionStore  (selection, active tool, UI)              │
+│                   viewportStore (camera, display settings; ADR-0008)      │
 │                   modelStore    (latest recompute results: meshes, errs)  │
 │        │                                                                  │
 │  Sketch session:  sketch tools ⇄ planegcs (WASM, main thread, sub-ms)     │
@@ -78,8 +79,9 @@ and scripting simple.
 ├─ apps/
 │  ├─ web/                 Vite + React app (UI shell, viewport, tools, dialogs)
 │  │  └─ src/
-│  │     ├─ shell/         app bar, toolbar, browser tree, timeline, nav bar
-│  │     ├─ viewport/      R3F scene, camera controls, ViewCube, picking, gizmos
+│  │     ├─ shell/         app bar, toolbar, browser tree, timeline
+│  │     ├─ viewport/      R3F scene, camera controls, ViewCube, nav bar,
+│  │     │                 picking, gizmos (P0-05, ADR-0008)
 │  │     ├─ sketch/        sketch mode UI + interactive tools (state machines)
 │  │     ├─ features/      one folder per feature: dialog UI + manipulators
 │  │     ├─ commands/      command registry, shortcuts, marking menu, palette
@@ -430,3 +432,7 @@ bundle-size budget. Every agent task must leave CI green.
   tokens as CSS variables through Tailwind v4 `@theme inline`, Radix
   wrappers, raw-SVG icon pipeline with a rules test, platform preferences,
   one shortcut registry, screenshot tests checked in the Ubuntu image.
+- **ADR-0008** Viewport, camera and navigation. **Written 2026-09-25**
+  (P0-05): Z-up world, our own camera controller (target + quaternion +
+  size, both projections), mouse presets as tables, shader grid, CSS 3D
+  ViewCube, viewport store in the web app with settings as preferences.

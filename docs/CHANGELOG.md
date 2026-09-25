@@ -2,6 +2,16 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-25 · **P0-05** Viewport: R3F canvas over the glowing background,
+  Z-up world; our own camera controller (target + quaternion + size, one
+  scale for perspective and orthographic, zoom to cursor, fit, 350 ms
+  transitions, instant under reduced motion); Fusion, Blender,
+  Onshape/SolidWorks and trackpad mouse presets; adaptive shader grid with X/Y
+  axes, Z axis, origin point and planes (Browser eyes); CSS 3D ViewCube with
+  faces, edges, corners, home, turn and roll arrows; nav bar (orbit/pan/zoom
+  tools, fit F6, orthographic, visual styles, grid, mouse preset); bodies
+  from the model store in four visual styles, tried on `#/debug/kernel`.
+  Settings are preferences. The viewport is a lazy chunk. ADR-0008.
 - 2026-09-25 · **P0-04** Design system and app shell: brand tokens as CSS
   variables (Slate dark default, light) mapped into Tailwind v4, bundled
   Instrument Sans and JetBrains Mono, Radix wrappers (button, icon button with

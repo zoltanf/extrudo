@@ -24,7 +24,11 @@ async function open(page: Page, theme?: 'dark' | 'light') {
     );
   }
   await page.goto('./');
-  await expect(page.getByRole('region', { name: 'Viewport' })).toBeVisible();
+  // The viewport is lazy: wait until its first frame is drawn.
+  await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
+    'data-ready',
+    'true',
+  );
   // A string, since e2e/ typechecks without the DOM library.
   await page.evaluate('document.fonts.ready.then(() => true)');
 }

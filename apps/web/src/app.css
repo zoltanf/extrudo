@@ -33,7 +33,7 @@
   gap: 8px;
 }
 
-.kernel-debug button {
+.kernel-debug .actions button {
   font: inherit;
   padding: 6px 14px;
   border-radius: 8px;
@@ -43,7 +43,7 @@
   cursor: pointer;
 }
 
-.kernel-debug button:disabled {
+.kernel-debug .actions button:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -54,7 +54,7 @@
 
 .kernel-debug .stage {
   min-height: 0;
-  background: var(--x-viewport-glow);
+  display: flex;
 }
 
 /* ExpressionInput: the input sits on a backdrop that repeats the text, so the

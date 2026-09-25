@@ -1,25 +1,42 @@
+import type { BodyId } from '@extrudo/core';
 import {
-  type BodyMesh,
   isKernelCrash,
   KernelClient,
   type KernelStatus,
   spawnBrowserKernel,
   type TestPart,
 } from '@extrudo/kernel';
-import { Canvas } from '@react-three/fiber';
 import { useEffect, useMemo, useState } from 'react';
-import { BufferAttribute, BufferGeometry } from 'three';
+import type { Platform } from '../platform';
+import { createViewportStore } from '../viewport/store';
+import { Viewport } from '../viewport/Viewport';
+
+const TEST_BODY = 'test-part' as BodyId;
 
 /**
  * Kernel debug page (P0-09), at `#/debug/kernel`: renders the P0-02 test part
  * from the worker and can crash the kernel on purpose to show that it
- * restarts (NFR-03). The real viewport arrives with P0-05.
+ * restarts (NFR-03). The part is drawn in the real viewport (P0-05), which
+ * makes this page the place to try visual styles on real geometry.
  */
-export function KernelDebug() {
+export function KernelDebug({ platform }: { platform: Platform }) {
   const [status, setStatus] = useState<KernelStatus>('idle');
   const [restarts, setRestarts] = useState(0);
   const [part, setPart] = useState<TestPart>();
   const [message, setMessage] = useState('');
+  const viewport = useMemo(
+    () => createViewportStore({ preferences: platform.preferences }),
+    [platform],
+  );
+  const bodies = useMemo(() => (part ? { [TEST_BODY]: part.mesh } : undefined), [part]);
+  // Frame the part once the viewport knows its bounds.
+  useEffect(
+    () =>
+      viewport.subscribe((s, prev) => {
+        if (s.bounds && s.bounds !== prev.bounds) s.fit();
+      }),
+    [viewport],
+  );
   const client = useMemo(
     () =>
       new KernelClient(spawnBrowserKernel, {
@@ -83,57 +100,8 @@ export function KernelDebug() {
         {message && <p className="message">{message}</p>}
       </header>
       <div className="stage" data-testid="kernel-stage">
-        {part && (
-          <Canvas
-            camera={{ position: [60, -75, 55], up: [0, 0, 1], fov: 35 }}
-            onCreated={({ camera }) => camera.lookAt(0, 0, 0)}
-            frameloop="demand"
-          >
-            <ambientLight intensity={0.7} />
-            <directionalLight position={[40, -60, 90]} intensity={2.2} />
-            <PartView mesh={part.mesh} center={part.measurements.bbox} />
-          </Canvas>
-        )}
+        <Viewport viewport={viewport} bodies={bodies} />
       </div>
     </main>
   );
-}
-
-function PartView({ mesh, center }: { mesh: BodyMesh; center: TestPart['measurements']['bbox'] }) {
-  const { faces, edges } = useMemo(() => geometries(mesh), [mesh]);
-  const offset = center.min.map((v, i) => -(v + (center.max[i] ?? 0)) / 2) as [
-    number,
-    number,
-    number,
-  ];
-  return (
-    <group position={offset}>
-      <mesh geometry={faces}>
-        <meshStandardMaterial color="#ffb23e" roughness={0.55} metalness={0.05} />
-      </mesh>
-      <lineSegments geometry={edges}>
-        <lineBasicMaterial color="#15181f" />
-      </lineSegments>
-    </group>
-  );
-}
-
-function geometries(mesh: BodyMesh) {
-  const faces = new BufferGeometry();
-  faces.setAttribute('position', new BufferAttribute(mesh.positions, 3));
-  faces.setAttribute('normal', new BufferAttribute(mesh.normals, 3));
-  faces.setIndex(new BufferAttribute(mesh.indices, 1));
-
-  // Edge polylines → segment pairs.
-  const segments: number[] = [];
-  for (let e = 0; e < mesh.edgeRanges.length; e += 2) {
-    const first = mesh.edgeRanges[e] ?? 0;
-    const count = mesh.edgeRanges[e + 1] ?? 0;
-    for (let p = first; p < first + count - 1; p++) {
-      for (let k = 0; k < 6; k++) segments.push(mesh.edgePoints[3 * p + k] ?? 0);
-    }
-  }
-  const edges = new BufferGeometry();
-  edges.setAttribute('position', new BufferAttribute(new Float32Array(segments), 3));
-  return { faces, edges };
 }

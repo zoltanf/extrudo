@@ -115,6 +115,9 @@ fill, and the timeline chip background (colour at 16% over `bg`).
 | `sketch-projected` | construct colour | same | Projected/included geometry |
 | `sketch-conflict` | `error` | same | Over-constrained geometry |
 | `profile-fill` | `sketch` at 14% | `sketch` at 12% | Closed profiles |
+| `axis-x` | `#F0675C` | `#D9463A` | X axis (drawn along the grid, fading with it) |
+| `axis-y` | `#5FCF78` | `#23994A` | Y axis |
+| `axis-z` | `#5B8CFF` | `#2F63E0` | Z axis |
 
 Contrast: `ink` and `muted` meet WCAG AA on `bg`, `panel` and `raised` in
 both themes. Amber is for fills, outlines and highlights, never for body text

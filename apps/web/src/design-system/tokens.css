@@ -36,6 +36,13 @@
   --x-cat-insert: #ff7eb6;
   --x-cat-export: #ffc93c;
 
+  /* 3.4 Viewport and model */
+  --x-body-default: #a7b0c2;
+  --x-edge: rgb(195 202 214 / 70%);
+  --x-axis-x: #f0675c;
+  --x-axis-y: #5fcf78;
+  --x-axis-z: #5b8cff;
+
   /* 2 Logo (extrudo-mark-dark.svg) */
   --x-logo-top: #ffc76a;
   --x-logo-side: #e0922a;
@@ -73,6 +80,12 @@
   --x-cat-inspect: #0f9dab;
   --x-cat-insert: #e0457f;
   --x-cat-export: #e59a00;
+
+  --x-body-default: #b9c0cd;
+  --x-edge: rgb(17 19 24 / 70%);
+  --x-axis-x: #d9463a;
+  --x-axis-y: #23994a;
+  --x-axis-z: #2f63e0;
 
   --x-logo-top: #ffbe55;
   --x-logo-side: #d9861f;

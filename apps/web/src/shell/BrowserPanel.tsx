@@ -13,11 +13,13 @@ import {
 import { type ReactNode, useState } from 'react';
 import { useStore } from 'zustand';
 import { IconButton, ToolIcon } from '../design-system';
+import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
 
 export const BROWSER_ID = 'browser-panel';
 
 export interface BrowserPanelProps {
   store: DocumentStore;
+  viewport: ViewportStore;
   width: number;
   collapsed: boolean;
   onToggle(): void;
@@ -26,10 +28,12 @@ export interface BrowserPanelProps {
 /**
  * The browser (UI spec §2): document settings, views, origin, sketches and
  * bodies. Built from the document; the eye on a body is a real, undoable
- * visibility change. Hover highlighting and renaming come with P2-08.
+ * visibility change. The origin's eyes are viewport settings (P0-05), not
+ * document changes. Hover highlighting and renaming come with P2-08.
  */
-export function BrowserPanel({ store, width, collapsed, onToggle }: BrowserPanelProps) {
+export function BrowserPanel({ store, viewport, width, collapsed, onToggle }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
+  const origin = useStore(viewport, (s) => s.origin);
 
   if (collapsed) {
     return (
@@ -74,8 +78,15 @@ export function BrowserPanel({ store, width, collapsed, onToggle }: BrowserPanel
           </Leaf>
         </Folder>
         <Folder label="Origin" icon={<ToolIcon name="axis" category="construct" size={16} />}>
-          {['XY plane', 'XZ plane', 'YZ plane', 'X axis', 'Y axis', 'Z axis'].map((o) => (
-            <Leaf key={o}>{o}</Leaf>
+          {ORIGIN_ITEMS.map(({ value, label }) => (
+            <Leaf key={value}>
+              <span className={origin[value] ? '' : 'text-muted'}>{label}</span>
+              <EyeToggle
+                name={label}
+                visible={origin[value]}
+                onToggle={() => viewport.getState().setOrigin(value, !origin[value])}
+              />
+            </Leaf>
           ))}
         </Folder>
         <Folder
@@ -95,23 +106,41 @@ export function BrowserPanel({ store, width, collapsed, onToggle }: BrowserPanel
             bodies.map(([id, body]) => (
               <Leaf key={id}>
                 <span className={body.visible ? '' : 'text-muted'}>{body.name}</span>
-                <IconButton
-                  label={`${body.visible ? 'Hide' : 'Show'} ${body.name}`}
-                  className="ml-auto size-6"
-                  onClick={() =>
+                <EyeToggle
+                  name={body.name}
+                  visible={body.visible}
+                  onToggle={() =>
                     store
                       .getState()
                       .dispatch(updateBody({ id, changes: { visible: !body.visible } }))
                   }
-                >
-                  {body.visible ? <Eye size={14} /> : <EyeOff size={14} />}
-                </IconButton>
+                />
               </Leaf>
             ))
           )}
         </Folder>
       </ul>
     </aside>
+  );
+}
+
+function EyeToggle({
+  name,
+  visible,
+  onToggle,
+}: {
+  name: string;
+  visible: boolean;
+  onToggle(): void;
+}) {
+  return (
+    <IconButton
+      label={`${visible ? 'Hide' : 'Show'} ${name}`}
+      className="ml-auto size-6"
+      onClick={onToggle}
+    >
+      {visible ? <Eye size={14} /> : <EyeOff size={14} />}
+    </IconButton>
   );
 }
 

@@ -60,7 +60,7 @@ in the browser.
   and the icon pipeline (SVG → React components, colour per category). A static
   layout matching `04-ui-spec.md §2` with placeholder content.
   *AC:* Screenshot test of the shell in both themes; panels resize and collapse.
-- [ ] **P0-05 Viewport.** R3F canvas; adaptive infinite grid; origin
+- [x] **P0-05 Viewport.** *(done 2026-09-25, ADR-0008)* R3F canvas; adaptive infinite grid; origin
   planes/axes/point; camera controls with Fusion mouse mapping and presets;
   ViewCube (click faces/edges/corners, home, animated transitions); nav bar
   (orbit, pan, zoom, fit, ortho/perspective, visual style, grid toggle).
