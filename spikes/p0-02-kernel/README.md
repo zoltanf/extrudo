@@ -93,7 +93,9 @@ See the ADR for the decision. The measured facts:
   leaks unless `Clear()` is called first, `BRepFilletAPI_MakeFillet` leaks
   (`Reset()` doesn't help). replicad's build behaves the same and its API gives
   no way to call `Clear()`. occt-wasm's facade: zero growth over 4000 rebuilds,
-  so OCCT itself doesn't leak here.
+  so OCCT itself doesn't leak here. Reported upstream as
+  [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40); the filed text and repro are in
+  `upstream-issue/`.
 - **Custom build:** `@libcascade/toolchain` supports a trimmed symbol list
   *and* our own C++ (`customBindings`) in the same WASM. Our build in
   `custom-build/` runs the whole scenario with identical results. It needs

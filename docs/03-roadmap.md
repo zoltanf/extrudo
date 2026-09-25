@@ -85,7 +85,8 @@ in the browser.
   that owns OCCT memory (shapes in an arena, results and history as flat
   arrays), raw bindings only inside disposal scopes, a memory test (≥ 1000
   rebuilds on a small initial heap, plus a leak control that must fail), CI
-  that can build the WASM (Docker), and the `delete()` leak reported upstream.
+  that can build the WASM (Docker). Upstream leak report:
+  [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40); check its status first.
   *AC:* NFR-03 crash test (forced abort → worker restarts, app survives);
   memory test green.
 

@@ -114,7 +114,8 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   for the prebuilt build, 23 MB for ours), so run leak tests on a small heap,
   for ≥ 1000 iterations, with a leak control that must fail. A
   `malloc`-address probe was tried and is too noisy; `OSD_MemInfo` and
-  embind's instance counters aren't exported.
+  embind's instance counters aren't exported. Reported upstream as
+  [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40); check it before P0-09.
 - **brepjs `*WithEvolution` returns empty maps unless the input faces carry
   metadata** (for example `tagFaces`): brepjs only sends face hashes to the
   kernel when there is something to propagate.

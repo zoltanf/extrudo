@@ -163,9 +163,10 @@ depend on replicad or brepjs. Use them as code references.**
    `Clear()` before `delete()` on booleans.
    - A Vitest memory test (≥ 1000 rebuilds on a small initial heap, fail on
      growth, plus a leak control that must fail) guards it in CI.
-   - Report the `delete()` behaviour upstream to `taucad/opencascade.js` with
-     the `NCollection_Array1` reproduction. If upstream fixes it, more work can
-     move back to raw bindings.
+   - Reported upstream on 2026-09-25 as
+     [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40), with the `NCollection_Array1` and
+     `BRepAlgoAPI_Cut` reproduction (`spikes/p0-02-kernel/upstream-issue/`). If
+     upstream fixes it, more work can move back to raw bindings.
 3. **Code references:**
    - replicad (MIT): wire, face and sketch builders, meshing, and its public
      build config (`packages/replicad-opencascadejs/build-source`) as a
