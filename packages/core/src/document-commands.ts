@@ -4,6 +4,8 @@
  * (edit a sketch, change an extrude) come with their features.
  */
 import { CommandError, type DocumentDraft, defineCommand } from './commands';
+import { isReservedName } from './expr/evaluate';
+import { mentions, parameterNames, renameReferences } from './expr/parameters';
 import type { BodyId, FeatureId, ParameterId } from './ids';
 import {
   type BodyMeta,
@@ -47,17 +49,47 @@ export const updateParameter = defineCommand<{
   changes: Partial<Omit<Parameter, 'id'>>;
 }>('parameter.update', 'Edit parameter', (draft, { id, changes }) => {
   const parameter = findParameter(draft, id);
-  if (changes.name !== undefined && changes.name !== parameter.name) {
+  const oldName = parameter.name;
+  if (changes.name !== undefined && changes.name !== oldName) {
     checkParameterName(draft, changes.name);
   }
   Object.assign(parameter, changes);
+  // A rename carries over to every expression that uses the parameter.
+  // P1 adds sketch dimensions (inside SketchData) to this.
+  const newName = parameter.name;
+  if (newName !== oldName) {
+    for (const p of draft.parameters) {
+      if (mentions(p.expression, oldName)) {
+        p.expression = renameReferences(p.expression, oldName, newName);
+      }
+    }
+    for (const input of exprInputs(draft)) {
+      if (mentions(input.expr, oldName))
+        input.expr = renameReferences(input.expr, oldName, newName);
+    }
+  }
 });
 
 export const removeParameter = defineCommand<{ id: ParameterId }>(
   'parameter.remove',
   'Delete parameter',
   (draft, { id }) => {
-    findParameter(draft, id);
+    const { name } = findParameter(draft, id);
+    const users = [
+      ...draft.parameters
+        .filter((p) => p.id !== id && mentions(p.expression, name))
+        .map((p) => `\`${p.name}\``),
+      ...draft.features
+        .filter((f) =>
+          Object.values(f.inputs).some((i) => i.kind === 'expr' && mentions(i.expr, name)),
+        )
+        .map((f) => f.name),
+    ];
+    if (users.length > 0) {
+      throw new CommandError(
+        `\`${name}\` is used by ${listOf(users)}. Change ${users.length === 1 ? 'that' : 'those'} first.`,
+      );
+    }
     draft.parameters = draft.parameters.filter((p) => p.id !== id);
   },
 );
@@ -162,9 +194,26 @@ function checkParameterName(draft: DocumentDraft, name: string): void {
       `"${name}" isn't a valid parameter name: use a letter or _ followed by letters, digits or _.`,
     );
   }
-  if (draft.parameters.some((p) => p.name === name)) {
+  if (isReservedName(name)) {
+    throw new CommandError(`"${name}" is a unit, function or constant; pick another name.`);
+  }
+  if (parameterNames(draft).has(name)) {
     throw new CommandError(`A parameter named "${name}" already exists.`);
   }
+}
+
+function* exprInputs(draft: DocumentDraft) {
+  for (const feature of draft.features) {
+    for (const input of Object.values(feature.inputs)) {
+      if (input.kind === 'expr') yield input;
+    }
+  }
+}
+
+function listOf(items: string[]): string {
+  return items.length === 1
+    ? (items[0] as string)
+    : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
 }
 
 function requireName(name: string): string {

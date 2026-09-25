@@ -13,6 +13,7 @@ export {
 } from './commands';
 export { createDocument, type NewDocumentOptions } from './document';
 export * from './document-commands';
+export * from './expr/index';
 export {
   type FeatureCategory,
   type FeatureDefinition,

@@ -70,7 +70,7 @@ in the browser.
   scaffold, feature registry types, ID generation, command system with Immer
   patches, undo/redo stack, Zustand stores (document / session / model).
   *AC:* Unit tests for undo/redo round-trips and migration of a v0 fixture.
-- [ ] **P0-07 Expression and parameter engine.** Pratt parser; units and
+- [x] **P0-07 Expression and parameter engine.** *(done 2026-09-25, ADR-0004)* Pratt parser; units and
   dimensional analysis; functions; dependency graph with cycle detection;
   Parameters dialog (add, edit, delete, comment; live evaluated value; errors
   inline). Reusable `<ExpressionInput>` component.
@@ -205,7 +205,7 @@ and STEP. Benchmarks **B2** and **B3** buildable.
 - [ ] **P2-04 Topological naming v1.** Persistent-ID generation for extrude and
   revolve; propagation through booleans via OCCT history; fingerprints;
   reference resolution API used by every feature.
-  *AC:* ADR-0004; topo-naming test suite (≥ 15 scenarios) green.
+  *AC:* ADR-0005; topo-naming test suite (≥ 15 scenarios) green.
 - [ ] **P2-05 Feature dialog framework.** Right-side command dialog: selection
   fields (with count, clear, filter), `<ExpressionInput>` fields, dropdowns,
   OK/Cancel, live preview, validation messages; in-canvas manipulators (distance

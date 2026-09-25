@@ -192,7 +192,7 @@ importers:
         version: link:../../packages/kernel
       '@react-three/fiber':
         specifier: ^9.8.0
-        version: 9.8.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.186.0)
+        version: 9.8.0(@types/react@19.3.0)(immer@11.1.18)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.186.0)
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -202,6 +202,9 @@ importers:
       three:
         specifier: ^0.186.0
         version: 0.186.0
+      zustand:
+        specifier: ^5.0.15
+        version: 5.0.15(@types/react@19.3.0)(immer@11.1.18)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
     devDependencies:
       '@types/react':
         specifier: ^19.3.0
@@ -1085,7 +1088,7 @@ snapshots:
     dependencies:
       playwright: 1.63.0
 
-  '@react-three/fiber@9.8.0(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.186.0)':
+  '@react-three/fiber@9.8.0(@types/react@19.3.0)(immer@11.1.18)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.186.0)':
     dependencies:
       '@babel/runtime': 7.29.7
       '@types/webxr': 0.5.24
@@ -1098,7 +1101,7 @@ snapshots:
       suspend-react: 0.1.3(react@19.3.0)
       three: 0.186.0
       use-sync-external-store: 1.7.0(react@19.3.0)
-      zustand: 5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
+      zustand: 5.0.15(@types/react@19.3.0)(immer@11.1.18)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
     optionalDependencies:
       react-dom: 19.3.0(react@19.3.0)
     transitivePeerDependencies:
@@ -1525,11 +1528,5 @@ snapshots:
     optionalDependencies:
       '@types/react': 19.3.0
       immer: 11.1.18
-      react: 19.3.0
-      use-sync-external-store: 1.7.0(react@19.3.0)
-
-  zustand@5.0.15(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0)):
-    optionalDependencies:
-      '@types/react': 19.3.0
       react: 19.3.0
       use-sync-external-store: 1.7.0(react@19.3.0)

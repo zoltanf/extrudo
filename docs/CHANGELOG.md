@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-25 · **P0-07** Expressions and parameters: Pratt parser with
+  source spans, length/angle dimensional analysis (mm and degrees; plain
+  numbers take the context unit), the FR-PAR-02 functions, parameter graph
+  with cycle paths and "did you mean", model parameters (`ExprInput.unit`),
+  rename that rewrites references, refusal to delete a used parameter.
+  `<ExpressionInput>` (live value, exact error underline, never commits an
+  invalid draft) and the Parameters dialog at `#/debug/parameters`. 226 unit
+  tests, Playwright E2E. ADR-0004.
 - 2026-09-25 · **P0-06** Document model in `packages/core`: zod schema v1
   (strict objects, document invariants), `loadDocument` with a migration chain
   on raw JSON and a v0 fixture, branded IDs, feature registry types (core holds

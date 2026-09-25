@@ -6,6 +6,9 @@ import { LogoMark } from './Logo';
 const KernelDebug = lazy(() =>
   import('./debug/KernelDebug').then((m) => ({ default: m.KernelDebug })),
 );
+const ParametersDebug = lazy(() =>
+  import('./parameters/ParametersDebug').then((m) => ({ default: m.ParametersDebug })),
+);
 
 const subscribeToHash = (onChange: () => void) => {
   window.addEventListener('hashchange', onChange);
@@ -19,6 +22,13 @@ export function App() {
     return (
       <Suspense fallback={null}>
         <KernelDebug />
+      </Suspense>
+    );
+  }
+  if (hash === '#/debug/parameters') {
+    return (
+      <Suspense fallback={null}>
+        <ParametersDebug />
       </Suspense>
     );
   }

@@ -131,3 +131,231 @@ body {
   min-height: 0;
   background: var(--x-viewport-glow);
 }
+
+/* Parameters dialog and expression input (P0-07). P0-04 moves these onto the design system. */
+:root {
+  --x-error: #ff6b6b;
+  --x-surface: #232833;
+  --x-line: #3a4252;
+  --x-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+.parameters-debug {
+  padding: 24px;
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.parameters-debug h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.parameters-debug p {
+  margin: 0;
+  color: var(--x-muted);
+}
+
+.parameters-debug button,
+.parameters-dialog button,
+.parameters-dialog input,
+.parameters-dialog select {
+  font: inherit;
+  font-size: 14px;
+  color: var(--x-ink);
+  background: transparent;
+  border: 1px solid var(--x-line);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.parameters-debug button,
+.parameters-dialog button {
+  cursor: pointer;
+}
+
+.parameters-dialog button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.parameters-dialog select {
+  background: var(--x-surface);
+}
+
+.parameters-dialog {
+  width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  padding: 20px 24px;
+  border: 1px solid var(--x-line);
+  border-radius: 12px;
+  background: var(--x-bg);
+  color: var(--x-ink);
+}
+
+.parameters-dialog::backdrop {
+  background: rgb(10 12 16 / 60%);
+}
+
+.parameters-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.parameters-dialog h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.parameters-dialog .actions {
+  display: flex;
+  gap: 8px;
+}
+
+.parameters-dialog .command-message {
+  min-height: 1.5em;
+  margin: 8px 0;
+  color: var(--x-error);
+  font-size: 13px;
+}
+
+.parameters-dialog table {
+  width: 100%;
+  min-width: 640px;
+  table-layout: fixed;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+.parameters-dialog .col-name {
+  width: 9em;
+}
+
+.parameters-dialog .col-unit {
+  width: 8.5em;
+}
+
+.parameters-dialog .col-comment {
+  width: 30%;
+}
+
+.parameters-dialog .col-actions {
+  width: 4.5em;
+}
+
+.parameters-dialog caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 6px;
+}
+
+.parameters-dialog th {
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--x-muted);
+  padding: 4px 6px;
+}
+
+.parameters-dialog td {
+  padding: 4px 6px;
+  vertical-align: top;
+}
+
+.parameters-dialog td > input,
+.parameters-dialog td > select {
+  width: 100%;
+}
+
+.parameters-dialog td.name,
+.parameters-dialog input.name {
+  font-family: var(--x-mono);
+}
+
+.parameters-dialog td.name {
+  padding-top: 9px;
+}
+
+.parameters-dialog .delete {
+  border-color: transparent;
+  color: var(--x-muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ExpressionInput: the input sits on a backdrop that repeats the text, so the
+   part with an error can be underlined exactly. Both use the same mono font. */
+.expr-input {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.expr-field {
+  position: relative;
+}
+
+.expr-field .expr-text,
+.expr-backdrop {
+  font-family: var(--x-mono);
+  font-size: 13px;
+  line-height: 20px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  letter-spacing: 0;
+}
+
+.expr-field .expr-text {
+  position: relative;
+  width: 100%;
+  background: transparent;
+  border-color: var(--x-line);
+  border-radius: 6px;
+  color: var(--x-ink);
+}
+
+.expr-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: pre;
+  color: transparent;
+  pointer-events: none;
+}
+
+.expr-error-range {
+  text-decoration: underline wavy var(--x-error);
+  text-underline-offset: 4px;
+}
+
+.expr-input.has-error .expr-text {
+  border-color: var(--x-error);
+}
+
+.expr-message {
+  font-family: var(--x-mono);
+  font-size: 12px;
+  color: var(--x-muted);
+  min-height: 1.4em;
+}
+
+.expr-input.has-error .expr-message {
+  font-family: inherit;
+  color: var(--x-error);
+}
+
+.expr-message code,
+.command-message code {
+  font-family: var(--x-mono);
+  font-size: 0.95em;
+}

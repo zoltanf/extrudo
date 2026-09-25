@@ -9,7 +9,7 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-25):** P0-01, P0-02, P0-03, P0-06 and P0-09 done. ADR-0001 chose
+**Status (2026-09-25):** P0-01, P0-02, P0-03, P0-06, P0-07 and P0-09 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -18,9 +18,13 @@ build, one solver system per independent sketch component
 (`docs/adr/0002-sketch-solver.md`). ADR-0003 (P0-06) set the document model in
 `packages/core`: strict zod schema, migrations on raw JSON, deterministic
 commands with Immer patches, nested undo transactions, vanilla Zustand stores.
-Next tasks, which can run in parallel: **P0-04** (design system and shell),
-**P0-07** (expressions and parameters) and **P0-08** (storage). See
-`docs/03-roadmap.md`.
+ADR-0004 (P0-07) set the expression language: Pratt parser in
+`packages/core/src/expr/`, length/angle dimensions, plain numbers take the
+context unit, parameter graph with cycle paths; `<ExpressionInput>` and the
+Parameters dialog live in `apps/web/src/parameters/` (debug page
+`#/debug/parameters` until the shell exists).
+Next tasks, which can run in parallel: **P0-04** (design system and shell) and
+**P0-08** (storage). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -48,7 +52,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters |
 
 ## Stack summary
 
@@ -147,6 +151,12 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   `NCollection_*`), `Standard_False`, and `Standard_Failure::GetMessageString`
   (use `what()`); `DynamicType()` isn't available on `Standard_Failure`.
   `mallinfo()` doesn't link, so the memory probe is `sbrk(0)` (`heapTop()`).
+- **Vite's watcher can miss a second edit to a file made within about a
+  second of the first** (seen with two scripted edits in a row): the dev
+  server keeps serving the old transform. `touch` the file, then reload.
+- Playwright's `toHaveAccessibleDescription` reads nothing from an
+  `<output>` element referenced by `aria-describedby`; use a `<div>` with
+  `aria-live` for field messages.
 - Vitest 5 takes test options as the **second** argument:
   `it(name, { timeout }, fn)`; the old third-argument form throws.
 - **planegcs (P0-03):** the published `@salusoft89/planegcs` WASM has a fixed

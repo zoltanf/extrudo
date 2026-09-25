@@ -69,6 +69,8 @@ export const ExprInputSchema = z.strictObject({
   expr: z.string(),
   /** The model parameter (`d17`) this input shows up as in the parameters table. */
   paramName: z.string().regex(PARAMETER_NAME).optional(),
+  /** What the input measures. Defaults to `length`, the common case. */
+  unit: UnitKindSchema.optional(),
 });
 export const EnumInputSchema = z.strictObject({ kind: z.literal('enum'), value: z.string() });
 export const BoolInputSchema = z.strictObject({ kind: z.literal('bool'), value: z.boolean() });

@@ -187,6 +187,14 @@ the dialog would.
   input. User parameters are global to the document.
 - Evaluation builds a dependency graph (parameters ↔ parameters and features)
   with cycle detection. Changing a parameter marks dependent features dirty.
+- As built in P0-07 (ADR-0004): `core/src/expr/` holds the parser (spans on
+  every node), the evaluator (dimensions as length/angle exponents, values in
+  mm and degrees; plain numbers take the context's unit), and
+  `evaluateParameters(doc)`, which evaluates user and model parameters and
+  every `expr` input, reports cycles with their path, and answers
+  `dependents()` and `featuresAffectedBy()`. `ExprInput` carries an optional
+  `unit` (default `length`). The UI side is `<ExpressionInput>` and the
+  Parameters dialog in `apps/web/src/parameters/`.
 
 ### 4.4 Undo / redo
 
@@ -411,5 +419,9 @@ bundle-size budget. Every agent task must leave CI green.
   as "Document model, commands and undo": strict zod schema with migrations on
   raw JSON, deterministic commands with Immer patches, nested undo
   transactions, three vanilla Zustand stores.
-- **ADR-0004** Topological naming strategy (§5.2).
-- **ADR-0005** Electron over Tauri for desktop.
+- **ADR-0004** Expression language, units and parameters. **Written
+  2026-09-25** (P0-07): Pratt parser, length/angle dimensions in mm and
+  degrees, plain numbers take the context unit, one namespace for user and
+  model parameters, cycle paths, rename-safe commands.
+- **ADR-0005** Topological naming strategy (§5.2).
+- **ADR-0006** Electron over Tauri for desktop.
