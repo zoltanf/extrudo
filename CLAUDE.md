@@ -5,6 +5,10 @@ Fusion 360-style workflow (sketch → features → timeline, parameters everywhe
 and a playful modern UI. Web first (PWA). An Electron desktop build comes later
 from the same codebase.
 
+**Repo:** <https://github.com/zoltanf/extrudo>. **Private** until the project
+is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
+every push and pull request.
+
 **Status (2026-09-25):** P0-01 done (monorepo, toolchain, CI, hello page).
 Next tasks, which can run in parallel: **P0-02** (kernel spike), **P0-03**
 (solver spike), **P0-04** (design system and shell), **P0-06** (document
