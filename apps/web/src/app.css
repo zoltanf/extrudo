@@ -1,0 +1,81 @@
+/* Temporary styles for the P0-01 hello page. Real tokens arrive with P0-04 (docs/05-brand.md). */
+:root {
+  --x-bg: #1b1f27;
+  --x-ink: #e9edf3;
+  --x-muted: #939cad;
+  --x-accent: #ffb23e;
+  --x-viewport-glow: radial-gradient(90% 80% at 45% 42%, #46557a 0%, #29313f 50%, #15181f 100%);
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--x-bg);
+  color: var(--x-ink);
+  font:
+    16px / 1.5 "Instrument Sans",
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+.hello {
+  height: 100%;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 14px;
+  padding: 24px;
+  background: var(--x-viewport-glow);
+  text-align: center;
+}
+
+.lockup {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.wordmark {
+  margin: 0;
+  font-size: clamp(48px, 9vw, 76px);
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.wordmark::after {
+  content: "";
+  display: inline-block;
+  width: 0.15em;
+  height: 0.15em;
+  margin-left: 0.07em;
+  border-radius: 0.03em;
+  background: var(--x-accent);
+}
+
+.tagline {
+  margin: 0;
+  font-size: 18px;
+}
+
+.status {
+  margin: 0;
+  color: var(--x-muted);
+  font-size: 13px;
+}
+
+.status code {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+}

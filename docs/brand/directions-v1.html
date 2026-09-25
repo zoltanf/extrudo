@@ -1,0 +1,483 @@
+<title>Extrudo Brand Directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Fredoka:wght@500;600&family=Nunito+Sans:wght@400;600;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=DM+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&family=Rubik:wght@400;500;900&family=Space+Mono:wght@400;700&family=Baloo+2:wght@600;800&family=Nunito:wght@400;600;700&family=Fira+Code:wght@400;500&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F5F6F8; --surface:#FFFFFF; --ink:#15171C; --muted:#5C6270; --line:#E1E4EA; --chip:#EEF0F4; --focus:#2F6BFF;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#0F1115; --surface:#171A20; --ink:#ECEEF2; --muted:#9AA1AE; --line:#272B33; --chip:#20242C; --focus:#7FA7FF; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#0F1115; --surface:#171A20; --ink:#ECEEF2; --muted:#9AA1AE; --line:#272B33; --chip:#20242C; --focus:#7FA7FF; color-scheme:dark; }
+
+*{box-sizing:border-box}
+body{background:var(--bg); color:var(--ink); font:16px/1.55 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif; padding-inline:20px; padding-block:0 64px}
+.wrap{max-width:1180px; margin-inline:auto}
+h1,h2,h3{text-wrap:balance; margin:0}
+p{margin:0}
+button{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--focus); outline-offset:2px}
+
+/* Header */
+.top{padding-block:48px 28px; display:grid; gap:14px; max-width:760px}
+.eyebrow{font-size:12.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:600}
+.top h1{font-size:clamp(30px,4.4vw,46px); line-height:1.08; font-weight:700; letter-spacing:-.02em}
+.top p{color:var(--muted); font-size:17px; max-width:64ch}
+
+/* Overview */
+.overview{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-block:8px 16px}
+.ov{display:flex; align-items:center; gap:12px; padding:10px; border-radius:14px; background:var(--surface); border:1px solid var(--line); text-decoration:none; color:inherit; transition:transform .15s, border-color .15s}
+.ov:hover{transform:translateY(-2px); border-color:var(--muted)}
+.ov .mini{width:52px; height:52px; border-radius:12px; display:grid; place-items:center; flex:none}
+.ov .mini svg{width:38px; height:38px}
+.ov b{display:block; font-size:15px}
+.ov .dots{display:flex; gap:4px; margin-top:5px}
+.ov .dots i{width:12px; height:12px; border-radius:50%; box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.ov .let{font-size:12px; color:var(--muted); font-weight:600}
+
+/* Option section */
+.opt{margin-top:56px; padding-top:24px; border-top:1px solid var(--line); scroll-margin-top:16px}
+.opt-head{display:flex; flex-wrap:wrap; align-items:baseline; gap:10px 16px; margin-bottom:8px}
+.badge{font-weight:700; font-size:13px; width:28px; height:28px; border-radius:8px; display:inline-grid; place-items:center; background:var(--chip); color:var(--ink); transform:translateY(-4px)}
+.opt-head h2{font-size:30px; letter-spacing:-.015em}
+.tags{display:flex; flex-wrap:wrap; gap:6px}
+.tags span{font-size:12.5px; padding:3px 10px; border-radius:999px; background:var(--chip); color:var(--muted); font-weight:500}
+.concept{color:var(--muted); max-width:70ch; margin-bottom:20px; font-size:16.5px}
+
+.grid2{display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:16px}
+@media (max-width:880px){ .grid2{grid-template-columns:1fr} }
+.col{display:grid; gap:16px; align-content:start}
+
+.hero{border-radius:20px; padding:36px 28px; min-height:250px; display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:18px 26px}
+.hero svg.mark{width:118px; height:118px; flex:none}
+.hero.small{min-height:0; padding:22px; gap:14px; justify-content:flex-start}
+.hero.small svg.mark{width:54px; height:54px}
+.hero.small .wm{font-size:34px}
+.pair{display:grid; grid-template-columns:1fr auto; gap:16px}
+@media (max-width:520px){ .pair{grid-template-columns:1fr} }
+.appicons{display:flex; align-items:flex-end; gap:12px; padding:18px; border-radius:20px; background:var(--surface); border:1px solid var(--line)}
+.appicon{display:grid; place-items:center; border-radius:23%; box-shadow:0 1px 2px rgba(0,0,0,.12), 0 6px 16px -8px rgba(0,0,0,.35)}
+.appicon svg{width:74%; height:74%}
+.appicons small{display:block; font-size:11px; color:var(--muted); text-align:center; margin-top:6px}
+
+.block{background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:16px 18px}
+.label{font-size:11.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); font-weight:600; margin-bottom:12px}
+
+.swatches{display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:8px}
+@media (max-width:460px){ .swatches{grid-template-columns:repeat(3,minmax(0,1fr))} }
+.sw{border:0; background:none; padding:0; text-align:left; cursor:pointer; border-radius:10px}
+.sw .chipc{height:58px; border-radius:10px; box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+.sw b{display:block; font-size:12.5px; margin-top:6px; line-height:1.25}
+.sw code{font:500 11.5px 'JetBrains Mono', ui-monospace, monospace; color:var(--muted)}
+.sw.copied code{color:var(--focus)}
+
+.type{display:grid; gap:10px}
+.type .aa{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap}
+.type .aa .big{font-size:52px; line-height:1}
+.type .aa span{color:var(--muted); font-size:13px}
+.type .bodys{font-size:15px; max-width:52ch}
+.type .monos{font-size:13px; color:var(--muted)}
+
+.icons{display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; padding:14px 10px; border-radius:12px}
+@media (max-width:460px){ .icons{grid-template-columns:repeat(3,minmax(0,1fr))} }
+.icons figure{margin:0; display:grid; justify-items:center; gap:6px}
+.icons svg{width:34px; height:34px}
+.icons figcaption{font-size:11px; opacity:.75}
+
+.notes{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+@media (max-width:700px){ .notes{grid-template-columns:1fr} }
+.notes p{font-size:14.5px; color:var(--ink)}
+.notes .label.good::before{content:"✓ "; color:#1F9D63}
+.notes .label.warn::before{content:"⚠ "; color:#C98A00}
+
+/* Icons (shared geometry, per-direction style) */
+.ic{fill:none; stroke:var(--c); stroke-width:var(--sw,2); stroke-linecap:round; stroke-linejoin:round}
+.ic .f{fill:var(--c); fill-opacity:.22}
+.ic .h{fill:var(--hole-ic,#fff)}
+[data-icons="sticker"] .ic{stroke:var(--ink-ic)}
+[data-icons="sticker"] .ic .f{fill-opacity:1}
+[data-icons="line"] .ic .f{fill-opacity:.12}
+
+/* Wordmarks */
+.wm{font-size:60px; line-height:1; color:var(--wi); white-space:nowrap}
+.wmA{font-family:'Fredoka','Nunito Sans',system-ui,sans-serif; font-weight:600; letter-spacing:-.01em}
+.wmA em{font-style:normal; color:var(--wa)}
+.wmB{font-family:'Bricolage Grotesque','DM Sans',system-ui,sans-serif; font-weight:800; letter-spacing:.005em; display:inline-flex; flex-direction:column; gap:.1em}
+.wmB .dim{display:flex; align-items:center; gap:.35em; font:500 .19em 'IBM Plex Mono',ui-monospace,monospace; color:var(--wa); letter-spacing:.04em; border-inline:2px solid var(--wa); padding-inline:.35em; height:1.4em}
+.wmB .dim i{flex:1; border-top:1.5px solid var(--wa)}
+.wmC{font-family:'Rubik',system-ui,sans-serif; font-weight:900; letter-spacing:.01em; color:transparent;
+  background:repeating-linear-gradient(to bottom, transparent 0 .075em, rgba(0,0,0,.22) .075em .09em), linear-gradient(to bottom, #EF4B3F 0 40%, #F2B33D 40% 63%, #13A89E 63%);
+  -webkit-background-clip:text; background-clip:text}
+.wmD{font-family:'Baloo 2','Nunito',system-ui,sans-serif; font-weight:800; letter-spacing:-.005em}
+.wmD span{display:inline-block; transform:translateY(var(--y)) rotate(var(--r))}
+.wmE{font-family:'Instrument Sans',system-ui,sans-serif; font-weight:600; letter-spacing:-.04em}
+.wmE::after{content:""; display:inline-block; width:.15em; height:.15em; margin-left:.07em; border-radius:.03em; background:var(--wa)}
+
+/* App mock */
+.mockhead{display:flex; align-items:center; justify-content:space-between; gap:12px; margin:16px 0 10px}
+.seg{display:inline-flex; padding:3px; border-radius:10px; background:var(--chip)}
+.seg button{border:0; background:none; padding:5px 12px; border-radius:8px; font-size:13px; cursor:pointer; color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surface); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.mockwrap{container-type:inline-size}
+.mock{border-radius:14px; overflow:hidden; border:1px solid var(--m-line); background:var(--m-bg); color:var(--m-ink); font-size:12px; --ink-ic:var(--m-ink); --hole-ic:var(--m-bg); box-shadow:0 18px 40px -24px rgba(0,0,0,.45)}
+.m-appbar{display:flex; align-items:center; gap:10px; padding:8px 12px; border-bottom:1px solid var(--m-line)}
+.m-appbar svg.mark{width:22px; height:22px}
+.m-appbar .wm{font-size:17px}
+.m-appbar .proj{color:var(--m-muted)}
+.m-appbar .proj b{color:var(--m-ink); font-weight:600}
+.m-saved{display:inline-flex; align-items:center; gap:5px; color:var(--m-muted); font-size:11px}
+.m-saved::before{content:""; width:7px; height:7px; border-radius:50%; background:var(--m-accent2)}
+.m-sp{flex:1}
+.m-toolbar{display:flex; gap:2px; padding:6px 10px; border-bottom:1px solid var(--m-line); overflow:hidden}
+.m-tool{display:flex; flex-direction:column; align-items:center; gap:3px; padding:6px 11px; border-radius:9px; font-size:10.5px; color:var(--m-muted)}
+.m-tool.on{background:color-mix(in srgb, var(--m-accent) 16%, transparent); color:var(--m-ink)}
+.m-tool svg{width:24px; height:24px}
+.m-div{width:1px; background:var(--m-line); margin:6px 6px}
+.m-body{display:grid; grid-template-columns:156px 1fr; height:318px}
+.m-browser{background:var(--m-panel); border-right:1px solid var(--m-line); padding:10px 10px; display:flex; flex-direction:column; gap:3px; font-size:11.5px}
+.m-browser .t{display:flex; align-items:center; gap:6px; padding:3px 6px; border-radius:6px}
+.m-browser .t.sub{padding-left:22px; color:var(--m-muted)}
+.m-browser .t.sel{background:color-mix(in srgb, var(--m-accent) 18%, transparent); color:var(--m-ink)}
+.m-browser .eye{width:8px; height:8px; border-radius:50%; border:1.5px solid var(--m-muted); flex:none}
+.m-browser .hd{font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--m-muted); margin:2px 6px 4px; font-weight:600}
+.m-vp{position:relative; background:radial-gradient(120% 90% at 42% 45%, var(--m-vp1), var(--m-vp2)); display:grid; place-items:center; padding-right:170px; overflow:hidden}
+.m-part{width:min(100%,390px)}
+.m-cube{position:absolute; top:10px; right:12px; width:44px; height:44px}
+.m-dialog{position:absolute; right:12px; top:64px; width:158px; background:var(--m-bg); border:1px solid var(--m-line); border-radius:12px; padding:10px; display:grid; gap:8px; box-shadow:0 10px 24px -14px rgba(0,0,0,.5)}
+.m-dialog .dt{display:flex; align-items:center; gap:6px; font-weight:600}
+.m-dialog .dt svg{width:18px; height:18px}
+.m-dialog .row{display:flex; justify-content:space-between; align-items:center; gap:6px; color:var(--m-muted); font-size:11px}
+.m-dialog .field{border:1px solid var(--m-accent); border-radius:6px; padding:2px 6px; color:var(--m-ink); background:var(--m-panel)}
+.m-dialog .pill{border-radius:999px; padding:1px 8px; background:color-mix(in srgb, var(--m-accent2) 22%, transparent); color:var(--m-ink); font-size:10.5px}
+.m-dialog .btns{display:flex; gap:6px; justify-content:flex-end}
+.m-dialog .btns span{padding:4px 10px; border-radius:7px; font-size:11px; font-weight:600}
+.m-dialog .ok{background:var(--m-accent); color:var(--m-on)}
+.m-dialog .cancel{color:var(--m-muted); border:1px solid var(--m-line)}
+.m-nav{position:absolute; bottom:10px; left:calc(50% - 85px); transform:translateX(-50%); display:flex; gap:10px; padding:5px 12px; border-radius:999px; background:var(--m-bg); border:1px solid var(--m-line)}
+.m-nav i{width:12px; height:12px; border-radius:4px; border:1.5px solid var(--m-muted)}
+.m-timeline{display:flex; align-items:center; gap:6px; padding:8px 12px; border-top:1px solid var(--m-line); background:var(--m-panel)}
+.m-play{display:flex; gap:4px; margin-right:8px}
+.m-play svg{width:16px; height:16px; fill:var(--m-muted)}
+.m-chip{width:28px; height:28px; border-radius:8px; display:grid; place-items:center; background:color-mix(in srgb, var(--c) 18%, var(--m-bg)); border:1px solid color-mix(in srgb, var(--c) 40%, transparent)}
+.m-chip svg{width:18px; height:18px}
+.m-chip.rolled{opacity:.38}
+.m-marker{width:3px; height:30px; border-radius:2px; background:var(--m-accent); position:relative; margin-inline:2px}
+.m-marker::before{content:""; position:absolute; top:-4px; left:-4px; border:5.5px solid transparent; border-top-color:var(--m-accent)}
+.m-tl-sp{flex:1}
+.m-status{font:11px 'JetBrains Mono',ui-monospace,monospace; color:var(--m-muted)}
+@container (max-width:640px){
+  .m-body{grid-template-columns:1fr}
+  .m-browser,.m-dialog,.m-status{display:none}
+  .m-vp{padding-right:0}
+  .m-nav{left:50%}
+  .m-tool span{display:none}
+  .m-appbar .proj{display:none}
+}
+
+.foot{margin-top:64px; padding:24px; border-radius:18px; background:var(--surface); border:1px solid var(--line); display:grid; gap:8px}
+.foot h3{font-size:20px}
+.foot p{color:var(--muted); max-width:72ch}
+
+@media (prefers-reduced-motion: reduce){ *{transition:none!important} }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">Extrudo · brand directions · 25 September 2026</div>
+    <h1>Five ways Extrudo could look</h1>
+    <p>Each direction has a logo, a colour palette, a type pairing, a sample of the tool icons, and a preview of the app itself in that style. You can switch any app preview between light and dark, and click a colour to copy its hex. Pick one, or mix parts, e.g. "A's logo with E's colours".</p>
+  </header>
+  <nav class="overview" id="overview" aria-label="Directions"></nav>
+  <main id="options"></main>
+  <section class="foot">
+    <h3>How to choose</h3>
+    <p>Tell me the letter in the chat, plus anything you'd change. I'll then refine that direction into the final brand: exact logo geometry, a one-colour version for stickers and laser engraving, a favicon, design tokens for the app's light and dark themes, and a brief for the full tool icon set (about 60 icons). All of it goes into <code>docs/05-brand.md</code>.</p>
+  </section>
+</div>
+
+<script>
+/* ---------- Logo marks (64×64), coloured through --k1…--k8 ---------- */
+const S = (v) => `style="fill:var(--${v})"`;
+const MARKS = {
+  a: () => `<svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+      <rect x="45" y="18" width="18" height="9" rx="2.5" ${S('k2')}/>
+      <circle cx="50" cy="22.5" r="1.8" ${S('k4')}/>
+      <path d="M48 27H60L56 38H52Z" ${S('k2')}/>
+      <path d="M13 32H43A15 15 0 1 0 28 47H54" style="fill:none;stroke:var(--k1);stroke-width:9;stroke-linecap:round;stroke-linejoin:round"/>
+    </svg>`,
+  b: () => `<svg class="mark" viewBox="0 0 64 64" aria-hidden="true" style="stroke:var(--k7);stroke-width:1.6;stroke-linejoin:round">
+      <path d="M32 22 52 33.5 32 45 12 33.5Z" ${S('k1')}/>
+      <path d="M12 33.5 32 45V55L12 43.5Z" ${S('k2')}/>
+      <path d="M32 45 52 33.5V43.5L32 55Z" ${S('k3')}/>
+      <path d="M22 33.5 32 39.25V27.25L22 21.5Z" ${S('k5')}/>
+      <path d="M32 39.25 42 33.5V21.5L32 27.25Z" ${S('k6')}/>
+      <path d="M32 15.75 42 21.5 32 27.25 22 21.5Z" ${S('k4')}/>
+      <path d="M51 27V9M47.5 12.5 51 9 54.5 12.5" style="fill:none;stroke:var(--k8);stroke-width:2.8;stroke-linecap:round"/>
+    </svg>`,
+  c: () => {
+    const bars = [[12,10,40,'k1',1],[12,20.5,16,'k1',0],[12,31,34,'k2',-1],[12,41.5,16,'k3',.5],[12,52,40,'k3',0]];
+    return `<svg class="mark" viewBox="0 0 64 64" aria-hidden="true">${bars.map(([x,y,w,k,o]) =>
+      `<rect x="${x+o}" y="${y}" width="${w}" height="8.5" rx="4.25" ${S(k)}/><rect x="${x+o+4}" y="${y+1.6}" width="${w-8}" height="1.3" rx=".65" style="fill:#fff;fill-opacity:.38"/>`).join('')}</svg>`;
+  },
+  d: () => {
+    let back = '';
+    for (let i = 6; i >= 1; i--) back += `<rect x="${12+i}" y="${18-i}" width="34" height="34" rx="11" ${S('k2')}/>`;
+    return `<svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M4 58.5H60" style="fill:none;stroke:var(--k5);stroke-width:2;stroke-dasharray:4 3;stroke-linecap:round"/>
+      ${back}
+      <rect x="12" y="18" width="34" height="34" rx="11" ${S('k1')}/>
+      <circle cx="18.8" cy="40" r="2.6" style="fill:var(--k4);fill-opacity:.85"/>
+      <circle cx="39.2" cy="40" r="2.6" style="fill:var(--k4);fill-opacity:.85"/>
+      <ellipse cx="23" cy="33.5" rx="2.6" ry="3.3" ${S('k3')}/>
+      <ellipse cx="35" cy="33.5" rx="2.6" ry="3.3" ${S('k3')}/>
+      <circle cx="23.9" cy="32.2" r=".95" style="fill:#fff"/>
+      <circle cx="35.9" cy="32.2" r=".95" style="fill:#fff"/>
+      <path d="M25 40.5Q29 44.5 33 40.5" style="fill:none;stroke:var(--k3);stroke-width:2.4;stroke-linecap:round"/>
+    </svg>`;
+  },
+  e: () => `<svg class="mark" viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M10 24 24 10H52L38 24Z" ${S('k2')}/>
+      <path d="M38 24 52 10V38L38 52Z" ${S('k3')}/>
+      <rect x="10" y="24" width="28" height="28" rx="1" style="fill:var(--k1);stroke:var(--k4);stroke-width:2;stroke-dasharray:3.2 2.6"/>
+      <circle cx="10" cy="24" r="2.2" ${S('k4')}/><circle cx="38" cy="24" r="2.2" ${S('k4')}/>
+      <circle cx="10" cy="52" r="2.2" ${S('k4')}/><circle cx="38" cy="52" r="2.2" ${S('k4')}/>
+    </svg>`
+};
+
+/* ---------- Wordmarks ---------- */
+const WORDMARKS = {
+  a: () => `<span class="wm wmA">extrud<em>o</em></span>`,
+  b: (small) => small ? `<span class="wm wmB">EXTRUDO</span>` : `<span class="wm wmB">EXTRUDO<span class="dim"><i></i>42.0 mm<i></i></span></span>`,
+  c: () => `<span class="wm wmC">EXTRUDO</span>`,
+  d: () => `<span class="wm wmD">${[...'extrudo'].map((ch,i)=>`<span style="--r:${i%2?3:-2.5}deg;--y:${i%2?-.035:.03}em">${ch}</span>`).join('')}</span>`,
+  e: () => `<span class="wm wmE">extrudo</span>`
+};
+
+/* ---------- Tool icons (24×24, shared geometry) ---------- */
+const ICONS = {
+  sketch: `<rect x="3" y="8" width="13" height="13" rx="2.5" stroke-dasharray="3 2.6"/><path class="f" d="M12.6 17.4 13.5 13.6 19.7 4.9A1.7 1.7 0 0 1 22.1 4.5 1.7 1.7 0 0 1 22.5 6.9L16.3 15.6Z"/>`,
+  extrude: `<path class="f" d="M4 14.5 12 10.5 20 14.5 12 18.5Z"/><path d="M4 14.5V18.5L12 22.5 20 18.5V14.5M12 18.5V22.5"/><path d="M12 2.5V8.5M9 5.5 12 2.5 15 5.5"/>`,
+  fillet: `<path class="f" d="M4 4H20V12.5A7.5 7.5 0 0 1 12.5 20H4Z"/><path d="M20 16V20H16" stroke-dasharray="1.6 2.2"/>`,
+  plane: `<path d="M3 20 7.5 14.5H21L16.5 20Z" stroke-dasharray="2.2 2"/><path class="f" d="M3 11 7.5 5.5H21L16.5 11Z"/><path d="M11.5 11.5V15.5"/>`,
+  measure: `<path d="M4 7V19M20 7V19"/><path d="M4 13H20M7 10.5 4 13 7 15.5M17 10.5 20 13 17 15.5"/><rect class="f" x="8.5" y="2.5" width="7" height="6" rx="1.8"/>`,
+  export: `<path d="M12 3V13M8 9.5 12 13.5 16 9.5"/><path class="f" d="M4 15.5V18.5A2.5 2.5 0 0 0 6.5 21H17.5A2.5 2.5 0 0 0 20 18.5V15.5Z"/>`
+};
+const TOOLS = [['sketch','Sketch','sketch'],['extrude','Extrude','create'],['fillet','Fillet','modify'],['plane','Plane','construct'],['measure','Measure','inspect'],['export','Export 3MF','export']];
+const icon = (name, color) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true" style="--c:${color}">${ICONS[name]}</svg>`;
+
+/* ---------- Directions ---------- */
+const OPTIONS = [
+  { id:'a', name:'Toolpath', mood:['warm','friendly','maker-native'],
+    concept:'The logo is the print itself: a nozzle laying down the letter “e” as one continuous bead of filament.',
+    why:'It says “3D printing” straight away, which is exactly the audience. The fat, rounded bead stroke carries over into the icons, so the whole app feels drawn with filament.',
+    watch:'The nozzle detail gets lost below about 24 px, so the favicon would be the bead “e” on its own.',
+    fonts:{ display:"'Fredoka','Nunito Sans',system-ui,sans-serif", dname:'Fredoka', body:"'Nunito Sans',system-ui,sans-serif", bname:'Nunito Sans', mono:"'JetBrains Mono',ui-monospace,monospace", mname:'JetBrains Mono' },
+    palette:[['Tangerine','#FF6B2C'],['Harbor Navy','#1B2440'],['Mint','#1FC39B'],['Butter','#FFD166'],['Mist','#EEF0F8']],
+    hero:{ ground:'#EEF0F8', wi:'#1B2440', wa:'#FF6B2C', k:{k1:'#FF6B2C',k2:'#1B2440',k4:'#FFD166'} },
+    alt:{ ground:'#1B2440', wi:'#EEF0F8', wa:'#FF6B2C', k:{k1:'#FF6B2C',k2:'#EEF0F8',k4:'#FFD166'} },
+    tile:{ bg:'#1B2440', k:{k1:'#FF6B2C',k2:'#EEF0F8',k4:'#FFD166'} },
+    icons:'sticker', sw:2,
+    cats:{sketch:'#3E7BFA',create:'#1FC39B',modify:'#FF6B2C',construct:'#8B6CF6',inspect:'#14B8C4',export:'#F2B33D'},
+    mockDefault:'light',
+    mock:{ light:{bg:'#FFFFFF',panel:'#F5F6FB',ink:'#1B2440',muted:'#6B7390',line:'#E1E4EF',vp1:'#FBFBFE',vp2:'#E4E7F2',top:'#EDEFF6',left:'#CDD2E0',right:'#B7BDCF',edge:'#1B2440',hole:'#8C93AB',accent:'#FF6B2C',accent2:'#1FC39B',on:'#1B2440',k:{k1:'#FF6B2C',k2:'#1B2440',k4:'#FFD166'}},
+           dark:{bg:'#131A2E',panel:'#1B2440',ink:'#EEF0F8',muted:'#9AA3C0',line:'#2A3454',vp1:'#243052',vp2:'#0F1526',top:'#56608A',left:'#3B4468',right:'#303858',edge:'#DCE0EE',hole:'#1A2038',accent:'#FF7A40',accent2:'#1FC39B',on:'#1B2440',k:{k1:'#FF6B2C',k2:'#EEF0F8',k4:'#FFD166'}} } },
+
+  { id:'b', name:'Blueprint Pop', mood:['confident','technical','clear'],
+    concept:'An engineering drawing made cheerful: cobalt and signal yellow, a block being press-pulled upward, and a dimension line under the name.',
+    why:'It tells Fusion 360 users “this is real CAD” while staying bright. Dimension lines are already part of the product, so they double as a graphic device on the website, docs and merch.',
+    watch:'The most conventional of the five. It is friendly, but less toy-like, so it leans more toward “tool” than “toy”.',
+    fonts:{ display:"'Bricolage Grotesque','DM Sans',system-ui,sans-serif", dname:'Bricolage Grotesque', body:"'DM Sans',system-ui,sans-serif", bname:'DM Sans', mono:"'IBM Plex Mono',ui-monospace,monospace", mname:'IBM Plex Mono' },
+    palette:[['Cobalt','#2451FF'],['Signal Yellow','#FFC93C'],['Blueprint Ink','#0D1330'],['Coral','#FF6F59'],['Paper','#F4F6FB']],
+    hero:{ ground:'#F4F6FB', wi:'#0D1330', wa:'#FF6F59', k:{k1:'#DDE5FF',k2:'#2451FF',k3:'#1A3BD1',k4:'#FFC93C',k5:'#F0A800',k6:'#D99500',k7:'#0D1330',k8:'#FF6F59'} },
+    alt:{ ground:'#0D1330', wi:'#F4F6FB', wa:'#FFC93C', k:{k1:'#3550D8',k2:'#2451FF',k3:'#1A3BD1',k4:'#FFC93C',k5:'#F0A800',k6:'#D99500',k7:'#0D1330',k8:'#FF6F59'} },
+    tile:{ bg:'#2451FF', k:{k1:'#FFFFFF',k2:'#C9D5FF',k3:'#9FB3FF',k4:'#FFC93C',k5:'#F0A800',k6:'#D99500',k7:'#0D1330',k8:'#FFFFFF'} },
+    icons:'duotone', sw:1.75,
+    cats:{sketch:'#2451FF',create:'#12A879',modify:'#FF6F59',construct:'#7C5CFF',inspect:'#0F9DAB',export:'#E59A00'},
+    mockDefault:'light',
+    mock:{ light:{bg:'#FFFFFF',panel:'#F4F6FB',ink:'#0D1330',muted:'#5D6685',line:'#DCE2F2',vp1:'#F8FAFF',vp2:'#E2E9FB',top:'#EEF2FF',left:'#C8D3F6',right:'#AFBDEB',edge:'#0D1330',hole:'#7F8DBE',accent:'#2451FF',accent2:'#FFC93C',on:'#FFFFFF',k:{k1:'#DDE5FF',k2:'#2451FF',k3:'#1A3BD1',k4:'#FFC93C',k5:'#F0A800',k6:'#D99500',k7:'#0D1330',k8:'#FF6F59'}},
+           dark:{bg:'#0B1029',panel:'#111842',ink:'#EAF0FF',muted:'#8E9AC8',line:'#1F2A63',vp1:'#1A2A78',vp2:'#0A1238',top:'#4A5DB0',left:'#32438C',right:'#283774',edge:'#DDE6FF',hole:'#0F1745',accent:'#FFC93C',accent2:'#FF6F59',on:'#0D1330',k:{k1:'#3550D8',k2:'#2451FF',k3:'#1A3BD1',k4:'#FFC93C',k5:'#F0A800',k6:'#D99500',k7:'#0D1330',k8:'#FF6F59'}} },
+    cats_dark:{sketch:'#7C9BFF',create:'#3DD6A3',modify:'#FF8A78',construct:'#A590FF',inspect:'#3CC7D4',export:'#FFC93C'} },
+
+  { id:'c', name:'Layer Cake', mood:['bold','colourful','community'],
+    concept:'An “E” built from print layers, with a filament colour swap halfway up: the trick every maker has tried at least once.',
+    why:'Very recognisable even at 16 px. The filament colours give the app a ready-made palette for tool categories and body colours, and the layer-line texture works on stickers and merch.',
+    watch:'A three-colour logo is harder in one colour (stickers, laser engraving), so it needs a clean one-colour version. The chunky type is loud if overused.',
+    fonts:{ display:"'Rubik',system-ui,sans-serif", dname:'Rubik Black', body:"'Rubik',system-ui,sans-serif", bname:'Rubik', mono:"'Space Mono',ui-monospace,monospace", mname:'Space Mono' },
+    palette:[['Filament Red','#EF4B3F'],['Silk Gold','#F2B33D'],['PETG Teal','#13A89E'],['Graphite','#22232B'],['Chalk','#F5F6F3']],
+    hero:{ ground:'#F5F6F3', wi:'#22232B', wa:'#EF4B3F', k:{k1:'#EF4B3F',k2:'#F2B33D',k3:'#13A89E'} },
+    alt:{ ground:'#22232B', wi:'#F5F6F3', wa:'#EF4B3F', k:{k1:'#EF4B3F',k2:'#F2B33D',k3:'#13A89E'} },
+    tile:{ bg:'#22232B', k:{k1:'#EF4B3F',k2:'#F2B33D',k3:'#13A89E'} },
+    icons:'duotone', sw:2.4,
+    cats:{sketch:'#3D7FEA',create:'#13A89E',modify:'#EF4B3F',construct:'#8C5CE6',inspect:'#1C9FD0',export:'#E0A020'},
+    mockDefault:'light',
+    mock:{ light:{bg:'#FFFFFF',panel:'#F5F6F3',ink:'#22232B',muted:'#6C6E78',line:'#E3E4DF',vp1:'#FCFCFA',vp2:'#E8E9E3',top:'#EEEEE9',left:'#D0D0C9',right:'#BDBDB5',edge:'#22232B',hole:'#8E8F88',accent:'#EF4B3F',accent2:'#13A89E',on:'#FFFFFF',k:{k1:'#EF4B3F',k2:'#F2B33D',k3:'#13A89E'}},
+           dark:{bg:'#17181D',panel:'#22232B',ink:'#F5F6F3',muted:'#9A9CA6',line:'#33343D',vp1:'#2C2D36',vp2:'#121317',top:'#5E5F69',left:'#44454E',right:'#393A42',edge:'#E4E5E0',hole:'#1C1D22',accent:'#FF5A4D',accent2:'#1FC0B4',on:'#FFFFFF',k:{k1:'#EF4B3F',k2:'#F2B33D',k3:'#13A89E'}} } },
+
+  { id:'d', name:'Dru', mood:['cute','approachable','schools and teens'],
+    concept:'A mascot brand. Dru is a squishy extruded shape with a face who can turn up in empty states, tutorials and error messages.',
+    why:'A character makes onboarding and errors kinder (“Dru couldn’t fit a 5 mm fillet there, try 2.4 mm”) and is perfect for community stickers, Discord emoji and print-at-home merch (a printable Dru!).',
+    watch:'It can read as a kids’ tool, and some serious users may take it less seriously. The app chrome would stay calm and let Dru appear only at key moments.',
+    fonts:{ display:"'Baloo 2','Nunito',system-ui,sans-serif", dname:'Baloo 2', body:"'Nunito',system-ui,sans-serif", bname:'Nunito', mono:"'Fira Code',ui-monospace,monospace", mname:'Fira Code' },
+    palette:[['Bubblegum','#FF4F9A'],['Sky','#33B8FF'],['Lemon','#FFE45C'],['Plum','#2B1747'],['Blush','#FFF3F8']],
+    hero:{ ground:'#FFF3F8', wi:'#2B1747', wa:'#FF4F9A', k:{k1:'#FF4F9A',k2:'#D63A80',k3:'#2B1747',k4:'#FFB3D2',k5:'#33B8FF'} },
+    alt:{ ground:'#2B1747', wi:'#FFF3F8', wa:'#FF4F9A', k:{k1:'#FF4F9A',k2:'#D63A80',k3:'#2B1747',k4:'#FFB3D2',k5:'#33B8FF'} },
+    tile:{ bg:'#FFE45C', k:{k1:'#FF4F9A',k2:'#D63A80',k3:'#2B1747',k4:'#FFB3D2',k5:'#33B8FF'} },
+    icons:'sticker', sw:2.2,
+    cats:{sketch:'#33B8FF',create:'#22C98D',modify:'#FF4F9A',construct:'#9B6BFF',inspect:'#16C1C8',export:'#FFB938'},
+    mockDefault:'light',
+    mock:{ light:{bg:'#FFFFFF',panel:'#FFF3F8',ink:'#2B1747',muted:'#7B6A8F',line:'#F3DCE8',vp1:'#FFFAFD',vp2:'#F1E4F6',top:'#F4EEF9',left:'#DACDE9',right:'#C9B9DD',edge:'#2B1747',hole:'#9C88B5',accent:'#FF4F9A',accent2:'#33B8FF',on:'#FFFFFF',k:{k1:'#FF4F9A',k2:'#D63A80',k3:'#2B1747',k4:'#FFB3D2',k5:'#33B8FF'}},
+           dark:{bg:'#1C0F2E',panel:'#2B1747',ink:'#FFF3F8',muted:'#B7A3CC',line:'#3F2762',vp1:'#3A2259',vp2:'#150A22',top:'#6E5192',left:'#523877',right:'#462F67',edge:'#F6E3EE',hole:'#1C0F2E',accent:'#FF5FA5',accent2:'#33B8FF',on:'#FFFFFF',k:{k1:'#FF4F9A',k2:'#D63A80',k3:'#2B1747',k4:'#FFB3D2',k5:'#33B8FF'}} } },
+
+  { id:'e', name:'Sketch to Solid', mood:['sleek','fast','pro, dark-first'],
+    concept:'Dark-first and precise. The mark shows the core idea of the app in one glance: a dashed blue sketch profile turning into an amber solid.',
+    why:'It explains the product without words and suits long modelling sessions in a dark UI. It feels like a modern pro tool (Figma, Linear, Blender) that happens to be friendly.',
+    watch:'The least “playful” of the five. The fun would have to come from motion, sound and small details rather than from the logo.',
+    fonts:{ display:"'Instrument Sans',system-ui,sans-serif", dname:'Instrument Sans', body:"'Instrument Sans',system-ui,sans-serif", bname:'Instrument Sans', mono:"'JetBrains Mono',ui-monospace,monospace", mname:'JetBrains Mono' },
+    palette:[['Graphite','#111318'],['Slate','#1D212B'],['Sketch Blue','#5AA9FF'],['Solid Amber','#FFB23E'],['Frost','#E8ECF3']],
+    hero:{ ground:'#111318', wi:'#E8ECF3', wa:'#FFB23E', k:{k1:'rgba(90,169,255,.16)',k2:'#FFC76A',k3:'#E0922A',k4:'#5AA9FF'} },
+    alt:{ ground:'#E8ECF3', wi:'#111318', wa:'#E08A1E', k:{k1:'rgba(47,134,240,.14)',k2:'#FFBE55',k3:'#D9861F',k4:'#2F86F0'} },
+    tile:{ bg:'#1D212B', k:{k1:'rgba(90,169,255,.16)',k2:'#FFC76A',k3:'#E0922A',k4:'#5AA9FF'} },
+    icons:'line', sw:1.6,
+    cats:{sketch:'#5AA9FF',create:'#3DD68C',modify:'#FFB23E',construct:'#A78BFA',inspect:'#2DD4BF',export:'#FF8A5B'},
+    cats_light:{sketch:'#2F86F0',create:'#1BAA67',modify:'#E08A1E',construct:'#7C5CE6',inspect:'#0FA596',export:'#E8663A'},
+    mockDefault:'dark',
+    mock:{ dark:{bg:'#111318',panel:'#181B22',ink:'#E8ECF3',muted:'#8A93A6',line:'#262B36',vp1:'#232834',vp2:'#0B0D11',top:'#4E5567',left:'#373D4B',right:'#2E3340',edge:'#B5BDCC',hole:'#0E1014',accent:'#FFB23E',accent2:'#5AA9FF',on:'#111318',k:{k1:'rgba(90,169,255,.16)',k2:'#FFC76A',k3:'#E0922A',k4:'#5AA9FF'}},
+           light:{bg:'#FFFFFF',panel:'#F3F5F9',ink:'#111318',muted:'#5B6375',line:'#E0E4EC',vp1:'#FBFCFD',vp2:'#E5E8EF',top:'#EEF0F4',left:'#CFD4DE',right:'#BCC2CE',edge:'#111318',hole:'#8B93A4',accent:'#E08A1E',accent2:'#2F86F0',on:'#FFFFFF',k:{k1:'rgba(47,134,240,.14)',k2:'#FFBE55',k3:'#D9861F',k4:'#2F86F0'}} } }
+];
+
+/* ---------- Helpers ---------- */
+const kstyle = (k) => Object.entries(k).map(([n,v]) => `--${n}:${v}`).join(';');
+const catsFor = (o, mode) => (mode === 'light' && o.cats_light) ? o.cats_light : (mode === 'dark' && o.cats_dark) ? o.cats_dark : o.cats;
+
+function lockup(o, ctx, small){
+  return `<div class="hero${small?' small':''}" style="background:${ctx.ground};--wi:${ctx.wi};--wa:${ctx.wa};${kstyle(ctx.k)}">
+    ${MARKS[o.id]()}${WORDMARKS[o.id](small)}</div>`;
+}
+
+function partSVG(){
+  return `<svg class="m-part" viewBox="0 0 240 150" aria-label="3D preview of a bracket with an extrude in progress" style="stroke:var(--m-edge);stroke-width:1.2;stroke-linejoin:round;stroke-opacity:.75">
+    <path d="M30 85 120 40 210 85 120 130Z" style="fill:var(--m-top)"/>
+    <path d="M30 85 120 130V140L30 95Z" style="fill:var(--m-left)"/>
+    <path d="M120 130 210 85V95L120 140Z" style="fill:var(--m-right)"/>
+    <ellipse cx="70" cy="85" rx="11" ry="5.5" style="fill:var(--m-hole)"/>
+    <ellipse cx="170" cy="85" rx="11" ry="5.5" style="fill:var(--m-hole)"/>
+    <path d="M90 85 120 100V70L90 55Z" style="fill:var(--m-left)"/>
+    <path d="M120 100 150 85V55L120 70Z" style="fill:var(--m-right)"/>
+    <path d="M120 40 150 55 120 70 90 55Z" style="fill:var(--m-accent);fill-opacity:.85"/>
+    <ellipse cx="120" cy="55" rx="9" ry="4.5" style="fill:var(--m-hole)"/>
+    <path d="M120 48V12M114 18 120 10 126 18" style="fill:none;stroke:var(--m-accent);stroke-width:2.6;stroke-linecap:round;stroke-opacity:1"/>
+    <rect x="130" y="8" width="54" height="19" rx="6" style="fill:var(--m-bg);stroke:var(--m-accent);stroke-opacity:1"/>
+    <text x="157" y="21.5" text-anchor="middle" style="font:500 10px 'JetBrains Mono',monospace;fill:var(--m-ink);stroke:none">12 mm</text>
+  </svg>`;
+}
+const cubeSVG = `<svg class="m-cube" viewBox="0 0 40 40" aria-hidden="true" style="stroke:var(--m-muted);stroke-width:1;stroke-linejoin:round">
+  <path d="M20 4 36 12 20 20 4 12Z" style="fill:var(--m-bg)"/><path d="M4 12 20 20V36L4 28Z" style="fill:var(--m-panel)"/><path d="M20 20 36 12V28L20 36Z" style="fill:var(--m-line)"/>
+  <text x="20" y="14" text-anchor="middle" style="font:600 5px sans-serif;fill:var(--m-muted);stroke:none">TOP</text></svg>`;
+const playSVG = ['M3 2V14M14 2 5 8 14 14Z','M12 2 4 8 12 14Z','M4 2 12 8 4 14Z','M13 2V14M2 2 11 8 2 14Z']
+  .map(d => `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${d}" style="stroke:var(--m-muted);stroke-width:1.4;stroke-linejoin:round"/></svg>`).join('');
+
+function mockHTML(o, mode){
+  const m = o.mock[mode], c = catsFor(o, mode);
+  const vars = `--m-bg:${m.bg};--m-panel:${m.panel};--m-ink:${m.ink};--m-muted:${m.muted};--m-line:${m.line};--m-vp1:${m.vp1};--m-vp2:${m.vp2};--m-top:${m.top};--m-left:${m.left};--m-right:${m.right};--m-edge:${m.edge};--m-hole:${m.hole};--m-accent:${m.accent};--m-accent2:${m.accent2};--m-on:${m.on};--wi:${m.ink};--wa:${m.accent};${kstyle(m.k)};font-family:${o.fonts.body}`;
+  const tools = TOOLS.map(([n,l,cat],i) => `${i===1||i===3||i===5?'<span class="m-div"></span>':''}<div class="m-tool${n==='extrude'?' on':''}">${icon(n,c[cat])}<span>${l}</span></div>`).join('');
+  const chips = [['sketch','sketch'],['extrude','create'],['sketch','sketch'],['extrude','create'],['fillet','modify']]
+    .map(([n,cat]) => `<span class="m-chip" style="--c:${c[cat]}">${icon(n,c[cat])}</span>`).join('')
+    + `<span class="m-marker" aria-label="Timeline marker"></span><span class="m-chip rolled" style="--c:${c.construct}">${icon('plane',c.construct)}</span>`;
+  return `<div class="mock" data-icons="${o.icons}" style="${vars};--sw:${o.sw}">
+    <div class="m-appbar">${MARKS[o.id]()}${WORDMARKS[o.id](true)}<span class="proj">/ <b>Wall bracket</b> v7</span><span class="m-saved">Saved</span><span class="m-sp"></span></div>
+    <div class="m-toolbar">${tools}</div>
+    <div class="m-body">
+      <div class="m-browser">
+        <div class="hd">Browser</div>
+        <div class="t"><span class="eye"></span>Origin</div>
+        <div class="t"><span class="eye"></span>Sketches</div>
+        <div class="t sub">Base plate</div>
+        <div class="t sub">Boss profile</div>
+        <div class="t"><span class="eye"></span>Bodies</div>
+        <div class="t sub sel">Bracket</div>
+        <div class="hd" style="margin-top:10px">Parameters</div>
+        <div class="t sub" style="font-family:${o.fonts.mono};font-size:10.5px">wall = 2.4 mm</div>
+        <div class="t sub" style="font-family:${o.fonts.mono};font-size:10.5px">boss_h = 12 mm</div>
+      </div>
+      <div class="m-vp">
+        ${partSVG()}
+        ${cubeSVG}
+        <div class="m-dialog">
+          <div class="dt">${icon('extrude', c.create)}Extrude</div>
+          <div class="row">Profile<span class="pill">1 selected</span></div>
+          <div class="row">Distance<span class="field" style="font-family:${o.fonts.mono}">boss_h</span></div>
+          <div class="row">Operation<span style="color:var(--m-ink)">Join ▾</span></div>
+          <div class="btns"><span class="cancel">Cancel</span><span class="ok">OK</span></div>
+        </div>
+        <div class="m-nav" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      </div>
+    </div>
+    <div class="m-timeline"><div class="m-play">${playSVG}</div>${chips}<span class="m-tl-sp"></span><span class="m-status">Bracket · 38.2 g PLA</span></div>
+  </div>`;
+}
+
+function optionHTML(o){
+  const sw = o.palette.map(([n,h]) => `<button class="sw" type="button" data-hex="${h}" aria-label="Copy ${n} ${h}"><div class="chipc" style="background:${h}"></div><b>${n}</b><code>${h}</code></button>`).join('');
+  const icons = TOOLS.map(([n,l,cat]) => `<figure>${icon(n,o.cats[cat])}<figcaption>${l}</figcaption></figure>`).join('');
+  const t = o.tile;
+  const appicon = (s) => `<div><div class="appicon" style="width:${s}px;height:${s}px;background:${t.bg};${kstyle(t.k)}">${MARKS[o.id]()}</div><small>${s}px</small></div>`;
+  return `<section class="opt" id="opt-${o.id}" aria-labelledby="h-${o.id}">
+    <div class="opt-head"><span class="badge">${o.id.toUpperCase()}</span><h2 id="h-${o.id}">${o.name}</h2><div class="tags">${o.mood.map(m=>`<span>${m}</span>`).join('')}</div></div>
+    <p class="concept">${o.concept}</p>
+    <div class="grid2">
+      <div class="col">
+        ${lockup(o, o.hero)}
+        <div class="pair">${lockup(o, o.alt, true)}<div class="appicons">${appicon(76)}${appicon(44)}${appicon(24)}</div></div>
+        <div class="notes">
+          <div class="block"><div class="label good">Why it fits</div><p>${o.why}</p></div>
+          <div class="block"><div class="label warn">Watch out</div><p>${o.watch}</p></div>
+        </div>
+      </div>
+      <div class="col">
+        <div class="block"><div class="label">Colours · click to copy</div><div class="swatches">${sw}</div></div>
+        <div class="block type">
+          <div class="label">Type</div>
+          <div class="aa"><span class="big" style="font-family:${o.fonts.display};font-weight:${o.id==='c'?900:o.id==='b'||o.id==='d'?800:600}">Aa</span><span>${o.fonts.dname} for the logo and headings · ${o.fonts.bname} for the interface · ${o.fonts.mname} for values</span></div>
+          <p class="bodys" style="font-family:${o.fonts.body}">Sketch a profile, pull it into a solid, round the edges. Change one number and the whole part follows.</p>
+          <p class="monos" style="font-family:${o.fonts.mono}">wall = 2.4 mm · lid_gap = wall / 8 · d7 = 2 * wall</p>
+        </div>
+        <div class="block"><div class="label">Tool icons · one colour per category</div>
+          <div class="icons" data-icons="${o.icons}" style="--sw:${o.sw};background:${o.hero.ground};color:${o.hero.wi};--ink-ic:${o.hero.wi};--hole-ic:${o.hero.ground};font-family:${o.fonts.body}">${icons}</div>
+        </div>
+      </div>
+    </div>
+    <div class="mockhead"><div class="label" style="margin:0">The app in this style</div>
+      <div class="seg" role="group" aria-label="Preview theme for ${o.name}">
+        <button type="button" data-opt="${o.id}" data-mode="light" aria-pressed="${o.mockDefault==='light'}">Light</button>
+        <button type="button" data-opt="${o.id}" data-mode="dark" aria-pressed="${o.mockDefault==='dark'}">Dark</button>
+      </div></div>
+    <div class="mockwrap" id="mock-${o.id}">${mockHTML(o, o.mockDefault)}</div>
+  </section>`;
+}
+
+function overviewHTML(o){
+  return `<a class="ov" href="#opt-${o.id}"><span class="mini" style="background:${o.hero.ground};${kstyle(o.hero.k)}">${MARKS[o.id]()}</span>
+    <span><span class="let">${o.id.toUpperCase()}</span><b>${o.name}</b><span class="dots">${o.palette.slice(0,4).map(([,h])=>`<i style="background:${h}"></i>`).join('')}</span></span></a>`;
+}
+
+document.getElementById('overview').innerHTML = OPTIONS.map(overviewHTML).join('');
+document.getElementById('options').innerHTML = OPTIONS.map(optionHTML).join('');
+
+document.addEventListener('click', (ev) => {
+  const seg = ev.target.closest('.seg button');
+  if (seg){
+    const o = OPTIONS.find(x => x.id === seg.dataset.opt);
+    document.getElementById('mock-' + o.id).innerHTML = mockHTML(o, seg.dataset.mode);
+    seg.parentElement.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b === seg)));
+    return;
+  }
+  const sw = ev.target.closest('.sw');
+  if (sw){
+    const hex = sw.dataset.hex, code = sw.querySelector('code');
+    const done = (txt) => { code.textContent = txt; sw.classList.add('copied'); setTimeout(() => { code.textContent = hex; sw.classList.remove('copied'); }, 1200); };
+    try { navigator.clipboard.writeText(hex).then(() => done('Copied'), () => done(hex)); } catch (e) { done(hex); }
+  }
+});
+</script>

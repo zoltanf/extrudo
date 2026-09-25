@@ -1,0 +1,17 @@
+{
+  "name": "@extrudo/storage",
+  "version": "0.0.0",
+  "private": true,
+  "description": "ProjectStore interface, OPFS + IndexedDB implementation, .extrudo zip (de)serializer.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@extrudo/core": "workspace:*"
+  }
+}

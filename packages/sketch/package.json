@@ -1,0 +1,17 @@
+{
+  "name": "@extrudo/sketch",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Sketch model, constraint-solver adapter, profile detection, SVG/DXF export. Runs in the browser and in Node.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@extrudo/core": "workspace:*"
+  }
+}

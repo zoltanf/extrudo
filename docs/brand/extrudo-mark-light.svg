@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Extrudo</title>
+  <path d="M10 24 24 10H52L38 24Z" fill="#FFBE55"/>
+  <path d="M38 24 52 10V38L38 52Z" fill="#D9861F"/>
+  <rect x="10" y="24" width="28" height="28" rx="1" fill="rgba(47,134,240,0.14)" stroke="#2F86F0" stroke-width="2" stroke-dasharray="3.2 2.6"/>
+  <circle cx="10" cy="24" r="2.2" fill="#2F86F0"/><circle cx="38" cy="24" r="2.2" fill="#2F86F0"/>
+  <circle cx="10" cy="52" r="2.2" fill="#2F86F0"/><circle cx="38" cy="52" r="2.2" fill="#2F86F0"/>
+</svg>

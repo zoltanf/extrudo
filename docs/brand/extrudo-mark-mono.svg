@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="currentColor">
+  <title>Extrudo</title>
+  <path d="M10 24 24 10H52L38 24Z" fill-opacity="0.55"/>
+  <path d="M38 24 52 10V38L38 52Z"/>
+  <rect x="10" y="24" width="28" height="28" rx="1" fill="none" stroke="currentColor" stroke-width="2.4" stroke-dasharray="3.2 2.6"/>
+</svg>
