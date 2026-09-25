@@ -6,13 +6,18 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./node": "./src/node.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@extrudo/core": "workspace:*",
-    "@extrudo/sketch": "workspace:*"
+    "@extrudo/sketch": "workspace:*",
+    "comlink": "^4.4.2"
+  },
+  "devDependencies": {
+    "@libcascade/toolchain": "3.0.2"
   }
 }

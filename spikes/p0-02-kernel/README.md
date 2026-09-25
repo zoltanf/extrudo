@@ -3,7 +3,9 @@
 Throwaway code for roadmap task **P0-02**. It compares three ways of driving
 OpenCascade (OCCT 8.0) compiled to WASM, and it produced
 [ADR-0001](../../docs/adr/0001-geometry-kernel.md). Nothing here is imported by
-the app. The production kernel package is P0-09.
+the app. The production kernel package is P0-09: its build config and
+`closure.mjs` now live in `packages/kernel/occt/`, and `custom-build/` here is
+the spike's frozen copy.
 
 | Candidate | Packages (versions tested) | What it is |
 |---|---|---|

@@ -79,3 +79,55 @@ body {
 .status code {
   font-family: "JetBrains Mono", ui-monospace, monospace;
 }
+
+/* Kernel debug page (P0-09), #/debug/kernel */
+.kernel-debug {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.kernel-debug header {
+  padding: 16px 24px;
+  display: grid;
+  gap: 6px;
+}
+
+.kernel-debug h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.kernel-debug p {
+  margin: 0;
+  color: var(--x-muted);
+}
+
+.kernel-debug .actions {
+  display: flex;
+  gap: 8px;
+}
+
+.kernel-debug button {
+  font: inherit;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--x-muted);
+  background: transparent;
+  color: var(--x-ink);
+  cursor: pointer;
+}
+
+.kernel-debug button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.kernel-debug .message {
+  color: var(--x-accent);
+}
+
+.kernel-debug .stage {
+  min-height: 0;
+  background: var(--x-viewport-glow);
+}

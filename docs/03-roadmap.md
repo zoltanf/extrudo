@@ -77,7 +77,7 @@ in the browser.
   request.
   *AC:* FR-PRJ-01, -02, -04, -05; E2E: create project, reload the page, the
   project is still there; export/import round-trip.
-- [ ] **P0-09 Kernel worker plumbing.** Production kernel package (from the
+- [x] **P0-09 Kernel worker plumbing.** *(done 2026-09-25)* Production kernel package (from the
   spike's decision): worker bootstrap, Comlink API, OCCT disposal scopes, crash
   and restart handling, typed mesh transfer, a debug command that renders a test
   box. Per ADR-0001: our own trimmed OCCT build (`@libcascade/toolchain`,
@@ -89,6 +89,11 @@ in the browser.
   [taucad/opencascade.js#40](https://github.com/taucad/opencascade.js/issues/40); check its status first.
   *AC:* NFR-03 crash test (forced abort → worker restarts, app survives);
   memory test green.
+  **Done 2026-09-25:** `packages/kernel` with the facade in `occt/facade/`,
+  `Kernel` (TS layer), `KernelService` (worker side), `KernelClient`
+  (restart on crash), and a debug page at `#/debug/kernel`. The WASM is built
+  once per input hash by CI and downloaded by `pnpm occt ensure`. Memory test:
+  0 bytes of heap growth over 2000 rebuilds. See ADR-0001, *Follow-up: P0-09*.
 
 **Phase 0 exit:** the app opens to a home screen; a new project shows the
 viewport; navigation feels like Fusion; save and reload work; the kernel renders

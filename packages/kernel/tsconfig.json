@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
-  "compilerOptions": { "lib": ["es2023", "webworker"] },
+  "compilerOptions": { "lib": ["es2023", "esnext.disposable", "webworker"] },
   "include": ["src"]
 }

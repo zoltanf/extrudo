@@ -10,10 +10,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  occt:
+    # Our OCCT WASM (packages/kernel/occt) takes about 10+ minutes to build in
+    # Docker, so it is built once per input hash and published as a release
+    # asset (`occt-<hash>`). This job is a quick no-op when that release exists.
+    name: OCCT WASM
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Look for a published build of these inputs
+        id: release
+        run: |
+          echo "hash=$(node packages/kernel/occt/occt.mjs hash)" >> "$GITHUB_OUTPUT"
+          if node packages/kernel/occt/occt.mjs exists; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Free disk space for the build image (about 13 GB unpacked)
+        if: steps.release.outputs.exists == 'false'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: pnpm/action-setup@v6
+        if: steps.release.outputs.exists == 'false'
+
+      - uses: actions/setup-node@v5
+        if: steps.release.outputs.exists == 'false'
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Build
+        if: steps.release.outputs.exists == 'false'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm occt build
+
+      - name: Publish
+        if: steps.release.outputs.exists == 'false'
+        run: pnpm occt publish
+
   check:
     name: Typecheck, lint, unit and E2E tests
+    needs: occt
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v5
 
@@ -26,7 +78,10 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Typecheck, lint, package boundaries, unit tests
+      - name: Download the OCCT WASM
+        run: pnpm occt ensure
+
+      - name: Typecheck, lint, package boundaries, bindings, unit and memory tests
         run: pnpm check
 
       - name: Install Playwright Chromium

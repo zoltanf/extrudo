@@ -2,6 +2,13 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-25 · **P0-09** Kernel package: our trimmed OCCT WASM with a C++
+  facade (shapes in an arena, flat result/history/mesh arrays, LGPL-2.1+),
+  TS `Kernel` layer, Comlink worker, `KernelClient` that restarts the worker
+  after a WASM abort, debug page `#/debug/kernel` rendering the test part.
+  Memory test (1000 rebuilds + a leak control) and crash test in Vitest and
+  Playwright. CI builds the WASM once per input hash and publishes it as a
+  release (`pnpm occt ensure` downloads it).
 - 2026-09-25 · **P0-02** Kernel spike (`spikes/p0-02-kernel/`): libcascade,
   replicad and brepjs/occt-wasm compared on the same scenario in Node and a
   browser worker, with sizes, load times, op timings, a memory test and a

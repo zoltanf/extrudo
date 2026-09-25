@@ -241,3 +241,48 @@ depend on replicad or brepjs. Use them as code references.**
 - **Re-check before P3-15:** occt-wasm/brepjs may add edge history, and
   libcascade may fix the leaks upstream. The spike's scripts re-run the whole
   comparison in a few minutes.
+
+## Follow-up: P0-09 (2026-09-25)
+
+The production package (`packages/kernel`) implements the decision. What was
+decided or learned on the way:
+
+- **The facade works as planned.** `packages/kernel/occt/facade/extrudo_facade.cpp`
+  is one C++ class (the toolchain binds every class in the file) holding shapes
+  in an arena behind integer handles. Builders live on the C++ stack. Results,
+  history (faces, edges and vertices; modified, generated, deleted and kept) and
+  meshes come back as flat arrays that JS copies out of `wasmMemory`. Measured
+  on the final build (Node 26, Ryzen 7 4700U):
+
+  | | |
+  |---|---|
+  | WASM, raw / brotli | 19.95 MB / 4.47 MB (198 OCCT bindings + the facade) |
+  | Cold start, Node: import + init | 213 ms |
+  | Test part (box → fillet → hole), build + check + measure + mesh | 15 ms median, 16 ms p95, warm |
+  | Heap growth over 2000 rebuilds through the facade | **0 bytes** |
+  | Same probe, raw `BRepAlgoAPI_Cut` deleted without `Clear()` | 168 KB per cut |
+
+- **Memory probe: `sbrk(0)`, not the WASM memory size.** `mallinfo()` does not
+  link in this build (dlmalloc's alias is missing), so the facade exposes
+  `heapTop()` = `sbrk(0)`. dlmalloc can't trim in WASM, so the top only moves
+  when freed chunks can't satisfy a request: a leak-free loop plateaus, a leak
+  grows it steadily. It ignores the initial heap slack that hid leaks in P0-02.
+  The memory test (`src/memory.test.ts`) rebuilds 1000 times after a warm-up,
+  allows 256 KB, and runs a leak control that must exceed the same limit.
+- **How the WASM gets built and shipped (the open point above): built once per
+  input hash, stored as a release asset.** `pnpm occt hash` hashes the config,
+  everything in `facade/` and the toolchain version. CI's `occt` job builds a new
+  hash in Docker (about 11 minutes locally) and publishes `dist/` as the GitHub
+  release `occt-<hash>`; later runs skip the build. `pnpm occt ensure`
+  (run by `check`, `dev` and `build`) downloads the matching release. Rejected:
+  building on every CI run (11+ minutes and a 13 GB image for every push);
+  committing the 20 MB `.wasm` to git (repository bloat on every facade change);
+  a CI cache (evicted after a week unused, and not available to local
+  checkouts).
+- **Crash recovery (NFR-03).** A `WebAssembly.RuntimeError` (OCCT abort, out of
+  memory trap) marks the instance dead and surfaces as `KernelCrashError`.
+  `KernelClient` then terminates the worker and starts a new one; a worker that
+  dies outside a call rejects the pending calls. It gives up after 3 crashes a
+  minute. The crashing call is not retried.
+- **The facade source is LGPL-2.1-or-later** with the license text in
+  `facade/LICENSE`, as planned.

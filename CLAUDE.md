@@ -9,13 +9,14 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-25):** P0-01 and P0-02 done. ADR-0001 chose our own
+**Status (2026-09-25):** P0-01, P0-02 and P0-09 done. ADR-0001 chose our own
 trimmed libcascade build with a small C++ facade that owns OCCT memory
-(`docs/adr/0001-geometry-kernel.md`).
+(`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
+(facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
+debug page at `#/debug/kernel`).
 Next tasks, which can run in parallel: **P0-03** (solver spike), **P0-04**
-(design system and shell), **P0-06** (document model), **P0-08** (storage), and
-**P0-09** (production kernel package, now unblocked). See
-`docs/03-roadmap.md`.
+(design system and shell), **P0-06** (document model) and **P0-08** (storage).
+See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -25,6 +26,8 @@ pnpm dev          # app at http://localhost:5173
 pnpm check        # typecheck + Biome + package boundaries + Vitest. Must pass.
 pnpm e2e          # build + Playwright (run `pnpm e2e:install` once)
 pnpm format       # Biome auto-fix
+pnpm occt ensure  # download the OCCT WASM for the current inputs (check/dev/build do this)
+pnpm occt build   # build it locally with Docker (~11 min); see packages/kernel/occt/README.md
 ```
 
 Package dependency rules live in `scripts/check-boundaries.mjs` (run by
@@ -127,5 +130,19 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   type (`custom-build/closure.mjs`); `libcascade check` doesn't catch those.
   `MODULARIZE` + `EXPORT_ES6` and the three exception helpers in
   `EXPORTED_RUNTIME_METHODS` are required.
+- **The OCCT WASM is not in git.** `packages/kernel/occt/dist/` is built by CI
+  once per input hash (config + `facade/` + toolchain version) and published as
+  the GitHub release `occt-<hash>`; `pnpm occt ensure` downloads it with `gh`.
+  After changing the config or the facade, run `pnpm occt build` locally
+  (through `newgrp docker` until the next login) or push and let CI build it.
+- **Facade C++ (`packages/kernel/occt/facade/`):** the toolchain binds every
+  class in the file, so it holds one class with no overloaded names. Check it
+  in seconds with `em++ -fsyntax-only` inside the image (README) before a
+  10-minute build. OCCT 8 deprecates `TopTools_*`/`TColStd_*` typedefs (use
+  `NCollection_*`), `Standard_False`, and `Standard_Failure::GetMessageString`
+  (use `what()`); `DynamicType()` isn't available on `Standard_Failure`.
+  `mallinfo()` doesn't link, so the memory probe is `sbrk(0)` (`heapTop()`).
+- Vitest 5 takes test options as the **second** argument:
+  `it(name, { timeout }, fn)`; the old third-argument form throws.
 - OCCT's STEP writer prints a banner to stdout from inside WASM. Route
   Emscripten's `print` to a logger (or ignore it in tests).

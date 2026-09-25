@@ -204,15 +204,22 @@ interface RecomputeResult {
   bodies: BodyMesh[];    // transferable arrays
   construction: …;       // planes, axes, points
 }
-interface BodyMesh {
-  bodyId; positions: Float32Array; normals: Float32Array; indices: Uint32Array;
-  faceRanges: Uint32Array;          // triangle range per face → face picking
-  faceIds: TopoId[];                // persistent IDs, parallel to faceRanges
-  edges: { id: TopoId; polyline: Float32Array }[];
-  vertices: { id: TopoId; p: [number, number, number] }[];
-  bbox; volume; area;
+interface BodyMesh {       // packages/kernel/src/mesh.ts (P0-09); all flat, all transferable
+  positions: Float32Array; normals: Float32Array; indices: Uint32Array;
+  faceRanges: Uint32Array;          // [firstTriangle, count] per face → face picking
+  edgePoints: Float32Array;         // edge polylines, xyz per point
+  edgeRanges: Uint32Array;          // [firstPoint, count] per edge
+  vertices: Float32Array;           // xyz per B-rep vertex
 }
+// Faces, edges and vertices are in the kernel's sub-shape order. P2-04 adds
+// faceIds / edgeIds / vertexIds (persistent TopoIds, parallel to the ranges),
+// and recompute adds bodyId, bbox, volume and area.
 ```
+
+P0-09 implements the plumbing: `KernelApi` has `init`, `stats` and two debug
+commands (`debugTestPart` renders the P0-02 test part at `#/debug/kernel`,
+`debugCrash` aborts the WASM). The worker side is `KernelService`; the UI side
+is `KernelClient`, which restarts the worker after a crash.
 
 - **Incremental recompute:** evaluate from the first dirty feature. Each
   feature's output is cached under `hash(feature inputs + resolved parameter
@@ -223,8 +230,12 @@ interface BodyMesh {
 - **Memory:** OCCT objects in Emscripten are not garbage-collected. All
   evaluator code uses a `using`/`scope.track()` disposal pattern, and the cache
   deletes shapes on eviction. This is a hard coding rule.
-- **Crash recovery:** a WASM abort kills the worker. The main thread restarts
-  it, re-sends the document, and marks the feature that crashed as an error.
+- **Crash recovery:** a WASM abort kills the kernel. `KernelClient` restarts
+  the worker (at most 3 times a minute) and calls `onRestart`, where Phase 2
+  re-sends the document and marks the feature that crashed as an error.
+- **Building the WASM:** `packages/kernel/occt/` holds the build config and the
+  C++ facade. CI builds each input hash once and publishes it as a release;
+  `pnpm occt ensure` downloads it (see that folder's README).
 
 ### 5.2 Topological naming: the hardest problem
 
