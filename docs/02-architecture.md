@@ -15,7 +15,7 @@
 | Schema / validation | **Zod** | Validates the document on load. Versioned migrations. |
 | 3D rendering | **three.js** via **@react-three/fiber** + **drei**; **three-mesh-bvh** for picking; `LineSegments2` for crisp B-rep edges | Industry-standard WebGL2 renderer with a WebGPU path later. drei has gizmo and helper building blocks. |
 | Geometry kernel | **OpenCascade (OCCT) compiled to WASM**, via the maintained `libcascade` package (the taucad fork of opencascade.js, OCCT 8.x), inside a **Web Worker** | The only mature open-source B-rep kernel usable in the browser. Real fillets, chamfers, shells, booleans, sweeps and lofts, plus STEP I/O. LGPL-2.1 with an exception. |
-| Kernel convenience layer | **Our own thin TypeScript layer** over libcascade's raw bindings; later a small C++ facade compiled into our own trimmed build for builders and mesh extraction. **replicad** and **brepjs** are code references, not dependencies (ADR-0001) | The P0-02 spike showed that only raw OCCT gives face *and* edge history, which topological naming needs (§5.2). replicad's API drops the builders; brepjs/occt-wasm tracks faces only. |
+| Kernel convenience layer | **Our own trimmed OCCT build** (`@libcascade/toolchain`) with a **small C++ facade** that owns OCCT memory and returns results and history as flat arrays, under a thin TypeScript layer; raw libcascade bindings for the rest. **replicad** and **brepjs** are code references, not dependencies (ADR-0001) | The P0-02 spike showed that only raw OCCT gives face *and* edge history, which topological naming needs (§5.2). replicad's API drops the builders; brepjs/occt-wasm tracks faces only. |
 | Mesh booleans (secondary) | **manifold-3d** (WASM) | Fast, robust booleans on imported STL meshes and OpenSCAD output, where B-rep does not apply. |
 | Sketch constraint solver | **@salusoft89/planegcs** (FreeCAD's PlaneGCS in WASM, LGPL) | Proven solver with the constraint set we need. JSON primitives. Reports conflicting and redundant constraints. |
 | Worker RPC | **Comlink** | Typed, promise-based worker calls. Transferable typed arrays. |
@@ -328,10 +328,9 @@ it.
   those; Cloudflare Pages can (`_headers`). Stay single-threaded until profiling
   shows a need.
 - **WASM size:** the full prebuilt libcascade build is 42.7 MB raw, 8.2 MB
-  brotli, and takes about 0.8 s to initialise (P0-02). Phase 2 introduces a
-  custom trimmed build (`@libcascade/toolchain`) with only the classes we use:
-  replicad's comparable build is 4.8 MB brotli and starts in about 0.2 s.
-  Target under 8 MB brotli. Serve with long-lived caching plus the service
+  brotli, and takes about 0.8 s to initialise. Our own trimmed build (P0-02,
+  198 bindings) is 19.9 MB raw, 4.34 MB brotli, and starts in about 0.2 s.
+  From P0-09 on we ship our own build. Target under 8 MB brotli. Serve with long-lived caching plus the service
   worker.
 - **PWA:** a service worker (Workbox via `vite-plugin-pwa`) precaches the app
   and WASM for offline use and install.
@@ -365,7 +364,8 @@ bundle-size budget. Every agent task must leave CI green.
 `docs/adr/NNNN-title.md`, one per significant decision. Initial ADRs to write:
 
 - **ADR-0001** Geometry kernel: OCCT WASM (`libcascade`) raw vs replicad vs
-  brepjs. **Written 2026-09-25:** raw libcascade in our own wrapper.
+  brepjs. **Written 2026-09-25:** own trimmed libcascade build with a C++
+  facade.
 - **ADR-0002** Sketch solver: planegcs on the main thread.
 - **ADR-0003** Document-as-JSON, geometry-as-cache.
 - **ADR-0004** Topological naming strategy (§5.2).

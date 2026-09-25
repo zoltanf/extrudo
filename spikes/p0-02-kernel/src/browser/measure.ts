@@ -13,7 +13,7 @@ await new Promise<void>((resolve) => server.stdout.on('data', (b) => String(b).i
 const browser = await chromium.launch({ executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH || undefined });
 const results: Record<string, unknown> = {};
 try {
-  for (const c of ['libcascade', 'replicad', 'brepjs']) {
+  for (const c of ['libcascade', 'replicad', 'brepjs', 'custom']) {
     const loads = [];
     for (let i = 0; i < COLD_LOADS; i++) {
       const ctx = await browser.newContext({ viewport: { width: 1200, height: 700 } });

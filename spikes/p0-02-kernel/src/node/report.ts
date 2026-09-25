@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 // biome-ignore lint/suspicious/noExplicitAny: loose result JSON
 const read = (f: string): any => JSON.parse(readFileSync(`results/${f}`, 'utf8'));
-const C = ['libcascade', 'replicad', 'brepjs'] as const;
+const C = ['libcascade', 'replicad', 'brepjs', 'custom'] as const;
 const node = Object.fromEntries(C.map((c) => [c, read(`node-${c}.json`)]));
 const browser = read('browser.json');
 const sizes = read('sizes.json');

@@ -50,5 +50,23 @@
       "gzip": 71479,
       "brotli": 62033
     }
+  },
+  "custom": {
+    "wasmFile": "extrudo_occt_single-gNcQ0VsW.wasm",
+    "wasm": {
+      "raw": 19917381,
+      "gzip": 6419656,
+      "brotli": 4336158
+    },
+    "jsFiles": [
+      "custom-Bf5Y8FUg.js",
+      "extrudo_occt_single-Cl1q5hrv.js",
+      "raw-occt-D9H2CInT.js"
+    ],
+    "js": {
+      "raw": 70211,
+      "gzip": 27629,
+      "brotli": 24688
+    }
   }
 }

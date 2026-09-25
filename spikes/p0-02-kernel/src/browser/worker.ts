@@ -4,6 +4,7 @@
 import brepjsWasm from 'occt-wasm/dist/occt-wasm.wasm?url';
 import libcascadeWasm from 'libcascade/single/wasm?url';
 import replicadWasm from 'replicad-opencascadejs/wasm?url';
+import customWasm from '../../custom-build/dist/extrudo_occt_single.wasm?url';
 import type { CandidateId, ScenarioResult, Timings } from '../shared/types.ts';
 
 const WARM_RUNS = 5;
@@ -11,6 +12,7 @@ const WARM_RUNS = 5;
 async function candidateModule(c: CandidateId) {
   if (c === 'libcascade') return { mod: await import('../candidates/libcascade.ts'), wasm: libcascadeWasm };
   if (c === 'replicad') return { mod: await import('../candidates/replicad.ts'), wasm: replicadWasm };
+  if (c === 'custom') return { mod: await import('../candidates/custom.ts'), wasm: customWasm };
   return { mod: await import('../candidates/brepjs.ts'), wasm: brepjsWasm };
 }
 

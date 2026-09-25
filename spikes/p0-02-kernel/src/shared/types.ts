@@ -1,7 +1,7 @@
 // Shared result shapes for the P0-02 kernel spike. Every candidate returns a
 // ScenarioResult so Node and the browser page can print the same table.
 
-export type CandidateId = 'libcascade' | 'replicad' | 'brepjs';
+export type CandidateId = 'libcascade' | 'replicad' | 'brepjs' | 'custom';
 
 /** Scenario parameters (fixed by the roadmap task). */
 export const SCENARIO = {

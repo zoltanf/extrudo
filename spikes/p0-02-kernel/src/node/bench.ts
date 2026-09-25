@@ -5,7 +5,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import type { ScenarioResult, Timings } from '../shared/types.ts';
 
-const candidate = process.argv[2] as 'libcascade' | 'replicad' | 'brepjs';
+const candidate = process.argv[2] as 'libcascade' | 'replicad' | 'brepjs' | 'custom';
 const WARM_RUNS = 10;
 const MEM_ITERS = Number(process.env.MEM_ITERS ?? 1000);
 
@@ -49,7 +49,7 @@ const warmMedian = Object.fromEntries(
 // --- memory: rebuild box → fillet → cut → mesh MEM_ITERS times with disposal.
 // biome-ignore lint/suspicious/noExplicitAny: per-candidate raw instance
 async function rawOc(): Promise<any> {
-  if (candidate === 'libcascade') return mod.instance();
+  if (candidate === 'libcascade' || candidate === 'custom') return mod.instance();
   if (candidate === 'replicad') return (await import('replicad')).getOC();
   return undefined;
 }
@@ -64,7 +64,7 @@ const topProbe = (): number | null => {
 };
 
 async function oneBuild(dispose: boolean) {
-  if (candidate === 'libcascade') {
+  if (candidate === 'libcascade' || candidate === 'custom') {
     const { Scope, buildPart } = await import('../candidates/raw-occt.ts');
     const s = new Scope();
     const { result } = buildPart(oc, s);

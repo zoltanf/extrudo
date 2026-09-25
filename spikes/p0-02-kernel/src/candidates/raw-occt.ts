@@ -366,7 +366,7 @@ export function buildPart(oc: OC, s: Scope) {
   return { box, fil, filleted, cyl, cut, result };
 }
 
-export function runRaw(oc: OC, candidate: 'libcascade' | 'replicad', layer: string): ScenarioResult {
+export function runRaw(oc: OC, candidate: 'libcascade' | 'replicad' | 'custom', layer: string): ScenarioResult {
   using s = new Scope();
   const lap = timer();
   const tStart = performance.now();

@@ -2,7 +2,7 @@
 // full disposal in a fresh process and reports WASM memory growth (memory only
 // grows when malloc runs out, so steady growth over thousands of iterations
 // means live allocations are piling up).
-// `[LIB=replicad] node src/node/leak-bisect.ts <step name> [iterations]`; no args lists steps.
+// `[LIB=replicad|custom] node src/node/leak-bisect.ts <step name> [iterations]`; no args lists steps.
 
 import { createInstance } from 'libcascade/single/init';
 import { buildPart, Scope } from '../candidates/raw-occt.ts';
@@ -10,11 +10,14 @@ import { buildPart, Scope } from '../candidates/raw-occt.ts';
 const which = process.argv[2];
 const N = Number(process.argv[3] ?? 2000);
 // LIB=replicad runs the same steps on replicad's trimmed build.
+// LIB=custom runs them on our trimmed build in custom-build/dist.
 const oc =
   process.env.LIB === 'replicad'
     ? // biome-ignore lint/suspicious/noExplicitAny: other build's types
       ((await (await import('replicad-opencascadejs')).default()) as any)
-    : await createInstance();
+    : process.env.LIB === 'custom'
+      ? await (await import('../../custom-build/dist/init.js')).createInstance()
+      : await createInstance();
 // biome-ignore lint/suspicious/noExplicitAny: loosely typed probe
 const o = oc as any;
 const heapMB = () => o.wasmMemory.buffer.byteLength / 1048576;
@@ -48,6 +51,22 @@ const steps: Record<string, Step> = {
   'MakeBox + Shape()': (s) => {
     const mk = s.t(new oc.BRepPrimAPI_MakeBox(40, 30, 20));
     s.t(mk.Shape());
+  },
+  'MakeBox + Build(), no Shape()': (s) => {
+    const mk = s.t(new oc.BRepPrimAPI_MakeBox(40, 30, 20));
+    mk.Build(s.t(new oc.Message_ProgressRange()));
+  },
+  'MakeBox + Shape() x3': (s) => {
+    const mk = s.t(new oc.BRepPrimAPI_MakeBox(40, 30, 20));
+    for (let i = 0; i < 3; i++) s.t(mk.Shape());
+  },
+  'MakeBox + Shape(), Nullify() before delete': (s) => {
+    const mk = s.t(new oc.BRepPrimAPI_MakeBox(40, 30, 20));
+    const sh = s.t(mk.Shape());
+    s.t({ delete: () => sh.Nullify() });
+  },
+  'Array1<gp_Pnt> of 100k': (s) => {
+    s.t(new oc.NCollection_Array1_gp_Pnt(1, 100_000));
   },
   'MakeBox, no Shape()': (s) => {
     s.t(new oc.BRepPrimAPI_MakeBox(40, 30, 20));

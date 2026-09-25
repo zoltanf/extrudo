@@ -9,8 +9,9 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-25):** P0-01 and P0-02 done. ADR-0001 chose raw
-`libcascade` in our own thin wrapper (`docs/adr/0001-geometry-kernel.md`).
+**Status (2026-09-25):** P0-01 and P0-02 done. ADR-0001 chose our own
+trimmed libcascade build with a small C++ facade that owns OCCT memory
+(`docs/adr/0001-geometry-kernel.md`).
 Next tasks, which can run in parallel: **P0-03** (solver spike), **P0-04**
 (design system and shell), **P0-06** (document model), **P0-08** (storage), and
 **P0-09** (production kernel package, now unblocked). See
@@ -57,8 +58,9 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   mutation from components.
 - **The kernel runs only in the worker.** The UI thread never calls OCCT.
 - **OCCT objects must be disposed of** (disposal scope / `using`). Leaks are bugs.
-  With libcascade, call `Clear()` before `delete()` on every `BRepAlgoAPI_*`
-  boolean, or it leaks (ADR-0001).
+  With libcascade, `delete()` from JS often doesn't free what the C++ object
+  owns, so heavy OCCT work goes through our C++ facade (ADR-0001). When using
+  raw bindings, call `Clear()` before `delete()` on every `BRepAlgoAPI_*`.
 - **Face and edge references use the topological-naming service**, never raw
   indices.
 - **Platform APIs** (files, storage, dialogs, slicer launch) go through
@@ -103,20 +105,26 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 - **Spikes** live in `spikes/<task>/` as standalone packages outside the
   workspace (`pnpm install --ignore-workspace`); Biome ignores `spikes/`.
   Node 26 runs their `.ts` files directly (type stripping), and `using` works.
-- **libcascade leaks through embind** (found in P0-02): `BRepAlgoAPI_Cut`
-  leaks about 130 KB per cut unless `Clear()` is called before `delete()`;
-  `BRepFilletAPI_MakeFillet` leaks 10–30 KB per fillet and `Reset()` doesn't
-  help. Reproduce with `spikes/p0-02-kernel/src/node/leak-bisect.ts`. The WASM
-  heap only grows once its initial slack (about 50 MB) is used up, so a leak
-  test needs ≥ 1000 iterations and a leak control that must fail. A
+- **libcascade's `delete()` often doesn't free C++-owned memory** (found in
+  P0-02): a 100k-point `NCollection_Array1` leaks its 2.4 MB buffer on every
+  delete; `BRepAlgoAPI_Cut` leaks unless `Clear()` is called first;
+  `BRepFilletAPI_MakeFillet` leaks and `Reset()` doesn't help. Reproduce with
+  `spikes/p0-02-kernel/src/node/leak-bisect.ts` (`LIB=custom` for the trimmed
+  build). The WASM heap only grows once its initial slack is used up (128 MB
+  for the prebuilt build, 23 MB for ours), so run leak tests on a small heap,
+  for ≥ 1000 iterations, with a leak control that must fail. A
   `malloc`-address probe was tried and is too noisy; `OSD_MemInfo` and
   embind's instance counters aren't exported.
 - **brepjs `*WithEvolution` returns empty maps unless the input faces carry
   metadata** (for example `tagFaces`): brepjs only sends face hashes to the
   kernel when there is something to propagate.
-- **Custom OCCT builds need Docker.** `@libcascade/toolchain` pulls a 2.4 GB
-  image. On this laptop the user can't reach `/var/run/docker.sock` yet (not in
-  the `docker` group); fixing that is the owner's call. `npx libcascade build
-  --render-only` and `npx libcascade check <src>` work without Docker.
+- **Custom OCCT builds need Docker** (2.4 GB image, about 10 minutes per
+  build). The user was added to the `docker` group on 2026-09-25; until the
+  next login, run Docker commands through `newgrp docker` (e.g.
+  `echo "npx libcascade build" | newgrp docker`). The daemon is
+  socket-activated. The binding list needs every base class and referenced
+  type (`custom-build/closure.mjs`); `libcascade check` doesn't catch those.
+  `MODULARIZE` + `EXPORT_ES6` and the three exception helpers in
+  `EXPORTED_RUNTIME_METHODS` are required.
 - OCCT's STEP writer prints a banner to stdout from inside WASM. Route
   Emscripten's `print` to a logger (or ignore it in tests).
