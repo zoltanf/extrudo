@@ -83,7 +83,8 @@ and scripting simple.
 │  │     ├─ sketch/        sketch mode UI + interactive tools (state machines)
 │  │     ├─ features/      one folder per feature: dialog UI + manipulators
 │  │     ├─ commands/      command registry, shortcuts, marking menu, palette
-│  │     ├─ design-system/ tokens, Radix wrappers, icon set
+│  │     ├─ design-system/ tokens, Radix wrappers, icon set (P0-04, ADR-0007)
+│  │     ├─ parameters/    <ExpressionInput>, Parameters dialog (P0-07)
 │  │     └─ platform/      web implementations of platform interfaces
 │  └─ desktop/             Electron shell (Phase 6): main, preload, fs adapter
 ├─ packages/
@@ -425,3 +426,7 @@ bundle-size budget. Every agent task must leave CI green.
   model parameters, cycle paths, rename-safe commands.
 - **ADR-0005** Topological naming strategy (§5.2).
 - **ADR-0006** Electron over Tauri for desktop.
+- **ADR-0007** Design system and app shell. **Written 2026-09-25** (P0-04):
+  tokens as CSS variables through Tailwind v4 `@theme inline`, Radix
+  wrappers, raw-SVG icon pipeline with a rules test, platform preferences,
+  one shortcut registry, screenshot tests checked in the Ubuntu image.

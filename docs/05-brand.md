@@ -161,9 +161,11 @@ Style, taken from direction B:
   browser tree). Hand-tune the 16 px versions.
 - Generic UI icons (save, undo, eye, settings, search, chevrons) come from
   **Lucide** at 1.75 px stroke in `ink` / `muted`.
-- Deliverable: SVG sources in `apps/web/src/design-system/icons/`, converted
-  to React components at build time. `currentColor` + CSS variable for the
-  category.
+- Deliverable: SVG sources in `apps/web/src/design-system/icons/svg/`,
+  inlined at build time and rendered by `<ToolIcon name category>`; no colours
+  in the files (strokes from CSS, class `f` marks the 22 % fill), and the
+  category colour arrives through `color: var(--x-cat-…)`. `icons.test.ts`
+  checks the rules (ADR-0007).
 
 Initial set, about 60 icons:
 

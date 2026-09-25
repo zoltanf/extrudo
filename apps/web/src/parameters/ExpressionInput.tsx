@@ -64,11 +64,8 @@ export function ExpressionInput({
       // Blurring commits.
       if (result.ok) event.currentTarget.blur();
     } else if (event.key === 'Escape') {
-      // Keep Esc for the field while it has a change; otherwise let the dialog close.
-      if (draft !== value) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
+      // With a change, Esc reverts the field; a dialog skips fields marked
+      // `data-keep-escape` (see Dialog). Without one, Esc closes the dialog.
       setDraft(value);
       setEditing(false);
     }
@@ -97,6 +94,7 @@ export function ExpressionInput({
           type="text"
           className="expr-text"
           value={draft}
+          data-keep-escape={draft !== value || undefined}
           spellCheck={false}
           autoComplete="off"
           aria-label={label}

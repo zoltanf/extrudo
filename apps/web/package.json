@@ -14,17 +14,23 @@
   "dependencies": {
     "@extrudo/core": "workspace:*",
     "@extrudo/kernel": "workspace:*",
+    "@fontsource/instrument-sans": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
     "@react-three/fiber": "^9.8.0",
+    "lucide-react": "^1.48.0",
+    "radix-ui": "^1.6.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "three": "^0.186.0",
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "tailwindcss": "^4.3.3",
     "vite": "^8.3.0"
   }
 }

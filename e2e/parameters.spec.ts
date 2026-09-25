@@ -1,8 +1,8 @@
 import { expect, type Page, test } from '@playwright/test';
 
-// P0-07: the Parameters dialog on the debug page. Values update live, unit
-// errors and cycles show inline and are never committed, and every change is
-// undoable (FR-PAR-01, -02, -04).
+// P0-07: the Parameters dialog, opened from the toolbar (P0-04). Values
+// update live, unit errors and cycles show inline and are never committed,
+// and every change is undoable (FR-PAR-01, -02, -04).
 
 const expression = (page: Page, name: string) =>
   page.getByRole('textbox', { name: `Expression of ${name}`, exact: true });
@@ -18,7 +18,8 @@ let errors: string[] = [];
 test.beforeEach(async ({ page }) => {
   errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
-  await page.goto('./#/debug/parameters');
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Parameters', exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'Parameters' })).toBeVisible();
 });
 
@@ -34,10 +35,11 @@ test('shows live values and updates dependents, with undo', async ({ page }) => 
   await expect(expression(page, 'inner')).toHaveAccessibleDescription('= 74.00 mm');
   await expect(expression(page, 'd1')).toHaveAccessibleDescription('= 18.50 mm');
 
-  await page.getByRole('button', { name: 'Undo' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Parameters' });
+  await dialog.getByRole('button', { name: 'Undo' }).click();
   await expect(expression(page, 'wall')).toHaveValue('2.4 mm');
   await expect(expression(page, 'inner')).toHaveAccessibleDescription('= 75.20 mm');
-  await page.getByRole('button', { name: 'Redo' }).click();
+  await dialog.getByRole('button', { name: 'Redo' }).click();
   await expect(expression(page, 'wall')).toHaveValue('3 mm');
 });
 
@@ -51,14 +53,18 @@ test('shows a unit error inline and never commits it', async ({ page }) => {
   await wall.press('Enter');
   await wall.press('Tab');
   await expect(expression(page, 'inner')).toHaveAccessibleDescription('= 75.20 mm');
-  await expect(page.getByRole('button', { name: 'Undo' })).toBeDisabled();
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Undo' })).toBeDisabled();
 
-  // Esc goes back to the committed expression and keeps the dialog open.
+  // Esc goes back to the committed expression and keeps the dialog open;
+  // a second Esc, with nothing to revert, closes it.
   await wall.focus();
   await wall.press('Escape');
   await expect(wall).toHaveValue('2.4 mm');
   await expect(wall).not.toHaveAttribute('aria-invalid');
-  await expect(page.getByRole('dialog', { name: 'Parameters' })).toBeVisible();
+  const dialog = page.getByRole('dialog', { name: 'Parameters' });
+  await expect(dialog).toBeVisible();
+  await wall.press('Escape');
+  await expect(dialog).toBeHidden();
 });
 
 test('reports a circular reference with its path', async ({ page }) => {
@@ -93,10 +99,10 @@ test('adds, renames and deletes parameters', async ({ page }) => {
   // A parameter in use can't be deleted; an unused one can.
   await page.getByRole('button', { name: 'Delete thickness' }).click();
   await expect(page.getByRole('alert')).toHaveText(
-    'thickness is used by inner. Change that first.',
+    'thickness is used by inner, Extrude2 and Fillet1. Change those first.',
   );
   await page.getByRole('button', { name: 'Delete lid' }).click();
   await expect(expression(page, 'lid')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Undo' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Undo' }).click();
   await expect(expression(page, 'lid')).toHaveCount(1);
 });

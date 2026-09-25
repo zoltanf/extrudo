@@ -1,0 +1,91 @@
+/*
+ * Tailwind v4 set-up: the brand tokens become utilities (`bg-panel`,
+ * `text-muted`, `border-line`, `text-cat-create`, `rounded-dialog`…).
+ * `inline` keeps them as var() references, so switching `data-theme` is enough.
+ */
+@import "tailwindcss";
+@import "./tokens.css";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+@theme inline {
+  --color-*: initial;
+  --color-bg: var(--x-bg);
+  --color-panel: var(--x-panel);
+  --color-raised: var(--x-raised);
+  --color-line: var(--x-line);
+  --color-ink: var(--x-ink);
+  --color-muted: var(--x-muted);
+  --color-accent: var(--x-accent);
+  --color-on-accent: var(--x-on-accent);
+  --color-accent-soft: var(--x-accent-soft);
+  --color-sketch: var(--x-sketch);
+  --color-success: var(--x-success);
+  --color-warning: var(--x-warning);
+  --color-error: var(--x-error);
+  --color-cat-sketch: var(--x-cat-sketch);
+  --color-cat-create: var(--x-cat-create);
+  --color-cat-modify: var(--x-cat-modify);
+  --color-cat-construct: var(--x-cat-construct);
+  --color-cat-inspect: var(--x-cat-inspect);
+  --color-cat-insert: var(--x-cat-insert);
+  --color-cat-export: var(--x-cat-export);
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  --font-sans: var(--x-font-ui);
+  --font-mono: var(--x-font-mono);
+
+  /* 13 px base UI · 11.5 small · 10.5 labels · 15 / 18 / 24 headings */
+  --text-xs: 10.5px;
+  --text-sm: 11.5px;
+  --text-base: 13px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 24px;
+  --text-field: 12px;
+
+  --radius-input: 6px;
+  --radius-control: 8px;
+  --radius-dialog: 12px;
+  --radius-card: 16px;
+
+  --shadow-raised: var(--x-shadow-raised);
+  --ease-ui: var(--x-ease);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--x-bg);
+    color: var(--x-ink);
+    font-family: var(--x-font-ui);
+    font-size: 13px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--x-accent);
+    outline-offset: 1px;
+  }
+}
+
+/* Tool icons: stroke and 22 % fill in the category colour (§6). */
+.x-tool-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.x-tool-icon .f {
+  fill: currentColor;
+  fill-opacity: 0.22;
+}

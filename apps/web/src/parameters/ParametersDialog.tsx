@@ -15,8 +15,11 @@ import {
   updateFeatureInputs,
   updateParameter,
 } from '@extrudo/core';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Redo2, Trash2, Undo2, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
+import { shortcutLabel } from '../commands/shortcuts';
+import { Button, Dialog, DialogClose, IconButton, Select, TextInput } from '../design-system';
 import { ExpressionInput } from './ExpressionInput';
 import { Message } from './Message';
 
@@ -29,29 +32,22 @@ const UNIT_LABELS: Record<UnitKind, string> = {
 export interface ParametersDialogProps {
   store: DocumentStore;
   open: boolean;
-  onClose(): void;
+  onOpenChange(open: boolean): void;
 }
+
+const th = 'px-1.5 pb-1 text-left text-sm font-medium text-muted';
+const td = 'px-1.5 py-1 align-top';
 
 /**
  * The Parameters dialog (P0-07, FR-PAR-01): user parameters (add, edit,
  * delete, comment) and the model parameters of features, each with its live
  * value and inline errors. Every change is one command, so undoable.
- *
- * Uses a native `<dialog>`; P0-04 moves it onto the design system's dialog.
  */
-export function ParametersDialog({ store, open, onClose }: ParametersDialogProps) {
-  const dialog = useRef<HTMLDialogElement>(null);
+export function ParametersDialog({ store, open, onOpenChange }: ParametersDialogProps) {
   const doc = useStore(store, (s) => s.doc);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
   const [message, setMessage] = useState('');
-
-  useEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    if (open && !element.open) element.showModal();
-    if (!open && element.open) element.close();
-  }, [open]);
 
   /** Dispatches a command; a rejected one shows its message instead of throwing. */
   const run = (command: Command<unknown>): boolean => {
@@ -72,197 +68,208 @@ export function ParametersDialog({ store, open, onClose }: ParametersDialogProps
   const featureName = (id: FeatureId) => doc.features.find((f) => f.id === id)?.name ?? '';
 
   return (
-    <dialog
-      ref={dialog}
-      className="parameters-dialog"
-      aria-labelledby="parameters-title"
-      onClose={onClose}
-    >
-      <header>
-        <h2 id="parameters-title">Parameters</h2>
-        <div className="actions">
-          <button
-            type="button"
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) setMessage('');
+        onOpenChange(next);
+      }}
+      title="Parameters"
+      description="Named values that drive the model. Every change can be undone."
+      actions={
+        <>
+          <IconButton
+            label="Undo"
+            shortcut={shortcutLabel('Mod+Z')}
+            hint={undoLabel ? `Undo “${undoLabel}”.` : 'Nothing to undo.'}
             disabled={!canUndo}
             onClick={undo}
-            title={undoLabel && `Undo ${undoLabel}`}
           >
-            Undo
-          </button>
-          <button
-            type="button"
+            <Undo2 size={18} strokeWidth={1.75} />
+          </IconButton>
+          <IconButton
+            label="Redo"
+            shortcut={shortcutLabel('Mod+Y')}
+            hint={redoLabel ? `Redo “${redoLabel}”.` : 'Nothing to redo.'}
             disabled={!canRedo}
             onClick={redo}
-            title={redoLabel && `Redo ${redoLabel}`}
           >
-            Redo
-          </button>
-          <button type="button" onClick={() => dialog.current?.close()}>
-            Close
-          </button>
-        </div>
-      </header>
-
-      <p className="command-message" role="alert">
+            <Redo2 size={18} strokeWidth={1.75} />
+          </IconButton>
+          <DialogClose asChild>
+            <IconButton label="Close">
+              <X size={18} strokeWidth={1.75} />
+            </IconButton>
+          </DialogClose>
+        </>
+      }
+    >
+      <p className="mb-2 min-h-5 text-sm text-error" role="alert">
         <Message text={message} />
       </p>
 
-      <table>
-        <caption>User parameters</caption>
-        <thead>
-          <tr>
-            <th scope="col" className="col-name">
-              Name
-            </th>
-            <th scope="col" className="col-unit">
-              Unit
-            </th>
-            <th scope="col">Expression and value</th>
-            <th scope="col" className="col-comment">
-              Comment
-            </th>
-            <th scope="col" className="col-actions">
-              <span className="visually-hidden">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {user.map(({ p, id }) => {
-            const comment = doc.parameters.find((q) => q.id === id)?.comment ?? '';
-            return (
-              <tr key={id}>
-                <td>
-                  <TextField
-                    label={`Name of ${p.name}`}
-                    value={p.name}
-                    className="name"
-                    onCommit={(name) => run(updateParameter({ id, changes: { name } }))}
-                  />
-                </td>
-                <td>
-                  <select
-                    aria-label={`Unit of ${p.name}`}
-                    value={p.unit}
-                    onChange={(e) =>
-                      run(updateParameter({ id, changes: { unit: e.target.value as UnitKind } }))
-                    }
-                  >
-                    {Object.entries(UNIT_LABELS).map(([kind, text]) => (
-                      <option key={kind} value={kind}>
-                        {text}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <ExpressionInput
-                    label={`Expression of ${p.name}`}
-                    value={p.expression}
-                    evaluate={(expression) =>
-                      evaluateDraft(doc, p.name, (d) => ({
-                        ...d,
-                        parameters: d.parameters.map((q) =>
-                          q.id === id ? { ...q, expression } : q,
-                        ),
-                      }))
-                    }
-                    format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
-                    onCommit={(expression) => run(updateParameter({ id, changes: { expression } }))}
-                  />
-                </td>
-                <td>
-                  <TextField
-                    label={`Comment on ${p.name}`}
-                    value={comment}
-                    onCommit={(text) =>
-                      run(updateParameter({ id, changes: { comment: text || undefined } }))
-                    }
-                  />
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="delete"
-                    aria-label={`Delete ${p.name}`}
-                    onClick={() => run(removeParameter({ id }))}
-                  >
-                    ✕
-                  </button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-        <tfoot>
-          <AddParameterRow doc={doc} onAdd={run} />
-        </tfoot>
-      </table>
-
-      {model.length > 0 && (
-        <table>
-          <caption>Model parameters</caption>
+      <div className="overflow-x-auto">
+        <table className="mb-5 w-full min-w-[640px] table-fixed border-collapse">
+          <caption className="pb-1.5 text-left font-semibold">User parameters</caption>
           <thead>
             <tr>
-              <th scope="col" className="col-name">
+              <th scope="col" className={`${th} w-36`}>
                 Name
               </th>
-              <th scope="col" className="col-unit">
-                Feature
+              <th scope="col" className={`${th} w-32`}>
+                Unit
               </th>
-              <th scope="col">Expression and value</th>
+              <th scope="col" className={th}>
+                Expression and value
+              </th>
+              <th scope="col" className={`${th} w-[28%]`}>
+                Comment
+              </th>
+              <th scope="col" className={`${th} w-16`}>
+                <span className="sr-only">Actions</span>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {model.map(({ p, featureId, input }) => {
+            {user.map(({ p, id }) => {
+              const comment = doc.parameters.find((q) => q.id === id)?.comment ?? '';
               return (
-                <tr key={p.name}>
-                  <td className="name">{p.name}</td>
-                  <td>{featureName(featureId)}</td>
-                  <td>
+                <tr key={id}>
+                  <td className={td}>
+                    <TextField
+                      label={`Name of ${p.name}`}
+                      value={p.name}
+                      className="font-mono text-field"
+                      onCommit={(name) => run(updateParameter({ id, changes: { name } }))}
+                    />
+                  </td>
+                  <td className={td}>
+                    <Select
+                      aria-label={`Unit of ${p.name}`}
+                      value={p.unit}
+                      onChange={(e) =>
+                        run(updateParameter({ id, changes: { unit: e.target.value as UnitKind } }))
+                      }
+                    >
+                      {Object.entries(UNIT_LABELS).map(([kind, text]) => (
+                        <option key={kind} value={kind}>
+                          {text}
+                        </option>
+                      ))}
+                    </Select>
+                  </td>
+                  <td className={td}>
                     <ExpressionInput
                       label={`Expression of ${p.name}`}
                       value={p.expression}
                       evaluate={(expression) =>
                         evaluateDraft(doc, p.name, (d) => ({
                           ...d,
-                          features: d.features.map((f) =>
-                            f.id === featureId
-                              ? {
-                                  ...f,
-                                  inputs: {
-                                    ...f.inputs,
-                                    [input]: {
-                                      kind: 'expr',
-                                      expr: expression,
-                                      paramName: p.name,
-                                      unit: p.unit,
-                                    },
-                                  },
-                                }
-                              : f,
+                          parameters: d.parameters.map((q) =>
+                            q.id === id ? { ...q, expression } : q,
                           ),
                         }))
                       }
                       format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
-                      onCommit={(expr) =>
-                        run(
-                          updateFeatureInputs({
-                            id: featureId,
-                            inputs: {
-                              [input]: { kind: 'expr', expr, paramName: p.name, unit: p.unit },
-                            },
-                          }),
-                        )
+                      onCommit={(expression) =>
+                        run(updateParameter({ id, changes: { expression } }))
                       }
                     />
+                  </td>
+                  <td className={td}>
+                    <TextField
+                      label={`Comment on ${p.name}`}
+                      value={comment}
+                      onCommit={(text) =>
+                        run(updateParameter({ id, changes: { comment: text || undefined } }))
+                      }
+                    />
+                  </td>
+                  <td className={td}>
+                    <IconButton
+                      label={`Delete ${p.name}`}
+                      onClick={() => run(removeParameter({ id }))}
+                    >
+                      <Trash2 size={16} strokeWidth={1.75} />
+                    </IconButton>
                   </td>
                 </tr>
               );
             })}
           </tbody>
+          <tfoot>
+            <AddParameterRow doc={doc} onAdd={run} />
+          </tfoot>
         </table>
-      )}
-    </dialog>
+
+        {model.length > 0 && (
+          <table className="w-full min-w-[640px] table-fixed border-collapse">
+            <caption className="pb-1.5 text-left font-semibold">Model parameters</caption>
+            <thead>
+              <tr>
+                <th scope="col" className={`${th} w-36`}>
+                  Name
+                </th>
+                <th scope="col" className={`${th} w-32`}>
+                  Feature
+                </th>
+                <th scope="col" className={th}>
+                  Expression and value
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {model.map(({ p, featureId, input }) => {
+                return (
+                  <tr key={p.name}>
+                    <td className={`${td} pt-2.5 font-mono text-field`}>{p.name}</td>
+                    <td className={`${td} pt-2.5`}>{featureName(featureId)}</td>
+                    <td className={td}>
+                      <ExpressionInput
+                        label={`Expression of ${p.name}`}
+                        value={p.expression}
+                        evaluate={(expression) =>
+                          evaluateDraft(doc, p.name, (d) => ({
+                            ...d,
+                            features: d.features.map((f) =>
+                              f.id === featureId
+                                ? {
+                                    ...f,
+                                    inputs: {
+                                      ...f.inputs,
+                                      [input]: {
+                                        kind: 'expr',
+                                        expr: expression,
+                                        paramName: p.name,
+                                        unit: p.unit,
+                                      },
+                                    },
+                                  }
+                                : f,
+                            ),
+                          }))
+                        }
+                        format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
+                        onCommit={(expr) =>
+                          run(
+                            updateFeatureInputs({
+                              id: featureId,
+                              inputs: {
+                                [input]: { kind: 'expr', expr, paramName: p.name, unit: p.unit },
+                              },
+                            }),
+                          )
+                        }
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </Dialog>
   );
 }
 
@@ -317,19 +324,18 @@ function AddParameterRow({
   };
 
   return (
-    <tr className="add-row">
-      <td>
-        <input
-          type="text"
+    <tr>
+      <td className={td}>
+        <TextInput
           aria-label="New parameter name"
           placeholder="name"
-          className="name"
+          className="font-mono text-field"
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
       </td>
-      <td>
-        <select
+      <td className={td}>
+        <Select
           aria-label="New parameter unit"
           value={unit}
           onChange={(e) => setUnit(e.target.value as UnitKind)}
@@ -339,9 +345,9 @@ function AddParameterRow({
               {text}
             </option>
           ))}
-        </select>
+        </Select>
       </td>
-      <td>
+      <td className={td}>
         <ExpressionInput
           label="New parameter expression"
           placeholder="e.g. 10 mm"
@@ -356,19 +362,18 @@ function AddParameterRow({
           key={resets}
         />
       </td>
-      <td>
-        <input
-          type="text"
+      <td className={td}>
+        <TextInput
           aria-label="New parameter comment"
           placeholder="comment"
           value={comment}
           onChange={(e) => setComment(e.target.value)}
         />
       </td>
-      <td>
-        <button type="button" disabled={!name.trim() || !valid} onClick={add}>
+      <td className={td}>
+        <Button variant="primary" disabled={!name.trim() || !valid} onClick={add}>
           Add
-        </button>
+        </Button>
       </td>
     </tr>
   );
@@ -392,19 +397,16 @@ function TextField({
     if (draft !== value && !onCommit(draft)) setDraft(value);
   };
   return (
-    <input
-      type="text"
+    <TextInput
       aria-label={label}
       className={className}
       value={draft}
+      data-keep-escape={draft !== value || undefined}
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter') e.currentTarget.blur();
-        if (e.key === 'Escape' && draft !== value) {
-          e.preventDefault();
-          setDraft(value);
-        }
+        if (e.key === 'Escape' && draft !== value) setDraft(value);
       }}
     />
   );

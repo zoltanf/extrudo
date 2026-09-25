@@ -9,6 +9,12 @@ const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH;
 
 export default defineConfig({
   testDir: 'e2e',
+  expect: {
+    // Text antialiasing differs slightly between Linux distributions (Arch
+    // locally, Ubuntu in CI): about a dozen pixels over the colour threshold
+    // per full-page shot. 0.1 % still catches any layout change.
+    toHaveScreenshot: { maxDiffPixelRatio: 0.001 },
+  },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

@@ -55,7 +55,7 @@ in the browser.
   component, drag through temporary constraints on sketch parameters. The
   rectangle and a 500-entity sketch drag at 60 fps; one coupled component of 200
   entities doesn't (12 fps). See `docs/adr/0002-sketch-solver.md`.
-- [ ] **P0-04 Design system and app shell.** Theme tokens (from
+- [x] **P0-04 Design system and app shell.** *(done 2026-09-25, ADR-0007)* Theme tokens (from
   `docs/05-brand.md`: Slate dark default + light), typography, Radix wrappers (button, menu, dialog, tooltip, popover, input),
   and the icon pipeline (SVG → React components, colour per category). A static
   layout matching `04-ui-spec.md §2` with placeholder content.

@@ -1,0 +1,101 @@
+/*
+ * Design tokens (docs/05-brand.md §3–5). Names map 1:1 to the brand doc:
+ * `bg` → `--x-bg`. The theme is `data-theme="dark" | "light"` on <html>;
+ * dark (Slate) is the default. `theme.ts` resolves "system".
+ */
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* 3.1 Surfaces and text */
+  --x-bg: #1b1f27;
+  --x-panel: #20252f;
+  --x-raised: #282e3a;
+  --x-line: #343b4a;
+  --x-ink: #e9edf3;
+  --x-muted: #939cad;
+  --x-viewport-glow: radial-gradient(90% 80% at 45% 42%, #46557a 0%, #29313f 50%, #15181f 100%);
+  --x-grid: rgb(255 255 255 / 5%);
+
+  /* 3.2 Accent and meaning */
+  --x-accent: #ffb23e;
+  --x-on-accent: #15171c;
+  --x-accent-soft: rgb(255 178 62 / 16%);
+  --x-sketch: #5aa9ff;
+  --x-success: #3dd68c;
+  --x-warning: #f2c14e;
+  --x-error: #ff6b6b;
+
+  /* 3.3 Tool categories */
+  --x-cat-sketch: #7c9bff;
+  --x-cat-create: #3dd6a3;
+  --x-cat-modify: #ff8a78;
+  --x-cat-construct: #a590ff;
+  --x-cat-inspect: #3cc7d4;
+  --x-cat-insert: #ff7eb6;
+  --x-cat-export: #ffc93c;
+
+  /* 2 Logo (extrudo-mark-dark.svg) */
+  --x-logo-top: #ffc76a;
+  --x-logo-side: #e0922a;
+  --x-logo-sketch: #5aa9ff;
+  --x-logo-sketch-fill: rgb(90 169 255 / 16%);
+
+  /* 5 Depth */
+  --x-shadow-raised: 0 14px 30px -16px rgb(0 0 0 / 60%);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --x-bg: #ffffff;
+  --x-panel: #f3f5f9;
+  --x-raised: #ffffff;
+  --x-line: #e0e4ec;
+  --x-ink: #111318;
+  --x-muted: #5b6375;
+  --x-viewport-glow: radial-gradient(90% 80% at 45% 42%, #ffffff 0%, #eef1f5 52%, #dce1e9 100%);
+  --x-grid: rgb(17 19 24 / 6%);
+
+  --x-accent: #e08a1e;
+  --x-on-accent: #15171c;
+  --x-accent-soft: rgb(224 138 30 / 14%);
+  --x-sketch: #2f86f0;
+  --x-success: #1b9e5e;
+  --x-warning: #b7791f;
+  --x-error: #d93d3d;
+
+  --x-cat-sketch: #2451ff;
+  --x-cat-create: #12a879;
+  --x-cat-modify: #ff6f59;
+  --x-cat-construct: #7c5cff;
+  --x-cat-inspect: #0f9dab;
+  --x-cat-insert: #e0457f;
+  --x-cat-export: #e59a00;
+
+  --x-logo-top: #ffbe55;
+  --x-logo-side: #d9861f;
+  --x-logo-sketch: #2f86f0;
+  --x-logo-sketch-fill: rgb(47 134 240 / 14%);
+
+  --x-shadow-raised: 0 10px 24px -14px rgb(17 19 24 / 25%);
+}
+
+:root {
+  /* 4 Typography */
+  --x-font-ui: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --x-font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  /* 5 Motion */
+  --x-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --x-fast: 120ms;
+  --x-normal: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --x-fast: 0ms;
+    --x-normal: 0ms;
+  }
+}

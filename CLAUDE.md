@@ -9,7 +9,7 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-25):** P0-01, P0-02, P0-03, P0-06, P0-07 and P0-09 done. ADR-0001 chose
+**Status (2026-09-25):** P0-01, P0-02, P0-03, P0-04, P0-06, P0-07 and P0-09 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -21,10 +21,12 @@ commands with Immer patches, nested undo transactions, vanilla Zustand stores.
 ADR-0004 (P0-07) set the expression language: Pratt parser in
 `packages/core/src/expr/`, length/angle dimensions, plain numbers take the
 context unit, parameter graph with cycle paths; `<ExpressionInput>` and the
-Parameters dialog live in `apps/web/src/parameters/` (debug page
-`#/debug/parameters` until the shell exists).
-Next tasks, which can run in parallel: **P0-04** (design system and shell) and
-**P0-08** (storage). See `docs/03-roadmap.md`.
+Parameters dialog live in `apps/web/src/parameters/`. ADR-0007 (P0-04) set the
+design system (`apps/web/src/design-system/`: tokens → Tailwind v4, Radix
+wrappers, icon pipeline) and the shell (`apps/web/src/shell/`), which opens a
+sample document in memory until storage exists.
+Next tasks, which can run in parallel: **P0-05** (viewport) and **P0-08**
+(storage). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -52,7 +54,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -151,6 +153,18 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   `NCollection_*`), `Standard_False`, and `Standard_Failure::GetMessageString`
   (use `what()`); `DynamicType()` isn't available on `Standard_Failure`.
   `mallinfo()` doesn't link, so the memory probe is `sbrk(0)` (`heapTop()`).
+- **Screenshot baselines** (`e2e/*-snapshots/`) are made locally and must
+  pass in the Playwright Ubuntu image, which renders like CI. Check with
+  `echo "docker run --rm --ipc=host -e CI=1 -v $PWD:/work -w /work --user
+  $(id -u):$(id -g) -e HOME=/tmp mcr.microsoft.com/playwright:v1.63.0-noble
+  node node_modules/@playwright/test/cli.js test e2e/shell.spec.ts" | newgrp
+  docker` (after `pnpm build`). Arch and Ubuntu differ by about 12 pixels per
+  shot; the tolerance is 0.1 %.
+- Biome needs `css.parser.tailwindDirectives` for Tailwind's `@theme` and
+  `@custom-variant`, and the icon sources are exempt from
+  `noSvgWithoutTitle` (they are decorative; controls carry the label).
+- E2E specs typecheck without the DOM library: pass browser-side code to
+  `page.evaluate` as a string (`'document.fonts.ready.then(() => true)'`).
 - **Vite's watcher can miss a second edit to a file made within about a
   second of the first** (seen with two scripted edits in a row): the dev
   server keeps serving the old transform. `touch` the file, then reload.

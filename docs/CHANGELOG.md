@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-25 · **P0-04** Design system and app shell: brand tokens as CSS
+  variables (Slate dark default, light) mapped into Tailwind v4, bundled
+  Instrument Sans and JetBrains Mono, Radix wrappers (button, icon button with
+  tooltip, menu, dialog, popover, inputs), two-tone icon pipeline (17 SVGs,
+  rules test), platform preferences, shortcut registry, and the shell: app
+  bar, toolbar tabs and groups, resizable and collapsible browser, viewport
+  placeholder, timeline with working playback. Parameters dialog moved into
+  the shell. Screenshot tests in both themes. ADR-0007.
 - 2026-09-25 · **P0-07** Expressions and parameters: Pratt parser with
   source spans, length/angle dimensional analysis (mm and degrees; plain
   numbers take the context unit), the FR-PAR-02 functions, parameter graph

@@ -1,13 +1,12 @@
-import { FILE_EXTENSION, FORMAT_VERSION } from '@extrudo/core';
-import { lazy, Suspense, useSyncExternalStore } from 'react';
-import { LogoMark } from './Logo';
+import { createDocumentStore } from '@extrudo/core';
+import { lazy, Suspense, useMemo, useSyncExternalStore } from 'react';
+import type { Platform } from './platform';
+import { AppShell } from './shell/AppShell';
+import { sampleDocument } from './shell/sample-document';
 
-// Loaded on demand so the hello page doesn't pull in three.js.
+// Loaded on demand so the shell doesn't pull in three.js.
 const KernelDebug = lazy(() =>
   import('./debug/KernelDebug').then((m) => ({ default: m.KernelDebug })),
-);
-const ParametersDebug = lazy(() =>
-  import('./parameters/ParametersDebug').then((m) => ({ default: m.ParametersDebug })),
 );
 
 const subscribeToHash = (onChange: () => void) => {
@@ -15,9 +14,11 @@ const subscribeToHash = (onChange: () => void) => {
   return () => window.removeEventListener('hashchange', onChange);
 };
 
-/** Placeholder page for P0-01. P0-04 replaces it with the real app shell. */
-export function App() {
+/** Hash routes (Electron-safe, architecture §8): the shell, and debug pages. */
+export function App({ platform }: { platform: Platform }) {
   const hash = useSyncExternalStore(subscribeToHash, () => window.location.hash);
+  // Until project storage (P0-08), the shell opens a sample document in memory.
+  const store = useMemo(() => createDocumentStore(sampleDocument()), []);
   if (hash === '#/debug/kernel') {
     return (
       <Suspense fallback={null}>
@@ -25,23 +26,5 @@ export function App() {
       </Suspense>
     );
   }
-  if (hash === '#/debug/parameters') {
-    return (
-      <Suspense fallback={null}>
-        <ParametersDebug />
-      </Suspense>
-    );
-  }
-  return (
-    <main className="hello">
-      <div className="lockup">
-        <LogoMark size={88} />
-        <h1 className="wordmark">extrudo</h1>
-      </div>
-      <p className="tagline">Parametric CAD for 3D printing, in your browser.</p>
-      <p className="status">
-        Phase 0 · toolchain ready · file format <code>{FILE_EXTENSION}</code> v{FORMAT_VERSION}
-      </p>
-    </main>
-  );
+  return <AppShell store={store} platform={platform} />;
 }
