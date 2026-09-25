@@ -166,8 +166,20 @@ function Scene({
     })),
   );
   const invalidate = useThree((s) => s.invalidate);
+  const get = useThree((s) => s.get);
   // Uniforms change during render, which R3F doesn't see: ask for a frame after every render.
   useEffect(() => invalidate());
+
+  useEffect(() => {
+    viewport.getState().setSnapshot(() => {
+      const { gl, scene, camera } = get();
+      // Draw now: without preserveDrawingBuffer the canvas is only readable
+      // in the task that rendered it.
+      gl.render(scene, camera);
+      return thumbnailOf(gl.domElement);
+    });
+    return () => viewport.getState().setSnapshot(undefined);
+  }, [viewport, get]);
 
   const first = useRef(true);
   useFrame(() => {
@@ -208,6 +220,27 @@ function Scene({
       />
     </>
   );
+}
+
+/** Thumbnail size in px (docs/02-architecture.md §6.2). */
+export const THUMBNAIL_SIZE = 256;
+
+/**
+ * A square PNG of the canvas, cropped to its centre. The background stays
+ * transparent: the home screen draws the viewport glow behind it, so the
+ * thumbnail suits both themes.
+ */
+function thumbnailOf(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  const out = document.createElement('canvas');
+  out.width = THUMBNAIL_SIZE;
+  out.height = THUMBNAIL_SIZE;
+  const ctx = out.getContext('2d');
+  if (!ctx || canvas.width === 0 || canvas.height === 0) return Promise.resolve(null);
+  const side = Math.min(canvas.width, canvas.height);
+  const sx = (canvas.width - side) / 2;
+  const sy = (canvas.height - side) / 2;
+  ctx.drawImage(canvas, sx, sy, side, side, 0, 0, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+  return new Promise((resolve) => out.toBlob(resolve, 'image/png'));
 }
 
 /** A key light that follows the camera, from above and to the left, so side faces read darker. */

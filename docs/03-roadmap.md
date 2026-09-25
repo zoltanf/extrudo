@@ -76,7 +76,7 @@ in the browser.
   inline). Reusable `<ExpressionInput>` component.
   *AC:* FR-PAR-01 (user params), -02, -04; 100+ parser unit tests including
   unit errors (`10 mm + 5 deg` → error).
-- [ ] **P0-08 Project storage.** `ProjectStore` interface; OPFS + IndexedDB
+- [x] **P0-08 Project storage.** *(done 2026-09-25, ADR-0009)* `ProjectStore` interface; OPFS + IndexedDB
   implementation; `.extrudo` zip read/write; home screen (grid, new, open,
   rename, duplicate, trash); autosave with status indicator; persistent-storage
   request.

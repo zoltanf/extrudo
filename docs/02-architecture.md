@@ -87,6 +87,8 @@ and scripting simple.
 │  │     ├─ commands/      command registry, shortcuts, marking menu, palette
 │  │     ├─ design-system/ tokens, Radix wrappers, icon set (P0-04, ADR-0007)
 │  │     ├─ parameters/    <ExpressionInput>, Parameters dialog (P0-07)
+│  │     ├─ home/          home screen: project grid, templates, trash (P0-08)
+│  │     ├─ project/       project page, autosave, templates (P0-08)
 │  │     └─ platform/      web implementations of platform interfaces
 │  └─ desktop/             Electron shell (Phase 6): main, preload, fs adapter
 ├─ packages/
@@ -334,22 +336,28 @@ and remove a sketch edge, then assert the fillet still sits on the "same" edges.
 
 ### 6.1 ProjectStore interface
 
+As built in P0-08 (ADR-0009, `packages/storage`); a project is identified by
+its document's ID:
+
 ```ts
 interface ProjectStore {
-  list(): Promise<ProjectSummary[]>;
-  load(id): Promise<ExtrudoDocument>;
-  save(doc, opts?: { asVersion?: string }): Promise<void>;
-  versions(id): Promise<VersionInfo[]>; loadVersion(id, v): Promise<ExtrudoDocument>;
-  rename/duplicate/trash/restore/purge(id): Promise<void>;
+  list(): Promise<ProjectSummary[]>;          // trashed ones too, newest first
+  get(id): Promise<ProjectSummary | undefined>;
+  load(id): Promise<ExtrudoDocument>;         // migrated and validated
+  save(doc): Promise<ProjectSummary>;         // stamps meta.modified on the stored copy
+  rename/duplicate(id); trash/restore/purge(id);
   thumbnail(id): Promise<Blob | null>; setThumbnail(id, png): Promise<void>;
-  exportFile(id): Promise<Blob>;          // .extrudo
-  importFile(blob): Promise<ProjectId>;
+  exportFile(id): Promise<Blob>;              // .extrudo
+  importFile(blob): Promise<ProjectSummary>;  // a copy if the ID exists
 }
+// P2-14 adds save(doc, { asVersion }), versions(id), loadVersion(id, v).
 ```
 
-- **Web:** IndexedDB holds the project index and version list. OPFS holds
-  `projects/<id>/current.json`, `versions/<n>.json.gz`, `thumb.png` and
-  attachments. Writes are atomic (write temp, then rename) where OPFS allows.
+- **Web:** IndexedDB (`extrudo`) holds the project index. OPFS holds
+  `projects/<id>/document.json` and `thumbnail.png` (later `versions/` and
+  attachments); where OPFS can't write files, an IndexedDB `files` store
+  does. `createWritable` replaces a file atomically on `close()`. The
+  document is written before the index entry.
 - **Desktop (Phase 6):** the same interface over Node `fs` through Electron IPC.
   Projects are plain `.extrudo` files in a user folder, with recent-files and
   file associations.
@@ -388,7 +396,8 @@ it.
 
 - No direct `window.showSaveFilePicker`, `localStorage` or `fetch` to our own
   origin from feature code. Go through `platform/` interfaces
-  (`FileDialogs`, `ProjectStore`, `SlicerLauncher`, `Clipboard`).
+  (`FileDialogs`, `ProjectStore`, `SlicerLauncher`, `Clipboard`). As of
+  P0-08: `Platform.preferences`, `.projects`, `.storage`, `.files`.
 - No reliance on URL routing that needs a server. Use hash routing or in-app
   state.
 - Asset URLs are relative (Vite `base: './'`).
@@ -436,3 +445,7 @@ bundle-size budget. Every agent task must leave CI green.
   (P0-05): Z-up world, our own camera controller (target + quaternion +
   size, both projections), mouse presets as tables, shader grid, CSS 3D
   ViewCube, viewport store in the web app with settings as preferences.
+- **ADR-0009** Project storage, autosave and the home screen. **Written
+  2026-09-25** (P0-08): `ProjectStore` over an IndexedDB index and OPFS
+  files, `.extrudo` zip through core's migrations, autosave with a save
+  state, thumbnails from the viewport, hash routes, home screen.

@@ -87,6 +87,8 @@ export interface ViewportState extends ViewportSettings {
   bounds: Bounds | undefined;
   /** The nav-bar tool that turns a left-drag into orbit, pan or zoom. */
   tool: NavAction | undefined;
+  /** Renders the view to a thumbnail PNG; set while the canvas is mounted. */
+  snapshot: (() => Promise<Blob | null>) | undefined;
 
   /** Moves the camera at once (drags, wheel) and stops any animation. */
   setView(view: View): void;
@@ -107,6 +109,7 @@ export interface ViewportState extends ViewportSettings {
   setGrid(grid: boolean): void;
   setPreset(preset: NavPreset): void;
   setOrigin(item: OriginItem, visible: boolean): void;
+  setSnapshot(snapshot: (() => Promise<Blob | null>) | undefined): void;
 }
 
 export type ViewportStore = StoreApi<ViewportState>;
@@ -151,6 +154,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       aspect: 1,
       bounds: undefined,
       tool: undefined,
+      snapshot: undefined,
 
       setView(view) {
         set({ view, transition: undefined });
@@ -203,6 +207,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       },
       setOrigin(item, visible) {
         set({ origin: { ...get().origin, [item]: visible } });
+      },
+      setSnapshot(snapshot) {
+        set({ snapshot });
       },
     };
   });

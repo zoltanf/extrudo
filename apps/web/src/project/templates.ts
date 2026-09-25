@@ -9,13 +9,34 @@ import {
   type ParameterId,
   type UnitKind,
 } from '@extrudo/core';
+import { APP_VERSION } from '../version';
+
+export interface Template {
+  id: string;
+  name: string;
+  summary: string;
+  create(): ExtrudoDocument;
+}
 
 /**
- * The document the shell opens with until project storage (P0-08) exists: a
- * small wall bracket with parameters, a timeline and one body. The features
- * have no geometry yet; they fill the timeline and the Parameters dialog.
+ * Templates on the home screen's "Start from template" row (UI spec §6). The
+ * gallery grows with P3-12; for now there is the wall bracket.
  */
-export function sampleDocument(): ExtrudoDocument {
+export const TEMPLATES: readonly Template[] = [
+  {
+    id: 'wall-bracket',
+    name: 'Wall bracket',
+    summary: 'Parameters, a timeline and a body to explore.',
+    create: () => wallBracket(),
+  },
+];
+
+/**
+ * A small wall bracket with parameters, a timeline and one body. The
+ * features have no geometry yet; they fill the timeline and the Parameters
+ * dialog.
+ */
+export function wallBracket(): ExtrudoDocument {
   const param = (
     name: string,
     expression: string,
@@ -53,7 +74,7 @@ export function sampleDocument(): ExtrudoDocument {
     }),
   ];
   return {
-    ...createDocument({ name: 'Wall bracket' }),
+    ...createDocument({ name: 'Wall bracket', appVersion: APP_VERSION }),
     parameters: [
       param('width', '80 mm', 'length', 'Along the wall'),
       param('wall', '2.4 mm', 'length', 'Six perimeters of a 0.4 mm nozzle'),

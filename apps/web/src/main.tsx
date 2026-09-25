@@ -8,18 +8,24 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { applyInitialTheme, TooltipProvider } from './design-system';
-import { webPlatform } from './platform';
+import { webPlatform, webPreferences } from './platform';
+import { StartupError } from './StartupError';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root element');
 
-const platform = webPlatform();
-applyInitialTheme(platform.preferences);
+// The theme first, so the first paint has the right colours.
+applyInitialTheme(webPreferences());
+const reactRoot = createRoot(root);
 
-createRoot(root).render(
-  <StrictMode>
-    <TooltipProvider>
-      <App platform={platform} />
-    </TooltipProvider>
-  </StrictMode>,
+webPlatform().then(
+  (platform) =>
+    reactRoot.render(
+      <StrictMode>
+        <TooltipProvider>
+          <App platform={platform} />
+        </TooltipProvider>
+      </StrictMode>,
+    ),
+  (error: unknown) => reactRoot.render(<StartupError error={error} />),
 );

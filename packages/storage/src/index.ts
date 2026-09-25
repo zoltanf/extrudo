@@ -1,5 +1,21 @@
 /**
- * @extrudo/storage: the ProjectStore interface and its OPFS + IndexedDB implementation (P0-08).
- * Placeholder until its first roadmap task lands.
+ * @extrudo/storage: the ProjectStore interface, its OPFS + IndexedDB
+ * implementation and the `.extrudo` zip format (P0-08, ADR-0009).
  */
-export {};
+export { type Archive, type Manifest, readArchive, writeArchive } from './archive';
+export { type BrowserProjectStore, createBrowserProjectStore } from './browser';
+export { type FileStore, memoryFiles, opfsFiles } from './files';
+export { idbFiles, idbIndex, memoryIndex, openDatabase, type ProjectIndex } from './idb';
+export {
+  createProjectStore,
+  memoryProjectStore,
+  type ProjectStoreOptions,
+} from './project-store';
+export {
+  ArchiveError,
+  type ArchiveErrorCode,
+  type ProjectId,
+  ProjectNotFoundError,
+  type ProjectStore,
+  type ProjectSummary,
+} from './types';

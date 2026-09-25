@@ -6,34 +6,33 @@ import { useShortcuts } from '../commands/shortcuts';
 import { useTheme } from '../design-system';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
-import { createViewportStore } from '../viewport/store';
-
-// three.js loads in its own chunk, so the shell paints before it arrives.
-const Viewport = lazy(() => import('../viewport/Viewport').then((m) => ({ default: m.Viewport })));
-
-import { AppBar } from './AppBar';
+import type { Autosaver } from '../project/autosave';
+import type { ViewportStore } from '../viewport/store';
+import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
 import { Splitter, usePanel } from './panels';
 import { Timeline } from './Timeline';
 import { Toolbar } from './Toolbar';
 import type { ToolId } from './tools';
 
+// three.js loads in its own chunk, so the shell paints before it arrives.
+const Viewport = lazy(() => import('../viewport/Viewport').then((m) => ({ default: m.Viewport })));
+
 export interface AppShellProps {
   store: DocumentStore;
   model: ModelStore<BodyMesh>;
+  viewport: ViewportStore;
+  autosave: Autosaver;
+  file: FileActions;
   platform: Platform;
 }
 
 /** The app shell (P0-04, UI spec §2): app bar, toolbar, browser, viewport, timeline. */
-export function AppShell({ store, model, platform }: AppShellProps) {
+export function AppShell({ store, model, viewport, autosave, file, platform }: AppShellProps) {
   const { choice, setChoice } = useTheme(platform.preferences);
   const browser = usePanel(platform.preferences, { key: 'browser', size: 248, min: 180, max: 480 });
   const timeline = usePanel(platform.preferences, { key: 'timeline', size: 0, min: 0, max: 0 });
   const [parametersOpen, setParametersOpen] = useState(false);
-  const viewport = useMemo(
-    () => createViewportStore({ preferences: platform.preferences }),
-    [platform],
-  );
   const bodies = useStore(model, (s) => s.bodies);
   const meta = useStore(store, (s) => s.doc.bodies);
 
@@ -53,7 +52,13 @@ export function AppShell({ store, model, platform }: AppShellProps) {
 
   return (
     <div className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden bg-bg text-ink">
-      <AppBar store={store} theme={choice} onThemeChange={setChoice} />
+      <AppBar
+        store={store}
+        autosave={autosave}
+        file={file}
+        theme={choice}
+        onThemeChange={setChoice}
+      />
       <Toolbar onRun={run} />
       <main className="flex min-h-0">
         <BrowserPanel

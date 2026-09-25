@@ -2,6 +2,15 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-25 · **P0-08** Project storage: `packages/storage` with the
+  `ProjectStore` interface over an IndexedDB index and OPFS files (IndexedDB
+  fallback), `.extrudo` zip read/write through core's migrations, and
+  in-memory versions for tests. Web: async platform with project store,
+  persistent-storage request and file download/pick; autosave (800 ms, save
+  state in the app bar, retry, flush on hide/leave); thumbnails from the
+  viewport; hash routes `#/` and `#/p/<id>`; home screen (new design, Wall
+  bracket template, grid, search, sort, rename, duplicate, export, import,
+  trash, delete forever, storage badge). ADR-0009.
 - 2026-09-25 · **P0-05** Viewport: R3F canvas over the glowing background,
   Z-up world; our own camera controller (target + quaternion + size, one
   scale for perspective and orthographic, zoom to cursor, fit, 350 ms

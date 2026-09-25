@@ -2,14 +2,13 @@ import { type DocumentStore, renameDocument } from '@extrudo/core';
 import {
   CircleHelp,
   FilePlus2,
-  FolderOpen,
+  House,
   Import,
   Menu as MenuIcon,
   Redo2,
   Save,
   Settings,
   SlidersHorizontal,
-  SunMoon,
   Undo2,
   Upload,
 } from 'lucide-react';
@@ -23,7 +22,6 @@ import {
   Menu,
   MenuItem,
   MenuLabel,
-  MenuRadioGroup,
   MenuSeparator,
   Popover,
   TextInput,
@@ -31,17 +29,28 @@ import {
   Tooltip,
   Wordmark,
 } from '../design-system';
+import type { Autosaver } from '../project/autosave';
+import { HOME_HREF } from '../routes';
+import { ThemeMenu } from './ThemeMenu';
 
-const STORAGE_HINT = 'Arrives with project storage (P0-08).';
+/** What the File menu does; the project page implements it. */
+export interface FileActions {
+  newDesign(): void;
+  home(): void;
+  exportFile(): void;
+  importFile(): void;
+}
 
 export interface AppBarProps {
   store: DocumentStore;
+  autosave: Autosaver;
+  file: FileActions;
   theme: ThemeChoice;
   onThemeChange(theme: ThemeChoice): void;
 }
 
 /** App bar (UI spec §2): file menu, undo/redo, project name and save state, settings, theme. */
-export function AppBar({ store, theme, onThemeChange }: AppBarProps) {
+export function AppBar({ store, autosave, file, theme, onThemeChange }: AppBarProps) {
   const name = useStore(store, (s) => s.doc.name);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
 
@@ -57,21 +66,22 @@ export function AppBar({ store, theme, onThemeChange }: AppBarProps) {
         }
       >
         <MenuLabel>Project</MenuLabel>
-        <MenuItem disabled icon={<FilePlus2 size={14} />}>
-          New
+        <MenuItem icon={<FilePlus2 size={14} />} onSelect={file.newDesign}>
+          New design
         </MenuItem>
-        <MenuItem disabled icon={<FolderOpen size={14} />}>
-          Open…
+        <MenuItem icon={<House size={14} />} onSelect={file.home}>
+          All designs
         </MenuItem>
+        {/* Versions arrive with P2-14; autosave covers saving until then. */}
         <MenuItem disabled icon={<Save size={14} />} shortcut={shortcutLabel('Mod+S')}>
           Save version
         </MenuItem>
         <MenuSeparator />
-        <MenuItem disabled icon={<Upload size={14} />}>
-          Export…
+        <MenuItem icon={<Upload size={14} />} onSelect={file.exportFile}>
+          Export .extrudo
         </MenuItem>
-        <MenuItem disabled icon={<Import size={14} />}>
-          Import…
+        <MenuItem icon={<Import size={14} />} onSelect={file.importFile}>
+          Import .extrudo…
         </MenuItem>
         <MenuSeparator />
         <MenuItem disabled icon={<SlidersHorizontal size={14} />}>
@@ -100,16 +110,18 @@ export function AppBar({ store, theme, onThemeChange }: AppBarProps) {
       </IconButton>
 
       <div className="flex flex-1 items-center justify-center gap-2.5">
-        <LogoMark size={22} title="Extrudo" />
-        <Wordmark className="text-[17px]" />
+        <Tooltip label="All designs">
+          <a
+            href={HOME_HREF}
+            className="flex items-center gap-2.5 rounded-control px-1 py-0.5 hover:bg-accent-soft"
+          >
+            <LogoMark size={22} title="Extrudo" />
+            <Wordmark className="text-[17px]" />
+          </a>
+        </Tooltip>
         <span className="text-muted">/</span>
         <ProjectName store={store} name={name} />
-        <Tooltip label="Not saved yet" hint={STORAGE_HINT}>
-          <span className="inline-flex items-center gap-1.5 text-sm text-muted" tabIndex={-1}>
-            <span className="size-1.5 rounded-full bg-muted" aria-hidden="true" />
-            Not saved
-          </span>
-        </Tooltip>
+        <SaveStatus autosave={autosave} />
       </div>
 
       <IconButton label="Settings" hint="Arrives with P1." disabled>
@@ -118,26 +130,7 @@ export function AppBar({ store, theme, onThemeChange }: AppBarProps) {
       <IconButton label="Help" hint="Arrives with onboarding (P3-12)." disabled>
         <CircleHelp size={18} strokeWidth={1.75} />
       </IconButton>
-      <Menu
-        label="Theme"
-        align="end"
-        trigger={
-          <IconButton label="Theme" hint="Dark, light, or follow the system.">
-            <SunMoon size={18} strokeWidth={1.75} />
-          </IconButton>
-        }
-      >
-        <MenuLabel>Theme</MenuLabel>
-        <MenuRadioGroup
-          value={theme}
-          onChange={onThemeChange}
-          options={[
-            { value: 'dark', label: 'Dark (Slate)' },
-            { value: 'light', label: 'Light' },
-            { value: 'system', label: 'Same as system' },
-          ]}
-        />
-      </Menu>
+      <ThemeMenu theme={theme} onThemeChange={onThemeChange} />
     </header>
   );
 }
@@ -186,5 +179,49 @@ function ProjectName({ store, name }: { store: DocumentStore; name: string }) {
         </Button>
       </form>
     </Popover>
+  );
+}
+
+const time = (iso: string) =>
+  new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+
+/** The save state (FR-PRJ-03): never colour alone, always a word too. */
+function SaveStatus({ autosave }: { autosave: Autosaver }) {
+  const { status, error, savedAt } = useStore(autosave);
+  const badge = 'inline-flex items-center gap-1.5 rounded-input px-1.5 py-0.5 text-sm';
+  if (status === 'error') {
+    return (
+      <Tooltip label="Couldn't save" hint={`${error ?? 'Unknown error.'} Click to try again.`}>
+        <button
+          type="button"
+          onClick={() => void autosave.retry()}
+          className={`${badge} text-error hover:bg-error/10`}
+        >
+          <span className="size-1.5 rounded-full bg-error" aria-hidden="true" />
+          <span role="status" aria-label="Save status">
+            Couldn't save
+          </span>
+        </button>
+      </Tooltip>
+    );
+  }
+  const view = {
+    saved: {
+      text: 'Saved',
+      dot: 'bg-success',
+      hint: savedAt ? `Saved in this browser at ${time(savedAt)}.` : 'Saved in this browser.',
+    },
+    saving: { text: 'Saving…', dot: 'bg-accent animate-pulse', hint: 'Saving in this browser.' },
+    unsaved: { text: 'Edited', dot: 'bg-muted', hint: 'Saves automatically in a moment.' },
+  }[status];
+  return (
+    <Tooltip label={view.text} hint={view.hint}>
+      <span className={`${badge} text-muted`} tabIndex={-1}>
+        <span className={`size-1.5 rounded-full ${view.dot}`} aria-hidden="true" />
+        <span role="status" aria-label="Save status">
+          {view.text}
+        </span>
+      </span>
+    </Tooltip>
   );
 }

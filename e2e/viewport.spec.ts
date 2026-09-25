@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { openProject } from './helpers';
 
 // P0-05: the viewport. The camera state is mirrored on the viewport element
 // as data attributes (direction, up, target, size), so these tests check
@@ -17,12 +18,7 @@ test.afterEach(() => {
   expect(errors).toEqual([]);
 });
 
-async function open(page: Page) {
-  await page.goto('./');
-  const viewport = page.getByRole('region', { name: 'Viewport' });
-  await expect(viewport).toHaveAttribute('data-ready', 'true');
-  return viewport;
-}
+const open = (page: Page) => openProject(page);
 
 const attr = async (el: Locator, name: string) => (await el.getAttribute(name)) ?? '';
 const numbers = async (el: Locator, name: string) => (await attr(el, name)).split(',').map(Number);

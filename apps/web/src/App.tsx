@@ -1,33 +1,34 @@
-import { createDocumentStore, createModelStore } from '@extrudo/core';
-import type { BodyMesh } from '@extrudo/kernel';
-import { lazy, Suspense, useMemo, useSyncExternalStore } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
+import { HomeScreen } from './home/HomeScreen';
 import type { Platform } from './platform';
-import { AppShell } from './shell/AppShell';
-import { sampleDocument } from './shell/sample-document';
+import { ProjectPage } from './project/ProjectPage';
+import { HOME_HREF, useRoute } from './routes';
 
-// Loaded on demand so the shell doesn't pull in the kernel client.
+// Loaded on demand: the kernel client and the debug page aren't part of the app.
 const KernelDebug = lazy(() =>
   import('./debug/KernelDebug').then((m) => ({ default: m.KernelDebug })),
 );
 
-const subscribeToHash = (onChange: () => void) => {
-  window.addEventListener('hashchange', onChange);
-  return () => window.removeEventListener('hashchange', onChange);
-};
-
-/** Hash routes (Electron-safe, architecture §8): the shell, and debug pages. */
+/** Hash routes (Electron-safe, architecture §8): home, a project, debug pages. */
 export function App({ platform }: { platform: Platform }) {
-  const hash = useSyncExternalStore(subscribeToHash, () => window.location.hash);
-  // Until project storage (P0-08), the shell opens a sample document in memory.
-  const store = useMemo(() => createDocumentStore(sampleDocument()), []);
-  // Filled by the recompute pipeline (Phase 2); empty until then.
-  const model = useMemo(() => createModelStore<BodyMesh>(), []);
-  if (hash === '#/debug/kernel') {
-    return (
-      <Suspense fallback={null}>
-        <KernelDebug platform={platform} />
-      </Suspense>
-    );
+  const route = useRoute();
+  switch (route.page) {
+    case 'home':
+      return <HomeScreen platform={platform} />;
+    case 'project':
+      return <ProjectPage key={route.id} id={route.id} platform={platform} />;
+    case 'debug-kernel':
+      return (
+        <Suspense fallback={null}>
+          <KernelDebug platform={platform} />
+        </Suspense>
+      );
+    case 'not-found':
+      return <Redirect to={HOME_HREF} />;
   }
-  return <AppShell store={store} model={model} platform={platform} />;
+}
+
+function Redirect({ to }: { to: string }) {
+  useEffect(() => window.location.replace(to), [to]);
+  return null;
 }

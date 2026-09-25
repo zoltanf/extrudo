@@ -9,7 +9,7 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-25):** P0-01, P0-02, P0-03, P0-04, P0-05, P0-06, P0-07 and P0-09 done. ADR-0001 chose
+**Status (2026-09-25):** Phase 0 is done (P0-01 to P0-09). ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -28,9 +28,13 @@ sample document in memory until storage exists. ADR-0008 (P0-05) set the
 viewport (`apps/web/src/viewport/`): Z-up world in mm, our own camera
 controller (target + quaternion + size, both projections), mouse presets as
 tables, shader grid, CSS 3D ViewCube, a viewport store with display settings
-as preferences.
-Next tasks, which can run in parallel: **P0-08** (storage) and **P1-01**
-(sketch on a plane). See `docs/03-roadmap.md`.
+as preferences. ADR-0009 (P0-08) set storage (`packages/storage`):
+`ProjectStore` over an IndexedDB index and OPFS files, `.extrudo` zips through
+core's migrations; in the web app, an async `webPlatform()` with projects,
+persistent storage and file download/pick, autosave (`project/autosave.ts`),
+routes `#/` (home screen, `home/`) and `#/p/<id>` (`project/ProjectPage.tsx`).
+Next: Phase 1. **P1-01** (sketch feature and sketch mode) and **P1-03**
+(solver integration) can start in parallel. See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -58,7 +62,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -150,6 +154,9 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   the GitHub release `occt-<hash>`; `pnpm occt ensure` downloads it with `gh`.
   After changing the config or the facade, run `pnpm occt build` locally
   (through `newgrp docker` until the next login) or push and let CI build it.
+  The CI path is proven (run 36179601320, 2026-09-25): the `occt` job took
+  about 16 minutes and published the release before the tests ran. After a
+  local rebuild, restart the dev server: it keeps serving the old WASM.
 - **Facade C++ (`packages/kernel/occt/facade/`):** the toolchain binds every
   class in the file, so it holds one class with no overloaded names. Check it
   in seconds with `em++ -fsyntax-only` inside the image (README) before a
@@ -164,6 +171,14 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   node node_modules/@playwright/test/cli.js test e2e/shell.spec.ts" | newgrp
   docker` (after `pnpm build`). Arch and Ubuntu differ by about 12 pixels per
   shot; the tolerance is 0.1 %.
+- **E2E tests start on the home screen with empty storage** (each test has
+  its own browser context). Open a project with `openProject(page)` or
+  `openProject(page, 'wall-bracket')` from `e2e/helpers.ts`; reloads reopen
+  the same stored project. Stub browser APIs with a string init script (for
+  example `navigator.storage.persist`), since e2e/ has no DOM types.
+- **Regenerate screenshots with `--update-snapshots=all`.** Plain
+  `--update-snapshots` only rewrites shots that fail, and a small change (the
+  save-state text) stays inside the 0.1 % tolerance, leaving a stale baseline.
 - **Viewport tests read the camera from data attributes** on the Viewport
   region (`data-camera-direction`, `-up`, `-target`, `-size`) and wait for
   `data-ready` (first frame drawn; the viewport is a lazy chunk). WebGL runs
