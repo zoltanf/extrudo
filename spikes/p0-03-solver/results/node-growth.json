@@ -1,0 +1,856 @@
+{
+  "runtime": "Node v26.10.0",
+  "build": "growth",
+  "initMs": 16.703700999999995,
+  "heapMB": 16,
+  "results": [
+    {
+      "entities": 54,
+      "join": "coincident",
+      "layout": "anchored",
+      "params": 355,
+      "primitives": 355,
+      "build": 2.7796200000000226,
+      "firstSolve": 8.640511999999944,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 1.188242999999943,
+      "noopSolve": {
+        "median": 0.6193700000000035,
+        "p95": 1.0694389999999885,
+        "max": 1.0694389999999885
+      },
+      "paramChange": {
+        "median": 1.9719520000001012,
+        "p95": 3.1166829999999663,
+        "max": 3.1166829999999663
+      },
+      "drag": {
+        "median": 0.8235919999999624,
+        "p95": 1.1890809999999874,
+        "max": 2.6872169999999187
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 7.9191010000001825,
+        "p95": 10.551422000000002,
+        "max": 10.551422000000002
+      },
+      "conflict": {
+        "solve": 9.341319000000112,
+        "status": 2,
+        "reported": 5,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 8.123812000000044,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 8.080578999999943,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 11.104859999999917,
+          "status": 0
+        }
+      }
+    },
+    {
+      "entities": 99,
+      "join": "coincident",
+      "layout": "anchored",
+      "params": 650,
+      "primitives": 650,
+      "build": 5.356275000000096,
+      "firstSolve": 42.21742200000017,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 5.247949000000062,
+      "noopSolve": {
+        "median": 1.201233000000002,
+        "p95": 4.615727000000106,
+        "max": 4.615727000000106
+      },
+      "paramChange": {
+        "median": 3.5089920000000347,
+        "p95": 6.605769999999893,
+        "max": 6.605769999999893
+      },
+      "drag": {
+        "median": 1.455462000000125,
+        "p95": 1.6157519999999295,
+        "max": 1.7616550000000188
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 32.15580799999998,
+        "p95": 37.091695999999956,
+        "max": 37.091695999999956
+      },
+      "conflict": {
+        "solve": 40.45611299999973,
+        "status": 2,
+        "reported": 5,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 35.13098799999989,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 34.86844800000017,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 45.00695599999972,
+          "status": 0
+        }
+      }
+    },
+    {
+      "entities": 198,
+      "join": "coincident",
+      "layout": "anchored",
+      "params": 1299,
+      "primitives": 1299,
+      "build": 9.677473000000191,
+      "firstSolve": 244.84845700000005,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.9126409999998941,
+      "noopSolve": {
+        "median": 2.248880999999983,
+        "p95": 2.301054000000022,
+        "max": 2.301054000000022
+      },
+      "paramChange": {
+        "median": 6.3972179999996115,
+        "p95": 6.549336999999923,
+        "max": 6.549336999999923
+      },
+      "drag": {
+        "median": 3.0738689999998314,
+        "p95": 3.535601999999926,
+        "max": 3.535601999999926
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 184.89231299999983,
+        "p95": 190.23545699999977,
+        "max": 190.23545699999977
+      },
+      "conflict": {
+        "solve": 275.86090200000035,
+        "status": 2,
+        "reported": 5,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 243.35405300000002,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 241.2723759999999,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 257.6633149999998,
+          "status": 0
+        }
+      }
+    },
+    {
+      "entities": 504,
+      "join": "coincident",
+      "layout": "anchored",
+      "params": 3305,
+      "primitives": 3305,
+      "build": 17.524073999999928,
+      "firstSolve": 5249.291277999999,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 1.8741019999997661,
+      "noopSolve": {
+        "median": 6.2756179999996675,
+        "p95": 7.3239640000010695,
+        "max": 7.3239640000010695
+      },
+      "paramChange": {
+        "median": 17.1411879999996,
+        "p95": 17.41532300000108,
+        "max": 17.41532300000108
+      },
+      "drag": {
+        "median": 8.73521299999993,
+        "p95": 9.90236300000106,
+        "max": 9.90236300000106
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 4057.272417,
+        "p95": 4156.048445,
+        "max": 4156.048445
+      },
+      "conflict": {
+        "solve": 7409.052574000005,
+        "status": 2,
+        "reported": 5,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 5887.025162999998,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 5905.997248,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 5915.198435999999,
+          "status": 0
+        }
+      }
+    },
+    {
+      "entities": 54,
+      "join": "shared",
+      "layout": "anchored",
+      "params": 259,
+      "primitives": 259,
+      "build": 1.3456660000010743,
+      "firstSolve": 4.222709000001487,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.3670249999995576,
+      "noopSolve": {
+        "median": 0.5016819999946165,
+        "p95": 0.5991829999984475,
+        "max": 0.5991829999984475
+      },
+      "paramChange": {
+        "median": 1.6234309999999823,
+        "p95": 4.326285999995889,
+        "max": 4.326285999995889
+      },
+      "drag": {
+        "median": 0.621952000001329,
+        "p95": 0.9122900000002119,
+        "max": 1.0160759999998845
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 3.676956000002974,
+        "p95": 5.014029999998456,
+        "max": 5.014029999998456
+      },
+      "conflict": {
+        "solve": 3.6699010000011185,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 3.6217800000013085,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 3.48258199999691,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 6.4599900000030175,
+          "status": 0
+        }
+      }
+    },
+    {
+      "entities": 99,
+      "join": "shared",
+      "layout": "anchored",
+      "params": 474,
+      "primitives": 474,
+      "build": 1.8967970000012428,
+      "firstSolve": 14.035234000002674,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.262750000001688,
+      "noopSolve": {
+        "median": 0.8824660000027507,
+        "p95": 0.9322640000027604,
+        "max": 0.9322640000027604
+      },
+      "paramChange": {
+        "median": 2.8647500000006403,
+        "p95": 2.9284480000060285,
+        "max": 2.9284480000060285
+      },
+      "drag": {
+        "median": 1.1700799999962328,
+        "p95": 1.4320609999995213,
+        "max": 2.224640000000363
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 12.584175000003597,
+        "p95": 14.252374999996391,
+        "max": 14.252374999996391
+      },
+      "conflict": {
+        "solve": 15.565563999996812,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 12.92179600000236,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 13.1638030000031,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 18.41494899999816,
+          "status": 0
+        }
+      }
+    },
+    {
+      "entities": 198,
+      "join": "shared",
+      "layout": "anchored",
+      "params": 947,
+      "primitives": 947,
+      "build": 6.158757000004698,
+      "firstSolve": 69.06426699999429,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.31778599999961443,
+      "noopSolve": {
+        "median": 1.6952999999994063,
+        "p95": 1.7901460000066436,
+        "max": 1.7901460000066436
+      },
+      "paramChange": {
+        "median": 5.943221999994421,
+        "p95": 7.072094000002835,
+        "max": 7.072094000002835
+      },
+      "drag": {
+        "median": 2.1863659999944502,
+        "p95": 2.4866210000036517,
+        "max": 2.7378460000036284
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 63.48932400000194,
+        "p95": 72.46855099999812,
+        "max": 72.46855099999812
+      },
+      "conflict": {
+        "solve": 85.656934000006,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 69.33727600000566,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 70.33533300000272,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 79.12493499999982,
+          "status": 0
+        }
+      }
+    },
+    {
+      "entities": 504,
+      "join": "shared",
+      "layout": "anchored",
+      "params": 2409,
+      "primitives": 2409,
+      "build": 8.060163000001921,
+      "firstSolve": 1064.7443540000022,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 1.3918310000008205,
+      "noopSolve": {
+        "median": 4.827268999993976,
+        "p95": 5.029883000002883,
+        "max": 5.029883000002883
+      },
+      "paramChange": {
+        "median": 15.017363999999361,
+        "p95": 15.112141000005067,
+        "max": 15.112141000005067
+      },
+      "drag": {
+        "median": 6.469277999996848,
+        "p95": 6.663371999995434,
+        "max": 6.663371999995434
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 863.7277850000028,
+        "p95": 865.269011000004,
+        "max": 865.269011000004
+      },
+      "conflict": {
+        "solve": 1561.2375249999968,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 1041.0096399999966,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 1038.445931000002,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 1075.9053219999987,
+          "status": 0
+        }
+      }
+    },
+    {
+      "entities": 54,
+      "join": "coincident",
+      "layout": "chained",
+      "params": 355,
+      "primitives": 355,
+      "build": 1.4061490000021877,
+      "firstSolve": 23.18388799999957,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.19095099999685772,
+      "noopSolve": {
+        "median": 0.8919650000025285,
+        "p95": 1.0098589999979595,
+        "max": 1.0098589999979595
+      },
+      "paramChange": {
+        "median": 13.660167999994883,
+        "p95": 13.961402000000817,
+        "max": 13.961402000000817
+      },
+      "drag": {
+        "median": 4.080505999998422,
+        "p95": 4.634570000001986,
+        "max": 6.164899999996123
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 10.542518000002019,
+        "p95": 13.733014999997977,
+        "max": 13.733014999997977
+      },
+      "conflict": {
+        "solve": 10.733608000002278,
+        "status": 2,
+        "reported": 5,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 21.039357999994536,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 23.147776999998314,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 23.43755599999713,
+          "status": 2
+        }
+      }
+    },
+    {
+      "entities": 99,
+      "join": "coincident",
+      "layout": "chained",
+      "params": 650,
+      "primitives": 650,
+      "build": 2.292944000000716,
+      "firstSolve": 120.66114200000447,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.2481530000004568,
+      "noopSolve": {
+        "median": 2.0758030000069994,
+        "p95": 2.2749949999997625,
+        "max": 2.2749949999997625
+      },
+      "paramChange": {
+        "median": 70.18506199999683,
+        "p95": 74.91580699999759,
+        "max": 74.91580699999759
+      },
+      "drag": {
+        "median": 18.983668000000762,
+        "p95": 21.371320000005653,
+        "max": 21.371320000005653
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 49.41550499999721,
+        "p95": 52.358408000000054,
+        "max": 52.358408000000054
+      },
+      "conflict": {
+        "solve": 52.797441000002436,
+        "status": 2,
+        "reported": 5,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 121.02745200000936,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 152.34238400000322,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 82.34094500000356,
+          "status": 2
+        }
+      }
+    },
+    {
+      "entities": 198,
+      "join": "coincident",
+      "layout": "chained",
+      "params": 1299,
+      "primitives": 1299,
+      "build": 5.611044000004767,
+      "firstSolve": 907.547482000009,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.4875739999988582,
+      "noopSolve": {
+        "median": 6.700175000005402,
+        "p95": 7.516638999994029,
+        "max": 7.516638999994029
+      },
+      "paramChange": {
+        "median": 528.590234999996,
+        "p95": 552.7421319999994,
+        "max": 552.7421319999994
+      },
+      "drag": {
+        "median": 137.4049090000044,
+        "p95": 137.94479200000933,
+        "max": 137.94479200000933
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 334.79008399999293,
+        "p95": 342.9024930000014,
+        "max": 342.9024930000014
+      },
+      "conflict": {
+        "solve": 348.7659319999948,
+        "status": 2,
+        "reported": 5,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 953.8065009999991,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 1158.911779999995,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 529.7483680000005,
+          "status": 2
+        }
+      }
+    },
+    {
+      "entities": 504,
+      "join": "coincident",
+      "layout": "chained",
+      "params": 3305,
+      "primitives": 3305,
+      "build": 13.477522000001045,
+      "firstSolve": 30852.069474000004,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 1.6741329999931622,
+      "noopSolve": {
+        "median": 51.979905000000144,
+        "p95": 55.364419000005,
+        "max": 55.364419000005
+      },
+      "paramChange": {
+        "median": 16833.379879999993,
+        "p95": 18063.694111000004,
+        "max": 18063.694111000004
+      },
+      "drag": {
+        "median": 4006.0272680000053,
+        "p95": 4020.881684000022,
+        "max": 4020.881684000022
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 9841.350491999998,
+        "p95": 10276.425648000004,
+        "max": 10276.425648000004
+      },
+      "conflict": {
+        "solve": 10927.24388200001,
+        "status": 2,
+        "reported": 5,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 30446.002718000003,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 37232.210974999965,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 8234.815180999984,
+          "status": 2
+        }
+      }
+    },
+    {
+      "entities": 54,
+      "join": "shared",
+      "layout": "chained",
+      "params": 259,
+      "primitives": 259,
+      "build": 1.2361399999936111,
+      "firstSolve": 19.211046000011265,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.13249099999666214,
+      "noopSolve": {
+        "median": 0.9634749999968335,
+        "p95": 1.1392679999698885,
+        "max": 1.1392679999698885
+      },
+      "paramChange": {
+        "median": 16.992503999965265,
+        "p95": 17.341506999975536,
+        "max": 17.341506999975536
+      },
+      "drag": {
+        "median": 4.9068439999828115,
+        "p95": 5.227979000017513,
+        "max": 5.8043889999971725
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 8.585649999964517,
+        "p95": 9.347001000016462,
+        "max": 9.347001000016462
+      },
+      "conflict": {
+        "solve": 6.760810000007041,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 21.028203999972902,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 27.82777700002771,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 24.03854899998987,
+          "status": 2
+        }
+      }
+    },
+    {
+      "entities": 99,
+      "join": "shared",
+      "layout": "chained",
+      "params": 474,
+      "primitives": 474,
+      "build": 3.0455460000084713,
+      "firstSolve": 121.34940700000152,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.46151799999643117,
+      "noopSolve": {
+        "median": 2.264708000002429,
+        "p95": 2.7184040000429377,
+        "max": 2.7184040000429377
+      },
+      "paramChange": {
+        "median": 89.95072799996706,
+        "p95": 92.81468000001041,
+        "max": 92.81468000001041
+      },
+      "drag": {
+        "median": 23.691640999983065,
+        "p95": 24.747656999970786,
+        "max": 24.747656999970786
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 39.760897999978624,
+        "p95": 47.63617999997223,
+        "max": 47.63617999997223
+      },
+      "conflict": {
+        "solve": 30.12432900001295,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 115.2379109999747,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 172.33807800000068,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 67.100613000046,
+          "status": 2
+        }
+      }
+    },
+    {
+      "entities": 198,
+      "join": "shared",
+      "layout": "chained",
+      "params": 947,
+      "primitives": 947,
+      "build": 4.221689999976661,
+      "firstSolve": 878.4964640000253,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.7983670000103302,
+      "noopSolve": {
+        "median": 7.276523999986239,
+        "p95": 7.665964999992866,
+        "max": 7.665964999992866
+      },
+      "paramChange": {
+        "median": 641.7429640000337,
+        "p95": 642.761014000047,
+        "max": 642.761014000047
+      },
+      "drag": {
+        "median": 171.62629300000845,
+        "p95": 175.56917299999623,
+        "max": 175.56917299999623
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 250.45314599998528,
+        "p95": 252.23517100000754,
+        "max": 252.23517100000754
+      },
+      "conflict": {
+        "solve": 193.79242999997223,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 895.8765380000114,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 1307.7872920000227,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 337.24702400004026,
+          "status": 2
+        }
+      }
+    },
+    {
+      "entities": 504,
+      "join": "shared",
+      "layout": "chained",
+      "params": 2409,
+      "primitives": 2409,
+      "build": 15.541035000002012,
+      "firstSolve": 26550.26272300002,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.8792450000182725,
+      "noopSolve": {
+        "median": 36.790884000016376,
+        "p95": 37.4115720000118,
+        "max": 37.4115720000118
+      },
+      "paramChange": {
+        "median": 17736.27708500001,
+        "p95": 18506.08936699998,
+        "max": 18506.08936699998
+      },
+      "drag": {
+        "median": 4535.280032999988,
+        "p95": 4887.490286000015,
+        "max": 4887.490286000015
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 7011.244674000016,
+        "p95": 8111.878139999986,
+        "max": 8111.878139999986
+      },
+      "conflict": {
+        "solve": 4648.518295000016,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 21873.366267000034,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 28883.109485000023,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 2681.6394560000044,
+          "status": 2
+        }
+      }
+    }
+  ]
+}

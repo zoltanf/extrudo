@@ -17,7 +17,7 @@
 | Geometry kernel | **OpenCascade (OCCT) compiled to WASM**, via the maintained `libcascade` package (the taucad fork of opencascade.js, OCCT 8.x), inside a **Web Worker** | The only mature open-source B-rep kernel usable in the browser. Real fillets, chamfers, shells, booleans, sweeps and lofts, plus STEP I/O. LGPL-2.1 with an exception. |
 | Kernel convenience layer | **Our own trimmed OCCT build** (`@libcascade/toolchain`) with a **small C++ facade** that owns OCCT memory and returns results and history as flat arrays, under a thin TypeScript layer; raw libcascade bindings for the rest. **replicad** and **brepjs** are code references, not dependencies (ADR-0001) | The P0-02 spike showed that only raw OCCT gives face *and* edge history, which topological naming needs (§5.2). replicad's API drops the builders; brepjs/occt-wasm tracks faces only. |
 | Mesh booleans (secondary) | **manifold-3d** (WASM) | Fast, robust booleans on imported STL meshes and OpenSCAD output, where B-rep does not apply. |
-| Sketch constraint solver | **@salusoft89/planegcs** (FreeCAD's PlaneGCS in WASM, LGPL) | Proven solver with the constraint set we need. JSON primitives. Reports conflicting and redundant constraints. |
+| Sketch constraint solver | **planegcs** (FreeCAD's PlaneGCS in WASM, LGPL-2.1-or-later), **our own build** of `@salusoft89/planegcs` with memory growth and two pivoting patches; one solver system per independent sketch component (ADR-0002) | Proven solver with the constraint set we need. JSON primitives. Reports DOF and conflicting/redundant constraints. The published build's 16 MB heap and dense matrices limit large sketches; per-component solving keeps the usual sketch sub-millisecond. |
 | Worker RPC | **Comlink** | Typed, promise-based worker calls. Transferable typed arrays. |
 | Fonts → curves | **opentype.js** | Text tool (Phase 4). |
 | Storage (web) | **OPFS** for project blobs + **IndexedDB** (via `idb`) for the index and metadata | Fast, large quota, works offline. `navigator.storage.persist()`. |
@@ -268,8 +268,15 @@ and remove a sketch edge, then assert the fillet still sits on the "same" edges.
 
 ### 5.3 Sketch → geometry
 
-- Solving happens in the main thread (planegcs is sub-millisecond for normal
-  sketches). The kernel receives solved geometry only.
+- Solving happens in the main thread. The kernel receives solved geometry
+  only. The `sketch` adapter keeps one planegcs system per independent
+  component (geometry linked through constraints; constraints to fixed
+  geometry don't link), so a drag or an edit re-solves only its component:
+  0.16 ms per drag step and 0.8 ms per constraint edit at 500 entities in the
+  P0-03 spike. A drag binds temporary coordinate constraints to two sketch
+  parameters and updates them per frame, without rebuilding the system. One
+  large coupled component (100+ entities) is slow, because planegcs uses dense
+  matrices (ADR-0002).
 - Profile detection: a fast TS planar-arrangement pass gives instant hover
   shading while drawing. The authoritative regions come from OCCT
   (`BOPAlgo_Builder` on sketch edges → faces), which handles splines and
@@ -377,7 +384,9 @@ bundle-size budget. Every agent task must leave CI green.
 - **ADR-0001** Geometry kernel: OCCT WASM (`libcascade`) raw vs replicad vs
   brepjs. **Written 2026-09-25:** own trimmed libcascade build with a C++
   facade.
-- **ADR-0002** Sketch solver: planegcs on the main thread.
+- **ADR-0002** Sketch solver: planegcs on the main thread. **Written
+  2026-09-25:** our own planegcs build, one solver system per independent
+  component.
 - **ADR-0003** Document-as-JSON, geometry-as-cache.
 - **ADR-0004** Topological naming strategy (§5.2).
 - **ADR-0005** Electron over Tauri for desktop.

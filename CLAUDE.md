@@ -9,14 +9,15 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-25):** P0-01, P0-02 and P0-09 done. ADR-0001 chose our own
-trimmed libcascade build with a small C++ facade that owns OCCT memory
+**Status (2026-09-25):** P0-01, P0-02, P0-03 and P0-09 done. ADR-0001 chose
+our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
-debug page at `#/debug/kernel`).
-Next tasks, which can run in parallel: **P0-03** (solver spike), **P0-04**
-(design system and shell), **P0-06** (document model) and **P0-08** (storage).
-See `docs/03-roadmap.md`.
+debug page at `#/debug/kernel`). ADR-0002 chose planegcs from our own WASM
+build, one solver system per independent sketch component
+(`docs/adr/0002-sketch-solver.md`).
+Next tasks, which can run in parallel: **P0-04** (design system and shell),
+**P0-06** (document model) and **P0-08** (storage). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -44,7 +45,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs) |
 
 ## Stack summary
 
@@ -144,5 +145,17 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   `mallinfo()` doesn't link, so the memory probe is `sbrk(0)` (`heapTop()`).
 - Vitest 5 takes test options as the **second** argument:
   `it(name, { timeout }, fn)`; the old third-argument form throws.
+- **planegcs (P0-03):** the published `@salusoft89/planegcs` WASM has a fixed
+  16 MB heap and aborts with `Aborted(OOM)` at about 100 entities in one
+  system; we build our own (`spikes/p0-03-solver/planegcs-build/build.sh`).
+  Its bindings generator needs tree-sitter, which doesn't compile on Node 26:
+  it runs in a `node:20-bookworm` container. Endpoint tangency must be
+  `angle_via_point`: `tangent_la` + coincident endpoints gives false
+  redundancies and a wrong DOF from a solved state. Set
+  `debug_mode = DebugMode.NoDebug` or it prints to stdout. Adding or removing a
+  constraint re-runs the full diagnosis (QR); changing parameter values doesn't.
+- **SolveSpace's `slvs` npm package (3.1.0-dev.14)** is an old dev build:
+  fixed heap, `tangent()` aborts, no `setParamValue`, entity objects without
+  `point`. Rejected in P0-03; don't re-evaluate it without a newer build.
 - OCCT's STEP writer prints a banner to stdout from inside WASM. Route
   Emscripten's `print` to a logger (or ignore it in tests).

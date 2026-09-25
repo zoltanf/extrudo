@@ -33,3 +33,6 @@ spikes/*/custom-build/.libcascade/
 
 # Session handoff notes (local only)
 HANDOFF.md
+# P0-03: our planegcs builds are regenerable (spikes/p0-03-solver/planegcs-build/build.sh)
+spikes/p0-03-solver/builds/
+spikes/p0-03-solver/planegcs-build/.work/

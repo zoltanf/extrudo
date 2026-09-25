@@ -1,0 +1,433 @@
+{
+  "runtime": "Node v26.10.0",
+  "build": "npm",
+  "initMs": 22.608509999999995,
+  "heapMB": 16,
+  "results": [
+    {
+      "entities": 54,
+      "join": "coincident",
+      "layout": "anchored",
+      "params": 355,
+      "primitives": 355,
+      "build": 2.92517799999996,
+      "firstSolve": 8.820161999999982,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.4476150000000416,
+      "noopSolve": {
+        "median": 0.6296929999998611,
+        "p95": 0.781737000000021,
+        "max": 0.781737000000021
+      },
+      "paramChange": {
+        "median": 1.8392100000000937,
+        "p95": 1.9700929999999062,
+        "max": 1.9700929999999062
+      },
+      "drag": {
+        "median": 0.7979410000000371,
+        "p95": 1.0036939999999959,
+        "max": 1.5276460000000043
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 8.11860200000001,
+        "p95": 10.592045000000098,
+        "max": 10.592045000000098
+      },
+      "conflict": {
+        "solve": 9.729220999999825,
+        "status": 2,
+        "reported": 5,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 8.941825999999992,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 7.976125000000138,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 12.088960999999927,
+          "status": 0
+        }
+      }
+    },
+    {
+      "entities": 100,
+      "join": "coincident",
+      "layout": "anchored",
+      "error": "RuntimeError: Aborted(OOM). Build with -sASSERTIONS for more info."
+    },
+    {
+      "entities": 200,
+      "join": "coincident",
+      "layout": "anchored",
+      "error": "RuntimeError: Aborted(OOM). Build with -sASSERTIONS for more info."
+    },
+    {
+      "entities": 500,
+      "join": "coincident",
+      "layout": "anchored",
+      "error": "RuntimeError: Aborted(OOM). Build with -sASSERTIONS for more info."
+    },
+    {
+      "entities": 54,
+      "join": "shared",
+      "layout": "anchored",
+      "params": 259,
+      "primitives": 259,
+      "build": 1.264063999999962,
+      "firstSolve": 5.034604999999829,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.6074829999997746,
+      "noopSolve": {
+        "median": 0.49971700000014607,
+        "p95": 0.5944919999997182,
+        "max": 0.5944919999997182
+      },
+      "paramChange": {
+        "median": 1.6306629999999132,
+        "p95": 1.7402440000000752,
+        "max": 1.7402440000000752
+      },
+      "drag": {
+        "median": 0.6215210000000297,
+        "p95": 0.7255150000000867,
+        "max": 1.5849159999997937
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 3.6337909999997464,
+        "p95": 4.6361589999996795,
+        "max": 4.6361589999996795
+      },
+      "conflict": {
+        "solve": 3.763136999999915,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 3.690712000000076,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 3.6150739999998223,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 6.842176999999992,
+          "status": 0
+        }
+      }
+    },
+    {
+      "entities": 99,
+      "join": "shared",
+      "layout": "anchored",
+      "params": 474,
+      "primitives": 474,
+      "build": 1.9318199999997887,
+      "firstSolve": 14.30971499999987,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.8404740000000857,
+      "noopSolve": {
+        "median": 0.8962080000001151,
+        "p95": 1.062221000000136,
+        "max": 1.062221000000136
+      },
+      "paramChange": {
+        "median": 2.8803390000002764,
+        "p95": 2.998301000000083,
+        "max": 2.998301000000083
+      },
+      "drag": {
+        "median": 1.1298280000000887,
+        "p95": 1.2277460000000247,
+        "max": 1.7315840000001117
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 12.572474000000057,
+        "p95": 14.264177999999902,
+        "max": 14.264177999999902
+      },
+      "conflict": {
+        "solve": 15.662687000000005,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 13.314261999999871,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 12.82578999999987,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 18.64310999999998,
+          "status": 0
+        }
+      }
+    },
+    {
+      "entities": 200,
+      "join": "shared",
+      "layout": "anchored",
+      "error": "RuntimeError: Aborted(OOM). Build with -sASSERTIONS for more info."
+    },
+    {
+      "entities": 500,
+      "join": "shared",
+      "layout": "anchored",
+      "error": "RuntimeError: Aborted(OOM). Build with -sASSERTIONS for more info."
+    },
+    {
+      "entities": 54,
+      "join": "coincident",
+      "layout": "chained",
+      "params": 355,
+      "primitives": 355,
+      "build": 2.2322089999997843,
+      "firstSolve": 22.70503000000008,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.14212799999995696,
+      "noopSolve": {
+        "median": 0.8925760000001901,
+        "p95": 0.9357379999996738,
+        "max": 0.9357379999996738
+      },
+      "paramChange": {
+        "median": 13.382147999999688,
+        "p95": 13.62317099999973,
+        "max": 13.62317099999973
+      },
+      "drag": {
+        "median": 4.1063389999999345,
+        "p95": 4.738126999999622,
+        "max": 5.093550999999934
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 11.678570000000036,
+        "p95": 15.001635999999962,
+        "max": 15.001635999999962
+      },
+      "conflict": {
+        "solve": 10.605384000000413,
+        "status": 2,
+        "reported": 5,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 22.96400200000062,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 25.92256499999985,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 23.817118000000846,
+          "status": 2
+        }
+      }
+    },
+    {
+      "entities": 99,
+      "join": "coincident",
+      "layout": "chained",
+      "params": 650,
+      "primitives": 650,
+      "build": 2.3074280000000726,
+      "firstSolve": 121.1837029999997,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.5517490000001999,
+      "noopSolve": {
+        "median": 2.092106000000058,
+        "p95": 2.3866290000005392,
+        "max": 2.3866290000005392
+      },
+      "paramChange": {
+        "median": 69.39074600000004,
+        "p95": 73.62936499999978,
+        "max": 73.62936499999978
+      },
+      "drag": {
+        "median": 18.708480000000236,
+        "p95": 20.504179999999906,
+        "max": 20.504179999999906
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 49.117043000000194,
+        "p95": 49.71202400000038,
+        "max": 49.71202400000038
+      },
+      "conflict": {
+        "solve": 52.198107000000164,
+        "status": 2,
+        "reported": 5,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 113.3041659999999,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 136.85588400000051,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 75.35696599999937,
+          "status": 2
+        }
+      }
+    },
+    {
+      "entities": 200,
+      "join": "coincident",
+      "layout": "chained",
+      "error": "RuntimeError: Aborted(OOM). Build with -sASSERTIONS for more info."
+    },
+    {
+      "entities": 500,
+      "join": "coincident",
+      "layout": "chained",
+      "error": "RuntimeError: Aborted(OOM). Build with -sASSERTIONS for more info."
+    },
+    {
+      "entities": 54,
+      "join": "shared",
+      "layout": "chained",
+      "params": 259,
+      "primitives": 259,
+      "build": 1.1393269999998665,
+      "firstSolve": 16.65192399999978,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.11915000000044529,
+      "noopSolve": {
+        "median": 0.774543999999878,
+        "p95": 0.848786000000473,
+        "max": 0.848786000000473
+      },
+      "paramChange": {
+        "median": 13.2626479999999,
+        "p95": 13.499480999999832,
+        "max": 13.499480999999832
+      },
+      "drag": {
+        "median": 3.8335379999989527,
+        "p95": 4.149011999999857,
+        "max": 4.544175999999425
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 6.793636000000333,
+        "p95": 7.463696000000709,
+        "max": 7.463696000000709
+      },
+      "conflict": {
+        "solve": 5.282890999998926,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 16.247261000000435,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 21.498373999998876,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 18.535412999999608,
+          "status": 2
+        }
+      }
+    },
+    {
+      "entities": 99,
+      "join": "shared",
+      "layout": "chained",
+      "params": 474,
+      "primitives": 474,
+      "build": 1.6395329999995738,
+      "firstSolve": 96.63939000000028,
+      "firstStatus": 0,
+      "dof": 0,
+      "apply": 0.16936600000008184,
+      "noopSolve": {
+        "median": 1.8281750000005559,
+        "p95": 1.9468359999991662,
+        "max": 1.9468359999991662
+      },
+      "paramChange": {
+        "median": 68.44229300000006,
+        "p95": 71.22652999999991,
+        "max": 71.22652999999991
+      },
+      "drag": {
+        "median": 18.255487000000358,
+        "p95": 18.676633000000948,
+        "max": 20.031909999999698
+      },
+      "dragDof": 1,
+      "dragRebuild": {
+        "median": 29.558238999999958,
+        "p95": 31.12541499999861,
+        "max": 31.12541499999861
+      },
+      "conflict": {
+        "solve": 24.426902999999584,
+        "status": 2,
+        "reported": 4,
+        "includesCulprit": true
+      },
+      "algorithms": {
+        "DogLeg": {
+          "ms": 102.2384519999996,
+          "status": 0
+        },
+        "LevenbergMarquardt": {
+          "ms": 133.2497459999995,
+          "status": 0
+        },
+        "BFGS": {
+          "ms": 51.329483999999866,
+          "status": 2
+        }
+      }
+    },
+    {
+      "entities": 200,
+      "join": "shared",
+      "layout": "chained",
+      "error": "RuntimeError: Aborted(OOM). Build with -sASSERTIONS for more info."
+    },
+    {
+      "entities": 500,
+      "join": "shared",
+      "layout": "chained",
+      "error": "RuntimeError: Aborted(OOM). Build with -sASSERTIONS for more info."
+    }
+  ]
+}

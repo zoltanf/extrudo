@@ -2,6 +2,12 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-25 · **P0-03** Solver spike (`spikes/p0-03-solver/`): planegcs in
+  Node and the browser on a constrained rectangle and on generated 50–500-entity
+  sketches; our own planegcs builds (the published one has a fixed 16 MB heap);
+  per-component solving; SolveSpace (`slvs`) compared. ADR-0002: planegcs from
+  our own build, one solver system per independent component, drag through
+  temporary constraints on sketch parameters.
 - 2026-09-25 · **P0-09** Kernel package: our trimmed OCCT WASM with a C++
   facade (shapes in an arena, flat result/history/mesh arrays, LGPL-2.1+),
   TS `Kernel` layer, Comlink worker, `KernelClient` that restarts the worker

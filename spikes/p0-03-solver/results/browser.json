@@ -1,0 +1,211 @@
+{
+  "browser": "153.0.8010.12",
+  "npm": {
+    "rectangle": {
+      "sketch": "rect",
+      "layout": "anchored",
+      "frames": 180,
+      "solveMedian": 0.20000001788139343,
+      "solveP95": 0.5,
+      "frameMedian": 16.699999999999818,
+      "frameP95": 16.700000000000273,
+      "fps": 59.88023952095874,
+      "framesOver16ms": 0,
+      "dof": 1,
+      "components": 1
+    },
+    "rectangleState": {
+      "dof": 1,
+      "conflicts": [],
+      "status": 0
+    },
+    "conflictState": {
+      "dof": 1,
+      "conflicts": [
+        "width",
+        "culprit"
+      ],
+      "status": 1
+    },
+    "drags": [
+      {
+        "sketch": "50",
+        "layout": "anchored",
+        "frames": 180,
+        "solveMedian": 0.699999988079071,
+        "solveP95": 0.9000000059604645,
+        "frameMedian": 16.699999999999818,
+        "frameP95": 16.799999999999955,
+        "fps": 59.88023952095874,
+        "framesOver16ms": 0,
+        "dof": 1,
+        "components": 6
+      },
+      {
+        "sketch": "200",
+        "layout": "anchored",
+        "frames": 180,
+        "solveMedian": 0.699999988079071,
+        "solveP95": 0.800000011920929,
+        "frameMedian": 16.699999999999818,
+        "frameP95": 16.700000000000273,
+        "fps": 59.88023952095874,
+        "framesOver16ms": 0,
+        "dof": 1,
+        "components": 22
+      },
+      {
+        "sketch": "500",
+        "layout": "anchored",
+        "frames": 180,
+        "solveMedian": 0.699999988079071,
+        "solveP95": 0.800000011920929,
+        "frameMedian": 16.699999999999818,
+        "frameP95": 16.799999999999955,
+        "fps": 59.88023952095874,
+        "framesOver16ms": 1,
+        "dof": 1,
+        "components": 56
+      },
+      {
+        "sketch": "50",
+        "layout": "chained",
+        "frames": 180,
+        "solveMedian": 5.4000000059604645,
+        "solveP95": 10.400000005960464,
+        "frameMedian": 16.699999999999818,
+        "frameP95": 16.700000000000273,
+        "fps": 59.88023952095874,
+        "framesOver16ms": 0,
+        "dof": 1,
+        "components": 1
+      },
+      {
+        "sketch": "100",
+        "layout": "chained",
+        "frames": 180,
+        "solveMedian": 19.30000001192093,
+        "solveP95": 20.799999982118607,
+        "frameMedian": 16.700000000000045,
+        "frameP95": 33.40000000000009,
+        "fps": 59.88023952095792,
+        "framesOver16ms": 53,
+        "dof": 1,
+        "components": 1
+      },
+      {
+        "sketch": "200",
+        "layout": "chained",
+        "error": "Error: page.evaluate: RuntimeError: Aborted(OOM). Build with -sASSERTIONS for more info."
+      }
+    ]
+  },
+  "fast": {
+    "rectangle": {
+      "sketch": "rect",
+      "layout": "anchored",
+      "frames": 180,
+      "solveMedian": 0.20000001788139343,
+      "solveP95": 0.4000000059604645,
+      "frameMedian": 16.699999999999818,
+      "frameP95": 16.700000000000273,
+      "fps": 59.88023952095874,
+      "framesOver16ms": 0,
+      "dof": 1,
+      "components": 1
+    },
+    "rectangleState": {
+      "dof": 1,
+      "conflicts": [],
+      "status": 0
+    },
+    "conflictState": {
+      "dof": 1,
+      "conflicts": [
+        "width",
+        "culprit"
+      ],
+      "status": 1
+    },
+    "drags": [
+      {
+        "sketch": "50",
+        "layout": "anchored",
+        "frames": 180,
+        "solveMedian": 0.7000000178813934,
+        "solveP95": 1,
+        "frameMedian": 16.699999999999818,
+        "frameP95": 16.799999999999955,
+        "fps": 59.88023952095874,
+        "framesOver16ms": 0,
+        "dof": 1,
+        "components": 6
+      },
+      {
+        "sketch": "200",
+        "layout": "anchored",
+        "frames": 180,
+        "solveMedian": 0.699999988079071,
+        "solveP95": 0.9000000059604645,
+        "frameMedian": 16.699999999999818,
+        "frameP95": 16.700000000000273,
+        "fps": 59.88023952095874,
+        "framesOver16ms": 1,
+        "dof": 1,
+        "components": 22
+      },
+      {
+        "sketch": "500",
+        "layout": "anchored",
+        "frames": 180,
+        "solveMedian": 0.6000000238418579,
+        "solveP95": 0.800000011920929,
+        "frameMedian": 16.699999999999818,
+        "frameP95": 16.799999999999955,
+        "fps": 59.88023952095874,
+        "framesOver16ms": 1,
+        "dof": 1,
+        "components": 56
+      },
+      {
+        "sketch": "50",
+        "layout": "chained",
+        "frames": 180,
+        "solveMedian": 4.199999988079071,
+        "solveP95": 9.200000017881393,
+        "frameMedian": 16.699999999999818,
+        "frameP95": 16.700000000000273,
+        "fps": 59.88023952095874,
+        "framesOver16ms": 0,
+        "dof": 1,
+        "components": 1
+      },
+      {
+        "sketch": "100",
+        "layout": "chained",
+        "frames": 180,
+        "solveMedian": 12.600000023841858,
+        "solveP95": 13.899999976158142,
+        "frameMedian": 16.699999999999818,
+        "frameP95": 16.799999999999955,
+        "fps": 59.88023952095874,
+        "framesOver16ms": 2,
+        "dof": 1,
+        "components": 1
+      },
+      {
+        "sketch": "200",
+        "layout": "chained",
+        "frames": 180,
+        "solveMedian": 77.5,
+        "solveP95": 82.59999999403954,
+        "frameMedian": 83.30000000000018,
+        "frameP95": 83.40000000000055,
+        "fps": 12.004801920768282,
+        "framesOver16ms": 180,
+        "dof": 1,
+        "components": 1
+      }
+    ]
+  }
+}

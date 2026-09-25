@@ -1,0 +1,19 @@
+{
+  "name": "extrudo-spike-p0-03-solver",
+  "private": true,
+  "version": "0.0.0",
+  "description": "P0-03 throwaway spike: planegcs sketch solver in Node and the browser (timings, drag, DOF, conflicts).",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite"
+  },
+  "dependencies": {
+    "@salusoft89/planegcs": "^1.2.0",
+    "slvs": "3.1.0-dev.14"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}

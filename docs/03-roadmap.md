@@ -46,10 +46,15 @@ in the browser.
   **Done 2026-09-25:** our own trimmed libcascade build with a small C++ facade
   and a thin TS layer; replicad and brepjs as code references only. See
   `docs/adr/0001-geometry-kernel.md`.
-- [ ] **P0-03 ⚗ Solver spike.** planegcs in the browser: a rectangle with a
+- [x] **P0-03 ⚗ Solver spike.** *(done 2026-09-25)* planegcs in the browser: a rectangle with a
   coincident, horizontal and dimension constraint; drag a corner at 60 fps;
   read DOF and conflict info.
   *AC:* ADR-0002 with timings for 50/200/500-entity sketches.
+  **Done 2026-09-25:** planegcs from our own WASM build (memory growth, current
+  emsdk + SIMD, two pivoting patches), one solver system per independent
+  component, drag through temporary constraints on sketch parameters. The
+  rectangle and a 500-entity sketch drag at 60 fps; one coupled component of 200
+  entities doesn't (12 fps). See `docs/adr/0002-sketch-solver.md`.
 - [ ] **P0-04 Design system and app shell.** Theme tokens (from
   `docs/05-brand.md`: Slate dark default + light), typography, Radix wrappers (button, menu, dialog, tooltip, popover, input),
   and the icon pipeline (SVG → React components, colour per category). A static
@@ -116,12 +121,18 @@ Benchmark **B1** buildable.
   intersection, H/V alignment with dashed guides, grid), heads-up numeric input
   (length/angle, Tab, Enter, Esc), preview rendering, auto-constraint emission.
   *AC:* FR-SK-05, -06; unit tests of the inference engine.
-- [ ] **P1-03 Solver integration.** `sketch` package planegcs adapter: map every
-  entity and constraint type; incremental re-solve; drag solving (move a point
-  under the cursor with a temporary constraint); DOF count; conflict and
-  redundancy reporting.
+- [ ] **P1-03 Solver integration.** `sketch` package planegcs adapter (ADR-0002):
+  our planegcs WASM build (from `spikes/p0-03-solver/planegcs-build/`, built in
+  CI once per input hash like OCCT); map every entity and constraint type
+  (endpoint tangency as `angle_via_point`); one persistent solver system per
+  connected component, re-solving only affected components; drag solving
+  (temporary constraints on two sketch parameters, updated per frame, no
+  rebuild); DOF count; conflict and redundancy reporting, with a test-solve
+  before a new constraint is committed.
   *Deps:* P0-03. *AC:* one unit test per constraint type; drag solve < 8 ms at
-  200 entities.
+  200 entities in independent components, and < 16 ms for a single component
+  of up to 100 entities; a gear-outline fixture (one closed loop, 100+ curves)
+  measured and recorded.
 - [ ] **P1-04 Basic drawing tools.** Line (chained, tangent-arc drag), rectangle
   (2-point, 3-point, center), circle (center, 2-point, 3-point), arc (3-point,
   center, tangent), point, construction toggle (X).
@@ -348,6 +359,7 @@ don't let Phase 3 features be built without it.
 | WASM memory leaks (manual `delete()`) | Tab crashes after long sessions | Disposal scopes as a lint-checked rule; a memory test that recomputes a fixture 500×. |
 | Scope creep toward "full Fusion" | Never ships | Phases with exit criteria and benchmark models; out-of-scope list in requirements. |
 | Solver instability (flipping solutions) | Sketches jump on edit | Start from stored solved positions; small-step drag solving; tests. |
+| Large coupled sketch components solve slowly (planegcs uses dense matrices; ADR-0002) | Dragging a 200-entity single component runs at ~12 fps; edits take 0.1–1 s | Per-component solving covers the usual sketch; if real sketches hit it: solve large components in a worker, or patch planegcs to sparse matrices in our build. |
 | LGPL obligations misunderstood | Legal trouble when public | Separate WASM files; NOTICE file; decide license before P3-15. |
 | Mimicking Fusion too closely (trade dress) | Legal risk | Own icons, names and branding; copy concepts and workflow only. |
 

@@ -1,0 +1,8 @@
+{
+  "package": "slvs@3.1.0-dev.14 (SolveSpace, GPL-3.0)",
+  "runtime": "Node v26.10.0",
+  "note": "Anchored 54-entity sketch. The chained 54-entity sketch, and the anchored one at 100 entities, abort with 'out of memory' (fixed heap). tangent() aborts with 'Cannot find handle', so tangency uses perpendicular radius lines. A drag step rebuilds the sketch (this build has no setParamValue).",
+  "results": [
+    {"entities":54,"layout":"anchored","unknowns":234,"first":88.13,"firstResult":{"result":0,"dof":0},"dragRebuild":355.12,"dragResult":{"result":1,"dof":0},"conflict":{"ms":317.28,"result":1,"bad":2}}
+  ]
+}

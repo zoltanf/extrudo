@@ -1,0 +1,39 @@
+--- a/planegcs/CMakeLists.txt
++++ b/planegcs/CMakeLists.txt
+@@ -50,10 +50,10 @@
+ 
+ # note: STACK_SIZE fixes memory issue with sketches of > 100 items and (interestingly) temporary constraints
+ # maybe there could be some optimization in planegcs?
+-set_target_properties(planegcs PROPERTIES LINK_FLAGS "${BUILD_TYPE_FLAGS} -lembind --closure 1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s MALLOC=emmalloc -s NO_FILESYSTEM=1 -s STACK_SIZE=5MB")
++set_target_properties(planegcs PROPERTIES LINK_FLAGS "${BUILD_TYPE_FLAGS} -lembind --closure 1 -s EXPORT_ES6=1 -s MODULARIZE=1 -s MALLOC=emmalloc -s NO_FILESYSTEM=1 -s STACK_SIZE=5MB -s ALLOW_MEMORY_GROWTH=1")
+ 
+ # turn off deprecated warnings coming from Boost
+-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated")
++set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-deprecated -msimd128")
+ 
+ # todo: possible further flags?
+ # -s ENVIRONMENT=web
+--- a/planegcs/GCS.cpp
++++ b/planegcs/GCS.cpp
+@@ -479,7 +479,7 @@
+     , convergence(1e-10)
+     , convergenceRedundant(1e-10)
+     , qrAlgorithm(EigenSparseQR)
+-    , dogLegGaussStep(FullPivLU)
++    , dogLegGaussStep(LeastNormLdlt)
+     , qrpivotThreshold(1E-13)
+     , debugMode(Minimal)
+     , LM_eps(1E-10)
+--- a/planegcs/qp_eq.cpp
++++ b/planegcs/qp_eq.cpp
+@@ -33,8 +33,8 @@
+ // it returns the solution in x, the row-space of A in Y, and the null space of A in Z
+ int qp_eq(MatrixXd& H, VectorXd& g, MatrixXd& A, VectorXd& c, VectorXd& x, MatrixXd& Y, MatrixXd& Z)
+ {
+-    FullPivHouseholderQR<MatrixXd> qrAT(A.transpose());
+-    MatrixXd Q = qrAT.matrixQ();
++    ColPivHouseholderQR<MatrixXd> qrAT(A.transpose());
++    MatrixXd Q = qrAT.householderQ();
+ 
+     size_t params_num = qrAT.rows();
+     size_t constr_num = qrAT.cols();

@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>P0-03 solver spike</title>
+    <style>
+      body { margin: 0; font: 14px/1.4 system-ui, sans-serif; background: #1b1f27; color: #e9edf3; }
+      header { padding: 10px 16px; display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+      button, select { font: inherit; }
+      #stats { font-variant-numeric: tabular-nums; color: #939cad; }
+      #status.conflict { color: #ff6b6b; }
+      canvas { display: block; background: #232833; cursor: crosshair; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <select id="sketch">
+        <option value="rect">Rectangle (coincident, H/V, width)</option>
+        <option value="50">50 entities</option>
+        <option value="100">100 entities</option>
+        <option value="200">200 entities</option>
+        <option value="500">500 entities</option>
+      </select>
+      <select id="layout">
+        <option value="anchored">anchored</option>
+        <option value="chained">chained</option>
+      </select>
+      <button id="conflict" type="button">Add conflicting dimension</button>
+      <span id="status"></span>
+      <span id="stats"></span>
+    </header>
+    <canvas id="canvas" width="1000" height="560"></canvas>
+    <script type="module" src="./src/browser/main.ts"></script>
+  </body>
+</html>
