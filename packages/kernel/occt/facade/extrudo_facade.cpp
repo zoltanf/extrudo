@@ -275,6 +275,7 @@ public:
     std::vector<uint32_t>().swap(faceRanges_);
     std::vector<float>().swap(edgePoints_);
     std::vector<uint32_t>().swap(edgeRanges_);
+    std::vector<uint8_t>().swap(edgeFlags_);
     std::vector<float>().swap(vertexPoints_);
   }
 
@@ -293,6 +294,9 @@ public:
   /** Per edge: first point, point count (0 for degenerate edges). */
   uintptr_t edgeRangesPtr() const { return reinterpret_cast<uintptr_t>(edgeRanges_.data()); }
   int edgeRangesSize() const { return static_cast<int>(edgeRanges_.size()); }
+  /** Per edge: flag bits. 1 = seam (the edge where a closed face, like a cylinder, meets itself). */
+  uintptr_t edgeFlagsPtr() const { return reinterpret_cast<uintptr_t>(edgeFlags_.data()); }
+  int edgeFlagsSize() const { return static_cast<int>(edgeFlags_.size()); }
   uintptr_t vertexPointsPtr() const { return reinterpret_cast<uintptr_t>(vertexPoints_.data()); }
   int vertexPointsSize() const { return static_cast<int>(vertexPoints_.size()); }
 
@@ -325,6 +329,7 @@ private:
   std::vector<uint32_t> faceRanges_;
   std::vector<float> edgePoints_;
   std::vector<uint32_t> edgeRanges_;
+  std::vector<uint8_t> edgeFlags_;
   std::vector<float> vertexPoints_;
 
   void beginOp() {
@@ -514,11 +519,18 @@ private:
     for (int i = 1; i <= edges.Extent(); ++i) {
       const TopoDS_Edge& edge = TopoDS::Edge(edges(i));
       const uint32_t firstPoint = static_cast<uint32_t>(edgePoints_.size() / 3);
+      const int faceListIndex = edgeFaces.FindIndex(edge);
+      uint8_t flags = 0;
+      if (faceListIndex > 0) {
+        for (NCollection_List<TopoDS_Shape>::Iterator it(edgeFaces(faceListIndex)); it.More(); it.Next()) {
+          if (BRep_Tool::IsClosed(edge, TopoDS::Face(it.Value()))) flags |= 1;
+        }
+      }
+      edgeFlags_.push_back(flags);
       if (!BRep_Tool::Degenerated(edge)) {
         bool done = false;
         // Prefer the polygon on an adjacent face's triangulation, so edge
         // lines sit exactly on the rendered mesh.
-        const int faceListIndex = edgeFaces.FindIndex(edge);
         if (faceListIndex > 0) {
           for (NCollection_List<TopoDS_Shape>::Iterator it(edgeFaces(faceListIndex)); it.More() && !done;
                it.Next()) {

@@ -20,9 +20,18 @@ export interface BodyMesh {
   edgePoints: Float32Array;
   /** Per edge: first point, point count (0 for degenerate edges). */
   edgeRanges: Uint32Array;
+  /** Per edge: flag bits, see `EDGE_SEAM`. */
+  edgeFlags: Uint8Array;
   /** xyz per B-rep vertex. */
   vertices: Float32Array;
 }
+
+/**
+ * Edge flag: a seam, where a closed face (a cylinder, a sphere) meets
+ * itself. It is a real B-rep edge but not a visible one, so the viewport
+ * doesn't draw it.
+ */
+export const EDGE_SEAM = 1;
 
 export interface Measurements {
   /** mm³ */
@@ -48,6 +57,7 @@ export function meshBuffers(mesh: BodyMesh): ArrayBuffer[] {
     mesh.faceRanges,
     mesh.edgePoints,
     mesh.edgeRanges,
+    mesh.edgeFlags,
     mesh.vertices,
   ].map((array) => array.buffer as ArrayBuffer);
 }

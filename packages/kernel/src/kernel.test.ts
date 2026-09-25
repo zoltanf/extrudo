@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { HistoryRecord } from './history';
 import { Kernel, KernelError } from './kernel';
+import { EDGE_SEAM } from './mesh';
 import { loadOcct } from './occt/load';
 import { OcctScope } from './occt/scope';
 import type { OcctModule } from './occt/types';
@@ -46,10 +47,27 @@ describe('the test part (box → fillet → hole)', () => {
     expect(next).toBe(mesh.indices.length / 3);
 
     expect(mesh.edgeRanges.length).toBe(2 * edges);
+    expect(mesh.edgeFlags.length).toBe(edges);
     expect(mesh.vertices.length % 3).toBe(0);
     for (let i = 0; i < nodes; i++) {
       const [x, y, z] = [mesh.normals[3 * i], mesh.normals[3 * i + 1], mesh.normals[3 * i + 2]];
       expect(Math.hypot(x ?? 0, y ?? 0, z ?? 0)).toBeCloseTo(1, 4);
+    }
+  });
+
+  it("flags the hole's seam, and only that edge", () => {
+    const { mesh } = makeTestPart(kernel);
+    const seams = [...mesh.edgeFlags.keys()].filter((e) => (mesh.edgeFlags[e] ?? 0) & EDGE_SEAM);
+    expect(seams).toHaveLength(1);
+    // The seam of the vertical hole is a straight line along Z.
+    const e = seams[0] ?? 0;
+    const [first = 0, count = 0] = [mesh.edgeRanges[2 * e], mesh.edgeRanges[2 * e + 1]];
+    expect(count).toBeGreaterThanOrEqual(2);
+    const x0 = mesh.edgePoints[3 * first];
+    const y0 = mesh.edgePoints[3 * first + 1];
+    for (let p = first; p < first + count; p++) {
+      expect(mesh.edgePoints[3 * p]).toBeCloseTo(x0 ?? Number.NaN, 4);
+      expect(mesh.edgePoints[3 * p + 1]).toBeCloseTo(y0 ?? Number.NaN, 4);
     }
   });
 

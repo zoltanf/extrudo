@@ -78,7 +78,12 @@ clicks the ViewCube's Top face and checks the camera orientation.
    B-rep edges as `LineSegments2` (screen-space width). Styles: shaded;
    shaded with edges (default); shaded with hidden edges (a second edge pass
    with `GreaterDepth` at a third of the opacity); wireframe (edges only).
-   Faces use a polygon offset so edges win the depth test.
+   Faces use a polygon offset so edges win the depth test. **Seam edges are
+   not drawn**: the kernel facade flags each edge that is closed on one of its
+   faces (`BRep_Tool::IsClosed`, `BodyMesh.edgeFlags` bit `EDGE_SEAM`), such
+   as the line where a cylinder meets itself. It is a real B-rep edge but
+   looks like a stray line in a hole. Silhouettes of curved faces, the lines
+   people expect there instead, are view-dependent and come with P2-08.
 9. **The canvas renders on demand** (`frameloop="demand"`): a store change
    or a running transition asks for a frame. The camera rig owns a
    perspective and an orthographic camera, both `manual`, and sets their pose

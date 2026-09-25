@@ -216,6 +216,8 @@ and STEP. Benchmarks **B2** and **B3** buildable.
 - [ ] **P2-07 Revolve.** FR-FT-02.
 - [ ] **P2-08 Bodies.** Browser "Bodies" folder; rename, visibility, colour and
   appearance; delete body (as a "Remove" feature); body count badge.
+  Silhouette edges of curved faces (view-dependent) in the wireframe and
+  hidden-edge styles; seams are already hidden (ADR-0008).
 - [ ] **P2-09 Sketch on face and project/include.** Sketch on a planar face
   (follows the face through recompute); Project tool (associative edges and
   silhouettes into the sketch).

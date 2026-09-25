@@ -30,7 +30,13 @@ export {
   ShapeScope,
   type Vec3,
 } from './kernel';
-export { type BodyMesh, type Measurements, type MeshOptions, meshBuffers } from './mesh';
+export {
+  type BodyMesh,
+  EDGE_SEAM,
+  type Measurements,
+  type MeshOptions,
+  meshBuffers,
+} from './mesh';
 export {
   isKernelCrash,
   type KernelApi,

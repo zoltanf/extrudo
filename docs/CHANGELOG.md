@@ -11,7 +11,8 @@ One line per completed roadmap task, newest first. Dates are absolute.
   faces, edges, corners, home, turn and roll arrows; nav bar (orbit/pan/zoom
   tools, fit F6, orthographic, visual styles, grid, mouse preset); bodies
   from the model store in four visual styles, tried on `#/debug/kernel`.
-  Settings are preferences. The viewport is a lazy chunk. ADR-0008.
+  Settings are preferences. The viewport is a lazy chunk. Seam edges are
+  flagged by the kernel facade and not drawn. ADR-0008.
 - 2026-09-25 · **P0-04** Design system and app shell: brand tokens as CSS
   variables (Slate dark default, light) mapped into Tailwind v4, bundled
   Instrument Sans and JetBrains Mono, Radix wrappers (button, icon button with

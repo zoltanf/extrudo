@@ -106,6 +106,7 @@ export class Kernel {
         faceRanges: this.#copy(Uint32Array, f.faceRangesPtr(), f.faceRangesSize()),
         edgePoints: this.#copy(Float32Array, f.edgePointsPtr(), f.edgePointsSize()),
         edgeRanges: this.#copy(Uint32Array, f.edgeRangesPtr(), f.edgeRangesSize()),
+        edgeFlags: this.#copy(Uint8Array, f.edgeFlagsPtr(), f.edgeFlagsSize()),
         vertices: this.#copy(Float32Array, f.vertexPointsPtr(), f.vertexPointsSize()),
       };
     } finally {

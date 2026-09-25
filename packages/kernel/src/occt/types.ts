@@ -45,6 +45,8 @@ export interface FacadeBinding {
   edgePointsSize(): number;
   edgeRangesPtr(): number;
   edgeRangesSize(): number;
+  edgeFlagsPtr(): number;
+  edgeFlagsSize(): number;
   vertexPointsPtr(): number;
   vertexPointsSize(): number;
   lastError(): string;

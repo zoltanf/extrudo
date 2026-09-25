@@ -1,5 +1,5 @@
 import type { BodyId, BodyMeta } from '@extrudo/core';
-import type { BodyMesh } from '@extrudo/kernel';
+import { type BodyMesh, EDGE_SEAM } from '@extrudo/kernel';
 import { useEffect, useMemo } from 'react';
 import { Box3, BufferAttribute, BufferGeometry, Color, GreaterDepth, Sphere } from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
@@ -140,17 +140,24 @@ function Body({
   );
 }
 
-/** Edge polylines as line-segment pairs (xyz xyz per segment). */
+/**
+ * Edge polylines as line-segment pairs (xyz xyz per segment). Seams are left
+ * out: they are B-rep edges, but not lines anyone sees on the part.
+ */
 export function edgeSegments(mesh: BodyMesh): Float32Array {
-  const { edgePoints, edgeRanges } = mesh;
+  const { edgePoints, edgeRanges, edgeFlags } = mesh;
+  const edges = edgeRanges.length >> 1;
+  const drawn = (e: number) => ((edgeFlags[e] ?? 0) & EDGE_SEAM) === 0;
   let count = 0;
-  for (let e = 0; e + 1 < edgeRanges.length; e += 2)
-    count += Math.max(0, (edgeRanges[e + 1] ?? 0) - 1);
+  for (let e = 0; e < edges; e++) {
+    if (drawn(e)) count += Math.max(0, (edgeRanges[2 * e + 1] ?? 0) - 1);
+  }
   const out = new Float32Array(count * 6);
   let o = 0;
-  for (let e = 0; e + 1 < edgeRanges.length; e += 2) {
-    const first = edgeRanges[e] ?? 0;
-    const n = edgeRanges[e + 1] ?? 0;
+  for (let e = 0; e < edges; e++) {
+    if (!drawn(e)) continue;
+    const first = edgeRanges[2 * e] ?? 0;
+    const n = edgeRanges[2 * e + 1] ?? 0;
     for (let i = 0; i + 1 < n; i++) {
       const a = (first + i) * 3;
       out.set(edgePoints.subarray(a, a + 6), o);
