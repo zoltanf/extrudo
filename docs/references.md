@@ -39,9 +39,10 @@ different geometry model (triangle-mesh CSG, whereas we use exact B-rep).
 
 | Project | Why it matters | License |
 |---|---|---|
-| [replicad](https://replicad.xyz/) | JS API over OCCT WASM; reference for wire/face builders and meshing | MIT |
-| [brepjs](https://github.com/andymai/brepjs) | TypeScript B-rep modeling over OCCT WASM | Apache-2.0 (kernel LGPL) |
-| [taucad/opencascade.js (`libcascade`)](https://github.com/taucad/opencascade.js) | Our kernel candidate, OCCT 8 in WASM, custom-build toolchain | LGPL-2.1 + exception |
+| [taucad/opencascade.js (`libcascade`)](https://github.com/taucad/opencascade.js) | **Our kernel** (ADR-0001): raw OCCT 8 in WASM, plus `@libcascade/toolchain` for trimmed builds with our own C++ | LGPL-2.1 + exception (toolchain MIT) |
+| [replicad](https://replicad.xyz/) | JS API over OCCT WASM. Reference for wire/face builders and meshing; its `replicad-opencascadejs` build config is a starting binding list for our trimmed build. Evaluated in P0-02, not used as a dependency. | MIT (WASM LGPL) |
+| [brepjs](https://github.com/andymai/brepjs) | TypeScript B-rep modeling over occt-wasm. Its `shapeRef`/`EdgeRef` (face roles + geometric hints, edges named by their two adjacent face roles) is the closest open design to our §5.2 topological naming: read it for P2-04. Evaluated in P0-02, not used as a dependency. | Apache-2.0 |
+| [occt-wasm](https://github.com/andymai/occt-wasm) | OCCT 8 behind a C++ facade with arena handles; the pattern for our own C++ facade (builder lifetime in C++, flat-array history). Face-only history, no bound OCCT classes. | tooling MIT/Apache-2.0, WASM LGPL-2.1 |
 | [planegcs](https://github.com/Salusoft89/planegcs) | Our sketch solver | LGPL-2.1 |
 | CascadeStudio | Browser code-CAD over OCCT; scripting-UX reference for Phase 5 | MIT |
 | CADmium | Browser CAD in Rust/WASM; a comparable history-based web CAD | check |

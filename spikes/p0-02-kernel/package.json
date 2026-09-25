@@ -1,0 +1,28 @@
+{
+  "name": "extrudo-spike-p0-02-kernel",
+  "private": true,
+  "version": "0.0.0",
+  "description": "P0-02 throwaway spike: compare OCCT WASM access layers (libcascade, replicad, brepjs/occt-wasm).",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "bench:node": "node src/node/run-all.mjs",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "brepjs": "^20.0.0",
+    "libcascade": "^3.0.2",
+    "occt-wasm": "^5.3.5",
+    "replicad": "^1.1.0",
+    "replicad-opencascadejs": "^1.1.0",
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@libcascade/toolchain": "^3.0.2",
+    "@types/three": "^0.186.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
+}

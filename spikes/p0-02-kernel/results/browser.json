@@ -1,0 +1,2942 @@
+{
+  "libcascade": {
+    "browser": "153.0.8010.12",
+    "loads": [
+      {
+        "ok": true,
+        "importMs": 12.099999994039536,
+        "load": {
+          "candidate": "libcascade",
+          "initMs": 732.6999999880791,
+          "heapBytes": 134217728
+        },
+        "readyAt": 1790333163915.7,
+        "crossOriginIsolated": false,
+        "sharedArrayBuffer": false,
+        "result": {
+          "candidate": "libcascade",
+          "layer": "raw OCCT (libcascade)",
+          "timings": {
+            "box": 2.800000011920929,
+            "fillet": 46.900000005960464,
+            "cut": 68.30000001192093,
+            "tessellate": 26.80000001192093,
+            "stl": 0.5,
+            "step": 62,
+            "stepReimport": 146.90000000596046,
+            "total": 366.40000000596046
+          },
+          "checks": {
+            "valid": true,
+            "volume": 22840.17702849743,
+            "expectedVolume": 22840.17702849743,
+            "faces": 11,
+            "edges": 27,
+            "triangles": 360,
+            "stlBytes": 18084,
+            "stlWatertight": true,
+            "stlVolume": 22842.002702467827,
+            "stepBytes": 35605,
+            "stepSchema": "AP214IS",
+            "stepReimportFaces": 11,
+            "stepReimportVolume": 22840.177028497514
+          },
+          "history": {
+            "available": true,
+            "tracks": {
+              "faces": true,
+              "edges": true
+            },
+            "lines": [
+              "fillet: box:x- → modified into 1 face(s)",
+              "fillet: box:x+ → modified into 1 face(s)",
+              "fillet: box:y- → modified into 1 face(s)",
+              "fillet: box:y+ → modified into 1 face(s)",
+              "fillet: box:z- → modified into 1 face(s)",
+              "fillet: box:z+ → modified into 1 face(s)",
+              "fillet: box:x-y- → deleted",
+              "fillet: box:x-y- → generated face fillet(box:x-y-)",
+              "fillet: box:x-z+ → modified into 1 edge(s)",
+              "fillet: box:x-y+ → deleted",
+              "fillet: box:x-y+ → generated face fillet(box:x-y+)",
+              "fillet: box:x-z- → modified into 1 edge(s)",
+              "fillet: box:x+y- → deleted",
+              "fillet: box:x+y- → generated face fillet(box:x+y-)",
+              "fillet: box:x+z+ → modified into 1 edge(s)",
+              "fillet: box:x+y+ → deleted",
+              "fillet: box:x+y+ → generated face fillet(box:x+y+)",
+              "fillet: box:x+z- → modified into 1 edge(s)",
+              "fillet: box:y-z- → modified into 1 edge(s)",
+              "fillet: box:y-z+ → modified into 1 edge(s)",
+              "fillet: box:y+z- → modified into 1 edge(s)",
+              "fillet: box:y+z+ → modified into 1 edge(s)",
+              "cut: box:x- → unchanged",
+              "cut: box:z+ → modified into 1 face(s)",
+              "cut: box:z+ → generated edge cut(box:z+)#1",
+              "cut: box:z+ → generated vertex cut(box:z+)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: fillet(box:x-y-) → unchanged",
+              "cut: fillet(box:x-y+) → unchanged",
+              "cut: box:z- → modified into 1 face(s)",
+              "cut: box:z- → generated edge cut(box:z-)#1",
+              "cut: box:z- → generated vertex cut(box:z-)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: box:y- → unchanged",
+              "cut: box:y+ → unchanged",
+              "cut: fillet(box:x+y-) → unchanged",
+              "cut: fillet(box:x+y+) → unchanged",
+              "cut: box:x+ → unchanged",
+              "cut: box:x-z+ → unchanged",
+              "cut: box:x-z- → unchanged",
+              "cut: box:y-z+ → unchanged",
+              "cut: box:y+z+ → unchanged",
+              "cut: box:x+z+ → unchanged",
+              "cut: box:y-z- → unchanged",
+              "cut: box:y+z- → unchanged",
+              "cut: box:x+z- → unchanged",
+              "cut: hole:side → modified into 1 face(s)",
+              "cut: hole:side → generated edge cut(hole:side)#1",
+              "cut: hole:side → generated edge cut(hole:side)#2",
+              "cut: hole:top → deleted",
+              "cut: hole:bottom → deleted"
+            ],
+            "coverage": {
+              "faces": {
+                "total": 11,
+                "named": 11,
+                "ambiguous": 0
+              },
+              "edges": {
+                "total": 27,
+                "named": 10,
+                "derived": 17,
+                "multiNamed": 2
+              }
+            },
+            "finalFaces": [
+              {
+                "index": 1,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x-"
+                ]
+              },
+              {
+                "index": 2,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z+"
+                ]
+              },
+              {
+                "index": 3,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y-)"
+                ]
+              },
+              {
+                "index": 4,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y+)"
+                ]
+              },
+              {
+                "index": 5,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z-"
+                ]
+              },
+              {
+                "index": 6,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y-"
+                ]
+              },
+              {
+                "index": 7,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y+"
+                ]
+              },
+              {
+                "index": 8,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y-)"
+                ]
+              },
+              {
+                "index": 9,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y+)"
+                ]
+              },
+              {
+                "index": 10,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x+"
+                ]
+              },
+              {
+                "index": 11,
+                "area": 502.6548245743669,
+                "names": [
+                  "hole:side"
+                ]
+              }
+            ],
+            "finalEdges": [
+              {
+                "index": 1,
+                "length": 24,
+                "names": [
+                  "box:x-z+"
+                ]
+              },
+              {
+                "index": 2,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 3,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 4,
+                "length": 24,
+                "names": [
+                  "box:x-z-"
+                ]
+              },
+              {
+                "index": 5,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 6,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 7,
+                "length": 34,
+                "names": [
+                  "box:y-z+"
+                ]
+              },
+              {
+                "index": 8,
+                "length": 34,
+                "names": [
+                  "box:y+z+"
+                ]
+              },
+              {
+                "index": 9,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 10,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 11,
+                "length": 24,
+                "names": [
+                  "box:x+z+"
+                ]
+              },
+              {
+                "index": 12,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z+)#1",
+                  "cut(hole:side)#2"
+                ]
+              },
+              {
+                "index": 13,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 14,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 15,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 16,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 17,
+                "length": 34,
+                "names": [
+                  "box:y-z-"
+                ]
+              },
+              {
+                "index": 18,
+                "length": 34,
+                "names": [
+                  "box:y+z-"
+                ]
+              },
+              {
+                "index": 19,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 20,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 21,
+                "length": 24,
+                "names": [
+                  "box:x+z-"
+                ]
+              },
+              {
+                "index": 22,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z-)#1",
+                  "cut(hole:side)#1"
+                ]
+              },
+              {
+                "index": 23,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 24,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 25,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 26,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 27,
+                "length": 20,
+                "names": [
+                  "edge[hole:side]"
+                ]
+              }
+            ],
+            "notes": [
+              "AP242DIS: 35640 bytes, re-import volume 22840.177, faces 11",
+              "OCCT StlAPI_Writer: 113140 bytes, ASCII (ASCIIMode() is a getter returning a reference; it cannot be set from JS)"
+            ]
+          }
+        },
+        "warmMedian": {
+          "box": 0.19999998807907104,
+          "fillet": 6.5,
+          "cut": 8.800000011920929,
+          "tessellate": 14.5,
+          "stl": 0.09999999403953552,
+          "step": 8.099999994039536,
+          "stepReimport": 12.5,
+          "total": 60.099999994039536
+        },
+        "warmRuns": 5,
+        "workerReadyMs": 762.1998535096645
+      },
+      {
+        "ok": true,
+        "importMs": 12,
+        "load": {
+          "candidate": "libcascade",
+          "initMs": 752.2999999821186,
+          "heapBytes": 134217728
+        },
+        "readyAt": 1790333166075.7,
+        "crossOriginIsolated": false,
+        "sharedArrayBuffer": false,
+        "result": {
+          "candidate": "libcascade",
+          "layer": "raw OCCT (libcascade)",
+          "timings": {
+            "box": 2.9000000059604645,
+            "fillet": 46.30000001192093,
+            "cut": 72.10000002384186,
+            "tessellate": 28.900000005960464,
+            "stl": 0.5999999940395355,
+            "step": 65.10000002384186,
+            "stepReimport": 144.09999999403954,
+            "total": 372
+          },
+          "checks": {
+            "valid": true,
+            "volume": 22840.17702849743,
+            "expectedVolume": 22840.17702849743,
+            "faces": 11,
+            "edges": 27,
+            "triangles": 360,
+            "stlBytes": 18084,
+            "stlWatertight": true,
+            "stlVolume": 22842.002702467827,
+            "stepBytes": 35605,
+            "stepSchema": "AP214IS",
+            "stepReimportFaces": 11,
+            "stepReimportVolume": 22840.177028497514
+          },
+          "history": {
+            "available": true,
+            "tracks": {
+              "faces": true,
+              "edges": true
+            },
+            "lines": [
+              "fillet: box:x- → modified into 1 face(s)",
+              "fillet: box:x+ → modified into 1 face(s)",
+              "fillet: box:y- → modified into 1 face(s)",
+              "fillet: box:y+ → modified into 1 face(s)",
+              "fillet: box:z- → modified into 1 face(s)",
+              "fillet: box:z+ → modified into 1 face(s)",
+              "fillet: box:x-y- → deleted",
+              "fillet: box:x-y- → generated face fillet(box:x-y-)",
+              "fillet: box:x-z+ → modified into 1 edge(s)",
+              "fillet: box:x-y+ → deleted",
+              "fillet: box:x-y+ → generated face fillet(box:x-y+)",
+              "fillet: box:x-z- → modified into 1 edge(s)",
+              "fillet: box:x+y- → deleted",
+              "fillet: box:x+y- → generated face fillet(box:x+y-)",
+              "fillet: box:x+z+ → modified into 1 edge(s)",
+              "fillet: box:x+y+ → deleted",
+              "fillet: box:x+y+ → generated face fillet(box:x+y+)",
+              "fillet: box:x+z- → modified into 1 edge(s)",
+              "fillet: box:y-z- → modified into 1 edge(s)",
+              "fillet: box:y-z+ → modified into 1 edge(s)",
+              "fillet: box:y+z- → modified into 1 edge(s)",
+              "fillet: box:y+z+ → modified into 1 edge(s)",
+              "cut: box:x- → unchanged",
+              "cut: box:z+ → modified into 1 face(s)",
+              "cut: box:z+ → generated edge cut(box:z+)#1",
+              "cut: box:z+ → generated vertex cut(box:z+)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: fillet(box:x-y-) → unchanged",
+              "cut: fillet(box:x-y+) → unchanged",
+              "cut: box:z- → modified into 1 face(s)",
+              "cut: box:z- → generated edge cut(box:z-)#1",
+              "cut: box:z- → generated vertex cut(box:z-)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: box:y- → unchanged",
+              "cut: box:y+ → unchanged",
+              "cut: fillet(box:x+y-) → unchanged",
+              "cut: fillet(box:x+y+) → unchanged",
+              "cut: box:x+ → unchanged",
+              "cut: box:x-z+ → unchanged",
+              "cut: box:x-z- → unchanged",
+              "cut: box:y-z+ → unchanged",
+              "cut: box:y+z+ → unchanged",
+              "cut: box:x+z+ → unchanged",
+              "cut: box:y-z- → unchanged",
+              "cut: box:y+z- → unchanged",
+              "cut: box:x+z- → unchanged",
+              "cut: hole:side → modified into 1 face(s)",
+              "cut: hole:side → generated edge cut(hole:side)#1",
+              "cut: hole:side → generated edge cut(hole:side)#2",
+              "cut: hole:top → deleted",
+              "cut: hole:bottom → deleted"
+            ],
+            "coverage": {
+              "faces": {
+                "total": 11,
+                "named": 11,
+                "ambiguous": 0
+              },
+              "edges": {
+                "total": 27,
+                "named": 10,
+                "derived": 17,
+                "multiNamed": 2
+              }
+            },
+            "finalFaces": [
+              {
+                "index": 1,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x-"
+                ]
+              },
+              {
+                "index": 2,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z+"
+                ]
+              },
+              {
+                "index": 3,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y-)"
+                ]
+              },
+              {
+                "index": 4,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y+)"
+                ]
+              },
+              {
+                "index": 5,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z-"
+                ]
+              },
+              {
+                "index": 6,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y-"
+                ]
+              },
+              {
+                "index": 7,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y+"
+                ]
+              },
+              {
+                "index": 8,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y-)"
+                ]
+              },
+              {
+                "index": 9,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y+)"
+                ]
+              },
+              {
+                "index": 10,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x+"
+                ]
+              },
+              {
+                "index": 11,
+                "area": 502.6548245743669,
+                "names": [
+                  "hole:side"
+                ]
+              }
+            ],
+            "finalEdges": [
+              {
+                "index": 1,
+                "length": 24,
+                "names": [
+                  "box:x-z+"
+                ]
+              },
+              {
+                "index": 2,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 3,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 4,
+                "length": 24,
+                "names": [
+                  "box:x-z-"
+                ]
+              },
+              {
+                "index": 5,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 6,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 7,
+                "length": 34,
+                "names": [
+                  "box:y-z+"
+                ]
+              },
+              {
+                "index": 8,
+                "length": 34,
+                "names": [
+                  "box:y+z+"
+                ]
+              },
+              {
+                "index": 9,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 10,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 11,
+                "length": 24,
+                "names": [
+                  "box:x+z+"
+                ]
+              },
+              {
+                "index": 12,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z+)#1",
+                  "cut(hole:side)#2"
+                ]
+              },
+              {
+                "index": 13,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 14,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 15,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 16,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 17,
+                "length": 34,
+                "names": [
+                  "box:y-z-"
+                ]
+              },
+              {
+                "index": 18,
+                "length": 34,
+                "names": [
+                  "box:y+z-"
+                ]
+              },
+              {
+                "index": 19,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 20,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 21,
+                "length": 24,
+                "names": [
+                  "box:x+z-"
+                ]
+              },
+              {
+                "index": 22,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z-)#1",
+                  "cut(hole:side)#1"
+                ]
+              },
+              {
+                "index": 23,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 24,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 25,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 26,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 27,
+                "length": 20,
+                "names": [
+                  "edge[hole:side]"
+                ]
+              }
+            ],
+            "notes": [
+              "AP242DIS: 35640 bytes, re-import volume 22840.177, faces 11",
+              "OCCT StlAPI_Writer: 113140 bytes, ASCII (ASCIIMode() is a getter returning a reference; it cannot be set from JS)"
+            ]
+          }
+        },
+        "warmMedian": {
+          "box": 0.19999998807907104,
+          "fillet": 5.5,
+          "cut": 8,
+          "tessellate": 16.799999982118607,
+          "stl": 0.30000001192092896,
+          "step": 9.100000023841858,
+          "stepReimport": 15.900000005960464,
+          "total": 61
+        },
+        "warmRuns": 5,
+        "workerReadyMs": 784.2999511659145
+      },
+      {
+        "ok": true,
+        "importMs": 13.699999988079071,
+        "load": {
+          "candidate": "libcascade",
+          "initMs": 767.3999999761581,
+          "heapBytes": 134217728
+        },
+        "readyAt": 1790333168059.6,
+        "crossOriginIsolated": false,
+        "sharedArrayBuffer": false,
+        "result": {
+          "candidate": "libcascade",
+          "layer": "raw OCCT (libcascade)",
+          "timings": {
+            "box": 2.800000011920929,
+            "fillet": 45.400000005960464,
+            "cut": 68.09999999403954,
+            "tessellate": 28.900000005960464,
+            "stl": 0.5999999940395355,
+            "step": 67.7000000178814,
+            "stepReimport": 147.59999999403954,
+            "total": 373.30000001192093
+          },
+          "checks": {
+            "valid": true,
+            "volume": 22840.17702849743,
+            "expectedVolume": 22840.17702849743,
+            "faces": 11,
+            "edges": 27,
+            "triangles": 360,
+            "stlBytes": 18084,
+            "stlWatertight": true,
+            "stlVolume": 22842.002702467827,
+            "stepBytes": 35605,
+            "stepSchema": "AP214IS",
+            "stepReimportFaces": 11,
+            "stepReimportVolume": 22840.177028497514
+          },
+          "history": {
+            "available": true,
+            "tracks": {
+              "faces": true,
+              "edges": true
+            },
+            "lines": [
+              "fillet: box:x- → modified into 1 face(s)",
+              "fillet: box:x+ → modified into 1 face(s)",
+              "fillet: box:y- → modified into 1 face(s)",
+              "fillet: box:y+ → modified into 1 face(s)",
+              "fillet: box:z- → modified into 1 face(s)",
+              "fillet: box:z+ → modified into 1 face(s)",
+              "fillet: box:x-y- → deleted",
+              "fillet: box:x-y- → generated face fillet(box:x-y-)",
+              "fillet: box:x-z+ → modified into 1 edge(s)",
+              "fillet: box:x-y+ → deleted",
+              "fillet: box:x-y+ → generated face fillet(box:x-y+)",
+              "fillet: box:x-z- → modified into 1 edge(s)",
+              "fillet: box:x+y- → deleted",
+              "fillet: box:x+y- → generated face fillet(box:x+y-)",
+              "fillet: box:x+z+ → modified into 1 edge(s)",
+              "fillet: box:x+y+ → deleted",
+              "fillet: box:x+y+ → generated face fillet(box:x+y+)",
+              "fillet: box:x+z- → modified into 1 edge(s)",
+              "fillet: box:y-z- → modified into 1 edge(s)",
+              "fillet: box:y-z+ → modified into 1 edge(s)",
+              "fillet: box:y+z- → modified into 1 edge(s)",
+              "fillet: box:y+z+ → modified into 1 edge(s)",
+              "cut: box:x- → unchanged",
+              "cut: box:z+ → modified into 1 face(s)",
+              "cut: box:z+ → generated edge cut(box:z+)#1",
+              "cut: box:z+ → generated vertex cut(box:z+)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: fillet(box:x-y-) → unchanged",
+              "cut: fillet(box:x-y+) → unchanged",
+              "cut: box:z- → modified into 1 face(s)",
+              "cut: box:z- → generated edge cut(box:z-)#1",
+              "cut: box:z- → generated vertex cut(box:z-)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: box:y- → unchanged",
+              "cut: box:y+ → unchanged",
+              "cut: fillet(box:x+y-) → unchanged",
+              "cut: fillet(box:x+y+) → unchanged",
+              "cut: box:x+ → unchanged",
+              "cut: box:x-z+ → unchanged",
+              "cut: box:x-z- → unchanged",
+              "cut: box:y-z+ → unchanged",
+              "cut: box:y+z+ → unchanged",
+              "cut: box:x+z+ → unchanged",
+              "cut: box:y-z- → unchanged",
+              "cut: box:y+z- → unchanged",
+              "cut: box:x+z- → unchanged",
+              "cut: hole:side → modified into 1 face(s)",
+              "cut: hole:side → generated edge cut(hole:side)#1",
+              "cut: hole:side → generated edge cut(hole:side)#2",
+              "cut: hole:top → deleted",
+              "cut: hole:bottom → deleted"
+            ],
+            "coverage": {
+              "faces": {
+                "total": 11,
+                "named": 11,
+                "ambiguous": 0
+              },
+              "edges": {
+                "total": 27,
+                "named": 10,
+                "derived": 17,
+                "multiNamed": 2
+              }
+            },
+            "finalFaces": [
+              {
+                "index": 1,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x-"
+                ]
+              },
+              {
+                "index": 2,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z+"
+                ]
+              },
+              {
+                "index": 3,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y-)"
+                ]
+              },
+              {
+                "index": 4,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y+)"
+                ]
+              },
+              {
+                "index": 5,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z-"
+                ]
+              },
+              {
+                "index": 6,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y-"
+                ]
+              },
+              {
+                "index": 7,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y+"
+                ]
+              },
+              {
+                "index": 8,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y-)"
+                ]
+              },
+              {
+                "index": 9,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y+)"
+                ]
+              },
+              {
+                "index": 10,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x+"
+                ]
+              },
+              {
+                "index": 11,
+                "area": 502.6548245743669,
+                "names": [
+                  "hole:side"
+                ]
+              }
+            ],
+            "finalEdges": [
+              {
+                "index": 1,
+                "length": 24,
+                "names": [
+                  "box:x-z+"
+                ]
+              },
+              {
+                "index": 2,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 3,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 4,
+                "length": 24,
+                "names": [
+                  "box:x-z-"
+                ]
+              },
+              {
+                "index": 5,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 6,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 7,
+                "length": 34,
+                "names": [
+                  "box:y-z+"
+                ]
+              },
+              {
+                "index": 8,
+                "length": 34,
+                "names": [
+                  "box:y+z+"
+                ]
+              },
+              {
+                "index": 9,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 10,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 11,
+                "length": 24,
+                "names": [
+                  "box:x+z+"
+                ]
+              },
+              {
+                "index": 12,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z+)#1",
+                  "cut(hole:side)#2"
+                ]
+              },
+              {
+                "index": 13,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 14,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 15,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 16,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 17,
+                "length": 34,
+                "names": [
+                  "box:y-z-"
+                ]
+              },
+              {
+                "index": 18,
+                "length": 34,
+                "names": [
+                  "box:y+z-"
+                ]
+              },
+              {
+                "index": 19,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 20,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 21,
+                "length": 24,
+                "names": [
+                  "box:x+z-"
+                ]
+              },
+              {
+                "index": 22,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z-)#1",
+                  "cut(hole:side)#1"
+                ]
+              },
+              {
+                "index": 23,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 24,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 25,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 26,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 27,
+                "length": 20,
+                "names": [
+                  "edge[hole:side]"
+                ]
+              }
+            ],
+            "notes": [
+              "AP242DIS: 35640 bytes, re-import volume 22840.177, faces 11",
+              "OCCT StlAPI_Writer: 113140 bytes, ASCII (ASCIIMode() is a getter returning a reference; it cannot be set from JS)"
+            ]
+          }
+        },
+        "warmMedian": {
+          "box": 0.20000001788139343,
+          "fillet": 5.5,
+          "cut": 8.299999982118607,
+          "tessellate": 14.599999994039536,
+          "stl": 0.20000001788139343,
+          "step": 9.900000005960464,
+          "stepReimport": 14.400000005960464,
+          "total": 58.900000005960464
+        },
+        "warmRuns": 5,
+        "workerReadyMs": 802.5
+      }
+    ]
+  },
+  "replicad": {
+    "browser": "153.0.8010.12",
+    "loads": [
+      {
+        "ok": true,
+        "importMs": 35.39999997615814,
+        "load": {
+          "candidate": "replicad",
+          "initMs": 171,
+          "heapBytes": 104857600
+        },
+        "readyAt": 1790333169451.3,
+        "crossOriginIsolated": false,
+        "sharedArrayBuffer": false,
+        "result": {
+          "candidate": "replicad",
+          "layer": "replicad API (history via getOC())",
+          "timings": {
+            "box": 2.9000000059604645,
+            "fillet": 47,
+            "cut": 86.19999998807907,
+            "tessellate": 24.200000017881393,
+            "stl": 29.69999998807907,
+            "step": 78.30000001192093,
+            "stepReimport": 167.2999999821186,
+            "total": 435.59999999403954
+          },
+          "checks": {
+            "valid": true,
+            "volume": 22840.17702849743,
+            "expectedVolume": 22840.17702849743,
+            "faces": 11,
+            "edges": 27,
+            "triangles": 360,
+            "stlBytes": 75884,
+            "stlWatertight": true,
+            "stlVolume": 22840.22393226076,
+            "stepBytes": 35640,
+            "stepSchema": "replicad default",
+            "stepReimportFaces": 11,
+            "stepReimportVolume": 22840.177028497514
+          },
+          "history": {
+            "available": true,
+            "tracks": {
+              "faces": true,
+              "edges": true
+            },
+            "lines": [
+              "fillet: box:x- → modified into 1 face(s)",
+              "fillet: box:x+ → modified into 1 face(s)",
+              "fillet: box:y- → modified into 1 face(s)",
+              "fillet: box:y+ → modified into 1 face(s)",
+              "fillet: box:z- → modified into 1 face(s)",
+              "fillet: box:z+ → modified into 1 face(s)",
+              "fillet: box:x-y- → deleted",
+              "fillet: box:x-y- → generated face fillet(box:x-y-)",
+              "fillet: box:x-z+ → modified into 1 edge(s)",
+              "fillet: box:x-y+ → deleted",
+              "fillet: box:x-y+ → generated face fillet(box:x-y+)",
+              "fillet: box:x-z- → modified into 1 edge(s)",
+              "fillet: box:x+y- → deleted",
+              "fillet: box:x+y- → generated face fillet(box:x+y-)",
+              "fillet: box:x+z+ → modified into 1 edge(s)",
+              "fillet: box:x+y+ → deleted",
+              "fillet: box:x+y+ → generated face fillet(box:x+y+)",
+              "fillet: box:x+z- → modified into 1 edge(s)",
+              "fillet: box:y-z- → modified into 1 edge(s)",
+              "fillet: box:y-z+ → modified into 1 edge(s)",
+              "fillet: box:y+z- → modified into 1 edge(s)",
+              "fillet: box:y+z+ → modified into 1 edge(s)",
+              "cut: box:x- → unchanged",
+              "cut: box:z+ → modified into 1 face(s)",
+              "cut: box:z+ → generated edge cut(box:z+)#1",
+              "cut: box:z+ → generated vertex cut(box:z+)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: fillet(box:x-y-) → unchanged",
+              "cut: fillet(box:x-y+) → unchanged",
+              "cut: box:z- → modified into 1 face(s)",
+              "cut: box:z- → generated edge cut(box:z-)#1",
+              "cut: box:z- → generated vertex cut(box:z-)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: box:y- → unchanged",
+              "cut: box:y+ → unchanged",
+              "cut: fillet(box:x+y-) → unchanged",
+              "cut: fillet(box:x+y+) → unchanged",
+              "cut: box:x+ → unchanged",
+              "cut: box:x-z+ → unchanged",
+              "cut: box:x-z- → unchanged",
+              "cut: box:y-z+ → unchanged",
+              "cut: box:y+z+ → unchanged",
+              "cut: box:x+z+ → unchanged",
+              "cut: box:y-z- → unchanged",
+              "cut: box:y+z- → unchanged",
+              "cut: box:x+z- → unchanged",
+              "cut: hole:side → modified into 1 face(s)",
+              "cut: hole:side → generated edge cut(hole:side)#1",
+              "cut: hole:side → generated edge cut(hole:side)#2",
+              "cut: hole:top → deleted",
+              "cut: hole:bottom → deleted"
+            ],
+            "coverage": {
+              "faces": {
+                "total": 11,
+                "named": 11,
+                "ambiguous": 0
+              },
+              "edges": {
+                "total": 27,
+                "named": 10,
+                "derived": 17,
+                "multiNamed": 2
+              }
+            },
+            "finalFaces": [
+              {
+                "index": 1,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x-"
+                ]
+              },
+              {
+                "index": 2,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z+"
+                ]
+              },
+              {
+                "index": 3,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y-)"
+                ]
+              },
+              {
+                "index": 4,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y+)"
+                ]
+              },
+              {
+                "index": 5,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z-"
+                ]
+              },
+              {
+                "index": 6,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y-"
+                ]
+              },
+              {
+                "index": 7,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y+"
+                ]
+              },
+              {
+                "index": 8,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y-)"
+                ]
+              },
+              {
+                "index": 9,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y+)"
+                ]
+              },
+              {
+                "index": 10,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x+"
+                ]
+              },
+              {
+                "index": 11,
+                "area": 502.6548245743669,
+                "names": [
+                  "hole:side"
+                ]
+              }
+            ],
+            "finalEdges": [
+              {
+                "index": 1,
+                "length": 24,
+                "names": [
+                  "box:x-z+"
+                ]
+              },
+              {
+                "index": 2,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 3,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 4,
+                "length": 24,
+                "names": [
+                  "box:x-z-"
+                ]
+              },
+              {
+                "index": 5,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 6,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 7,
+                "length": 34,
+                "names": [
+                  "box:y-z+"
+                ]
+              },
+              {
+                "index": 8,
+                "length": 34,
+                "names": [
+                  "box:y+z+"
+                ]
+              },
+              {
+                "index": 9,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 10,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 11,
+                "length": 24,
+                "names": [
+                  "box:x+z+"
+                ]
+              },
+              {
+                "index": 12,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z+)#1",
+                  "cut(hole:side)#2"
+                ]
+              },
+              {
+                "index": 13,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 14,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 15,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 16,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 17,
+                "length": 34,
+                "names": [
+                  "box:y-z-"
+                ]
+              },
+              {
+                "index": 18,
+                "length": 34,
+                "names": [
+                  "box:y+z-"
+                ]
+              },
+              {
+                "index": 19,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 20,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 21,
+                "length": 24,
+                "names": [
+                  "box:x+z-"
+                ]
+              },
+              {
+                "index": 22,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z-)#1",
+                  "cut(hole:side)#1"
+                ]
+              },
+              {
+                "index": 23,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 24,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 25,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 26,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 27,
+                "length": 20,
+                "names": [
+                  "edge[hole:side]"
+                ]
+              }
+            ],
+            "notes": [
+              "replicad API: fillet()/cut() return only the new shape; the BRepFilletAPI_MakeFillet / BRepAlgoAPI_Cut builders (and their history) are discarded. History came from building the same ops with getOC().",
+              "AP242DIS: 35640 bytes, re-import volume 22840.177, faces 11",
+              "OCCT StlAPI_Writer: 113140 bytes, ASCII (ASCIIMode() is a getter returning a reference; it cannot be set from JS)",
+              "NCollection_IndexedMap is not constructible in this build (unbound base class); used a JS index with IsSame() lookups."
+            ]
+          }
+        },
+        "warmMedian": {
+          "box": 0.20000001788139343,
+          "fillet": 4.799999982118607,
+          "cut": 12.5,
+          "tessellate": 5.9000000059604645,
+          "stl": 24.30000001192093,
+          "step": 9.199999988079071,
+          "stepReimport": 13.199999988079071,
+          "total": 72.80000001192093
+        },
+        "warmRuns": 5,
+        "workerReadyMs": 229.30000001192093
+      },
+      {
+        "ok": true,
+        "importMs": 25.099999994039536,
+        "load": {
+          "candidate": "replicad",
+          "initMs": 167.30000001192093,
+          "heapBytes": 104857600
+        },
+        "readyAt": 1790333171407,
+        "crossOriginIsolated": false,
+        "sharedArrayBuffer": false,
+        "result": {
+          "candidate": "replicad",
+          "layer": "replicad API (history via getOC())",
+          "timings": {
+            "box": 3.0999999940395355,
+            "fillet": 47.10000002384186,
+            "cut": 88.5,
+            "tessellate": 24.5,
+            "stl": 31.799999982118607,
+            "step": 78.90000000596046,
+            "stepReimport": 157.40000000596046,
+            "total": 431.30000001192093
+          },
+          "checks": {
+            "valid": true,
+            "volume": 22840.17702849743,
+            "expectedVolume": 22840.17702849743,
+            "faces": 11,
+            "edges": 27,
+            "triangles": 360,
+            "stlBytes": 75884,
+            "stlWatertight": true,
+            "stlVolume": 22840.22393226076,
+            "stepBytes": 35640,
+            "stepSchema": "replicad default",
+            "stepReimportFaces": 11,
+            "stepReimportVolume": 22840.177028497514
+          },
+          "history": {
+            "available": true,
+            "tracks": {
+              "faces": true,
+              "edges": true
+            },
+            "lines": [
+              "fillet: box:x- → modified into 1 face(s)",
+              "fillet: box:x+ → modified into 1 face(s)",
+              "fillet: box:y- → modified into 1 face(s)",
+              "fillet: box:y+ → modified into 1 face(s)",
+              "fillet: box:z- → modified into 1 face(s)",
+              "fillet: box:z+ → modified into 1 face(s)",
+              "fillet: box:x-y- → deleted",
+              "fillet: box:x-y- → generated face fillet(box:x-y-)",
+              "fillet: box:x-z+ → modified into 1 edge(s)",
+              "fillet: box:x-y+ → deleted",
+              "fillet: box:x-y+ → generated face fillet(box:x-y+)",
+              "fillet: box:x-z- → modified into 1 edge(s)",
+              "fillet: box:x+y- → deleted",
+              "fillet: box:x+y- → generated face fillet(box:x+y-)",
+              "fillet: box:x+z+ → modified into 1 edge(s)",
+              "fillet: box:x+y+ → deleted",
+              "fillet: box:x+y+ → generated face fillet(box:x+y+)",
+              "fillet: box:x+z- → modified into 1 edge(s)",
+              "fillet: box:y-z- → modified into 1 edge(s)",
+              "fillet: box:y-z+ → modified into 1 edge(s)",
+              "fillet: box:y+z- → modified into 1 edge(s)",
+              "fillet: box:y+z+ → modified into 1 edge(s)",
+              "cut: box:x- → unchanged",
+              "cut: box:z+ → modified into 1 face(s)",
+              "cut: box:z+ → generated edge cut(box:z+)#1",
+              "cut: box:z+ → generated vertex cut(box:z+)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: fillet(box:x-y-) → unchanged",
+              "cut: fillet(box:x-y+) → unchanged",
+              "cut: box:z- → modified into 1 face(s)",
+              "cut: box:z- → generated edge cut(box:z-)#1",
+              "cut: box:z- → generated vertex cut(box:z-)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: box:y- → unchanged",
+              "cut: box:y+ → unchanged",
+              "cut: fillet(box:x+y-) → unchanged",
+              "cut: fillet(box:x+y+) → unchanged",
+              "cut: box:x+ → unchanged",
+              "cut: box:x-z+ → unchanged",
+              "cut: box:x-z- → unchanged",
+              "cut: box:y-z+ → unchanged",
+              "cut: box:y+z+ → unchanged",
+              "cut: box:x+z+ → unchanged",
+              "cut: box:y-z- → unchanged",
+              "cut: box:y+z- → unchanged",
+              "cut: box:x+z- → unchanged",
+              "cut: hole:side → modified into 1 face(s)",
+              "cut: hole:side → generated edge cut(hole:side)#1",
+              "cut: hole:side → generated edge cut(hole:side)#2",
+              "cut: hole:top → deleted",
+              "cut: hole:bottom → deleted"
+            ],
+            "coverage": {
+              "faces": {
+                "total": 11,
+                "named": 11,
+                "ambiguous": 0
+              },
+              "edges": {
+                "total": 27,
+                "named": 10,
+                "derived": 17,
+                "multiNamed": 2
+              }
+            },
+            "finalFaces": [
+              {
+                "index": 1,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x-"
+                ]
+              },
+              {
+                "index": 2,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z+"
+                ]
+              },
+              {
+                "index": 3,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y-)"
+                ]
+              },
+              {
+                "index": 4,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y+)"
+                ]
+              },
+              {
+                "index": 5,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z-"
+                ]
+              },
+              {
+                "index": 6,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y-"
+                ]
+              },
+              {
+                "index": 7,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y+"
+                ]
+              },
+              {
+                "index": 8,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y-)"
+                ]
+              },
+              {
+                "index": 9,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y+)"
+                ]
+              },
+              {
+                "index": 10,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x+"
+                ]
+              },
+              {
+                "index": 11,
+                "area": 502.6548245743669,
+                "names": [
+                  "hole:side"
+                ]
+              }
+            ],
+            "finalEdges": [
+              {
+                "index": 1,
+                "length": 24,
+                "names": [
+                  "box:x-z+"
+                ]
+              },
+              {
+                "index": 2,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 3,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 4,
+                "length": 24,
+                "names": [
+                  "box:x-z-"
+                ]
+              },
+              {
+                "index": 5,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 6,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 7,
+                "length": 34,
+                "names": [
+                  "box:y-z+"
+                ]
+              },
+              {
+                "index": 8,
+                "length": 34,
+                "names": [
+                  "box:y+z+"
+                ]
+              },
+              {
+                "index": 9,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 10,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 11,
+                "length": 24,
+                "names": [
+                  "box:x+z+"
+                ]
+              },
+              {
+                "index": 12,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z+)#1",
+                  "cut(hole:side)#2"
+                ]
+              },
+              {
+                "index": 13,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 14,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 15,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 16,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 17,
+                "length": 34,
+                "names": [
+                  "box:y-z-"
+                ]
+              },
+              {
+                "index": 18,
+                "length": 34,
+                "names": [
+                  "box:y+z-"
+                ]
+              },
+              {
+                "index": 19,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 20,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 21,
+                "length": 24,
+                "names": [
+                  "box:x+z-"
+                ]
+              },
+              {
+                "index": 22,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z-)#1",
+                  "cut(hole:side)#1"
+                ]
+              },
+              {
+                "index": 23,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 24,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 25,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 26,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 27,
+                "length": 20,
+                "names": [
+                  "edge[hole:side]"
+                ]
+              }
+            ],
+            "notes": [
+              "replicad API: fillet()/cut() return only the new shape; the BRepFilletAPI_MakeFillet / BRepAlgoAPI_Cut builders (and their history) are discarded. History came from building the same ops with getOC().",
+              "AP242DIS: 35640 bytes, re-import volume 22840.177, faces 11",
+              "OCCT StlAPI_Writer: 113140 bytes, ASCII (ASCIIMode() is a getter returning a reference; it cannot be set from JS)",
+              "NCollection_IndexedMap is not constructible in this build (unbound base class); used a JS index with IsSame() lookups."
+            ]
+          }
+        },
+        "warmMedian": {
+          "box": 0.19999998807907104,
+          "fillet": 5.5999999940395355,
+          "cut": 11.5,
+          "tessellate": 5.4000000059604645,
+          "stl": 22.299999982118607,
+          "step": 13.200000017881393,
+          "stepReimport": 12.299999982118607,
+          "total": 70.7999999821186
+        },
+        "warmRuns": 5,
+        "workerReadyMs": 212.10009765625
+      },
+      {
+        "ok": true,
+        "importMs": 46.5,
+        "load": {
+          "candidate": "replicad",
+          "initMs": 161.2000000178814,
+          "heapBytes": 104857600
+        },
+        "readyAt": 1790333173333.3,
+        "crossOriginIsolated": false,
+        "sharedArrayBuffer": false,
+        "result": {
+          "candidate": "replicad",
+          "layer": "replicad API (history via getOC())",
+          "timings": {
+            "box": 3,
+            "fillet": 46.900000005960464,
+            "cut": 88.80000001192093,
+            "tessellate": 27.299999982118607,
+            "stl": 39.900000005960464,
+            "step": 77,
+            "stepReimport": 192.19999998807907,
+            "total": 475.09999999403954
+          },
+          "checks": {
+            "valid": true,
+            "volume": 22840.17702849743,
+            "expectedVolume": 22840.17702849743,
+            "faces": 11,
+            "edges": 27,
+            "triangles": 360,
+            "stlBytes": 75884,
+            "stlWatertight": true,
+            "stlVolume": 22840.22393226076,
+            "stepBytes": 35640,
+            "stepSchema": "replicad default",
+            "stepReimportFaces": 11,
+            "stepReimportVolume": 22840.177028497514
+          },
+          "history": {
+            "available": true,
+            "tracks": {
+              "faces": true,
+              "edges": true
+            },
+            "lines": [
+              "fillet: box:x- → modified into 1 face(s)",
+              "fillet: box:x+ → modified into 1 face(s)",
+              "fillet: box:y- → modified into 1 face(s)",
+              "fillet: box:y+ → modified into 1 face(s)",
+              "fillet: box:z- → modified into 1 face(s)",
+              "fillet: box:z+ → modified into 1 face(s)",
+              "fillet: box:x-y- → deleted",
+              "fillet: box:x-y- → generated face fillet(box:x-y-)",
+              "fillet: box:x-z+ → modified into 1 edge(s)",
+              "fillet: box:x-y+ → deleted",
+              "fillet: box:x-y+ → generated face fillet(box:x-y+)",
+              "fillet: box:x-z- → modified into 1 edge(s)",
+              "fillet: box:x+y- → deleted",
+              "fillet: box:x+y- → generated face fillet(box:x+y-)",
+              "fillet: box:x+z+ → modified into 1 edge(s)",
+              "fillet: box:x+y+ → deleted",
+              "fillet: box:x+y+ → generated face fillet(box:x+y+)",
+              "fillet: box:x+z- → modified into 1 edge(s)",
+              "fillet: box:y-z- → modified into 1 edge(s)",
+              "fillet: box:y-z+ → modified into 1 edge(s)",
+              "fillet: box:y+z- → modified into 1 edge(s)",
+              "fillet: box:y+z+ → modified into 1 edge(s)",
+              "cut: box:x- → unchanged",
+              "cut: box:z+ → modified into 1 face(s)",
+              "cut: box:z+ → generated edge cut(box:z+)#1",
+              "cut: box:z+ → generated vertex cut(box:z+)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: fillet(box:x-y-) → unchanged",
+              "cut: fillet(box:x-y+) → unchanged",
+              "cut: box:z- → modified into 1 face(s)",
+              "cut: box:z- → generated edge cut(box:z-)#1",
+              "cut: box:z- → generated vertex cut(box:z-)#2 (not tracked: vertices are not indexed in this spike)",
+              "cut: box:y- → unchanged",
+              "cut: box:y+ → unchanged",
+              "cut: fillet(box:x+y-) → unchanged",
+              "cut: fillet(box:x+y+) → unchanged",
+              "cut: box:x+ → unchanged",
+              "cut: box:x-z+ → unchanged",
+              "cut: box:x-z- → unchanged",
+              "cut: box:y-z+ → unchanged",
+              "cut: box:y+z+ → unchanged",
+              "cut: box:x+z+ → unchanged",
+              "cut: box:y-z- → unchanged",
+              "cut: box:y+z- → unchanged",
+              "cut: box:x+z- → unchanged",
+              "cut: hole:side → modified into 1 face(s)",
+              "cut: hole:side → generated edge cut(hole:side)#1",
+              "cut: hole:side → generated edge cut(hole:side)#2",
+              "cut: hole:top → deleted",
+              "cut: hole:bottom → deleted"
+            ],
+            "coverage": {
+              "faces": {
+                "total": 11,
+                "named": 11,
+                "ambiguous": 0
+              },
+              "edges": {
+                "total": 27,
+                "named": 10,
+                "derived": 17,
+                "multiNamed": 2
+              }
+            },
+            "finalFaces": [
+              {
+                "index": 1,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x-"
+                ]
+              },
+              {
+                "index": 2,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z+"
+                ]
+              },
+              {
+                "index": 3,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y-)"
+                ]
+              },
+              {
+                "index": 4,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x-y+)"
+                ]
+              },
+              {
+                "index": 5,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z-"
+                ]
+              },
+              {
+                "index": 6,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y-"
+                ]
+              },
+              {
+                "index": 7,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y+"
+                ]
+              },
+              {
+                "index": 8,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y-)"
+                ]
+              },
+              {
+                "index": 9,
+                "area": 94.24777960769379,
+                "names": [
+                  "fillet(box:x+y+)"
+                ]
+              },
+              {
+                "index": 10,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x+"
+                ]
+              },
+              {
+                "index": 11,
+                "area": 502.6548245743669,
+                "names": [
+                  "hole:side"
+                ]
+              }
+            ],
+            "finalEdges": [
+              {
+                "index": 1,
+                "length": 24,
+                "names": [
+                  "box:x-z+"
+                ]
+              },
+              {
+                "index": 2,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 3,
+                "length": 20,
+                "names": [
+                  "edge[box:x-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 4,
+                "length": 24,
+                "names": [
+                  "box:x-z-"
+                ]
+              },
+              {
+                "index": 5,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 6,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 7,
+                "length": 34,
+                "names": [
+                  "box:y-z+"
+                ]
+              },
+              {
+                "index": 8,
+                "length": 34,
+                "names": [
+                  "box:y+z+"
+                ]
+              },
+              {
+                "index": 9,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 10,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 11,
+                "length": 24,
+                "names": [
+                  "box:x+z+"
+                ]
+              },
+              {
+                "index": 12,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z+)#1",
+                  "cut(hole:side)#2"
+                ]
+              },
+              {
+                "index": 13,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 14,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x-y-)]"
+                ]
+              },
+              {
+                "index": 15,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 16,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x-y+)]"
+                ]
+              },
+              {
+                "index": 17,
+                "length": 34,
+                "names": [
+                  "box:y-z-"
+                ]
+              },
+              {
+                "index": 18,
+                "length": 34,
+                "names": [
+                  "box:y+z-"
+                ]
+              },
+              {
+                "index": 19,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 20,
+                "length": 4.712388980384691,
+                "names": [
+                  "edge[box:z-|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 21,
+                "length": 24,
+                "names": [
+                  "box:x+z-"
+                ]
+              },
+              {
+                "index": 22,
+                "length": 25.132741228718345,
+                "names": [
+                  "cut(box:z-)#1",
+                  "cut(hole:side)#1"
+                ]
+              },
+              {
+                "index": 23,
+                "length": 20,
+                "names": [
+                  "edge[box:y-|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 24,
+                "length": 20,
+                "names": [
+                  "edge[box:y+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 25,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y-)]"
+                ]
+              },
+              {
+                "index": 26,
+                "length": 20,
+                "names": [
+                  "edge[box:x+|fillet(box:x+y+)]"
+                ]
+              },
+              {
+                "index": 27,
+                "length": 20,
+                "names": [
+                  "edge[hole:side]"
+                ]
+              }
+            ],
+            "notes": [
+              "replicad API: fillet()/cut() return only the new shape; the BRepFilletAPI_MakeFillet / BRepAlgoAPI_Cut builders (and their history) are discarded. History came from building the same ops with getOC().",
+              "AP242DIS: 35640 bytes, re-import volume 22840.177, faces 11",
+              "OCCT StlAPI_Writer: 113140 bytes, ASCII (ASCIIMode() is a getter returning a reference; it cannot be set from JS)",
+              "NCollection_IndexedMap is not constructible in this build (unbound base class); used a JS index with IsSame() lookups."
+            ]
+          }
+        },
+        "warmMedian": {
+          "box": 0.09999999403953552,
+          "fillet": 4.699999988079071,
+          "cut": 11.199999988079071,
+          "tessellate": 5.799999982118607,
+          "stl": 24.099999994039536,
+          "step": 9.5,
+          "stepReimport": 13.099999994039536,
+          "total": 69.69999998807907
+        },
+        "warmRuns": 5,
+        "workerReadyMs": 233.9000976383686
+      }
+    ]
+  },
+  "brepjs": {
+    "browser": "153.0.8010.12",
+    "loads": [
+      {
+        "ok": true,
+        "importMs": 29.900000005960464,
+        "load": {
+          "candidate": "brepjs",
+          "initMs": 114.40000000596046,
+          "heapBytes": 134217728
+        },
+        "readyAt": 1790333175195.8,
+        "crossOriginIsolated": false,
+        "sharedArrayBuffer": false,
+        "result": {
+          "candidate": "brepjs",
+          "layer": "brepjs API + *WithEvolution",
+          "timings": {
+            "box": 2.5999999940395355,
+            "fillet": 57.70000001788139,
+            "cut": 84.19999998807907,
+            "tessellate": 23.700000017881393,
+            "stl": 6.5,
+            "step": 68.09999999403954,
+            "stepReimport": 171.40000000596046,
+            "total": 414.2000000178814
+          },
+          "checks": {
+            "valid": true,
+            "volume": 22840.17702849743,
+            "expectedVolume": 22840.17702849743,
+            "faces": 11,
+            "edges": 27,
+            "triangles": 360,
+            "stlBytes": 18084,
+            "stlWatertight": true,
+            "stlVolume": 22842.002702467827,
+            "stepBytes": 35604,
+            "stepSchema": "brepjs default",
+            "stepReimportFaces": 11,
+            "stepReimportVolume": 22840.177028497514
+          },
+          "history": {
+            "available": true,
+            "tracks": {
+              "faces": true,
+              "edges": false
+            },
+            "lines": [
+              "fillet: box:x- → modified into 1 face(s)",
+              "fillet: box:x+ → modified into 1 face(s)",
+              "fillet: box:y- → modified into 1 face(s)",
+              "fillet: box:y+ → modified into 1 face(s)",
+              "fillet: box:z- → modified into 1 face(s)",
+              "fillet: box:z+ → modified into 1 face(s)",
+              "cut: box:x- → unchanged",
+              "cut: box:x+ → unchanged",
+              "cut: box:y- → unchanged",
+              "cut: box:y+ → unchanged",
+              "cut: box:z- → modified into 1 face(s)",
+              "cut: box:z- → generated shape hash (type not reported) cut(box:z-)",
+              "cut: box:z- → generated shape hash (type not reported) cut(box:z-)",
+              "cut: box:z+ → modified into 1 face(s)",
+              "cut: box:z+ → generated shape hash (type not reported) cut(box:z+)",
+              "cut: box:z+ → generated shape hash (type not reported) cut(box:z+)",
+              "cut: hole:side → modified into 1 face(s)",
+              "cut: hole:side → generated shape hash (type not reported) cut(hole:side)",
+              "cut: hole:side → generated shape hash (type not reported) cut(hole:side)",
+              "cut: hole:top → deleted",
+              "cut: hole:bottom → deleted"
+            ],
+            "coverage": {
+              "faces": {
+                "total": 11,
+                "named": 7,
+                "ambiguous": 0
+              },
+              "edges": {
+                "total": 27,
+                "named": 0,
+                "derived": 27,
+                "multiNamed": 0
+              }
+            },
+            "finalFaces": [
+              {
+                "index": 1,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x-"
+                ]
+              },
+              {
+                "index": 2,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z+"
+                ]
+              },
+              {
+                "index": 3,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 4,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 5,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z-"
+                ]
+              },
+              {
+                "index": 6,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y-"
+                ]
+              },
+              {
+                "index": 7,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y+"
+                ]
+              },
+              {
+                "index": 8,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 9,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 10,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x+"
+                ]
+              },
+              {
+                "index": 11,
+                "area": 502.6548245743669,
+                "names": [
+                  "hole:side"
+                ]
+              }
+            ],
+            "notes": [
+              "brepjs findFacesByTag on the final solid: box:x-→1, box:x+→1, box:y-→1, box:y+→1, box:z-→1, box:z+→1, hole:side→1, hole:top→0, hole:bottom→0",
+              "Hashes are TopoDS_Shape hash codes bounded by HASH_CODE_MAX=2147483647; they identify faces only within one kernel session.",
+              "Edges have no history in occt-wasm; brepjs names edges by their two adjacent face roles (EdgeRef), which is the \"derived\" approach.",
+              "The fillet surfaces are Generated from the filleted edges, and edges carry no hash in the request, so fillet faces arrive unnamed unless generated is keyed by a face."
+            ]
+          }
+        },
+        "warmMedian": {
+          "box": 0.10000002384185791,
+          "fillet": 9.199999988079071,
+          "cut": 13.5,
+          "tessellate": 5.5999999940395355,
+          "stl": 6.700000017881393,
+          "step": 11.399999976158142,
+          "stepReimport": 18.5,
+          "total": 64.7999999821186
+        },
+        "warmRuns": 5,
+        "workerReadyMs": 161.50009766221046
+      },
+      {
+        "ok": true,
+        "importMs": 14.700000017881393,
+        "load": {
+          "candidate": "brepjs",
+          "initMs": 107.89999997615814,
+          "heapBytes": 134217728
+        },
+        "readyAt": 1790333176696.7,
+        "crossOriginIsolated": false,
+        "sharedArrayBuffer": false,
+        "result": {
+          "candidate": "brepjs",
+          "layer": "brepjs API + *WithEvolution",
+          "timings": {
+            "box": 2.7999999821186066,
+            "fillet": 55.20000001788139,
+            "cut": 81.59999999403954,
+            "tessellate": 21.400000005960464,
+            "stl": 8,
+            "step": 71.90000000596046,
+            "stepReimport": 185.69999998807907,
+            "total": 426.59999999403954
+          },
+          "checks": {
+            "valid": true,
+            "volume": 22840.17702849743,
+            "expectedVolume": 22840.17702849743,
+            "faces": 11,
+            "edges": 27,
+            "triangles": 360,
+            "stlBytes": 18084,
+            "stlWatertight": true,
+            "stlVolume": 22842.002702467827,
+            "stepBytes": 35604,
+            "stepSchema": "brepjs default",
+            "stepReimportFaces": 11,
+            "stepReimportVolume": 22840.177028497514
+          },
+          "history": {
+            "available": true,
+            "tracks": {
+              "faces": true,
+              "edges": false
+            },
+            "lines": [
+              "fillet: box:x- → modified into 1 face(s)",
+              "fillet: box:x+ → modified into 1 face(s)",
+              "fillet: box:y- → modified into 1 face(s)",
+              "fillet: box:y+ → modified into 1 face(s)",
+              "fillet: box:z- → modified into 1 face(s)",
+              "fillet: box:z+ → modified into 1 face(s)",
+              "cut: box:x- → unchanged",
+              "cut: box:x+ → unchanged",
+              "cut: box:y- → unchanged",
+              "cut: box:y+ → unchanged",
+              "cut: box:z- → modified into 1 face(s)",
+              "cut: box:z- → generated shape hash (type not reported) cut(box:z-)",
+              "cut: box:z- → generated shape hash (type not reported) cut(box:z-)",
+              "cut: box:z+ → modified into 1 face(s)",
+              "cut: box:z+ → generated shape hash (type not reported) cut(box:z+)",
+              "cut: box:z+ → generated shape hash (type not reported) cut(box:z+)",
+              "cut: hole:side → modified into 1 face(s)",
+              "cut: hole:side → generated shape hash (type not reported) cut(hole:side)",
+              "cut: hole:side → generated shape hash (type not reported) cut(hole:side)",
+              "cut: hole:top → deleted",
+              "cut: hole:bottom → deleted"
+            ],
+            "coverage": {
+              "faces": {
+                "total": 11,
+                "named": 7,
+                "ambiguous": 0
+              },
+              "edges": {
+                "total": 27,
+                "named": 0,
+                "derived": 27,
+                "multiNamed": 0
+              }
+            },
+            "finalFaces": [
+              {
+                "index": 1,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x-"
+                ]
+              },
+              {
+                "index": 2,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z+"
+                ]
+              },
+              {
+                "index": 3,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 4,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 5,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z-"
+                ]
+              },
+              {
+                "index": 6,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y-"
+                ]
+              },
+              {
+                "index": 7,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y+"
+                ]
+              },
+              {
+                "index": 8,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 9,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 10,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x+"
+                ]
+              },
+              {
+                "index": 11,
+                "area": 502.6548245743669,
+                "names": [
+                  "hole:side"
+                ]
+              }
+            ],
+            "notes": [
+              "brepjs findFacesByTag on the final solid: box:x-→1, box:x+→1, box:y-→1, box:y+→1, box:z-→1, box:z+→1, hole:side→1, hole:top→0, hole:bottom→0",
+              "Hashes are TopoDS_Shape hash codes bounded by HASH_CODE_MAX=2147483647; they identify faces only within one kernel session.",
+              "Edges have no history in occt-wasm; brepjs names edges by their two adjacent face roles (EdgeRef), which is the \"derived\" approach.",
+              "The fillet surfaces are Generated from the filleted edges, and edges carry no hash in the request, so fillet faces arrive unnamed unless generated is keyed by a face."
+            ]
+          }
+        },
+        "warmMedian": {
+          "box": 0.19999998807907104,
+          "fillet": 7,
+          "cut": 12.300000011920929,
+          "tessellate": 5.300000011920929,
+          "stl": 5.0999999940395355,
+          "step": 11.900000005960464,
+          "stepReimport": 16.099999994039536,
+          "total": 58.599999994039536
+        },
+        "warmRuns": 5,
+        "workerReadyMs": 132.099853515625
+      },
+      {
+        "ok": true,
+        "importMs": 14.199999988079071,
+        "load": {
+          "candidate": "brepjs",
+          "initMs": 104,
+          "heapBytes": 134217728
+        },
+        "readyAt": 1790333178059.7998,
+        "crossOriginIsolated": false,
+        "sharedArrayBuffer": false,
+        "result": {
+          "candidate": "brepjs",
+          "layer": "brepjs API + *WithEvolution",
+          "timings": {
+            "box": 2.699999988079071,
+            "fillet": 57.900000005960464,
+            "cut": 80.7999999821186,
+            "tessellate": 27.200000017881393,
+            "stl": 6.9000000059604645,
+            "step": 70.7999999821186,
+            "stepReimport": 152.7000000178814,
+            "total": 399
+          },
+          "checks": {
+            "valid": true,
+            "volume": 22840.17702849743,
+            "expectedVolume": 22840.17702849743,
+            "faces": 11,
+            "edges": 27,
+            "triangles": 360,
+            "stlBytes": 18084,
+            "stlWatertight": true,
+            "stlVolume": 22842.002702467827,
+            "stepBytes": 35604,
+            "stepSchema": "brepjs default",
+            "stepReimportFaces": 11,
+            "stepReimportVolume": 22840.177028497514
+          },
+          "history": {
+            "available": true,
+            "tracks": {
+              "faces": true,
+              "edges": false
+            },
+            "lines": [
+              "fillet: box:x- → modified into 1 face(s)",
+              "fillet: box:x+ → modified into 1 face(s)",
+              "fillet: box:y- → modified into 1 face(s)",
+              "fillet: box:y+ → modified into 1 face(s)",
+              "fillet: box:z- → modified into 1 face(s)",
+              "fillet: box:z+ → modified into 1 face(s)",
+              "cut: box:x- → unchanged",
+              "cut: box:x+ → unchanged",
+              "cut: box:y- → unchanged",
+              "cut: box:y+ → unchanged",
+              "cut: box:z- → modified into 1 face(s)",
+              "cut: box:z- → generated shape hash (type not reported) cut(box:z-)",
+              "cut: box:z- → generated shape hash (type not reported) cut(box:z-)",
+              "cut: box:z+ → modified into 1 face(s)",
+              "cut: box:z+ → generated shape hash (type not reported) cut(box:z+)",
+              "cut: box:z+ → generated shape hash (type not reported) cut(box:z+)",
+              "cut: hole:side → modified into 1 face(s)",
+              "cut: hole:side → generated shape hash (type not reported) cut(hole:side)",
+              "cut: hole:side → generated shape hash (type not reported) cut(hole:side)",
+              "cut: hole:top → deleted",
+              "cut: hole:bottom → deleted"
+            ],
+            "coverage": {
+              "faces": {
+                "total": 11,
+                "named": 7,
+                "ambiguous": 0
+              },
+              "edges": {
+                "total": 27,
+                "named": 0,
+                "derived": 27,
+                "multiNamed": 0
+              }
+            },
+            "finalFaces": [
+              {
+                "index": 1,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x-"
+                ]
+              },
+              {
+                "index": 2,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z+"
+                ]
+              },
+              {
+                "index": 3,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 4,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 5,
+                "area": 1142.0088514248714,
+                "names": [
+                  "box:z-"
+                ]
+              },
+              {
+                "index": 6,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y-"
+                ]
+              },
+              {
+                "index": 7,
+                "area": 679.9999999999999,
+                "names": [
+                  "box:y+"
+                ]
+              },
+              {
+                "index": 8,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 9,
+                "area": 94.24777960769379,
+                "names": []
+              },
+              {
+                "index": 10,
+                "area": 479.9999999999999,
+                "names": [
+                  "box:x+"
+                ]
+              },
+              {
+                "index": 11,
+                "area": 502.6548245743669,
+                "names": [
+                  "hole:side"
+                ]
+              }
+            ],
+            "notes": [
+              "brepjs findFacesByTag on the final solid: box:x-→1, box:x+→1, box:y-→1, box:y+→1, box:z-→1, box:z+→1, hole:side→1, hole:top→0, hole:bottom→0",
+              "Hashes are TopoDS_Shape hash codes bounded by HASH_CODE_MAX=2147483647; they identify faces only within one kernel session.",
+              "Edges have no history in occt-wasm; brepjs names edges by their two adjacent face roles (EdgeRef), which is the \"derived\" approach.",
+              "The fillet surfaces are Generated from the filleted edges, and edges carry no hash in the request, so fillet faces arrive unnamed unless generated is keyed by a face."
+            ]
+          }
+        },
+        "warmMedian": {
+          "box": 0.19999998807907104,
+          "fillet": 7.5999999940395355,
+          "cut": 13.100000023841858,
+          "tessellate": 5.600000023841858,
+          "stl": 4.5,
+          "step": 13,
+          "stepReimport": 18,
+          "total": 67
+        },
+        "warmRuns": 5,
+        "workerReadyMs": 134.7998046875
+      }
+    ]
+  }
+}

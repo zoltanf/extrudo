@@ -1,0 +1,276 @@
+{
+  "candidate": "brepjs",
+  "node": "v26.10.0",
+  "importMs": 85.93911299999999,
+  "initMs": 77.056367,
+  "coldReadyMs": 163.094236,
+  "heapAfterInit": 134217728,
+  "first": {
+    "box": 3.037809999999979,
+    "fillet": 51.07476199999999,
+    "cut": 73.15546,
+    "tessellate": 19.943070000000034,
+    "stl": 3.94881799999996,
+    "step": 61.43674400000003,
+    "stepReimport": 95.69885500000004,
+    "total": 308.332744
+  },
+  "warmMedian": {
+    "box": 0.12313000000017382,
+    "fillet": 8.025306999999998,
+    "cut": 12.228346999999985,
+    "tessellate": 5.345291999999972,
+    "stl": 2.0036029999999982,
+    "step": 6.858052000000043,
+    "stepReimport": 17.214376000000016,
+    "total": 51.645294000000035
+  },
+  "warmRuns": 10,
+  "checks": {
+    "valid": true,
+    "volume": 22840.17702849743,
+    "expectedVolume": 22840.17702849743,
+    "faces": 11,
+    "edges": 27,
+    "triangles": 360,
+    "stlBytes": 18084,
+    "stlWatertight": true,
+    "stlVolume": 22842.002702467827,
+    "stepBytes": 35604,
+    "stepSchema": "brepjs default",
+    "stepReimportFaces": 11,
+    "stepReimportVolume": 22840.177028497514
+  },
+  "history": {
+    "available": true,
+    "tracks": {
+      "faces": true,
+      "edges": false
+    },
+    "lines": [
+      "fillet: box:x- → modified into 1 face(s)",
+      "fillet: box:x+ → modified into 1 face(s)",
+      "fillet: box:y- → modified into 1 face(s)",
+      "fillet: box:y+ → modified into 1 face(s)",
+      "fillet: box:z- → modified into 1 face(s)",
+      "fillet: box:z+ → modified into 1 face(s)",
+      "cut: box:x- → unchanged",
+      "cut: box:x+ → unchanged",
+      "cut: box:y- → unchanged",
+      "cut: box:y+ → unchanged",
+      "cut: box:z- → modified into 1 face(s)",
+      "cut: box:z- → generated shape hash (type not reported) cut(box:z-)",
+      "cut: box:z- → generated shape hash (type not reported) cut(box:z-)",
+      "cut: box:z+ → modified into 1 face(s)",
+      "cut: box:z+ → generated shape hash (type not reported) cut(box:z+)",
+      "cut: box:z+ → generated shape hash (type not reported) cut(box:z+)",
+      "cut: hole:side → modified into 1 face(s)",
+      "cut: hole:side → generated shape hash (type not reported) cut(hole:side)",
+      "cut: hole:side → generated shape hash (type not reported) cut(hole:side)",
+      "cut: hole:top → deleted",
+      "cut: hole:bottom → deleted"
+    ],
+    "coverage": {
+      "faces": {
+        "total": 11,
+        "named": 7,
+        "ambiguous": 0
+      },
+      "edges": {
+        "total": 27,
+        "named": 0,
+        "derived": 27,
+        "multiNamed": 0
+      }
+    },
+    "finalFaces": [
+      {
+        "index": 1,
+        "area": 479.9999999999999,
+        "names": [
+          "box:x-"
+        ]
+      },
+      {
+        "index": 2,
+        "area": 1142.0088514248714,
+        "names": [
+          "box:z+"
+        ]
+      },
+      {
+        "index": 3,
+        "area": 94.24777960769379,
+        "names": []
+      },
+      {
+        "index": 4,
+        "area": 94.24777960769379,
+        "names": []
+      },
+      {
+        "index": 5,
+        "area": 1142.0088514248714,
+        "names": [
+          "box:z-"
+        ]
+      },
+      {
+        "index": 6,
+        "area": 679.9999999999999,
+        "names": [
+          "box:y-"
+        ]
+      },
+      {
+        "index": 7,
+        "area": 679.9999999999999,
+        "names": [
+          "box:y+"
+        ]
+      },
+      {
+        "index": 8,
+        "area": 94.24777960769379,
+        "names": []
+      },
+      {
+        "index": 9,
+        "area": 94.24777960769379,
+        "names": []
+      },
+      {
+        "index": 10,
+        "area": 479.9999999999999,
+        "names": [
+          "box:x+"
+        ]
+      },
+      {
+        "index": 11,
+        "area": 502.6548245743669,
+        "names": [
+          "hole:side"
+        ]
+      }
+    ],
+    "notes": [
+      "brepjs findFacesByTag on the final solid: box:x-→1, box:x+→1, box:y-→1, box:y+→1, box:z-→1, box:z+→1, hole:side→1, hole:top→0, hole:bottom→0",
+      "Hashes are TopoDS_Shape hash codes bounded by HASH_CODE_MAX=2147483647; they identify faces only within one kernel session.",
+      "Edges have no history in occt-wasm; brepjs names edges by their two adjacent face roles (EdgeRef), which is the \"derived\" approach.",
+      "The fillet surfaces are Generated from the filleted edges, and edges carry no hash in the request, so fillet faces arrive unnamed unless generated is keyed by a face."
+    ]
+  },
+  "layer": "brepjs API + *WithEvolution",
+  "memory": {
+    "iterations": 4000,
+    "msPerIter": 13.67928082925,
+    "kbPerIter": 0,
+    "samples": [
+      {
+        "iter": 0,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      },
+      {
+        "iter": 1,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      },
+      {
+        "iter": 400,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      },
+      {
+        "iter": 800,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      },
+      {
+        "iter": 1200,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      },
+      {
+        "iter": 1600,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      },
+      {
+        "iter": 2000,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      },
+      {
+        "iter": 2400,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      },
+      {
+        "iter": 2800,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      },
+      {
+        "iter": 3200,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      },
+      {
+        "iter": 3600,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      },
+      {
+        "iter": 4000,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 0
+      }
+    ],
+    "leakControl": [
+      {
+        "iter": 1,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 16
+      },
+      {
+        "iter": 100,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 1600
+      },
+      {
+        "iter": 200,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 3200
+      },
+      {
+        "iter": 300,
+        "heapBytes": 134217728,
+        "topProbe": null,
+        "liveShapes": 4800
+      }
+    ]
+  },
+  "meshSummary": {
+    "triangles": 360,
+    "faceRanges": 11,
+    "edgePolylines": 27,
+    "emptyEdgePolylines": 0
+  }
+}

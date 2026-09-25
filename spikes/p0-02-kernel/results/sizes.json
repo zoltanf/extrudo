@@ -1,0 +1,54 @@
+{
+  "libcascade": {
+    "wasmFile": "opencascade_single-B9DBEong.wasm",
+    "wasm": {
+      "raw": 42691285,
+      "gzip": 12261660,
+      "brotli": 8223986
+    },
+    "jsFiles": [
+      "libcascade-BEuvdI8M.js",
+      "opencascade_single-C7RNL4M3.js",
+      "raw-occt-ClD4l5kx.js"
+    ],
+    "js": {
+      "raw": 77967,
+      "gzip": 29882,
+      "brotli": 26659
+    }
+  },
+  "replicad": {
+    "wasmFile": "replicad_single-B_1cTsn_.wasm",
+    "wasm": {
+      "raw": 22980267,
+      "gzip": 7250252,
+      "brotli": 4837826
+    },
+    "jsFiles": [
+      "raw-occt-ClD4l5kx.js",
+      "replicad-DX8A6DF3.js"
+    ],
+    "js": {
+      "raw": 264832,
+      "gzip": 83731,
+      "brotli": 71301
+    }
+  },
+  "brepjs": {
+    "wasmFile": "occt-wasm-Cxoa-41E.wasm",
+    "wasm": {
+      "raw": 22259342,
+      "gzip": 7082004,
+      "brotli": 4757200
+    },
+    "jsFiles": [
+      "brepjs-DnTjqMTl.js",
+      "occt-wasm-yj1qBQeW.js"
+    ],
+    "js": {
+      "raw": 227297,
+      "gzip": 71479,
+      "brotli": 62033
+    }
+  }
+}

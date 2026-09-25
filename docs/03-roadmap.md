@@ -37,12 +37,14 @@ in the browser.
   GitHub Actions CI; `pnpm dev`, `pnpm check`, `pnpm e2e` scripts; `.editorconfig`;
   LICENSE placeholder.
   *AC:* `pnpm dev` serves a hello page; CI green on an empty test.
-- [ ] **P0-02 ⚗ Kernel spike.** Load OCCT WASM (`libcascade`) in a worker in
+- [x] **P0-02 ⚗ Kernel spike.** Load OCCT WASM (`libcascade`) in a worker in
   the browser and in Node. Build a box, fillet an edge, run a boolean cut,
   tessellate, render with three.js, export STL and STEP. Compare raw
   `libcascade` with replicad and brepjs for API ergonomics, access to shape
   history (needed for topo naming), bundle size and load time.
   *AC:* ADR-0001 written with measurements; recommended approach chosen.
+  **Done 2026-09-25:** raw `libcascade` in our own thin wrapper; replicad and
+  brepjs as code references only. See `docs/adr/0001-geometry-kernel.md`.
 - [ ] **P0-03 ⚗ Solver spike.** planegcs in the browser: a rectangle with a
   coincident, horizontal and dimension constraint; drag a corner at 60 fps;
   read DOF and conflict info.
@@ -77,8 +79,11 @@ in the browser.
 - [ ] **P0-09 Kernel worker plumbing.** Production kernel package (from the
   spike's decision): worker bootstrap, Comlink API, OCCT disposal scopes, crash
   and restart handling, typed mesh transfer, a debug command that renders a test
-  box.
-  *AC:* NFR-03 crash test (forced abort → worker restarts, app survives).
+  box. Per ADR-0001: prebuilt `libcascade`, `Clear()` before `delete()` on every
+  `BRepAlgoAPI_*` boolean, a memory test (≥ 1000 rebuilds, plus a leak control
+  that must fail), and the `BRepFilletAPI_MakeFillet` leak reported upstream.
+  *AC:* NFR-03 crash test (forced abort → worker restarts, app survives);
+  memory test green.
 
 **Phase 0 exit:** the app opens to a home screen; a new project shows the
 viewport; navigation feels like Fusion; save and reload work; the kernel renders
@@ -212,7 +217,11 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   panel; open or restore an old version.
   *AC:* FR-PRJ-03.
 - [ ] **P2-15 WASM size and startup.** Custom trimmed OCCT build; service worker
-  precache (PWA); measure against NFR-02.
+  precache (PWA); measure against NFR-02. Per ADR-0001: `@libcascade/toolchain`
+  (needs Docker), starting from `spikes/p0-02-kernel/custom-build/`, with a small
+  C++ facade (`customBindings`) that owns boolean and fillet builders and
+  extracts meshes in bulk. Move this earlier if the fillet leak isn't fixed
+  upstream. Expected: about 5 MB brotli and about 200 ms cold start.
 - [ ] **P2-16 File-format spec.** Write `docs/file-format.md` from the zod
   schema.
 - [ ] **P2-17 Benchmarks B2, B3 E2E.**

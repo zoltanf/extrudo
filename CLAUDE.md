@@ -9,10 +9,12 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-25):** P0-01 done (monorepo, toolchain, CI, hello page).
-Next tasks, which can run in parallel: **P0-02** (kernel spike), **P0-03**
-(solver spike), **P0-04** (design system and shell), **P0-06** (document
-model), **P0-08** (storage). See `docs/03-roadmap.md`.
+**Status (2026-09-25):** P0-01 and P0-02 done. ADR-0001 chose raw
+`libcascade` in our own thin wrapper (`docs/adr/0001-geometry-kernel.md`).
+Next tasks, which can run in parallel: **P0-03** (solver spike), **P0-04**
+(design system and shell), **P0-06** (document model), **P0-08** (storage), and
+**P0-09** (production kernel package, now unblocked). See
+`docs/03-roadmap.md`.
 
 ## Commands
 
@@ -38,7 +40,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records (created as decisions are made) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade) |
 
 ## Stack summary
 
@@ -55,6 +57,8 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   mutation from components.
 - **The kernel runs only in the worker.** The UI thread never calls OCCT.
 - **OCCT objects must be disposed of** (disposal scope / `using`). Leaks are bugs.
+  With libcascade, call `Clear()` before `delete()` on every `BRepAlgoAPI_*`
+  boolean, or it leaks (ADR-0001).
 - **Face and edge references use the topological-naming service**, never raw
   indices.
 - **Platform APIs** (files, storage, dialogs, slicer launch) go through
@@ -96,3 +100,23 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 - This project is intended to become **public open source**. Unlike the rest
   of `~/Work`, it must never contain credentials, home-network details or
   personal data.
+- **Spikes** live in `spikes/<task>/` as standalone packages outside the
+  workspace (`pnpm install --ignore-workspace`); Biome ignores `spikes/`.
+  Node 26 runs their `.ts` files directly (type stripping), and `using` works.
+- **libcascade leaks through embind** (found in P0-02): `BRepAlgoAPI_Cut`
+  leaks about 130 KB per cut unless `Clear()` is called before `delete()`;
+  `BRepFilletAPI_MakeFillet` leaks 10–30 KB per fillet and `Reset()` doesn't
+  help. Reproduce with `spikes/p0-02-kernel/src/node/leak-bisect.ts`. The WASM
+  heap only grows once its initial slack (about 50 MB) is used up, so a leak
+  test needs ≥ 1000 iterations and a leak control that must fail. A
+  `malloc`-address probe was tried and is too noisy; `OSD_MemInfo` and
+  embind's instance counters aren't exported.
+- **brepjs `*WithEvolution` returns empty maps unless the input faces carry
+  metadata** (for example `tagFaces`): brepjs only sends face hashes to the
+  kernel when there is something to propagate.
+- **Custom OCCT builds need Docker.** `@libcascade/toolchain` pulls a 2.4 GB
+  image. On this laptop the user can't reach `/var/run/docker.sock` yet (not in
+  the `docker` group); fixing that is the owner's call. `npx libcascade build
+  --render-only` and `npx libcascade check <src>` work without Docker.
+- OCCT's STEP writer prints a banner to stdout from inside WASM. Route
+  Emscripten's `print` to a logger (or ignore it in tests).

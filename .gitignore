@@ -26,3 +26,10 @@ playwright/.cache/
 
 # Throwaway spike code lives in spikes/<name>/; keep the READMEs
 spikes/*/node_modules/
+# Regenerable spike outputs (the JSON, summary and screenshots are kept)
+spikes/*/results/*.stl
+spikes/*/results/*.step
+spikes/*/custom-build/.libcascade/
+
+# Session handoff notes (local only)
+HANDOFF.md
