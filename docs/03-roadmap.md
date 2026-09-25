@@ -66,7 +66,7 @@ in the browser.
   (orbit, pan, zoom, fit, ortho/perspective, visual style, grid toggle).
   *AC:* FR-VP-01..04; E2E clicks the ViewCube "Top" face and asserts the camera
   orientation.
-- [ ] **P0-06 Document model and commands.** `core`: zod schema v1, migrations
+- [x] **P0-06 Document model and commands.** *(done 2026-09-25, ADR-0003)* `core`: zod schema v1, migrations
   scaffold, feature registry types, ID generation, command system with Immer
   patches, undo/redo stack, Zustand stores (document / session / model).
   *AC:* Unit tests for undo/redo round-trips and migration of a v0 fixture.

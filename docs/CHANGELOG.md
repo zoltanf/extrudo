@@ -2,6 +2,12 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-25 · **P0-06** Document model in `packages/core`: zod schema v1
+  (strict objects, document invariants), `loadDocument` with a migration chain
+  on raw JSON and a v0 fixture, branded IDs, feature registry types (core holds
+  the data part; kernel and web extend it), commands with Immer patches, undo
+  history with nested transactions (commit collapses, cancel reverts), and
+  vanilla Zustand document/session/model stores. ADR-0003.
 - 2026-09-25 · **P0-03** Solver spike (`spikes/p0-03-solver/`): planegcs in
   Node and the browser on a constrained rectangle and on generated 50–500-entity
   sketches; our own planegcs builds (the published one has a fixed 16 MB heap);

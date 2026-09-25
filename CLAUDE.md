@@ -9,15 +9,18 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-25):** P0-01, P0-02, P0-03 and P0-09 done. ADR-0001 chose
+**Status (2026-09-25):** P0-01, P0-02, P0-03, P0-06 and P0-09 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
 debug page at `#/debug/kernel`). ADR-0002 chose planegcs from our own WASM
 build, one solver system per independent sketch component
-(`docs/adr/0002-sketch-solver.md`).
+(`docs/adr/0002-sketch-solver.md`). ADR-0003 (P0-06) set the document model in
+`packages/core`: strict zod schema, migrations on raw JSON, deterministic
+commands with Immer patches, nested undo transactions, vanilla Zustand stores.
 Next tasks, which can run in parallel: **P0-04** (design system and shell),
-**P0-06** (document model) and **P0-08** (storage). See `docs/03-roadmap.md`.
+**P0-07** (expressions and parameters) and **P0-08** (storage). See
+`docs/03-roadmap.md`.
 
 ## Commands
 
@@ -45,7 +48,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo |
 
 ## Stack summary
 
@@ -59,7 +62,8 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 - **The document is JSON; geometry is derived.** Never store kernel shapes as
   the source of truth.
 - **Every document change goes through a command** (undoable). No direct store
-  mutation from components.
+  mutation from components. Recipes are deterministic: create IDs with
+  `newId()` in the caller and pass them in the payload.
 - **The kernel runs only in the worker.** The UI thread never calls OCCT.
 - **OCCT objects must be disposed of** (disposal scope / `using`). Leaks are bugs.
   With libcascade, `delete()` from JS often doesn't free what the C++ object

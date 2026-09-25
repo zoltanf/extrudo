@@ -11,5 +11,9 @@
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
-  "dependencies": {}
+  "dependencies": {
+    "immer": "^11.1.18",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
+  }
 }

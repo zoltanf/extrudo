@@ -1,0 +1,54 @@
+{
+  "format": "extrudo",
+  "formatVersion": 0,
+  "name": "Wall bracket",
+  "units": "mm",
+  "created": "2026-09-01T09:30:00.000Z",
+  "appVersion": "0.0.0-dev",
+  "parameters": [
+    { "name": "width", "expression": "40 mm", "unit": "mm", "comment": "Along the wall" },
+    { "name": "wall", "expression": "3 mm", "unit": "mm" },
+    { "name": "tilt", "expression": "15 deg", "unit": "deg" },
+    { "name": "holes", "expression": "2", "unit": "" }
+  ],
+  "features": [
+    {
+      "id": "3f1c2d9e-0c55-4a47-9a55-0d3b8f0f5a01",
+      "type": "sketch",
+      "name": "Sketch1",
+      "inputs": {
+        "plane": { "kind": "ref", "refs": [{ "kind": "plane", "id": "origin:xy" }] },
+        "sketch": { "kind": "sketchData", "sketch": { "entities": [], "constraints": [] } }
+      }
+    },
+    {
+      "id": "3f1c2d9e-0c55-4a47-9a55-0d3b8f0f5a02",
+      "type": "extrude",
+      "name": "Extrude1",
+      "inputs": {
+        "profile": {
+          "kind": "ref",
+          "refs": [
+            { "kind": "profile", "id": "sketch:3f1c2d9e-0c55-4a47-9a55-0d3b8f0f5a01:region:0" }
+          ]
+        },
+        "distance": { "kind": "expr", "expr": "wall", "paramName": "d1" },
+        "direction": { "kind": "enum", "value": "one-side" },
+        "flip": { "kind": "bool", "value": false }
+      }
+    },
+    {
+      "id": "3f1c2d9e-0c55-4a47-9a55-0d3b8f0f5a03",
+      "type": "fillet",
+      "name": "Fillet1",
+      "disabled": true,
+      "inputs": {
+        "edges": {
+          "kind": "ref",
+          "refs": [{ "kind": "edge", "id": "extrude:3f1c2d9e-0c55-4a47-9a55-0d3b8f0f5a02:cap:end" }]
+        },
+        "radius": { "kind": "expr", "expr": "1 mm", "paramName": "d2" }
+      }
+    }
+  ]
+}

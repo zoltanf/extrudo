@@ -120,13 +120,14 @@ interface ExtrudoDocument {
   settings: { units: 'mm'|'cm'|'m'|'in'; precision: number };
   parameters: Parameter[];                        // user parameters
   features: Feature[];                            // THE timeline, in order
-  timelineMarker: number;                         // index; features after it are rolled back
+  timelineMarker: number;                         // count of active features; the rest are rolled back
   bodies: Record<BodyId, BodyMeta>;               // name, colour, visibility (geometry is derived)
   views: NamedView[];
-  meta: { created: string; modified: string; appVersion: string };
+  meta: { created: string; modified: string; appVersion: string };  // storage sets `modified`
 }
 
-interface Parameter { id: string; name: string; expression: string; unit: UnitKind; comment?: string; exposed?: ExposeOpts }
+interface Parameter { id: string; name: string; expression: string; unit: UnitKind; comment?: string }
+// P4 adds `exposed` (customizer ranges, FR-PAR-05) as an optional field.
 
 interface FeatureBase {
   id: FeatureId;                 // stable UUID, never reused
@@ -142,6 +143,12 @@ type Input =
   | { kind: 'ref'; refs: GeomRef[] }                     // faces/edges/profiles/planes…
   | { kind: 'sketchData'; sketch: SketchData };
 ```
+
+The zod schema in `packages/core/src/schema.ts` is the authority (P0-06,
+ADR-0003). Its objects are strict, and it checks document invariants: the
+marker lies within the timeline, IDs and parameter names are unique. Loading
+goes through `loadDocument`, which refuses newer format versions and runs the
+migrations (one step per version, on raw JSON) before validating.
 
 Sketch features hold their own `SketchData`: entities, constraints, dimensions
 and plane reference. The **solved coordinates are stored** too, so a sketch
@@ -164,6 +171,10 @@ interface FeatureDefinition<I> {
 }
 ```
 
+Core (P0-06) holds the data part (`type`, `label`, `category`, `icon`,
+`inputsSchema`) as `FeatureDefinition`; the kernel adds `evaluate` and the web
+app adds `dialog` and `manipulators`, each in its own
+`FeatureRegistry<Extended>` keyed by the same type, so core depends on neither.
 The same definitions later form the public scripting API (FR-PRG-01). A script
 calling `doc.extrude({profile, distance: 'h'})` produces exactly the feature
 the dialog would.
@@ -184,6 +195,15 @@ Every document mutation goes through a **command**
 patches, which feed the undo stack. A sketch editing session is a nested
 transaction: while in sketch mode, undo steps through sketch edits; on
 "Finish sketch" they collapse into one timeline-level step.
+
+As built in P0-06 (ADR-0003): a command is `{ type, label, payload, recipe }`
+from `defineCommand`; recipes are deterministic (callers create IDs) and
+reject invalid changes with `CommandError`. `UndoHistory` keeps one level per
+open transaction; commit concatenates the level's patches into one entry,
+cancel reverts them. The document store (`createDocumentStore`) holds the
+deep-frozen document and exposes `dispatch`, `undo`, `redo` and the transaction
+calls; the session store holds mode, tool, selection and hover; the model
+store holds the kernel's results.
 
 ## 5. Geometry kernel design
 
@@ -387,6 +407,9 @@ bundle-size budget. Every agent task must leave CI green.
 - **ADR-0002** Sketch solver: planegcs on the main thread. **Written
   2026-09-25:** our own planegcs build, one solver system per independent
   component.
-- **ADR-0003** Document-as-JSON, geometry-as-cache.
+- **ADR-0003** Document-as-JSON, geometry-as-cache. **Written 2026-09-25**
+  as "Document model, commands and undo": strict zod schema with migrations on
+  raw JSON, deterministic commands with Immer patches, nested undo
+  transactions, three vanilla Zustand stores.
 - **ADR-0004** Topological naming strategy (§5.2).
 - **ADR-0005** Electron over Tauri for desktop.
