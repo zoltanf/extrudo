@@ -59,9 +59,41 @@ jobs:
         if: steps.release.outputs.exists == 'false'
         run: pnpm occt publish
 
+  planegcs:
+    # Our planegcs WASM (packages/sketch/planegcs, ADR-0002) builds in Docker in
+    # a few minutes, so like OCCT it is built once per input hash and published
+    # as a release asset (`planegcs-<hash>`). A quick no-op when that exists.
+    name: planegcs WASM
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Look for a published build of these inputs
+        id: release
+        run: |
+          echo "hash=$(node packages/sketch/planegcs/planegcs.mjs hash)" >> "$GITHUB_OUTPUT"
+          if node packages/sketch/planegcs/planegcs.mjs exists; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.release.outputs.exists == 'false'
+        run: node packages/sketch/planegcs/planegcs.mjs build
+
+      - name: Publish
+        if: steps.release.outputs.exists == 'false'
+        run: node packages/sketch/planegcs/planegcs.mjs publish
+
   check:
     name: Typecheck, lint, unit and E2E tests
-    needs: occt
+    needs: [occt, planegcs]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -78,8 +110,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Download the OCCT WASM
-        run: pnpm occt ensure
+      - name: Download the OCCT and planegcs WASM
+        run: pnpm wasm
 
       - name: Typecheck, lint, package boundaries, bindings, unit and memory tests
         run: pnpm check

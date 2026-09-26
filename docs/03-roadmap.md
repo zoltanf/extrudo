@@ -124,7 +124,7 @@ Benchmark **B1** buildable.
   intersection, H/V alignment with dashed guides, grid), heads-up numeric input
   (length/angle, Tab, Enter, Esc), preview rendering, auto-constraint emission.
   *AC:* FR-SK-05, -06; unit tests of the inference engine.
-- [ ] **P1-03 Solver integration.** `sketch` package planegcs adapter (ADR-0002):
+- [x] **P1-03 Solver integration.** `sketch` package planegcs adapter (ADR-0002):
   our planegcs WASM build (from `spikes/p0-03-solver/planegcs-build/`, built in
   CI once per input hash like OCCT); map every entity and constraint type
   (endpoint tangency as `angle_via_point`); one persistent solver system per
@@ -136,6 +136,13 @@ Benchmark **B1** buildable.
   200 entities in independent components, and < 16 ms for a single component
   of up to 100 entities; a gear-outline fixture (one closed loop, 100+ curves)
   measured and recorded.
+  Done 2026-09-26 (ADR-0011): `SketchSolver` in `packages/sketch` maps every
+  entity, constraint and dimension type, splits components with fixed
+  geometry as constants, solves only what changed, drags without rebuilds and
+  test-solves new constraints (`check`). The WASM builds in CI like OCCT
+  (`pnpm planegcs`). Drag steps: 0.18 ms at 198 entities in 22 components,
+  11.4 ms for one 99-entity component; the 104-curve gear drags at about 1 s
+  per step (risk register). Debug page `#/debug/solver`.
 - [ ] **P1-04 Basic drawing tools.** Line (chained, tangent-arc drag), rectangle
   (2-point, 3-point, center), circle (center, 2-point, 3-point), arc (3-point,
   center, tangent), point, construction toggle (X).
@@ -364,7 +371,7 @@ don't let Phase 3 features be built without it.
 | WASM memory leaks (manual `delete()`) | Tab crashes after long sessions | Disposal scopes as a lint-checked rule; a memory test that recomputes a fixture 500×. |
 | Scope creep toward "full Fusion" | Never ships | Phases with exit criteria and benchmark models; out-of-scope list in requirements. |
 | Solver instability (flipping solutions) | Sketches jump on edit | Start from stored solved positions; small-step drag solving; tests. |
-| Large coupled sketch components solve slowly (planegcs uses dense matrices; ADR-0002) | Dragging a 200-entity single component runs at ~12 fps; edits take 0.1–1 s | Per-component solving covers the usual sketch; if real sketches hit it: solve large components in a worker, or patch planegcs to sparse matrices in our build. |
+| Large coupled sketch components solve slowly (planegcs uses dense matrices; ADR-0002) | Dragging a 200-entity single component runs at ~12 fps; edits take 0.1–1 s. **Measured in P1-03 (ADR-0011): a closed gear outline drags far worse than its size suggests, about 120 ms per step at 52 curves and 1–5 s at 104, because planegcs's drag solve (SQP) needs ~30 iterations per step on a coupled loop of arcs** | Per-component solving covers the usual sketch. For loops like gears: solve drags of large components in a worker at the latest pointer position; keep the SQP's BFGS matrix between drag steps or patch it to sparse matrices in our build; or drag with a lighter formulation. Revisit when P1-09 builds dragging. |
 | LGPL obligations misunderstood | Legal trouble when public | Separate WASM files; NOTICE file; decide license before P3-15. |
 | Mimicking Fusion too closely (trade dress) | Legal risk | Own icons, names and branding; copy concepts and workflow only. |
 

@@ -120,6 +120,19 @@ describe('sketch schema', () => {
     expect(issues({ ...r, extra: true })).toEqual([': Unrecognized key: "extra"']);
   });
 
+  it('keeps the side of a tangent or smooth joint when one is stored (P1-03)', () => {
+    const r = rectangle();
+    const constraints = {
+      ...r.constraints,
+      k11: { type: 'tangent', a: 'hole', b: 'top', reversed: true },
+      k15: { type: 'smooth', a: 'arc', b: 'right', reversed: false },
+    };
+    expect(issues({ ...r, constraints })).toEqual([]);
+    expect(
+      issues({ ...r, constraints: { ...constraints, k11: { ...constraints.k11, reversed: 1 } } }),
+    ).toHaveLength(1);
+  });
+
   it('reports missing entities and entities of the wrong kind', () => {
     const r = rectangle();
     const broken = {

@@ -312,14 +312,19 @@ and remove a sketch edge, then assert the fillet still sits on the "same" edges.
 ### 5.3 Sketch → geometry
 
 - Solving happens in the main thread. The kernel receives solved geometry
-  only. The `sketch` adapter keeps one planegcs system per independent
-  component (geometry linked through constraints; constraints to fixed
-  geometry don't link), so a drag or an edit re-solves only its component:
-  0.16 ms per drag step and 0.8 ms per constraint edit at 500 entities in the
-  P0-03 spike. A drag binds temporary coordinate constraints to two sketch
-  parameters and updates them per frame, without rebuilding the system. One
-  large coupled component (100+ entities) is slow, because planegcs uses dense
-  matrices (ADR-0002).
+  only. The `sketch` adapter (`SketchSolver`, P1-03, ADR-0011) keeps one
+  planegcs system per independent component (geometry linked through
+  constraints; fixed geometry has no unknowns and links nothing), so a drag
+  or an edit re-solves only its component. `solve(sketch, values)` takes the
+  whole sketch each time and, per component, skips it (same input objects),
+  writes new values into its system (a dimension, an undo) or rebuilds it
+  (its equations changed). A drag binds temporary coordinate constraints to
+  two sketch parameters and updates them per frame, without rebuilding the
+  system: 0.18 ms per step at 198 entities in 22 components, 11.4 ms for one
+  99-entity component. One large coupled component is slow, because
+  planegcs uses dense matrices, and a closed loop of arcs worst of all (a
+  104-curve gear: about 1 s per drag step; ADR-0011). Before a constraint is
+  committed, `check()` test-solves its component in a scratch system.
 - Profile detection: a fast TS planar-arrangement pass gives instant hover
   shading while drawing. The authoritative regions come from OCCT
   (`BOPAlgo_Builder` on sketch edges → faces), which handles splines and
@@ -463,3 +468,7 @@ bundle-size budget. Every agent task must leave CI green.
   (P1-01): plane as a `ref` input, points as entities owned by one curve,
   records keyed by ID, every constraint and dimension type, origin plane
   frames, sketch mode as an undo transaction.
+- **ADR-0011** Sketch solver adapter. **Written 2026-09-26** (P1-03): the
+  planegcs build in CI per input hash, the mapping of every type, fixed
+  geometry as constants, incremental solving per component, drag, the
+  test-solve, and the gear-outline measurement.

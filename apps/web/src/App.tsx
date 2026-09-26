@@ -4,9 +4,12 @@ import type { Platform } from './platform';
 import { ProjectPage } from './project/ProjectPage';
 import { HOME_HREF, useRoute } from './routes';
 
-// Loaded on demand: the kernel client and the debug page aren't part of the app.
+// Loaded on demand: the kernel client and the debug pages aren't part of the app.
 const KernelDebug = lazy(() =>
   import('./debug/KernelDebug').then((m) => ({ default: m.KernelDebug })),
+);
+const SolverDebug = lazy(() =>
+  import('./debug/SolverDebug').then((m) => ({ default: m.SolverDebug })),
 );
 
 /** Hash routes (Electron-safe, architecture §8): home, a project, debug pages. */
@@ -21,6 +24,12 @@ export function App({ platform }: { platform: Platform }) {
       return (
         <Suspense fallback={null}>
           <KernelDebug platform={platform} />
+        </Suspense>
+      );
+    case 'debug-solver':
+      return (
+        <Suspense fallback={null}>
+          <SolverDebug />
         </Suspense>
       );
     case 'not-found':

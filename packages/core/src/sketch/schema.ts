@@ -74,6 +74,15 @@ const pair = <T extends string>(type: T) =>
   z.strictObject({ type: z.literal(type), a: ref, b: ref });
 
 /**
+ * Where two curves meet at an endpoint, whether their directions there point
+ * opposite ways (lines run start → end, circles and arcs counter-clockwise).
+ * The solver keeps the joint on that side (P1-03). Set when the constraint is
+ * created; without it, the solver picks the side from the current geometry.
+ */
+const joint = <T extends string>(type: T) =>
+  z.strictObject({ type: z.literal(type), a: ref, b: ref, reversed: z.boolean().optional() });
+
+/**
  * Geometric constraints. `coincident` joins two points; `pointOnCurve` puts a
  * point on a line, circle or arc (the UI calls both "coincident").
  * `horizontal` and `vertical` take a line (`a`) or two points (`a`, `b`).
@@ -89,8 +98,8 @@ export const SketchConstraintSchema = z.discriminatedUnion('type', [
   pair('perpendicular'),
   z.strictObject({ type: z.literal('horizontal'), a: ref, b: ref.optional() }),
   z.strictObject({ type: z.literal('vertical'), a: ref, b: ref.optional() }),
-  pair('tangent'),
-  pair('smooth'),
+  joint('tangent'),
+  joint('smooth'),
   pair('equal'),
   z.strictObject({ type: z.literal('symmetric'), a: ref, b: ref, axis: ref }),
 ]);

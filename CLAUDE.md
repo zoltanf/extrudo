@@ -9,8 +9,8 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-25):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-started with P1-01. ADR-0001 chose
+**Status (2026-09-26):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
+P1-01 and P1-03 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -41,8 +41,13 @@ them) plus every constraint and dimension type, as records keyed by ID;
 origin plane frames match the ViewCube. Sketch mode (`apps/web/src/sketch/`)
 is session state plus one undo transaction; the viewport draws sketches,
 makes the origin planes pickable and puts the grid on the sketch plane.
-Next: **P1-03** (solver integration) and **P1-02** (sketch tool framework).
-See `docs/03-roadmap.md`.
+ADR-0011 (P1-03) built the solver adapter in `packages/sketch/src/solver/`:
+`SketchSolver.solve(sketch, values)` maps every type to planegcs, treats
+fixed geometry as constants, keeps one system per component and solves only
+what changed; `beginDrag`/`drag`/`endDrag`; `check()` test-solves a new
+constraint. Our planegcs WASM (`packages/sketch/planegcs/`) builds in CI per
+input hash like OCCT. A closed gear outline drags at ~1 s per step (risk
+register). Next: **P1-02** (sketch tool framework). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -52,8 +57,9 @@ pnpm dev          # app at http://localhost:5173
 pnpm check        # typecheck + Biome + package boundaries + Vitest. Must pass.
 pnpm e2e          # build + Playwright (run `pnpm e2e:install` once)
 pnpm format       # Biome auto-fix
-pnpm occt ensure  # download the OCCT WASM for the current inputs (check/dev/build do this)
-pnpm occt build   # build it locally with Docker (~11 min); see packages/kernel/occt/README.md
+pnpm wasm         # download the OCCT and planegcs WASM for the current inputs (check/dev/build do this)
+pnpm occt build   # build OCCT locally with Docker (~11 min); see packages/kernel/occt/README.md
+pnpm planegcs build  # build planegcs locally with Docker (~2 min); see packages/sketch/planegcs/README.md
 ```
 
 Package dependency rules live in `scripts/check-boundaries.mjs` (run by
@@ -70,7 +76,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -157,6 +163,21 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   type (`custom-build/closure.mjs`); `libcascade check` doesn't catch those.
   `MODULARIZE` + `EXPORT_ES6` and the three exception helpers in
   `EXPORTED_RUNTIME_METHODS` are required.
+- **The planegcs WASM is not in git either** (`packages/sketch/planegcs/dist/`):
+  CI's `planegcs` job publishes `planegcs-<hash>`, `pnpm wasm` fetches both
+  builds. After changing `build.sh`, the `Dockerfile` or the patch, run
+  `pnpm planegcs build` (through `newgrp docker` if needed) or let CI build
+  it. Its clone lives in `packages/sketch/node_modules/.cache/planegcs-build/`,
+  under node_modules so Vitest skips the clone's own tests (it ran them when
+  the clone sat in `planegcs/.work/`). Sketch tests
+  import `../../planegcs/dist/planegcs.js`; the browser loads it through
+  `@extrudo/sketch/browser` (`?url`).
+- **Solver drag speed depends on iterations, not size alone** (P1-03): with
+  temporary constraints planegcs runs an SQP from an identity Hessian every
+  call. A chained 99-entity plate drags in 11 ms, a 52-curve gear loop in
+  120 ms. Benchmark with an off-path pointer (a pointer on the feasible path
+  converges in a few iterations and hides this):
+  `BENCH=1 pnpm vitest run packages/sketch/src/solver/perf.test.ts`.
 - **The OCCT WASM is not in git.** `packages/kernel/occt/dist/` is built by CI
   once per input hash (config + `facade/` + toolchain version) and published as
   the GitHub release `occt-<hash>`; `pnpm occt ensure` downloads it with `gh`.

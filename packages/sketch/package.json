@@ -6,12 +6,15 @@
   "license": "GPL-3.0-or-later",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts",
+    "./fixtures": "./src/fixtures.ts"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@extrudo/core": "workspace:*"
+    "@extrudo/core": "workspace:*",
+    "@salusoft89/planegcs": "1.2.0"
   }
 }

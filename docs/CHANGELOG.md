@@ -2,6 +2,16 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-26 · **P1-03** Solver integration: `SketchSolver` in
+  `packages/sketch` (planegcs adapter): every entity, constraint and
+  dimension type mapped (endpoint tangency as `angle_via_point`, an optional
+  `reversed` side on `tangent`/`smooth`), fixed geometry as constants, one
+  persistent system per independent component, solving only what changed,
+  drag with temporary constraints, DOF, conflict and redundancy reports, and
+  `check()` to test-solve a new constraint. Our planegcs WASM builds in CI
+  once per input hash (`pnpm planegcs`, `pnpm wasm`; shared
+  `scripts/wasm-release.mjs`). Fixtures and a benchmark (plates, gear
+  outline); debug page `#/debug/solver`. ADR-0011.
 - 2026-09-25 · **P1-01** Sketch feature and sketch mode: `SketchData` schema
   in core (points, lines, circles, arcs; every FR-SK-07 constraint and FR-SK-08
   dimension; records keyed by ID; reference checks on load), origin plane

@@ -1,0 +1,71 @@
+{
+  "note": "Milliseconds. Node, main thread, our planegcs build (packages/sketch/planegcs). See ADR-0011.",
+  "date": "2026-09-26",
+  "node": "v26.10.0",
+  "results": {
+    "anchored-198": {
+      "entities": 198,
+      "components": 22,
+      "dof": 1,
+      "open": 53.3,
+      "drag": {
+        "median": 0.18,
+        "p95": 0.29,
+        "max": 3.17,
+        "steps": 400,
+        "failed": 0
+      },
+      "dimension": 7.29,
+      "check": 6.49,
+      "checkConflict": 8.81
+    },
+    "chained-99": {
+      "entities": 99,
+      "components": 1,
+      "dof": 1,
+      "open": 82.63,
+      "drag": {
+        "median": 11.37,
+        "p95": 11.99,
+        "max": 38.98,
+        "steps": 400,
+        "failed": 0
+      },
+      "dimension": 46.34,
+      "check": 81.62,
+      "checkConflict": 760.93
+    },
+    "gear-52": {
+      "entities": 52,
+      "components": 1,
+      "dof": 1,
+      "open": 39.51,
+      "drag": {
+        "median": 116.49,
+        "p95": 173.59,
+        "max": 173.59,
+        "steps": 20,
+        "failed": 0
+      },
+      "dimension": 19.89,
+      "check": 37.22,
+      "checkConflict": 407.57
+    },
+    "gear-104": {
+      "entities": 104,
+      "components": 1,
+      "dof": 1,
+      "open": 275.4,
+      "drag": {
+        "median": 953.23,
+        "p95": 5517.88,
+        "max": 5517.88,
+        "steps": 20,
+        "failed": 2
+      },
+      "dimension": 127.41,
+      "check": 270.21,
+      "checkConflict": 11227.17
+    }
+  }
+}

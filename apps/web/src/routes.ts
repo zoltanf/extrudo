@@ -1,6 +1,6 @@
 /**
  * Hash routes (Electron-safe, architecture §8): `#/` home, `#/p/<id>` a
- * project, `#/debug/kernel` the kernel debug page.
+ * project, `#/debug/kernel` and `#/debug/solver` the debug pages.
  */
 import { useSyncExternalStore } from 'react';
 
@@ -8,6 +8,7 @@ export type Route =
   | { page: 'home' }
   | { page: 'project'; id: string }
   | { page: 'debug-kernel' }
+  | { page: 'debug-solver' }
   | { page: 'not-found'; hash: string };
 
 export const HOME_HREF = '#/';
@@ -17,6 +18,7 @@ export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, '') || '/';
   if (path === '/') return { page: 'home' };
   if (path === '/debug/kernel') return { page: 'debug-kernel' };
+  if (path === '/debug/solver') return { page: 'debug-solver' };
   const project = /^\/p\/([^/]+)$/.exec(path);
   if (project?.[1]) return { page: 'project', id: decodeURIComponent(project[1]) };
   return { page: 'not-found', hash };

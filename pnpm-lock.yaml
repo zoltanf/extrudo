@@ -190,6 +190,9 @@ importers:
       '@extrudo/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
+      '@extrudo/sketch':
+        specifier: workspace:*
+        version: link:../../packages/sketch
       '@extrudo/storage':
         specifier: workspace:*
         version: link:../../packages/storage
@@ -278,6 +281,9 @@ importers:
       '@extrudo/core':
         specifier: workspace:*
         version: link:../core
+      '@salusoft89/planegcs':
+        specifier: 1.2.0
+        version: 1.2.0
 
   packages/storage:
     dependencies:
@@ -1221,6 +1227,9 @@ packages:
 
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
+
+  '@salusoft89/planegcs@1.2.0':
+    resolution: {integrity: sha512-NcdWJnJRCnIDvM9yJD98Jm8qaK//wRqMEbJ0WtibKnhbzI484TjIEbYD6EVUZejndXGC9yBkuKgqXg+9buzi6Q==}
 
   '@tailwindcss/node@4.3.3':
     resolution: {integrity: sha512-/T8IKEsf9VTU6tLjgC7+sv2mOPtQxzE2jMw7u4Tt40Tx+QSZxpzh95/H6cMKoja9XuW7iMdLJYBB0o9G1CaAgg==}
@@ -2948,6 +2957,8 @@ snapshots:
     optional: true
 
   '@rolldown/pluginutils@1.0.1': {}
+
+  '@salusoft89/planegcs@1.2.0': {}
 
   '@tailwindcss/node@4.3.3':
     dependencies:

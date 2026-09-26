@@ -123,3 +123,15 @@
   font-family: var(--x-font-mono);
   font-size: 0.95em;
 }
+
+/* Solver debug page (P1-03), #/debug/solver; shares the kernel page's layout */
+.kernel-debug table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.kernel-debug th,
+.kernel-debug td {
+  padding: 4px 12px 4px 0;
+  text-align: left;
+}
