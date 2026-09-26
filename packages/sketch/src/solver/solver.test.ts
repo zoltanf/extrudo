@@ -381,6 +381,20 @@ describe('dimensions (one per type)', () => {
     close(angle(solve(b, solver)), -150);
   });
 
+  it('a supplement angle dimensions the other pair of angles (P1-07)', () => {
+    const b = new SketchBuilder();
+    const a = b.line(0, 0, 10, 0);
+    const c = b.line(0, 0, 8, 5);
+    b.constrain({ type: 'fix', entity: a.id });
+    b.constrain({ type: 'coincident', a: a.start, b: c.start });
+    b.dimension({ type: 'angle', a: a.id, b: c.id, supplement: true }, 120);
+    const s = solve(b);
+    clean(s, 1);
+    const u = sub(s.p(a.end), s.p(a.start));
+    const v = sub(s.p(c.end), s.p(c.start));
+    close((Math.atan2(cross(u, v), dot(u, v)) * 180) / Math.PI, 60);
+  });
+
   it('driven dimensions and dimensions without a value are left out', () => {
     const b = new SketchBuilder();
     const line = b.line(0, 0, 10, 0);

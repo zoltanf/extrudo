@@ -40,6 +40,7 @@ export const SKETCH_TOOL_IDS: readonly string[] = [
   'slotOverall',
   'ellipse',
   'spline',
+  'dimension',
   ...CONSTRAINT_TOOL_IDS,
 ];
 
@@ -55,4 +56,9 @@ const CONSTRAINT_IDS = new Set(CONSTRAINT_TOOL_IDS);
 /** Whether a session tool ID names a constraint tool, which picks rather than draws. */
 export function isConstraintTool(id: string | undefined): boolean {
   return id !== undefined && CONSTRAINT_IDS.has(id);
+}
+
+/** Whether a session tool picks entities rather than placing points (constraints, dimensions). */
+export function isPickingTool(id: string | undefined): boolean {
+  return isConstraintTool(id) || id === 'dimension';
 }

@@ -177,6 +177,13 @@ kernel will get.
 P1-06 (ADR-0015) added the constraint tools and glyphs: a constraint the
 user asks for is test-solved and refused if it is redundant, conflicts, or
 collapses a curve; `removeFromSketch` deletes constraints and dimensions.
+P1-07 (ADR-0016) added the Dimension tool and labels. Named driving
+dimensions are model parameters in the parameter graph, which also
+evaluates every driving dimension for the solver. A dimension stores its
+label as an offset from its anchor, and an angle which pair of angles it
+measures (`supplement`). A change to a value (in place, or a parameter a
+dimension uses) and the solves of the sketches it moves are one undo step
+(`ToolHost.apply`).
 
 ### 4.2 Feature registry (extension point)
 

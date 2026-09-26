@@ -189,12 +189,22 @@ const value = {
   paramName: z.string().regex(PARAMETER_NAME).optional(),
   /** A driven (reference) dimension measures the geometry instead of driving it. */
   driven: z.boolean(),
+  /**
+   * Where the value's label sits (P1-07): an offset in sketch mm from the
+   * dimension's anchor (`dimensionAnchor`), so the label follows the
+   * geometry. Without it the label goes to a default spot.
+   */
+  label: z.strictObject({ x: z.number(), y: z.number() }).optional(),
 };
 
 /**
  * `distance` covers linear dimensions: a line's length (`a` alone), two
  * points (aligned, horizontal or vertical), a point and a line, or two
  * parallel lines (aligned only).
+ *
+ * `angle` is the angle between the two lines' directions (start → end),
+ * 0–180°; with `supplement` it is 180° minus that, the other pair of angles
+ * where the lines cross (P1-07: the sector the label was placed in).
  */
 export const SketchDimensionSchema = z.discriminatedUnion('type', [
   z.strictObject({
@@ -206,7 +216,13 @@ export const SketchDimensionSchema = z.discriminatedUnion('type', [
   }),
   z.strictObject({ type: z.literal('radius'), curve: ref, ...value }),
   z.strictObject({ type: z.literal('diameter'), curve: ref, ...value }),
-  z.strictObject({ type: z.literal('angle'), a: ref, b: ref, ...value }),
+  z.strictObject({
+    type: z.literal('angle'),
+    a: ref,
+    b: ref,
+    supplement: z.boolean().optional(),
+    ...value,
+  }),
 ]);
 export type SketchDimension = z.infer<typeof SketchDimensionSchema>;
 export type SketchDimensionType = SketchDimension['type'];

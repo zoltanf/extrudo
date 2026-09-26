@@ -9,8 +9,8 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-26):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01 to P1-06 done. ADR-0001 chose
+**Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
+P1-01 to P1-07 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -71,8 +71,15 @@ test-solves a user's constraint (`SketchEdit.verify`) and refuses a redundant,
 conflicting or curve-collapsing one; glyphs (`tools/glyphs.ts` placement,
 `ConstraintGlyphs.tsx` buttons over the view, `data-view-passthrough` lets
 navigation through) select into the session as kind `constraint`, and Delete
-runs `removeFromSketch`. Next: **P1-07** (dimensions). See
-`docs/03-roadmap.md`.
+runs `removeFromSketch`. ADR-0016 (P1-07) added the Dimension tool
+(`sketch/tools/dimension.ts`, a picking tool), labels and the in-place
+editor (`tools/DimensionLabels.tsx`, layout in `tools/dimensionLayout.ts`),
+measuring and anchors in `core/src/sketch/dimensions.ts`; named driving
+dimensions are model parameters (owner type `dimension`,
+`evaluation.dimensions` feeds the solver). **Anything that changes a
+dimension's value or a parameter goes through `ToolHost.apply`**, which
+re-solves the affected sketches in the same undo step. Next: **P1-08**
+(constraint status and colouring). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -101,7 +108,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes (0005/0006 are reserved) |
 
 ## Stack summary
 

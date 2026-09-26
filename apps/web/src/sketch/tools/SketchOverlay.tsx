@@ -1,10 +1,12 @@
 import {
   type DocumentStore,
+  dimensionAnchor,
   type EvaluateResult,
   type ExtrudoDocument,
   evaluateParameters,
   type FeatureId,
   formatQuantity,
+  measureDimension,
   readSketch,
   type SketchFrame,
   sketchToWorld,
@@ -27,6 +29,8 @@ import { ExpressionInput } from '../../parameters/ExpressionInput';
 import { viewProject } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
 import { EntityHighlight } from './ConstraintGlyphs';
+import { DimensionGraphic, pixelGap } from './DimensionLabels';
+import { dimensionShape, dimensionText } from './dimensionLayout';
 import type { ToolHost } from './host';
 import type { HeadsUpField } from './tool';
 
@@ -62,7 +66,7 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
   const projection = useStore(viewport, (s) => s.projection);
   // Re-render on every tool change.
   useStore(host.state, (s) => s.revision);
-  const { tool, pointer, screen, error, construction } = host.state.getState();
+  const { tool, pointer, screen, error, notice, construction } = host.state.getState();
   const doc = useStore(store, (s) => s.doc);
 
   const { width, height } = size;
@@ -85,6 +89,17 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
     return feature ? readSketch(feature)?.data : undefined;
   }, [doc, sketchId]);
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
+  // The dimension being placed (the Dimension tool), drawn like the sketch's own.
+  const placing = (() => {
+    const d = preview?.dimension;
+    const anchor = d && data && dimensionAnchor(data, d);
+    const gap = anchor && pixelGap(toScreen, anchor);
+    const shape = d && data && gap !== undefined ? dimensionShape(data, d, gap) : undefined;
+    const at = shape && toScreen(shape.label);
+    return d && data && shape && at
+      ? { shape, at, text: dimensionText(d, measureDimension(data, d), doc.settings) }
+      : undefined;
+  })();
 
   return (
     <div
@@ -223,8 +238,26 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
             />
           </g>
         )}
+        {placing && (
+          <g data-preview="dimension">
+            <DimensionGraphic shape={placing.shape} toScreen={toScreen} color="var(--x-accent)" />
+          </g>
+        )}
         {snap && snapAt && <SnapGlyph kind={snap.kind} at={snapAt} />}
       </svg>
+      {placing && (
+        <div
+          data-preview="dimension-label"
+          className="absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-[4px] border border-accent px-1 font-mono text-xs leading-4 text-ink tabular-nums shadow-raised"
+          style={{
+            left: placing.at[0],
+            top: placing.at[1],
+            background: 'color-mix(in srgb, var(--x-raised) 92%, transparent)',
+          }}
+        >
+          {placing.text}
+        </div>
+      )}
       {tool && fields.length > 0 && screen && (
         <HeadsUp
           host={host}
@@ -241,7 +274,15 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
           className="absolute top-3 left-1/2 max-w-[60%] -translate-x-1/2 rounded-input border border-line px-3 py-1 text-sm shadow-raised"
           style={{ background: 'color-mix(in srgb, var(--x-raised) 90%, transparent)' }}
         >
-          {error ? <span className="text-error">{error}</span> : tool.prompt()}
+          {error ? (
+            <span className="text-error">{error}</span>
+          ) : notice ? (
+            <span>
+              {notice} {tool.prompt()}
+            </span>
+          ) : (
+            tool.prompt()
+          )}
         </div>
       )}
     </div>

@@ -2,6 +2,21 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **P1-07** Dimensions: the Sketch Dimension tool (`D`) picks
+  a line (length), two lines (angle, or distance if parallel), a point and
+  a line, two points, a circle (diameter) or an arc (radius), and places
+  the label where you click: horizontal, vertical or aligned by where it
+  goes, an angle's pair by its sector (`supplement`). New dimensions drive
+  at their measured value and open for editing in place
+  (`<ExpressionInput>`, a Driven checkbox, `name = value` creates a
+  parameter); one that would over-constrain goes in driven. Labels with
+  extension lines and arrows (`tools/dimensionLayout.ts`) select, drag
+  (label offset stored from the anchor), and delete. Named driving
+  dimensions (`d1`…, typed heads-up values too) are model parameters in the
+  Parameters dialog; renames and delete checks cover them. Changing a
+  value, or a parameter it uses, re-solves every affected sketch in the
+  same undo step (`ToolHost.apply`), and refuses a value the sketch can't
+  take. "Show dimensions" palette toggle. ADR-0016.
 - 2026-09-26 · **P1-06** Constraints UI: 13 constraint tools (Coincident …
   Symmetric) in a compact two-row Constraints group, with nine new icons.
   They pick points and curves under the cursor (`pickEntity`), highlight

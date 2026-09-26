@@ -8,6 +8,7 @@
 import type {
   ConstraintId,
   DimensionId,
+  LengthUnit,
   SketchConstraint,
   SketchData,
   SketchDimension,
@@ -47,13 +48,17 @@ export interface SketchEdit {
    */
   auto: ConstraintId[];
   /**
-   * Constraints the user asked for (the constraint tools, P1-06). The host
-   * test-solves each and refuses the whole edit, with a message, if one
-   * conflicts or is redundant.
+   * Constraints and dimensions the user asked for (the constraint tools,
+   * P1-06; the Dimension tool, P1-07). The host test-solves each. It refuses
+   * the whole edit, with a message, if a constraint conflicts or is
+   * redundant; a dimension that would over-constrain the sketch goes in as
+   * driven instead.
    */
-  verify?: ConstraintId[];
+  verify?: string[];
   /** Existing constraints to delete instead (Fix on something fixed frees it). */
   remove?: ConstraintId[];
+  /** A new dimension whose value to edit once the edit is in (the Dimension tool). */
+  editDimension?: DimensionId;
 }
 
 /** A circle (no `from`/`sweep`) or a counter-clockwise arc, radians. */
@@ -79,6 +84,8 @@ export interface ToolPreview {
   picked?: SketchEntityId[];
   /** The entity a click would pick, drawn in the pre-selection colour. */
   hover?: SketchEntityId;
+  /** A dimension being placed (P1-07), drawn like the sketch's own. */
+  dimension?: SketchDimension;
 }
 
 export interface ToolContext {
@@ -87,6 +94,8 @@ export interface ToolContext {
   newId(): string;
   /** Whether new curves are construction geometry (the X toggle, FR-SK-04). */
   construction(): boolean;
+  /** The document's length unit and display precision (new dimensions' values). */
+  settings(): { units: LengthUnit; precision: number };
   /**
    * The entity under `cursor` that `accept` allows, within the snap distance
    * of the last pointer (points first; `pickEntity`).

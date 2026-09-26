@@ -178,7 +178,6 @@ export const TOOLS = {
     category: 'sketch',
     hint: 'Lengths, radii and angles that drive the sketch.',
     shortcut: 'D',
-    comesWith: 'P1-07',
   },
   trim: {
     id: 'trim',

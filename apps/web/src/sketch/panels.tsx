@@ -91,7 +91,6 @@ export interface SketchPaletteProps {
 
 /** Options that arrive with later tasks, listed so the palette shows its real layout. */
 const LATER: readonly { label: string; comesWith: string }[] = [
-  { label: 'Show dimensions', comesWith: 'P1-07' },
   { label: 'Show profiles', comesWith: 'P1-11' },
   { label: 'Slice', comesWith: 'P2' },
 ];
@@ -101,6 +100,7 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
   const grid = useStore(viewport, (s) => s.grid);
   const points = useStore(viewport, (s) => s.sketchPoints);
   const constraints = useStore(viewport, (s) => s.sketchConstraints);
+  const dimensions = useStore(viewport, (s) => s.sketchDimensions);
   const snap = useStore(viewport, (s) => s.snap);
   return (
     <FloatingPanel label="Sketch palette">
@@ -134,6 +134,14 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
             onChange={(v) => viewport.getState().setSketchConstraints(v)}
           >
             Show constraints
+          </PaletteToggle>
+        </li>
+        <li>
+          <PaletteToggle
+            checked={dimensions}
+            onChange={(v) => viewport.getState().setSketchDimensions(v)}
+          >
+            Show dimensions
           </PaletteToggle>
         </li>
         <li>

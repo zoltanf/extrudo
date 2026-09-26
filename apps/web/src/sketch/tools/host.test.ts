@@ -80,6 +80,7 @@ describe('line tool through the host', () => {
         orientation: 'aligned',
         a: expect.any(String),
         expr: 'w + 5',
+        paramName: 'd1',
         driven: false,
       },
     ]);

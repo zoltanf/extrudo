@@ -54,8 +54,8 @@ export const updateParameter = defineCommand<{
     checkParameterName(draft, changes.name);
   }
   Object.assign(parameter, changes);
-  // A rename carries over to every expression that uses the parameter.
-  // P1 adds sketch dimensions (inside SketchData) to this.
+  // A rename carries over to every expression that uses the parameter,
+  // sketch dimensions included.
   const newName = parameter.name;
   if (newName !== oldName) {
     for (const p of draft.parameters) {
@@ -63,9 +63,9 @@ export const updateParameter = defineCommand<{
         p.expression = renameReferences(p.expression, oldName, newName);
       }
     }
-    for (const input of exprInputs(draft)) {
-      if (mentions(input.expr, oldName))
-        input.expr = renameReferences(input.expr, oldName, newName);
+    for (const { holder } of featureExpressions(draft)) {
+      if (mentions(holder.expr, oldName))
+        holder.expr = renameReferences(holder.expr, oldName, newName);
     }
   }
 });
@@ -75,21 +75,7 @@ export const removeParameter = defineCommand<{ id: ParameterId }>(
   'Delete parameter',
   (draft, { id }) => {
     const { name } = findParameter(draft, id);
-    const users = [
-      ...draft.parameters
-        .filter((p) => p.id !== id && mentions(p.expression, name))
-        .map((p) => `\`${p.name}\``),
-      ...draft.features
-        .filter((f) =>
-          Object.values(f.inputs).some((i) => i.kind === 'expr' && mentions(i.expr, name)),
-        )
-        .map((f) => f.name),
-    ];
-    if (users.length > 0) {
-      throw new CommandError(
-        `\`${name}\` is used by ${listOf(users)}. Change ${users.length === 1 ? 'that' : 'those'} first.`,
-      );
-    }
+    refuseIfUsed(draft, name);
     draft.parameters = draft.parameters.filter((p) => p.id !== id);
   },
 );
@@ -202,11 +188,50 @@ function checkParameterName(draft: DocumentDraft, name: string): void {
   }
 }
 
-function* exprInputs(draft: DocumentDraft) {
+/** Every expression inside features: `expr` inputs and sketch dimensions. */
+function* featureExpressions(draft: DocumentDraft): Generator<{
+  feature: Feature;
+  holder: { expr: string; paramName?: string; driven?: boolean };
+  dimension: boolean;
+}> {
   for (const feature of draft.features) {
     for (const input of Object.values(feature.inputs)) {
-      if (input.kind === 'expr') yield input;
+      if (input.kind === 'expr') yield { feature, holder: input, dimension: false };
+      else if (input.kind === 'sketchData') {
+        for (const holder of Object.values(input.sketch.dimensions)) {
+          yield { feature, holder, dimension: true };
+        }
+      }
     }
+  }
+}
+
+/**
+ * Refuses, with a message naming them, if any expression outside `except`
+ * refers to the parameter `name` (before deleting it, or the dimensions
+ * that carry it). Parameters and named sketch dimensions are listed by
+ * name, feature inputs and other dimensions by their feature.
+ */
+export function refuseIfUsed(
+  draft: DocumentDraft,
+  name: string,
+  except: ReadonlySet<object> = new Set(),
+): void {
+  const users = new Set<string>();
+  for (const p of draft.parameters) {
+    if (p.name !== name && mentions(p.expression, name)) users.add(`\`${p.name}\``);
+  }
+  for (const { feature, holder, dimension } of featureExpressions(draft)) {
+    // A driven dimension's expression only records what it measured.
+    if (except.has(holder) || holder.driven || holder.paramName === name) continue;
+    if (!mentions(holder.expr, name)) continue;
+    users.add(dimension && holder.paramName ? `\`${holder.paramName}\`` : feature.name);
+  }
+  if (users.size > 0) {
+    const list = [...users];
+    throw new CommandError(
+      `\`${name}\` is used by ${listOf(list)}. Change ${list.length === 1 ? 'that' : 'those'} first.`,
+    );
   }
 }
 

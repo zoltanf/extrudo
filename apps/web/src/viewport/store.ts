@@ -51,6 +51,8 @@ export interface ViewportSettings {
   sketchPoints: boolean;
   /** Show the constraint glyphs of the sketch being edited (sketch palette, P1-06). */
   sketchConstraints: boolean;
+  /** Show the dimensions of the sketch being edited (sketch palette, P1-07). */
+  sketchDimensions: boolean;
   /** Snap sketch points to the grid while drawing (sketch palette). */
   snap: boolean;
 }
@@ -64,6 +66,7 @@ export const DEFAULT_SETTINGS: ViewportSettings = {
   origin: { point: true, xy: false, xz: false, yz: false, x: true, y: true, z: true },
   sketchPoints: true,
   sketchConstraints: true,
+  sketchDimensions: true,
   snap: true,
 };
 
@@ -120,6 +123,7 @@ export interface ViewportState extends ViewportSettings {
   setOrigin(item: OriginItem, visible: boolean): void;
   setSketchPoints(visible: boolean): void;
   setSketchConstraints(visible: boolean): void;
+  setSketchDimensions(visible: boolean): void;
   setSnap(snap: boolean): void;
   setSnapshot(snapshot: (() => Promise<Blob | null>) | undefined): void;
 }
@@ -226,6 +230,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       setSketchConstraints(sketchConstraints) {
         set({ sketchConstraints });
       },
+      setSketchDimensions(sketchDimensions) {
+        set({ sketchDimensions });
+      },
       setSnap(snap) {
         set({ snap });
       },
@@ -244,6 +251,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       s.origin !== prev.origin ||
       s.sketchPoints !== prev.sketchPoints ||
       s.sketchConstraints !== prev.sketchConstraints ||
+      s.sketchDimensions !== prev.sketchDimensions ||
       s.snap !== prev.snap
     ) {
       const {
@@ -254,6 +262,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         origin,
         sketchPoints,
         sketchConstraints,
+        sketchDimensions,
         snap,
       } = s;
       preferences.set(PREFERENCES_KEY, {
@@ -264,6 +273,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         origin,
         sketchPoints,
         sketchConstraints,
+        sketchDimensions,
         snap,
       });
     }

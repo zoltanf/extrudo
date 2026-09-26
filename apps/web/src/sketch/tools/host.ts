@@ -15,10 +15,17 @@
  * Constraints a constraint tool asks for (`SketchEdit.verify`, P1-06) are
  * test-solved before anything else: if one conflicts or is redundant, or the
  * solve would shrink a curve to nothing (`collapses`), the edit is refused
- * and the prompt says why.
+ * and the prompt says why. A new dimension (P1-07) that would over-constrain
+ * the sketch goes in as driven instead, with a note in the prompt; a new
+ * driving dimension gets the next free parameter name (`d1`…).
  *
- * Until the solver has loaded (a few ms after the first tool starts), edits
- * go in with every inferred constraint and unsolved.
+ * Other changes that move sketch geometry (a dimension's value, a parameter
+ * a dimension uses) go through `apply`: the command and the solves of every
+ * sketch whose dimension values changed are one undo step.
+ *
+ * Until the solver has loaded (a few ms after the first tool starts, or
+ * after a sketch opens), edits go in with every inferred constraint and
+ * unsolved.
  */
 import {
   addToSketch,
@@ -26,18 +33,23 @@ import {
   type Command,
   CommandError,
   type ConstraintId,
+  DIMENSION_LABELS,
+  type DimensionId,
   type DocumentStore,
   type ExtrudoDocument,
   evaluateParameters,
   type FeatureId,
+  nextModelParameterName,
   newId as randomId,
   readSketch,
   removeFromSketch,
   type SessionStore,
   type SketchConstraint,
   type SketchData,
+  type SketchDimension,
   type SketchEntity,
   type SketchEntityId,
+  setSketchGeometry,
   type Vec2,
 } from '@extrudo/core';
 import type { SketchSolution, SketchSolver } from '@extrudo/sketch';
@@ -50,6 +62,7 @@ import { dimensionValues } from '../values';
 import { ARC_CENTER_TOOL, ARC_TANGENT_TOOL, ARC_TOOL, ArcTool } from './arc';
 import { CIRCLE_2POINT_TOOL, CIRCLE_3POINT_TOOL, CIRCLE_TOOL, CircleTool } from './circle';
 import { CONSTRAINT_TOOLS, ConstraintTool } from './constrain';
+import { DIMENSION_TOOL, DimensionTool } from './dimension';
 import { ELLIPSE_TOOL, EllipseTool } from './ellipse';
 import { isSketchTool } from './ids';
 import { LINE_TOOL, LineTool } from './line';
@@ -92,6 +105,7 @@ const FACTORIES: Record<string, (context: ToolContext) => SketchTool> = {
   [SLOT_OVERALL_TOOL]: (context) => new SlotTool(context, 'overall'),
   [ELLIPSE_TOOL]: (context) => new EllipseTool(context),
   [SPLINE_TOOL]: (context) => new SplineTool(context),
+  [DIMENSION_TOOL]: (context) => new DimensionTool(context),
   ...Object.fromEntries(
     CONSTRAINT_TOOLS.map((id) => [id, (context: ToolContext) => new ConstraintTool(context, id)]),
   ),
@@ -110,6 +124,10 @@ export interface ToolHostState {
   revision: number;
   /** Why the last edit couldn't be added. */
   error: string | undefined;
+  /** What the last edit did differently from what was asked (a dimension added as driven). */
+  notice: string | undefined;
+  /** The dimension whose value is being edited in place (P1-07). */
+  editing: DimensionId | undefined;
   solverReady: boolean;
   /** New curves are construction geometry (the X toggle, FR-SK-04). Resets when the sketch closes. */
   construction: boolean;
@@ -159,6 +177,17 @@ export interface ToolHost {
   /** Esc: the tool steps back, and the host stops it when there is nothing left to cancel. */
   escape(): void;
   lock(field: string, typed: Typed | undefined): void;
+  /**
+   * Runs document commands, then solves every sketch whose dimension values
+   * they changed and stores the solved geometry, as one undo step named
+   * after the first command (P1-07: a dimension's new value, a parameter a
+   * dimension uses, a parameter created inline). Throws a `CommandError`,
+   * changing nothing, if a command is refused or a sketch can no longer be
+   * solved.
+   */
+  apply(commands: Command<unknown> | readonly Command<unknown>[]): void;
+  /** Opens a dimension of the open sketch for editing in place, or closes the editor. */
+  editDimension(id: DimensionId | undefined): void;
   /** Stops listening and frees the solver. */
   dispose(): void;
 }
@@ -172,6 +201,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     screen: undefined,
     revision: 0,
     error: undefined,
+    notice: undefined,
+    editing: undefined,
     solverReady: false,
     construction: false,
     dragging: false,
@@ -199,6 +230,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     sketch: () => activeSketch()?.data ?? { entities: {}, constraints: {}, dimensions: {} },
     newId,
     construction: () => state.getState().construction,
+    settings: () => store.getState().doc.settings,
     pick: (cursor, accept) => pickEntity(context.sketch(), cursor, SNAP_PIXELS * perPixel, accept),
   };
 
@@ -235,16 +267,62 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   };
 
   /** Runs a command on the sketch; a `CommandError` becomes the prompt's error. */
-  const dispatch = <P>(command: Command<P>) => {
+  const dispatch = <P>(command: Command<P>): boolean => {
     committing = true;
     try {
       store.getState().dispatch(command);
       state.setState({ error: undefined });
+      return true;
     } catch (error) {
       if (!(error instanceof CommandError)) throw error;
       state.setState({ error: error.message });
+      return false;
     } finally {
       committing = false;
+    }
+  };
+
+  /**
+   * Solves every sketch whose driving dimension values differ from `before`
+   * and stores what moved. Throws a `CommandError` if a sketch that solved
+   * before no longer does, or a curve collapses.
+   */
+  const settle = (before: ExtrudoDocument, active: SketchSolver) => {
+    const doc = store.getState().doc;
+    const was = evaluateParameters(before);
+    const now = evaluateParameters(doc);
+    for (const feature of doc.features) {
+      const view = readSketch(feature);
+      if (!view) continue;
+      const old = before.features.find((f) => f.id === feature.id);
+      const oldView = old && readSketch(old);
+      const values = dimensionValues(view.data, now, feature.id);
+      if (oldView && sameValues(values, dimensionValues(oldView.data, was, feature.id))) continue;
+      const result = active.solve(view.data, values);
+      const unsolved = () => {
+        if (!oldView) return true;
+        return active.solve(oldView.data, dimensionValues(oldView.data, was, feature.id)).ok;
+      };
+      if ((!result.ok && unsolved()) || collapses(view.data, result.solution)) {
+        throw new CommandError(
+          `${feature.name} can't take that: its other constraints and dimensions don't allow it.`,
+        );
+      }
+      const points: Record<SketchEntityId, { x: number; y: number }> = {};
+      const radii: Record<SketchEntityId, number> = {};
+      for (const [key, p] of Object.entries(result.solution.points)) {
+        const e = view.data.entities[key as SketchEntityId];
+        if (e?.type === 'point' && (e.x !== p.x || e.y !== p.y)) {
+          points[key as SketchEntityId] = { x: p.x, y: p.y };
+        }
+      }
+      for (const [key, radius] of Object.entries(result.solution.radii)) {
+        const e = view.data.entities[key as SketchEntityId];
+        if (e?.type === 'circle' && e.radius !== radius) radii[key as SketchEntityId] = radius;
+      }
+      if (Object.keys(points).length > 0 || Object.keys(radii).length > 0) {
+        store.getState().dispatch(setSketchGeometry({ feature: feature.id, points, radii }));
+      }
     }
   };
 
@@ -258,8 +336,16 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     }
     const { doc } = store.getState();
     const evaluation = evaluateParameters(doc);
-    const values = (d: SketchData) => dimensionValues(d, evaluation.evaluate);
+    const values = (d: SketchData) => dimensionValues(d, evaluation, sketch.id);
     const auto = new Set<string>(edit.auto);
+    let notice: string | undefined;
+
+    // New driving dimensions take the next free parameter names.
+    const dimensions: Record<DimensionId, SketchDimension> = { ...edit.dimensions };
+    let next = Number(nextModelParameterName(doc).slice(1));
+    const named = (d: SketchDimension): SketchDimension =>
+      d.driven || d.paramName !== undefined ? d : { ...d, paramName: `d${next++}` };
+    for (const [id, d] of Object.entries(dimensions)) dimensions[id as DimensionId] = named(d);
 
     const constraints: Record<ConstraintId, SketchConstraint> = {};
     for (const [id, c] of Object.entries(edit.constraints)) {
@@ -268,10 +354,20 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     const merged = (extra: Record<string, SketchConstraint>): SketchData => ({
       entities: { ...sketch.data.entities, ...edit.entities },
       constraints: { ...sketch.data.constraints, ...constraints, ...extra },
-      dimensions: { ...sketch.data.dimensions, ...edit.dimensions },
+      dimensions: { ...sketch.data.dimensions, ...dimensions },
     });
     for (const id of edit.verify ?? []) {
-      const c = edit.constraints[id];
+      const d = dimensions[id as DimensionId];
+      if (d && !d.driven && solver) {
+        const trial = merged({});
+        if (solver.check(trial, values(trial), id).accepted) continue;
+        // Over-constraining: it measures instead (P1-08 will ask first).
+        const { paramName: _, ...rest } = d;
+        dimensions[id as DimensionId] = { ...rest, driven: true };
+        notice = `${DIMENSION_LABELS[d.type]} would over-constrain the sketch, so it is driven: it measures.`;
+        continue;
+      }
+      const c = edit.constraints[id as ConstraintId];
       if (!c || !solver) continue;
       const trial = merged({});
       const result = solver.check(trial, values(trial), id);
@@ -297,7 +393,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     if (solver) {
       const candidate = merged({});
       const { solution } = solver.solve(candidate, values(candidate));
-      const asked = edit.verify?.[0] && edit.constraints[edit.verify[0]];
+      const asked = edit.verify?.[0] && edit.constraints[edit.verify[0] as ConstraintId];
       if (asked && collapses(candidate, solution)) {
         state.setState({
           error: `${CONSTRAINT_LABELS[asked.type]} would conflict with the sketch's other constraints.`,
@@ -322,16 +418,23 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       }
     }
 
-    dispatch(
+    const added = dispatch(
       addToSketch({
         feature: sketch.id,
         entities,
         constraints,
-        dimensions: edit.dimensions,
+        dimensions,
         points,
         radii,
       }),
     );
+    if (added) {
+      state.setState({
+        notice,
+        editing:
+          edit.editDimension && edit.editDimension in dimensions ? edit.editDimension : undefined,
+      });
+    }
   };
 
   const run = (action: (tool: SketchTool) => SketchEdit | undefined) => {
@@ -373,7 +476,12 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       run((tool) => {
         const inference = inferAt(pointer, tool);
         // A new click answers the last refusal.
-        state.setState({ pointer: inference, screen: pointer.screen, error: undefined });
+        state.setState({
+          pointer: inference,
+          screen: pointer.screen,
+          error: undefined,
+          notice: undefined,
+        });
         return tool.click(inference);
       });
     },
@@ -414,6 +522,29 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         return undefined;
       });
     },
+    apply(commands) {
+      const list = Array.isArray(commands) ? commands : [commands];
+      const before = store.getState().doc;
+      committing = true;
+      try {
+        // Until the solver is in (it loads when a project with dimensions opens), no solve.
+        if (!solver) ensureSolver();
+        store.getState().beginTransaction(list[0]?.label ?? 'Edit');
+        try {
+          for (const command of list) store.getState().dispatch(command);
+          if (solver) settle(before, solver);
+          store.getState().commitTransaction();
+        } catch (error) {
+          store.getState().cancelTransaction();
+          throw error;
+        }
+      } finally {
+        committing = false;
+      }
+    },
+    editDimension(id) {
+      bump({ editing: id, notice: undefined });
+    },
     dispose() {
       disposed = true;
       unsubscribeSession();
@@ -423,14 +554,24 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     },
   };
 
-  // Leaving the sketch, or picking another tool, ends the drawing tool.
+  // Leaving the sketch, or picking another tool, ends the drawing tool. An open
+  // sketch needs the solver for its dimensions, so it loads then too.
   const unsubscribeSession = session.subscribe((s) => {
-    const { tool, construction } = state.getState();
+    const { tool, construction, editing } = state.getState();
     if (tool && (s.mode !== 'sketch' || s.activeTool !== tool.id)) {
       bump({ tool: undefined, pointer: undefined, dragging: false });
     }
     if (construction && s.mode !== 'sketch') bump({ construction: false });
+    if (editing && s.mode !== 'sketch') bump({ editing: undefined });
+    if (s.mode === 'sketch') ensureSolver();
   });
+  // A sketch being edited, or dimensions a parameter change can move, need the solver.
+  const dimensioned = store
+    .getState()
+    .doc.features.some((f) =>
+      Object.values(readSketch(f)?.data.dimensions ?? {}).some((d) => !d.driven),
+    );
+  if (session.getState().mode === 'sketch' || dimensioned) ensureSolver();
   // Undo or redo while drawing: the tool may hold points that no longer exist; start it afresh.
   const unsubscribeStore = store.subscribe((s) => {
     const tool = state.getState().tool;
@@ -442,6 +583,11 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   });
 
   return host;
+}
+
+function sameValues(a: Record<string, number>, b: Record<string, number>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
 }
 
 /** Below this size (mm) a curve has collapsed: a solve that shrinks one this far failed in all but name. */

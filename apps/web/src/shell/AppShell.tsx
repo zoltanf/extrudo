@@ -1,4 +1,6 @@
 import {
+  type Command,
+  CommandError,
   type DocumentStore,
   type FeatureId,
   type ModelStore,
@@ -29,7 +31,7 @@ import {
 import { PlanePrompt, SketchPalette } from '../sketch/panels';
 import { deleteSelection } from '../sketch/selection';
 import type { ToolHost } from '../sketch/tools/host';
-import { isConstraintTool, isSketchTool } from '../sketch/tools/ids';
+import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
@@ -41,7 +43,13 @@ import { Toolbar } from './Toolbar';
 import type { ToolId } from './tools';
 
 /** Drawing-tool shortcuts in sketch mode (UI spec §5). */
-const TOOL_KEYS: Record<string, ToolId> = { L: 'line', R: 'rectangle', C: 'circle', A: 'arc' };
+const TOOL_KEYS: Record<string, ToolId> = {
+  L: 'line',
+  R: 'rectangle',
+  C: 'circle',
+  A: 'arc',
+  D: 'dimension',
+};
 
 // three.js loads in its own chunk, so the shell paints before it arrives.
 const Viewport = lazy(() => import('../viewport/Viewport').then((m) => ({ default: m.Viewport })));
@@ -50,6 +58,7 @@ interface DrawingTools {
   host: ToolHost;
   Overlay: typeof import('../sketch/tools/SketchOverlay').SketchOverlay;
   Glyphs: typeof import('../sketch/tools/ConstraintGlyphs').ConstraintGlyphs;
+  Labels: typeof import('../sketch/tools/DimensionLabels').DimensionLabels;
 }
 
 export interface AppShellProps {
@@ -60,6 +69,8 @@ export interface AppShellProps {
   autosave: Autosaver;
   file: FileActions;
   platform: Platform;
+  /** Shows a short message (a refused edit); the project page's toasts. */
+  notify?(tone: 'info' | 'error', text: string): void;
 }
 
 /** The app shell (P0-04, UI spec §2): app bar, toolbar, browser, viewport, timeline. */
@@ -71,6 +82,7 @@ export function AppShell({
   autosave,
   file,
   platform,
+  notify = () => {},
 }: AppShellProps) {
   const { choice, setChoice } = useTheme(platform.preferences);
   const browser = usePanel(platform.preferences, { key: 'browser', size: 248, min: 180, max: 480 });
@@ -85,6 +97,7 @@ export function AppShell({
   const picking = activeTool === CREATE_SKETCH;
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
   const showConstraints = useStore(viewport, (s) => s.sketchConstraints);
+  const showDimensions = useStore(viewport, (s) => s.sketchDimensions);
 
   const stores = useMemo<SketchModeStores>(
     () => ({ store, session, viewport }),
@@ -104,21 +117,47 @@ export function AppShell({
       import('../sketch/tools/host'),
       import('../sketch/tools/SketchOverlay'),
       import('../sketch/tools/ConstraintGlyphs'),
-    ]).then(([{ createToolHost }, { SketchOverlay }, { ConstraintGlyphs }]) => {
-      if (cancelled) return;
-      h = createToolHost({
-        store,
-        session,
-        viewport,
-        loadSolver: () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver()),
-      });
-      setTools({ host: h, Overlay: SketchOverlay, Glyphs: ConstraintGlyphs });
-    });
+      import('../sketch/tools/DimensionLabels'),
+    ]).then(
+      ([{ createToolHost }, { SketchOverlay }, { ConstraintGlyphs }, { DimensionLabels }]) => {
+        if (cancelled) return;
+        h = createToolHost({
+          store,
+          session,
+          viewport,
+          loadSolver: () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver()),
+        });
+        setTools({
+          host: h,
+          Overlay: SketchOverlay,
+          Glyphs: ConstraintGlyphs,
+          Labels: DimensionLabels,
+        });
+      },
+    );
     return () => {
       cancelled = true;
       h?.dispose();
     };
   }, [store, session, viewport]);
+
+  // Deleting a dimension another expression uses is refused; say why.
+  const remove = useMemo(
+    () => () => {
+      try {
+        deleteSelection(stores);
+      } catch (error) {
+        if (!(error instanceof CommandError)) throw error;
+        notify('error', error.message);
+      }
+    },
+    [stores, notify],
+  );
+  // Parameter edits re-solve the sketches whose dimensions they change (P1-07).
+  const apply = (command: Command<unknown>) => {
+    if (host) host.apply(command);
+    else store.getState().dispatch(command);
+  };
 
   const shortcuts = useMemo(
     () => [
@@ -144,13 +183,13 @@ export function AppShell({
       // Selected constraint glyphs (P1-06).
       ...(mode === 'sketch' && !drawing
         ? [
-            { keys: 'Delete', run: () => deleteSelection(stores) },
-            { keys: 'Backspace', run: () => deleteSelection(stores) },
+            { keys: 'Delete', run: remove },
+            { keys: 'Backspace', run: remove },
             { keys: 'Escape', run: () => session.getState().clearSelection() },
           ]
         : []),
     ],
-    [store, session, stores, picking, mode, drawing, host],
+    [store, session, stores, picking, mode, drawing, host, remove],
   );
   useShortcuts(shortcuts);
 
@@ -200,7 +239,7 @@ export function AppShell({
         onDragStart: host.dragStart,
         onDragEnd: host.dragEnd,
         onLeave: host.leave,
-        cursor: isConstraintTool(activeTool) ? 'default' : 'crosshair',
+        cursor: isPickingTool(activeTool) ? 'default' : 'crosshair',
       };
     }
     return {
@@ -295,6 +334,18 @@ export function AppShell({
                 interactive={!drawing}
               />
             )}
+            {showDimensions && tools && activeSketchId && sketchPlane && (
+              <tools.Labels
+                store={store}
+                session={session}
+                viewport={viewport}
+                host={tools.host}
+                sketchId={activeSketchId}
+                frame={sketchPlane}
+                interactive={!drawing}
+                notify={notify}
+              />
+            )}
             {drawing && tools && activeSketchId && sketchPlane && (
               <tools.Overlay
                 host={tools.host}
@@ -330,7 +381,12 @@ export function AppShell({
         activeSketch={activeSketch?.name}
         onEditSketch={edit}
       />
-      <ParametersDialog store={store} open={parametersOpen} onOpenChange={setParametersOpen} />
+      <ParametersDialog
+        store={store}
+        apply={apply}
+        open={parametersOpen}
+        onOpenChange={setParametersOpen}
+      />
     </div>
   );
 }

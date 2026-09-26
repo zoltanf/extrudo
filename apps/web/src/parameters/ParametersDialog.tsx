@@ -14,12 +14,14 @@ import {
   type UnitKind,
   updateFeatureInputs,
   updateParameter,
+  updateSketchDimension,
 } from '@extrudo/core';
 import { Redo2, Trash2, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import { shortcutLabel } from '../commands/shortcuts';
 import { Button, Dialog, DialogClose, IconButton, Select, TextInput } from '../design-system';
+import { withDimensionExpr } from './drafts';
 import { ExpressionInput } from './ExpressionInput';
 import { Message } from './Message';
 
@@ -31,6 +33,11 @@ const UNIT_LABELS: Record<UnitKind, string> = {
 
 export interface ParametersDialogProps {
   store: DocumentStore;
+  /**
+   * Runs a command; by default the store's `dispatch`. The shell passes one
+   * that also re-solves the sketches whose dimensions change (P1-07).
+   */
+  apply?(command: Command<unknown>): void;
   open: boolean;
   onOpenChange(open: boolean): void;
 }
@@ -43,7 +50,7 @@ const td = 'px-1.5 py-1 align-top';
  * delete, comment) and the model parameters of features, each with its live
  * value and inline errors. Every change is one command, so undoable.
  */
-export function ParametersDialog({ store, open, onOpenChange }: ParametersDialogProps) {
+export function ParametersDialog({ store, apply, open, onOpenChange }: ParametersDialogProps) {
   const doc = useStore(store, (s) => s.doc);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
@@ -52,7 +59,8 @@ export function ParametersDialog({ store, open, onOpenChange }: ParametersDialog
   /** Dispatches a command; a rejected one shows its message instead of throwing. */
   const run = (command: Command<unknown>): boolean => {
     try {
-      store.getState().dispatch(command);
+      if (apply) apply(command);
+      else store.getState().dispatch(command);
       setMessage('');
       return true;
     } catch (error) {
@@ -64,7 +72,8 @@ export function ParametersDialog({ store, open, onOpenChange }: ParametersDialog
 
   const all = [...evaluation.parameters.values()];
   const user = all.flatMap((p) => (p.owner.type === 'user' ? [{ p, id: p.owner.id }] : []));
-  const model = all.flatMap((p) => (p.owner.type === 'model' ? [{ p, ...p.owner }] : []));
+  // Feature inputs and sketch dimensions (P1-07), in timeline order.
+  const model = all.flatMap((p) => (p.owner.type !== 'user' ? [{ p, owner: p.owner }] : []));
   const featureName = (id: FeatureId) => doc.features.find((f) => f.id === id)?.name ?? '';
 
   return (
@@ -219,7 +228,30 @@ export function ParametersDialog({ store, open, onOpenChange }: ParametersDialog
               </tr>
             </thead>
             <tbody>
-              {model.map(({ p, featureId, input }) => {
+              {model.map(({ p, owner }) => {
+                const { featureId, input } = owner;
+                const draft = (expression: string) =>
+                  owner.type === 'dimension'
+                    ? withDimensionExpr(doc, featureId, input, owner.dimension, expression)
+                    : {
+                        ...doc,
+                        features: doc.features.map((f) =>
+                          f.id === featureId
+                            ? {
+                                ...f,
+                                inputs: {
+                                  ...f.inputs,
+                                  [input]: {
+                                    kind: 'expr' as const,
+                                    expr: expression,
+                                    paramName: p.name,
+                                    unit: p.unit,
+                                  },
+                                },
+                              }
+                            : f,
+                        ),
+                      };
                 return (
                   <tr key={p.name}>
                     <td className={`${td} pt-2.5 font-mono text-field`}>{p.name}</td>
@@ -229,35 +261,28 @@ export function ParametersDialog({ store, open, onOpenChange }: ParametersDialog
                         label={`Expression of ${p.name}`}
                         value={p.expression}
                         evaluate={(expression) =>
-                          evaluateDraft(doc, p.name, (d) => ({
-                            ...d,
-                            features: d.features.map((f) =>
-                              f.id === featureId
-                                ? {
-                                    ...f,
-                                    inputs: {
-                                      ...f.inputs,
-                                      [input]: {
-                                        kind: 'expr',
-                                        expr: expression,
-                                        paramName: p.name,
-                                        unit: p.unit,
-                                      },
-                                    },
-                                  }
-                                : f,
-                            ),
-                          }))
+                          evaluateDraft(doc, p.name, () => draft(expression))
                         }
                         format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
                         onCommit={(expr) =>
                           run(
-                            updateFeatureInputs({
-                              id: featureId,
-                              inputs: {
-                                [input]: { kind: 'expr', expr, paramName: p.name, unit: p.unit },
-                              },
-                            }),
+                            owner.type === 'dimension'
+                              ? updateSketchDimension({
+                                  feature: featureId,
+                                  id: owner.dimension,
+                                  changes: { expr },
+                                })
+                              : updateFeatureInputs({
+                                  id: featureId,
+                                  inputs: {
+                                    [input]: {
+                                      kind: 'expr',
+                                      expr,
+                                      paramName: p.name,
+                                      unit: p.unit,
+                                    },
+                                  },
+                                }),
                           )
                         }
                       />

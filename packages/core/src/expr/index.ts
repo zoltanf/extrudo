@@ -14,6 +14,7 @@ export {
   type Scope,
 } from './evaluate';
 export { formatQuantity } from './format';
+export { evaluateInline, type InlineParameter, inlineParameter } from './inline';
 export {
   type EvaluatedParameter,
   evaluateParameters,

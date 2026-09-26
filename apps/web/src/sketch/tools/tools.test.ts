@@ -112,7 +112,13 @@ describe('circle tool', () => {
     const [circle] = t.byType('circle');
     expect(circle).toMatchObject({ type: 'circle', radius: 10, construction: false });
     expect(Object.values(t.data().dimensions)).toEqual([
-      { type: 'diameter', curve: expect.any(String), expr: '2 * r', driven: false },
+      {
+        type: 'diameter',
+        curve: expect.any(String),
+        expr: '2 * r',
+        paramName: 'd1',
+        driven: false,
+      },
     ]);
   });
 

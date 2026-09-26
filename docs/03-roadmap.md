@@ -163,7 +163,7 @@ Benchmark **B1** buildable.
   glyph rendering next to geometry (with a hover pair-highlight); select and
   delete constraints; "show constraints" toggle.
   *AC:* FR-SK-07.
-- [ ] **P1-07 Dimensions.** Sketch Dimension tool (`D`) that infers the dimension
+- [x] **P1-07 Dimensions.** Sketch Dimension tool (`D`) that infers the dimension
   type from the selection; placement drag; inline edit with `<ExpressionInput>`;
   driving vs driven; auto model-parameter naming (`d1`…); dimension appears in
   the parameters table.

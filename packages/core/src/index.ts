@@ -37,6 +37,7 @@ export {
 export * from './schema';
 export * from './sketch/commands';
 export * from './sketch/curves';
+export * from './sketch/dimensions';
 export * from './sketch/feature';
 export * from './sketch/planes';
 export * from './sketch/schema';

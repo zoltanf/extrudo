@@ -86,7 +86,13 @@ describe('polygon tool', () => {
       expect.closeTo(13 / Math.sqrt(3), 6),
     ]);
     expect(Object.values(t.data().dimensions)).toEqual([
-      { type: 'diameter', curve: expect.any(String), expr: '13', driven: false },
+      {
+        type: 'diameter',
+        curve: expect.any(String),
+        expr: '13',
+        paramName: 'd1',
+        driven: false,
+      },
     ]);
     const constraints = t.constraints();
     expect(constraints).toContain('concentric circle circle');

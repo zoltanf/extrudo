@@ -538,9 +538,11 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
         const u = sub(point(la.end), point(la.start));
         const v = sub(point(lb.end), point(lb.start));
         const sign = cross(u, v) < 0 ? -1 : 1;
+        // A supplement dimensions the other pair of angles where the lines cross.
+        const between = d.supplement ? 180 - value : value;
         return {
           prims: [{ id, type: 'l2l_angle_ll', l1_id: d.a, l2_id: d.b, angle: id }],
-          param: (sign * value * Math.PI) / 180,
+          param: (sign * between * Math.PI) / 180,
         };
       }
     }

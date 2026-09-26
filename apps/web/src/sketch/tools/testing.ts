@@ -103,8 +103,8 @@ export async function setup({ solver = 'real', tool = LINE_TOOL }: Setup = {}) {
   const report = () => {
     const solver = new SketchSolver(planegcs);
     try {
-      const { evaluate } = evaluateParameters(stores.store.getState().doc);
-      return solver.solve(data(), dimensionValues(data(), evaluate));
+      const evaluation = evaluateParameters(stores.store.getState().doc);
+      return solver.solve(data(), dimensionValues(data(), evaluation, id));
     } finally {
       solver.dispose();
     }

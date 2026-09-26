@@ -131,6 +131,7 @@ function ProjectEditor({
         autosave={autosave}
         file={file}
         platform={platform}
+        notify={push}
       />
       <Toasts toasts={toasts} onDismiss={dismiss} />
     </>

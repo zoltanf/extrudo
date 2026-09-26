@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { LengthUnit, UnitKind } from '../schema';
 import { evaluateExpression, type Quantity } from './evaluate';
 import { formatQuantity } from './format';
+import { evaluateInline, type InlineParameter, inlineParameter } from './inline';
 import { parse, references, tokenize } from './parser';
 import { ANGLE, type Dim, LENGTH, UNITLESS } from './units';
 
@@ -359,5 +360,61 @@ describe('formatQuantity', () => {
     [-0.001, LENGTH, mm, '0.00 mm'],
   ])('%d', (v, dim, settings, expected) => {
     expect(formatQuantity(v, dim, settings)).toBe(expected);
+  });
+});
+
+describe('inline parameter definitions (FR-PAR-03)', () => {
+  const evaluate = (expression: string, unit: UnitKind) =>
+    evaluateExpression(expression, { kind: unit, lengthUnit: 'mm' });
+
+  it('finds `name = expression`, and nothing in plain expressions', () => {
+    expect(inlineParameter(' wall = 2 mm')).toEqual({
+      name: 'wall',
+      nameSpan: { start: 1, end: 5 },
+      expression: '2 mm',
+      offset: 8,
+    });
+    expect(inlineParameter('wall * 2')).toBeUndefined();
+    expect(inlineParameter('2 = 3')).toBeUndefined();
+  });
+
+  it('evaluates the value, and refuses taken or reserved names with spans in the typed text', () => {
+    const taken = new Set(['width']);
+    const ok = evaluateInline(
+      inlineParameter('wall = 2 cm') as InlineParameter,
+      taken,
+      evaluate,
+      'length',
+    );
+    expect(ok).toMatchObject({ ok: true, value: 20 });
+    const used = evaluateInline(
+      inlineParameter('width = 2') as InlineParameter,
+      taken,
+      evaluate,
+      'length',
+    );
+    expect(used.ok || used.error.message).toBe('A parameter named `width` already exists.');
+    expect(used.ok || used.error.span).toEqual({ start: 0, end: 5 });
+    const reserved = evaluateInline(
+      inlineParameter('mm = 2') as InlineParameter,
+      taken,
+      evaluate,
+      'length',
+    );
+    expect(reserved.ok).toBe(false);
+    const bad = evaluateInline(
+      inlineParameter('wall = 2 +') as InlineParameter,
+      taken,
+      evaluate,
+      'length',
+    );
+    expect(bad.ok || bad.error.span.start).toBeGreaterThanOrEqual(7);
+    const empty = evaluateInline(
+      inlineParameter('wall =') as InlineParameter,
+      taken,
+      evaluate,
+      'length',
+    );
+    expect(empty.ok || empty.error.message).toBe('Give the new parameter a value.');
   });
 });

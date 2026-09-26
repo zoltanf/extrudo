@@ -3,12 +3,14 @@
  * (architecture §4.3, FR-PAR-01, FR-PAR-04).
  *
  * User parameters live in `doc.parameters`. Model parameters are feature
- * inputs of kind `expr` with a `paramName` (`d1`, `d2`…). Both share one
- * namespace, and any expression can refer to either. Evaluation walks the
- * references depth-first, detects cycles and reports them with their path.
+ * inputs of kind `expr` with a `paramName` (`d1`, `d2`…), and driving sketch
+ * dimensions with one (P1-07). All share one namespace, and any expression
+ * can refer to any of them. Evaluation walks the references depth-first,
+ * detects cycles and reports them with their path.
  */
-import type { FeatureId, ParameterId } from '../ids';
+import type { DimensionId, FeatureId, ParameterId } from '../ids';
 import type { ExtrudoDocument, UnitKind } from '../schema';
+import { dimensionUnit } from '../sketch/dimensions';
 import { ExprError } from './errors';
 import {
   coerce,
@@ -22,7 +24,9 @@ import { type Node, parse, references, type Span } from './parser';
 
 export type ParameterOwner =
   | { type: 'user'; id: ParameterId }
-  | { type: 'model'; featureId: FeatureId; input: string };
+  | { type: 'model'; featureId: FeatureId; input: string }
+  /** A driving sketch dimension; `input` is the sketch's `sketchData` input. */
+  | { type: 'dimension'; featureId: FeatureId; input: string; dimension: DimensionId };
 
 export interface EvaluatedParameter {
   name: string;
@@ -39,6 +43,8 @@ export interface ParameterEvaluation {
   parameters: ReadonlyMap<string, EvaluatedParameter>;
   /** Every `expr` input by feature and input name, named or not. */
   inputs: ReadonlyMap<FeatureId, ReadonlyMap<string, EvaluateResult>>;
+  /** Every driving sketch dimension by sketch feature and dimension ID, named or not. */
+  dimensions: ReadonlyMap<FeatureId, ReadonlyMap<string, EvaluateResult>>;
   /** Parameters that depend on any of `names`, directly or through others (not `names` themselves). */
   dependents(names: Iterable<string>): Set<string>;
   /**
@@ -86,6 +92,21 @@ function sourcesOf(doc: ExtrudoDocument): Source[] {
           unit: value.unit ?? 'length',
           owner: { type: 'model', featureId: feature.id, input },
         });
+      } else if (value.kind === 'sketchData') {
+        for (const [id, d] of Object.entries(value.sketch.dimensions)) {
+          if (d.driven || !d.paramName) continue;
+          sources.push({
+            name: d.paramName,
+            expression: d.expr,
+            unit: dimensionUnit(d),
+            owner: {
+              type: 'dimension',
+              featureId: feature.id,
+              input,
+              dimension: id as DimensionId,
+            },
+          });
+        }
       }
     }
   }
@@ -183,27 +204,47 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
   };
 
   const inputs = new Map<FeatureId, Map<string, EvaluateResult>>();
+  const dimensions = new Map<FeatureId, Map<string, EvaluateResult>>();
   const inputRefs = new Map<FeatureId, Set<string>>();
+  /** An expression's value and references, through its parameter when it owns one. */
+  const resultOf = (
+    expression: string,
+    unit: UnitKind,
+    paramName: string | undefined,
+    owns: (owner: ParameterOwner) => boolean,
+    refs: Set<string>,
+  ): EvaluateResult => {
+    const own = paramName !== undefined ? sources.get(paramName) : undefined;
+    if (paramName !== undefined && own && owns(own.owner)) {
+      refs.add(paramName);
+      // biome-ignore lint/style/noNonNullAssertion: every source has a result.
+      return results.get(paramName)!;
+    }
+    const p = parseSafely(expression);
+    if (p.ok) for (const ref of p.refs) refs.add(ref);
+    return evaluateExtra(expression, unit);
+  };
   for (const feature of doc.features) {
     const featureInputs = new Map<string, EvaluateResult>();
     const refs = new Set<string>();
     for (const [input, value] of Object.entries(feature.inputs)) {
-      if (value.kind !== 'expr') continue;
-      const own = value.paramName !== undefined && sources.get(value.paramName);
-      const isOwner =
-        own &&
-        own.owner.type === 'model' &&
-        own.owner.featureId === feature.id &&
-        own.owner.input === input;
-      if (value.paramName !== undefined && isOwner) {
-        // biome-ignore lint/style/noNonNullAssertion: every source has a result.
-        featureInputs.set(input, results.get(value.paramName)!);
-        refs.add(value.paramName);
-      } else {
-        featureInputs.set(input, evaluateExtra(value.expr, value.unit ?? 'length'));
-        const p = parseSafely(value.expr);
-        if (p.ok) for (const ref of p.refs) refs.add(ref);
+      if (value.kind === 'sketchData') {
+        const values = new Map<string, EvaluateResult>();
+        for (const [id, d] of Object.entries(value.sketch.dimensions)) {
+          if (d.driven) continue;
+          const owns = (o: ParameterOwner) =>
+            o.type === 'dimension' && o.featureId === feature.id && o.dimension === id;
+          values.set(id, resultOf(d.expr, dimensionUnit(d), d.paramName, owns, refs));
+        }
+        dimensions.set(feature.id, values);
       }
+      if (value.kind !== 'expr') continue;
+      const owns = (o: ParameterOwner) =>
+        o.type === 'model' && o.featureId === feature.id && o.input === input;
+      featureInputs.set(
+        input,
+        resultOf(value.expr, value.unit ?? 'length', value.paramName, owns, refs),
+      );
     }
     inputs.set(feature.id, featureInputs);
     inputRefs.set(feature.id, refs);
@@ -216,6 +257,8 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
     });
     if (source.owner.type === 'model') {
       inputs.get(source.owner.featureId)?.set(source.owner.input, { ok: false, error });
+    } else if (source.owner.type === 'dimension') {
+      dimensions.get(source.owner.featureId)?.set(source.owner.dimension, { ok: false, error });
     }
   }
 
@@ -238,6 +281,7 @@ export function evaluateParameters(doc: ExtrudoDocument): ParameterEvaluation {
   return {
     parameters,
     inputs,
+    dimensions,
     dependents,
     featuresAffectedBy(names) {
       const changed = new Set(names);
