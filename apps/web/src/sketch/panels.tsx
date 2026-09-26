@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { Button, ToolIcon, Tooltip } from '../design-system';
 import type { ViewportStore } from '../viewport/store';
+import type { ToolHost } from './tools/host';
 
 /**
  * The floating panels on the right of the viewport (UI spec §2, §4): the
@@ -82,13 +83,14 @@ export function PlanePrompt({ session, onPick, onCancel }: PlanePromptProps) {
 export interface SketchPaletteProps {
   name: string;
   viewport: ViewportStore;
+  /** The drawing-tool host, which holds the construction toggle. */
+  host: ToolHost | undefined;
   onLookAt(): void;
   onFinish(): void;
 }
 
 /** Options that arrive with later tasks, listed so the palette shows its real layout. */
 const LATER: readonly { label: string; comesWith: string }[] = [
-  { label: 'Construction', comesWith: 'P1-04' },
   { label: 'Show constraints', comesWith: 'P1-06' },
   { label: 'Show dimensions', comesWith: 'P1-07' },
   { label: 'Show profiles', comesWith: 'P1-11' },
@@ -96,7 +98,7 @@ const LATER: readonly { label: string; comesWith: string }[] = [
 ];
 
 /** The sketch palette (UI spec §4): sketch options, the DOF counter and Finish Sketch. */
-export function SketchPalette({ name, viewport, onLookAt, onFinish }: SketchPaletteProps) {
+export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: SketchPaletteProps) {
   const grid = useStore(viewport, (s) => s.grid);
   const points = useStore(viewport, (s) => s.sketchPoints);
   const snap = useStore(viewport, (s) => s.snap);
@@ -111,6 +113,11 @@ export function SketchPalette({ name, viewport, onLookAt, onFinish }: SketchPale
             Look at
           </PaletteButton>
         </li>
+        {host && (
+          <li>
+            <ConstructionToggle host={host} />
+          </li>
+        )}
         <li>
           <PaletteToggle checked={grid} onChange={(v) => viewport.getState().setGrid(v)}>
             Sketch grid
@@ -167,6 +174,22 @@ function PaletteButton({
       <span className="grid w-[13px] place-items-center text-muted">{icon}</span>
       {children}
     </button>
+  );
+}
+
+/** New curves become construction geometry (FR-SK-04); `X` flips it too. */
+function ConstructionToggle({ host }: { host: ToolHost }) {
+  const construction = useStore(host.state, (s) => s.construction);
+  return (
+    <PaletteToggle
+      checked={construction}
+      onChange={(v) => {
+        if (v !== host.state.getState().construction) host.toggleConstruction();
+      }}
+    >
+      Construction
+      <kbd className="ml-auto font-mono text-xs text-muted">X</kbd>
+    </PaletteToggle>
   );
 }
 

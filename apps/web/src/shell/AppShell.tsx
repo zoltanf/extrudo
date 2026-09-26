@@ -39,6 +39,9 @@ import { Timeline } from './Timeline';
 import { Toolbar } from './Toolbar';
 import type { ToolId } from './tools';
 
+/** Drawing-tool shortcuts in sketch mode (UI spec §5). */
+const TOOL_KEYS: Record<string, ToolId> = { L: 'line', R: 'rectangle', C: 'circle', A: 'arc' };
+
 // three.js loads in its own chunk, so the shell paints before it arrives.
 const Viewport = lazy(() => import('../viewport/Viewport').then((m) => ({ default: m.Viewport })));
 
@@ -99,7 +102,15 @@ export function AppShell({
       { keys: 'Mod+Y', run: () => store.getState().redo() },
       { keys: 'Mod+Shift+Z', run: () => store.getState().redo() },
       ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
-      ...(mode === 'sketch' && host ? [{ keys: 'L', run: () => host.start('line') }] : []),
+      ...(mode === 'sketch' && host
+        ? [
+            ...Object.entries(TOOL_KEYS).map(([keys, tool]) => ({
+              keys,
+              run: () => host.start(tool),
+            })),
+            { keys: 'X', run: () => host.toggleConstruction() },
+          ]
+        : []),
       ...(drawing && host
         ? [
             { keys: 'Escape', run: () => host.escape() },
@@ -117,9 +128,9 @@ export function AppShell({
       if (picking) cancelCreateSketch(stores);
       else startCreateSketch(stores);
     } else if (tool === 'finishSketch') finishSketch(stores);
-    else if (tool === 'line' && host) {
-      if (activeTool === 'line') host.stop();
-      else host.start('line');
+    else if (isSketchTool(tool) && host) {
+      if (activeTool === tool) host.stop();
+      else host.start(tool);
     }
   };
   const pickPlane = (plane: OriginPlaneId) => createSketchOn(stores, originPlaneRef(plane));
@@ -153,6 +164,8 @@ export function AppShell({
             frame: sketchPlane,
             onMove: host.move,
             onClick: host.click,
+            onDragStart: host.dragStart,
+            onDragEnd: host.dragEnd,
             onLeave: host.leave,
           }
         : undefined,
@@ -254,6 +267,7 @@ export function AppShell({
           <SketchPalette
             name={activeSketch.name}
             viewport={viewport}
+            host={host}
             onLookAt={() => lookAtSketch(stores)}
             onFinish={() => finishSketch(stores)}
           />

@@ -2,6 +2,16 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-26 · **P1-04** Basic drawing tools: rectangles (2-point `R`,
+  3-point, center with construction diagonals), circles (center-diameter
+  `C`, 2-point, 3-point), arcs (3-point `A`, center point, tangent), points,
+  and the Line tool's tangent-arc drag (press on the chain's end and drag).
+  Each commits with its structural constraints (corners, H/V or
+  perpendicular/parallel, tangent with its side) plus test-solved snaps;
+  typed widths, heights, diameters and radii become dimensions. Construction
+  toggle (`X`, palette checkbox). Previews draw arcs, circles and dashed
+  guides; the viewport reports drags to tools. Variants live in the Create
+  menu with their own icons. ADR-0013.
 - 2026-09-26 · **P1-02** Sketch tool framework: the inference engine in
   `@extrudo/sketch/inference` (endpoint, center, point, origin, intersection,
   midpoint, on-curve, H/V alignment and guide crossings, grid; unit tested)

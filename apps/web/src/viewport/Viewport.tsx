@@ -59,6 +59,10 @@ export interface SketchInput {
   onMove(pointer: PlanePointer): void;
   /** A left click that didn't turn into a drag. */
   onClick(pointer: PlanePointer): void;
+  /** A left press that turned into a drag, at the press position. */
+  onDragStart?(pointer: PlanePointer): void;
+  /** The end of that drag. */
+  onDragEnd?(pointer: PlanePointer): void;
   onLeave(): void;
 }
 
@@ -401,7 +405,7 @@ function useSketchInput(
     if (!el || !input) return;
     const { frame } = input;
     let last: { x: number; y: number; infer: boolean } | undefined;
-    let press: { x: number; y: number; id: number } | undefined;
+    let press: { x: number; y: number; id: number; dragging: boolean } | undefined;
 
     const pointerAt = (x: number, y: number, infer: boolean): PlanePointer | undefined => {
       const r = el.getBoundingClientRect();
@@ -432,20 +436,41 @@ function useSketchInput(
 
     const onPointerMove = (e: PointerEvent) => {
       last = { x: e.clientX, y: e.clientY, infer: !(e.ctrlKey || e.metaKey) };
+      if (
+        press &&
+        !press.dragging &&
+        e.pointerId === press.id &&
+        Math.hypot(e.clientX - press.x, e.clientY - press.y) > CLICK_SLOP
+      ) {
+        press.dragging = true;
+        const p = pointerAt(press.x, press.y, last.infer);
+        if (p) input.onDragStart?.(p);
+        // Keep the drag's events when the pointer leaves the view (synthetic pointers can't be captured).
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {}
+      }
       report();
     };
     const onPointerDown = (e: PointerEvent) => {
       const s = viewport.getState();
       if (e.button !== 0 || dragAction(s.preset, e, s.tool)) return;
-      press = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      press = { x: e.clientX, y: e.clientY, id: e.pointerId, dragging: false };
     };
     const onPointerUp = (e: PointerEvent) => {
       if (!press || e.pointerId !== press.id) return;
-      const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y);
+      const { dragging, x, y } = press;
       press = undefined;
-      if (moved > CLICK_SLOP) return;
-      const p = pointerAt(e.clientX, e.clientY, !(e.ctrlKey || e.metaKey));
-      if (p) input.onClick(p);
+      const infer = !(e.ctrlKey || e.metaKey);
+      const p = pointerAt(e.clientX, e.clientY, infer);
+      if (!p) return;
+      if (dragging) input.onDragEnd?.(p);
+      else if (Math.hypot(e.clientX - x, e.clientY - y) > CLICK_SLOP) {
+        // A drag whose moves were coalesced away: start and end it now.
+        const from = pointerAt(x, y, infer);
+        if (from) input.onDragStart?.(from);
+        input.onDragEnd?.(p);
+      } else input.onClick(p);
     };
     const onPointerLeave = () => {
       last = undefined;

@@ -1,5 +1,15 @@
 export { type AnchorEntities, alignmentConstraints, snapConstraints } from './constraints';
 export {
+  type ArcShape,
+  arcAround,
+  arcPolyline,
+  arcThrough,
+  arcWithRadius,
+  type CircleShape,
+  circleThrough,
+  tangentArc,
+} from './construct';
+export {
   type Curve,
   intersectCurves,
   intersectRay,

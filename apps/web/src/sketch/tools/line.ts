@@ -1,5 +1,5 @@
 /**
- * The Line tool (P1-02's reference tool; P1-04 adds the tangent-arc drag):
+ * The Line tool (P1-02's reference tool, with P1-04's tangent-arc drag):
  * click a start point, then click point after point for a chain of lines.
  * Each segment is committed on its click. The chain ends with Esc, or by
  * clicking its own first point (a closed loop).
@@ -8,9 +8,22 @@
  * angle; typing locks them (FR-SK-06). A typed length becomes a driving
  * dimension; a typed angle that is a multiple of 90° becomes horizontal or
  * vertical.
+ *
+ * Pressing on the chain's end (or, to start, on the end of any line or arc)
+ * and dragging draws an arc tangent to the curve there instead (FR-SK-02);
+ * the chain goes on from the arc's end.
  */
 import type { DimensionId, SketchEntityId, Vec2 } from '@extrudo/core';
-import { alignmentConstraints, type Inference, snapConstraints } from '@extrudo/sketch/inference';
+import { type ArcShape, type Inference, tangentArc } from '@extrudo/sketch/inference';
+import {
+  addArc,
+  addLine,
+  arcEndDirection,
+  type CurveEnd,
+  curveEnd,
+  place,
+  tangentJoin,
+} from './build';
 import {
   constrain,
   EMPTY_PREVIEW,
@@ -25,13 +38,20 @@ import {
 
 export const LINE_TOOL = 'line';
 
+/** The end of the chain's last curve, where the next segment starts. */
+interface ChainEnd {
+  /** Its point entity: the next segment starts coincident with it. */
+  point: SketchEntityId;
+  /** The curve and its direction there, for a tangent arc. */
+  from: Pick<CurveEnd, 'curve' | 'isEnd' | 'outward'>;
+}
+
 type State =
   | { phase: 'start' }
   | {
       phase: 'next';
       start: Inference;
-      /** The previous segment's end point: the new segment starts coincident with it. */
-      joinTo?: SketchEntityId;
+      joinTo?: ChainEnd;
       /** The chain's first point: clicking it closes the loop. */
       first?: SketchEntityId;
     };
@@ -44,6 +64,13 @@ interface End {
   axis?: 'horizontal' | 'vertical';
 }
 
+/** A tangent arc being dragged out of a curve's end. */
+interface Drag {
+  at: Vec2;
+  from: ChainEnd;
+  first?: SketchEntityId;
+}
+
 const DEG = Math.PI / 180;
 
 export class LineTool implements SketchTool {
@@ -52,16 +79,19 @@ export class LineTool implements SketchTool {
   #pointer: Inference | undefined;
   #length: Typed | undefined;
   #angle: Typed | undefined;
+  #drag: Drag | undefined;
 
   constructor(private readonly context: ToolContext) {}
 
   prompt(): string {
+    if (this.#drag) return 'Release to place the tangent arc.';
     return this.#state.phase === 'start'
-      ? 'Click to start a line.'
-      : 'Click the next point, or type a length (Tab: angle). Esc ends the chain.';
+      ? 'Click to start a line. Drag from the end of a curve for a tangent arc.'
+      : 'Click the next point, or type a length. Drag from the end for an arc; Esc ends.';
   }
 
   anchor(): Vec2 | undefined {
+    if (this.#drag) return undefined;
     return this.#state.phase === 'next' ? this.#state.start.point : undefined;
   }
 
@@ -83,9 +113,62 @@ export class LineTool implements SketchTool {
     return this.#segment();
   }
 
+  dragStart(pointer: Inference): boolean {
+    const s = this.#state;
+    if (s.phase === 'next') {
+      // Only from the end of the chain's last curve.
+      if (!s.joinTo || pointer.snap?.kind !== 'endpoint' || pointer.snap.ids[0] !== s.joinTo.point)
+        return false;
+      this.#drag = { at: s.start.point, from: s.joinTo, first: s.first };
+    } else {
+      // Starting a chain: from the end of any line or arc.
+      const id = pointer.snap?.kind === 'endpoint' ? pointer.snap.ids[0] : undefined;
+      const end = id ? curveEnd(this.context.sketch(), id as SketchEntityId) : undefined;
+      if (!id || !end) return false;
+      this.#drag = { at: end.point, from: { point: id as SketchEntityId, from: end } };
+    }
+    this.#length = undefined;
+    this.#angle = undefined;
+    this.#pointer = pointer;
+    return true;
+  }
+
+  dragEnd(pointer: Inference): SketchEdit | undefined {
+    const drag = this.#drag;
+    this.#drag = undefined;
+    this.#pointer = pointer;
+    const shape = drag && this.#arc(drag, pointer.point);
+    if (!drag || !shape) return undefined;
+    const ctx = this.context;
+    const edit = emptyEdit();
+    const arc = addArc(edit, ctx, shape);
+    tangentJoin(edit, ctx, drag.from.from, drag.from.point, arc, shape);
+    place(edit, ctx, pointer, arc.last);
+
+    const end = shape.reversed ? shape.from : shape.from + shape.sweep;
+    const point: Vec2 = [
+      shape.center[0] + shape.radius * Math.cos(end),
+      shape.center[1] + shape.radius * Math.sin(end),
+    ];
+    const first = drag.first ?? arc.first;
+    const closed = pointer.snap?.kind === 'endpoint' && pointer.snap.ids[0] === drag.first;
+    this.#state = closed
+      ? { phase: 'start' }
+      : {
+          phase: 'next',
+          start: { point, cursor: point, snap: undefined, alignments: [] },
+          joinTo: {
+            point: arc.last,
+            from: { curve: arc.id, isEnd: !shape.reversed, outward: arcEndDirection(shape) },
+          },
+          first,
+        };
+    return edit;
+  }
+
   fields(): HeadsUpField[] {
     const s = this.#state;
-    if (s.phase !== 'next') return [];
+    if (s.phase !== 'next' || this.#drag) return [];
     const end = this.#end();
     const d = end ? [end.point[0] - s.start.point[0], end.point[1] - s.start.point[1]] : [0, 0];
     return [
@@ -112,6 +195,10 @@ export class LineTool implements SketchTool {
   }
 
   escape(): boolean {
+    if (this.#drag) {
+      this.#drag = undefined;
+      return false;
+    }
     if (this.#length || this.#angle) {
       this.#length = undefined;
       this.#angle = undefined;
@@ -125,10 +212,20 @@ export class LineTool implements SketchTool {
   }
 
   preview(): ToolPreview {
+    const drag = this.#drag;
+    if (drag) {
+      const shape = this.#pointer && this.#arc(drag, this.#pointer.point);
+      if (!shape) return { lines: [], points: [drag.at] };
+      return { lines: [], arcs: [shape], points: [drag.at, (this.#pointer as Inference).point] };
+    }
     const s = this.#state;
     const end = this.#end();
     if (s.phase !== 'next' || !end) return EMPTY_PREVIEW;
     return { lines: [[s.start.point, end.point]], points: [s.start.point, end.point] };
+  }
+
+  #arc(drag: Drag, to: Vec2): ArcShape | undefined {
+    return tangentArc(drag.at, drag.from.from.outward, to);
   }
 
   /** Where the segment being drawn ends: the pointer, or the typed length and angle. */
@@ -161,52 +258,41 @@ export class LineTool implements SketchTool {
     const end = this.#end();
     if (s.phase !== 'next' || !end) return undefined;
     const [sx, sy] = s.start.point;
-    if (Math.hypot(end.point[0] - sx, end.point[1] - sy) < 1e-9) return undefined;
+    const length = Math.hypot(end.point[0] - sx, end.point[1] - sy);
+    if (length < 1e-9) return undefined;
 
     const ctx = this.context;
     const edit = emptyEdit();
-    const start = ctx.newId() as SketchEntityId;
-    const stop = ctx.newId() as SketchEntityId;
-    const line = ctx.newId() as SketchEntityId;
-    edit.entities[start] = { type: 'point', x: sx, y: sy };
-    edit.entities[stop] = { type: 'point', x: end.point[0], y: end.point[1] };
-    edit.entities[line] = { type: 'line', start, end: stop, construction: false };
+    const line = addLine(edit, ctx, s.start.point, end.point);
 
-    if (s.joinTo) constrain(edit, ctx, [{ type: 'coincident', a: start, b: s.joinTo }], false);
-    else {
-      constrain(edit, ctx, snapConstraints(s.start.snap, start), true);
-      constrain(edit, ctx, alignmentConstraints(s.start.alignments, start), true);
-    }
-    const snap = end.inference?.snap;
-    constrain(edit, ctx, snapConstraints(snap, stop), true);
-    constrain(
-      edit,
-      ctx,
-      alignmentConstraints(end.inference?.alignments ?? [], stop, { line }),
-      true,
-    );
-    if (end.axis) constrain(edit, ctx, [{ type: end.axis, a: line }], true);
+    if (s.joinTo) {
+      constrain(edit, ctx, [{ type: 'coincident', a: line.start, b: s.joinTo.point }], false);
+    } else place(edit, ctx, s.start, line.start);
+    place(edit, ctx, end.inference, line.end, { line: line.id });
+    if (end.axis) constrain(edit, ctx, [{ type: end.axis, a: line.id }], true);
     if (this.#length) {
       edit.dimensions[ctx.newId() as DimensionId] = {
         type: 'distance',
         orientation: 'aligned',
-        a: line,
+        a: line.id,
         expr: this.#length.expr,
         driven: false,
       };
     }
 
-    const first = s.first ?? start;
+    const snap = end.inference?.snap;
+    const first = s.first ?? line.start;
     const closed = snap?.kind === 'endpoint' && snap.ids[0] === first;
     this.#length = undefined;
     this.#angle = undefined;
+    const outward: Vec2 = [(end.point[0] - sx) / length, (end.point[1] - sy) / length];
     this.#state = closed
       ? { phase: 'start' }
       : {
           phase: 'next',
           start: { point: end.point, cursor: end.point, snap: undefined, alignments: [] },
-          joinTo: stop,
-          first: s.first ?? start,
+          joinTo: { point: line.end, from: { curve: line.id, isEnd: true, outward } },
+          first,
         };
     return edit;
   }

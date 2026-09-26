@@ -12,7 +12,7 @@ import {
   type UnitKind,
   type Vec2,
 } from '@extrudo/core';
-import type { SnapKind } from '@extrudo/sketch/inference';
+import { arcPolyline, type SnapKind } from '@extrudo/sketch/inference';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -61,7 +61,7 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
   const projection = useStore(viewport, (s) => s.projection);
   // Re-render on every tool change.
   useStore(host.state, (s) => s.revision);
-  const { tool, pointer, screen, error } = host.state.getState();
+  const { tool, pointer, screen, error, construction } = host.state.getState();
   const doc = useStore(store, (s) => s.doc);
 
   const { width, height } = size;
@@ -113,6 +113,27 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
             )
           );
         })}
+        {preview?.guides?.map(([a, b], i) => {
+          const p = toScreen(a);
+          const q = toScreen(b);
+          return (
+            p &&
+            q && (
+              <line
+                // biome-ignore lint/suspicious/noArrayIndexKey: preview guides have no identity.
+                key={i}
+                data-preview="guide"
+                x1={p[0]}
+                y1={p[1]}
+                x2={q[0]}
+                y2={q[1]}
+                stroke="var(--x-muted)"
+                strokeWidth={1}
+                strokeDasharray="3 3"
+              />
+            )
+          );
+        })}
         {preview?.lines.map(([a, b], i) => {
           const p = toScreen(a);
           const q = toScreen(b);
@@ -127,10 +148,24 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
                 y1={p[1]}
                 x2={q[0]}
                 y2={q[1]}
-                stroke="var(--x-sketch)"
-                strokeWidth={1.75}
+                {...curveStyle(construction)}
               />
             )
+          );
+        })}
+        {preview?.arcs?.map((arc, i) => {
+          // Projected point by point: on a tilted plane a circle is an ellipse on screen.
+          const points = arcPolyline(arc).map(toScreen);
+          if (points.some((p) => !p)) return null;
+          return (
+            <polyline
+              // biome-ignore lint/suspicious/noArrayIndexKey: preview arcs have no identity.
+              key={i}
+              data-preview={arc.sweep === undefined ? 'circle' : 'arc'}
+              points={points.map((p) => (p as number[]).join(',')).join(' ')}
+              fill="none"
+              {...curveStyle(construction)}
+            />
           );
         })}
         {preview?.points.map((a, i) => {
@@ -163,6 +198,18 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
       )}
     </div>
   );
+}
+
+/** Preview curves: solid, or dashed for construction geometry. */
+function curveStyle(construction: boolean) {
+  return construction
+    ? {
+        stroke: 'var(--x-muted)',
+        strokeWidth: 1.5,
+        strokeDasharray: '6 4',
+        'data-construction': true,
+      }
+    : { stroke: 'var(--x-sketch)', strokeWidth: 1.75 };
 }
 
 /** Counts for tests and debugging: "points=6 lines=3 constraints=5 dimensions=0". */

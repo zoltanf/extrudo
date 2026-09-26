@@ -152,7 +152,7 @@ Benchmark **B1** buildable.
   (`pnpm planegcs`). Drag steps: 0.18 ms at 198 entities in 22 components,
   11.4 ms for one 99-entity component; the 104-curve gear drags at about 1 s
   per step (risk register). Debug page `#/debug/solver`.
-- [ ] **P1-04 Basic drawing tools.** Line (chained, tangent-arc drag), rectangle
+- [x] **P1-04 Basic drawing tools.** Line (chained, tangent-arc drag), rectangle
   (2-point, 3-point, center), circle (center, 2-point, 3-point), arc (3-point,
   center, tangent), point, construction toggle (X).
   *AC:* FR-SK-02 (subset), -04; E2E draws each.

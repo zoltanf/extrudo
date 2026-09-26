@@ -47,16 +47,29 @@ export interface SketchEdit {
   auto: ConstraintId[];
 }
 
+/** A circle (no `from`/`sweep`) or a counter-clockwise arc, radians. */
+export interface PreviewArc {
+  center: Vec2;
+  radius: number;
+  from?: number;
+  sweep?: number;
+}
+
 /** Rubber-band geometry in sketch coordinates. */
 export interface ToolPreview {
   lines: (readonly [Vec2, Vec2])[];
+  arcs?: PreviewArc[];
   points: Vec2[];
+  /** Helper lines drawn thin and dashed (a radius, a center rectangle's diagonal). */
+  guides?: (readonly [Vec2, Vec2])[];
 }
 
 export interface ToolContext {
   /** The sketch as it is now. */
   sketch(): SketchData;
   newId(): string;
+  /** Whether new curves are construction geometry (the X toggle, FR-SK-04). */
+  construction(): boolean;
 }
 
 export interface SketchTool {
@@ -76,6 +89,14 @@ export interface SketchTool {
   /** Esc: steps back one stage. True when there was nothing left to cancel. */
   escape(): boolean;
   preview(): ToolPreview;
+  /**
+   * The pointer was pressed at `pointer` and dragged (P1-04: the Line tool's
+   * tangent arc). True if the tool takes the drag: moves go to `move` and the
+   * release to `dragEnd`. Tools without it ignore drags.
+   */
+  dragStart?(pointer: Inference): boolean;
+  /** The dragged pointer was released; returns an edit like `click`. */
+  dragEnd?(pointer: Inference): SketchEdit | undefined;
 }
 
 export const EMPTY_PREVIEW: ToolPreview = { lines: [], points: [] };

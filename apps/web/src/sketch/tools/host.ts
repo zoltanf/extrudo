@@ -38,7 +38,16 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { gridStep } from '../../viewport/grid';
 import type { ViewportStore } from '../../viewport/store';
 import { dimensionValues } from '../values';
+import { ARC_CENTER_TOOL, ARC_TANGENT_TOOL, ARC_TOOL, ArcTool } from './arc';
+import { CIRCLE_2POINT_TOOL, CIRCLE_3POINT_TOOL, CIRCLE_TOOL, CircleTool } from './circle';
 import { LINE_TOOL, LineTool } from './line';
+import { POINT_TOOL, PointTool } from './point';
+import {
+  RECTANGLE_3POINT_TOOL,
+  RECTANGLE_CENTER_TOOL,
+  RECTANGLE_TOOL,
+  RectangleTool,
+} from './rectangle';
 import type { SketchEdit, SketchTool, ToolContext, Typed } from './tool';
 
 /** Snap distance, in screen pixels. */
@@ -46,6 +55,16 @@ export const SNAP_PIXELS = 8;
 
 const FACTORIES: Record<string, (context: ToolContext) => SketchTool> = {
   [LINE_TOOL]: (context) => new LineTool(context),
+  [RECTANGLE_TOOL]: (context) => new RectangleTool(context, '2-point'),
+  [RECTANGLE_3POINT_TOOL]: (context) => new RectangleTool(context, '3-point'),
+  [RECTANGLE_CENTER_TOOL]: (context) => new RectangleTool(context, 'center'),
+  [CIRCLE_TOOL]: (context) => new CircleTool(context, 'center'),
+  [CIRCLE_2POINT_TOOL]: (context) => new CircleTool(context, '2-point'),
+  [CIRCLE_3POINT_TOOL]: (context) => new CircleTool(context, '3-point'),
+  [ARC_TOOL]: (context) => new ArcTool(context, '3-point'),
+  [ARC_CENTER_TOOL]: (context) => new ArcTool(context, 'center'),
+  [ARC_TANGENT_TOOL]: (context) => new ArcTool(context, 'tangent'),
+  [POINT_TOOL]: (context) => new PointTool(context),
 };
 
 /** Whether a session tool ID names a sketch drawing tool. */
@@ -64,6 +83,10 @@ export interface ToolHostState {
   /** Why the last edit couldn't be added. */
   error: string | undefined;
   solverReady: boolean;
+  /** New curves are construction geometry (the X toggle, FR-SK-04). Resets when the sketch closes. */
+  construction: boolean;
+  /** A drawing tool has taken a pointer drag (the Line tool's tangent arc). */
+  dragging: boolean;
 }
 
 /** A pointer position on the sketch plane, from the viewport. */
@@ -96,6 +119,12 @@ export interface ToolHost {
   stop(): void;
   move(pointer: PlanePointer): void;
   click(pointer: PlanePointer): void;
+  /** A press at `pointer` became a drag; the tool may take it. */
+  dragStart(pointer: PlanePointer): void;
+  /** The drag ended at `pointer`. */
+  dragEnd(pointer: PlanePointer): void;
+  /** Flips whether new curves are construction geometry. */
+  toggleConstruction(): void;
   /** The pointer left the viewport. */
   leave(): void;
   enter(): void;
@@ -116,6 +145,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     revision: 0,
     error: undefined,
     solverReady: false,
+    construction: false,
+    dragging: false,
   }));
   let solver: SketchSolver | undefined;
   let loading = false;
@@ -137,6 +168,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   const context: ToolContext = {
     sketch: () => activeSketch()?.data ?? { entities: {}, constraints: {}, dimensions: {} },
     newId,
+    construction: () => state.getState().construction,
   };
 
   const create = (id: string) => {
@@ -258,13 +290,14 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       state.setState((prev) => ({
         tool: create(id),
         error: undefined,
+        dragging: false,
         revision: prev.revision + 1,
       }));
       ensureSolver();
     },
     stop() {
       if (isSketchTool(session.getState().activeTool)) session.getState().setTool(undefined);
-      bump({ tool: undefined, pointer: undefined });
+      bump({ tool: undefined, pointer: undefined, dragging: false });
     },
     move(pointer) {
       run((tool) => {
@@ -280,6 +313,25 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         state.setState({ pointer: inference, screen: pointer.screen });
         return tool.click(inference);
       });
+    },
+    dragStart(pointer) {
+      run((tool) => {
+        const inference = inferAt(pointer, tool);
+        if (tool.dragStart?.(inference)) state.setState({ dragging: true });
+        return undefined;
+      });
+    },
+    dragEnd(pointer) {
+      if (!state.getState().dragging) return;
+      state.setState({ dragging: false });
+      run((tool) => {
+        const inference = inferAt(pointer, tool);
+        state.setState({ pointer: inference, screen: pointer.screen });
+        return tool.dragEnd?.(inference);
+      });
+    },
+    toggleConstruction() {
+      bump({ construction: !state.getState().construction });
     },
     leave() {
       bump({ pointer: undefined, screen: undefined });
@@ -310,10 +362,11 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
 
   // Leaving the sketch, or picking another tool, ends the drawing tool.
   const unsubscribeSession = session.subscribe((s) => {
-    const tool = state.getState().tool;
+    const { tool, construction } = state.getState();
     if (tool && (s.mode !== 'sketch' || s.activeTool !== tool.id)) {
-      bump({ tool: undefined, pointer: undefined });
+      bump({ tool: undefined, pointer: undefined, dragging: false });
     }
+    if (construction && s.mode !== 'sketch') bump({ construction: false });
   });
   // Undo or redo while drawing: the tool may hold points that no longer exist; start it afresh.
   const unsubscribeStore = store.subscribe((s) => {
@@ -321,7 +374,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     if (committing) committed = s.doc;
     else if (tool && s.doc !== committed) {
       committed = s.doc;
-      bump({ tool: create(tool.id) });
+      bump({ tool: create(tool.id), dragging: false });
     }
   });
 

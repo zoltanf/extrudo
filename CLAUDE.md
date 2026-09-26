@@ -10,7 +10,7 @@ is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
 **Status (2026-09-26):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01, P1-02 and P1-03 done. ADR-0001 chose
+P1-01 to P1-04 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -54,8 +54,12 @@ or planegcs's glue lands in the main chunk) with auto-constraints that
 tools are plain state machines (`apps/web/src/sketch/tools/`) driven by a
 host store; picking uses `viewRay`/`rayPlane` in `viewport/camera.ts`; an
 SVG overlay draws preview, guides, snap glyphs and the heads-up box. The
-Line tool (`L`) is the reference tool. Next: **P1-04** (basic drawing
-tools). See `docs/03-roadmap.md`.
+Line tool (`L`) is the reference tool. ADR-0013 (P1-04) added rectangles,
+circles, arcs (one tool ID per mode; variants in the Create menu), points,
+the Line tool's tangent-arc drag (tools opt into drags with `dragStart`),
+shared builders in `sketch/tools/build.ts`, and the construction toggle
+(`X`, host state, resets when the sketch closes). Next: **P1-05** (more
+drawing tools). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -84,7 +88,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -232,8 +236,14 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 - **Sketch e2e tests read the open sketch from the tool overlay's
   `data-sketch-summary`** ("points=8 lines=4 … constraints=8 dimensions=0"),
   and map sketch mm to page pixels from the camera attributes in the Top
-  view (`e2e/sketch-tools.spec.ts`). The overlay exists only while a
-  drawing tool runs.
+  view (`sketchOnXY` in `e2e/helpers.ts`). The overlay exists only while a
+  drawing tool runs. Tool unit tests use `sketch/tools/testing.ts`
+  (`setup({ tool })`, real planegcs).
+- **The browser pane's `left_click_drag` sends press and release with no
+  move between**, and its screenshots can lag one action behind; read state
+  with `javascript_tool` (the summary attribute) rather than trusting a
+  screenshot taken right after an action. The viewport treats a press and
+  release more than 5 px apart as a drag even without moves.
 - **The Claude browser pane's `type` action inserts text without keydown
   events**, so it can't test "typing goes into the heads-up box"; use `key`
   presses, or Playwright's `keyboard.type`, which do fire keydown.

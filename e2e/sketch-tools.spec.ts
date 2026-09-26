@@ -1,5 +1,5 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
-import { openProject } from './helpers';
+import { expect, type Page, test } from '@playwright/test';
+import { sketchOnXY } from './helpers';
 
 // P1-02: the sketch tool framework, through the Line tool. Pointer positions
 // on the sketch plane, snapping and alignment with their auto-constraints,
@@ -22,34 +22,6 @@ const overlay = (page: Page) => page.locator('[data-sketch-summary]');
 const toolPrompt = (page: Page) => page.getByRole('status', { name: 'Tool prompt' });
 const headsUp = (page: Page) => page.getByRole('group', { name: 'Heads-up input' });
 
-/** Opens a sketch on XY and waits for the Top view. Returns a sketch-mm → page-px mapping. */
-async function sketchOnXY(page: Page) {
-  const viewport = await openProject(page);
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
-  await page
-    .getByRole('region', { name: 'Create Sketch' })
-    .getByRole('button', { name: 'XY' })
-    .click();
-  await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
-  await expect(viewport).toHaveAttribute('data-camera-up', '0,1,0');
-  return mapping(viewport);
-}
-
-async function mapping(viewport: Locator) {
-  const box = await viewport.boundingBox();
-  if (!box) throw new Error('no viewport');
-  const [tx = 0, ty = 0] = ((await viewport.getAttribute('data-camera-target')) ?? '')
-    .split(',')
-    .map(Number);
-  const size = Number(await viewport.getAttribute('data-camera-size'));
-  // Orthographic or perspective, the target plane is `size` mm tall on screen.
-  const perPixel = size / box.height;
-  return (x: number, y: number) => ({
-    x: box.x + box.width / 2 + (x - tx) / perPixel,
-    y: box.y + box.height / 2 - (y - ty) / perPixel,
-  });
-}
-
 test('draws a closed rectangle with the Line tool, with inferred constraints', async ({ page }) => {
   const at = await sketchOnXY(page);
   await page.keyboard.press('l');
@@ -57,7 +29,9 @@ test('draws a closed rectangle with the Line tool, with inferred constraints', a
     'aria-pressed',
     'true',
   );
-  await expect(toolPrompt(page)).toHaveText('Click to start a line.');
+  await expect(toolPrompt(page)).toHaveText(
+    'Click to start a line. Drag from the end of a curve for a tangent arc.',
+  );
 
   const click = async (x: number, y: number) => {
     const p = at(x, y);
@@ -91,7 +65,9 @@ test('draws a closed rectangle with the Line tool, with inferred constraints', a
     'data-sketch-summary',
     'points=8 lines=4 circles=0 arcs=0 constraints=8 dimensions=0',
   );
-  await expect(toolPrompt(page)).toHaveText('Click to start a line.');
+  await expect(toolPrompt(page)).toHaveText(
+    'Click to start a line. Drag from the end of a curve for a tangent arc.',
+  );
 
   // Undo inside the sketch removes the last segment.
   await page.keyboard.press('Control+Z');
@@ -137,7 +113,9 @@ test('the heads-up box takes a typed length and angle; Esc steps back', async ({
 
   // Esc ends the chain, then the tool.
   await page.keyboard.press('Escape');
-  await expect(toolPrompt(page)).toHaveText('Click to start a line.');
+  await expect(toolPrompt(page)).toHaveText(
+    'Click to start a line. Drag from the end of a curve for a tangent arc.',
+  );
   await page.keyboard.press('Escape');
   await expect(toolPrompt(page)).toBeHidden();
   await expect(page.getByRole('button', { name: 'Line', exact: true })).not.toHaveAttribute(

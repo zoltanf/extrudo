@@ -1,98 +1,10 @@
-import {
-  addToSketch,
-  createDocument,
-  createDocumentStore,
-  createSessionStore,
-  type FeatureId,
-  originPlaneRef,
-  readSketch,
-  type SketchConstraint,
-  type SketchData,
-  type SketchEntityId,
-  type Vec2,
-} from '@extrudo/core';
-import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { memoryPreferences } from '../../platform';
-import { createViewportStore } from '../../viewport/store';
-import { createSketchOn, finishSketch } from '../mode';
-import { createToolHost, type PlanePointer, type ToolHost } from './host';
+import { addToSketch, type SketchData, type SketchEntityId } from '@extrudo/core';
+import { afterEach, describe, expect, it } from 'vitest';
+import { finishSketch } from '../mode';
 import { LINE_TOOL } from './line';
+import { at, disposeHosts, setup } from './testing';
 
-let module: PlanegcsModule;
-beforeAll(async () => {
-  module = await loadPlanegcs();
-});
-
-const hosts: ToolHost[] = [];
-afterEach(() => {
-  for (const host of hosts.splice(0)) host.dispose();
-});
-
-/** 0.1 mm per pixel: snapping reaches 0.8 mm. */
-const PER_PIXEL = 0.1;
-const at = (x: number, y: number, infer = true): PlanePointer => ({
-  point: [x, y],
-  perPixel: PER_PIXEL,
-  screen: [0, 0],
-  infer,
-});
-
-interface Setup {
-  solver?: 'real' | 'none' | Pick<SketchSolver, 'check' | 'solve' | 'dispose'>;
-}
-
-async function setup({ solver = 'real' }: Setup = {}) {
-  const stores = {
-    store: createDocumentStore(createDocument()),
-    session: createSessionStore(),
-    viewport: createViewportStore({ preferences: memoryPreferences(), reducedMotion: () => true }),
-  };
-  stores.viewport.getState().setSnap(false);
-  const id = createSketchOn(stores, originPlaneRef('origin:xy'));
-  let n = 0;
-  const host = createToolHost({
-    ...stores,
-    newId: () => `n${n++}`,
-    loadSolver:
-      solver === 'none'
-        ? undefined
-        : solver === 'real'
-          ? async () => new SketchSolver(module)
-          : async () => solver as SketchSolver,
-  });
-  hosts.push(host);
-  host.start(LINE_TOOL);
-  // Let the solver load.
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  const data = (): SketchData => {
-    const f = stores.store.getState().doc.features.find((x) => x.id === id);
-    const sketch = f && readSketch(f);
-    if (!sketch) throw new Error('no sketch');
-    return sketch.data;
-  };
-  const byType = (type: string) => Object.values(data().entities).filter((e) => e.type === type);
-  // Constraint shapes with IDs replaced by what they point at, for readable expectations.
-  const summarize = (c: SketchConstraint) => {
-    const name = (ref: string | undefined) => {
-      const e = ref ? data().entities[ref as SketchEntityId] : undefined;
-      return e?.type === 'point' ? `(${e.x},${e.y})` : e ? e.type : undefined;
-    };
-    return [
-      c.type,
-      ...Object.entries(c)
-        .filter(([k]) => k !== 'type')
-        .map(([, v]) => name(v as string)),
-    ].join(' ');
-  };
-  const constraints = () => Object.values(data().constraints).map(summarize);
-  const point = (id: SketchEntityId): Vec2 => {
-    const p = data().entities[id];
-    if (p?.type !== 'point') throw new Error(`${id} is not a point`);
-    return [p.x, p.y];
-  };
-  return { ...stores, host, id: id as FeatureId, data, byType, constraints, point };
-}
+afterEach(disposeHosts);
 
 describe('line tool through the host', () => {
   it('draws a chain with inferred constraints and closes it on its first point', async () => {
