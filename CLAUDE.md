@@ -10,7 +10,7 @@ is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
 **Status (2026-09-26):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01 and P1-03 done. ADR-0001 chose
+P1-01, P1-02 and P1-03 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -47,7 +47,15 @@ fixed geometry as constants, keeps one system per component and solves only
 what changed; `beginDrag`/`drag`/`endDrag`; `check()` test-solves a new
 constraint. Our planegcs WASM (`packages/sketch/planegcs/`) builds in CI per
 input hash like OCCT. A closed gear outline drags at ~1 s per step (risk
-register). Next: **P1-02** (sketch tool framework). See `docs/03-roadmap.md`.
+register). ADR-0012 (P1-02) set the tool framework: `infer()` in
+`@extrudo/sketch/inference` (import that entry in the app, not the main one,
+or planegcs's glue lands in the main chunk) with auto-constraints that
+`check()` vets before `addToSketch` commits them with solved positions;
+tools are plain state machines (`apps/web/src/sketch/tools/`) driven by a
+host store; picking uses `viewRay`/`rayPlane` in `viewport/camera.ts`; an
+SVG overlay draws preview, guides, snap glyphs and the heads-up box. The
+Line tool (`L`) is the reference tool. Next: **P1-04** (basic drawing
+tools). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -76,7 +84,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -221,6 +229,14 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 - **Vite's watcher can miss a second edit to a file made within about a
   second of the first** (seen with two scripted edits in a row): the dev
   server keeps serving the old transform. `touch` the file, then reload.
+- **Sketch e2e tests read the open sketch from the tool overlay's
+  `data-sketch-summary`** ("points=8 lines=4 … constraints=8 dimensions=0"),
+  and map sketch mm to page pixels from the camera attributes in the Top
+  view (`e2e/sketch-tools.spec.ts`). The overlay exists only while a
+  drawing tool runs.
+- **The Claude browser pane's `type` action inserts text without keydown
+  events**, so it can't test "typing goes into the heads-up box"; use `key`
+  presses, or Playwright's `keyboard.type`, which do fire keydown.
 - Playwright's `toHaveAccessibleDescription` reads nothing from an
   `<output>` element referenced by `aria-describedby`; use a `<div>` with
   `aria-live` for field messages.

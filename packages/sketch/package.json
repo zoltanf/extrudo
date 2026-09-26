@@ -7,6 +7,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./inference": "./src/inference/index.ts",
     "./browser": "./src/browser.ts",
     "./fixtures": "./src/fixtures.ts"
   },

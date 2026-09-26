@@ -1,14 +1,30 @@
-import type { BodyId, BodyMeta, OriginPlaneId, SketchFrame } from '@extrudo/core';
+import {
+  type BodyId,
+  type BodyMeta,
+  type OriginPlaneId,
+  type SketchFrame,
+  type Vec3,
+  worldToSketch,
+} from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import type { DirectionalLight } from 'three';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { useShortcuts } from '../commands/shortcuts';
+import type { PlanePointer } from '../sketch/tools/host';
 import { Bodies } from './Bodies';
 import { CameraRig } from './CameraRig';
-import { basis, orbit, pan, type View, zoomAt } from './camera';
+import { basis, orbit, pan, rayPlane, type View, viewRay, worldPerPixel, zoomAt } from './camera';
 import { type Rgba, type SceneColors, useSceneColors } from './colors';
 import { Grid, XY_FRAME } from './Grid';
 import { NavBar } from './NavBar';
@@ -32,6 +48,18 @@ export interface ViewportProps {
   sketchPlane?: SketchFrame;
   /** Present while Create Sketch waits for a plane: the origin planes become pickable. */
   planePicker?: PlanePicker;
+  /** Present while a sketch tool draws: the pointer on the sketch plane goes to it (P1-02). */
+  sketchInput?: SketchInput;
+  /** Drawn over the 3D view (the sketch tool overlay). */
+  children?: ReactNode;
+}
+
+export interface SketchInput {
+  frame: SketchFrame;
+  onMove(pointer: PlanePointer): void;
+  /** A left click that didn't turn into a drag. */
+  onClick(pointer: PlanePointer): void;
+  onLeave(): void;
 }
 
 export interface PlanePicker {
@@ -61,6 +89,8 @@ export function Viewport({
   sketches = NO_SKETCHES,
   sketchPlane,
   planePicker,
+  sketchInput,
+  children,
 }: ViewportProps) {
   const section = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -115,6 +145,7 @@ export function Viewport({
   }, [viewport]);
 
   useNavigation(surface, viewport, setDragging);
+  useSketchInput(surface, viewport, sketchInput);
 
   const cursor = dragging
     ? 'cursor-grabbing'
@@ -122,7 +153,9 @@ export function Viewport({
       ? 'cursor-grab'
       : planePicker?.hover
         ? 'cursor-pointer'
-        : '';
+        : sketchInput
+          ? 'cursor-crosshair'
+          : '';
 
   return (
     <section
@@ -152,6 +185,7 @@ export function Viewport({
           />
         </Canvas>
       </div>
+      {children}
       <ViewCube store={viewport} />
       <NavBar store={viewport} />
       <ViewStatus viewport={viewport} />
@@ -346,6 +380,102 @@ function Headlight({ viewport }: { viewport: ViewportStore }) {
     l.target.updateMatrixWorld();
   });
   return <directionalLight ref={light} intensity={1.6} />;
+}
+
+/** A left press that moves less than this (px) before release is a click. */
+const CLICK_SLOP = 5;
+
+/**
+ * Pointer input for a sketch tool (P1-02): the pointer's ray meets the
+ * sketch plane, and the tool gets the point in sketch coordinates. Moves are
+ * reported again when the camera moves (wheel zoom under a still pointer)
+ * and when Ctrl/⌘, which turns inference off, is pressed or released.
+ */
+function useSketchInput(
+  surface: RefObject<HTMLDivElement | null>,
+  viewport: ViewportStore,
+  input: SketchInput | undefined,
+) {
+  useEffect(() => {
+    const el = surface.current;
+    if (!el || !input) return;
+    const { frame } = input;
+    let last: { x: number; y: number; infer: boolean } | undefined;
+    let press: { x: number; y: number; id: number } | undefined;
+
+    const pointerAt = (x: number, y: number, infer: boolean): PlanePointer | undefined => {
+      const r = el.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return undefined;
+      const ndc: [number, number] = [
+        ((x - r.left) / r.width) * 2 - 1,
+        1 - ((y - r.top) / r.height) * 2,
+      ];
+      const { view, projection } = viewport.getState();
+      const hit = rayPlane(
+        viewRay(view, projection, r.width / r.height, ndc),
+        frame.origin,
+        frame.normal,
+      );
+      if (!hit) return undefined;
+      const world: Vec3 = [hit.x, hit.y, hit.z];
+      return {
+        point: worldToSketch(frame, world),
+        perPixel: worldPerPixel(view, projection, r.height, world),
+        screen: [x - r.left, y - r.top],
+        infer,
+      };
+    };
+    const report = () => {
+      const p = last && pointerAt(last.x, last.y, last.infer);
+      if (p) input.onMove(p);
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      last = { x: e.clientX, y: e.clientY, infer: !(e.ctrlKey || e.metaKey) };
+      report();
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      const s = viewport.getState();
+      if (e.button !== 0 || dragAction(s.preset, e, s.tool)) return;
+      press = { x: e.clientX, y: e.clientY, id: e.pointerId };
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      if (!press || e.pointerId !== press.id) return;
+      const moved = Math.hypot(e.clientX - press.x, e.clientY - press.y);
+      press = undefined;
+      if (moved > CLICK_SLOP) return;
+      const p = pointerAt(e.clientX, e.clientY, !(e.ctrlKey || e.metaKey));
+      if (p) input.onClick(p);
+    };
+    const onPointerLeave = () => {
+      last = undefined;
+      input.onLeave();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (!last || (e.key !== 'Control' && e.key !== 'Meta')) return;
+      last = { ...last, infer: !(e.ctrlKey || e.metaKey) };
+      report();
+    };
+
+    el.addEventListener('pointermove', onPointerMove);
+    el.addEventListener('pointerdown', onPointerDown);
+    el.addEventListener('pointerup', onPointerUp);
+    el.addEventListener('pointerleave', onPointerLeave);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    const unsubscribe = viewport.subscribe((s, prev) => {
+      if (s.view !== prev.view) report();
+    });
+    return () => {
+      el.removeEventListener('pointermove', onPointerMove);
+      el.removeEventListener('pointerdown', onPointerDown);
+      el.removeEventListener('pointerup', onPointerUp);
+      el.removeEventListener('pointerleave', onPointerLeave);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+      unsubscribe();
+    };
+  }, [surface, viewport, input]);
 }
 
 /** Mouse, wheel and trackpad navigation on the canvas wrapper. */

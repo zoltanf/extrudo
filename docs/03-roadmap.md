@@ -119,11 +119,20 @@ Benchmark **B1** buildable.
   Done 2026-09-25 (ADR-0010): the plane is a `ref` input, `SketchData` holds
   points, lines, circles, arcs and every constraint and dimension type as
   records; sketches open by double-click in the browser or timeline too.
-- [ ] **P1-02 Sketch tool framework.** Tool state-machine base, sketch-plane
+- [x] **P1-02 Sketch tool framework.** Tool state-machine base, sketch-plane
   raycasting, snapping/inference engine (endpoint, midpoint, center, on-curve,
   intersection, H/V alignment with dashed guides, grid), heads-up numeric input
   (length/angle, Tab, Enter, Esc), preview rendering, auto-constraint emission.
   *AC:* FR-SK-05, -06; unit tests of the inference engine.
+  Done 2026-09-26 (ADR-0012): `infer` in `@extrudo/sketch/inference` with
+  unit tests for every snap kind and the priorities; snaps and alignments
+  become constraints, each test-solved with `SketchSolver.check` before it
+  is committed, and the sketch is solved in the same `addToSketch` step.
+  Tools are plain state machines driven by a host; picking by our own ray
+  math; an SVG overlay for preview, guides and snap glyphs; the heads-up box
+  with `<ExpressionInput>`s (a typed length becomes a dimension). The Line
+  tool (`L`, chained, closes on its first point) is the reference tool;
+  "Snap to grid" in the palette.
 - [x] **P1-03 Solver integration.** `sketch` package planegcs adapter (ADR-0002):
   our planegcs WASM build (from `spikes/p0-03-solver/planegcs-build/`, built in
   CI once per input hash like OCCT); map every entity and constraint type

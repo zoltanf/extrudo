@@ -14,11 +14,15 @@ import {
   orientationFor,
   pan,
   perspectiveDistance,
+  rayPlane,
   sameView,
   turn,
   type Vec3,
   type View,
   viewDirection,
+  viewProject,
+  viewRay,
+  worldPerPixel,
   zoomAt,
 } from './camera';
 
@@ -226,5 +230,66 @@ describe('camera position', () => {
     expect(p.x).toBeCloseTo(1, 9);
     expect(p.y).toBeCloseTo(2, 9);
     expect(p.z).toBeGreaterThan(100);
+  });
+});
+
+describe('picking', () => {
+  const top: View = { target: [10, 20, 0], orientation: orientationFor([0, 0, 1]), size: 100 };
+  const aspect = 2;
+
+  it('casts rays through the view in both projections', () => {
+    for (const projection of ['orthographic', 'perspective'] as const) {
+      const centre = viewRay(top, projection, aspect, [0, 0]);
+      near(rayPlane(centre, [0, 0, 0], [0, 0, 1]) ?? new Vector3(NaN), [10, 20, 0]);
+      // The top-right corner of the view lands size/2 up and size × aspect / 2 right, at the target.
+      const corner = viewRay(top, projection, aspect, [1, 1]);
+      near(rayPlane(corner, [0, 0, 0], [0, 0, 1]) ?? new Vector3(NaN), [110, 70, 0]);
+    }
+  });
+
+  it('matches the camera the viewport draws with', () => {
+    const view = homeView();
+    const ray = viewRay(view, 'perspective', 1.5, [0.3, -0.4]);
+    // A point along the ray projects back to the same screen position.
+    const p = ray.origin.clone().addScaledVector(ray.direction, 250);
+    const { right, up } = basis(view);
+    const eye = cameraPosition(view, 'perspective');
+    const rel = p.clone().sub(eye);
+    const depth = rel.dot(viewDirection(view));
+    const halfHeight = depth * Math.tan(((FOV / 2) * Math.PI) / 180);
+    expect(rel.dot(right) / (halfHeight * 1.5)).toBeCloseTo(0.3, 9);
+    expect(rel.dot(up) / halfHeight).toBeCloseTo(-0.4, 9);
+  });
+
+  it('projects points back to where their pick ray started', () => {
+    const view = homeView();
+    for (const projection of ['orthographic', 'perspective'] as const) {
+      const ray = viewRay(view, projection, 1.5, [0.3, -0.4]);
+      const p = ray.origin.clone().addScaledVector(ray.direction, 5000);
+      const ndc = viewProject(view, projection, 1.5, [p.x, p.y, p.z]) ?? [NaN, NaN];
+      expect(ndc[0]).toBeCloseTo(0.3, 9);
+      expect(ndc[1]).toBeCloseTo(-0.4, 9);
+    }
+    // Behind the perspective camera.
+    const eye = cameraPosition(view, 'perspective');
+    const behind = eye.clone().addScaledVector(viewDirection(view), -10);
+    expect(viewProject(view, 'perspective', 1, [behind.x, behind.y, behind.z])).toBeUndefined();
+  });
+
+  it('misses planes seen edge-on or behind the camera', () => {
+    const front: View = { target: [0, 0, 0], orientation: orientationFor([0, -1, 0]), size: 50 };
+    expect(
+      rayPlane(viewRay(front, 'orthographic', 1, [0, 0]), [0, 0, 0], [0, 0, 1]),
+    ).toBeUndefined();
+    const ray = viewRay(top, 'perspective', 1, [0, 0]);
+    expect(rayPlane(ray, [0, 0, 1e6], [0, 0, 1])).toBeUndefined();
+  });
+
+  it('measures mm per pixel at a point', () => {
+    expect(worldPerPixel(top, 'orthographic', 500, [0, 0, -300])).toBeCloseTo(0.2, 12);
+    expect(worldPerPixel(top, 'perspective', 500, [10, 20, 0])).toBeCloseTo(0.2, 9);
+    // Twice as far from the camera: twice the mm per pixel.
+    const d = perspectiveDistance(top.size);
+    expect(worldPerPixel(top, 'perspective', 500, [10, 20, -d])).toBeCloseTo(0.4, 9);
   });
 });

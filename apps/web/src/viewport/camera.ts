@@ -180,6 +180,95 @@ export function viewDirection(view: View): Vector3 {
   return basis(view).back.negate();
 }
 
+export interface WorldRay {
+  origin: Vector3;
+  /** Unit length. */
+  direction: Vector3;
+}
+
+/**
+ * The pick ray through a point of the view (`ndc`: −1…1, +y up), as the
+ * cameras in `CameraRig` project: height `size` through the target, width
+ * `size × aspect`.
+ */
+export function viewRay(
+  view: View,
+  projection: Projection,
+  aspect: number,
+  ndc: readonly [number, number],
+): WorldRay {
+  const { right, up, back } = basis(view);
+  const half = view.size / 2;
+  if (projection === 'orthographic') {
+    const origin = v3(view.target)
+      .addScaledVector(right, ndc[0] * half * aspect)
+      .addScaledVector(up, ndc[1] * half)
+      .addScaledVector(back, orthographicDistance(view));
+    return { origin, direction: back.clone().negate() };
+  }
+  const distance = perspectiveDistance(view.size);
+  const direction = back
+    .clone()
+    .multiplyScalar(-distance)
+    .addScaledVector(right, ndc[0] * half * aspect)
+    .addScaledVector(up, ndc[1] * half)
+    .normalize();
+  return { origin: cameraPosition(view, projection), direction };
+}
+
+/**
+ * Where a world point appears in the view, in NDC (−1…1, +y up), or
+ * `undefined` if it is behind the perspective camera. The inverse of `viewRay`.
+ */
+export function viewProject(
+  view: View,
+  projection: Projection,
+  aspect: number,
+  point: Vec3,
+): [number, number] | undefined {
+  const { right, up } = basis(view);
+  const half = view.size / 2;
+  if (projection === 'orthographic') {
+    const rel = v3(point).sub(v3(view.target));
+    return [rel.dot(right) / (half * aspect), rel.dot(up) / half];
+  }
+  const rel = v3(point).sub(cameraPosition(view, projection));
+  const depth = rel.dot(viewDirection(view));
+  if (depth <= 1e-9) return undefined;
+  const scale = (depth * half) / perspectiveDistance(view.size);
+  return [rel.dot(right) / (scale * aspect), rel.dot(up) / scale];
+}
+
+/**
+ * Where a ray meets a plane through `origin` with `normal`, or `undefined`
+ * if it runs parallel to the plane or the plane is behind it.
+ */
+export function rayPlane(ray: WorldRay, origin: Vec3, normal: Vec3): Vector3 | undefined {
+  const n = v3(normal);
+  const denom = ray.direction.dot(n);
+  if (Math.abs(denom) < 1e-9) return undefined;
+  const t = v3(origin).sub(ray.origin).dot(n) / denom;
+  return t < 0 ? undefined : ray.origin.clone().addScaledVector(ray.direction, t);
+}
+
+/**
+ * World units (mm) per screen pixel at `point`, for a view `height` px
+ * tall: the same everywhere in orthographic, growing with depth in
+ * perspective.
+ */
+export function worldPerPixel(
+  view: View,
+  projection: Projection,
+  height: number,
+  point: Vec3,
+): number {
+  const perPixel = view.size / Math.max(1, height);
+  if (projection === 'orthographic') return perPixel;
+  const eye = cameraPosition(view, projection);
+  const depth = v3(point).sub(eye).dot(viewDirection(view));
+  return (perPixel * Math.max(depth, 1e-6)) / perspectiveDistance(view.size);
+}
+
 /** The angle between two orientations, in radians. */
 export function angleBetween(a: Quat, b: Quat): number {
   return quat(a).angleTo(quat(b));

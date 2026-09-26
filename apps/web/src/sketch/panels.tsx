@@ -89,7 +89,6 @@ export interface SketchPaletteProps {
 /** Options that arrive with later tasks, listed so the palette shows its real layout. */
 const LATER: readonly { label: string; comesWith: string }[] = [
   { label: 'Construction', comesWith: 'P1-04' },
-  { label: 'Snap', comesWith: 'P1-02' },
   { label: 'Show constraints', comesWith: 'P1-06' },
   { label: 'Show dimensions', comesWith: 'P1-07' },
   { label: 'Show profiles', comesWith: 'P1-11' },
@@ -100,6 +99,7 @@ const LATER: readonly { label: string; comesWith: string }[] = [
 export function SketchPalette({ name, viewport, onLookAt, onFinish }: SketchPaletteProps) {
   const grid = useStore(viewport, (s) => s.grid);
   const points = useStore(viewport, (s) => s.sketchPoints);
+  const snap = useStore(viewport, (s) => s.snap);
   return (
     <FloatingPanel label="Sketch palette">
       <PanelTitle>
@@ -119,6 +119,11 @@ export function SketchPalette({ name, viewport, onLookAt, onFinish }: SketchPale
         <li>
           <PaletteToggle checked={points} onChange={(v) => viewport.getState().setSketchPoints(v)}>
             Show points
+          </PaletteToggle>
+        </li>
+        <li>
+          <PaletteToggle checked={snap} onChange={(v) => viewport.getState().setSnap(v)}>
+            Snap to grid
           </PaletteToggle>
         </li>
         {LATER.map((option) => (

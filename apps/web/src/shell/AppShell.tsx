@@ -9,7 +9,7 @@ import {
   type SessionStore,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
-import { lazy, Suspense, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import { useShortcuts } from '../commands/shortcuts';
 import { useTheme } from '../design-system';
@@ -27,9 +27,11 @@ import {
   startCreateSketch,
 } from '../sketch/mode';
 import { PlanePrompt, SketchPalette } from '../sketch/panels';
+import { createToolHost, isSketchTool, type ToolHost } from '../sketch/tools/host';
+import { SketchOverlay } from '../sketch/tools/SketchOverlay';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
-import type { PlanePicker } from '../viewport/Viewport';
+import type { PlanePicker, SketchInput } from '../viewport/Viewport';
 import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
 import { Splitter, usePanel } from './panels';
@@ -71,11 +73,25 @@ export function AppShell({
   const activeTool = useStore(session, (s) => s.activeTool);
   const hover = useStore(session, (s) => s.hover);
   const picking = activeTool === CREATE_SKETCH;
+  const drawing = mode === 'sketch' && isSketchTool(activeTool);
 
   const stores = useMemo<SketchModeStores>(
     () => ({ store, session, viewport }),
     [store, session, viewport],
   );
+
+  // The drawing-tool host (P1-02). Made in an effect so Strict Mode's second mount gets a live one.
+  const [host, setHost] = useState<ToolHost>();
+  useEffect(() => {
+    const h = createToolHost({
+      store,
+      session,
+      viewport,
+      loadSolver: () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver()),
+    });
+    setHost(h);
+    return () => h.dispose();
+  }, [store, session, viewport]);
 
   const shortcuts = useMemo(
     () => [
@@ -83,8 +99,15 @@ export function AppShell({
       { keys: 'Mod+Y', run: () => store.getState().redo() },
       { keys: 'Mod+Shift+Z', run: () => store.getState().redo() },
       ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
+      ...(mode === 'sketch' && host ? [{ keys: 'L', run: () => host.start('line') }] : []),
+      ...(drawing && host
+        ? [
+            { keys: 'Escape', run: () => host.escape() },
+            { keys: 'Enter', run: () => host.enter() },
+          ]
+        : []),
     ],
-    [store, stores, picking],
+    [store, stores, picking, mode, drawing, host],
   );
   useShortcuts(shortcuts);
 
@@ -94,6 +117,10 @@ export function AppShell({
       if (picking) cancelCreateSketch(stores);
       else startCreateSketch(stores);
     } else if (tool === 'finishSketch') finishSketch(stores);
+    else if (tool === 'line' && host) {
+      if (activeTool === 'line') host.stop();
+      else host.start('line');
+    }
   };
   const pickPlane = (plane: OriginPlaneId) => createSketchOn(stores, originPlaneRef(plane));
   const edit = (id: FeatureId) => editSketch(stores, id);
@@ -118,6 +145,19 @@ export function AppShell({
   }, [doc.features, doc.timelineMarker, activeSketchId]);
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
   const sketchPlane = sketches.find((s) => s.active)?.frame;
+
+  const sketchInput = useMemo<SketchInput | undefined>(
+    () =>
+      drawing && host && sketchPlane
+        ? {
+            frame: sketchPlane,
+            onMove: host.move,
+            onClick: host.click,
+            onLeave: host.leave,
+          }
+        : undefined,
+    [drawing, host, sketchPlane],
+  );
 
   const planePicker = useMemo<PlanePicker | undefined>(
     () =>
@@ -146,7 +186,11 @@ export function AppShell({
         theme={choice}
         onThemeChange={setChoice}
       />
-      <Toolbar mode={mode} activeTool={picking ? 'sketch' : undefined} onRun={run} />
+      <Toolbar
+        mode={mode}
+        activeTool={picking ? 'sketch' : drawing ? (activeTool as ToolId) : undefined}
+        onRun={run}
+      />
       <main className="relative flex min-h-0">
         <BrowserPanel
           store={store}
@@ -186,7 +230,18 @@ export function AppShell({
             sketches={sketches}
             sketchPlane={sketchPlane}
             planePicker={planePicker}
-          />
+            sketchInput={sketchInput}
+          >
+            {drawing && host && activeSketchId && sketchPlane && (
+              <SketchOverlay
+                host={host}
+                store={store}
+                viewport={viewport}
+                sketchId={activeSketchId}
+                frame={sketchPlane}
+              />
+            )}
+          </Viewport>
         </Suspense>
         {picking && (
           <PlanePrompt

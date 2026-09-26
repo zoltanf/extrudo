@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { useMemo, useRef } from 'react';
 import { Color, Matrix4, type Mesh, ShaderMaterial, Vector2, Vector3 } from 'three';
 import type { Rgba } from './colors';
+import { GRID_PIXELS } from './grid';
 import type { ViewportStore } from './store';
 
 /**
@@ -19,8 +20,6 @@ import type { ViewportStore } from './store';
  * radially around the target and at grazing angles.
  */
 
-/** A minor cell is between PIXELS / 10 and PIXELS wide on screen. */
-const PIXELS = 60;
 /** The grid has faded out this many view sizes from the target. */
 export const GRID_RADIUS = 0.95;
 
@@ -74,7 +73,7 @@ const fragmentShader = /* glsl */ `
     vec2 dudv = max(fwidth(uv), vec2(1e-6));
     float perPixel = max(dudv.x, dudv.y);
 
-    float lod = max(0.0, log(perPixel * ${PIXELS.toFixed(1)}) / log(10.0));
+    float lod = max(0.0, log(perPixel * ${GRID_PIXELS.toFixed(1)}) / log(10.0));
     float level = floor(lod);
     float fade = smoothstep(0.0, 1.0, fract(lod));
     float s0 = pow(10.0, level);

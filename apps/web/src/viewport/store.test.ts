@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { memoryPreferences } from '../platform';
 import { basis, orientationFor, sameView, type View } from './camera';
+import { gridStep } from './grid';
 import { createViewportStore, DEFAULT_SETTINGS, TRANSITION_MS } from './store';
 
 function setup(options: { reducedMotion?: boolean; stored?: Record<string, unknown> } = {}) {
@@ -113,5 +114,14 @@ describe('viewport store', () => {
     expect(store.getState().grid).toBe(false);
     expect(store.getState().visualStyle).toBe(DEFAULT_SETTINGS.visualStyle);
     expect(store.getState().origin).toEqual({ ...DEFAULT_SETTINGS.origin, z: false });
+  });
+});
+
+describe('gridStep', () => {
+  it('snaps to the finest grid level at least 12 px wide, never below 1 mm', () => {
+    expect(gridStep(0.01)).toBe(1);
+    expect(gridStep(0.1)).toBe(10);
+    expect(gridStep(0.5)).toBe(10);
+    expect(gridStep(1)).toBe(100);
   });
 });

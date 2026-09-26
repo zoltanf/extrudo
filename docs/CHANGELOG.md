@@ -2,6 +2,17 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-26 · **P1-02** Sketch tool framework: the inference engine in
+  `@extrudo/sketch/inference` (endpoint, center, point, origin, intersection,
+  midpoint, on-curve, H/V alignment and guide crossings, grid; unit tested)
+  and its auto-constraints, test-solved with `SketchSolver.check` before
+  they're committed; `addToSketch` in core (additions plus solved positions
+  in one step). Web: tools as state machines under a host, pick rays and
+  projection in `camera.ts`, an SVG overlay (rubber band, dashed guides,
+  snap glyphs, prompt), the heads-up box (typed length → dimension, typed
+  90° multiples → horizontal/vertical), grid snapping that follows the
+  visible grid ("Snap to grid" in the palette), Ctrl/⌘ turns snapping off.
+  The Line tool (`L`) is the reference tool. ADR-0012.
 - 2026-09-26 · **P1-03** Solver integration: `SketchSolver` in
   `packages/sketch` (planegcs adapter): every entity, constraint and
   dimension type mapped (endpoint tangency as `angle_via_point`, an optional

@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { applyCommand, CommandError } from '../commands';
 import { createDocument } from '../document';
 import { FeatureRegistry } from '../features';
-import type { FeatureId } from '../ids';
+import type { ConstraintId, DimensionId, FeatureId, SketchEntityId } from '../ids';
 import { DocumentSchema } from '../schema';
 import { createDocumentStore } from '../stores';
 import { sampleDocument } from '../testing';
-import { createSketch } from './commands';
+import { addToSketch, createSketch } from './commands';
 import {
   emptySketchData,
   readSketch,
@@ -349,5 +349,64 @@ describe('createSketch', () => {
     expect(() =>
       applyCommand(doc, createSketch({ id: fid('f1'), plane: originPlaneRef('origin:xy') })),
     ).toThrow('Feature f1 already exists.');
+  });
+});
+
+describe('addToSketch', () => {
+  const eid = (id: string) => id as SketchEntityId;
+  const withSketch = () =>
+    applyCommand(
+      createDocument(),
+      createSketch({ id: fid('s1'), plane: originPlaneRef('origin:xy') }),
+    ).doc;
+  const line = {
+    entities: {
+      [eid('a')]: { type: 'point', x: 0, y: 0 },
+      [eid('b')]: { type: 'point', x: 10, y: 0 },
+      [eid('l')]: { type: 'line', start: eid('a'), end: eid('b'), construction: false },
+    },
+    constraints: { ['h' as ConstraintId]: { type: 'horizontal', a: eid('l') } },
+    dimensions: {
+      ['d' as DimensionId]: {
+        type: 'distance',
+        orientation: 'aligned',
+        a: eid('l'),
+        expr: '10',
+        driven: false,
+      },
+    },
+  } as const;
+  const data = (doc: ReturnType<typeof withSketch>) => {
+    const f = doc.features[0];
+    return f ? readSketch(f)?.data : undefined;
+  };
+
+  it('adds entities, constraints and dimensions, and moves existing points', () => {
+    const doc = applyCommand(withSketch(), addToSketch({ feature: fid('s1'), ...line })).doc;
+    expect(data(doc)).toEqual(line);
+    const moved = applyCommand(
+      doc,
+      addToSketch({ feature: fid('s1'), points: { [eid('b')]: { x: 12, y: 0 } } }),
+    ).doc;
+    expect(data(moved)?.entities[eid('b')]).toEqual({ type: 'point', x: 12, y: 0 });
+    expect(() => DocumentSchema.parse(moved)).not.toThrow();
+  });
+
+  it('refuses taken IDs, dangling references and unknown sketches', () => {
+    const doc = applyCommand(withSketch(), addToSketch({ feature: fid('s1'), ...line })).doc;
+    const add =
+      (payload: Omit<Parameters<typeof addToSketch>[0], 'feature'>, feature = 's1') =>
+      () =>
+        applyCommand(doc, addToSketch({ feature: fid(feature), ...payload }));
+    expect(add({ entities: { [eid('a')]: { type: 'point', x: 1, y: 1 } } })).toThrow(
+      'The sketch already has "a".',
+    );
+    expect(
+      add({ constraints: { ['v' as ConstraintId]: { type: 'vertical', a: eid('zz') } } }),
+    ).toThrow('constraints.v.a refers to missing entity "zz"');
+    expect(add({ points: { [eid('l')]: { x: 0, y: 0 } } })).toThrow(
+      '"l" isn\'t a point of this sketch.',
+    );
+    expect(add({}, 'nope')).toThrow('There\'s no sketch "nope".');
   });
 });

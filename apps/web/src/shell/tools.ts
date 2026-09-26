@@ -39,9 +39,8 @@ export const TOOLS = {
     label: 'Line',
     icon: 'line',
     category: 'sketch',
-    hint: 'Lines from point to point; drag from an end for a tangent arc.',
+    hint: 'Lines from point to point. Type a length, Tab to the angle.',
     shortcut: 'L',
-    comesWith: 'P1-04',
   },
   rectangle: {
     id: 'rectangle',
