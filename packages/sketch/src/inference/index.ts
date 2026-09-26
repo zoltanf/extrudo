@@ -1,3 +1,5 @@
+// Pure (no WASM): the constraint tools set a new tangent's side with it (P1-06).
+export { tangentReversed } from '../solver/tangent';
 export { type AnchorEntities, alignmentConstraints, snapConstraints } from './constraints';
 export {
   type ArcShape,
@@ -27,3 +29,4 @@ export {
   type SnapKind,
   snapToGrid,
 } from './inference';
+export { type PickFilter, pickEntity, polylineDistance } from './pick';

@@ -2,8 +2,9 @@ import { addToSketch, type SketchData, type SketchEntityId } from '@extrudo/core
 import { afterEach, describe, expect, it } from 'vitest';
 import { TOOLS } from '../../shell/tools';
 import { finishSketch } from '../mode';
+import { CONSTRAINT_TOOLS } from './constrain';
 import { HOST_TOOL_IDS } from './host';
-import { SKETCH_TOOL_IDS } from './ids';
+import { CONSTRAINT_TOOL_IDS, isConstraintTool, isSketchTool, SKETCH_TOOL_IDS } from './ids';
 import { LINE_TOOL } from './line';
 import { at, disposeHosts, setup } from './testing';
 
@@ -17,6 +18,14 @@ describe('tool IDs', () => {
       expect(tool, id).toBeDefined();
       expect(tool?.comesWith, id).toBeUndefined();
     }
+  });
+
+  it('lists the constraint tools, which are sketch tools too', () => {
+    expect([...CONSTRAINT_TOOL_IDS]).toEqual([...CONSTRAINT_TOOLS]);
+    for (const id of CONSTRAINT_TOOL_IDS) {
+      expect(isSketchTool(id) && isConstraintTool(id), id).toBe(true);
+    }
+    expect(isConstraintTool(LINE_TOOL)).toBe(false);
   });
 });
 

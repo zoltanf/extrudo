@@ -174,6 +174,9 @@ and fit-point splines (a list of points). Both are shaped by
 `sketch/curves.ts`: the spline is a cubic B-spline interpolated through its
 points, and that B-spline (poles and knots), not the fit points, is what the
 kernel will get.
+P1-06 (ADR-0015) added the constraint tools and glyphs: a constraint the
+user asks for is test-solved and refused if it is redundant, conflicts, or
+collapses a curve; `removeFromSketch` deletes constraints and dimensions.
 
 ### 4.2 Feature registry (extension point)
 

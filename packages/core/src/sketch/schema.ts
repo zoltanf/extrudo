@@ -16,7 +16,12 @@
  * every later element.
  */
 import { z } from 'zod';
-import { ConstraintIdSchema, DimensionIdSchema, SketchEntityIdSchema } from '../ids';
+import {
+  ConstraintIdSchema,
+  DimensionIdSchema,
+  type SketchEntityId,
+  SketchEntityIdSchema,
+} from '../ids';
 import { PARAMETER_NAME } from '../names';
 
 const ref = SketchEntityIdSchema;
@@ -134,6 +139,46 @@ export const SketchConstraintSchema = z.discriminatedUnion('type', [
 ]);
 export type SketchConstraint = z.infer<typeof SketchConstraintSchema>;
 export type SketchConstraintType = SketchConstraint['type'];
+
+/**
+ * The name the UI gives each constraint type (FR-SK-07). A point on a curve
+ * is "Coincident" too, as in the Coincident tool that makes it.
+ */
+export const CONSTRAINT_LABELS: Readonly<Record<SketchConstraintType, string>> = {
+  coincident: 'Coincident',
+  pointOnCurve: 'Coincident',
+  collinear: 'Collinear',
+  concentric: 'Concentric',
+  midpoint: 'Midpoint',
+  fix: 'Fix',
+  parallel: 'Parallel',
+  perpendicular: 'Perpendicular',
+  horizontal: 'Horizontal',
+  vertical: 'Vertical',
+  tangent: 'Tangent',
+  smooth: 'Smooth',
+  equal: 'Equal',
+  symmetric: 'Symmetric',
+};
+
+/** The entities a constraint refers to, in field order (a symmetry's axis last). */
+export function constraintRefs(c: SketchConstraint): SketchEntityId[] {
+  switch (c.type) {
+    case 'pointOnCurve':
+      return [c.point, c.curve];
+    case 'midpoint':
+      return [c.point, c.of];
+    case 'fix':
+      return [c.entity];
+    case 'horizontal':
+    case 'vertical':
+      return c.b === undefined ? [c.a] : [c.a, c.b];
+    case 'symmetric':
+      return [c.a, c.b, c.axis];
+    default:
+      return [c.a, c.b];
+  }
+}
 
 // Dimensions (FR-SK-08) ------------------------------------------------------
 

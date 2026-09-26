@@ -64,7 +64,16 @@ export interface SketchInput {
   /** The end of that drag. */
   onDragEnd?(pointer: PlanePointer): void;
   onLeave(): void;
+  /** The cursor over the view: a crosshair for drawing, the arrow for picking and selecting. */
+  cursor?: 'crosshair' | 'default';
 }
+
+/**
+ * Marks elements over the view that the camera moves through (the
+ * constraint glyphs, P1-06): the wheel and the middle and right buttons
+ * navigate over them; left clicks stay theirs.
+ */
+export const VIEW_PASSTHROUGH = 'data-view-passthrough';
 
 export interface PlanePicker {
   hover: OriginPlaneId | undefined;
@@ -148,7 +157,7 @@ export function Viewport({
     });
   }, [viewport]);
 
-  useNavigation(surface, viewport, setDragging);
+  useNavigation(section, surface, viewport, setDragging);
   useSketchInput(surface, viewport, sketchInput);
 
   const cursor = dragging
@@ -157,7 +166,7 @@ export function Viewport({
       ? 'cursor-grab'
       : planePicker?.hover
         ? 'cursor-pointer'
-        : sketchInput
+        : sketchInput && sketchInput.cursor !== 'default'
           ? 'cursor-crosshair'
           : '';
 
@@ -503,26 +512,36 @@ function useSketchInput(
   }, [surface, viewport, input]);
 }
 
-/** Mouse, wheel and trackpad navigation on the canvas wrapper. */
+/**
+ * Mouse, wheel and trackpad navigation on the canvas wrapper, and through
+ * the elements over it marked `VIEW_PASSTHROUGH`. The listeners sit on the
+ * section, so they see events from both.
+ */
 function useNavigation(
+  section: RefObject<HTMLElement | null>,
   surface: RefObject<HTMLDivElement | null>,
   viewport: ViewportStore,
   onDrag: (action: NavAction | undefined) => void,
 ) {
   useEffect(() => {
-    const el = surface.current;
-    if (!el) return;
+    const el = section.current;
+    const view = surface.current;
+    if (!el || !view) return;
+    const inView = (e: Event) => e.target instanceof Node && view.contains(e.target);
+    const passing = (e: Event) =>
+      e.target instanceof Element && e.target.closest(`[${VIEW_PASSTHROUGH}]`) !== null;
     let drag:
       | { action: NavAction; x: number; y: number; ndc: [number, number]; id: number }
       | undefined;
     let lastMiddle = { time: -Infinity, x: 0, y: 0 };
 
     const ndcOf = (e: { clientX: number; clientY: number }): [number, number] => {
-      const r = el.getBoundingClientRect();
+      const r = view.getBoundingClientRect();
       return [((e.clientX - r.left) / r.width) * 2 - 1, 1 - ((e.clientY - r.top) / r.height) * 2];
     };
 
     const onPointerDown = (e: PointerEvent) => {
+      if (!inView(e) && !(passing(e) && e.button !== 0)) return;
       const s = viewport.getState();
       if (e.button === 1) {
         // No autoscroll or paste on the middle button.
@@ -551,10 +570,11 @@ function useNavigation(
       drag.x = e.clientX;
       drag.y = e.clientY;
       if (dx === 0 && dy === 0) return;
-      const { view, aspect, setView } = viewport.getState();
-      if (drag.action === 'orbit') setView(orbit(view, -dx * ORBIT_RATE, -dy * ORBIT_RATE));
-      else if (drag.action === 'pan') setView(pan(view, dx, dy, el.clientHeight));
-      else setView(zoomAt(view, dragZoomFactor(dy), drag.ndc, aspect));
+      const { view: current, aspect, setView } = viewport.getState();
+      const height = el.clientHeight;
+      if (drag.action === 'orbit') setView(orbit(current, -dx * ORBIT_RATE, -dy * ORBIT_RATE));
+      else if (drag.action === 'pan') setView(pan(current, dx, dy, height));
+      else setView(zoomAt(current, dragZoomFactor(dy), drag.ndc, aspect));
     };
 
     const onPointerUp = (e: PointerEvent) => {
@@ -564,15 +584,18 @@ function useNavigation(
     };
 
     const onWheel = (e: WheelEvent) => {
+      if (!inView(e) && !passing(e)) return;
       e.preventDefault();
-      const { view, aspect, preset, setView } = viewport.getState();
+      const { view: current, aspect, preset, setView } = viewport.getState();
       const result = wheelAction(preset, e);
-      if (result.action === 'zoom') setView(zoomAt(view, result.factor, ndcOf(e), aspect));
-      else setView(pan(view, result.dx, result.dy, el.clientHeight));
+      if (result.action === 'zoom') setView(zoomAt(current, result.factor, ndcOf(e), aspect));
+      else setView(pan(current, result.dx, result.dy, view.clientHeight));
     };
 
     // No context menu on the canvas yet; the right button can orbit (Onshape preset).
-    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+    const onContextMenu = (e: MouseEvent) => {
+      if (inView(e) || passing(e)) e.preventDefault();
+    };
 
     el.addEventListener('pointerdown', onPointerDown);
     el.addEventListener('pointermove', onPointerMove);
@@ -588,5 +611,5 @@ function useNavigation(
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('contextmenu', onContextMenu);
     };
-  }, [surface, viewport, onDrag]);
+  }, [section, surface, viewport, onDrag]);
 }

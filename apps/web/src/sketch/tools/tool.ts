@@ -15,7 +15,7 @@ import type {
   SketchEntityId,
   Vec2,
 } from '@extrudo/core';
-import type { Inference } from '@extrudo/sketch/inference';
+import type { Inference, PickFilter } from '@extrudo/sketch/inference';
 
 /** Lengths in mm, angles in degrees; unitless fields are counts (a polygon's sides). */
 export type FieldKind = 'length' | 'angle' | 'unitless';
@@ -46,6 +46,14 @@ export interface SketchEdit {
    * and drops those that would conflict or be redundant; the others must hold.
    */
   auto: ConstraintId[];
+  /**
+   * Constraints the user asked for (the constraint tools, P1-06). The host
+   * test-solves each and refuses the whole edit, with a message, if one
+   * conflicts or is redundant.
+   */
+  verify?: ConstraintId[];
+  /** Existing constraints to delete instead (Fix on something fixed frees it). */
+  remove?: ConstraintId[];
 }
 
 /** A circle (no `from`/`sweep`) or a counter-clockwise arc, radians. */
@@ -67,6 +75,10 @@ export interface ToolPreview {
   polylines?: Vec2[][];
   /** Construction curves the tool adds whatever the X toggle says (a polygon's circle). */
   constructionArcs?: PreviewArc[];
+  /** Sketch entities already picked (the constraint tools), drawn highlighted. */
+  picked?: SketchEntityId[];
+  /** The entity a click would pick, drawn in the pre-selection colour. */
+  hover?: SketchEntityId;
 }
 
 export interface ToolContext {
@@ -75,10 +87,21 @@ export interface ToolContext {
   newId(): string;
   /** Whether new curves are construction geometry (the X toggle, FR-SK-04). */
   construction(): boolean;
+  /**
+   * The entity under `cursor` that `accept` allows, within the snap distance
+   * of the last pointer (points first; `pickEntity`).
+   */
+  pick(cursor: Vec2, accept?: PickFilter): SketchEntityId | undefined;
 }
 
 export interface SketchTool {
   readonly id: string;
+  /**
+   * The tool picks existing entities rather than placing points (the
+   * constraint tools): the host runs no inference, so pointers carry the
+   * bare cursor and nothing snaps.
+   */
+  readonly picks?: boolean;
   /** One line for the status prompt: what the next click does. */
   prompt(): string;
   /** Where alignment guides start: the tool's last point. */

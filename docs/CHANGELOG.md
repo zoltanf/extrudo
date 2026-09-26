@@ -2,6 +2,17 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-26 · **P1-06** Constraints UI: 13 constraint tools (Coincident …
+  Symmetric) in a compact two-row Constraints group, with nine new icons.
+  They pick points and curves under the cursor (`pickEntity`), highlight
+  what a click would pick, and refuse a redundant or conflicting constraint
+  with a message; a solve that shrinks a curve to nothing counts as a
+  conflict (planegcs reports it as solved). Fix toggles. Glyphs next to the
+  geometry (placement in `tools/glyphs.ts`): hover highlights the
+  constrained entities, click selects, Delete removes (`removeFromSketch`,
+  one undo step), new ones flash; the wheel and middle/right drags pass
+  through them to the view. "Show constraints" palette toggle.
+  `curvePolyline` in core now shapes every drawn curve. ADR-0015.
 - 2026-09-26 · **P1-05** More drawing tools: regular polygons (inscribed,
   circumscribed across the flats, from an edge; equal edges with corners on
   a construction circle; a Sides heads-up field that persists), slots

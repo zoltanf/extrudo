@@ -26,6 +26,7 @@ import { useStore } from 'zustand';
 import { ExpressionInput } from '../../parameters/ExpressionInput';
 import { viewProject } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
+import { EntityHighlight } from './ConstraintGlyphs';
 import type { ToolHost } from './host';
 import type { HeadsUpField } from './tool';
 
@@ -79,6 +80,10 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
   const alignments = typed ? [] : (pointer?.alignments ?? []);
   const snapAt = snap && snap.kind !== 'grid' ? toScreen(snap.point) : undefined;
   const summary = useMemo(() => sketchSummary(doc, sketchId), [doc, sketchId]);
+  const data = useMemo(() => {
+    const feature = doc.features.find((f) => f.id === sketchId);
+    return feature ? readSketch(feature)?.data : undefined;
+  }, [doc, sketchId]);
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
 
   return (
@@ -203,6 +208,21 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
             p && <circle key={i} cx={p[0]} cy={p[1]} r={2.5} fill="var(--x-sketch)" />
           );
         })}
+        {data &&
+          preview?.picked?.map((id) => (
+            <EntityHighlight key={id} data={data} id={id} toScreen={toScreen} width={3.5} />
+          ))}
+        {data && preview?.hover && (
+          <g data-preview="hover">
+            <EntityHighlight
+              data={data}
+              id={preview.hover}
+              toScreen={toScreen}
+              color="var(--x-accent)"
+              width={2.5}
+            />
+          </g>
+        )}
         {snap && snapAt && <SnapGlyph kind={snap.kind} at={snapAt} />}
       </svg>
       {tool && fields.length > 0 && screen && (

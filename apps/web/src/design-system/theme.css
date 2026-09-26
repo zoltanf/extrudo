@@ -89,3 +89,21 @@
   fill: currentColor;
   fill-opacity: 0.22;
 }
+
+/* A constraint glyph that just appeared flashes once (UI spec §4, P1-06). */
+@media (prefers-reduced-motion: no-preference) {
+  .x-glyph-new {
+    animation: x-glyph-flash 700ms ease-out;
+  }
+}
+
+@keyframes x-glyph-flash {
+  0% {
+    transform: scale(1.6);
+    border-color: var(--x-accent);
+    background: var(--x-accent-soft);
+  }
+  100% {
+    transform: scale(1);
+  }
+}

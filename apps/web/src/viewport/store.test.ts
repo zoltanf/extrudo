@@ -101,7 +101,9 @@ describe('viewport store', () => {
     store.getState().setGrid(false);
     store.getState().setPreset('blender');
     store.getState().setOrigin('xy', true);
+    store.getState().setSketchConstraints(false);
     const again = createViewportStore({ preferences });
+    expect(again.getState().sketchConstraints).toBe(false);
     expect(again.getState().projection).toBe('orthographic');
     expect(again.getState().visualStyle).toBe('wireframe');
     expect(again.getState().grid).toBe(false);
@@ -113,6 +115,7 @@ describe('viewport store', () => {
     const { store } = setup({ stored: { viewport: { grid: false, origin: { z: false } } } });
     expect(store.getState().grid).toBe(false);
     expect(store.getState().visualStyle).toBe(DEFAULT_SETTINGS.visualStyle);
+    expect(store.getState().sketchConstraints).toBe(true);
     expect(store.getState().origin).toEqual({ ...DEFAULT_SETTINGS.origin, z: false });
   });
 });

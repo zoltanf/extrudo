@@ -204,7 +204,34 @@ export const TOOLS = {
     icon: 'coincident',
     category: 'sketch',
     hint: 'Join two points, or put a point on a curve.',
-    comesWith: 'P1-06',
+  },
+  collinear: {
+    id: 'collinear',
+    label: 'Collinear',
+    icon: 'collinear',
+    category: 'sketch',
+    hint: 'Put two lines on one straight line.',
+  },
+  concentric: {
+    id: 'concentric',
+    label: 'Concentric',
+    icon: 'concentric',
+    category: 'sketch',
+    hint: 'Give circles and arcs the same center.',
+  },
+  midpoint: {
+    id: 'midpoint',
+    label: 'Midpoint',
+    icon: 'midpoint',
+    category: 'sketch',
+    hint: 'Put a point at the middle of a line or an arc.',
+  },
+  fix: {
+    id: 'fix',
+    label: 'Fix/Unfix',
+    icon: 'fix',
+    category: 'sketch',
+    hint: 'Lock something in place, or free it again.',
   },
   parallel: {
     id: 'parallel',
@@ -212,7 +239,6 @@ export const TOOLS = {
     icon: 'parallel',
     category: 'sketch',
     hint: 'Make lines parallel.',
-    comesWith: 'P1-06',
   },
   perpendicular: {
     id: 'perpendicular',
@@ -220,7 +246,20 @@ export const TOOLS = {
     icon: 'perpendicular',
     category: 'sketch',
     hint: 'Make two lines meet at a right angle.',
-    comesWith: 'P1-06',
+  },
+  horizontal: {
+    id: 'horizontal',
+    label: 'Horizontal',
+    icon: 'horizontal',
+    category: 'sketch',
+    hint: 'Make a line horizontal, or line up two points.',
+  },
+  vertical: {
+    id: 'vertical',
+    label: 'Vertical',
+    icon: 'vertical',
+    category: 'sketch',
+    hint: 'Make a line vertical, or line up two points.',
   },
   tangent: {
     id: 'tangent',
@@ -228,7 +267,27 @@ export const TOOLS = {
     icon: 'tangent',
     category: 'sketch',
     hint: 'Make a curve touch another without a corner.',
-    comesWith: 'P1-06',
+  },
+  smooth: {
+    id: 'smooth',
+    label: 'Smooth',
+    icon: 'smooth',
+    category: 'sketch',
+    hint: 'Join curves with no jump in curvature (G2).',
+  },
+  equal: {
+    id: 'equal',
+    label: 'Equal',
+    icon: 'equal',
+    category: 'sketch',
+    hint: 'Give lines the same length, or circles the same radius.',
+  },
+  symmetric: {
+    id: 'symmetric',
+    label: 'Symmetric',
+    icon: 'symmetric',
+    category: 'sketch',
+    hint: 'Mirror two things about a line.',
   },
   extrude: {
     id: 'extrude',
@@ -371,6 +430,8 @@ export interface ToolGroup {
   /** Shown as buttons; the group's menu lists these plus `more`. */
   tools: ToolId[];
   more?: ToolId[];
+  /** Small icon-only buttons in two rows (UI spec §4: the row of constraint icons). */
+  compact?: boolean;
 }
 
 export type TabId = 'solid' | 'sketch' | 'print';
@@ -421,7 +482,25 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
         ],
       },
       { label: 'Modify', tools: ['trim', 'sketchOffset'] },
-      { label: 'Constraints', tools: ['coincident', 'parallel', 'perpendicular', 'tangent'] },
+      {
+        label: 'Constraints',
+        compact: true,
+        tools: [
+          'coincident',
+          'collinear',
+          'concentric',
+          'midpoint',
+          'fix',
+          'parallel',
+          'perpendicular',
+          'horizontal',
+          'vertical',
+          'tangent',
+          'smooth',
+          'equal',
+          'symmetric',
+        ],
+      },
       { label: 'Inspect', tools: ['measure'] },
     ],
   },

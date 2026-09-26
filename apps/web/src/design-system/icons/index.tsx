@@ -40,6 +40,15 @@ export const ICON_NAMES = [
   'parallel',
   'perpendicular',
   'tangent',
+  'collinear',
+  'concentric',
+  'midpoint',
+  'fix',
+  'horizontal',
+  'vertical',
+  'smooth',
+  'equal',
+  'symmetric',
   'extrude',
   'revolve',
   'fillet',
@@ -83,8 +92,8 @@ export const ICON_MARKUP: Readonly<Record<string, string>> = Object.fromEntries(
 export interface ToolIconProps {
   name: IconName;
   category: ToolCategory;
-  /** 24 toolbar · 18 timeline chips, dialog titles · 16 menus, browser tree. */
-  size?: 16 | 18 | 24;
+  /** 24 toolbar · 18 timeline chips, dialog titles, compact toolbar groups · 16 menus, browser tree · 14 constraint glyphs. */
+  size?: 14 | 16 | 18 | 24;
   /** Overrides the category colour: Finish Sketch is `success` green (UI spec §4). */
   color?: string;
   className?: string;

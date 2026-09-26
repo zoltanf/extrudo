@@ -12,11 +12,18 @@
  *    only if it neither conflicts nor is redundant.
  * 3. The sketch is solved, and the solved positions go into the same command.
  *
+ * Constraints a constraint tool asks for (`SketchEdit.verify`, P1-06) are
+ * test-solved before anything else: if one conflicts or is redundant, or the
+ * solve would shrink a curve to nothing (`collapses`), the edit is refused
+ * and the prompt says why.
+ *
  * Until the solver has loaded (a few ms after the first tool starts), edits
  * go in with every inferred constraint and unsolved.
  */
 import {
   addToSketch,
+  CONSTRAINT_LABELS,
+  type Command,
   CommandError,
   type ConstraintId,
   type DocumentStore,
@@ -25,21 +32,24 @@ import {
   type FeatureId,
   newId as randomId,
   readSketch,
+  removeFromSketch,
   type SessionStore,
   type SketchConstraint,
   type SketchData,
+  type SketchEntity,
   type SketchEntityId,
   type Vec2,
 } from '@extrudo/core';
-import type { SketchSolver } from '@extrudo/sketch';
+import type { SketchSolution, SketchSolver } from '@extrudo/sketch';
 // The inference entry point only: the solver's WASM glue stays in its own lazy chunk.
-import { type Inference, infer } from '@extrudo/sketch/inference';
+import { type Inference, infer, pickEntity } from '@extrudo/sketch/inference';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { gridStep } from '../../viewport/grid';
 import type { ViewportStore } from '../../viewport/store';
 import { dimensionValues } from '../values';
 import { ARC_CENTER_TOOL, ARC_TANGENT_TOOL, ARC_TOOL, ArcTool } from './arc';
 import { CIRCLE_2POINT_TOOL, CIRCLE_3POINT_TOOL, CIRCLE_TOOL, CircleTool } from './circle';
+import { CONSTRAINT_TOOLS, ConstraintTool } from './constrain';
 import { ELLIPSE_TOOL, EllipseTool } from './ellipse';
 import { isSketchTool } from './ids';
 import { LINE_TOOL, LineTool } from './line';
@@ -82,6 +92,9 @@ const FACTORIES: Record<string, (context: ToolContext) => SketchTool> = {
   [SLOT_OVERALL_TOOL]: (context) => new SlotTool(context, 'overall'),
   [ELLIPSE_TOOL]: (context) => new EllipseTool(context),
   [SPLINE_TOOL]: (context) => new SplineTool(context),
+  ...Object.fromEntries(
+    CONSTRAINT_TOOLS.map((id) => [id, (context: ToolContext) => new ConstraintTool(context, id)]),
+  ),
 };
 
 /** The tools the host can run (`ids.ts` lists the same IDs for the shell). */
@@ -169,6 +182,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   /** The document after our last commit: any other change (undo, redo) resets the tool. */
   let committed: ExtrudoDocument | undefined;
   let committing = false;
+  /** mm per pixel at the last pointer: picking reaches `SNAP_PIXELS` of them. */
+  let perPixel = 1;
 
   const bump = (patch: Partial<ToolHostState> = {}) =>
     state.setState((s) => ({ ...patch, revision: s.revision + 1 }));
@@ -184,6 +199,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     sketch: () => activeSketch()?.data ?? { entities: {}, constraints: {}, dimensions: {} },
     newId,
     construction: () => state.getState().construction,
+    pick: (cursor, accept) => pickEntity(context.sketch(), cursor, SNAP_PIXELS * perPixel, accept),
   };
 
   const create = (id: string) => {
@@ -209,18 +225,37 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
 
   const inferAt = (pointer: PlanePointer, tool: SketchTool): Inference => {
     const data = context.sketch();
+    perPixel = pointer.perPixel;
     return infer(data, pointer.point, {
       tolerance: SNAP_PIXELS * pointer.perPixel,
       anchor: tool.anchor(),
       grid: viewport.getState().snap ? gridStep(pointer.perPixel) : undefined,
-      enabled: pointer.infer,
+      enabled: pointer.infer && !tool.picks,
     });
+  };
+
+  /** Runs a command on the sketch; a `CommandError` becomes the prompt's error. */
+  const dispatch = <P>(command: Command<P>) => {
+    committing = true;
+    try {
+      store.getState().dispatch(command);
+      state.setState({ error: undefined });
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      state.setState({ error: error.message });
+    } finally {
+      committing = false;
+    }
   };
 
   const commit = (edit: SketchEdit | undefined) => {
     if (!edit) return;
     const sketch = activeSketch();
     if (!sketch) return;
+    if (edit.remove?.length) {
+      dispatch(removeFromSketch({ feature: sketch.id, constraints: edit.remove }));
+      return;
+    }
     const { doc } = store.getState();
     const evaluation = evaluateParameters(doc);
     const values = (d: SketchData) => dimensionValues(d, evaluation.evaluate);
@@ -235,6 +270,20 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       constraints: { ...sketch.data.constraints, ...constraints, ...extra },
       dimensions: { ...sketch.data.dimensions, ...edit.dimensions },
     });
+    for (const id of edit.verify ?? []) {
+      const c = edit.constraints[id];
+      if (!c || !solver) continue;
+      const trial = merged({});
+      const result = solver.check(trial, values(trial), id);
+      if (result.accepted) continue;
+      const label = CONSTRAINT_LABELS[c.type];
+      state.setState({
+        error: result.redundant.includes(id)
+          ? `${label} isn't needed: the sketch already holds it.`
+          : `${label} would conflict with the sketch's other constraints.`,
+      });
+      return;
+    }
     for (const id of edit.auto) {
       const c = edit.constraints[id];
       if (!c) continue;
@@ -248,6 +297,13 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     if (solver) {
       const candidate = merged({});
       const { solution } = solver.solve(candidate, values(candidate));
+      const asked = edit.verify?.[0] && edit.constraints[edit.verify[0]];
+      if (asked && collapses(candidate, solution)) {
+        state.setState({
+          error: `${CONSTRAINT_LABELS[asked.type]} would conflict with the sketch's other constraints.`,
+        });
+        return;
+      }
       entities = { ...edit.entities };
       const existing = sketch.data.entities;
       for (const [key, p] of Object.entries(solution.points)) {
@@ -266,25 +322,16 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       }
     }
 
-    committing = true;
-    try {
-      store.getState().dispatch(
-        addToSketch({
-          feature: sketch.id,
-          entities,
-          constraints,
-          dimensions: edit.dimensions,
-          points,
-          radii,
-        }),
-      );
-      state.setState({ error: undefined });
-    } catch (error) {
-      if (!(error instanceof CommandError)) throw error;
-      state.setState({ error: error.message });
-    } finally {
-      committing = false;
-    }
+    dispatch(
+      addToSketch({
+        feature: sketch.id,
+        entities,
+        constraints,
+        dimensions: edit.dimensions,
+        points,
+        radii,
+      }),
+    );
   };
 
   const run = (action: (tool: SketchTool) => SketchEdit | undefined) => {
@@ -325,7 +372,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     click(pointer) {
       run((tool) => {
         const inference = inferAt(pointer, tool);
-        state.setState({ pointer: inference, screen: pointer.screen });
+        // A new click answers the last refusal.
+        state.setState({ pointer: inference, screen: pointer.screen, error: undefined });
         return tool.click(inference);
       });
     },
@@ -394,4 +442,55 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   });
 
   return host;
+}
+
+/** Below this size (mm) a curve has collapsed: a solve that shrinks one this far failed in all but name. */
+const COLLAPSED = 1e-3;
+
+/**
+ * Whether solving shrinks a line, circle, arc or ellipse of `before` to
+ * almost nothing. planegcs satisfies some contradictions that way (two
+ * horizontal lines made perpendicular become two dots) and reports success;
+ * a constraint the user asked for that does this is refused as a conflict.
+ */
+export function collapses(before: SketchData, solution: SketchSolution): boolean {
+  const after: SketchData = { ...before, entities: { ...before.entities } };
+  const entities = after.entities as Record<string, SketchEntity>;
+  for (const [id, p] of Object.entries(solution.points)) {
+    const e = entities[id];
+    if (e?.type === 'point') entities[id] = { ...e, x: p.x, y: p.y };
+  }
+  for (const [id, radius] of Object.entries(solution.radii)) {
+    const e = entities[id];
+    if (e?.type === 'circle') entities[id] = { ...e, radius };
+  }
+  const size = (data: SketchData, e: SketchEntity): number | undefined => {
+    const at = (ref: SketchEntityId) => {
+      const p = data.entities[ref];
+      return p?.type === 'point' ? p : undefined;
+    };
+    const span = (a: SketchEntityId, b: SketchEntityId) => {
+      const p = at(a);
+      const q = at(b);
+      return p && q ? Math.hypot(q.x - p.x, q.y - p.y) : undefined;
+    };
+    switch (e.type) {
+      case 'line':
+        return span(e.start, e.end);
+      case 'circle':
+        return e.radius;
+      case 'arc':
+        return span(e.center, e.start);
+      case 'ellipse':
+        return span(e.center, e.minor);
+      default:
+        return undefined;
+    }
+  };
+  for (const [id, e] of Object.entries(before.entities)) {
+    const was = size(before, e);
+    const now = size(after, entities[id] ?? e);
+    if (was !== undefined && now !== undefined && was >= COLLAPSED && now < COLLAPSED) return true;
+  }
+  return false;
 }

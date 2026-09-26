@@ -26,4 +26,3 @@ export {
   type SolveResult,
   type Vec2,
 } from './solver/solver';
-export { tangentReversed } from './solver/tangent';

@@ -1,13 +1,9 @@
 import {
-  ellipsePoint,
-  ellipseShape,
-  fitSpline,
+  CIRCLE_SEGMENTS,
+  curvePolyline,
   type SketchData,
-  type SketchEntityId,
   type SketchFrame,
   sketchToWorld,
-  splinePolyline,
-  type Vec2,
 } from '@extrudo/core';
 import type { Bounds } from './store';
 
@@ -29,74 +25,31 @@ export interface SketchSegments {
   bounds: Bounds | undefined;
 }
 
-/** Segments for a full circle; arcs use a share of these. */
-export const CIRCLE_SEGMENTS = 96;
+export { CIRCLE_SEGMENTS };
 
 /**
  * A sketch as world-space line segments and points (P1-01). Circles, arcs,
- * ellipses and splines become polylines; an arc runs counter-clockwise from
- * its start to its end point, with the radius of its start point.
+ * ellipses and splines become polylines (`curvePolyline`); an arc runs
+ * counter-clockwise from its start to its end point, with the radius of its
+ * start point.
  */
 export function sketchSegments(data: SketchData, frame: SketchFrame): SketchSegments {
   const solid: number[] = [];
   const construction: number[] = [];
   const points: number[] = [];
-  const at = (id: SketchEntityId): Vec2 | undefined => {
-    const p = data.entities[id];
-    return p?.type === 'point' ? [p.x, p.y] : undefined;
-  };
-  const push = (out: number[], a: Vec2, b: Vec2) => {
-    out.push(...sketchToWorld(frame, a), ...sketchToWorld(frame, b));
-  };
-  const polyline = (out: number[], center: Vec2, radius: number, from: number, sweep: number) => {
-    const n = Math.max(2, Math.ceil((Math.abs(sweep) / (2 * Math.PI)) * CIRCLE_SEGMENTS));
-    let prev: Vec2 = [center[0] + radius * Math.cos(from), center[1] + radius * Math.sin(from)];
-    for (let i = 1; i <= n; i++) {
-      const t = from + (sweep * i) / n;
-      const next: Vec2 = [center[0] + radius * Math.cos(t), center[1] + radius * Math.sin(t)];
-      push(out, prev, next);
-      prev = next;
-    }
-  };
-
   for (const entity of Object.values(data.entities)) {
     if (entity.type === 'point') {
       points.push(...sketchToWorld(frame, [entity.x, entity.y]));
       continue;
     }
+    const line = curvePolyline(data, entity);
+    if (!line) continue;
     const out = entity.construction ? construction : solid;
-    if (entity.type === 'line') {
-      const a = at(entity.start);
-      const b = at(entity.end);
-      if (a && b) push(out, a, b);
-    } else if (entity.type === 'circle') {
-      const c = at(entity.center);
-      if (c) polyline(out, c, entity.radius, 0, 2 * Math.PI);
-    } else if (entity.type === 'ellipse') {
-      const c = at(entity.center);
-      const major = at(entity.major);
-      const minor = at(entity.minor);
-      if (!c || !major || !minor) continue;
-      const shape = ellipseShape(c, major, minor);
-      for (let i = 0; i < CIRCLE_SEGMENTS; i++) {
-        const t = (2 * Math.PI) / CIRCLE_SEGMENTS;
-        push(out, ellipsePoint(shape, i * t), ellipsePoint(shape, (i + 1) * t));
-      }
-    } else if (entity.type === 'spline') {
-      const fit = entity.points.map(at);
-      if (fit.some((p) => !p)) continue;
-      const line = splinePolyline(fitSpline(fit as Vec2[]));
-      for (let i = 1; i < line.length; i++) push(out, line[i - 1] as Vec2, line[i] as Vec2);
-    } else {
-      const c = at(entity.center);
-      const s = at(entity.start);
-      const e = at(entity.end);
-      if (!c || !s || !e) continue;
-      const from = Math.atan2(s[1] - c[1], s[0] - c[0]);
-      const to = Math.atan2(e[1] - c[1], e[0] - c[0]);
-      let sweep = (to - from) % (2 * Math.PI);
-      if (sweep <= 1e-12) sweep += 2 * Math.PI;
-      polyline(out, c, Math.hypot(s[0] - c[0], s[1] - c[1]), from, sweep);
+    let prev = sketchToWorld(frame, line[0] as [number, number]);
+    for (let i = 1; i < line.length; i++) {
+      const next = sketchToWorld(frame, line[i] as [number, number]);
+      out.push(...prev, ...next);
+      prev = next;
     }
   }
 

@@ -27,8 +27,9 @@ import {
   startCreateSketch,
 } from '../sketch/mode';
 import { PlanePrompt, SketchPalette } from '../sketch/panels';
+import { deleteSelection } from '../sketch/selection';
 import type { ToolHost } from '../sketch/tools/host';
-import { isSketchTool } from '../sketch/tools/ids';
+import { isConstraintTool, isSketchTool } from '../sketch/tools/ids';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
@@ -48,6 +49,7 @@ const Viewport = lazy(() => import('../viewport/Viewport').then((m) => ({ defaul
 interface DrawingTools {
   host: ToolHost;
   Overlay: typeof import('../sketch/tools/SketchOverlay').SketchOverlay;
+  Glyphs: typeof import('../sketch/tools/ConstraintGlyphs').ConstraintGlyphs;
 }
 
 export interface AppShellProps {
@@ -82,6 +84,7 @@ export function AppShell({
   const hover = useStore(session, (s) => s.hover);
   const picking = activeTool === CREATE_SKETCH;
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
+  const showConstraints = useStore(viewport, (s) => s.sketchConstraints);
 
   const stores = useMemo<SketchModeStores>(
     () => ({ store, session, viewport }),
@@ -97,18 +100,20 @@ export function AppShell({
   useEffect(() => {
     let h: ToolHost | undefined;
     let cancelled = false;
-    Promise.all([import('../sketch/tools/host'), import('../sketch/tools/SketchOverlay')]).then(
-      ([{ createToolHost }, { SketchOverlay }]) => {
-        if (cancelled) return;
-        h = createToolHost({
-          store,
-          session,
-          viewport,
-          loadSolver: () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver()),
-        });
-        setTools({ host: h, Overlay: SketchOverlay });
-      },
-    );
+    Promise.all([
+      import('../sketch/tools/host'),
+      import('../sketch/tools/SketchOverlay'),
+      import('../sketch/tools/ConstraintGlyphs'),
+    ]).then(([{ createToolHost }, { SketchOverlay }, { ConstraintGlyphs }]) => {
+      if (cancelled) return;
+      h = createToolHost({
+        store,
+        session,
+        viewport,
+        loadSolver: () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver()),
+      });
+      setTools({ host: h, Overlay: SketchOverlay, Glyphs: ConstraintGlyphs });
+    });
     return () => {
       cancelled = true;
       h?.dispose();
@@ -136,8 +141,16 @@ export function AppShell({
             { keys: 'Enter', run: () => host.enter() },
           ]
         : []),
+      // Selected constraint glyphs (P1-06).
+      ...(mode === 'sketch' && !drawing
+        ? [
+            { keys: 'Delete', run: () => deleteSelection(stores) },
+            { keys: 'Backspace', run: () => deleteSelection(stores) },
+            { keys: 'Escape', run: () => session.getState().clearSelection() },
+          ]
+        : []),
     ],
-    [store, stores, picking, mode, drawing, host],
+    [store, session, stores, picking, mode, drawing, host],
   );
   useShortcuts(shortcuts);
 
@@ -176,20 +189,28 @@ export function AppShell({
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
   const sketchPlane = sketches.find((s) => s.active)?.frame;
 
-  const sketchInput = useMemo<SketchInput | undefined>(
-    () =>
-      drawing && host && sketchPlane
-        ? {
-            frame: sketchPlane,
-            onMove: host.move,
-            onClick: host.click,
-            onDragStart: host.dragStart,
-            onDragEnd: host.dragEnd,
-            onLeave: host.leave,
-          }
-        : undefined,
-    [drawing, host, sketchPlane],
-  );
+  // A drawing tool takes the pointer; with none running, a click in the view clears the selection.
+  const sketchInput = useMemo<SketchInput | undefined>(() => {
+    if (!sketchPlane) return undefined;
+    if (drawing && host) {
+      return {
+        frame: sketchPlane,
+        onMove: host.move,
+        onClick: host.click,
+        onDragStart: host.dragStart,
+        onDragEnd: host.dragEnd,
+        onLeave: host.leave,
+        cursor: isConstraintTool(activeTool) ? 'default' : 'crosshair',
+      };
+    }
+    return {
+      frame: sketchPlane,
+      onMove: () => {},
+      onClick: () => session.getState().clearSelection(),
+      onLeave: () => {},
+      cursor: 'default',
+    };
+  }, [drawing, host, sketchPlane, activeTool, session]);
 
   const planePicker = useMemo<PlanePicker | undefined>(
     () =>
@@ -264,6 +285,16 @@ export function AppShell({
             planePicker={planePicker}
             sketchInput={sketchInput}
           >
+            {showConstraints && tools && activeSketchId && sketchPlane && (
+              <tools.Glyphs
+                store={store}
+                session={session}
+                viewport={viewport}
+                sketchId={activeSketchId}
+                frame={sketchPlane}
+                interactive={!drawing}
+              />
+            )}
             {drawing && tools && activeSketchId && sketchPlane && (
               <tools.Overlay
                 host={tools.host}

@@ -71,16 +71,33 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
               aria-label={group.label}
               className="m-0 flex flex-col items-center border-0 p-0"
             >
-              <div className="flex gap-0.5">
-                {group.tools.map((id) => (
-                  <ToolButton
-                    key={id}
-                    tool={TOOLS[id]}
-                    pressed={activeTool === id}
-                    onRun={() => onRun(id)}
-                  />
-                ))}
-              </div>
+              {group.compact ? (
+                <div
+                  className="grid grid-flow-col gap-px"
+                  style={{ gridTemplateRows: 'repeat(2, 26px)' }}
+                >
+                  {group.tools.map((id) => (
+                    <ToolButton
+                      key={id}
+                      tool={TOOLS[id]}
+                      pressed={activeTool === id}
+                      onRun={() => onRun(id)}
+                      compact
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="flex gap-0.5">
+                  {group.tools.map((id) => (
+                    <ToolButton
+                      key={id}
+                      tool={TOOLS[id]}
+                      pressed={activeTool === id}
+                      onRun={() => onRun(id)}
+                    />
+                  ))}
+                </div>
+              )}
               <Menu
                 label={`${group.label} tools`}
                 trigger={
@@ -156,14 +173,42 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
   );
 }
 
-function ToolButton({ tool, pressed, onRun }: { tool: Tool; pressed: boolean; onRun(): void }) {
+function ToolButton({
+  tool,
+  pressed,
+  onRun,
+  compact = false,
+}: {
+  tool: Tool;
+  pressed: boolean;
+  onRun(): void;
+  /** An icon-only 26 px button, labelled for assistive tech. */
+  compact?: boolean;
+}) {
   const unavailable = tool.comesWith !== undefined;
+  const tooltip = {
+    label: tool.label,
+    shortcut: tool.shortcut && shortcutLabel(tool.shortcut),
+    hint: unavailable ? `${tool.hint} Arrives with ${tool.comesWith}.` : tool.hint,
+  };
+  if (compact) {
+    return (
+      <Tooltip {...tooltip}>
+        <button
+          type="button"
+          aria-label={tool.label}
+          aria-disabled={unavailable || undefined}
+          aria-pressed={pressed || undefined}
+          onClick={unavailable ? undefined : onRun}
+          className={`grid size-[26px] place-items-center rounded-control transition-colors duration-(--x-fast) hover:bg-accent-soft aria-pressed:bg-accent-soft aria-disabled:cursor-default aria-disabled:hover:bg-transparent ${unavailable ? 'opacity-55' : ''}`}
+        >
+          <ToolIcon name={tool.icon} category={tool.category} size={18} />
+        </button>
+      </Tooltip>
+    );
+  }
   return (
-    <Tooltip
-      label={tool.label}
-      shortcut={tool.shortcut && shortcutLabel(tool.shortcut)}
-      hint={unavailable ? `${tool.hint} Arrives with ${tool.comesWith}.` : tool.hint}
-    >
+    <Tooltip {...tooltip}>
       <ToolTile
         aria-disabled={unavailable || undefined}
         aria-pressed={pressed || undefined}

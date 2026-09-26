@@ -159,7 +159,7 @@ Benchmark **B1** buildable.
 - [x] **P1-05 More drawing tools.** Polygon (3 modes), slot (2 modes), ellipse,
   fit-point spline.
   *AC:* FR-SK-02 complete, FR-SK-03 (fit-point).
-- [ ] **P1-06 Constraints UI.** Constraint tools in the toolbar and palette;
+- [x] **P1-06 Constraints UI.** Constraint tools in the toolbar and palette;
   glyph rendering next to geometry (with a hover pair-highlight); select and
   delete constraints; "show constraints" toggle.
   *AC:* FR-SK-07.

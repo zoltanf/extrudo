@@ -10,7 +10,7 @@ is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
 **Status (2026-09-26):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01 to P1-05 done. ADR-0001 chose
+P1-01 to P1-06 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -64,8 +64,15 @@ entity types: `ellipse` (center, major and minor points; the solver maps it
 with a solver-only focus and ordinary constraints) and fit-point `spline`
 (points only; `fitSpline` in `core/src/sketch/curves.ts` interpolates the
 B-spline). The drawing tools and the overlay are a lazy chunk loaded when a
-project opens; `sketch/tools/ids.ts` lists the tool IDs for the shell. Next:
-**P1-06** (constraints UI). See `docs/03-roadmap.md`.
+project opens; `sketch/tools/ids.ts` lists the tool IDs for the shell.
+ADR-0015 (P1-06) added the 13 constraint tools (`sketch/tools/constrain.ts`,
+tools with `picks: true` that pick entities via `ToolContext.pick`); the host
+test-solves a user's constraint (`SketchEdit.verify`) and refuses a redundant,
+conflicting or curve-collapsing one; glyphs (`tools/glyphs.ts` placement,
+`ConstraintGlyphs.tsx` buttons over the view, `data-view-passthrough` lets
+navigation through) select into the session as kind `constraint`, and Delete
+runs `removeFromSketch`. Next: **P1-07** (dimensions). See
+`docs/03-roadmap.md`.
 
 ## Commands
 
@@ -94,7 +101,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -254,6 +261,14 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   build** (converges without moving, wrong DOF count; P1-05). Ellipses use
   ordinary constraints instead (ADR-0014). Vitest swallows `console.log` in
   probe tests: write to a file in the scratchpad to see output.
+- **planegcs "solves" some contradictions by collapsing geometry** (P1-06):
+  two horizontal lines made perpendicular become dots 0.0001 mm long, with
+  `ok: true`, and `check()` accepts the constraint. The host refuses a user
+  constraint whose solve shrinks a curve below 1 µm (`collapses` in
+  `sketch/tools/host.ts`).
+- **The Claude browser pane freezes its page while the pane is hidden**:
+  input times out ("Timed out getting the tab ready") and scripts hang for
+  45 s. That's not an app hang; reload, or check the flow in Playwright.
 - **Don't render tool UI through `React.lazy`**: a suspended boundary is held
   back for up to ~300 ms, and keys typed into the heads-up box in that time
   are lost (flaky e2e). Load the module and render the component directly.

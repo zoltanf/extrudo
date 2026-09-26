@@ -4,7 +4,10 @@
  * draw them from here, so a spline is the same curve on screen and in the
  * model: the kernel gets these poles and knots, not the fit points.
  */
+
+import type { SketchEntityId } from '../ids';
 import type { Vec2 } from './planes';
+import type { SketchData, SketchEntity } from './schema';
 
 // Ellipses ---------------------------------------------------------------------
 
@@ -127,6 +130,75 @@ export function splinePolyline(spline: BSpline, perSpan = 16): Vec2[] {
     const u1 = distinct[i] as number;
     for (let k = 1; k <= perSpan; k++)
       out.push(splinePoint(spline, u0 + ((u1 - u0) * k) / perSpan));
+  }
+  return out;
+}
+
+// Polylines --------------------------------------------------------------------
+
+/** Segments for a full circle or ellipse; arcs use a share of these. */
+export const CIRCLE_SEGMENTS = 96;
+
+/**
+ * A curve of a sketch as a polyline in sketch coordinates: what the viewport
+ * draws, and what picking and highlights (P1-06) measure against. A circle
+ * or an ellipse ends on its first point; an arc runs counter-clockwise from
+ * its start, with the radius of its start point. Undefined for points and
+ * for curves whose points are missing.
+ */
+export function curvePolyline(data: SketchData, entity: SketchEntity): Vec2[] | undefined {
+  const at = (id: SketchEntityId): Vec2 | undefined => {
+    const p = data.entities[id];
+    return p?.type === 'point' ? [p.x, p.y] : undefined;
+  };
+  switch (entity.type) {
+    case 'point':
+      return undefined;
+    case 'line': {
+      const a = at(entity.start);
+      const b = at(entity.end);
+      return a && b ? [a, b] : undefined;
+    }
+    case 'circle': {
+      const c = at(entity.center);
+      return c && circular(c, entity.radius, 0, 2 * Math.PI);
+    }
+    case 'arc': {
+      const c = at(entity.center);
+      const s = at(entity.start);
+      const e = at(entity.end);
+      if (!c || !s || !e) return undefined;
+      const from = Math.atan2(s[1] - c[1], s[0] - c[0]);
+      const to = Math.atan2(e[1] - c[1], e[0] - c[0]);
+      let sweep = (to - from) % (2 * Math.PI);
+      if (sweep <= 1e-12) sweep += 2 * Math.PI;
+      return circular(c, Math.hypot(s[0] - c[0], s[1] - c[1]), from, sweep);
+    }
+    case 'ellipse': {
+      const c = at(entity.center);
+      const major = at(entity.major);
+      const minor = at(entity.minor);
+      if (!c || !major || !minor) return undefined;
+      const shape = ellipseShape(c, major, minor);
+      const out: Vec2[] = [];
+      for (let i = 0; i <= CIRCLE_SEGMENTS; i++) {
+        out.push(ellipsePoint(shape, (2 * Math.PI * i) / CIRCLE_SEGMENTS));
+      }
+      return out;
+    }
+    case 'spline': {
+      const fit = entity.points.map(at);
+      return fit.every((p) => p !== undefined) ? splinePolyline(fitSpline(fit)) : undefined;
+    }
+  }
+}
+
+function circular(center: Vec2, radius: number, from: number, sweep: number): Vec2[] {
+  const n = Math.max(2, Math.ceil((Math.abs(sweep) / (2 * Math.PI)) * CIRCLE_SEGMENTS));
+  const out: Vec2[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = from + (sweep * i) / n;
+    out.push([center[0] + radius * Math.cos(t), center[1] + radius * Math.sin(t)]);
   }
   return out;
 }

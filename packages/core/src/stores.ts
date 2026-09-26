@@ -84,9 +84,12 @@ export function createDocumentStore(
   }));
 }
 
-/** Something that can be selected or hovered: geometry, a feature, a parameter. */
+/**
+ * Something that can be selected or hovered: geometry, a feature, a
+ * parameter, or a constraint or dimension of the open sketch (P1-06).
+ */
 export interface SelectionItem {
-  kind: GeomRefKind | 'feature' | 'parameter';
+  kind: GeomRefKind | 'feature' | 'parameter' | 'constraint' | 'dimension';
   id: string;
 }
 

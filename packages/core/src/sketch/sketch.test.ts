@@ -6,7 +6,7 @@ import type { ConstraintId, DimensionId, FeatureId, SketchEntityId } from '../id
 import { DocumentSchema } from '../schema';
 import { createDocumentStore } from '../stores';
 import { sampleDocument } from '../testing';
-import { addToSketch, createSketch } from './commands';
+import { addToSketch, createSketch, removeFromSketch } from './commands';
 import {
   emptySketchData,
   readSketch,
@@ -22,7 +22,7 @@ import {
   type Vec3,
   worldToSketch,
 } from './planes';
-import { SketchDataSchema, sketchIssues } from './schema';
+import { constraintRefs, SketchDataSchema, sketchIssues } from './schema';
 
 const fid = (id: string) => id as FeatureId;
 
@@ -460,5 +460,86 @@ describe('addToSketch', () => {
       '"l" isn\'t a point of this sketch.',
     );
     expect(add({}, 'nope')).toThrow('There\'s no sketch "nope".');
+  });
+});
+
+describe('removeFromSketch', () => {
+  const eid = (id: string) => id as SketchEntityId;
+  const doc = () =>
+    applyCommand(
+      applyCommand(
+        createDocument(),
+        createSketch({ id: fid('s1'), plane: originPlaneRef('origin:xy') }),
+      ).doc,
+      addToSketch({
+        feature: fid('s1'),
+        entities: {
+          [eid('a')]: { type: 'point', x: 0, y: 0 },
+          [eid('b')]: { type: 'point', x: 10, y: 0 },
+          [eid('l')]: { type: 'line', start: eid('a'), end: eid('b'), construction: false },
+        },
+        constraints: {
+          ['h' as ConstraintId]: { type: 'horizontal', a: eid('l') },
+          ['f' as ConstraintId]: { type: 'fix', entity: eid('a') },
+        },
+        dimensions: {
+          ['d' as DimensionId]: {
+            type: 'distance',
+            orientation: 'aligned',
+            a: eid('l'),
+            expr: '10',
+            driven: false,
+          },
+        },
+      }),
+    ).doc;
+  const data = (d: ReturnType<typeof doc>) => {
+    const f = d.features[0];
+    return f ? readSketch(f)?.data : undefined;
+  };
+
+  it('removes constraints and dimensions and leaves the geometry alone', () => {
+    const result = applyCommand(
+      doc(),
+      removeFromSketch({
+        feature: fid('s1'),
+        constraints: ['h' as ConstraintId],
+        dimensions: ['d' as DimensionId],
+      }),
+    );
+    expect(Object.keys(data(result.doc)?.constraints ?? {})).toEqual(['f']);
+    expect(data(result.doc)?.dimensions).toEqual({});
+    expect(data(result.doc)?.entities).toEqual(data(doc())?.entities);
+    expect(result.doc.features[0]).not.toBe(doc().features[0]);
+  });
+
+  it('refuses IDs the sketch does not have, changing nothing', () => {
+    const remove = (payload: Omit<Parameters<typeof removeFromSketch>[0], 'feature'>) => () =>
+      applyCommand(doc(), removeFromSketch({ feature: fid('s1'), ...payload }));
+    expect(remove({ constraints: ['h' as ConstraintId, 'zz' as ConstraintId] })).toThrow(
+      'The sketch has no constraint "zz".',
+    );
+    expect(remove({ dimensions: ['h' as DimensionId] })).toThrow(
+      'The sketch has no dimension "h".',
+    );
+  });
+});
+
+describe('constraintRefs', () => {
+  const e = (id: string) => id as SketchEntityId;
+  it('lists what each constraint refers to', () => {
+    expect(constraintRefs({ type: 'parallel', a: e('l1'), b: e('l2') })).toEqual(['l1', 'l2']);
+    expect(constraintRefs({ type: 'pointOnCurve', point: e('p'), curve: e('c') })).toEqual([
+      'p',
+      'c',
+    ]);
+    expect(constraintRefs({ type: 'horizontal', a: e('l') })).toEqual(['l']);
+    expect(constraintRefs({ type: 'vertical', a: e('p'), b: e('q') })).toEqual(['p', 'q']);
+    expect(constraintRefs({ type: 'fix', entity: e('p') })).toEqual(['p']);
+    expect(constraintRefs({ type: 'symmetric', a: e('p'), b: e('q'), axis: e('l') })).toEqual([
+      'p',
+      'q',
+      'l',
+    ]);
   });
 });

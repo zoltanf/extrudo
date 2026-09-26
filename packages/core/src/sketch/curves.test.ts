@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { ellipsePoint, ellipseShape, fitSpline, splinePoint, splinePolyline } from './curves';
+import {
+  CIRCLE_SEGMENTS,
+  curvePolyline,
+  ellipsePoint,
+  ellipseShape,
+  fitSpline,
+  splinePoint,
+  splinePolyline,
+} from './curves';
 import type { Vec2 } from './planes';
+import type { SketchData } from './schema';
 
 const dist = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const close = (a: Vec2, b: Vec2, eps = 1e-9) => {
@@ -97,5 +106,57 @@ describe('fitSpline', () => {
     // Five points of a cubic: one inner knot, so two spans.
     expect(polyline).toHaveLength(21);
     close(polyline[20] as Vec2, [12, 30], 1e-7);
+  });
+});
+
+describe('curvePolyline', () => {
+  const data = {
+    entities: {
+      c: { type: 'point', x: 0, y: 0 },
+      s: { type: 'point', x: 10, y: 0 },
+      e: { type: 'point', x: 0, y: 10 },
+      m: { type: 'point', x: 0, y: 5 },
+      arc: { type: 'arc', center: 'c', start: 's', end: 'e', construction: false },
+      line: { type: 'line', start: 's', end: 'e', construction: false },
+      circle: { type: 'circle', center: 'c', radius: 3, construction: false },
+      oval: { type: 'ellipse', center: 'c', major: 's', minor: 'm', construction: false },
+      spline: { type: 'spline', points: ['s', 'm', 'e'], construction: false },
+      broken: { type: 'line', start: 's', end: 'zz', construction: false },
+    },
+    constraints: {},
+    dimensions: {},
+  } as unknown as SketchData;
+  const of = (id: string) => {
+    const entity = data.entities[id as keyof typeof data.entities];
+    return entity && curvePolyline(data, entity);
+  };
+
+  it('gives lines their two points and arcs a counter-clockwise run', () => {
+    expect(of('line')).toEqual([
+      [10, 0],
+      [0, 10],
+    ]);
+    const arc = of('arc') ?? [];
+    expect(arc).toHaveLength(CIRCLE_SEGMENTS / 4 + 1);
+    close(arc[0] as Vec2, [10, 0]);
+    close(arc.at(-1) as Vec2, [0, 10]);
+    close(arc[CIRCLE_SEGMENTS / 8] as Vec2, [10 * Math.SQRT1_2, 10 * Math.SQRT1_2]);
+  });
+
+  it('closes circles and ellipses on their first point', () => {
+    for (const id of ['circle', 'oval']) {
+      const line = of(id) ?? [];
+      expect(line).toHaveLength(CIRCLE_SEGMENTS + 1);
+      close(line[0] as Vec2, line.at(-1) as Vec2);
+    }
+    close((of('oval') ?? [])[CIRCLE_SEGMENTS / 4] as Vec2, [0, 5]);
+  });
+
+  it('runs splines through their fit points, and skips points and broken curves', () => {
+    const spline = of('spline') ?? [];
+    close(spline[0] as Vec2, [10, 0]);
+    close(spline.at(-1) as Vec2, [0, 10]);
+    expect(of('c')).toBeUndefined();
+    expect(of('broken')).toBeUndefined();
   });
 });

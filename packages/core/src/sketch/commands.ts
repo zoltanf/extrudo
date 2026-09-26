@@ -1,7 +1,7 @@
 /**
- * Sketch commands: creating a sketch (P1-01) and adding to its content
- * (P1-02). Removing and editing entities come with the modify tools and
- * constraint UI (P1-06 onwards).
+ * Sketch commands: creating a sketch (P1-01), adding to its content (P1-02)
+ * and removing constraints and dimensions (P1-06). Removing and editing
+ * entities come with selection and the modify tools (P1-09 onwards).
  */
 import { CommandError, type DocumentDraft, defineCommand } from '../commands';
 import { insertFeature } from '../document-commands';
@@ -99,6 +99,35 @@ export const addToSketch = defineCommand<AddToSketchPayload>(
     Object.assign(data.dimensions, dimensions);
     const issue = sketchIssues(data)[0];
     if (issue) throw new CommandError(`Can't add that: ${issue.path.join('.')} ${issue.message}.`);
+  },
+);
+
+export interface RemoveFromSketchPayload {
+  feature: FeatureId;
+  constraints?: readonly ConstraintId[];
+  dimensions?: readonly DimensionId[];
+}
+
+/**
+ * Removes constraints and dimensions from a sketch (P1-06: deleting a
+ * selected constraint glyph, Fix toggled off). The geometry stays where it
+ * is: it already satisfies what is left. Every ID must exist, or nothing
+ * changes.
+ */
+export const removeFromSketch = defineCommand<RemoveFromSketchPayload>(
+  'sketch.remove',
+  'Delete',
+  (draft, { feature, constraints = [], dimensions = [] }) => {
+    const data = sketchDraft(draft, feature);
+    for (const id of constraints) {
+      if (!(id in data.constraints))
+        throw new CommandError(`The sketch has no constraint "${id}".`);
+    }
+    for (const id of dimensions) {
+      if (!(id in data.dimensions)) throw new CommandError(`The sketch has no dimension "${id}".`);
+    }
+    for (const id of constraints) delete data.constraints[id];
+    for (const id of dimensions) delete data.dimensions[id];
   },
 );
 
