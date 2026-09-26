@@ -266,6 +266,13 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   `ok: true`, and `check()` accepts the constraint. The host refuses a user
   constraint whose solve shrinks a curve below 1 µm (`collapses` in
   `sketch/tools/host.ts`).
+- **planegcs names redundant equations, not constraints** (P1-06): a
+  multi-equation constraint (collinear, some midpoints) can be partly
+  redundant and still remove a freedom, and duplicates get their redundancy
+  spread over both. `SketchSolver.check` therefore decides "not needed" by
+  comparing DOF with and without the constraint whenever any redundancy
+  shows (`#dofWithout`); reports have `redundant` (all equations) and
+  `partlyRedundant`.
 - **The Claude browser pane freezes its page while the pane is hidden**:
   input times out ("Timed out getting the tab ready") and scripts hang for
   45 s. That's not an app hang; reload, or check the flow in Playwright.

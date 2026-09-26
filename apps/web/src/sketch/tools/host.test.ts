@@ -143,6 +143,7 @@ describe('line tool through the host', () => {
           dof: 0,
           conflicting: [],
           redundant: [],
+          partlyRedundant: [],
         };
       },
       solve: () => ({
@@ -150,6 +151,7 @@ describe('line tool through the host', () => {
         dof: 0,
         conflicting: [],
         redundant: [],
+        partlyRedundant: [],
         components: [],
         skipped: [],
         solution: { points: {}, radii: {} },

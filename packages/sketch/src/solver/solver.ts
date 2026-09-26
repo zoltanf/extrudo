@@ -49,8 +49,15 @@ export interface ComponentReport {
   dof: number;
   /** Constraints and dimensions involved in a conflict. */
   conflicting: string[];
-  /** Constraints and dimensions that remove no degree of freedom. */
+  /** Constraints and dimensions that remove no degree of freedom: every equation of theirs is redundant. */
   redundant: string[];
+  /**
+   * Constraints with several equations of which only some are redundant: they
+   * still remove freedom (collinear on two lines already parallel keeps one
+   * of its two point-on-line equations). Informational, like FreeCAD's
+   * "partially redundant".
+   */
+  partlyRedundant: string[];
 }
 
 export interface SolveResult {
@@ -60,6 +67,7 @@ export interface SolveResult {
   dof: number;
   conflicting: string[];
   redundant: string[];
+  partlyRedundant: string[];
   components: ComponentReport[];
   /** Dimensions the solver didn't use: driven ones and those without a value. */
   skipped: string[];
@@ -82,6 +90,7 @@ export interface CheckResult {
   /** Everything involved, the checked constraint included. */
   conflicting: string[];
   redundant: string[];
+  partlyRedundant: string[];
 }
 
 /** The primitive an entity item is named after (an ellipse's focus point comes first). */
@@ -171,21 +180,31 @@ class System {
       gcs.gcs.apply_solution();
       this.solution = this.read();
     }
-    const constraintIds = (ids: string[]) => {
-      const out = new Set<string>();
+    // planegcs names equations; a constraint or dimension may have several (`c7#0`, `c7#1`).
+    const byItem = (ids: string[]) => {
+      const out = new Map<string, { item: Item; equations: Set<string> }>();
       for (const id of ids) {
         const doc = docId(id);
         const item = this.component.items.find((i) => i.id === doc);
-        if (item && (item.kind === 'constraint' || item.kind === 'dimension')) out.add(doc);
+        if (!item || (item.kind !== 'constraint' && item.kind !== 'dimension')) continue;
+        const entry = out.get(doc) ?? { item, equations: new Set<string>() };
+        entry.equations.add(id);
+        out.set(doc, entry);
       }
-      return [...out];
+      return out;
     };
+    const redundant: string[] = [];
+    const partlyRedundant: string[] = [];
+    for (const [doc, { item, equations }] of byItem(gcs.get_gcs_redundant_constraints())) {
+      (equations.size >= item.prims.length ? redundant : partlyRedundant).push(doc);
+    }
     this.report = {
       entities: this.component.entities,
       ok,
       dof: gcs.gcs.dof(),
-      conflicting: constraintIds(gcs.get_gcs_conflicting_constraints()),
-      redundant: constraintIds(gcs.get_gcs_redundant_constraints()),
+      conflicting: [...byItem(gcs.get_gcs_conflicting_constraints()).keys()],
+      redundant,
+      partlyRedundant,
     };
     return this.report;
   }
@@ -332,6 +351,7 @@ export class SketchSolver implements Disposable {
       dof: reports.reduce((sum, r) => sum + r.dof, 0),
       conflicting,
       redundant,
+      partlyRedundant: reports.flatMap((r) => r.partlyRedundant),
       components: reports,
       skipped: mapped.skipped,
       solution,
@@ -394,7 +414,14 @@ export class SketchSolver implements Disposable {
     const mapped = mapSketch(sketch, values);
     const { components, overdetermined } = splitComponents(mapped);
     if (overdetermined.includes(id)) {
-      return { accepted: false, ok: true, dof: 0, conflicting: [], redundant: [id] };
+      return {
+        accepted: false,
+        ok: true,
+        dof: 0,
+        conflicting: [],
+        redundant: [id],
+        partlyRedundant: [],
+      };
     }
     const fix = sketch.constraints[id as keyof typeof sketch.constraints];
     const fixed = fix?.type === 'fix' ? fix.entity : undefined;
@@ -408,6 +435,7 @@ export class SketchSolver implements Disposable {
       dof: 0,
       conflicting: [],
       redundant: [],
+      partlyRedundant: [],
     };
     for (const component of affected) {
       this.#scratch.build(component, mapped.fixedCurves);
@@ -416,12 +444,52 @@ export class SketchSolver implements Disposable {
       result.dof += report.dof;
       result.conflicting.push(...report.conflicting);
       result.redundant.push(...report.redundant);
+      result.partlyRedundant.push(...report.partlyRedundant);
     }
     const involved = [...result.conflicting, ...result.redundant];
-    // A fix adds no equation planegcs could name; any conflict it causes counts against it.
-    result.accepted =
-      result.ok && (fixed !== undefined ? involved.length === 0 : !involved.includes(id));
+    if (fixed !== undefined) {
+      // A fix adds no equation planegcs could name; any conflict it causes counts against it.
+      result.accepted = result.ok && involved.length === 0;
+    } else {
+      result.accepted = result.ok && !involved.includes(id);
+      // Redundancy that names other constraints, or only some of this one's
+      // equations, leaves the question open: planegcs spreads redundant
+      // equations over whichever constraints it likes. The constraint is
+      // needed if it removes a degree of freedom.
+      if (result.accepted && (result.redundant.length > 0 || result.partlyRedundant.length > 0)) {
+        if (this.#dofWithout(sketch, values, id, affected) <= result.dof) {
+          result.accepted = false;
+          result.redundant.push(id);
+          result.partlyRedundant = result.partlyRedundant.filter((r) => r !== id);
+        }
+      }
+    }
     return result;
+  }
+
+  /**
+   * The degrees of freedom of the entities in `affected` once constraint or
+   * dimension `id` is taken out again, solved in the scratch system.
+   */
+  #dofWithout(
+    sketch: SketchData,
+    values: DimensionValues,
+    id: string,
+    affected: readonly Component[],
+  ): number {
+    const { [id]: _c, ...constraints } = sketch.constraints as Record<string, unknown>;
+    const { [id]: _d, ...dimensions } = sketch.dimensions as Record<string, unknown>;
+    const without = { ...sketch, constraints, dimensions } as SketchData;
+    const mapped = mapSketch(without, values);
+    const entities = new Set(affected.flatMap((c) => c.entities));
+    let dof = 0;
+    for (const component of splitComponents(mapped).components) {
+      if (!component.entities.some((e) => entities.has(e))) continue;
+      this.#scratch ??= new System(this.#module);
+      this.#scratch.build(component, mapped.fixedCurves);
+      dof += this.#scratch.solve().dof;
+    }
+    return dof;
   }
 
   /** Frees every planegcs system. */

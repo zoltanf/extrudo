@@ -39,6 +39,17 @@ the geometry with a hover highlight, selectable and deletable glyphs, and a
    (`SketchSolver.check`) and refuses the whole edit with a message in the
    prompt when it is redundant ("isn't needed: the sketch already holds
    it") or conflicts. Inferred constraints are still dropped silently.
+   **Redundant means it removes no degree of freedom.** planegcs reports
+   redundant *equations*, and a constraint can have several: Collinear is
+   two point-on-line equations, and on two lines already horizontal one of
+   them follows from the other, yet the constraint still removes a freedom.
+   planegcs also spreads redundant equations over whichever constraints it
+   likes (asked twice, each Collinear gets one). So the adapter reports a
+   constraint as `redundant` only when all its equations are, and as
+   `partlyRedundant` when some are; and whenever a check sees any
+   redundancy, it solves the affected entities again without the new
+   constraint and accepts it only if the DOF drops. Found in manual testing
+   (Collinear on two horizontal lines was refused).
 3. **A solve that collapses a curve is a conflict.** planegcs satisfies some
    contradictions by shrinking geometry: two horizontal lines made
    perpendicular become two points 0.0001 mm long, and it reports success

@@ -118,6 +118,23 @@ describe('constraint tools', () => {
     expect(error(t)).toBeUndefined();
   });
 
+  it('makes two horizontal lines collinear, though one of its equations is then implied', async () => {
+    const t = await twoLines('horizontal');
+    t.host.click(at(10, 0));
+    t.host.click(at(10, 12)); // b settles level at y = 10
+    t.host.start('collinear');
+    t.host.click(at(10, 0));
+    t.host.click(at(10, 10));
+    expect(error(t)).toBeUndefined();
+    expect(t.constraints()).toContain('collinear line line');
+    expect(t.point(eid('b0'))[1]).toBeCloseTo(t.point(eid('a0'))[1], 6);
+    // Asking again is refused: it adds nothing now.
+    const y = t.point(eid('a0'))[1];
+    t.host.click(at(10, y));
+    t.host.click(at(5, y));
+    expect(error(t)).toBe("Collinear isn't needed: the sketch already holds it.");
+  });
+
   it('makes horizontal and vertical from a line at once, or from two points', async () => {
     const t = await twoLines('vertical');
     expect(prompt(t)).toBe('Pick a line to make vertical, or two points to line up.');

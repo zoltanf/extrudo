@@ -651,6 +651,32 @@ describe('conflicts and the test-solve', () => {
     expect(solver.stats).toEqual(stats);
   });
 
+  it('a constraint with only some equations redundant still counts: partly redundant', () => {
+    // Collinear is two point-on-line equations; on two lines already horizontal,
+    // the second follows from the first, but the constraint still removes a freedom.
+    const b = new SketchBuilder();
+    const a = b.line(0, 0, 20, 0);
+    const c = b.line(0, -10, 20, -10);
+    b.constrain({ type: 'horizontal', a: a.id });
+    b.constrain({ type: 'horizontal', a: c.id });
+    const solver = newSolver();
+    expect(solver.solve(SketchDataSchema.parse(b.sketch), b.values).dof).toBe(6);
+    const collinear = b.constrain({ type: 'collinear', a: a.id, b: c.id });
+    const check = solver.check(b.sketch, b.values, collinear);
+    expect(check).toMatchObject({ accepted: true, dof: 5, redundant: [] });
+    expect(check.partlyRedundant).toEqual([collinear]);
+    const { result, p } = solve(b, solver);
+    expect(result).toMatchObject({ ok: true, dof: 5, redundant: [], partlyRedundant: [collinear] });
+    expect(p(c.start).y).toBeCloseTo(p(a.start).y, 9);
+
+    // The same again removes nothing: every equation is redundant.
+    const again = b.constrain({ type: 'collinear', a: a.id, b: c.id });
+    expect(solver.check(b.sketch, b.values, again)).toMatchObject({
+      accepted: false,
+      redundant: expect.arrayContaining([again]),
+    });
+  });
+
   it('check() on a fix refuses when it over-constrains', () => {
     const { b, right } = rectangle();
     b.dimension({ type: 'distance', orientation: 'aligned', a: right.id }, 30);
