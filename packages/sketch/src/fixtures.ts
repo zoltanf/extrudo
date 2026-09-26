@@ -75,6 +75,31 @@ export class SketchBuilder {
     return { id, center, start, end };
   }
 
+  /** Semi-axes `a` (major) and `b`, the major axis at `rotation` degrees; the minor end counter-clockwise from it. */
+  ellipse(cx: number, cy: number, a: number, b: number, rotation = 0) {
+    const t = (rotation * Math.PI) / 180;
+    const center = this.point(cx, cy);
+    const major = this.point(cx + a * Math.cos(t), cy + a * Math.sin(t));
+    const minor = this.point(cx - b * Math.sin(t), cy + b * Math.cos(t));
+    const id = this.id('e');
+    this.entities[id] = {
+      type: 'ellipse',
+      center: center as never,
+      major: major as never,
+      minor: minor as never,
+      construction: false,
+    };
+    return { id, center, major, minor };
+  }
+
+  /** A fit-point spline through `points` ([x, y] pairs). */
+  spline(points: [number, number][]) {
+    const ids = points.map(([x, y]) => this.point(x, y));
+    const id = this.id('s');
+    this.entities[id] = { type: 'spline', points: ids as never, construction: false };
+    return { id, points: ids };
+  }
+
   constrain(constraint: { type: Constraint['type'] } & Record<string, unknown>): string {
     const id = this.id('k');
     this.constraints[id] = constraint as Constraint;

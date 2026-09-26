@@ -113,7 +113,7 @@ describe('sketch schema', () => {
     expect(
       issues({ ...r, entities: { ...r.entities, p1: { type: 'point', x: 0, y: 0, z: 1 } } }),
     ).toEqual(['entities.p1: Unrecognized key: "z"']);
-    expect(issues({ ...r, entities: { ...r.entities, s: { type: 'spline' } } })).toHaveLength(1);
+    expect(issues({ ...r, entities: { ...r.entities, s: { type: 'bezier' } } })).toHaveLength(1);
     expect(
       issues({ ...r, entities: { ...r.entities, hole: { ...r.entities.hole, radius: 0 } } }),
     ).toEqual(['entities.hole.radius: Too small: expected number to be >0']);
@@ -206,6 +206,58 @@ describe('sketch schema', () => {
     };
     expect(issues(shared)).toEqual([
       'entities.right.start: point "p2" already belongs to "bottom"; join them with a constraint',
+    ]);
+  });
+
+  it('takes ellipses and fit-point splines (P1-05)', () => {
+    const r = rectangle();
+    const entities = {
+      ...r.entities,
+      ec: { type: 'point', x: 30, y: 0 },
+      ea: { type: 'point', x: 36, y: 0 },
+      eb: { type: 'point', x: 30, y: 3 },
+      oval: { type: 'ellipse', center: 'ec', major: 'ea', minor: 'eb', construction: false },
+      f1: { type: 'point', x: 0, y: 20 },
+      f2: { type: 'point', x: 5, y: 25 },
+      f3: { type: 'point', x: 10, y: 20 },
+      wave: { type: 'spline', points: ['f1', 'f2', 'f3'], construction: false },
+    };
+    const constraints = {
+      ...r.constraints,
+      on: { type: 'pointOnCurve', point: 'c', curve: 'oval' },
+      fixWave: { type: 'fix', entity: 'wave' },
+    };
+    expect(issues({ ...r, entities, constraints })).toEqual([]);
+
+    const broken = {
+      ...r,
+      entities: {
+        ...entities,
+        short: { type: 'spline', points: ['f9'], construction: false },
+        f9: { type: 'point', x: 1, y: 1 },
+        twice: { type: 'spline', points: ['f1', 'f3'], construction: false },
+        squashed: { type: 'ellipse', center: 'c2', major: 'c2', minor: 'a1', construction: false },
+      },
+      constraints: {
+        ...constraints,
+        onSpline: { type: 'pointOnCurve', point: 'c', curve: 'wave' },
+        tangent: { type: 'tangent', a: 'oval', b: 'bottom' },
+        mirror: { type: 'symmetric', a: 'oval', b: 'oval', axis: 'left' },
+      },
+    };
+    expect(issues(broken)).toEqual([
+      'entities.short.points: Too small: expected array to have >=2 items',
+      'entities.twice.points.0: point "f1" already belongs to "wave"; join them with a constraint',
+      'entities.twice.points.1: point "f3" already belongs to "wave"; join them with a constraint',
+      'entities.squashed.center: point "c2" already belongs to "arc"; join them with a constraint',
+      'entities.squashed.major: point "c2" already belongs to "arc"; join them with a constraint',
+      'entities.squashed.minor: point "a1" already belongs to "arc"; join them with a constraint',
+      'entities.squashed: refers to the same entity twice',
+      'constraints.onSpline.curve: must be a line, circle, arc or ellipse, not a spline',
+      'constraints.tangent.a: must be a line, circle or arc, not an ellipse',
+      'constraints.mirror.a: must be a point, line, circle or arc, not an ellipse',
+      'constraints.mirror.b: must be a point, line, circle or arc, not an ellipse',
+      'constraints.mirror: refers to the same entity twice',
     ]);
   });
 

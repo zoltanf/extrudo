@@ -40,14 +40,24 @@ import type { ViewportStore } from '../../viewport/store';
 import { dimensionValues } from '../values';
 import { ARC_CENTER_TOOL, ARC_TANGENT_TOOL, ARC_TOOL, ArcTool } from './arc';
 import { CIRCLE_2POINT_TOOL, CIRCLE_3POINT_TOOL, CIRCLE_TOOL, CircleTool } from './circle';
+import { ELLIPSE_TOOL, EllipseTool } from './ellipse';
+import { isSketchTool } from './ids';
 import { LINE_TOOL, LineTool } from './line';
 import { POINT_TOOL, PointTool } from './point';
+import {
+  POLYGON_CIRCUMSCRIBED_TOOL,
+  POLYGON_EDGE_TOOL,
+  POLYGON_TOOL,
+  PolygonTool,
+} from './polygon';
 import {
   RECTANGLE_3POINT_TOOL,
   RECTANGLE_CENTER_TOOL,
   RECTANGLE_TOOL,
   RectangleTool,
 } from './rectangle';
+import { SLOT_OVERALL_TOOL, SLOT_TOOL, SlotTool } from './slot';
+import { SPLINE_TOOL, SplineTool } from './spline';
 import type { SketchEdit, SketchTool, ToolContext, Typed } from './tool';
 
 /** Snap distance, in screen pixels. */
@@ -65,12 +75,17 @@ const FACTORIES: Record<string, (context: ToolContext) => SketchTool> = {
   [ARC_CENTER_TOOL]: (context) => new ArcTool(context, 'center'),
   [ARC_TANGENT_TOOL]: (context) => new ArcTool(context, 'tangent'),
   [POINT_TOOL]: (context) => new PointTool(context),
+  [POLYGON_TOOL]: (context) => new PolygonTool(context, 'inscribed'),
+  [POLYGON_CIRCUMSCRIBED_TOOL]: (context) => new PolygonTool(context, 'circumscribed'),
+  [POLYGON_EDGE_TOOL]: (context) => new PolygonTool(context, 'edge'),
+  [SLOT_TOOL]: (context) => new SlotTool(context, 'center'),
+  [SLOT_OVERALL_TOOL]: (context) => new SlotTool(context, 'overall'),
+  [ELLIPSE_TOOL]: (context) => new EllipseTool(context),
+  [SPLINE_TOOL]: (context) => new SplineTool(context),
 };
 
-/** Whether a session tool ID names a sketch drawing tool. */
-export function isSketchTool(id: string | undefined): boolean {
-  return id !== undefined && id in FACTORIES;
-}
+/** The tools the host can run (`ids.ts` lists the same IDs for the shell). */
+export const HOST_TOOL_IDS = Object.keys(FACTORIES);
 
 export interface ToolHostState {
   tool: SketchTool | undefined;

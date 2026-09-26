@@ -508,6 +508,94 @@ describe('dragging', () => {
   });
 });
 
+describe('ellipses and splines (P1-05)', () => {
+  /** Distance from the minor point to the major axis, and its offset along it. */
+  const axes = (s: Solved, e: { center: string; major: string; minor: string }) => {
+    const c = s.p(e.center);
+    const u = unit(sub(s.p(e.major), c));
+    const m = sub(s.p(e.minor), c);
+    return { a: dist(s.p(e.major), c), side: cross(u, m), along: dot(u, m) };
+  };
+
+  it('an ellipse has five degrees of freedom and keeps its minor point square', () => {
+    const b = new SketchBuilder({ noise: 0.3, seed: 7 });
+    const e = b.ellipse(10, 5, 8, 3, 30);
+    const s = solve(b);
+    clean(s, 5);
+    const { side, along } = axes(s, e);
+    expect(side).toBeGreaterThan(0);
+    close(along, 0);
+  });
+
+  it('takes distance dimensions for its radii, and keeps the minor side', () => {
+    const b = new SketchBuilder();
+    const e = b.ellipse(0, 0, 8, 3, 0);
+    // Mirror the minor point below the axis: it must stay there.
+    const minor = b.entities[e.minor] as { type: 'point'; x: number; y: number };
+    minor.y = -3;
+    b.constrain({ type: 'fix', entity: e.center });
+    b.constrain({ type: 'horizontal', a: e.center, b: e.major });
+    b.dimension({ type: 'distance', orientation: 'aligned', a: e.center, b: e.major }, 12);
+    b.dimension({ type: 'distance', orientation: 'aligned', a: e.center, b: e.minor }, 5);
+    const s = solve(b);
+    clean(s, 0);
+    const { a, side, along } = axes(s, e);
+    close(a, 12);
+    close(side, -5);
+    close(along, 0);
+  });
+
+  it('puts a point on an ellipse, and a fixed ellipse holds still', () => {
+    const b = new SketchBuilder();
+    const e = b.ellipse(0, 0, 10, 4, 0);
+    const p = b.point(3, 7);
+    b.constrain({ type: 'fix', entity: e.id });
+    b.constrain({ type: 'pointOnCurve', point: p, curve: e.id });
+    const s = solve(b);
+    clean(s, 1);
+    const q = s.p(p);
+    close((q.x / 10) ** 2 + (q.y / 4) ** 2, 1);
+    expect(s.p(e.major)).toEqual({ x: 10, y: 0 });
+    expect(s.p(e.minor)).toEqual({ x: 0, y: 4 });
+  });
+
+  it('drags an ellipse by its major point; the minor point follows', () => {
+    const b = new SketchBuilder();
+    const e = b.ellipse(0, 0, 10, 4, 0);
+    b.constrain({ type: 'fix', entity: e.center });
+    b.dimension({ type: 'distance', orientation: 'aligned', a: e.center, b: e.minor }, 4);
+    const solver = newSolver();
+    const sketch = SketchDataSchema.parse(b.sketch);
+    expect(solver.solve(sketch, b.values).dof).toBe(2);
+    expect(solver.beginDrag(e.major)).toBe(true);
+    const step = solver.drag(0, 12);
+    expect(step.ok).toBe(true);
+    const major = step.solution.points[e.major] as V;
+    const minor = step.solution.points[e.minor] as V;
+    close(major.x, 0, 4);
+    close(major.y, 12, 4);
+    close(minor.x, -4, 4);
+    close(minor.y, 0, 4);
+    solver.endDrag();
+  });
+
+  it('a spline is its points: two degrees of freedom each, joined by coincidence', () => {
+    const b = new SketchBuilder();
+    const spline = b.spline([
+      [0, 0],
+      [5, 5],
+      [10, 0],
+    ]);
+    const line = b.line(10, 0, 20, 0);
+    b.constrain({ type: 'coincident', a: spline.points[2], b: line.start });
+    clean(solve(b), 6 + 4 - 2);
+    b.constrain({ type: 'fix', entity: spline.id });
+    const s = solve(b);
+    clean(s, 2);
+    expect(s.p(spline.points[1] as string)).toEqual({ x: 5, y: 5 });
+  });
+});
+
 describe('conflicts and the test-solve', () => {
   const rectangle = () => {
     const b = new SketchBuilder();

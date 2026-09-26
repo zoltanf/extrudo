@@ -27,8 +27,8 @@ import {
   startCreateSketch,
 } from '../sketch/mode';
 import { PlanePrompt, SketchPalette } from '../sketch/panels';
-import { createToolHost, isSketchTool, type ToolHost } from '../sketch/tools/host';
-import { SketchOverlay } from '../sketch/tools/SketchOverlay';
+import type { ToolHost } from '../sketch/tools/host';
+import { isSketchTool } from '../sketch/tools/ids';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
@@ -44,6 +44,11 @@ const TOOL_KEYS: Record<string, ToolId> = { L: 'line', R: 'rectangle', C: 'circl
 
 // three.js loads in its own chunk, so the shell paints before it arrives.
 const Viewport = lazy(() => import('../viewport/Viewport').then((m) => ({ default: m.Viewport })));
+/** The drawing tools: their own chunk, loaded as soon as a project opens (ADR-0014). */
+interface DrawingTools {
+  host: ToolHost;
+  Overlay: typeof import('../sketch/tools/SketchOverlay').SketchOverlay;
+}
 
 export interface AppShellProps {
   store: DocumentStore;
@@ -83,17 +88,31 @@ export function AppShell({
     [store, session, viewport],
   );
 
-  // The drawing-tool host (P1-02). Made in an effect so Strict Mode's second mount gets a live one.
-  const [host, setHost] = useState<ToolHost>();
+  // The drawing-tool host (P1-02). Made in an effect so Strict Mode's second mount gets a live
+  // one. The overlay comes from the same chunk and renders directly: a lazy component would
+  // suspend on the first tool, and React holds a suspended boundary back for a moment, long
+  // enough to lose the first keys typed into the heads-up box.
+  const [tools, setTools] = useState<DrawingTools>();
+  const host = tools?.host;
   useEffect(() => {
-    const h = createToolHost({
-      store,
-      session,
-      viewport,
-      loadSolver: () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver()),
-    });
-    setHost(h);
-    return () => h.dispose();
+    let h: ToolHost | undefined;
+    let cancelled = false;
+    Promise.all([import('../sketch/tools/host'), import('../sketch/tools/SketchOverlay')]).then(
+      ([{ createToolHost }, { SketchOverlay }]) => {
+        if (cancelled) return;
+        h = createToolHost({
+          store,
+          session,
+          viewport,
+          loadSolver: () => import('@extrudo/sketch/browser').then((m) => m.loadSketchSolver()),
+        });
+        setTools({ host: h, Overlay: SketchOverlay });
+      },
+    );
+    return () => {
+      cancelled = true;
+      h?.dispose();
+    };
   }, [store, session, viewport]);
 
   const shortcuts = useMemo(
@@ -245,9 +264,9 @@ export function AppShell({
             planePicker={planePicker}
             sketchInput={sketchInput}
           >
-            {drawing && host && activeSketchId && sketchPlane && (
-              <SketchOverlay
-                host={host}
+            {drawing && tools && activeSketchId && sketchPlane && (
+              <tools.Overlay
+                host={tools.host}
                 store={store}
                 viewport={viewport}
                 sketchId={activeSketchId}

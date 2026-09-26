@@ -63,7 +63,7 @@ test('draws a closed rectangle with the Line tool, with inferred constraints', a
   // the last corner vertical with the first point.
   await expect(overlay(page)).toHaveAttribute(
     'data-sketch-summary',
-    'points=8 lines=4 circles=0 arcs=0 constraints=8 dimensions=0',
+    'points=8 lines=4 circles=0 arcs=0 ellipses=0 splines=0 constraints=8 dimensions=0',
   );
   await expect(toolPrompt(page)).toHaveText(
     'Click to start a line. Drag from the end of a curve for a tangent arc.',
@@ -73,7 +73,7 @@ test('draws a closed rectangle with the Line tool, with inferred constraints', a
   await page.keyboard.press('Control+Z');
   await expect(overlay(page)).toHaveAttribute(
     'data-sketch-summary',
-    'points=6 lines=3 circles=0 arcs=0 constraints=6 dimensions=0',
+    'points=6 lines=3 circles=0 arcs=0 ellipses=0 splines=0 constraints=6 dimensions=0',
   );
 });
 
@@ -104,7 +104,7 @@ test('the heads-up box takes a typed length and angle; Esc steps back', async ({
   // A 40 mm vertical line with its dimension.
   await expect(overlay(page)).toHaveAttribute(
     'data-sketch-summary',
-    'points=2 lines=1 circles=0 arcs=0 constraints=1 dimensions=1',
+    'points=2 lines=1 circles=0 arcs=0 ellipses=0 splines=0 constraints=1 dimensions=1',
   );
   // The chain goes on from the new end, with the fields live again.
   await page.mouse.move(pointer.x, pointer.y + 1);

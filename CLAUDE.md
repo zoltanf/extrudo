@@ -10,7 +10,7 @@ is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
 **Status (2026-09-26):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01 to P1-04 done. ADR-0001 chose
+P1-01 to P1-05 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -58,8 +58,14 @@ Line tool (`L`) is the reference tool. ADR-0013 (P1-04) added rectangles,
 circles, arcs (one tool ID per mode; variants in the Create menu), points,
 the Line tool's tangent-arc drag (tools opt into drags with `dragStart`),
 shared builders in `sketch/tools/build.ts`, and the construction toggle
-(`X`, host state, resets when the sketch closes). Next: **P1-05** (more
-drawing tools). See `docs/03-roadmap.md`.
+(`X`, host state, resets when the sketch closes). ADR-0014 (P1-05) added
+polygons and slots (lines, arcs, construction circles/centerlines), and two
+entity types: `ellipse` (center, major and minor points; the solver maps it
+with a solver-only focus and ordinary constraints) and fit-point `spline`
+(points only; `fitSpline` in `core/src/sketch/curves.ts` interpolates the
+B-spline). The drawing tools and the overlay are a lazy chunk loaded when a
+project opens; `sketch/tools/ids.ts` lists the tool IDs for the shell. Next:
+**P1-06** (constraints UI). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -88,7 +94,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -244,6 +250,13 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   with `javascript_tool` (the summary attribute) rather than trusting a
   screenshot taken right after an action. The viewport treats a press and
   release more than 5 px apart as a drag even without moves.
+- **planegcs's `internal_alignment_point2ellipse` does nothing useful in our
+  build** (converges without moving, wrong DOF count; P1-05). Ellipses use
+  ordinary constraints instead (ADR-0014). Vitest swallows `console.log` in
+  probe tests: write to a file in the scratchpad to see output.
+- **Don't render tool UI through `React.lazy`**: a suspended boundary is held
+  back for up to ~300 ms, and keys typed into the heads-up box in that time
+  are lost (flaky e2e). Load the module and render the component directly.
 - **The Claude browser pane's `type` action inserts text without keydown
   events**, so it can't test "typing goes into the heads-up box"; use `key`
   presses, or Playwright's `keyboard.type`, which do fire keydown.

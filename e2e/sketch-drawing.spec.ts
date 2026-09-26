@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { sketchOnXY } from './helpers';
+import { clicker, counts, pickTool, sketchOnXY } from './helpers';
 
 // P1-04: the basic drawing tools. Draws each rectangle, circle and arc mode,
 // a point, the Line tool's tangent-arc drag and construction geometry, and
@@ -18,35 +18,7 @@ test.afterEach(() => {
   expect(errors).toEqual([]);
 });
 
-const overlay = (page: Page) => page.locator('[data-sketch-summary]');
 const toolPrompt = (page: Page) => page.getByRole('status', { name: 'Tool prompt' });
-
-/** Entity and constraint counts of the open sketch (the overlay shows while a tool runs). */
-async function counts(page: Page) {
-  const summary = (await overlay(page).getAttribute('data-sketch-summary')) ?? '';
-  return Object.fromEntries(
-    summary.split(' ').map((pair) => {
-      const [key, value] = pair.split('=');
-      return [key, Number(value)];
-    }),
-  );
-}
-
-/** Picks a tool from the Create group's menu. */
-async function pickTool(page: Page, name: string) {
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await page.getByRole('menuitem', { name, exact: true }).click();
-}
-
-type At = Awaited<ReturnType<typeof sketchOnXY>>;
-
-function clicker(page: Page, at: At) {
-  return async (x: number, y: number) => {
-    const p = at(x, y);
-    await page.mouse.move(p.x, p.y);
-    await page.mouse.click(p.x, p.y);
-  };
-}
 
 test('draws rectangles from two corners, three points and the center', async ({ page }) => {
   const at = await sketchOnXY(page);

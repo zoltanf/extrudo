@@ -53,18 +53,46 @@ export const SketchArcSchema = z.strictObject({
   construction: z.boolean(),
 });
 
-/** Ellipses and splines join with P1-05 as new members of this union. */
+/**
+ * An ellipse (P1-05) from three points: the center, the end of the major
+ * axis, and the end of the minor axis. The solver keeps `minor` square to the
+ * major axis on the ellipse (`sketch/curves.ts` reads the shape), so no
+ * number is stored: radii and rotation are the points' distances and angle.
+ */
+export const SketchEllipseSchema = z.strictObject({
+  type: z.literal('ellipse'),
+  center: ref,
+  major: ref,
+  minor: ref,
+  construction: z.boolean(),
+});
+
+/**
+ * A fit-point spline (P1-05, FR-SK-03): a smooth curve through its points in
+ * order. The curve is derived from the points (`fitSpline` in
+ * `sketch/curves.ts`), so the solver sees only the points.
+ */
+export const SketchSplineSchema = z.strictObject({
+  type: z.literal('spline'),
+  points: z.array(ref).min(2),
+  construction: z.boolean(),
+});
+
 export const SketchEntitySchema = z.discriminatedUnion('type', [
   SketchPointSchema,
   SketchLineSchema,
   SketchCircleSchema,
   SketchArcSchema,
+  SketchEllipseSchema,
+  SketchSplineSchema,
 ]);
 
 export type SketchPoint = z.infer<typeof SketchPointSchema>;
 export type SketchLine = z.infer<typeof SketchLineSchema>;
 export type SketchCircle = z.infer<typeof SketchCircleSchema>;
 export type SketchArc = z.infer<typeof SketchArcSchema>;
+export type SketchEllipse = z.infer<typeof SketchEllipseSchema>;
+export type SketchSpline = z.infer<typeof SketchSplineSchema>;
 export type SketchEntity = z.infer<typeof SketchEntitySchema>;
 export type SketchEntityType = SketchEntity['type'];
 
@@ -84,7 +112,8 @@ const joint = <T extends string>(type: T) =>
 
 /**
  * Geometric constraints. `coincident` joins two points; `pointOnCurve` puts a
- * point on a line, circle or arc (the UI calls both "coincident").
+ * point on a line, circle, arc or ellipse (the UI calls both "coincident").
+ * Splines take only `fix` for now: their shape follows their points.
  * `horizontal` and `vertical` take a line (`a`) or two points (`a`, `b`).
  */
 export const SketchConstraintSchema = z.discriminatedUnion('type', [
@@ -159,13 +188,17 @@ const POINT: Kinds = ['point'];
 const LINE: Kinds = ['line'];
 const ROUND: Kinds = ['circle', 'arc'];
 const CURVE: Kinds = ['line', 'circle', 'arc'];
-const ANY: Kinds = ['point', 'line', 'circle', 'arc'];
+const ON_CURVE: Kinds = ['line', 'circle', 'arc', 'ellipse'];
+const SYMMETRIC: Kinds = ['point', 'line', 'circle', 'arc'];
+const ANY: Kinds = ['point', 'line', 'circle', 'arc', 'ellipse', 'spline'];
 
 const KIND_NAMES: Record<string, string> = {
   point: 'a point',
   line: 'a line',
   'circle,arc': 'a circle or an arc',
   'line,circle,arc': 'a line, circle or arc',
+  'line,circle,arc,ellipse': 'a line, circle, arc or ellipse',
+  'point,line,circle,arc': 'a point, line, circle or arc',
   'line,arc': 'a line or an arc',
   'point,line': 'a point or a line',
   'line,point': 'a line or a point',
@@ -206,7 +239,7 @@ export function sketchIssues(sketch: {
     } else if (!kinds.includes(kind)) {
       issues.push({
         path: [list, owner, field],
-        message: `must be ${KIND_NAMES[kinds.join(',')] ?? kinds.join(' or ')}, not a ${kind}`,
+        message: `must be ${KIND_NAMES[kinds.join(',')] ?? kinds.join(' or ')}, not ${kind === 'ellipse' ? 'an' : 'a'} ${kind}`,
       });
     }
     return kind;
@@ -250,6 +283,18 @@ export function sketchIssues(sketch: {
         e('end', entity.end);
         distinct('entities', id, [entity.center, entity.start, entity.end]);
         break;
+      case 'ellipse':
+        e('center', entity.center);
+        e('major', entity.major);
+        e('minor', entity.minor);
+        distinct('entities', id, [entity.center, entity.major, entity.minor]);
+        break;
+      case 'spline':
+        entity.points.forEach((p, i) => {
+          e(`points.${i}`, p);
+        });
+        distinct('entities', id, entity.points);
+        break;
     }
   }
 
@@ -264,7 +309,7 @@ export function sketchIssues(sketch: {
         break;
       case 'pointOnCurve':
         e('point', c.point, POINT);
-        e('curve', c.curve, CURVE);
+        e('curve', c.curve, ON_CURVE);
         break;
       case 'collinear':
       case 'parallel':
@@ -315,8 +360,8 @@ export function sketchIssues(sketch: {
         break;
       }
       case 'symmetric': {
-        const a = e('a', c.a, ANY);
-        const b = e('b', c.b, ANY);
+        const a = e('a', c.a, SYMMETRIC);
+        const b = e('b', c.b, SYMMETRIC);
         e('axis', c.axis, LINE);
         distinct('constraints', id, [c.a, c.b, c.axis]);
         const group = (k: SketchEntityType) => (k === 'arc' ? 'circle' : k);

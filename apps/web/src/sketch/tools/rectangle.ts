@@ -13,7 +13,7 @@
  */
 import type { DimensionId, SketchConstraint, SketchEntityId, Vec2 } from '@extrudo/core';
 import type { Inference } from '@extrudo/sketch/inference';
-import { addLine, addPoint, place } from './build';
+import { addLine, addPoint, axisOf, place, typedEnd } from './build';
 import {
   constrain,
   EMPTY_PREVIEW,
@@ -211,20 +211,7 @@ export class RectangleTool implements SketchTool {
     const a = this.#clicks[0]?.point;
     const pointer = this.#pointer;
     if (!a || !pointer) return undefined;
-    const length = this.#locks.get('length');
-    const angle = this.#locks.get('angle');
-    if (!length && !angle) return pointer;
-    const dx = pointer.cursor[0] - a[0];
-    const dy = pointer.cursor[1] - a[1];
-    const len = Math.hypot(dx, dy);
-    const dir: Vec2 = angle
-      ? [Math.cos(angle.value * DEG), Math.sin(angle.value * DEG)]
-      : len > 0
-        ? [dx / len, dy / len]
-        : [1, 0];
-    const l = length?.value ?? Math.max(0, dx * dir[0] + dy * dir[1]);
-    const point: Vec2 = [a[0] + dir[0] * l, a[1] + dir[1] * l];
-    return { point, cursor: point, snap: undefined, alignments: [] };
+    return typedEnd(a, pointer, this.#locks.get('length'), this.#locks.get('angle'));
   }
 
   #corners(): Corners | undefined {
@@ -363,13 +350,4 @@ export class RectangleTool implements SketchTool {
     this.#edge = {};
     return edit;
   }
-}
-
-/** A typed angle that is a multiple of 90° puts the edge along an axis. */
-function axisOf(angle: Typed | undefined): 'horizontal' | 'vertical' | undefined {
-  if (!angle) return undefined;
-  const quarters = angle.value / 90;
-  const k = Math.round(quarters);
-  if (Math.abs(quarters - k) > 1e-9) return undefined;
-  return k % 2 === 0 ? 'horizontal' : 'vertical';
 }

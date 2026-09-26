@@ -169,6 +169,11 @@ Every FR-SK-07 constraint and FR-SK-08 dimension has a shape; dimension
 values are expressions. The schema checks references (existence, kinds) on
 load; geometry is the solver's job. Origin planes have fixed 2D frames that
 match the ViewCube views.
+P1-05 (ADR-0014) added ellipses (center, major-axis and minor-axis points)
+and fit-point splines (a list of points). Both are shaped by
+`sketch/curves.ts`: the spline is a cubic B-spline interpolated through its
+points, and that B-spline (poles and knots), not the fit points, is what the
+kernel will get.
 
 ### 4.2 Feature registry (extension point)
 

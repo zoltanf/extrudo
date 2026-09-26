@@ -17,7 +17,8 @@ import type {
 } from '@extrudo/core';
 import type { Inference } from '@extrudo/sketch/inference';
 
-export type FieldKind = 'length' | 'angle';
+/** Lengths in mm, angles in degrees; unitless fields are counts (a polygon's sides). */
+export type FieldKind = 'length' | 'angle' | 'unitless';
 
 /** A value typed into the heads-up box: the expression and its value in base units (mm, degrees). */
 export interface Typed {
@@ -62,6 +63,10 @@ export interface ToolPreview {
   points: Vec2[];
   /** Helper lines drawn thin and dashed (a radius, a center rectangle's diagonal). */
   guides?: (readonly [Vec2, Vec2])[];
+  /** Curves given as points (an ellipse, a spline), drawn like lines. */
+  polylines?: Vec2[][];
+  /** Construction curves the tool adds whatever the X toggle says (a polygon's circle). */
+  constructionArcs?: PreviewArc[];
 }
 
 export interface ToolContext {

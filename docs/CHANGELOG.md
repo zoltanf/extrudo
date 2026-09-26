@@ -2,6 +2,17 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-26 · **P1-05** More drawing tools: regular polygons (inscribed,
+  circumscribed across the flats, from an edge; equal edges with corners on
+  a construction circle; a Sides heads-up field that persists), slots
+  (center to center, overall; tangent lines and arcs with a construction
+  centerline), ellipses and fit-point splines. Two new entity types in the
+  core schema: `ellipse` (three points, mapped to planegcs's ellipse through
+  a solver-only focus and ordinary constraints) and `spline` (fit points;
+  the curve is a cubic B-spline interpolation in `sketch/curves.ts`, no
+  solver equations). Previews draw polylines and construction circles. The
+  drawing tools and overlay moved into a lazy chunk (main chunk 950 kB, was
+  about 1 MB). ADR-0014.
 - 2026-09-26 · **P1-04** Basic drawing tools: rectangles (2-point `R`,
   3-point, center with construction diagonals), circles (center-diameter
   `C`, 2-point, 3-point), arcs (3-point `A`, center point, tangent), points,

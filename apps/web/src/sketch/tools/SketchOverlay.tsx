@@ -168,6 +168,34 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
             />
           );
         })}
+        {preview?.polylines?.map((line, i) => {
+          const points = line.map(toScreen);
+          if (points.some((p) => !p)) return null;
+          return (
+            <polyline
+              // biome-ignore lint/suspicious/noArrayIndexKey: preview curves have no identity.
+              key={i}
+              data-preview="curve"
+              points={points.map((p) => (p as number[]).join(',')).join(' ')}
+              fill="none"
+              {...curveStyle(construction)}
+            />
+          );
+        })}
+        {preview?.constructionArcs?.map((arc, i) => {
+          const points = arcPolyline(arc).map(toScreen);
+          if (points.some((p) => !p)) return null;
+          return (
+            <polyline
+              // biome-ignore lint/suspicious/noArrayIndexKey: preview arcs have no identity.
+              key={i}
+              data-preview="construction"
+              points={points.map((p) => (p as number[]).join(',')).join(' ')}
+              fill="none"
+              {...curveStyle(true)}
+            />
+          );
+        })}
         {preview?.points.map((a, i) => {
           const p = toScreen(a);
           return (
@@ -212,7 +240,7 @@ function curveStyle(construction: boolean) {
     : { stroke: 'var(--x-sketch)', strokeWidth: 1.75 };
 }
 
-/** Counts for tests and debugging: "points=6 lines=3 constraints=5 dimensions=0". */
+/** Counts for tests and debugging: "points=6 lines=3 … constraints=5 dimensions=0". */
 function sketchSummary(doc: ExtrudoDocument, id: FeatureId) {
   const feature = doc.features.find((f) => f.id === id);
   const data = feature && readSketch(feature)?.data;
@@ -224,6 +252,8 @@ function sketchSummary(doc: ExtrudoDocument, id: FeatureId) {
     `lines=${count('line')}`,
     `circles=${count('circle')}`,
     `arcs=${count('arc')}`,
+    `ellipses=${count('ellipse')}`,
+    `splines=${count('spline')}`,
     `constraints=${Object.keys(data.constraints).length}`,
     `dimensions=${Object.keys(data.dimensions).length}`,
   ].join(' ');

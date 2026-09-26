@@ -48,3 +48,31 @@ export async function mapping(viewport: Locator) {
     y: box.y + box.height / 2 - (y - ty) / perPixel,
   });
 }
+
+/** Entity and constraint counts of the open sketch (the overlay shows while a tool runs). */
+export async function counts(page: Page) {
+  const summary =
+    (await page.locator('[data-sketch-summary]').getAttribute('data-sketch-summary')) ?? '';
+  return Object.fromEntries(
+    summary.split(' ').map((pair) => {
+      const [key, value] = pair.split('=');
+      return [key, Number(value)];
+    }),
+  );
+}
+
+/** Picks a tool from the Create group's menu. */
+export async function pickTool(page: Page, name: string) {
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
+}
+
+type At = Awaited<ReturnType<typeof sketchOnXY>>;
+
+export function clicker(page: Page, at: At) {
+  return async (x: number, y: number) => {
+    const p = at(x, y);
+    await page.mouse.move(p.x, p.y);
+    await page.mouse.click(p.x, p.y);
+  };
+}

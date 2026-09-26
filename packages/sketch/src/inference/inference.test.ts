@@ -84,6 +84,22 @@ describe('infer', () => {
     });
   });
 
+  it("snaps to an ellipse's center and points, and a spline's ends and fit points (P1-05)", () => {
+    const b = new SketchBuilder();
+    const e = b.ellipse(0, 0, 10, 4);
+    const s = b.spline([
+      [20, 0],
+      [25, 5],
+      [30, 0],
+    ]);
+    const at = (p: Vec2) => infer(b.sketch, p, { tolerance: TOL }).snap;
+    expect(at([0.2, 0.2])).toMatchObject({ kind: 'center', ids: [e.center] });
+    expect(at([10.2, 0.2])).toMatchObject({ kind: 'point', ids: [e.major] });
+    expect(at([20.2, 0.2])).toMatchObject({ kind: 'endpoint', ids: [s.points[0]] });
+    expect(at([25.2, 5.2])).toMatchObject({ kind: 'point', ids: [s.points[1]] });
+    expect(at([30.2, 0.2])).toMatchObject({ kind: 'endpoint', ids: [s.points[2]] });
+  });
+
   it('takes the nearest candidate when several are in range', () => {
     const b = new SketchBuilder();
     const p = b.point(0, 0);

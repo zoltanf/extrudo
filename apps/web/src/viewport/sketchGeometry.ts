@@ -1,8 +1,12 @@
 import {
+  ellipsePoint,
+  ellipseShape,
+  fitSpline,
   type SketchData,
   type SketchEntityId,
   type SketchFrame,
   sketchToWorld,
+  splinePolyline,
   type Vec2,
 } from '@extrudo/core';
 import type { Bounds } from './store';
@@ -29,9 +33,9 @@ export interface SketchSegments {
 export const CIRCLE_SEGMENTS = 96;
 
 /**
- * A sketch as world-space line segments and points (P1-01). Circles and arcs
- * become polylines; an arc runs counter-clockwise from its start to its end
- * point, with the radius of its start point.
+ * A sketch as world-space line segments and points (P1-01). Circles, arcs,
+ * ellipses and splines become polylines; an arc runs counter-clockwise from
+ * its start to its end point, with the radius of its start point.
  */
 export function sketchSegments(data: SketchData, frame: SketchFrame): SketchSegments {
   const solid: number[] = [];
@@ -68,6 +72,21 @@ export function sketchSegments(data: SketchData, frame: SketchFrame): SketchSegm
     } else if (entity.type === 'circle') {
       const c = at(entity.center);
       if (c) polyline(out, c, entity.radius, 0, 2 * Math.PI);
+    } else if (entity.type === 'ellipse') {
+      const c = at(entity.center);
+      const major = at(entity.major);
+      const minor = at(entity.minor);
+      if (!c || !major || !minor) continue;
+      const shape = ellipseShape(c, major, minor);
+      for (let i = 0; i < CIRCLE_SEGMENTS; i++) {
+        const t = (2 * Math.PI) / CIRCLE_SEGMENTS;
+        push(out, ellipsePoint(shape, i * t), ellipsePoint(shape, (i + 1) * t));
+      }
+    } else if (entity.type === 'spline') {
+      const fit = entity.points.map(at);
+      if (fit.some((p) => !p)) continue;
+      const line = splinePolyline(fitSpline(fit as Vec2[]));
+      for (let i = 1; i < line.length; i++) push(out, line[i - 1] as Vec2, line[i] as Vec2);
     } else {
       const c = at(entity.center);
       const s = at(entity.start);

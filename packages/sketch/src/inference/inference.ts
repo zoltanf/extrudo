@@ -121,6 +121,10 @@ function analyse(sketch: SketchData): Analysis {
       role.set(e.center, 'center');
       role.set(e.start, 'endpoint');
       role.set(e.end, 'endpoint');
+    } else if (e.type === 'ellipse') role.set(e.center, 'center');
+    else if (e.type === 'spline') {
+      role.set(e.points[0] as string, 'endpoint');
+      role.set(e.points[e.points.length - 1] as string, 'endpoint');
     }
   }
   const points: Target[] = [{ kind: 'origin', point: ORIGIN, ids: [] }];

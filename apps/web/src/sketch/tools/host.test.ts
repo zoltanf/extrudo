@@ -1,10 +1,24 @@
 import { addToSketch, type SketchData, type SketchEntityId } from '@extrudo/core';
 import { afterEach, describe, expect, it } from 'vitest';
+import { TOOLS } from '../../shell/tools';
 import { finishSketch } from '../mode';
+import { HOST_TOOL_IDS } from './host';
+import { SKETCH_TOOL_IDS } from './ids';
 import { LINE_TOOL } from './line';
 import { at, disposeHosts, setup } from './testing';
 
 afterEach(disposeHosts);
+
+describe('tool IDs', () => {
+  it('lists every tool the host runs, each in the toolbar catalogue', () => {
+    expect([...SKETCH_TOOL_IDS].sort()).toEqual([...HOST_TOOL_IDS].sort());
+    for (const id of SKETCH_TOOL_IDS) {
+      const tool = (TOOLS as Record<string, { comesWith?: string }>)[id];
+      expect(tool, id).toBeDefined();
+      expect(tool?.comesWith, id).toBeUndefined();
+    }
+  });
+});
 
 describe('line tool through the host', () => {
   it('draws a chain with inferred constraints and closes it on its first point', async () => {

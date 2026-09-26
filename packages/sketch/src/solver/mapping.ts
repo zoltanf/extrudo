@@ -19,6 +19,7 @@ import type {
   SketchConstraint,
   SketchData,
   SketchDimension,
+  SketchEllipse,
   SketchEntity,
   SketchLine,
   SketchPoint,
@@ -56,7 +57,7 @@ export interface MappedSketch {
   skipped: string[];
 }
 
-export const PARAM_COUNT = { point: 2, line: 0, circle: 1, arc: 3 } as const;
+export const PARAM_COUNT = { point: 2, line: 0, circle: 1, arc: 3, ellipse: 1, spline: 0 } as const;
 
 /** The document ID a planegcs primitive ID came from. */
 export const docId = (primId: string): string => {
@@ -80,6 +81,23 @@ export function arcAngles(center: Vec, start: Vec, end: Vec) {
   return { start: a0, end: a1, radius: Math.hypot(start.x - center.x, start.y - center.y) };
 }
 
+/**
+ * planegcs's parameters for an ellipse given by its center, major-axis end
+ * and minor-axis end: the focus on the major axis, toward the major end, and
+ * the minor radius.
+ */
+export function ellipseParams(center: Vec, major: Vec, minor: Vec) {
+  const u = sub(major, center);
+  const a = Math.hypot(u.x, u.y);
+  const m = sub(minor, center);
+  const side = a === 0 ? 0 : cross(u, m) / a;
+  const b = a === 0 ? Math.hypot(m.x, m.y) : Math.abs(side);
+  // A focus needs a > b; a circle-like ellipse keeps a tiny focal distance so the axis stays defined.
+  const c = Math.sqrt(Math.max(a * a - b * b, 1e-12 * a * a));
+  const dir = a === 0 ? { x: 1, y: 0 } : { x: u.x / a, y: u.y / a };
+  return { focus: { x: center.x + c * dir.x, y: center.y + c * dir.y }, radmin: b };
+}
+
 /** Collects every entity ID a primitive refers to (`*_id` fields and `{ o_id }` parameters). */
 function referenced(prim: SketchPrimitive, out: Set<string>) {
   for (const [key, value] of Object.entries(prim)) {
@@ -97,14 +115,22 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
     return e as Extract<SketchEntity, { type: T }>;
   };
   const point = (id: string): SketchPoint => get(id, 'point');
-  const pointsOf = (e: SketchEntity): string[] =>
-    e.type === 'line'
-      ? [e.start, e.end]
-      : e.type === 'circle'
-        ? [e.center]
-        : e.type === 'arc'
-          ? [e.center, e.start, e.end]
-          : [];
+  const pointsOf = (e: SketchEntity): string[] => {
+    switch (e.type) {
+      case 'point':
+        return [];
+      case 'line':
+        return [e.start, e.end];
+      case 'circle':
+        return [e.center];
+      case 'arc':
+        return [e.center, e.start, e.end];
+      case 'ellipse':
+        return [e.center, e.major, e.minor];
+      case 'spline':
+        return e.points;
+    }
+  };
   const endpoints = (id: string): string[] => {
     const e = entities[id];
     return e?.type === 'line' || e?.type === 'arc' ? [e.start, e.end] : [];
@@ -120,7 +146,8 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
     if (e.type === 'point') fixedPoints.add(c.entity);
     else {
       for (const p of pointsOf(e)) fixedPoints.add(p);
-      if (e.type !== 'line') fixedCurves.add(c.entity);
+      // Lines and splines are their points; the others have parameters of their own.
+      if (e.type !== 'line' && e.type !== 'spline') fixedCurves.add(c.entity);
     }
   }
   const fixed = new Set<string>(fixedPoints);
@@ -172,7 +199,8 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
   ) => {
     const uses = new Set<string>(kind === 'point' || kind === 'curve' ? [id] : []);
     for (const prim of prims) referenced(prim, uses);
-    const list = [...uses];
+    // Solver-only primitives (an ellipse's focus) aren't entities: they link nothing.
+    const list = [...uses].filter((u) => u in entities);
     items.push({
       id,
       kind,
@@ -215,6 +243,10 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
         add(id, 'curve', prims, [e]);
         break;
       }
+      case 'ellipse':
+        add(id, 'curve', ellipsePrims(id, e), [e]);
+        break;
+      // A spline adds no unknowns and no equations: its shape follows its points.
     }
   }
 
@@ -248,6 +280,8 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
             return [{ id, type: 'point_on_line_pl', p_id: c.point, l_id: c.curve }];
           case 'circle':
             return [{ id, type: 'point_on_circle', p_id: c.point, c_id: c.curve }];
+          case 'ellipse':
+            return [{ id, type: 'point_on_ellipse', p_id: c.point, e_id: c.curve }];
           default:
             return [{ id, type: 'point_on_arc', p_id: c.point, a_id: c.curve }];
         }
@@ -312,6 +346,43 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
       case 'symmetric':
         return symmetricPrims(id, c.a, c.b, c.axis);
     }
+  }
+
+  /**
+   * planegcs describes an ellipse by its center, a focus and the minor
+   * radius. The focus is a solver-only point (`<id>#focus`) placed from the
+   * document's points. Two solver-only lines hold the axis points: the major
+   * point is on the ellipse and on the center–focus axis (a vertex); the
+   * minor point is on a line square to that axis, at the minor radius from
+   * the center. (planegcs's internal-alignment constraints would say this
+   * directly, but in our build they converge without moving anything.)
+   */
+  function ellipsePrims(id: string, e: SketchEllipse): SketchPrimitive[] {
+    const shape = ellipseParams(point(e.center), point(e.major), point(e.minor));
+    const isFixed = fixedCurves.has(id);
+    const focus = `${id}#focus`;
+    const prims: SketchPrimitive[] = [
+      { id: focus, type: 'point', x: shape.focus.x, y: shape.focus.y, fixed: isFixed },
+      { id, type: 'ellipse', c_id: e.center, focus1_id: focus, radmin: shape.radmin },
+    ];
+    if (isFixed) return prims;
+    const axis = `${id}#axis`;
+    const across = `${id}#across`;
+    prims.push(
+      { id: axis, type: 'line', p1_id: e.center, p2_id: focus },
+      { id: across, type: 'line', p1_id: e.center, p2_id: e.minor },
+      { id: `${id}#majorOn`, type: 'point_on_ellipse', p_id: e.major, e_id: id },
+      { id: `${id}#majorAxis`, type: 'point_on_line_pl', p_id: e.major, l_id: axis },
+      { id: `${id}#square`, type: 'perpendicular_ll', l1_id: axis, l2_id: across },
+      {
+        id: `${id}#minor`,
+        type: 'p2p_distance',
+        p1_id: e.center,
+        p2_id: e.minor,
+        distance: { o_id: id, prop: 'radmin' },
+      },
+    );
+    return prims;
   }
 
   function tangentPrims(

@@ -12,7 +12,9 @@ import {
   type Snap,
   snapConstraints,
 } from '@extrudo/sketch/inference';
-import { constrain, type SketchEdit, type ToolContext } from './tool';
+import { constrain, type SketchEdit, type ToolContext, type Typed } from './tool';
+
+const DEG = Math.PI / 180;
 
 export function addPoint(edit: SketchEdit, context: ToolContext, p: Vec2): SketchEntityId {
   const id = context.newId() as SketchEntityId;
@@ -166,4 +168,37 @@ export function arcEndDirection(shape: ArcShape): Vec2 {
   const angle = shape.reversed ? shape.from : shape.from + shape.sweep;
   const ccw: Vec2 = [-Math.sin(angle), Math.cos(angle)];
   return shape.reversed ? [-ccw[0], -ccw[1]] : ccw;
+}
+
+/**
+ * The end of an edge drawn from `start`: the pointer, or where a typed length
+ * and angle put it (toward the cursor when only one of them is typed).
+ */
+export function typedEnd(
+  start: Vec2,
+  pointer: Inference,
+  length: Typed | undefined,
+  angle: Typed | undefined,
+): Inference {
+  if (!length && !angle) return pointer;
+  const dx = pointer.cursor[0] - start[0];
+  const dy = pointer.cursor[1] - start[1];
+  const len = Math.hypot(dx, dy);
+  const dir: Vec2 = angle
+    ? [Math.cos(angle.value * DEG), Math.sin(angle.value * DEG)]
+    : len > 0
+      ? [dx / len, dy / len]
+      : [1, 0];
+  const l = length?.value ?? Math.max(0, dx * dir[0] + dy * dir[1]);
+  const point: Vec2 = [start[0] + dir[0] * l, start[1] + dir[1] * l];
+  return { point, cursor: point, snap: undefined, alignments: [] };
+}
+
+/** A typed angle that is a multiple of 90° puts an edge along an axis. */
+export function axisOf(angle: Typed | undefined): 'horizontal' | 'vertical' | undefined {
+  if (!angle) return undefined;
+  const quarters = angle.value / 90;
+  const k = Math.round(quarters);
+  if (Math.abs(quarters - k) > 1e-9) return undefined;
+  return k % 2 === 0 ? 'horizontal' : 'vertical';
 }

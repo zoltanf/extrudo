@@ -156,7 +156,7 @@ Benchmark **B1** buildable.
   (2-point, 3-point, center), circle (center, 2-point, 3-point), arc (3-point,
   center, tangent), point, construction toggle (X).
   *AC:* FR-SK-02 (subset), -04; E2E draws each.
-- [ ] **P1-05 More drawing tools.** Polygon (3 modes), slot (2 modes), ellipse,
+- [x] **P1-05 More drawing tools.** Polygon (3 modes), slot (2 modes), ellipse,
   fit-point spline.
   *AC:* FR-SK-02 complete, FR-SK-03 (fit-point).
 - [ ] **P1-06 Constraints UI.** Constraint tools in the toolbar and palette;

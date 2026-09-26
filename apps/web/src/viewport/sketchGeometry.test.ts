@@ -65,6 +65,27 @@ describe('sketchSegments', () => {
     expect(Math.max(...points.map(([x]) => x ?? 0))).toBeCloseTo(0, 4);
   });
 
+  it('draws ellipses and splines through their points (P1-05)', () => {
+    const data = sketch({
+      c: { type: 'point', x: 0, y: 0 },
+      M: { type: 'point', x: 0, y: 8 },
+      m: { type: 'point', x: -3, y: 0 },
+      oval: { type: 'ellipse', center: 'c', major: 'M', minor: 'm', construction: false },
+      f1: { type: 'point', x: 20, y: 0 },
+      f2: { type: 'point', x: 25, y: 5 },
+      f3: { type: 'point', x: 30, y: 0 },
+      wave: { type: 'spline', points: ['f1', 'f2', 'f3'], construction: true },
+    });
+    const s = sketchSegments(data, frame('origin:xy'));
+    const oval = pairs(s.solid);
+    expect(oval).toHaveLength(CIRCLE_SEGMENTS * 2);
+    for (const [x, y] of oval) expect(((x ?? 0) / 3) ** 2 + ((y ?? 0) / 8) ** 2).toBeCloseTo(1, 3);
+    const wave = pairs(s.construction);
+    expect(wave[0]).toEqual([20, 0, 0]);
+    expect(wave.at(-1)).toEqual([30, 0, 0]);
+    expect(wave.some(([x, y]) => x === 25 && y === 5)).toBe(true);
+  });
+
   it('skips curves whose points are missing, and has no bounds when empty', () => {
     const data = sketch({ l: { type: 'line', start: 'a', end: 'b', construction: false } });
     const s = sketchSegments(data, frame('origin:xy'));

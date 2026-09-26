@@ -28,7 +28,7 @@ export interface Split {
 const RANK = { point: 0, curve: 1, constraint: 2, dimension: 2 } as const;
 
 /** Values that change without the equations changing. */
-const VALUE_KEYS = new Set(['x', 'y', 'radius', 'start_angle', 'end_angle']);
+const VALUE_KEYS = new Set(['x', 'y', 'radius', 'start_angle', 'end_angle', 'radmin']);
 
 export function splitComponents(mapped: MappedSketch): Split {
   const parent = new Map<string, string>();

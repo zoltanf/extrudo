@@ -7,6 +7,7 @@ import {
   createDocument,
   createDocumentStore,
   createSessionStore,
+  evaluateParameters,
   type FeatureId,
   originPlaneRef,
   readSketch,
@@ -19,6 +20,7 @@ import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch
 import { memoryPreferences } from '../../platform';
 import { createViewportStore } from '../../viewport/store';
 import { createSketchOn } from '../mode';
+import { dimensionValues } from '../values';
 import { createToolHost, type PlanePointer, type ToolHost } from './host';
 import { LINE_TOOL } from './line';
 
@@ -97,7 +99,17 @@ export async function setup({ solver = 'real', tool = LINE_TOOL }: Setup = {}) {
     if (p?.type !== 'point') throw new Error(`${id} is not a point`);
     return [p.x, p.y];
   };
-  return { ...stores, host, id: id as FeatureId, data, byType, constraints, point };
+  /** Solves the sketch as it is now in a fresh solver: DOF, conflicts and redundancies. */
+  const report = () => {
+    const solver = new SketchSolver(planegcs);
+    try {
+      const { evaluate } = evaluateParameters(stores.store.getState().doc);
+      return solver.solve(data(), dimensionValues(data(), evaluate));
+    } finally {
+      solver.dispose();
+    }
+  };
+  return { ...stores, host, id: id as FeatureId, data, byType, constraints, point, report };
 }
 
 /** Rounds away solver noise for readable expectations. */

@@ -10,7 +10,7 @@
  * kept to the one component). A drag binds temporary constraints on the
  * dragged point to two sketch parameters and only updates those per frame.
  */
-import type { SketchData } from '@extrudo/core';
+import type { SketchData, SketchEllipse } from '@extrudo/core';
 import {
   Algorithm,
   DebugMode,
@@ -19,7 +19,14 @@ import {
 import { GcsWrapper } from '@salusoft89/planegcs/dist/sketch/gcs_wrapper.js';
 import type { SketchPrimitive } from '@salusoft89/planegcs/dist/sketch/sketch_primitive.js';
 import { type Component, splitComponents } from './components';
-import { arcAngles, type DimensionValues, docId, type Item, mapSketch } from './mapping';
+import {
+  arcAngles,
+  type DimensionValues,
+  docId,
+  ellipseParams,
+  type Item,
+  mapSketch,
+} from './mapping';
 import type { PlanegcsModule } from './module';
 
 export interface Vec2 {
@@ -77,6 +84,9 @@ export interface CheckResult {
   redundant: string[];
 }
 
+/** The primitive an entity item is named after (an ellipse's focus point comes first). */
+const own = (item: Item): SketchPrimitive | undefined => item.prims.find((p) => p.id === item.id);
+
 const DRAG_X = '#drag_x';
 const DRAG_Y = '#drag_y';
 
@@ -109,11 +119,12 @@ class System {
     }
     for (const item of component.items) for (const prim of item.prims) gcs.push_primitive(prim);
     for (const prim of extra) gcs.push_primitive(prim);
-    // The wrapper only fixes points; a circle's radius and an arc's angles are fixed here.
+    // The wrapper only fixes points; a circle's radius, an arc's angles and an
+    // ellipse's minor radius are fixed here.
     for (const item of component.items) {
       if (!fixedCurves.has(item.id)) continue;
       const addr = this.addr(item.id);
-      const count = item.prims[0]?.type === 'arc' ? 3 : 1;
+      const count = own(item)?.type === 'arc' ? 3 : 1;
       for (let i = 0; i < count; i++)
         gcs.gcs.set_p_param(addr + i, gcs.gcs.get_p_param(addr + i), true);
     }
@@ -126,7 +137,7 @@ class System {
     const set = (addr: number, value: number) => g.set_p_param(addr, value, g.get_is_fixed(addr));
     this.component = component;
     for (const item of component.items) {
-      const prim = item.prims[0];
+      const prim = own(item);
       if (item.param) this.gcs.set_sketch_param(item.param.name, item.param.value);
       if (prim?.type === 'point') {
         const addr = this.addr(item.id);
@@ -141,6 +152,13 @@ class System {
         set(addr, a.start);
         set(addr + 1, a.end);
         set(addr + 2, a.radius);
+      } else if (prim?.type === 'ellipse') {
+        const source = item.sources[0] as SketchEllipse;
+        const e = ellipseParams(point(source.center), point(source.major), point(source.minor));
+        const focus = this.addr(prim.focus1_id);
+        set(focus, e.focus.x);
+        set(focus + 1, e.focus.y);
+        set(this.addr(item.id), e.radmin);
       }
     }
   }
@@ -176,10 +194,10 @@ class System {
   read(): SketchSolution {
     const g = this.gcs.gcs;
     const solution: SketchSolution = { points: {}, radii: {} };
-    const own = new Set(this.component.entities);
+    const mine = new Set(this.component.entities);
     for (const item of this.component.items) {
-      if (!own.has(item.id)) continue;
-      const type = item.prims[0]?.type;
+      if (!mine.has(item.id)) continue;
+      const type = own(item)?.type;
       if (type === 'point') {
         const addr = this.addr(item.id);
         solution.points[item.id] = { x: g.get_p_param(addr), y: g.get_p_param(addr + 1) };
@@ -204,7 +222,10 @@ class System {
 /** Reads point positions and radii from a component's items (the document's values). */
 function itemGeometry(component: Component) {
   const prims = new Map<string, SketchPrimitive>();
-  for (const item of component.items) if (item.prims[0]) prims.set(item.id, item.prims[0]);
+  for (const item of component.items) {
+    const prim = own(item);
+    if (prim) prims.set(item.id, prim);
+  }
   const point = (id: string): Vec2 => {
     const p = prims.get(id);
     if (p?.type !== 'point') throw new Error(`solver: "${id}" is not a point`);
