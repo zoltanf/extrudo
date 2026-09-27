@@ -184,6 +184,7 @@ export function Viewport({
       aria-label="Viewport"
       data-ready={ready || undefined}
       data-sketch-status={sketchStatusSummary(sketches)}
+      data-sketch-profiles={sketchProfilesSummary(sketches)}
       className="relative isolate min-w-0 flex-1 overflow-hidden"
       style={{ background: 'var(--x-viewport-glow)' }}
     >
@@ -324,6 +325,15 @@ function Scene({
     () => ({ free: colors.sketch, fixed: colors.sketchFixed, conflict: colors.sketchConflict }),
     [colors],
   );
+  // Fills are big: the accent goes lighter than on curves (ADR-0020).
+  const profileColors = useMemo(
+    () => ({
+      normal: colors.profile,
+      hover: { ...colors.preselect, a: 0.22 },
+      selected: { ...colors.preselect, a: 0.4 },
+    }),
+    [colors],
+  );
 
   const gridFrame = sketchPlane ?? XY_FRAME;
   const gridAxes = [gridFrame.x, gridFrame.y].map((axis) => worldAxis(axis, colors, origin));
@@ -355,6 +365,7 @@ function Scene({
         colors={sketchColors}
         construction={colors.sketchConstruction}
         showPoints={sketchPoints}
+        profileColors={profileColors}
       />
       <Grid
         store={viewport}
@@ -713,6 +724,14 @@ function useNavigation(
  * colour (P1-08), for tests: "free=3 fixed=0 conflict=0". Undefined without
  * a status.
  */
+/** "profiles=3 holes=1" for the sketch being edited (e2e tests read it), while profiles show. */
+function sketchProfilesSummary(sketches: readonly SketchDrawing[]): string | undefined {
+  const profiles = sketches.find((s) => s.active)?.profiles;
+  if (!profiles) return undefined;
+  const holes = profiles.reduce((n, p) => n + p.holes.length, 0);
+  return `profiles=${profiles.length} holes=${holes}`;
+}
+
 function sketchStatusSummary(sketches: readonly SketchDrawing[]): string | undefined {
   const status = sketches.find((s) => s.active)?.status;
   if (!status) return undefined;

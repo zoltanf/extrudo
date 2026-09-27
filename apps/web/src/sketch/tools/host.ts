@@ -35,6 +35,8 @@
  * it, or the whole selection if it is selected, with the solver's live drag
  * (one undo step), and `box` takes a window or crossing box from the
  * viewport. `moveTo` and `setRadius` are the properties panel's edits.
+ * Where there is no entity, the pointer hovers and selects the closed
+ * profile under it (P1-11, kind `profile`), while profiles are shown.
  *
  * Until the solver has loaded (a few ms after the first tool starts, or
  * after a sketch opens), edits go in with every inferred constraint and
@@ -56,9 +58,11 @@ import {
   type FeatureId,
   modifySketch,
   nextModelParameterName,
+  profileRefId,
   radiusOf,
   newId as randomId,
   readSketch,
+  type SelectionItem,
   type SessionStore,
   type SketchConstraint,
   type SketchData,
@@ -79,9 +83,11 @@ import {
   sketchStatus,
   unmetDimensions,
 } from '@extrudo/sketch/inference';
+import { profileAt } from '@extrudo/sketch/profiles';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { gridStep } from '../../viewport/grid';
 import type { ViewportStore } from '../../viewport/store';
+import { sketchProfiles } from '../profiles';
 import { dimensionValues } from '../values';
 import { ARC_CENTER_TOOL, ARC_TANGENT_TOOL, ARC_TOOL, ArcTool } from './arc';
 import { CIRCLE_2POINT_TOOL, CIRCLE_3POINT_TOOL, CIRCLE_TOOL, CircleTool } from './circle';
@@ -698,6 +704,22 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     return sketch && pickEntity(sketch.data, pointer.point, SNAP_PIXELS * pointer.perPixel);
   };
 
+  /** What a click with no tool takes: the entity under the pointer, else the profile. */
+  const pickItem = (pointer: PlanePointer): SelectionItem | undefined => {
+    const hit = pickAt(pointer);
+    if (hit) return { kind: 'sketchEntity', id: hit };
+    const sketch = activeSketch();
+    if (!sketch || !viewport.getState().sketchProfiles) return undefined;
+    const profile = profileAt(sketchProfiles(sketch.data), pointer.point);
+    return profile && { kind: 'profile', id: profileRefId(sketch.id, profile.id) };
+  };
+
+  /** Clears a hover that the host set (an entity or a profile). */
+  const clearHover = () => {
+    const kind = session.getState().hover?.kind;
+    if (kind === 'sketchEntity' || kind === 'profile') session.getState().setHover(undefined);
+  };
+
   /** Stores a drag step's geometry where it differs from the open sketch's. */
   const place = (solution: SketchSolution) => {
     const sketch = activeSketch();
@@ -768,7 +790,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       const s = session.getState();
       if (s.mode !== 'sketch' || !FACTORIES[id]) return;
       endMove(true);
-      if (s.hover?.kind === 'sketchEntity') s.setHover(undefined);
+      clearHover();
       s.setTool(id);
       committed = store.getState().doc;
       state.setState((prev) => ({
@@ -794,10 +816,9 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       }
       if (!state.getState().tool) {
         if (session.getState().mode !== 'sketch') return;
-        const hit = pickAt(pointer);
-        const hover = session.getState().hover;
-        if (hit) session.getState().setHover({ kind: 'sketchEntity', id: hit });
-        else if (hover?.kind === 'sketchEntity') session.getState().setHover(undefined);
+        const item = pickItem(pointer);
+        if (item) session.getState().setHover(item);
+        else clearHover();
         return;
       }
       run((tool) => {
@@ -810,10 +831,9 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     click(pointer) {
       if (!state.getState().tool) {
         if (session.getState().mode !== 'sketch') return;
-        const hit = pickAt(pointer);
+        const item = pickItem(pointer);
         const s = session.getState();
-        if (hit)
-          s.select([{ kind: 'sketchEntity', id: hit }], pointer.toggle ? 'toggle' : 'replace');
+        if (item) s.select([item], pointer.toggle ? 'toggle' : 'replace');
         else if (!pointer.toggle) s.clearSelection();
         return;
       }
@@ -941,7 +961,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       bump({ construction: !state.getState().construction });
     },
     leave() {
-      if (session.getState().hover?.kind === 'sketchEntity') session.getState().setHover(undefined);
+      clearHover();
       bump({ pointer: undefined, screen: undefined });
     },
     enter() {

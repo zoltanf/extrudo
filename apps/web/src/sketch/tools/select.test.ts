@@ -171,3 +171,81 @@ describe('the properties panel edits', () => {
     expect((t.data().entities[e('c')] as { radius: number }).radius).toBeCloseTo(8, 6);
   });
 });
+
+describe('selecting profiles (P1-11)', () => {
+  /** A 40 × 20 rectangle from the origin with a hole of radius 5 around (10, 10). */
+  async function plate() {
+    const t = await setup();
+    t.host.stop();
+    const p = (id: string, x: number, y: number) => ({ [e(id)]: { type: 'point', x, y } as const });
+    const line = (id: string, start: string, end: string) => ({
+      [e(id)]: { type: 'line', start: e(start), end: e(end), construction: false } as const,
+    });
+    t.store.getState().dispatch(
+      addToSketch({
+        feature: t.id,
+        entities: {
+          ...p('p0', 0, 0),
+          ...p('p1', 40, 0),
+          ...p('p2', 40, 0),
+          ...p('p3', 40, 20),
+          ...p('p4', 40, 20),
+          ...p('p5', 0, 20),
+          ...p('p6', 0, 20),
+          ...p('p7', 0, 0),
+          ...line('bottom', 'p0', 'p1'),
+          ...line('right', 'p2', 'p3'),
+          ...line('top', 'p4', 'p5'),
+          ...line('left', 'p6', 'p7'),
+          ...p('o', 10, 10),
+          [e('hole')]: { type: 'circle', center: e('o'), radius: 5, construction: false },
+        },
+      }),
+    );
+    const selection = () => t.session.getState().selection.map((s) => s.kind);
+    return { ...t, selection };
+  }
+
+  it('hovers and selects the profile under the pointer where there is no entity', async () => {
+    const t = await plate();
+    t.host.move(at(30, 10));
+    const outer = t.session.getState().hover;
+    expect(outer?.kind).toBe('profile');
+    expect(outer?.id.startsWith(`${t.id}/`)).toBe(true);
+    // Inside the hole, away from its center point.
+    t.host.move(at(12, 11));
+    const disc = t.session.getState().hover;
+    expect(disc?.kind).toBe('profile');
+    expect(disc?.id).not.toBe(outer?.id);
+    // Geometry wins over the profile it bounds.
+    t.host.move(at(20, 0.1));
+    expect(t.session.getState().hover).toEqual({ kind: 'sketchEntity', id: 'bottom' });
+    t.host.move(at(60, 10));
+    expect(t.session.getState().hover).toBeUndefined();
+
+    t.host.click(at(30, 10));
+    t.host.click({ ...at(12, 11), toggle: true });
+    expect(t.session.getState().selection).toEqual([outer, disc]);
+    t.host.click(at(60, 10));
+    expect(t.selection()).toEqual([]);
+  });
+
+  it('picks no profiles while they are hidden', async () => {
+    const t = await plate();
+    t.viewport.getState().setSketchProfiles(false);
+    t.host.move(at(30, 10));
+    expect(t.session.getState().hover).toBeUndefined();
+    t.host.click(at(30, 10));
+    expect(t.selection()).toEqual([]);
+  });
+
+  it('clears a profile hover when a tool starts or the pointer leaves', async () => {
+    const t = await plate();
+    t.host.move(at(30, 10));
+    t.host.leave();
+    expect(t.session.getState().hover).toBeUndefined();
+    t.host.move(at(30, 10));
+    t.host.start('line');
+    expect(t.session.getState().hover).toBeUndefined();
+  });
+});

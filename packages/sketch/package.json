@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./inference": "./src/inference/index.ts",
     "./modify": "./src/modify/index.ts",
+    "./profiles": "./src/profiles/index.ts",
     "./browser": "./src/browser.ts",
     "./fixtures": "./src/fixtures.ts"
   },

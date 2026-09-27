@@ -11,6 +11,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { viewProject } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
+import { profileIdsIn } from '../profiles';
 import { EntityHighlight } from './ConstraintGlyphs';
 import { sketchSummary } from './SketchOverlay';
 
@@ -53,6 +54,7 @@ export function SelectionOverlay({
   const hover = useStore(session, (s) =>
     s.hover?.kind === 'sketchEntity' ? s.hover.id : undefined,
   );
+  const hoverProfile = useStore(session, (s) => profileIdsIn([s.hover], sketchId)[0]);
   const doc = useStore(store, (s) => s.doc);
   const data = useMemo(() => {
     const feature = doc.features.find((f) => f.id === sketchId);
@@ -77,6 +79,8 @@ export function SelectionOverlay({
       data-sketch-summary={summary}
       data-selected-entities={selected.join(' ')}
       data-hover-entity={hover}
+      data-selected-profiles={profileIdsIn(selection, sketchId).join(' ')}
+      data-hover-profile={hoverProfile}
     >
       {data && (
         <svg

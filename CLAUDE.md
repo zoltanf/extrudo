@@ -10,7 +10,7 @@ is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
 **Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01 to P1-10 done. ADR-0001 chose
+P1-01 to P1-11 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -106,7 +106,17 @@ one named undo step. A tool's `SketchEdit` can now carry `update`,
 another new one's parameter), `auto` dimensions, `hold`, `move` (Move
 drags with the solver), `label` and `error`. Tools in
 `sketch/tools/split.ts`, `corner.ts`, `offset.ts`, `transform.ts`.
-Next: **P1-11** (profile detection). See `docs/03-roadmap.md`.
+ADR-0020 (P1-11) added profile detection: `detectProfiles` in
+`@extrudo/sketch/profiles` (pure; import it like `/inference`) cuts exact
+lines/arcs/circles and ellipse/spline polylines where they cross, touch or
+end on each other (0.1 µm vertex tolerance), traces faces with half-edges
+and nests groups as holes; region IDs hash the boundary's (curve,
+direction) set. The app caches per `SketchData` (`sketch/profiles.ts`),
+shades them (`--x-profile-fill`, palette "Show profiles"), and with no
+tool the host hovers/selects a profile where no entity is (kind
+`profile`, ID `profileRefId(sketch, region)`); the properties panel shows
+the area. Next: **P1-12** (timeline v1 and browser tree). See
+`docs/03-roadmap.md`.
 
 ## Commands
 
@@ -135,7 +145,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -360,6 +370,15 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   `dimensionValues` reads cached parameter values first, so a dimension
   whose expression a change rewrites must be evaluated directly (the host
   does this for `exprs`).
+- **Sketch e2e tests read profiles** from the Viewport region's
+  `data-sketch-profiles` ("profiles=2 holes=1", absent while "Show
+  profiles" is off) and the selection overlay's `data-selected-profiles` /
+  `data-hover-profile` (region IDs). Snap to grid is on in e2e: put test
+  geometry on grid points (10 mm steps in the default Top view) or it
+  lands elsewhere (a circle snapped against a side made it no hole).
+- **A constraint glyph can sit over a corner and take a click meant for
+  the point** (only in CI's Ubuntu image, P1-10's select test): uncheck
+  "Show constraints" (then `blur()` it) before clicking corners in e2e.
 - **Toolbar menu items' accessible names end with the shortcut** ("Trim T"):
   in Playwright match them with a regex, not `exact: true`.
 - **The dev server takes an assigned port** (`.claude/launch.json` has

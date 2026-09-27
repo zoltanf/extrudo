@@ -1,6 +1,13 @@
 import { planeFrame, type SketchData, type SketchFrame } from '@extrudo/core';
+import { detectProfiles } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
-import { boundsOfPositions, CIRCLE_SEGMENTS, sketchSegments, unionBounds } from './sketchGeometry';
+import {
+  boundsOfPositions,
+  CIRCLE_SEGMENTS,
+  profileTriangles,
+  sketchSegments,
+  unionBounds,
+} from './sketchGeometry';
 
 const frame = (id: string) => planeFrame({ kind: 'plane', id }) as SketchFrame;
 
@@ -146,5 +153,65 @@ describe('bounds', () => {
     expect(unionBounds(a, { center: [0.5, 0, 0], radius: 0.25 })).toBe(a);
     expect(unionBounds(undefined, b)).toBe(b);
     expect(unionBounds(a, undefined)).toBe(a);
+  });
+});
+
+describe('profileTriangles', () => {
+  /** A 10 × 10 square on XZ (front) with a square hole of 4 × 4 in the middle. */
+  const square = (id: string, x: number, y: number, s: number) => {
+    const pts: [number, number][] = [
+      [x, y],
+      [x + s, y],
+      [x + s, y + s],
+      [x, y + s],
+    ];
+    const out: Record<string, unknown> = {};
+    pts.forEach(([px, py], i) => {
+      const [qx, qy] = pts[(i + 1) % 4] as [number, number];
+      out[`${id}a${i}`] = { type: 'point', x: px, y: py };
+      out[`${id}b${i}`] = { type: 'point', x: qx, y: qy };
+      out[`${id}l${i}`] = {
+        type: 'line',
+        start: `${id}a${i}`,
+        end: `${id}b${i}`,
+        construction: false,
+      };
+    });
+    return out;
+  };
+  const profiles = detectProfiles(sketch({ ...square('o', 0, 0, 10), ...square('i', 3, 3, 4) }));
+
+  /** Total area of xyz triangles, projected on the sketch plane's world axes (x and z for XZ). */
+  const area = (tri: Float32Array) => {
+    let sum = 0;
+    for (let i = 0; i < tri.length; i += 9) {
+      const [ax, , az, bx, , bz, cx, , cz] = tri.subarray(i, i + 9) as unknown as number[];
+      sum +=
+        Math.abs(
+          ((bx as number) - (ax as number)) * ((cz as number) - (az as number)) -
+            ((cx as number) - (ax as number)) * ((bz as number) - (az as number)),
+        ) / 2;
+    }
+    return sum;
+  };
+
+  it('triangulates regions with their holes, on the sketch plane', () => {
+    const t = profileTriangles(profiles, frame('origin:xz'));
+    expect(area(t.normal)).toBeCloseTo(100 - 16 + 16, 4);
+    // Every vertex lies on the XZ plane.
+    for (let i = 1; i < t.normal.length; i += 3) expect(t.normal[i]).toBeCloseTo(0, 9);
+    expect(t.hover).toHaveLength(0);
+  });
+
+  it('shades the hovered and selected regions apart', () => {
+    const [ring, inner] = profiles as [(typeof profiles)[number], (typeof profiles)[number]];
+    const t = profileTriangles(profiles, frame('origin:xz'), inner.id, [ring.id]);
+    expect(area(t.selected)).toBeCloseTo(84, 4);
+    expect(area(t.hover)).toBeCloseTo(16, 4);
+    expect(t.normal).toHaveLength(0);
+    // Selected wins over hover.
+    const both = profileTriangles(profiles, frame('origin:xz'), ring.id, [ring.id]);
+    expect(area(both.selected)).toBeCloseTo(84, 4);
+    expect(both.hover).toHaveLength(0);
   });
 });

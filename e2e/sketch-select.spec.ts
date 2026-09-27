@@ -113,6 +113,11 @@ test('typed coordinates move a point; Delete takes geometry with its constraints
   await rectangle(page, at);
   const click = clicker(page, at);
 
+  // A corner's coincident glyph can sit right over the corner (it did in CI's
+  // Ubuntu image) and take the click: hide the glyphs.
+  const glyphs = page.getByRole('checkbox', { name: 'Show constraints' });
+  await glyphs.uncheck();
+  await glyphs.blur();
   await click(30, 20);
   const x = panel(page).getByRole('textbox', { name: 'X' });
   await x.fill('40');

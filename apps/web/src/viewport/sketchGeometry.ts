@@ -6,6 +6,8 @@ import {
   sketchToWorld,
 } from '@extrudo/core';
 import type { EntityStatus } from '@extrudo/sketch/inference';
+import type { Profile } from '@extrudo/sketch/profiles';
+import { ShapeUtils, Vector2 } from 'three';
 import type { Bounds } from './store';
 
 export type { EntityStatus };
@@ -18,6 +20,12 @@ export interface SketchDrawing {
   active: boolean;
   /** Constraint status by entity (P1-08), for the sketch being edited once the solver is in. */
   status?: Readonly<Record<string, EntityStatus>>;
+  /** Closed regions to shade (P1-11); none while "Show profiles" is off. */
+  profiles?: readonly Profile[];
+  /** The region under the pointer (its ID within the sketch). */
+  hoverProfile?: string;
+  /** Selected regions (IDs within the sketch). */
+  selectedProfiles?: readonly string[];
 }
 
 export const STATUSES: readonly EntityStatus[] = ['free', 'fixed', 'conflict'];
@@ -119,4 +127,43 @@ export function unionBounds(a: Bounds | undefined, b: Bounds | undefined): Bound
   const t = (radius - a.radius) / dist;
   const center = [0, 1, 2].map((k) => (a.center[k] as number) + (d[k] as number) * t);
   return { center: center as [number, number, number], radius };
+}
+
+export type ProfileShade = 'normal' | 'hover' | 'selected';
+export const PROFILE_SHADES: readonly ProfileShade[] = ['normal', 'hover', 'selected'];
+
+/**
+ * Profiles as world-space triangles (P1-11): xyz per vertex, three
+ * vertices per triangle, grouped by how each region is shaded. A selected
+ * region under the pointer stays `selected`.
+ */
+export function profileTriangles(
+  profiles: readonly Profile[],
+  frame: SketchFrame,
+  hover?: string,
+  selected: readonly string[] = [],
+): Record<ProfileShade, Float32Array> {
+  const out: Record<ProfileShade, number[]> = { normal: [], hover: [], selected: [] };
+  for (const profile of profiles) {
+    const shade: ProfileShade = selected.includes(profile.id)
+      ? 'selected'
+      : profile.id === hover
+        ? 'hover'
+        : 'normal';
+    const contour = profile.outer.polygon.map((p) => new Vector2(p[0], p[1]));
+    const holes = profile.holes.map((h) => h.polygon.map((p) => new Vector2(p[0], p[1])));
+    const all = [...contour, ...holes.flat()];
+    const list = out[shade];
+    for (const triangle of ShapeUtils.triangulateShape(contour, holes)) {
+      for (const index of triangle) {
+        const v = all[index] as Vector2;
+        list.push(...sketchToWorld(frame, [v.x, v.y]));
+      }
+    }
+  }
+  return {
+    normal: new Float32Array(out.normal),
+    hover: new Float32Array(out.hover),
+    selected: new Float32Array(out.selected),
+  };
 }

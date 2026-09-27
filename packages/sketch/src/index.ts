@@ -1,8 +1,8 @@
 /**
  * @extrudo/sketch: the sketch solver (planegcs adapter, P1-03) and the
- * inference engine for drawing (P1-02); profile detection and SVG/DXF export
- * follow in Phase 1. Runs in the browser and in
- * Node. In a bundled browser build, load the solver through
+ * inference engine for drawing (P1-02); the modify tools' geometry and
+ * profile detection have their own pure entries (`/modify`, `/profiles`);
+ * SVG/DXF export follows in Phase 1. Runs in the browser and in Node. In a bundled browser build, load the solver through
  * `@extrudo/sketch/browser`, which knows where the WASM ended up.
  */
 export * from './inference';

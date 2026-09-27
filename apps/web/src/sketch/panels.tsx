@@ -1,8 +1,11 @@
 import {
   ANGLE,
   CommandError,
+  type Dim,
   type DocumentStore,
+  type ExtrudoDocument,
   evaluateParameters,
+  type FeatureId,
   formatQuantity,
   LENGTH,
   lineEnds,
@@ -10,7 +13,9 @@ import {
   type OriginPlaneId,
   radiusOf,
   readSketch,
+  type SelectionItem,
   type SessionStore,
+  type SketchData,
   type SketchEntity,
   type SketchEntityId,
   setSketchConstruction,
@@ -23,6 +28,7 @@ import { Button, ConfirmDialog, ToolIcon, Tooltip } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
 import type { ViewportStore } from '../viewport/store';
 import { useHostState } from './hostState';
+import { profileIdsIn, sketchProfiles } from './profiles';
 import type { ToolHost } from './tools/host';
 
 /**
@@ -121,7 +127,6 @@ export interface SketchPaletteProps {
 
 /** Options that arrive with later tasks, listed so the palette shows its real layout. */
 const LATER: readonly { label: string; comesWith: string }[] = [
-  { label: 'Show profiles', comesWith: 'P1-11' },
   { label: 'Slice', comesWith: 'P2' },
 ];
 
@@ -131,6 +136,7 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
   const points = useStore(viewport, (s) => s.sketchPoints);
   const constraints = useStore(viewport, (s) => s.sketchConstraints);
   const dimensions = useStore(viewport, (s) => s.sketchDimensions);
+  const profiles = useStore(viewport, (s) => s.sketchProfiles);
   const snap = useStore(viewport, (s) => s.snap);
   return (
     <FloatingPanel label="Sketch palette">
@@ -172,6 +178,14 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
             onChange={(v) => viewport.getState().setSketchDimensions(v)}
           >
             Show dimensions
+          </PaletteToggle>
+        </li>
+        <li>
+          <PaletteToggle
+            checked={profiles}
+            onChange={(v) => viewport.getState().setSketchProfiles(v)}
+          >
+            Show profiles
           </PaletteToggle>
         </li>
         <li>
@@ -272,7 +286,9 @@ export function SelectionPanel({ store, session, host, onDelete, notify }: Selec
   const ids = selection
     .filter((s) => s.kind === 'sketchEntity' && s.id in data.entities)
     .map((s) => s.id as SketchEntityId);
-  if (ids.length === 0) return null;
+  if (ids.length === 0) {
+    return <ProfileReadout data={data} sketchId={sketchId} selection={selection} doc={doc} />;
+  }
   const { settings } = doc;
   const single = ids.length === 1 ? (ids[0] as SketchEntityId) : undefined;
   const entity = single && data.entities[single];
@@ -392,6 +408,48 @@ export function SelectionPanel({ store, session, host, onDelete, notify }: Selec
     </div>
   );
 }
+
+/** The selected profiles' area (P1-11): profiles can't be edited or deleted, only picked. */
+function ProfileReadout({
+  data,
+  sketchId,
+  selection,
+  doc,
+}: {
+  data: SketchData;
+  sketchId: FeatureId;
+  selection: readonly SelectionItem[];
+  doc: ExtrudoDocument;
+}) {
+  const ids = new Set(profileIdsIn(selection, sketchId));
+  const picked = sketchProfiles(data).filter((p) => ids.has(p.id));
+  if (picked.length === 0) return null;
+  const area = picked.reduce((sum, p) => sum + p.area, 0);
+  const holes = picked.reduce((n, p) => n + p.holes.length, 0);
+  const row = (label: string, text: string) => (
+    <div className="flex justify-between gap-2 text-sm">
+      <span className="text-muted">{label}</span>
+      <span className="font-mono tabular-nums">{text}</span>
+    </div>
+  );
+  return (
+    <div className="absolute bottom-3 left-3 z-10 w-60">
+      <FloatingPanel label="Selection">
+        <h2 className="text-base font-semibold">
+          <span data-selection-title>
+            {picked.length === 1 ? 'Profile' : `${picked.length} profiles`}
+          </span>
+        </h2>
+        <div className="flex flex-col gap-1">
+          {row('Area', formatQuantity(area, AREA, doc.settings))}
+          {holes > 0 && row('Holes', String(holes))}
+        </div>
+      </FloatingPanel>
+    </div>
+  );
+}
+
+const AREA: Dim = { length: 2, angle: 0 };
 
 export interface OverConstrainedDialogProps {
   host: ToolHost | undefined;

@@ -5,6 +5,7 @@
  */
 import { z } from 'zod';
 import type { FeatureDefinition } from '../features';
+import type { FeatureId } from '../ids';
 import {
   type Feature,
   type GeomRef,
@@ -62,4 +63,20 @@ export function readSketch(feature: Feature): SketchView | undefined {
   const ref = plane.refs[0];
   if (!ref || plane.refs.length !== 1 || !['plane', 'face'].includes(ref.kind)) return undefined;
   return { plane: ref, data: sketch.sketch };
+}
+
+/**
+ * A sketch profile's ID in a selection or a `profile` reference (P1-11):
+ * the sketch feature's ID and the region's ID within it (`detectProfiles`
+ * in `@extrudo/sketch/profiles`).
+ */
+export function profileRefId(feature: FeatureId, profile: string): string {
+  return `${feature}/${profile}`;
+}
+
+/** The sketch and region of a `profileRefId`, or `undefined` if it isn't one. */
+export function parseProfileRefId(id: string): { feature: FeatureId; profile: string } | undefined {
+  const slash = id.lastIndexOf('/');
+  if (slash <= 0 || slash === id.length - 1) return undefined;
+  return { feature: id.slice(0, slash) as FeatureId, profile: id.slice(slash + 1) };
 }

@@ -36,6 +36,7 @@ import {
   SelectionPanel,
   SketchPalette,
 } from '../sketch/panels';
+import { profileIdsIn, sketchProfiles } from '../sketch/profiles';
 import { deleteSelection } from '../sketch/selection';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
@@ -110,6 +111,8 @@ export function AppShell({
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
   const showConstraints = useStore(viewport, (s) => s.sketchConstraints);
   const showDimensions = useStore(viewport, (s) => s.sketchDimensions);
+  const showProfiles = useStore(viewport, (s) => s.sketchProfiles);
+  const selection = useStore(session, (s) => s.selection);
 
   const stores = useMemo<SketchModeStores>(
     () => ({ store, session, viewport }),
@@ -233,7 +236,8 @@ export function AppShell({
   const pickPlane = (plane: OriginPlaneId) => createSketchOn(stores, originPlaneRef(plane));
   const edit = (id: FeatureId) => editSketch(stores, id);
 
-  // Every active, unsuppressed sketch on a known plane is drawn; the open one in its status colours.
+  // Every active, unsuppressed sketch on a known plane is drawn; the open one in its status
+  // colours. Profiles are shaded (P1-11) unless the palette hides them.
   const status = useHostState(host, (s) => s.status);
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
@@ -248,11 +252,16 @@ export function AppShell({
           data: sketch.data,
           active: feature.id === activeSketchId,
           status: feature.id === activeSketchId ? status?.entities : undefined,
+          ...(showProfiles && {
+            profiles: sketchProfiles(sketch.data),
+            hoverProfile: profileIdsIn([hover], feature.id)[0],
+            selectedProfiles: profileIdsIn(selection, feature.id),
+          }),
         });
       }
     });
     return out;
-  }, [doc.features, doc.timelineMarker, activeSketchId, status]);
+  }, [doc.features, doc.timelineMarker, activeSketchId, status, showProfiles, hover, selection]);
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
   const sketchPlane = sketches.find((s) => s.active)?.frame;
 

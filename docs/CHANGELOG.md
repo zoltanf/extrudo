@@ -2,6 +2,18 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **P1-11** Profile detection: a TypeScript planar
+  arrangement (`@extrudo/sketch/profiles`) finds every closed region of a
+  sketch, where curves cross, touch or end on each other, with nested
+  groups as holes; exact lines and arcs, ellipses and splines as
+  polylines; exact areas; region IDs hashed from their boundary's curves
+  and directions (stable across moves, resizes and unrelated edits).
+  Profiles are shaded in the view (new `profile-fill` token), hovered and
+  selected where no entity is (kind `profile`, `<sketch>/<region>`), with
+  their area in the properties panel; the palette's "Show profiles" hides
+  them. Also fixed a CI-only e2e failure from P1-10 (a constraint glyph
+  over a corner took the click). ADR-0020.
+
 - 2026-09-27 · **P1-10** Modify tools: Trim (`T`, previews what goes),
   Extend, Break; Sketch Fillet (`F`) and Chamfer on a corner point or two
   lines, keeping a virtual sharp so dimensions to the corner survive, with

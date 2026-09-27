@@ -1,12 +1,20 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo } from 'react';
-import { BufferAttribute, BufferGeometry, Color } from 'three';
+import { BufferAttribute, BufferGeometry, Color, DoubleSide, MeshBasicMaterial } from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import type { Rgba } from './colors';
 import { createDotMaterial } from './dots';
-import { type EntityStatus, type SketchDrawing, STATUSES, sketchSegments } from './sketchGeometry';
+import {
+  type EntityStatus,
+  PROFILE_SHADES,
+  type ProfileShade,
+  profileTriangles,
+  type SketchDrawing,
+  STATUSES,
+  sketchSegments,
+} from './sketchGeometry';
 import type { ViewportStore } from './store';
 
 /**
@@ -15,6 +23,8 @@ import type { ViewportStore } from './store';
  * edited as dots. The sketch being edited takes its constraint status
  * colours (P1-08): under-constrained `sketch` blue, fully constrained `ink`,
  * over-constrained `error` red. Construction geometry stays grey.
+ * Closed profiles (P1-11) are a pale fill; the one under the pointer and
+ * the selected ones take the accent.
  */
 
 export interface SketchesProps {
@@ -26,13 +36,22 @@ export interface SketchesProps {
   construction: Rgba;
   /** Draw the points of the sketch being edited. */
   showPoints: boolean;
+  /** Profile fills: plain, under the pointer, selected. */
+  profileColors: Readonly<Record<ProfileShade, Rgba>>;
 }
 
 /** Construction dashes, in px (docs/05-brand.md §3.4). */
 const DASH = 6;
 const GAP = 4;
 
-export function Sketches({ store, sketches, colors, construction, showPoints }: SketchesProps) {
+export function Sketches({
+  store,
+  sketches,
+  colors,
+  construction,
+  showPoints,
+  profileColors,
+}: SketchesProps) {
   return sketches.map((s) => (
     <Sketch
       key={s.id}
@@ -41,6 +60,7 @@ export function Sketches({ store, sketches, colors, construction, showPoints }: 
       colors={colors}
       construction={construction}
       showPoints={showPoints}
+      profileColors={profileColors}
     />
   ));
 }
@@ -53,15 +73,58 @@ function Sketch({
   colors,
   construction,
   showPoints,
+  profileColors,
 }: {
   store: ViewportStore;
   drawing: SketchDrawing;
   colors: Readonly<Record<EntityStatus, Rgba>>;
   construction: Rgba;
   showPoints: boolean;
+  profileColors: Readonly<Record<ProfileShade, Rgba>>;
 }) {
-  const { data, frame, active, status } = drawing;
+  const { data, frame, active, status, profiles, hoverProfile, selectedProfiles } = drawing;
   const segments = useMemo(() => sketchSegments(data, frame, status), [data, frame, status]);
+
+  const fills = useMemo(() => {
+    const triangles = profileTriangles(profiles ?? [], frame, hoverProfile, selectedProfiles);
+    return Object.fromEntries(
+      PROFILE_SHADES.map((shade) => {
+        const g = new BufferGeometry();
+        g.setAttribute('position', new BufferAttribute(triangles[shade], 3));
+        return [shade, g];
+      }),
+    ) as Record<ProfileShade, BufferGeometry>;
+  }, [profiles, frame, hoverProfile, selectedProfiles]);
+  useEffect(
+    () => () => {
+      for (const g of Object.values(fills)) g.dispose();
+    },
+    [fills],
+  );
+  const fillMaterials = useMemo(
+    () =>
+      Object.fromEntries(
+        PROFILE_SHADES.map((shade) => [
+          shade,
+          // Coplanar with the grid and the curves: drawn after the grid, under the curves.
+          new MeshBasicMaterial({
+            transparent: true,
+            depthWrite: false,
+            side: DoubleSide,
+            polygonOffset: true,
+            polygonOffsetFactor: -1,
+            polygonOffsetUnits: -1,
+          }),
+        ]),
+      ) as Record<ProfileShade, MeshBasicMaterial>,
+    [],
+  );
+  useEffect(
+    () => () => {
+      for (const m of Object.values(fillMaterials)) m.dispose();
+    },
+    [fillMaterials],
+  );
 
   const geometries = useMemo(() => {
     const byStatus = (s: EntityStatus) => {
@@ -148,6 +211,11 @@ function Sketch({
     m.dots.uniforms.uColor.value = color(c);
     m.dots.uniforms.uAlpha.value = c.a;
   }
+  for (const shade of PROFILE_SHADES) {
+    const c = profileColors[shade];
+    fillMaterials[shade].color = color(c);
+    fillMaterials[shade].opacity = c.a * alpha;
+  }
   materials.dashed.color = color(construction);
   materials.dashed.opacity = construction.a * alpha;
 
@@ -161,6 +229,20 @@ function Sketch({
 
   return (
     <group>
+      {PROFILE_SHADES.map(
+        (shade) =>
+          (fills[shade].getAttribute('position')?.count ?? 0) > 0 && (
+            <mesh
+              key={shade}
+              geometry={fills[shade]}
+              material={fillMaterials[shade]}
+              renderOrder={3}
+              frustumCulled={false}
+              // Picking profiles is the tool host's (sketch plane maths), not R3F's.
+              raycast={() => null}
+            />
+          ),
+      )}
       {STATUSES.map(
         (s) => segments.curves[s].length > 0 && <primitive key={s} object={lines.solid[s]} />,
       )}

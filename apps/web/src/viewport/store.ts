@@ -53,6 +53,8 @@ export interface ViewportSettings {
   sketchConstraints: boolean;
   /** Show the dimensions of the sketch being edited (sketch palette, P1-07). */
   sketchDimensions: boolean;
+  /** Shade sketch profiles and let them be picked (sketch palette, P1-11). */
+  sketchProfiles: boolean;
   /** Snap sketch points to the grid while drawing (sketch palette). */
   snap: boolean;
 }
@@ -67,6 +69,7 @@ export const DEFAULT_SETTINGS: ViewportSettings = {
   sketchPoints: true,
   sketchConstraints: true,
   sketchDimensions: true,
+  sketchProfiles: true,
   snap: true,
 };
 
@@ -124,6 +127,7 @@ export interface ViewportState extends ViewportSettings {
   setSketchPoints(visible: boolean): void;
   setSketchConstraints(visible: boolean): void;
   setSketchDimensions(visible: boolean): void;
+  setSketchProfiles(visible: boolean): void;
   setSnap(snap: boolean): void;
   setSnapshot(snapshot: (() => Promise<Blob | null>) | undefined): void;
 }
@@ -233,6 +237,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       setSketchDimensions(sketchDimensions) {
         set({ sketchDimensions });
       },
+      setSketchProfiles(sketchProfiles) {
+        set({ sketchProfiles });
+      },
       setSnap(snap) {
         set({ snap });
       },
@@ -252,6 +259,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       s.sketchPoints !== prev.sketchPoints ||
       s.sketchConstraints !== prev.sketchConstraints ||
       s.sketchDimensions !== prev.sketchDimensions ||
+      s.sketchProfiles !== prev.sketchProfiles ||
       s.snap !== prev.snap
     ) {
       const {
@@ -263,6 +271,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         sketchPoints,
         sketchConstraints,
         sketchDimensions,
+        sketchProfiles,
         snap,
       } = s;
       preferences.set(PREFERENCES_KEY, {
@@ -274,6 +283,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         sketchPoints,
         sketchConstraints,
         sketchDimensions,
+        sketchProfiles,
         snap,
       });
     }

@@ -15,6 +15,8 @@ import {
 } from './commands';
 import {
   emptySketchData,
+  parseProfileRefId,
+  profileRefId,
   readSketch,
   SketchInputsSchema,
   sketchFeature,
@@ -675,5 +677,16 @@ describe('constraintRefs', () => {
       'q',
       'l',
     ]);
+  });
+});
+
+describe('profile reference IDs', () => {
+  it('join a sketch feature and a region, and split back', () => {
+    const id = profileRefId('f-1' as FeatureId, 'abc123');
+    expect(id).toBe('f-1/abc123');
+    expect(parseProfileRefId(id)).toEqual({ feature: 'f-1', profile: 'abc123' });
+    expect(parseProfileRefId('no-slash')).toBeUndefined();
+    expect(parseProfileRefId('/x')).toBeUndefined();
+    expect(parseProfileRefId('x/')).toBeUndefined();
   });
 });

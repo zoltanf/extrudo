@@ -344,7 +344,8 @@ and remove a sketch edge, then assert the fillet still sits on the "same" edges.
   shading while drawing. The authoritative regions come from OCCT
   (`BOPAlgo_Builder` on sketch edges → faces), which handles splines and
   tangencies robustly. Region IDs are derived from their bounding sketch-curve
-  IDs, which makes them persistent.
+  IDs, which makes them persistent. P1-11 built the TypeScript pass
+  (`@extrudo/sketch/profiles`, ADR-0020); the OCCT faces come with extrude.
 - A sketch's plane is a reference (origin plane, construction plane or a face's
   persistent ID), re-derived on each recompute, so a sketch on a face follows
   that face.

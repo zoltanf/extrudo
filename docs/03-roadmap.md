@@ -182,7 +182,7 @@ Benchmark **B1** buildable.
   *AC:* FR-SK-10; unit tests on the geometry operations. *Done 2026-09-27,
   ADR-0019. Not yet: trimming ellipses and splines, line–arc fillets,
   round offset joins, pattern instances tied to the original's position.*
-- [ ] **P1-11 Profile detection.** TS planar arrangement → closed regions with
+- [x] **P1-11 Profile detection.** TS planar arrangement → closed regions with
   nesting; shaded profile display; hover and select profiles; stable region IDs.
   *AC:* FR-SK-11; unit tests with overlapping and nested shapes.
 - [ ] **P1-12 Timeline v1 and browser tree.** Timeline bar with sketch chips;

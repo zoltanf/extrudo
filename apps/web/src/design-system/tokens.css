@@ -42,6 +42,7 @@
   --x-axis-x: #f0675c;
   --x-axis-y: #5fcf78;
   --x-axis-z: #5b8cff;
+  --x-profile-fill: rgb(90 169 255 / 14%);
 
   /* 2 Logo (extrudo-mark-dark.svg) */
   --x-logo-top: #ffc76a;
@@ -86,6 +87,7 @@
   --x-axis-x: #d9463a;
   --x-axis-y: #23994a;
   --x-axis-z: #2f63e0;
+  --x-profile-fill: rgb(47 134 240 / 12%);
 
   --x-logo-top: #ffbe55;
   --x-logo-side: #d9861f;
