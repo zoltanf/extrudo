@@ -10,6 +10,8 @@ import {
 import { Fragment, useState } from 'react';
 import { useStore } from 'zustand';
 import { ContextMenu, IconButton, Popover, ToolIcon, Tooltip } from '../design-system';
+import { formatRenderStats } from '../viewport/renderMeter';
+import type { ViewportStore } from '../viewport/store';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import { type FeatureActions, isEditableSketch } from './featureActions';
 import { toolForFeature } from './tools';
@@ -22,6 +24,8 @@ export interface TimelineProps {
   activeSketch?: string;
   /** Edit, rename, suppress, delete and hover (P1-12). */
   actions: FeatureActions;
+  /** The viewport, whose frame rate and frame time the status bar shows. */
+  viewport?: ViewportStore;
 }
 
 /**
@@ -31,7 +35,14 @@ export interface TimelineProps {
  * on hover and has a right-click menu (P1-12). Dragging the marker comes with
  * P2-11.
  */
-export function Timeline({ store, collapsed, onToggle, activeSketch, actions }: TimelineProps) {
+export function Timeline({
+  store,
+  collapsed,
+  onToggle,
+  activeSketch,
+  actions,
+  viewport,
+}: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
   const marker = doc.timelineMarker;
   const count = doc.features.length;
@@ -99,6 +110,7 @@ export function Timeline({ store, collapsed, onToggle, activeSketch, actions }: 
         {activeSketch ? `Editing ${activeSketch} · ` : ''}
         {count} {count === 1 ? 'feature' : 'features'} · {doc.settings.units} · kernel idle
       </output>
+      {viewport && <RenderRate viewport={viewport} />}
       <IconButton label={collapsed ? 'Show timeline' : 'Hide timeline'} onClick={onToggle}>
         {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
       </IconButton>
@@ -191,5 +203,27 @@ function Marker() {
     <li className="relative mx-0.5 h-8 w-[3px] rounded-sm bg-accent before:absolute before:-top-1 before:-left-1 before:border-[5.5px] before:border-transparent before:border-t-accent">
       <span className="sr-only">Timeline marker</span>
     </li>
+  );
+}
+
+/**
+ * The viewport's frame rate and frame time. The view draws only when
+ * something changes, so a still view reads "idle"; orbit or drag to measure.
+ */
+function RenderRate({ viewport }: { viewport: ViewportStore }) {
+  const stats = useStore(viewport, (s) => s.renderStats);
+  return (
+    <Tooltip
+      label="Rendering"
+      hint="Frames drawn in the last second, and the mean time to draw one. The view only redraws when something changes, so a still view is idle."
+    >
+      <output
+        aria-label="Rendering"
+        data-render-stats
+        className="-ml-1 font-mono text-[11px] whitespace-nowrap text-muted tabular-nums"
+      >
+        · {formatRenderStats(stats)}
+      </output>
+    </Tooltip>
   );
 }

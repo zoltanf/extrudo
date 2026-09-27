@@ -361,6 +361,7 @@ export function AppShell({
           actions={featureActions}
           width={browser.size}
           collapsed={browser.collapsed}
+          animate={browser.animate}
           onToggle={browser.toggle}
         />
         {!browser.collapsed && (
@@ -471,6 +472,7 @@ export function AppShell({
         onToggle={timeline.toggle}
         activeSketch={activeSketch?.name}
         actions={featureActions}
+        viewport={viewport}
       />
       <OverConstrainedDialog host={host} />
       <ParametersDialog

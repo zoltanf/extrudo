@@ -18,6 +18,7 @@ import {
   type View,
 } from './camera';
 import type { NavAction, NavPreset } from './navigation';
+import type { RenderStats } from './renderMeter';
 
 export type VisualStyle = 'shaded' | 'shadedEdges' | 'wireframe' | 'hiddenEdges';
 
@@ -104,6 +105,8 @@ export interface ViewportState extends ViewportSettings {
   tool: NavAction | undefined;
   /** Renders the view to a thumbnail PNG; set while the canvas is mounted. */
   snapshot: (() => Promise<Blob | null>) | undefined;
+  /** Frames per second and frame time while the canvas is mounted (the status bar shows them). */
+  renderStats: RenderStats | undefined;
 
   /** Moves the camera at once (drags, wheel) and stops any animation. */
   setView(view: View): void;
@@ -130,6 +133,7 @@ export interface ViewportState extends ViewportSettings {
   setSketchProfiles(visible: boolean): void;
   setSnap(snap: boolean): void;
   setSnapshot(snapshot: (() => Promise<Blob | null>) | undefined): void;
+  setRenderStats(stats: RenderStats | undefined): void;
 }
 
 export type ViewportStore = StoreApi<ViewportState>;
@@ -175,6 +179,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       bounds: undefined,
       tool: undefined,
       snapshot: undefined,
+      renderStats: undefined,
 
       setView(view) {
         set({ view, transition: undefined });
@@ -245,6 +250,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       },
       setSnapshot(snapshot) {
         set({ snapshot });
+      },
+      setRenderStats(renderStats) {
+        set({ renderStats });
       },
     };
   });

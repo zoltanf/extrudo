@@ -1,0 +1,6 @@
+/* Applied to every toHaveScreenshot: hides what changes from run to run. */
+
+/* The viewport's frame rate and frame time (status bar). */
+[data-render-stats] {
+  visibility: hidden;
+}

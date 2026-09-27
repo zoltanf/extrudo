@@ -87,8 +87,13 @@ test('the browser and the timeline collapse and expand, and remember it', async 
   await open(page);
   await page.getByRole('button', { name: 'Hide browser' }).click();
   const browser = page.getByRole('complementary', { name: 'Browser' });
-  expect(Math.round((await browser.boundingBox())?.width ?? 0)).toBe(40);
+  // The panel slides away completely; a small tab at the view's edge brings it back.
+  await expect(browser).toBeHidden();
   await expect(page.getByRole('separator', { name: 'Resize browser' })).toHaveCount(0);
+  const tab = page.getByRole('button', { name: 'Show browser' });
+  await expect(tab).toBeVisible();
+  expect(Math.round((await tab.boundingBox())?.width ?? 0)).toBeLessThanOrEqual(32);
+  await expect(page.getByRole('button', { name: 'Hide browser' })).toBeHidden();
 
   await page.getByRole('button', { name: 'Hide timeline' }).click();
   await expect(page.getByRole('list', { name: 'Features' })).toHaveCount(0);
@@ -96,7 +101,8 @@ test('the browser and the timeline collapse and expand, and remember it', async 
   await page.reload();
   await expect(page.getByRole('button', { name: 'Show browser' })).toBeVisible();
   await page.getByRole('button', { name: 'Show browser' }).click();
-  expect(Math.round((await browser.boundingBox())?.width ?? 0)).toBe(248);
+  await expect.poll(async () => Math.round((await browser.boundingBox())?.width ?? 0)).toBe(248);
+  await expect(page.getByRole('button', { name: 'Show browser' })).toBeHidden();
   await page.getByRole('button', { name: 'Show timeline' }).click();
   await expect(page.getByRole('list', { name: 'Features' })).toBeVisible();
 });

@@ -514,11 +514,13 @@ export interface ToolGroup {
   compact?: boolean;
 }
 
-export type TabId = 'solid' | 'sketch' | 'print';
+export type TabId = 'solid' | 'sketch' | 'insert' | 'print';
 
 /**
  * Toolbar tabs (UI spec §2). `sketch` shows only while a sketch is open, in
- * place of `solid`; Finish Sketch sits after its groups.
+ * place of `solid`; Finish Sketch sits after its groups. Insert and export
+ * aren't modelling tools, so they have tabs of their own: Insert, and 3D
+ * Print for the model's export (a sketch's export stays in the Sketch tab).
  */
 export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
   {
@@ -533,8 +535,6 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
       { label: 'Modify', tools: ['fillet', 'chamfer', 'shell', 'parameters'] },
       { label: 'Construct', tools: ['plane'], more: ['axis'] },
       { label: 'Inspect', tools: ['measure'] },
-      { label: 'Insert', tools: ['insertSvg'] },
-      { label: 'Export', tools: ['export'] },
     ],
   },
   {
@@ -591,6 +591,11 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
       { label: 'Inspect', tools: ['measure'] },
       { label: 'Export', tools: ['exportSketch'] },
     ],
+  },
+  {
+    id: 'insert',
+    label: 'Insert',
+    groups: [{ label: 'Insert', tools: ['insertSvg'] }],
   },
   {
     id: 'print',

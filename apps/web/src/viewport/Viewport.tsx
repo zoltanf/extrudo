@@ -31,6 +31,7 @@ import { Grid, XY_FRAME } from './Grid';
 import { NavBar } from './NavBar';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
 import { Origin } from './Origin';
+import { createRenderMeter } from './renderMeter';
 import { Sketches } from './Sketches';
 import { type SketchDrawing, sketchSegments, unionBounds } from './sketchGeometry';
 import type { Bounds, OriginItem, ViewportStore } from './store';
@@ -208,6 +209,7 @@ export function Viewport({
             planePicker={planePicker}
             onFirstFrame={() => setReady(true)}
           />
+          <RenderMeterProbe viewport={viewport} />
         </Canvas>
       </div>
       {children}
@@ -261,6 +263,40 @@ function ViewStatus({ viewport }: { viewport: ViewportStore }) {
       {name && `${name} view`}
     </div>
   );
+}
+
+/**
+ * Counts and times the frames the renderer draws (every `renderer.render`
+ * call, wrapped while mounted) and publishes the stats to the viewport store
+ * twice a second, only when they change, for the status bar.
+ */
+function RenderMeterProbe({ viewport }: { viewport: ViewportStore }) {
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    const meter = createRenderMeter();
+    const render = gl.render;
+    gl.render = (scene, camera) => {
+      const start = performance.now();
+      render.call(gl, scene, camera);
+      meter.frame(start, performance.now() - start);
+    };
+    const timer = setInterval(() => {
+      const next = meter.sample(performance.now());
+      const current = viewport.getState().renderStats;
+      if (
+        next &&
+        (current?.fps !== next.fps || Math.abs((current?.frameMs ?? 0) - next.frameMs) >= 0.05)
+      ) {
+        viewport.getState().setRenderStats(next);
+      }
+    }, 500);
+    return () => {
+      clearInterval(timer);
+      gl.render = render;
+      viewport.getState().setRenderStats(undefined);
+    };
+  }, [gl, viewport]);
+  return null;
 }
 
 function Scene({

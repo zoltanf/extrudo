@@ -32,6 +32,8 @@ export interface BrowserPanelProps {
   viewport: ViewportStore;
   width: number;
   collapsed: boolean;
+  /** Slide open or closed (a toggle) rather than follow at once (a resize). */
+  animate?: boolean;
   onToggle(): void;
   /** The sketch being edited, marked in the tree. */
   activeSketchId?: FeatureId;
@@ -54,26 +56,13 @@ export function BrowserPanel({
   viewport,
   width,
   collapsed,
+  animate = false,
   onToggle,
   activeSketchId,
   actions,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
-
-  if (collapsed) {
-    return (
-      <aside
-        id={BROWSER_ID}
-        aria-label="Browser"
-        className="flex w-10 shrink-0 flex-col items-center border-r border-line bg-panel py-2"
-      >
-        <IconButton label="Show browser" onClick={onToggle}>
-          <PanelLeftOpen size={16} strokeWidth={1.75} />
-        </IconButton>
-      </aside>
-    );
-  }
 
   const sketches = doc.features
     .map((feature, index) => ({ feature, index }))
@@ -83,130 +72,157 @@ export function BrowserPanel({
   const bodies = Object.entries(doc.bodies) as [BodyId, (typeof doc.bodies)[BodyId]][];
   const bodiesShown = bodies.some(([, body]) => body.visible);
 
+  // Collapsed, the panel slides to no width (its content keeps its width and is clipped, so
+  // nothing reflows on the way), then turns invisible (visibility switches at the end of the
+  // transition when hiding), and a small tab at the view's left edge brings it back.
+  const motion = 'duration-(--x-normal) ease-ui';
   return (
-    <aside
-      id={BROWSER_ID}
-      aria-label="Browser"
-      style={{ width }}
-      className="flex shrink-0 flex-col overflow-hidden bg-panel"
-    >
-      <div className="flex h-9 items-center justify-between pr-1 pl-3">
-        <h2 className="text-xs font-semibold tracking-[0.08em] text-muted uppercase">Browser</h2>
-        <IconButton label="Hide browser" onClick={onToggle}>
-          <PanelLeftClose size={16} strokeWidth={1.75} />
+    <>
+      <aside
+        id={BROWSER_ID}
+        aria-label="Browser"
+        inert={collapsed}
+        style={{ width: collapsed ? 0 : width }}
+        className={`flex shrink-0 overflow-hidden bg-panel ${collapsed ? 'invisible' : ''} ${animate ? `transition-[width,visibility] ${motion}` : ''}`}
+      >
+        <div style={{ width }} className="flex shrink-0 flex-col">
+          <div className="flex h-9 items-center justify-between pr-1 pl-3">
+            <h2 className="text-xs font-semibold tracking-[0.08em] text-muted uppercase">
+              Browser
+            </h2>
+            <IconButton label="Hide browser" onClick={onToggle}>
+              <PanelLeftClose size={16} strokeWidth={1.75} />
+            </IconButton>
+          </div>
+          <ul className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2 text-base">
+            <Folder label="Document settings" icon={<Settings2 size={14} />} defaultOpen={false}>
+              <Leaf>
+                Units{' '}
+                <span className="ml-auto font-mono text-field text-muted">
+                  {doc.settings.units}
+                </span>
+              </Leaf>
+            </Folder>
+            <Folder label="Named views" icon={<Video size={14} />} defaultOpen={false}>
+              <Leaf muted>
+                {doc.views.length === 0 ? 'No named views yet' : `${doc.views.length} views`}
+              </Leaf>
+            </Folder>
+            <Folder
+              label="Origin"
+              icon={<ToolIcon name="axis" category="construct" size={16} />}
+              eye={{
+                visible: originShown,
+                onToggle: () => {
+                  for (const { value } of ORIGIN_ITEMS)
+                    viewport.getState().setOrigin(value, !originShown);
+                },
+              }}
+            >
+              {ORIGIN_ITEMS.map(({ value, label }) => (
+                <Leaf key={value}>
+                  <span className={origin[value] ? '' : 'text-muted'}>{label}</span>
+                  <EyeToggle
+                    name={label}
+                    visible={origin[value]}
+                    onToggle={() => viewport.getState().setOrigin(value, !origin[value])}
+                  />
+                </Leaf>
+              ))}
+            </Folder>
+            <Folder
+              label="Sketches"
+              icon={<ToolIcon name="create-sketch" category="sketch" size={16} />}
+              eye={
+                sketches.length > 0
+                  ? {
+                      visible: sketchesShown,
+                      onToggle: () =>
+                        actions.setVisible(
+                          sketches.map(({ feature }) => feature.id),
+                          !sketchesShown,
+                        ),
+                    }
+                  : undefined
+              }
+            >
+              {sketches.length === 0 ? (
+                <Leaf muted>No sketches yet</Leaf>
+              ) : (
+                sketches.map(({ feature, index }) => (
+                  <SketchLeaf
+                    key={feature.id}
+                    feature={feature}
+                    editable={isEditableSketch(feature, index, doc.timelineMarker)}
+                    rolledBack={index >= doc.timelineMarker}
+                    active={feature.id === activeSketchId}
+                    actions={actions}
+                  />
+                ))
+              )}
+            </Folder>
+            <Folder
+              label="Construction"
+              icon={<ToolIcon name="offset-plane" category="construct" size={16} />}
+            >
+              <Leaf muted>No construction geometry yet</Leaf>
+            </Folder>
+            <Folder
+              label="Bodies"
+              icon={<Box size={14} />}
+              eye={
+                bodies.length > 0
+                  ? {
+                      visible: bodiesShown,
+                      onToggle: () => {
+                        const state = store.getState();
+                        state.beginTransaction(bodiesShown ? 'Hide bodies' : 'Show bodies');
+                        for (const [id] of bodies) {
+                          state.dispatch(updateBody({ id, changes: { visible: !bodiesShown } }));
+                        }
+                        state.commitTransaction();
+                      },
+                    }
+                  : undefined
+              }
+            >
+              {bodies.length === 0 ? (
+                <Leaf muted>No bodies yet</Leaf>
+              ) : (
+                bodies.map(([id, body]) => (
+                  <Leaf key={id}>
+                    <span className={body.visible ? '' : 'text-muted'}>{body.name}</span>
+                    <EyeToggle
+                      name={body.name}
+                      visible={body.visible}
+                      onToggle={() =>
+                        store
+                          .getState()
+                          .dispatch(updateBody({ id, changes: { visible: !body.visible } }))
+                      }
+                    />
+                  </Leaf>
+                ))
+              )}
+            </Folder>
+          </ul>
+        </div>
+      </aside>
+      <div
+        inert={!collapsed}
+        className={`absolute top-2 left-0 z-20 transition-[opacity,translate,visibility] ${motion} ${collapsed ? '' : 'invisible -translate-x-full opacity-0'}`}
+      >
+        <IconButton
+          label="Show browser"
+          aria-controls={BROWSER_ID}
+          aria-expanded={false}
+          onClick={onToggle}
+          className="rounded-l-none border border-l-0 border-line bg-panel shadow-raised"
+        >
+          <PanelLeftOpen size={16} strokeWidth={1.75} />
         </IconButton>
       </div>
-      <ul className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-2 text-base">
-        <Folder label="Document settings" icon={<Settings2 size={14} />} defaultOpen={false}>
-          <Leaf>
-            Units{' '}
-            <span className="ml-auto font-mono text-field text-muted">{doc.settings.units}</span>
-          </Leaf>
-        </Folder>
-        <Folder label="Named views" icon={<Video size={14} />} defaultOpen={false}>
-          <Leaf muted>
-            {doc.views.length === 0 ? 'No named views yet' : `${doc.views.length} views`}
-          </Leaf>
-        </Folder>
-        <Folder
-          label="Origin"
-          icon={<ToolIcon name="axis" category="construct" size={16} />}
-          eye={{
-            visible: originShown,
-            onToggle: () => {
-              for (const { value } of ORIGIN_ITEMS)
-                viewport.getState().setOrigin(value, !originShown);
-            },
-          }}
-        >
-          {ORIGIN_ITEMS.map(({ value, label }) => (
-            <Leaf key={value}>
-              <span className={origin[value] ? '' : 'text-muted'}>{label}</span>
-              <EyeToggle
-                name={label}
-                visible={origin[value]}
-                onToggle={() => viewport.getState().setOrigin(value, !origin[value])}
-              />
-            </Leaf>
-          ))}
-        </Folder>
-        <Folder
-          label="Sketches"
-          icon={<ToolIcon name="create-sketch" category="sketch" size={16} />}
-          eye={
-            sketches.length > 0
-              ? {
-                  visible: sketchesShown,
-                  onToggle: () =>
-                    actions.setVisible(
-                      sketches.map(({ feature }) => feature.id),
-                      !sketchesShown,
-                    ),
-                }
-              : undefined
-          }
-        >
-          {sketches.length === 0 ? (
-            <Leaf muted>No sketches yet</Leaf>
-          ) : (
-            sketches.map(({ feature, index }) => (
-              <SketchLeaf
-                key={feature.id}
-                feature={feature}
-                editable={isEditableSketch(feature, index, doc.timelineMarker)}
-                rolledBack={index >= doc.timelineMarker}
-                active={feature.id === activeSketchId}
-                actions={actions}
-              />
-            ))
-          )}
-        </Folder>
-        <Folder
-          label="Construction"
-          icon={<ToolIcon name="offset-plane" category="construct" size={16} />}
-        >
-          <Leaf muted>No construction geometry yet</Leaf>
-        </Folder>
-        <Folder
-          label="Bodies"
-          icon={<Box size={14} />}
-          eye={
-            bodies.length > 0
-              ? {
-                  visible: bodiesShown,
-                  onToggle: () => {
-                    const state = store.getState();
-                    state.beginTransaction(bodiesShown ? 'Hide bodies' : 'Show bodies');
-                    for (const [id] of bodies) {
-                      state.dispatch(updateBody({ id, changes: { visible: !bodiesShown } }));
-                    }
-                    state.commitTransaction();
-                  },
-                }
-              : undefined
-          }
-        >
-          {bodies.length === 0 ? (
-            <Leaf muted>No bodies yet</Leaf>
-          ) : (
-            bodies.map(([id, body]) => (
-              <Leaf key={id}>
-                <span className={body.visible ? '' : 'text-muted'}>{body.name}</span>
-                <EyeToggle
-                  name={body.name}
-                  visible={body.visible}
-                  onToggle={() =>
-                    store
-                      .getState()
-                      .dispatch(updateBody({ id, changes: { visible: !body.visible } }))
-                  }
-                />
-              </Leaf>
-            ))
-          )}
-        </Folder>
-      </ul>
-    </aside>
+    </>
   );
 }
 

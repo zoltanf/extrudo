@@ -13,7 +13,7 @@ export interface ToolbarProps {
   onRun(tool: ToolId): void;
 }
 
-/** Workspace switcher, tabs and tool groups (UI spec §2). */
+/** Tabs and tool groups (UI spec §2). */
 export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
   const home: TabId = mode === 'sketch' ? 'sketch' : 'solid';
   const [tab, setTab] = useState<TabId>(home);
@@ -25,22 +25,7 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
   return (
     <div className="border-b border-line bg-bg">
       <div className="flex h-8 items-end gap-1 px-2">
-        <Menu
-          label="Workspace"
-          trigger={
-            <button
-              type="button"
-              className="mb-1 inline-flex h-6 items-center gap-1 rounded-input border border-line px-2 text-xs font-semibold tracking-[0.08em] uppercase hover:bg-accent-soft"
-            >
-              Design
-              <ChevronDown size={12} />
-            </button>
-          }
-        >
-          <MenuLabel>Workspace</MenuLabel>
-          <MenuItem>Design</MenuItem>
-        </Menu>
-        <div role="tablist" aria-label="Toolbar tabs" className="flex gap-1 pl-2">
+        <div role="tablist" aria-label="Toolbar tabs" className="flex gap-1">
           {tabs.map((t) => (
             <button
               key={t.id}

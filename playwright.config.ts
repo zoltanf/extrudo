@@ -13,7 +13,8 @@ export default defineConfig({
     // Text antialiasing differs slightly between Linux distributions (Arch
     // locally, Ubuntu in CI): about a dozen pixels over the colour threshold
     // per full-page shot. 0.1 % still catches any layout change.
-    toHaveScreenshot: { maxDiffPixelRatio: 0.001 },
+    // The render rate in the status bar varies from run to run: hidden in shots.
+    toHaveScreenshot: { maxDiffPixelRatio: 0.001, stylePath: './e2e/screenshot.css' },
   },
   fullyParallel: true,
   forbidOnly: !!process.env.CI,

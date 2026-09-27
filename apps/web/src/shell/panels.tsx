@@ -24,6 +24,8 @@ export function usePanel(preferences: Preferences, { key, size, min, max }: Pane
       collapsed: stored.collapsed === true,
     };
   });
+  // Collapsing and expanding animate; dragging and keyboard resizing follow at once.
+  const [animate, setAnimate] = useState(false);
   const update = useCallback(
     (change: Partial<PanelState>) =>
       setState((current) => {
@@ -38,9 +40,19 @@ export function usePanel(preferences: Preferences, { key, size, min, max }: Pane
     ...state,
     min,
     max,
-    resize: (next: number) => update({ size: next, collapsed: false }),
-    toggle: () => update({ collapsed: !state.collapsed }),
-    setCollapsed: (collapsed: boolean) => update({ collapsed }),
+    animate,
+    resize: (next: number) => {
+      setAnimate(false);
+      update({ size: next, collapsed: false });
+    },
+    toggle: () => {
+      setAnimate(true);
+      update({ collapsed: !state.collapsed });
+    },
+    setCollapsed: (collapsed: boolean) => {
+      setAnimate(true);
+      update({ collapsed });
+    },
   };
 }
 
