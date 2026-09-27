@@ -5,8 +5,10 @@ import {
   House,
   Import,
   Menu as MenuIcon,
+  PanelsTopLeft,
   Redo2,
   Save,
+  Search,
   Settings,
   SlidersHorizontal,
   Undo2,
@@ -14,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { useStore } from 'zustand';
+import { keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
 import {
   Button,
@@ -47,10 +50,21 @@ export interface AppBarProps {
   file: FileActions;
   theme: ThemeChoice;
   onThemeChange(theme: ThemeChoice): void;
+  /** Opens command search: the Ctrl+K palette, or the S toolbox at the pointer (P1-14). */
+  onSearch(kind: 'palette' | 'toolbox'): void;
 }
 
-/** App bar (UI spec §2): file menu, undo/redo, project name and save state, settings, theme. */
-export function AppBar({ store, autosave, file, theme, onThemeChange }: AppBarProps) {
+/** A command's first key as it reads here ("Ctrl+K"). */
+const keyLabel = (id: string) => {
+  const keys = keysFor(id)[0];
+  return keys && shortcutLabel(keys);
+};
+
+/**
+ * App bar (UI spec §2): file menu, undo/redo, command search, project name
+ * and save state, settings, help, theme.
+ */
+export function AppBar({ store, autosave, file, theme, onThemeChange, onSearch }: AppBarProps) {
   const name = useStore(store, (s) => s.doc.name);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
 
@@ -92,7 +106,7 @@ export function AppBar({ store, autosave, file, theme, onThemeChange }: AppBarPr
       <div className="mx-1 h-5 w-px bg-line" />
       <IconButton
         label="Undo"
-        shortcut={shortcutLabel('Mod+Z')}
+        shortcut={keyLabel('undo')}
         hint={undoLabel ? `Undo “${undoLabel}”.` : 'Nothing to undo.'}
         disabled={!canUndo}
         onClick={undo}
@@ -101,12 +115,20 @@ export function AppBar({ store, autosave, file, theme, onThemeChange }: AppBarPr
       </IconButton>
       <IconButton
         label="Redo"
-        shortcut={shortcutLabel('Mod+Y')}
+        shortcut={keyLabel('redo')}
         hint={redoLabel ? `Redo “${redoLabel}”.` : 'Nothing to redo.'}
         disabled={!canRedo}
         onClick={redo}
       >
         <Redo2 size={18} strokeWidth={1.75} />
+      </IconButton>
+      <IconButton
+        label="Search commands"
+        shortcut={keyLabel('commandPalette')}
+        hint={`Find and run any command by name. ${keyLabel('toolbox')} opens the toolbox at the pointer.`}
+        onClick={() => onSearch('palette')}
+      >
+        <Search size={18} strokeWidth={1.75} />
       </IconButton>
 
       <div className="flex flex-1 items-center justify-center gap-2.5">
@@ -127,9 +149,36 @@ export function AppBar({ store, autosave, file, theme, onThemeChange }: AppBarPr
       <IconButton label="Settings" hint="Arrives with P1." disabled>
         <Settings size={18} strokeWidth={1.75} />
       </IconButton>
-      <IconButton label="Help" hint="Arrives with onboarding (P3-12)." disabled>
-        <CircleHelp size={18} strokeWidth={1.75} />
-      </IconButton>
+      <Menu
+        label="Help"
+        align="end"
+        trigger={
+          <IconButton label="Help">
+            <CircleHelp size={18} strokeWidth={1.75} />
+          </IconButton>
+        }
+      >
+        <MenuLabel>Help</MenuLabel>
+        <MenuItem
+          icon={<Search size={14} />}
+          shortcut={keyLabel('commandPalette')}
+          onSelect={() => onSearch('palette')}
+        >
+          Search commands…
+        </MenuItem>
+        <MenuItem
+          icon={<PanelsTopLeft size={14} />}
+          shortcut={keyLabel('toolbox')}
+          onSelect={() => onSearch('toolbox')}
+        >
+          Toolbox…
+        </MenuItem>
+        <MenuSeparator />
+        {/* The tutorial and tool demos arrive with P3-12 and FR-UX-04. */}
+        <MenuItem disabled icon={<CircleHelp size={14} />}>
+          Getting started
+        </MenuItem>
+      </Menu>
       <ThemeMenu theme={theme} onThemeChange={onThemeChange} />
     </header>
   );

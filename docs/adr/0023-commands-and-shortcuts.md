@@ -76,7 +76,11 @@ command", so a search had nothing to search.
    default Create Sketch, Line, Rectangle, Circle, Dimension, Trim,
    Parameters. A pin shows only where its command is offered (Line not
    on the model). Tiles use the tool's short label.
-8. **Standard views on Shift+1…7** (ours, UI spec §5): Home, Top, Bottom,
+8. **Findable without the keys.** A search button after Undo/Redo in the
+   app bar opens the palette; the Help menu (no longer a disabled button)
+   has Search commands… (Ctrl+K) and Toolbox… (S, at the pointer, here
+   the menu item), plus a disabled Getting started for P3-12.
+9. **Standard views on Shift+1…7** (ours, UI spec §5): Home, Top, Bottom,
    Front, Back, Left, Right. `eventKeys` reads digit keys by `event.code`
    (`Digit2`), so Shift+2 is "Shift+2" on US ("@") and French layouts.
    F6 moved from the viewport to the shell's commands (the kernel debug

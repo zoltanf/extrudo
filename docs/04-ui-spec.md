@@ -53,8 +53,10 @@ brief, voice) is in **`05-brand.md`**. In short:
 ```
 
 - **App bar:** file menu (New, Open, Save version, Export, Import, Project
-  settings), undo/redo, project name (click to rename, dropdown for version
-  history), save status, settings, help, theme toggle.
+  settings), undo/redo, command search (opens the Ctrl+K palette), project
+  name (click to rename, dropdown for version history), save status,
+  settings, help (menu: Search commands, Toolbox; the tutorial later), theme
+  toggle.
 - **No workspace switcher** (removed 2026-09-27): no second workspace is
   planned, and a one-item dropdown did nothing. The 3D Print tab covers the
   printing "mode".

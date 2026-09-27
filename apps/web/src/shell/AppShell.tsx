@@ -246,6 +246,16 @@ export function AppShell({
       setChoice,
     ],
   );
+  const openToolbox = useMemo(
+    () => () =>
+      setSearch({
+        kind: 'toolbox',
+        at: pointer.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 3 },
+      }),
+    [],
+  );
+  const openSearch = (kind: 'palette' | 'toolbox') =>
+    kind === 'palette' ? setSearch({ kind: 'palette' }) : openToolbox();
   const runCommand = (command: AppCommand) => {
     setSearch(undefined);
     setRecent((r) => [command.id, ...r.filter((id) => id !== command.id)].slice(0, RECENT));
@@ -259,14 +269,7 @@ export function AppShell({
         keys,
         run: () => setSearch({ kind: 'palette' }),
       })),
-      ...keysFor('toolbox').map((keys) => ({
-        keys,
-        run: () =>
-          setSearch({
-            kind: 'toolbox',
-            at: pointer.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 3 },
-          }),
-      })),
+      ...keysFor('toolbox').map((keys) => ({ keys, run: openToolbox })),
       ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
       ...(drawing && host
         ? [
@@ -286,7 +289,7 @@ export function AppShell({
           ]
         : []),
     ],
-    [commands, session, stores, picking, mode, drawing, host],
+    [commands, openToolbox, session, stores, picking, mode, drawing, host],
   );
   useShortcuts(shortcuts);
 
@@ -414,6 +417,7 @@ export function AppShell({
         file={file}
         theme={choice}
         onThemeChange={setChoice}
+        onSearch={openSearch}
       />
       <Toolbar
         mode={mode}

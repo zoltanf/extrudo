@@ -139,3 +139,27 @@ test('shortcuts: tools that come later say so, Shift+digits turn the view', asyn
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: /^Line L$/ })).toBeVisible();
 });
+
+test('the app bar opens search: a button by Undo/Redo, and the Help menu', async ({ page }) => {
+  await openProject(page);
+  const header = page.getByRole('banner');
+  await header.getByRole('button', { name: 'Search commands' }).click();
+  await expect(palette(page).getByRole('combobox')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(palette(page)).toBeHidden();
+
+  await header.getByRole('button', { name: 'Help' }).click();
+  await page.getByRole('menuitem', { name: /^Search commands/ }).click();
+  await expect(palette(page).getByRole('combobox')).toBeFocused();
+  await page.keyboard.type('top view');
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
+    'data-camera-direction',
+    '0,0,-1',
+  );
+
+  await header.getByRole('button', { name: 'Help' }).click();
+  await page.getByRole('menuitem', { name: /^Toolbox/ }).click();
+  await expect(toolbox(page).getByRole('combobox')).toBeFocused();
+  await expect(toolbox(page).getByRole('region', { name: 'Pinned' })).toBeVisible();
+});

@@ -10,7 +10,9 @@ One line per completed roadmap task, newest first. Dates are absolute.
   word starts ("3pr" → 3-Point Rectangle) and falls back to group and
   hint words; the Ctrl+K palette and the S toolbox at the pointer with
   pinned commands (Shift+Enter pins; kept in preferences) and recent
-  commands. Keys of tools that come later say when they arrive. ADR-0023.
+  commands. Keys of tools that come later say when they arrive. The app
+  bar has a search button after Undo/Redo, and Help is a menu with Search
+  commands and Toolbox. ADR-0023.
 
 - 2026-09-27 · **Design review** (not a roadmap task): the workspace
   switcher is removed; the toolbar's tabs are Solid · Insert · 3D Print
