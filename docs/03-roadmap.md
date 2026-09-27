@@ -185,7 +185,7 @@ Benchmark **B1** buildable.
 - [x] **P1-11 Profile detection.** TS planar arrangement → closed regions with
   nesting; shaded profile display; hover and select profiles; stable region IDs.
   *AC:* FR-SK-11; unit tests with overlapping and nested shapes.
-- [ ] **P1-12 Timeline v1 and browser tree.** Timeline bar with sketch chips;
+- [x] **P1-12 Timeline v1 and browser tree.** Timeline bar with sketch chips;
   double-click to edit a sketch; rename, delete, suppress; hover highlight.
   Browser tree: origin, sketches, visibility toggles.
   *AC:* FR-TL-01, -03 (partial), FR-VP-07.

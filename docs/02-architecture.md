@@ -139,6 +139,7 @@ interface FeatureBase {
   type: FeatureType;             // 'sketch' | 'extrude' | 'revolve' | 'fillet' | …
   name: string;                  // "Extrude1", user-renamable
   suppressed: boolean;
+  visible?: boolean;             // false hides its own geometry (a sketch); absent = shown (P1-12)
   inputs: Record<string, Input>; // typed per feature type (zod schema per type)
 }
 type Input =

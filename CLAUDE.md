@@ -10,7 +10,7 @@ is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
 **Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01 to P1-11 done. ADR-0001 chose
+P1-01 to P1-12 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -115,8 +115,15 @@ direction) set. The app caches per `SketchData` (`sketch/profiles.ts`),
 shades them (`--x-profile-fill`, palette "Show profiles"), and with no
 tool the host hovers/selects a profile where no entity is (kind
 `profile`, ID `profileRefId(sketch, region)`); the properties panel shows
-the area. Next: **P1-12** (timeline v1 and browser tree). See
-`docs/03-roadmap.md`.
+the area. ADR-0021 (P1-12) added the timeline and browser menus
+(`shell/featureActions.ts` shared by both, `FeatureMenu.tsx`, design
+system `ContextMenu`): rename (F2, popover on a chip, field in a row),
+optional `Feature.visible` (`setFeatureVisibility`, one undo step per eye
+or folder eye), suppress, delete (refused while another feature refers to
+it or an outside expression uses its named dimensions; suppress/delete
+wait until an open sketch is finished), and hover (session hover kind
+`feature` draws the sketch in the accent). Next: **P1-13** (SVG and DXF
+export). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -145,7 +152,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -384,5 +391,12 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 - **The dev server takes an assigned port** (`.claude/launch.json` has
   `autoPort` and `--port "${PORT:-5173}"`), so a second session can run its
   own server while another holds 5173.
+- **Timeline and browser e2e tests** read drawn sketches from the
+  Viewport region's `data-sketches` (IDs) and the highlighted one from
+  `data-highlight`; chip names end with "(rolled back, suppressed)".
+  A browser row locator `listitem.filter({ has: button })` also matches
+  the folder's `<li>`: take `.last()`. Radix `asChild` triggers nested
+  through our wrappers need the wrapper to pass props and ref on
+  (`Tooltip` does); anchor popovers on a plain element.
 - OCCT's STEP writer prints a banner to stdout from inside WASM. Route
   Emscripten's `print` to a logger (or ignore it in tests).

@@ -2,6 +2,18 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **P1-12** Timeline v1 and browser tree: right-click menus
+  on timeline chips and browser rows (Edit Sketch, Rename, Show/Hide,
+  Suppress, Delete; new design-system `ContextMenu`); rename in place
+  (F2 or the menu: a field in the row, a popover over the chip); the
+  pointer on a chip or row draws its sketch in the accent; eyes on
+  sketches and on the Origin, Sketches and Bodies folders (one undo step
+  each); a Construction folder; suppressed chips dashed, rows struck
+  through. Core: optional `Feature.visible`, `setFeatureVisibility`, and
+  `removeFeature` refuses while another feature refers to the feature or
+  an expression outside it uses one of its named dimensions. Suppress and
+  delete wait until an open sketch is finished. ADR-0021.
+
 - 2026-09-27 · **P1-11** Profile detection: a TypeScript planar
   arrangement (`@extrudo/sketch/profiles`) finds every closed region of a
   sketch, where curves cross, touch or end on each other, with nested
