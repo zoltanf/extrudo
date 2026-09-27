@@ -120,6 +120,19 @@ describe('viewport store', () => {
   });
 });
 
+describe('selection filter', () => {
+  it('starts with everything, changes per kind, resets, and is not a preference', () => {
+    const { store, preferences } = setup();
+    expect(Object.values(store.getState().selectionFilter).every(Boolean)).toBe(true);
+    store.getState().setSelectionFilter('faces', false);
+    expect(store.getState().selectionFilter.faces).toBe(false);
+    expect(store.getState().selectionFilter.edges).toBe(true);
+    expect(JSON.stringify(preferences.get('viewport', {}))).not.toContain('faces');
+    store.getState().resetSelectionFilter();
+    expect(store.getState().selectionFilter.faces).toBe(true);
+  });
+});
+
 describe('gridStep', () => {
   it('snaps to the finest grid level at least 12 px wide, never below 1 mm', () => {
     expect(gridStep(0.01)).toBe(1);

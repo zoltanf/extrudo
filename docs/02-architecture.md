@@ -410,6 +410,18 @@ As built in P2-04 (ADR-0005, `packages/kernel/src/naming/`):
 - Picking: three-mesh-bvh raycast for faces, with a screen-space distance test
   against edge polylines and vertices. Selection priority follows the active
   filter.
+- As built in P2-03 (ADR-0026, `apps/web/src/selection/`): picking is pure
+  maths over the meshes (an indirect BVH per mesh, so the index stays in
+  `faceRanges` order); edges within 6 px and vertices within 8 px of the
+  pointer, hidden ones (a face between the camera and them) only offered by
+  "Select other…"; priority vertex, edge or sketch curve, profile or face,
+  body. Faces are tinted through a `color` attribute on the merged geometry
+  (only the changed faces' nodes are rewritten and uploaded); hovered and
+  selected edges and vertices are small accent overlays, and vertices only
+  show as dots while hovered or selected. The selection is the session
+  store's: faces, edges and vertices as `{ kind, id: "<body>:<index>" }`,
+  turned into `GeomRef`s through the mesh's `faceIds`/`edgeIds`/`vertexIds`
+  (P2-04) by `topologyRef`/`selectionRefs`.
 
 ## 6. Storage and file format
 
@@ -550,3 +562,9 @@ bundle-size budget. Every agent task must leave CI green.
   edges in the facade, General Fuse and the face builder, bridges and
   dangling pieces dropped, touching wires as one loop, faces keyed by the
   arrangement's own rule, a geometric safety net.
+- **ADR-0026** B-rep rendering and 3D selection. **Written 2026-09-28**
+  (P2-03): one session selection with topology items by mesh index,
+  references from persistent IDs, pure picking with a BVH and screen-space
+  edges and vertices, occlusion by a second ray, one kind per box, face
+  tints through a colour attribute, "Select other…", the selection filter
+  with Select.

@@ -6,6 +6,7 @@ import {
   type ModelState,
   type ModelStore,
   moveTimelineMarker,
+  type SessionStore,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import {
@@ -21,6 +22,7 @@ import {
 import { Fragment, useState } from 'react';
 import { useStore } from 'zustand';
 import { ContextMenu, IconButton, Popover, ToolIcon, Tooltip } from '../design-system';
+import { selectionSummary } from '../selection/items';
 import { formatRenderStats } from '../viewport/renderMeter';
 import type { ViewportStore } from '../viewport/store';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
@@ -39,6 +41,8 @@ export interface TimelineProps {
   viewport?: ViewportStore;
   /** The kernel's results: a status per feature (chips) and the recompute state (status bar). */
   model?: ModelStore<BodyMesh>;
+  /** The session, whose selection the status bar sums up ("2 faces", P2-03). */
+  session?: SessionStore;
 }
 
 /**
@@ -57,6 +61,7 @@ export function Timeline({
   actions,
   viewport,
   model,
+  session,
 }: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
   const statuses = useStore(model ?? NO_MODEL, (s) => s.features);
@@ -128,6 +133,7 @@ export function Timeline({
         </>
       )}
       <span className="flex-1" />
+      {session && <SelectionState session={session} />}
       <output className="font-mono text-[11px] whitespace-nowrap text-muted" aria-label="Status">
         {activeSketch ? `Editing ${activeSketch} · ` : ''}
         {count} {count === 1 ? 'feature' : 'features'} · {doc.settings.units}
@@ -256,6 +262,20 @@ function StatusGlyph({ status }: { status: 'warning' | 'error' }) {
 }
 
 const NO_MODEL = createModelStore<BodyMesh>();
+
+/** The selection summary (UI spec §2): "2 faces", "1 edge"; nothing while nothing is selected. */
+function SelectionState({ session }: { session: SessionStore }) {
+  const summary = useStore(session, (s) => selectionSummary(s.selection));
+  if (!summary) return null;
+  return (
+    <output
+      aria-label="Selection"
+      className="font-mono text-[11px] whitespace-nowrap text-ink tabular-nums"
+    >
+      {summary} ·
+    </output>
+  );
+}
 
 /** What the kernel is doing: starting, computing, or how long the last recompute took. */
 function KernelState({ model }: { model: ModelStore<BodyMesh> }) {

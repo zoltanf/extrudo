@@ -12,7 +12,16 @@ export { FloatingDialog, type FloatingDialogProps } from './FloatingDialog';
 export { fieldClass, Select, TextInput } from './Input';
 export { ICON_NAMES, type IconName, type ToolCategory, ToolIcon } from './icons';
 export { LogoMark, Wordmark } from './Logo';
-export { ContextMenu, Menu, MenuItem, MenuLabel, MenuRadioGroup, MenuSeparator } from './Menu';
+export {
+  ContextMenu,
+  Menu,
+  MenuCheckboxItem,
+  MenuItem,
+  MenuLabel,
+  MenuRadioGroup,
+  MenuSeparator,
+  PointMenu,
+} from './Menu';
 export { Popover } from './Popover';
 export { type Toast, Toasts, type ToastTone, useToasts } from './Toasts';
 export { Tooltip, TooltipProvider } from './Tooltip';

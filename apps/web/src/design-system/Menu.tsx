@@ -62,18 +62,74 @@ export function ContextMenu({
   );
 }
 
+export interface PointMenuProps {
+  /** Where the menu opens, in viewport (client) px; `undefined` keeps it closed. */
+  at: { x: number; y: number } | undefined;
+  onClose(): void;
+  label?: string;
+  children: ReactNode;
+}
+
+/**
+ * A dropdown menu that opens at a point instead of under a trigger ("Select
+ * other…" in the viewport, P2-03). Radix anchors it to an invisible element
+ * at `at`; focus returns to the page when it closes.
+ */
+export function PointMenu({ at, onClose, label, children }: PointMenuProps) {
+  return (
+    <Radix.Root
+      open={at !== undefined}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      modal={false}
+    >
+      <Radix.Trigger asChild>
+        <span
+          aria-hidden
+          tabIndex={-1}
+          className="pointer-events-none fixed size-0"
+          style={at ? { left: at.x, top: at.y } : undefined}
+        />
+      </Radix.Trigger>
+      <Radix.Portal>
+        <Radix.Content
+          align="start"
+          // Clear of the pointer: Radix takes a release over an item for a pick.
+          sideOffset={10}
+          collisionPadding={8}
+          className={`${content} max-h-80 overflow-y-auto`}
+          aria-label={label}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+        >
+          {children}
+        </Radix.Content>
+      </Radix.Portal>
+    </Radix.Root>
+  );
+}
+
 export interface MenuItemProps {
   onSelect?(): void;
+  /** The pointer or the keyboard moved onto the item (it shows as highlighted). */
+  onHighlight?(): void;
   disabled?: boolean;
   icon?: ReactNode;
   shortcut?: string;
   children: ReactNode;
 }
 
-export function MenuItem({ onSelect, disabled, icon, shortcut, children }: MenuItemProps) {
+export function MenuItem({
+  onSelect,
+  onHighlight,
+  disabled,
+  icon,
+  shortcut,
+  children,
+}: MenuItemProps) {
   const Item = useContext(InContextMenu) ? RadixContext.Item : Radix.Item;
   return (
-    <Item className={item} disabled={disabled} onSelect={onSelect}>
+    <Item className={item} disabled={disabled} onSelect={onSelect} onFocus={onHighlight}>
       <span className="grid w-4 place-items-center text-muted">{icon}</span>
       <span className="flex-1">{children}</span>
       {shortcut && <kbd className="font-mono text-xs text-muted">{shortcut}</kbd>}
@@ -101,6 +157,32 @@ export function MenuRadioGroup<T extends string>({
         </Radix.RadioItem>
       ))}
     </Radix.RadioGroup>
+  );
+}
+
+/** A menu item with a check mark that toggles (the selection filter, P2-03). */
+export function MenuCheckboxItem({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean;
+  onChange(checked: boolean): void;
+  children: ReactNode;
+}) {
+  return (
+    <Radix.CheckboxItem
+      checked={checked}
+      onCheckedChange={(value) => onChange(value === true)}
+      // Stay open: filters are usually changed several at a time.
+      onSelect={(event) => event.preventDefault()}
+      className={item}
+    >
+      <span className="grid w-4 place-items-center text-accent">
+        <Radix.ItemIndicator>✓</Radix.ItemIndicator>
+      </span>
+      {children}
+    </Radix.CheckboxItem>
   );
 }
 

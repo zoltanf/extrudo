@@ -1,5 +1,6 @@
 import {
   Box,
+  ChevronDown,
   Cone,
   Grid3x3,
   Hand,
@@ -13,7 +14,16 @@ import {
 import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { IconButton, Menu, MenuLabel, MenuRadioGroup } from '../design-system';
+import {
+  IconButton,
+  Menu,
+  MenuCheckboxItem,
+  MenuItem,
+  MenuLabel,
+  MenuRadioGroup,
+  MenuSeparator,
+} from '../design-system';
+import { FILTER_KINDS, isFiltered } from '../selection/filter';
 import { NAV_PRESETS, type NavAction } from './navigation';
 import { VISUAL_STYLES, type ViewportStore } from './store';
 
@@ -53,16 +63,18 @@ export interface NavBarProps {
  * (docs/05-brand.md §5).
  */
 export function NavBar({ store, commandRunning = false, onStopCommand }: NavBarProps) {
-  const { tool, projection, visualStyle, grid, preset } = useStore(
+  const { tool, projection, visualStyle, grid, preset, selectionFilter } = useStore(
     store,
-    useShallow(({ tool, projection, visualStyle, grid, preset }) => ({
+    useShallow(({ tool, projection, visualStyle, grid, preset, selectionFilter }) => ({
       tool,
       projection,
       visualStyle,
       grid,
       preset,
+      selectionFilter,
     })),
   );
+  const filtered = isFiltered(selectionFilter);
   const s = store.getState();
 
   return (
@@ -83,6 +95,39 @@ export function NavBar({ store, commandRunning = false, onStopCommand }: NavBarP
       >
         <MousePointer2 size={16} strokeWidth={1.75} />
       </IconButton>
+      {/* The selection filter lives with Select (UI spec §3.2, P2-03); a dot says it filters. */}
+      <Menu
+        label="Selection filter"
+        align="center"
+        trigger={
+          <IconButton
+            label="Selection filter"
+            hint="What clicks and boxes select in the model."
+            className="relative -ml-1 w-4!"
+            data-filtered={filtered || undefined}
+          >
+            <ChevronDown size={12} strokeWidth={2} />
+            {filtered && (
+              <span className="absolute top-1 right-0 size-1.5 rounded-full bg-accent" />
+            )}
+          </IconButton>
+        }
+      >
+        <MenuLabel>Select</MenuLabel>
+        {FILTER_KINDS.map((kind) => (
+          <MenuCheckboxItem
+            key={kind.value}
+            checked={selectionFilter[kind.value]}
+            onChange={(on) => s.setSelectionFilter(kind.value, on)}
+          >
+            {kind.label}
+          </MenuCheckboxItem>
+        ))}
+        <MenuSeparator />
+        <MenuItem disabled={!filtered} onSelect={s.resetSelectionFilter}>
+          Select everything
+        </MenuItem>
+      </Menu>
       {TOOLS.map((t) => (
         <IconButton
           key={t.value}

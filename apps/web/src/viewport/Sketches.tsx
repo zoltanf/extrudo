@@ -7,6 +7,7 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 import type { Rgba } from './colors';
 import { createDotMaterial } from './dots';
 import {
+  curveSegments,
   type EntityStatus,
   PROFILE_SHADES,
   type ProfileShade,
@@ -65,6 +66,7 @@ export function Sketches({
       construction={s.highlight ? { ...highlight, a: 0.7 } : construction}
       showPoints={showPoints}
       profileColors={profileColors}
+      highlight={highlight}
     />
   ));
 }
@@ -78,6 +80,7 @@ function Sketch({
   construction,
   showPoints,
   profileColors,
+  highlight,
 }: {
   store: ViewportStore;
   drawing: SketchDrawing;
@@ -85,6 +88,7 @@ function Sketch({
   construction: Rgba;
   showPoints: boolean;
   profileColors: Readonly<Record<ProfileShade, Rgba>>;
+  highlight: Rgba;
 }) {
   const { data, frame, active, status, profiles, hoverProfile, selectedProfiles } = drawing;
   const segments = useMemo(() => sketchSegments(data, frame, status), [data, frame, status]);
@@ -251,6 +255,20 @@ function Sketch({
         (s) => segments.curves[s].length > 0 && <primitive key={s} object={lines.solid[s]} />,
       )}
       {segments.construction.length > 0 && <primitive object={lines.dashed} />}
+      <CurveMarks
+        data={data}
+        frame={frame}
+        ids={drawing.selectedEntities ?? NONE}
+        color={highlight}
+        width={3}
+      />
+      <CurveMarks
+        data={data}
+        frame={frame}
+        ids={drawing.hoverEntity ? [drawing.hoverEntity] : NONE}
+        color={{ ...highlight, a: highlight.a * 0.75 }}
+        width={2.5}
+      />
       {active &&
         showPoints &&
         STATUSES.map(
@@ -270,4 +288,46 @@ function Sketch({
         )}
     </group>
   );
+}
+
+const NONE: readonly string[] = [];
+
+/** Curves picked in model mode (P2-03), drawn over the sketch in the accent. */
+function CurveMarks({
+  data,
+  frame,
+  ids,
+  color: c,
+  width,
+}: {
+  data: SketchDrawing['data'];
+  frame: SketchDrawing['frame'];
+  ids: readonly string[];
+  color: Rgba;
+  width: number;
+}) {
+  const key = ids.join();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `ids`.
+  const line = useMemo(() => {
+    if (ids.length === 0) return undefined;
+    const positions = curveSegments(data, frame, ids);
+    if (positions.length === 0) return undefined;
+    const g = new LineSegmentsGeometry();
+    g.setPositions(positions);
+    const l = new LineSegments2(g, new LineMaterial({ linewidth: width, transparent: true }));
+    l.renderOrder = 5;
+    l.frustumCulled = false;
+    return l;
+  }, [data, frame, key, width]);
+  useEffect(
+    () => () => {
+      line?.geometry.dispose();
+      line?.material.dispose();
+    },
+    [line],
+  );
+  if (!line) return null;
+  line.material.color = color(c);
+  line.material.opacity = c.a;
+  return <primitive object={line} />;
 }

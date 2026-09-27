@@ -5,7 +5,7 @@
  */
 import { z } from 'zod';
 import type { FeatureDefinition } from '../features';
-import type { FeatureId } from '../ids';
+import type { FeatureId, SketchEntityId } from '../ids';
 import {
   type Feature,
   type GeomRef,
@@ -72,6 +72,23 @@ export function readSketch(feature: Feature): SketchView | undefined {
  */
 export function profileRefId(feature: FeatureId, profile: string): string {
   return `${feature}/${profile}`;
+}
+
+/**
+ * A sketch point or curve picked outside its sketch (model mode, P2-03), in
+ * a selection or a `sketchEntity` reference: `<sketch>/<entity>`, like a
+ * profile. Inside the open sketch, selections use the bare entity ID.
+ */
+export function sketchEntityRefId(feature: FeatureId, entity: SketchEntityId): string {
+  return `${feature}/${entity}`;
+}
+
+/** The sketch and entity of a `sketchEntityRefId`, or `undefined` if it isn't one. */
+export function parseSketchEntityRefId(
+  id: string,
+): { feature: FeatureId; entity: SketchEntityId } | undefined {
+  const ref = parseProfileRefId(id);
+  return ref && { feature: ref.feature, entity: ref.profile as SketchEntityId };
 }
 
 /** The sketch and region of a `profileRefId`, or `undefined` if it isn't one. */

@@ -1,4 +1,4 @@
-import type { BodyId } from '@extrudo/core';
+import { type BodyId, type BodyMeta, createSessionStore } from '@extrudo/core';
 import {
   isKernelCrash,
   KernelClient,
@@ -7,17 +7,26 @@ import {
   type TestPart,
 } from '@extrudo/kernel';
 import { useEffect, useMemo, useState } from 'react';
+import { useStore } from 'zustand';
+import { useShortcuts } from '../commands/shortcuts';
 import type { Platform } from '../platform';
+import { selectionSummary } from '../selection/items';
+import { useModelSelection } from '../selection/useModelSelection';
 import { createViewportStore } from '../viewport/store';
 import { Viewport } from '../viewport/Viewport';
 
 const TEST_BODY = 'test-part' as BodyId;
+const META: Record<BodyId, BodyMeta> = { [TEST_BODY]: { name: 'Test part', visible: true } };
+const NO_BODIES = {};
 
 /**
  * Kernel debug page (P0-09), at `#/debug/kernel`: renders the P0-02 test part
  * from the worker and can crash the kernel on purpose to show that it
  * restarts (NFR-03). The part is drawn in the real viewport (P0-05), which
- * makes this page the place to try visual styles on real geometry.
+ * makes this page the place to try visual styles on real geometry, and
+ * model-mode selection on a real B-rep (P2-03): the same picking and
+ * session glue as the shell, with the summary the status bar shows. Until
+ * features make bodies (P2-06), the selection e2e tests run here.
  */
 export function KernelDebug({ platform }: { platform: Platform }) {
   const [status, setStatus] = useState<KernelStatus>('idle');
@@ -28,7 +37,14 @@ export function KernelDebug({ platform }: { platform: Platform }) {
     () => createViewportStore({ preferences: platform.preferences }),
     [platform],
   );
-  const bodies = useMemo(() => (part ? { [TEST_BODY]: part.mesh } : undefined), [part]);
+  const bodies = useMemo(() => (part ? { [TEST_BODY]: part.mesh } : NO_BODIES), [part]);
+  const session = useMemo(() => createSessionStore(), []);
+  const modelSelect = useModelSelection(session, bodies, true);
+  const selection = useStore(session, (s) => s.selection);
+  const hover = useStore(session, (s) => s.hover);
+  useShortcuts(
+    useMemo(() => [{ keys: 'Escape', run: () => session.getState().clearSelection() }], [session]),
+  );
   // Frame the part once the viewport knows its bounds.
   useEffect(
     () =>
@@ -98,9 +114,17 @@ export function KernelDebug({ platform }: { platform: Platform }) {
           </p>
         )}
         {message && <p className="message">{message}</p>}
+        <output aria-label="Selection">{selectionSummary(selection) || 'Nothing selected'}</output>
       </header>
       <div className="stage" data-testid="kernel-stage">
-        <Viewport viewport={viewport} bodies={bodies} />
+        <Viewport
+          viewport={viewport}
+          bodies={bodies}
+          meta={META}
+          hover={hover}
+          selection={selection}
+          modelSelect={modelSelect}
+        />
       </div>
     </main>
   );

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   boundsOfPositions,
   CIRCLE_SEGMENTS,
+  curveSegments,
   profileTriangles,
   sketchSegments,
   unionBounds,
@@ -247,5 +248,27 @@ describe('profileTriangles', () => {
     const both = profileTriangles(profiles, frame('origin:xz'), ring.id, [ring.id]);
     expect(area(both.selected)).toBeCloseTo(84, 4);
     expect(both.hover).toHaveLength(0);
+  });
+});
+
+describe('curveSegments', () => {
+  it('draws only the named curves, construction or not', () => {
+    const data = sketch({
+      a: { type: 'point', x: 0, y: 0 },
+      b: { type: 'point', x: 10, y: 0 },
+      c: { type: 'point', x: 10, y: 5 },
+      l1: { type: 'line', start: 'a', end: 'b', construction: false },
+      l2: { type: 'line', start: 'b', end: 'c', construction: true },
+    });
+    const xy = frame('origin:xy');
+    expect(pairs(curveSegments(data, xy, ['l1']))).toEqual([
+      [0, 0, 0],
+      [10, 0, 0],
+    ]);
+    expect(pairs(curveSegments(data, xy, ['l2']))).toEqual([
+      [10, 0, 0],
+      [10, 5, 0],
+    ]);
+    expect(curveSegments(data, xy, [])).toHaveLength(0);
   });
 });
