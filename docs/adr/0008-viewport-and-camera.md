@@ -150,4 +150,13 @@ clicks the ViewCube's Top face and checks the camera orientation.
   navigation drag without a tool (middle button) shows the cursor of what
   it does. The cursor is an inline style on the pointer surface, which
   also carries `data-cursor` (the tool or drag) for tests.
+- **No browser context menu in the way of right-button orbiting.** The
+  viewport used to cancel `contextmenu` only over the canvas and
+  pass-through overlays, so a right-press on the nav bar, the ViewCube or
+  the sketch palette opened Chromium's "Copy / Select all" menu. Now the
+  whole viewport cancels it except in text fields (`isEditable` from
+  `commands/shortcuts.ts`), the shell cancels it on the window while a
+  project is open (except text fields, links and selected text; our own
+  Radix menus open as before), and for 400 ms after a right-button drag it
+  is cancelled wherever the button comes up.
 

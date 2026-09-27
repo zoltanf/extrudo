@@ -252,3 +252,53 @@ test('one pointer mode at a time: Select, a nav tool with its cursor, or a tool'
   await select.click();
   await expect(create).not.toHaveAttribute('data-active');
 });
+
+test("the browser's right-click menu stays out of the view and panels, not text fields", async ({
+  page,
+}) => {
+  const viewport = await open(page);
+  await page.getByRole('button', { name: 'Mouse controls' }).click();
+  await page.getByRole('menuitemradio', { name: /Onshape/ }).click();
+  await page.keyboard.press('Escape');
+  // Every right-click the page leaves to the browser, by what was under it.
+  await page.evaluate(`
+    window.__menus = [];
+    window.addEventListener('contextmenu', (e) => {
+      if (!e.defaultPrevented) window.__menus.push(e.target.tagName);
+    });
+  `);
+  const menus = () => page.evaluate('window.__menus.splice(0)');
+
+  // A right-drag in the empty view orbits, and no menu opens.
+  const { x, y } = await centre(viewport);
+  const direction = await attr(viewport, 'data-camera-direction');
+  await page.mouse.move(x, y);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(x + 80, y, { steps: 4 });
+  await page.mouse.up({ button: 'right' });
+  await expect(viewport).not.toHaveAttribute('data-camera-direction', direction);
+
+  // Nor over what sits on the view, or the panels beside it, in a sketch.
+  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await page
+    .getByRole('region', { name: 'Create Sketch' })
+    .getByRole('button', { name: 'XY' })
+    .click();
+  const targets = [
+    page
+      .getByRole('navigation', { name: 'View navigation' })
+      .getByRole('button', { name: 'Select' }),
+    page.getByRole('navigation', { name: 'View navigation' }),
+    page.getByRole('region', { name: 'Sketch palette' }).getByText('Show points'),
+    page.getByRole('button', { name: 'Finish Sketch' }).last(),
+    page.getByRole('complementary', { name: 'Browser' }),
+    page.getByRole('tab', { name: 'Sketch' }),
+  ];
+  for (const target of targets) await target.click({ button: 'right' });
+  expect(await menus()).toEqual([]);
+
+  // A text field keeps it: copy and paste.
+  await page.keyboard.press('Control+k');
+  await page.getByRole('combobox', { name: 'Search commands' }).click({ button: 'right' });
+  expect(await menus()).toEqual(['INPUT']);
+});

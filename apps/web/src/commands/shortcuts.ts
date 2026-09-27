@@ -33,7 +33,8 @@ export function shortcutLabel(keys: string, mac = isMac()): string {
   return mac ? keys.replace('Mod+', '⌘').replace('Shift+', '⇧') : keys.replace('Mod', 'Ctrl');
 }
 
-function isEditable(target: EventTarget | null): boolean {
+/** A text field: shortcuts leave its keys alone, and the browser's menu (copy, paste) stays. */
+export function isEditable(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName);
 }

@@ -14,7 +14,7 @@ import type { BodyMesh } from '@extrudo/kernel';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
-import { useShortcuts } from '../commands/shortcuts';
+import { isEditable, useShortcuts } from '../commands/shortcuts';
 import { useTheme } from '../design-system';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
@@ -80,6 +80,20 @@ export interface AppShellProps {
   platform: Platform;
   /** Shows a short message (a refused edit); the project page's toasts. */
   notify?(tone: 'info' | 'error', text: string): void;
+}
+
+/**
+ * The browser's own right-click menu ("Copy, Select all") has nothing for a
+ * CAD app outside text fields, links and selected text, and it gets in the
+ * way of right-button orbiting (Onshape preset). Our menus (timeline chips,
+ * browser rows) open as before: they handle the event first. Dialogs in
+ * portals are covered too, since the listener is on the window.
+ */
+function keepNativeMenuOut(event: MouseEvent) {
+  const target = event.target instanceof Element ? event.target : null;
+  if (isEditable(target) || target?.closest('a[href]')) return;
+  if (globalThis.getSelection?.()?.toString()) return;
+  event.preventDefault();
 }
 
 /** The app shell (P0-04, UI spec §2): app bar, toolbar, browser, viewport, timeline. */
@@ -308,6 +322,12 @@ export function AppShell({
     }
   };
   runRef.current = run;
+  // The browser's own right-click menu stays out of the app while a project is open.
+  useEffect(() => {
+    window.addEventListener('contextmenu', keepNativeMenuOut);
+    return () => window.removeEventListener('contextmenu', keepNativeMenuOut);
+  }, []);
+
   // One pointer mode at a time: Select, a nav tool (Orbit, Pan, Zoom) or a command. Starting a
   // tool or Create Sketch ends a nav tool; the nav bar's Select stops whatever runs.
   useEffect(() => {

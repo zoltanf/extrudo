@@ -2,6 +2,12 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **No browser menu on right-click** (user report): the
+  browser's own "Copy / Select all" menu no longer opens over the view,
+  the nav bar, the ViewCube or the panels (it got in the way of Onshape's
+  right-button orbit); text fields, links and selected text keep it.
+  ADR-0008 amended.
+
 - 2026-09-27 · **Resize circles by the rim** (not a roadmap task, user
   feedback): with no tool running, dragging a circle's rim changes its
   radius while the radius is free (a circle with a fixed centre could not

@@ -21,7 +21,7 @@ import {
 import type { DirectionalLight } from 'three';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { useShortcuts } from '../commands/shortcuts';
+import { isEditable, useShortcuts } from '../commands/shortcuts';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
 import { Bodies } from './Bodies';
 import { CameraRig } from './CameraRig';
@@ -670,6 +670,9 @@ function useSketchInput(
   }, [surface, viewport, input, onBoxChange]);
 }
 
+/** How long (ms) after a right-button drag the browser's context menu stays shut. */
+const QUIET_MS = 400;
+
 /**
  * Mouse, wheel and trackpad navigation on the canvas wrapper, and through
  * the elements over it marked `VIEW_PASSTHROUGH`. The listeners sit on the
@@ -689,8 +692,18 @@ function useNavigation(
     const passing = (e: Event) =>
       e.target instanceof Element && e.target.closest(`[${VIEW_PASSTHROUGH}]`) !== null;
     let drag:
-      | { action: NavAction; x: number; y: number; ndc: [number, number]; id: number }
+      | {
+          action: NavAction;
+          x: number;
+          y: number;
+          ndc: [number, number];
+          id: number;
+          button: number;
+        }
       | undefined;
+    // After a right-button drag (Onshape's orbit) the browser's menu stays shut for a moment,
+    // wherever the button came up: some platforms open it on release.
+    let quietUntil = -Infinity;
     let lastMiddle = { time: -Infinity, x: 0, y: 0 };
 
     const ndcOf = (e: { clientX: number; clientY: number }): [number, number] => {
@@ -717,7 +730,14 @@ function useNavigation(
       if (!action) return;
       e.preventDefault();
       el.setPointerCapture(e.pointerId);
-      drag = { action, x: e.clientX, y: e.clientY, ndc: ndcOf(e), id: e.pointerId };
+      drag = {
+        action,
+        x: e.clientX,
+        y: e.clientY,
+        ndc: ndcOf(e),
+        id: e.pointerId,
+        button: e.button,
+      };
       onDrag(action);
     };
 
@@ -737,6 +757,7 @@ function useNavigation(
 
     const onPointerUp = (e: PointerEvent) => {
       if (!drag || e.pointerId !== drag.id) return;
+      if (drag.button === 2) quietUntil = performance.now() + QUIET_MS;
       drag = undefined;
       onDrag(undefined);
     };
@@ -750,9 +771,13 @@ function useNavigation(
       else setView(pan(current, result.dx, result.dy, view.clientHeight));
     };
 
-    // No context menu on the canvas yet; the right button can orbit (Onshape preset).
+    // The right button can orbit (Onshape preset), so the browser's own menu never opens
+    // over the view or anything on it (nav bar, ViewCube, overlays), except in a text field.
     const onContextMenu = (e: MouseEvent) => {
-      if (inView(e) || passing(e)) e.preventDefault();
+      if (!isEditable(e.target)) e.preventDefault();
+    };
+    const onWindowContextMenu = (e: MouseEvent) => {
+      if (performance.now() < quietUntil) e.preventDefault();
     };
 
     el.addEventListener('pointerdown', onPointerDown);
@@ -761,7 +786,9 @@ function useNavigation(
     el.addEventListener('pointercancel', onPointerUp);
     el.addEventListener('wheel', onWheel, { passive: false });
     el.addEventListener('contextmenu', onContextMenu);
+    window.addEventListener('contextmenu', onWindowContextMenu, true);
     return () => {
+      window.removeEventListener('contextmenu', onWindowContextMenu, true);
       el.removeEventListener('pointerdown', onPointerDown);
       el.removeEventListener('pointermove', onPointerMove);
       el.removeEventListener('pointerup', onPointerUp);
