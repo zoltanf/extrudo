@@ -26,3 +26,10 @@ export {
   type SolveResult,
   type Vec2,
 } from './solver/solver';
+export {
+  DIMENSION_TOLERANCE,
+  type EntityStatus,
+  type SketchStatus,
+  sketchStatus,
+  unmetDimensions,
+} from './solver/status';

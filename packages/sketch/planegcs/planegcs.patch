@@ -37,3 +37,48 @@
  
      size_t params_num = qrAT.rows();
      size_t constr_num = qrAT.cols();
+--- a/planegcs/bindings.cpp
++++ b/planegcs/bindings.cpp
+@@ -20,6 +20,7 @@
+ 
+ #include <iostream>
+ #include <vector>
++#include <unordered_set>
+ #include "GCS.h"
+ #include <emscripten.h>  
+ 
+@@ -175,6 +176,26 @@
+             return partially_redundant;
+         }
+ 
++        // Extrudo: indices of the unknowns the last diagnosis found not fully
++        // constrained (FreeCAD's "dependent parameters"). With no driving
++        // constraint the diagnosis lists none, although every unknown is free.
++        vector<int> get_dependent_params()
++        {
++            VEC_pD dependent;
++            getDependentParams(dependent);
++            unordered_set<double *> loose(dependent.begin(), dependent.end());
++            bool all = dependent.empty() && dofsNumber() > 0;
++            vector<int> out;
++            for (int i = 0; i < p_params.size(); ++i)
++            {
++                if (!is_fixed[i] && (all || loose.count(p_params[i]) > 0))
++                {
++                    out.push_back(i);
++                }
++            }
++            return out;
++        }
++
+         void clear_by_id(int id)
+         {
+             clearByTag(id);
+@@ -1020,6 +1041,7 @@
+         .function("get_conflicting", &GcsSystem::get_conflicting)
+         .function("get_redundant", &GcsSystem::get_redundant)
+         .function("get_partially_redundant", &GcsSystem::get_partially_redundant)
++        .function("get_dependent_params", &GcsSystem::get_dependent_params)
+         .function("has_conflicting", &GcsSystem::has_conflicting)
+         .function("has_redundant", &GcsSystem::has_redundant)
+         .function("has_partially_redundant", &GcsSystem::has_partially_redundant)

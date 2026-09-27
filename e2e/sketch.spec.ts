@@ -152,6 +152,11 @@ test('the Wall bracket’s sketches open by double-click; sketch mode looks righ
   await expect(palette(page).getByRole('heading')).toHaveText('Sketch2');
   await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
 
+  // The constraint status is in (P1-08): the solver has loaded and solved it.
+  await expect(palette(page).locator('[data-constraint-state]')).not.toHaveAttribute(
+    'data-constraint-state',
+    'pending',
+  );
   await page.mouse.move(0, 0);
   await page.evaluate('document.fonts.ready.then(() => true)');
   await expect(page).toHaveScreenshot('sketch-mode-dark.png', {

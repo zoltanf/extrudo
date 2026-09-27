@@ -175,6 +175,7 @@ export function Viewport({
       ref={section}
       aria-label="Viewport"
       data-ready={ready || undefined}
+      data-sketch-status={sketchStatusSummary(sketches)}
       className="relative isolate min-w-0 flex-1 overflow-hidden"
       style={{ background: 'var(--x-viewport-glow)' }}
     >
@@ -282,6 +283,11 @@ function Scene({
     [viewport, bodyBounds, sketchBounds],
   );
 
+  const sketchColors = useMemo(
+    () => ({ free: colors.sketch, fixed: colors.sketchFixed, conflict: colors.sketchConflict }),
+    [colors],
+  );
+
   const gridFrame = sketchPlane ?? XY_FRAME;
   const gridAxes = [gridFrame.x, gridFrame.y].map((axis) => worldAxis(axis, colors, origin));
 
@@ -309,7 +315,7 @@ function Scene({
       <Sketches
         store={viewport}
         sketches={sketches}
-        sketch={colors.sketch}
+        colors={sketchColors}
         construction={colors.sketchConstruction}
         showPoints={sketchPoints}
       />
@@ -612,4 +618,17 @@ function useNavigation(
       el.removeEventListener('contextmenu', onContextMenu);
     };
   }, [section, surface, viewport, onDrag]);
+}
+
+/**
+ * How many entities of the sketch being edited are drawn in each status
+ * colour (P1-08), for tests: "free=3 fixed=0 conflict=0". Undefined without
+ * a status.
+ */
+function sketchStatusSummary(sketches: readonly SketchDrawing[]): string | undefined {
+  const status = sketches.find((s) => s.active)?.status;
+  if (!status) return undefined;
+  const count = { free: 0, fixed: 0, conflict: 0 };
+  for (const s of Object.values(status)) count[s]++;
+  return `free=${count.free} fixed=${count.fixed} conflict=${count.conflict}`;
 }

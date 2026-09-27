@@ -23,6 +23,10 @@ export interface SceneColors {
   edge: Rgba;
   /** Under-constrained sketch geometry. */
   sketch: Rgba;
+  /** Fully constrained sketch geometry (`ink`, docs/05-brand.md §3.4). */
+  sketchFixed: Rgba;
+  /** Over-constrained sketch geometry (`error`). */
+  sketchConflict: Rgba;
   /** Construction sketch geometry, drawn dashed. */
   sketchConstruction: Rgba;
   /** Hover highlight; drawn at 45 % (docs/05-brand.md §3.4). */
@@ -39,6 +43,8 @@ const TOKENS: Record<keyof SceneColors, string> = {
   body: '--x-body-default',
   edge: '--x-edge',
   sketch: '--x-sketch',
+  sketchFixed: '--x-ink',
+  sketchConflict: '--x-error',
   sketchConstruction: '--x-muted',
   preselect: '--x-accent',
 };

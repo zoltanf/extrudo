@@ -168,7 +168,7 @@ Benchmark **B1** buildable.
   driving vs driven; auto model-parameter naming (`d1`…); dimension appears in
   the parameters table.
   *Deps:* P0-07. *AC:* FR-SK-08, FR-PAR-03 for sketches.
-- [ ] **P1-08 Constraint status and coloring.** Blue (under-constrained),
+- [x] **P1-08 Constraint status and coloring.** Blue (under-constrained),
   black/white (fully constrained), red (conflict); DOF display in the palette;
   over-constraint dialog offering to make the dimension driven.
   *AC:* FR-SK-09.

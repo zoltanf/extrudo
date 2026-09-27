@@ -187,7 +187,7 @@ describe('Dimension tool', () => {
     expect(t.report().ok).toBe(true);
   });
 
-  it('adds one that would over-constrain the sketch as driven, and says so', async () => {
+  it('asks before adding one that would over-constrain the sketch', async () => {
     const t = await setup({ tool: DIMENSION_TOOL });
     draw(
       t,
@@ -196,12 +196,26 @@ describe('Dimension tool', () => {
     );
     t.host.click(at(10, 0.2));
     t.host.click(at(10, 5));
+    expect(dims(t)).toEqual([]);
+    expect(t.host.state.getState().overConstrained).toEqual({
+      dimension: expect.any(String),
+      label: 'Distance',
+    });
+
+    // Added as driven: it measures, and has no parameter.
+    t.host.resolveOverConstrained(true);
+    expect(t.host.state.getState().overConstrained).toBeUndefined();
     expect(dims(t)).toEqual([expect.objectContaining({ expr: '20', driven: true })]);
     expect(dims(t)[0]?.paramName).toBeUndefined();
-    expect(t.host.state.getState().notice).toBe(
-      'Distance would over-constrain the sketch, so it is driven: it measures.',
-    );
     expect(t.host.state.getState().error).toBeUndefined();
+
+    // Cancelled: nothing is added.
+    t.host.click(at(10, 0.2));
+    t.host.click(at(10, -5));
+    expect(t.host.state.getState().overConstrained).toBeDefined();
+    t.host.resolveOverConstrained(false);
+    expect(t.host.state.getState().overConstrained).toBeUndefined();
+    expect(dims(t)).toHaveLength(1);
   });
 
   it('drops its picks on Esc, then leaves', async () => {
@@ -308,5 +322,92 @@ describe('apply: changes that move sketch geometry', () => {
     ).toThrow(CommandError);
     expect(t.store.getState().doc).toEqual(before);
     expect(t.store.getState().canRedo).toBe(false);
+  });
+});
+
+describe('constraint status (P1-08)', () => {
+  it('follows the open sketch through edits, value changes and undo', async () => {
+    const t = await setup({ tool: DIMENSION_TOOL });
+    const status = () => t.host.state.getState().status;
+    draw(
+      t,
+      { a0: pt(0, 0), a1: pt(20, 0), a: line('a0', 'a1') },
+      { f: { type: 'fix', entity: e('a0') }, h: { type: 'horizontal', a: e('a') } },
+    );
+    expect(status()?.dof).toBe(1);
+    expect(status()?.entities).toEqual({ a0: 'fixed', a1: 'free', a: 'free' });
+
+    t.host.click(at(10, 0.2));
+    t.host.click(at(10, 5));
+    expect(status()?.dof).toBe(0);
+    expect(status()?.entities).toEqual({ a0: 'fixed', a1: 'fixed', a: 'fixed' });
+
+    const [id] = Object.keys(t.data().dimensions) as DimensionId[];
+    t.host.apply(
+      updateSketchDimension({ feature: t.id, id: id as DimensionId, changes: { expr: '30' } }),
+    );
+    expect(status()?.dof).toBe(0);
+
+    t.store.getState().undo();
+    t.store.getState().undo();
+    expect(status()?.dof).toBe(1);
+  });
+
+  it('is gone outside sketch mode', async () => {
+    const t = await setup({ tool: DIMENSION_TOOL });
+    draw(t, { a0: pt(0, 0), a1: pt(20, 0), a: line('a0', 'a1') });
+    expect(t.host.state.getState().status?.dof).toBe(4);
+    t.session.getState().exitSketch();
+    expect(t.host.state.getState().status).toBeUndefined();
+  });
+
+  it('refuses a value that fixed geometry cannot meet', async () => {
+    const t = await setup({ tool: DIMENSION_TOOL });
+    draw(
+      t,
+      { a0: pt(0, 0), a1: pt(20, 0), a: line('a0', 'a1') },
+      { f: { type: 'fix', entity: e('a') } },
+      {
+        k: {
+          type: 'distance',
+          orientation: 'aligned',
+          a: e('a'),
+          expr: '20',
+          driven: false,
+        } as SketchDimension,
+      },
+    );
+    const k = 'k' as DimensionId;
+    expect(t.host.state.getState().status?.over).toEqual([]);
+    expect(() =>
+      t.host.apply(updateSketchDimension({ feature: t.id, id: k, changes: { expr: '30' } })),
+    ).toThrow(CommandError);
+    expect(t.data().dimensions[k]?.expr).toBe('20');
+  });
+
+  it('refuses to make a dimension driving when that over-constrains the sketch', async () => {
+    const t = await setup({ tool: DIMENSION_TOOL });
+    draw(
+      t,
+      { a0: pt(0, 0), a1: pt(20, 0), a: line('a0', 'a1') },
+      { f0: { type: 'fix', entity: e('a0') }, f1: { type: 'fix', entity: e('a1') } },
+      {
+        k: {
+          type: 'distance',
+          orientation: 'aligned',
+          a: e('a'),
+          expr: '20',
+          driven: true,
+        } as SketchDimension,
+      },
+    );
+    const k = 'k' as DimensionId;
+    expect(() =>
+      t.host.apply(
+        updateSketchDimension({ feature: t.id, id: k, changes: { driven: false, expr: '20' } }),
+      ),
+    ).toThrow(new CommandError('Distance would over-constrain the sketch, so it stays driven.'));
+    expect(t.data().dimensions[k]?.driven).toBe(true);
+    expect(t.host.state.getState().status?.over).toEqual([]);
   });
 });

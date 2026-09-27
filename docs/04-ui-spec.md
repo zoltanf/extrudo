@@ -138,10 +138,14 @@ orbit), Trackpad (two-finger pan, pinch zoom, Alt+drag orbit).
   **FINISH SKETCH** (big green ✓).
 - **Sketch palette (right panel):** construction toggle, look at, sketch grid,
   snap, slice, show profiles, show points, show dimensions, show constraints,
-  DOF counter ("3 DOF left" or "Fully constrained ✓").
+  DOF counter ("3 DOF left", "Fully constrained ✓", or "Over-constrained").
 - **Colours:** under-constrained geometry blue; fully constrained dark
   (light theme) or white (dark theme); construction dashed grey; conflicting
-  red; projected purple; profiles pale fill.
+  red; projected purple; profiles pale fill. Status is per entity: a
+  fully placed side of a rectangle is white while the others are still
+  blue. Constraint glyphs and dimension labels that over-constrain are red.
+- **Over-constraint:** a new dimension that would over-constrain the
+  sketch asks first: add it as driven (it measures) or cancel.
 - **Drawing feedback:** inference guides as dashed lines with small snap
   glyphs; a live length/angle heads-up; auto-constraint glyphs flash when
   applied.

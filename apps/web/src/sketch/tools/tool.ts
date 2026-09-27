@@ -51,8 +51,8 @@ export interface SketchEdit {
    * Constraints and dimensions the user asked for (the constraint tools,
    * P1-06; the Dimension tool, P1-07). The host test-solves each. It refuses
    * the whole edit, with a message, if a constraint conflicts or is
-   * redundant; a dimension that would over-constrain the sketch goes in as
-   * driven instead.
+   * redundant; a dimension that would over-constrain the sketch waits for
+   * the user to add it as driven or drop it (P1-08).
    */
   verify?: string[];
   /** Existing constraints to delete instead (Fix on something fixed frees it). */

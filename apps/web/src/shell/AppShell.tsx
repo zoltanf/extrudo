@@ -18,6 +18,7 @@ import { useTheme } from '../design-system';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import type { Autosaver } from '../project/autosave';
+import { useHostState } from '../sketch/hostState';
 import {
   CREATE_SKETCH,
   cancelCreateSketch,
@@ -28,7 +29,7 @@ import {
   type SketchModeStores,
   startCreateSketch,
 } from '../sketch/mode';
-import { PlanePrompt, SketchPalette } from '../sketch/panels';
+import { OverConstrainedDialog, PlanePrompt, SketchPalette } from '../sketch/panels';
 import { deleteSelection } from '../sketch/selection';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
@@ -207,7 +208,8 @@ export function AppShell({
   const pickPlane = (plane: OriginPlaneId) => createSketchOn(stores, originPlaneRef(plane));
   const edit = (id: FeatureId) => editSketch(stores, id);
 
-  // Every active, unsuppressed sketch on a known plane is drawn.
+  // Every active, unsuppressed sketch on a known plane is drawn; the open one in its status colours.
+  const status = useHostState(host, (s) => s.status);
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
     doc.features.forEach((feature, index) => {
@@ -220,11 +222,12 @@ export function AppShell({
           frame,
           data: sketch.data,
           active: feature.id === activeSketchId,
+          status: feature.id === activeSketchId ? status?.entities : undefined,
         });
       }
     });
     return out;
-  }, [doc.features, doc.timelineMarker, activeSketchId]);
+  }, [doc.features, doc.timelineMarker, activeSketchId, status]);
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
   const sketchPlane = sketches.find((s) => s.active)?.frame;
 
@@ -332,6 +335,7 @@ export function AppShell({
                 sketchId={activeSketchId}
                 frame={sketchPlane}
                 interactive={!drawing}
+                over={status?.over}
               />
             )}
             {showDimensions && tools && activeSketchId && sketchPlane && (
@@ -381,6 +385,7 @@ export function AppShell({
         activeSketch={activeSketch?.name}
         onEditSketch={edit}
       />
+      <OverConstrainedDialog host={host} />
       <ParametersDialog
         store={store}
         apply={apply}

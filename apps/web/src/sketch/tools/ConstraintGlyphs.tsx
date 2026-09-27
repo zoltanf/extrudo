@@ -28,6 +28,8 @@ export interface ConstraintGlyphsProps {
   frame: SketchFrame;
   /** False while a tool runs: the glyphs show but clicks go to the tool. */
   interactive: boolean;
+  /** Constraints that conflict or are redundant (P1-08): drawn red. */
+  over?: readonly string[];
 }
 
 /** The icon of each constraint type; a point on a curve is a coincidence. */
@@ -52,7 +54,7 @@ const ICONS: Record<SketchConstraintType, IconName> = {
  * The constraint glyphs of the open sketch (P1-06, FR-SK-07, UI spec §4):
  * a small icon next to each constrained entity (`glyphs.ts` places them).
  * Hovering a glyph highlights the entities it constrains and its other
- * glyphs; clicking selects the constraint (Shift or Ctrl adds or removes),
+ * glyphs; one that over-constrains the sketch is red (P1-08). Clicking selects the constraint (Shift or Ctrl adds or removes),
  * and Delete removes the selection (`sketch/selection.ts`). Glyphs of
  * constraints added while the sketch is open flash once.
  *
@@ -66,6 +68,7 @@ export function ConstraintGlyphs({
   sketchId,
   frame,
   interactive,
+  over,
 }: ConstraintGlyphsProps) {
   const layer = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
@@ -101,6 +104,7 @@ export function ConstraintGlyphs({
   };
   const placed = layoutGlyphs(anchors, toScreen);
   const selected = new Set(selection.filter((s) => s.kind === 'constraint').map((s) => s.id));
+  const bad = new Set(over);
   // A hovered constraint that has gone (undo) highlights nothing.
   const hovered = hover && data?.constraints[hover] ? hover : undefined;
 
@@ -129,6 +133,7 @@ export function ConstraintGlyphs({
         seen.set(g.constraint, nth + 1);
         const isSelected = selected.has(g.constraint);
         const lit = g.constraint === hovered;
+        const wrong = bad.has(g.constraint);
         const label = `${CONSTRAINT_LABELS[g.type]} constraint`;
         return (
           <button
@@ -140,10 +145,11 @@ export function ConstraintGlyphs({
             title={CONSTRAINT_LABELS[g.type]}
             data-constraint={g.constraint}
             data-constraint-type={g.type}
+            data-over={wrong || undefined}
             data-view-passthrough=""
             className={`absolute grid place-items-center rounded-[4px] border shadow-raised ${
               interactive ? 'pointer-events-auto cursor-pointer' : ''
-            } ${isSelected ? 'border-accent bg-accent-soft' : lit ? 'border-accent' : 'border-line'} ${
+            } ${isSelected ? 'border-accent bg-accent-soft' : lit ? 'border-accent' : wrong ? 'border-error' : 'border-line'} ${
               initial.current?.has(g.constraint) ? '' : 'x-glyph-new'
             }`}
             style={{
@@ -168,7 +174,9 @@ export function ConstraintGlyphs({
               name={ICONS[g.type]}
               category="sketch"
               size={14}
-              color={isSelected || lit ? 'var(--x-accent)' : 'var(--x-sketch)'}
+              color={
+                isSelected || lit ? 'var(--x-accent)' : wrong ? 'var(--x-error)' : 'var(--x-sketch)'
+              }
             />
           </button>
         );

@@ -2,8 +2,9 @@ import { ORIGIN_PLANES, type OriginPlaneId, type SessionStore } from '@extrudo/c
 import { Crosshair } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
-import { Button, ToolIcon, Tooltip } from '../design-system';
+import { Button, ConfirmDialog, ToolIcon, Tooltip } from '../design-system';
 import type { ViewportStore } from '../viewport/store';
+import { useHostState } from './hostState';
 import type { ToolHost } from './tools/host';
 
 /**
@@ -160,7 +161,7 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
           </li>
         ))}
       </ul>
-      <p className="text-sm text-muted">Degrees of freedom arrive with the solver (P1-08).</p>
+      <DofCounter host={host} />
       <Button
         className="border-success/60 font-semibold text-ink hover:bg-success/10"
         onClick={onFinish}
@@ -169,6 +170,57 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
         Finish Sketch
       </Button>
     </FloatingPanel>
+  );
+}
+
+/**
+ * How constrained the open sketch is (UI spec §4, FR-SK-09): degrees of
+ * freedom left, fully constrained, or over-constrained.
+ */
+function DofCounter({ host }: { host: ToolHost | undefined }) {
+  const status = useHostState(host, (s) => s.status);
+  const [text, tone, state] = !status
+    ? ['Solving…', 'text-muted', 'pending']
+    : Object.keys(status.entities).length === 0
+      ? ['Nothing to constrain yet', 'text-muted', 'empty']
+      : status.over.length > 0
+        ? ['Over-constrained: the red geometry has a constraint too many', 'text-error', 'over']
+        : status.dof === 0
+          ? ['Fully constrained ✓', 'text-success', 'full']
+          : [`${status.dof} DOF left`, 'text-sketch', 'under'];
+  return (
+    <p
+      className={`text-sm ${tone}`}
+      aria-live="polite"
+      data-dof={status?.dof}
+      data-constraint-state={state}
+    >
+      {text}
+    </p>
+  );
+}
+
+export interface OverConstrainedDialogProps {
+  host: ToolHost | undefined;
+}
+
+/**
+ * A new dimension would over-constrain the sketch (P1-08): add it as a
+ * driven dimension, which only measures, or don't add it.
+ */
+export function OverConstrainedDialog({ host }: OverConstrainedDialogProps) {
+  const pending = useHostState(host, (s) => s.overConstrained);
+  return (
+    <ConfirmDialog
+      open={pending !== undefined}
+      onOpenChange={(open) => {
+        if (!open && host?.state.getState().overConstrained) host.resolveOverConstrained(false);
+      }}
+      title="Over-constrained"
+      description={`This ${pending?.label.toLowerCase() ?? 'dimension'} would over-constrain the sketch: its constraints and dimensions already fix it. Add it as a driven dimension? It will show the value without changing anything.`}
+      confirm="Add as driven"
+      onConfirm={() => host?.resolveOverConstrained(true)}
+    />
   );
 }
 

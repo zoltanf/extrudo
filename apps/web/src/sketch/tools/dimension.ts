@@ -14,8 +14,8 @@
  * angle's label picks the pair of angles between the lines. The new
  * dimension drives the sketch at its measured value (rounded to the
  * document precision), and the host opens its value for editing
- * (`SketchEdit.editDimension`). One that would over-constrain the sketch
- * goes in as driven.
+ * (`SketchEdit.editDimension`). If it would over-constrain the sketch, the
+ * host asks whether to add it as driven (P1-08).
  */
 import {
   type DimensionId,

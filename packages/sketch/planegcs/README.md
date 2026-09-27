@@ -28,6 +28,9 @@ WASM never ends up in a bundle.
   `FullPivLU`, and the SQP step's QR (`qp_eq`) pivots columns instead of fully:
   another 1.4–1.6× on large components. Both still solve the test sketches to
   the same geometry as the published build (P0-03, within 1e-11 mm).
+- `GcsSystem::get_dependent_params()` in the bindings (P1-08, ADR-0017): the
+  indices of the unknowns the last diagnosis found not fully constrained,
+  for the per-entity constraint colours.
 
 ## Getting the WASM
 

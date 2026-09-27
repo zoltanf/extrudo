@@ -16,16 +16,22 @@
  * test-solved before anything else: if one conflicts or is redundant, or the
  * solve would shrink a curve to nothing (`collapses`), the edit is refused
  * and the prompt says why. A new dimension (P1-07) that would over-constrain
- * the sketch goes in as driven instead, with a note in the prompt; a new
- * driving dimension gets the next free parameter name (`d1`…).
+ * the sketch waits for the user (`overConstrained`, P1-08): added as driven,
+ * or not at all. A new driving dimension gets the next free parameter name
+ * (`d1`…).
  *
  * Other changes that move sketch geometry (a dimension's value, a parameter
  * a dimension uses) go through `apply`: the command and the solves of every
  * sketch whose dimension values changed are one undo step.
  *
+ * The host also keeps the open sketch's constraint status (P1-08, `status`):
+ * which entities can still move, which are fully constrained and what
+ * over-constrains the sketch. It solves the sketch again after every change;
+ * components that didn't change cost nothing.
+ *
  * Until the solver has loaded (a few ms after the first tool starts, or
  * after a sketch opens), edits go in with every inferred constraint and
- * unsolved.
+ * unsolved, and there is no status.
  */
 import {
   addToSketch,
@@ -54,7 +60,14 @@ import {
 } from '@extrudo/core';
 import type { SketchSolution, SketchSolver } from '@extrudo/sketch';
 // The inference entry point only: the solver's WASM glue stays in its own lazy chunk.
-import { type Inference, infer, pickEntity } from '@extrudo/sketch/inference';
+import {
+  type Inference,
+  infer,
+  pickEntity,
+  type SketchStatus,
+  sketchStatus,
+  unmetDimensions,
+} from '@extrudo/sketch/inference';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { gridStep } from '../../viewport/grid';
 import type { ViewportStore } from '../../viewport/store';
@@ -124,8 +137,13 @@ export interface ToolHostState {
   revision: number;
   /** Why the last edit couldn't be added. */
   error: string | undefined;
-  /** What the last edit did differently from what was asked (a dimension added as driven). */
-  notice: string | undefined;
+  /**
+   * A new dimension would over-constrain the sketch (P1-08): the edit waits
+   * until `resolveOverConstrained` adds it as driven or drops it.
+   */
+  overConstrained: { dimension: DimensionId; label: string } | undefined;
+  /** The open sketch's constraint status; undefined until the solver has loaded. */
+  status: SketchStatus | undefined;
   /** The dimension whose value is being edited in place (P1-07). */
   editing: DimensionId | undefined;
   solverReady: boolean;
@@ -188,6 +206,8 @@ export interface ToolHost {
   apply(commands: Command<unknown> | readonly Command<unknown>[]): void;
   /** Opens a dimension of the open sketch for editing in place, or closes the editor. */
   editDimension(id: DimensionId | undefined): void;
+  /** Answers `overConstrained`: add the dimension as driven (it measures), or drop the edit. */
+  resolveOverConstrained(addDriven: boolean): void;
   /** Stops listening and frees the solver. */
   dispose(): void;
 }
@@ -201,7 +221,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     screen: undefined,
     revision: 0,
     error: undefined,
-    notice: undefined,
+    overConstrained: undefined,
+    status: undefined,
     editing: undefined,
     solverReady: false,
     construction: false,
@@ -215,6 +236,12 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   let committing = false;
   /** mm per pixel at the last pointer: picking reaches `SNAP_PIXELS` of them. */
   let perPixel = 1;
+  /** The edit waiting for `resolveOverConstrained`. */
+  let waiting: SketchEdit | undefined;
+  /** The document and sketch the status was last worked out for. */
+  let statusFor:
+    | { doc: ExtrudoDocument; data: SketchData; values: Record<string, number> }
+    | undefined;
 
   const bump = (patch: Partial<ToolHostState> = {}) =>
     state.setState((s) => ({ ...patch, revision: s.revision + 1 }));
@@ -248,6 +275,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         if (disposed) return s.dispose();
         solver = s;
         state.setState({ solverReady: true });
+        refreshStatus();
       })
       .catch((error: unknown) => {
         loading = false;
@@ -266,6 +294,24 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     });
   };
 
+  /** Solves the open sketch again if it changed, and stores its constraint status. */
+  const refreshStatus = () => {
+    const sketch = session.getState().mode === 'sketch' ? activeSketch() : undefined;
+    if (!sketch || !solver) {
+      statusFor = undefined;
+      if (state.getState().status) state.setState({ status: undefined });
+      return;
+    }
+    const { doc } = store.getState();
+    if (statusFor?.doc === doc && statusFor.data === sketch.data) return;
+    const values = dimensionValues(sketch.data, evaluateParameters(doc), sketch.id);
+    const same = statusFor?.data === sketch.data && sameValues(values, statusFor.values);
+    statusFor = { doc, data: sketch.data, values };
+    if (same) return;
+    const result = solver.solve(sketch.data, values);
+    state.setState({ status: sketchStatus(sketch.data, result, values) });
+  };
+
   /** Runs a command on the sketch; a `CommandError` becomes the prompt's error. */
   const dispatch = <P>(command: Command<P>): boolean => {
     committing = true;
@@ -279,6 +325,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       return false;
     } finally {
       committing = false;
+      refreshStatus();
     }
   };
 
@@ -297,16 +344,26 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       const old = before.features.find((f) => f.id === feature.id);
       const oldView = old && readSketch(old);
       const values = dimensionValues(view.data, now, feature.id);
-      if (oldView && sameValues(values, dimensionValues(oldView.data, was, feature.id))) continue;
+      const oldValues = oldView ? dimensionValues(oldView.data, was, feature.id) : {};
+      if (oldView && sameValues(values, oldValues)) continue;
       const result = active.solve(view.data, values);
-      const unsolved = () => {
-        if (!oldView) return true;
-        return active.solve(oldView.data, dimensionValues(oldView.data, was, feature.id)).ok;
-      };
-      if ((!result.ok && unsolved()) || collapses(view.data, result.solution)) {
-        throw new CommandError(
+      const unsolved = () => !oldView || active.solve(oldView.data, oldValues).ok;
+      const refused = () =>
+        new CommandError(
           `${feature.name} can't take that: its other constraints and dimensions don't allow it.`,
         );
+      if ((!result.ok && unsolved()) || collapses(view.data, result.solution)) throw refused();
+      // A dimension that starts driving must not over-constrain the sketch (P1-08).
+      for (const id of Object.keys(values)) {
+        if (id in oldValues || !(oldView?.data.dimensions[id as DimensionId]?.driven ?? false)) {
+          continue;
+        }
+        if (!active.check(view.data, values, id).accepted) {
+          const d = view.data.dimensions[id as DimensionId];
+          throw new CommandError(
+            `${d ? DIMENSION_LABELS[d.type] : 'That dimension'} would over-constrain the sketch, so it stays driven.`,
+          );
+        }
       }
       const points: Record<SketchEntityId, { x: number; y: number }> = {};
       const radii: Record<SketchEntityId, number> = {};
@@ -323,6 +380,11 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       if (Object.keys(points).length > 0 || Object.keys(radii).length > 0) {
         store.getState().dispatch(setSketchGeometry({ feature: feature.id, points, radii }));
       }
+      // planegcs can succeed by leaving a redundant dimension out: the new values must hold.
+      const changed = Object.keys(values).filter((id) => values[id] !== oldValues[id]);
+      const settled = store.getState().doc.features.find((f) => f.id === feature.id);
+      const data = settled && readSketch(settled)?.data;
+      if (data && unmetDimensions(data, values, changed).length > 0) throw refused();
     }
   };
 
@@ -338,7 +400,6 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     const evaluation = evaluateParameters(doc);
     const values = (d: SketchData) => dimensionValues(d, evaluation, sketch.id);
     const auto = new Set<string>(edit.auto);
-    let notice: string | undefined;
 
     // New driving dimensions take the next free parameter names.
     const dimensions: Record<DimensionId, SketchDimension> = { ...edit.dimensions };
@@ -361,11 +422,12 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       if (d && !d.driven && solver) {
         const trial = merged({});
         if (solver.check(trial, values(trial), id).accepted) continue;
-        // Over-constraining: it measures instead (P1-08 will ask first).
-        const { paramName: _, ...rest } = d;
-        dimensions[id as DimensionId] = { ...rest, driven: true };
-        notice = `${DIMENSION_LABELS[d.type]} would over-constrain the sketch, so it is driven: it measures.`;
-        continue;
+        // Over-constraining: the user decides whether it goes in as driven.
+        waiting = edit;
+        state.setState({
+          overConstrained: { dimension: id as DimensionId, label: DIMENSION_LABELS[d.type] },
+        });
+        return;
       }
       const c = edit.constraints[id as ConstraintId];
       if (!c || !solver) continue;
@@ -430,7 +492,6 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     );
     if (added) {
       state.setState({
-        notice,
         editing:
           edit.editDimension && edit.editDimension in dimensions ? edit.editDimension : undefined,
       });
@@ -476,12 +537,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       run((tool) => {
         const inference = inferAt(pointer, tool);
         // A new click answers the last refusal.
-        state.setState({
-          pointer: inference,
-          screen: pointer.screen,
-          error: undefined,
-          notice: undefined,
-        });
+        state.setState({ pointer: inference, screen: pointer.screen, error: undefined });
         return tool.click(inference);
       });
     },
@@ -540,10 +596,26 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         }
       } finally {
         committing = false;
+        refreshStatus();
       }
     },
     editDimension(id) {
-      bump({ editing: id, notice: undefined });
+      bump({ editing: id });
+    },
+    resolveOverConstrained(addDriven) {
+      const edit = waiting;
+      const pending = state.getState().overConstrained;
+      waiting = undefined;
+      state.setState({ overConstrained: undefined });
+      const d = pending && edit?.dimensions[pending.dimension];
+      if (addDriven && edit && pending && d) {
+        const { paramName: _, ...rest } = d;
+        commit({
+          ...edit,
+          dimensions: { ...edit.dimensions, [pending.dimension]: { ...rest, driven: true } },
+        });
+      }
+      bump();
     },
     dispose() {
       disposed = true;
@@ -563,7 +635,12 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     }
     if (construction && s.mode !== 'sketch') bump({ construction: false });
     if (editing && s.mode !== 'sketch') bump({ editing: undefined });
+    if (s.mode !== 'sketch' && state.getState().overConstrained) {
+      waiting = undefined;
+      bump({ overConstrained: undefined });
+    }
     if (s.mode === 'sketch') ensureSolver();
+    refreshStatus();
   });
   // A sketch being edited, or dimensions a parameter change can move, need the solver.
   const dimensioned = store
@@ -575,11 +652,15 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   // Undo or redo while drawing: the tool may hold points that no longer exist; start it afresh.
   const unsubscribeStore = store.subscribe((s) => {
     const tool = state.getState().tool;
-    if (committing) committed = s.doc;
-    else if (tool && s.doc !== committed) {
+    if (committing) {
+      committed = s.doc;
+      return;
+    }
+    if (tool && s.doc !== committed) {
       committed = s.doc;
       bump({ tool: create(tool.id), dragging: false });
     }
+    refreshStatus();
   });
 
   return host;

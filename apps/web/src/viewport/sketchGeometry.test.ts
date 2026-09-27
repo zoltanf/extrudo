@@ -25,11 +25,11 @@ describe('sketchSegments', () => {
       l: { type: 'line', start: 'a', end: 'b', construction: false },
     });
     const xz = sketchSegments(data, frame('origin:xz'));
-    expect(pairs(xz.solid)).toEqual([
+    expect(pairs(xz.curves.free)).toEqual([
       [1, 0, 2],
       [4, 0, 6],
     ]);
-    expect(pairs(xz.points)).toEqual([
+    expect(pairs(xz.points.free)).toEqual([
       [1, 0, 2],
       [4, 0, 6],
     ]);
@@ -43,7 +43,7 @@ describe('sketchSegments', () => {
       k: { type: 'circle', center: 'c', radius: 5, construction: true },
     });
     const s = sketchSegments(data, frame('origin:xy'));
-    expect(s.solid).toHaveLength(0);
+    expect(s.curves.free).toHaveLength(0);
     expect(s.construction).toHaveLength(CIRCLE_SEGMENTS * 6);
     const points = pairs(s.construction);
     for (const [x, y] of points) expect(Math.hypot(x ?? 0, y ?? 0)).toBeCloseTo(5, 3);
@@ -56,7 +56,7 @@ describe('sketchSegments', () => {
       e: { type: 'point', x: 0, y: -10 },
       arc: { type: 'arc', center: 'c', start: 's', end: 'e', construction: false },
     });
-    const points = pairs(sketchSegments(data, frame('origin:xy')).solid);
+    const points = pairs(sketchSegments(data, frame('origin:xy')).curves.free);
     // A half circle through the left side (−X), in CIRCLE_SEGMENTS / 2 segments.
     expect(points).toHaveLength(CIRCLE_SEGMENTS);
     expect(points[0]).toEqual([0, 10, 0]);
@@ -77,7 +77,7 @@ describe('sketchSegments', () => {
       wave: { type: 'spline', points: ['f1', 'f2', 'f3'], construction: true },
     });
     const s = sketchSegments(data, frame('origin:xy'));
-    const oval = pairs(s.solid);
+    const oval = pairs(s.curves.free);
     expect(oval).toHaveLength(CIRCLE_SEGMENTS * 2);
     for (const [x, y] of oval) expect(((x ?? 0) / 3) ** 2 + ((y ?? 0) / 8) ** 2).toBeCloseTo(1, 3);
     const wave = pairs(s.construction);
@@ -86,10 +86,50 @@ describe('sketchSegments', () => {
     expect(wave.some(([x, y]) => x === 25 && y === 5)).toBe(true);
   });
 
+  it('groups curves and points by constraint status (P1-08), construction aside', () => {
+    const data = sketch({
+      a: { type: 'point', x: 0, y: 0 },
+      b: { type: 'point', x: 10, y: 0 },
+      l: { type: 'line', start: 'a', end: 'b', construction: false },
+      c: { type: 'point', x: 0, y: 5 },
+      d: { type: 'point', x: 10, y: 5 },
+      m: { type: 'line', start: 'c', end: 'd', construction: false },
+      e: { type: 'point', x: 0, y: 9 },
+      f: { type: 'point', x: 10, y: 9 },
+      n: { type: 'line', start: 'e', end: 'f', construction: true },
+    });
+    const s = sketchSegments(data, frame('origin:xy'), {
+      a: 'fixed',
+      b: 'fixed',
+      l: 'fixed',
+      c: 'fixed',
+      d: 'conflict',
+      m: 'conflict',
+      n: 'fixed',
+    });
+    expect(pairs(s.curves.fixed)).toEqual([
+      [0, 0, 0],
+      [10, 0, 0],
+    ]);
+    expect(pairs(s.curves.conflict)).toEqual([
+      [0, 5, 0],
+      [10, 5, 0],
+    ]);
+    expect(s.curves.free).toHaveLength(0);
+    expect(s.construction).toHaveLength(6);
+    expect(pairs(s.points.fixed)).toHaveLength(3);
+    expect(pairs(s.points.conflict)).toEqual([[10, 5, 0]]);
+    // Entities without a status (drawn since the last solve) are free.
+    expect(pairs(s.points.free)).toEqual([
+      [0, 9, 0],
+      [10, 9, 0],
+    ]);
+  });
+
   it('skips curves whose points are missing, and has no bounds when empty', () => {
     const data = sketch({ l: { type: 'line', start: 'a', end: 'b', construction: false } });
     const s = sketchSegments(data, frame('origin:xy'));
-    expect(s.solid).toHaveLength(0);
+    expect(s.curves.free).toHaveLength(0);
     expect(s.bounds).toBeUndefined();
   });
 });

@@ -16,6 +16,8 @@ import {
   DebugMode,
   SolveStatus,
 } from '@salusoft89/planegcs/dist/planegcs_dist/enums.js';
+import type { IntVector } from '@salusoft89/planegcs/dist/planegcs_dist/gcs_system.js';
+import { emsc_vec_to_arr } from '@salusoft89/planegcs/dist/sketch/emsc_vectors.js';
 import { GcsWrapper } from '@salusoft89/planegcs/dist/sketch/gcs_wrapper.js';
 import type { SketchPrimitive } from '@salusoft89/planegcs/dist/sketch/sketch_primitive.js';
 import { type Component, splitComponents } from './components';
@@ -58,6 +60,12 @@ export interface ComponentReport {
    * "partially redundant".
    */
   partlyRedundant: string[];
+  /**
+   * The component's points and curves with a parameter that can still move
+   * (P1-08): planegcs's dependent parameters, from its last diagnosis. A line
+   * or spline has no parameters of its own; it is free if a point of it is.
+   */
+  free: string[];
 }
 
 export interface SolveResult {
@@ -68,6 +76,8 @@ export interface SolveResult {
   conflicting: string[];
   redundant: string[];
   partlyRedundant: string[];
+  /** Points and curves that can still move (see `ComponentReport.free`). */
+  free: string[];
   components: ComponentReport[];
   /** Dimensions the solver didn't use: driven ones and those without a value. */
   skipped: string[];
@@ -91,6 +101,11 @@ export interface CheckResult {
   conflicting: string[];
   redundant: string[];
   partlyRedundant: string[];
+}
+
+/** Our build's addition to planegcs's `GcsSystem` (planegcs.patch). */
+interface Dependent {
+  get_dependent_params(): IntVector;
 }
 
 /** The primitive an entity item is named after (an ellipse's focus point comes first). */
@@ -205,8 +220,37 @@ class System {
       conflicting: [...byItem(gcs.get_gcs_conflicting_constraints()).keys()],
       redundant,
       partlyRedundant,
+      free: this.free(),
     };
     return this.report;
+  }
+
+  /** The component's own points and curves with a parameter the last diagnosis left free. */
+  free(): string[] {
+    const loose = new Set(
+      emsc_vec_to_arr((this.gcs.gcs as unknown as Dependent).get_dependent_params()),
+    );
+    if (loose.size === 0) return [];
+    const mine = new Set(this.component.entities);
+    const out: string[] = [];
+    for (const item of this.component.items) {
+      if (!mine.has(item.id)) continue;
+      const prim = own(item);
+      const addrs: number[] = [];
+      const add = (id: string, count: number) => {
+        const addr = this.gcs.p_param_index.get(id);
+        if (addr !== undefined) for (let i = 0; i < count; i++) addrs.push(addr + i);
+      };
+      if (prim?.type === 'point') add(item.id, 2);
+      else if (prim?.type === 'circle') add(item.id, 1);
+      else if (prim?.type === 'arc') add(item.id, 3);
+      else if (prim?.type === 'ellipse') {
+        add(item.id, 1);
+        add(prim.focus1_id, 2);
+      }
+      if (addrs.some((a) => loose.has(a))) out.push(item.id);
+    }
+    return out;
   }
 
   /** The geometry of the component's own (not fixed) entities, from the system. */
@@ -352,6 +396,7 @@ export class SketchSolver implements Disposable {
       conflicting,
       redundant,
       partlyRedundant: reports.flatMap((r) => r.partlyRedundant),
+      free: reports.flatMap((r) => r.free),
       components: reports,
       skipped: mapped.skipped,
       solution,

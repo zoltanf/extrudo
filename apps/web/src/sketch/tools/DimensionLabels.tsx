@@ -66,7 +66,8 @@ type Screen = (p: Vec2) => [number, number] | undefined;
  * (one undo step), and a double-click edits the value in place with an
  * `<ExpressionInput>`; the host opens the same editor for a new dimension.
  * The editor also turns a dimension driven or driving. Hovering a label
- * highlights what it measures.
+ * highlights what it measures. A dimension that over-constrains the sketch
+ * is red (P1-08).
  */
 export function DimensionLabels({
   store,
@@ -94,6 +95,7 @@ export function DimensionLabels({
   const projection = useStore(viewport, (s) => s.projection);
   const selection = useStore(session, (s) => s.selection);
   const editing = useStore(host.state, (s) => s.editing);
+  const over = useStore(host.state, (s) => s.status?.over);
   const doc = useStore(store, (s) => s.doc);
   const data = useMemo(() => {
     const feature = doc.features.find((f) => f.id === sketchId);
@@ -225,9 +227,11 @@ export function DimensionLabels({
             color={
               selected.has(id) || id === hovered
                 ? 'var(--x-accent)'
-                : d.driven
-                  ? 'var(--x-muted)'
-                  : 'var(--x-sketch)'
+                : over?.includes(id)
+                  ? 'var(--x-error)'
+                  : d.driven
+                    ? 'var(--x-muted)'
+                    : 'var(--x-sketch)'
             }
           />
         ))}
@@ -259,11 +263,12 @@ export function DimensionLabels({
             data-dimension={id}
             data-dimension-type={d.type}
             data-driven={d.driven || undefined}
+            data-over={over?.includes(id) || undefined}
             data-view-passthrough=""
             className={`absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-[4px] border px-1 font-mono text-xs leading-4 tabular-nums shadow-raised ${
               interactive ? 'pointer-events-auto cursor-move' : ''
             } ${selected.has(id) ? 'border-accent bg-accent-soft' : id === hovered ? 'border-accent' : 'border-line'} ${
-              d.driven ? 'text-muted' : 'text-ink'
+              over?.includes(id) ? 'text-error' : d.driven ? 'text-muted' : 'text-ink'
             }`}
             style={{
               left: at[0],

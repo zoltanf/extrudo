@@ -2,6 +2,18 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **P1-08** Constraint status: per-entity colours in the open
+  sketch (free `sketch` blue, fully constrained `ink`, over-constrained
+  `error` red; construction stays grey), from planegcs's dependent
+  parameters (new `get_dependent_params` binding in our planegcs patch;
+  `ComponentReport.free`, `sketchStatus`). Red glyphs and labels for what
+  over-constrains, including driving dimensions the geometry doesn't meet
+  (`unmetDimensions`); constraints on fixed geometry alone don't count.
+  DOF counter in the palette. A new over-constraining dimension opens a
+  dialog (add as driven, or cancel) instead of going in driven; turning a
+  driven dimension driving, or a value the solve doesn't meet, is refused.
+  ADR-0017.
+
 - 2026-09-27 · **P1-07** Dimensions: the Sketch Dimension tool (`D`) picks
   a line (length), two lines (angle, or distance if parallel), a point and
   a line, two points, a circle (diameter) or an arc (radius), and places

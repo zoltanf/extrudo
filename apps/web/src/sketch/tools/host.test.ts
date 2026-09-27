@@ -153,6 +153,7 @@ describe('line tool through the host', () => {
         conflicting: [],
         redundant: [],
         partlyRedundant: [],
+        free: [],
         components: [],
         skipped: [],
         solution: { points: {}, radii: {} },

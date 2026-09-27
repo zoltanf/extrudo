@@ -1,4 +1,13 @@
 // Pure (no WASM): the constraint tools set a new tangent's side with it (P1-06).
+
+// Pure too: the tool host turns a solve into sketch colours with it (P1-08).
+export {
+  DIMENSION_TOLERANCE,
+  type EntityStatus,
+  type SketchStatus,
+  sketchStatus,
+  unmetDimensions,
+} from '../solver/status';
 export { tangentReversed } from '../solver/tangent';
 export { type AnchorEntities, alignmentConstraints, snapConstraints } from './constraints';
 export {

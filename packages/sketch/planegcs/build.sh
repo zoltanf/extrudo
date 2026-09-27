@@ -7,7 +7,8 @@
 # 2. Generate its C++ bindings in a Node 20 container (the generator needs
 #    tree-sitter, which doesn't build on Node 26).
 # 3. Apply planegcs.patch to a fresh copy: ALLOW_MEMORY_GROWTH, -msimd128,
-#    DogLeg's Gauss step LeastNormLdlt, column-pivoting QR in qp_eq.
+#    DogLeg's Gauss step LeastNormLdlt, column-pivoting QR in qp_eq, and
+#    `get_dependent_params` in the bindings (P1-08: which unknowns can move).
 # 4. Compile with the pinned emsdk image (Dockerfile).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
