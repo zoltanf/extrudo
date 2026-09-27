@@ -86,9 +86,11 @@ export function Timeline({
               <ChevronLast size={16} />
             </IconButton>
           </fieldset>
+          {/* px-1 leaves room for the marker's triangle, which is wider than its bar: at the
+              ends it stuck out and a scrollbar showed with room to spare. */}
           <ol
             aria-label="Features"
-            className="flex min-w-0 items-center gap-1.5 overflow-x-auto py-1"
+            className="flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 py-1"
           >
             {doc.features.map((feature, index) => (
               <Fragment key={feature.id}>

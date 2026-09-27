@@ -132,3 +132,22 @@ test('suppress and delete from the menus; not while a sketch is open', async ({ 
   await page.keyboard.press('Escape');
   await expect(row(page, 'Sketch1')).toBeVisible();
 });
+
+test('two chips fit without a scrollbar, with the marker at either end', async ({ page }) => {
+  await openProject(page);
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole('button', { name: 'Create Sketch' }).click();
+    await page
+      .getByRole('region', { name: 'Create Sketch' })
+      .getByRole('button', { name: 'XY' })
+      .click();
+    await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  }
+  const list = page.getByRole('list', { name: 'Features' });
+  // The marker's triangle is wider than its bar; it used to stick out by a pixel and make
+  // the list scroll (a scrollbar under the chips where overlay scrollbars aren't used).
+  const overflow = () => list.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(await overflow()).toBe(0);
+  await page.getByRole('button', { name: 'Roll back to start' }).click();
+  expect(await overflow()).toBe(0);
+});

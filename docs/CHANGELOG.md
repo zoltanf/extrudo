@@ -2,6 +2,11 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **No timeline scrollbar with room to spare** (user report):
+  the marker's triangle is wider than its bar and stuck out a pixel at the
+  ends of the chip list, which then scrolled; the list has 4 px of padding
+  at each end now.
+
 - 2026-09-27 · **F6 fits tightly; no stuck selection box** (user reports):
   Fit frames the box of the bodies, sketches and placed dimension labels
   as seen from the camera, with a 15 % margin, instead of a bounding
