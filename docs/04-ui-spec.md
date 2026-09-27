@@ -171,7 +171,8 @@ orbit), Trackpad (two-finger pan, pinch zoom, Alt+drag orbit).
   DOF counter ("3 DOF left", "Fully constrained ✓", or "Over-constrained").
 - **Selecting and editing (no tool running):** hover pre-highlights; click
   and box select points and curves; dragging geometry moves it (or the whole
-  selection) with a live solve. A **properties panel** in the view's
+  selection) with a live solve, except that dragging a circle's rim resizes
+  it while its radius is free. A **properties panel** in the view's
   bottom-left corner shows the selection's type and status, a point's X/Y
   and a circle's or arc's radius (typed values move it as the constraints
   allow), a line's length and angle, the construction flag and Delete.

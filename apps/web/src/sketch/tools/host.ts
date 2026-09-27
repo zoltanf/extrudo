@@ -318,8 +318,13 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   let perPixel = 1;
   /** The edit waiting for `resolveOverConstrained`. */
   let waiting: SketchEdit | undefined;
-  /** The geometry drag in progress (P1-09): the press point on the plane. */
-  let move: { from: Vec2 } | undefined;
+  /**
+   * A drag on geometry with no tool (P1-09): points follow the pointer's offset, or, for a
+   * drag on a circle's rim, the radius follows the pointer's distance from the centre.
+   */
+  let move:
+    | { from: Vec2; rim?: { circle: SketchEntityId; center: Vec2; radius: number } }
+    | undefined;
   /** The document and sketch the status was last worked out for. */
   let statusFor:
     | { doc: ExtrudoDocument; data: SketchData; values: Record<string, number> }
@@ -765,6 +770,33 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     return [...out];
   };
 
+  /**
+   * Starts resizing `id` if it's a circle whose radius the constraints leave free: a trial
+   * pull shows whether the radius gives. The trial doesn't touch the document, and the
+   * open sketch is solved again before the real drag starts from it.
+   */
+  const rimDrag = (
+    active: SketchSolver,
+    sketch: { id: FeatureId; data: SketchData },
+    id: SketchEntityId,
+  ) => {
+    const circle = sketch.data.entities[id];
+    if (circle?.type !== 'circle') return undefined;
+    const solved = solveOpen(active, sketch);
+    const radius = solved.solution.radii[id] ?? circle.radius;
+    const stored = sketch.data.entities[circle.center];
+    const center =
+      solved.solution.points[circle.center] ??
+      (stored?.type === 'point' ? { x: stored.x, y: stored.y } : undefined);
+    if (!center || !active.beginRadiusDrag(id)) return undefined;
+    const trial = active.dragRadius(radius + Math.max(0.5, radius * 0.1));
+    const gives = trial.ok && Math.abs((trial.solution.radii[id] ?? radius) - radius) > 1e-6;
+    active.endDrag();
+    solveOpen(active, sketch);
+    if (!gives || !active.beginRadiusDrag(id)) return undefined;
+    return { circle: id, center: [center.x, center.y] as Vec2, radius };
+  };
+
   const endMove = (keep: boolean) => {
     if (!move) return false;
     move = undefined;
@@ -807,10 +839,19 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     },
     move(pointer) {
       if (move) {
-        const step = solver?.dragBy(
-          pointer.point[0] - move.from[0],
-          pointer.point[1] - move.from[1],
-        );
+        const { from, rim } = move;
+        // A rim keeps the pointer's offset from it: the radius changes as much as the
+        // pointer's distance from the centre does.
+        const step = rim
+          ? solver?.dragRadius(
+              Math.max(
+                MIN_RADIUS,
+                rim.radius +
+                  Math.hypot(pointer.point[0] - rim.center[0], pointer.point[1] - rim.center[1]) -
+                  Math.hypot(from[0] - rim.center[0], from[1] - rim.center[1]),
+              ),
+            )
+          : solver?.dragBy(pointer.point[0] - from[0], pointer.point[1] - from[1]);
         if (step?.ok) place(step.solution);
         return;
       }
@@ -859,7 +900,17 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       // Geometry can't move before the solver is in; the press is still the entity's.
       if (!solver || move) return true;
       const selected = selectedEntities(sketch.data);
-      const points = dragPoints(sketch.data, selected.includes(hit) ? selected : [hit]);
+      const dragged = selected.includes(hit) ? selected : [hit];
+      // A circle's rim resizes it when its radius can change (as in Fusion); else it moves.
+      const rim = dragged.length === 1 ? rimDrag(solver, sketch, hit) : undefined;
+      if (rim) {
+        move = { from: pointer.point, rim };
+        store.getState().beginTransaction('Resize');
+        session.getState().setHover(undefined);
+        bump({ moving: true });
+        return true;
+      }
+      const points = dragPoints(sketch.data, dragged);
       solveOpen(solver, sketch);
       if (!solver.beginDrag(points)) return true;
       move = { from: pointer.point };
@@ -1075,6 +1126,9 @@ function sameValues(a: Record<string, number>, b: Record<string, number>): boole
 
 /** How near (mm) an edit must get to the asked-for value to count as reached. */
 const REACHED = 1e-6;
+
+/** The smallest radius (mm) a rim drag asks for: dragging past the centre doesn't flip the circle. */
+const MIN_RADIUS = 0.01;
 
 /** Below this size (mm) a curve has collapsed: a solve that shrinks one this far failed in all but name. */
 const COLLAPSED = 1e-3;

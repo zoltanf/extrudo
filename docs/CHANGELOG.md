@@ -2,6 +2,12 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **Resize circles by the rim** (not a roadmap task, user
+  feedback): with no tool running, dragging a circle's rim changes its
+  radius while the radius is free (a circle with a fixed centre could not
+  be resized by dragging before), and moves the circle when a dimension
+  holds it. Solver `beginRadiusDrag`/`dragRadius`. ADR-0018 amended.
+
 - 2026-09-27 · **Pointer modes** (not a roadmap task, user feedback): the
   nav bar's first button is Select, the default pointer mode, pressed
   whenever no nav tool or command runs; it stops either. Starting a tool

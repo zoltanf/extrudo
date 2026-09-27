@@ -90,6 +90,33 @@ test('a window box takes what is inside, a crossing box what it touches', async 
   await expect(panel(page).locator('[data-selection-title]')).toHaveText('Line');
 });
 
+test('dragging a circle by its rim resizes it, even with its centre fixed', async ({ page }) => {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  await page.keyboard.press('c');
+  await click(0, 0);
+  await click(20, 0);
+  await page.keyboard.press('Escape');
+  await page
+    .getByRole('group', { name: 'Constraints' })
+    .getByRole('button', { name: 'Fix/Unfix', exact: true })
+    .click();
+  await click(0, 0);
+  await page.keyboard.press('Escape');
+  const glyphs = page.getByRole('checkbox', { name: 'Show constraints' });
+  await glyphs.uncheck();
+  await glyphs.blur();
+
+  await drag(page, at, [0, -20], [0, -30]);
+  await click(30, 0);
+  await expect(panel(page).locator('[data-selection-title]')).toHaveText('Circle');
+  await expect(panel(page).getByRole('textbox', { name: 'Radius' })).toHaveValue('30');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+Z');
+  await click(20, 0);
+  await expect(panel(page).getByRole('textbox', { name: 'Radius' })).toHaveValue('20');
+});
+
 test('dragging an edge moves it with a live solve, as one undo step', async ({ page }) => {
   const at = await sketchOnXY(page);
   await rectangle(page, at);

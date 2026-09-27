@@ -85,6 +85,8 @@ a properties panel. The solver could drag one point at a time.
   corners to the plane keeps `boxSelect` pure and testable in sketch mm.
 - **Dragging a circle's edge to resize it** (Fusion does). A drag on a
   curve moves it, one rule for every curve; the radius is in the panel.
+  *Reversed 2026-09-27, see the amendment:* a circle with a fixed centre
+  couldn't be resized by dragging at all.
 - **The panel under the palette** in the right column: at 900 px the
   palette leaves too little room and the panel was cut off.
 - **Deleting a spline whenever one of its points goes.** Losing one fit
@@ -101,3 +103,21 @@ a properties panel. The solver could drag one point at a time.
   of it where it is read.
 - A drag with the solver not yet loaded does nothing (a few ms after the
   sketch opens).
+
+## Amendment, 2026-09-27 (resizing circles by the rim)
+
+A user fixed a circle's centre, left its radius free ("1 DOF left") and
+couldn't drag it bigger: the rim drag tried to move the centre. Now a drag
+that starts on a circle's rim, with nothing else selected, **resizes** it
+when its radius can change, as in Fusion; a drag on the centre point moves
+it. `SketchSolver.beginRadiusDrag(circle)` adds a temporary
+`circle_radius` constraint on a drag parameter, and `dragRadius(r)` pulls
+toward `r` (the rest of the component follows). The host sets `r` to the
+start radius plus the change in the pointer's distance from the centre, so
+the grab offset is kept, never below 0.01 mm. To decide, the host pulls the
+radius once on trial (`rimDrag`: +10 % or 0.5 mm, whichever is more); if it
+doesn't give (a dimension, an equal to a held circle), the drag moves the
+circle as before. The undo step is "Resize" or "Move". A circle dragged
+with other selected entities still moves with them. Arcs keep moving when
+dragged: resizing one also moves its ends, which needs its own rule.
+

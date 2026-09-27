@@ -131,6 +131,64 @@ describe('dragging geometry', () => {
     expect(t.point(e('f'))).toEqual([0, 20]);
   });
 
+  it("resizes a circle by its rim, keeping the pointer's offset, as one undo step", async () => {
+    const t = await selecting();
+    const radius = () => (t.data().entities[e('c')] as { radius: number }).radius;
+    // A press just outside the rim (5.2 from the centre) still takes the circle.
+    expect(t.host.dragStart(at(55.2, 0))).toBe(true);
+    expect(t.host.state.getState().moving).toBe(true);
+    t.host.move(at(57, 0));
+    t.host.dragEnd(at(58.2, 0));
+    expect(radius()).toBeCloseTo(8, 6);
+    expect(t.point(e('o'))).toEqual([50, 0]);
+    expect(t.store.getState().undoLabel).toBe('Resize');
+    t.store.getState().undo();
+    expect(radius()).toBe(5);
+  });
+
+  it('resizes a circle whose centre is fixed (only its radius can change)', async () => {
+    const t = await selecting();
+    t.store.getState().dispatch(
+      addToSketch({
+        feature: t.id,
+        constraints: { ['fo' as ConstraintId]: { type: 'fix', entity: e('o') } },
+      }),
+    );
+    t.host.dragStart(at(50, 5));
+    t.host.dragEnd(at(50, 2));
+    expect((t.data().entities[e('c')] as { radius: number }).radius).toBeCloseTo(2, 6);
+    expect(t.point(e('o'))).toEqual([50, 0]);
+  });
+
+  it('moves a circle by its rim when a dimension holds the radius', async () => {
+    const t = await selecting();
+    t.store.getState().dispatch(
+      addToSketch({
+        feature: t.id,
+        dimensions: {
+          ['r' as DimensionId]: { type: 'radius', curve: e('c'), expr: '5', driven: false },
+        },
+      }),
+    );
+    t.host.dragStart(at(55, 0));
+    t.host.dragEnd(at(58, 4));
+    expect((t.data().entities[e('c')] as { radius: number }).radius).toBeCloseTo(5, 6);
+    expect(t.point(e('o'))[0]).toBeCloseTo(53, 6);
+    expect(t.point(e('o'))[1]).toBeCloseTo(4, 6);
+    expect(t.store.getState().undoLabel).toBe('Move');
+  });
+
+  it('moves a circle with the rest of a selection instead of resizing it', async () => {
+    const t = await selecting();
+    t.host.click(at(55, 0));
+    t.host.click({ ...at(30, 30), toggle: true });
+    t.host.dragStart(at(55, 0));
+    t.host.dragEnd(at(56, 1));
+    expect((t.data().entities[e('c')] as { radius: number }).radius).toBeCloseTo(5, 6);
+    expect(t.point(e('o'))[0]).toBeCloseTo(51, 6);
+    expect(t.point(e('q'))[0]).toBeCloseTo(31, 6);
+  });
+
   it('puts the geometry back on Esc', async () => {
     const t = await selecting();
     t.host.dragStart(at(30, 30));

@@ -551,6 +551,51 @@ describe('dragging several points (P1-09)', () => {
   });
 });
 
+describe('dragging a circle rim (resize)', () => {
+  it('resizes a circle whose centre is fixed, and keeps the centre of a free one', () => {
+    const b = new SketchBuilder();
+    const pinned = b.circle(0, 0, 5);
+    b.constrain({ type: 'fix', entity: pinned.center });
+    const loose = b.circle(30, 0, 4);
+    const solver = newSolver();
+    solver.solve(SketchDataSchema.parse(b.sketch), b.values);
+
+    expect(solver.beginRadiusDrag(pinned.id)).toBe(true);
+    for (const r of [6, 8, 12]) {
+      const step = solver.dragRadius(r);
+      expect(step.ok).toBe(true);
+      close(step.solution.radii[pinned.id] as number, r);
+    }
+    solver.endDrag();
+
+    expect(solver.beginRadiusDrag(loose.id)).toBe(true);
+    const step = solver.dragRadius(9);
+    close(step.solution.radii[loose.id] as number, 9);
+    const centre = step.solution.points[loose.center] as V;
+    close(centre.x, 30);
+    close(centre.y, 0);
+    solver.endDrag();
+  });
+
+  it('leaves a held radius alone, and refuses a fixed circle and non-circles', () => {
+    const b = new SketchBuilder();
+    const sized = b.circle(0, 0, 5);
+    b.dimension({ type: 'radius', curve: sized.id }, 5);
+    const fixed = b.circle(30, 0, 4);
+    b.constrain({ type: 'fix', entity: fixed.id });
+    const line = b.line(0, 20, 10, 20);
+    const solver = newSolver();
+    solver.solve(SketchDataSchema.parse(b.sketch), b.values);
+
+    expect(solver.beginRadiusDrag(sized.id)).toBe(true);
+    const step = solver.dragRadius(9);
+    close(step.solution.radii[sized.id] as number, 5);
+    solver.endDrag();
+    expect(solver.beginRadiusDrag(fixed.id)).toBe(false);
+    expect(solver.beginRadiusDrag(line.id)).toBe(false);
+  });
+});
+
 describe('ellipses and splines (P1-05)', () => {
   /** Distance from the minor point to the major axis, and its offset along it. */
   const axes = (s: Solved, e: { center: string; major: string; minor: string }) => {

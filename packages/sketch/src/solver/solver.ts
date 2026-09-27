@@ -114,6 +114,7 @@ const own = (item: Item): SketchPrimitive | undefined => item.prims.find((p) => 
 /** The parameters of the temporary constraints that pull the `i`th dragged point of a system. */
 const dragX = (i: number) => `#drag_x${i}`;
 const dragY = (i: number) => `#drag_y${i}`;
+const DRAG_RADIUS = '#drag_r';
 
 /** One planegcs system for one component. */
 class System {
@@ -143,6 +144,8 @@ class System {
         gcs.push_sketch_param(prim.x, 0);
       if (prim.type === 'coordinate_y' && typeof prim.y === 'string')
         gcs.push_sketch_param(prim.y, 0);
+      if (prim.type === 'circle_radius' && typeof prim.radius === 'string')
+        gcs.push_sketch_param(prim.radius, 0);
     }
     for (const item of component.items) for (const prim of item.prims) gcs.push_primitive(prim);
     for (const prim of extra) gcs.push_primitive(prim);
@@ -323,6 +326,8 @@ export class SketchSolver implements Disposable {
   #systems = new Map<string, System>();
   #fixedCurves: ReadonlySet<string> = new Set();
   #drag?: { systems: DragSystem[]; lead: string; starts: Map<string, Vec2> };
+  /** A circle's rim being dragged: its system carries a temporary radius constraint. */
+  #radiusDrag?: { system: System; circle: string };
   #scratch?: System;
   /** What `solve()` did per component since the solver was made: for tests and the benchmark. */
   readonly stats = { builds: 0, updates: 0, unchanged: 0 };
@@ -500,14 +505,71 @@ export class SketchSolver implements Disposable {
     return { ok, dof, solution };
   }
 
+  /**
+   * Starts dragging a circle's rim (resizing it): a temporary constraint
+   * pulls its radius toward the value `dragRadius` sets, and the rest of its
+   * component follows. Returns false if the circle isn't in the last solve
+   * or is fixed as a whole. A radius that other constraints hold (a
+   * dimension, an equal to a fixed circle) simply doesn't change.
+   */
+  beginRadiusDrag(circleId: string): boolean {
+    this.endDrag();
+    if (this.#fixedCurves.has(circleId)) return false;
+    const system = [...this.#systems.values()].find((s) =>
+      s.component.items.some((i) => i.id === circleId && own(i)?.type === 'circle'),
+    );
+    if (!system) return false;
+    system.build(system.component, this.#fixedCurves, [
+      {
+        id: DRAG_RADIUS,
+        type: 'circle_radius',
+        c_id: circleId,
+        radius: DRAG_RADIUS,
+        temporary: true,
+      },
+    ]);
+    const geometry = itemGeometry(system.component);
+    system.setValues(
+      system.component,
+      (id) => system.solution.points[id] ?? geometry.point(id),
+      (id) => system.solution.radii[id] ?? geometry.radius(id),
+    );
+    system.gcs.set_sketch_param(
+      DRAG_RADIUS,
+      system.solution.radii[circleId] ?? geometry.radius(circleId),
+    );
+    this.#radiusDrag = { system, circle: circleId };
+    return true;
+  }
+
+  /** Pulls the dragged circle's radius toward `radius` and re-solves its component. */
+  dragRadius(radius: number): DragResult {
+    const drag = this.#radiusDrag;
+    if (!drag) throw new Error('solver: dragRadius() without beginRadiusDrag()');
+    drag.system.gcs.set_sketch_param(DRAG_RADIUS, radius);
+    const report = drag.system.solve();
+    return {
+      ok: report.ok,
+      dof: report.dof,
+      solution: {
+        points: { ...drag.system.solution.points },
+        radii: { ...drag.system.solution.radii },
+      },
+    };
+  }
+
   /** Ends the drag. The components are rebuilt without the drag constraints on the next solve. */
   endDrag(): void {
-    if (!this.#drag) return;
-    for (const { system } of this.#drag.systems) {
+    const systems = [
+      ...(this.#drag?.systems.map((d) => d.system) ?? []),
+      ...(this.#radiusDrag ? [this.#radiusDrag.system] : []),
+    ];
+    for (const system of systems) {
       system.stale = true;
       system.inputs = [];
     }
     this.#drag = undefined;
+    this.#radiusDrag = undefined;
   }
 
   /**
