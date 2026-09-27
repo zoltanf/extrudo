@@ -98,4 +98,12 @@ describe('feature actions', () => {
     expect(t.actions.edit(t.a)).toBe(true);
     expect(t.session.getState().activeSketchId).toBe(t.a);
   });
+
+  it('export opens the dialog for the sketch', () => {
+    const t = setup();
+    const opened: FeatureId[] = [];
+    const actions = createFeatureActions(t, () => {}, { exportSketch: (id) => opened.push(id) });
+    actions.exportSketch(t.b);
+    expect(opened).toEqual([t.b]);
+  });
 });

@@ -477,6 +477,14 @@ export const TOOLS = {
     hint: 'STL, 3MF or STEP for printing and sharing.',
     comesWith: 'P2-12',
   },
+  exportSketch: {
+    id: 'exportSketch',
+    label: 'Export Sketch',
+    short: 'Export',
+    icon: 'export',
+    category: 'export',
+    hint: 'Save the sketch or its profiles as SVG or DXF, at 1 unit = 1 mm.',
+  },
   placeOnBed: {
     id: 'placeOnBed',
     label: 'Place on Bed',
@@ -581,6 +589,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
         ],
       },
       { label: 'Inspect', tools: ['measure'] },
+      { label: 'Export', tools: ['exportSketch'] },
     ],
   },
   {

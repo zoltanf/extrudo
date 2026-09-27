@@ -10,7 +10,7 @@ const ROOT = new URL('..', import.meta.url).pathname;
 /** Allowed internal dependencies per package. Anything not listed is forbidden. */
 const ALLOWED = {
   '@extrudo/core': [],
-  '@extrudo/sketch': ['@extrudo/core'],
+  '@extrudo/sketch': ['@extrudo/core', '@extrudo/io'],
   '@extrudo/kernel': ['@extrudo/core', '@extrudo/sketch'],
   // MIT-licensed: must stay independent of the GPL packages.
   '@extrudo/io': [],

@@ -187,6 +187,9 @@ importers:
       '@extrudo/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@extrudo/io':
+        specifier: workspace:*
+        version: link:../../packages/io
       '@extrudo/kernel':
         specifier: workspace:*
         version: link:../../packages/kernel
@@ -281,6 +284,9 @@ importers:
       '@extrudo/core':
         specifier: workspace:*
         version: link:../core
+      '@extrudo/io':
+        specifier: workspace:*
+        version: link:../io
       '@salusoft89/planegcs':
         specifier: 1.2.0
         version: 1.2.0

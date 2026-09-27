@@ -13,7 +13,8 @@
       "!docs/brand/*.html",
       "!LICENSE",
       "!**/LICENSE",
-      "!spikes"
+      "!spikes",
+      "!**/golden"
     ]
   },
   "formatter": {

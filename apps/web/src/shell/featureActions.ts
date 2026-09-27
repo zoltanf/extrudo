@@ -35,11 +35,14 @@ export interface FeatureActions {
   hover(id: FeatureId | undefined): void;
   /** Why suppress and delete are unavailable right now, or `undefined` if they aren't. */
   locked(): string | undefined;
+  /** Opens the export dialog for a sketch (P1-13). */
+  exportSketch(id: FeatureId): void;
 }
 
 export function createFeatureActions(
   stores: SketchModeStores,
   notify: (tone: 'info' | 'error', text: string) => void,
+  dialogs: { exportSketch(id: FeatureId): void } = { exportSketch: () => {} },
 ): FeatureActions {
   const { store, session } = stores;
   const run = (command: Command<unknown>): boolean => {
@@ -92,6 +95,7 @@ export function createFeatureActions(
       else if (session.getState().hover?.kind === 'feature') session.getState().setHover(undefined);
     },
     locked,
+    exportSketch: (id) => dialogs.exportSketch(id),
   };
 }
 

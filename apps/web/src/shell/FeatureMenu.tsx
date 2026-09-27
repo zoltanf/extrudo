@@ -1,9 +1,10 @@
-import { type Feature, isFeatureVisible } from '@extrudo/core';
+import { type Feature, isFeatureVisible, readSketch } from '@extrudo/core';
 import {
   CirclePause,
   CirclePlay,
   Eye,
   EyeOff,
+  FileDown,
   Pencil,
   TextCursorInput,
   Trash2,
@@ -14,7 +15,8 @@ import type { FeatureActions } from './featureActions';
 
 /**
  * A feature's right-click menu in the timeline and the browser (FR-TL-03,
- * partial): edit sketch, rename, show/hide, suppress, delete. "Roll back to
+ * partial): edit sketch, rename, show/hide, suppress, export a sketch
+ * (P1-13), delete. "Roll back to
  * here" and "Move to end" come with the draggable marker (P2-11).
  */
 export function FeatureMenuItems({
@@ -57,6 +59,11 @@ export function FeatureMenuItems({
       >
         {feature.suppressed ? 'Unsuppress' : 'Suppress'}
       </MenuItem>
+      {readSketch(feature) && (
+        <MenuItem icon={<FileDown size={14} />} onSelect={() => actions.exportSketch(feature.id)}>
+          Export SVG or DXF…
+        </MenuItem>
+      )}
       <MenuSeparator />
       <MenuItem
         icon={<Trash2 size={14} />}

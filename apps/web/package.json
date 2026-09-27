@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@extrudo/core": "workspace:*",
+    "@extrudo/io": "workspace:*",
     "@extrudo/kernel": "workspace:*",
     "@extrudo/sketch": "workspace:*",
     "@extrudo/storage": "workspace:*",

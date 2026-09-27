@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="65.6888mm" height="44.4987mm" viewBox="-5 -42.0994 65.6888 44.4987">
+<title>Curves</title>
+<g id="Sketch" inkscape:groupmode="layer" inkscape:label="Sketch" fill="none" stroke="#000000" stroke-width="0.1" stroke-linecap="round" stroke-linejoin="round">
+<path d="M0 0L20 0"/>
+<path d="M20 0A5 5 0 0 0 20 -10"/>
+<path d="M20 -10L0 -10"/>
+<path d="M0 -10A5 5 0 0 0 0 0"/>
+<path d="M60.3923 -11A12 5 -30 0 0 39.6077 1A12 5 -30 0 0 60.3923 -11Z"/>
+<path d="M0 -30C11.0352 -58.0534 19.8943 -28.6182 29.6857 -28.0097C39.0992 -27.4247 49.3746 -53.4848 60 -30"/>
+</g>
+</svg>

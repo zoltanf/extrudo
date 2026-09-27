@@ -18,6 +18,7 @@ import { useTheme } from '../design-system';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import type { Autosaver } from '../project/autosave';
+import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
 import { useHostState } from '../sketch/hostState';
 import {
   CREATE_SKETCH,
@@ -101,6 +102,7 @@ export function AppShell({
   const browser = usePanel(platform.preferences, { key: 'browser', size: 248, min: 180, max: 480 });
   const timeline = usePanel(platform.preferences, { key: 'timeline', size: 0, min: 0, max: 0 });
   const [parametersOpen, setParametersOpen] = useState(false);
+  const [exportRequest, setExportRequest] = useState<ExportRequest>();
   const bodies = useStore(model, (s) => s.bodies);
   const doc = useStore(store, (s) => s.doc);
   const mode = useStore(session, (s) => s.mode);
@@ -228,14 +230,27 @@ export function AppShell({
       if (picking) cancelCreateSketch(stores);
       else startCreateSketch(stores);
     } else if (tool === 'finishSketch') finishSketch(stores);
-    else if (isSketchTool(tool) && host) {
+    else if (tool === 'exportSketch' && activeSketchId) {
+      // Profiles selected in the open sketch are offered first (P1-13).
+      featureActions.exportSketch(activeSketchId);
+    } else if (isSketchTool(tool) && host) {
       if (activeTool === tool) host.stop();
       else host.start(tool);
     }
   };
   const pickPlane = (plane: OriginPlaneId) => createSketchOn(stores, originPlaneRef(plane));
-  // The timeline's and the browser's feature commands (P1-12).
-  const featureActions = useMemo(() => createFeatureActions(stores, notify), [stores, notify]);
+  // The timeline's and the browser's feature commands (P1-12), and sketch export (P1-13).
+  const featureActions = useMemo(
+    () =>
+      createFeatureActions(stores, notify, {
+        exportSketch: (id) =>
+          setExportRequest({
+            sketch: id,
+            selected: profileIdsIn(session.getState().selection, id),
+          }),
+      }),
+    [stores, notify, session],
+  );
 
   // Every active, unsuppressed, shown sketch on a known plane is drawn (the open one even if
   // hidden), in its status colours. Profiles are shaded (P1-11) unless the palette hides them.
@@ -463,6 +478,12 @@ export function AppShell({
         apply={apply}
         open={parametersOpen}
         onOpenChange={setParametersOpen}
+      />
+      <ExportSketchDialog
+        store={store}
+        request={exportRequest}
+        files={platform.files}
+        onClose={() => setExportRequest(undefined)}
       />
     </div>
   );

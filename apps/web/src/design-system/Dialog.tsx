@@ -10,8 +10,15 @@ export interface DialogProps {
   /** Buttons on the right of the title bar (undo, close…). */
   actions?: ReactNode;
   children: ReactNode;
+  /** `large` for tables (Parameters), `small` for a form of a few fields. */
+  size?: 'large' | 'small';
   className?: string;
 }
+
+const WIDTHS = {
+  large: 'w-[min(1040px,calc(100vw-32px))]',
+  small: 'w-[min(440px,calc(100vw-32px))]',
+};
 
 /**
  * A modal dialog (Radix): focus trap, Esc, focus return. A field that marks
@@ -26,6 +33,7 @@ export function Dialog({
   description,
   actions,
   children,
+  size = 'large',
   className = '',
 }: DialogProps) {
   return (
@@ -33,7 +41,7 @@ export function Dialog({
       <Radix.Portal>
         <Radix.Overlay className="fixed inset-0 z-40 bg-[rgb(10_12_16/55%)]" />
         <Radix.Content
-          className={`fixed top-1/2 left-1/2 z-40 flex max-h-[calc(100vh-48px)] w-[min(1040px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-dialog border border-line bg-raised text-ink shadow-raised ${className}`}
+          className={`fixed top-1/2 left-1/2 z-40 flex max-h-[calc(100vh-48px)] ${WIDTHS[size]} -translate-x-1/2 -translate-y-1/2 flex-col rounded-dialog border border-line bg-raised text-ink shadow-raised ${className}`}
           onOpenAutoFocus={(event) => {
             // Start in the first field rather than on the title-bar buttons.
             const field = (event.currentTarget as HTMLElement | null)?.querySelector<HTMLElement>(

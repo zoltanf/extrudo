@@ -1,0 +1,258 @@
+  0
+SECTION
+  2
+HEADER
+  9
+$ACADVER
+  1
+AC1009
+  9
+$INSBASE
+ 10
+0
+ 20
+0
+ 30
+0
+  9
+$EXTMIN
+ 10
+0
+ 20
+0
+ 30
+0
+  9
+$EXTMAX
+ 10
+100
+ 20
+60
+ 30
+0
+  9
+$INSUNITS
+ 70
+4
+  0
+ENDSEC
+  0
+SECTION
+  2
+TABLES
+  0
+TABLE
+  2
+LTYPE
+ 70
+2
+  0
+LTYPE
+  2
+CONTINUOUS
+ 70
+0
+  3
+Solid line
+ 72
+65
+ 73
+0
+ 40
+0
+  0
+LTYPE
+  2
+DASHED
+ 70
+0
+  3
+__ __ __ __
+ 72
+65
+ 73
+2
+ 40
+3
+ 49
+2
+ 49
+-1
+  0
+ENDTAB
+  0
+TABLE
+  2
+LAYER
+ 70
+3
+  0
+LAYER
+  2
+0
+ 70
+0
+ 62
+7
+  6
+CONTINUOUS
+  0
+LAYER
+  2
+SKETCH
+ 70
+0
+ 62
+7
+  6
+CONTINUOUS
+  0
+LAYER
+  2
+CONSTRUCTION
+ 70
+0
+ 62
+8
+  6
+DASHED
+  0
+ENDTAB
+  0
+ENDSEC
+  0
+SECTION
+  2
+ENTITIES
+  0
+LINE
+  8
+SKETCH
+ 10
+0
+ 20
+0
+ 30
+0
+ 11
+100
+ 21
+0
+ 31
+0
+  0
+LINE
+  8
+SKETCH
+ 10
+100
+ 20
+0
+ 30
+0
+ 11
+100
+ 21
+60
+ 31
+0
+  0
+LINE
+  8
+SKETCH
+ 10
+100
+ 20
+60
+ 30
+0
+ 11
+0
+ 21
+60
+ 31
+0
+  0
+LINE
+  8
+SKETCH
+ 10
+0
+ 20
+60
+ 30
+0
+ 11
+0
+ 21
+0
+ 31
+0
+  0
+CIRCLE
+  8
+SKETCH
+ 10
+10
+ 20
+10
+ 30
+0
+ 40
+3
+  0
+CIRCLE
+  8
+SKETCH
+ 10
+90
+ 20
+10
+ 30
+0
+ 40
+3
+  0
+CIRCLE
+  8
+SKETCH
+ 10
+90
+ 20
+50
+ 30
+0
+ 40
+3
+  0
+CIRCLE
+  8
+SKETCH
+ 10
+10
+ 20
+50
+ 30
+0
+ 40
+3
+  0
+LINE
+  8
+CONSTRUCTION
+ 10
+0
+ 20
+0
+ 30
+0
+ 11
+100
+ 21
+60
+ 31
+0
+  0
+ENDSEC
+  0
+EOF
