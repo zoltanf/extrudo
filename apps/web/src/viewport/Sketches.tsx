@@ -24,7 +24,8 @@ import type { ViewportStore } from './store';
  * colours (P1-08): under-constrained `sketch` blue, fully constrained `ink`,
  * over-constrained `error` red. Construction geometry stays grey.
  * Closed profiles (P1-11) are a pale fill; the one under the pointer and
- * the selected ones take the accent.
+ * the selected ones take the accent. A highlighted sketch (its chip or
+ * browser row under the pointer, P1-12) draws every curve in the accent.
  */
 
 export interface SketchesProps {
@@ -38,6 +39,8 @@ export interface SketchesProps {
   showPoints: boolean;
   /** Profile fills: plain, under the pointer, selected. */
   profileColors: Readonly<Record<ProfileShade, Rgba>>;
+  /** A highlighted sketch's curves. */
+  highlight: Rgba;
 }
 
 /** Construction dashes, in px (docs/05-brand.md §3.4). */
@@ -51,14 +54,15 @@ export function Sketches({
   construction,
   showPoints,
   profileColors,
+  highlight,
 }: SketchesProps) {
   return sketches.map((s) => (
     <Sketch
       key={s.id}
       store={store}
       drawing={s}
-      colors={colors}
-      construction={construction}
+      colors={s.highlight ? { free: highlight, fixed: highlight, conflict: highlight } : colors}
+      construction={s.highlight ? { ...highlight, a: 0.7 } : construction}
       showPoints={showPoints}
       profileColors={profileColors}
     />
@@ -202,7 +206,7 @@ function Sketch({
   );
 
   // Sketches that aren't being edited stay visible, but step back.
-  const alpha = active ? 1 : 0.55;
+  const alpha = active || drawing.highlight ? 1 : 0.55;
   for (const s of STATUSES) {
     const c = colors[s];
     const m = materials.status[s];

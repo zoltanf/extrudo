@@ -3,19 +3,23 @@ import { applyCommand, type Command, CommandError, defineCommand } from './comma
 import {
   addParameter,
   insertFeature,
+  isFeatureVisible,
   moveTimelineMarker,
   removeFeature,
   removeParameter,
   renameDocument,
   renameFeature,
   setFeatureSuppressed,
+  setFeatureVisibility,
   updateBody,
   updateFeatureInputs,
   updateParameter,
   updateSettings,
 } from './document-commands';
 import { UndoHistory } from './history';
-import { DocumentSchema, type ExtrudoDocument } from './schema';
+import type { DimensionId, SketchEntityId } from './ids';
+import { DocumentSchema, type ExtrudoDocument, type Feature } from './schema';
+import { emptySketchData } from './sketch/feature';
 import { bid, feature, fid, parameter, pid, sampleDocument } from './testing';
 
 const apply = (doc: ExtrudoDocument, command: Command<unknown>) => applyCommand(doc, command).doc;
@@ -124,6 +128,59 @@ describe('document commands', () => {
     });
     doc = apply(doc, setFeatureSuppressed({ id: fid('f2'), suppressed: true }));
     expect(doc.features[1]?.suppressed).toBe(true);
+  });
+
+  it('show and hide features in one step, storing nothing while shown', () => {
+    let doc = apply(
+      sampleDocument(),
+      setFeatureVisibility({ ids: [fid('f1'), fid('f2')], visible: false }),
+    );
+    expect(doc.features.map((f) => isFeatureVisible(f))).toEqual([false, false, true]);
+    doc = apply(doc, setFeatureVisibility({ ids: [fid('f1')], visible: true }));
+    expect(doc.features[0]).not.toHaveProperty('visible');
+    expect(DocumentSchema.parse(doc)).toEqual(doc);
+    expect(() => apply(doc, setFeatureVisibility({ ids: [fid('x')], visible: true }))).toThrow(
+      CommandError,
+    );
+  });
+
+  it("refuse to delete a feature another feature's references point into", () => {
+    const extrude: Feature = {
+      ...feature('f4', 'extrude', 'Extrude2'),
+      inputs: { profiles: { kind: 'ref', refs: [{ kind: 'profile', id: 'f1/r1' }] } },
+    };
+    const doc = apply(sampleDocument(), insertFeature({ feature: extrude }));
+    expect(() => apply(doc, removeFeature({ id: fid('f1') }))).toThrow(
+      "Can't delete Sketch1: Extrude2 uses it. Change or delete that first.",
+    );
+    expect(apply(doc, removeFeature({ id: fid('f4') })).features).toHaveLength(3);
+  });
+
+  it('refuse to delete a sketch whose named dimensions are used outside it', () => {
+    const data = emptySketchData();
+    const dim = (expr: string, paramName: string) => ({
+      type: 'distance' as const,
+      orientation: 'aligned' as const,
+      a: 'l' as SketchEntityId,
+      expr,
+      driven: false,
+      paramName,
+    });
+    data.dimensions = {
+      ['a' as DimensionId]: dim('10', 'd1'),
+      ['b' as DimensionId]: dim('d1 * 2', 'd2'),
+    };
+    const sketch: Feature = {
+      ...feature('f1', 'sketch', 'Sketch1'),
+      inputs: { sketch: { kind: 'sketchData', sketch: data } },
+    };
+    let doc: ExtrudoDocument = { ...sampleDocument(), features: [sketch], timelineMarker: 1 };
+    // Its own dimensions may use each other.
+    expect(apply(doc, removeFeature({ id: fid('f1') })).features).toEqual([]);
+    doc = apply(doc, addParameter({ parameter: parameter('p3', 'depth', 'd2 + 1 mm') }));
+    expect(() => apply(doc, removeFeature({ id: fid('f1') }))).toThrow(
+      "Can't delete Sketch1: `d2` is used by `depth`. Change that first.",
+    );
   });
 
   it('keep the timeline marker within the timeline', () => {

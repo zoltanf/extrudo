@@ -1,5 +1,5 @@
-import { DropdownMenu as Radix } from 'radix-ui';
-import type { ReactElement, ReactNode } from 'react';
+import { DropdownMenu as Radix, ContextMenu as RadixContext } from 'radix-ui';
+import { createContext, type ReactElement, type ReactNode, useContext } from 'react';
 
 const content =
   'z-50 min-w-48 rounded-dialog border border-line bg-raised p-1 text-base text-ink shadow-raised';
@@ -27,6 +27,41 @@ export function Menu({ trigger, children, align = 'start', label }: MenuProps) {
   );
 }
 
+/** Which Radix menu the items are in: the parts aren't interchangeable. */
+const InContextMenu = createContext(false);
+
+export interface ContextMenuProps {
+  /** The element that opens the menu on right-click (or the context-menu key, or a long press). */
+  trigger: ReactElement;
+  children: ReactNode;
+  label?: string;
+  /** Leave the trigger's own right-click alone. */
+  disabled?: boolean;
+  onOpenChange?(open: boolean): void;
+}
+
+/** A right-click menu (Radix): the same items as `Menu`. */
+export function ContextMenu({
+  trigger,
+  children,
+  label,
+  disabled,
+  onOpenChange,
+}: ContextMenuProps) {
+  return (
+    <RadixContext.Root onOpenChange={onOpenChange} modal={false}>
+      <RadixContext.Trigger asChild disabled={disabled}>
+        {trigger}
+      </RadixContext.Trigger>
+      <RadixContext.Portal>
+        <RadixContext.Content className={content} aria-label={label} collisionPadding={8}>
+          <InContextMenu.Provider value={true}>{children}</InContextMenu.Provider>
+        </RadixContext.Content>
+      </RadixContext.Portal>
+    </RadixContext.Root>
+  );
+}
+
 export interface MenuItemProps {
   onSelect?(): void;
   disabled?: boolean;
@@ -36,12 +71,13 @@ export interface MenuItemProps {
 }
 
 export function MenuItem({ onSelect, disabled, icon, shortcut, children }: MenuItemProps) {
+  const Item = useContext(InContextMenu) ? RadixContext.Item : Radix.Item;
   return (
-    <Radix.Item className={item} disabled={disabled} onSelect={onSelect}>
+    <Item className={item} disabled={disabled} onSelect={onSelect}>
       <span className="grid w-4 place-items-center text-muted">{icon}</span>
       <span className="flex-1">{children}</span>
       {shortcut && <kbd className="font-mono text-xs text-muted">{shortcut}</kbd>}
-    </Radix.Item>
+    </Item>
   );
 }
 
@@ -77,5 +113,6 @@ export function MenuLabel({ children }: { children: ReactNode }) {
 }
 
 export function MenuSeparator() {
-  return <Radix.Separator className="my-1 h-px bg-line" />;
+  const Separator = useContext(InContextMenu) ? RadixContext.Separator : Radix.Separator;
+  return <Separator className="my-1 h-px bg-line" />;
 }

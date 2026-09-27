@@ -18,11 +18,24 @@ export interface TooltipProps {
   children: ReactElement;
 }
 
-/** Tool tooltip (UI spec §7): name, shortcut, one sentence. */
-export function Tooltip({ label, shortcut, hint, side = 'bottom', children }: TooltipProps) {
+/**
+ * Tool tooltip (UI spec §7): name, shortcut, one sentence. Other props (and
+ * the ref) go to the child, so an outer Radix trigger (a context menu) can
+ * wrap the tooltip.
+ */
+export function Tooltip({
+  label,
+  shortcut,
+  hint,
+  side = 'bottom',
+  children,
+  ...rest
+}: TooltipProps & Record<string, unknown>) {
   return (
     <Radix.Root>
-      <Radix.Trigger asChild>{children}</Radix.Trigger>
+      <Radix.Trigger asChild {...rest}>
+        {children}
+      </Radix.Trigger>
       <Radix.Portal>
         <Radix.Content
           side={side}

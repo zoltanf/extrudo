@@ -185,6 +185,8 @@ export function Viewport({
       data-ready={ready || undefined}
       data-sketch-status={sketchStatusSummary(sketches)}
       data-sketch-profiles={sketchProfilesSummary(sketches)}
+      data-sketches={sketches.map((s) => s.id).join(' ')}
+      data-highlight={sketches.find((s) => s.highlight)?.id}
       className="relative isolate min-w-0 flex-1 overflow-hidden"
       style={{ background: 'var(--x-viewport-glow)' }}
     >
@@ -366,6 +368,7 @@ function Scene({
         construction={colors.sketchConstruction}
         showPoints={sketchPoints}
         profileColors={profileColors}
+        highlight={colors.preselect}
       />
       <Grid
         store={viewport}

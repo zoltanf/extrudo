@@ -18,6 +18,8 @@ export interface SketchDrawing {
   frame: SketchFrame;
   data: SketchData;
   active: boolean;
+  /** The pointer is on the sketch's timeline chip or browser row (P1-12): draw it in the accent. */
+  highlight?: boolean;
   /** Constraint status by entity (P1-08), for the sketch being edited once the solver is in. */
   status?: Readonly<Record<string, EntityStatus>>;
   /** Closed regions to shade (P1-11); none while "Show profiles" is off. */

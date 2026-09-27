@@ -109,6 +109,8 @@ export const FeatureSchema = z.strictObject({
   type: z.string().min(1),
   name: z.string().min(1),
   suppressed: z.boolean(),
+  /** `false` hides the feature's own geometry (a sketch's curves) in the view (P1-12). Absent means shown. */
+  visible: z.boolean().optional(),
   inputs: FeatureInputsSchema,
 });
 export type Feature = z.infer<typeof FeatureSchema>;

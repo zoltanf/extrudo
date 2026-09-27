@@ -9,6 +9,8 @@ export interface PopoverProps {
   /** Controlled state; leave both out for an uncontrolled popover. */
   open?: boolean;
   onOpenChange?(open: boolean): void;
+  /** The trigger only places the popover; opening is up to `open` (a rename field on a chip). */
+  anchorOnly?: boolean;
 }
 
 /** A non-modal popover (Radix) on a raised surface. */
@@ -19,10 +21,12 @@ export function Popover({
   label,
   open,
   onOpenChange,
+  anchorOnly,
 }: PopoverProps) {
+  const Trigger = anchorOnly ? Radix.Anchor : Radix.Trigger;
   return (
     <Radix.Root open={open} onOpenChange={onOpenChange}>
-      <Radix.Trigger asChild>{trigger}</Radix.Trigger>
+      <Trigger asChild>{trigger}</Trigger>
       <Radix.Portal>
         <Radix.Content
           side={side}

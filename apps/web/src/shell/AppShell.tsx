@@ -2,7 +2,7 @@ import {
   type Command,
   CommandError,
   type DocumentStore,
-  type FeatureId,
+  isFeatureVisible,
   type ModelStore,
   type OriginPlaneId,
   originPlaneRef,
@@ -23,7 +23,6 @@ import {
   CREATE_SKETCH,
   cancelCreateSketch,
   createSketchOn,
-  editSketch,
   finishSketch,
   lookAtSketch,
   type SketchModeStores,
@@ -45,6 +44,7 @@ import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
 import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
+import { createFeatureActions } from './featureActions';
 import { Splitter, usePanel } from './panels';
 import { Timeline } from './Timeline';
 import { Toolbar } from './Toolbar';
@@ -234,15 +234,19 @@ export function AppShell({
     }
   };
   const pickPlane = (plane: OriginPlaneId) => createSketchOn(stores, originPlaneRef(plane));
-  const edit = (id: FeatureId) => editSketch(stores, id);
+  // The timeline's and the browser's feature commands (P1-12).
+  const featureActions = useMemo(() => createFeatureActions(stores, notify), [stores, notify]);
 
-  // Every active, unsuppressed sketch on a known plane is drawn; the open one in its status
-  // colours. Profiles are shaded (P1-11) unless the palette hides them.
+  // Every active, unsuppressed, shown sketch on a known plane is drawn (the open one even if
+  // hidden), in its status colours. Profiles are shaded (P1-11) unless the palette hides them.
+  // The pointer on a sketch's chip or browser row highlights it (P1-12).
   const status = useHostState(host, (s) => s.status);
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
     doc.features.forEach((feature, index) => {
       if (index >= doc.timelineMarker || feature.suppressed) return;
+      const active = feature.id === activeSketchId;
+      if (!active && !isFeatureVisible(feature)) return;
       const sketch = readSketch(feature);
       const frame = sketch && planeFrame(sketch.plane);
       if (sketch && frame) {
@@ -250,8 +254,9 @@ export function AppShell({
           id: feature.id,
           frame,
           data: sketch.data,
-          active: feature.id === activeSketchId,
-          status: feature.id === activeSketchId ? status?.entities : undefined,
+          active,
+          highlight: hover?.kind === 'feature' && hover.id === feature.id,
+          status: active ? status?.entities : undefined,
           ...(showProfiles && {
             profiles: sketchProfiles(sketch.data),
             hoverProfile: profileIdsIn([hover], feature.id)[0],
@@ -338,7 +343,7 @@ export function AppShell({
           store={store}
           viewport={viewport}
           activeSketchId={activeSketchId}
-          onEditSketch={edit}
+          actions={featureActions}
           width={browser.size}
           collapsed={browser.collapsed}
           onToggle={browser.toggle}
@@ -450,7 +455,7 @@ export function AppShell({
         collapsed={timeline.collapsed}
         onToggle={timeline.toggle}
         activeSketch={activeSketch?.name}
-        onEditSketch={edit}
+        actions={featureActions}
       />
       <OverConstrainedDialog host={host} />
       <ParametersDialog

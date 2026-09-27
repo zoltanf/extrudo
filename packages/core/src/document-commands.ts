@@ -124,12 +124,56 @@ export const setFeatureSuppressed = defineCommand<{ id: FeatureId; suppressed: b
   },
 );
 
+/** Shows or hides features' own geometry in the view (P1-12): a browser eye, one undo step. */
+export const setFeatureVisibility = defineCommand<{ ids: readonly FeatureId[]; visible: boolean }>(
+  'feature.visibility',
+  'Change visibility',
+  (draft, { ids, visible }) => {
+    for (const id of ids) {
+      const feature = findFeature(draft, id);
+      if (visible) delete feature.visible;
+      else feature.visible = false;
+    }
+  },
+);
+
+/** Whether a feature's own geometry is shown (`visible` is absent or `true`). */
+export function isFeatureVisible(feature: Pick<Feature, 'visible'>): boolean {
+  return feature.visible !== false;
+}
+
+/**
+ * Deletes a feature. Refused, with a message, while other features refer to
+ * its geometry, or while an expression outside it uses one of its named
+ * dimensions: those would break (P1-12).
+ */
 export const removeFeature = defineCommand<{ id: FeatureId }>(
   'feature.remove',
   'Delete feature',
   (draft, { id }) => {
     const index = draft.features.findIndex((f) => f.id === id);
     if (index < 0) throw new CommandError(`Feature ${id} doesn't exist.`);
+    const feature = draft.features[index] as Feature;
+    const users = featuresReferring(draft, id);
+    if (users.length > 0) {
+      throw new CommandError(
+        `Can't delete ${feature.name}: ${listOf(users)} ${users.length === 1 ? 'uses' : 'use'} it. Change or delete ${users.length === 1 ? 'that' : 'those'} first.`,
+      );
+    }
+    const own = new Set<object>();
+    for (const input of Object.values(feature.inputs)) {
+      if (input.kind === 'sketchData')
+        for (const d of Object.values(input.sketch.dimensions)) own.add(d);
+    }
+    for (const holder of own as Set<{ paramName?: string }>) {
+      if (!holder.paramName) continue;
+      try {
+        refuseIfUsed(draft, holder.paramName, own);
+      } catch (error) {
+        if (!(error instanceof CommandError)) throw error;
+        throw new CommandError(`Can't delete ${feature.name}: ${error.message}`);
+      }
+    }
     draft.features.splice(index, 1);
     if (index < draft.timelineMarker) draft.timelineMarker -= 1;
   },
@@ -161,6 +205,22 @@ export const updateBody = defineCommand<{ id: BodyId; changes: Partial<BodyMeta>
     }
   },
 );
+
+/** Names of the features whose references point into feature `id` (`<id>/…` reference IDs). */
+function featuresReferring(draft: DocumentDraft, id: FeatureId): string[] {
+  const prefix = `${id}/`;
+  return draft.features
+    .filter(
+      (f) =>
+        f.id !== id &&
+        Object.values(f.inputs).some(
+          (input) =>
+            input.kind === 'ref' &&
+            input.refs.some((ref) => ref.id === id || ref.id.startsWith(prefix)),
+        ),
+    )
+    .map((f) => f.name);
+}
 
 function findFeature(draft: DocumentDraft, id: FeatureId) {
   const feature = draft.features.find((f) => f.id === id);
