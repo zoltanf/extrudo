@@ -239,10 +239,18 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   edge lines, vertices; pre-highlight; selection of faces, edges, vertices and
   bodies; selection filter menu; "select other" long-press list.
   *AC:* FR-VP-05 (3D part).
-- [ ] **P2-04 Topological naming v1.** Persistent-ID generation for extrude and
+- [x] **P2-04 Topological naming v1.** Persistent-ID generation for extrude and
   revolve; propagation through booleans via OCCT history; fingerprints;
   reference resolution API used by every feature.
   *AC:* ADR-0005; topo-naming test suite (≥ 15 scenarios) green.
+  *Done 2026-09-27* (ADR-0005): faces named by why they exist
+  (`extrude:E:side:<curve>`, `…:cap:end`) and carried through booleans and
+  fillets by OCCT history, split pieces `#n` in a geometric order, edges and
+  vertices named after their faces; facade sweeps with history, simplifying
+  booleans, `describe`; naming tables in the shape cache and on
+  `BodyMesh`; `GeomRef.fingerprint`; `ctx.resolve` (exact, related name,
+  fingerprint with a warning, else an error); `KernelApi.reference`. A
+  19-scenario suite and a 1000-rebuild memory test.
 - [ ] **P2-05 Feature dialog framework.** Right-side command dialog: selection
   fields (with count, clear, filter), `<ExpressionInput>` fields, dropdowns,
   OK/Cancel, live preview, validation messages; in-canvas manipulators (distance

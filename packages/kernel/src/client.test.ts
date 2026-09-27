@@ -53,6 +53,7 @@ describe('KernelClient', () => {
       recompute: async () => ({ status: 'cancelled' }),
       preview: async () => ({ status: 'cancelled' }),
       endPreview: async () => {},
+      reference: async () => undefined,
     };
     const client = new KernelClient(() => {
       spawned++;
@@ -78,6 +79,7 @@ describe('KernelClient', () => {
       recompute: async () => ({ status: 'cancelled' }),
       preview: async () => ({ status: 'cancelled' }),
       endPreview: async () => {},
+      reference: async () => undefined,
     };
     const client = new KernelClient(
       () => ({ api: crashing, terminate: () => {}, onFatal: () => {} }),

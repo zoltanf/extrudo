@@ -19,11 +19,22 @@ export interface SubShapeRef {
  * - `generated`: the sub-shape gave rise to `to` (an edge → its fillet face).
  * - `deleted`: it is gone; `to` is empty.
  * - `kept`: unchanged and present in the result as `to[0]`.
+ * - `first`, `last` (sweeps: prism, revolve): the copy of the sub-shape at
+ *   the start or the end of the sweep (a profile face → the start and end
+ *   caps). A sweep's `generated` is what the sub-shape swept into (an edge →
+ *   a side face, a vertex → a side edge).
  * A sub-shape can have both a `modified` (or `kept`) and a `generated` record.
  */
-export type HistoryRelation = 'modified' | 'generated' | 'deleted' | 'kept';
+export type HistoryRelation = 'modified' | 'generated' | 'deleted' | 'kept' | 'first' | 'last';
 
-const RELATIONS: readonly HistoryRelation[] = ['modified', 'generated', 'deleted', 'kept'];
+const RELATIONS: readonly HistoryRelation[] = [
+  'modified',
+  'generated',
+  'deleted',
+  'kept',
+  'first',
+  'last',
+];
 
 export interface HistoryRecord {
   /** Which operation input: 0 for the target, 1 for the tool of a boolean. */

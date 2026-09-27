@@ -8,11 +8,23 @@
 // The control runs a loop that leaks on purpose (raw BRepAlgoAPI_Cut deleted
 // without Clear(), taucad/opencascade.js#40) and must trip the same limit, so
 // a probe that stops seeing leaks fails this test instead of passing it.
+
+import type { BodyId } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { planarCurves } from './features/sketch';
 import { Kernel } from './kernel';
+import { positionalNames } from './naming/names';
+import {
+  compoundSources,
+  faceEdgeSources,
+  namedBoolean,
+  namedPrism,
+  namedRevolve,
+  withHistory,
+} from './naming/ops';
+import { resolveRef } from './naming/resolve';
 import { loadOcct } from './occt/load';
 import type { OcctModule } from './occt/types';
 import { RecomputeEngine } from './recompute/engine';
@@ -78,6 +90,77 @@ describe('memory', () => {
     for (let i = 0; i < WARM_UP; i++) rebuild();
     const before = kernel.stats();
     for (let i = 0; i < REBUILDS; i++) rebuild();
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(0);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+    expect(after.heapBytes).toBe(before.heapBytes);
+  });
+
+  it(`extruding, revolving, cutting, filleting and naming ${REBUILDS} times does not grow the heap`, {
+    timeout: 180_000,
+  }, () => {
+    // Every naming operation of P2-04 (ADR-0005): sweeps with history, a
+    // simplifying boolean, a fillet named through its history, compounds,
+    // sub-shapes, descriptions and resolving a reference.
+    const b = new SketchBuilder();
+    b.line(0, 0, 30, 0);
+    b.line(30, 0, 30, 10);
+    b.line(30, 10, 0, 10);
+    b.line(0, 10, 0, 0);
+    b.circle(20, 5, 2);
+    const { curves } = planarCurves(b.sketch);
+    const frame = { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] } as const;
+    const rebuild = (i: number) => {
+      using scope = kernel.scope();
+      const { faces } = kernel.planarFaces(curves, frame, PROFILE_TOLERANCE);
+      for (const face of faces) scope.track(face.shape);
+      const profile = faces[0] as (typeof faces)[number];
+      const sources = profile.edges.map((c) => `c${c}`);
+      const plate = namedPrism(kernel, {
+        feature: 'E',
+        shape: profile.shape,
+        edgeSources: sources,
+        vector: [0, 0, 5 + (i % 5) / 10],
+      });
+      scope.track(plate.shape);
+      const slot = scope.track(kernel.box([4, 20, 4], [8, -5, 3]));
+      const tool = { shape: slot, names: positionalNames('box', 'B', kernel.describe(slot)) };
+      const cut = namedBoolean(kernel, 'cut', plate, tool, { feature: 'C', simplify: true });
+      scope.track(cut.shape);
+      const rim = cut.names.edges.findIndex((e) => e.includes('cap:end') && e.includes(':side:c'));
+      const found = resolveRef(
+        { kind: 'edge', id: cut.names.edges[rim] as string },
+        [{ id: 'b' as BodyId, shape: cut.shape, names: cut.names }],
+        (shape) => kernel.describe(shape),
+      );
+      const rounded = withHistory(
+        kernel,
+        kernel.fillet(cut.shape, [found.index], 0.5),
+        [cut.names],
+        {
+          op: 'fillet',
+          feature: 'F',
+        },
+      );
+      scope.track(rounded.shape);
+      const ring = namedRevolve(kernel, {
+        feature: 'V',
+        shape: profile.shape,
+        edgeSources: sources,
+        axis: { origin: [0, -1, 0], direction: [1, 0, 0] },
+        angle: i % 2 ? 2 * Math.PI : 1,
+      });
+      scope.track(ring.shape);
+      const top = faceEdgeSources(kernel, rounded, 0);
+      scope.track(top.shape);
+      const both = scope.track(kernel.compound([plate.shape, ring.shape]));
+      compoundSources(kernel, both, [top]);
+      kernel.describe(both);
+    };
+    for (let i = 0; i < WARM_UP; i++) rebuild(i);
+    const before = kernel.stats();
+    for (let i = 0; i < REBUILDS; i++) rebuild(i);
     const after = kernel.stats();
 
     expect(after.liveShapes).toBe(0);

@@ -2,6 +2,17 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **P2-04** Topological naming v1 (ADR-0005): every face,
+  edge and vertex of a body has a persistent name from why it exists (an
+  extrude's caps and the sketch curve of each side), carried through
+  booleans and fillets by OCCT's history; split faces are numbered by
+  position, edges and vertices named after their faces. References keep a
+  fingerprint; a feature finds its face or edge by name, by a related name
+  after a split, or by fingerprint with a warning, and says what to do
+  when it's gone. The kernel sweeps (extrude, revolve) with history, and
+  body meshes carry the names for selection. A 19-scenario naming suite
+  and a 1000-rebuild memory test.
+
 - 2026-09-27 · **P2-02** Sketch → kernel (ADR-0025): the kernel turns a
   sketch's curves into exact OCCT edges (splines cut where they cross
   themselves), splits them where they meet and makes a face for every

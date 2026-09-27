@@ -6,9 +6,13 @@ import type {
   FeatureId,
   FeatureInputs,
   FeatureStatus,
+  GeomRef,
 } from '@extrudo/core';
 import type { Kernel, ShapeHandle } from '../kernel';
 import type { BodyMesh, MeshOptions } from '../mesh';
+import type { ShapeDescription } from '../naming/description';
+import type { TopoNames } from '../naming/names';
+import type { ResolvedRef, ResolveOptions } from '../naming/resolve';
 
 /**
  * How a feature uses the bodies made before it. It decides what the
@@ -58,6 +62,19 @@ export interface EvalContext<I extends FeatureInputs = FeatureInputs> {
   output(feature: FeatureId): FeatureOutput;
   /** A stable body ID for the `n`th body this feature creates. */
   bodyId(n?: number): BodyId;
+  /** The naming table of a body before this feature (ADR-0005). */
+  names(body: BodyId): TopoNames;
+  /** Geometry and adjacency of a shape's sub-shapes (cached for bodies). */
+  describe(shape: ShapeHandle): ShapeDescription;
+  /**
+   * Finds the face, edge or vertex a reference names among the bodies
+   * before this feature (`resolveRef`, ADR-0005). A guess (fingerprint, or
+   * a split face) adds its warning to the feature's status; a reference
+   * that can't be found throws a `KernelError` for the user.
+   */
+  resolve(ref: GeomRef, options?: ResolveOptions): ResolvedRef;
+  /** Adds a warning to the feature's status. */
+  warn(message: string): void;
 }
 
 export interface FeatureOutput {
@@ -66,6 +83,14 @@ export interface FeatureOutput {
    * bodies passed on unchanged keep their handles. The cache owns new ones.
    */
   bodies?: ReadonlyMap<BodyId, ShapeHandle>;
+  /**
+   * Naming tables of the bodies this feature made or changed (ADR-0005),
+   * in step with their shapes' sub-shapes (`namedPrism`, `namedBoolean`…).
+   * A body passed on unchanged keeps its table. A new shape without one is
+   * named by position (`<type>:<feature>:face#n`), which only lasts as long
+   * as its geometry does.
+   */
+  names?: ReadonlyMap<BodyId, TopoNames>;
   /** Other shapes later features use (a sketch's profile faces), by name. The cache owns them. */
   shapes?: Readonly<Record<string, ShapeHandle>>;
   /** Plain data for later features (plane frames, region IDs). Must be JSON-like. */

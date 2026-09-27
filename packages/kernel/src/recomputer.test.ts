@@ -66,6 +66,7 @@ function bind(service: KernelService) {
     recompute: service.recompute.bind(service),
     preview: service.preview.bind(service),
     endPreview: () => service.endPreview(),
+    reference: service.reference.bind(service),
     debugTestPart: () => service.debugTestPart(),
     debugCrash: () => service.debugCrash(),
     stats: () => service.stats(),

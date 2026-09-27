@@ -17,6 +17,7 @@ export function spawnBrowserKernel(): KernelConnection {
       api.recompute(request, onFeature && Comlink.proxy(onFeature)),
     preview: (request, onFeature) => api.preview(request, onFeature && Comlink.proxy(onFeature)),
     endPreview: () => api.endPreview(),
+    reference: (body, kind, index) => api.reference(body, kind, index),
     debugTestPart: () => api.debugTestPart(),
     debugCrash: () => api.debugCrash(),
     stats: () => api.stats(),

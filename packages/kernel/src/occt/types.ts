@@ -26,7 +26,36 @@ export interface FacadeBinding {
     height: number,
   ): number;
   fillet(shape: number, radius: number): number;
-  boolean(op: number, a: number, b: number): number;
+  boolean(op: number, a: number, b: number, simplify: boolean): number;
+  prism(
+    shape: number,
+    ox: number,
+    oy: number,
+    oz: number,
+    dx: number,
+    dy: number,
+    dz: number,
+  ): number;
+  revolve(
+    shape: number,
+    px: number,
+    py: number,
+    pz: number,
+    dx: number,
+    dy: number,
+    dz: number,
+    angle: number,
+  ): number;
+  compound(): number;
+  subShape(shape: number, kind: number, index: number): number;
+  locate(part: number, whole: number, kind: number): number;
+  lookupPtr(): number;
+  lookupSize(): number;
+  describe(shape: number): number;
+  describeIntsPtr(): number;
+  describeIntsSize(): number;
+  describeNumbersPtr(): number;
+  describeNumbersSize(): number;
   sketchClear(): void;
   sketchLine(x0: number, y0: number, x1: number, y1: number): number;
   sketchArc(cx: number, cy: number, radius: number, from: number, sweep: number): number;

@@ -28,6 +28,7 @@
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepAdaptor_Curve.hxx>
+#include <BRepAdaptor_Surface.hxx>
 #include <BRepBndLib.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
@@ -40,6 +41,10 @@
 #include <BRepTools.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
+#include <BRepPrimAPI_MakePrism.hxx>
+#include <BRepPrimAPI_MakeRevol.hxx>
+#include <BRepSweep_Revol.hxx>
+#include <BRep_Builder.hxx>
 #include <BRep_Tool.hxx>
 #include <Bnd_Box.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
@@ -64,11 +69,16 @@
 #include <TopLoc_Location.hxx>
 #include <TopTools_ShapeMapHasher.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Compound.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Wire.hxx>
+#include <GeomAbs_CurveType.hxx>
+#include <GeomAbs_SurfaceType.hxx>
+#include <Precision.hxx>
+#include <gp_Ax1.hxx>
 #include <gp_Ax2.hxx>
 #include <gp_Ax3.hxx>
 #include <gp_Circ.hxx>
@@ -78,10 +88,12 @@
 #include <gp_Dir.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Trsf.hxx>
+#include <gp_Vec.hxx>
 
 #include <unistd.h>
 
 #include <algorithm>
+#include <type_traits>
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
@@ -170,8 +182,13 @@ public:
     }
   }
 
-  /** Boolean of two shapes: op 0 = fuse, 1 = cut (a − b), 2 = common. Records history for 0 and 1. */
-  int boolean(int op, int a, int b) {
+  /**
+   * Boolean of two shapes: op 0 = fuse, 1 = cut (a − b), 2 = common. With
+   * `simplify`, faces and edges that lie on one surface or curve are merged
+   * afterwards (ShapeUpgrade_UnifySameDomain through SimplifyResult), and
+   * the history accounts for it. Records history for inputs 0 and 1.
+   */
+  int boolean(int op, int a, int b, bool simplify) {
     beginOp();
     const TopoDS_Shape* shapeA = find(a);
     const TopoDS_Shape* shapeB = find(b);
@@ -180,15 +197,15 @@ public:
       switch (op) {
         case 0: {
           BRepAlgoAPI_Fuse builder(*shapeA, *shapeB);
-          return finishBoolean(builder, *shapeA, *shapeB);
+          return finishBoolean(builder, *shapeA, *shapeB, simplify);
         }
         case 1: {
           BRepAlgoAPI_Cut builder(*shapeA, *shapeB);
-          return finishBoolean(builder, *shapeA, *shapeB);
+          return finishBoolean(builder, *shapeA, *shapeB, simplify);
         }
         case 2: {
           BRepAlgoAPI_Common builder(*shapeA, *shapeB);
-          return finishBoolean(builder, *shapeA, *shapeB);
+          return finishBoolean(builder, *shapeA, *shapeB, simplify);
         }
         default:
           return fail("Boolean failed: unknown operation.");
@@ -197,6 +214,192 @@ public:
       return failFromException("Boolean failed");
     }
   }
+
+  // --------------------------------------------------------------- sweeps --
+  //
+  // Sweeps record history for input 0, the swept shape, with the relations
+  // generated (1: an edge's side face, a vertex's side edge), first (4: the
+  // copy of a sub-shape at the start) and last (5: at the end). Sub-shape
+  // indices are those of the swept shape as passed in.
+
+  /**
+   * Sweeps a face (or a compound of faces, or any shape) along (dx, dy, dz),
+   * after moving it by (ox, oy, oz): a shift lets an extrude start below its
+   * sketch plane (symmetric, two sides) without changing sub-shape order.
+   */
+  int prism(int shape, double ox, double oy, double oz, double dx, double dy, double dz) {
+    beginOp();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Extrude failed: unknown input shape.");
+    try {
+      const gp_Vec along(dx, dy, dz);
+      if (along.Magnitude() <= Precision::Confusion()) return fail("Extrude failed: the distance is zero.");
+      const TopoDS_Shape base = shifted(*input, ox, oy, oz);
+      BRepPrimAPI_MakePrism builder(base, along, false, true);
+      builder.Build();
+      if (!builder.IsDone()) return fail("Extrude failed: OCCT could not sweep this shape.");
+      const TopoDS_Shape result = builder.Shape();
+      recordSweep(builder, base, result);
+      return store(result);
+    } catch (...) {
+      return failFromException("Extrude failed");
+    }
+  }
+
+  /**
+   * Revolves a shape about the axis through (px, py, pz) along (dx, dy, dz)
+   * by `angle` radians (counter-clockwise about the axis); 2π or more is a
+   * full revolution, which has no start and end faces.
+   */
+  int revolve(int shape, double px, double py, double pz, double dx, double dy, double dz,
+              double angle) {
+    beginOp();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Revolve failed: unknown input shape.");
+    try {
+      if (gp_Vec(dx, dy, dz).Magnitude() <= Precision::Confusion()) {
+        return fail("Revolve failed: the axis has no direction.");
+      }
+      if (std::abs(angle) <= Precision::Angular()) return fail("Revolve failed: the angle is zero.");
+      const gp_Ax1 axis(gp_Pnt(px, py, pz), gp_Dir(dx, dy, dz));
+      const bool full = std::abs(angle) >= 2 * M_PI - Precision::Angular();
+      BRepPrimAPI_MakeRevol builder(*input, axis, full ? 2 * M_PI : angle, false);
+      builder.Build();
+      if (!builder.IsDone()) {
+        return fail("Revolve failed: the profile probably crosses the axis.");
+      }
+      const TopoDS_Shape result = builder.Shape();
+      recordSweep(builder, *input, result);
+      return store(result);
+    } catch (...) {
+      return failFromException("Revolve failed");
+    }
+  }
+
+  // ------------------------------------------------------------ sub-shapes --
+
+  /** A compound of the staged shapes (clearArgs() / pushArg() handles), or 0. */
+  int compound() {
+    beginOp();
+    try {
+      TopoDS_Compound result;
+      BRep_Builder builder;
+      builder.MakeCompound(result);
+      for (int handle : args_) {
+        const TopoDS_Shape* s = find(handle);
+        if (s == nullptr) return fail("Compound failed: unknown input shape.");
+        builder.Add(result, *s);
+      }
+      return store(result);
+    } catch (...) {
+      return failFromException("Compound failed");
+    }
+  }
+
+  /** A new handle to one sub-shape (kind, 0-based index) of a shape, or 0. */
+  int subShape(int shape, int kind, int index) {
+    beginOp();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return fail("Unknown shape.");
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> map;
+    TopExp::MapShapes(*s, kindToEnum(kind), map);
+    if (index < 0 || index >= map.Extent()) return fail("Sub-shape index out of range.");
+    return store(map(index + 1));
+  }
+
+  /**
+   * Where the sub-shapes of one kind of `part` sit in `whole`: for each, in
+   * part's order, its index in whole's map, or -1. Read with lookupPtr/Size.
+   * Returns the count, or -1 for an unknown handle.
+   */
+  int locate(int part, int whole, int kind) {
+    beginOp();
+    lookup_.clear();
+    const TopoDS_Shape* p = find(part);
+    const TopoDS_Shape* w = find(whole);
+    if (p == nullptr || w == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> partMap;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> wholeMap;
+    TopExp::MapShapes(*p, kindToEnum(kind), partMap);
+    TopExp::MapShapes(*w, kindToEnum(kind), wholeMap);
+    for (int i = 1; i <= partMap.Extent(); ++i) lookup_.push_back(wholeMap.FindIndex(partMap(i)) - 1);
+    return partMap.Extent();
+  }
+
+  uintptr_t lookupPtr() const { return reinterpret_cast<uintptr_t>(lookup_.data()); }
+  int lookupSize() const { return static_cast<int>(lookup_.size()); }
+
+  /**
+   * Geometry and adjacency of every face, edge and vertex of a shape, in
+   * sub-shape order: what topological naming orders split pieces by and
+   * fingerprints are made of. Returns the face count, or -1.
+   *
+   * describeInts: [faces, edges, vertices], then per face [surface type],
+   * per edge [curve type, n, adjacent face × n], per vertex [n, adjacent
+   * face × n]. Surface types: 0 plane, 1 cylinder, 2 cone, 3 sphere, 4
+   * torus, 5 Bézier, 6 B-spline, 7 revolution, 8 extrusion, 9 offset, 10
+   * other. Curve types: 0 line, 1 circle, 2 ellipse, 3 hyperbola, 4
+   * parabola, 5 Bézier, 6 B-spline, 7 offset, 8 other, -1 degenerate.
+   *
+   * describeNumbers: per face [area, centroid xyz, direction xyz], per edge
+   * [length, midpoint xyz, direction xyz], per vertex [xyz]. A face's
+   * direction is its outward normal if it is planar (else at the middle of
+   * its parameter range), the axis of a cylinder, cone, torus or surface of
+   * revolution, 0 for a sphere; an edge's is a line's direction, a circle's
+   * or ellipse's axis, else the tangent at its middle. Axes and line
+   * directions have a canonical sign (first non-zero component positive).
+   */
+  int describe(int shape) {
+    beginOp();
+    describeInts_.clear();
+    describeNumbers_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vertices;
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      TopExp::MapShapes(*s, TopAbs_EDGE, edges);
+      TopExp::MapShapes(*s, TopAbs_VERTEX, vertices);
+      describeInts_.push_back(faces.Extent());
+      describeInts_.push_back(edges.Extent());
+      describeInts_.push_back(vertices.Extent());
+      for (int i = 1; i <= faces.Extent(); ++i) describeFace(TopoDS::Face(faces(i)));
+      NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeFaces;
+      TopExp::MapShapesAndUniqueAncestors(*s, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+      for (int i = 1; i <= edges.Extent(); ++i) {
+        describeEdge(TopoDS::Edge(edges(i)));
+        pushAdjacent(edgeFaces, edges(i), faces);
+      }
+      NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> vertexFaces;
+      TopExp::MapShapesAndUniqueAncestors(*s, TopAbs_VERTEX, TopAbs_FACE, vertexFaces);
+      for (int i = 1; i <= vertices.Extent(); ++i) {
+        const gp_Pnt p = BRep_Tool::Pnt(TopoDS::Vertex(vertices(i)));
+        describeNumbers_.push_back(p.X());
+        describeNumbers_.push_back(p.Y());
+        describeNumbers_.push_back(p.Z());
+        pushAdjacent(vertexFaces, vertices(i), faces);
+      }
+      return faces.Extent();
+    } catch (...) {
+      describeInts_.clear();
+      describeNumbers_.clear();
+      failFromException("Describe failed");
+      return -1;
+    }
+  }
+
+  uintptr_t describeIntsPtr() const { return reinterpret_cast<uintptr_t>(describeInts_.data()); }
+  int describeIntsSize() const { return static_cast<int>(describeInts_.size()); }
+  uintptr_t describeNumbersPtr() const { return reinterpret_cast<uintptr_t>(describeNumbers_.data()); }
+  int describeNumbersSize() const { return static_cast<int>(describeNumbers_.size()); }
 
   // ------------------------------------------------------------- sketches --
   //
@@ -391,7 +594,8 @@ public:
   /**
    * History of the last operation as int32 records:
    * [input, kind, index, relation, n, (resultKind, resultIndex) × n].
-   * relation: 0 = modified, 1 = generated, 2 = deleted (n = 0), 3 = kept unchanged.
+   * relation: 0 = modified, 1 = generated, 2 = deleted (n = 0), 3 = kept unchanged,
+   * 4 = first and 5 = last (a sweep's copy of the sub-shape at its start or end).
    */
   uintptr_t historyPtr() const { return reinterpret_cast<uintptr_t>(history_.data()); }
   int historySize() const { return static_cast<int>(history_.size()); }
@@ -551,6 +755,9 @@ private:
   int sketchCurveCount_ = 0;
   std::vector<int32_t> profileRecords_;
   std::vector<double> profileNumbers_;
+  std::vector<int32_t> lookup_;
+  std::vector<int32_t> describeInts_;
+  std::vector<double> describeNumbers_;
   /** Where each face's record starts in profileRecords_, while sketchProfiles runs. */
   std::unordered_map<const TopoDS_TShape*, size_t> recordStarts_;
 
@@ -829,15 +1036,179 @@ private:
   }
 
   template <typename Builder>
-  int finishBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b) {
+  int finishBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, bool simplify) {
+    builder.SetRunParallel(false);
     builder.Build();
     if (!builder.IsDone() || builder.HasErrors()) {
       return fail("Boolean failed: OCCT could not combine these shapes.");
     }
+    if (simplify) builder.SimplifyResult();
     const TopoDS_Shape result = builder.Shape();
     recordHistory(builder, a, 0, result);
     recordHistory(builder, b, 1, result);
+    // The builder is on the stack: its destructor frees what it owns (the
+    // Clear() rule of ADR-0001 is for builders deleted from JS).
     return store(result);
+  }
+
+  /** `shape` moved by (x, y, z), or `shape` itself for a zero move. Sub-shape order is kept. */
+  static TopoDS_Shape shifted(const TopoDS_Shape& shape, double x, double y, double z) {
+    if (std::abs(x) + std::abs(y) + std::abs(z) == 0) return shape;
+    gp_Trsf move;
+    move.SetTranslation(gp_Vec(x, y, z));
+    return shape.Moved(TopLoc_Location(move));
+  }
+
+  /** History of a sweep (see the sweeps section): generated, first and last per sub-shape of `base`. */
+  template <typename Builder>
+  void recordSweep(Builder& builder, const TopoDS_Shape& base, const TopoDS_Shape& result) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultMaps[3];
+    for (int kind = 0; kind < 3; ++kind) TopExp::MapShapes(result, kindToEnum(kind), resultMaps[kind]);
+    for (int kind = 0; kind < 3; ++kind) {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> baseMap;
+      TopExp::MapShapes(base, kindToEnum(kind), baseMap);
+      for (int i = 1; i <= baseMap.Extent(); ++i) {
+        const TopoDS_Shape& sub = baseMap(i);
+        const bool generated = appendRelation(builder.Generated(sub), resultMaps, 0, kind, i - 1, 1);
+        if constexpr (std::is_same_v<Builder, BRepPrimAPI_MakeRevol>) {
+          // In a full revolution, MakeRevol::Generated returns nothing for an
+          // edge square to the axis (its annulus or disc face is not marked
+          // "used" by BRepSweep), though the face is in the result. Ask the
+          // sweep itself.
+          if (!generated && kind != 0) {
+            NCollection_List<TopoDS_Shape> own;
+            own.Append(const_cast<BRepSweep_Revol&>(builder.Revol()).Shape(sub));
+            appendRelation(own, resultMaps, 0, kind, i - 1, 1);
+          }
+        }
+        NCollection_List<TopoDS_Shape> ends;
+        ends.Append(builder.FirstShape(sub));
+        appendRelation(ends, resultMaps, 0, kind, i - 1, 4);
+        ends.Clear();
+        ends.Append(builder.LastShape(sub));
+        appendRelation(ends, resultMaps, 0, kind, i - 1, 5);
+      }
+    }
+  }
+
+  /** A canonical sign for an axis or line direction: first non-zero component positive. */
+  static gp_Dir canonical(const gp_Dir& d) {
+    const double c[3] = {d.X(), d.Y(), d.Z()};
+    for (double v : c) {
+      if (std::abs(v) > 1e-9) return v < 0 ? d.Reversed() : d;
+    }
+    return d;
+  }
+
+  void pushNumbers(double size, const gp_Pnt& p, const gp_Dir* d) {
+    describeNumbers_.push_back(size);
+    describeNumbers_.push_back(p.X());
+    describeNumbers_.push_back(p.Y());
+    describeNumbers_.push_back(p.Z());
+    describeNumbers_.push_back(d ? d->X() : 0.0);
+    describeNumbers_.push_back(d ? d->Y() : 0.0);
+    describeNumbers_.push_back(d ? d->Z() : 0.0);
+  }
+
+  void describeFace(const TopoDS_Face& face) {
+    GProp_GProps props;
+    BRepGProp::SurfaceProperties(face, props);
+    BRepAdaptor_Surface surface(face);
+    const GeomAbs_SurfaceType type = surface.GetType();
+    describeInts_.push_back(static_cast<int32_t>(type));
+    gp_Dir direction(0, 0, 1);
+    bool hasDirection = true;
+    switch (type) {
+      case GeomAbs_Cylinder:
+        direction = canonical(surface.Cylinder().Axis().Direction());
+        break;
+      case GeomAbs_Cone:
+        direction = canonical(surface.Cone().Axis().Direction());
+        break;
+      case GeomAbs_Torus:
+        direction = canonical(surface.Torus().Axis().Direction());
+        break;
+      case GeomAbs_SurfaceOfRevolution:
+        direction = canonical(surface.AxeOfRevolution().Direction());
+        break;
+      case GeomAbs_SurfaceOfExtrusion:
+        direction = canonical(surface.Direction());
+        break;
+      case GeomAbs_Sphere:
+        hasDirection = false;
+        break;
+      default: {
+        // The outward normal in the middle of the parameter range; exact for planes.
+        double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+        BRepTools::UVBounds(face, u0, u1, v0, v1);
+        gp_Pnt p;
+        gp_Vec du;
+        gp_Vec dv;
+        surface.D1((u0 + u1) / 2, (v0 + v1) / 2, p, du, dv);
+        const gp_Vec n = du.Crossed(dv);
+        if (n.Magnitude() <= 1e-12) {
+          hasDirection = false;
+        } else {
+          direction = gp_Dir(n);
+          if (face.Orientation() == TopAbs_REVERSED) direction.Reverse();
+        }
+      }
+    }
+    pushNumbers(props.Mass(), props.CentreOfMass(), hasDirection ? &direction : nullptr);
+  }
+
+  void describeEdge(const TopoDS_Edge& edge) {
+    if (BRep_Tool::Degenerated(edge)) {
+      describeInts_.push_back(-1);
+      TopoDS_Vertex first;
+      TopoDS_Vertex last;
+      TopExp::Vertices(edge, first, last);
+      pushNumbers(0, first.IsNull() ? gp_Pnt() : BRep_Tool::Pnt(first), nullptr);
+      return;
+    }
+    GProp_GProps props;
+    BRepGProp::LinearProperties(edge, props);
+    BRepAdaptor_Curve curve(edge);
+    const GeomAbs_CurveType type = curve.GetType();
+    describeInts_.push_back(static_cast<int32_t>(type));
+    gp_Pnt middle;
+    gp_Vec tangent;
+    curve.D1((curve.FirstParameter() + curve.LastParameter()) / 2, middle, tangent);
+    gp_Dir direction(0, 0, 1);
+    bool hasDirection = true;
+    switch (type) {
+      case GeomAbs_Line:
+        direction = canonical(curve.Line().Direction());
+        break;
+      case GeomAbs_Circle:
+        direction = canonical(curve.Circle().Axis().Direction());
+        break;
+      case GeomAbs_Ellipse:
+        direction = canonical(curve.Ellipse().Axis().Direction());
+        break;
+      default:
+        if (tangent.Magnitude() <= 1e-12) hasDirection = false;
+        else direction = canonical(gp_Dir(tangent));
+    }
+    pushNumbers(props.Mass(), middle, hasDirection ? &direction : nullptr);
+  }
+
+  /** [n, face index × n]: the distinct faces around a sub-shape, as indices into `faces`. */
+  void pushAdjacent(
+      const NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>& around,
+      const TopoDS_Shape& sub, const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces) {
+    const size_t countAt = describeInts_.size();
+    describeInts_.push_back(0);
+    const int found = around.FindIndex(sub);
+    if (found == 0) return;
+    std::vector<int32_t> seen;
+    for (NCollection_List<TopoDS_Shape>::Iterator it(around(found)); it.More(); it.Next()) {
+      const int32_t index = faces.FindIndex(it.Value()) - 1;
+      if (index < 0 || std::find(seen.begin(), seen.end(), index) != seen.end()) continue;
+      seen.push_back(index);
+      describeInts_.push_back(index);
+    }
+    describeInts_[countAt] = static_cast<int32_t>(seen.size());
   }
 
   /** Appends history records for the faces, edges and vertices of one input. */

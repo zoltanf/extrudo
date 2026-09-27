@@ -22,9 +22,15 @@ import {
   type FeatureId,
   type FeatureRegistry,
   type FeatureStatus,
+  type GeomRef,
 } from '@extrudo/core';
+import type { SubShapeKind } from '../history';
 import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
 import type { MeshOptions } from '../mesh';
+import type { ShapeDescription } from '../naming/description';
+import { fingerprintOf } from '../naming/fingerprint';
+import { namesOf, positionalNames, type TopoNames } from '../naming/names';
+import { resolveRef } from '../naming/resolve';
 import { hashOf } from './hash';
 import type {
   BodyResult,
@@ -77,6 +83,12 @@ export class RecomputeEngine {
   readonly #versions = new Map<ShapeHandle, string>();
   /** Which feature made each body shape, for mesh errors. */
   readonly #makers = new Map<ShapeHandle, FeatureId>();
+  /** Naming table of each body shape the cache holds (ADR-0005). */
+  readonly #names = new Map<ShapeHandle, TopoNames>();
+  /** Descriptions of shapes the cache holds, made on first use. */
+  readonly #descriptions = new Map<ShapeHandle, ShapeDescription>();
+  /** The bodies at the marker of the last finished recompute (not preview). */
+  #latest: ReadonlyMap<BodyId, ShapeHandle> = new Map();
   readonly #pinned: Record<Channel, Set<string>> = { recompute: new Set(), preview: new Set() };
   readonly #generation: Record<Channel, number> = { recompute: 0, preview: 0 };
   /** Keys used by walks still running: eviction must not free shapes they hold. */
@@ -127,10 +139,27 @@ export class RecomputeEngine {
     this.#pinned.preview = new Set();
   }
 
+  /**
+   * A reference to one face, edge or vertex of a body of the last finished
+   * recompute (its sub-shape index as in the body's mesh): its persistent
+   * name and fingerprint, ready to store in a feature's `ref` input.
+   * Undefined if there is no such body or sub-shape.
+   */
+  reference(body: BodyId, kind: SubShapeKind, index: number): GeomRef | undefined {
+    const shape = this.#latest.get(body);
+    const names = shape === undefined ? undefined : this.#names.get(shape);
+    if (shape === undefined || !names) return undefined;
+    const id = namesOf(names, kind)[index];
+    if (id === undefined) return undefined;
+    const fingerprint = fingerprintOf(this.#describe(shape), names, kind, index);
+    return { kind, id, fingerprint };
+  }
+
   /** Empties the cache and gives every shape back to the kernel. */
   clear(): void {
     for (const entry of this.#entries.values()) this.#drop(entry);
     this.#entries.clear();
+    this.#latest = new Map();
     this.#pinned.recompute.clear();
     this.#pinned.preview.clear();
   }
@@ -251,6 +280,7 @@ export class RecomputeEngine {
 
     if (cancelled()) return { status: 'cancelled' };
     this.#pinned[channel] = new Set(used);
+    if (channel === 'recompute') this.#latest = bodies;
     const results: BodyResult[] = [];
     for (const [id, shape] of bodies) {
       const version = this.#versions.get(shape) ?? hashOf('shape', shape);
@@ -260,6 +290,12 @@ export class RecomputeEngine {
       }
       try {
         const mesh = this.#kernel.mesh(shape, request.tessellation ?? DEFAULT_TESSELLATION);
+        const names = this.#names.get(shape);
+        if (names) {
+          mesh.faceIds = [...names.faces];
+          mesh.edgeIds = [...names.edges];
+          mesh.vertexIds = [...names.vertices];
+        }
         results.push({ id, version, mesh });
       } catch (error) {
         if (!(error instanceof KernelError)) throw error;
@@ -296,11 +332,30 @@ export class RecomputeEngine {
     key: string,
   ): Entry {
     const kernel = this.#kernel;
+    const warnings: string[] = [];
+    const bodyNames = (id: BodyId): TopoNames => {
+      const shape = bodies.get(id);
+      const names = shape === undefined ? undefined : this.#names.get(shape);
+      if (!names) throw new Error(`${feature.name} has no body ${id} before it.`);
+      return names;
+    };
+    const describe = (shape: ShapeHandle) => this.#describe(shape);
     const ctx: EvalContext = {
       kernel,
       feature,
       inputs,
       bodies,
+      names: bodyNames,
+      describe,
+      resolve(ref, options) {
+        const named = [...bodies].map(([id, shape]) => ({ id, shape, names: bodyNames(id) }));
+        const resolved = resolveRef(ref, named, describe, options);
+        if (resolved.warning) warnings.push(resolved.warning);
+        return resolved;
+      },
+      warn(message) {
+        warnings.push(message);
+      },
       value(input) {
         const value = values[input];
         if (value === undefined) throw new Error(`${feature.name} has no expression "${input}".`);
@@ -319,9 +374,9 @@ export class RecomputeEngine {
     let status: FeatureStatus;
     try {
       output = definition.evaluate(ctx);
-      status = output.warnings?.length
-        ? { status: 'warning', message: output.warnings.join(' ') }
-        : { status: 'ok' };
+      this.#checkNames(output, bodies);
+      const all = [...new Set([...warnings, ...(output.warnings ?? [])])];
+      status = all.length ? { status: 'warning', message: all.join(' ') } : { status: 'ok' };
     } catch (error) {
       // A WASM abort kills the kernel; the service turns it into a crash.
       if (error instanceof WebAssembly.RuntimeError) throw error;
@@ -345,6 +400,12 @@ export class RecomputeEngine {
     }
     for (const h of handles) this.#refs.set(h, (this.#refs.get(h) ?? 0) + 1);
     for (const [id, h] of output?.bodies ?? []) {
+      // A shape another output holds (a profile face as a sheet body) has
+      // no table yet either.
+      if (!this.#names.has(h)) {
+        const names = output?.names?.get(id) ?? this.#positional(feature, h);
+        if (names) this.#names.set(h, names);
+      }
       if (!fresh.includes(h)) continue;
       this.#versions.set(h, hashOf(key, id));
       this.#makers.set(h, feature.id);
@@ -352,6 +413,48 @@ export class RecomputeEngine {
     const entry: Entry = { key, status, output, handles };
     this.#entries.set(key, entry);
     return entry;
+  }
+
+  /** Names by position for a body its feature didn't name; none if OCCT can't describe it. */
+  #positional(feature: Feature, shape: ShapeHandle): TopoNames | undefined {
+    try {
+      return positionalNames(feature.type, feature.id, this.#describe(shape));
+    } catch (error) {
+      if (!(error instanceof KernelError)) throw error;
+      return undefined;
+    }
+  }
+
+  /** A shape's description; kept while the cache holds the shape. */
+  #describe(shape: ShapeHandle): ShapeDescription {
+    const known = this.#descriptions.get(shape);
+    if (known) return known;
+    const description = this.#kernel.describe(shape);
+    if (this.#refs.has(shape)) this.#descriptions.set(shape, description);
+    return description;
+  }
+
+  /**
+   * Checks that the naming tables an output gives match its bodies. A
+   * mismatch is a bug in the evaluator; its new shapes are released and the
+   * feature fails.
+   */
+  #checkNames(output: FeatureOutput, before: ReadonlyMap<BodyId, ShapeHandle>): void {
+    for (const [id, names] of output.names ?? []) {
+      const shape = output.bodies?.get(id);
+      const problem =
+        shape === undefined
+          ? `names a body it doesn't output (${id})`
+          : (['face', 'edge', 'vertex'] as const).find(
+                (kind) => namesOf(names, kind).length !== this.#kernel.count(shape, kind),
+              )
+            ? `gives body ${id} a naming table that doesn't match its shape`
+            : undefined;
+      if (!problem) continue;
+      const known = new Set([...before.values(), ...this.#refs.keys()]);
+      for (const h of outputHandles(output)) if (!known.has(h)) this.#kernel.release(h);
+      throw new Error(problem);
+    }
   }
 
   /** Drops least recently used entries that no current result uses, down to `maxEntries`. */
@@ -379,6 +482,8 @@ export class RecomputeEngine {
       this.#refs.delete(h);
       this.#versions.delete(h);
       this.#makers.delete(h);
+      this.#names.delete(h);
+      this.#descriptions.delete(h);
       this.#kernel.release(h);
     }
   }

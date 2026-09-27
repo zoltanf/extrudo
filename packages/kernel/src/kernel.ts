@@ -1,5 +1,6 @@
 import { decodeHistory, type HistoryRecord, type SubShapeKind } from './history';
 import type { BodyMesh, Measurements, MeshOptions } from './mesh';
+import { decodeDescription, type ShapeDescription } from './naming/description';
 import type { FacadeBinding, OcctModule } from './occt/types';
 import {
   decodePlanarFaces,
@@ -21,6 +22,21 @@ export class KernelError extends Error {
 export interface OperationResult {
   shape: ShapeHandle;
   history: HistoryRecord[];
+}
+
+export interface BooleanOptions {
+  /**
+   * Merge faces and edges that lie on one surface or curve afterwards
+   * (a join flush with a side leaves one face, not two). The history
+   * accounts for it: a merged face is `modified` from each of its pieces.
+   */
+  simplify?: boolean;
+}
+
+/** An axis in space, for revolve. */
+export interface Axis {
+  origin: Vec3;
+  direction: Vec3;
 }
 
 export interface KernelStats {
@@ -67,16 +83,81 @@ export class Kernel {
     return this.#withHistory(this.#facade.fillet(shape, radius));
   }
 
-  cut(target: ShapeHandle, tool: ShapeHandle): OperationResult {
-    return this.#withHistory(this.#facade.boolean(BOOLEAN_CODE.cut, target, tool));
+  /** `target` minus `tool`. History: input 0 is the target, 1 the tool. */
+  cut(target: ShapeHandle, tool: ShapeHandle, options: BooleanOptions = {}): OperationResult {
+    return this.boolean('cut', target, tool, options);
   }
 
-  fuse(target: ShapeHandle, tool: ShapeHandle): OperationResult {
-    return this.#withHistory(this.#facade.boolean(BOOLEAN_CODE.fuse, target, tool));
+  fuse(target: ShapeHandle, tool: ShapeHandle, options: BooleanOptions = {}): OperationResult {
+    return this.boolean('fuse', target, tool, options);
   }
 
-  common(target: ShapeHandle, tool: ShapeHandle): OperationResult {
-    return this.#withHistory(this.#facade.boolean(BOOLEAN_CODE.common, target, tool));
+  common(target: ShapeHandle, tool: ShapeHandle, options: BooleanOptions = {}): OperationResult {
+    return this.boolean('common', target, tool, options);
+  }
+
+  boolean(
+    op: keyof typeof BOOLEAN_CODE,
+    target: ShapeHandle,
+    tool: ShapeHandle,
+    options: BooleanOptions = {},
+  ): OperationResult {
+    const code = BOOLEAN_CODE[op];
+    return this.#withHistory(this.#facade.boolean(code, target, tool, options.simplify ?? false));
+  }
+
+  /**
+   * Sweeps a shape (a face, a compound of faces) along `vector`, after
+   * moving it by `shift`: an extrude that starts off its plane (symmetric,
+   * two sides) sweeps the shifted profile. History (input 0, indices of the
+   * shape as passed in): `generated` (edge → side face, vertex → side
+   * edge), `first` and `last` (the copies at the start and end).
+   */
+  prism(shape: ShapeHandle, vector: Vec3, shift: Vec3 = [0, 0, 0]): OperationResult {
+    return this.#withHistory(this.#facade.prism(shape, ...shift, ...vector));
+  }
+
+  /**
+   * Revolves a shape about `axis` by `angle` radians, counter-clockwise
+   * seen from the axis's tip; |angle| ≥ 2π is a full revolution, which has
+   * no start and end faces. History as for `prism`.
+   */
+  revolve(shape: ShapeHandle, axis: Axis, angle: number): OperationResult {
+    const { origin: o, direction: d } = axis;
+    return this.#withHistory(this.#facade.revolve(shape, ...o, ...d, angle));
+  }
+
+  /** A compound holding the shapes (which stay valid; release them separately). */
+  compound(shapes: readonly ShapeHandle[]): ShapeHandle {
+    this.#facade.clearArgs();
+    for (const shape of shapes) this.#facade.pushArg(shape);
+    return this.#check(this.#facade.compound());
+  }
+
+  /** A new handle to one face, edge or vertex of a shape (by sub-shape index). */
+  subShape(shape: ShapeHandle, kind: SubShapeKind, index: number): ShapeHandle {
+    return this.#check(this.#facade.subShape(shape, KIND_CODE[kind], index));
+  }
+
+  /**
+   * Where the sub-shapes of one kind of `part` sit in `whole`: for each, in
+   * part's order, its index in whole, or -1 where it isn't part of whole.
+   * (A face of a body: which body edges bound it.)
+   */
+  locate(part: ShapeHandle, whole: ShapeHandle, kind: SubShapeKind): number[] {
+    const f = this.#facade;
+    if (f.locate(part, whole, KIND_CODE[kind]) < 0) throw new KernelError('Unknown shape.');
+    return Array.from(this.#copy(Int32Array, f.lookupPtr(), f.lookupSize()));
+  }
+
+  /** Geometry and adjacency of every face, edge and vertex (topological naming, fingerprints). */
+  describe(shape: ShapeHandle): ShapeDescription {
+    const f = this.#facade;
+    if (f.describe(shape) < 0) throw new KernelError(f.lastError() || 'Unknown shape.');
+    return decodeDescription(
+      this.#copy(Int32Array, f.describeIntsPtr(), f.describeIntsSize()),
+      this.#copy(Float64Array, f.describeNumbersPtr(), f.describeNumbersSize()),
+    );
   }
 
   /**

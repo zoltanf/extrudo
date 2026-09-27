@@ -4,8 +4,8 @@
  *
  * Faces, edges and vertices come in the kernel's sub-shape order: face `i` is
  * `faceRanges[2i..2i+1]`, edge `i` is `edgeRanges[2i..2i+1]`, vertex `i` is
- * `vertices[3i..3i+2]`. The topological-naming service (P2-04) maps these
- * indices to persistent IDs.
+ * `vertices[3i..3i+2]`. The recompute engine adds the persistent name
+ * (TopoId, ADR-0005) of each in `faceIds`, `edgeIds` and `vertexIds`.
  */
 export interface BodyMesh {
   /** xyz per mesh node. */
@@ -24,6 +24,15 @@ export interface BodyMesh {
   edgeFlags: Uint8Array;
   /** xyz per B-rep vertex. */
   vertices: Float32Array;
+  /**
+   * Persistent name of each face, in face order (ADR-0005): what a `face`
+   * reference stores as its `id`. Plain strings (copied, not transferred).
+   */
+  faceIds?: string[];
+  /** Persistent name of each edge, in edge order. */
+  edgeIds?: string[];
+  /** Persistent name of each vertex, in vertex order. */
+  vertexIds?: string[];
 }
 
 /**

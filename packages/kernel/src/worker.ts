@@ -16,6 +16,7 @@ const api: KernelApi = {
   recompute: async (request, onFeature) => transfer(await service.recompute(request, onFeature)),
   preview: async (request, onFeature) => transfer(await service.preview(request, onFeature)),
   endPreview: () => service.endPreview(),
+  reference: (body, kind, index) => service.reference(body, kind, index),
   debugTestPart: async () => {
     const part = await service.debugTestPart();
     return Comlink.transfer(part, meshBuffers(part.mesh));

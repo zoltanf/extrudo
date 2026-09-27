@@ -56,6 +56,15 @@ Things the builds ran into:
 - The binding list must include every base class of a bound class and the types
   its methods use (`closure.mjs`), `MODULARIZE` + `EXPORT_ES6`, and the three
   exception helpers in `EXPORTED_RUNTIME_METHODS`.
+- Try facade changes natively first: a `harness.cpp` that `#include`s
+  `extrudo_facade.cpp` builds with `em++` against the image's static
+  libraries in seconds and runs under `node` in the container (see the
+  project's `CLAUDE.md`), leak checks (`heapTop()`) included.
+- Operations with history write `[input, kind, index, relation, n, (kind,
+  index) × n]` records: relations 0 modified, 1 generated, 2 deleted, 3 kept,
+  4 first and 5 last (a sweep's start and end copies). Topological naming
+  (ADR-0005) reads them; `describe()` gives the geometry and adjacency it
+  orders and fingerprints by.
 
 ## Licensing
 

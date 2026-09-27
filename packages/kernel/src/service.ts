@@ -1,5 +1,6 @@
-import type { FeatureRegistry } from '@extrudo/core';
+import type { BodyId, FeatureRegistry, GeomRef } from '@extrudo/core';
 import { kernelFeatures } from './features';
+import type { SubShapeKind } from './history';
 import { Kernel, type KernelStats } from './kernel';
 import type { OcctModule } from './occt/types';
 import { type EngineOptions, RecomputeEngine } from './recompute/engine';
@@ -35,6 +36,13 @@ export interface KernelApi {
   preview(request: PreviewRequest, onFeature?: ProgressListener): Promise<RecomputeResult>;
   /** The dialog closed: cancels a running preview and releases its results to the cache. */
   endPreview(): Promise<void>;
+  /**
+   * A reference to a face, edge or vertex of a body the last recompute
+   * returned (its index in the body's mesh), with its persistent name and
+   * fingerprint (ADR-0005): what a feature's `ref` input stores. Undefined
+   * if the body or the sub-shape is gone.
+   */
+  reference(body: BodyId, kind: SubShapeKind, index: number): Promise<GeomRef | undefined>;
   /** Builds, measures and meshes the P0-02 test part. */
   debugTestPart(): Promise<TestPart>;
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
@@ -93,6 +101,10 @@ export class KernelService implements KernelApi {
 
   async endPreview(): Promise<void> {
     this.#engine?.endPreview();
+  }
+
+  reference(body: BodyId, kind: SubShapeKind, index: number): Promise<GeomRef | undefined> {
+    return this.#run(() => this.#engineOf().reference(body, kind, index));
   }
 
   async debugTestPart(): Promise<TestPart> {

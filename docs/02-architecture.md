@@ -270,10 +270,11 @@ interface BodyMesh {       // packages/kernel/src/mesh.ts (P0-09); all flat, all
   edgePoints: Float32Array;         // edge polylines, xyz per point
   edgeRanges: Uint32Array;          // [firstPoint, count] per edge
   vertices: Float32Array;           // xyz per B-rep vertex
+  faceIds?: string[]; edgeIds?: string[]; vertexIds?: string[];  // TopoIds (P2-04)
 }
-// Faces, edges and vertices are in the kernel's sub-shape order. P2-04 adds
-// faceIds / edgeIds / vertexIds (persistent TopoIds, parallel to the ranges),
-// and recompute adds bodyId, bbox, volume and area.
+// Faces, edges and vertices are in the kernel's sub-shape order. The TopoIds
+// (ADR-0005) are parallel to the ranges; recompute fills them for every body.
+// Later: bbox, volume and area per body.
 ```
 
 P0-09 implements the plumbing: `KernelApi` has `init`, `stats` and two debug
@@ -334,6 +335,36 @@ Strategy, following the approach used by Onshape and the FreeCAD 1.0 TNP work:
 
 The topo-naming service gets its own test suite: edit a sketch dimension or add
 and remove a sketch edge, then assert the fillet still sits on the "same" edges.
+
+As built in P2-04 (ADR-0005, `packages/kernel/src/naming/`):
+
+- **Faces are named, edges and vertices after their faces.** A face name is
+  `op:feature:role[:source]` plus `#n` split numbers
+  (`extrude:E:cap:end`, `extrude:E:side:<curveId>`,
+  `fillet:F:from:(<edge name>)`, `extrude:E:cap:end#2`); an edge is
+  `e[<faces, sorted>]`, a vertex `v[…]`, with `@n` where several share
+  their faces. Nested names go in parentheses; names never contain `/`.
+  `#n` and `@n` follow one geometric order: position (x, y, z within
+  1e-6 mm), then size, then index.
+- **Naming tables** (`TopoNames`, one name per face/edge/vertex in
+  sub-shape order) come back from evaluators in `FeatureOutput.names`; the
+  engine keeps them per cached shape, fills `BodyMesh.faceIds/edgeIds/
+  vertexIds`, and names bodies without a table by position.
+- **Operations that name** (`namedPrism`, `namedRevolve`, `namedBoolean`,
+  `withHistory`): the facade's `prism`/`revolve` record `generated`,
+  `first` and `last` per sub-shape of the swept face; booleans and
+  fillets `modified`/`kept`/`generated`/`deleted` per input. A face keeps
+  its source's name; merged faces keep the target's; generated faces are
+  named after their source.
+- **Fingerprints** in `GeomRef.fingerprint` (optional): type, centroid or
+  midpoint, normal or axis, area or length, neighbouring face names, from
+  the facade's `describe`. `KernelApi.reference(body, kind, index)` makes a
+  reference with its fingerprint for a picked sub-shape.
+- **Resolution** (`EvalContext.resolve`): exact name; else a related name
+  (a piece of the face, or the whole it was a piece of; for edges and
+  vertices, face by face), silent if unique; else the best fingerprint
+  scoring ≥ 0.6. Guesses turn the feature into a warning; no match fails
+  it with a message that says to pick again.
 
 ### 5.3 Sketch → geometry
 
@@ -485,7 +516,11 @@ bundle-size budget. Every agent task must leave CI green.
   2026-09-25** (P0-07): Pratt parser, length/angle dimensions in mm and
   degrees, plain numbers take the context unit, one namespace for user and
   model parameters, cycle paths, rename-safe commands.
-- **ADR-0005** Topological naming strategy (§5.2).
+- **ADR-0005** Topological naming strategy (§5.2). **Written 2026-09-27**
+  (P2-04): faces named by their feature and carried by OCCT history,
+  edges and vertices named after their faces, geometric numbering of
+  repeats, naming tables in the shape cache, fingerprints in `GeomRef`,
+  resolution by exact name, related name, then fingerprint.
 - **ADR-0006** Electron over Tauri for desktop.
 - **ADR-0007** Design system and app shell. **Written 2026-09-25** (P0-04):
   tokens as CSS variables through Tailwind v4 `@theme inline`, Radix
