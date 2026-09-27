@@ -6,6 +6,7 @@ import {
   cubicBezier,
   easeCamera,
   FOV,
+  fitBox,
   fitSphere,
   homeView,
   interpolate,
@@ -179,6 +180,44 @@ describe('fitSphere', () => {
     const half = ((FOV / 2) * Math.PI) / 180;
     // A sphere is inside a cone of half-angle `half` when d·sin(half) ≥ r.
     expect(distance * Math.sin(half)).toBeGreaterThanOrEqual(50);
+  });
+});
+
+describe('fitBox', () => {
+  it('fills the view with a flat sketch seen face-on, with a margin', () => {
+    // A 40 × 20 rectangle on XY from above, in a landscape view.
+    const v = fitBox(view([0, 0, 1]), [-20, -10, 0], [20, 10, 0], 2, 'orthographic');
+    expect(v.target).toEqual([0, 0, 0]);
+    expect(v.size).toBeCloseTo(20 * 1.15, 9); // the height limits it
+    // Portrait: the width limits it.
+    const tall = fitBox(view([0, 0, 1]), [-20, -10, 0], [20, 10, 0], 0.5, 'orthographic');
+    expect(tall.size).toBeCloseTo(80 * 1.15, 9);
+    // Perspective is the same face-on (every corner is on the target plane).
+    const p = fitBox(view([0, 0, 1]), [-20, -10, 0], [20, 10, 0], 2, 'perspective');
+    expect(p.size).toBeCloseTo(20 * 1.15, 9);
+  });
+
+  it('is tighter than the bounding sphere', () => {
+    const box = fitBox(view([0, 0, 1]), [-20, -20, 0], [20, 20, 0], 1, 'perspective');
+    const sphere = fitSphere(view([0, 0, 1]), [0, 0, 0], Math.hypot(20, 20), 1);
+    // A square face-on: 46 mm of view, where the sphere gave 74 (it filled 54 % of the height).
+    expect(box.size).toBeCloseTo(46, 9);
+    expect(box.size / sphere.size).toBeLessThan(0.63);
+  });
+
+  it('keeps every corner of a deep box inside the perspective view', () => {
+    const v = fitBox(view([1, -1, 1]), [-30, -10, 0], [30, 10, 40], 1.5, 'perspective');
+    const { right, up, back } = basis(v);
+    const d = perspectiveDistance(v.size);
+    const t = Math.tan(((FOV / 2) * Math.PI) / 180);
+    for (const x of [-30, 30])
+      for (const y of [-10, 10])
+        for (const z of [0, 40]) {
+          const rel = new Vector3(x, y, z).sub(new Vector3(...v.target));
+          const depth = d - rel.dot(back);
+          expect(Math.abs(rel.dot(up))).toBeLessThanOrEqual(depth * t + 1e-9);
+          expect(Math.abs(rel.dot(right))).toBeLessThanOrEqual(depth * t * 1.5 + 1e-9);
+        }
   });
 });
 

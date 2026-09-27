@@ -589,6 +589,12 @@ function useSketchInput(
     });
     const onPointerMove = (e: PointerEvent) => {
       last = { x: e.clientX, y: e.clientY, ...modifiers(e) };
+      // A press whose release we never saw (it came up over the nav bar or a menu) is over:
+      // without this, the next move over the view with no button held opened a box.
+      if (press && e.pointerId === press.id && (e.buttons & 1) === 0) {
+        if (press.box) onBoxChange(undefined);
+        press = undefined;
+      }
       if (
         press &&
         !press.dragging &&
@@ -636,6 +642,15 @@ function useSketchInput(
       if (press?.box && e.pointerId === press.id) onBoxChange(undefined);
       if (press && e.pointerId === press.id) press = undefined;
     };
+    // A release outside the view (not captured: the press hadn't become a drag yet, or the
+    // pointer couldn't be captured) ends the press there: a drag or box finishes, a press
+    // that never moved is dropped rather than taken for a click.
+    const onWindowPointerUp = (e: PointerEvent) => {
+      if (!press || e.pointerId !== press.id) return;
+      if (e.target instanceof Node && el.contains(e.target)) return;
+      if (press.dragging) onPointerUp(e);
+      else press = undefined;
+    };
     const onPointerLeave = () => {
       last = undefined;
       input.onLeave();
@@ -651,6 +666,7 @@ function useSketchInput(
     el.addEventListener('pointerup', onPointerUp);
     el.addEventListener('pointercancel', onPointerCancel);
     el.addEventListener('pointerleave', onPointerLeave);
+    window.addEventListener('pointerup', onWindowPointerUp);
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKey);
     const unsubscribe = viewport.subscribe((s, prev) => {
@@ -662,6 +678,7 @@ function useSketchInput(
       el.removeEventListener('pointerup', onPointerUp);
       el.removeEventListener('pointercancel', onPointerCancel);
       el.removeEventListener('pointerleave', onPointerLeave);
+      window.removeEventListener('pointerup', onWindowPointerUp);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
       unsubscribe();
@@ -669,6 +686,9 @@ function useSketchInput(
     };
   }, [surface, viewport, input, onBoxChange]);
 }
+
+/** `PointerEvent.buttons` bit of each `button`: left 1, middle 4, right 2. */
+const HELD: Record<number, number> = { 0: 1, 1: 4, 2: 2 };
 
 /** How long (ms) after a right-button drag the browser's context menu stays shut. */
 const QUIET_MS = 400;
@@ -743,6 +763,12 @@ function useNavigation(
 
     const onPointerMove = (e: PointerEvent) => {
       if (!drag || e.pointerId !== drag.id) return;
+      // The button came up where we didn't hear it: the navigation drag is over.
+      if ((e.buttons & (HELD[drag.button] ?? 0)) === 0) {
+        drag = undefined;
+        onDrag(undefined);
+        return;
+      }
       const dx = e.clientX - drag.x;
       const dy = e.clientY - drag.y;
       drag.x = e.clientX;

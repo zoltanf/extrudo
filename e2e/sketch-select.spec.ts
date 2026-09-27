@@ -169,3 +169,27 @@ test('typed coordinates move a point; Delete takes geometry with its constraints
   await page.keyboard.press('Control+Z');
   await expect(construction).not.toBeChecked();
 });
+
+test('a press released over the nav bar leaves no box behind', async ({ page }) => {
+  await sketchOnXY(page);
+  const nav = page.getByRole('navigation', { name: 'View navigation' });
+  const button = nav.getByRole('button', { name: 'Mouse controls' });
+  const b = await button.boundingBox();
+  const n = await nav.boundingBox();
+  if (!b || !n) throw new Error('no nav bar');
+  // Press on the view just above the nav bar, release on one of its buttons: the view
+  // never hears the release.
+  await page.mouse.move(b.x + b.width / 2, n.y - 3);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 2 });
+  await page.mouse.up();
+  // Back over the view with no button held: no box follows the pointer.
+  await page.mouse.move(b.x - 150, n.y - 200, { steps: 5 });
+  await expect(page.locator('[data-selection-box]')).toHaveCount(0);
+  // A real drag still draws one, and it goes away on release.
+  await page.mouse.down();
+  await page.mouse.move(b.x - 100, n.y - 150, { steps: 4 });
+  await expect(page.locator('[data-selection-box]')).toHaveCount(1);
+  await page.mouse.up();
+  await expect(page.locator('[data-selection-box]')).toHaveCount(0);
+});

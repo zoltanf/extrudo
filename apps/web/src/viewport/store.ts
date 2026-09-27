@@ -8,6 +8,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { Preferences } from '../platform';
 import {
   easeCamera,
+  fitBox,
   fitSphere,
   homeView,
   interpolate,
@@ -79,6 +80,8 @@ export const DEFAULT_SETTINGS: ViewportSettings = {
 export interface Bounds {
   center: Vec3;
   radius: number;
+  /** The axis-aligned box of what's shown, when known: "Fit" frames it tightly. */
+  box?: { min: Vec3; max: Vec3 };
 }
 
 /** What "fit" frames in an empty document: the origin and a print-bed-sized area around it. */
@@ -169,6 +172,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
   const store = createStore<ViewportState>()((set, get) => {
     const fitted = (view: View) => {
       const { bounds, aspect } = get();
+      // What's shown fills the view; an empty document shows the area around the origin.
+      if (bounds?.box)
+        return fitBox(view, bounds.box.min, bounds.box.max, aspect, get().projection);
       const b = bounds ?? EMPTY_BOUNDS;
       return fitSphere(view, b.center, b.radius, aspect);
     };

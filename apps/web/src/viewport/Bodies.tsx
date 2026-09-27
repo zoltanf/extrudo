@@ -48,7 +48,7 @@ function hex(value: string): Rgba {
   return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255, a: 1 };
 }
 
-/** The bounding sphere of the visible bodies, or `undefined` if there are none. */
+/** The bounding sphere and box of the visible bodies, or `undefined` if there are none. */
 export function boundsOf(meshes: readonly BodyMesh[]): Bounds | undefined {
   const box = new Box3();
   for (const mesh of meshes) {
@@ -56,7 +56,11 @@ export function boundsOf(meshes: readonly BodyMesh[]): Bounds | undefined {
   }
   if (box.isEmpty()) return undefined;
   const sphere = box.getBoundingSphere(new Sphere());
-  return { center: [sphere.center.x, sphere.center.y, sphere.center.z], radius: sphere.radius };
+  return {
+    center: [sphere.center.x, sphere.center.y, sphere.center.z],
+    radius: sphere.radius,
+    box: { min: box.min.toArray(), max: box.max.toArray() },
+  };
 }
 
 function Body({

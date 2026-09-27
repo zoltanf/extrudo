@@ -165,4 +165,18 @@ clicks the ViewCube's Top face and checks the camera orientation.
   Stored preferences are kept, so anyone who already has a preset saved
   keeps theirs. FR-VP-01 changed with it. The marking menu (UI spec §3.3)
   will have to open on a right-click without movement.
+- **Fit frames the box, not a sphere** (user report: F6 zoomed out too
+  far). `Bounds` carries the axis-aligned box of what's shown (bodies,
+  sketch curves and points, placed dimension labels); `fitBox` projects
+  its corners on the view's right and up axes and fits them with a 15 %
+  margin, refining the size a few times for perspective (a nearer corner
+  looks bigger). A circle seen face-on now fills 87 % of the height
+  instead of 54 %. An empty document still fits the sphere around the
+  origin area (`EMPTY_BOUNDS`), so its home view is unchanged.
+- **No stuck selection box.** A left press in a sketch whose release came
+  up outside the view (over the nav bar or a menu) stayed recorded, and
+  the next move over the view drew a box with no button held. A window
+  `pointerup` now ends such a press (a drag or box finishes, an unmoved
+  press is dropped), and a move with the button no longer held drops a
+  stale press; navigation drags end the same way.
 

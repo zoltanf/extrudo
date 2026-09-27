@@ -41,7 +41,11 @@ describe('sketchSegments', () => {
       [4, 0, 6],
     ]);
     expect(xz.construction).toHaveLength(0);
-    expect(xz.bounds).toEqual({ center: [2.5, 0, 4], radius: 2.5 });
+    expect(xz.bounds).toEqual({
+      center: [2.5, 0, 4],
+      radius: 2.5,
+      box: { min: [1, 0, 2], max: [4, 0, 6] },
+    });
   });
 
   it('draws construction curves separately', () => {
@@ -142,8 +146,38 @@ describe('sketchSegments', () => {
 });
 
 describe('bounds', () => {
+  it('take in placed dimension labels, so "Fit" keeps them in view', () => {
+    const data = {
+      ...sketch({
+        a: { type: 'point', x: -20, y: 0 },
+        b: { type: 'point', x: 20, y: 0 },
+        l: { type: 'line', start: 'a', end: 'b', construction: false },
+      }),
+      dimensions: {
+        d: {
+          type: 'distance',
+          orientation: 'aligned',
+          a: 'l',
+          expr: '40',
+          driven: false,
+          label: { x: 0, y: 12 },
+        },
+        // A label at its default spot has no position of its own to add.
+        e: { type: 'distance', orientation: 'aligned', a: 'l', expr: '40', driven: false },
+      },
+    } as SketchData;
+    expect(sketchSegments(data, frame('origin:xy')).bounds?.box).toEqual({
+      min: [-20, 0, 0],
+      max: [20, 12, 0],
+    });
+  });
+
   it('are at least 1 mm across', () => {
-    expect(boundsOfPositions([[3, 4, 5]])).toEqual({ center: [3, 4, 5], radius: 0.5 });
+    expect(boundsOfPositions([[3, 4, 5]])).toEqual({
+      center: [3, 4, 5],
+      radius: 0.5,
+      box: { min: [3, 4, 5], max: [3, 4, 5] },
+    });
   });
 
   it('unite two spheres', () => {

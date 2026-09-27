@@ -1,6 +1,7 @@
 import {
   CIRCLE_SEGMENTS,
   curvePolyline,
+  dimensionAnchor,
   type SketchData,
   type SketchFrame,
   sketchToWorld,
@@ -8,6 +9,7 @@ import {
 import type { EntityStatus } from '@extrudo/sketch/inference';
 import type { Profile } from '@extrudo/sketch/profiles';
 import { ShapeUtils, Vector2 } from 'three';
+import type { Vec3 } from './camera';
 import type { Bounds } from './store';
 
 export type { EntityStatus };
@@ -76,6 +78,16 @@ export function sketchSegments(
     }
   }
 
+  // Placed dimension labels count for "Fit" too, so a dimension set off from its
+  // geometry stays in view (a label at its default spot sits a few pixels away).
+  const labels: number[] = [];
+  for (const d of Object.values(data.dimensions)) {
+    const anchor = d.label && dimensionAnchor(data, d);
+    if (anchor && d.label) {
+      labels.push(...sketchToWorld(frame, [anchor[0] + d.label.x, anchor[1] + d.label.y]));
+    }
+  }
+
   const floats = (lists: Record<EntityStatus, number[]>) =>
     Object.fromEntries(STATUSES.map((s) => [s, new Float32Array(lists[s])])) as Record<
       EntityStatus,
@@ -89,6 +101,7 @@ export function sketchSegments(
       ...STATUSES.map((s) => solid[s]),
       construction,
       ...STATUSES.map((s) => points[s]),
+      labels,
     ]),
   };
 }
@@ -114,13 +127,33 @@ export function boundsOfPositions(
   const center = [0, 1, 2].map((k) => ((min[k] as number) + (max[k] as number)) / 2);
   const half = [0, 1, 2].map((k) => ((max[k] as number) - (min[k] as number)) / 2);
   const radius = Math.max(0.5, Math.hypot(...half));
-  return { center: center as [number, number, number], radius };
+  return {
+    center: center as [number, number, number],
+    radius,
+    box: { min: min as [number, number, number], max: max as [number, number, number] },
+  };
 }
 
 /** The union of two bounding spheres. */
 export function unionBounds(a: Bounds | undefined, b: Bounds | undefined): Bounds | undefined {
   if (!a) return b;
   if (!b) return a;
+  const sphere = unionSpheres(a, b);
+  if (!a.box || !b.box) return sphere;
+  const { box: p } = a;
+  const { box: q } = b;
+  const pick = (f: (x: number, y: number) => number, u: Vec3, v: Vec3): Vec3 => [
+    f(u[0], v[0]),
+    f(u[1], v[1]),
+    f(u[2], v[2]),
+  ];
+  return {
+    ...sphere,
+    box: { min: pick(Math.min, p.min, q.min), max: pick(Math.max, p.max, q.max) },
+  };
+}
+
+function unionSpheres(a: Bounds, b: Bounds): Bounds {
   const d = [0, 1, 2].map((k) => (b.center[k] as number) - (a.center[k] as number));
   const dist = Math.hypot(...d);
   if (dist + b.radius <= a.radius) return a;

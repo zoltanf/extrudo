@@ -154,6 +154,51 @@ export function fitSphere(
   return { ...view, target: center, size: clampSize(size) };
 }
 
+/**
+ * Fits an axis-aligned box as seen from the view's direction (F6): the box's
+ * corners, projected on the view's right and up axes, fill the view with a
+ * margin, and the target moves to the box's centre. With perspective, a
+ * corner nearer the camera looks bigger, so the size is refined a few times
+ * against the camera distance it gives. A flat sketch seen face-on fills
+ * the view, where a bounding sphere left it at half the height.
+ */
+export function fitBox(
+  view: View,
+  min: Vec3,
+  max: Vec3,
+  aspect: number,
+  projection: Projection,
+  margin = 1.15,
+): View {
+  const center: Vec3 = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
+  const { right, up, back } = basis(view);
+  const corners: { x: number; y: number; z: number }[] = [];
+  for (const cx of [min[0], max[0]])
+    for (const cy of [min[1], max[1]])
+      for (const cz of [min[2], max[2]]) {
+        const d = new Vector3(cx - center[0], cy - center[1], cz - center[2]);
+        corners.push({ x: d.dot(right), y: d.dot(up), z: d.dot(back) });
+      }
+  // The height the view needs for the corners at a camera distance (Infinity: orthographic).
+  const needed = (distance: number) =>
+    2 *
+    Math.max(
+      ...corners.map((c) => {
+        const scale = Number.isFinite(distance) ? distance / Math.max(distance - c.z, 1e-6) : 1;
+        return Math.max(Math.abs(c.y), Math.abs(c.x) / aspect) * scale;
+      }),
+    );
+  let size = Math.max(needed(Infinity) * margin, FIT_MIN);
+  if (projection === 'perspective') {
+    for (let i = 0; i < 6; i++)
+      size = Math.max(needed(perspectiveDistance(size)) * margin, FIT_MIN);
+  }
+  return { ...view, target: center, size: clampSize(size) };
+}
+
+/** The smallest view height (mm) "Fit" gives, for a single point or a tiny sketch. */
+const FIT_MIN = 1;
+
 /** Interpolates between two views: position linearly, orientation by slerp, size geometrically. */
 export function interpolate(a: View, b: View, t: number): View {
   const target = v3(a.target).lerp(v3(b.target), t);

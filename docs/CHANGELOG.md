@@ -2,6 +2,13 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **F6 fits tightly; no stuck selection box** (user reports):
+  Fit frames the box of the bodies, sketches and placed dimension labels
+  as seen from the camera, with a 15 % margin, instead of a bounding
+  sphere (a face-on sketch filled half the view). A press released over
+  the nav bar or a menu no longer leaves a selection box following the
+  pointer. ADR-0008 amended.
+
 - 2026-09-27 · **Onshape / SolidWorks mouse controls by default** (owner's
   choice): first in the Mouse controls menu and the default preset
   (right-drag orbits, middle-drag pans); Fusion's mapping is second.

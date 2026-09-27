@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { openProject } from './helpers';
+import { clicker, openProject, sketchOnXY } from './helpers';
 
 // P0-05: the viewport. The camera state is mirrored on the viewport element
 // as data attributes (direction, up, target, size), so these tests check
@@ -312,4 +312,21 @@ test("the browser's right-click menu stays out of the view and panels, not text 
   await page.keyboard.press('Control+k');
   await page.getByRole('combobox', { name: 'Search commands' }).click({ button: 'right' });
   expect(await menus()).toEqual(['INPUT']);
+});
+
+test('F6 fills the view with what is drawn, not a sphere around it', async ({ page }) => {
+  const at = await sketchOnXY(page);
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  const click = clicker(page, at);
+  await page.keyboard.press('c');
+  await click(0, 0);
+  await click(20, 0);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('F6');
+  // 40 mm across plus a 15 % margin: 46 mm of view height (the sphere gave 74).
+  await expect
+    .poll(async () => Number(await attr(viewport, 'data-camera-size')))
+    .toBeCloseTo(46, 0);
+  await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
 });
