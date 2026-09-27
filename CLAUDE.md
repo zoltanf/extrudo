@@ -10,7 +10,7 @@ is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
 **Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01 to P1-12 done. ADR-0001 chose
+P1-01 to P1-13 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -122,8 +122,16 @@ optional `Feature.visible` (`setFeatureVisibility`, one undo step per eye
 or folder eye), suppress, delete (refused while another feature refers to
 it or an outside expression uses its named dimensions; suppress/delete
 wait until an open sketch is finished), and hover (session hover kind
-`feature` draws the sketch in the accent). Next: **P1-13** (SVG and DXF
-export). See `docs/03-roadmap.md`.
+`feature` draws the sketch in the accent). ADR-0022 (P1-13) added export:
+`@extrudo/io` (MIT, no internal deps) has a neutral 2D `Drawing` (layers,
+contours of exact lines, arcs, elliptical arcs, Béziers; mm, y up) and
+`writeSvg` (mm width/height, bbox viewBox, y negated) / `writeDxf` (R12;
+ellipses and splines flattened, fill layers as closed bulge polylines);
+`@extrudo/sketch/export` (pure; `sketch → core, io`) builds drawings of a
+sketch's curves or profiles, splines as Bézier pieces. The app's
+`sketch/ExportSketchDialog.tsx` opens from the Sketch tab's Export tile
+and a sketch's feature menu (`FeatureActions.exportSketch`). Next:
+**P1-14** (command search and shortcuts v1). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -152,7 +160,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -398,5 +406,14 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   the folder's `<li>`: take `.last()`. Radix `asChild` triggers nested
   through our wrappers need the wrapper to pass props and ref on
   (`Tooltip` does); anchor popovers on a plain element.
+- **Export golden files** (`packages/sketch/src/export/golden/`) are
+  rewritten with `UPDATE_GOLDEN=1 pnpm vitest run packages/sketch/src/export`;
+  review the diff. Inkscape isn't installed: check an SVG's size with
+  `rsvg-convert -d 25.4 -p 25.4 f.svg -o f.png` (1 px = 1 mm). ezdxf isn't
+  installed either; a throwaway venv in the scratchpad
+  (`python3 -m venv … && pip install ezdxf`) audits DXF files. E2E export
+  tests read the dialog's `data-export-summary` and the file from
+  `page.waitForEvent('download')`. The Sketch tab's Export tile is named
+  "Export" (its short label): find it inside the "Export" group.
 - OCCT's STEP writer prints a banner to stdout from inside WASM. Route
   Emscripten's `print` to a logger (or ignore it in tests).

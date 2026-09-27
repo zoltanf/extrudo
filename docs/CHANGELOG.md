@@ -2,6 +2,19 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **P1-13** SVG and DXF export: `@extrudo/io` gets a neutral
+  2D `Drawing` (layers; contours of lines, arcs, elliptical arcs and
+  Béziers) with `writeSvg` (width/height in mm, bounding-box viewBox, y
+  flipped, exact `A`/`Q`/`C` curves, layers as Inkscape layers) and
+  `writeDxf` (R12: LINE/ARC/CIRCLE, POLYLINE for ellipses and splines,
+  profiles as closed polylines with bulges, `$INSUNITS` mm).
+  `@extrudo/sketch/export` maps a sketch's curves (construction optional,
+  on a dashed layer) or its profiles (filled, even-odd, with holes) onto
+  it, splines as the Bézier pieces of their B-spline. An "Export sketch"
+  dialog (format, contents, selected profiles first, size summary) opens
+  from the Sketch tab's new Export group and from a sketch's timeline or
+  browser menu. Golden-file tests. ADR-0022.
+
 - 2026-09-27 · **P1-12** Timeline v1 and browser tree: right-click menus
   on timeline chips and browser rows (Edit Sketch, Rename, Show/Hide,
   Suppress, Delete; new design-system `ContextMenu`); rename in place

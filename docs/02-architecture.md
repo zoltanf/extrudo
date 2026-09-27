@@ -111,8 +111,9 @@ and scripting simple.
 ```
 
 Dependency direction (enforced by lint rule): `apps/* → packages/*`;
-`kernel → core, sketch`; `sketch → core`; `storage → core`; `core` depends on
-nothing internal.
+`kernel → core, sketch`; `sketch → core, io` (P1-13: sketch export builds
+`io` drawings); `storage → core`; `core` and `io` depend on nothing
+internal.
 
 ## 4. The document model
 
@@ -440,7 +441,8 @@ it.
 | Layer | What | Tool |
 |---|---|---|
 | core | expression parser, units, migrations, undo patches, schema | Vitest |
-| sketch | solver adapter: every constraint type, DOF counts, conflict reporting; profile detection; SVG export golden files | Vitest (planegcs in Node) |
+| sketch | solver adapter: every constraint type, DOF counts, conflict reporting; profile detection; SVG and DXF export golden files (`src/export/golden/`) | Vitest (planegcs in Node) |
+| io | format writers: number formatting, bounds, flattening tolerance, SVG arc flags and size, DXF entities and bulges | Vitest |
 | kernel | each feature: result valid (`BRepCheck_Analyzer`), volume, area, bbox and face count against golden values; topo-naming stability suite; STL is manifold (edge-manifold check); 3MF opens (schema) | Vitest (OCCT in Node) |
 | app | tool state machines, command registry | Vitest + Testing Library |
 | E2E | benchmark models B1–B10 built through the UI; screenshot diffs of key screens | Playwright |
