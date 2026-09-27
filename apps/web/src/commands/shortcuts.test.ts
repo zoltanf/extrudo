@@ -21,6 +21,9 @@ describe('eventKeys', () => {
     [key('F6'), false, 'F6'],
     [key('Escape'), false, 'Escape'],
     [key('k', { ctrlKey: true, altKey: true }), false, 'Mod+Alt+K'],
+    [key('@', { shiftKey: true, code: 'Digit2' }), false, 'Shift+2'],
+    [key('2', { shiftKey: true, code: 'Digit2' }), false, 'Shift+2'],
+    [key('7', { code: 'Numpad7' }), false, '7'],
   ])('%#: %s', (event, mac, expected) => {
     expect(eventKeys(event, mac)).toBe(expected);
   });

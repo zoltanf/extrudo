@@ -11,8 +11,9 @@ import {
   type SessionStore,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
+import { keysFor } from '../commands/keymap';
 import { useShortcuts } from '../commands/shortcuts';
 import { useTheme } from '../design-system';
 import { ParametersDialog } from '../parameters/ParametersDialog';
@@ -45,24 +46,18 @@ import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
 import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
+import { CommandSearch, type SearchOpen } from './CommandSearch';
+import { type AppCommand, buildCommands, commandShortcuts } from './commands';
 import { createFeatureActions } from './featureActions';
 import { Splitter, usePanel } from './panels';
 import { Timeline } from './Timeline';
 import { Toolbar } from './Toolbar';
 import type { ToolId } from './tools';
 
-/** Drawing-tool shortcuts in sketch mode (UI spec §5). */
-const TOOL_KEYS: Record<string, ToolId> = {
-  L: 'line',
-  R: 'rectangle',
-  C: 'circle',
-  A: 'arc',
-  D: 'dimension',
-  T: 'trim',
-  O: 'sketchOffset',
-  F: 'sketchFillet',
-  M: 'sketchMove',
-};
+/** The toolbox's pins until the user changes them (P1-14). */
+const DEFAULT_PINS = ['sketch', 'line', 'rectangle', 'circle', 'dimension', 'trim', 'parameters'];
+const PINS_KEY = 'toolbox.pins';
+const RECENT = 8;
 
 // three.js loads in its own chunk, so the shell paints before it arrives.
 const Viewport = lazy(() => import('../viewport/Viewport').then((m) => ({ default: m.Viewport })));
@@ -184,35 +179,106 @@ export function AppShell({
     else store.getState().dispatch(command);
   };
 
+  // Commands (P1-14): the shortcuts, the Ctrl+K palette and the S toolbox run the same list.
+  const construction = useHostState(host, (s) => s.construction);
+  const [search, setSearch] = useState<SearchOpen>();
+  const [recent, setRecent] = useState<string[]>([]);
+  const [pinned, setPinned] = useState<string[]>(() =>
+    platform.preferences.get<string[]>(PINS_KEY, DEFAULT_PINS),
+  );
+  const togglePin = (id: string) =>
+    setPinned((pins) => {
+      const next = pins.includes(id) ? pins.filter((p) => p !== id) : [...pins, id];
+      platform.preferences.set(PINS_KEY, next);
+      return next;
+    });
+  // The toolbox opens at the pointer: the last place it was seen over the page.
+  const pointer = useRef<{ x: number; y: number }>(undefined);
+  useEffect(() => {
+    const onMove = (event: PointerEvent) => {
+      pointer.current = { x: event.clientX, y: event.clientY };
+    };
+    window.addEventListener('pointermove', onMove);
+    return () => window.removeEventListener('pointermove', onMove);
+  }, []);
+  // `run` changes every render; commands reach the latest one through a ref.
+  const runRef = useRef<(tool: ToolId) => void>(() => {});
+  const commands = useMemo(
+    () =>
+      buildCommands({
+        mode,
+        runTool: (tool) => {
+          // A key or a search result starts a sketch tool; only the toolbar toggles it off.
+          if (isSketchTool(tool) && host) host.start(tool);
+          else runRef.current(tool);
+        },
+        notify,
+        undo: () => store.getState().undo(),
+        redo: () => store.getState().redo(),
+        ...(mode === 'sketch' && !drawing && { remove }),
+        ...(mode === 'sketch' &&
+          host && {
+            construction: { on: construction ?? false, toggle: () => host.toggleConstruction() },
+          }),
+        ...(mode === 'sketch' && { lookAtSketch: () => lookAtSketch(stores) }),
+        viewport,
+        browser: { collapsed: browser.collapsed, toggle: browser.toggle },
+        timeline: { collapsed: timeline.collapsed, toggle: timeline.toggle },
+        file,
+        theme: { choice, set: setChoice },
+      }),
+    [
+      mode,
+      host,
+      notify,
+      store,
+      drawing,
+      remove,
+      construction,
+      stores,
+      viewport,
+      browser.collapsed,
+      browser.toggle,
+      timeline.collapsed,
+      timeline.toggle,
+      file,
+      choice,
+      setChoice,
+    ],
+  );
+  const runCommand = (command: AppCommand) => {
+    setSearch(undefined);
+    setRecent((r) => [command.id, ...r.filter((id) => id !== command.id)].slice(0, RECENT));
+    command.run();
+  };
+
   const shortcuts = useMemo(
     () => [
-      { keys: 'Mod+Z', run: () => store.getState().undo() },
-      { keys: 'Mod+Y', run: () => store.getState().redo() },
-      { keys: 'Mod+Shift+Z', run: () => store.getState().redo() },
+      ...commandShortcuts(commands),
+      ...keysFor('commandPalette').map((keys) => ({
+        keys,
+        run: () => setSearch({ kind: 'palette' }),
+      })),
+      ...keysFor('toolbox').map((keys) => ({
+        keys,
+        run: () =>
+          setSearch({
+            kind: 'toolbox',
+            at: pointer.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 3 },
+          }),
+      })),
       ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
-      ...(mode === 'sketch' && host
-        ? [
-            ...Object.entries(TOOL_KEYS).map(([keys, tool]) => ({
-              keys,
-              run: () => host.start(tool),
-            })),
-            { keys: 'X', run: () => host.toggleConstruction() },
-          ]
-        : []),
       ...(drawing && host
         ? [
             { keys: 'Escape', run: () => host.escape() },
             { keys: 'Enter', run: () => host.enter() },
           ]
         : []),
-      // The selection: geometry (P1-09), constraint glyphs (P1-06), dimension labels (P1-07).
+      // Esc puts dragged geometry back, or else clears the selection (P1-09).
       ...(mode === 'sketch' && !drawing
         ? [
-            { keys: 'Delete', run: remove },
-            { keys: 'Backspace', run: remove },
             {
               keys: 'Escape',
-              // Esc puts dragged geometry back, or else clears the selection.
               run: () => {
                 if (!host?.cancelMove()) session.getState().clearSelection();
               },
@@ -220,7 +286,7 @@ export function AppShell({
           ]
         : []),
     ],
-    [store, session, stores, picking, mode, drawing, host, remove],
+    [commands, session, stores, picking, mode, drawing, host],
   );
   useShortcuts(shortcuts);
 
@@ -238,6 +304,7 @@ export function AppShell({
       else host.start(tool);
     }
   };
+  runRef.current = run;
   const pickPlane = (plane: OriginPlaneId) => createSketchOn(stores, originPlaneRef(plane));
   // The timeline's and the browser's feature commands (P1-12), and sketch export (P1-13).
   const featureActions = useMemo(
@@ -480,6 +547,15 @@ export function AppShell({
         apply={apply}
         open={parametersOpen}
         onOpenChange={setParametersOpen}
+      />
+      <CommandSearch
+        open={search}
+        commands={commands}
+        recent={recent}
+        pinned={pinned}
+        onTogglePin={togglePin}
+        onRun={runCommand}
+        onClose={() => setSearch(undefined)}
       />
       <ExportSketchDialog
         store={store}

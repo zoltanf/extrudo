@@ -1,7 +1,8 @@
 /**
- * The tool catalogue for the toolbar and the timeline chips. Tools that
- * aren't built yet are listed with the task that brings them, so the shell
- * shows the real layout (UI spec §2) without pretending they work.
+ * The tool catalogue for the toolbar, the timeline chips and command search.
+ * Tools that aren't built yet are listed with the task that brings them, so
+ * the shell shows the real layout (UI spec §2) without pretending they work.
+ * Their keys are in `commands/keymap.ts`.
  */
 import type { IconName, ToolCategory } from '../design-system';
 
@@ -14,7 +15,6 @@ export interface Tool {
   category: ToolCategory;
   /** One sentence for the tooltip. */
   hint: string;
-  shortcut?: string;
   /** Roadmap task that makes it work; absent when it works today. */
   comesWith?: string;
 }
@@ -40,7 +40,6 @@ export const TOOLS = {
     icon: 'line',
     category: 'sketch',
     hint: 'Lines from point to point. Type a length, Tab to the angle.',
-    shortcut: 'L',
   },
   rectangle: {
     id: 'rectangle',
@@ -49,7 +48,6 @@ export const TOOLS = {
     icon: 'rectangle',
     category: 'sketch',
     hint: 'From two opposite corners. Type the width, Tab to the height.',
-    shortcut: 'R',
   },
   rectangle3: {
     id: 'rectangle3',
@@ -72,7 +70,6 @@ export const TOOLS = {
     icon: 'circle',
     category: 'sketch',
     hint: 'From the center out to the rim. Type the diameter.',
-    shortcut: 'C',
   },
   circle2: {
     id: 'circle2',
@@ -95,7 +92,6 @@ export const TOOLS = {
     icon: 'arc',
     category: 'sketch',
     hint: 'Start, end, then a point it passes through.',
-    shortcut: 'A',
   },
   arcCenter: {
     id: 'arcCenter',
@@ -177,7 +173,6 @@ export const TOOLS = {
     icon: 'sketch-dimension',
     category: 'sketch',
     hint: 'Lengths, radii and angles that drive the sketch.',
-    shortcut: 'D',
   },
   sketchMirror: {
     id: 'sketchMirror',
@@ -207,7 +202,6 @@ export const TOOLS = {
     icon: 'fillet',
     category: 'sketch',
     hint: 'Round the corner between two lines. Type the radius.',
-    shortcut: 'F',
   },
   sketchChamfer: {
     id: 'sketchChamfer',
@@ -223,7 +217,6 @@ export const TOOLS = {
     icon: 'trim',
     category: 'sketch',
     hint: 'Cut curves back to where they cross.',
-    shortcut: 'T',
   },
   extend: {
     id: 'extend',
@@ -245,7 +238,6 @@ export const TOOLS = {
     icon: 'sketch-offset',
     category: 'sketch',
     hint: 'Copy a chain of curves at a distance. Type the distance.',
-    shortcut: 'O',
   },
   sketchMove: {
     id: 'sketchMove',
@@ -253,7 +245,6 @@ export const TOOLS = {
     icon: 'move',
     category: 'sketch',
     hint: 'Move curves from one point to another; constraints come along.',
-    shortcut: 'M',
   },
   sketchCopy: {
     id: 'sketchCopy',
@@ -367,7 +358,6 @@ export const TOOLS = {
     icon: 'extrude',
     category: 'create',
     hint: 'Pull a profile into a solid.',
-    shortcut: 'E',
     comesWith: 'P2-06',
   },
   revolve: {
@@ -392,7 +382,6 @@ export const TOOLS = {
     icon: 'hole',
     category: 'create',
     hint: 'Simple, counterbored or countersunk holes.',
-    shortcut: 'H',
     comesWith: 'P3-04',
   },
   pattern: {
@@ -410,7 +399,6 @@ export const TOOLS = {
     icon: 'fillet',
     category: 'modify',
     hint: 'Round the selected edges.',
-    shortcut: 'F',
     comesWith: 'P3-01',
   },
   chamfer: {
@@ -458,7 +446,6 @@ export const TOOLS = {
     icon: 'measure',
     category: 'inspect',
     hint: 'Distances, angles and areas.',
-    shortcut: 'I',
     comesWith: 'P2-13',
   },
   insertSvg: {
@@ -606,6 +593,11 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
     ],
   },
 ];
+
+/** The tabs shown in a mode: Sketch replaces Solid while a sketch is open. */
+export function visibleTabs(mode: 'model' | 'sketch') {
+  return TABS.filter((t) => (mode === 'sketch' ? t.id !== 'solid' : t.id !== 'sketch'));
+}
 
 /** The tool that made a feature, for its timeline chip. Unknown types show as a sketch. */
 export function toolForFeature(type: string): Tool {

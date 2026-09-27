@@ -24,6 +24,7 @@ import {
 import { Crosshair, Trash2 } from 'lucide-react';
 import { type ReactNode, useMemo } from 'react';
 import { useStore } from 'zustand';
+import { keysFor } from '../commands/keymap';
 import { Button, ConfirmDialog, ToolIcon, Tooltip } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
 import type { ViewportStore } from '../viewport/store';
@@ -496,7 +497,7 @@ function PaletteButton({
   );
 }
 
-/** New curves become construction geometry (FR-SK-04); `X` flips it too. */
+/** New curves become construction geometry (FR-SK-04); its key (`X`) flips it too. */
 function ConstructionToggle({ host }: { host: ToolHost }) {
   const construction = useStore(host.state, (s) => s.construction);
   return (
@@ -507,7 +508,7 @@ function ConstructionToggle({ host }: { host: ToolHost }) {
       }}
     >
       Construction
-      <kbd className="ml-auto font-mono text-xs text-muted">X</kbd>
+      <kbd className="ml-auto font-mono text-xs text-muted">{keysFor('construction')[0]}</kbd>
     </PaletteToggle>
   );
 }

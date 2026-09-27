@@ -122,10 +122,8 @@ export function Viewport({
 
   useShortcuts(
     useMemo(
-      () => [
-        { keys: 'F6', run: () => viewport.getState().fit() },
-        ...(tool ? [{ keys: 'Escape', run: () => viewport.getState().setTool(undefined) }] : []),
-      ],
+      // F6 (Fit) is a shell command (P1-14); Esc leaves a nav-bar tool.
+      () => (tool ? [{ keys: 'Escape', run: () => viewport.getState().setTool(undefined) }] : []),
       [viewport, tool],
     ),
   );

@@ -1,8 +1,9 @@
 import { ChevronDown, MousePointer2 } from 'lucide-react';
 import { type ButtonHTMLAttributes, forwardRef, useEffect, useState } from 'react';
+import { keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
 import { Menu, MenuItem, MenuLabel, ToolIcon, Tooltip } from '../design-system';
-import { TABS, type TabId, TOOLS, type Tool, type ToolId } from './tools';
+import { type TabId, TOOLS, type Tool, type ToolId, visibleTabs } from './tools';
 
 export interface ToolbarProps {
   /** `sketch` while a sketch is open: the Sketch tab replaces Solid (UI spec §2). */
@@ -19,7 +20,7 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
   const [tab, setTab] = useState<TabId>(home);
   // Entering or leaving a sketch brings its tab forward.
   useEffect(() => setTab(home), [home]);
-  const tabs = TABS.filter((t) => (mode === 'sketch' ? t.id !== 'solid' : t.id !== 'sketch'));
+  const tabs = visibleTabs(mode);
   const active = tabs.find((t) => t.id === tab) ?? tabs[0];
 
   return (
@@ -65,6 +66,7 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
                     <ToolButton
                       key={id}
                       tool={TOOLS[id]}
+                      shortcut={shortcutFor(id)}
                       pressed={activeTool === id}
                       onRun={() => onRun(id)}
                       compact
@@ -77,6 +79,7 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
                     <ToolButton
                       key={id}
                       tool={TOOLS[id]}
+                      shortcut={shortcutFor(id)}
                       pressed={activeTool === id}
                       onRun={() => onRun(id)}
                     />
@@ -102,7 +105,7 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
                     <MenuItem
                       key={id}
                       disabled={tool.comesWith !== undefined}
-                      shortcut={tool.shortcut}
+                      shortcut={shortcutFor(id)}
                       icon={<ToolIcon name={tool.icon} category={tool.category} size={16} />}
                       onSelect={() => onRun(id)}
                     >
@@ -158,13 +161,21 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
   );
 }
 
+/** A tool's first key, as it reads on this platform. */
+function shortcutFor(id: ToolId): string | undefined {
+  const keys = keysFor(id)[0];
+  return keys && shortcutLabel(keys);
+}
+
 function ToolButton({
   tool,
+  shortcut,
   pressed,
   onRun,
   compact = false,
 }: {
   tool: Tool;
+  shortcut: string | undefined;
   pressed: boolean;
   onRun(): void;
   /** An icon-only 26 px button, labelled for assistive tech. */
@@ -173,7 +184,7 @@ function ToolButton({
   const unavailable = tool.comesWith !== undefined;
   const tooltip = {
     label: tool.label,
-    shortcut: tool.shortcut && shortcutLabel(tool.shortcut),
+    shortcut,
     hint: unavailable ? `${tool.hint} Arrives with ${tool.comesWith}.` : tool.hint,
   };
   if (compact) {

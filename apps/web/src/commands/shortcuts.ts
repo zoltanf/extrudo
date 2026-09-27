@@ -1,7 +1,7 @@
 /**
- * The one keyboard-shortcut registry (architecture §8): every shortcut is
- * declared here, so desktop menus (Phase 6) and the settings page can list
- * and remap them. P1 adds the command palette on top.
+ * Keyboard shortcuts (architecture §8). Which keys run which command is
+ * declared once, in `keymap.ts`; this module matches key events against
+ * them. Context keys (Esc, Enter) are registered here directly.
  */
 import { useEffect } from 'react';
 
@@ -21,7 +21,9 @@ export function eventKeys(event: KeyboardEvent, mac = isMac()): string {
   if (mac ? event.metaKey : event.ctrlKey) parts.push('Mod');
   if (event.altKey) parts.push('Alt');
   if (event.shiftKey) parts.push('Shift');
-  const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
+  // Digits by their key position: Shift+2 is "@" on a US layout and "2" on a French one.
+  const digit = /^Digit\d$/.test(event.code ?? '') ? event.code.slice(5) : undefined;
+  const key = digit ?? (event.key.length === 1 ? event.key.toUpperCase() : event.key);
   parts.push(key);
   return parts.join('+');
 }
