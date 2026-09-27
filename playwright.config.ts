@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 4173;
+// E2E_PORT lets several checkouts (git worktrees) run their suites at once:
+// with a shared port, `reuseExistingServer` would test another checkout's build.
+const PORT = Number(process.env.E2E_PORT ?? 4173);
 
 // Set PLAYWRIGHT_CHROMIUM_PATH to use an installed Chromium instead of the
 // browser that `pnpm e2e:install` downloads (useful on distros Playwright
