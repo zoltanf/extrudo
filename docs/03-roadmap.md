@@ -193,9 +193,8 @@ Benchmark **B1** buildable.
   profiles) to SVG at 1 mm scale, with construction geometry optional; DXF R12
   export.
   *AC:* FR-SK-15, -16; golden-file tests; the SVG opens at the correct size in
-  Inkscape. *Done 2026-09-27, ADR-0022. Size checked with rsvg-convert (the
-  same mm rules as Inkscape, which isn't installed here), DXF with ezdxf's
-  audit. Not yet: export from model-mode selection or the File menu.*
+  Inkscape. *Done 2026-09-27, ADR-0022. Size checked in Inkscape 1.4.4 (100 × 60 mm
+  plate: 100 × 60 mm page), DXF with ezdxf's audit. Not yet: export from model-mode selection or the File menu.*
 - [ ] **P1-14 Command search and shortcuts v1.** Shortcut registry with
   Fusion defaults (`L R C A P D T O X E` …); `S` toolbox and Ctrl+K palette
   (fuzzy search over commands).

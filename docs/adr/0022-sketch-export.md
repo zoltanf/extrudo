@@ -87,9 +87,10 @@ can reuse it, and must not depend on the GPL packages.
 
 - Golden files live in `packages/sketch/src/export/golden/`
   (`UPDATE_GOLDEN=1 pnpm vitest run packages/sketch/src/export` rewrites
-  them; Biome ignores `**/golden`). Checked outside the tests: rsvg-convert
-  at 25.4 dpi renders them at exactly their size in mm (a stand-in for
-  Inkscape, which isn't installed here and uses the same unit rules), and
+  them; Biome ignores `**/golden`). Checked outside the tests: Inkscape 1.4.4
+  opens them at their size (`--query-width` of the filled 100 × 60 mm
+  plate is 377.953 px = 100 mm at 96 px/in; stroked files are 0.1 mm
+  larger, the hairline; a page export at 25.4 dpi is 100 × 60 px), and
   ezdxf reads and audits the DXF files with no errors.
 - The e2e tests read the dialog's `data-export-summary` and the
   downloaded file (`page.waitForEvent('download')`).

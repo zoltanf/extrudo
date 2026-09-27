@@ -408,9 +408,10 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   (`Tooltip` does); anchor popovers on a plain element.
 - **Export golden files** (`packages/sketch/src/export/golden/`) are
   rewritten with `UPDATE_GOLDEN=1 pnpm vitest run packages/sketch/src/export`;
-  review the diff. Inkscape isn't installed: check an SVG's size with
-  `rsvg-convert -d 25.4 -p 25.4 f.svg -o f.png` (1 px = 1 mm). ezdxf isn't
-  installed either; a throwaway venv in the scratchpad
+  review the diff. Inkscape is installed (2026-09-27): `inkscape
+  --query-width f.svg` gives px at 96/in (377.953 = 100 mm), and
+  `--export-type=png --export-dpi=25.4 --export-area-page` makes 1 px = 1 mm
+  (`rsvg-convert -d 25.4 -p 25.4` works too). ezdxf isn't installed; a throwaway venv in the scratchpad
   (`python3 -m venv … && pip install ezdxf`) audits DXF files. E2E export
   tests read the dialog's `data-export-summary` and the file from
   `page.waitForEvent('download')`. The Sketch tab's Export tile is named
