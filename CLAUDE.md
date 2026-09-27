@@ -10,7 +10,7 @@ is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
 **Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01 to P1-13 done. ADR-0001 chose
+P1-01 to P1-14 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -130,8 +130,16 @@ ellipses and splines flattened, fill layers as closed bulge polylines);
 `@extrudo/sketch/export` (pure; `sketch → core, io`) builds drawings of a
 sketch's curves or profiles, splines as Bézier pieces. The app's
 `sketch/ExportSketchDialog.tsx` opens from the Sketch tab's Export tile
-and a sketch's feature menu (`FeatureActions.exportSketch`). Next:
-**P1-14** (command search and shortcuts v1). See `docs/03-roadmap.md`.
+and a sketch's feature menu (`FeatureActions.exportSketch`). ADR-0023 (P1-14)
+added commands: **keys are declared only in `commands/keymap.ts`**
+(`DEFAULT_KEYMAP`, `keysFor`; tool IDs are command IDs; toolbar and menus
+read it); `shell/commands.tsx` `buildCommands(ctx)` lists the commands
+offered in the current mode (shown tabs' tools, edit, view, panels, file,
+theme) and drives the shortcuts, the Ctrl+K palette and the S toolbox
+(`shell/CommandSearch.tsx` on the design system's `FloatingDialog`;
+fuzzy scorer in `commands/search.ts`; pins in the `toolbox.pins`
+preference). A new command goes in `buildCommands`. Next: **P1-15**
+(benchmark B1 e2e). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -160,7 +168,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -426,3 +434,10 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   anything else that varies there too.
 - OCCT's STEP writer prints a banner to stdout from inside WASM. Route
   Emscripten's `print` to a logger (or ignore it in tests).
+- **Command search e2e** (`e2e/commands.spec.ts`): the palette is
+  `dialog` "Command palette", the toolbox `dialog` "Toolbox" with a
+  "Pinned" region; results are `option`s whose names end with their group
+  and key ("3-Point Rectangle Sketch › Create"), so match with `/^…/`.
+  Only the current mode's commands are listed: Extrude isn't found inside
+  a sketch, and a sketch tool's pin is hidden after a reload (the project
+  reopens outside the sketch).

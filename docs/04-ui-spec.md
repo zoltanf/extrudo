@@ -119,6 +119,15 @@ orbit), Trackpad (two-finger pan, pinch zoom, Alt+drag orbit).
   pinnable), **Ctrl+K** command palette, and the **right-click marking menu**
   (radial, 8 slots: Repeat last, Delete, Press Pull, Undo, Sketch, Extrude,
   Fillet, Move, plus an overflow list below).
+- **Search (P1-14):** the palette opens at the top of the window over a
+  dimmed page, the toolbox at the pointer with its pinned commands as
+  tiles above the search field's results. Both search the commands
+  offered in the current mode, fuzzy, by label first (word starts count
+  most), then by group and hint words. An empty search lists recent
+  commands, then all by group. Arrows move, Enter runs, Shift+Enter (or
+  a row's pin) pins or unpins, Esc closes. Tools that aren't built yet
+  are listed dimmed with the task that brings them; their keys say so
+  in a toast.
 - Pre-selection works: select edges, press F, and the Fillet dialog opens with
   those edges already chosen.
 - Tools repeat: after OK, pressing Enter again or right-click → "Repeat
@@ -188,6 +197,10 @@ Fusion-compatible where Fusion has them; remappable in settings.
 | Ctrl+Z / Ctrl+Y | Undo / Redo | Ctrl+K | Command palette |
 | Ctrl+S | Save version | Esc | Cancel / clear |
 | F6 | Fit | Shift+1…7 | Standard views (ours) |
+
+Shift+1…7 are Home, Top, Bottom, Front, Back, Left, Right, by key
+position (they work on any layout). The keys live in one table,
+`apps/web/src/commands/keymap.ts`; P, Q and J wait for their tools.
 
 ## 6. Home screen
 
