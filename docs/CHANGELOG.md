@@ -2,6 +2,13 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **Design review** (not a roadmap task): the workspace
+  switcher is removed; the toolbar's tabs are Solid · Insert · 3D Print
+  (Insert and Export left Solid; the model's Export is in 3D Print); the
+  browser slides closed in 200 ms and leaves a small "Show browser" tab
+  instead of a rail; the status bar shows the viewport's render rate and
+  frame time ("idle" while the view is still). ADR-0007 amended.
+
 - 2026-09-27 · **P1-13** SVG and DXF export: `@extrudo/io` gets a neutral
   2D `Drawing` (layers; contours of lines, arcs, elliptical arcs and
   Béziers) with `writeSvg` (width/height in mm, bounding-box viewBox, y

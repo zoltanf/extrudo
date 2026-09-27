@@ -34,8 +34,8 @@ brief, voice) is in **`05-brand.md`**. In short:
 ┌────────────────────────────────────────────────────────────────────────────┐
 │ ☰ File  │ ⟲ ⟳ │        Project name ▾  • Saved           │ ⚙  ?  ◐ theme  │  App bar
 ├────────────────────────────────────────────────────────────────────────────┤
-│ [DESIGN ▾] │ SOLID │ SKETCH* │ 3D PRINT │                                  │  Tabs
-│ CREATE ▾  │ MODIFY ▾ │ CONSTRUCT ▾ │ INSPECT ▾ │ INSERT ▾ │ SELECT ▾ │ ⬇ EXPORT │  Tool groups
+│ SOLID │ SKETCH* │ INSERT │ 3D PRINT │                                        │  Tabs
+│ CREATE ▾  │ MODIFY ▾ │ CONSTRUCT ▾ │ INSPECT ▾ │ SELECT                       │  Tool groups
 ├───────────────┬──────────────────────────────────────────────┬─────────────┤
 │ BROWSER       │                                              │   ┌─────┐   │
 │ ▾ ⚙ Document  │                                              │   │VIEW │   │  ViewCube
@@ -55,16 +55,22 @@ brief, voice) is in **`05-brand.md`**. In short:
 - **App bar:** file menu (New, Open, Save version, Export, Import, Project
   settings), undo/redo, project name (click to rename, dropdown for version
   history), save status, settings, help, theme toggle.
-- **Workspace switcher:** only "Design" at first. Keep the control for future
-  workspaces.
-- **Tabs:** `SOLID` (default), `SKETCH` (shown only while editing a sketch,
-  replacing SOLID's groups), `3D PRINT` (our addition: export, orientation,
-  overhang, slicer hand-off, mass/filament).
+- **No workspace switcher** (removed 2026-09-27): no second workspace is
+  planned, and a one-item dropdown did nothing. The 3D Print tab covers the
+  printing "mode".
+- **Tabs:** `SOLID` (default: create, modify, construct, inspect), `SKETCH`
+  (shown only while editing a sketch, replacing SOLID; it keeps its own
+  Export Sketch), `INSERT` (SVG, later images and imports), `3D PRINT` (our
+  addition: export, orientation, overhang, slicer hand-off,
+  mass/filament). Insert and export aren't modelling tools, so they aren't
+  in SOLID.
 - **Tool groups:** each group shows 3–6 most-used tools as buttons plus a
   dropdown with the full list. Users can pin tools to the toolbar.
 - **Browser (left):** collapsible tree with an eye toggle per item and
   folder. Right-click menus. Items highlight in the viewport on hover.
-  Rename with F2 or double-click.
+  Rename with F2. Hiding it slides it away in 200 ms (`--x-normal`, none
+  under reduced motion); a small tab with the browser icon at the view's
+  top-left edge brings it back. No empty rail is left behind.
 - **ViewCube (top-right):** faces, edges and corners are clickable. Home icon.
   Rotate-90° arrows appear when face-on. Drag to orbit.
 - **Nav bar (bottom center, floating pill):** orbit, pan, zoom, fit (F6),
@@ -75,7 +81,10 @@ brief, voice) is in **`05-brand.md`**. In short:
   and icon, and a rollback marker (a draggable ▼ handle). The chip tooltip
   shows the name, type and status message.
 - **Status bar:** selection summary (e.g. "2 edges"), measure readout (bbox of
-  the selection), kernel status (spinner while recomputing), units.
+  the selection), kernel status (spinner while recomputing), units, and the
+  viewport's render rate ("58 fps · 1.4 ms": frames drawn in the last
+  second and the mean time to draw one; "idle" while the view is still,
+  since it only redraws on change).
 
 ## 3. Core interactions
 

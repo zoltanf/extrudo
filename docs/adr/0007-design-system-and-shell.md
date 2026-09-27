@@ -99,3 +99,29 @@ that resize and collapse.
   wires the nav bar and ViewCube; **P2-11** adds marker dragging and chip
   menus; **P2-08** makes the browser tree interactive.
 - **The icon set** grows task by task to the ~60 icons in the brand brief.
+
+## Amendment, 2026-09-27 (design review)
+
+- **The workspace switcher is gone.** No second workspace is planned (no
+  roadmap task or requirement names one), and a dropdown with one item did
+  nothing. The toolbar starts with its tabs.
+- **Tabs: Solid · Insert · 3D Print** (Sketch replaces Solid while a sketch
+  is open). Insert and Export left Solid, which keeps Create, Modify,
+  Construct and Inspect: Insert has its own tab, and the model's Export is
+  in 3D Print (Output). A sketch's Export stays in the Sketch tab, since it
+  exports the sketch being edited (ADR-0022).
+- **The browser collapses to nothing, animated.** Instead of a 40 px rail,
+  the panel slides to no width over `--x-normal` (200 ms; 0 under reduced
+  motion; its content keeps its width and is clipped, so nothing reflows),
+  then turns invisible (visibility switches at the end of a hiding
+  transition) and inert. A small tab with the browser icon at the
+  viewport's top-left edge ("Show browser") brings it back. Dragging or
+  keyboard resizing doesn't animate (`usePanel().animate` is set only by
+  toggling).
+- **The status bar shows the render rate.** A probe inside the canvas wraps
+  `renderer.render`, counts the frames of the last second and times them
+  (`viewport/renderMeter.ts`); the viewport store's `renderStats` carries
+  them to the status bar twice a second. The canvas renders on demand, so
+  a still view reads "idle" with the last frame time. Screenshot tests hide
+  it (`e2e/screenshot.css`, `stylePath` in `playwright.config.ts`).
+

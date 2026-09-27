@@ -416,5 +416,13 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   tests read the dialog's `data-export-summary` and the file from
   `page.waitForEvent('download')`. The Sketch tab's Export tile is named
   "Export" (its short label): find it inside the "Export" group.
+- **The collapsed browser is invisible and inert, not removed** (design
+  review, ADR-0007 amendment): the complementary "Browser" still exists;
+  check it with `toBeHidden()`, and "Show browser" is a small tab over the
+  viewport. Toggling animates (200 ms); read widths with `expect.poll`.
+- **The status bar's render rate** (`[data-render-stats]`, "58 fps · 1.4
+  ms" or "idle · …") varies between runs: `e2e/screenshot.css` hides it in
+  every `toHaveScreenshot` (`stylePath` in `playwright.config.ts`). Put
+  anything else that varies there too.
 - OCCT's STEP writer prints a banner to stdout from inside WASM. Route
   Emscripten's `print` to a logger (or ignore it in tests).
