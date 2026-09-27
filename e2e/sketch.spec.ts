@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openProject, saveStatus } from './helpers';
+import { kernelReady, openProject, saveStatus } from './helpers';
 
 // P1-01: the sketch feature and sketch mode. Create Sketch picks an origin
 // plane (in the view or in the prompt), the camera looks at it, the toolbar
@@ -157,6 +157,7 @@ test('the Wall bracket’s sketches open by double-click; sketch mode looks righ
     'data-constraint-state',
     'pending',
   );
+  await kernelReady(page);
   await page.mouse.move(0, 0);
   await page.evaluate('document.fonts.ready.then(() => true)');
   await expect(page).toHaveScreenshot('sketch-mode-dark.png', {

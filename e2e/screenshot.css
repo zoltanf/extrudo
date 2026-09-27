@@ -4,3 +4,8 @@
 [data-render-stats] {
   visibility: hidden;
 }
+
+/* How long the last recompute took (status bar). */
+[data-kernel-state] {
+  visibility: hidden;
+}

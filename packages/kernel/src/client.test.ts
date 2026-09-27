@@ -50,6 +50,9 @@ describe('KernelClient', () => {
       debugTestPart: () => new Promise(() => {}),
       debugCrash: async () => {},
       stats: async () => ({ liveShapes: 0, heapTop: 0, heapBytes: 0 }),
+      recompute: async () => ({ status: 'cancelled' }),
+      preview: async () => ({ status: 'cancelled' }),
+      endPreview: async () => {},
     };
     const client = new KernelClient(() => {
       spawned++;
@@ -72,6 +75,9 @@ describe('KernelClient', () => {
       },
       debugCrash: async () => {},
       stats: async () => ({ liveShapes: 0, heapTop: 0, heapBytes: 0 }),
+      recompute: async () => ({ status: 'cancelled' }),
+      preview: async () => ({ status: 'cancelled' }),
+      endPreview: async () => {},
     };
     const client = new KernelClient(
       () => ({ api: crashing, terminate: () => {}, onFatal: () => {} }),

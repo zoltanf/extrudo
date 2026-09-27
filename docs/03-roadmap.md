@@ -219,11 +219,14 @@ drive it with parameters, save it, and export SVG.
 Goal: turn sketches into bodies, edit history, and export printable STL, 3MF
 and STEP. Benchmarks **B2** and **B3** buildable.
 
-- [ ] **P2-01 Recompute engine.** Timeline walk in the worker; per-feature
+- [x] **P2-01 Recompute engine.** Timeline walk in the worker; per-feature
   status; input hashing and shape cache; cancellation; debounced previews;
   modelStore updates; error display.
   *Deps:* P0-09. *AC:* recompute of a 30-feature fixture edited at feature 25
   re-evaluates only 25–30 (asserted via counters).
+  *Done 2026-09-27* (ADR-0024): content-keyed cache with reference-counted
+  shapes, body access per feature, cancellation at yields, previews,
+  `Recomputer` on the UI thread, status glyphs on timeline chips.
 - [ ] **P2-02 Sketch → kernel.** Sketch curves → OCCT edges/wires; OCCT-based
   authoritative profile faces with persistent region IDs; sketch plane
   placement.

@@ -575,6 +575,7 @@ export function AppShell({
         activeSketch={activeSketch?.name}
         actions={featureActions}
         viewport={viewport}
+        model={model}
       />
       <OverConstrainedDialog host={host} />
       <ParametersDialog

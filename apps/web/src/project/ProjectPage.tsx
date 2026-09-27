@@ -4,8 +4,9 @@ import {
   createSessionStore,
   type DocumentStore,
   type ExtrudoDocument,
+  type ModelStore,
 } from '@extrudo/core';
-import type { BodyMesh } from '@extrudo/kernel';
+import { type BodyMesh, Recomputer, spawnBrowserKernel } from '@extrudo/kernel';
 import type { ProjectId } from '@extrudo/storage';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, LogoMark, Toasts, useToasts } from '../design-system';
@@ -86,8 +87,8 @@ function ProjectEditor({
 }) {
   const store = useMemo(() => createDocumentStore(doc), [doc]);
   const session = useMemo(() => createSessionStore(), []);
-  // Filled by the recompute pipeline (Phase 2); empty until then.
   const model = useMemo(() => createModelStore<BodyMesh>(), []);
+  useRecompute(store, model);
   const viewport = useMemo(
     () => createViewportStore({ preferences: platform.preferences }),
     [platform],
@@ -178,6 +179,22 @@ function useAutosave(store: DocumentStore, viewport: ViewportStore, platform: Pl
     };
   }, [store, viewport, platform]);
   return autosave;
+}
+
+/**
+ * One kernel per open project, recomputing the document as it changes and
+ * filling the model store (P2-01, ADR-0024). Created in an effect, like the
+ * autosaver, so strict mode's second mount gets a fresh one.
+ */
+function useRecompute(store: DocumentStore, model: ModelStore<BodyMesh>) {
+  useEffect(() => {
+    const recomputer = new Recomputer({ spawn: spawnBrowserKernel, document: store, model });
+    recomputer.start();
+    return () => {
+      recomputer.dispose();
+      model.getState().reset();
+    };
+  }, [store, model]);
 }
 
 /** A project without a thumbnail (a new one) gets one once the viewport has drawn. */

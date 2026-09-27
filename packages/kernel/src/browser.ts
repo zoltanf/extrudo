@@ -9,8 +9,20 @@ export function spawnBrowserKernel(): KernelConnection {
     name: 'extrudo-kernel',
   });
   const api = Comlink.wrap<KernelApi>(worker);
+  // Callbacks cross the worker boundary as proxies.
+  // (A Comlink proxy has no own keys to spread, so every method is listed.)
+  const proxied: KernelApi = {
+    init: () => api.init(),
+    recompute: (request, onFeature) =>
+      api.recompute(request, onFeature && Comlink.proxy(onFeature)),
+    preview: (request, onFeature) => api.preview(request, onFeature && Comlink.proxy(onFeature)),
+    endPreview: () => api.endPreview(),
+    debugTestPart: () => api.debugTestPart(),
+    debugCrash: () => api.debugCrash(),
+    stats: () => api.stats(),
+  };
   return {
-    api: api as unknown as KernelApi,
+    api: proxied,
     terminate: () => {
       api[Comlink.releaseProxy]();
       worker.terminate();

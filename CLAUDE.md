@@ -11,7 +11,8 @@ every push and pull request.
 
 **Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
-`e2e/benchmark-b1.spec.ts`). ADR-0001 chose
+`e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
+engine) is done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -141,8 +142,25 @@ offered in the current mode (shown tabs' tools, edit, view, panels, file,
 theme) and drives the shortcuts, the Ctrl+K palette and the S toolbox
 (`shell/CommandSearch.tsx` on the design system's `FloatingDialog`;
 fuzzy scorer in `commands/search.ts`; pins in the `toolbox.pins`
-preference). A new command goes in `buildCommands`. Next: **P2-01**
-(recompute engine), the start of Phase 2. See `docs/03-roadmap.md`.
+preference). A new command goes in `buildCommands`. ADR-0024 (P2-01) added
+the recompute engine (`packages/kernel/src/recompute/engine.ts`): a
+feature is a `KernelFeatureDefinition` (core's definition + `evaluate` +
+`bodyAccess`) registered in `kernelFeatures()` (`src/features/`; the
+sketch evaluator only checks its plane until P2-02); its result is cached
+under a hash of type, ID, inputs, expression values, referenced features'
+keys (`<feature>/…` ref IDs) and, unless `bodyAccess` is `none`, the body
+set before it. Shapes in the cache are reference-counted; **an evaluator
+must release every shape it doesn't return** (`kernel.scope()`,
+`ShapeScope.keep`); the engine checks the live shape count per evaluation
+(`strictLeaks` in tests). A newer request cancels a running one at the
+yield before each evaluation; `preview` walks a trial timeline. On the UI
+thread `Recomputer` (`src/recomputer.ts`, started by `useRecompute` in
+`project/ProjectPage.tsx`) owns the kernel client, fills the model store,
+and marks a feature that crashed the kernel as an error until it changes.
+Timeline chips show ✕/⚠ with the message in the tooltip; the status bar
+counts errors and shows the kernel state. Engine tests use the test
+features in `recompute/testing.ts` (real OCCT, call counters). Next:
+**P2-02** (sketch → kernel). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -171,7 +189,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -457,6 +475,14 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   copy (`platform/rescue.ts`, ADR-0009 amendment), which the next start
   saves; tests that check the stored project itself (the home screen,
   exports) may still wait for the save status "Saved" first.
+- **Every open project starts a kernel worker** (P2-01), so every e2e test
+  compiles the OCCT WASM. Wait for the first recompute with
+  `kernelReady(page)` (`e2e/helpers.ts`: the status bar's "Kernel" output,
+  `data-model-status="ready"`) before screenshots or status checks. The
+  Wall bracket template's Extrude1/2, Fillet1 and Plane1 have no evaluators
+  yet and show as errors ("Extrude1 (error)" in the chip's name; "(rolled
+  back)" features have no status). Under the full parallel run B1 takes
+  about 27 s (60 s timeout).
 - **Pointer modes** (ADR-0008 amendment): the nav bar's "Select" button
   is `aria-pressed` when no nav tool or command runs. The viewport's
   pointer surface (`div.touch-none` in the Viewport region) carries the

@@ -2,6 +2,17 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **P2-01** Recompute engine (ADR-0024): the kernel worker
+  walks the timeline and caches each feature's result under a hash of its
+  inputs, expression values, references and the bodies before it, so an
+  edit at feature 25 of 30 re-evaluates 25–30 and undo re-evaluates
+  nothing. Shapes are reference-counted in the cache; a newer request
+  cancels a running one between features; dialog previews; the
+  `Recomputer` keeps the model store current and survives kernel crashes by
+  skipping the feature that crashed. Timeline chips show ✕/⚠ with the
+  reason; the status bar counts errors and shows the kernel state. A
+  500-recompute memory test.
+
 - 2026-09-27 · **Edits made just before a reload are kept** (found by
   P1-15): the page writes a synchronous rescue copy of an unsaved document
   when it is hidden or goes away, and the next start saves it

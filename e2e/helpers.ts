@@ -21,6 +21,15 @@ export async function openProject(page: Page, from: 'blank' | 'wall-bracket' = '
 
 export const saveStatus = (page: Page) => page.getByRole('status', { name: 'Save status' });
 
+/** Waits until the kernel has computed the document (P2-01): chips show their status. */
+export async function kernelReady(page: Page) {
+  await expect(page.getByRole('status', { name: 'Kernel' })).toHaveAttribute(
+    'data-model-status',
+    'ready',
+    { timeout: 30_000 },
+  );
+}
+
 /** Opens a sketch on XY and waits for the Top view. Returns a sketch-mm → page-px mapping. */
 export async function sketchOnXY(page: Page) {
   await openProject(page);

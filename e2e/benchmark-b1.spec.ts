@@ -77,6 +77,9 @@ function b1Paths(width: number, depth: number, spacing: number, hole: number) {
 }
 
 test('B1: a parametric plate with four corner holes', async ({ page }) => {
+  // The longest flow: about 15 s alone, and near 30 s while the other specs
+  // run in parallel (each opens a project, which starts a kernel worker).
+  test.setTimeout(60_000);
   await openProject(page);
 
   // The user parameters first; `margin` keeps the holes centred.

@@ -178,6 +178,13 @@ export class ShapeScope implements Disposable {
     return value;
   }
 
+  /** Stops tracking a shape, so it outlives the scope: the result a function returns. */
+  keep(shape: ShapeHandle): ShapeHandle {
+    const index = this.#shapes.lastIndexOf(shape);
+    if (index >= 0) this.#shapes.splice(index, 1);
+    return shape;
+  }
+
   [Symbol.dispose](): void {
     this.#kernel.release(...this.#shapes.reverse());
     this.#shapes.length = 0;

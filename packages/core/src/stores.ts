@@ -170,9 +170,18 @@ export interface FeatureStatus {
   message?: string;
 }
 
+/** How the last recompute went, for the status bar. */
+export interface ModelStats {
+  ms: number;
+  /** Features evaluated; the others came from the cache. */
+  evaluated: number;
+  reused: number;
+}
+
 /**
  * `TBody` is the kernel's body mesh type; core doesn't depend on the kernel,
- * so the app picks it (`createModelStore<BodyMesh>()`).
+ * so the app picks it (`createModelStore<BodyMesh>()`). The features and
+ * bodies stay while a new recompute runs, until its result replaces them.
  */
 export interface ModelState<TBody> {
   status: 'idle' | 'computing' | 'ready' | 'failed';
@@ -180,10 +189,12 @@ export interface ModelState<TBody> {
   error: string | undefined;
   features: Record<FeatureId, FeatureStatus>;
   bodies: Record<BodyId, TBody>;
+  stats: ModelStats | undefined;
   computing(): void;
   computed(result: {
     features: Record<FeatureId, FeatureStatus>;
     bodies: Record<BodyId, TBody>;
+    stats?: ModelStats;
   }): void;
   failed(error: string): void;
   reset(): void;
@@ -197,14 +208,15 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     error: undefined,
     features: {} as Record<FeatureId, FeatureStatus>,
     bodies: {} as Record<BodyId, TBody>,
+    stats: undefined,
   });
   return createStore<ModelState<TBody>>()((set) => ({
     ...empty(),
     computing() {
       set({ status: 'computing', error: undefined });
     },
-    computed({ features, bodies }) {
-      set({ status: 'ready', error: undefined, features, bodies });
+    computed({ features, bodies, stats }) {
+      set({ status: 'ready', error: undefined, features, bodies, stats });
     },
     failed(error) {
       set({ status: 'failed', error });

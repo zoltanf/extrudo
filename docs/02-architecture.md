@@ -281,12 +281,21 @@ commands (`debugTestPart` renders the P0-02 test part at `#/debug/kernel`,
 `debugCrash` aborts the WASM). The worker side is `KernelService`; the UI side
 is `KernelClient`, which restarts the worker after a crash.
 
-- **Incremental recompute:** evaluate from the first dirty feature. Each
-  feature's output is cached under `hash(feature inputs + resolved parameter
-  values + upstream output hash)`. Undo and parameter scrubbing often hit the
-  cache.
+- **Incremental recompute:** each feature's output is cached under
+  `hash(feature inputs + resolved parameter values + upstream output hash)`.
+  Undo and parameter scrubbing often hit the cache.
 - **Cancellation:** a new recompute request cancels the running one between
   features. Previews are debounced (about 60 ms).
+- As built in P2-01 (ADR-0024, `packages/kernel/src/recompute/`): the
+  engine walks the whole active timeline and each feature is found by its
+  key, so there is no dirty index; "upstream" is the features it refers to
+  (`<feature>/…` reference IDs) plus the body set before it, unless its
+  evaluator declares `bodyAccess: 'none'`. Shapes in the cache are
+  reference-counted; the engine checks each evaluation for leaked shapes.
+  `recompute(request, onFeature)` returns per-feature status and the bodies
+  at the marker, meshing only those whose `version` the caller doesn't
+  `have`. The UI side is `Recomputer` (one `KernelClient` per open
+  project), which fills the model store.
 - **Memory:** OCCT objects in Emscripten are not garbage-collected. All
   evaluator code uses a `using`/`scope.track()` disposal pattern, and the cache
   deletes shapes on eviction. This is a hard coding rule.
@@ -492,3 +501,7 @@ bundle-size budget. Every agent task must leave CI green.
   planegcs build in CI per input hash, the mapping of every type, fixed
   geometry as constants, incremental solving per component, drag, the
   test-solve, and the gear-outline measurement.
+- **ADR-0024** Recompute engine. **Written 2026-09-27** (P2-01):
+  content-keyed feature cache, body access per evaluator, reference-counted
+  shapes, cancellation at yields, previews, the `Recomputer`, status
+  display.

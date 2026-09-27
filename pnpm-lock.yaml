@@ -278,6 +278,9 @@ importers:
       '@libcascade/toolchain':
         specifier: 3.0.2
         version: 3.0.2
+      zod:
+        specifier: ^4.6.5
+        version: 4.6.5
 
   packages/sketch:
     dependencies:

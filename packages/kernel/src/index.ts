@@ -37,6 +37,19 @@ export {
   type MeshOptions,
   meshBuffers,
 } from './mesh';
+export type {
+  BodyAccess,
+  BodyResult,
+  EvalContext,
+  FeatureOutput,
+  KernelFeatureDefinition,
+  PreviewRequest,
+  ProgressListener,
+  RecomputeRequest,
+  RecomputeResult,
+  RecomputeStats,
+} from './recompute/types';
+export { type Preview, Recomputer, type RecomputerOptions } from './recomputer';
 export {
   isKernelCrash,
   type KernelApi,

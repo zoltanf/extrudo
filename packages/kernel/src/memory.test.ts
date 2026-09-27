@@ -12,6 +12,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { Kernel } from './kernel';
 import { loadOcct } from './occt/load';
 import type { OcctModule } from './occt/types';
+import { RecomputeEngine } from './recompute/engine';
+import { testDocument, testFeature, testFeatures } from './recompute/testing';
 import { makeTestPart } from './test-part';
 
 const WARM_UP = 50;
@@ -39,6 +41,39 @@ describe('memory', () => {
     expect(after.liveShapes).toBe(0);
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
     expect(after.heapBytes).toBe(before.heapBytes);
+  });
+
+  it('recomputing a fixture 500 times with changing values does not grow the heap', {
+    timeout: 180_000,
+  }, async () => {
+    // Every run misses the cache (a new hole size), evaluates, meshes and
+    // evicts: the engine's reference counting must give every shape back.
+    const engine = new RecomputeEngine(kernel, testFeatures().registry, {
+      strictLeaks: true,
+      maxEntries: 8,
+    });
+    const doc = (radius: number) =>
+      testDocument(
+        [
+          testFeature('box', 'test-box', { size: '20 mm' }),
+          testFeature('grow', 'test-grow', { height: '5 mm' }),
+          testFeature('hole', 'test-hole', { radius: 'r' }),
+        ],
+        { r: `${radius} mm` },
+      );
+    const run = async (i: number) => {
+      const result = await engine.recompute({ doc: doc(1 + (i % 400) / 100) });
+      if (result.status !== 'done' || result.bodies.length !== 1) throw new Error('no body');
+    };
+    for (let i = 0; i < WARM_UP; i++) await run(i);
+    const before = kernel.stats();
+    for (let i = WARM_UP; i < WARM_UP + 500; i++) await run(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(engine.size.shapes);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+    engine.clear();
+    expect(kernel.stats().liveShapes).toBe(0);
   });
 
   it('the leak control trips the same limit', () => {

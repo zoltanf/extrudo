@@ -1,4 +1,13 @@
-import { type DocumentStore, type Feature, moveTimelineMarker } from '@extrudo/core';
+import {
+  createModelStore,
+  type DocumentStore,
+  type Feature,
+  type FeatureStatus,
+  type ModelState,
+  type ModelStore,
+  moveTimelineMarker,
+} from '@extrudo/core';
+import type { BodyMesh } from '@extrudo/kernel';
 import {
   ChevronDown,
   ChevronFirst,
@@ -6,6 +15,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  TriangleAlert,
+  X,
 } from 'lucide-react';
 import { Fragment, useState } from 'react';
 import { useStore } from 'zustand';
@@ -26,14 +37,17 @@ export interface TimelineProps {
   actions: FeatureActions;
   /** The viewport, whose frame rate and frame time the status bar shows. */
   viewport?: ViewportStore;
+  /** The kernel's results: a status per feature (chips) and the recompute state (status bar). */
+  model?: ModelStore<BodyMesh>;
 }
 
 /**
  * Timeline and status bar (UI spec §2). Chips follow the document's features;
  * the playback buttons move the rollback marker (FR-TL-02) as undoable
  * commands. A chip opens its sketch on double-click, highlights its geometry
- * on hover and has a right-click menu (P1-12). Dragging the marker comes with
- * P2-11.
+ * on hover and has a right-click menu (P1-12). An active feature the kernel
+ * couldn't compute shows ✕ (or ⚠ for a warning) and says why in its tooltip
+ * (P2-01). Dragging the marker comes with P2-11.
  */
 export function Timeline({
   store,
@@ -42,8 +56,13 @@ export function Timeline({
   activeSketch,
   actions,
   viewport,
+  model,
 }: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
+  const statuses = useStore(model ?? NO_MODEL, (s) => s.features);
+  const errors = doc.features.filter(
+    (f, i) => i < doc.timelineMarker && !f.suppressed && statuses[f.id]?.status === 'error',
+  ).length;
   const marker = doc.timelineMarker;
   const count = doc.features.length;
   const locked = activeSketch !== undefined;
@@ -97,6 +116,7 @@ export function Timeline({
                 {index === marker && <Marker />}
                 <Chip
                   feature={feature}
+                  status={index < marker && !feature.suppressed ? statuses[feature.id] : undefined}
                   rolledBack={index >= marker}
                   editable={isEditableSketch(feature, index, marker)}
                   actions={actions}
@@ -110,8 +130,10 @@ export function Timeline({
       <span className="flex-1" />
       <output className="font-mono text-[11px] whitespace-nowrap text-muted" aria-label="Status">
         {activeSketch ? `Editing ${activeSketch} · ` : ''}
-        {count} {count === 1 ? 'feature' : 'features'} · {doc.settings.units} · kernel idle
+        {count} {count === 1 ? 'feature' : 'features'} · {doc.settings.units}
+        {errors > 0 && ` · ${errors} ${errors === 1 ? 'error' : 'errors'}`}
       </output>
+      {model && <KernelState model={model} />}
       {viewport && <RenderRate viewport={viewport} />}
       <IconButton label={collapsed ? 'Show timeline' : 'Hide timeline'} onClick={onToggle}>
         {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -122,18 +144,30 @@ export function Timeline({
 
 function Chip({
   feature,
+  status,
   rolledBack,
   editable,
   actions,
 }: {
   feature: Feature;
+  /** The kernel's verdict; only for active features. */
+  status: FeatureStatus | undefined;
   rolledBack: boolean;
   editable: boolean;
   actions: FeatureActions;
 }) {
   const [renaming, setRenaming] = useState(false);
   const tool = toolForFeature(feature.type);
-  const states = [rolledBack && 'rolled back', feature.suppressed && 'suppressed'].filter(Boolean);
+  const problem =
+    status && status.status !== 'ok'
+      ? { status: status.status, message: status.message }
+      : undefined;
+  const states = [
+    rolledBack && 'rolled back',
+    feature.suppressed && 'suppressed',
+    problem?.status,
+  ].filter(Boolean);
+  const hint = [tool.label, ...states].join(' · ');
   const chip = (
     <button
       type="button"
@@ -147,16 +181,19 @@ function Chip({
           setRenaming(true);
         }
       }}
-      className={`grid size-[30px] place-items-center rounded-control border ${feature.suppressed ? 'border-dashed' : ''}`}
+      className={`relative grid size-[30px] place-items-center rounded-control border ${feature.suppressed ? 'border-dashed' : ''}`}
       style={{
         background: feature.suppressed
           ? 'transparent'
           : `color-mix(in srgb, var(--x-cat-${tool.category}) 16%, var(--x-bg))`,
-        borderColor: `color-mix(in srgb, var(--x-cat-${tool.category}) 38%, transparent)`,
+        borderColor: problem
+          ? `var(--x-${problem.status})`
+          : `color-mix(in srgb, var(--x-cat-${tool.category}) 38%, transparent)`,
         opacity: rolledBack ? 0.38 : feature.suppressed ? 0.6 : 1,
       }}
     >
       <ToolIcon name={tool.icon} category={tool.category} size={18} />
+      {problem && <StatusGlyph status={problem.status} />}
     </button>
   );
   return (
@@ -173,7 +210,11 @@ function Chip({
             <ContextMenu
               label={`${feature.name} menu`}
               trigger={
-                <Tooltip label={feature.name} side="top" hint={[tool.label, ...states].join(' · ')}>
+                <Tooltip
+                  label={feature.name}
+                  side="top"
+                  hint={problem?.message ? `${hint}: ${problem.message}` : hint}
+                >
                   {chip}
                 </Tooltip>
               }
@@ -198,6 +239,54 @@ function Chip({
       </Popover>
     </li>
   );
+}
+
+/** ✕ or ⚠ on a chip's corner: the status colour always comes with a glyph (UI spec §1). */
+function StatusGlyph({ status }: { status: 'warning' | 'error' }) {
+  const Icon = status === 'error' ? X : TriangleAlert;
+  return (
+    <span
+      aria-hidden="true"
+      className="absolute -top-1 -right-1 grid size-3.5 place-items-center rounded-full text-bg"
+      style={{ background: `var(--x-${status})` }}
+    >
+      <Icon size={10} strokeWidth={3} />
+    </span>
+  );
+}
+
+const NO_MODEL = createModelStore<BodyMesh>();
+
+/** What the kernel is doing: starting, computing, or how long the last recompute took. */
+function KernelState({ model }: { model: ModelStore<BodyMesh> }) {
+  const status = useStore(model, (s) => s.status);
+  const stats = useStore(model, (s) => s.stats);
+  const error = useStore(model, (s) => s.error);
+  return (
+    <Tooltip label="Kernel" hint={kernelHint(status, error)}>
+      <output
+        aria-label="Kernel"
+        data-model-status={status}
+        data-kernel-state
+        className={`-ml-1 font-mono text-[11px] whitespace-nowrap tabular-nums ${status === 'failed' ? 'text-error' : 'text-muted'}`}
+      >
+        · {kernelText(status, stats)}
+      </output>
+    </Tooltip>
+  );
+}
+
+function kernelText(status: ModelState<unknown>['status'], stats: ModelState<unknown>['stats']) {
+  if (status === 'idle') return 'kernel starting';
+  if (status === 'computing') return 'computing…';
+  if (status === 'failed') return 'kernel stopped';
+  if (!stats) return 'computed';
+  return `computed in ${stats.ms < 10 ? stats.ms.toFixed(1) : Math.round(stats.ms)} ms`;
+}
+
+function kernelHint(status: ModelState<unknown>['status'], error: string | undefined) {
+  if (status === 'failed') return error ?? 'The geometry kernel stopped.';
+  return 'The geometry kernel recomputes the timeline after each change, reusing what the change left alone.';
 }
 
 function Marker() {

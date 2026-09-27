@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openProject, saveStatus } from './helpers';
+import { kernelReady, openProject, saveStatus } from './helpers';
 
 // P0-04: the app shell. Screenshots in both themes, and panels that resize,
 // collapse and remember their state.
@@ -26,6 +26,7 @@ async function open(page: Page, theme?: 'dark' | 'light') {
   }
   await openProject(page, 'wall-bracket');
   await expect(saveStatus(page)).toHaveText('Saved');
+  await kernelReady(page);
   // A string, since e2e/ typechecks without the DOM library.
   await page.evaluate('document.fonts.ready.then(() => true)');
 }

@@ -49,6 +49,7 @@ export {
   type DocumentStore,
   type FeatureStatus,
   type ModelState,
+  type ModelStats,
   type ModelStore,
   type SelectionItem,
   type SelectMode,
