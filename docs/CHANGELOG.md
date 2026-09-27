@@ -2,6 +2,11 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **Onshape / SolidWorks mouse controls by default** (owner's
+  choice): first in the Mouse controls menu and the default preset
+  (right-drag orbits, middle-drag pans); Fusion's mapping is second.
+  FR-VP-01, UI spec §3.1 and ADR-0008 updated.
+
 - 2026-09-27 · **No browser menu on right-click** (user report): the
   browser's own "Copy / Select all" menu no longer opens over the view,
   the nav bar, the ViewCube or the panels (it got in the way of Onshape's

@@ -98,18 +98,21 @@ brief, voice) is in **`05-brand.md`**. In short:
 
 ## 3. Core interactions
 
-### 3.1 Mouse and keyboard navigation (Fusion preset)
+### 3.1 Mouse and keyboard navigation (Onshape / SolidWorks preset, the default)
 
 | Action | Input |
 |---|---|
-| Orbit | Shift + middle-drag (also ViewCube drag) |
-| Pan | Middle-drag |
+| Orbit | Right-drag (also ViewCube drag) |
+| Pan | Middle-drag, or Ctrl + right-drag |
 | Zoom | Wheel (zooms toward the cursor) |
 | Fit all | F6 or double-click middle |
 | Look at selection | Nav bar "Look at" |
 
-Other presets: Blender (MMB orbit, Shift+MMB pan), Onshape/SolidWorks (RMB
-orbit), Trackpad (two-finger pan, pinch zoom, Alt+drag orbit).
+Other presets, in the Mouse controls menu after this one: Fusion (MMB pan,
+Shift+MMB orbit), Blender (MMB orbit, Shift+MMB pan), Trackpad (two-finger
+pan, pinch zoom, Alt+drag orbit). Since the right button orbits, the
+right-click marking menu (§3.3) must open only on a right-click without
+movement, as Onshape's context menu does.
 
 ### 3.2 Selection
 

@@ -81,10 +81,21 @@ test('ViewCube edges, turn arrows and roll arrows', async ({ page }) => {
   await expect(viewport).toHaveAttribute('data-camera-up', '0,0,1');
 });
 
+test('Onshape / SolidWorks is the first preset and the default', async ({ page }) => {
+  await open(page);
+  await page.getByRole('button', { name: 'Mouse controls' }).click();
+  const presets = page.getByRole('menuitemradio');
+  await expect(presets.first()).toHaveAccessibleName(/Onshape \/ SolidWorks/);
+  await expect(presets.first()).toHaveAttribute('aria-checked', 'true');
+});
+
 test('Fusion mouse: middle-drag pans, Shift+middle-drag orbits, the wheel zooms, F6 fits', async ({
   page,
 }) => {
   const viewport = await open(page);
+  await page.getByRole('button', { name: 'Mouse controls' }).click();
+  await page.getByRole('menuitemradio', { name: 'Fusion' }).click();
+  await page.keyboard.press('Escape');
   const { x, y } = await centre(viewport);
   const direction = await attr(viewport, 'data-camera-direction');
   const fitted = await attr(viewport, 'data-camera-size');

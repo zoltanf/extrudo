@@ -7,14 +7,15 @@
 export type NavAction = 'orbit' | 'pan' | 'zoom';
 export type NavPreset = 'fusion' | 'blender' | 'onshape' | 'trackpad';
 
+/** The presets in menu order; the first is the default (`DEFAULT_SETTINGS.preset`). */
 export const NAV_PRESETS: readonly { value: NavPreset; label: string; summary: string }[] = [
-  { value: 'fusion', label: 'Fusion', summary: 'Middle-drag pans, Shift+middle-drag orbits' },
-  { value: 'blender', label: 'Blender', summary: 'Middle-drag orbits, Shift+middle-drag pans' },
   {
     value: 'onshape',
     label: 'Onshape / SolidWorks',
     summary: 'Right-drag orbits, middle-drag pans',
   },
+  { value: 'fusion', label: 'Fusion', summary: 'Middle-drag pans, Shift+middle-drag orbits' },
+  { value: 'blender', label: 'Blender', summary: 'Middle-drag orbits, Shift+middle-drag pans' },
   {
     value: 'trackpad',
     label: 'Trackpad',

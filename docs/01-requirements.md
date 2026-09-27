@@ -142,7 +142,7 @@ for the phase's release, **S** = should, **C** = could.
 
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
-| FR-VP-01 | Orbit, pan and zoom with Fusion-style mouse mapping by default. Presets for Blender, Onshape/SolidWorks and trackpad. | M | 0 |
+| FR-VP-01 | Orbit, pan and zoom with the Onshape/SolidWorks mouse mapping by default (right-drag orbits; changed from Fusion's on 2026-09-27). Presets for Fusion, Blender and trackpad. | M | 0 |
 | FR-VP-02 | ViewCube with click-to-orient (faces, edges, corners), home, and rotate arrows. | M | 0 |
 | FR-VP-03 | Perspective and orthographic. Visual styles: shaded, shaded with edges, wireframe, hidden edges. | M | 0 |
 | FR-VP-04 | Infinite adaptive grid and origin planes/axes. | M | 0 |

@@ -47,7 +47,8 @@ clicks the ViewCube's Top face and checks the camera orientation.
    saved. Named views will convert a `View` to the schema's
    `{ projection, position, target, up }`.
 4. **Mouse mapping as tables** (`viewport/navigation.ts`): one pure function
-   from button + modifiers to orbit/pan/zoom per preset. Fusion (default):
+   from button + modifiers to orbit/pan/zoom per preset. Fusion (the
+   default until 2026-09-27; see the amendment):
    middle-drag pans, Shift+middle orbits, wheel zooms, middle double-click
    fits. Blender: middle orbits, Shift pans, Ctrl zooms. Onshape/SolidWorks:
    right orbits, middle pans, Ctrl+right pans. Trackpad: two-finger scroll
@@ -159,4 +160,9 @@ clicks the ViewCube's Top face and checks the camera orientation.
   project is open (except text fields, links and selected text; our own
   Radix menus open as before), and for 400 ms after a right-button drag it
   is cancelled wherever the button comes up.
+- **Onshape / SolidWorks is the default preset and first in the menu**
+  (the owner's choice, 2026-09-27): right-drag orbits, middle-drag pans.
+  Stored preferences are kept, so anyone who already has a preset saved
+  keeps theirs. FR-VP-01 changed with it. The marking menu (UI spec §3.3)
+  will have to open on a right-click without movement.
 
