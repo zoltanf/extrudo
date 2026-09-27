@@ -6,6 +6,7 @@
  */
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { Preferences } from '../platform';
+import { DEFAULT_FILTER, type FilterKind, type SelectionFilter } from '../selection/filter';
 import {
   easeCamera,
   fitBox,
@@ -111,6 +112,11 @@ export interface ViewportState extends ViewportSettings {
   snapshot: (() => Promise<Blob | null>) | undefined;
   /** Frames per second and frame time while the canvas is mounted (the status bar shows them). */
   renderStats: RenderStats | undefined;
+  /**
+   * What model-mode picking may take (P2-03, the nav bar's Select menu).
+   * For the session only: not a saved preference.
+   */
+  selectionFilter: SelectionFilter;
 
   /** Moves the camera at once (drags, wheel) and stops any animation. */
   setView(view: View): void;
@@ -138,6 +144,8 @@ export interface ViewportState extends ViewportSettings {
   setSnap(snap: boolean): void;
   setSnapshot(snapshot: (() => Promise<Blob | null>) | undefined): void;
   setRenderStats(stats: RenderStats | undefined): void;
+  setSelectionFilter(kind: FilterKind, on: boolean): void;
+  resetSelectionFilter(): void;
 }
 
 export type ViewportStore = StoreApi<ViewportState>;
@@ -187,6 +195,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       tool: undefined,
       snapshot: undefined,
       renderStats: undefined,
+      selectionFilter: DEFAULT_FILTER,
 
       setView(view) {
         set({ view, transition: undefined });
@@ -260,6 +269,12 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       },
       setRenderStats(renderStats) {
         set({ renderStats });
+      },
+      setSelectionFilter(kind, on) {
+        set({ selectionFilter: { ...get().selectionFilter, [kind]: on } });
+      },
+      resetSelectionFilter() {
+        set({ selectionFilter: DEFAULT_FILTER });
       },
     };
   });

@@ -91,3 +91,48 @@ export function clicker(page: Page, at: At) {
     await page.mouse.click(p.x, p.y);
   };
 }
+
+/**
+ * A world (mm) → page (px) mapping for the Viewport region's camera, in
+ * either projection (P2-03): the camera attributes give the view direction,
+ * up, target, size and projection. Read it again after the camera moves.
+ */
+export async function projector(viewport: Locator) {
+  const box = await viewport.boundingBox();
+  if (!box) throw new Error('no viewport');
+  const read = async (name: string) =>
+    ((await viewport.getAttribute(name)) ?? '').split(',').map(Number) as [number, number, number];
+  const dir = await read('data-camera-direction');
+  const up = await read('data-camera-up');
+  const target = await read('data-camera-target');
+  const [size = 1] = await read('data-camera-size');
+  const perspective = (await viewport.getAttribute('data-camera-projection')) === 'perspective';
+  const dot = (a: readonly number[], b: readonly number[]) =>
+    (a[0] ?? 0) * (b[0] ?? 0) + (a[1] ?? 0) * (b[1] ?? 0) + (a[2] ?? 0) * (b[2] ?? 0);
+  // right = direction × up
+  const right = [
+    dir[1] * up[2] - dir[2] * up[1],
+    dir[2] * up[0] - dir[0] * up[2],
+    dir[0] * up[1] - dir[1] * up[0],
+  ];
+  const half = size / 2;
+  const aspect = box.width / box.height;
+  // Vertical field of view 35° (viewport/camera.ts FOV).
+  const focal = half / Math.tan((17.5 * Math.PI) / 180);
+  const eye = target.map((t, i) => t - (dir[i] ?? 0) * focal);
+  return (p: readonly [number, number, number]) => {
+    let nx: number;
+    let ny: number;
+    if (perspective) {
+      const rel = p.map((c, i) => c - (eye[i] ?? 0));
+      const scale = (dot(rel, dir) * half) / focal;
+      nx = dot(rel, right) / (scale * aspect);
+      ny = dot(rel, up) / scale;
+    } else {
+      const rel = p.map((c, i) => c - (target[i] ?? 0));
+      nx = dot(rel, right) / (half * aspect);
+      ny = dot(rel, up) / half;
+    }
+    return { x: box.x + ((nx + 1) / 2) * box.width, y: box.y + ((1 - ny) / 2) * box.height };
+  };
+}

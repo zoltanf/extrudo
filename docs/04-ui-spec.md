@@ -120,11 +120,33 @@ movement, as Onshape's context menu does.
   highlight). Shift or Ctrl+click → toggle.
 - Drag left-to-right = **window** (fully inside); right-to-left = **crossing**
   (touching). The rectangle style differs (solid vs dashed).
-- Long-press, or right-click → "Select other…", lists the stacked geometry
-  under the cursor.
-- The selection filter will live with the nav bar's Select (P2-03).
+- Long-press (500 ms), or a right-click without movement → "Select
+  other…", lists the stacked geometry under the cursor: vertices, edges
+  and sketch curves near it, then profiles and faces front to back
+  (hidden ones marked "(hidden)"), then bodies. The pointer or the arrow
+  keys on a row pre-highlight it; a click selects it. When the marking
+  menu (§3.3) comes, right-click opens it and "Select other…" moves into
+  it; the long press stays.
+- **In the model (P2-03, ADR-0026)** the pointer picks body faces, edges
+  (within 6 px) and vertices (within 8 px), sketch curves and profiles. A
+  vertex near the pointer wins, then an edge or curve, then the front
+  profile or face; a body only with faces filtered out, or from "Select
+  other…". Hidden items (behind a face) are only offered there. Faces
+  tint with the accent (45 % under the pointer, 90 % selected); edges and
+  vertices are drawn over the body in the accent, and vertices show as
+  dots only while hovered or selected. A click on empty space clears the
+  selection unless Shift or Ctrl is held.
+- **Boxes in the model** take one kind: the first of bodies, faces,
+  edges, vertices, profiles and sketch curves that the filter allows and
+  the box finds. A box around a part selects the part; filter bodies out
+  to box faces. Boxes see through faces.
+- **The selection filter** is a chevron beside the nav bar's Select:
+  Bodies, Faces, Edges, Vertices, Sketches, Profiles, Construction
+  (construction sketch curves for now), and "Select everything". It lasts
+  for the session; a dot on the chevron shows that it filters.
+- The status bar sums up the selection ("2 faces", "1 edge, 2 vertices").
 - Esc clears the selection, or cancels the active tool (or a drag in
-  progress, putting the geometry back).
+  progress, putting the geometry back), or stops a nav tool.
 
 ### 3.3 Commands
 

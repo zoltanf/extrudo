@@ -2,6 +2,15 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-28 · **P2-03** B-rep rendering and 3D selection (ADR-0026): in
+  the model, the pointer pre-highlights faces, edges, vertices, sketch
+  curves and profiles, a click selects (Shift or Ctrl toggles), Esc
+  clears; window and crossing boxes select bodies, or faces with bodies
+  filtered out. Hidden geometry is offered by "Select other…" (long press
+  or right-click). A selection filter sits beside the nav bar's Select;
+  the status bar says what is selected ("2 faces"). Selections turn into
+  references through the persistent IDs P2-04 adds to body meshes.
+
 - 2026-09-27 · **P2-02** Sketch → kernel (ADR-0025): the kernel turns a
   sketch's curves into exact OCCT edges (splines cut where they cross
   themselves), splits them where they meet and makes a face for every

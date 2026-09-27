@@ -235,10 +235,21 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   their region IDs match `detectProfiles` over a 28-sketch corpus; the
   sketch's output has a face per profile and the sketch curve of each
   face edge for P2-04.
-- [ ] **P2-03 B-rep rendering and 3D selection.** Body meshes with face ranges,
+- [x] **P2-03 B-rep rendering and 3D selection.** Body meshes with face ranges,
   edge lines, vertices; pre-highlight; selection of faces, edges, vertices and
   bodies; selection filter menu; "select other" long-press list.
   *AC:* FR-VP-05 (3D part).
+  *Done 2026-09-28* (ADR-0026): pure picking over the meshes (a
+  three-mesh-bvh ray cast for faces, screen-space distance for edges and
+  vertices, occlusion by a second ray), hover and click/Shift/Ctrl
+  selection in the session store, window and crossing boxes that take one
+  kind, face tints through a colour attribute, accent overlays for edges and
+  vertices, "Select other…" on a long press or right-click, the selection
+  filter with the nav bar's Select, the status bar summary; sketch curves
+  and profiles are picked in the model too. Faces, edges and vertices are
+  mesh indices turned into `GeomRef`s through `BodyMesh.faceIds`/
+  `edgeIds`/`vertexIds` once P2-04 fills them. E2E on the kernel debug
+  page's test part until extrude makes bodies.
 - [ ] **P2-04 Topological naming v1.** Persistent-ID generation for extrude and
   revolve; propagation through booleans via OCCT history; fingerprints;
   reference resolution API used by every feature.

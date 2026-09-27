@@ -19,6 +19,8 @@ import { useTheme } from '../design-system';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import type { Autosaver } from '../project/autosave';
+import { sketchEntityIdsIn } from '../selection/items';
+import { useModelSelection } from '../selection/useModelSelection';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
 import { useHostState } from '../sketch/hostState';
 import {
@@ -291,6 +293,19 @@ export function AppShell({
             { keys: 'Enter', run: () => host.enter() },
           ]
         : []),
+      // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
+      // the selection (P2-03).
+      ...(mode === 'model' && !picking
+        ? [
+            {
+              keys: 'Escape',
+              run: () => {
+                if (viewport.getState().tool) viewport.getState().setTool(undefined);
+                else session.getState().clearSelection();
+              },
+            },
+          ]
+        : []),
       // Esc puts dragged geometry back, or else clears the selection (P1-09).
       ...(mode === 'sketch' && !drawing
         ? [
@@ -303,7 +318,7 @@ export function AppShell({
           ]
         : []),
     ],
-    [commands, openToolbox, session, stores, picking, mode, drawing, host],
+    [commands, openToolbox, session, stores, picking, mode, drawing, host, viewport],
   );
   useShortcuts(shortcuts);
 
@@ -366,11 +381,17 @@ export function AppShell({
       if (sketch && frame) {
         out.push({
           id: feature.id,
+          name: feature.name,
           frame,
           data: sketch.data,
           active,
           highlight: hover?.kind === 'feature' && hover.id === feature.id,
           status: active ? status?.entities : undefined,
+          // Curves picked in model mode (P2-03).
+          ...(!active && {
+            hoverEntity: sketchEntityIdsIn([hover], feature.id)[0],
+            selectedEntities: sketchEntityIdsIn(selection, feature.id),
+          }),
           ...(showProfiles && {
             profiles: sketchProfiles(sketch.data),
             hoverProfile: profileIdsIn([hover], feature.id)[0],
@@ -383,6 +404,9 @@ export function AppShell({
   }, [doc.features, doc.timelineMarker, activeSketchId, status, showProfiles, hover, selection]);
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
   const sketchPlane = sketches.find((s) => s.active)?.frame;
+  // In the model, with no command running, the view picks bodies, sketch curves and
+  // profiles (P2-03). Sketch mode keeps its own picking (the tool host).
+  const modelSelect = useModelSelection(session, bodies, mode === 'model' && !picking);
 
   // A drawing tool takes the pointer; with none running, the host selects and drags geometry
   // (P1-09). Until the host has loaded, a click in the view clears the selection.
@@ -496,6 +520,9 @@ export function AppShell({
             sketchInput={sketchInput}
             commandRunning={drawing || picking}
             onStopCommand={stopCommand}
+            hover={hover}
+            selection={selection}
+            modelSelect={modelSelect}
           >
             {showConstraints && tools && activeSketchId && sketchPlane && (
               <tools.Glyphs
@@ -576,6 +603,7 @@ export function AppShell({
         actions={featureActions}
         viewport={viewport}
         model={model}
+        session={session}
       />
       <OverConstrainedDialog host={host} />
       <ParametersDialog

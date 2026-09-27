@@ -17,6 +17,8 @@ export type { EntityStatus };
 /** A sketch to draw: its plane's frame, its content, and whether it is being edited. */
 export interface SketchDrawing {
   id: string;
+  /** The feature's name, for "Select other…" rows. */
+  name?: string;
   frame: SketchFrame;
   data: SketchData;
   active: boolean;
@@ -30,6 +32,36 @@ export interface SketchDrawing {
   hoverProfile?: string;
   /** Selected regions (IDs within the sketch). */
   selectedProfiles?: readonly string[];
+  /** A curve under the pointer in model mode (P2-03): its entity ID. */
+  hoverEntity?: string;
+  /** Curves selected in model mode (entity IDs). */
+  selectedEntities?: readonly string[];
+}
+
+/**
+ * Line-segment pairs of some of a sketch's curves (model-mode highlights,
+ * P2-03), construction or not. Points and other curves are left out.
+ */
+export function curveSegments(
+  data: SketchData,
+  frame: SketchFrame,
+  ids: readonly string[],
+): Float32Array {
+  const entities: SketchData['entities'] = {};
+  for (const [id, entity] of Object.entries(data.entities)) {
+    if (entity.type === 'point' || ids.includes(id)) {
+      entities[id as keyof SketchData['entities']] = entity;
+    }
+  }
+  const segments = sketchSegments({ ...data, entities }, frame);
+  const parts = [...STATUSES.map((s) => segments.curves[s]), segments.construction];
+  const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) {
+    out.set(p, o);
+    o += p.length;
+  }
+  return out;
 }
 
 export const STATUSES: readonly EntityStatus[] = ['free', 'fixed', 'conflict'];

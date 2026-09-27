@@ -1,7 +1,9 @@
 import {
   type BodyId,
   type BodyMeta,
+  type FeatureId,
   type OriginPlaneId,
+  type SelectionItem,
   type SketchFrame,
   type Vec2,
   type Vec3,
@@ -22,6 +24,9 @@ import type { DirectionalLight } from 'three';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
+import { MenuItem, MenuLabel, PointMenu } from '../design-system';
+import { itemLabel, type LabelContext, selectionKey } from '../selection/items';
+import { type PickHit, type PickScene, pickBox, pickStack, pickTop } from '../selection/pick';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
 import { Bodies } from './Bodies';
 import { CameraRig } from './CameraRig';
@@ -32,10 +37,16 @@ import { Grid, XY_FRAME } from './Grid';
 import { NavBar } from './NavBar';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
 import { Origin } from './Origin';
+import {
+  type PointerHandlers,
+  type ScreenBox,
+  type ScreenPointer,
+  usePointerInput,
+} from './pointer';
 import { createRenderMeter } from './renderMeter';
 import { Sketches } from './Sketches';
 import { type SketchDrawing, sketchSegments, unionBounds } from './sketchGeometry';
-import type { Bounds, OriginItem, ViewportStore } from './store';
+import type { Bounds, OriginItem, ViewportStore, VisualStyle } from './store';
 import { ViewCube } from './ViewCube';
 import { namedDirection } from './viewcube';
 
@@ -61,6 +72,27 @@ export interface ViewportProps {
    */
   commandRunning?: boolean;
   onStopCommand?(): void;
+  /** The item under the pointer (session hover): bodies highlight it (P2-03). */
+  hover?: SelectionItem;
+  /** The session's selection: bodies highlight it (P2-03). */
+  selection?: readonly SelectionItem[];
+  /** Present in model mode while nothing else takes the pointer: picking selects (P2-03). */
+  modelSelect?: ModelSelect;
+}
+
+/**
+ * Model-mode selection (P2-03, ADR-0026): the viewport picks, the owner
+ * (the shell) changes the session. Items are session `SelectionItem`s
+ * (topology items as `selection/items.ts` encodes them, profiles,
+ * `<sketch>/<entity>` sketch curves).
+ */
+export interface ModelSelect {
+  /** The item under the pointer, or `undefined` over empty space or when it leaves. */
+  onHover(item: SelectionItem | undefined): void;
+  /** A click on an item (`undefined`: empty space). `toggle` with Shift, Ctrl or ⌘. */
+  onClick(item: SelectionItem | undefined, toggle: boolean): void;
+  /** A box selected `items`; `add` with Shift, Ctrl or ⌘. */
+  onBox(items: SelectionItem[], add: boolean): void;
 }
 
 export interface SketchInput {
@@ -100,6 +132,7 @@ export interface PlanePicker {
 const NO_BODIES: Record<BodyId, BodyMesh> = {};
 const NO_META: Record<BodyId, BodyMeta> = {};
 const NO_SKETCHES: readonly SketchDrawing[] = [];
+const NO_SELECTION: readonly SelectionItem[] = [];
 
 /** A middle double-click within this many ms fits the view (Fusion). */
 const DOUBLE_CLICK_MS = 400;
@@ -121,11 +154,15 @@ export function Viewport({
   children,
   commandRunning = false,
   onStopCommand,
+  hover,
+  selection = NO_SELECTION,
+  modelSelect,
 }: ViewportProps) {
   const section = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const colors = useSceneColors();
   const tool = useStore(viewport, (s) => s.tool);
+  const projection = useStore(viewport, (s) => s.projection);
   const [dragging, setDragging] = useState<NavAction>();
   const [ready, setReady] = useState(false);
 
@@ -175,6 +212,13 @@ export function Viewport({
   useNavigation(section, surface, viewport, setDragging);
   const [box, setBox] = useState<ScreenBox>();
   useSketchInput(surface, viewport, sketchInput, setBox);
+  const [otherMenu, setOtherMenu] = useState<OtherMenu>();
+  const modelScene = useMemo(() => ({ bodies, meta, sketches }), [bodies, meta, sketches]);
+  useModelInput(surface, viewport, modelSelect, modelScene, setBox, setOtherMenu);
+  // The menu belongs to model mode: it closes when that ends (a sketch opens, a tool starts).
+  useEffect(() => {
+    if (!modelSelect) setOtherMenu(undefined);
+  }, [modelSelect]);
 
   // The pointer says what a left-drag does: a nav tool's own cursor (also while any
   // navigation drag runs), a hand on a pickable plane, a crosshair while drawing.
@@ -193,10 +237,13 @@ export function Viewport({
       ref={section}
       aria-label="Viewport"
       data-ready={ready || undefined}
+      data-camera-projection={projection}
       data-sketch-status={sketchStatusSummary(sketches)}
       data-sketch-profiles={sketchProfilesSummary(sketches)}
       data-sketches={sketches.map((s) => s.id).join(' ')}
       data-highlight={sketches.find((s) => s.highlight)?.id}
+      data-model-selection={modelSelect ? selectionKey(selection) : undefined}
+      data-model-hover={modelSelect ? selectionKey([hover]) : undefined}
       className="relative isolate min-w-0 flex-1 overflow-hidden"
       style={{ background: 'var(--x-viewport-glow)' }}
     >
@@ -221,6 +268,8 @@ export function Viewport({
             sketches={sketches}
             sketchPlane={sketchPlane}
             planePicker={planePicker}
+            hover={hover}
+            selection={selection}
             onFirstFrame={() => setReady(true)}
           />
           <RenderMeterProbe viewport={viewport} />
@@ -228,17 +277,17 @@ export function Viewport({
       </div>
       {children}
       {box && <SelectionBox box={box} />}
+      <SelectOtherMenu
+        menu={otherMenu}
+        scene={modelScene}
+        select={modelSelect}
+        onClose={() => setOtherMenu(undefined)}
+      />
       <ViewCube store={viewport} />
       <NavBar store={viewport} commandRunning={commandRunning} onStopCommand={onStopCommand} />
       <ViewStatus viewport={viewport} />
     </section>
   );
-}
-
-/** A selection box being drawn, in viewport pixels: from the press to the pointer. */
-interface ScreenBox {
-  from: readonly [number, number];
-  to: readonly [number, number];
 }
 
 /**
@@ -321,6 +370,8 @@ function Scene({
   sketches,
   sketchPlane,
   planePicker,
+  hover,
+  selection,
   onFirstFrame,
 }: {
   viewport: ViewportStore;
@@ -330,6 +381,8 @@ function Scene({
   sketches: readonly SketchDrawing[];
   sketchPlane: SketchFrame | undefined;
   planePicker: PlanePicker | undefined;
+  hover: SelectionItem | undefined;
+  selection: readonly SelectionItem[];
   onFirstFrame(): void;
 }) {
   const { projection, visualStyle, grid, origin, sketchPoints } = useStore(
@@ -409,6 +462,9 @@ function Scene({
         style={visualStyle}
         body={colors.body}
         edge={colors.edge}
+        highlight={{ ...colors.preselect, a: 1 }}
+        hover={hover}
+        selection={selection}
         onBounds={setBodyBounds}
       />
       <Sketches
@@ -502,9 +558,6 @@ function Headlight({ viewport }: { viewport: ViewportStore }) {
   return <directionalLight ref={light} intensity={1.6} />;
 }
 
-/** A left press that moves less than this (px) before release is a click. */
-const CLICK_SLOP = 5;
-
 /**
  * Pointer input for a sketch tool (P1-02): the pointer's ray meets the
  * sketch plane, and the tool gets the point in sketch coordinates. Moves are
@@ -517,28 +570,15 @@ function useSketchInput(
   input: SketchInput | undefined,
   onBoxChange: (box: ScreenBox | undefined) => void,
 ) {
-  useEffect(() => {
-    const el = surface.current;
-    if (!el || !input) return;
+  const handlers = useMemo<PointerHandlers | undefined>(() => {
+    if (!input) return undefined;
     const { frame } = input;
-    let last: { x: number; y: number; infer: boolean; toggle: boolean } | undefined;
-    let press: { x: number; y: number; id: number; dragging: boolean; box: boolean } | undefined;
-
-    const pointerAt = (
-      x: number,
-      y: number,
-      infer: boolean,
-      toggle: boolean,
-    ): PlanePointer | undefined => {
-      const r = el.getBoundingClientRect();
-      if (r.width <= 0 || r.height <= 0) return undefined;
-      const ndc: [number, number] = [
-        ((x - r.left) / r.width) * 2 - 1,
-        1 - ((y - r.top) / r.height) * 2,
-      ];
+    const toPlane = (p: ScreenPointer): PlanePointer | undefined => {
+      if (p.width <= 0 || p.height <= 0) return undefined;
+      const ndc: [number, number] = [(p.x / p.width) * 2 - 1, 1 - (p.y / p.height) * 2];
       const { view, projection } = viewport.getState();
       const hit = rayPlane(
-        viewRay(view, projection, r.width / r.height, ndc),
+        viewRay(view, projection, p.width / p.height, ndc),
         frame.origin,
         frame.normal,
       );
@@ -546,145 +586,189 @@ function useSketchInput(
       const world: Vec3 = [hit.x, hit.y, hit.z];
       return {
         point: worldToSketch(frame, world),
-        perPixel: worldPerPixel(view, projection, r.height, world),
-        screen: [x - r.left, y - r.top],
-        infer,
-        toggle,
+        perPixel: worldPerPixel(view, projection, p.height, world),
+        screen: [p.x, p.y],
+        infer: p.infer,
+        toggle: p.toggle,
       };
     };
-    const report = () => {
-      const p = last && pointerAt(last.x, last.y, last.infer, last.toggle);
-      if (p) input.onMove(p);
+    const onPlane = (f: ((p: PlanePointer) => void) | undefined) => (p: ScreenPointer) => {
+      const q = toPlane(p);
+      if (q) f?.(q);
     };
-    const local = (x: number, y: number): [number, number] => {
-      const r = el.getBoundingClientRect();
-      return [x - r.left, y - r.top];
+    return {
+      onMove: onPlane(input.onMove),
+      onClick: onPlane(input.onClick),
+      onDragStart: (p) => {
+        const q = toPlane(p);
+        return q ? (input.onDragStart?.(q) ?? false) : false;
+      },
+      onDragEnd: onPlane(input.onDragEnd),
+      // The box's corners on the sketch plane, so a tilted view selects what it shows.
+      ...(input.onBox && {
+        onBox: (from, to) => {
+          const corners = [
+            [from.x, from.y],
+            [to.x, from.y],
+            [to.x, to.y],
+            [from.x, to.y],
+          ].map(
+            ([x, y]) => toPlane({ ...to, x: x as number, y: y as number, infer: false })?.point,
+          );
+          if (corners.some((c) => !c)) return;
+          input.onBox?.({
+            corners: corners as Vec2[],
+            mode: to.x >= from.x ? 'window' : 'crossing',
+            add: to.toggle,
+          });
+        },
+      }),
+      onLeave: input.onLeave,
     };
-    /** Starts a drag at the press; one nobody takes becomes a selection box. */
-    const startDrag = (x: number, y: number, infer: boolean, toggle: boolean): boolean => {
-      const p = pointerAt(x, y, infer, toggle);
-      const taken = p ? (input.onDragStart?.(p) ?? false) : false;
-      return !taken && input.onBox !== undefined;
-    };
-    /** Selects with the box from the press to (x, y): its corners on the sketch plane. */
-    const finishBox = (from: { x: number; y: number }, x: number, y: number, toggle: boolean) => {
-      onBoxChange(undefined);
-      const corners = [
-        [from.x, from.y],
-        [x, from.y],
-        [x, y],
-        [from.x, y],
-      ].map(([cx, cy]) => pointerAt(cx as number, cy as number, false, toggle)?.point);
-      if (corners.some((c) => !c)) return;
-      input.onBox?.({
-        corners: corners as Vec2[],
-        mode: x >= from.x ? 'window' : 'crossing',
-        add: toggle,
-      });
-    };
+  }, [input, viewport]);
+  usePointerInput(surface, viewport, handlers, onBoxChange);
+}
 
-    const modifiers = (e: PointerEvent | KeyboardEvent) => ({
-      infer: !(e.ctrlKey || e.metaKey),
-      toggle: e.shiftKey || e.ctrlKey || e.metaKey,
-    });
-    const onPointerMove = (e: PointerEvent) => {
-      last = { x: e.clientX, y: e.clientY, ...modifiers(e) };
-      // A press whose release we never saw (it came up over the nav bar or a menu) is over:
-      // without this, the next move over the view with no button held opened a box.
-      if (press && e.pointerId === press.id && (e.buttons & 1) === 0) {
-        if (press.box) onBoxChange(undefined);
-        press = undefined;
-      }
-      if (
-        press &&
-        !press.dragging &&
-        e.pointerId === press.id &&
-        Math.hypot(e.clientX - press.x, e.clientY - press.y) > CLICK_SLOP
-      ) {
-        press.dragging = true;
-        press.box = startDrag(press.x, press.y, last.infer, last.toggle);
-        // Keep the drag's events when the pointer leaves the view (synthetic pointers can't be captured).
-        try {
-          el.setPointerCapture(e.pointerId);
-        } catch {}
-      }
-      if (press?.box) {
-        onBoxChange({ from: local(press.x, press.y), to: local(e.clientX, e.clientY) });
-        return;
-      }
-      report();
-    };
-    const onPointerDown = (e: PointerEvent) => {
-      const s = viewport.getState();
-      if (e.button !== 0 || dragAction(s.preset, e, s.tool)) return;
-      press = { x: e.clientX, y: e.clientY, id: e.pointerId, dragging: false, box: false };
-    };
-    const onPointerUp = (e: PointerEvent) => {
-      if (!press || e.pointerId !== press.id) return;
-      const current = press;
-      press = undefined;
-      const { infer, toggle } = modifiers(e);
-      if (current.box) {
-        finishBox(current, e.clientX, e.clientY, toggle);
-        return;
-      }
-      const p = pointerAt(e.clientX, e.clientY, infer, toggle);
-      if (!p) return;
-      if (current.dragging) input.onDragEnd?.(p);
-      else if (Math.hypot(e.clientX - current.x, e.clientY - current.y) > CLICK_SLOP) {
-        // A drag whose moves were coalesced away: start and end it now.
-        if (startDrag(current.x, current.y, infer, toggle)) {
-          finishBox(current, e.clientX, e.clientY, toggle);
-        } else input.onDragEnd?.(p);
-      } else input.onClick(p);
-    };
-    const onPointerCancel = (e: PointerEvent) => {
-      if (press?.box && e.pointerId === press.id) onBoxChange(undefined);
-      if (press && e.pointerId === press.id) press = undefined;
-    };
-    // A release outside the view (not captured: the press hadn't become a drag yet, or the
-    // pointer couldn't be captured) ends the press there: a drag or box finishes, a press
-    // that never moved is dropped rather than taken for a click.
-    const onWindowPointerUp = (e: PointerEvent) => {
-      if (!press || e.pointerId !== press.id) return;
-      if (e.target instanceof Node && el.contains(e.target)) return;
-      if (press.dragging) onPointerUp(e);
-      else press = undefined;
-    };
-    const onPointerLeave = () => {
-      last = undefined;
-      input.onLeave();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (!last || !['Control', 'Meta', 'Shift'].includes(e.key)) return;
-      last = { ...last, ...modifiers(e) };
-      report();
-    };
+/** What model-mode picking sees: the scene as drawn. */
+interface ModelScene {
+  bodies: Record<BodyId, BodyMesh>;
+  meta: Record<BodyId, BodyMeta>;
+  sketches: readonly SketchDrawing[];
+}
 
-    el.addEventListener('pointermove', onPointerMove);
-    el.addEventListener('pointerdown', onPointerDown);
-    el.addEventListener('pointerup', onPointerUp);
-    el.addEventListener('pointercancel', onPointerCancel);
-    el.addEventListener('pointerleave', onPointerLeave);
-    window.addEventListener('pointerup', onWindowPointerUp);
-    window.addEventListener('keydown', onKey);
-    window.addEventListener('keyup', onKey);
-    const unsubscribe = viewport.subscribe((s, prev) => {
-      if (s.view !== prev.view) report();
-    });
-    return () => {
-      el.removeEventListener('pointermove', onPointerMove);
-      el.removeEventListener('pointerdown', onPointerDown);
-      el.removeEventListener('pointerup', onPointerUp);
-      el.removeEventListener('pointercancel', onPointerCancel);
-      el.removeEventListener('pointerleave', onPointerLeave);
-      window.removeEventListener('pointerup', onWindowPointerUp);
-      window.removeEventListener('keydown', onKey);
-      window.removeEventListener('keyup', onKey);
-      unsubscribe();
-      onBoxChange(undefined);
+/** "Select other…": the stacked items under the pointer, and where the menu opens (client px). */
+interface OtherMenu {
+  hits: PickHit[];
+  at: { x: number; y: number };
+  toggle: boolean;
+}
+
+/**
+ * Model-mode picking (P2-03, FR-VP-05): the pointer pre-highlights what it
+ * is over, a click selects it, a drag nobody takes draws a box, and a long
+ * press or a right click without movement lists the stack under it
+ * ("Select other…"). Nothing is picked while a nav tool runs.
+ */
+function useModelInput(
+  surface: RefObject<HTMLDivElement | null>,
+  viewport: ViewportStore,
+  select: ModelSelect | undefined,
+  scene: ModelScene,
+  onBoxChange: (box: ScreenBox | undefined) => void,
+  onMenu: (menu: OtherMenu | undefined) => void,
+) {
+  // The latest scene without re-binding the listeners on every change.
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
+  const handlers = useMemo<PointerHandlers | undefined>(() => {
+    if (!select) return undefined;
+    const context = (p: ScreenPointer) => {
+      const { view, projection, visualStyle, selectionFilter } = viewport.getState();
+      return {
+        scene: pickScene(sceneRef.current, visualStyle),
+        camera: { view, projection, width: p.width, height: p.height },
+        filter: selectionFilter,
+      };
     };
-  }, [surface, viewport, input, onBoxChange]);
+    const pick = (p: ScreenPointer) => {
+      const c = context(p);
+      return pickTop(c.scene, c.camera, [p.x, p.y], c.filter);
+    };
+    return {
+      onMove: (p) => select.onHover(viewport.getState().tool ? undefined : pick(p)),
+      onClick: (p) => select.onClick(pick(p), p.toggle),
+      onDragStart: () => false,
+      onBox: (from, to) => {
+        const c = context(to);
+        select.onBox(
+          pickBox(c.scene, c.camera, [from.x, from.y], [to.x, to.y], c.filter),
+          to.toggle,
+        );
+      },
+      onLeave: () => select.onHover(undefined),
+      onMenu: (p) => {
+        const c = context(p);
+        const hits = pickStack(c.scene, c.camera, [p.x, p.y], c.filter);
+        const el = surface.current;
+        if (hits.length === 0 || !el) return;
+        const r = el.getBoundingClientRect();
+        select.onHover(undefined);
+        onMenu({ hits, at: { x: r.left + p.x, y: r.top + p.y }, toggle: p.toggle });
+      },
+    };
+  }, [select, viewport, surface, onMenu]);
+  usePointerInput(surface, viewport, handlers, onBoxChange);
+}
+
+/** The pick scene: visible bodies, drawn sketches with their shaded profiles. */
+function pickScene(scene: ModelScene, style: VisualStyle): PickScene {
+  return {
+    bodies: (Object.entries(scene.bodies) as [BodyId, BodyMesh][])
+      .filter(([id]) => scene.meta[id]?.visible ?? true)
+      .map(([id, mesh]) => ({ id, mesh })),
+    sketches: scene.sketches
+      .filter((s) => !s.active)
+      .map((s) => ({
+        id: s.id as FeatureId,
+        frame: s.frame,
+        data: s.data,
+        ...(s.profiles && { profiles: s.profiles }),
+      })),
+    occluding: style !== 'wireframe',
+  };
+}
+
+/**
+ * "Select other…" (UI spec §3.2): the stacked items under the pointer, the
+ * hidden ones marked. The pointer or the arrow keys on a row pre-highlight
+ * it; a click selects it (or toggles it, when the menu was opened with
+ * Shift, Ctrl or ⌘).
+ */
+function SelectOtherMenu({
+  menu,
+  scene,
+  select,
+  onClose,
+}: {
+  menu: OtherMenu | undefined;
+  scene: ModelScene;
+  select: ModelSelect | undefined;
+  onClose(): void;
+}) {
+  const close = () => {
+    select?.onHover(undefined);
+    onClose();
+  };
+  return (
+    <PointMenu at={menu?.at} onClose={close} label="Select other">
+      <MenuLabel>Select other</MenuLabel>
+      {menu?.hits.map((hit) => (
+        <MenuItem
+          key={`${hit.item.kind}:${hit.item.id}`}
+          onHighlight={() => select?.onHover(hit.item)}
+          onSelect={() => {
+            select?.onClick(hit.item, menu.toggle);
+            close();
+          }}
+        >
+          <span className={hit.occluded ? 'text-muted' : undefined}>
+            {itemLabel(hit.item, labelContext(scene))}
+            {hit.occluded && ' (hidden)'}
+          </span>
+        </MenuItem>
+      ))}
+    </PointMenu>
+  );
+}
+
+function labelContext(scene: ModelScene): LabelContext {
+  return {
+    bodyName: (id) => scene.meta[id]?.name,
+    sketch: (id) => {
+      const s = scene.sketches.find((d) => d.id === id);
+      return s && { name: s.name, data: s.data };
+    },
+  };
 }
 
 /** `PointerEvent.buttons` bit of each `button`: left 1, middle 4, right 2. */

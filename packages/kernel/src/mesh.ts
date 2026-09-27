@@ -24,6 +24,16 @@ export interface BodyMesh {
   edgeFlags: Uint8Array;
   /** xyz per B-rep vertex. */
   vertices: Float32Array;
+  /**
+   * Persistent ID of each face (topological naming, P2-04), parallel to
+   * `faceRanges`: face `i` is `faceIds[i]`. Absent until the kernel names
+   * faces; the viewport's selection then only has indices (ADR-0026).
+   */
+  faceIds?: string[];
+  /** Persistent ID of each edge, parallel to `edgeRanges` (P2-04). */
+  edgeIds?: string[];
+  /** Persistent ID of each vertex, parallel to `vertices` (P2-04). */
+  vertexIds?: string[];
 }
 
 /**
