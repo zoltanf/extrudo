@@ -356,7 +356,13 @@ and remove a sketch edge, then assert the fillet still sits on the "same" edges.
   (`BOPAlgo_Builder` on sketch edges → faces), which handles splines and
   tangencies robustly. Region IDs are derived from their bounding sketch-curve
   IDs, which makes them persistent. P1-11 built the TypeScript pass
-  (`@extrudo/sketch/profiles`, ADR-0020); the OCCT faces come with extrude.
+  (`@extrudo/sketch/profiles`, ADR-0020). P2-02 built the OCCT faces
+  (ADR-0025): the sketch evaluator stages exact curves in the facade,
+  which splits them with General Fuse and makes faces with
+  `BOPAlgo_BuilderFace`; each face is keyed from its outer wire's curves
+  and directions with the arrangement's own `profileKey`/`profileIds`, so
+  a profile the user picks is the face an extrude gets
+  (`ctx.output(sketch).shapes[region]`).
 - A sketch's plane is a reference (origin plane, construction plane or a face's
   persistent ID), re-derived on each recompute, so a sketch on a face follows
   that face.
@@ -505,3 +511,7 @@ bundle-size budget. Every agent task must leave CI green.
   content-keyed feature cache, body access per evaluator, reference-counted
   shapes, cancellation at yields, previews, the `Recomputer`, status
   display.
+- **ADR-0025** Sketch to kernel. **Written 2026-09-27** (P2-02): exact
+  edges in the facade, General Fuse and the face builder, bridges and
+  dangling pieces dropped, touching wires as one loop, faces keyed by the
+  arrangement's own rule, a geometric safety net.

@@ -38,6 +38,13 @@ export {
   meshBuffers,
 } from './mesh';
 export type {
+  PlanarCurve,
+  PlanarFace,
+  PlanarFacesResult,
+  PlanarFrame,
+  PlanarLoopEdge,
+} from './planar';
+export type {
   BodyAccess,
   BodyResult,
   EvalContext,

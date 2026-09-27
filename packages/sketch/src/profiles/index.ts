@@ -10,4 +10,7 @@ export {
   type ProfileEdge,
   type ProfileLoop,
   profileAt,
+  profileCentroid,
+  profileIds,
+  profileKey,
 } from './profiles';

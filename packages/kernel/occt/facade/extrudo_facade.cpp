@@ -19,24 +19,38 @@
 // - Sub-shape kinds: 0 = face, 1 = edge, 2 = vertex. Sub-shape indices are
 //   0-based positions in TopExp::MapShapes order for that kind.
 // - Integer arguments that are lists (fillet edges) are staged with
-//   clearArgs() / pushArg() before the call.
+//   clearArgs() / pushArg() before the call; lists of numbers (spline poles
+//   and knots) with clearNumbers() / pushNumber().
 
+#include <BOPAlgo_Builder.hxx>
+#include <BOPAlgo_BuilderFace.hxx>
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepBndLib.hxx>
+#include <BRepBuilderAPI_MakeEdge.hxx>
+#include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeShape.hxx>
 #include <BRepCheck_Analyzer.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepGProp.hxx>
 #include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
+#include <BRepTools.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRep_Tool.hxx>
 #include <Bnd_Box.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
+#include <Geom2dAPI_InterCurveCurve.hxx>
+#include <Geom2dInt_GInter.hxx>
+#include <Geom2d_BSplineCurve.hxx>
+#include <GeomAPI_ProjectPointOnCurve.hxx>
+#include <IntRes2d_IntersectionPoint.hxx>
+#include <Geom_BSplineCurve.hxx>
+#include <Geom_Circle.hxx>
+#include <Geom_Curve.hxx>
 #include <GProp_GProps.hxx>
 #include <NCollection_Array1.hxx>
 #include <NCollection_IndexedDataMap.hxx>
@@ -46,6 +60,7 @@
 #include <Poly_Triangulation.hxx>
 #include <Standard_Failure.hxx>
 #include <TopExp.hxx>
+#include <TopExp_Explorer.hxx>
 #include <TopLoc_Location.hxx>
 #include <TopTools_ShapeMapHasher.hxx>
 #include <TopoDS.hxx>
@@ -53,13 +68,21 @@
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Shape.hxx>
 #include <TopoDS_Vertex.hxx>
+#include <TopoDS_Wire.hxx>
 #include <gp_Ax2.hxx>
+#include <gp_Ax3.hxx>
+#include <gp_Circ.hxx>
+#include <gp_Elips.hxx>
+#include <gp_Pln.hxx>
+#include <gp_Pnt2d.hxx>
 #include <gp_Dir.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Trsf.hxx>
 
 #include <unistd.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
@@ -86,6 +109,8 @@ public:
 
   void clearArgs() { args_.clear(); }
   void pushArg(int value) { args_.push_back(value); }
+  void clearNumbers() { numbers_.clear(); }
+  void pushNumber(double value) { numbers_.push_back(value); }
 
   // ------------------------------------------------------------ primitives --
 
@@ -172,6 +197,194 @@ public:
       return failFromException("Boolean failed");
     }
   }
+
+  // ------------------------------------------------------------- sketches --
+  //
+  // A sketch's profiles (P2-02, ADR-0025): stage its curves in the sketch
+  // plane's own 2D frame (z = 0) with sketchClear() and sketch*(), which
+  // return the curve's index (or -1), then call sketchProfiles(). Directions
+  // follow the sketch model: lines start → end, circles, arcs and ellipses
+  // counter-clockwise, splines along their parameter.
+
+  void sketchClear() {
+    sketchEdges_.clear();
+    sketchCurveOf_.clear();
+    sketchCurveCount_ = 0;
+  }
+
+  int sketchLine(double x0, double y0, double x1, double y1) {
+    beginOp();
+    try {
+      const gp_Pnt a(x0, y0, 0);
+      const gp_Pnt b(x1, y1, 0);
+      if (a.Distance(b) <= Precision::Confusion()) return failCurve("The line has no length.");
+      BRepBuilderAPI_MakeEdge builder(a, b);
+      if (!builder.IsDone()) return failCurve("Couldn't make an edge from the line.");
+      return addSketchEdge(builder.Edge());
+    } catch (...) {
+      failFromException("Line failed");
+      return -1;
+    }
+  }
+
+  /** An arc counter-clockwise from angle `from` through `sweep` radians (a full circle if sweep ≥ 2π). */
+  int sketchArc(double cx, double cy, double radius, double from, double sweep) {
+    beginOp();
+    try {
+      if (radius <= Precision::Confusion()) return failCurve("The arc has no radius.");
+      if (sweep <= 0) return failCurve("The arc has no length.");
+      const gp_Ax2 axes(gp_Pnt(cx, cy, 0), gp::DZ(), gp::DX());
+      if (sweep >= 2 * M_PI - 1e-12) {
+        BRepBuilderAPI_MakeEdge builder(gp_Circ(axes, radius));
+        if (!builder.IsDone()) return failCurve("Couldn't make an edge from the circle.");
+        return addSketchEdge(builder.Edge());
+      }
+      Handle(Geom_Circle) circle = new Geom_Circle(axes, radius);
+      BRepBuilderAPI_MakeEdge builder(circle, from, from + sweep);
+      if (!builder.IsDone()) return failCurve("Couldn't make an edge from the arc.");
+      return addSketchEdge(builder.Edge());
+    } catch (...) {
+      failFromException("Arc failed");
+      return -1;
+    }
+  }
+
+  /** A full ellipse; `rotation` is the direction of the `a` axis in radians. */
+  int sketchEllipse(double cx, double cy, double a, double b, double rotation) {
+    beginOp();
+    try {
+      if (a <= Precision::Confusion() || b <= Precision::Confusion()) {
+        return failCurve("The ellipse is flat.");
+      }
+      // OCCT wants the major radius first; a quarter turn keeps the direction.
+      if (b > a) {
+        std::swap(a, b);
+        rotation += M_PI / 2;
+      }
+      const gp_Ax2 axes(gp_Pnt(cx, cy, 0), gp::DZ(), gp_Dir(std::cos(rotation), std::sin(rotation), 0));
+      BRepBuilderAPI_MakeEdge builder(gp_Elips(axes, a, b));
+      if (!builder.IsDone()) return failCurve("Couldn't make an edge from the ellipse.");
+      return addSketchEdge(builder.Edge());
+    } catch (...) {
+      failFromException("Ellipse failed");
+      return -1;
+    }
+  }
+
+  /**
+   * A clamped, non-rational B-spline: the staged numbers are the poles
+   * (x, y × poleCount), then the full knot vector (poleCount + degree + 1).
+   * A spline that crosses itself is staged in pieces cut at its crossings:
+   * General Fuse only splits edges where they meet other edges.
+   */
+  int sketchSpline(int degree, int poleCount) {
+    beginOp();
+    try {
+      const int knotCount = poleCount + degree + 1;
+      if (degree < 1 || poleCount < degree + 1 ||
+          static_cast<int>(numbers_.size()) != 2 * poleCount + knotCount) {
+        return failCurve("The spline's poles and knots don't match.");
+      }
+      NCollection_Array1<gp_Pnt> poles(1, poleCount);
+      NCollection_Array1<gp_Pnt2d> flatPoles(1, poleCount);
+      for (int i = 0; i < poleCount; ++i) {
+        poles(i + 1) = gp_Pnt(numbers_[2 * i], numbers_[2 * i + 1], 0);
+        flatPoles(i + 1) = gp_Pnt2d(numbers_[2 * i], numbers_[2 * i + 1]);
+      }
+      std::vector<double> distinct;
+      std::vector<int> multiplicities;
+      for (int i = 0; i < knotCount; ++i) {
+        const double knot = numbers_[2 * poleCount + i];
+        if (!distinct.empty() && knot - distinct.back() <= 1e-15) {
+          multiplicities.back()++;
+        } else {
+          distinct.push_back(knot);
+          multiplicities.push_back(1);
+        }
+      }
+      NCollection_Array1<double> knots(1, static_cast<int>(distinct.size()));
+      NCollection_Array1<int> mults(1, static_cast<int>(distinct.size()));
+      for (size_t i = 0; i < distinct.size(); ++i) {
+        knots(static_cast<int>(i) + 1) = distinct[i];
+        mults(static_cast<int>(i) + 1) = multiplicities[i];
+      }
+      Handle(Geom_BSplineCurve) curve = new Geom_BSplineCurve(poles, knots, mults, degree);
+      Handle(Geom2d_BSplineCurve) flat = new Geom2d_BSplineCurve(flatPoles, knots, mults, degree);
+      std::vector<double> cuts = {curve->FirstParameter(), curve->LastParameter()};
+      Geom2dAPI_InterCurveCurve crossings(flat, Precision::Confusion());
+      const Geom2dInt_GInter& found = crossings.Intersector();
+      for (int i = 1; i <= found.NbPoints(); ++i) {
+        cuts.push_back(found.Point(i).ParamOnFirst());
+        cuts.push_back(found.Point(i).ParamOnSecond());
+      }
+      std::sort(cuts.begin(), cuts.end());
+      std::vector<TopoDS_Edge> pieces;
+      double from = cuts.front();
+      for (size_t i = 1; i < cuts.size(); ++i) {
+        const double to = cuts[i];
+        if (to - from <= 1e-9) continue;
+        BRepBuilderAPI_MakeEdge builder(curve, from, to);
+        if (!builder.IsDone()) return failCurve("Couldn't make an edge from the spline.");
+        pieces.push_back(builder.Edge());
+        from = to;
+      }
+      if (pieces.empty()) return failCurve("The spline has no length.");
+      const int index = sketchCurveCount_++;
+      for (const TopoDS_Edge& piece : pieces) {
+        sketchEdges_.push_back(piece);
+        sketchCurveOf_.push_back(index);
+      }
+      return index;
+    } catch (...) {
+      failFromException("Spline failed");
+      return -1;
+    }
+  }
+
+  /**
+   * Splits the staged curves where they cross, touch or end on each other
+   * (General Fuse, positions within `fuzzy` mm are one), builds the faces
+   * between them and places each in the sketch plane (origin, X direction,
+   * normal). Returns the number of faces, or -1. Read them with
+   * profileRecordsPtr/Size, as int32 records per face:
+   * [handle, holes, n, (curve, reversed) × n, m, curve × m]: the n curves
+   * bounding its outer loop (for a piece shared by overlapping curves, the
+   * lowest index), then the curve of each of its m edges in sub-shape order;
+   * and profileNumbersPtr/Size, [area, centroid x, centroid y] per face in
+   * plane coordinates. The faces are in the arena.
+   */
+  int sketchProfiles(double ox, double oy, double oz, double xx, double xy, double xz, double nx,
+                     double ny, double nz, double fuzzy) {
+    beginOp();
+    profileRecords_.clear();
+    profileNumbers_.clear();
+    try {
+      std::vector<TopoDS_Face> faces;
+      if (!buildProfiles(fuzzy, faces)) return -1;
+      gp_Trsf placement;
+      placement.SetDisplacement(gp_Ax3(), gp_Ax3(gp_Pnt(ox, oy, oz), gp_Dir(nx, ny, nz), gp_Dir(xx, xy, xz)));
+      const TopLoc_Location location(placement);
+      std::vector<int> stored;
+      for (const TopoDS_Face& face : faces) {
+        const int handle = store(face.Moved(location));
+        if (handle == 0) {
+          for (int h : stored) release(h);
+          return -1;
+        }
+        stored.push_back(handle);
+        profileRecords_[recordStart(face)] = handle;
+      }
+      return static_cast<int>(faces.size());
+    } catch (...) {
+      failFromException("Profiles failed");
+      return -1;
+    }
+  }
+
+  uintptr_t profileRecordsPtr() const { return reinterpret_cast<uintptr_t>(profileRecords_.data()); }
+  int profileRecordsSize() const { return static_cast<int>(profileRecords_.size()); }
+  uintptr_t profileNumbersPtr() const { return reinterpret_cast<uintptr_t>(profileNumbers_.data()); }
+  int profileNumbersSize() const { return static_cast<int>(profileNumbers_.size()); }
 
   // -------------------------------------------------------------- history --
 
@@ -331,6 +544,15 @@ private:
   std::vector<uint32_t> edgeRanges_;
   std::vector<uint8_t> edgeFlags_;
   std::vector<float> vertexPoints_;
+  std::vector<double> numbers_;
+  /** Staged edges: one per curve, or a spline's pieces (sketchCurveOf_ says whose). */
+  std::vector<TopoDS_Edge> sketchEdges_;
+  std::vector<int> sketchCurveOf_;
+  int sketchCurveCount_ = 0;
+  std::vector<int32_t> profileRecords_;
+  std::vector<double> profileNumbers_;
+  /** Where each face's record starts in profileRecords_, while sketchProfiles runs. */
+  std::unordered_map<const TopoDS_TShape*, size_t> recordStarts_;
 
   void beginOp() {
     lastError_.clear();
@@ -358,6 +580,216 @@ private:
       lastError_ += ": unknown error";
     }
     return 0;
+  }
+
+  int failCurve(const char* message) {
+    fail(message);
+    return -1;
+  }
+
+  int addSketchEdge(const TopoDS_Edge& edge) {
+    sketchEdges_.push_back(edge);
+    sketchCurveOf_.push_back(sketchCurveCount_);
+    return sketchCurveCount_++;
+  }
+
+  size_t recordStart(const TopoDS_Face& face) const { return recordStarts_.at(face.TShape().get()); }
+
+  /**
+   * The profile faces of the staged curves, in the plane z = 0, and their
+   * records (see sketchProfiles; the handle slot is left 0). Pieces that
+   * bound nothing are dropped and the faces made again, until every piece
+   * left bounds a face once: a dangling line, or a bridge joining a hole to
+   * its outline, would otherwise stay inside a face as an extra edge.
+   */
+  bool buildProfiles(double fuzzy, std::vector<TopoDS_Face>& out) {
+    recordStarts_.clear();
+    if (sketchEdges_.empty()) return true;
+    // Which staged edge each piece comes from: the lowest index, and so the
+    // lowest curve.
+    NCollection_IndexedDataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> origin;
+    // General Fuse wants two arguments at least; one curve has nothing to meet.
+    BOPAlgo_Builder fuse;
+    if (sketchEdges_.size() == 1) {
+      origin.Add(sketchEdges_[0], 0);
+    } else {
+      NCollection_List<TopoDS_Shape> arguments;
+      for (const TopoDS_Edge& edge : sketchEdges_) arguments.Append(edge);
+      fuse.SetArguments(arguments);
+      fuse.SetFuzzyValue(fuzzy);
+      fuse.SetRunParallel(false);
+      fuse.Perform();
+      if (fuse.HasErrors()) return fail("Couldn't find where the sketch's curves meet.") != 0;
+    }
+    for (int i = 0; sketchEdges_.size() > 1 && i < static_cast<int>(sketchEdges_.size()); ++i) {
+      const TopoDS_Edge& edge = sketchEdges_[i];
+      const NCollection_List<TopoDS_Shape>& pieces = fuse.Modified(edge);
+      auto note = [&](const TopoDS_Shape& piece) {
+        const int found = origin.FindIndex(piece);
+        if (found == 0) origin.Add(piece, i);
+        else if (origin(found) > i) origin(found) = i;
+      };
+      if (pieces.IsEmpty()) {
+        if (!fuse.IsDeleted(edge)) note(edge);
+      } else {
+        for (NCollection_List<TopoDS_Shape>::Iterator it(pieces); it.More(); it.Next()) note(it.Value());
+      }
+    }
+
+    std::vector<TopoDS_Shape> pieces;
+    for (int i = 1; i <= origin.Extent(); ++i) {
+      if (!BRep_Tool::Degenerated(TopoDS::Edge(origin.FindKey(i)))) pieces.push_back(origin.FindKey(i));
+    }
+
+    const TopoDS_Face base = BRepBuilderAPI_MakeFace(gp_Pln(gp::XOY())).Face();
+    std::vector<TopoDS_Face> faces;
+    for (int round = 0; round < 1000; ++round) {
+      faces.clear();
+      if (pieces.empty()) break;
+      BOPAlgo_BuilderFace builder;
+      builder.SetFace(base);
+      NCollection_List<TopoDS_Shape> shapes;
+      for (const TopoDS_Shape& piece : pieces) {
+        shapes.Append(piece.Oriented(TopAbs_FORWARD));
+        shapes.Append(piece.Oriented(TopAbs_REVERSED));
+      }
+      builder.SetShapes(shapes);
+      builder.SetFuzzyValue(fuzzy);
+      builder.Perform();
+      if (builder.HasErrors()) return fail("Couldn't make faces from the sketch's curves.") != 0;
+
+      // How often each piece bounds a face; internal edges count as bad.
+      NCollection_IndexedDataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> uses;
+      for (const TopoDS_Shape& piece : pieces) uses.Add(piece, 0);
+      std::vector<TopoDS_Shape> bad;
+      for (NCollection_List<TopoDS_Shape>::Iterator it(builder.Areas()); it.More(); it.Next()) {
+        const TopoDS_Face& face = TopoDS::Face(it.Value());
+        faces.push_back(face);
+        for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
+          const int found = uses.FindIndex(e.Current());
+          const TopAbs_Orientation o = e.Current().Orientation();
+          if (found == 0) continue;
+          if (o == TopAbs_INTERNAL || o == TopAbs_EXTERNAL) uses(found) += 2;
+          else uses(found) += 1;
+        }
+      }
+      // A piece bounding two faces is normal (one on each side), but twice
+      // within one face it is a bridge or a dangling line.
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> drop;
+      for (const TopoDS_Face& face : faces) {
+        NCollection_IndexedDataMap<TopoDS_Shape, int, TopTools_ShapeMapHasher> within;
+        for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
+          const TopAbs_Orientation o = e.Current().Orientation();
+          if (o == TopAbs_INTERNAL || o == TopAbs_EXTERNAL) {
+            drop.Add(e.Current());
+            continue;
+          }
+          const int found = within.FindIndex(e.Current());
+          if (found == 0) within.Add(e.Current(), 1);
+          else drop.Add(e.Current());
+        }
+      }
+      for (int i = 1; i <= uses.Extent(); ++i) {
+        if (uses(i) == 0) drop.Add(uses.FindKey(i));
+      }
+      if (drop.IsEmpty()) break;
+      std::vector<TopoDS_Shape> kept;
+      for (const TopoDS_Shape& piece : pieces) {
+        if (!drop.Contains(piece)) kept.push_back(piece);
+      }
+      pieces.swap(kept);
+    }
+
+    const double minArea = fuzzy * fuzzy;
+    for (const TopoDS_Face& face : faces) {
+      GProp_GProps props;
+      BRepGProp::SurfaceProperties(face, props);
+      if (props.Mass() <= minArea) continue;
+      // Wires that touch (share a vertex) are one loop, as in the arrangement:
+      // a circle touching the outline from inside is part of the outline,
+      // two holes touching each other are one hole.
+      std::vector<TopoDS_Shape> wires = {BRepTools::OuterWire(face)};
+      for (TopExp_Explorer w(face, TopAbs_WIRE); w.More(); w.Next()) {
+        if (!w.Current().IsSame(wires[0])) wires.push_back(w.Current());
+      }
+      std::vector<int> group(wires.size());
+      for (size_t i = 0; i < wires.size(); ++i) group[i] = static_cast<int>(i);
+      const auto root = [&group](int i) {
+        while (group[i] != i) i = group[i] = group[group[i]];
+        return i;
+      };
+      std::vector<NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>> vertices(wires.size());
+      for (size_t i = 0; i < wires.size(); ++i) TopExp::MapShapes(wires[i], TopAbs_VERTEX, vertices[i]);
+      for (size_t i = 0; i < wires.size(); ++i) {
+        for (size_t j = i + 1; j < wires.size(); ++j) {
+          for (int v = 1; v <= vertices[j].Extent(); ++v) {
+            if (vertices[i].Contains(vertices[j](v))) {
+              group[root(static_cast<int>(j))] = root(static_cast<int>(i));
+              break;
+            }
+          }
+        }
+      }
+      std::vector<int> holeGroups;
+      for (size_t i = 1; i < wires.size(); ++i) {
+        const int g = root(static_cast<int>(i));
+        if (g != root(0) && std::find(holeGroups.begin(), holeGroups.end(), g) == holeGroups.end()) {
+          holeGroups.push_back(g);
+        }
+      }
+      recordStarts_[face.TShape().get()] = profileRecords_.size();
+      profileRecords_.push_back(0);
+      profileRecords_.push_back(static_cast<int32_t>(holeGroups.size()));
+      const size_t countAt = profileRecords_.size();
+      profileRecords_.push_back(0);
+      for (size_t i = 0; i < wires.size(); ++i) {
+        if (root(static_cast<int>(i)) != root(0)) continue;
+        // Explore from the face so each edge carries its orientation in the face.
+        for (TopExp_Explorer w(face, TopAbs_WIRE); w.More(); w.Next()) {
+          if (!w.Current().IsSame(wires[i])) continue;
+          for (TopExp_Explorer e(w.Current(), TopAbs_EDGE); e.More(); e.Next()) {
+            const TopoDS_Edge& edge = TopoDS::Edge(e.Current());
+            const int found = origin.FindIndex(edge);
+            if (found == 0) continue;
+            const int staged = origin(found);
+            profileRecords_.push_back(sketchCurveOf_[staged]);
+            profileRecords_.push_back(runsAgainst(edge, sketchEdges_[staged]) ? 1 : 0);
+            profileRecords_[countAt]++;
+          }
+        }
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+      TopExp::MapShapes(face, TopAbs_EDGE, edges);
+      profileRecords_.push_back(edges.Extent());
+      for (int i = 1; i <= edges.Extent(); ++i) {
+        const int found = origin.FindIndex(edges(i));
+        profileRecords_.push_back(found == 0 ? -1 : sketchCurveOf_[origin(found)]);
+      }
+      const gp_Pnt c = props.CentreOfMass();
+      profileNumbers_.push_back(props.Mass());
+      profileNumbers_.push_back(c.X());
+      profileNumbers_.push_back(c.Y());
+      out.push_back(face);
+    }
+    return true;
+  }
+
+  /** Whether `piece`, as it runs in its wire, goes against the direction of the curve it came from. */
+  static bool runsAgainst(const TopoDS_Edge& piece, const TopoDS_Edge& curve) {
+    BRepAdaptor_Curve adaptor(piece);
+    gp_Pnt p;
+    gp_Vec along;
+    adaptor.D1((adaptor.FirstParameter() + adaptor.LastParameter()) / 2, p, along);
+    if (piece.Orientation() == TopAbs_REVERSED) along.Reverse();
+    double first = 0;
+    double last = 0;
+    const Handle(Geom_Curve) geometry = BRep_Tool::Curve(curve, first, last);
+    GeomAPI_ProjectPointOnCurve projection(p, geometry, first, last);
+    const double u = projection.NbPoints() > 0 ? projection.LowerDistanceParameter() : first;
+    gp_Pnt q;
+    gp_Vec own;
+    geometry->D1(u, q, own);
+    return along.Dot(own) < 0;
   }
 
   int store(const TopoDS_Shape& shape) {

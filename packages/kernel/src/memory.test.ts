@@ -8,7 +8,10 @@
 // The control runs a loop that leaks on purpose (raw BRepAlgoAPI_Cut deleted
 // without Clear(), taucad/opencascade.js#40) and must trip the same limit, so
 // a probe that stops seeing leaks fails this test instead of passing it.
+import { SketchBuilder } from '@extrudo/sketch/fixtures';
+import { PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { planarCurves } from './features/sketch';
 import { Kernel } from './kernel';
 import { loadOcct } from './occt/load';
 import type { OcctModule } from './occt/types';
@@ -36,6 +39,45 @@ describe('memory', () => {
     for (let i = 0; i < WARM_UP; i++) makeTestPart(kernel);
     const before = kernel.stats();
     for (let i = 0; i < REBUILDS; i++) makeTestPart(kernel);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(0);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+    expect(after.heapBytes).toBe(before.heapBytes);
+  });
+
+  it(`making a sketch's profile faces ${REBUILDS} times does not grow the heap`, {
+    timeout: 180_000,
+  }, () => {
+    // A plate with holes, a slot, a crossing line and a spline: every curve
+    // type through General Fuse and the face builder (P2-02).
+    const b = new SketchBuilder();
+    b.line(0, 0, 120, 0);
+    b.line(120, 0, 120, 80);
+    b.line(120, 80, 0, 80);
+    b.line(0, 80, 0, 0);
+    b.circle(20, 20, 3);
+    b.ellipse(60, 40, 10, 5, 30);
+    b.line(90, 30, 110, 30);
+    b.arc(110, 35, 5, -90, 90);
+    b.line(110, 40, 90, 40);
+    b.arc(90, 35, 5, 90, 270);
+    b.line(-10, 60, 130, 60);
+    b.spline([
+      [10, 70],
+      [30, 50],
+      [50, 75],
+    ]);
+    const { curves } = planarCurves(b.sketch);
+    const frame = { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] } as const;
+    const rebuild = () => {
+      const { faces } = kernel.planarFaces(curves, frame, PROFILE_TOLERANCE);
+      if (faces.length < 5) throw new Error(`only ${faces.length} faces`);
+      kernel.release(...faces.map((f) => f.shape));
+    };
+    for (let i = 0; i < WARM_UP; i++) rebuild();
+    const before = kernel.stats();
+    for (let i = 0; i < REBUILDS; i++) rebuild();
     const after = kernel.stats();
 
     expect(after.liveShapes).toBe(0);

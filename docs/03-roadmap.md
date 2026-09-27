@@ -227,9 +227,14 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   *Done 2026-09-27* (ADR-0024): content-keyed cache with reference-counted
   shapes, body access per feature, cancellation at yields, previews,
   `Recomputer` on the UI thread, status glyphs on timeline chips.
-- [ ] **P2-02 Sketch → kernel.** Sketch curves → OCCT edges/wires; OCCT-based
+- [x] **P2-02 Sketch → kernel.** Sketch curves → OCCT edges/wires; OCCT-based
   authoritative profile faces with persistent region IDs; sketch plane
   placement.
+  *Done 2026-09-27* (ADR-0025): exact lines, arcs, ellipses and splines in
+  the facade, split by General Fuse into faces placed in the sketch plane;
+  their region IDs match `detectProfiles` over a 28-sketch corpus; the
+  sketch's output has a face per profile and the sketch curve of each
+  face edge for P2-04.
 - [ ] **P2-03 B-rep rendering and 3D selection.** Body meshes with face ranges,
   edge lines, vertices; pre-highlight; selection of faces, edges, vertices and
   bodies; selection filter menu; "select other" long-press list.

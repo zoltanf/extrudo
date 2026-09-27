@@ -12,6 +12,8 @@ export interface FacadeBinding {
   releaseAll(): void;
   clearArgs(): void;
   pushArg(value: number): void;
+  clearNumbers(): void;
+  pushNumber(value: number): void;
   makeBox(x: number, y: number, z: number, dx: number, dy: number, dz: number): number;
   makeCylinder(
     px: number,
@@ -25,6 +27,27 @@ export interface FacadeBinding {
   ): number;
   fillet(shape: number, radius: number): number;
   boolean(op: number, a: number, b: number): number;
+  sketchClear(): void;
+  sketchLine(x0: number, y0: number, x1: number, y1: number): number;
+  sketchArc(cx: number, cy: number, radius: number, from: number, sweep: number): number;
+  sketchEllipse(cx: number, cy: number, a: number, b: number, rotation: number): number;
+  sketchSpline(degree: number, poleCount: number): number;
+  sketchProfiles(
+    ox: number,
+    oy: number,
+    oz: number,
+    xx: number,
+    xy: number,
+    xz: number,
+    nx: number,
+    ny: number,
+    nz: number,
+    fuzzy: number,
+  ): number;
+  profileRecordsPtr(): number;
+  profileRecordsSize(): number;
+  profileNumbersPtr(): number;
+  profileNumbersSize(): number;
   historyPtr(): number;
   historySize(): number;
   count(shape: number, kind: number): number;

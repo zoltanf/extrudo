@@ -20,12 +20,14 @@ import {
 import { z } from 'zod';
 import { kernelFeatures } from '../features';
 import { KernelError, type ShapeHandle } from '../kernel';
-import type { KernelFeatureDefinition } from './types';
+import type { FeatureOutput, KernelFeatureDefinition } from './types';
 
 export interface TestFeatures {
   registry: FeatureRegistry<KernelFeatureDefinition>;
   /** Feature IDs in the order their evaluators ran. */
   calls: FeatureId[];
+  /** The sketch outputs `test-sheet` read, in order. */
+  seen: FeatureOutput[];
 }
 
 const base = { category: 'create', icon: 'test' } as const;
@@ -36,11 +38,13 @@ const base = { category: 'create', icon: 'test' } as const;
  * - `test-hole`: cuts a cylinder of `radius` through the first body.
  * - `test-profile`: makes a square face (no body); a later feature uses it.
  * - `test-pad`: a new body the size of `test-profile`'s square (`profile` ref), `height` tall.
+ * - `test-sheet`: a new body that is a sketch's profile face (`profile` ref `<sketch>/<region>`).
  * - `test-fail`: always fails. `test-leak`: leaves a box behind. `test-crash`: aborts the WASM.
  * The sketch evaluator is registered too.
  */
 export function testFeatures(): TestFeatures {
   const calls: FeatureId[] = [];
+  const seen: FeatureOutput[] = [];
   const registry = kernelFeatures();
   const define = <I extends FeatureInputs>(
     type: string,
@@ -121,6 +125,20 @@ export function testFeatures(): TestFeatures {
     },
   );
 
+  define(
+    'test-sheet',
+    z.strictObject({ profile: RefInputSchema }),
+    ({ inputs, bodies, bodyId, output }) => {
+      const ref = inputs.profile.refs[0]?.id ?? '';
+      const slash = ref.indexOf('/');
+      const source = output(ref.slice(0, slash) as FeatureId);
+      seen.push(source);
+      const face = source.shapes?.[ref.slice(slash + 1)];
+      if (face === undefined) throw new KernelError("Can't find this profile in the sketch.");
+      return { bodies: new Map(bodies).set(bodyId(), face) };
+    },
+  );
+
   define('test-fail', z.strictObject({}), () => {
     throw new KernelError('This feature always fails.');
   });
@@ -132,7 +150,7 @@ export function testFeatures(): TestFeatures {
     return {};
   });
 
-  return { registry, calls };
+  return { registry, calls, seen };
 }
 
 let counter = 0;

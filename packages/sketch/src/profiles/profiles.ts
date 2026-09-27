@@ -23,8 +23,9 @@
  *
  * A region's ID is a hash of the curves around its outer boundary and the
  * direction each runs in, so it survives moving, resizing and adding
- * unrelated geometry (architecture §5.3). The kernel will later build the
- * authoritative faces from the same curves (P2).
+ * unrelated geometry (architecture §5.3). The kernel builds the
+ * authoritative faces from the same curves and keys them the same way
+ * (`profileKey`, `profileIds`; P2-02).
  */
 import type { SketchData, SketchEntity, SketchEntityId, Vec2 } from '@extrudo/core';
 import { curvePolyline } from '@extrudo/core';
@@ -507,11 +508,33 @@ export function insidePolygon(polygon: readonly Vec2[], p: Vec2): boolean {
 
 // IDs ------------------------------------------------------------------------------
 
-/** The curves around a loop and their directions, as a sorted key. */
-function signature(loop: ProfileLoop): string {
-  return [...new Set(loop.edges.map((e) => `${e.curve}${e.reversed ? '-' : '+'}`))]
-    .sort()
-    .join(' ');
+/**
+ * A region's key: the curves around its outer loop and the direction each
+ * runs in, sorted. The kernel keys its faces the same way (P2-02).
+ */
+export function profileKey(edges: readonly Pick<ProfileEdge, 'curve' | 'reversed'>[]): string {
+  return [...new Set(edges.map((e) => `${e.curve}${e.reversed ? '-' : '+'}`))].sort().join(' ');
+}
+
+/**
+ * Region IDs from their keys: the key's hash. Rare regions that share a key
+ * (a spline weaving across a line) are numbered by the position of their
+ * area centroid, x first.
+ */
+export function profileIds(regions: readonly { key: string; centroid: Vec2 }[]): string[] {
+  const byKey = new Map<string, number[]>();
+  regions.forEach((r, i) => {
+    byKey.set(r.key, [...(byKey.get(r.key) ?? []), i]);
+  });
+  const out = new Array<string>(regions.length);
+  for (const [key, same] of byKey) {
+    const c = (i: number) => (regions[i] as { centroid: Vec2 }).centroid;
+    same.sort((a, b) => c(a)[0] - c(b)[0] || c(a)[1] - c(b)[1]);
+    same.forEach((i, n) => {
+      out[i] = hash(n === 0 ? key : `${key}#${n}`);
+    });
+  }
+  return out;
 }
 
 /** cyrb53: a small, well-spread 53-bit string hash. */
@@ -528,14 +551,23 @@ function hash(text: string): string {
   return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
 }
 
-function centroid(polygon: readonly Vec2[]): Vec2 {
+/** The area centroid of a region: its outer loop less its holes (signed areas). */
+export function profileCentroid(profile: Pick<Profile, 'outer' | 'holes'>): Vec2 {
+  let area = 0;
   let x = 0;
   let y = 0;
-  for (const p of polygon) {
-    x += p[0];
-    y += p[1];
+  for (const loop of [profile.outer, ...profile.holes]) {
+    const polygon = loop.polygon;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[j] as Vec2;
+      const b = polygon[i] as Vec2;
+      const cross = a[0] * b[1] - b[0] * a[1];
+      area += cross;
+      x += (a[0] + b[0]) * cross;
+      y += (a[1] + b[1]) * cross;
+    }
   }
-  return [x / polygon.length, y / polygon.length];
+  return area === 0 ? (profile.outer.polygon[0] ?? [0, 0]) : [x / (3 * area), y / (3 * area)];
 }
 
 // Detection ------------------------------------------------------------------------
@@ -611,33 +643,18 @@ export function detectProfiles(data: SketchData): Profile[] {
   }
 
   const profiles = regions.map((r) => ({
-    key: signature(r.loop),
+    key: profileKey(r.loop.edges),
     outer: r.loop,
     holes: r.holes,
     area: r.loop.area + r.holes.reduce((s, h) => s + h.area, 0),
   }));
-  // Rare: two regions bounded by the same curves in the same directions
-  // (a spline weaving across a line). Number them by position.
-  const byKey = new Map<string, typeof profiles>();
-  for (const p of profiles) byKey.set(p.key, [...(byKey.get(p.key) ?? []), p]);
-  const out: Profile[] = [];
-  for (const [key, same] of byKey) {
-    const ordered =
-      same.length === 1
-        ? same
-        : same
-            .map((p) => ({ p, c: centroid(p.outer.polygon) }))
-            .sort((a, b) => a.c[0] - b.c[0] || a.c[1] - b.c[1])
-            .map((x) => x.p);
-    ordered.forEach((p, i) => {
-      out.push({
-        id: hash(i === 0 ? key : `${key}#${i}`),
-        outer: p.outer,
-        holes: p.holes,
-        area: p.area,
-      });
-    });
-  }
+  const ids = profileIds(profiles.map((p) => ({ key: p.key, centroid: profileCentroid(p) })));
+  const out: Profile[] = profiles.map((p, i) => ({
+    id: ids[i] as string,
+    outer: p.outer,
+    holes: p.holes,
+    area: p.area,
+  }));
   return out.sort((a, b) => b.area - a.area || (a.id < b.id ? -1 : 1));
 }
 

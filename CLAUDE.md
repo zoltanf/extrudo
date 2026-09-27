@@ -12,7 +12,7 @@ every push and pull request.
 **Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
-engine) is done. ADR-0001 chose
+engine) and P2-02 (sketch → kernel) are done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -159,8 +159,19 @@ thread `Recomputer` (`src/recomputer.ts`, started by `useRecompute` in
 and marks a feature that crashed the kernel as an error until it changes.
 Timeline chips show ✕/⚠ with the message in the tooltip; the status bar
 counts errors and shows the kernel state. Engine tests use the test
-features in `recompute/testing.ts` (real OCCT, call counters). Next:
-**P2-02** (sketch → kernel). See `docs/03-roadmap.md`.
+features in `recompute/testing.ts` (real OCCT, call counters). ADR-0025
+(P2-02) turned sketches into faces: the evaluator
+(`src/features/sketch.ts`) stages exact curves in entity ID order
+(`planarCurves`), `Kernel.planarFaces` (`src/planar.ts`, facade
+`sketch*`/`sketchProfiles`) splits them with General Fuse, drops bridges
+and dangling pieces, and makes one face per region placed in the plane;
+`profileFaceIds` keys each face with `@extrudo/sketch/profiles`'
+`profileKey`/`profileIds`, so **kernel region IDs equal `detectProfiles`
+IDs** (a geometric fallback covers the rest; tests expect none). The
+output's `shapes` are the faces by region ID, `data` a
+`SketchOutputData` (frame; per profile area, holes and the sketch curve
+of each face edge). Next: **P2-03** (B-rep rendering and 3D selection).
+See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -189,7 +200,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -268,11 +279,20 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 - **brepjs `*WithEvolution` returns empty maps unless the input faces carry
   metadata** (for example `tagFaces`): brepjs only sends face hashes to the
   kernel when there is something to propagate.
-- **Custom OCCT builds need Docker** (2.4 GB image, about 10 minutes per
-  build). The user was added to the `docker` group on 2026-09-25; until the
-  next login, run Docker commands through `newgrp docker` (e.g.
-  `echo "npx libcascade build" | newgrp docker`). The daemon is
-  socket-activated. The binding list needs every base class and referenced
+- **Custom OCCT builds need Docker** (2.4 GB image, about 12 minutes per
+  build). The user is in the `docker` group (since 2026-09-25; plain
+  `docker` works since the next login, seen 2026-09-27). The daemon is
+  socket-activated.
+- **Prototype facade code natively first** (P2-02): the image has OCCT's
+  static WASM libraries (`/opencascade.js/build/occt-libraries/libTK*.a`)
+  and node. A `harness.cpp` that `#include`s `extrudo_facade.cpp` and
+  calls its methods from `main()` builds with `em++ -std=c++17 -O1
+  -fwasm-exceptions -I/opencascade.js/build/occt-includes harness.cpp
+  -sALLOW_MEMORY_GROWTH -sENVIRONMENT=node <libs: TKBO TKBool TKFillet
+  TKOffset TKPrim TKShHealing TKTopAlgo TKGeomAlgo TKBRep TKGeomBase TKG3d
+  TKG2d TKMath TKernel TKMesh>` and runs with `node` in the container in
+  about 3 s, versus 12 minutes for `pnpm occt build`. Leak checks work
+  there too (`heapTop()` over 300 vs 1500 iterations). The binding list needs every base class and referenced
   type (`custom-build/closure.mjs`); `libcascade check` doesn't catch those.
   `MODULARIZE` + `EXPORT_ES6` and the three exception helpers in
   `EXPORTED_RUNTIME_METHODS` are required.
@@ -453,6 +473,11 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   ms" or "idle · …") varies between runs: `e2e/screenshot.css` hides it in
   every `toHaveScreenshot` (`stylePath` in `playwright.config.ts`). Put
   anything else that varies there too.
+- **OCCT profile facts** (P2-02): General Fuse (`BOPAlgo_Builder`) refuses
+  a single argument and never splits an edge at its own crossing;
+  `BOPAlgo_BuilderFace` keeps dangling edges and bridges inside faces and
+  makes a circle touching the outline from inside a second wire of the
+  same face (sharing a vertex). The facade handles all four; see ADR-0025.
 - OCCT's STEP writer prints a banner to stdout from inside WASM. Route
   Emscripten's `print` to a logger (or ignore it in tests).
 - **Command search e2e** (`e2e/commands.spec.ts`): the palette is

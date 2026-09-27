@@ -1,6 +1,12 @@
 import { decodeHistory, type HistoryRecord, type SubShapeKind } from './history';
 import type { BodyMesh, Measurements, MeshOptions } from './mesh';
 import type { FacadeBinding, OcctModule } from './occt/types';
+import {
+  decodePlanarFaces,
+  type PlanarCurve,
+  type PlanarFacesResult,
+  type PlanarFrame,
+} from './planar';
 
 /** A shape held in the facade's arena. Release it (or use a ShapeScope) when done. */
 export type ShapeHandle = number & { readonly __brand: 'ShapeHandle' };
@@ -73,6 +79,39 @@ export class Kernel {
     return this.#withHistory(this.#facade.boolean(BOOLEAN_CODE.common, target, tool));
   }
 
+  /**
+   * The faces between planar curves (a sketch's profiles, P2-02): the curves
+   * are split where they cross, touch or end on each other (positions within
+   * `tolerance` mm are one), and each region between them becomes a face,
+   * with the regions directly inside it as holes, placed in `frame`. Curves
+   * that bound nothing (dangling lines, bridges to a hole) are left out.
+   * Release the faces when done.
+   */
+  planarFaces(
+    curves: readonly PlanarCurve[],
+    frame: PlanarFrame,
+    tolerance: number,
+  ): PlanarFacesResult {
+    const f = this.#facade;
+    f.sketchClear();
+    const staged: number[] = [];
+    const skipped: number[] = [];
+    curves.forEach((curve, i) => {
+      if (this.#stageCurve(curve) < 0) skipped.push(i);
+      else staged.push(i);
+    });
+    const { origin: o, x, normal: n } = frame;
+    const count = f.sketchProfiles(o[0], o[1], o[2], x[0], x[1], x[2], n[0], n[1], n[2], tolerance);
+    f.sketchClear();
+    if (count < 0) throw new KernelError(f.lastError() || "Couldn't make the sketch's profiles.");
+    const faces = decodePlanarFaces(
+      this.#copy(Int32Array, f.profileRecordsPtr(), f.profileRecordsSize()),
+      this.#copy(Float64Array, f.profileNumbersPtr(), f.profileNumbersSize()),
+      staged,
+    );
+    return { faces, skipped };
+  }
+
   count(shape: ShapeHandle, kind: SubShapeKind): number {
     const n = this.#facade.count(shape, KIND_CODE[kind]);
     if (n < 0) throw new KernelError('Unknown shape.');
@@ -141,6 +180,27 @@ export class Kernel {
   dispose(): void {
     this.#facade.releaseAll();
     this.#facade.delete();
+  }
+
+  /** Stages one curve for sketchProfiles; returns its facade index or -1. */
+  #stageCurve(curve: PlanarCurve): number {
+    const f = this.#facade;
+    switch (curve.kind) {
+      case 'line':
+        return f.sketchLine(curve.a[0], curve.a[1], curve.b[0], curve.b[1]);
+      case 'arc':
+        return f.sketchArc(curve.center[0], curve.center[1], curve.radius, curve.from, curve.sweep);
+      case 'ellipse':
+        return f.sketchEllipse(curve.center[0], curve.center[1], curve.a, curve.b, curve.rotation);
+      case 'spline':
+        f.clearNumbers();
+        for (const [px, py] of curve.poles) {
+          f.pushNumber(px);
+          f.pushNumber(py);
+        }
+        for (const knot of curve.knots) f.pushNumber(knot);
+        return f.sketchSpline(curve.degree, curve.poles.length);
+    }
   }
 
   #check(handle: number): ShapeHandle {

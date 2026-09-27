@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **P2-02** Sketch → kernel (ADR-0025): the kernel turns a
+  sketch's curves into exact OCCT edges (splines cut where they cross
+  themselves), splits them where they meet and makes a face for every
+  profile, holes included, placed in the sketch plane. Faces carry the
+  same region IDs as the profiles the sketch shows, so a later feature
+  reads the face a user picked; bridges and dangling lines drop out as in
+  the sketch. A 1000-rebuild memory test.
+
 - 2026-09-27 · **P2-01** Recompute engine (ADR-0024): the kernel worker
   walks the timeline and caches each feature's result under a hash of its
   inputs, expression values, references and the bodies before it, so an
