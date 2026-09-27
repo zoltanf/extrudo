@@ -176,10 +176,12 @@ Benchmark **B1** buildable.
   crossing); drag geometry with live solve; delete with constraint cleanup;
   a properties panel for the selected entity.
   *AC:* FR-VP-05 (sketch part). *Done 2026-09-27, ADR-0018.*
-- [ ] **P1-10 Modify tools.** Trim, extend, break, sketch fillet, sketch
+- [x] **P1-10 Modify tools.** Trim, extend, break, sketch fillet, sketch
   chamfer, offset (with a dimension), mirror (with a symmetry constraint),
   move/copy, rectangular and circular pattern, scale.
-  *AC:* FR-SK-10; unit tests on the geometry operations.
+  *AC:* FR-SK-10; unit tests on the geometry operations. *Done 2026-09-27,
+  ADR-0019. Not yet: trimming ellipses and splines, line–arc fillets,
+  round offset joins, pattern instances tied to the original's position.*
 - [ ] **P1-11 Profile detection.** TS planar arrangement → closed regions with
   nesting; shaded profile display; hover and select profiles; stable region IDs.
   *AC:* FR-SK-11; unit tests with overlapping and nested shapes.

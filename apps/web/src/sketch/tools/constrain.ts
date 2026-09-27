@@ -290,7 +290,8 @@ export class ConstraintTool implements SketchTool {
         ([, c]) => c.type === 'fix' && c.entity === constraint.entity,
       );
       if (existing) {
-        edit.remove = [existing[0] as ConstraintId];
+        edit.remove = { constraints: [existing[0] as ConstraintId] };
+        edit.label = 'Unfix';
         return edit;
       }
     }

@@ -2,9 +2,9 @@
  * Sketch commands: creating a sketch (P1-01), adding to its content (P1-02),
  * removing constraints and dimensions (P1-06), editing a dimension and
  * applying a solve (P1-07), deleting entities and the construction flag
- * (P1-09). Editing entities' shapes comes with the modify tools (P1-10).
+ * (P1-09), and the modify tools' changes (P1-10, `modifySketch`).
  */
-import { CommandError, type DocumentDraft, defineCommand } from '../commands';
+import { type Command, CommandError, type DocumentDraft, defineCommand } from '../commands';
 import { insertFeature, refuseIfUsed } from '../document-commands';
 import { isReservedName } from '../expr/evaluate';
 import { nextModelParameterName, parameterNames } from '../expr/parameters';
@@ -68,43 +68,144 @@ export interface AddToSketchPayload {
  * driving dimensions; the result must pass the sketch's reference checks
  * (`sketchIssues`), or nothing changes.
  */
-export const addToSketch = defineCommand<AddToSketchPayload>(
-  'sketch.add',
-  'Draw',
-  (
-    draft,
-    { feature, entities = {}, constraints = {}, dimensions = {}, points = {}, radii = {} },
-  ) => {
-    const data = sketchDraft(draft, feature);
-    const taken = new Set([
-      ...Object.keys(data.entities),
-      ...Object.keys(data.constraints),
-      ...Object.keys(data.dimensions),
-    ]);
-    for (const id of [
-      ...Object.keys(entities),
-      ...Object.keys(constraints),
-      ...Object.keys(dimensions),
-    ]) {
-      if (taken.has(id)) throw new CommandError(`The sketch already has "${id}".`);
-      taken.add(id);
-    }
-    const names = parameterNames(draft);
-    for (const d of Object.values(dimensions)) {
-      if (d.driven || d.paramName === undefined) continue;
-      if (names.has(d.paramName) || isReservedName(d.paramName)) {
-        throw new CommandError(`The name "${d.paramName}" is taken.`);
-      }
-      names.add(d.paramName);
-    }
-    moveGeometry(data, points, radii);
-    Object.assign(data.entities, entities);
-    Object.assign(data.constraints, constraints);
-    Object.assign(data.dimensions, dimensions);
-    const issue = sketchIssues(data)[0];
-    if (issue) throw new CommandError(`Can't add that: ${issue.path.join('.')} ${issue.message}.`);
-  },
+export const addToSketch = defineCommand<AddToSketchPayload>('sketch.add', 'Draw', (draft, p) =>
+  changeSketch(draft, p),
 );
+
+/**
+ * A change to a sketch's content as the modify tools make it (P1-10):
+ * additions as in `addToSketch`, plus existing entities replaced whole
+ * (`update`: a trimmed line's moved end, a circle trimmed into an arc under
+ * the same ID), entities, constraints and dimensions removed as listed (no
+ * clean-up: the tool works out what goes), and new expressions for existing
+ * dimensions (Scale), and constraints and dimensions changed in place.
+ */
+export interface SketchChange extends Omit<AddToSketchPayload, 'feature'> {
+  update?: Readonly<Record<SketchEntityId, SketchEntity>>;
+  /**
+   * Existing constraints and dimensions replaced whole, IDs kept (a
+   * fillet's dimension to the old corner now measures to its virtual
+   * sharp). A replaced dimension keeps its parameter name and driven flag.
+   */
+  replace?: {
+    constraints?: Readonly<Record<ConstraintId, SketchConstraint>>;
+    dimensions?: Readonly<Record<DimensionId, SketchDimension>>;
+  };
+  remove?: {
+    entities?: readonly SketchEntityId[];
+    constraints?: readonly ConstraintId[];
+    dimensions?: readonly DimensionId[];
+  };
+  exprs?: Readonly<Record<DimensionId, string>>;
+}
+
+/**
+ * Applies a `SketchChange` (P1-10: trim, fillet, offset…) as one step named
+ * `label` ("Trim"). Removals go first, then replacements (which may change
+ * an entity's type but not its ID), then additions and moved geometry.
+ * Removed and replaced IDs must exist, no expression elsewhere may use a
+ * removed dimension's parameter, and the result must pass `sketchIssues`,
+ * or nothing changes.
+ */
+export function modifySketch(
+  payload: SketchChange & { feature: FeatureId; label: string },
+): Command<SketchChange & { feature: FeatureId; label: string }> {
+  return {
+    type: 'sketch.modify',
+    label: payload.label,
+    payload,
+    recipe: (draft, p) => changeSketch(draft, p),
+  };
+}
+
+function changeSketch(draft: DocumentDraft, change: SketchChange & { feature: FeatureId }): void {
+  const {
+    feature,
+    entities = {},
+    constraints = {},
+    dimensions = {},
+    points = {},
+    radii = {},
+    update = {},
+    remove = {},
+    exprs = {},
+    replace = {},
+  } = change;
+  const data = sketchDraft(draft, feature);
+
+  const gone = new Set<object>();
+  for (const id of remove.dimensions ?? []) {
+    const d = data.dimensions[id];
+    if (!d) throw new CommandError(`The sketch has no dimension "${id}".`);
+    gone.add(d);
+  }
+  for (const d of gone as Set<SketchDimension>) {
+    if (!d.driven && d.paramName !== undefined) refuseIfUsed(draft, d.paramName, gone);
+  }
+  for (const id of remove.dimensions ?? []) delete data.dimensions[id];
+  for (const id of remove.constraints ?? []) {
+    if (!(id in data.constraints)) throw new CommandError(`The sketch has no constraint "${id}".`);
+    delete data.constraints[id];
+  }
+  for (const id of remove.entities ?? []) {
+    if (!(id in data.entities)) throw new CommandError(`The sketch has no entity "${id}".`);
+    delete data.entities[id];
+  }
+  for (const [id, e] of Object.entries(update)) {
+    if (!(id in data.entities)) throw new CommandError(`The sketch has no entity "${id}".`);
+    data.entities[id as SketchEntityId] = e;
+  }
+  for (const [id, c] of Object.entries(replace.constraints ?? {})) {
+    if (!(id in data.constraints)) throw new CommandError(`The sketch has no constraint "${id}".`);
+    data.constraints[id as ConstraintId] = c;
+  }
+  for (const [id, d] of Object.entries(replace.dimensions ?? {})) {
+    const old = data.dimensions[id as DimensionId];
+    if (!old) throw new CommandError(`The sketch has no dimension "${id}".`);
+    const { paramName: _, ...rest } = d;
+    data.dimensions[id as DimensionId] = {
+      ...rest,
+      driven: old.driven,
+      ...(old.paramName === undefined ? {} : { paramName: old.paramName }),
+    } as SketchDimension;
+  }
+
+  const taken = new Set([
+    ...Object.keys(data.entities),
+    ...Object.keys(data.constraints),
+    ...Object.keys(data.dimensions),
+  ]);
+  for (const id of [
+    ...Object.keys(entities),
+    ...Object.keys(constraints),
+    ...Object.keys(dimensions),
+  ]) {
+    if (taken.has(id)) throw new CommandError(`The sketch already has "${id}".`);
+    taken.add(id);
+  }
+  const names = parameterNames(draft);
+  for (const d of gone as Set<SketchDimension>) {
+    if (d.paramName !== undefined) names.delete(d.paramName);
+  }
+  for (const d of Object.values(dimensions)) {
+    if (d.driven || d.paramName === undefined) continue;
+    if (names.has(d.paramName) || isReservedName(d.paramName)) {
+      throw new CommandError(`The name "${d.paramName}" is taken.`);
+    }
+    names.add(d.paramName);
+  }
+  Object.assign(data.entities, entities);
+  moveGeometry(data, points, radii);
+  Object.assign(data.constraints, constraints);
+  Object.assign(data.dimensions, dimensions);
+  for (const [id, expr] of Object.entries(exprs)) {
+    const d = data.dimensions[id as DimensionId];
+    if (!d) throw new CommandError(`The sketch has no dimension "${id}".`);
+    d.expr = expr;
+  }
+  const issue = sketchIssues(data)[0];
+  if (issue) throw new CommandError(`Can't do that: ${issue.path.join('.')} ${issue.message}.`);
+}
 
 export interface RemoveFromSketchPayload {
   feature: FeatureId;

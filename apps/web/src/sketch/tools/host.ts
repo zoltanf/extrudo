@@ -49,15 +49,16 @@ import {
   DIMENSION_LABELS,
   type DimensionId,
   type DocumentStore,
+  dimensionUnit,
   type ExtrudoDocument,
   entityPoints,
   evaluateParameters,
   type FeatureId,
+  modifySketch,
   nextModelParameterName,
   radiusOf,
   newId as randomId,
   readSketch,
-  removeFromSketch,
   type SessionStore,
   type SketchConstraint,
   type SketchData,
@@ -85,10 +86,12 @@ import { dimensionValues } from '../values';
 import { ARC_CENTER_TOOL, ARC_TANGENT_TOOL, ARC_TOOL, ArcTool } from './arc';
 import { CIRCLE_2POINT_TOOL, CIRCLE_3POINT_TOOL, CIRCLE_TOOL, CircleTool } from './circle';
 import { CONSTRAINT_TOOLS, ConstraintTool } from './constrain';
+import { CHAMFER_TOOL, CornerTool, FILLET_TOOL } from './corner';
 import { DIMENSION_TOOL, DimensionTool } from './dimension';
 import { ELLIPSE_TOOL, EllipseTool } from './ellipse';
 import { isSketchTool } from './ids';
 import { LINE_TOOL, LineTool } from './line';
+import { OFFSET_TOOL, OffsetTool } from './offset';
 import { POINT_TOOL, PointTool } from './point';
 import {
   POLYGON_CIRCUMSCRIBED_TOOL,
@@ -104,7 +107,21 @@ import {
 } from './rectangle';
 import { SLOT_OVERALL_TOOL, SLOT_TOOL, SlotTool } from './slot';
 import { SPLINE_TOOL, SplineTool } from './spline';
+import { BREAK_TOOL, EXTEND_TOOL, SplitTool, TRIM_TOOL } from './split';
 import type { SketchEdit, SketchTool, ToolContext, Typed } from './tool';
+import {
+  CIRCULAR_PATTERN_TOOL,
+  CircularPatternTool,
+  COPY_TOOL,
+  MIRROR_TOOL,
+  MirrorTool,
+  MOVE_TOOL,
+  RECTANGULAR_PATTERN_TOOL,
+  RectangularPatternTool,
+  SCALE_TOOL,
+  ScaleTool,
+  TranslateTool,
+} from './transform';
 
 /** Snap distance, in screen pixels. */
 export const SNAP_PIXELS = 8;
@@ -129,6 +146,18 @@ const FACTORIES: Record<string, (context: ToolContext) => SketchTool> = {
   [ELLIPSE_TOOL]: (context) => new EllipseTool(context),
   [SPLINE_TOOL]: (context) => new SplineTool(context),
   [DIMENSION_TOOL]: (context) => new DimensionTool(context),
+  [TRIM_TOOL]: (context) => new SplitTool(context, 'trim'),
+  [EXTEND_TOOL]: (context) => new SplitTool(context, 'extend'),
+  [BREAK_TOOL]: (context) => new SplitTool(context, 'break'),
+  [FILLET_TOOL]: (context) => new CornerTool(context, 'fillet'),
+  [CHAMFER_TOOL]: (context) => new CornerTool(context, 'chamfer'),
+  [OFFSET_TOOL]: (context) => new OffsetTool(context),
+  [MIRROR_TOOL]: (context) => new MirrorTool(context),
+  [MOVE_TOOL]: (context) => new TranslateTool(context, 'move'),
+  [COPY_TOOL]: (context) => new TranslateTool(context, 'copy'),
+  [RECTANGULAR_PATTERN_TOOL]: (context) => new RectangularPatternTool(context),
+  [CIRCULAR_PATTERN_TOOL]: (context) => new CircularPatternTool(context),
+  [SCALE_TOOL]: (context) => new ScaleTool(context),
   ...Object.fromEntries(
     CONSTRAINT_TOOLS.map((id) => [id, (context: ToolContext) => new ConstraintTool(context, id)]),
   ),
@@ -306,6 +335,10 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     construction: () => state.getState().construction,
     settings: () => store.getState().doc.settings,
     pick: (cursor, accept) => pickEntity(context.sketch(), cursor, SNAP_PIXELS * perPixel, accept),
+    selection: () => {
+      const data = activeSketch()?.data;
+      return data ? selectedEntities(data) : [];
+    },
   };
 
   const create = (id: string) => {
@@ -441,30 +474,54 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     if (!edit) return;
     const sketch = activeSketch();
     if (!sketch) return;
-    if (edit.remove?.length) {
-      dispatch(removeFromSketch({ feature: sketch.id, constraints: edit.remove }));
+    if (edit.error) {
+      state.setState({ error: edit.error });
+      return;
+    }
+    if (edit.move) {
+      moveBy(sketch, edit.move.entities, edit.move.by, edit.label ?? 'Move');
       return;
     }
     const { doc } = store.getState();
     const evaluation = evaluateParameters(doc);
-    const values = (d: SketchData) => dimensionValues(d, evaluation, sketch.id);
     const auto = new Set<string>(edit.auto);
 
-    // New driving dimensions take the next free parameter names.
-    const dimensions: Record<DimensionId, SketchDimension> = { ...edit.dimensions };
-    let next = Number(nextModelParameterName(doc).slice(1));
-    const named = (d: SketchDimension): SketchDimension =>
-      d.driven || d.paramName !== undefined ? d : { ...d, paramName: `d${next++}` };
-    for (const [id, d] of Object.entries(dimensions)) dimensions[id as DimensionId] = named(d);
+    // New dimensions; the optional ones (`auto`) join them if the solver keeps them.
+    const dimensions: Record<DimensionId, SketchDimension> = {};
+    const optional: Record<DimensionId, SketchDimension> = {};
+    for (const [id, d] of Object.entries(edit.dimensions)) {
+      (auto.has(id) ? optional : dimensions)[id as DimensionId] = d;
+    }
+    // A linked dimension's parameter isn't in the document yet: it takes its target's value.
+    // A dimension given a new expression (Scale) takes that one's.
+    const values = (d: SketchData) => {
+      const out = dimensionValues(d, evaluation, sketch.id);
+      for (const [id, expr] of Object.entries(edit.exprs ?? {})) {
+        const dim = d.dimensions[id as DimensionId];
+        const result =
+          dim && !dim.driven ? evaluation.evaluate(expr, dimensionUnit(dim)) : undefined;
+        if (result?.ok) out[id] = result.value;
+      }
+      for (const [id, target] of Object.entries(edit.links ?? {})) {
+        const v = out[target];
+        if (id in d.dimensions && v !== undefined) out[id] = v;
+      }
+      return out;
+    };
 
+    // The sketch as the edit leaves what was there: removals, replacements, new expressions.
+    const base = changedSketch(sketch.data, edit);
     const constraints: Record<ConstraintId, SketchConstraint> = {};
     for (const [id, c] of Object.entries(edit.constraints)) {
       if (!auto.has(id)) constraints[id as ConstraintId] = c;
     }
-    const merged = (extra: Record<string, SketchConstraint>): SketchData => ({
-      entities: { ...sketch.data.entities, ...edit.entities },
-      constraints: { ...sketch.data.constraints, ...constraints, ...extra },
-      dimensions: { ...sketch.data.dimensions, ...dimensions },
+    const merged = (
+      extra: Record<string, SketchConstraint>,
+      extraDimensions: Record<string, SketchDimension> = {},
+    ): SketchData => ({
+      entities: { ...base.entities, ...edit.entities },
+      constraints: { ...base.constraints, ...constraints, ...extra },
+      dimensions: { ...base.dimensions, ...dimensions, ...extraDimensions },
     });
     for (const id of edit.verify ?? []) {
       const d = dimensions[id as DimensionId];
@@ -492,13 +549,17 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       return;
     }
     for (const id of edit.auto) {
-      const c = edit.constraints[id];
-      if (!c) continue;
-      const trial = merged({ [id]: c });
-      if (!solver || solver.check(trial, values(trial), id).accepted) constraints[id] = c;
+      const c = edit.constraints[id as ConstraintId];
+      const d = optional[id as DimensionId];
+      if (!c && !d) continue;
+      const trial = merged(c ? { [id]: c } : {}, d ? { [id]: d } : {});
+      if (solver && !solver.check(trial, values(trial), id).accepted) continue;
+      if (c) constraints[id as ConstraintId] = c;
+      if (d) dimensions[id as DimensionId] = d;
     }
 
     let entities = edit.entities;
+    const update = { ...edit.update };
     const points: Record<SketchEntityId, { x: number; y: number }> = {};
     const radii: Record<SketchEntityId, number> = {};
     if (solver) {
@@ -511,33 +572,66 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         });
         return;
       }
+      for (const id of edit.hold ?? []) {
+        const want = candidate.entities[id];
+        const got = solution.points[id];
+        if (want?.type === 'point' && got && Math.hypot(got.x - want.x, got.y - want.y) > REACHED) {
+          state.setState({
+            error: `${edit.label ?? 'That'} can't be done: constraints hold some of it in place.`,
+          });
+          return;
+        }
+      }
       entities = { ...edit.entities };
-      const existing = sketch.data.entities;
       for (const [key, p] of Object.entries(solution.points)) {
         const id = key as SketchEntityId;
-        const e = entities[id] ?? existing[id];
+        const e = candidate.entities[id];
         if (e?.type !== 'point' || (e.x === p.x && e.y === p.y)) continue;
         if (id in edit.entities) entities[id] = { ...e, x: p.x, y: p.y };
+        else if (id in update) update[id] = { ...e, x: p.x, y: p.y };
         else points[id] = { x: p.x, y: p.y };
       }
       for (const [key, radius] of Object.entries(solution.radii)) {
         const id = key as SketchEntityId;
-        const e = entities[id] ?? existing[id];
+        const e = candidate.entities[id];
         if (e?.type !== 'circle' || e.radius === radius) continue;
         if (id in edit.entities) entities[id] = { ...e, radius };
+        else if (id in update) update[id] = { ...e, radius };
         else radii[id] = radius;
       }
     }
 
+    // New driving dimensions take the next free parameter names; linked ones use their target's.
+    let next = Number(nextModelParameterName(doc).slice(1));
+    for (const [id, d] of Object.entries(dimensions)) {
+      if (!d.driven && d.paramName === undefined) {
+        dimensions[id as DimensionId] = { ...d, paramName: `d${next++}` };
+      }
+    }
+    for (const [id, target] of Object.entries(edit.links ?? {})) {
+      const d = dimensions[id as DimensionId];
+      const to = dimensions[target];
+      if (d && to?.paramName) dimensions[id as DimensionId] = { ...d, expr: to.paramName };
+    }
+
+    const addition = { feature: sketch.id, entities, constraints, dimensions, points, radii };
+    const modifies =
+      edit.label !== undefined ||
+      edit.update !== undefined ||
+      edit.replace !== undefined ||
+      edit.remove !== undefined ||
+      edit.exprs !== undefined;
     const added = dispatch(
-      addToSketch({
-        feature: sketch.id,
-        entities,
-        constraints,
-        dimensions,
-        points,
-        radii,
-      }),
+      modifies
+        ? modifySketch({
+            ...addition,
+            label: edit.label ?? 'Edit sketch',
+            update,
+            ...(edit.replace ? { replace: edit.replace } : {}),
+            ...(edit.remove ? { remove: edit.remove } : {}),
+            ...(edit.exprs ? { exprs: edit.exprs } : {}),
+          })
+        : addToSketch(addition),
     );
     if (added) {
       state.setState({
@@ -545,6 +639,50 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           edit.editDimension && edit.editDimension in dimensions ? edit.editDimension : undefined,
       });
     }
+  };
+
+  /** The Move tool: drags `ids` by `by` with the solver, the rest following, as one undo step. */
+  const moveBy = (
+    sketch: { id: FeatureId; data: SketchData },
+    ids: readonly SketchEntityId[],
+    by: Vec2,
+    label: string,
+  ) => {
+    if (!solver || move) {
+      state.setState({ error: 'The sketch solver is still loading.' });
+      return;
+    }
+    const points = dragPoints(sketch.data, ids);
+    solveOpen(solver, sketch);
+    if (!solver.beginDrag(points)) {
+      state.setState({ error: "Its constraints don't let it move." });
+      return;
+    }
+    committing = true;
+    store.getState().beginTransaction(label);
+    let reached = false;
+    try {
+      const step = solver.dragBy(by[0], by[1]);
+      if (step.ok) place(step.solution);
+      reached =
+        step.ok &&
+        points.every((p) => {
+          const was = sketch.data.entities[p];
+          const now = step.solution.points[p];
+          return (
+            was?.type !== 'point' ||
+            (now !== undefined && Math.hypot(now.x - was.x - by[0], now.y - was.y - by[1]) < 1e-6)
+          );
+        });
+    } finally {
+      solver.endDrag();
+      store.getState().commitTransaction();
+      committing = false;
+      refreshStatus();
+    }
+    state.setState({
+      error: reached ? undefined : 'Its constraints kept it from moving all the way.',
+    });
   };
 
   /** The selected entities of the open sketch. */
@@ -577,11 +715,12 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       if (e?.type === 'circle' && e.radius !== radius) radii[key as SketchEntityId] = radius;
     }
     if (Object.keys(points).length + Object.keys(radii).length === 0) return;
+    const was = committing;
     committing = true;
     try {
       store.getState().dispatch(setSketchGeometry({ feature: sketch.id, points, radii }));
     } finally {
-      committing = false;
+      committing = was;
     }
   };
 
@@ -966,4 +1105,31 @@ export function collapses(before: SketchData, solution: SketchSolution): boolean
     if (was !== undefined && now !== undefined && was >= COLLAPSED && now < COLLAPSED) return true;
   }
   return false;
+}
+
+/**
+ * The sketch as an edit leaves what was already there: removals,
+ * replacements and new expressions applied, nothing added yet.
+ */
+function changedSketch(data: SketchData, edit: SketchEdit): SketchData {
+  const entities = { ...data.entities, ...edit.update };
+  const constraints = { ...data.constraints, ...edit.replace?.constraints };
+  const dimensions = { ...data.dimensions };
+  for (const [id, d] of Object.entries(edit.replace?.dimensions ?? {})) {
+    const old = dimensions[id as DimensionId];
+    if (old)
+      dimensions[id as DimensionId] = {
+        ...d,
+        driven: old.driven,
+        paramName: old.paramName,
+      } as SketchDimension;
+  }
+  for (const [id, expr] of Object.entries(edit.exprs ?? {})) {
+    const d = dimensions[id as DimensionId];
+    if (d) dimensions[id as DimensionId] = { ...d, expr };
+  }
+  for (const id of edit.remove?.entities ?? []) delete entities[id];
+  for (const id of edit.remove?.constraints ?? []) delete constraints[id];
+  for (const id of edit.remove?.dimensions ?? []) delete dimensions[id];
+  return { entities, constraints, dimensions };
 }

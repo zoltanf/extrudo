@@ -10,7 +10,7 @@ is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
 **Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01 to P1-09 done. ADR-0001 chose
+P1-01 to P1-10 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -94,7 +94,19 @@ drag nobody takes is a window/crossing box (`onDragStart` returns whether
 it is taken; `SketchBox`, `boxSelect`). `removeFromSketch` takes entities
 and cleans up (`entityRemoval`); `SelectionPanel` (bottom-left of the
 view) edits X/Y (`moveTo`), radius (`setRadius`) and construction.
-Next: **P1-10** (modify tools). See `docs/03-roadmap.md`.
+ADR-0019 (P1-10) added the modify tools: pure operations in
+`@extrudo/sketch/modify` (trim/break/extend split a curve into pieces of
+its parameter, the first keeping its ID; fillet/chamfer leave a virtual
+sharp point that inherits the corner's constraints and dimensions; offset
+works on joined chains; copies and patterns bring their constraints and
+dimensions; mirror adds symmetric constraints; scale re-expresses
+dimensions) return a `SketchChange` that core's `modifySketch` applies as
+one named undo step. A tool's `SketchEdit` can now carry `update`,
+`replace`, `remove`, `exprs`, `links` (a new dimension's expression is
+another new one's parameter), `auto` dimensions, `hold`, `move` (Move
+drags with the solver), `label` and `error`. Tools in
+`sketch/tools/split.ts`, `corner.ts`, `offset.ts`, `transform.ts`.
+Next: **P1-11** (profile detection). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -123,7 +135,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -342,6 +354,14 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 - **R3F can deliver `pointerout` for the plane behind after `pointermove` on
   the one in front** (propagation stopped). Clear a hover only if it still
   names the object that was left (read the store, not the render closure).
+- **A `fix` constraint holds whatever position the sketch stores** (P1-10):
+  move a fixed point in the same change and the solve accepts it where it
+  moved. Refuse such changes yourself (Scale does); a solve won't.
+  `dimensionValues` reads cached parameter values first, so a dimension
+  whose expression a change rewrites must be evaluated directly (the host
+  does this for `exprs`).
+- **Toolbar menu items' accessible names end with the shortcut** ("Trim T"):
+  in Playwright match them with a regex, not `exact: true`.
 - **The dev server takes an assigned port** (`.claude/launch.json` has
   `autoPort` and `--port "${PORT:-5173}"`), so a second session can run its
   own server while another holds 5173.

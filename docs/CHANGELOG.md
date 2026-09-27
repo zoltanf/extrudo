@@ -2,6 +2,18 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **P1-10** Modify tools: Trim (`T`, previews what goes),
+  Extend, Break; Sketch Fillet (`F`) and Chamfer on a corner point or two
+  lines, keeping a virtual sharp so dimensions to the corner survive, with
+  a driving radius (distance); Offset (`O`) of a joined chain with parallel
+  or concentric pieces and linked distance dimensions; Mirror with
+  symmetric constraints; Move (`M`, a solver drag) and Copy; Rectangular
+  and Circular Pattern (copies take the original's dimension parameters);
+  Scale (points, radii and dimension expressions; refuses fixed geometry).
+  Pure operations in `@extrudo/sketch/modify` returning a change for the
+  new `modifySketch` command (replace, remove, re-express; one named undo
+  step). Seven new tool icons. ADR-0019.
+
 - 2026-09-27 · **P1-09** Selection and editing in sketch: with no tool
   running, hover pre-highlights, click selects (Shift/Ctrl toggles), a drag
   over empty space draws a window (left to right, solid) or crossing box

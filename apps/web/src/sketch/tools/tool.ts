@@ -5,16 +5,18 @@
  * and, on a click or Enter, a `SketchEdit` to commit. Tools never touch the
  * stores, so they run in unit tests as they are.
  */
-import type {
-  ConstraintId,
-  DimensionId,
-  LengthUnit,
-  SketchConstraint,
-  SketchData,
-  SketchDimension,
-  SketchEntity,
-  SketchEntityId,
-  Vec2,
+import {
+  type ConstraintId,
+  type DimensionId,
+  type LengthUnit,
+  type SketchChange,
+  type SketchConstraint,
+  type SketchData,
+  type SketchDimension,
+  type SketchEntity,
+  type SketchEntityId,
+  UNITS,
+  type Vec2,
 } from '@extrudo/core';
 import type { Inference, PickFilter } from '@extrudo/sketch/inference';
 
@@ -43,10 +45,12 @@ export interface SketchEdit {
   constraints: Record<ConstraintId, SketchConstraint>;
   dimensions: Record<DimensionId, SketchDimension>;
   /**
-   * Inferred constraints (keys of `constraints`). The host test-solves each
-   * and drops those that would conflict or be redundant; the others must hold.
+   * Inferred constraints (keys of `constraints`), and optional dimensions
+   * (keys of `dimensions`: an offset's later distances). The host
+   * test-solves each in order and drops those that would conflict or be
+   * redundant; the others must hold.
    */
-  auto: ConstraintId[];
+  auto: string[];
   /**
    * Constraints and dimensions the user asked for (the constraint tools,
    * P1-06; the Dimension tool, P1-07). The host test-solves each. It refuses
@@ -55,10 +59,28 @@ export interface SketchEdit {
    * the user to add it as driven or drop it (P1-08).
    */
   verify?: string[];
-  /** Existing constraints to delete instead (Fix on something fixed frees it). */
-  remove?: ConstraintId[];
   /** A new dimension whose value to edit once the edit is in (the Dimension tool). */
   editDimension?: DimensionId;
+  /**
+   * What the modify tools (P1-10) change besides adding: existing entities
+   * replaced (`update`), constraints and dimensions changed in place
+   * (`replace`), things removed (Fix on something fixed frees it), and
+   * existing dimensions' new expressions (`exprs`). As `modifySketch` takes them.
+   */
+  update?: SketchChange['update'];
+  replace?: SketchChange['replace'];
+  remove?: SketchChange['remove'];
+  exprs?: SketchChange['exprs'];
+  /** New dimensions whose expression is another new dimension's parameter. */
+  links?: Record<DimensionId, DimensionId>;
+  /** Points the solve must leave where the edit put them (Scale); otherwise nothing changes. */
+  hold?: SketchEntityId[];
+  /** Move the entities by `by`, the rest following, as a drag does (the Move tool). */
+  move?: { entities: SketchEntityId[]; by: Vec2 };
+  /** The undo step's name ("Trim"); a plain addition is "Draw". */
+  label?: string;
+  /** Why the click changes nothing, for the prompt. */
+  error?: string;
 }
 
 /** A circle (no `from`/`sweep`) or a counter-clockwise arc, radians. */
@@ -84,6 +106,10 @@ export interface ToolPreview {
   picked?: SketchEntityId[];
   /** The entity a click would pick, drawn in the pre-selection colour. */
   hover?: SketchEntityId;
+  /** What a click would take away (Trim), drawn in the error colour. */
+  removed?: Vec2[][];
+  /** What a click would single out or add (Break's piece, Extend's extension), in the accent colour. */
+  accent?: Vec2[][];
   /** A dimension being placed (P1-07), drawn like the sketch's own. */
   dimension?: SketchDimension;
 }
@@ -101,6 +127,21 @@ export interface ToolContext {
    * of the last pointer (points first; `pickEntity`).
    */
   pick(cursor: Vec2, accept?: PickFilter): SketchEntityId | undefined;
+  /** The open sketch's selected points and curves (P1-09), which the modify tools start from. */
+  selection(): SketchEntityId[];
+}
+
+/** A length in mm as a dimension expression in the document's unit, rounded to its precision. */
+export function lengthExpr(context: ToolContext, mm: number): string {
+  const { units, precision } = context.settings();
+  const factor = UNITS[units]?.factor ?? 1;
+  return String(Number((mm / factor).toFixed(precision)) + 0);
+}
+
+/** A length in mm rounded to the document's precision in its unit (a tool's suggested size). */
+export function roundLength(context: ToolContext, mm: number): number {
+  const factor = UNITS[context.settings().units]?.factor ?? 1;
+  return Number(lengthExpr(context, mm)) * factor;
 }
 
 export interface SketchTool {

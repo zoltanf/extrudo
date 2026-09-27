@@ -216,6 +216,24 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
             />
           );
         })}
+        {(['removed', 'accent'] as const).map((kind) =>
+          preview?.[kind]?.map((line, i) => {
+            const points = line.map(toScreen);
+            if (points.some((p) => !p)) return null;
+            return (
+              <polyline
+                // biome-ignore lint/suspicious/noArrayIndexKey: preview curves have no identity.
+                key={`${kind}${i}`}
+                data-preview={kind}
+                points={points.map((p) => (p as number[]).join(',')).join(' ')}
+                fill="none"
+                stroke={kind === 'removed' ? 'var(--x-error)' : 'var(--x-accent)'}
+                strokeWidth={kind === 'removed' ? 2.5 : 1.75}
+                strokeDasharray={kind === 'removed' ? '5 3' : undefined}
+              />
+            );
+          }),
+        )}
         {preview?.points.map((a, i) => {
           const p = toScreen(a);
           return (

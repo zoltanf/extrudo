@@ -56,6 +56,10 @@ const TOOL_KEYS: Record<string, ToolId> = {
   C: 'circle',
   A: 'arc',
   D: 'dimension',
+  T: 'trim',
+  O: 'sketchOffset',
+  F: 'sketchFillet',
+  M: 'sketchMove',
 };
 
 // three.js loads in its own chunk, so the shell paints before it arrives.

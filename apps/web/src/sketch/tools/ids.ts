@@ -15,9 +15,36 @@ export const CONSTRAINT_TOOL_IDS: readonly string[] = [
   'symmetric',
 ];
 
+/** The modify tools (P1-10). */
+export const MODIFY_TOOL_IDS: readonly string[] = [
+  'trim',
+  'extend',
+  'break',
+  'sketchFillet',
+  'sketchChamfer',
+  'sketchOffset',
+  'sketchMirror',
+  'sketchMove',
+  'sketchCopy',
+  'sketchRectangularPattern',
+  'sketchCircularPattern',
+  'sketchScale',
+];
+
+/** Modify tools that only pick existing geometry (no point placing, no snapping). */
+const PICKING_MODIFY_IDS = new Set([
+  'trim',
+  'extend',
+  'break',
+  'sketchFillet',
+  'sketchChamfer',
+  'sketchOffset',
+  'sketchMirror',
+]);
+
 /**
- * The IDs of every tool the sketch tool host runs (drawing tools, then the
- * constraint tools), apart from the tools themselves: the shell asks whether
+ * The IDs of every tool the sketch tool host runs (drawing tools, the
+ * modify tools, then the constraint tools), apart from the tools themselves: the shell asks whether
  * a tool is one before the tools' chunk has loaded (ADR-0014).
  * `host.test.ts` checks this list against the host's factories.
  */
@@ -41,6 +68,7 @@ export const SKETCH_TOOL_IDS: readonly string[] = [
   'ellipse',
   'spline',
   'dimension',
+  ...MODIFY_TOOL_IDS,
   ...CONSTRAINT_TOOL_IDS,
 ];
 
@@ -58,7 +86,9 @@ export function isConstraintTool(id: string | undefined): boolean {
   return id !== undefined && CONSTRAINT_IDS.has(id);
 }
 
-/** Whether a session tool picks entities rather than placing points (constraints, dimensions). */
+/** Whether a session tool picks entities rather than placing points (constraints, dimensions, most modify tools). */
 export function isPickingTool(id: string | undefined): boolean {
-  return isConstraintTool(id) || id === 'dimension';
+  return (
+    isConstraintTool(id) || id === 'dimension' || (id !== undefined && PICKING_MODIFY_IDS.has(id))
+  );
 }

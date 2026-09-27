@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./inference": "./src/inference/index.ts",
+    "./modify": "./src/modify/index.ts",
     "./browser": "./src/browser.ts",
     "./fixtures": "./src/fixtures.ts"
   },
