@@ -3,6 +3,7 @@ import {
   type BodyMeta,
   type OriginPlaneId,
   type SketchFrame,
+  type Vec2,
   type Vec3,
   worldToSketch,
 } from '@extrudo/core';
@@ -21,7 +22,7 @@ import type { DirectionalLight } from 'three';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { useShortcuts } from '../commands/shortcuts';
-import type { PlanePointer } from '../sketch/tools/host';
+import type { PlanePointer, SketchBox } from '../sketch/tools/host';
 import { Bodies } from './Bodies';
 import { CameraRig } from './CameraRig';
 import { basis, orbit, pan, rayPlane, type View, viewRay, worldPerPixel, zoomAt } from './camera';
@@ -59,10 +60,16 @@ export interface SketchInput {
   onMove(pointer: PlanePointer): void;
   /** A left click that didn't turn into a drag. */
   onClick(pointer: PlanePointer): void;
-  /** A left press that turned into a drag, at the press position. */
-  onDragStart?(pointer: PlanePointer): void;
+  /**
+   * A left press that turned into a drag, at the press position. Returns
+   * true if the drag is taken (it then ends with `onDragEnd`); one nobody
+   * takes draws a selection box when there is `onBox`.
+   */
+  onDragStart?(pointer: PlanePointer): boolean;
   /** The end of that drag. */
   onDragEnd?(pointer: PlanePointer): void;
+  /** A selection box was drawn (P1-09). */
+  onBox?(box: SketchBox): void;
   onLeave(): void;
   /** The cursor over the view: a crosshair for drawing, the arrow for picking and selecting. */
   cursor?: 'crosshair' | 'default';
@@ -158,7 +165,8 @@ export function Viewport({
   }, [viewport]);
 
   useNavigation(section, surface, viewport, setDragging);
-  useSketchInput(surface, viewport, sketchInput);
+  const [box, setBox] = useState<ScreenBox>();
+  useSketchInput(surface, viewport, sketchInput, setBox);
 
   const cursor = dragging
     ? 'cursor-grabbing'
@@ -200,10 +208,39 @@ export function Viewport({
         </Canvas>
       </div>
       {children}
+      {box && <SelectionBox box={box} />}
       <ViewCube store={viewport} />
       <NavBar store={viewport} />
       <ViewStatus viewport={viewport} />
     </section>
+  );
+}
+
+/** A selection box being drawn, in viewport pixels: from the press to the pointer. */
+interface ScreenBox {
+  from: readonly [number, number];
+  to: readonly [number, number];
+}
+
+/**
+ * The selection box (UI spec §3.2): solid for a window (dragged left to
+ * right), dashed for a crossing box.
+ */
+function SelectionBox({ box: { from, to } }: { box: ScreenBox }) {
+  const crossing = to[0] < from[0];
+  return (
+    <div
+      data-selection-box={crossing ? 'crossing' : 'window'}
+      className="pointer-events-none absolute z-[6] border border-accent"
+      style={{
+        left: Math.min(from[0], to[0]),
+        top: Math.min(from[1], to[1]),
+        width: Math.abs(to[0] - from[0]),
+        height: Math.abs(to[1] - from[1]),
+        borderStyle: crossing ? 'dashed' : 'solid',
+        background: 'color-mix(in srgb, var(--x-accent) 10%, transparent)',
+      }}
+    />
   );
 }
 
@@ -414,15 +451,21 @@ function useSketchInput(
   surface: RefObject<HTMLDivElement | null>,
   viewport: ViewportStore,
   input: SketchInput | undefined,
+  onBoxChange: (box: ScreenBox | undefined) => void,
 ) {
   useEffect(() => {
     const el = surface.current;
     if (!el || !input) return;
     const { frame } = input;
-    let last: { x: number; y: number; infer: boolean } | undefined;
-    let press: { x: number; y: number; id: number; dragging: boolean } | undefined;
+    let last: { x: number; y: number; infer: boolean; toggle: boolean } | undefined;
+    let press: { x: number; y: number; id: number; dragging: boolean; box: boolean } | undefined;
 
-    const pointerAt = (x: number, y: number, infer: boolean): PlanePointer | undefined => {
+    const pointerAt = (
+      x: number,
+      y: number,
+      infer: boolean,
+      toggle: boolean,
+    ): PlanePointer | undefined => {
       const r = el.getBoundingClientRect();
       if (r.width <= 0 || r.height <= 0) return undefined;
       const ndc: [number, number] = [
@@ -442,15 +485,46 @@ function useSketchInput(
         perPixel: worldPerPixel(view, projection, r.height, world),
         screen: [x - r.left, y - r.top],
         infer,
+        toggle,
       };
     };
     const report = () => {
-      const p = last && pointerAt(last.x, last.y, last.infer);
+      const p = last && pointerAt(last.x, last.y, last.infer, last.toggle);
       if (p) input.onMove(p);
     };
+    const local = (x: number, y: number): [number, number] => {
+      const r = el.getBoundingClientRect();
+      return [x - r.left, y - r.top];
+    };
+    /** Starts a drag at the press; one nobody takes becomes a selection box. */
+    const startDrag = (x: number, y: number, infer: boolean, toggle: boolean): boolean => {
+      const p = pointerAt(x, y, infer, toggle);
+      const taken = p ? (input.onDragStart?.(p) ?? false) : false;
+      return !taken && input.onBox !== undefined;
+    };
+    /** Selects with the box from the press to (x, y): its corners on the sketch plane. */
+    const finishBox = (from: { x: number; y: number }, x: number, y: number, toggle: boolean) => {
+      onBoxChange(undefined);
+      const corners = [
+        [from.x, from.y],
+        [x, from.y],
+        [x, y],
+        [from.x, y],
+      ].map(([cx, cy]) => pointerAt(cx as number, cy as number, false, toggle)?.point);
+      if (corners.some((c) => !c)) return;
+      input.onBox?.({
+        corners: corners as Vec2[],
+        mode: x >= from.x ? 'window' : 'crossing',
+        add: toggle,
+      });
+    };
 
+    const modifiers = (e: PointerEvent | KeyboardEvent) => ({
+      infer: !(e.ctrlKey || e.metaKey),
+      toggle: e.shiftKey || e.ctrlKey || e.metaKey,
+    });
     const onPointerMove = (e: PointerEvent) => {
-      last = { x: e.clientX, y: e.clientY, infer: !(e.ctrlKey || e.metaKey) };
+      last = { x: e.clientX, y: e.clientY, ...modifiers(e) };
       if (
         press &&
         !press.dragging &&
@@ -458,48 +532,60 @@ function useSketchInput(
         Math.hypot(e.clientX - press.x, e.clientY - press.y) > CLICK_SLOP
       ) {
         press.dragging = true;
-        const p = pointerAt(press.x, press.y, last.infer);
-        if (p) input.onDragStart?.(p);
+        press.box = startDrag(press.x, press.y, last.infer, last.toggle);
         // Keep the drag's events when the pointer leaves the view (synthetic pointers can't be captured).
         try {
           el.setPointerCapture(e.pointerId);
         } catch {}
+      }
+      if (press?.box) {
+        onBoxChange({ from: local(press.x, press.y), to: local(e.clientX, e.clientY) });
+        return;
       }
       report();
     };
     const onPointerDown = (e: PointerEvent) => {
       const s = viewport.getState();
       if (e.button !== 0 || dragAction(s.preset, e, s.tool)) return;
-      press = { x: e.clientX, y: e.clientY, id: e.pointerId, dragging: false };
+      press = { x: e.clientX, y: e.clientY, id: e.pointerId, dragging: false, box: false };
     };
     const onPointerUp = (e: PointerEvent) => {
       if (!press || e.pointerId !== press.id) return;
-      const { dragging, x, y } = press;
+      const current = press;
       press = undefined;
-      const infer = !(e.ctrlKey || e.metaKey);
-      const p = pointerAt(e.clientX, e.clientY, infer);
+      const { infer, toggle } = modifiers(e);
+      if (current.box) {
+        finishBox(current, e.clientX, e.clientY, toggle);
+        return;
+      }
+      const p = pointerAt(e.clientX, e.clientY, infer, toggle);
       if (!p) return;
-      if (dragging) input.onDragEnd?.(p);
-      else if (Math.hypot(e.clientX - x, e.clientY - y) > CLICK_SLOP) {
+      if (current.dragging) input.onDragEnd?.(p);
+      else if (Math.hypot(e.clientX - current.x, e.clientY - current.y) > CLICK_SLOP) {
         // A drag whose moves were coalesced away: start and end it now.
-        const from = pointerAt(x, y, infer);
-        if (from) input.onDragStart?.(from);
-        input.onDragEnd?.(p);
+        if (startDrag(current.x, current.y, infer, toggle)) {
+          finishBox(current, e.clientX, e.clientY, toggle);
+        } else input.onDragEnd?.(p);
       } else input.onClick(p);
+    };
+    const onPointerCancel = (e: PointerEvent) => {
+      if (press?.box && e.pointerId === press.id) onBoxChange(undefined);
+      if (press && e.pointerId === press.id) press = undefined;
     };
     const onPointerLeave = () => {
       last = undefined;
       input.onLeave();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (!last || (e.key !== 'Control' && e.key !== 'Meta')) return;
-      last = { ...last, infer: !(e.ctrlKey || e.metaKey) };
+      if (!last || !['Control', 'Meta', 'Shift'].includes(e.key)) return;
+      last = { ...last, ...modifiers(e) };
       report();
     };
 
     el.addEventListener('pointermove', onPointerMove);
     el.addEventListener('pointerdown', onPointerDown);
     el.addEventListener('pointerup', onPointerUp);
+    el.addEventListener('pointercancel', onPointerCancel);
     el.addEventListener('pointerleave', onPointerLeave);
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKey);
@@ -510,12 +596,14 @@ function useSketchInput(
       el.removeEventListener('pointermove', onPointerMove);
       el.removeEventListener('pointerdown', onPointerDown);
       el.removeEventListener('pointerup', onPointerUp);
+      el.removeEventListener('pointercancel', onPointerCancel);
       el.removeEventListener('pointerleave', onPointerLeave);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
       unsubscribe();
+      onBoxChange(undefined);
     };
-  }, [surface, viewport, input]);
+  }, [surface, viewport, input, onBoxChange]);
 }
 
 /**

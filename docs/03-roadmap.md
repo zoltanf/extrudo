@@ -172,10 +172,10 @@ Benchmark **B1** buildable.
   black/white (fully constrained), red (conflict); DOF display in the palette;
   over-constraint dialog offering to make the dimension driven.
   *AC:* FR-SK-09.
-- [ ] **P1-09 Selection and editing in sketch.** Click and box select (window vs
+- [x] **P1-09 Selection and editing in sketch.** Click and box select (window vs
   crossing); drag geometry with live solve; delete with constraint cleanup;
   a properties panel for the selected entity.
-  *AC:* FR-VP-05 (sketch part).
+  *AC:* FR-VP-05 (sketch part). *Done 2026-09-27, ADR-0018.*
 - [ ] **P1-10 Modify tools.** Trim, extend, break, sketch fillet, sketch
   chamfer, offset (with a dimension), mirror (with a symmetry constraint),
   move/copy, rectangular and circular pattern, scale.
@@ -380,7 +380,7 @@ don't let Phase 3 features be built without it.
 | WASM memory leaks (manual `delete()`) | Tab crashes after long sessions | Disposal scopes as a lint-checked rule; a memory test that recomputes a fixture 500×. |
 | Scope creep toward "full Fusion" | Never ships | Phases with exit criteria and benchmark models; out-of-scope list in requirements. |
 | Solver instability (flipping solutions) | Sketches jump on edit | Start from stored solved positions; small-step drag solving; tests. |
-| Large coupled sketch components solve slowly (planegcs uses dense matrices; ADR-0002) | Dragging a 200-entity single component runs at ~12 fps; edits take 0.1–1 s. **Measured in P1-03 (ADR-0011): a closed gear outline drags far worse than its size suggests, about 120 ms per step at 52 curves and 1–5 s at 104, because planegcs's drag solve (SQP) needs ~30 iterations per step on a coupled loop of arcs** | Per-component solving covers the usual sketch. For loops like gears: solve drags of large components in a worker at the latest pointer position; keep the SQP's BFGS matrix between drag steps or patch it to sparse matrices in our build; or drag with a lighter formulation. Revisit when P1-09 builds dragging. |
+| Large coupled sketch components solve slowly (planegcs uses dense matrices; ADR-0002) | Dragging a 200-entity single component runs at ~12 fps; edits take 0.1–1 s. **Measured in P1-03 (ADR-0011): a closed gear outline drags far worse than its size suggests, about 120 ms per step at 52 curves and 1–5 s at 104, because planegcs's drag solve (SQP) needs ~30 iterations per step on a coupled loop of arcs** | Per-component solving covers the usual sketch. For loops like gears: solve drags of large components in a worker at the latest pointer position; keep the SQP's BFGS matrix between drag steps or patch it to sparse matrices in our build; or drag with a lighter formulation. P1-09 (ADR-0018) drags on the UI thread, one solve per pointer move, which is fine for ordinary sketches; the gear case is still open. |
 | LGPL obligations misunderstood | Legal trouble when public | Separate WASM files; NOTICE file; decide license before P3-15. |
 | Mimicking Fusion too closely (trade dress) | Legal risk | Own icons, names and branding; copy concepts and workflow only. |
 

@@ -38,4 +38,4 @@ export {
   type SnapKind,
   snapToGrid,
 } from './inference';
-export { type PickFilter, pickEntity, polylineDistance } from './pick';
+export { boxSelect, insideConvex, type PickFilter, pickEntity, polylineDistance } from './pick';

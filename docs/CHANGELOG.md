@@ -2,6 +2,18 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **P1-09** Selection and editing in sketch: with no tool
+  running, hover pre-highlights, click selects (Shift/Ctrl toggles), a drag
+  over empty space draws a window (left to right, solid) or crossing box
+  (dashed), and a drag on geometry moves it, or the whole selection, with a
+  live solve as one undo step (Esc puts it back). The solver drags several
+  points across components (`beginDrag(ids)`, `dragBy`). Delete removes
+  geometry with its points, constraints and dimensions (`removeFromSketch`
+  entities, `entityRemoval`; a spline loses just the point). Properties
+  panel in the view's bottom-left: type and status, point X/Y and radius as
+  expressions, line length and angle, construction toggle, Delete.
+  ADR-0018.
+
 - 2026-09-27 · **P1-08** Constraint status: per-entity colours in the open
   sketch (free `sketch` blue, fully constrained `ink`, over-constrained
   `error` red; construction stays grey), from planegcs's dependent

@@ -10,7 +10,7 @@ is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
 **Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01 to P1-08 done. ADR-0001 chose
+P1-01 to P1-09 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -86,7 +86,15 @@ the inference entry) makes each entity free/fixed/conflict, and the host
 keeps `status` for the open sketch; the viewport draws three colour layers,
 the palette counts DOF, and a new over-constraining dimension waits for
 `OverConstrainedDialog` (`overConstrained`, `resolveOverConstrained`).
-Next: **P1-09** (selection and editing in sketch). See `docs/03-roadmap.md`.
+ADR-0018 (P1-09) added selection: with no tool running the host picks
+(hover → session `hover`, click/Shift-click, kind `sketchEntity`), a drag
+on geometry moves it or the selection (solver `beginDrag(ids)`/`dragBy`,
+steps stored in a nested `Move` transaction; Esc → `cancelMove`), and a
+drag nobody takes is a window/crossing box (`onDragStart` returns whether
+it is taken; `SketchBox`, `boxSelect`). `removeFromSketch` takes entities
+and cleans up (`entityRemoval`); `SelectionPanel` (bottom-left of the
+view) edits X/Y (`moveTo`), radius (`setRadius`) and construction.
+Next: **P1-10** (modify tools). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -115,7 +123,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode (0005/0006 are reserved) |
 
 ## Stack summary
 
@@ -293,6 +301,11 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   hold by measuring (`unmetDimensions` in `packages/sketch/src/solver/status.ts`).
   Constraints on fixed geometry alone come back as redundant too
   (`overdetermined`); the status ignores them.
+- **Sketch e2e tests read the selection** from the selection overlay's
+  `data-selected-entities` (IDs) and `data-hover-entity`; it also carries
+  `data-sketch-summary` while no tool runs. `page.mouse.click` takes no
+  `modifiers`: hold Shift with `keyboard.down`/`up`. Shortcuts (Ctrl+Z)
+  don't fire while a panel control has focus; `blur()` it first.
 - **Sketch e2e tests read constraint status** from the Viewport region's
   `data-sketch-status` ("free=… fixed=… conflict=…") and the palette's
   `data-constraint-state`/`data-dof`. The browser pane may not draw the

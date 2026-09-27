@@ -14,7 +14,12 @@ import { describe, expect, it } from 'vitest';
 import { memoryPreferences } from '../platform';
 import { createViewportStore } from '../viewport/store';
 import { createSketchOn, finishSketch } from './mode';
-import { deleteSelection, selectedConstraints, selectedDimensions } from './selection';
+import {
+  deleteSelection,
+  selectedConstraints,
+  selectedDimensions,
+  selectedEntities,
+} from './selection';
 
 function setup() {
   const stores = {
@@ -64,7 +69,8 @@ function setup() {
   };
   const constraints = () => Object.keys(data().constraints);
   const dimensions = () => Object.keys(data().dimensions);
-  return { ...stores, constraints, dimensions };
+  const entities = () => Object.keys(data().entities);
+  return { ...stores, constraints, dimensions, entities };
 }
 
 describe('deleting selected constraints', () => {
@@ -73,7 +79,7 @@ describe('deleting selected constraints', () => {
     t.session.getState().select([
       { kind: 'constraint', id: 'h' },
       { kind: 'constraint', id: 'f' },
-      { kind: 'sketchEntity', id: 'l' },
+      { kind: 'feature', id: 'l' },
     ]);
     expect(deleteSelection(t)).toBe(true);
     expect(t.constraints()).toEqual([]);
@@ -139,5 +145,25 @@ describe('deleting selected dimensions', () => {
     expect(() => deleteSelection(t)).toThrow(CommandError);
     expect(t.dimensions().sort()).toEqual(['k1', 'k2', 'k3']);
     expect(t.session.getState().selection).toHaveLength(1);
+  });
+});
+
+describe('deleting selected geometry (P1-09)', () => {
+  it('takes the constraints and dimensions on it, in one undo step', () => {
+    const t = setup();
+    t.session.getState().select([
+      { kind: 'sketchEntity', id: 'b' },
+      { kind: 'sketchEntity', id: 'gone' },
+    ]);
+    expect(selectedEntities(t)).toEqual(['b']);
+    // b is the line's end: the line goes, with a, its constraints and both dimensions.
+    expect(deleteSelection(t)).toBe(true);
+    expect(t.entities()).toEqual([]);
+    expect(t.constraints()).toEqual([]);
+    expect(t.dimensions()).toEqual([]);
+    expect(t.session.getState().selection).toEqual([]);
+    t.store.getState().undo();
+    expect(t.entities().sort()).toEqual(['a', 'b', 'l']);
+    expect(t.dimensions().sort()).toEqual(['k1', 'k2']);
   });
 });

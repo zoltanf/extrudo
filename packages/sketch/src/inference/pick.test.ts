@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SketchBuilder } from '../fixtures';
-import { pickEntity, polylineDistance } from './pick';
+import { boxSelect, insideConvex, pickEntity, polylineDistance } from './pick';
 
 describe('pickEntity', () => {
   const b = new SketchBuilder();
@@ -56,5 +56,50 @@ describe('polylineDistance', () => {
     expect(polylineDistance(line, [5, 2])).toBeCloseTo(2);
     expect(polylineDistance(line, [13, 5])).toBeCloseTo(3);
     expect(polylineDistance(line, [-3, -4])).toBeCloseTo(5);
+  });
+});
+
+describe('boxSelect', () => {
+  const b = new SketchBuilder();
+  const line = b.line(0, 0, 10, 0);
+  const circle = b.circle(30, 0, 5);
+  const lone = b.point(5, 20);
+  const { sketch } = b;
+  const box = (x0: number, y0: number, x1: number, y1: number): [number, number][] => [
+    [x0, y0],
+    [x1, y0],
+    [x1, y1],
+    [x0, y1],
+  ];
+  const sorted = (ids: string[]) => [...ids].sort();
+
+  it('takes what lies wholly inside a window, points included', () => {
+    expect(sorted(boxSelect(sketch, box(-1, -1, 11, 1), 'window'))).toEqual(
+      sorted([line.id, line.start, line.end]),
+    );
+    // Half of the circle is not enough; its center is.
+    expect(boxSelect(sketch, box(20, -10, 31, 10), 'window')).toEqual([circle.center]);
+  });
+
+  it('takes what a crossing box touches, even with no vertex inside', () => {
+    expect(sorted(boxSelect(sketch, box(4, -1, 6, 1), 'crossing'))).toEqual([line.id]);
+    expect(sorted(boxSelect(sketch, box(20, -10, 26, 10), 'crossing'))).toEqual([circle.id]);
+    // Inside the circle without touching it: nothing.
+    expect(boxSelect(sketch, box(29, -1, 29.5, 1), 'crossing')).toEqual([]);
+    expect(boxSelect(sketch, box(4, 19, 6, 21), 'crossing')).toEqual([lone]);
+  });
+
+  it('works for a tilted quadrilateral of either winding', () => {
+    const diamond: [number, number][] = [
+      [5, -8],
+      [13, 0],
+      [5, 8],
+      [-3, 0],
+    ];
+    expect(sorted(boxSelect(sketch, diamond, 'window'))).toEqual(
+      sorted([line.id, line.start, line.end]),
+    );
+    expect(insideConvex([...diamond].reverse(), [5, 0])).toBe(true);
+    expect(insideConvex(diamond, [12, 7])).toBe(false);
   });
 });

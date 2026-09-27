@@ -6,7 +6,13 @@ import type { ConstraintId, DimensionId, FeatureId, SketchEntityId } from '../id
 import { DocumentSchema } from '../schema';
 import { createDocumentStore } from '../stores';
 import { sampleDocument } from '../testing';
-import { addToSketch, createSketch, removeFromSketch } from './commands';
+import {
+  addToSketch,
+  createSketch,
+  entityRemoval,
+  removeFromSketch,
+  setSketchConstruction,
+} from './commands';
 import {
   emptySketchData,
   readSketch,
@@ -522,6 +528,134 @@ describe('removeFromSketch', () => {
     expect(remove({ dimensions: ['h' as DimensionId] })).toThrow(
       'The sketch has no dimension "h".',
     );
+  });
+});
+
+describe('removing entities', () => {
+  const eid = (id: string) => id as SketchEntityId;
+  const pt = (x: number, y: number) => ({ type: 'point' as const, x, y });
+  /** Two joined lines, a lone point on the first, a 4-point spline and a used dimension. */
+  const doc = () => {
+    const created = applyCommand(
+      createDocument(),
+      createSketch({ id: fid('s1'), plane: originPlaneRef('origin:xy') }),
+    ).doc;
+    return applyCommand(
+      created,
+      addToSketch({
+        feature: fid('s1'),
+        entities: {
+          [eid('a1')]: pt(0, 0),
+          [eid('a2')]: pt(10, 0),
+          [eid('b1')]: pt(10, 0),
+          [eid('b2')]: pt(10, 10),
+          [eid('la')]: { type: 'line', start: eid('a1'), end: eid('a2'), construction: false },
+          [eid('lb')]: { type: 'line', start: eid('b1'), end: eid('b2'), construction: false },
+          [eid('p')]: pt(5, 0),
+          [eid('s1')]: pt(0, 20),
+          [eid('s2')]: pt(5, 25),
+          [eid('s3')]: pt(10, 20),
+          [eid('s4')]: pt(15, 25),
+          [eid('sp')]: {
+            type: 'spline',
+            points: [eid('s1'), eid('s2'), eid('s3'), eid('s4')],
+            construction: false,
+          },
+        },
+        constraints: {
+          ['join' as ConstraintId]: { type: 'coincident', a: eid('a2'), b: eid('b1') },
+          ['on' as ConstraintId]: { type: 'pointOnCurve', point: eid('p'), curve: eid('la') },
+          ['hb' as ConstraintId]: { type: 'vertical', a: eid('lb') },
+          ['fs' as ConstraintId]: { type: 'fix', entity: eid('s2') },
+        },
+        dimensions: {
+          ['da' as DimensionId]: {
+            type: 'distance',
+            orientation: 'aligned',
+            a: eid('la'),
+            expr: '10',
+            driven: false,
+            paramName: 'd1',
+          },
+          ['db' as DimensionId]: {
+            type: 'distance',
+            orientation: 'aligned',
+            a: eid('lb'),
+            expr: 'd1',
+            driven: false,
+            paramName: 'd2',
+          },
+        },
+      }),
+    ).doc;
+  };
+  const data = (d: ReturnType<typeof doc>) => {
+    const f = d.features[0];
+    const view = f && readSketch(f);
+    if (!view) throw new Error('no sketch');
+    return view.data;
+  };
+
+  it("takes a curve's points and the constraints and dimensions on them", () => {
+    const r = entityRemoval(data(doc()), [eid('lb')]);
+    expect(r.entities.sort()).toEqual(['b1', 'b2', 'lb']);
+    expect(r.constraints.sort()).toEqual(['hb', 'join']);
+    expect(r.dimensions).toEqual(['db']);
+  });
+
+  it('takes the curve a point belongs to, but not a point on it', () => {
+    const r = entityRemoval(data(doc()), [eid('a1')]);
+    expect(r.entities.sort()).toEqual(['a1', 'a2', 'la']);
+    expect(r.constraints.sort()).toEqual(['join', 'on']);
+    expect(entityRemoval(data(doc()), [eid('p')]).entities).toEqual(['p']);
+  });
+
+  it("drops a spline's point while two are left, then the spline", () => {
+    const one = entityRemoval(data(doc()), [eid('s2')]);
+    expect(one.entities).toEqual(['s2']);
+    expect(one.splines).toEqual({ sp: ['s1', 's3', 's4'] });
+    expect(one.constraints).toEqual(['fs']);
+    const three = entityRemoval(data(doc()), [eid('s1'), eid('s2'), eid('s3')]);
+    expect(three.splines).toEqual({});
+    expect(three.entities.sort()).toEqual(['s1', 's2', 's3', 's4', 'sp']);
+  });
+
+  it('deletes geometry with its constraints and dimensions as one command', () => {
+    // da's parameter is used by db, which goes too.
+    const result = applyCommand(
+      doc(),
+      removeFromSketch({ feature: fid('s1'), entities: [eid('la'), eid('lb')] }),
+    );
+    const d = data(result.doc);
+    expect(Object.keys(d.entities).sort()).toEqual(['p', 's1', 's2', 's3', 's4', 'sp']);
+    expect(Object.keys(d.constraints)).toEqual(['fs']);
+    expect(d.dimensions).toEqual({});
+    expect(sketchIssues(d)).toEqual([]);
+  });
+
+  it('refuses to delete a dimension another expression still uses', () => {
+    expect(() =>
+      applyCommand(doc(), removeFromSketch({ feature: fid('s1'), entities: [eid('la')] })),
+    ).toThrow(CommandError);
+    expect(() =>
+      applyCommand(doc(), removeFromSketch({ feature: fid('s1'), entities: [eid('zz')] })),
+    ).toThrow('The sketch has no entity "zz".');
+  });
+
+  it('sets the construction flag on curves and skips points', () => {
+    const result = applyCommand(
+      doc(),
+      setSketchConstruction({
+        feature: fid('s1'),
+        entities: [eid('la'), eid('p'), eid('sp')],
+        construction: true,
+      }),
+    );
+    const d = data(result.doc);
+    expect(d.entities[eid('la')]).toMatchObject({ construction: true });
+    expect(d.entities[eid('sp')]).toMatchObject({ construction: true });
+    expect(d.entities[eid('lb')]).toMatchObject({ construction: false });
+    expect(d.entities[eid('p')]).toEqual({ type: 'point', x: 5, y: 0 });
   });
 });
 

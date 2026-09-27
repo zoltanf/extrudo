@@ -86,7 +86,8 @@ export function createDocumentStore(
 
 /**
  * Something that can be selected or hovered: geometry, a feature, a
- * parameter, or a constraint or dimension of the open sketch (P1-06).
+ * parameter, or a constraint or dimension of the open sketch (P1-06). A
+ * point or curve of the open sketch is a `sketchEntity` (P1-09).
  */
 export interface SelectionItem {
   kind: GeomRefKind | 'feature' | 'parameter' | 'constraint' | 'dimension';

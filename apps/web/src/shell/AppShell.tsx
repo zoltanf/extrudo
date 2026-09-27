@@ -29,7 +29,13 @@ import {
   type SketchModeStores,
   startCreateSketch,
 } from '../sketch/mode';
-import { OverConstrainedDialog, PlanePrompt, SketchPalette } from '../sketch/panels';
+import {
+  OverConstrainedDialog,
+  PanelColumn,
+  PlanePrompt,
+  SelectionPanel,
+  SketchPalette,
+} from '../sketch/panels';
 import { deleteSelection } from '../sketch/selection';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
@@ -60,6 +66,7 @@ interface DrawingTools {
   Overlay: typeof import('../sketch/tools/SketchOverlay').SketchOverlay;
   Glyphs: typeof import('../sketch/tools/ConstraintGlyphs').ConstraintGlyphs;
   Labels: typeof import('../sketch/tools/DimensionLabels').DimensionLabels;
+  Selection: typeof import('../sketch/tools/SelectionOverlay').SelectionOverlay;
 }
 
 export interface AppShellProps {
@@ -119,8 +126,15 @@ export function AppShell({
       import('../sketch/tools/SketchOverlay'),
       import('../sketch/tools/ConstraintGlyphs'),
       import('../sketch/tools/DimensionLabels'),
+      import('../sketch/tools/SelectionOverlay'),
     ]).then(
-      ([{ createToolHost }, { SketchOverlay }, { ConstraintGlyphs }, { DimensionLabels }]) => {
+      ([
+        { createToolHost },
+        { SketchOverlay },
+        { ConstraintGlyphs },
+        { DimensionLabels },
+        { SelectionOverlay },
+      ]) => {
         if (cancelled) return;
         h = createToolHost({
           store,
@@ -133,6 +147,7 @@ export function AppShell({
           Overlay: SketchOverlay,
           Glyphs: ConstraintGlyphs,
           Labels: DimensionLabels,
+          Selection: SelectionOverlay,
         });
       },
     );
@@ -181,12 +196,18 @@ export function AppShell({
             { keys: 'Enter', run: () => host.enter() },
           ]
         : []),
-      // Selected constraint glyphs (P1-06).
+      // The selection: geometry (P1-09), constraint glyphs (P1-06), dimension labels (P1-07).
       ...(mode === 'sketch' && !drawing
         ? [
             { keys: 'Delete', run: remove },
             { keys: 'Backspace', run: remove },
-            { keys: 'Escape', run: () => session.getState().clearSelection() },
+            {
+              keys: 'Escape',
+              // Esc puts dragged geometry back, or else clears the selection.
+              run: () => {
+                if (!host?.cancelMove()) session.getState().clearSelection();
+              },
+            },
           ]
         : []),
     ],
@@ -231,9 +252,22 @@ export function AppShell({
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
   const sketchPlane = sketches.find((s) => s.active)?.frame;
 
-  // A drawing tool takes the pointer; with none running, a click in the view clears the selection.
+  // A drawing tool takes the pointer; with none running, the host selects and drags geometry
+  // (P1-09). Until the host has loaded, a click in the view clears the selection.
   const sketchInput = useMemo<SketchInput | undefined>(() => {
     if (!sketchPlane) return undefined;
+    if (!drawing && host) {
+      return {
+        frame: sketchPlane,
+        onMove: host.move,
+        onClick: host.click,
+        onDragStart: host.dragStart,
+        onDragEnd: host.dragEnd,
+        onBox: host.box,
+        onLeave: host.leave,
+        cursor: 'default',
+      };
+    }
     if (drawing && host) {
       return {
         frame: sketchPlane,
@@ -350,6 +384,24 @@ export function AppShell({
                 notify={notify}
               />
             )}
+            {!drawing && tools && activeSketchId && sketchPlane && (
+              <tools.Selection
+                store={store}
+                session={session}
+                viewport={viewport}
+                sketchId={activeSketchId}
+                frame={sketchPlane}
+              />
+            )}
+            {mode === 'sketch' && activeSketch && !drawing && (
+              <SelectionPanel
+                store={store}
+                session={session}
+                host={host}
+                onDelete={remove}
+                notify={notify}
+              />
+            )}
             {drawing && tools && activeSketchId && sketchPlane && (
               <tools.Overlay
                 host={tools.host}
@@ -369,13 +421,15 @@ export function AppShell({
           />
         )}
         {mode === 'sketch' && activeSketch && (
-          <SketchPalette
-            name={activeSketch.name}
-            viewport={viewport}
-            host={host}
-            onLookAt={() => lookAtSketch(stores)}
-            onFinish={() => finishSketch(stores)}
-          />
+          <PanelColumn>
+            <SketchPalette
+              name={activeSketch.name}
+              viewport={viewport}
+              host={host}
+              onLookAt={() => lookAtSketch(stores)}
+              onFinish={() => finishSketch(stores)}
+            />
+          </PanelColumn>
         )}
       </main>
       <Timeline

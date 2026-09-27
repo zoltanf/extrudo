@@ -1,8 +1,8 @@
 /**
  * Sketch commands: creating a sketch (P1-01), adding to its content (P1-02),
  * removing constraints and dimensions (P1-06), editing a dimension and
- * applying a solve (P1-07). Removing and editing entities come with
- * selection and the modify tools (P1-09 onwards).
+ * applying a solve (P1-07), deleting entities and the construction flag
+ * (P1-09). Editing entities' shapes comes with the modify tools (P1-10).
  */
 import { CommandError, type DocumentDraft, defineCommand } from '../commands';
 import { insertFeature, refuseIfUsed } from '../document-commands';
@@ -11,9 +11,11 @@ import { nextModelParameterName, parameterNames } from '../expr/parameters';
 import { nextFeatureName } from '../features';
 import type { ConstraintId, DimensionId, FeatureId, SketchEntityId } from '../ids';
 import type { Feature, GeomRef } from '../schema';
+import { dimensionRefs } from './dimensions';
 import { SKETCH_TYPE, sketchFeature, sketchInputs } from './feature';
 import { originPlane } from './planes';
 import {
+  constraintRefs,
   type SketchConstraint,
   type SketchData,
   type SketchDimension,
@@ -106,21 +108,31 @@ export const addToSketch = defineCommand<AddToSketchPayload>(
 
 export interface RemoveFromSketchPayload {
   feature: FeatureId;
+  entities?: readonly SketchEntityId[];
   constraints?: readonly ConstraintId[];
   dimensions?: readonly DimensionId[];
 }
 
 /**
- * Removes constraints and dimensions from a sketch (P1-06: deleting a
- * selected constraint glyph, Fix toggled off). The geometry stays where it
- * is: it already satisfies what is left. Every ID must exist, and no other
- * expression may use a removed dimension's parameter, or nothing changes.
+ * Removes entities, constraints and dimensions from a sketch (P1-06:
+ * deleting a selected constraint glyph, Fix toggled off; P1-09: deleting
+ * selected geometry). The geometry left stays where it is: it already
+ * satisfies what is left.
+ *
+ * Removing an entity cleans up after it (`entityRemoval`): a curve takes its
+ * points with it, a curve's point takes the curve (a spline with more than
+ * two points only loses that point), and every constraint and dimension on a
+ * removed entity goes too. Every ID must exist, and no other expression may
+ * use a removed dimension's parameter, or nothing changes.
  */
 export const removeFromSketch = defineCommand<RemoveFromSketchPayload>(
   'sketch.remove',
   'Delete',
-  (draft, { feature, constraints = [], dimensions = [] }) => {
+  (draft, { feature, entities = [], constraints = [], dimensions = [] }) => {
     const data = sketchDraft(draft, feature);
+    for (const id of entities) {
+      if (!(id in data.entities)) throw new CommandError(`The sketch has no entity "${id}".`);
+    }
     for (const id of constraints) {
       if (!(id in data.constraints))
         throw new CommandError(`The sketch has no constraint "${id}".`);
@@ -129,15 +141,129 @@ export const removeFromSketch = defineCommand<RemoveFromSketchPayload>(
       const d = data.dimensions[id];
       if (!d) throw new CommandError(`The sketch has no dimension "${id}".`);
     }
-    const removed = new Set<object>(dimensions.map((id) => data.dimensions[id] as object));
-    for (const id of dimensions) {
+    const removal = entityRemoval(data, entities);
+    const allConstraints = new Set<ConstraintId>([...constraints, ...removal.constraints]);
+    const allDimensions = new Set<DimensionId>([...dimensions, ...removal.dimensions]);
+    const removed = new Set<object>([...allDimensions].map((id) => data.dimensions[id] as object));
+    for (const id of allDimensions) {
       const d = data.dimensions[id];
       if (d && !d.driven && d.paramName !== undefined) refuseIfUsed(draft, d.paramName, removed);
     }
-    for (const id of constraints) delete data.constraints[id];
-    for (const id of dimensions) delete data.dimensions[id];
+    for (const [id, points] of Object.entries(removal.splines)) {
+      const spline = data.entities[id as SketchEntityId];
+      if (spline?.type === 'spline') spline.points = points;
+    }
+    for (const id of removal.entities) delete data.entities[id];
+    for (const id of allConstraints) delete data.constraints[id];
+    for (const id of allDimensions) delete data.dimensions[id];
   },
 );
+
+/** What removing some entities takes with it (`removeFromSketch`). */
+export interface EntityRemoval {
+  /** Every entity that goes, the asked-for ones included. */
+  entities: SketchEntityId[];
+  /** Splines that only lose points: their new point lists. */
+  splines: Record<SketchEntityId, SketchEntityId[]>;
+  /** Constraints and dimensions on a removed entity. */
+  constraints: ConstraintId[];
+  dimensions: DimensionId[];
+}
+
+/**
+ * Works out what removing `ids` takes with it: a curve's points, the curve a
+ * point belongs to (a spline keeps its other points while it has at least
+ * two), and the constraints and dimensions on anything removed. Pure; IDs
+ * the sketch doesn't have are ignored.
+ */
+export function entityRemoval(data: SketchData, ids: readonly SketchEntityId[]): EntityRemoval {
+  const owner = new Map<SketchEntityId, SketchEntityId>();
+  for (const [key, e] of Object.entries(data.entities)) {
+    for (const p of entityPoints(e)) owner.set(p, key as SketchEntityId);
+  }
+  const gone = new Set<SketchEntityId>();
+  const dropped = new Map<SketchEntityId, Set<SketchEntityId>>();
+  const removeCurve = (id: SketchEntityId) => {
+    const e = data.entities[id];
+    if (!e || gone.has(id)) return;
+    gone.add(id);
+    for (const p of entityPoints(e)) gone.add(p);
+    dropped.delete(id);
+  };
+  for (const id of ids) {
+    const e = data.entities[id];
+    if (!e) continue;
+    if (e.type !== 'point') {
+      removeCurve(id);
+      continue;
+    }
+    const curve = owner.get(id);
+    const parent = curve && data.entities[curve];
+    if (!curve || !parent) gone.add(id);
+    else if (parent.type === 'spline' && !gone.has(curve)) {
+      const set = dropped.get(curve) ?? new Set();
+      set.add(id);
+      dropped.set(curve, set);
+    } else removeCurve(curve);
+  }
+  const splines: Record<SketchEntityId, SketchEntityId[]> = {};
+  for (const [id, points] of dropped) {
+    const spline = data.entities[id];
+    if (spline?.type !== 'spline' || gone.has(id)) continue;
+    const kept = spline.points.filter((p) => !points.has(p));
+    if (kept.length < 2) removeCurve(id);
+    else {
+      splines[id] = kept;
+      for (const p of points) gone.add(p);
+    }
+  }
+  const touches = (refs: SketchEntityId[]) => refs.some((r) => gone.has(r));
+  return {
+    entities: [...gone],
+    splines,
+    constraints: Object.entries(data.constraints)
+      .filter(([, c]) => touches(constraintRefs(c)))
+      .map(([id]) => id as ConstraintId),
+    dimensions: Object.entries(data.dimensions)
+      .filter(([, d]) => touches(dimensionRefs(d)))
+      .map(([id]) => id as DimensionId),
+  };
+}
+
+/** The points a curve is made of (none for a point). */
+export function entityPoints(e: SketchEntity): SketchEntityId[] {
+  switch (e.type) {
+    case 'point':
+      return [];
+    case 'line':
+      return [e.start, e.end];
+    case 'circle':
+      return [e.center];
+    case 'arc':
+      return [e.center, e.start, e.end];
+    case 'ellipse':
+      return [e.center, e.major, e.minor];
+    case 'spline':
+      return [...e.points];
+  }
+}
+
+/**
+ * Makes curves construction geometry or normal geometry (P1-09, the
+ * properties panel; FR-SK-04). Points have no such flag and are skipped.
+ */
+export const setSketchConstruction = defineCommand<{
+  feature: FeatureId;
+  entities: readonly SketchEntityId[];
+  construction: boolean;
+}>('sketch.construction', 'Construction', (draft, { feature, entities, construction }) => {
+  const data = sketchDraft(draft, feature);
+  for (const id of entities) {
+    const e = data.entities[id];
+    if (!e) throw new CommandError(`The sketch has no entity "${id}".`);
+    if (e.type !== 'point') e.construction = construction;
+  }
+});
 
 /** Solved geometry for existing entities, as `addToSketch` takes it. */
 export interface SketchGeometry {

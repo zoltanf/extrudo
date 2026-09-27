@@ -294,7 +294,7 @@ function curveStyle(construction: boolean) {
 }
 
 /** Counts for tests and debugging: "points=6 lines=3 … constraints=5 dimensions=0". */
-function sketchSummary(doc: ExtrudoDocument, id: FeatureId) {
+export function sketchSummary(doc: ExtrudoDocument, id: FeatureId) {
   const feature = doc.features.find((f) => f.id === id);
   const data = feature && readSketch(feature)?.data;
   if (!data) return undefined;

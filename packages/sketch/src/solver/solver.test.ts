@@ -522,6 +522,35 @@ describe('dragging', () => {
   });
 });
 
+describe('dragging several points (P1-09)', () => {
+  it('moves a line by both ends, and a lone circle with it, by the same offset', () => {
+    const b = new SketchBuilder();
+    const l = b.line(0, 0, 10, 0);
+    b.constrain({ type: 'horizontal', a: l.id });
+    const c = b.circle(30, 0, 5);
+    const fixed = b.point(50, 50);
+    b.constrain({ type: 'fix', entity: fixed });
+    const solver = newSolver();
+    const sketch = SketchDataSchema.parse(b.sketch);
+    solver.solve(sketch, b.values);
+    // The fixed point has no unknowns: it is left out, and the drag goes on without it.
+    expect(solver.beginDrag([fixed, l.start, l.end, c.center])).toBe(true);
+    const step = solver.drag(3, 4);
+    expect(step.ok).toBe(true);
+    const at = (id: string) => step.solution.points[id] as V;
+    close(at(l.start).x, 3);
+    close(at(l.start).y, 4);
+    close(at(l.end).x, 13);
+    close(at(l.end).y, 4);
+    close(at(c.center).x, 33);
+    close(at(c.center).y, 4);
+    close(step.solution.radii[c.id] as number, 5);
+    expect(step.solution.points[fixed]).toBeUndefined();
+    solver.endDrag();
+    expect(solver.beginDrag([fixed])).toBe(false);
+  });
+});
+
 describe('ellipses and splines (P1-05)', () => {
   /** Distance from the minor point to the major axis, and its offset along it. */
   const axes = (s: Solved, e: { center: string; major: string; minor: string }) => {

@@ -88,7 +88,7 @@ export interface SolveResult {
 export interface DragResult {
   ok: boolean;
   dof: number;
-  /** The dragged component's geometry. */
+  /** The dragged components' geometry. */
   solution: SketchSolution;
 }
 
@@ -111,8 +111,9 @@ interface Dependent {
 /** The primitive an entity item is named after (an ellipse's focus point comes first). */
 const own = (item: Item): SketchPrimitive | undefined => item.prims.find((p) => p.id === item.id);
 
-const DRAG_X = '#drag_x';
-const DRAG_Y = '#drag_y';
+/** The parameters of the temporary constraints that pull the `i`th dragged point of a system. */
+const dragX = (i: number) => `#drag_x${i}`;
+const dragY = (i: number) => `#drag_y${i}`;
 
 /** One planegcs system for one component. */
 class System {
@@ -137,9 +138,11 @@ class System {
     for (const item of component.items) {
       if (item.param) gcs.push_sketch_param(item.param.name, item.param.value);
     }
-    if (extra.length > 0) {
-      gcs.push_sketch_param(DRAG_X, 0);
-      gcs.push_sketch_param(DRAG_Y, 0);
+    for (const prim of extra) {
+      if (prim.type === 'coordinate_x' && typeof prim.x === 'string')
+        gcs.push_sketch_param(prim.x, 0);
+      if (prim.type === 'coordinate_y' && typeof prim.y === 'string')
+        gcs.push_sketch_param(prim.y, 0);
     }
     for (const item of component.items) for (const prim of item.prims) gcs.push_primitive(prim);
     for (const prim of extra) gcs.push_primitive(prim);
@@ -308,12 +311,18 @@ const inputsOf = (component: Component): unknown[] =>
 const sameInputs = (a: unknown[], b: unknown[]) =>
   a.length === b.length && a.every((value, i) => Object.is(value, b[i]));
 
+interface DragSystem {
+  system: System;
+  /** The dragged points in this system, in the order of their drag parameters. */
+  points: string[];
+}
+
 export class SketchSolver implements Disposable {
   readonly #module: PlanegcsModule;
   /** Systems by the first entity of their component (stable while the component exists). */
   #systems = new Map<string, System>();
   #fixedCurves: ReadonlySet<string> = new Set();
-  #drag?: { system: System; point: string };
+  #drag?: { systems: DragSystem[]; lead: string; starts: Map<string, Vec2> };
   #scratch?: System;
   /** What `solve()` did per component since the solver was made: for tests and the benchmark. */
   readonly stats = { builds: 0, updates: 0, unchanged: 0 };
@@ -404,48 +413,100 @@ export class SketchSolver implements Disposable {
   }
 
   /**
-   * Starts dragging a point of the last solved sketch. Returns false if the
-   * point has no unknowns (fixed, or not in the sketch).
+   * Starts dragging points of the last solved sketch (P1-03; several at once
+   * since P1-09: a line's ends, a selection). Each point is pulled by
+   * temporary constraints; the rest of its component follows. Points with no
+   * unknowns (fixed, or not in the sketch) are left out. Returns false if
+   * none is left.
    */
-  beginDrag(pointId: string): boolean {
+  beginDrag(pointIds: string | readonly string[]): boolean {
     this.endDrag();
-    const system = [...this.#systems.values()].find((s) => s.component.entities.includes(pointId));
-    const item = system?.component.items.find((i) => i.id === pointId);
-    if (!system || item?.kind !== 'point') return false;
-    const start = system.solution.points[pointId] ?? { x: 0, y: 0 };
-    system.build(system.component, this.#fixedCurves, [
-      { id: DRAG_X, type: 'coordinate_x', p_id: pointId, x: DRAG_X, temporary: true },
-      { id: DRAG_Y, type: 'coordinate_y', p_id: pointId, y: DRAG_Y, temporary: true },
-    ]);
-    // Start from the solved geometry, which the document may not have caught up with.
-    const geometry = itemGeometry(system.component);
-    system.setValues(
-      system.component,
-      (id) => system.solution.points[id] ?? geometry.point(id),
-      (id) => system.solution.radii[id] ?? geometry.radius(id),
-    );
-    system.gcs.set_sketch_param(DRAG_X, start.x);
-    system.gcs.set_sketch_param(DRAG_Y, start.y);
-    this.#drag = { system, point: pointId };
+    const ids = typeof pointIds === 'string' ? [pointIds] : [...new Set(pointIds)];
+    const bySystem = new Map<System, string[]>();
+    for (const id of ids) {
+      const system = [...this.#systems.values()].find((s) =>
+        s.component.items.some(
+          (i) => i.id === id && i.kind === 'point' && s.component.entities.includes(id),
+        ),
+      );
+      if (!system) continue;
+      const list = bySystem.get(system) ?? [];
+      list.push(id);
+      bySystem.set(system, list);
+    }
+    const lead = ids.find((id) => [...bySystem.values()].some((list) => list.includes(id)));
+    if (!lead) return false;
+    const starts = new Map<string, Vec2>();
+    const systems: DragSystem[] = [];
+    for (const [system, points] of bySystem) {
+      system.build(
+        system.component,
+        this.#fixedCurves,
+        points.flatMap((p, i) => [
+          { id: dragX(i), type: 'coordinate_x', p_id: p, x: dragX(i), temporary: true },
+          { id: dragY(i), type: 'coordinate_y', p_id: p, y: dragY(i), temporary: true },
+        ]),
+      );
+      // Start from the solved geometry, which the document may not have caught up with.
+      const geometry = itemGeometry(system.component);
+      system.setValues(
+        system.component,
+        (id) => system.solution.points[id] ?? geometry.point(id),
+        (id) => system.solution.radii[id] ?? geometry.radius(id),
+      );
+      points.forEach((p, i) => {
+        const start = system.solution.points[p] ?? geometry.point(p);
+        starts.set(p, start);
+        system.gcs.set_sketch_param(dragX(i), start.x);
+        system.gcs.set_sketch_param(dragY(i), start.y);
+      });
+      systems.push({ system, points });
+    }
+    this.#drag = { systems, lead, starts };
     return true;
   }
 
-  /** Moves the dragged point toward (x, y) and re-solves its component. Call at most once per frame. */
+  /**
+   * Moves the first draggable point toward (x, y), the other dragged points
+   * by the same offset, and re-solves their components. Call at most once
+   * per frame.
+   */
   drag(x: number, y: number): DragResult {
     const drag = this.#drag;
     if (!drag) throw new Error('solver: drag() without beginDrag()');
-    const { system } = drag;
-    system.gcs.set_sketch_param(DRAG_X, x);
-    system.gcs.set_sketch_param(DRAG_Y, y);
-    const report = system.solve();
-    return { ok: report.ok, dof: report.dof, solution: system.solution };
+    const from = drag.starts.get(drag.lead) as Vec2;
+    return this.dragBy(x - from.x, y - from.y);
   }
 
-  /** Ends the drag. The component is rebuilt without the drag constraints on the next solve. */
+  /** Moves every dragged point toward its start plus (dx, dy) and re-solves their components. */
+  dragBy(dx: number, dy: number): DragResult {
+    const drag = this.#drag;
+    if (!drag) throw new Error('solver: dragBy() without beginDrag()');
+    const solution: SketchSolution = { points: {}, radii: {} };
+    let ok = true;
+    let dof = 0;
+    for (const { system, points } of drag.systems) {
+      points.forEach((p, i) => {
+        const start = drag.starts.get(p) as Vec2;
+        system.gcs.set_sketch_param(dragX(i), start.x + dx);
+        system.gcs.set_sketch_param(dragY(i), start.y + dy);
+      });
+      const report = system.solve();
+      ok &&= report.ok;
+      dof += report.dof;
+      Object.assign(solution.points, system.solution.points);
+      Object.assign(solution.radii, system.solution.radii);
+    }
+    return { ok, dof, solution };
+  }
+
+  /** Ends the drag. The components are rebuilt without the drag constraints on the next solve. */
   endDrag(): void {
     if (!this.#drag) return;
-    this.#drag.system.stale = true;
-    this.#drag.system.inputs = [];
+    for (const { system } of this.#drag.systems) {
+      system.stale = true;
+      system.inputs = [];
+    }
     this.#drag = undefined;
   }
 

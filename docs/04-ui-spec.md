@@ -101,7 +101,8 @@ orbit), Trackpad (two-finger pan, pinch zoom, Alt+drag orbit).
 - Long-press, or right-click → "Select other…", lists the stacked geometry
   under the cursor.
 - The selection filter lives in the SELECT group.
-- Esc clears the selection, or cancels the active tool.
+- Esc clears the selection, or cancels the active tool (or a drag in
+  progress, putting the geometry back).
 
 ### 3.3 Commands
 
@@ -139,6 +140,13 @@ orbit), Trackpad (two-finger pan, pinch zoom, Alt+drag orbit).
 - **Sketch palette (right panel):** construction toggle, look at, sketch grid,
   snap, slice, show profiles, show points, show dimensions, show constraints,
   DOF counter ("3 DOF left", "Fully constrained ✓", or "Over-constrained").
+- **Selecting and editing (no tool running):** hover pre-highlights; click
+  and box select points and curves; dragging geometry moves it (or the whole
+  selection) with a live solve. A **properties panel** in the view's
+  bottom-left corner shows the selection's type and status, a point's X/Y
+  and a circle's or arc's radius (typed values move it as the constraints
+  allow), a line's length and angle, the construction flag and Delete.
+  Deleting geometry also deletes its constraints and dimensions.
 - **Colours:** under-constrained geometry blue; fully constrained dark
   (light theme) or white (dark theme); construction dashed grey; conflicting
   red; projected purple; profiles pale fill. Status is per entity: a

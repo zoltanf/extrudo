@@ -1,6 +1,7 @@
 /**
  * Picking sketch entities under the cursor (P1-06): the constraint tools
- * pick the points and curves they constrain. Pure, sketch mm.
+ * pick the points and curves they constrain; selection picks and box-selects
+ * (P1-09). Pure, sketch mm.
  */
 import {
   curvePolyline,
@@ -55,4 +56,74 @@ export function polylineDistance(line: readonly Vec2[], p: Vec2): number {
     best = Math.min(best, dist(p, lerp(a, b, t)));
   }
   return best;
+}
+
+/**
+ * Box selection (P1-09, UI spec §3.2): the entities of `sketch` in the box
+ * `corners` (a convex quadrilateral on the sketch plane, the screen
+ * rectangle seen on a possibly tilted plane). A `window` box takes what lies
+ * wholly inside; a `crossing` box also takes curves it touches. Points count
+ * as entities, so a window around a line takes its ends too.
+ */
+export function boxSelect(
+  sketch: SketchData,
+  corners: readonly Vec2[],
+  mode: 'window' | 'crossing',
+  accept: PickFilter = () => true,
+): SketchEntityId[] {
+  const out: SketchEntityId[] = [];
+  for (const [key, entity] of Object.entries(sketch.entities)) {
+    const id = key as SketchEntityId;
+    if (!accept(entity, id)) continue;
+    const line =
+      entity.type === 'point' ? [[entity.x, entity.y] as Vec2] : curvePolyline(sketch, entity);
+    if (!line || line.length === 0) continue;
+    const inside = line.map((p) => insideConvex(corners, p));
+    const hit =
+      mode === 'window'
+        ? inside.every(Boolean)
+        : inside.some(Boolean) || crossesPolygon(line, corners);
+    if (hit) out.push(id);
+  }
+  return out;
+}
+
+/** Whether `p` lies inside (or on) the convex polygon `poly`, of either winding. */
+export function insideConvex(poly: readonly Vec2[], p: Vec2): boolean {
+  let sign = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i] as Vec2;
+    const b = poly[(i + 1) % poly.length] as Vec2;
+    const c = (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]);
+    if (c === 0) continue;
+    const s = Math.sign(c);
+    if (sign !== 0 && s !== sign) return false;
+    sign = s;
+  }
+  return true;
+}
+
+/** Whether a segment of `line` crosses an edge of `poly`. */
+function crossesPolygon(line: readonly Vec2[], poly: readonly Vec2[]): boolean {
+  for (let i = 1; i < line.length; i++) {
+    for (let j = 0; j < poly.length; j++) {
+      if (
+        segmentsCross(
+          line[i - 1] as Vec2,
+          line[i] as Vec2,
+          poly[j] as Vec2,
+          poly[(j + 1) % poly.length] as Vec2,
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function segmentsCross(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
+  const orient = (p: Vec2, q: Vec2, r: Vec2) =>
+    Math.sign((q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]));
+  return orient(a, b, c) * orient(a, b, d) <= 0 && orient(c, d, a) * orient(c, d, b) <= 0;
 }

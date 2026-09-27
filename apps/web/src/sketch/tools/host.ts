@@ -29,9 +29,16 @@
  * over-constrains the sketch. It solves the sketch again after every change;
  * components that didn't change cost nothing.
  *
+ * With no tool running, the pointer selects and edits (P1-09): hovering
+ * pre-highlights the entity under it (the session's `hover`), a click
+ * selects it (Shift or Ctrl toggles), a drag that starts on an entity moves
+ * it, or the whole selection if it is selected, with the solver's live drag
+ * (one undo step), and `box` takes a window or crossing box from the
+ * viewport. `moveTo` and `setRadius` are the properties panel's edits.
+ *
  * Until the solver has loaded (a few ms after the first tool starts, or
  * after a sketch opens), edits go in with every inferred constraint and
- * unsolved, and there is no status.
+ * unsolved, there is no status, and geometry can't be dragged.
  */
 import {
   addToSketch,
@@ -43,9 +50,11 @@ import {
   type DimensionId,
   type DocumentStore,
   type ExtrudoDocument,
+  entityPoints,
   evaluateParameters,
   type FeatureId,
   nextModelParameterName,
+  radiusOf,
   newId as randomId,
   readSketch,
   removeFromSketch,
@@ -61,6 +70,7 @@ import {
 import type { SketchSolution, SketchSolver } from '@extrudo/sketch';
 // The inference entry point only: the solver's WASM glue stays in its own lazy chunk.
 import {
+  boxSelect,
   type Inference,
   infer,
   pickEntity,
@@ -151,6 +161,8 @@ export interface ToolHostState {
   construction: boolean;
   /** A drawing tool has taken a pointer drag (the Line tool's tangent arc). */
   dragging: boolean;
+  /** Selected geometry is being dragged (P1-09). */
+  moving: boolean;
 }
 
 /** A pointer position on the sketch plane, from the viewport. */
@@ -163,6 +175,18 @@ export interface PlanePointer {
   screen: readonly [number, number];
   /** False while the modifier that turns inference off is held. */
   infer: boolean;
+  /** Shift, Ctrl or ⌘ is held: a click toggles the selection, a box adds to it (P1-09). */
+  toggle?: boolean;
+}
+
+/** A box drawn over the view (P1-09), as it lies on the sketch plane. */
+export interface SketchBox {
+  /** The screen rectangle's corners on the sketch plane, in order around it. */
+  corners: Vec2[];
+  /** Dragged left to right: a window takes what lies inside; a crossing box, what it touches. */
+  mode: 'window' | 'crossing';
+  /** Add to the selection rather than replace it. */
+  add: boolean;
 }
 
 export interface ToolHostOptions {
@@ -181,10 +205,30 @@ export interface ToolHost {
   start(tool: string): void;
   /** Leaves the active drawing tool. */
   stop(): void;
+  /** Selects what a box drawn over the view takes (no tool running). */
+  box(box: SketchBox): void;
+  /** Esc while dragging geometry: puts it back. False if nothing was being dragged. */
+  cancelMove(): boolean;
+  /**
+   * Moves a point of the open sketch toward (x, y) as a drag would, the rest
+   * following, as one undo step. Returns false if its constraints kept it
+   * from getting there (it goes as near as they allow).
+   */
+  moveTo(point: SketchEntityId, x: number, y: number): boolean;
+  /**
+   * Sets a circle's or an arc's radius and solves the sketch, as one undo
+   * step. Throws a `CommandError`, changing nothing, if its constraints or
+   * dimensions don't allow it.
+   */
+  setRadius(curve: SketchEntityId, radius: number): void;
   move(pointer: PlanePointer): void;
   click(pointer: PlanePointer): void;
-  /** A press at `pointer` became a drag; the tool may take it. */
-  dragStart(pointer: PlanePointer): void;
+  /**
+   * A press at `pointer` became a drag. True if it is taken: by the tool,
+   * or with no tool, by the geometry under the press (which it moves). A
+   * drag nobody takes is a selection box.
+   */
+  dragStart(pointer: PlanePointer): boolean;
   /** The drag ended at `pointer`. */
   dragEnd(pointer: PlanePointer): void;
   /** Flips whether new curves are construction geometry. */
@@ -227,6 +271,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     solverReady: false,
     construction: false,
     dragging: false,
+    moving: false,
   }));
   let solver: SketchSolver | undefined;
   let loading = false;
@@ -238,6 +283,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   let perPixel = 1;
   /** The edit waiting for `resolveOverConstrained`. */
   let waiting: SketchEdit | undefined;
+  /** The geometry drag in progress (P1-09): the press point on the plane. */
+  let move: { from: Vec2 } | undefined;
   /** The document and sketch the status was last worked out for. */
   let statusFor:
     | { doc: ExtrudoDocument; data: SketchData; values: Record<string, number> }
@@ -296,6 +343,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
 
   /** Solves the open sketch again if it changed, and stores its constraint status. */
   const refreshStatus = () => {
+    // A solve would end the drag; the status can't change while geometry moves.
+    if (move) return;
     const sketch = session.getState().mode === 'sketch' ? activeSketch() : undefined;
     if (!sketch || !solver) {
       statusFor = undefined;
@@ -498,6 +547,74 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     }
   };
 
+  /** The selected entities of the open sketch. */
+  const selectedEntities = (data: SketchData): SketchEntityId[] =>
+    session
+      .getState()
+      .selection.filter((s) => s.kind === 'sketchEntity' && s.id in data.entities)
+      .map((s) => s.id as SketchEntityId);
+
+  const pickAt = (pointer: PlanePointer): SketchEntityId | undefined => {
+    const sketch = activeSketch();
+    perPixel = pointer.perPixel;
+    return sketch && pickEntity(sketch.data, pointer.point, SNAP_PIXELS * pointer.perPixel);
+  };
+
+  /** Stores a drag step's geometry where it differs from the open sketch's. */
+  const place = (solution: SketchSolution) => {
+    const sketch = activeSketch();
+    if (!sketch) return;
+    const points: Record<SketchEntityId, { x: number; y: number }> = {};
+    const radii: Record<SketchEntityId, number> = {};
+    for (const [key, p] of Object.entries(solution.points)) {
+      const e = sketch.data.entities[key as SketchEntityId];
+      if (e?.type === 'point' && (e.x !== p.x || e.y !== p.y)) {
+        points[key as SketchEntityId] = { x: p.x, y: p.y };
+      }
+    }
+    for (const [key, radius] of Object.entries(solution.radii)) {
+      const e = sketch.data.entities[key as SketchEntityId];
+      if (e?.type === 'circle' && e.radius !== radius) radii[key as SketchEntityId] = radius;
+    }
+    if (Object.keys(points).length + Object.keys(radii).length === 0) return;
+    committing = true;
+    try {
+      store.getState().dispatch(setSketchGeometry({ feature: sketch.id, points, radii }));
+    } finally {
+      committing = false;
+    }
+  };
+
+  /** Solves the open sketch as it is, so a drag starts from its current systems. */
+  const solveOpen = (active: SketchSolver, sketch: { id: FeatureId; data: SketchData }) =>
+    active.solve(
+      sketch.data,
+      dimensionValues(sketch.data, evaluateParameters(store.getState().doc), sketch.id),
+    );
+
+  /** The points that move when `ids` are dragged: points as they are, curves by theirs. */
+  const dragPoints = (data: SketchData, ids: readonly SketchEntityId[]): SketchEntityId[] => {
+    const out = new Set<SketchEntityId>();
+    for (const id of ids) {
+      const e = data.entities[id];
+      if (!e) continue;
+      if (e.type === 'point') out.add(id);
+      else for (const p of entityPoints(e)) out.add(p);
+    }
+    return [...out];
+  };
+
+  const endMove = (keep: boolean) => {
+    if (!move) return false;
+    move = undefined;
+    solver?.endDrag();
+    if (keep) store.getState().commitTransaction();
+    else store.getState().cancelTransaction();
+    bump({ moving: false });
+    refreshStatus();
+    return true;
+  };
+
   const run = (action: (tool: SketchTool) => SketchEdit | undefined) => {
     const tool = state.getState().tool;
     if (!tool) return;
@@ -511,6 +628,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     start(id) {
       const s = session.getState();
       if (s.mode !== 'sketch' || !FACTORIES[id]) return;
+      endMove(true);
+      if (s.hover?.kind === 'sketchEntity') s.setHover(undefined);
       s.setTool(id);
       committed = store.getState().doc;
       state.setState((prev) => ({
@@ -526,6 +645,22 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       bump({ tool: undefined, pointer: undefined, dragging: false });
     },
     move(pointer) {
+      if (move) {
+        const step = solver?.dragBy(
+          pointer.point[0] - move.from[0],
+          pointer.point[1] - move.from[1],
+        );
+        if (step?.ok) place(step.solution);
+        return;
+      }
+      if (!state.getState().tool) {
+        if (session.getState().mode !== 'sketch') return;
+        const hit = pickAt(pointer);
+        const hover = session.getState().hover;
+        if (hit) session.getState().setHover({ kind: 'sketchEntity', id: hit });
+        else if (hover?.kind === 'sketchEntity') session.getState().setHover(undefined);
+        return;
+      }
       run((tool) => {
         const inference = inferAt(pointer, tool);
         tool.move(inference);
@@ -534,6 +669,15 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       });
     },
     click(pointer) {
+      if (!state.getState().tool) {
+        if (session.getState().mode !== 'sketch') return;
+        const hit = pickAt(pointer);
+        const s = session.getState();
+        if (hit)
+          s.select([{ kind: 'sketchEntity', id: hit }], pointer.toggle ? 'toggle' : 'replace');
+        else if (!pointer.toggle) s.clearSelection();
+        return;
+      }
       run((tool) => {
         const inference = inferAt(pointer, tool);
         // A new click answers the last refusal.
@@ -542,13 +686,35 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       });
     },
     dragStart(pointer) {
-      run((tool) => {
+      const tool = state.getState().tool;
+      if (tool) {
         const inference = inferAt(pointer, tool);
-        if (tool.dragStart?.(inference)) state.setState({ dragging: true });
-        return undefined;
-      });
+        const taken = tool.dragStart?.(inference) ?? false;
+        if (taken) state.setState({ dragging: true });
+        bump();
+        return taken;
+      }
+      const sketch = session.getState().mode === 'sketch' ? activeSketch() : undefined;
+      const hit = pickAt(pointer);
+      if (!sketch || !hit) return false;
+      // Geometry can't move before the solver is in; the press is still the entity's.
+      if (!solver || move) return true;
+      const selected = selectedEntities(sketch.data);
+      const points = dragPoints(sketch.data, selected.includes(hit) ? selected : [hit]);
+      solveOpen(solver, sketch);
+      if (!solver.beginDrag(points)) return true;
+      move = { from: pointer.point };
+      store.getState().beginTransaction('Move');
+      session.getState().setHover(undefined);
+      bump({ moving: true });
+      return true;
     },
     dragEnd(pointer) {
+      if (move) {
+        host.move(pointer);
+        endMove(true);
+        return;
+      }
       if (!state.getState().dragging) return;
       state.setState({ dragging: false });
       run((tool) => {
@@ -557,10 +723,86 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         return tool.dragEnd?.(inference);
       });
     },
+    box({ corners, mode, add }) {
+      const sketch = session.getState().mode === 'sketch' ? activeSketch() : undefined;
+      if (!sketch || state.getState().tool) return;
+      const ids = boxSelect(sketch.data, corners, mode);
+      const s = session.getState();
+      if (ids.length === 0 && !add) s.clearSelection();
+      else
+        s.select(
+          ids.map((id) => ({ kind: 'sketchEntity', id })),
+          add ? 'add' : 'replace',
+        );
+    },
+    cancelMove() {
+      return endMove(false);
+    },
+    moveTo(point, x, y) {
+      const sketch = activeSketch();
+      if (!sketch || !solver || move) return false;
+      solveOpen(solver, sketch);
+      if (!solver.beginDrag([point])) return false;
+      store.getState().beginTransaction('Move point');
+      let reached = false;
+      try {
+        const step = solver.drag(x, y);
+        if (step.ok) place(step.solution);
+        const p = step.solution.points[point];
+        reached = step.ok && p !== undefined && Math.hypot(p.x - x, p.y - y) < REACHED;
+      } finally {
+        solver.endDrag();
+        store.getState().commitTransaction();
+        refreshStatus();
+      }
+      return reached;
+    },
+    setRadius(curve, radius) {
+      const sketch = activeSketch();
+      const e = sketch?.data.entities[curve];
+      if (!sketch || !e || !(radius > 0)) return;
+      const points: Record<SketchEntityId, { x: number; y: number }> = {};
+      const radii: Record<SketchEntityId, number> = {};
+      if (e.type === 'circle') radii[curve] = radius;
+      else if (e.type === 'arc') {
+        const c = sketch.data.entities[e.center];
+        for (const id of [e.start, e.end]) {
+          const p = sketch.data.entities[id];
+          if (c?.type !== 'point' || p?.type !== 'point') return;
+          const d = Math.hypot(p.x - c.x, p.y - c.y) || 1;
+          points[id] = { x: c.x + ((p.x - c.x) * radius) / d, y: c.y + ((p.y - c.y) * radius) / d };
+        }
+      } else return;
+      committing = true;
+      store.getState().beginTransaction('Radius');
+      try {
+        store.getState().dispatch(setSketchGeometry({ feature: sketch.id, points, radii }));
+        const moved = activeSketch();
+        if (solver && moved) {
+          const result = solveOpen(solver, moved);
+          if (result.ok) place(result.solution);
+        }
+        const now = activeSketch();
+        const r = now && radiusOf(now.data, curve);
+        if (r === undefined || Math.abs(r - radius) > REACHED) {
+          throw new CommandError(
+            'Its constraints or dimensions set this radius; change them to change it.',
+          );
+        }
+        store.getState().commitTransaction();
+      } catch (error) {
+        store.getState().cancelTransaction();
+        throw error;
+      } finally {
+        committing = false;
+        refreshStatus();
+      }
+    },
     toggleConstruction() {
       bump({ construction: !state.getState().construction });
     },
     leave() {
+      if (session.getState().hover?.kind === 'sketchEntity') session.getState().setHover(undefined);
       bump({ pointer: undefined, screen: undefined });
     },
     enter() {
@@ -635,6 +877,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     }
     if (construction && s.mode !== 'sketch') bump({ construction: false });
     if (editing && s.mode !== 'sketch') bump({ editing: undefined });
+    if (s.mode !== 'sketch' && move) endMove(false);
     if (s.mode !== 'sketch' && state.getState().overConstrained) {
       waiting = undefined;
       bump({ overConstrained: undefined });
@@ -670,6 +913,9 @@ function sameValues(a: Record<string, number>, b: Record<string, number>): boole
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
 }
+
+/** How near (mm) an edit must get to the asked-for value to count as reached. */
+const REACHED = 1e-6;
 
 /** Below this size (mm) a curve has collapsed: a solve that shrinks one this far failed in all but name. */
 const COLLAPSED = 1e-3;
