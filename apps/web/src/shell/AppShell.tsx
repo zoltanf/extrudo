@@ -308,6 +308,15 @@ export function AppShell({
     }
   };
   runRef.current = run;
+  // One pointer mode at a time: Select, a nav tool (Orbit, Pan, Zoom) or a command. Starting a
+  // tool or Create Sketch ends a nav tool; the nav bar's Select stops whatever runs.
+  useEffect(() => {
+    if (activeTool) viewport.getState().setTool(undefined);
+  }, [activeTool, viewport]);
+  const stopCommand = () => {
+    if (picking) cancelCreateSketch(stores);
+    else if (drawing) host?.stop();
+  };
   const pickPlane = (plane: OriginPlaneId) => createSketchOn(stores, originPlaneRef(plane));
   // The timeline's and the browser's feature commands (P1-12), and sketch export (P1-13).
   const featureActions = useMemo(
@@ -465,6 +474,8 @@ export function AppShell({
             sketchPlane={sketchPlane}
             planePicker={planePicker}
             sketchInput={sketchInput}
+            commandRunning={drawing || picking}
+            onStopCommand={stopCommand}
           >
             {showConstraints && tools && activeSketchId && sketchPlane && (
               <tools.Glyphs

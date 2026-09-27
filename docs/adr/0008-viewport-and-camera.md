@@ -133,3 +133,21 @@ clicks the ViewCube's Top face and checks the camera orientation.
   comes with P2-08.
 - Screenshot baselines now include WebGL output; SwiftShader renders it the
   same in the Arch and Ubuntu Playwright images (checked 2026-09-25).
+
+## Amendment, 2026-09-27 (pointer modes)
+
+- **One pointer mode at a time.** The nav bar starts with **Select**,
+  then Orbit, Pan and Zoom. Select is pressed whenever no nav tool and no
+  command runs; the viewport learns about commands through
+  `commandRunning` and `onStopCommand` (the shell passes "a sketch tool
+  draws or Create Sketch waits for a plane", and stopping them). Pressing
+  Select clears the nav tool and stops the command. Starting a command
+  (the session's `activeTool` becomes set) clears the nav tool.
+- **Cursors per nav tool.** All three tools used to show the open hand.
+  `viewport/cursors.ts` gives Pan the hand (closed while dragging), and
+  Orbit and Zoom small SVG cursors (a circular arrow, a magnifier; white
+  over a dark outline, falling back to `move` and `zoom-in`). A
+  navigation drag without a tool (middle button) shows the cursor of what
+  it does. The cursor is an inline style on the pointer surface, which
+  also carries `data-cursor` (the tool or drag) for tests.
+

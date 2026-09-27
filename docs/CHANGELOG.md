@@ -2,6 +2,13 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **Pointer modes** (not a roadmap task, user feedback): the
+  nav bar's first button is Select, the default pointer mode, pressed
+  whenever no nav tool or command runs; it stops either. Starting a tool
+  ends Orbit/Pan/Zoom. Orbit and Zoom have their own cursors (they all
+  showed a hand). The Solid tab's Select tile is gone; a tool from a
+  group's menu lights up its group's label. ADR-0007 and ADR-0008 amended.
+
 - 2026-09-27 · **P1-14** Command search and shortcuts v1: one keymap
   table (`commands/keymap.ts`, Fusion's keys plus Shift+1…7 for the
   standard views) that the toolbar, menus and shortcut handler all read;

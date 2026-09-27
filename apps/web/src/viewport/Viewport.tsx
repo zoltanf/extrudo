@@ -27,6 +27,7 @@ import { Bodies } from './Bodies';
 import { CameraRig } from './CameraRig';
 import { basis, orbit, pan, rayPlane, type View, viewRay, worldPerPixel, zoomAt } from './camera';
 import { type Rgba, type SceneColors, useSceneColors } from './colors';
+import { navCursor } from './cursors';
 import { Grid, XY_FRAME } from './Grid';
 import { NavBar } from './NavBar';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
@@ -54,6 +55,12 @@ export interface ViewportProps {
   sketchInput?: SketchInput;
   /** Drawn over the 3D view (the sketch tool overlay). */
   children?: ReactNode;
+  /**
+   * A command owns the pointer (a sketch tool, the plane pick), so the nav
+   * bar's Select isn't the active mode; pressing Select calls `onStopCommand`.
+   */
+  commandRunning?: boolean;
+  onStopCommand?(): void;
 }
 
 export interface SketchInput {
@@ -112,6 +119,8 @@ export function Viewport({
   planePicker,
   sketchInput,
   children,
+  commandRunning = false,
+  onStopCommand,
 }: ViewportProps) {
   const section = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -167,15 +176,17 @@ export function Viewport({
   const [box, setBox] = useState<ScreenBox>();
   useSketchInput(surface, viewport, sketchInput, setBox);
 
+  // The pointer says what a left-drag does: a nav tool's own cursor (also while any
+  // navigation drag runs), a hand on a pickable plane, a crosshair while drawing.
   const cursor = dragging
-    ? 'cursor-grabbing'
+    ? navCursor(dragging, true)
     : tool
-      ? 'cursor-grab'
+      ? navCursor(tool, false)
       : planePicker?.hover
-        ? 'cursor-pointer'
+        ? 'pointer'
         : sketchInput && sketchInput.cursor !== 'default'
-          ? 'cursor-crosshair'
-          : '';
+          ? 'crosshair'
+          : undefined;
 
   return (
     <section
@@ -189,7 +200,12 @@ export function Viewport({
       className="relative isolate min-w-0 flex-1 overflow-hidden"
       style={{ background: 'var(--x-viewport-glow)' }}
     >
-      <div ref={surface} className={`absolute inset-0 touch-none ${cursor}`}>
+      <div
+        ref={surface}
+        data-cursor={dragging ?? tool}
+        className="absolute inset-0 touch-none"
+        style={cursor ? { cursor } : undefined}
+      >
         <Canvas
           frameloop="demand"
           flat
@@ -213,7 +229,7 @@ export function Viewport({
       {children}
       {box && <SelectionBox box={box} />}
       <ViewCube store={viewport} />
-      <NavBar store={viewport} />
+      <NavBar store={viewport} commandRunning={commandRunning} onStopCommand={onStopCommand} />
       <ViewStatus viewport={viewport} />
     </section>
   );

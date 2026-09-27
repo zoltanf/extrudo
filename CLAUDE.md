@@ -441,3 +441,9 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   Only the current mode's commands are listed: Extrude isn't found inside
   a sketch, and a sketch tool's pin is hidden after a reload (the project
   reopens outside the sketch).
+- **Pointer modes** (ADR-0008 amendment): the nav bar's "Select" button
+  is `aria-pressed` when no nav tool or command runs. The viewport's
+  pointer surface (`div.touch-none` in the Viewport region) carries the
+  cursor as an inline style and `data-cursor` (orbit/pan/zoom); check
+  with `toHaveCSS('cursor', 'grab')`, not a class. A menu-only tool marks
+  its group's trigger (e.g. "Create") with `data-active`.

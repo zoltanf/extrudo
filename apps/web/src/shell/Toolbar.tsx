@@ -1,4 +1,4 @@
-import { ChevronDown, MousePointer2 } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { type ButtonHTMLAttributes, forwardRef, useEffect, useState } from 'react';
 import { keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
@@ -91,7 +91,9 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
                 trigger={
                   <button
                     type="button"
-                    className="mt-auto inline-flex items-center gap-0.5 rounded-input px-1.5 text-[9.5px] font-semibold tracking-[0.08em] text-muted uppercase hover:text-ink"
+                    // A running tool from the menu has no tile: its group's label shows it.
+                    data-active={(activeTool && group.more?.includes(activeTool)) || undefined}
+                    className="mt-auto inline-flex items-center gap-0.5 rounded-input px-1.5 text-[9.5px] font-semibold tracking-[0.08em] text-muted uppercase hover:text-ink data-active:bg-accent-soft data-active:text-ink"
                   >
                     {group.label}
                     <ChevronDown size={10} />
@@ -133,25 +135,6 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
               </Tooltip>
               <span className="mt-auto px-1.5 text-[9.5px] font-semibold tracking-[0.08em] text-muted uppercase">
                 Finish
-              </span>
-            </fieldset>
-          </div>
-        )}
-        {active?.id === 'solid' && (
-          <div className="flex items-stretch">
-            <div className="mx-1.5 my-1.5 w-px bg-line" aria-hidden="true" />
-            <fieldset aria-label="Select" className="m-0 flex flex-col items-center border-0 p-0">
-              <Tooltip
-                label="Select"
-                hint="Pick faces, edges and bodies. Filters arrive with P2-03."
-              >
-                <ToolTile aria-pressed="true">
-                  <MousePointer2 size={22} strokeWidth={1.75} className="text-ink" />
-                  <span>Select</span>
-                </ToolTile>
-              </Tooltip>
-              <span className="mt-auto px-1.5 text-[9.5px] font-semibold tracking-[0.08em] text-muted uppercase">
-                Select
               </span>
             </fieldset>
           </div>

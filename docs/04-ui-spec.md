@@ -35,7 +35,7 @@ brief, voice) is in **`05-brand.md`**. In short:
 │ ☰ File  │ ⟲ ⟳ │        Project name ▾  • Saved           │ ⚙  ?  ◐ theme  │  App bar
 ├────────────────────────────────────────────────────────────────────────────┤
 │ SOLID │ SKETCH* │ INSERT │ 3D PRINT │                                        │  Tabs
-│ CREATE ▾  │ MODIFY ▾ │ CONSTRUCT ▾ │ INSPECT ▾ │ SELECT                       │  Tool groups
+│ CREATE ▾  │ MODIFY ▾ │ CONSTRUCT ▾ │ INSPECT ▾                                │  Tool groups
 ├───────────────┬──────────────────────────────────────────────┬─────────────┤
 │ BROWSER       │                                              │   ┌─────┐   │
 │ ▾ ⚙ Document  │                                              │   │VIEW │   │  ViewCube
@@ -46,7 +46,7 @@ brief, voice) is in **`05-brand.md`**. In short:
 │ ▾ 👁 Bodies    │                                              │ │ COMMAND │ │  Feature dialog /
 │   Body1       │                                              │ │ DIALOG  │ │  Sketch palette
 │               │                                              │ └─────────┘ │  (right side)
-│               │     ⟳ ✋ 🔍 ⊡ │ ◧ style │ ▦ grid │ ◫ views      │             │  Nav bar (bottom
+│               │   ↖ ⟳ ✋ 🔍 │ ⊡ │ ◧ style │ ▦ grid │ ◫ views    │             │  Nav bar (bottom
 ├───────────────┴──────────────────────────────────────────────┴─────────────┤  center, floating)
 │ ⏮ ◀ ▶ ⏭ │ [✎S1][▮E1][✎S2][▯E2][◠F1]▼[◡C1]                      │ status bar  │  Timeline
 └────────────────────────────────────────────────────────────────────────────┘
@@ -75,8 +75,16 @@ brief, voice) is in **`05-brand.md`**. In short:
   top-left edge brings it back. No empty rail is left behind.
 - **ViewCube (top-right):** faces, edges and corners are clickable. Home icon.
   Rotate-90° arrows appear when face-on. Drag to orbit.
-- **Nav bar (bottom center, floating pill):** orbit, pan, zoom, fit (F6),
-  visual style, ortho/perspective, grid and snap settings, named views.
+- **Nav bar (bottom center, floating pill):** the pointer modes first:
+  **Select**, orbit, pan, zoom. Exactly one mode is active: Select
+  whenever no nav tool and no command (a sketch tool, the plane pick)
+  runs. Pressing Select stops the nav tool or the command; starting a
+  command ends a nav tool. Each nav tool has its own cursor (an orbit
+  arrow, a magnifier, a hand), also during a navigation drag. Then fit
+  (F6), ortho/perspective, visual style, grid, mouse controls and named
+  views.
+- A running tool is highlighted on the toolbar: its tile, or, for a tool
+  from a group's menu, the group's label.
 - **Command dialog (right, floating):** appears for the active feature and is
   draggable. It holds selection fields, inputs, OK (Enter) and Cancel (Esc).
 - **Timeline (bottom):** playback buttons, feature chips with category colour
@@ -111,7 +119,7 @@ orbit), Trackpad (two-finger pan, pinch zoom, Alt+drag orbit).
   (touching). The rectangle style differs (solid vs dashed).
 - Long-press, or right-click → "Select other…", lists the stacked geometry
   under the cursor.
-- The selection filter lives in the SELECT group.
+- The selection filter will live with the nav bar's Select (P2-03).
 - Esc clears the selection, or cancels the active tool (or a drag in
   progress, putting the geometry back).
 

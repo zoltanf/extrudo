@@ -49,7 +49,7 @@ test('Create Sketch on a plane picked in the view, then Finish Sketch', async ({
   const y = box.y + box.height / 2;
   const surface = viewport.locator('div.touch-none').first();
   await page.mouse.move(x, y);
-  await expect(surface).toHaveClass(/cursor-pointer/);
+  await expect(surface).toHaveCSS('cursor', 'pointer');
   await expect(prompt(page).getByRole('button', { name: 'XY' })).toHaveClass(/border-accent/);
   await page.mouse.click(x, y);
 

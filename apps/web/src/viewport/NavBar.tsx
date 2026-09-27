@@ -1,4 +1,15 @@
-import { Box, Cone, Grid3x3, Hand, Maximize, Mouse, Orbit, Video, ZoomIn } from 'lucide-react';
+import {
+  Box,
+  Cone,
+  Grid3x3,
+  Hand,
+  Maximize,
+  Mouse,
+  MousePointer2,
+  Orbit,
+  Video,
+  ZoomIn,
+} from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -27,12 +38,21 @@ const TOOLS: readonly { value: NavAction; label: string; hint: string; icon: Rea
   },
 ];
 
+export interface NavBarProps {
+  store: ViewportStore;
+  /** A command owns the pointer (a sketch tool, the plane pick): Select isn't active. */
+  commandRunning?: boolean;
+  /** Select pressed while a command runs: stop it. */
+  onStopCommand?(): void;
+}
+
 /**
- * The floating nav bar (UI spec §2, bottom centre): navigation tools, fit,
- * projection, visual style, grid, mouse preset. Glass pill: `raised` at 85 %
- * with a 6 px backdrop blur (docs/05-brand.md §5).
+ * The floating nav bar (UI spec §2, bottom centre): the pointer modes
+ * (Select, then the navigation tools), fit, projection, visual style, grid,
+ * mouse preset. Glass pill: `raised` at 85 % with a 6 px backdrop blur
+ * (docs/05-brand.md §5).
  */
-export function NavBar({ store }: { store: ViewportStore }) {
+export function NavBar({ store, commandRunning = false, onStopCommand }: NavBarProps) {
   const { tool, projection, visualStyle, grid, preset } = useStore(
     store,
     useShallow(({ tool, projection, visualStyle, grid, preset }) => ({
@@ -51,6 +71,18 @@ export function NavBar({ store }: { store: ViewportStore }) {
       className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-line px-2 py-1 backdrop-blur-[6px]"
       style={{ background: 'color-mix(in srgb, var(--x-raised) 85%, transparent)' }}
     >
+      {/* Select is the pointer's default mode: active whenever no tool or command runs. */}
+      <IconButton
+        label="Select"
+        hint="Click to select, drag for a box. Stops the running tool. Esc does too."
+        pressed={tool === undefined && !commandRunning}
+        onClick={() => {
+          s.setTool(undefined);
+          if (commandRunning) onStopCommand?.();
+        }}
+      >
+        <MousePointer2 size={16} strokeWidth={1.75} />
+      </IconButton>
       {TOOLS.map((t) => (
         <IconButton
           key={t.value}
@@ -62,6 +94,7 @@ export function NavBar({ store }: { store: ViewportStore }) {
           {t.icon}
         </IconButton>
       ))}
+      <div className="mx-1 h-4 w-px bg-line" />
       <IconButton label="Fit" shortcut="F6" hint="Fit the whole model in the view." onClick={s.fit}>
         <Maximize size={16} strokeWidth={1.75} />
       </IconButton>

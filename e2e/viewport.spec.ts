@@ -195,3 +195,60 @@ test('projection, grid and origin settings change the picture and are remembered
   await expect(grid).toHaveAttribute('aria-pressed', 'false');
   await expect(page.getByRole('button', { name: 'Hide XY plane' })).toBeVisible();
 });
+
+test('one pointer mode at a time: Select, a nav tool with its cursor, or a tool', async ({
+  page,
+}) => {
+  const viewport = await open(page);
+  const nav = page.getByRole('navigation', { name: 'View navigation' });
+  const select = nav.getByRole('button', { name: 'Select', exact: true });
+  // The pointer surface over the canvas: it carries the cursor.
+  const surface = viewport.locator('div.touch-none');
+
+  // The Select tile left the toolbar for the nav bar, where it's the default mode.
+  await expect(page.getByRole('group', { name: 'Select' })).toHaveCount(0);
+  await expect(select).toHaveAttribute('aria-pressed', 'true');
+
+  // Each nav tool shows what a drag does: its own cursor, not a hand for all three.
+  await nav.getByRole('button', { name: 'Orbit', exact: true }).click();
+  await expect(select).toHaveAttribute('aria-pressed', 'false');
+  await expect(surface).toHaveAttribute('data-cursor', 'orbit');
+  await expect(surface).toHaveCSS('cursor', /data:image\/svg\+xml/);
+  await nav.getByRole('button', { name: 'Zoom', exact: true }).click();
+  await expect(surface).toHaveAttribute('data-cursor', 'zoom');
+  await expect(surface).toHaveCSS('cursor', /data:image\/svg\+xml/);
+  await nav.getByRole('button', { name: 'Pan', exact: true }).click();
+  await expect(surface).toHaveCSS('cursor', 'grab');
+  await select.click();
+  await expect(select).toHaveAttribute('aria-pressed', 'true');
+  await expect(surface).not.toHaveAttribute('data-cursor');
+
+  // Starting a tool ends a nav tool; Select stops the tool.
+  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await page
+    .getByRole('region', { name: 'Create Sketch' })
+    .getByRole('button', { name: 'XY' })
+    .click();
+  await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
+  await nav.getByRole('button', { name: 'Orbit', exact: true }).click();
+  await page.keyboard.press('l');
+  const line = page.getByRole('button', { name: 'Line', exact: true });
+  await expect(line).toHaveAttribute('aria-pressed', 'true');
+  await expect(nav.getByRole('button', { name: 'Orbit', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  await expect(select).toHaveAttribute('aria-pressed', 'false');
+  await expect(surface).toHaveCSS('cursor', 'crosshair');
+  await select.click();
+  await expect(line).not.toHaveAttribute('aria-pressed', 'true');
+  await expect(select).toHaveAttribute('aria-pressed', 'true');
+
+  // A tool from a group's menu has no tile: the group's label lights up instead.
+  const create = page.getByRole('button', { name: 'Create', exact: true });
+  await create.click();
+  await page.getByRole('menuitem', { name: /^3-Point Rectangle/ }).click();
+  await expect(create).toHaveAttribute('data-active', 'true');
+  await select.click();
+  await expect(create).not.toHaveAttribute('data-active');
+});

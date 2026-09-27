@@ -124,4 +124,9 @@ that resize and collapse.
   them to the status bar twice a second. The canvas renders on demand, so
   a still view reads "idle" with the last frame time. Screenshot tests hide
   it (`e2e/screenshot.css`, `stylePath` in `playwright.config.ts`).
+- **Select moved to the nav bar** (second review, same day). The Solid
+  tab's Select tile did nothing and read as a toolbar command. Select is
+  now the nav bar's first button and the pointer's default mode (see
+  ADR-0008's amendment). A tool started from a group's menu has no tile,
+  so the group's label is highlighted (`data-active`) while it runs.
 
