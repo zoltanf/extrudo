@@ -23,7 +23,13 @@ export const saveStatus = (page: Page) => page.getByRole('status', { name: 'Save
 
 /** Opens a sketch on XY and waits for the Top view. Returns a sketch-mm → page-px mapping. */
 export async function sketchOnXY(page: Page) {
-  const viewport = await openProject(page);
+  await openProject(page);
+  return newSketchOnXY(page);
+}
+
+/** Starts a sketch on XY in the open project, like `sketchOnXY`. */
+export async function newSketchOnXY(page: Page) {
+  const viewport = page.getByRole('region', { name: 'Viewport' });
   await page.getByRole('button', { name: 'Create Sketch' }).click();
   await page
     .getByRole('region', { name: 'Create Sketch' })

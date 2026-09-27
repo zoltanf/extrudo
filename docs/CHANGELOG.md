@@ -2,6 +2,13 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **P1-15** Benchmark B1 end to end, and the **Phase 1 exit
+  (v0.1)**: Playwright builds the parametric plate with four corner holes
+  through the UI (user parameters, a fully constrained sketch of 16
+  constraints and 7 expression dimensions), changes the hole spacing in the
+  open sketch and the width outside it, reloads, and checks the dimension
+  labels and every path of the SVG export. `newSketchOnXY` e2e helper.
+
 - 2026-09-27 · **No timeline scrollbar with room to spare** (user report):
   the marker's triangle is wider than its bar and stuck out a pixel at the
   ends of the chip list, which then scrolled; the list has 4 px of padding

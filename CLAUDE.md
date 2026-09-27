@@ -9,8 +9,9 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 has
-P1-01 to P1-14 done. ADR-0001 chose
+**Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
+done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
+`e2e/benchmark-b1.spec.ts`). ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -138,8 +139,8 @@ offered in the current mode (shown tabs' tools, edit, view, panels, file,
 theme) and drives the shortcuts, the Ctrl+K palette and the S toolbox
 (`shell/CommandSearch.tsx` on the design system's `FloatingDialog`;
 fuzzy scorer in `commands/search.ts`; pins in the `toolbox.pins`
-preference). A new command goes in `buildCommands`. Next: **P1-15**
-(benchmark B1 e2e). See `docs/03-roadmap.md`.
+preference). A new command goes in `buildCommands`. Next: **P2-01**
+(recompute engine), the start of Phase 2. See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -441,6 +442,18 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   Only the current mode's commands are listed: Extrude isn't found inside
   a sketch, and a sketch tool's pin is hidden after a reload (the project
   reopens outside the sketch).
+- **The default Top view doesn't show a 100 × 80 mm sketch** (P1-15): at
+  1440 × 900 it is 3.5 px/mm around the origin, the sketch palette covers
+  x > ~95 mm and y = 80 mm is above the view; clicks there are lost. Zoom
+  out first, **one `mouse.wheel` at a time**, waiting for
+  `data-camera-size` to change (headless Chromium delivers wheel deltas
+  unevenly: one `wheel(0, 200)` zoomed 1.06×, eight in a row about 9×),
+  then call `mapping(viewport)` again. The snap grid stays at 10 mm up to
+  0.83 mm per pixel (`gridStep`). `newSketchOnXY` opens a sketch in a
+  project that is already open (after setting up parameters, say).
+- **In a sketch, the Parameters dialog opens only from Ctrl+K** (its
+  button is on the Solid tab). Before `page.reload()`, wait for the save
+  status to read "Saved", or the last edit is lost.
 - **Pointer modes** (ADR-0008 amendment): the nav bar's "Select" button
   is `aria-pressed` when no nav tool or command runs. The viewport's
   pointer surface (`div.touch-none` in the Viewport region) carries the

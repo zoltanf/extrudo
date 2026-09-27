@@ -199,11 +199,18 @@ Benchmark **B1** buildable.
   Fusion defaults (`L R C A P D T O X E` …); `S` toolbox and Ctrl+K palette
   (fuzzy search over commands).
   *AC:* FR-UX-03 (partial).
-- [ ] **P1-15 Benchmark B1 E2E.** Playwright builds B1 through the UI, changes a
+- [x] **P1-15 Benchmark B1 E2E.** Playwright builds B1 through the UI, changes a
   user parameter, asserts the sketch updates and the SVG export matches.
+  *Done 2026-09-27 (`e2e/benchmark-b1.spec.ts`): user parameters `width`, `depth`,
+  `spacing`, `hole` and `margin = (width - spacing) / 2`; a rectangle fixed at the
+  origin and four circles (inferred alignments), three Equal constraints and seven
+  dimensions typed as expressions make it fully constrained. `spacing` changes from
+  the command palette inside the sketch, `width` from the toolbar outside it; after a
+  reload the labels and the exported SVG's paths match the expected plate exactly.*
 
 **Phase 1 exit (v0.1):** a user can make a fully constrained parametric sketch,
 drive it with parameters, save it, and export SVG.
+*Met 2026-09-27: P1-01 to P1-15 done; B1 passes end to end.*
 
 ---
 
