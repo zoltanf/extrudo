@@ -2,6 +2,13 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-27 · **Edits made just before a reload are kept** (found by
+  P1-15): the page writes a synchronous rescue copy of an unsaved document
+  when it is hidden or goes away, and the next start saves it
+  (`Platform.rescue`, `recoverRescued`). ADR-0009 amended. **Parameters on
+  the Sketch tab** (Modify group), so the dialog opens while sketching
+  without Ctrl+K.
+
 - 2026-09-27 · **P1-15** Benchmark B1 end to end, and the **Phase 1 exit
   (v0.1)**: Playwright builds the parametric plate with four corner holes
   through the UI (user parameters, a fully constrained sketch of 16

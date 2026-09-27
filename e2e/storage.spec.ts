@@ -69,6 +69,25 @@ test('undo is saved too', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Project name: Untitled. Rename' })).toBeVisible();
 });
 
+test('an edit made just before a reload is kept', async ({ page }) => {
+  await openProject(page);
+  await expect(saveStatus(page)).toHaveText('Saved');
+  // Reloading before autosave's delay (or while it writes) used to lose the edit.
+  await page.getByRole('button', { name: /^Project name: / }).click();
+  await page.getByRole('textbox', { name: 'Project name' }).fill('Quick edit');
+  await page.getByRole('textbox', { name: 'Project name' }).press('Enter');
+  await expect(saveStatus(page)).toHaveText('Edited');
+  await page.reload();
+  await expect(
+    page.getByRole('button', { name: 'Project name: Quick edit. Rename' }),
+  ).toBeVisible();
+  await expect(saveStatus(page)).toHaveText('Saved');
+
+  // The home screen lists it too.
+  await page.getByRole('link', { name: /Extrudo/ }).click();
+  await expect(card(page, 'Quick edit')).toBeVisible();
+});
+
 test('export and import round-trip a project as an .extrudo file', async ({ page }, info) => {
   await openProject(page, 'wall-bracket');
   await rename(page, 'Bracket v2');

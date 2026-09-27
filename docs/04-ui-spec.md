@@ -166,7 +166,7 @@ movement, as Onshape's context menu does.
 - **SKETCH tab groups:** CREATE (line, rectangle ▾, circle ▾, arc ▾, polygon
   ▾, slot ▾, ellipse, spline ▾, point, text, mirror, pattern ▾, project ▾,
   dimension) · MODIFY (fillet, chamfer, trim, extend, break, offset,
-  move/copy, scale) · CONSTRAINTS (row of constraint icons) · INSPECT ·
+  move/copy, scale, parameters — the dialog, as on the SOLID tab) · CONSTRAINTS (row of constraint icons) · INSPECT ·
   EXPORT (the sketch or its profiles as SVG or DXF, P1-13) ·
   **FINISH SKETCH** (big green ✓).
 - **Sketch palette (right panel):** construction toggle, look at, sketch grid,

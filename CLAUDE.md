@@ -33,7 +33,9 @@ tables, shader grid, CSS 3D ViewCube, a viewport store with display settings
 as preferences. ADR-0009 (P0-08) set storage (`packages/storage`):
 `ProjectStore` over an IndexedDB index and OPFS files, `.extrudo` zips through
 core's migrations; in the web app, an async `webPlatform()` with projects,
-persistent storage and file download/pick, autosave (`project/autosave.ts`),
+persistent storage and file download/pick, autosave (`project/autosave.ts`;
+unsaved edits get a synchronous rescue copy on `pagehide`, recovered at
+startup: `platform/rescue.ts`),
 routes `#/` (home screen, `home/`) and `#/p/<id>` (`project/ProjectPage.tsx`).
 ADR-0010 (P1-01) set the sketch data model in `packages/core/src/sketch/`:
 the plane is a `ref` input, `SketchData` holds points, lines, circles and
@@ -451,9 +453,10 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   then call `mapping(viewport)` again. The snap grid stays at 10 mm up to
   0.83 mm per pixel (`gridStep`). `newSketchOnXY` opens a sketch in a
   project that is already open (after setting up parameters, say).
-- **In a sketch, the Parameters dialog opens only from Ctrl+K** (its
-  button is on the Solid tab). Before `page.reload()`, wait for the save
-  status to read "Saved", or the last edit is lost.
+- **An edit right before `page.reload()` survives** through the rescue
+  copy (`platform/rescue.ts`, ADR-0009 amendment), which the next start
+  saves; tests that check the stored project itself (the home screen,
+  exports) may still wait for the save status "Saved" first.
 - **Pointer modes** (ADR-0008 amendment): the nav bar's "Select" button
   is `aria-pressed` when no nav tool or command runs. The viewport's
   pointer surface (`div.touch-none` in the Viewport region) carries the

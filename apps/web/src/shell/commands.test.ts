@@ -57,8 +57,9 @@ describe('buildCommands', () => {
     expect(model.get('fillet')?.keys).toEqual(['F']);
     expect(sketch.get('sketchFillet')?.keys).toEqual(['F']);
     expect(sketch.has('fillet')).toBe(false);
-    // Parameters and Finish Sketch in a sketch; Delete only where something can be deleted.
-    expect(sketch.has('parameters')).toBe(true);
+    // Parameters on both tabs, Finish Sketch in a sketch; Delete only where something can be deleted.
+    expect(model.get('parameters')?.group).toBe('Solid › Modify');
+    expect(sketch.get('parameters')?.group).toBe('Sketch › Modify');
     expect(sketch.has('finishSketch')).toBe(true);
     expect(model.has('delete')).toBe(false);
     expect(sketch.get('delete')?.keys).toEqual(['Delete', 'Backspace']);

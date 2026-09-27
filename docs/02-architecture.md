@@ -430,7 +430,8 @@ it.
 - No direct `window.showSaveFilePicker`, `localStorage` or `fetch` to our own
   origin from feature code. Go through `platform/` interfaces
   (`FileDialogs`, `ProjectStore`, `SlicerLauncher`, `Clipboard`). As of
-  P0-08: `Platform.preferences`, `.projects`, `.storage`, `.files`.
+  P0-08: `Platform.preferences`, `.projects`, `.storage`, `.files`; `.rescue`
+  (synchronous copies of unsaved documents, ADR-0009 amendment).
 - No reliance on URL routing that needs a server. Use hash routing or in-app
   state.
 - Asset URLs are relative (Vite `base: './'`).

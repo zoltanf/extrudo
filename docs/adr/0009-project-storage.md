@@ -59,7 +59,8 @@ zip (§6.2).
    change (undo and redo included), saves again right away if the document
    changed during a save, keeps `error` with a plain message until a later
    save succeeds, and has `flush()` / `retry()`. The project page flushes
-   when the tab is hidden, on `pagehide` and when it closes;
+   when the tab is hidden, on `pagehide` and when it closes (and keeps a
+   rescue copy first, see the amendment below);
    `allSaved()` lets the home screen wait for that last save before it lists
    projects. The app bar shows the state as a word plus a dot; "Couldn't
    save" is a retry button.
@@ -111,3 +112,31 @@ zip (§6.2).
   (gzipped copies under `projects/<id>/versions/`), and wires Ctrl+S.
 - **Desktop (Phase 6)** implements `ProjectStore` over plain `.extrudo`
   files in a folder through Electron IPC.
+
+## Amendment (2026-09-27): rescue copies
+
+An edit made less than 800 ms before a reload, or while a save was still
+writing, was lost: the flush on `pagehide` starts an asynchronous IndexedDB
+and OPFS write that the unloading page never finishes (found by P1-15's
+benchmark test, which reloaded right after an edit).
+
+- A new platform interface, `Platform.rescue` (`platform/rescue.ts`), keeps
+  a copy of a document **synchronously**: localStorage on the web
+  (`extrudo.rescue.<id>`), a plain file write on the desktop later.
+- The project page writes the copy when the tab is hidden, on `pagehide`
+  and when the page closes, only if the autosaver isn't `saved`, then
+  flushes as before. Every save that leaves nothing unsaved clears it.
+- `webPlatform()` runs `recoverRescued` before the app renders: each copy
+  left behind goes through core's `loadDocument` (migrations, validation)
+  and is saved as its project, then dropped. A copy that isn't a document
+  is dropped; one that fails to save is kept for the next start. The copy
+  always wins over the stored project: it was taken from the open document
+  when the page went away, after anything that page could have saved.
+- Rejected: a `beforeunload` "Leave site?" prompt while unsaved (a prompt
+  for every quick reload); making the
+  save itself synchronous (IndexedDB and OPFS have no synchronous API on
+  the main thread). localStorage's 5 MB limit applies to one copy per
+  unsaved project, not to projects; a document too big for it is reported
+  by `put` returning false and falls back to the old behaviour.
+- Test: `e2e/storage.spec.ts` "an edit made just before a reload is kept"
+  (fails without the recovery).

@@ -232,13 +232,9 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
   ]);
   await expect(viewport).toHaveAttribute('data-sketch-status', /free=0 fixed=\d+ conflict=0/);
 
-  // A wider hole spacing, from the command palette (the Parameters button is
-  // on the Solid tab): the open sketch follows at once, the plate stays.
-  await page.keyboard.press('Control+k');
-  await page.getByRole('combobox', { name: 'Search commands' }).fill('parameters');
-  await expect(page.getByRole('option').first()).toHaveAccessibleName(/^Parameters/);
-  await page.keyboard.press('Enter');
-  await expect(parameters(page)).toBeVisible();
+  // A wider hole spacing, from the Sketch tab: the open sketch follows at
+  // once, the plate stays.
+  await openParameters(page);
   await setParameter(page, 'spacing', '70 mm');
   await expect(expression(page, 'margin')).toHaveAccessibleDescription('= 15.00 mm');
   await page.keyboard.press('Escape');

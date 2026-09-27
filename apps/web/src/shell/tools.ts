@@ -553,7 +553,8 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
       },
       {
         label: 'Modify',
-        tools: ['sketchFillet', 'trim', 'sketchOffset'],
+        // Parameters too, as in the Solid tab: dimensions use them while sketching.
+        tools: ['sketchFillet', 'trim', 'sketchOffset', 'parameters'],
         more: ['sketchChamfer', 'extend', 'break', 'sketchMove', 'sketchCopy', 'sketchScale'],
       },
       {

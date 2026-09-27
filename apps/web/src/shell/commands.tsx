@@ -136,9 +136,6 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
       }
     }
   }
-  // Parameters are on the Solid tab, and useful in a sketch too.
-  add(toolCommand('parameters', 'Solid › Modify', ctx));
-
   plain('undo', 'Undo', 'Edit', ctx.undo, { icon: icon(Undo2) });
   plain('redo', 'Redo', 'Edit', ctx.redo, { icon: icon(Redo2) });
   if (ctx.remove) plain('delete', 'Delete', 'Edit', ctx.remove, { icon: icon(Trash2) });

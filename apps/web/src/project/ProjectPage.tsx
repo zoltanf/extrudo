@@ -141,7 +141,9 @@ function ProjectEditor({
 /**
  * One autosaver per open project, created in an effect so React's strict
  * mode (mount, unmount, mount) gets a fresh one. Leaving the page or hiding
- * the tab saves at once.
+ * the tab saves at once; since a closing page may stop that save half-way,
+ * unsaved changes also go into a rescue copy first, which the next start
+ * recovers (`platform.rescue`). A save that leaves nothing unsaved clears it.
  */
 function useAutosave(store: DocumentStore, viewport: ViewportStore, platform: Platform) {
   const [autosave, setAutosave] = useState<Autosaver>();
@@ -152,7 +154,17 @@ function useAutosave(store: DocumentStore, viewport: ViewportStore, platform: Pl
       thumbnail: () => viewport.getState().snapshot?.() ?? Promise.resolve(null),
     });
     setAutosave(autosaver);
-    const flush = () => void autosaver.flush();
+    const rescue = () => {
+      if (autosaver.getState().status !== 'saved') platform.rescue.put(store.getState().doc);
+    };
+    // Not unsubscribed: the last save after closing clears the copy too.
+    autosaver.subscribe((s) => {
+      if (s.status === 'saved') platform.rescue.clear(store.getState().doc.id);
+    });
+    const flush = () => {
+      rescue();
+      void autosaver.flush();
+    };
     const onVisibility = () => {
       if (document.visibilityState === 'hidden') flush();
     };
@@ -161,6 +173,7 @@ function useAutosave(store: DocumentStore, viewport: ViewportStore, platform: Pl
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pagehide', flush);
+      rescue();
       closeAutosaver(autosaver);
     };
   }, [store, viewport, platform]);
