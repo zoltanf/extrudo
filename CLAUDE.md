@@ -9,10 +9,12 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-27):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
+**Status (2026-09-28):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
-engine) and P2-02 (sketch → kernel) are done. ADR-0001 chose
+engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
+(topological naming), P2-05 (feature dialogs) and P2-06 (extrude) are
+done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -170,8 +172,45 @@ and dangling pieces, and makes one face per region placed in the plane;
 IDs** (a geometric fallback covers the rest; tests expect none). The
 output's `shapes` are the faces by region ID, `data` a
 `SketchOutputData` (frame; per profile area, holes and the sketch curve
-of each face edge). Next: **P2-03** (B-rep rendering and 3D selection).
-See `docs/03-roadmap.md`.
+of each face edge). ADR-0026 (P2-03) added model-mode selection
+(`apps/web/src/selection/`): topology items `{kind, body, index}` in the
+session selection as `<body>:<index>`, `GeomRef`s via
+`topologyRef`/`selectionRefs` from `BodyMesh.faceIds/edgeIds/vertexIds`
+(never store `index:` fallback refs), pure picking (`pick.ts`: indirect
+three-mesh-bvh faces, screen-space edges 6 px / vertices 8 px, an
+occlusion ray; `pickTop`/`pickStack`/`pickBox`), face tints through a
+colour attribute, "Select other…" (long press / right-click), the
+selection filter beside the nav bar's Select (session state), the status
+bar summary; pointer input for both modes is `viewport/pointer.ts`.
+ADR-0005 (P2-04) added topological naming (`packages/kernel/src/naming/`):
+faces named `op:feature:role[:source]` plus `#n` and carried through
+OCCT history, edges and vertices `e[faces]`/`v[faces]` plus `@n`;
+evaluators return `FeatureOutput.names` built with `namedPrism`,
+`namedRevolve`, `namedBoolean`, `withHistory`, and **resolve every face,
+edge or vertex reference with `ctx.resolve`** (exact name, related name,
+fingerprint with a warning, else an error); `KernelApi.reference` turns a
+pick into a `GeomRef` with a fingerprint. ADR-0027 (P2-05) added feature
+dialogs: a declarative `FeatureDialogSpec` (`apps/web/src/features/`:
+selection/expression/choice/toggle fields, `toInputs`/`fromInputs`,
+`validate`, `manipulators`, `previewStyle`) registered in
+`featureDialogs()` makes its tool run a generic draggable dialog; one
+controller per project (`features/dialog.ts`) does pre-selection, picks
+as persistent refs, per-dialog `dN` names, live previews through the
+`Recomputer` (evaluators may return `previewTools`, meshed as `tools`;
+`preview(…, base)` gives the bodies before an edited feature) and OK as
+one command. ADR-0028 (P2-06) added extrude: `packages/core/src/extrude.ts`
+(optional inputs with shared defaults, `extrudeSettings`/`extrudeInputs`),
+the evaluator `packages/kernel/src/features/extrude.ts` (profiles unioned
+before the sweep, taper through `DraftAngle` in the facade `prism`,
+to-object trim, through all, participants by `distance`, one body per
+solid, `previewTools`) and the dialog `apps/web/src/features/extrude.ts`
+(fields named like the inputs; per-side arrows, symmetric at half
+length, taper arcs; press-pull through the spec's `propose` hook: join
+outwards, cut inwards until the user picks an operation). The browser
+lists the model's live bodies (`shell/bodies.ts`, "Body<n>" without
+stored names; P2-08 adds real body metadata). The Wall bracket template
+computes a real bracket. Next: **P2-07** (revolve). See
+`docs/03-roadmap.md`.
 
 ## Commands
 
@@ -200,7 +239,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces (0005/0006 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude (0006 is reserved) |
 
 ## Stack summary
 
@@ -504,9 +543,12 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   compiles the OCCT WASM. Wait for the first recompute with
   `kernelReady(page)` (`e2e/helpers.ts`: the status bar's "Kernel" output,
   `data-model-status="ready"`) before screenshots or status checks. The
-  Wall bracket template's Extrude1/2, Fillet1 and Plane1 have no evaluators
-  yet and show as errors ("Extrude1 (error)" in the chip's name; "(rolled
-  back)" features have no status). Under the full parallel run B1 takes
+  Wall bracket template computes one body, "Bracket" (40×80×60 mm, 10
+  faces); only Fillet1 is an error ("Fillet1 (error)" in the chip's name,
+  "6 features · mm · 1 error"; "(rolled back)" Plane1 has no status).
+  Sketch1/Sketch2 can't be deleted while the extrudes use them. Error
+  toasts have role `alert` and sit over the timeline: dismiss them
+  ("Dismiss") before clicking chips. Under the full parallel run B1 takes
   about 27 s (60 s timeout).
 - **Pointer modes** (ADR-0008 amendment): the nav bar's "Select" button
   is `aria-pressed` when no nav tool or command runs. The viewport's
@@ -514,3 +556,59 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   cursor as an inline style and `data-cursor` (orbit/pan/zoom); check
   with `toHaveCSS('cursor', 'grab')`, not a class. A menu-only tool marks
   its group's trigger (e.g. "Create") with `data-active`.
+- **Model-selection e2e** (P2-03) reads the Viewport region's
+  `data-model-selection` / `data-model-hover` (space-separated `kind:id`,
+  faces as `face:<body>:<index>`) and the status bar's
+  `output[aria-label="Selection"]` ("2 faces ·"). Map world mm to page px
+  with `projector(viewport)` from `e2e/helpers.ts` (switch to
+  Orthographic first for exact numbers). "Selection filter" contains
+  "Select": match the nav bar's Select button with `exact: true`.
+- **three-mesh-bvh must be built with `{ indirect: true }`**: the default
+  BVH reorders the geometry's index buffer, which breaks `faceRanges`.
+- Importing `@react-three/fiber` into a module a node unit test imports
+  makes Vitest print `THREE_CJS_DEPRECATED`; keep such modules free of
+  R3F hooks.
+- **Feature dialog e2e** (P2-05) reads `data-preview` /
+  `data-preview-dimmed` on the Viewport region, `data-dialog-valid` /
+  `data-preview-status` on the dialog region ("<Label> dialog", "Edit
+  <Name> dialog"), and drags handles at `[data-manipulator-handle]`
+  (`cx`/`cy` in view px). `#/debug/dialog` is the shell with
+  `spawnDebugKernel` (the engine's test features) and "Press Pull (test)"
+  in Ctrl+K. Expression fields commit every keystroke that evaluates, so
+  Esc in a field cancels the dialog unless its text doesn't evaluate. A
+  unit test that resolves a fake preview right after a pick must `await
+  settle()` first (the fingerprint arrives and asks for a newer preview).
+- **OCCT history facts** (P2-04, P2-06): `BRepPrimAPI_MakeRevol::Generated`
+  returns nothing for edges square to the axis in a full revolution (the
+  facade asks `Revol().Shape(edge)`); a boolean's `Generated(face)` gives
+  section edges and vertices, never faces; without `SimplifyResult`,
+  coplanar overlapping faces get split; use
+  `MapShapesAndUniqueAncestors` (a seam edge lists its face twice
+  otherwise); `BRepAlgoAPI_BuilderAlgo::Clear()` is protected (builders
+  on the stack free themselves; the `Clear()` rule is for builders deleted
+  from JS); `BRepOffsetAPI_DraftAngle` calls tilted faces *generated*
+  (use `ModifiedShape`) and returns "valid" solids whose sides have
+  crossed (the facade checks); `BRepExtrema_DistShapeShape` detects
+  "inside" only for a top-level SOLID. OCCT sources are in the image at
+  `/opencascade.js/deps/OCCT/src/`; in the native harness, run the
+  container as root to write the emscripten cache, and `#define private
+  public` reaches private helpers.
+- **Kernel test suites**: topological naming `pnpm vitest run
+  packages/kernel/src/naming`; the extrude option golden table
+  (`packages/kernel/src/features/golden/extrude-options.json`, 108
+  combinations) is a file snapshot: update with `pnpm vitest run -u
+  packages/kernel/src/features/extrude` and review the diff. The kernel
+  tsconfig has no node types: use `toMatchFileSnapshot`, not `node:fs`.
+- **Parallel worktrees**: `E2E_PORT` sets Playwright's port (default
+  4173); give each checkout its own, or `reuseExistingServer` tests
+  another checkout's build. A new worktree needs the WASM `dist` folders
+  (copy them, or `pnpm wasm` once CI has published the release).
+- **Extrude e2e** (`e2e/extrude.spec.ts`): the Viewport region's
+  `data-bodies` lists drawn bodies as `name:faces:x,y,z` (bbox size in
+  mm, e.g. "Body1:7:60,40,15"). The dialog is the region "Extrude
+  dialog" / "Edit Extrude1 dialog", its operation the combobox
+  "Operation", the pick field the button "Profiles" ("1 profile", "1
+  face"). In the Top view the extrude arrow points at the camera and
+  can't be dragged: type into the heads-up box, or press Shift+1 (home
+  view) and wait for the camera to settle before dragging or picking
+  faces with `projector`.
