@@ -8,6 +8,7 @@ import type { BodyId, BodyOperation } from '@extrudo/core';
 import { KernelError, type ShapeHandle, type ShapeScope } from '../kernel';
 import { compareGeometry, deriveNames, type TopoNames } from '../naming/names';
 import { type NamedShape, namedBoolean } from '../naming/ops';
+import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, PreviewTool } from '../recompute/types';
 import { add, scale } from './vec';
 
@@ -36,9 +37,11 @@ export function explicitBodies(
 ): BodyId[] | undefined {
   if (settings.bodies.length === 0) return undefined;
   const ids = [...new Set(settings.bodies)] as BodyId[];
-  if (ids.some((id) => !ctx.bodies.has(id))) {
-    throw new KernelError(
+  const gone = ids.find((id) => !ctx.bodies.has(id));
+  if (gone !== undefined) {
+    throw new LostReferenceError(
       `One of the bodies to ${verb(settings.operation)} no longer exists. Edit the ${words.noun} and pick the bodies again.`,
+      { kind: 'body', id: gone },
     );
   }
   return ids;

@@ -52,6 +52,21 @@ interface Candidate {
   id: string;
 }
 
+/**
+ * A stored reference that can't be found any more (ADR-0005 step 4,
+ * ADR-0033): a lost face, edge or vertex, or a profile, sketch line or
+ * plane that went away. The engine reports `ref` in the feature's status
+ * (`FeatureStatus.refs`), so the timeline can offer to fix it.
+ */
+export class LostReferenceError extends KernelError {
+  constructor(
+    message: string,
+    readonly ref: GeomRef,
+  ) {
+    super(message);
+  }
+}
+
 const SUB_SHAPE_REF_KINDS: ReadonlySet<string> = new Set(['face', 'edge', 'vertex']);
 
 /**
@@ -67,7 +82,7 @@ const SUB_SHAPE_REF_KINDS: ReadonlySet<string> = new Set(['face', 'edge', 'verte
  * 3. **Fingerprint.** The best-scoring sub-shape of the kind in any body,
  *    if it scores at least `FINGERPRINT_THRESHOLD`, with a warning.
  *
- * Otherwise throws a `KernelError` with a message for the user.
+ * Otherwise throws a `LostReferenceError` with a message for the user.
  */
 export function resolveRef(
   ref: GeomRef,
@@ -130,8 +145,9 @@ export function resolveRef(
       return result(scored.candidate, 'fingerprint', guessed);
     }
   }
-  throw new KernelError(
+  throw new LostReferenceError(
     `Can't find ${label} any more: an earlier change removed it. Edit the feature and pick it again.`,
+    ref,
   );
 }
 

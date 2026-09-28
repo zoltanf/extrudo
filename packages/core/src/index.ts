@@ -56,8 +56,10 @@ export {
   type ModelState,
   type ModelStats,
   type ModelStore,
+  type ReferenceIssue,
   type SelectionItem,
   type SelectMode,
   type SessionState,
   type SessionStore,
 } from './stores';
+export * from './timeline';

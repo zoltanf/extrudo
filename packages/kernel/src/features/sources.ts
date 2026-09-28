@@ -7,6 +7,7 @@
 import { type FeatureId, type GeomRef, parseProfileRefId } from '@extrudo/core';
 import { KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
 import { faceEdgeSources, type SweepSource } from '../naming/ops';
+import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext } from '../recompute/types';
 import type { SketchOutputData } from './sketch';
 import { add, dot, length, scale, sub } from './vec';
@@ -75,8 +76,9 @@ function profilePart(ctx: EvalContext, ref: GeomRef, noun: FeatureNoun): Base {
   const face = output.shapes?.[parsed.profile];
   const info = data?.profiles?.find((p) => p.id === parsed.profile);
   if (face === undefined || !info || !data?.frame) {
-    throw new KernelError(
+    throw new LostReferenceError(
       `Can't find one of its profiles any more: an earlier change to the sketch removed it. Edit the ${noun} and pick it again.`,
+      ref,
     );
   }
   return {

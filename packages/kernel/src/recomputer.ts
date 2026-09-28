@@ -341,7 +341,12 @@ function sameStatuses(
     keys.length === other.length &&
     keys.every((key, i) => {
       const [x, y] = [a[key], b[key]];
-      return other[i] === key && x?.status === y?.status && x?.message === y?.message;
+      return (
+        other[i] === key &&
+        x?.status === y?.status &&
+        x?.message === y?.message &&
+        JSON.stringify(x?.refs) === JSON.stringify(y?.refs)
+      );
     })
   );
 }

@@ -192,6 +192,8 @@ describe('sketch on a face', () => {
     expect(result.features['S2' as FeatureId]).toEqual({
       status: 'error',
       message: expect.stringMatching(/^Can't find the face to sketch on/),
+      // The timeline's "fix references" reads which one (ADR-0033).
+      refs: [{ ref: { kind: 'face', id: 'extrude:nothing:cap:end' }, state: 'lost' }],
     });
 
     // A cylinder's side isn't flat.
@@ -365,6 +367,7 @@ describe('projection', () => {
     expect(result.features['S3' as FeatureId]).toEqual({
       status: 'warning',
       message: expect.stringMatching(/^Lost a projected edge/),
+      refs: [{ ref: { kind: 'edge', id: 'e[extrude:nothing:cap:end]' }, state: 'lost' }],
     });
     expect(report(result, 'S3').projections?.['P0' as ProjectionId]).toEqual({ lost: true });
   });

@@ -240,9 +240,18 @@ describe('feature status', () => {
     );
     expect(result.features).toEqual({
       s1: { status: 'ok' },
-      s2: { status: 'error', message: expect.stringMatching(/^Can't find this sketch's plane/) },
+      // Both lost: the timeline offers to redefine the plane (ADR-0033).
+      s2: {
+        status: 'error',
+        message: expect.stringMatching(/^Can't find this sketch's plane/),
+        refs: [{ ref: { kind: 'plane', id: 'gone' }, state: 'lost' }],
+      },
       // A face that no body has (P2-09 resolves faces; sketch-on-face.test.ts has the rest).
-      s3: { status: 'error', message: expect.stringMatching(/^Can't find the face to sketch on/) },
+      s3: {
+        status: 'error',
+        message: expect.stringMatching(/^Can't find the face to sketch on/),
+        refs: [{ ref: { kind: 'face', id: 'x' }, state: 'lost' }],
+      },
     });
   });
 });

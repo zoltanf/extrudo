@@ -813,8 +813,19 @@ describe('extrude', { timeout: 120_000 }, () => {
     ];
     for (const [features, message] of cases) {
       const result = await run(testDocument(features));
-      expect(status(result, 'E'), message).toEqual({ status: 'error', message });
+      // Lost references are listed too (ADR-0033); the lost-reference tests check them.
+      const { refs: _, ...plain } = status(result, 'E');
+      expect(plain, message).toEqual({ status: 'error', message });
     }
+    const lostProfile = await run(
+      testDocument([
+        c.feature,
+        extrude('E', [{ kind: 'profile', id: 'SC/gone' }], { distance: '5 mm' }),
+      ]),
+    );
+    expect(status(lostProfile, 'E').refs).toEqual([
+      { ref: { kind: 'profile', id: 'SC/gone' }, state: 'lost' },
+    ]);
 
     // A face that isn't flat, a face that no longer exists.
     const cylinder = [c.feature, extrude('C', [pick], { distance: '5 mm' })];

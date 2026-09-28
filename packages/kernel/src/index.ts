@@ -57,6 +57,7 @@ export {
   fingerprintOf,
   fingerprintScore,
   indexOfName,
+  LostReferenceError,
   type NamedBody,
   type NamedShape,
   namedBoolean,
