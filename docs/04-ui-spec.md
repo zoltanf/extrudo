@@ -144,8 +144,15 @@ movement, as Onshape's context menu does.
   to box faces. Boxes see through faces.
 - **The selection filter** is a chevron beside the nav bar's Select:
   Bodies, Faces, Edges, Vertices, Sketches, Profiles, Construction
-  (construction sketch curves for now), and "Select everything". It lasts
-  for the session; a dot on the chevron shows that it filters.
+  (construction sketch curves and the origin axes), and "Select
+  everything". It lasts for the session; a dot on the chevron shows that
+  it filters.
+- **Origin axes (P2-07, ADR-0029)** are picked like edges wherever they
+  are drawn (X and Y along the grid, Z by the origin, as far as the grid
+  reaches; hidden ones not), after vertices, edges, sketch curves,
+  profiles and faces (over a body, "Select other…" offers them; a
+  dialog's axis field filters faces out), and never by a box. A picked or pre-highlighted axis is drawn over in the
+  accent. "Select other…" names them "X axis", "Y axis", "Z axis".
 - The status bar sums up the selection ("2 faces", "1 edge, 2 vertices").
 - Esc clears the selection, or cancels the active tool (or a drag in
   progress, putting the geometry back), or stops a nav tool.
@@ -189,7 +196,9 @@ movement, as Onshape's context menu does.
   takes over), a box adds, and only what the field accepts pre-highlights
   (the selection filter narrows to it). The view highlights the dialog's
   picks. Opening a dialog fills its first field that accepts the current
-  selection. Expressions preview while typing; text that doesn't evaluate
+  selection; what that field doesn't take goes on to the next fields that
+  take it (a profile and an axis selected before Revolve fill both,
+  P2-07). Expressions preview while typing; text that doesn't evaluate
   keeps OK disabled and dims the preview. A failing draft's message shows
   above OK, the preview keeps its last good state, dimmed, and OK is
   disabled. Preview ghosts are drawn through the model: new bodies in the
@@ -219,6 +228,26 @@ movement, as Onshape's context menu does.
   distance, or Flip) Cut, and the preview turns from green to red.
   Profiles propose New body. Once the user picks an operation it stays;
   editing a feature keeps a stored operation the rule wouldn't give.
+- **Revolve (P2-07, ADR-0029):** the Solid tab's Revolve (no key) opens
+  the dialog with the selected profiles or flat faces in **Profiles** and
+  a selected axis in **Axis**. Fields: Profiles; Axis (a sketch line,
+  construction or not, a straight edge, or an origin axis; the field
+  shows "Y axis" for an origin axis, "1 sketch curve" or "1 edge"
+  otherwise, and a picked curve that isn't a line says "Pick a straight
+  line for the axis."); Direction (One side, Symmetric, Two sides);
+  Angle (360 deg by default: a whole turn, with no end faces; negative
+  turns the other way; the whole angle when symmetric); Angle 2 for two
+  sides (the other way round); Flip; Operation and Bodies as for
+  extrude. Side 1 turns right-handed about the axis (a sketch line runs
+  from its start to its end; an edge's direction has a fixed sign), so
+  Flip or a negative angle is how to turn the other way. In the view: an
+  angle arc about the axis, starting on the profiles' side of it (a
+  second one, the other way, for side 2; a symmetric arc shows half the
+  angle); dragging goes on round past 180°, up to a whole turn. Profiles
+  propose New body, faces of a body Join. The kernel says when the axis
+  isn't in the profiles' plane, when a profile crosses the axis or the
+  profiles lie on both sides of it, and when the angles are 0, beyond a
+  whole turn or cancel out.
 - **Bodies in the browser (P2-06, P2-08, ADR-0030):** the Bodies folder
   lists the model's bodies in timeline order, with a count badge. A new
   body is named "Body1", "Body2"… (the lowest free number) as soon as it

@@ -53,6 +53,12 @@ export interface SketchOutputData {
   frame: SketchFrame;
   /** Largest first. */
   profiles: SketchProfileInfo[];
+  /**
+   * Every line of the sketch, construction lines too, from its start to its
+   * end in sketch coordinates (mm): what a revolve's axis refers to
+   * (`<sketch>/<line>`, ADR-0029). Placed in the world with `frame`.
+   */
+  lines?: Record<SketchEntityId, readonly [Vec2, Vec2]>;
 }
 
 /**
@@ -103,7 +109,7 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
         edges: face.edges.map((c) => ids[c] ?? null),
       });
     }
-    const output: SketchOutputData = { frame, profiles };
+    const output: SketchOutputData = { frame, profiles, lines: sketchLines(data) };
     const report: SketchReport = {
       frame,
       ...(Object.keys(projections).length > 0 && { projections }),
@@ -195,6 +201,23 @@ function projectSource(
     if (curve) curves[`sil:${i}`] = curve;
   });
   return curves;
+}
+
+/** The sketch's lines (construction too) by entity ID, start to end (ADR-0029). */
+export function sketchLines(data: SketchData): Record<SketchEntityId, readonly [Vec2, Vec2]> {
+  const out: Record<SketchEntityId, readonly [Vec2, Vec2]> = {};
+  for (const [id, e] of Object.entries(data.entities) as [SketchEntityId, SketchEntity][]) {
+    if (e.type !== 'line') continue;
+    const a = data.entities[e.start];
+    const b = data.entities[e.end];
+    if (a?.type === 'point' && b?.type === 'point') {
+      out[id] = [
+        [a.x, a.y],
+        [b.x, b.y],
+      ];
+    }
+  }
+  return out;
 }
 
 const faceArea = (faces: readonly PlanarFace[], i: number) => (faces[i] as PlanarFace).area;

@@ -14,6 +14,7 @@ export {
   type SpawnKernel,
 } from './client';
 export type { ExtrudeOutputData } from './features/extrude';
+export type { RevolveOutputData } from './features/revolve';
 export type { SketchOutputData, SketchProfileInfo } from './features/sketch';
 export {
   decodeHistory,

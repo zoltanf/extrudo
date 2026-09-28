@@ -2,6 +2,7 @@ import {
   type BodyId,
   type BodyMeta,
   type FeatureId,
+  ORIGIN_AXES,
   type OriginPlaneId,
   projectedEntities,
   type SelectionItem,
@@ -29,7 +30,14 @@ import { MenuItem, MenuLabel, PointMenu } from '../design-system';
 import { previewSummary, type ViewPreview } from '../features/preview';
 import { combineFilters } from '../selection/filter';
 import { itemLabel, type LabelContext, selectionKey } from '../selection/items';
-import { type PickHit, type PickScene, pickBox, pickStack, pickTop } from '../selection/pick';
+import {
+  type PickAxis,
+  type PickHit,
+  type PickScene,
+  pickBox,
+  pickStack,
+  pickTop,
+} from '../selection/pick';
 import { sketchTargetAt } from '../sketch/facePick';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
 import { Bodies } from './Bodies';
@@ -37,7 +45,7 @@ import { CameraRig } from './CameraRig';
 import { basis, orbit, pan, rayPlane, type View, viewRay, worldPerPixel, zoomAt } from './camera';
 import { type Rgba, type SceneColors, useSceneColors } from './colors';
 import { navCursor } from './cursors';
-import { Grid, XY_FRAME } from './Grid';
+import { GRID_RADIUS, Grid, XY_FRAME } from './Grid';
 import { NavBar } from './NavBar';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
 import { Origin } from './Origin';
@@ -591,9 +599,29 @@ function Scene({
         onHover={planePicker?.faces ? undefined : planePicker?.onHover}
         onLeave={planePicker?.faces ? undefined : planePicker?.onLeave}
         onPick={planePicker?.faces ? undefined : planePicker?.onPick}
+        axisHighlights={axisHighlights(hover, selection)}
       />
     </>
   );
+}
+
+/** Origin axes the pointer is over or that are selected (P2-07): `x`, `y`, `z` → hover or selected. */
+function axisHighlights(
+  hover: SelectionItem | undefined,
+  selection: readonly SelectionItem[],
+): Partial<Record<'x' | 'y' | 'z', 'hover' | 'selected'>> {
+  const out: Partial<Record<'x' | 'y' | 'z', 'hover' | 'selected'>> = {};
+  const name = (item: SelectionItem) =>
+    item.kind === 'axis' && ORIGIN_AXES.some((a) => a.id === item.id)
+      ? (item.id.slice('origin:'.length) as 'x' | 'y' | 'z')
+      : undefined;
+  for (const item of selection) {
+    const n = name(item);
+    if (n) out[n] = 'selected';
+  }
+  const h = hover && name(hover);
+  if (h) out[h] = 'hover';
+  return out;
 }
 
 /**
@@ -756,9 +784,10 @@ function useModelInput(
   const handlers = useMemo<PointerHandlers | undefined>(() => {
     if (!select) return undefined;
     const context = (p: ScreenPointer) => {
-      const { view, projection, visualStyle, selectionFilter, fieldFilter } = viewport.getState();
+      const { view, projection, visualStyle, selectionFilter, fieldFilter, origin } =
+        viewport.getState();
       return {
-        scene: pickScene(sceneRef.current, visualStyle),
+        scene: { ...pickScene(sceneRef.current, visualStyle), axes: originAxes(origin, view.size) },
         camera: { view, projection, width: p.width, height: p.height },
         filter: combineFilters(selectionFilter, fieldFilter),
       };
@@ -845,6 +874,19 @@ function useSketchTargetInput(
     };
   }, [faces, viewport]);
   usePointerInput(surface, viewport, handlers, onBoxChange);
+}
+
+/**
+ * The origin axes as drawn (P2-07): X and Y along the grid, Z by the origin,
+ * as far as the grid reaches; hidden ones aren't picked.
+ */
+export function originAxes(origin: Record<OriginItem, boolean>, size: number): PickAxis[] {
+  return ORIGIN_AXES.filter((a) => origin[a.id.slice('origin:'.length) as OriginItem]).map((a) => ({
+    id: a.id,
+    origin: a.origin,
+    direction: a.direction,
+    half: size * GRID_RADIUS,
+  }));
 }
 
 /** The pick scene: visible bodies, drawn sketches with their shaded profiles. */

@@ -18,6 +18,7 @@ const PICKED: ReadonlySet<string> = new Set([
   'vertex',
   'profile',
   'sketchEntity',
+  'axis',
 ]);
 
 /** Clears the session's hover if model picking set it. */

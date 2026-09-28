@@ -411,6 +411,22 @@ prisms from the sketch plane, side 2's faces named `side2:<source>`.
 intersect for the dialog's preview; the cache owns those handles like any
 output shape.
 
+Revolve (P2-07, ADR-0029, `packages/kernel/src/features/revolve.ts`)
+shares extrude's sources (`features/sources.ts`: profiles and flat faces
+united into one planar source) and body operations
+(`features/operation.ts`: new bodies, join, cut, intersect, explicit
+bodies). Its axis is an origin axis (`{ kind: 'axis', id: 'origin:x' }`),
+a sketch line (`sketchEntity`, `<sketch>/<line>`, placed by the sketch
+output's frame and its new `lines` table, so the engine's dependency
+hashing sees the sketch) or a straight body edge (`ctx.resolve` +
+`describe`). It must lie in the profiles' plane, and every profile on one
+side of it (each part's overlap with a half-plane face). A turn that
+doesn't start at the profile (symmetric, two sides) first turns the
+profile to its start (the end face of a revolve by the start angle, edge
+sources carried through its `last` history), so the result is one sweep
+named like a one-sided one. Like extrude's, its result goes through
+`splitSolids` (P2-08).
+
 Bodies (P2-08, ADR-0030, `packages/kernel/src/features/bodies.ts`): a
 body the feature made or changed that holds several separate solids is
 split into one body per solid (`splitSolids`, called on the evaluator's
@@ -500,6 +516,10 @@ bodies.
   store's: faces, edges and vertices as `{ kind, id: "<body>:<index>" }`,
   turned into `GeomRef`s through the mesh's `faceIds`/`edgeIds`/`vertexIds`
   (P2-04) by `topologyRef`/`selectionRefs`.
+- P2-07 (ADR-0029) adds the origin axes to model picking: `PickScene.axes`
+  (drawn axes only), picked by the ray's closest approach like edges, after
+  edges, profiles and faces, as `{ kind: 'axis', id: 'origin:x' }` items; `Origin.tsx` draws a
+  hovered or selected axis in the accent.
 
 ## 6. Storage and file format
 
@@ -660,6 +680,11 @@ bundle-size budget. Every agent task must leave CI green.
   prisms for tapered two-sided extrudes, trimming at inclined objects,
   participants by distance, one body per solid, preview tools in the
   feature output.
+- **ADR-0029** Revolve. **Written 2026-09-28** (P2-07): origin axes,
+  sketch lines and straight edges as axes, the one-side check by
+  half-plane overlap, symmetric and two-sided turns as one sweep from the
+  profile turned to its start, extrude's sources and body operations
+  shared, origin axes pickable in the model, arcs that go on round.
 - **ADR-0030** Bodies. **Written 2026-09-28** (P2-08): stored body names
   amended into the undo step that made the bodies, one body per solid
   (the largest keeps the ID), the Remove feature, colour swatches and

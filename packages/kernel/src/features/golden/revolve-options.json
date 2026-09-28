@@ -1,0 +1,835 @@
+{
+ "one-side new-body angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": []
+   },
+   "V:0": {
+    "volume": 2356.19,
+    "area": 1142.48,
+    "bbox": [
+     -0.02,
+     -0.02,
+     4.98,
+     20.02,
+     20.02,
+     15.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:cap:start",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "one-side new-body angle -60 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": []
+   },
+   "V:0": {
+    "volume": 1570.8,
+    "area": 828.32,
+    "bbox": [
+     4.98,
+     -17.34,
+     4.98,
+     20.02,
+     0.02,
+     15.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:cap:start",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "one-side new-body angle 360 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": []
+   },
+   "V:0": {
+    "volume": 9424.78,
+    "area": 3769.91,
+    "bbox": [
+     -20,
+     -20.02,
+     4.98,
+     20.02,
+     20.02,
+     15.02
+    ],
+    "faces": 4,
+    "edges": 6,
+    "vertices": 4,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "one-side join angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 25178.1,
+    "area": 5535.62,
+    "bbox": [
+     -0.02,
+     -0.02,
+     -10.02,
+     40.02,
+     30.02,
+     15.02
+    ],
+    "faces": 10,
+    "edges": 24,
+    "vertices": 16,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "one-side join angle -60 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 25570.8,
+    "area": 5928.32,
+    "bbox": [
+     -0.02,
+     -17.34,
+     -10.02,
+     40.02,
+     30.02,
+     15.02
+    ],
+    "faces": 12,
+    "edges": 28,
+    "vertices": 18,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:cap:start",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "one-side join angle 360 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 32246.68,
+    "area": 8163.05,
+    "bbox": [
+     -20.04,
+     -20.04,
+     -10.04,
+     40.04,
+     30.04,
+     15.04
+    ],
+    "faces": 11,
+    "edges": 28,
+    "vertices": 18,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "one-side cut angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22821.9,
+    "area": 5335.62,
+    "bbox": [
+     -0.02,
+     -0.02,
+     -10.02,
+     40.02,
+     30.02,
+     10.02
+    ],
+    "faces": 10,
+    "edges": 24,
+    "vertices": 16,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "one-side cut angle -60 deg": {
+  "error": "The cut doesn't remove anything. Check its axis and angle."
+ },
+ "one-side cut angle 360 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22821.9,
+    "area": 5335.62,
+    "bbox": [
+     -0.02,
+     -0.02,
+     -10.02,
+     40.02,
+     30.02,
+     10.02
+    ],
+    "faces": 10,
+    "edges": 24,
+    "vertices": 16,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "one-side intersect angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1178.1,
+    "area": 806.86,
+    "bbox": [
+     -0.02,
+     -0.02,
+     4.98,
+     20.02,
+     20.02,
+     10.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "one-side intersect angle -60 deg": {
+  "error": "The revolve doesn't overlap any body, so there's nothing to intersect. Check its axis and angle."
+ },
+ "one-side intersect angle 360 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1178.1,
+    "area": 806.86,
+    "bbox": [
+     -0.02,
+     -0.02,
+     4.98,
+     20.02,
+     20.02,
+     10.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "symmetric new-body angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": []
+   },
+   "V:0": {
+    "volume": 2356.19,
+    "area": 1142.48,
+    "bbox": [
+     7.05,
+     -14.17,
+     4.98,
+     20.02,
+     14.17,
+     15.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:cap:start",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "symmetric new-body angle -60 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": []
+   },
+   "V:0": {
+    "volume": 1570.8,
+    "area": 828.32,
+    "bbox": [
+     8.64,
+     -10.02,
+     4.98,
+     20,
+     10.02,
+     15.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:cap:start",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "symmetric new-body angle 360 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": []
+   },
+   "V:0": {
+    "volume": 9424.78,
+    "area": 3769.91,
+    "bbox": [
+     -20,
+     -20.02,
+     4.98,
+     20.02,
+     20.02,
+     15.02
+    ],
+    "faces": 4,
+    "edges": 6,
+    "vertices": 4,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "symmetric join angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 25767.15,
+    "area": 5889.05,
+    "bbox": [
+     -0.02,
+     -14.17,
+     -10.02,
+     40.02,
+     30.02,
+     15.02
+    ],
+    "faces": 12,
+    "edges": 30,
+    "vertices": 20,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:cap:start",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "symmetric join angle -60 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 25178.1,
+    "area": 5692.7,
+    "bbox": [
+     -0.02,
+     -10.02,
+     -10.02,
+     40.02,
+     30.02,
+     15.02
+    ],
+    "faces": 12,
+    "edges": 30,
+    "vertices": 20,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:cap:start",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "symmetric join angle 360 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 32246.68,
+    "area": 8163.05,
+    "bbox": [
+     -20.04,
+     -20.04,
+     -10.04,
+     40.04,
+     30.04,
+     15.04
+    ],
+    "faces": 11,
+    "edges": 28,
+    "vertices": 18,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "symmetric cut angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 23410.95,
+    "area": 5317.81,
+    "bbox": [
+     -0.02,
+     -0.02,
+     -10.02,
+     40.02,
+     30.02,
+     10.02
+    ],
+    "faces": 10,
+    "edges": 24,
+    "vertices": 16,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "symmetric cut angle -60 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 23607.3,
+    "area": 5278.54,
+    "bbox": [
+     -0.02,
+     -0.02,
+     -10.02,
+     40.02,
+     30.02,
+     10.02
+    ],
+    "faces": 10,
+    "edges": 24,
+    "vertices": 16,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "symmetric cut angle 360 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22821.9,
+    "area": 5335.62,
+    "bbox": [
+     -0.02,
+     -0.02,
+     -10.02,
+     40.02,
+     30.02,
+     10.02
+    ],
+    "faces": 10,
+    "edges": 24,
+    "vertices": 16,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "symmetric intersect angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 589.05,
+    "area": 453.43,
+    "bbox": [
+     7.05,
+     -0.02,
+     4.98,
+     20.02,
+     14.17,
+     10.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "symmetric intersect angle -60 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 392.7,
+    "area": 335.62,
+    "bbox": [
+     8.64,
+     -0.02,
+     4.98,
+     20.02,
+     10.02,
+     10.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "symmetric intersect angle 360 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1178.1,
+    "area": 806.86,
+    "bbox": [
+     -0.02,
+     -0.02,
+     4.98,
+     20.02,
+     20.02,
+     10.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "two-sides new-body angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": []
+   },
+   "V:0": {
+    "volume": 3141.59,
+    "area": 1456.64,
+    "bbox": [
+     -0.02,
+     -10.02,
+     4.98,
+     20.02,
+     20.02,
+     15.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:cap:start",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "two-sides new-body angle -60 deg": {
+  "error": "The two sides cancel each other out, so the revolve has no angle. Change an angle."
+ },
+ "two-sides new-body angle 360 deg": {
+  "error": "The two sides add up to more than a full turn. Make the angles smaller."
+ },
+ "two-sides join angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 25963.5,
+    "area": 5849.78,
+    "bbox": [
+     -0.04,
+     -10.04,
+     -10.04,
+     40.04,
+     30.04,
+     15.04
+    ],
+    "faces": 12,
+    "edges": 30,
+    "vertices": 20,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:start",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "two-sides join angle -60 deg": {
+  "error": "The two sides cancel each other out, so the revolve has no angle. Change an angle."
+ },
+ "two-sides join angle 360 deg": {
+  "error": "The two sides add up to more than a full turn. Make the angles smaller."
+ },
+ "two-sides cut angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22821.9,
+    "area": 5335.62,
+    "bbox": [
+     -0.02,
+     -0.02,
+     -10.02,
+     40.02,
+     30.02,
+     10.02
+    ],
+    "faces": 10,
+    "edges": 24,
+    "vertices": 16,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "two-sides cut angle -60 deg": {
+  "error": "The two sides cancel each other out, so the revolve has no angle. Change an angle."
+ },
+ "two-sides cut angle 360 deg": {
+  "error": "The two sides add up to more than a full turn. Make the angles smaller."
+ },
+ "two-sides intersect angle 90 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1178.1,
+    "area": 806.86,
+    "bbox": [
+     -0.02,
+     -0.02,
+     4.98,
+     20.02,
+     20.02,
+     10.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5"
+    ]
+   }
+  }
+ },
+ "two-sides intersect angle -60 deg": {
+  "error": "The two sides cancel each other out, so the revolve has no angle. Change an angle."
+ },
+ "two-sides intersect angle 360 deg": {
+  "error": "The two sides add up to more than a full turn. Make the angles smaller."
+ }
+}

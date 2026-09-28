@@ -146,3 +146,35 @@ export function worldToSketch(frame: SketchFrame, p: Vec3): Vec2 {
   const dot = (a: Vec3) => d[0] * a[0] + d[1] * a[1] + d[2] * a[2];
   return [dot(frame.x), dot(frame.y)];
 }
+
+/**
+ * The origin axes (P2-07, ADR-0029): what a revolve turns about besides
+ * sketch lines and straight edges. An `axis` reference names one by
+ * `origin:x`, `origin:y` or `origin:z`, like the origin planes; later
+ * construction axes (P3-05) get their own IDs.
+ */
+export type OriginAxisId = 'origin:x' | 'origin:y' | 'origin:z';
+
+export interface OriginAxis {
+  id: OriginAxisId;
+  label: string;
+  /** Always the world origin. */
+  origin: Vec3;
+  /** Unit length, along the positive world axis. */
+  direction: Vec3;
+}
+
+export const ORIGIN_AXES: readonly OriginAxis[] = [
+  { id: 'origin:x', label: 'X axis', origin: [0, 0, 0], direction: [1, 0, 0] },
+  { id: 'origin:y', label: 'Y axis', origin: [0, 0, 0], direction: [0, 1, 0] },
+  { id: 'origin:z', label: 'Z axis', origin: [0, 0, 0], direction: [0, 0, 1] },
+];
+
+export function originAxis(id: string): OriginAxis | undefined {
+  return ORIGIN_AXES.find((a) => a.id === id);
+}
+
+/** An axis reference for an origin axis. */
+export function originAxisRef(id: OriginAxisId): GeomRef {
+  return { kind: 'axis', id };
+}

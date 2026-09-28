@@ -15,6 +15,7 @@ export { createDocument, type NewDocumentOptions } from './document';
 export * from './document-commands';
 export * from './expr/index';
 export * from './extrude';
+export * from './feature-inputs';
 export {
   type FeatureCategory,
   type FeatureDefinition,
@@ -36,6 +37,7 @@ export {
   type MigrationContext,
 } from './migrations';
 export * from './remove';
+export * from './revolve';
 export * from './schema';
 export * from './sketch/commands';
 export * from './sketch/curves';

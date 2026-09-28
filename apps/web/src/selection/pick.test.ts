@@ -234,3 +234,59 @@ describe('geometry helpers', () => {
     expect([...triangleFaces(cube)]).toEqual([0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
   });
 });
+
+describe('origin axes (P2-07)', () => {
+  const axes = [
+    { id: 'origin:x', origin: [0, 0, 0], direction: [1, 0, 0], half: 100 },
+    { id: 'origin:z', origin: [0, 0, 0], direction: [0, 0, 1], half: 100 },
+  ] as const;
+  const empty: PickScene = { bodies: [], sketches: [], occluding: true, axes };
+
+  it('are picked like edges, with the construction filter', () => {
+    expect(pickTop(empty, iso, at([-30, 0, 0]), DEFAULT_FILTER)).toEqual({
+      kind: 'axis',
+      id: 'origin:x',
+    });
+    expect(pickTop(empty, iso, at([0, 0, -20]), DEFAULT_FILTER)).toEqual({
+      kind: 'axis',
+      id: 'origin:z',
+    });
+    expect(pickTop(empty, iso, at([-30, 0, 0]), without('construction'))).toBeUndefined();
+    // Past where it is drawn, nothing.
+    expect(
+      pickTop({ ...empty, axes: [{ ...axes[0], half: 10 }] }, iso, at([-30, 0, 0]), DEFAULT_FILTER),
+    ).toBeUndefined();
+    // Away from both, nothing.
+    expect(pickTop(empty, iso, at([-30, -30, 0]), DEFAULT_FILTER)).toBeUndefined();
+  });
+
+  it('come after body edges, faces and profiles; over a face only through "Select other…"', () => {
+    const withCube: PickScene = { ...scene, axes };
+    // The cube's bottom-front edge lies on the X axis: the edge wins.
+    expect(pickTop(withCube, iso, at([5, 0, 0]), DEFAULT_FILTER)).toMatchObject({ kind: 'edge' });
+    expect(
+      pickStack(withCube, iso, at([5, 0, 0]), DEFAULT_FILTER).map((h) => h.item.kind),
+    ).toContain('axis');
+    // Over a face, the face wins; the axis is still in "Select other…".
+    const over = at([0, 0, 15]);
+    const onTop = { ...withCube, axes: [{ ...axes[1], origin: [5, 5, 0] as const }] };
+    expect(pickTop(onTop, iso, at([5, 5, 10]), DEFAULT_FILTER)).toEqual({
+      kind: 'face',
+      id: 'b:1',
+    });
+    expect(pickStack(onTop, iso, at([5, 5, 10]), DEFAULT_FILTER).map((h) => h.item.kind)).toContain(
+      'axis',
+    );
+    // Clear of the cube, the axis.
+    expect(pickTop(withCube, iso, over, DEFAULT_FILTER)).toEqual({ kind: 'axis', id: 'origin:z' });
+    // With faces filtered out (an axis field), the axis over a face.
+    expect(pickTop(onTop, iso, at([5, 5, 10]), only('construction'))).toEqual({
+      kind: 'axis',
+      id: 'origin:z',
+    });
+  });
+
+  it('are never taken by a selection box', () => {
+    expect(pickBox(empty, iso, [0, 0], [2000, 2000], DEFAULT_FILTER)).toEqual([]);
+  });
+});

@@ -7,12 +7,13 @@
  */
 import { FeatureRegistry } from '@extrudo/core';
 import { extrudeDialog } from './extrude';
+import { revolveDialog } from './revolve';
 import { commandId, type FeatureDialogSpec } from './spec';
 
 export type FeatureDialogs = FeatureRegistry<FeatureDialogSpec>;
 
 export function featureDialogs(): FeatureDialogs {
-  return new FeatureRegistry<FeatureDialogSpec>().register(extrudeDialog);
+  return new FeatureRegistry<FeatureDialogSpec>().register(extrudeDialog).register(revolveDialog);
 }
 
 /** The spec whose command is `id`, if any. */

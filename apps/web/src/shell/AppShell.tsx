@@ -581,6 +581,9 @@ export function AppShell({
   // hidden), in its status colours. Profiles are shaded (P1-11) unless the palette hides them.
   // The pointer on a sketch's chip or browser row highlights it (P1-12).
   const status = useHostState(host, (s) => s.status);
+  // An open feature dialog's picks are what the view shows selected (a revolve's axis line,
+  // the bodies in the browser).
+  const shownSelection = dialogItems ?? selection;
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
     doc.features.forEach((feature, index) => {
@@ -602,12 +605,12 @@ export function AppShell({
           // Curves picked in model mode (P2-03).
           ...(!active && {
             hoverEntity: sketchEntityIdsIn([hover], feature.id)[0],
-            selectedEntities: sketchEntityIdsIn(selection, feature.id),
+            selectedEntities: sketchEntityIdsIn(shownSelection, feature.id),
           }),
           ...(showProfiles && {
             profiles: sketchProfiles(sketch.data),
             hoverProfile: profileIdsIn([hover], feature.id)[0],
-            selectedProfiles: profileIdsIn(selection, feature.id),
+            selectedProfiles: profileIdsIn(shownSelection, feature.id),
           }),
         });
       }
@@ -620,7 +623,7 @@ export function AppShell({
     status,
     showProfiles,
     hover,
-    selection,
+    shownSelection,
     sketchReports,
   ]);
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
@@ -635,7 +638,6 @@ export function AppShell({
   const modelSelect =
     dialogOpen && mode === 'model' ? dialog?.select : projecting ? project.select : sessionSelect;
   // Body rows show the bodies in the selection (the dialog's picks while one is open).
-  const shownSelection = dialogItems ?? selection;
   const selectedBodies = useMemo(
     () => new Set(shownSelection.filter((i) => i.kind === 'body').map((i) => i.id)),
     [shownSelection],

@@ -1,6 +1,6 @@
 import type { OriginPlaneId } from '@extrudo/core';
 import { type ThreeElements, useFrame } from '@react-three/fiber';
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   BufferAttribute,
   BufferGeometry,
@@ -10,6 +10,9 @@ import {
   Line,
   ShaderMaterial,
 } from 'three';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { PLANE_HALF } from '../sketch/facePick';
 import type { Rgba } from './colors';
 import { createDotMaterial } from './dots';
@@ -44,6 +47,8 @@ export interface OriginProps {
   /** The pointer left `plane`. Clear the hover only if it is still `plane`: events can arrive out of order. */
   onLeave?(plane: OriginPlaneId): void;
   onPick?(plane: OriginPlaneId): void;
+  /** Origin axes under the pointer or selected (P2-07): drawn over in `highlight`. */
+  axisHighlights?: Partial<Record<'x' | 'y' | 'z', 'hover' | 'selected'>>;
 }
 
 const PLANES: readonly { item: 'xy' | 'xz' | 'yz'; rotation: [number, number, number] }[] = [
@@ -67,6 +72,7 @@ export function Origin({
   onHover,
   onLeave,
   onPick,
+  axisHighlights = {},
 }: OriginProps) {
   const axis = useRef<Group>(null);
   const planes = useRef<Group>(null);
@@ -83,6 +89,17 @@ export function Origin({
       <group ref={axis} visible={visible.z}>
         <ZAxis color={axisZ} />
       </group>
+      {(Object.entries(axisHighlights) as ['x' | 'y' | 'z', 'hover' | 'selected'][]).map(
+        ([name, state]) => (
+          <AxisHighlight
+            key={name}
+            store={store}
+            axis={name}
+            color={highlight}
+            width={state === 'hover' ? 2.5 : 3}
+          />
+        ),
+      )}
       <group ref={planes}>
         {PLANES.map(({ item, rotation }) => {
           const id = `origin:${item}` as const;
@@ -116,6 +133,53 @@ export function Origin({
         })}
       </group>
     </>
+  );
+}
+
+const AXIS_DIRECTIONS = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] } as const;
+
+/**
+ * A picked or pre-highlighted origin axis (P2-07): a thick line over it, as
+ * far as the grid reaches, drawn over the model like a highlighted edge.
+ */
+function AxisHighlight({
+  store,
+  axis,
+  color: c,
+  width,
+}: {
+  store: ViewportStore;
+  axis: 'x' | 'y' | 'z';
+  color: Rgba;
+  width: number;
+}) {
+  const group = useRef<Group>(null);
+  const line = useMemo(() => {
+    const [x, y, z] = AXIS_DIRECTIONS[axis];
+    const g = new LineSegmentsGeometry();
+    g.setPositions([-x, -y, -z, x, y, z]);
+    const m = new LineMaterial({ linewidth: width, transparent: true, depthTest: false });
+    const l = new LineSegments2(g, m);
+    l.renderOrder = 10;
+    l.frustumCulled = false;
+    return l;
+  }, [axis, width]);
+  useEffect(
+    () => () => {
+      line.geometry.dispose();
+      line.material.dispose();
+    },
+    [line],
+  );
+  line.material.color = color(c);
+  line.material.opacity = c.a;
+  useFrame(() => {
+    group.current?.scale.setScalar(store.getState().view.size * GRID_RADIUS);
+  });
+  return (
+    <group ref={group}>
+      <primitive object={line} />
+    </group>
   );
 }
 

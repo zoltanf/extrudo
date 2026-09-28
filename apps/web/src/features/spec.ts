@@ -159,6 +159,18 @@ export interface AngleManipulator {
   origin: Vec3;
   axis: Vec3;
   zero: Vec3;
+  /**
+   * Degrees turned per unit of the field's value, default 1: the handle
+   * sits at `value × scale` and a drag writes the angle divided by it. A
+   * symmetric revolve's arc (whose field is the whole angle) has 0.5.
+   */
+  scale?: number;
+  /**
+   * The value may run a whole turn either way (−360…360°, a revolve's
+   * angle): a drag follows the handle round continuously instead of
+   * wrapping at ±180°.
+   */
+  fullTurn?: boolean;
 }
 
 export type Manipulator = DistanceManipulator | AngleManipulator;
