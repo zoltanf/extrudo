@@ -139,6 +139,33 @@ const NO_META: Record<BodyId, BodyMeta> = {};
 const NO_SKETCHES: readonly SketchDrawing[] = [];
 const NO_SELECTION: readonly SelectionItem[] = [];
 
+/**
+ * The drawn bodies for tests (`data-bodies`): name, face count and the
+ * bounding box's size in mm to 0.1 mm, "Body1:7:60,40,15 Body2:3:10,10,5";
+ * hidden bodies are left out, unnamed ones show their ID.
+ */
+export function bodiesSummary(
+  bodies: Readonly<Record<BodyId, BodyMesh>>,
+  meta: Readonly<Record<BodyId, BodyMeta>>,
+): string | undefined {
+  const drawn = (Object.entries(bodies) as [BodyId, BodyMesh][])
+    .filter(([id]) => meta[id]?.visible ?? true)
+    .map(([id, mesh]) => {
+      const p = mesh.positions;
+      const lo = [Infinity, Infinity, Infinity];
+      const hi = [-Infinity, -Infinity, -Infinity];
+      for (let i = 0; i < p.length; i++) {
+        const k = i % 3;
+        const v = p[i] ?? 0;
+        if (v < (lo[k] ?? 0)) lo[k] = v;
+        if (v > (hi[k] ?? 0)) hi[k] = v;
+      }
+      const size = [0, 1, 2].map((k) => Math.round(((hi[k] ?? 0) - (lo[k] ?? 0)) * 10) / 10 + 0);
+      return `${meta[id]?.name ?? id}:${mesh.faceRanges.length / 2}:${size.join(',')}`;
+    });
+  return drawn.length > 0 ? drawn.join(' ') : undefined;
+}
+
 /** A middle double-click within this many ms fits the view (Fusion). */
 const DOUBLE_CLICK_MS = 400;
 
@@ -220,6 +247,7 @@ export function Viewport({
   useSketchInput(surface, viewport, sketchInput, setBox);
   const [otherMenu, setOtherMenu] = useState<OtherMenu>();
   const modelScene = useMemo(() => ({ bodies, meta, sketches }), [bodies, meta, sketches]);
+  const bodiesKey = useMemo(() => bodiesSummary(bodies, meta), [bodies, meta]);
   useModelInput(surface, viewport, modelSelect, modelScene, setBox, setOtherMenu);
   // The menu belongs to model mode: it closes when that ends (a sketch opens, a tool starts).
   useEffect(() => {
@@ -250,6 +278,7 @@ export function Viewport({
       data-highlight={sketches.find((s) => s.highlight)?.id}
       data-model-selection={modelSelect ? selectionKey(selection) : undefined}
       data-model-hover={modelSelect ? selectionKey([hover]) : undefined}
+      data-bodies={bodiesKey}
       data-preview={previewSummary(preview)}
       data-preview-dimmed={preview?.dimmed || undefined}
       className="relative isolate min-w-0 flex-1 overflow-hidden"

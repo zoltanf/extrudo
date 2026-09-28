@@ -2,6 +2,15 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-28 · **P2-06** Extrude (ADR-0028): E extrudes selected sketch
+  profiles or flat faces into solids, one side, symmetric or two sides,
+  each side to a distance, up to a face or vertex, or through all, with a
+  taper per side and Flip; new body, join, cut or intersect, with the
+  bodies found automatically or picked. The preview shows the new body,
+  a green join or a red cut; arrows and taper arcs in the view drag the
+  values. Press-pull: select a face and press E; pulling it out joins,
+  pushing it in cuts. The browser lists the model's bodies, and the Wall
+  bracket template now builds its bracket.
 - 2026-09-28 · **P2-05** Feature dialog framework (ADR-0027): features get
   their command dialog from a declarative spec (selection, expression,
   dropdown and toggle fields): it opens on the right with the current

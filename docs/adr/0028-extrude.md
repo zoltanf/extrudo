@@ -1,8 +1,8 @@
 # ADR-0028: Extrude
 
-- **Status:** Accepted (kernel and document part), 2026-09-28. The UI part
-  (dialog, manipulators, press-pull, red cut preview, template) extends this
-  ADR in the second step of P2-06.
+- **Status:** Accepted, 2026-09-28. Written in two steps: the kernel and
+  document part (§1–6), then the UI part (§7–10: dialog, manipulators,
+  press-pull, bodies in the browser, template).
 - **Task:** P2-06 (Extrude; FR-FT-01). Code: `packages/core/src/extrude.ts`
   (definition, inputs schema, `extrudeSettings`, `extrudeInputs`),
   `packages/kernel/src/features/extrude.ts` (the evaluator,
@@ -13,7 +13,17 @@
   `src/naming/ops.ts`, `FeatureOutput.previewTools` in
   `src/recompute/types.ts`. Tests: `src/features/extrude.test.ts` with the
   golden table `src/features/golden/extrude-options.json`,
-  `src/memory.test.ts`, `packages/core/src/extrude.test.ts`.
+  `src/memory.test.ts`, `packages/core/src/extrude.test.ts`. UI step:
+  `apps/web/src/features/extrude.ts` (the dialog spec, `proposeOperation`,
+  `extrudeManipulators`) registered in `featureDialogs()`, the framework's
+  new `propose` hook and `OpenDialog.chosen` (`features/spec.ts`,
+  `dialog.ts`, `values.ts` `changedFields`/`pickFields`), the arrow's
+  `scale` (`spec.ts`, `DialogOverlay.tsx`), `apps/web/src/shell/bodies.ts`
+  (the browser's bodies), `data-bodies` on the Viewport region, the Wall
+  bracket template (`project/templates.ts`, `profilesOf`). Tests:
+  `features/extrude.test.ts`, `shell/bodies.test.ts`,
+  `project/templates.test.ts` (the template through the real kernel),
+  `e2e/extrude.spec.ts`.
 - **Builds on:** ADR-0003 (strict schema, optional fields need no format
   bump), ADR-0004 (expressions with units), ADR-0005 (naming operations,
   §6 was the recipe), ADR-0024 (engine, cache, `strictLeaks`), ADR-0025
@@ -178,6 +188,86 @@ tool before the boolean. `previewTools` is new in `FeatureOutput`
 their handles as the entry's like `shapes` (`outputHandles`), so they are
 reference-counted, evicted with the entry and not reported as leaks.
 
+### 7. The dialog
+
+`extrudeDialog` is a P2-05 spec whose **fields are named like the
+inputs**, so the framework's default mapping makes the inputs and reads
+them back (no `toInputs`/`fromInputs`); an old extrude without options
+opens with the defaults. Profiles (`profile`, `face`), Direction, Extent,
+Distance (shown for a distance), To object (one face, vertex or plane;
+shown for to-object), Taper, then for two sides Extent 2, Distance 2 /
+To object 2 and Taper 2, Flip, Operation, and Bodies (`body`, optional,
+"Automatic" while empty; shown unless the operation is a new body).
+Hidden fields make no input but keep their values while the dialog is
+open, which §1's "unused inputs are ignored" allows without extra care.
+Taper always makes an input (`0 deg`, a model parameter like the
+distance), so editing it later needs no field that appears. The only
+check of its own is symmetric + to-object (the kernel's message, shown
+at once under Extent); everything else is the kernel's to say, through
+the preview. The dialog scrolls its fields when it is taller than the
+view (two sides).
+
+### 8. Manipulators
+
+Before and after a kernel result alike, the arrow starts at the mean of
+the picks' centroids (`profileFrame`, `faceFrame`) along the first pick's
+normal, reversed by Flip: the same direction the kernel takes (§2).
+One **distance arrow** per side that ends at a distance (side 2 against
+the normal); the symmetric arrow has `scale: 0.5`, a new optional field
+of `DistanceManipulator`: the head sits at half the value (where the
+extrude ends) and a drag writes twice the distance. One **taper arc** per
+side at the end of that side (at the profile for to-object and through
+all), opening from the way the side goes (back, for a negative
+distance) towards a fixed in-plane direction, so a positive angle leans
+outwards: it widens, as the kernel does. `ExtrudeOutputData` isn't
+exposed to the UI thread (previews return meshes only); the frames agree
+with it for flat profiles, and nothing needed it.
+
+### 9. Press-pull: the proposal rule
+
+A feature spec may now **propose values** (`propose(values, ctx)`):
+the controller calls it on every change, after the draft's expressions
+are evaluated, and applies the proposal to every field the user hasn't
+set, then rebuilds the draft before it is checked and previewed. A field
+counts as set once the user changes it in the dialog (`chosen`). For an
+edited feature, the first refresh counts the stored values that differ
+from the proposal as set: an operation the rule would have given stays
+automatic, one the user picked stays put, and opening a dialog never
+changes a feature by itself.
+
+Extrude's rule (`proposeOperation`): **profiles propose a new body**;
+**faces** propose **join** when side 1 goes out of the face's body and
+**cut** when it goes in: the sign of the distance times Flip (through
+all: Flip alone); symmetric goes both ways and joins; to-object and a
+distance that doesn't evaluate (or is 0) propose nothing, keeping the
+last proposal. So dragging a face's arrow into its body turns the
+preview red, and automatic participants (§5) pick up the face's own
+body. Sketches on faces (P2-09) should extend it: a profile on a body's
+face behaves like the face.
+
+### 10. Bodies in the document and the template
+
+New bodies still get **no `doc.bodies` entry** when they are made (P2-08
+decides naming, colours and "Remove"). The browser's Bodies folder now
+lists the model's live bodies (`bodyEntries`), in timeline order (the
+`<feature>:<n>` ID), named from `doc.bodies` when there is an entry and
+"Body1", "Body2"… (skipping names in use) otherwise; the view gets the
+same names (selection labels, `data-bodies`). The first use of a body's
+eye stores its metadata with the shown name (`updateBody` upserts).
+Metadata of bodies that no longer exist is kept but not listed.
+
+The **Wall bracket template** now computes: Sketch1's L (from
+`detectProfiles` at build time, so region IDs are the kernel's) is
+extruded **symmetric, `width` (d1)**, centred on the XZ plane; Sketch2's
+two holes (moved to y = ±20 mm, inside the 80 mm width) are **cut `wall
+* 5` (d3) up with a `tilt / 3` (d2) taper**, so they widen towards the
+top. The cut keeps Extrude1's body ID, so `doc.bodies` names it
+"Bracket" (`<Extrude1>:0`). Fillet1 (no evaluator) is the one error;
+Plane1 stays rolled back. The taper moved from Extrude1 to the holes: a
+5° taper on an 80 mm L either widens its 2.4 mm walls to 17 mm or is
+too steep. `templates.test.ts` recomputes the template with the real
+kernel (one body, 40 × 80 × 60 mm, 10 faces).
+
 ## Consequences
 
 - Every combination of direction × extent × operation × taper (0, −5°,
@@ -201,6 +291,18 @@ reference-counted, evicted with the entry and not reported as leaks.
 - A join or cut keeps a second shape per extrude alive in the cache (the
   preview tool). Cheap for Phase 2 models; drop it from recomputes (only
   previews need it) if memory shows up.
+- The Extrude tool is live (E, Solid › Create); `featureDialogs()` has
+  its first spec. The debug page `#/debug/dialog` registers the app's
+  dialogs plus the test press-pull, and keeps the framework's e2e
+  tests (a toggle that shows a field, a custom input mapping, an angle
+  arc on a ready-made box); Extrude's own run in a real project
+  (`e2e/extrude.spec.ts`: a profile with a hole, press-pull out and in,
+  undo/redo, editing to two sides; the template's cut edited to through
+  all).
+- The Viewport region has `data-bodies` ("Body1:7:60,40,15": name, face
+  count, bounding-box size in mm) for tests.
+- The template's timeline no longer allows deleting Sketch1 or Sketch2
+  (their extrudes use them); e2e tests delete an extrude first.
 
 ## OCCT facts found on the way
 
@@ -223,6 +325,23 @@ reference-counted, evicted with the entry and not reported as leaks.
   two cones on the same surface built from opposite neutral-plane sides.
 
 ## Rejected
+
+- **Switching the operation in the dialog's drag handler** (or in the
+  extrude spec's manipulator code). A typed negative distance, Flip or a
+  through-all would miss it; a spec-level `propose` sees every change.
+- **Proposing only while nothing was ever proposed**, or never in edit
+  mode. The first stops following the arrow back out; the second leaves
+  an edited press-pull joining a face pushed into its body (a join that
+  changes nothing).
+- **Writing `doc.bodies` entries on OK** (a new body named at creation,
+  as Fusion does). The number of bodies is known only after the kernel
+  runs (a new body per separate solid), and a join or a cut can remove
+  them again; which body keeps which name through edits is P2-08's
+  question. Derived names cost nothing and keep documents clean.
+- **A symmetric template bracket with its holes where they were**
+  (y = −20 and −60 mm): half of it would lie outside a symmetric 80 mm
+  extrude. One-sided along −Y would have kept them, but a bracket centred
+  on the origin frames better and shows the symmetric option.
 
 - **`LocOpe_DPrism` / `BRepFeat_MakeDPrism`** for the taper: built on
   `BRepFill_Evolved`, which rounds the corners it offsets outwards (cones
@@ -248,3 +367,9 @@ reference-counted, evicted with the entry and not reported as leaks.
 - Symmetric "half length" measurement (Fusion offers both); here
   `distance` is the whole length.
 - Body metadata (`doc.bodies` names and colours) for new bodies: P2-08.
+  Derived "Body<n>" names shift when an earlier body goes away.
+- A distance arrow per picked face (ADR-0027 open item); the arrow sits
+  at the mean centroid of all picks.
+- Picking origin planes for To object (they aren't pickable in the model
+  yet); faces and vertices work.
+- The press-pull rule for profiles sketched on a body's face (P2-09).

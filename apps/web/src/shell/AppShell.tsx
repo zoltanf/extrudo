@@ -53,6 +53,7 @@ import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
 import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
+import { bodyEntries, bodyMetaOf } from './bodies';
 import { CommandSearch, type SearchOpen } from './CommandSearch';
 import { type AppCommand, buildCommands, commandShortcuts } from './commands';
 import { createFeatureActions } from './featureActions';
@@ -203,6 +204,9 @@ export function AppShell({
     kernel,
     notify,
   });
+  // The model's bodies with their names (doc.bodies, else "Body<n>").
+  const bodyList = useMemo(() => bodyEntries(doc, bodies), [doc, bodies]);
+  const bodyMeta = useMemo(() => bodyMetaOf(bodyList), [bodyList]);
   // Editing a feature shows and picks the bodies before it (the preview's base).
   const shownBodies = dialogBodies(dialogOpen, bodies);
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
@@ -614,6 +618,7 @@ export function AppShell({
           viewport={viewport}
           activeSketchId={activeSketchId}
           actions={featureActions}
+          bodies={bodyList}
           width={browser.size}
           collapsed={browser.collapsed}
           animate={browser.animate}
@@ -644,7 +649,7 @@ export function AppShell({
           <Viewport
             viewport={viewport}
             bodies={shownBodies}
-            meta={doc.bodies}
+            meta={bodyMeta}
             sketches={sketches}
             sketchPlane={sketchPlane}
             planePicker={planePicker}

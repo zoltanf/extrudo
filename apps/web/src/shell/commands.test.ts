@@ -73,15 +73,23 @@ describe('buildCommands', () => {
 
   it('says when a tool arrives instead of running it', () => {
     const ctx = context('model');
-    const extrude = byId(ctx).get('extrude');
-    expect(extrude?.unavailable).toBe('Arrives with P2-06.');
-    extrude?.run();
+    const revolve = byId(ctx).get('revolve');
+    expect(revolve?.unavailable).toBe('Arrives with P2-07.');
+    revolve?.run();
     expect(ctx.runTool).not.toHaveBeenCalled();
-    expect(ctx.notify).toHaveBeenCalledWith('info', 'Extrude arrives with P2-06.');
+    expect(ctx.notify).toHaveBeenCalledWith('info', 'Revolve arrives with P2-07.');
   });
 
   it('runs a tool a registered feature dialog makes ready (P2-05)', () => {
-    const ctx = context('model', { ready: new Set(['extrude']) });
+    const ctx = context('model', { ready: new Set(['revolve']) });
+    const revolve = byId(ctx).get('revolve');
+    expect(revolve?.unavailable).toBeUndefined();
+    revolve?.run();
+    expect(ctx.runTool).toHaveBeenCalledWith('revolve');
+  });
+
+  it('runs Extrude with E (P2-06)', () => {
+    const ctx = context('model');
     const extrude = byId(ctx).get('extrude');
     expect(extrude?.unavailable).toBeUndefined();
     expect(extrude?.keys).toEqual(['E']);

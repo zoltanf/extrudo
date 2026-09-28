@@ -6,13 +6,12 @@ import {
   type DocumentId,
   type ExtrudoDocument,
   type FeatureId,
-  FeatureRegistry,
 } from '@extrudo/core';
 import { type BodyMesh, spawnDebugKernel } from '@extrudo/kernel';
 import { useEffect, useMemo } from 'react';
 import { createStore } from 'zustand/vanilla';
 import { Toasts, useToasts } from '../design-system';
-import type { FeatureDialogSpec } from '../features/spec';
+import { featureDialogs } from '../features/registry';
 import type { Platform } from '../platform';
 import type { Autosaver, AutosaveState } from '../project/autosave';
 import { useRecompute } from '../project/useRecompute';
@@ -26,10 +25,12 @@ import { pressDialog } from './pressDialog';
  * Feature dialog debug page (P2-05, ADR-0027), at `#/debug/dialog`: the real
  * shell on an in-memory document holding a 20 mm test box, computed by the
  * debug kernel worker (the app's kernel plus the engine's test features),
- * with one feature dialog registered: "Press Pull (test)" (`pressDialog.ts`,
- * in the command palette, Ctrl+K). Nothing is saved. Until Extrude has its
- * dialog (P2-06), the dialog e2e tests run here, as the B-rep selection
- * tests ran on the kernel debug page.
+ * with the app's feature dialogs (Extrude) and "Press Pull (test)"
+ * (`pressDialog.ts`, in the command palette, Ctrl+K). Nothing is saved.
+ * The framework's e2e tests run here: the test feature has what Extrude
+ * doesn't (a toggle that shows a field, a custom input mapping), and the
+ * box is ready without drawing a sketch first. Extrude's own tests run in
+ * a real project (`e2e/extrude.spec.ts`).
  */
 export function DialogDebug({ platform }: { platform: Platform }) {
   const doc = useMemo(debugDocument, []);
@@ -42,7 +43,7 @@ export function DialogDebug({ platform }: { platform: Platform }) {
   );
   const recomputer = useRecompute(store, model, spawnDebugKernel);
   const autosave = useMemo(memoryAutosaver, []);
-  const dialogs = useMemo(() => new FeatureRegistry<FeatureDialogSpec>().register(pressDialog), []);
+  const dialogs = useMemo(() => featureDialogs().register(pressDialog), []);
   const { toasts, push, dismiss } = useToasts();
   const file = useMemo<FileActions>(() => {
     const unavailable = () => push('info', 'The dialog debug page keeps its design in memory.');

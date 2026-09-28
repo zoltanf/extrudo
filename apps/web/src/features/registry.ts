@@ -4,16 +4,15 @@
  * feature's dialog means registering its spec here; its command then runs
  * the dialog (`shell/commands.tsx`, the toolbar) and its timeline chip and
  * browser row open it for editing.
- *
- * Empty until P2-06 registers Extrude.
  */
 import { FeatureRegistry } from '@extrudo/core';
+import { extrudeDialog } from './extrude';
 import { commandId, type FeatureDialogSpec } from './spec';
 
 export type FeatureDialogs = FeatureRegistry<FeatureDialogSpec>;
 
 export function featureDialogs(): FeatureDialogs {
-  return new FeatureRegistry<FeatureDialogSpec>();
+  return new FeatureRegistry<FeatureDialogSpec>().register(extrudeDialog);
 }
 
 /** The spec whose command is `id`, if any. */

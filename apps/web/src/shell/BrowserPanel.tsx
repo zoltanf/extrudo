@@ -1,5 +1,4 @@
 import {
-  type BodyId,
   type DocumentStore,
   type Feature,
   type FeatureId,
@@ -22,6 +21,7 @@ import { type HTMLAttributes, type KeyboardEvent, type ReactNode, useState } fro
 import { useStore } from 'zustand';
 import { ContextMenu, IconButton, ToolIcon } from '../design-system';
 import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
+import type { BodyEntry } from './bodies';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
 
@@ -39,6 +39,8 @@ export interface BrowserPanelProps {
   activeSketchId?: FeatureId;
   /** Edit, rename, show/hide, suppress, delete and hover (P1-12). */
   actions: FeatureActions;
+  /** The model's bodies with their names (`bodyEntries`). */
+  bodies: readonly BodyEntry[];
 }
 
 /**
@@ -49,7 +51,8 @@ export interface BrowserPanelProps {
  * viewport settings (P0-05), not document changes. A sketch opens with a
  * double-click or its pencil button (P1-01); F2 or its right-click menu
  * renames it, Delete deletes it, and the pointer on its row highlights it in
- * the view (P1-12).
+ * the view (P1-12). Bodies are the model's (P2-06): a body without stored
+ * metadata gets it when its eye is first used.
  */
 export function BrowserPanel({
   store,
@@ -60,6 +63,7 @@ export function BrowserPanel({
   onToggle,
   activeSketchId,
   actions,
+  bodies,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
@@ -69,8 +73,9 @@ export function BrowserPanel({
     .filter(({ feature }) => feature.type === 'sketch');
   const originShown = ORIGIN_ITEMS.some(({ value }) => origin[value]);
   const sketchesShown = sketches.some(({ feature }) => isFeatureVisible(feature));
-  const bodies = Object.entries(doc.bodies) as [BodyId, (typeof doc.bodies)[BodyId]][];
-  const bodiesShown = bodies.some(([, body]) => body.visible);
+  const bodiesShown = bodies.some(({ meta }) => meta.visible);
+  const showBody = ({ meta, stored }: BodyEntry, visible: boolean) =>
+    stored ? { visible } : { name: meta.name, visible };
 
   // Collapsed, the panel slides to no width (its content keeps its width and is clipped, so
   // nothing reflows on the way), then turns invisible (visibility switches at the end of the
@@ -177,8 +182,10 @@ export function BrowserPanel({
                       onToggle: () => {
                         const state = store.getState();
                         state.beginTransaction(bodiesShown ? 'Hide bodies' : 'Show bodies');
-                        for (const [id] of bodies) {
-                          state.dispatch(updateBody({ id, changes: { visible: !bodiesShown } }));
+                        for (const body of bodies) {
+                          state.dispatch(
+                            updateBody({ id: body.id, changes: showBody(body, !bodiesShown) }),
+                          );
                         }
                         state.commitTransaction();
                       },
@@ -189,16 +196,19 @@ export function BrowserPanel({
               {bodies.length === 0 ? (
                 <Leaf muted>No bodies yet</Leaf>
               ) : (
-                bodies.map(([id, body]) => (
-                  <Leaf key={id}>
-                    <span className={body.visible ? '' : 'text-muted'}>{body.name}</span>
+                bodies.map((body) => (
+                  <Leaf key={body.id}>
+                    <span className={body.meta.visible ? '' : 'text-muted'}>{body.meta.name}</span>
                     <EyeToggle
-                      name={body.name}
-                      visible={body.visible}
+                      name={body.meta.name}
+                      visible={body.meta.visible}
                       onToggle={() =>
-                        store
-                          .getState()
-                          .dispatch(updateBody({ id, changes: { visible: !body.visible } }))
+                        store.getState().dispatch(
+                          updateBody({
+                            id: body.id,
+                            changes: showBody(body, !body.meta.visible),
+                          }),
+                        )
                       }
                     />
                   </Leaf>

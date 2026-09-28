@@ -33,23 +33,23 @@ test('the kernel computes a new design, and a sketch in it', async ({ page }) =>
 test('features the kernel cannot compute show an error, with the reason', async ({ page }) => {
   await openProject(page, 'wall-bracket');
   await kernelReady(page);
-  // The template's extrudes have no profiles yet and the fillet no geometry;
+  // The template's extrudes make its bracket; the fillet has no evaluator yet.
   // Plane1 is rolled back.
   expect(
     await chips(page).evaluateAll((els) => els.map((e) => e.getAttribute('aria-label'))),
   ).toEqual([
     'Sketch1',
-    'Extrude1 (error)',
+    'Extrude1',
     'Sketch2',
-    'Extrude2 (error)',
+    'Extrude2',
     'Fillet1 (error)',
     'Plane1 (rolled back)',
   ]);
-  await expect(status(page)).toHaveText('6 features · mm · 3 errors');
+  await expect(status(page)).toHaveText('6 features · mm · 1 error');
 
-  await chip(page, 'Extrude1').hover();
+  await chip(page, 'Fillet1').hover();
   await expect(page.getByRole('tooltip')).toContainText(
-    'Extrude · error: Pick at least one profile or face to extrude.',
+    "Fillet · error: This version of Extrudo can't compute",
   );
 
   // Rolled back and suppressed features aren't computed, so they have no status.
@@ -58,11 +58,11 @@ test('features the kernel cannot compute show an error, with the reason', async 
   await expect(chip(page, 'Extrude1')).toHaveAccessibleName('Extrude1 (rolled back)');
   // Rolling forward to the end brings Plane1 in, which can't be computed either.
   await page.getByRole('button', { name: 'Roll forward to end' }).click();
-  await expect(status(page)).toHaveText('6 features · mm · 4 errors');
+  await expect(status(page)).toHaveText('6 features · mm · 2 errors');
   await expect(chip(page, 'Plane1')).toHaveAccessibleName('Plane1 (error)');
 
   await chip(page, 'Fillet1').click({ button: 'right' });
   await page.getByRole('menuitem', { name: /^Suppress/ }).click();
   await expect(chip(page, 'Fillet1')).toHaveAccessibleName('Fillet1 (suppressed)');
-  await expect(status(page)).toHaveText('6 features · mm · 3 errors');
+  await expect(status(page)).toHaveText('6 features · mm · 1 error');
 });

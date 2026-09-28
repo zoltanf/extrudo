@@ -199,6 +199,28 @@ movement, as Onshape's context menu does.
   presses OK; Esc on text that doesn't evaluate puts the last value back,
   otherwise Esc cancels. Editing a feature (double-click its chip, or
   "Edit Feature") shows the model as it was before the feature.
+- **Extrude (P2-06, ADR-0028):** E (or the Solid tab's Extrude) opens
+  the dialog with the selected profiles or flat faces in **Profiles**.
+  Fields, top to bottom: Profiles; Direction (One side, Symmetric, Two
+  sides); Extent (Distance, To object, Through all) with Distance (the
+  whole length when symmetric) or To object (a flat face or a vertex);
+  Taper; for two sides Extent 2, Distance 2 or To object 2, and Taper 2;
+  Flip; Operation (New body, Join, Cut, Intersect); and, except for a
+  new body, Bodies ("Automatic" until bodies are picked: every body the
+  extrude reaches). Hidden fields keep their values while the dialog is
+  open. A long dialog scrolls its fields. In the view: a distance arrow
+  per side that ends at a distance, from the profiles' centre along the
+  plane's normal (flipped by Flip; side 2 the other way; a symmetric
+  arrow reaches half the length), and a taper arc at the end of each
+  side. **Press-pull:** select a flat face and press E; pulled out
+  (a positive distance) the dialog proposes Join, pushed in (a negative
+  distance, or Flip) Cut, and the preview turns from green to red.
+  Profiles propose New body. Once the user picks an operation it stays;
+  editing a feature keeps a stored operation the rule wouldn't give.
+- **Bodies in the browser (P2-06):** the Bodies folder lists the
+  model's bodies in timeline order; a body with no name of its own is
+  "Body1", "Body2"… until its eye is used (which stores the name) or
+  P2-08's rename.
 
 ## 4. Sketch mode
 

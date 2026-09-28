@@ -136,9 +136,9 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
   const drag = useRef<{ m: Manipulator; offset: number; pointer: number }>(undefined);
   const measure = (m: Manipulator, x: number, y: number): number | undefined => {
     const ray = rayAt(x, y);
-    return m.kind === 'distance'
-      ? distanceAlong(m.origin, m.direction, ray)
-      : angleAround(m.origin, m.axis, m.zero, ray);
+    if (m.kind === 'angle') return angleAround(m.origin, m.axis, m.zero, ray);
+    const at = distanceAlong(m.origin, m.direction, ray);
+    return at === undefined ? undefined : at / (m.scale ?? 1);
   };
   const local = (event: ReactPointerEvent) => {
     const r = layer.current?.getBoundingClientRect();
@@ -164,7 +164,9 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     let value = at + d.offset;
     if (d.m.kind === 'angle') value = ((((value + 180) % 360) + 360) % 360) - 180;
     const unit = fieldUnit(open, d.m.field);
-    controller.setExpr(d.m.field, draggedExpression(value, unit, settings, perPixel(d.m.origin)));
+    // A pixel along a scaled arrow is worth 1 / scale of the value.
+    const step = perPixel(d.m.origin) / (d.m.kind === 'distance' ? (d.m.scale ?? 1) : 1);
+    controller.setExpr(d.m.field, draggedExpression(value, unit, settings, step));
   };
   const onUp = (event: ReactPointerEvent<SVGElement>) => {
     if (drag.current?.pointer !== event.pointerId) return;
@@ -295,7 +297,7 @@ function fieldUnit(open: OpenDialog | undefined, name: string) {
 /** A manipulator's handle and line (an arrow's shaft) at a value; arcs of radius `r` (mm). */
 function shapeOf(m: Manipulator, value: number, r: number) {
   if (m.kind === 'distance') {
-    const handle = along(m.origin, m.direction, value);
+    const handle = along(m.origin, m.direction, value * (m.scale ?? 1));
     return { handle, line: [m.origin, handle], angle: 0 };
   }
   return { handle: arcPoint(m, value, r), line: [], angle: value };

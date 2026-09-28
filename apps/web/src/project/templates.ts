@@ -2,19 +2,25 @@ import {
   type BodyId,
   type ConstraintId,
   createDocument,
+  EXTRUDE_TYPE,
+  type ExtrudeInputOptions,
   type ExtrudoDocument,
+  extrudeInputs,
   type Feature,
   type FeatureId,
+  type GeomRef,
   newId,
   originPlaneRef,
   type Parameter,
   type ParameterId,
+  profileRefId,
   type SketchData,
   type SketchEntityId,
   sketchInputs,
   type UnitKind,
   type Vec2,
 } from '@extrudo/core';
+import { detectProfiles } from '@extrudo/sketch/profiles';
 import { APP_VERSION } from '../version';
 
 export interface Template {
@@ -38,11 +44,13 @@ export const TEMPLATES: readonly Template[] = [
 ];
 
 /**
- * A small wall bracket with parameters, a timeline and one body. The
- * sketches hold its profile: an L on the XZ plane (the side view, 40 mm deep
- * and 60 mm tall) and two screw holes on the XY plane. The other features
- * have no geometry yet (Phase 2); they fill the timeline and the Parameters
- * dialog.
+ * A small wall bracket with parameters, a timeline and one body (P2-06):
+ * Sketch1 is its side view, an L on the XZ plane (40 mm deep, 60 mm tall,
+ * 2.4 mm thick), which Extrude1 pulls `width` wide, symmetric about the
+ * plane. Sketch2 has two screw holes on the XY plane, 20 mm either side of
+ * the middle, which Extrude2 cuts `wall * 5` up through the foot with a
+ * slight taper (`tilt / 3`), so they widen towards the top. Fillet1 has no
+ * geometry yet (an error) and Plane1 is rolled back, to show the marker.
  */
 export function wallBracket(): ExtrudoDocument {
   const param = (
@@ -74,19 +82,36 @@ export function wallBracket(): ExtrudoDocument {
     [0, 60],
   ]);
   const holes = circles(2.5, [
+    [25, 20],
     [25, -20],
-    [25, -60],
   ]);
+  const sketch1 = feature('sketch', 'Sketch1', sketchInputs(originPlaneRef('origin:xz'), profile));
+  const sketch2 = feature('sketch', 'Sketch2', sketchInputs(originPlaneRef('origin:xy'), holes));
+  const extrude1 = feature(
+    EXTRUDE_TYPE,
+    'Extrude1',
+    extrude(
+      profilesOf(sketch1.id, profile),
+      { direction: 'symmetric', distance: 'width' },
+      {
+        distance: 'd1',
+      },
+    ),
+  );
+  const extrude2 = feature(
+    EXTRUDE_TYPE,
+    'Extrude2',
+    extrude(
+      profilesOf(sketch2.id, holes),
+      { distance: 'wall * 5', taper: 'tilt / 3', operation: 'cut' },
+      { distance: 'd3', taper: 'd2' },
+    ),
+  );
   const features = [
-    feature('sketch', 'Sketch1', sketchInputs(originPlaneRef('origin:xz'), profile)),
-    feature('extrude', 'Extrude1', {
-      distance: { kind: 'expr', expr: 'inner / 4', paramName: 'd1', unit: 'length' },
-      taper: { kind: 'expr', expr: 'tilt / 3', paramName: 'd2', unit: 'angle' },
-    }),
-    feature('sketch', 'Sketch2', sketchInputs(originPlaneRef('origin:xy'), holes)),
-    feature('extrude', 'Extrude2', {
-      distance: { kind: 'expr', expr: 'wall * 5', paramName: 'd3', unit: 'length' },
-    }),
+    sketch1,
+    extrude1,
+    sketch2,
+    extrude2,
     feature('fillet', 'Fillet1', {
       radius: { kind: 'expr', expr: 'wall / 2', paramName: 'd4', unit: 'length' },
     }),
@@ -106,8 +131,28 @@ export function wallBracket(): ExtrudoDocument {
     features,
     // The last feature is rolled back, to show the marker.
     timelineMarker: features.length - 1,
-    bodies: { [newId<BodyId>()]: { name: 'Bracket', visible: true } },
+    // Extrude1's body (the kernel's `<feature>:<n>` ID), which the cut keeps.
+    bodies: { [`${extrude1.id}:0` as BodyId]: { name: 'Bracket', visible: true } },
   };
+}
+
+/** Every closed profile of a sketch, as references (region IDs as the kernel names them). */
+export function profilesOf(sketch: FeatureId, data: SketchData): GeomRef[] {
+  return detectProfiles(data).map((p) => ({ kind: 'profile', id: profileRefId(sketch, p.id) }));
+}
+
+/** An extrude's inputs with the model parameter names of its expressions. */
+function extrude(
+  profiles: GeomRef[],
+  options: ExtrudeInputOptions,
+  names: Partial<Record<'distance' | 'taper', string>>,
+): Feature['inputs'] {
+  const inputs: Feature['inputs'] = { ...extrudeInputs(profiles, options) };
+  for (const [key, paramName] of Object.entries(names)) {
+    const input = inputs[key];
+    if (input?.kind === 'expr') inputs[key] = { ...input, paramName };
+  }
+  return inputs;
 }
 
 /**

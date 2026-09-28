@@ -236,3 +236,22 @@ shapes.
 - A manipulator per selected item (several faces, each its own arrow) and
   arrow handles for two-sided extents.
 - Screen-reader announcements of preview status beyond the status line.
+
+## Amendment (P2-06, 2026-09-28)
+
+- Specs may **propose values** (`propose(values, ctx)`, with
+  `ctx.chosen(field)`): applied on every change to the fields the user
+  hasn't set, before the draft is checked and previewed. An edited
+  feature's stored values that differ from the proposal count as set.
+  Extrude uses it for press-pull (join outwards, cut inwards; ADR-0028
+  §9).
+- A distance arrow may have a `scale` (world length per unit of the
+  value): a symmetric extrude's arrow ends at half its length. Two-sided
+  extrudes have an arrow (and a taper arc) per side, which settles that
+  open item.
+- A selection field's count names the kind of its picks ("2 profiles",
+  "1 face"), "items" only for a mix.
+- The dialog's height is capped at the view; its fields scroll.
+- The debug page also registers the app's dialogs (Extrude). Its e2e
+  tests stay: they cover the toggle-shown field, the custom input
+  mapping and the angle arc on a ready-made box.
