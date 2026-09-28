@@ -23,6 +23,7 @@ import { type ToastOptions, ToolIcon, useTheme } from '../design-system';
 import { DialogOverlay } from '../features/DialogOverlay';
 import { type DialogKernel, dialogBodies, viewPreview } from '../features/dialog';
 import { FeatureDialog } from '../features/FeatureDialog';
+import { dialogPlanePick, dialogPlanePicker } from '../features/planePicker';
 import { type FeatureDialogs, featureDialogs, specForCommand } from '../features/registry';
 import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs';
 import { ParametersDialog } from '../parameters/ParametersDialog';
@@ -687,7 +688,13 @@ export function AppShell({
     mode === 'model' && !picking && !dialogOpen,
   );
   const modelSelect =
-    dialogOpen && mode === 'model' ? dialog?.select : projecting ? project.select : sessionSelect;
+    dialogOpen && mode === 'model'
+      ? dialogPlanePick(dialog, dialogOpen)
+        ? undefined
+        : dialog?.select
+      : projecting
+        ? project.select
+        : sessionSelect;
   // Body rows show the bodies in the selection (the dialog's picks while one is open).
   const selectedBodies = useMemo(
     () => new Set(shownSelection.filter((i) => i.kind === 'body').map((i) => i.id)),
@@ -731,6 +738,14 @@ export function AppShell({
     };
   }, [drawing, host, sketchPlane, activeTool, session, projecting]);
 
+  // A feature dialog's Plane field (P2-10) picks origin planes and flat faces the same way.
+  const dialogPlanes = useMemo(
+    () =>
+      mode === 'model' && !picking
+        ? dialogPlanePicker(dialog, dialogOpen, session, hover)
+        : undefined,
+    [mode, picking, dialog, dialogOpen, session, hover],
+  );
   const planePicker = useMemo<PlanePicker | undefined>(
     () =>
       picking
@@ -758,8 +773,8 @@ export function AppShell({
               },
             }),
           }
-        : undefined,
-    [picking, hover, session, kernel],
+        : dialogPlanes,
+    [picking, hover, session, kernel, dialogPlanes],
   );
 
   return (

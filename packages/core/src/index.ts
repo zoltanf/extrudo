@@ -36,6 +36,7 @@ export {
   type Migration,
   type MigrationContext,
 } from './migrations';
+export * from './primitives';
 export * from './remove';
 export * from './revolve';
 export * from './schema';

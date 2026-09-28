@@ -41,6 +41,8 @@ export interface OriginProps {
   picking?: boolean;
   /** The plane under the pointer (or under the prompt's button) while picking. */
   hover?: OriginPlaneId;
+  /** A plane already picked (a feature dialog's, P2-10), highlighted like the hovered one while picking. */
+  selected?: OriginPlaneId | undefined;
   /** Hover colour (`preselect`). */
   highlight?: Rgba;
   onHover?(plane: OriginPlaneId): void;
@@ -68,6 +70,7 @@ export function Origin({
   construct,
   picking = false,
   hover,
+  selected,
   highlight = construct,
   onHover,
   onLeave,
@@ -104,7 +107,7 @@ export function Origin({
         {PLANES.map(({ item, rotation }) => {
           const id = `origin:${item}` as const;
           if (!picking && !visible[item]) return null;
-          const hovered = picking && hover === id;
+          const hovered = picking && (hover === id || selected === id);
           return (
             <Plane
               key={item}

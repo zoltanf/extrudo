@@ -1,4 +1,10 @@
-import { type ExtrudoDocument, formatQuantity, type GeomRef, originAxis } from '@extrudo/core';
+import {
+  type ExtrudoDocument,
+  formatQuantity,
+  type GeomRef,
+  originAxis,
+  originPlane,
+} from '@extrudo/core';
 import { CircleAlert, X } from 'lucide-react';
 import { type KeyboardEvent, type PointerEvent, type ReactNode, useRef, useState } from 'react';
 import { useStore } from 'zustand';
@@ -267,7 +273,9 @@ function SelectionControl({
       ? pickPrompt(field)
       : refs.length === 1 && refs[0]?.kind === 'axis'
         ? (originAxis(refs[0].id)?.label ?? '1 axis')
-        : `${refs.length} ${countNoun(refs, refs.length)}`;
+        : refs.length === 1 && refs[0]?.kind === 'plane'
+          ? (originPlane(refs[0].id)?.label ?? '1 plane')
+          : `${refs.length} ${countNoun(refs, refs.length)}`;
   return (
     <div
       className={`flex h-8 items-center rounded-input border ${active ? 'border-accent bg-accent-soft' : 'border-line'}`}

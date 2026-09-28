@@ -1,5 +1,13 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { clicker, kernelReady, mapping, newSketchOnXY, openProject, sketchOnXY } from './helpers';
+import {
+  clicker,
+  kernelReady,
+  mapping,
+  newSketchOnXY,
+  openProject,
+  pickTool,
+  sketchOnXY,
+} from './helpers';
 
 // P2-11 (ADR-0033): the rollback marker drags and takes arrow keys, chips
 // move by drag (refused when a reference would break), menus roll the
@@ -130,6 +138,17 @@ test('the marker drags, takes keys and follows Roll Back to Here', async ({ page
   await menuItem(page, 'Roll Back to Here').click();
   await expect(marker(page)).toHaveAttribute('aria-valuenow', '1');
   await expect(chip(page, 'Extrude1')).toHaveAccessibleName('Extrude1 (rolled back)');
+
+  // A dialog feature (a Box, P2-10) goes in at the marker too, and the marker moves past it.
+  await pickTool(page, 'Box');
+  const dialog = page.getByRole('region', { name: 'Box dialog' });
+  await expect(dialog).toHaveAttribute('data-dialog-valid', 'true');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  expect(await order(page)).toBe('Sketch1 Box1 Extrude1 Sketch2 Extrude2 Fillet1 Plane1');
+  await expect(marker(page)).toHaveAttribute('aria-valuenow', '2');
+  await kernelReady(page);
+  await expect(chip(page, 'Box1')).toHaveAccessibleName('Box1');
 });
 
 test('chips move by drag, unless a reference would break', async ({ page }) => {

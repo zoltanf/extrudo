@@ -7,13 +7,19 @@
  */
 import { FeatureRegistry } from '@extrudo/core';
 import { extrudeDialog } from './extrude';
+import { PRIMITIVE_DIALOGS } from './primitives';
 import { revolveDialog } from './revolve';
 import { commandId, type FeatureDialogSpec } from './spec';
 
 export type FeatureDialogs = FeatureRegistry<FeatureDialogSpec>;
 
 export function featureDialogs(): FeatureDialogs {
-  return new FeatureRegistry<FeatureDialogSpec>().register(extrudeDialog).register(revolveDialog);
+  const dialogs = new FeatureRegistry<FeatureDialogSpec>()
+    .register(extrudeDialog)
+    .register(revolveDialog);
+  // Box, cylinder, sphere and torus (P2-10, ADR-0032).
+  for (const spec of PRIMITIVE_DIALOGS) dialogs.register(spec);
+  return dialogs;
 }
 
 /** The spec whose command is `id`, if any. */
