@@ -356,7 +356,7 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   like the face. Kernel, core, host and e2e tests
   (`e2e/sketch-on-face.spec.ts`: a hole cut from a top-face sketch that
   rides up with a taller box; a projected face following a taper).
-- [ ] **P2-10 Primitives.** Box, cylinder, sphere, torus with placement on a
+- [x] **P2-10 Primitives.** Box, cylinder, sphere, torus with placement on a
   plane or face.
   *AC:* FR-FT-03.
 - [ ] **P2-11 Timeline v2.** Rollback marker (drag + playback buttons);

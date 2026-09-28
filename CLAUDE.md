@@ -14,8 +14,8 @@ done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 (topological naming), P2-05 (feature dialogs), P2-06 (extrude), P2-07
-(revolve), P2-08 (bodies) and P2-09 (sketch on face, Project) are
-done. ADR-0001 chose
+(revolve), P2-08 (bodies), P2-09 (sketch on face, Project) and
+P2-10 (primitives) are done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -245,7 +245,16 @@ facade `edgeGeometry`/`faceSilhouettes`; `ToolHost.syncProjections`
 catches the sketch up after a recompute and re-solves, amended into
 the latest undo step). **In the app a sketch's frame comes only from
 `sketchFrame(feature, plane, model.sketches)`** (`sketch/frame.ts`),
-never `planeFrame()` alone. Next: **P2-10** (primitives). See
+never `planeFrame()` alone. ADR-0032 (P2-10) added the primitives
+`box`, `cylinder`, `sphere`, `torus` (`packages/core/src/primitives.ts`,
+kernel `features/primitives.ts`, dialogs `apps/web/src/features/primitives.ts`):
+own feature types (= tool IDs), placement `plane` (origin plane or flat
+face; default XY) + `x`/`y` in its sketch frame + `offset` (+ a box's
+`rotation`); solids are planar faces swept by `namedPrism`/whole-turn
+`namedRevolve` (names like `box:<id>:side:front`, `cylinder:<id>:side:wall`,
+`sphere:<id>:side:surface`), no facade primitives. A dialog whose pick
+field accepts `plane` gets Create Sketch's plane-or-face picker
+(`features/planePicker.ts`) instead of the model selection. Next: see
 `docs/03-roadmap.md`.
 
 ## Commands
@@ -275,7 +284,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives (0006 is reserved) |
 
 ## Stack summary
 
@@ -692,3 +701,12 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   through every value first. To find which op grows, wrap
   `Kernel.prototype` methods and log `heapTop` jumps. Unmeasured in a
   real long session (ADR-0029 open item).
+- **Primitives e2e** (`e2e/primitives.spec.ts`): the dialogs are the
+  regions "Box dialog"… (from `pickTool(page, 'Box')`), the Plane field
+  the button "Plane" ("XY plane", "XZ plane", "1 face"). While Plane is the
+  pick field the view picks planes and faces like Create Sketch, so
+  `data-model-selection`/`-hover` are absent; click origin planes at world
+  points with x ≥ 0, y ≤ 0, z ≥ 0 inside the square (view size × 0.16) in
+  the home view, where no other plane is in front, and faces the same way.
+  The kernel golden table updates with `pnpm vitest run -u
+  packages/kernel/src/features/primitives`.

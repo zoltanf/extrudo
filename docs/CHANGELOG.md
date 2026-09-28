@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-28 · **P2-10** Primitives (ADR-0032): Box, Cylinder, Sphere and
+  Torus in the Solid tab's Create menu, each a parametric feature. They
+  open on the XY plane with a live preview; click another origin plane or
+  a flat face of a body to move them there (a face proposes its centre and
+  Join, or Cut for a box or cylinder pushed in with a negative height).
+  Sizes, X, Y and Offset in the plane's frame, a box's rotation, arrows
+  and an arc to drag, and new body, join, cut or intersect. A primitive on
+  a face follows the face when the model changes.
 - 2026-09-28 · Fix: a new extrude or revolve hides the sketches whose
   profiles it used (one undo step with it, as in Fusion), so a used
   profile no longer floats over a pocket and takes the clicks meant for a
