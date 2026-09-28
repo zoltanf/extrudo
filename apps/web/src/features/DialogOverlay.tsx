@@ -20,6 +20,7 @@ import {
   distanceAlong,
   draggedExpression,
   type Ray,
+  unwrapAngle,
 } from './manipulate';
 import type { DialogField, Manipulator } from './spec';
 
@@ -136,7 +137,10 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
   const drag = useRef<{ m: Manipulator; offset: number; pointer: number }>(undefined);
   const measure = (m: Manipulator, x: number, y: number): number | undefined => {
     const ray = rayAt(x, y);
-    if (m.kind === 'angle') return angleAround(m.origin, m.axis, m.zero, ray);
+    if (m.kind === 'angle') {
+      const at = angleAround(m.origin, m.axis, m.zero, ray);
+      return at === undefined ? undefined : at / (m.scale ?? 1);
+    }
     const at = distanceAlong(m.origin, m.direction, ray);
     return at === undefined ? undefined : at / (m.scale ?? 1);
   };
@@ -162,7 +166,12 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     const at = measure(d.m, x, y);
     if (at === undefined) return;
     let value = at + d.offset;
-    if (d.m.kind === 'angle') value = ((((value + 180) % 360) + 360) % 360) - 180;
+    if (d.m.kind === 'angle' && d.m.fullTurn) {
+      // Round and round: the value nearest the last one, within a whole turn.
+      value = unwrapAngle(value, fieldValue(d.m.field), 360 / (d.m.scale ?? 1));
+    } else if (d.m.kind === 'angle') {
+      value = ((((value + 180) % 360) + 360) % 360) - 180;
+    }
     const unit = fieldUnit(open, d.m.field);
     // A pixel along a scaled arrow is worth 1 / scale of the value.
     const step = perPixel(d.m.origin) / (d.m.kind === 'distance' ? (d.m.scale ?? 1) : 1);
@@ -300,7 +309,8 @@ function shapeOf(m: Manipulator, value: number, r: number) {
     const handle = along(m.origin, m.direction, value * (m.scale ?? 1));
     return { handle, line: [m.origin, handle], angle: 0 };
   }
-  return { handle: arcPoint(m, value, r), line: [], angle: value };
+  const angle = value * (m.scale ?? 1);
+  return { handle: arcPoint(m, angle, r), line: [], angle };
 }
 
 /** A point on the arc at `degrees` and radius `r` (world mm). */

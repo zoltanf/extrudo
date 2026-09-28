@@ -7,7 +7,9 @@ import {
   type BodyId,
   type ExtrudoDocument,
   type GeomRef,
+  originAxis,
   parseProfileRefId,
+  parseSketchEntityRefId,
   planeFrame,
   readSketch,
   sketchToWorld,
@@ -104,4 +106,68 @@ export function meanFrame(frames: readonly (Frame | undefined)[]): Frame | undef
     ],
     normal: first.normal,
   };
+}
+
+/** A line in space: a point on it and its unit direction. */
+export interface AxisLine {
+  origin: Vec3;
+  direction: Vec3;
+}
+
+/**
+ * Where a revolve axis lies, for placing its arcs (ADR-0029): an origin
+ * axis, a sketch line from its start to its end (from the document), or a
+ * straight edge of a mesh from its first to its last point. Undefined for
+ * another kind, or what the document or the meshes don't have.
+ */
+export function axisLine(
+  ref: GeomRef,
+  ctx: { doc: ExtrudoDocument; bodies: Readonly<Record<BodyId, BodyMesh>> },
+): AxisLine | undefined {
+  if (ref.kind === 'axis') {
+    const axis = originAxis(ref.id);
+    return axis && { origin: axis.origin, direction: axis.direction };
+  }
+  if (ref.kind === 'sketchEntity') {
+    const line = sketchLine(ctx.doc, ref);
+    return line && lineThrough(line[0], line[1]);
+  }
+  if (ref.kind === 'edge') {
+    for (const mesh of Object.values(ctx.bodies)) {
+      const edge = mesh.edgeIds?.indexOf(ref.id) ?? -1;
+      if (edge < 0) continue;
+      const first = mesh.edgeRanges[2 * edge] ?? 0;
+      const count = mesh.edgeRanges[2 * edge + 1] ?? 0;
+      if (count < 2) return undefined;
+      const p = mesh.edgePoints;
+      const at = (i: number): Vec3 => [p[3 * i] ?? 0, p[3 * i + 1] ?? 0, p[3 * i + 2] ?? 0];
+      return lineThrough(at(first), at(first + count - 1));
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The world end points of a sketch line picked in the model
+ * (`<sketch>/<entity>`), or undefined when it isn't a line of a sketch on
+ * a known plane.
+ */
+export function sketchLine(doc: ExtrudoDocument, ref: GeomRef): [Vec3, Vec3] | undefined {
+  const parsed = parseSketchEntityRefId(ref.id);
+  const feature = parsed && doc.features.find((f) => f.id === parsed.feature);
+  const sketch = feature && readSketch(feature);
+  const frame = sketch && planeFrame(sketch.plane);
+  const line = parsed && sketch?.data.entities[parsed.entity];
+  if (!frame || line?.type !== 'line') return undefined;
+  const a = sketch.data.entities[line.start];
+  const b = sketch.data.entities[line.end];
+  if (a?.type !== 'point' || b?.type !== 'point') return undefined;
+  return [sketchToWorld(frame, [a.x, a.y]), sketchToWorld(frame, [b.x, b.y])];
+}
+
+function lineThrough(a: Vec3, b: Vec3): AxisLine | undefined {
+  const d: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const length = Math.hypot(d[0], d[1], d[2]);
+  if (length <= 1e-9) return undefined;
+  return { origin: a, direction: [d[0] / length, d[1] / length, d[2] / length] };
 }

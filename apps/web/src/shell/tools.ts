@@ -365,7 +365,6 @@ export const TOOLS = {
     icon: 'revolve',
     category: 'create',
     hint: 'Spin a profile around an axis.',
-    comesWith: 'P2-07',
   },
   box: {
     id: 'box',

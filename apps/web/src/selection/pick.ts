@@ -78,11 +78,24 @@ export interface PickSketch {
   profiles?: readonly Profile[];
 }
 
+/** A drawn origin axis (P2-07): picked like an edge, as `{ kind: 'axis', id }`. */
+export interface PickAxis {
+  /** The reference ID: `origin:x`, `origin:y`, `origin:z`. */
+  id: string;
+  /** Its centre (the origin) and unit direction, world mm. */
+  origin: readonly [number, number, number];
+  direction: readonly [number, number, number];
+  /** How far it is drawn each way from `origin`, mm. */
+  half: number;
+}
+
 export interface PickScene {
   /** Visible bodies. */
   bodies: readonly PickBody[];
   /** Drawn sketches. */
   sketches: readonly PickSketch[];
+  /** Drawn origin axes (the `construction` filter kind); none when absent. */
+  axes?: readonly PickAxis[];
   /** Faces are drawn (not wireframe), so they hide what is behind them. */
   occluding: boolean;
 }
@@ -300,6 +313,36 @@ function nearVertices(e: Eye, scene: PickScene): Near[] {
   return out;
 }
 
+/** Origin axes near the pointer: the closest approach of the ray to each drawn axis. */
+function nearAxes(e: Eye, scene: PickScene): Near[] {
+  const out: Near[] = [];
+  const { origin: o, direction: d } = e.ray;
+  for (const axis of scene.axes ?? []) {
+    const [ox, oy, oz] = axis.origin;
+    const [ux, uy, uz] = axis.direction;
+    // Closest points of the ray o + s·d and the axis p + t·u, t within ±half.
+    const wx = o.x - ox;
+    const wy = o.y - oy;
+    const wz = o.z - oz;
+    const b = d.x * ux + d.y * uy + d.z * uz;
+    const dw = d.x * wx + d.y * wy + d.z * wz;
+    const uw = ux * wx + uy * wy + uz * wz;
+    const denom = 1 - b * b;
+    let t = denom > 1e-12 ? (uw - b * dw) / denom : uw;
+    t = Math.max(-axis.half, Math.min(axis.half, t));
+    const qx = ox + t * ux;
+    const qy = oy + t * uy;
+    const qz = oz + t * uz;
+    const s = Math.max(0, (qx - o.x) * d.x + (qy - o.y) * d.y + (qz - o.z) * d.z);
+    const dist = Math.hypot(o.x + s * d.x - qx, o.y + s * d.y - qy, o.z + s * d.z - qz);
+    const px = dist / perPixelAt(e, qx, qy, qz);
+    if (px <= EDGE_PX) {
+      out.push({ item: { kind: 'axis', id: axis.id }, px, depth: s, at: [qx, qy, qz] });
+    }
+  }
+  return out;
+}
+
 /** Whether a sketch entity may be picked with this filter. */
 function acceptsEntity(filter: SelectionFilter) {
   return (entity: SketchEntity) =>
@@ -405,6 +448,7 @@ export function pickStack(
   ];
   const sketches = sketchHits(e, scene, filter);
   small.push(...near(sketches.curves));
+  if (filter.construction) small.push(...near(nearAxes(e, scene)));
 
   const areas: (PickHit & { rank: number })[] = [];
   for (const p of sketches.profiles) {

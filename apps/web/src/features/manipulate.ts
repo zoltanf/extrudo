@@ -59,6 +59,18 @@ export function angleAround(origin: Vec3, axis: Vec3, zero: Vec3, ray: Ray): num
 }
 
 /**
+ * A dragged angle that goes on round (ADR-0029): of the values `measured +
+ * k × period`, the one nearest `previous` (the field's value before this
+ * step of the drag), kept within ±`limit`. `measured` is what the arc
+ * reads (it wraps every `period` degrees of the field).
+ */
+export function unwrapAngle(measured: number, previous: number, period = 360, limit = 360): number {
+  const k = Math.round((previous - measured) / period);
+  const value = measured + k * period;
+  return Math.max(-limit, Math.min(limit, value));
+}
+
+/**
  * A round step for dragged lengths: about three screen pixels' worth,
  * rounded down to 1, 2 or 5 times a power of ten (0.1 mm when a pixel is
  * about 0.04 mm).

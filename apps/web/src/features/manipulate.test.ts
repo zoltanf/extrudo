@@ -6,6 +6,7 @@ import {
   lengthStep,
   type Ray,
   snap,
+  unwrapAngle,
 } from './manipulate';
 
 const settings = { units: 'mm', precision: 2 } as const;
@@ -67,5 +68,23 @@ describe('snapping and the expression a drag writes', () => {
       '1.24 in',
     );
     expect(draggedExpression(-14.6, 'angle', settings, 1)).toBe('-15 deg');
+  });
+});
+
+describe('unwrapAngle (P2-07)', () => {
+  it('follows the handle round instead of wrapping at ±180°', () => {
+    // The arc reads −170° after 175°: the drag went on to 190°.
+    expect(unwrapAngle(-170, 175)).toBe(190);
+    expect(unwrapAngle(10, 355)).toBe(360);
+    expect(unwrapAngle(170, -175)).toBe(-190);
+    expect(unwrapAngle(45, 40)).toBe(45);
+  });
+
+  it('stays within a whole turn, and takes a period for scaled arcs', () => {
+    expect(unwrapAngle(20, 359)).toBe(360);
+    expect(unwrapAngle(-20, -359)).toBe(-360);
+    // A symmetric arc shows half the angle: it wraps every 720° of the value.
+    expect(unwrapAngle(-340, 350, 720)).toBe(360);
+    expect(unwrapAngle(100, 90, 720)).toBe(100);
   });
 });

@@ -18,6 +18,7 @@ import {
   type BodyId,
   type FeatureId,
   type GeomRef,
+  originAxis,
   parseProfileRefId,
   parseSketchEntityRefId,
   type SelectionItem,
@@ -280,6 +281,8 @@ export function itemLabel(item: SelectionItem, context: LabelContext): string {
     const type = ref && sketch?.data.entities[ref.entity]?.type;
     return `${(type && ENTITY_NAMES[type]) ?? 'Sketch curve'} · ${sketch?.name ?? 'Sketch'}`;
   }
+  const axis = item.kind === 'axis' ? originAxis(item.id) : undefined;
+  if (axis) return axis.label;
   const [one] = NOUNS[item.kind] ?? [item.kind];
   return one.charAt(0).toUpperCase() + one.slice(1);
 }

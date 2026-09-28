@@ -491,6 +491,8 @@ export function AppShell({
   // hidden), in its status colours. Profiles are shaded (P1-11) unless the palette hides them.
   // The pointer on a sketch's chip or browser row highlights it (P1-12).
   const status = useHostState(host, (s) => s.status);
+  // An open feature dialog's picks are what the view shows selected (a revolve's axis line).
+  const shownSelection = dialogItems ?? selection;
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
     doc.features.forEach((feature, index) => {
@@ -511,18 +513,26 @@ export function AppShell({
           // Curves picked in model mode (P2-03).
           ...(!active && {
             hoverEntity: sketchEntityIdsIn([hover], feature.id)[0],
-            selectedEntities: sketchEntityIdsIn(selection, feature.id),
+            selectedEntities: sketchEntityIdsIn(shownSelection, feature.id),
           }),
           ...(showProfiles && {
             profiles: sketchProfiles(sketch.data),
             hoverProfile: profileIdsIn([hover], feature.id)[0],
-            selectedProfiles: profileIdsIn(selection, feature.id),
+            selectedProfiles: profileIdsIn(shownSelection, feature.id),
           }),
         });
       }
     });
     return out;
-  }, [doc.features, doc.timelineMarker, activeSketchId, status, showProfiles, hover, selection]);
+  }, [
+    doc.features,
+    doc.timelineMarker,
+    activeSketchId,
+    status,
+    showProfiles,
+    hover,
+    shownSelection,
+  ]);
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
   const sketchPlane = sketches.find((s) => s.active)?.frame;
   // In the model, with no command running, the view picks bodies, sketch curves and

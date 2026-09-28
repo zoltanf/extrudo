@@ -472,24 +472,26 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       const doc = store.getState().doc;
       const { bodies } = model.getState();
       let values = defaultValues(spec);
-      // Pre-selection (UI spec §3.3): the selection fills the first field that takes it.
+      // Pre-selection (UI spec §3.3): the selection fills the first field that takes it;
+      // what that field doesn't take goes on to the next fields that take it (a profile and
+      // an axis selected before Revolve, P2-07). Each item fills one field.
       const selection = session.getState().selection;
       const fields = shownFields(spec, values).filter(
         (f): f is SelectionField => f.kind === 'selection',
       );
-      const target = fields.find((f) => selection.some((item) => accepts(f.accepts, item)));
       const used: SelectionItem[] = [];
-      if (target) {
+      for (const target of fields) {
         const refs: GeomRef[] = [];
         for (const item of selection) {
           if (refs.length >= (target.max ?? Number.POSITIVE_INFINITY)) break;
-          const ref = accepts(target.accepts, item) ? itemRef(item, bodies) : undefined;
+          if (used.includes(item) || !accepts(target.accepts, item)) continue;
+          const ref = itemRef(item, bodies);
           if (ref && !refs.some((r) => r.kind === ref.kind && r.id === ref.id)) {
             refs.push(ref);
             used.push(item);
           }
         }
-        values = { ...values, refs: { ...values.refs, [target.name]: refs } };
+        if (refs.length > 0) values = { ...values, refs: { ...values.refs, [target.name]: refs } };
       }
       open({
         spec,
