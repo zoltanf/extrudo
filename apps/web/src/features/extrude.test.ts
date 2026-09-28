@@ -9,6 +9,7 @@ import {
   type GeomRef,
   insertFeature,
   originPlaneRef,
+  type SketchData,
   sketchInputs,
   type Vec3,
 } from '@extrudo/core';
@@ -311,6 +312,24 @@ describe('the press-pull proposal', () => {
         toggles: { flip: true },
       }),
     ).toBe('cut');
+  });
+
+  it('treats a profile sketched on a face like the face (P2-09)', () => {
+    const { sketch, profile } = rectangleSketch();
+    const onFace: Feature = {
+      ...sketch,
+      inputs: sketchInputs(TOP, (sketch.inputs.sketch as { sketch: SketchData }).sketch),
+    };
+    const doc = { ...context().doc, features: [onFace] };
+    const ctx = (distance: number) => ({
+      doc,
+      value: (f: string) => (f === 'distance' ? distance : undefined),
+    });
+    const op = (distance: number) =>
+      proposeOperation(values({ refs: { profiles: [profile] } }), ctx(distance))?.choices
+        ?.operation;
+    expect(op(-5)).toBe('cut');
+    expect(op(5)).toBe('join');
   });
 
   it('proposes nothing without picks, up to an object, or without a distance', () => {

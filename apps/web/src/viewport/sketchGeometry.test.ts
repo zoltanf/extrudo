@@ -272,3 +272,29 @@ describe('curveSegments', () => {
     expect(curveSegments(data, xy, [])).toHaveLength(0);
   });
 });
+
+describe('projected curves (P2-09)', () => {
+  it('draw apart from the status colours, and count for Fit', () => {
+    const data = {
+      ...sketch({
+        a: { type: 'point', x: 0, y: 0 },
+        b: { type: 'point', x: 40, y: 0 },
+        c: { type: 'point', x: 0, y: 0 },
+        d: { type: 'point', x: 0, y: 5 },
+        edge: { type: 'line', start: 'a', end: 'b', construction: false },
+        mine: { type: 'line', start: 'c', end: 'd', construction: false },
+      }),
+      projections: { p: { ref: { kind: 'edge', id: 'e[x]' }, curves: { edge: 'edge' } } },
+    } as SketchData;
+    const s = sketchSegments(data, frame('origin:xy'));
+    expect(pairs(s.projected)).toEqual([
+      [0, 0, 0],
+      [40, 0, 0],
+    ]);
+    expect(pairs(s.curves.free)).toEqual([
+      [0, 0, 0],
+      [0, 5, 0],
+    ]);
+    expect(s.bounds?.box?.max[0]).toBe(40);
+  });
+});

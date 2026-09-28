@@ -6,15 +6,17 @@
 import {
   type BodyId,
   type ExtrudoDocument,
+  type FeatureId,
   type GeomRef,
   parseProfileRefId,
-  planeFrame,
   readSketch,
+  type SketchReport,
   sketchToWorld,
   type Vec3,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import { profileCentroid } from '@extrudo/sketch/profiles';
+import { sketchFrame } from '../sketch/frame';
 import { sketchProfiles } from '../sketch/profiles';
 
 export interface Frame {
@@ -79,12 +81,16 @@ export function meshFaceFrame(mesh: BodyMesh, face: number): Frame | undefined {
  * the document (the app's profile cache). Undefined for another kind, or
  * a profile, sketch or plane that isn't there.
  */
-export function profileFrame(doc: ExtrudoDocument, ref: GeomRef): Frame | undefined {
+export function profileFrame(
+  doc: ExtrudoDocument,
+  ref: GeomRef,
+  sketches?: Readonly<Record<FeatureId, SketchReport>>,
+): Frame | undefined {
   if (ref.kind !== 'profile') return undefined;
   const parsed = parseProfileRefId(ref.id);
   const feature = parsed && doc.features.find((f) => f.id === parsed.feature);
   const sketch = feature && readSketch(feature);
-  const frame = sketch && planeFrame(sketch.plane);
+  const frame = sketch && feature && sketchFrame(feature.id, sketch.plane, sketches);
   const profile = sketch && sketchProfiles(sketch.data).find((p) => p.id === parsed?.profile);
   if (!frame || !profile) return undefined;
   return { origin: sketchToWorld(frame, profileCentroid(profile)), normal: frame.normal };

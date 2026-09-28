@@ -27,6 +27,13 @@ export const TOOLS = {
     category: 'sketch',
     hint: 'Draw a 2D profile on a plane or a flat face.',
   },
+  project: {
+    id: 'project',
+    label: 'Project',
+    icon: 'project',
+    category: 'sketch',
+    hint: 'Bring body edges and faces into the sketch; they follow the model.',
+  },
   finishSketch: {
     id: 'finishSketch',
     label: 'Finish Sketch',
@@ -545,6 +552,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
           'slotOverall',
           'ellipse',
           'spline',
+          'project',
           'sketchMirror',
           'sketchRectangularPattern',
           'sketchCircularPattern',
