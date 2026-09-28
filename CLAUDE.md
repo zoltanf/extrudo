@@ -14,8 +14,9 @@ done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 (topological naming), P2-05 (feature dialogs), P2-06 (extrude), P2-07
-(revolve), P2-08 (bodies), P2-09 (sketch on face, Project),
-P2-10 (primitives), P2-11 (timeline v2) and P2-12 (STL, 3MF, STEP export) are done. ADR-0001 chose
+(revolve), P2-08 (bodies), P2-09 (sketch on face, Project), P2-10
+(primitives), P2-11 (timeline v2) and P2-12 (STL, 3MF, STEP export)
+are done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -280,7 +281,7 @@ for anything an evaluator can't find**, so Fix References can offer it);
 the marker is a slider with drag and keys, chips drag to reorder, menus
 have Roll Back to Here, Move to End, Redefine Plane, Fix References
 (`dialog.edit(id, { fix })` or Redefine Plane for a sketch) and Keep
-Closest Match. Next: see
+Closest Match. Next: **P2-13** (measure and inspect). See
 `docs/03-roadmap.md`.
 
 ## Commands
