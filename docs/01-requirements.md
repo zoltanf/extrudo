@@ -103,6 +103,7 @@ for the phase's release, **S** = should, **C** = could.
 | FR-SK-14 | Import SVG and DXF into a sketch. | S | 4 |
 | FR-SK-15 | Export a sketch to SVG (1 unit = 1 mm, correct viewBox). | M | 1 |
 | FR-SK-16 | Export a sketch to DXF. | S | 1 |
+| FR-SK-17 | Auto-project: body edges and vertices a sketch snaps, constrains or dimensions to are projected into the sketch automatically (can be turned off). | C | 6 |
 
 ### 5.4 Solid features (FR-FT)
 
