@@ -1,11 +1,12 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { kernelReady, projector } from './helpers';
 
-// P2-05: the feature dialog framework. No real feature has a dialog before
-// P2-06, so these tests run on the dialog debug page (`#/debug/dialog`): the
-// real shell on an in-memory document with a 20 mm test box, computed by the
-// debug kernel worker, with one dialog registered, "Press Pull (test)"
-// (press-pull of flat faces by the kernel's `test-press` test feature).
+// P2-05: the feature dialog framework, on the dialog debug page
+// (`#/debug/dialog`): the real shell on an in-memory document with a 20 mm
+// test box, computed by the debug kernel worker, with "Press Pull (test)"
+// (press-pull of flat faces by the kernel's `test-press` test feature),
+// which has what Extrude doesn't: a toggle that shows a field and a custom
+// input mapping. Extrude's own tests are in `extrude.spec.ts` (P2-06).
 
 test.use({ viewport: { width: 1440, height: 900 } });
 

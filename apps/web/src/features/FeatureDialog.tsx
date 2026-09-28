@@ -1,4 +1,4 @@
-import { type ExtrudoDocument, formatQuantity } from '@extrudo/core';
+import { type ExtrudoDocument, formatQuantity, type GeomRef } from '@extrudo/core';
 import { CircleAlert, X } from 'lucide-react';
 import { type KeyboardEvent, type PointerEvent, type ReactNode, useRef, useState } from 'react';
 import { useStore } from 'zustand';
@@ -92,11 +92,13 @@ export function FeatureDialogPanel({
       style={{
         right: HOME.right - offset.x,
         top: HOME.top + offset.y,
+        // A long dialog (Extrude with two sides) scrolls its fields instead of running off the view.
+        maxHeight: `calc(100% - ${Math.max(0, HOME.top + offset.y) + 8}px)`,
         background: 'color-mix(in srgb, var(--x-raised) 94%, transparent)',
       }}
     >
       <header
-        className="flex cursor-grab items-center gap-2 border-b border-line px-3 py-2 active:cursor-grabbing"
+        className="flex shrink-0 cursor-grab items-center gap-2 border-b border-line px-3 py-2 active:cursor-grabbing"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -114,7 +116,7 @@ export function FeatureDialogPanel({
           <X size={14} />
         </button>
       </header>
-      <div className="flex flex-col gap-2.5 p-3">
+      <div className="flex min-h-0 flex-col gap-2.5 overflow-y-auto p-3">
         {shownFields(spec, open.values).map((field) => (
           <FieldRow
             key={field.name}
@@ -129,7 +131,7 @@ export function FeatureDialogPanel({
         <p
           role="status"
           aria-label="Feature status"
-          className={`mx-3 mb-2 flex items-start gap-1.5 text-sm ${status?.status === 'warning' && !why ? 'text-warning' : 'text-error'}`}
+          className={`mx-3 mb-2 flex shrink-0 items-start gap-1.5 text-sm ${status?.status === 'warning' && !why ? 'text-warning' : 'text-error'}`}
         >
           <CircleAlert size={14} className="mt-0.5 shrink-0" />
           <span>
@@ -137,7 +139,7 @@ export function FeatureDialogPanel({
           </span>
         </p>
       )}
-      <footer className="flex justify-end gap-2 border-t border-line px-3 py-2">
+      <footer className="flex shrink-0 justify-end gap-2 border-t border-line px-3 py-2">
         <Button variant="ghost" onClick={() => controller.cancel()}>
           Cancel <kbd className="font-mono text-xs text-muted">Esc</kbd>
         </Button>
@@ -256,7 +258,7 @@ function SelectionControl({
   const refs = open.values.refs[field.name] ?? [];
   const active = open.pickField === field.name;
   const text =
-    refs.length === 0 ? pickPrompt(field) : `${refs.length} ${countNoun(field, refs.length)}`;
+    refs.length === 0 ? pickPrompt(field) : `${refs.length} ${countNoun(refs, refs.length)}`;
   return (
     <div
       className={`flex h-8 items-center rounded-input border ${active ? 'border-accent bg-accent-soft' : 'border-line'}`}
@@ -288,10 +290,10 @@ function SelectionControl({
   );
 }
 
-/** "faces", "profiles": the kinds a field holds (one kind: its noun). */
-function countNoun(field: SelectionField, n: number): string {
-  const kinds = new Set(field.accepts);
-  return kinds.size === 1 ? acceptsNoun(field.accepts, n !== 1) : n === 1 ? 'item' : 'items';
+/** "faces", "profiles": what a field holds (picks of one kind: its noun; else "items"). */
+function countNoun(refs: readonly GeomRef[], n: number): string {
+  const kinds = [...new Set(refs.map((r) => r.kind))];
+  return kinds.length === 1 ? acceptsNoun(kinds, n !== 1) : n === 1 ? 'item' : 'items';
 }
 
 /**

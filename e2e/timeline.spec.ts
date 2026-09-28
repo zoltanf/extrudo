@@ -111,18 +111,33 @@ test('suppress and delete from the menus; not while a sketch is open', async ({ 
   await menuItem(page, 'Unsuppress').click();
   await expect.poll(() => drawn(page)).toBe(2);
 
+  // Sketch1's profile is Extrude1's: deleting it is refused, with the reason.
   await row(page, 'Sketch1').click({ button: 'right' });
   await menuItem(page, 'Delete').click();
-  await expect(row(page, 'Sketch1')).toHaveCount(0);
-  await expect(chip(page, 'Sketch1')).toHaveCount(0);
-  await page.keyboard.press('Control+z');
+  await expect(page.getByRole('alert')).toHaveText(
+    "Can't delete Sketch1: Extrude1 uses it. Change or delete that first.",
+  );
   await expect(row(page, 'Sketch1')).toBeVisible();
+  // The message sits over the timeline.
+  await page.getByRole('alert').getByRole('button', { name: 'Dismiss' }).click();
 
-  // The Delete key on a focused row.
-  await browser(page).getByRole('button', { name: 'Sketch1', exact: true }).focus();
-  await page.keyboard.press('Delete');
-  await expect(row(page, 'Sketch1')).toHaveCount(0);
+  // Nothing refers to Extrude2: it goes, and Undo brings it back.
+  await chip(page, 'Extrude2').click({ button: 'right' });
+  await menuItem(page, 'Delete').click();
+  await expect(chip(page, 'Extrude2')).toHaveCount(0);
   await page.keyboard.press('Control+z');
+  await expect(chip(page, 'Extrude2')).toBeVisible();
+
+  // The Delete key on a focused row: Extrude2 goes, then Sketch2, which nothing uses any more.
+  await chip(page, 'Extrude2').click({ button: 'right' });
+  await menuItem(page, 'Delete').click();
+  await expect(chip(page, 'Extrude2')).toHaveCount(0);
+  await browser(page).getByRole('button', { name: 'Sketch2', exact: true }).focus();
+  await page.keyboard.press('Delete');
+  await expect(row(page, 'Sketch2')).toHaveCount(0);
+  await page.keyboard.press('Control+z');
+  await page.keyboard.press('Control+z');
+  await expect(row(page, 'Sketch2')).toBeVisible();
 
   await chip(page, 'Sketch2').dblclick();
   await expect(page.getByRole('region', { name: 'Sketch palette' })).toBeVisible();

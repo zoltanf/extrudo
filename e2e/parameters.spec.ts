@@ -30,11 +30,12 @@ test.afterEach(() => {
 
 test('shows live values and updates dependents, with undo', async ({ page }) => {
   await expect(expression(page, 'inner')).toHaveAccessibleDescription('= 75.20 mm');
-  await expect(expression(page, 'd1')).toHaveAccessibleDescription('= 18.80 mm');
+  await expect(expression(page, 'd1')).toHaveAccessibleDescription('= 80.00 mm');
+  await expect(expression(page, 'd3')).toHaveAccessibleDescription('= 12.00 mm');
 
   await setExpression(page, 'wall', '3 mm');
   await expect(expression(page, 'inner')).toHaveAccessibleDescription('= 74.00 mm');
-  await expect(expression(page, 'd1')).toHaveAccessibleDescription('= 18.50 mm');
+  await expect(expression(page, 'd3')).toHaveAccessibleDescription('= 15.00 mm');
 
   const dialog = page.getByRole('dialog', { name: 'Parameters' });
   await dialog.getByRole('button', { name: 'Undo' }).click();

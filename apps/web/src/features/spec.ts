@@ -105,6 +105,16 @@ export interface ManipulatorContext extends DialogContext {
   value(field: string): number | undefined;
 }
 
+/** What `propose` sees: the manipulators' context and which fields the user set. */
+export interface ProposeContext extends ManipulatorContext {
+  /**
+   * Whether the user set the field (in this dialog, or before: an edited
+   * feature's stored value that differs from the proposal). The framework
+   * never changes such a field, whatever `propose` returns.
+   */
+  chosen(field: string): boolean;
+}
+
 /** A problem that keeps OK disabled, shown in the dialog (UI spec §8 style). */
 export interface DialogIssue {
   message: string;
@@ -124,6 +134,13 @@ export interface DistanceManipulator {
   field: string;
   origin: Vec3;
   direction: Vec3;
+  /**
+   * World length per unit of the field's value, default 1: the head sits at
+   * `value × scale` along the direction, and a drag writes the distance
+   * divided by it. A symmetric extrude's arrow (whose field is the whole
+   * length) has 0.5.
+   */
+  scale?: number;
 }
 
 /**
@@ -170,6 +187,13 @@ export interface FeatureDialogSpec<I extends FeatureInputs = FeatureInputs>
    * named like the fields; missing ones take the field's default.
    */
   fromInputs?(inputs: FeatureInputs, ctx: DialogContext): Partial<DialogValues>;
+  /**
+   * Values the spec proposes for the current ones (extrude: join when a
+   * face is pulled out, cut when it is pushed in). Called on every change;
+   * proposed values replace the current ones except in fields the user set
+   * (`ctx.chosen`), before the draft is checked and previewed.
+   */
+  propose?(values: DialogValues, ctx: ProposeContext): Partial<DialogValues> | undefined;
   /** Checks beyond each field's own (pick counts, expressions): the first problem. */
   validate?(values: DialogValues, ctx: DialogContext): DialogIssue | undefined;
   /** In-canvas handles for expression fields, in world mm. */

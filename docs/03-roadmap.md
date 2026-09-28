@@ -280,9 +280,24 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   box that takes typing; OK as one command (insert, or replace the
   inputs). E2E on the dialog debug page (`#/debug/dialog`, a test
   press-pull) until Extrude has its dialog.
-- [ ] **P2-06 Extrude.** All options in FR-FT-01; cut preview shown red; face
+- [x] **P2-06 Extrude.** All options in FR-FT-01; cut preview shown red; face
   extrude (press-pull on planar faces).
   *AC:* FR-FT-01; kernel golden tests for each option combination.
+  *Done 2026-09-28* (ADR-0028): core `extrude` feature (profiles or flat
+  faces; one side, symmetric, two sides; distance, to object, through
+  all; taper per side; flip; new body, join, cut, intersect with
+  automatic or picked bodies) and its kernel evaluator (profiles fused
+  first, tapers by `BRepOffsetAPI_DraftAngle` with a too-steep check,
+  inclined to-object faces by trimming, every face named, the swept tool
+  as a preview tool; 108-case golden table, 1000-iteration memory test).
+  The Extrude dialog on the P2-05 framework: fields named like the
+  inputs, distance arrows per side (halved when symmetric) and taper
+  arcs, previews styled by the operation; press-pull proposes join
+  outwards and cut inwards until the user picks an operation (a new
+  `propose` hook in dialog specs). The browser's Bodies folder lists the
+  model's bodies ("Body1"… without stored names). The Wall bracket
+  template computes its bracket (symmetric L, tapered holes cut).
+  E2E in a real project (`e2e/extrude.spec.ts`).
 - [ ] **P2-07 Revolve.** FR-FT-02.
 - [ ] **P2-08 Bodies.** Browser "Bodies" folder; rename, visibility, colour and
   appearance; delete body (as a "Remove" feature); body count badge.

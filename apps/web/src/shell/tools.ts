@@ -357,8 +357,7 @@ export const TOOLS = {
     label: 'Extrude',
     icon: 'extrude',
     category: 'create',
-    hint: 'Pull a profile into a solid.',
-    comesWith: 'P2-06',
+    hint: 'Pull a profile into a solid, or push and pull a flat face.',
   },
   revolve: {
     id: 'revolve',

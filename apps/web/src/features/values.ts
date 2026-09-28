@@ -50,6 +50,28 @@ export function mergeValues(base: DialogValues, more: Partial<DialogValues>): Di
   };
 }
 
+/** The fields whose value in `more` differs from `base` (refs compared by kind and ID). */
+export function changedFields(base: DialogValues, more: Partial<DialogValues>): string[] {
+  const changed: string[] = [];
+  for (const kind of ['refs', 'exprs', 'choices', 'toggles'] as const) {
+    for (const [field, value] of Object.entries(more[kind] ?? {})) {
+      if (JSON.stringify(value) !== JSON.stringify(base[kind][field])) changed.push(field);
+    }
+  }
+  return changed;
+}
+
+/** Only the named fields of some values. */
+export function pickFields(values: Partial<DialogValues>, fields: readonly string[]) {
+  const keep = new Set(fields);
+  const out: Partial<DialogValues> = {};
+  for (const kind of ['refs', 'exprs', 'choices', 'toggles'] as const) {
+    const entries = Object.entries(values[kind] ?? {}).filter(([field]) => keep.has(field));
+    if (entries.length > 0) (out as Record<string, unknown>)[kind] = Object.fromEntries(entries);
+  }
+  return out;
+}
+
 /** The fields shown for these values, in the spec's order. */
 export function shownFields(spec: FeatureDialogSpec, values: DialogValues): DialogField[] {
   return spec.fields.filter((field) => field.shown?.(values) ?? true);

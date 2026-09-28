@@ -121,8 +121,8 @@ test('the toolbox opens at the pointer with pinned commands', async ({ page }) =
 
 test('shortcuts: tools that come later say so, Shift+digits turn the view', async ({ page }) => {
   const viewport = await openProject(page);
-  await page.keyboard.press('e');
-  await expect(page.getByText('Extrude arrives with P2-06.')).toBeVisible();
+  await page.keyboard.press('f');
+  await expect(page.getByText('Fillet arrives with P3-01.')).toBeVisible();
 
   await page.keyboard.press('Shift+2');
   await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');

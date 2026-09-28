@@ -53,10 +53,13 @@ import type {
 } from './spec';
 import {
   type Checked,
+  changedFields,
   checkValues,
   defaultValues,
   draftExpressions,
   inputsFor,
+  mergeValues,
+  pickFields,
   shownFields,
   storedParameterNames,
   valuesFor,
@@ -106,6 +109,12 @@ export interface OpenDialog {
   activeField: string | undefined;
   /** Fields whose typed text doesn't evaluate yet, with the message. */
   typing: Readonly<Record<string, string>>;
+  /**
+   * Fields the user set, which `spec.propose` doesn't change. Undefined for
+   * an edited feature until its first refresh, which counts the stored
+   * values that differ from the proposal.
+   */
+  chosen: readonly string[] | undefined;
   /** The draft built from the values (valid or not). */
   draft: Feature;
   /** Where the draft sits in the timeline. */
@@ -216,16 +225,12 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     return { doc, bodies, ...(feature && { feature }) };
   };
 
-  /** Rebuilds the draft and its checks from the values, and asks for a preview if valid. */
-  const refresh = (open: OpenDialog, values = open.values, typing = open.typing) => {
-    const ctx = context(open);
-    const { doc } = ctx;
-    const index =
-      open.mode === 'create' ? doc.timelineMarker : doc.features.findIndex((f) => f.id === open.id);
+  /** The draft of the values: inputs with parameter names, and its expressions evaluated. */
+  const build = (open: OpenDialog, values: DialogValues, ctx: DialogContext, index: number) => {
     const named = withParameterNames(
       inputsFor(open.spec, values, ctx),
       open.paramNames,
-      doc,
+      ctx.doc,
       open.mode === 'edit' ? open.id : undefined,
     );
     const draft: Feature = {
@@ -235,7 +240,37 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       name: ctx.feature?.name ?? open.name,
       inputs: named.inputs,
     };
-    const expressions = draftExpressions(doc, draft, index);
+    return { named, draft, expressions: draftExpressions(ctx.doc, draft, index) };
+  };
+
+  /** Rebuilds the draft and its checks from the values, and asks for a preview if valid. */
+  const refresh = (open: OpenDialog, values = open.values, typing = open.typing) => {
+    const ctx = context(open);
+    const { doc } = ctx;
+    const index =
+      open.mode === 'create' ? doc.timelineMarker : doc.features.findIndex((f) => f.id === open.id);
+    let built = build(open, values, ctx, index);
+    let chosen = open.chosen;
+    if (open.spec.propose) {
+      const known = new Set(chosen ?? []);
+      const proposal = open.spec.propose(values, {
+        ...ctx,
+        value: (field) => okValue(built.expressions, field),
+        chosen: (field) => known.has(field),
+      });
+      const changes = proposal ? changedFields(values, proposal) : [];
+      if (chosen === undefined) {
+        // An edited feature: stored values the rule wouldn't give were the user's choice.
+        chosen = changes;
+      } else {
+        const apply = changes.filter((field) => !known.has(field));
+        if (apply.length > 0 && proposal) {
+          values = mergeValues(values, pickFields(proposal, apply));
+          built = build(open, values, ctx, index);
+        }
+      }
+    }
+    const { named, draft, expressions } = built;
     let checked = checkValues(open.spec, values, expressions, ctx);
     if (!checked.first) {
       const parsed = open.spec.inputsSchema.safeParse(draft.inputs);
@@ -249,6 +284,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       ...open,
       values,
       typing,
+      chosen: chosen ?? [],
       paramNames: named.names,
       draft,
       index,
@@ -290,18 +326,22 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       .catch(() => {});
   };
 
-  const update = (change: (open: OpenDialog) => Partial<Pick<OpenDialog, 'values' | 'typing'>>) => {
+  /** Applies a change the user made to `field` (which `spec.propose` then leaves alone). */
+  const update = (
+    field: string,
+    change: (open: OpenDialog) => Partial<Pick<OpenDialog, 'values' | 'typing'>>,
+  ) => {
     const open = get();
     if (!open) return;
     const { values = open.values, typing = open.typing } = change(open);
-    refresh(open, values, typing);
+    refresh(choose(open, field), values, typing);
   };
 
   const fieldOf = (open: OpenDialog, name: string | undefined): DialogField | undefined =>
     open.spec.fields.find((f) => f.name === name);
 
   const setRefs = (field: string, refs: readonly GeomRef[]) =>
-    update((open) => ({
+    update(field, (open) => ({
       values: { ...open.values, refs: { ...open.values.refs, [field]: [...refs] } },
     }));
 
@@ -459,6 +499,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         values,
         paramNames: {},
         pickField: firstPickField(spec, values),
+        chosen: [],
         ...blank,
       });
       for (const item of used) fingerprint(item);
@@ -477,13 +518,14 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         values,
         paramNames: storedParameterNames(feature),
         pickField: firstPickField(spec, values),
+        chosen: undefined,
         ...blank,
       });
       return true;
     },
     setRefs,
     setExpr: (field, expr) =>
-      update((open) => {
+      update(field, (open) => {
         const { [field]: _, ...typing } = open.typing;
         return {
           values: { ...open.values, exprs: { ...open.values.exprs, [field]: expr } },
@@ -491,16 +533,16 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         };
       }),
     setTyping: (field, message) =>
-      update((open) => {
+      update(field, (open) => {
         const { [field]: _, ...rest } = open.typing;
         return { typing: message === undefined ? rest : { ...rest, [field]: message } };
       }),
     setChoice: (field, value) =>
-      update((open) => ({
+      update(field, (open) => ({
         values: { ...open.values, choices: { ...open.values.choices, [field]: value } },
       })),
     setToggle: (field, value) =>
-      update((open) => ({
+      update(field, (open) => ({
         values: { ...open.values, toggles: { ...open.values.toggles, [field]: value } },
       })),
     pickInto(field) {
@@ -579,6 +621,18 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       if (get()) close();
     },
   };
+}
+
+/** An expression's value if it evaluated. */
+function okValue(expressions: ReadonlyMap<string, EvaluateResult>, field: string) {
+  const result = expressions.get(field);
+  return result?.ok ? result.value : undefined;
+}
+
+/** The dialog with `field` among the fields the user set. */
+function choose(open: OpenDialog, field: string): OpenDialog {
+  const chosen = open.chosen ?? [];
+  return chosen.includes(field) ? open : { ...open, chosen: [...chosen, field] };
 }
 
 function noPreview(): DialogPreview {
