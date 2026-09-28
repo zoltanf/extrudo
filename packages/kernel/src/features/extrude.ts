@@ -25,6 +25,7 @@ import type {
   KernelFeatureDefinition,
   PreviewTool,
 } from '../recompute/types';
+import { splitSolids } from './bodies';
 import type { SketchOutputData } from './sketch';
 
 /**
@@ -106,7 +107,11 @@ function evaluateExtrude(ctx: EvalContext<ExtrudeInputs>): FeatureOutput {
     tapers: [degrees(sides[0]?.taper ?? 0), degrees(sides[1]?.taper ?? 0)],
   };
   const warnings: string[] = [];
-  const result = operate(ctx, scope, settings, tool, participants, warnings);
+  const result = splitSolids(
+    ctx,
+    scope,
+    operate(ctx, scope, settings, tool, participants, warnings),
+  );
   return { ...result, data, ...(warnings.length ? { warnings } : {}) };
 }
 

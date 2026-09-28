@@ -277,6 +277,7 @@ export class Recomputer {
         evaluated: result.stats.evaluated.length,
         reused: result.stats.reused,
       },
+      doc,
     });
   }
 
