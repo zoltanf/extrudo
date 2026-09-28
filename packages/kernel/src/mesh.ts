@@ -57,6 +57,18 @@ export interface MeshOptions {
   angularDeflection: number;
 }
 
+/**
+ * A body tessellated for export (STL, 3MF; P2-12, ADR-0034): welded, so
+ * the triangles of a closed solid form a closed, manifold surface. Same
+ * shape as `@extrudo/io`'s `TriangleMesh`.
+ */
+export interface ExportMesh {
+  /** xyz per node, in mm. */
+  positions: Float64Array;
+  /** Three node indices per triangle, counter-clockwise seen from outside. */
+  indices: Uint32Array;
+}
+
 /** The ArrayBuffers of a mesh, for `postMessage` transfer lists. */
 export function meshBuffers(mesh: BodyMesh): ArrayBuffer[] {
   return [

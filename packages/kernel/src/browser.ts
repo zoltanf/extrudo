@@ -33,6 +33,8 @@ function connect(worker: Worker): KernelConnection {
     preview: (request, onFeature) => api.preview(request, onFeature && Comlink.proxy(onFeature)),
     endPreview: () => api.endPreview(),
     reference: (body, kind, index, base) => api.reference(body, kind, index, base),
+    exportMeshes: (bodies, tessellation) => api.exportMeshes(bodies, tessellation),
+    exportStep: (bodies) => api.exportStep(bodies),
     debugTestPart: () => api.debugTestPart(),
     debugCrash: () => api.debugCrash(),
     stats: () => api.stats(),
