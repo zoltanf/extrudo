@@ -13,7 +13,8 @@ every push and pull request.
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
-(topological naming), P2-05 (feature dialogs) and P2-06 (extrude) are
+(topological naming), P2-05 (feature dialogs), P2-06 (extrude), P2-07
+(revolve), P2-08 (bodies) and P2-09 (sketch on face, Project) are
 done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -207,9 +208,44 @@ solid, `previewTools`) and the dialog `apps/web/src/features/extrude.ts`
 (fields named like the inputs; per-side arrows, symmetric at half
 length, taper arcs; press-pull through the spec's `propose` hook: join
 outwards, cut inwards until the user picks an operation). The browser
-lists the model's live bodies (`shell/bodies.ts`, "Body<n>" without
-stored names; P2-08 adds real body metadata). The Wall bracket template
-computes a real bracket. Next: **P2-07** (revolve). See
+lists the model's live bodies (`shell/bodies.ts`). The Wall bracket
+template computes a real bracket. ADR-0029 (P2-07) added revolve
+(`packages/core/src/revolve.ts`, `packages/kernel/src/features/revolve.ts`,
+`apps/web/src/features/revolve.ts`): profiles or flat faces about an
+axis `{kind:'axis', id:'origin:x|y|z'}` (`ORIGIN_AXES`, `originAxisRef`
+in `sketch/planes.ts`), a sketch line (`<sketch>/<line>`, placed by
+`SketchOutputData.frame` and `.lines`) or a straight edge; the axis
+must lie in the profiles' plane; 360° is a whole turn (no caps);
+symmetric and two-sided are one sweep from a rotated start; side 1
+turns right-handed about the axis. Extrude's body operations and
+sources moved to `features/operation.ts` and `sources.ts` (shared
+input pieces in core `feature-inputs.ts`); **a new solid feature calls
+`splitSolids(ctx, scope, operate(…))`**. Origin axes are pickable
+(`PickScene.axes`, ranked after profiles and faces); pre-selection
+fills every selection field that takes part of it, in field order.
+ADR-0030 (P2-08) added bodies: every live body gets stored
+`doc.bodies` metadata when a recompute first shows it
+(`followBodyNames`: `nameBodies` amended into the latest undo step via
+`DocumentState.amend`; names "Body<n>", never reused); deleting a body
+adds a Remove feature (`packages/core/src/remove.ts`, `kernelRemove`);
+`splitSolids` (`packages/kernel/src/features/bodies.ts`) makes one body
+per solid (the largest keeps the ID, others the feature's next
+`<feature>:<n>`); the browser's Bodies folder has a count badge,
+rename, eye, Appearance (colour swatches, opacity via
+`BodyMeta.opacity`) and rows that pick into the selection; wireframe
+and hidden-edge styles draw silhouettes of curved faces
+(`viewport/silhouette.ts`). ADR-0031 (P2-09) added sketches on flat
+faces (`faceSketchFrame` in core: world origin projected on the plane,
+X along world X on faces within 40° of horizontal, else Y up the face;
+the kernel reports frames through `FeatureOutput.report` →
+`ModelState.sketches`, the fingerprint's frame until then) and the
+Project tool (`P`; `SketchData.projections` records whose curves are
+ordinary entities the solver holds fixed; the kernel projects through
+facade `edgeGeometry`/`faceSilhouettes`; `ToolHost.syncProjections`
+catches the sketch up after a recompute and re-solves, amended into
+the latest undo step). **In the app a sketch's frame comes only from
+`sketchFrame(feature, plane, model.sketches)`** (`sketch/frame.ts`),
+never `planeFrame()` alone. Next: **P2-10** (primitives). See
 `docs/03-roadmap.md`.
 
 ## Commands
@@ -239,7 +275,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project (0006 is reserved) |
 
 ## Stack summary
 
@@ -612,3 +648,47 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   can't be dragged: type into the heads-up box, or press Shift+1 (home
   view) and wait for the camera to settle before dragging or picking
   faces with `projector`.
+- **Bodies e2e** (`e2e/bodies.spec.ts`) reads the Viewport region's
+  `data-body-appearance` ("Name:#rrggbb|default:opacity") and
+  `data-silhouettes`, the browser's `[data-folder-count]` and
+  `[data-body]` rows (name button `aria-pressed` when selected). A new
+  sketch opens fitted to what is drawn (a 40 × 20 plate gives about
+  ±13 mm of height at 1440 × 900): keep later geometry inside that, and
+  wait for the camera to stop (poll `data-camera-size`, target,
+  direction) before `mapping()`. Pick a sketch profile next to a body
+  in Orthographic, or the body's edge takes the click. `Bodies.tsx`
+  uses `useFrame`: pure helpers go in `viewport/bodyGeometry.ts`.
+- **Body names and projection syncs are amended into the latest undo
+  step** (`DocumentState.amend`): a test that dispatches a feature and
+  then calls `model.computed({…, doc})` sees the names join that step,
+  and `undo` removes both.
+- **Sketch on face / Project e2e** (`e2e/sketch-on-face.spec.ts`, 90 s
+  timeout) reads the Viewport region's `data-sketch-frames`
+  (`<id>:<origin>:<normal>`) and `data-sketch-projected`
+  (`<id>:curves=N:x=a..b:y=c..d`). Projected curves appear one
+  recompute after `addProjection`: poll in e2e, and call
+  `host.syncProjections(reports)` in unit tests. Code that rebuilds a
+  `SketchData` must keep `projections` (spread `...data`) or the
+  solver frees projected geometry. The kernel builds sketch faces from
+  the stored curves, not fresh projections. While Create Sketch waits,
+  the view (not R3F plane events) picks planes and faces
+  (`PlanePicker.faces`). An XY sketch under a body is hidden behind its
+  faces (depth test).
+- **Revolve e2e** (`e2e/revolve.spec.ts`): the dialog is the region
+  "Revolve dialog", the axis field the button "Axis" ("Y axis", "1
+  sketch curve"); origin axes appear in `data-model-hover` /
+  `data-model-selection` as `axis:origin:y`. In the default Top view
+  the Y axis is pickable at sketch (0, 45); the status bar says "1
+  profile, 1 axis". An origin axis behind a profile can take a click
+  meant for the profile in sketch-mode tests; use "Select other…" or
+  click off the axis. The revolve golden table updates with `pnpm
+  vitest run -u packages/kernel/src/features/revolve`.
+- **WASM heap growth with a warm cache** (P2-07): OCCT 8's booleans and
+  mesher ask for blocks of up to 16 MB, so with cached shapes alive the
+  heap top steps up 16 MB about every 350 recomputes of a revolve
+  document (not levelling off in 1200); each op alone stays flat, and
+  clearing the cache each run is flat, so it looks like fragmentation.
+  Memory tests of big booleans clear the engine each run and warm up
+  through every value first. To find which op grows, wrap
+  `Kernel.prototype` methods and log `heapTop` jumps. Unmeasured in a
+  real long session (ADR-0029 open item).
