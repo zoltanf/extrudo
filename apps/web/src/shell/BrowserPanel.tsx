@@ -1,9 +1,9 @@
 import {
+  type BodyId,
   type DocumentStore,
   type Feature,
   type FeatureId,
   isFeatureVisible,
-  updateBody,
 } from '@extrudo/core';
 import {
   Box,
@@ -11,17 +11,33 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  Palette,
   PanelLeftClose,
   PanelLeftOpen,
   Pencil,
   Settings2,
+  TextCursorInput,
+  Trash2,
   Video,
 } from 'lucide-react';
-import { type HTMLAttributes, type KeyboardEvent, type ReactNode, useState } from 'react';
+import {
+  type HTMLAttributes,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+  useState,
+} from 'react';
 import { useStore } from 'zustand';
-import { ContextMenu, IconButton, ToolIcon } from '../design-system';
+import {
+  ContextMenu,
+  IconButton,
+  MenuItem,
+  MenuSeparator,
+  Popover,
+  ToolIcon,
+} from '../design-system';
 import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
-import type { BodyEntry } from './bodies';
+import { BODY_COLORS, BODY_OPACITIES, type BodyActions, type BodyEntry } from './bodies';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
 
@@ -41,6 +57,18 @@ export interface BrowserPanelProps {
   actions: FeatureActions;
   /** The model's bodies with their names (`bodyEntries`). */
   bodies: readonly BodyEntry[];
+  /** Rename, show/hide, colour, opacity and remove bodies (P2-08). */
+  bodyActions: BodyActions;
+  /** Bodies in the model selection: their rows show selected. */
+  selectedBodies?: ReadonlySet<string>;
+  /**
+   * A click on a body's row: picks the body as the view would (the
+   * session's selection, or an open feature dialog's field); `toggle`
+   * with Shift, Ctrl or ⌘. Absent while bodies can't be picked (sketch mode).
+   */
+  onPickBody?(id: BodyId, toggle: boolean): void;
+  /** The pointer on a body's row (`undefined` when it leaves): the view highlights the body. */
+  onHoverBody?(id: BodyId | undefined): void;
 }
 
 /**
@@ -64,6 +92,10 @@ export function BrowserPanel({
   activeSketchId,
   actions,
   bodies,
+  bodyActions,
+  selectedBodies = NO_BODIES,
+  onPickBody,
+  onHoverBody,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
@@ -74,8 +106,6 @@ export function BrowserPanel({
   const originShown = ORIGIN_ITEMS.some(({ value }) => origin[value]);
   const sketchesShown = sketches.some(({ feature }) => isFeatureVisible(feature));
   const bodiesShown = bodies.some(({ meta }) => meta.visible);
-  const showBody = ({ meta, stored }: BodyEntry, visible: boolean) =>
-    stored ? { visible } : { name: meta.name, visible };
 
   // Collapsed, the panel slides to no width (its content keeps its width and is clipped, so
   // nothing reflows on the way), then turns invisible (visibility switches at the end of the
@@ -175,20 +205,16 @@ export function BrowserPanel({
             <Folder
               label="Bodies"
               icon={<Box size={14} />}
+              count={bodies.length}
               eye={
                 bodies.length > 0
                   ? {
                       visible: bodiesShown,
-                      onToggle: () => {
-                        const state = store.getState();
-                        state.beginTransaction(bodiesShown ? 'Hide bodies' : 'Show bodies');
-                        for (const body of bodies) {
-                          state.dispatch(
-                            updateBody({ id: body.id, changes: showBody(body, !bodiesShown) }),
-                          );
-                        }
-                        state.commitTransaction();
-                      },
+                      onToggle: () =>
+                        bodyActions.setVisible(
+                          bodies.map((b) => b.id),
+                          !bodiesShown,
+                        ),
                     }
                   : undefined
               }
@@ -197,21 +223,15 @@ export function BrowserPanel({
                 <Leaf muted>No bodies yet</Leaf>
               ) : (
                 bodies.map((body) => (
-                  <Leaf key={body.id}>
-                    <span className={body.meta.visible ? '' : 'text-muted'}>{body.meta.name}</span>
-                    <EyeToggle
-                      name={body.meta.name}
-                      visible={body.meta.visible}
-                      onToggle={() =>
-                        store.getState().dispatch(
-                          updateBody({
-                            id: body.id,
-                            changes: showBody(body, !body.meta.visible),
-                          }),
-                        )
-                      }
-                    />
-                  </Leaf>
+                  <BodyLeaf
+                    key={body.id}
+                    body={body}
+                    selected={selectedBodies.has(body.id)}
+                    selection={selectedBodies}
+                    actions={bodyActions}
+                    onPick={onPickBody}
+                    onHover={onHoverBody}
+                  />
                 ))
               )}
             </Folder>
@@ -327,6 +347,175 @@ function SketchLeaf({
   );
 }
 
+const NO_BODIES: ReadonlySet<string> = new Set();
+
+/**
+ * A body in the browser (P2-08, ADR-0030): a click picks it like the view
+ * does, the pointer on it highlights it, F2 or Rename renames it, the eye
+ * hides it, Appearance sets its colour and opacity, Delete removes it (the
+ * selected bodies, when it is one of them) through a Remove feature.
+ */
+function BodyLeaf({
+  body,
+  selected,
+  selection,
+  actions,
+  onPick,
+  onHover,
+}: {
+  body: BodyEntry;
+  selected: boolean;
+  selection: ReadonlySet<string>;
+  actions: BodyActions;
+  onPick?(id: BodyId, toggle: boolean): void;
+  onHover?(id: BodyId | undefined): void;
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const [appearance, setAppearance] = useState(false);
+  const { id, meta } = body;
+  const remove = () =>
+    actions.remove(selected && selection.size > 1 ? ([...selection] as BodyId[]) : [id]);
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'F2') setRenaming(true);
+    else if (event.key === 'Delete' || event.key === 'Backspace') remove();
+    else return;
+    // Handled here: not a shortcut for the view as well.
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const onClick = (event: MouseEvent) =>
+    onPick?.(id, event.shiftKey || event.ctrlKey || event.metaKey);
+  const row = (
+    <Leaf
+      data-body={id}
+      aria-selected={selected}
+      className={selected ? 'bg-accent-soft' : ''}
+      onPointerEnter={() => onHover?.(id)}
+      onPointerLeave={() => onHover?.(undefined)}
+    >
+      <Popover
+        anchorOnly
+        open={appearance}
+        onOpenChange={setAppearance}
+        side="right"
+        label={`${meta.name} appearance`}
+        trigger={
+          // The popover sits on the colour dot; a plain element takes its anchor ref.
+          <span
+            aria-hidden
+            className="size-2.5 shrink-0 rounded-full border border-line"
+            style={{
+              background: meta.color ?? 'var(--x-body-default)',
+              opacity: Math.max(meta.opacity ?? 1, 0.35),
+            }}
+          />
+        }
+      >
+        <AppearancePanel body={body} actions={actions} />
+      </Popover>
+      {renaming ? (
+        <RenameField
+          name={meta.name}
+          label={`Rename ${meta.name}`}
+          className="h-6 min-w-0 flex-1 px-1"
+          onCommit={(name) => actions.rename(id, name)}
+          onDone={() => setRenaming(false)}
+        />
+      ) : (
+        <button
+          type="button"
+          aria-pressed={selected}
+          onClick={onClick}
+          onKeyDown={onKeyDown}
+          className={`min-w-0 truncate rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent ${meta.visible ? '' : 'text-muted'}`}
+        >
+          {meta.name}
+        </button>
+      )}
+      {!renaming && (
+        <EyeToggle
+          name={meta.name}
+          visible={meta.visible}
+          onToggle={() => actions.setVisible([id], !meta.visible)}
+        />
+      )}
+    </Leaf>
+  );
+  return (
+    <ContextMenu label={`${meta.name} menu`} disabled={renaming} trigger={row}>
+      <MenuItem
+        icon={<TextCursorInput size={14} />}
+        shortcut="F2"
+        onSelect={() => setRenaming(true)}
+      >
+        Rename
+      </MenuItem>
+      <MenuItem
+        icon={meta.visible ? <EyeOff size={14} /> : <Eye size={14} />}
+        onSelect={() => actions.setVisible([id], !meta.visible)}
+      >
+        {meta.visible ? 'Hide' : 'Show'}
+      </MenuItem>
+      <MenuItem icon={<Palette size={14} />} onSelect={() => setAppearance(true)}>
+        Appearance…
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={<Trash2 size={14} />} shortcut="Del" onSelect={remove}>
+        Delete
+      </MenuItem>
+    </ContextMenu>
+  );
+}
+
+/** Colour swatches and opacity presets (ADR-0030); each choice is one undo step. */
+function AppearancePanel({ body, actions }: { body: BodyEntry; actions: BodyActions }) {
+  const { id, meta } = body;
+  const opacity = meta.opacity ?? 1;
+  const group = `appearance-${id}`;
+  return (
+    <div className="flex w-56 flex-col gap-3">
+      <fieldset className="grid grid-cols-5 gap-1.5">
+        <legend className="mb-1.5 text-xs font-semibold tracking-[0.08em] text-muted uppercase">
+          Colour
+        </legend>
+        {BODY_COLORS.map(({ value, label }) => (
+          <label key={label} title={label} className="relative grid h-8 place-items-center">
+            <input
+              type="radio"
+              name={`${group}-colour`}
+              aria-label={label}
+              checked={meta.color === value}
+              onChange={() => actions.setColor(id, value)}
+              className="peer absolute inset-0 cursor-pointer appearance-none rounded-input border border-line checked:border-accent checked:outline-2 checked:outline-accent focus-visible:outline-2 focus-visible:outline-accent"
+            />
+            <span
+              className="pointer-events-none size-5 rounded-full border border-line"
+              style={{ background: value ?? 'var(--x-body-default)' }}
+            />
+          </label>
+        ))}
+      </fieldset>
+      <fieldset className="grid grid-cols-4 gap-1">
+        <legend className="mb-1.5 text-xs font-semibold tracking-[0.08em] text-muted uppercase">
+          Opacity
+        </legend>
+        {BODY_OPACITIES.map(({ value, label }) => (
+          <label key={label} className="relative grid h-7 place-items-center text-xs">
+            <input
+              type="radio"
+              name={`${group}-opacity`}
+              checked={opacity === value}
+              onChange={() => actions.setOpacity(id, value)}
+              className="peer absolute inset-0 cursor-pointer appearance-none rounded-input border border-line checked:border-accent checked:bg-accent-soft focus-visible:outline-2 focus-visible:outline-accent"
+            />
+            <span className="pointer-events-none relative">{label}</span>
+          </label>
+        ))}
+      </fieldset>
+    </div>
+  );
+}
+
 function EyeToggle({
   name,
   visible,
@@ -352,11 +541,14 @@ function Folder({
   icon,
   defaultOpen = true,
   eye,
+  count,
   children,
 }: {
   label: string;
   icon: ReactNode;
   defaultOpen?: boolean;
+  /** A count badge after the label (the Bodies folder, P2-08). */
+  count?: number;
   /** A folder eye: shows everything in it when all is hidden, else hides it all. */
   eye?: { visible: boolean; onToggle(): void };
   children: ReactNode;
@@ -376,6 +568,14 @@ function Folder({
           </span>
           <span className="grid w-4 place-items-center text-muted">{icon}</span>
           {label}
+          {count !== undefined && count > 0 && (
+            <span
+              data-folder-count={count}
+              className="ml-1 rounded-full bg-accent-soft px-1.5 font-mono text-xs text-muted"
+            >
+              {count}
+            </span>
+          )}
         </button>
         {eye && (
           <EyeToggle
@@ -393,18 +593,19 @@ function Folder({
 function Leaf({
   muted,
   active,
+  className = '',
   children,
   ...rest
 }: {
   muted?: boolean;
   active?: boolean;
   children: ReactNode;
-} & Omit<HTMLAttributes<HTMLLIElement>, 'className'>) {
+} & HTMLAttributes<HTMLLIElement> & { [data: `data-${string}`]: string | undefined }) {
   return (
     <li
       aria-current={active || undefined}
       {...rest}
-      className={`flex h-7 items-center gap-1.5 rounded-input pr-1 pl-[46px] ${muted ? 'text-muted' : ''} ${active ? 'bg-accent-soft' : ''}`}
+      className={`flex h-7 items-center gap-1.5 rounded-input pr-1 pl-[46px] ${muted ? 'text-muted' : ''} ${active ? 'bg-accent-soft' : ''} ${className}`}
     >
       {children}
     </li>

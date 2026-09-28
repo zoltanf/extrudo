@@ -1,4 +1,5 @@
 import {
+  type BodyId,
   type Command,
   CommandError,
   type DocumentStore,
@@ -53,7 +54,7 @@ import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
 import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
-import { bodyEntries, bodyMetaOf } from './bodies';
+import { bodyEntries, bodyMetaOf, createBodyActions, followBodyNames } from './bodies';
 import { CommandSearch, type SearchOpen } from './CommandSearch';
 import { type AppCommand, buildCommands, commandShortcuts } from './commands';
 import { createFeatureActions } from './featureActions';
@@ -204,9 +205,21 @@ export function AppShell({
     kernel,
     notify,
   });
-  // The model's bodies with their names (doc.bodies, else "Body<n>").
+  // The model's bodies with their names (ADR-0030): new bodies get stored names as soon as a
+  // recompute shows them, amended into the undo step that made them.
+  useEffect(() => followBodyNames(store, model), [store, model]);
   const bodyList = useMemo(() => bodyEntries(doc, bodies), [doc, bodies]);
   const bodyMeta = useMemo(() => bodyMetaOf(bodyList), [bodyList]);
+  const bodyListRef = useRef(bodyList);
+  bodyListRef.current = bodyList;
+  const bodyActions = useMemo(
+    () => createBodyActions({ store, session }, () => bodyListRef.current, notify),
+    [store, session, notify],
+  );
+  const selectedBodyIds = useMemo(
+    () => selection.filter((item) => item.kind === 'body').map((item) => item.id as BodyId),
+    [selection],
+  );
   // Editing a feature shows and picks the bodies before it (the preview's base).
   const shownBodies = dialogBodies(dialogOpen, bodies);
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
@@ -309,6 +322,10 @@ export function AppShell({
           store.getState().redo();
         },
         ...(mode === 'sketch' && !drawing && { remove }),
+        // Delete with bodies selected in the model removes them (a Remove feature, P2-08).
+        ...(mode === 'model' &&
+          !dialogOpen &&
+          selectedBodyIds.length > 0 && { remove: () => bodyActions.remove(selectedBodyIds) }),
         ...(mode === 'sketch' &&
           host && {
             construction: { on: construction ?? false, toggle: () => host.toggleConstruction() },
@@ -332,6 +349,9 @@ export function AppShell({
       dialogCommands,
       drawing,
       remove,
+      dialogOpen,
+      selectedBodyIds,
+      bodyActions,
       construction,
       stores,
       viewport,
@@ -533,6 +553,12 @@ export function AppShell({
     mode === 'model' && !picking && !dialogOpen,
   );
   const modelSelect = dialogOpen && mode === 'model' ? dialog?.select : sessionSelect;
+  // Body rows show the bodies in the selection (the dialog's picks while one is open).
+  const shownSelection = dialogItems ?? selection;
+  const selectedBodies = useMemo(
+    () => new Set(shownSelection.filter((i) => i.kind === 'body').map((i) => i.id)),
+    [shownSelection],
+  );
 
   // A drawing tool takes the pointer; with none running, the host selects and drags geometry
   // (P1-09). Until the host has loaded, a click in the view clears the selection.
@@ -619,6 +645,14 @@ export function AppShell({
           activeSketchId={activeSketchId}
           actions={featureActions}
           bodies={bodyList}
+          bodyActions={bodyActions}
+          selectedBodies={selectedBodies}
+          onPickBody={
+            modelSelect
+              ? (id, toggle) => modelSelect.onClick({ kind: 'body', id }, toggle)
+              : undefined
+          }
+          onHoverBody={(id) => modelSelect?.onHover(id ? { kind: 'body', id } : undefined)}
           width={browser.size}
           collapsed={browser.collapsed}
           animate={browser.animate}

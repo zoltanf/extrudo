@@ -82,7 +82,9 @@ brief, voice) is in **`05-brand.md`**. In short:
   command ends a nav tool. Each nav tool has its own cursor (an orbit
   arrow, a magnifier, a hand), also during a navigation drag. Then fit
   (F6), ortho/perspective, visual style, grid, mouse controls and named
-  views.
+  views. The wireframe and hidden-edge styles also draw the silhouettes
+  of curved faces (the outline of a hole or a cylinder as seen now), which
+  follow the camera; seams are never drawn (P2-08).
 - A running tool is highlighted on the toolbar: its tile, or, for a tool
   from a group's menu, the group's label.
 - **Command dialog (right, floating):** appears for the active feature and is
@@ -217,10 +219,28 @@ movement, as Onshape's context menu does.
   distance, or Flip) Cut, and the preview turns from green to red.
   Profiles propose New body. Once the user picks an operation it stays;
   editing a feature keeps a stored operation the rule wouldn't give.
-- **Bodies in the browser (P2-06):** the Bodies folder lists the
-  model's bodies in timeline order; a body with no name of its own is
-  "Body1", "Body2"… until its eye is used (which stores the name) or
-  P2-08's rename.
+- **Bodies in the browser (P2-06, P2-08, ADR-0030):** the Bodies folder
+  lists the model's bodies in timeline order, with a count badge. A new
+  body is named "Body1", "Body2"… (the lowest free number) as soon as it
+  appears, and keeps that name: removing another body renumbers nothing.
+  Each row has a colour dot, the name and an eye. A click selects the
+  body in the model (Shift or Ctrl toggles), or puts it in an open
+  dialog's field (an extrude's Bodies); the pointer on a row highlights
+  the body in the view. F2 renames, Delete removes (all selected bodies
+  when the row is one of them). The right-click menu: Rename, Hide/Show,
+  Appearance… (a popover on the dot: colour swatches, Default first, and
+  opacity Opaque, 75 %, 50 %, 25 %; each choice is one undo step) and
+  Delete. The folder's eye hides or shows all bodies in one step.
+- **Removing bodies:** Delete (the browser, the body menu, or Delete in
+  the view with bodies selected) adds a **Remove** feature at the marker
+  (a Modify chip, "Remove1"): the body is still made by its features and
+  taken out after them, so undo, suppressing or deleting the Remove, or
+  rolling the marker back before it brings the body back. A feature whose
+  bodies a later Remove (or an extrude's Bodies) names can't be deleted
+  until that one is changed.
+- **One body per solid:** a cut or intersect that leaves a body in
+  separate pieces makes one body per piece; the largest keeps the body's
+  name, colour and references, the others are new bodies.
 
 ## 4. Sketch mode
 

@@ -5,6 +5,8 @@ import {
   insertFeature,
   isFeatureVisible,
   moveTimelineMarker,
+  nameBodies,
+  newBodyNames,
   removeFeature,
   removeParameter,
   renameDocument,
@@ -18,6 +20,7 @@ import {
 } from './document-commands';
 import { UndoHistory } from './history';
 import type { DimensionId, SketchEntityId } from './ids';
+import { removeBodiesFeatureOf } from './remove';
 import { DocumentSchema, type ExtrudoDocument, type Feature } from './schema';
 import { emptySketchData } from './sketch/feature';
 import { bid, feature, fid, parameter, pid, sampleDocument } from './testing';
@@ -207,6 +210,57 @@ describe('document commands', () => {
     expect(doc.bodies).toEqual({ b1: { name: 'Body1', visible: false, color: '#ff8800' } });
     expect(() => apply(doc, updateBody({ id: bid('b2'), changes: {} }))).toThrow(CommandError);
   });
+
+  it('body metadata: opacity, back to the default colour, names trimmed and required', () => {
+    let doc = apply(
+      sampleDocument(),
+      updateBody({ id: bid('b1'), changes: { name: ' Base ', color: '#112233', opacity: 0.5 } }),
+    );
+    expect(doc.bodies).toEqual({
+      b1: { name: 'Base', visible: true, color: '#112233', opacity: 0.5 },
+    });
+    doc = apply(doc, updateBody({ id: bid('b1'), changes: {}, clear: ['color', 'opacity'] }));
+    expect(doc.bodies).toEqual({ b1: { name: 'Base', visible: true } });
+    expect(DocumentSchema.safeParse(doc).success).toBe(true);
+    expect(() => apply(doc, updateBody({ id: bid('b1'), changes: { name: '  ' } }))).toThrow(
+      "The name can't be empty.",
+    );
+  });
+
+  it('names new bodies, keeping metadata that is there', () => {
+    let doc = apply(sampleDocument(), updateBody({ id: bid('b1'), changes: { name: 'Body2' } }));
+    const names = newBodyNames(doc, [bid('b2'), bid('b3'), bid('b4')]);
+    expect(names).toEqual({ b2: 'Body1', b3: 'Body3', b4: 'Body4' });
+    doc = apply(
+      doc,
+      nameBodies({
+        bodies: {
+          [bid('b1')]: { name: 'Other', visible: true },
+          [bid('b2')]: { name: 'Body1', visible: true },
+        },
+      }),
+    );
+    expect(doc.bodies).toEqual({
+      b1: { name: 'Body2', visible: true },
+      b2: { name: 'Body1', visible: true },
+    });
+  });
+
+  it('refuses to delete a feature whose bodies a later feature refers to', () => {
+    const doc = apply(
+      sampleDocument(),
+      insertFeature({ feature: removeBodiesFeatureOf(fid('r1'), 'Remove1', [bid('f2:0')]) }),
+    );
+    expect(() => apply(doc, removeFeature({ id: fid('f2') }))).toThrow(
+      "Can't delete Extrude1: Remove1 uses it.",
+    );
+    // The Remove itself goes, and then the extrude can.
+    const without = apply(doc, removeFeature({ id: fid('r1') }));
+    expect(apply(without, removeFeature({ id: fid('f2') })).features.map((f) => f.id)).toEqual([
+      'f1',
+      'f3',
+    ]);
+  });
 });
 
 /** Every command in one list, with a valid payload for `sampleDocument()`. */
@@ -224,6 +278,7 @@ const EACH_COMMAND: Command<unknown>[] = [
   removeFeature({ id: fid('f2') }),
   moveTimelineMarker({ index: 1 }),
   updateBody({ id: bid('b1'), changes: { name: 'Body1' } }),
+  nameBodies({ bodies: { [bid('b1')]: { name: 'Body1', visible: true } } }),
 ];
 
 describe('undo/redo round trips', () => {

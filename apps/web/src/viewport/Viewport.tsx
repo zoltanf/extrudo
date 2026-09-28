@@ -166,6 +166,23 @@ export function bodiesSummary(
   return drawn.length > 0 ? drawn.join(' ') : undefined;
 }
 
+/**
+ * How the drawn bodies look, for tests (`data-body-appearance`): name,
+ * colour (`default` for the theme's) and opacity, "Body1:#5b7cff:0.5
+ * Body2:default:1"; hidden bodies are left out.
+ */
+export function bodyAppearanceSummary(
+  bodies: Readonly<Record<BodyId, BodyMesh>>,
+  meta: Readonly<Record<BodyId, BodyMeta>>,
+): string | undefined {
+  const drawn = (Object.keys(bodies) as BodyId[])
+    .filter((id) => meta[id]?.visible ?? true)
+    .map(
+      (id) => `${meta[id]?.name ?? id}:${meta[id]?.color ?? 'default'}:${meta[id]?.opacity ?? 1}`,
+    );
+  return drawn.length > 0 ? drawn.join(' ') : undefined;
+}
+
 /** A middle double-click within this many ms fits the view (Fusion). */
 const DOUBLE_CLICK_MS = 400;
 
@@ -248,6 +265,21 @@ export function Viewport({
   const [otherMenu, setOtherMenu] = useState<OtherMenu>();
   const modelScene = useMemo(() => ({ bodies, meta, sketches }), [bodies, meta, sketches]);
   const bodiesKey = useMemo(() => bodiesSummary(bodies, meta), [bodies, meta]);
+  const appearanceKey = useMemo(() => bodyAppearanceSummary(bodies, meta), [bodies, meta]);
+  // Silhouette segments drawn per body (wireframe and hidden edges), summed into
+  // `data-silhouettes` for tests; written straight to the element, it changes with the camera.
+  const silhouettes = useMemo(() => new Map<BodyId, number>(), []);
+  const onSilhouettes = useMemo(
+    () => (body: BodyId, segments: number) => {
+      if (segments > 0) silhouettes.set(body, segments);
+      else silhouettes.delete(body);
+      const el = section.current;
+      if (!el) return;
+      if (silhouettes.size === 0) delete el.dataset.silhouettes;
+      else el.dataset.silhouettes = String([...silhouettes.values()].reduce((a, b) => a + b, 0));
+    },
+    [silhouettes],
+  );
   useModelInput(surface, viewport, modelSelect, modelScene, setBox, setOtherMenu);
   // The menu belongs to model mode: it closes when that ends (a sketch opens, a tool starts).
   useEffect(() => {
@@ -279,6 +311,7 @@ export function Viewport({
       data-model-selection={modelSelect ? selectionKey(selection) : undefined}
       data-model-hover={modelSelect ? selectionKey([hover]) : undefined}
       data-bodies={bodiesKey}
+      data-body-appearance={appearanceKey}
       data-preview={previewSummary(preview)}
       data-preview-dimmed={preview?.dimmed || undefined}
       className="relative isolate min-w-0 flex-1 overflow-hidden"
@@ -308,6 +341,7 @@ export function Viewport({
             hover={hover}
             selection={selection}
             preview={preview}
+            onSilhouettes={onSilhouettes}
             onFirstFrame={() => setReady(true)}
           />
           <RenderMeterProbe viewport={viewport} />
@@ -411,6 +445,7 @@ function Scene({
   hover,
   selection,
   preview,
+  onSilhouettes,
   onFirstFrame,
 }: {
   viewport: ViewportStore;
@@ -423,6 +458,7 @@ function Scene({
   hover: SelectionItem | undefined;
   selection: readonly SelectionItem[];
   preview: ViewPreview | undefined;
+  onSilhouettes(body: BodyId, segments: number): void;
   onFirstFrame(): void;
 }) {
   const { projection, visualStyle, grid, origin, sketchPoints } = useStore(
@@ -506,6 +542,7 @@ function Scene({
         hover={hover}
         selection={selection}
         onBounds={setBodyBounds}
+        onSilhouettes={onSilhouettes}
       />
       <PreviewShapes preview={preview} colors={colors} />
       <Sketches
