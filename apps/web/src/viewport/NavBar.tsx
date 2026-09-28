@@ -80,8 +80,12 @@ export function NavBar({ store, commandRunning = false, onStopCommand }: NavBarP
   return (
     <nav
       aria-label="View navigation"
-      className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-full border border-line px-2 py-1 backdrop-blur-[6px]"
-      style={{ background: 'color-mix(in srgb, var(--x-raised) 85%, transparent)' }}
+      className="absolute bottom-3 flex -translate-x-1/2 items-center transition-[left] duration-(--x-normal) ease-ui gap-0.5 rounded-full border border-line px-2 py-1 backdrop-blur-[6px]"
+      style={{
+        // Centred in the part of the view the browser doesn't cover.
+        left: 'calc(50% + var(--x-browser-inset, 0px) / 2)',
+        background: 'color-mix(in srgb, var(--x-raised) 85%, transparent)',
+      }}
     >
       {/* Select is the pointer's default mode: active whenever no tool or command runs. */}
       <IconButton

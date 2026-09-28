@@ -10,7 +10,7 @@ import {
 import { type BodyMesh, spawnDebugKernel } from '@extrudo/kernel';
 import { useEffect, useMemo } from 'react';
 import { createStore } from 'zustand/vanilla';
-import { Toasts, useToasts } from '../design-system';
+import { useToasts } from '../design-system';
 import { featureDialogs } from '../features/registry';
 import type { Platform } from '../platform';
 import type { Autosaver, AutosaveState } from '../project/autosave';
@@ -64,21 +64,19 @@ export function DialogDebug({ platform }: { platform: Platform }) {
   );
 
   return (
-    <>
-      <AppShell
-        store={store}
-        session={session}
-        model={model}
-        viewport={viewport}
-        autosave={autosave}
-        file={file}
-        platform={platform}
-        notify={push}
-        dialogs={dialogs}
-        kernel={recomputer}
-      />
-      <Toasts toasts={toasts} onDismiss={dismiss} />
-    </>
+    <AppShell
+      store={store}
+      session={session}
+      model={model}
+      viewport={viewport}
+      autosave={autosave}
+      file={file}
+      platform={platform}
+      notify={push}
+      toasts={{ toasts, onDismiss: dismiss }}
+      dialogs={dialogs}
+      kernel={recomputer}
+    />
   );
 }
 

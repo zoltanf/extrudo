@@ -42,6 +42,7 @@ import {
   type Projection,
   perspectiveDistance,
   rayPlane,
+  shiftOf,
   type View,
   viewRay,
 } from '../viewport/camera';
@@ -532,6 +533,7 @@ function projector(camera: PickCamera) {
   const eye = cameraPosition(view, projection);
   const focal = perspectiveDistance(view.size);
   const [tx, ty, tz] = view.target;
+  const shift = shiftOf(view);
   return (x: number, y: number, z: number): [number, number] | undefined => {
     let nx: number;
     let ny: number;
@@ -551,7 +553,7 @@ function projector(camera: PickCamera) {
       nx = (rx * right.x + ry * right.y + rz * right.z) / (scale * aspect);
       ny = (rx * up.x + ry * up.y + rz * up.z) / scale;
     }
-    return [((nx + 1) / 2) * width, ((1 - ny) / 2) * height];
+    return [((nx + shift + 1) / 2) * width, ((1 - ny) / 2) * height];
   };
 }
 

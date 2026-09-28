@@ -41,11 +41,13 @@ test('Create Sketch on a plane picked in the view, then Finish Sketch', async ({
     'true',
   );
 
-  // In the home view the origin sits in the middle of the view. A point to
-  // its right, 13 % of the view's height away, lies on the XY plane only.
+  // In the home view the origin sits in the middle of the part of the view the
+  // browser leaves open (`data-camera-shift`, NDC). A point to its right, 13 % of
+  // the view's height away, lies on the XY plane only.
   const box = await viewport.boundingBox();
   if (!box) throw new Error('no viewport');
-  const x = box.x + box.width / 2 + box.height * 0.13;
+  const shift = Number(await viewport.getAttribute('data-camera-shift'));
+  const x = box.x + ((1 + shift) * box.width) / 2 + box.height * 0.13;
   const y = box.y + box.height / 2;
   const surface = viewport.locator('div.touch-none').first();
   await page.mouse.move(x, y);

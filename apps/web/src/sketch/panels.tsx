@@ -253,6 +253,9 @@ function DofCounter({ host }: { host: ToolHost | undefined }) {
   );
 }
 
+/** A panel at the view's bottom-left, clear of the browser that floats over the view. */
+const BESIDE_BROWSER = { left: 'calc(var(--x-browser-inset, 0px) + 12px)' };
+
 const TYPE_NAMES: Record<SketchEntity['type'], [string, string]> = {
   point: ['Point', 'points'],
   line: ['Line', 'lines'],
@@ -384,7 +387,10 @@ export function SelectionPanel({ store, session, host, onDelete, notify }: Selec
   }
 
   return (
-    <div className="absolute bottom-3 left-3 z-10 w-60">
+    <div
+      className="absolute bottom-3 z-10 w-60 transition-[left] duration-(--x-normal) ease-ui"
+      style={BESIDE_BROWSER}
+    >
       <FloatingPanel label="Selection">
         <h2 className="flex items-baseline justify-between gap-2 text-base font-semibold">
           <span data-selection-title>{title}</span>
@@ -443,7 +449,10 @@ function ProfileReadout({
     </div>
   );
   return (
-    <div className="absolute bottom-3 left-3 z-10 w-60">
+    <div
+      className="absolute bottom-3 z-10 w-60 transition-[left] duration-(--x-normal) ease-ui"
+      style={BESIDE_BROWSER}
+    >
       <FloatingPanel label="Selection">
         <h2 className="text-base font-semibold">
           <span data-selection-title>

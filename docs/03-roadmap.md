@@ -426,6 +426,11 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
 - [ ] **P3-14 Benchmarks B4–B7 E2E.**
 - [ ] **P3-15 Public release prep:** license, README, contribution guide, code
   of conduct, hosted demo, issue templates.
+- [ ] **P3-16 Notification history.** A button beside the toasts (the view's
+  bottom-right corner) opens the session's earlier notifications, errors
+  first-class, with their actions where they still apply (e.g. Show a
+  hidden sketch). Asked for by the owner on 2026-09-28, when toasts moved
+  into the view.
 
 **Phase 3 exit (v0.3 MVP):** a hobbyist can model typical functional prints
 end to end, faster than in Fusion 360.

@@ -18,6 +18,7 @@ import {
   sameView,
   type Vec3,
   type View,
+  withShift,
 } from './camera';
 import type { NavAction, NavPreset } from './navigation';
 import type { RenderStats } from './renderMeter';
@@ -105,6 +106,13 @@ export interface ViewportState extends ViewportSettings {
   transition: Transition | undefined;
   /** Width / height of the viewport, for fitting. */
   aspect: number;
+  /** The viewport's width in CSS px (0 until measured). */
+  width: number;
+  /**
+   * How much of the view's left edge a floating panel covers, in CSS px (the
+   * browser, ADR-0007 amendment): fitting frames the rest of the view.
+   */
+  cover: number;
   /** Visible content, or `undefined` for an empty scene. */
   bounds: Bounds | undefined;
   /** The nav-bar tool that turns a left-drag into orbit, pan or zoom. */
@@ -135,7 +143,10 @@ export interface ViewportState extends ViewportSettings {
   fit(): void;
   /** The home view (front, right, top), fitted. `instant` skips the animation. */
   home(instant?: boolean): void;
-  setAspect(aspect: number): void;
+  /** The viewport's shape; `width` (CSS px) lets fitting leave out what `cover` covers. */
+  setAspect(aspect: number, width?: number): void;
+  /** How many CSS px at the view's left edge a floating panel covers. */
+  setCover(cover: number): void;
   setBounds(bounds: Bounds | undefined): void;
   setTool(tool: NavAction | undefined): void;
   setProjection(projection: Projection): void;
@@ -186,18 +197,25 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
 
   const store = createStore<ViewportState>()((set, get) => {
     const fitted = (view: View) => {
-      const { bounds, aspect } = get();
-      // What's shown fills the view; an empty document shows the area around the origin.
-      if (bounds?.box)
-        return fitBox(view, bounds.box.min, bounds.box.max, aspect, get().projection);
+      const { bounds, aspect, width, cover } = get();
+      // The part of the view a floating panel doesn't cover (at least a fifth of it).
+      const covered = width > 0 ? Math.min(Math.max(cover / width, 0), 0.8) : 0;
+      const open = aspect * (1 - covered);
+      // What's shown fills the open part; an empty document shows the area around the origin.
       const b = bounds ?? EMPTY_BOUNDS;
-      return fitSphere(view, b.center, b.radius, aspect);
+      const framed = bounds?.box
+        ? fitBox(view, bounds.box.min, bounds.box.max, open, get().projection)
+        : fitSphere(view, b.center, b.radius, open);
+      // …centred in it: the open part's middle is `covered` right of the view's, in NDC.
+      return withShift(framed, covered);
     };
     return {
       ...loadSettings(preferences),
       view: homeView(),
       transition: undefined,
       aspect: 1,
+      width: 0,
+      cover: 0,
       bounds: undefined,
       tool: undefined,
       snapshot: undefined,
@@ -233,8 +251,12 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         if (instant) get().setView(fitted(homeView()));
         else get().animateTo(fitted(homeView()));
       },
-      setAspect(aspect) {
+      setAspect(aspect, width) {
         if (aspect > 0 && Number.isFinite(aspect) && aspect !== get().aspect) set({ aspect });
+        if (width !== undefined && width > 0 && width !== get().width) set({ width });
+      },
+      setCover(cover) {
+        if (Number.isFinite(cover) && cover !== get().cover) set({ cover: Math.max(0, cover) });
       },
       setBounds(bounds) {
         set({ bounds });

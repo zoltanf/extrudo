@@ -78,9 +78,19 @@ brief, voice) is in **`05-brand.md`**. In short:
   dropdown with the full list. Users can pin tools to the toolbar.
 - **Browser (left):** collapsible tree with an eye toggle per item and
   folder. Right-click menus. Items highlight in the viewport on hover.
-  Rename with F2. Hiding it slides it away in 200 ms (`--x-normal`, none
-  under reduced motion); a small tab with the browser icon at the view's
-  top-left edge brings it back. No empty rail is left behind.
+  Rename with F2. It floats over the view's left edge in frosted glass,
+  like the nav bar: the view runs on behind it, so hiding, showing or
+  resizing it never moves the model. Hiding it slides it out to the left
+  in 200 ms (`--x-normal`, none under reduced motion); a small tab with
+  the browser icon at the view's top-left edge brings it back. Fit (F6,
+  Home, the ViewCube, opening a sketch) frames the model in the part of
+  the view the browser leaves open and centres it there; orbiting still
+  turns about the model. Overlays on the view's left and centre (the
+  selection panel, the nav bar, the tool prompt) keep clear of it.
+- **Toasts** appear in the view's bottom-right corner, newest at the
+  bottom; while a sketch is open they sit at the foot of the sketch
+  palette's column, so they never cover it. Errors stay until dismissed.
+  A button to show earlier notifications is planned (P3-16).
 - **ViewCube (top-right):** faces, edges and corners are clickable. Home icon.
   Rotate-90° arrows appear when face-on. Drag to orbit.
 - **Nav bar (bottom center, floating pill):** the pointer modes first:
@@ -215,7 +225,7 @@ a right-click without movement, as Onshape's context menu does.
 - OK commits one undoable step and adds (or updates) the timeline chip.
   A new feature that used sketch profiles hides those sketches in the same
   step (as Fusion does), so a used profile doesn't float in front of the
-  faces made from it and take their clicks. A toast (bottom left, 12 s)
+  faces made from it and take their clicks. A toast (bottom right, 12 s)
   says so ("Sketch1 is hidden: Extrude1 used its profile.") with a Show
   button; the eye in the browser shows it again too. Editing a feature
   doesn't change visibility.

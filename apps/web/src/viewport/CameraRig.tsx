@@ -1,14 +1,8 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo } from 'react';
-import { OrthographicCamera, PerspectiveCamera, Quaternion } from 'three';
-import {
-  cameraPosition,
-  FOV,
-  orthographicDistance,
-  type Projection,
-  perspectiveDistance,
-  type View,
-} from './camera';
+import { OrthographicCamera, PerspectiveCamera } from 'three';
+import { applyView } from './applyView';
+import { FOV, type Projection } from './camera';
 import type { ViewportStore } from './store';
 
 /**
@@ -47,33 +41,4 @@ export function CameraRig({ store, projection }: { store: ViewportStore; project
   }, -1);
 
   return null;
-}
-
-const q = new Quaternion();
-
-/** Sets a camera's pose and frustum from a view. */
-export function applyView(
-  camera: PerspectiveCamera | OrthographicCamera,
-  view: View,
-  projection: Projection,
-  aspect: number,
-): void {
-  camera.position.copy(cameraPosition(view, projection));
-  camera.quaternion.copy(q.set(...view.orientation));
-  if (camera instanceof PerspectiveCamera) {
-    const distance = perspectiveDistance(view.size);
-    camera.aspect = aspect;
-    camera.near = distance / 100;
-    camera.far = distance * 100;
-  } else {
-    const half = view.size / 2;
-    camera.left = -half * aspect;
-    camera.right = half * aspect;
-    camera.top = half;
-    camera.bottom = -half;
-    camera.near = 0;
-    camera.far = orthographicDistance(view) * 2;
-  }
-  camera.updateProjectionMatrix();
-  camera.updateMatrixWorld();
 }

@@ -253,7 +253,7 @@ export function Viewport({
     const measure = () => {
       const { width, height } = el.getBoundingClientRect();
       if (width <= 0 || height <= 0) return;
-      viewport.getState().setAspect(width / height);
+      viewport.getState().setAspect(width / height, width);
       if (first) viewport.getState().home(true);
       first = false;
     };
@@ -273,6 +273,8 @@ export function Viewport({
       el.dataset.cameraUp = fmt([up.x, up.y, up.z]);
       el.dataset.cameraTarget = fmt([...view.target]);
       el.dataset.cameraSize = fmt([view.size]);
+      // Where the target shows across the view (NDC), when a floating panel shifted the fit.
+      el.dataset.cameraShift = fmt([view.shift ?? 0]);
     };
     apply(viewport.getState().view);
     return viewport.subscribe((s, prev) => {

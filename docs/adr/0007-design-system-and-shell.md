@@ -130,3 +130,29 @@ that resize and collapse.
   ADR-0008's amendment). A tool started from a group's menu has no tile,
   so the group's label is highlighted (`data-active`) while it runs.
 
+## Amendment, 2026-09-28 (a floating browser, toasts in the view)
+
+- **The browser floats over the view** (owner's request). The view fills the
+  work area; the browser sits over its left edge in the nav bar's frosted
+  glass (`--x-panel` at 85 % with a 6 px backdrop blur). Hiding it slides it
+  out with a transform (`translate`, then invisible and inert) instead of
+  animating its width, so showing, hiding or resizing it no longer resizes
+  the canvas, and the model no longer jumps sideways. `main` carries
+  `--x-browser-inset` (the browser's width, or 0), which overlays anchored
+  to the view's left or centre use: the sketch selection panel, the nav bar
+  and the tool prompt (the latter two centre in the open part).
+- **Fitting leaves the covered strip out** (ADR-0008 amendment of the same
+  day): the shell tells the viewport store how many pixels the browser
+  covers (`setCover`), and fit frames the rest.
+- **Toasts moved into the view's bottom-right corner** (owner's request),
+  newest at the bottom, from the window's bottom-left. `AppShell` takes the
+  page's toasts (`toasts: { toasts, onDismiss }` from `useToasts`) and
+  places the stack: `Toasts place="view"` in the work area, or
+  `place="column"` at the foot of the sketch palette's column while a
+  sketch is open, so it never covers the palette. The home screen keeps
+  `place="screen"` (the window's bottom-right). A notification history
+  button beside them is planned (P3-16).
+- Rejected: shifting the view's target to centre a fit in the open part.
+  It fits, but orbiting then pivots about a point beside the model. Also
+  rejected: re-centring the view whenever the browser toggles, which would
+  bring back the sideways jump the change removes.

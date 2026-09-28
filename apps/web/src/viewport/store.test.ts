@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { memoryPreferences } from '../platform';
-import { basis, orientationFor, sameView, type View } from './camera';
+import { basis, orientationFor, sameView, type View, viewProject, viewRay } from './camera';
 import { gridStep } from './grid';
 import { createViewportStore, DEFAULT_SETTINGS, TRANSITION_MS } from './store';
 
@@ -70,6 +70,40 @@ describe('viewport store', () => {
     store.getState().fit();
     expect(store.getState().view.target).toEqual([100, 0, 0]);
     expect(store.getState().view.size).toBeLessThan(empty);
+  });
+
+  it('fits into the part of the view a floating panel leaves open, centred there', () => {
+    // A 40 × 20 plate seen from the top in a 1000 × 500 view, orthographic.
+    const { store } = setup({ reducedMotion: true });
+    store.getState().setProjection('orthographic');
+    store.getState().setAspect(2, 1000);
+    store.getState().setBounds({
+      center: [0, 0, 0],
+      radius: 23,
+      box: { min: [-20, -10, 0], max: [20, 10, 0] },
+    });
+    store.getState().lookFrom([0, 0, 1]);
+    const open = store.getState().view;
+    // The browser covers the left 250 px: the plate fits the other 750.
+    store.getState().setCover(250);
+    store.getState().lookFrom([0, 0, 1]);
+    const covered = store.getState().view;
+    expect(covered.size).toBeGreaterThan(open.size);
+    // Orbiting still turns about the plate's centre: the target stays on it.
+    expect(covered.target).toEqual(open.target);
+    // Where the plate's centre and ends land, in px from the view's left edge.
+    const px = (x: number) =>
+      (((viewProject(covered, 'orthographic', 2, [x, 0, 0])?.[0] ?? 0) + 1) / 2) * 1000;
+    expect(px(0)).toBeCloseTo(250 + 750 / 2, 6);
+    expect(px(-20)).toBeGreaterThan(250);
+    expect(px(20)).toBeLessThan(1000);
+    // A pick ray through that pixel finds the centre again.
+    const ray = viewRay(covered, 'orthographic', 2, [(px(0) / 1000) * 2 - 1, 0]);
+    expect(ray.origin.x).toBeCloseTo(0, 6);
+    // Uncovered again, fitting centres on the target as before.
+    store.getState().setCover(0);
+    store.getState().lookFrom([0, 0, 1]);
+    expect(store.getState().view).toEqual(open);
   });
 
   it('home keeps the size fitted and the direction front-right-top', () => {

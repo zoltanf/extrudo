@@ -128,7 +128,7 @@ export function Splitter({
       aria-valuemin={min}
       aria-valuemax={max}
       tabIndex={0}
-      className="group relative z-10 -mx-1 w-2 shrink-0 cursor-col-resize touch-none outline-none"
+      className="group pointer-events-auto relative z-10 -mx-1 w-2 shrink-0 cursor-col-resize touch-none outline-none"
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}

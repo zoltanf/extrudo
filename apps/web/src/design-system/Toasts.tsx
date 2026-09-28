@@ -46,10 +46,32 @@ const DOT: Record<ToastTone, string> = {
   error: 'bg-error',
 };
 
-/** The toast stack, bottom left, on raised surfaces (docs/05-brand.md §5). */
-export function Toasts({ toasts, onDismiss }: { toasts: Toast[]; onDismiss(id: number): void }) {
+/** Where the stack sits: the window's corner, the view's, or the foot of a panel column. */
+export type ToastPlace = 'screen' | 'view' | 'column';
+
+const PLACES: Record<ToastPlace, string> = {
+  screen: 'fixed right-4 bottom-4 z-50 max-w-96',
+  view: 'absolute right-3 bottom-3 z-30 max-w-96',
+  column: 'mt-auto',
+};
+
+/**
+ * The toast stack, bottom right, newest at the bottom, on raised surfaces
+ * (docs/05-brand.md §5). In a project it sits in the view's bottom-right
+ * corner (`view`, inside the shell's positioned work area), or at the foot of
+ * the sketch palette's column (`column`) so it never covers the palette.
+ */
+export function Toasts({
+  toasts,
+  onDismiss,
+  place = 'screen',
+}: {
+  toasts: Toast[];
+  onDismiss(id: number): void;
+  place?: ToastPlace;
+}) {
   return (
-    <div className="pointer-events-none fixed bottom-4 left-4 z-50 flex max-w-96 flex-col gap-2">
+    <div className={`pointer-events-none flex flex-col items-end gap-2 ${PLACES[place]}`}>
       {toasts.map((t) => (
         <div
           key={t.id}

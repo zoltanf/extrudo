@@ -15,11 +15,11 @@ import {
   type SessionStore,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
-import { type ToastOptions, ToolIcon, useTheme } from '../design-system';
+import { type Toast, type ToastOptions, Toasts, ToolIcon, useTheme } from '../design-system';
 import { ExportModelDialog, type ModelExportRequest } from '../export/ExportModelDialog';
 import type { ModelExporter } from '../export/modelExport';
 import { DialogOverlay } from '../features/DialogOverlay';
@@ -98,6 +98,11 @@ export interface AppShellProps {
   platform: Platform;
   /** Shows a short message (a refused edit); the project page's toasts. */
   notify?(tone: 'info' | 'error', text: string, options?: ToastOptions): void;
+  /**
+   * The project page's toasts (`useToasts`), drawn in the view's bottom-right
+   * corner, or at the foot of the sketch palette while a sketch is open.
+   */
+  toasts?: { toasts: Toast[]; onDismiss(id: number): void };
   /** Feature dialogs (P2-05): the app's registry unless a debug page brings its own. */
   dialogs?: FeatureDialogs;
   /** The project's kernel (its `Recomputer`): dialog previews, references and export. */
@@ -131,12 +136,16 @@ export function AppShell({
   file,
   platform,
   notify = () => {},
+  toasts,
   dialogs = APP_DIALOGS,
   kernel,
 }: AppShellProps) {
   const { choice, setChoice } = useTheme(platform.preferences);
   const browser = usePanel(platform.preferences, { key: 'browser', size: 248, min: 180, max: 480 });
   const timeline = usePanel(platform.preferences, { key: 'timeline', size: 0, min: 0, max: 0 });
+  // The browser floats over the view's left edge: fitting frames the part it leaves open.
+  const browserCover = browser.collapsed ? 0 : browser.size;
+  useEffect(() => viewport.getState().setCover(browserCover), [viewport, browserCover]);
   const [parametersOpen, setParametersOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<ExportRequest>();
   const [modelExport, setModelExport] = useState<ModelExportRequest>();
@@ -811,38 +820,50 @@ export function AppShell({
         onRun={run}
         ready={ready}
       />
-      <main className="relative flex min-h-0">
-        <BrowserPanel
-          store={store}
-          viewport={viewport}
-          activeSketchId={activeSketchId}
-          actions={featureActions}
-          bodies={bodyList}
-          bodyActions={bodyActions}
-          selectedBodies={selectedBodies}
-          onPickBody={
-            modelSelect
-              ? (id, toggle) => modelSelect.onClick({ kind: 'body', id }, toggle)
-              : undefined
-          }
-          onHoverBody={(id) => modelSelect?.onHover(id ? { kind: 'body', id } : undefined)}
-          width={browser.size}
-          collapsed={browser.collapsed}
-          animate={browser.animate}
-          onToggle={browser.toggle}
-        />
-        {!browser.collapsed && (
-          <Splitter
-            label="Resize browser"
-            controls={BROWSER_ID}
-            size={browser.size}
-            min={browser.min}
-            max={browser.max}
+      {/* The view fills the area; the browser floats over its left edge (glass, like the nav
+          bar), so showing, hiding or resizing it never resizes the view. Overlays anchored to
+          the view's left or centre keep clear of it through --x-browser-inset. */}
+      <main
+        className="relative flex min-h-0"
+        style={
+          {
+            '--x-browser-inset': browser.collapsed ? '0px' : `${browser.size}px`,
+          } as CSSProperties
+        }
+      >
+        <div className="pointer-events-none absolute inset-y-0 left-0 z-10 flex">
+          <BrowserPanel
+            store={store}
+            viewport={viewport}
+            activeSketchId={activeSketchId}
+            actions={featureActions}
+            bodies={bodyList}
+            bodyActions={bodyActions}
+            selectedBodies={selectedBodies}
+            onPickBody={
+              modelSelect
+                ? (id, toggle) => modelSelect.onClick({ kind: 'body', id }, toggle)
+                : undefined
+            }
+            onHoverBody={(id) => modelSelect?.onHover(id ? { kind: 'body', id } : undefined)}
+            width={browser.size}
             collapsed={browser.collapsed}
-            onResize={browser.resize}
+            animate={browser.animate}
             onToggle={browser.toggle}
           />
-        )}
+          {!browser.collapsed && (
+            <Splitter
+              label="Resize browser"
+              controls={BROWSER_ID}
+              size={browser.size}
+              min={browser.min}
+              max={browser.max}
+              collapsed={browser.collapsed}
+              onResize={browser.resize}
+              onToggle={browser.toggle}
+            />
+          )}
+        </div>
         <Suspense
           fallback={
             <section
@@ -949,8 +970,10 @@ export function AppShell({
               onLookAt={() => lookAtSketch(stores)}
               onFinish={() => finishSketch(stores)}
             />
+            {toasts && <Toasts place="column" {...toasts} />}
           </PanelColumn>
         )}
+        {toasts && !(mode === 'sketch' && activeSketch) && <Toasts place="view" {...toasts} />}
       </main>
       <Timeline
         store={store}

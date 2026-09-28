@@ -108,9 +108,10 @@ export function BrowserPanel({
   const sketchesShown = sketches.some(({ feature }) => isFeatureVisible(feature));
   const bodiesShown = bodies.some(({ meta }) => meta.visible);
 
-  // Collapsed, the panel slides to no width (its content keeps its width and is clipped, so
-  // nothing reflows on the way), then turns invisible (visibility switches at the end of the
-  // transition when hiding), and a small tab at the view's left edge brings it back.
+  // The panel floats over the view's left edge in frosted glass (like the nav bar), so the
+  // view never resizes. Collapsed, it slides out to the left, then turns invisible
+  // (visibility switches at the end of the transition when hiding), and a small tab at the
+  // view's left edge brings it back.
   const motion = 'duration-(--x-normal) ease-ui';
   return (
     <>
@@ -118,8 +119,8 @@ export function BrowserPanel({
         id={BROWSER_ID}
         aria-label="Browser"
         inert={collapsed}
-        style={{ width: collapsed ? 0 : width }}
-        className={`flex shrink-0 overflow-hidden bg-panel ${collapsed ? 'invisible' : ''} ${animate ? `transition-[width,visibility] ${motion}` : ''}`}
+        style={{ width, background: 'color-mix(in srgb, var(--x-panel) 85%, transparent)' }}
+        className={`pointer-events-auto flex shrink-0 overflow-hidden backdrop-blur-[6px] ${collapsed ? 'invisible -translate-x-full' : ''} ${animate ? `transition-[translate,visibility] ${motion}` : ''}`}
       >
         <div style={{ width }} className="flex shrink-0 flex-col">
           <div className="flex h-9 items-center justify-between pr-1 pl-3">
@@ -242,7 +243,7 @@ export function BrowserPanel({
       </aside>
       <div
         inert={!collapsed}
-        className={`absolute top-2 left-0 z-20 transition-[opacity,translate,visibility] ${motion} ${collapsed ? '' : 'invisible -translate-x-full opacity-0'}`}
+        className={`pointer-events-auto absolute top-2 left-0 z-20 transition-[opacity,translate,visibility] ${motion} ${collapsed ? '' : 'invisible -translate-x-full opacity-0'}`}
       >
         <IconButton
           label="Show browser"

@@ -56,10 +56,13 @@ export async function mapping(viewport: Locator) {
     .split(',')
     .map(Number);
   const size = Number(await viewport.getAttribute('data-camera-size'));
+  // The target shows `shift` (NDC) right of the middle when the browser covered part of the
+  // view as it was fitted.
+  const shift = Number((await viewport.getAttribute('data-camera-shift')) ?? 0);
   // Orthographic or perspective, the target plane is `size` mm tall on screen.
   const perPixel = size / box.height;
   return (x: number, y: number) => ({
-    x: box.x + box.width / 2 + (x - tx) / perPixel,
+    x: box.x + ((1 + shift) * box.width) / 2 + (x - tx) / perPixel,
     y: box.y + box.height / 2 - (y - ty) / perPixel,
   });
 }
@@ -107,6 +110,7 @@ export async function projector(viewport: Locator) {
   const target = await read('data-camera-target');
   const [size = 1] = await read('data-camera-size');
   const perspective = (await viewport.getAttribute('data-camera-projection')) === 'perspective';
+  const [shift = 0] = await read('data-camera-shift');
   const dot = (a: readonly number[], b: readonly number[]) =>
     (a[0] ?? 0) * (b[0] ?? 0) + (a[1] ?? 0) * (b[1] ?? 0) + (a[2] ?? 0) * (b[2] ?? 0);
   // right = direction × up
@@ -133,6 +137,9 @@ export async function projector(viewport: Locator) {
       nx = dot(rel, right) / (half * aspect);
       ny = dot(rel, up) / half;
     }
-    return { x: box.x + ((nx + 1) / 2) * box.width, y: box.y + ((1 - ny) / 2) * box.height };
+    return {
+      x: box.x + ((nx + shift + 1) / 2) * box.width,
+      y: box.y + ((1 - ny) / 2) * box.height,
+    };
   };
 }

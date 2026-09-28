@@ -226,7 +226,7 @@ test.describe(() => {
     await expect(dialog).toBeHidden();
     await kernelReady(page);
     await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:60,40,15');
-    // The "Sketch1 is hidden" toast sits over the timeline.
+    // The "Sketch1 is hidden" toast sits in the view's bottom-right corner.
     await page
       .getByRole('status')
       .filter({ hasText: 'is hidden' })

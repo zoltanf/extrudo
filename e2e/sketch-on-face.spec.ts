@@ -154,6 +154,11 @@ test('sketches on a top face, cuts a hole from it, and follows the face', async 
   await expect.poll(() => attr(viewport, 'data-model-hover')).toMatch(/^face:/);
   const toast = page.getByRole('status').filter({ hasText: 'Sketch2 is hidden' });
   await expect(toast).toHaveText(/Sketch2 is hidden: Extrude2 used its profile\./);
+  // Toasts sit in the view's bottom-right corner (ADR-0007 amendment, 2026-09-28).
+  const [view, note] = [await viewport.boundingBox(), await toast.boundingBox()];
+  if (!view || !note) throw new Error('no view or toast');
+  expect(view.x + view.width - (note.x + note.width)).toBeCloseTo(12, 0);
+  expect(view.y + view.height - (note.y + note.height)).toBeCloseTo(12, 0);
   await toast.getByRole('button', { name: 'Show' }).click();
   await expect(toast).toBeHidden();
   await expect.poll(() => sketchIds(page)).toContain(faceSketch);

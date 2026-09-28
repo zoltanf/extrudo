@@ -20,6 +20,13 @@ export interface View {
   orientation: Quat;
   /** Visible height through the target, in mm. */
   size: number;
+  /**
+   * Where the target shows across the view, in normalized device coordinates
+   * (0 or absent: the middle; 0.2: a tenth of the width right of it). "Fit"
+   * sets it so the model centres in the part of the view a floating panel
+   * leaves open, while orbiting still turns about the target.
+   */
+  shift?: number;
 }
 
 export type Projection = 'perspective' | 'orthographic';
@@ -130,7 +137,7 @@ export function zoomAt(
   const target = v3(view.target);
   const anchor = target
     .clone()
-    .addScaledVector(right, (ndc[0] * view.size * aspect) / 2)
+    .addScaledVector(right, ((ndc[0] - shiftOf(view)) * view.size * aspect) / 2)
     .addScaledVector(up, (ndc[1] * view.size) / 2);
   const next = anchor.clone().add(target.sub(anchor).multiplyScalar(f));
   return { ...view, target: tuple3(next), size };
@@ -199,12 +206,29 @@ export function fitBox(
 /** The smallest view height (mm) "Fit" gives, for a single point or a tiny sketch. */
 const FIT_MIN = 1;
 
-/** Interpolates between two views: position linearly, orientation by slerp, size geometrically. */
+/**
+ * Interpolates between two views: position and shift linearly, orientation
+ * by slerp, size geometrically.
+ */
 export function interpolate(a: View, b: View, t: number): View {
   const target = v3(a.target).lerp(v3(b.target), t);
   const orientation = quat(a.orientation).slerp(quat(b.orientation), t);
   const size = a.size * (b.size / a.size) ** t;
-  return { target: tuple3(target), orientation: tuple4(orientation), size };
+  return withShift(
+    { target: tuple3(target), orientation: tuple4(orientation), size },
+    shiftOf(a) + (shiftOf(b) - shiftOf(a)) * t,
+  );
+}
+
+/** A view's `shift`, 0 when absent. */
+export function shiftOf(view: View): number {
+  return view.shift ?? 0;
+}
+
+/** The view with its target shown at `shift` (NDC); 0 leaves the field out. */
+export function withShift(view: View, shift: number): View {
+  const { shift: _, ...rest } = view;
+  return shift === 0 ? rest : { ...rest, shift };
 }
 
 /** Where the camera is, for a projection. The orthographic camera sits far back along the view axis. */
@@ -244,9 +268,10 @@ export function viewRay(
 ): WorldRay {
   const { right, up, back } = basis(view);
   const half = view.size / 2;
+  const x = ndc[0] - shiftOf(view);
   if (projection === 'orthographic') {
     const origin = v3(view.target)
-      .addScaledVector(right, ndc[0] * half * aspect)
+      .addScaledVector(right, x * half * aspect)
       .addScaledVector(up, ndc[1] * half)
       .addScaledVector(back, orthographicDistance(view));
     return { origin, direction: back.clone().negate() };
@@ -255,7 +280,7 @@ export function viewRay(
   const direction = back
     .clone()
     .multiplyScalar(-distance)
-    .addScaledVector(right, ndc[0] * half * aspect)
+    .addScaledVector(right, x * half * aspect)
     .addScaledVector(up, ndc[1] * half)
     .normalize();
   return { origin: cameraPosition(view, projection), direction };
@@ -275,13 +300,13 @@ export function viewProject(
   const half = view.size / 2;
   if (projection === 'orthographic') {
     const rel = v3(point).sub(v3(view.target));
-    return [rel.dot(right) / (half * aspect), rel.dot(up) / half];
+    return [rel.dot(right) / (half * aspect) + shiftOf(view), rel.dot(up) / half];
   }
   const rel = v3(point).sub(cameraPosition(view, projection));
   const depth = rel.dot(viewDirection(view));
   if (depth <= 1e-9) return undefined;
   const scale = (depth * half) / perspectiveDistance(view.size);
-  return [rel.dot(right) / (scale * aspect), rel.dot(up) / scale];
+  return [rel.dot(right) / (scale * aspect) + shiftOf(view), rel.dot(up) / scale];
 }
 
 /**
@@ -325,7 +350,8 @@ export function sameView(a: View, b: View): boolean {
   return (
     angleBetween(a.orientation, b.orientation) < 1e-6 &&
     v3(a.target).distanceTo(v3(b.target)) < scale * 1e-6 &&
-    Math.abs(a.size - b.size) < scale * 1e-6
+    Math.abs(a.size - b.size) < scale * 1e-6 &&
+    Math.abs(shiftOf(a) - shiftOf(b)) < 1e-9
   );
 }
 

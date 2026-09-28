@@ -289,8 +289,11 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
         <div
           role="status"
           aria-label="Tool prompt"
-          className="absolute top-3 left-1/2 max-w-[60%] -translate-x-1/2 rounded-input border border-line px-3 py-1 text-sm shadow-raised"
-          style={{ background: 'color-mix(in srgb, var(--x-raised) 90%, transparent)' }}
+          className="absolute top-3 max-w-[60%] -translate-x-1/2 rounded-input border border-line px-3 py-1 text-sm shadow-raised"
+          style={{
+            left: 'calc(50% + var(--x-browser-inset, 0px) / 2)',
+            background: 'color-mix(in srgb, var(--x-raised) 90%, transparent)',
+          }}
         >
           {error ? <span className="text-error">{error}</span> : tool.prompt()}
         </div>

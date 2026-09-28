@@ -8,7 +8,7 @@ import {
 import type { BodyMesh } from '@extrudo/kernel';
 import type { ProjectId } from '@extrudo/storage';
 import { useEffect, useMemo, useState } from 'react';
-import { Button, LogoMark, Toasts, useToasts } from '../design-system';
+import { Button, LogoMark, useToasts } from '../design-system';
 import type { Platform } from '../platform';
 import { HOME_HREF, navigate, projectHref } from '../routes';
 import type { FileActions } from '../shell/AppBar';
@@ -123,20 +123,18 @@ function ProjectEditor({
 
   if (!autosave) return null;
   return (
-    <>
-      <AppShell
-        store={store}
-        session={session}
-        model={model}
-        viewport={viewport}
-        autosave={autosave}
-        file={file}
-        platform={platform}
-        notify={push}
-        kernel={recomputer}
-      />
-      <Toasts toasts={toasts} onDismiss={dismiss} />
-    </>
+    <AppShell
+      store={store}
+      session={session}
+      model={model}
+      viewport={viewport}
+      autosave={autosave}
+      file={file}
+      platform={platform}
+      notify={push}
+      toasts={{ toasts, onDismiss: dismiss }}
+      kernel={recomputer}
+    />
   );
 }
 

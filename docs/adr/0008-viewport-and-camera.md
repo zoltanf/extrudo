@@ -186,3 +186,23 @@ clicks the ViewCube's Top face and checks the camera orientation.
   press is dropped), and a move with the button no longer held drops a
   stale press; navigation drags end the same way.
 
+## Amendment, 2026-09-28 (off-centre views for a floating panel)
+
+- **`View.shift`**: where the target shows across the view, in NDC (absent
+  or 0: the middle). Fit (F6, Home, the ViewCube, opening a sketch) sets it
+  to the fraction of the view's width the browser covers
+  (`ViewportState.cover` in px over `width`, set by `setCover` and
+  `setAspect(aspect, width)`), after fitting into the open part's aspect.
+  The target stays on the model, so orbiting and zooming behave as before;
+  the model shows in the middle of the open part. Pans and orbits keep the
+  shift; animations interpolate it; the browser toggling doesn't change the
+  view (no jump) — the next fit uses the new cover.
+- Rendering applies it as an off-axis frustum (`camera.setViewOffset`, in
+  `viewport/applyView.ts`; for a perspective camera the call also sets
+  `aspect`, so it gets the view's real proportions). `viewRay`,
+  `viewProject`, `zoomAt` and `pick.ts`'s projector add or remove the
+  shift, so picking and overlays follow; `applyView.test.ts` checks
+  three.js's projection against `viewProject` and `viewRay` in both
+  projections with and without a shift.
+- The Viewport region carries `data-camera-shift`; the e2e helpers
+  `mapping` and `projector` use it.

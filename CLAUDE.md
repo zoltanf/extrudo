@@ -576,6 +576,14 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   tests read the dialog's `data-export-summary` and the file from
   `page.waitForEvent('download')`. The Sketch tab's Export tile is named
   "Export" (its short label): find it inside the "Export" group.
+- **The browser floats over the view** (ADR-0007/0008 amendments,
+  2026-09-28): the Viewport region spans the whole work area, the
+  browser covers its left edge, and fit centres the model in the open
+  part through `View.shift` (the Viewport region's `data-camera-shift`,
+  NDC). Map view px with `mapping()`/`projector()` from `e2e/helpers.ts`
+  (they read the shift); code that assumes the origin at the box's
+  middle is off by `shift × width / 2`. Toggling the browser doesn't
+  move the camera; the next fit uses the new width.
 - **The collapsed browser is invisible and inert, not removed** (design
   review, ADR-0007 amendment): the complementary "Browser" still exists;
   check it with `toBeHidden()`, and "Show browser" is a small tab over the
@@ -619,8 +627,9 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   faces); only Fillet1 is an error ("Fillet1 (error)" in the chip's name,
   "6 features · mm · 1 error"; "(rolled back)" Plane1 has no status).
   Sketch1/Sketch2 can't be deleted while the extrudes use them. Error
-  toasts have role `alert` and sit over the timeline: dismiss them
-  ("Dismiss") before clicking chips. Under the full parallel run B1 takes
+  toasts have role `alert` and sit in the view's bottom-right corner (at
+  the foot of the sketch palette in a sketch): dismiss them ("Dismiss")
+  before clicking there. Under the full parallel run B1 takes
   about 27 s (60 s timeout).
 - **Pointer modes** (ADR-0008 amendment): the nav bar's "Select" button
   is `aria-pressed` when no nav tool or command runs. The viewport's
