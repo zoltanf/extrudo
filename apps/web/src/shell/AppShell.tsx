@@ -203,8 +203,7 @@ export function AppShell({
   useEffect(() => {
     if (!host) return;
     const sync = (s: ReturnType<typeof model.getState>) => {
-      if (s.status === 'ready' && s.doc === store.getState().doc)
-        host.syncProjections(s.sketches);
+      if (s.status === 'ready' && s.doc === store.getState().doc) host.syncProjections(s.sketches);
     };
     sync(model.getState());
     return model.subscribe((s, previous) => {
