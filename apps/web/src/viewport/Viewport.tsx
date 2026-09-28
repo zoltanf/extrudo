@@ -139,6 +139,8 @@ export const VIEW_PASSTHROUGH = 'data-view-passthrough';
 
 export interface PlanePicker {
   hover: OriginPlaneId | undefined;
+  /** The plane already picked (a feature dialog's Plane field, P2-10): drawn highlighted. */
+  selected?: OriginPlaneId;
   onHover(plane: OriginPlaneId): void;
   onLeave(plane: OriginPlaneId): void;
   onPick(plane: OriginPlaneId): void;
@@ -595,6 +597,7 @@ function Scene({
         construct={colors.construct}
         picking={planePicker !== undefined}
         hover={planePicker?.hover}
+        selected={planePicker?.selected}
         highlight={{ ...colors.preselect, a: 1 }}
         onHover={planePicker?.faces ? undefined : planePicker?.onHover}
         onLeave={planePicker?.faces ? undefined : planePicker?.onLeave}

@@ -17,6 +17,9 @@ import {
   type GeomRef,
   originAxisRef,
   originPlaneRef,
+  type PrimitiveInputOptions,
+  type PrimitiveType,
+  primitiveInputs,
   type RevolveInputOptions,
   revolveInputs,
   type SketchData,
@@ -405,6 +408,57 @@ describe('memory', () => {
       engine.clear();
     };
     // One run through every angle first (the largest blocks OCCT asks for).
+    for (let i = 0; i < 100; i++) await run(i);
+    const before = kernel.stats();
+    for (let i = 100; i < 400; i++) await run(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(0);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+  });
+
+  it('recomputing real primitives 300 times with changing values does not grow the heap', {
+    timeout: 180_000,
+  }, async () => {
+    // The primitives end to end (ADR-0032): a box, a cylinder cut into its
+    // top face, a sphere joined to its side and a torus as a new body on
+    // XZ, sized by the run. From an empty cache each run, as for revolves.
+    const engine = new RecomputeEngine(kernel, testFeatures().registry, {
+      strictLeaks: true,
+      maxEntries: 8,
+    });
+    const primitive = (id: string, type: PrimitiveType, options: PrimitiveInputOptions) => ({
+      ...testFeature(id, type),
+      inputs: primitiveInputs(type, options),
+    });
+    const doc = (length: number) =>
+      testDocument([
+        primitive('B', 'box', {
+          numbers: { length: `${length} mm`, width: '30 mm', height: '10 mm' },
+        }),
+        primitive('C', 'cylinder', {
+          plane: { kind: 'face', id: 'box:B:cap:end' },
+          numbers: { diameter: '8 mm', height: '-5 mm', x: '5 mm' },
+          operation: 'cut',
+        }),
+        primitive('S', 'sphere', {
+          plane: { kind: 'face', id: 'box:B:side:right' },
+          numbers: { diameter: '10 mm', y: '5 mm' },
+          operation: 'join',
+        }),
+        primitive('T', 'torus', {
+          plane: originPlaneRef('origin:xz'),
+          numbers: { diameter: `${length} mm`, tube: '4 mm', offset: '40 mm' },
+        }),
+      ]);
+    const run = async (i: number) => {
+      const result = await engine.recompute({ doc: doc(40 + (i % 100) * 0.3) });
+      if (result.status !== 'done' || result.bodies.length !== 2) throw new Error('no bodies');
+      for (const s of Object.values(result.features)) {
+        if (s.status === 'error') throw new Error(s.message);
+      }
+      engine.clear();
+    };
     for (let i = 0; i < 100; i++) await run(i);
     const before = kernel.stats();
     for (let i = 100; i < 400; i++) await run(i);

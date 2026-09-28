@@ -256,6 +256,23 @@ a right-click without movement, as Onshape's context menu does.
   isn't in the profiles' plane, when a profile crosses the axis or the
   profiles lie on both sides of it, and when the angles are 0, beyond a
   whole turn or cancel out.
+- **Primitives (P2-10, ADR-0032):** Solid › Create ▾ → Box, Cylinder,
+  Sphere, Torus (no keys). The dialog opens on the XY plane ("XY plane"
+  in **Plane**) with a live preview; while Plane takes picks the origin
+  planes show and the nearer of a plane and a flat face under the pointer
+  takes a click, as in Create Sketch (the picked plane is highlighted). A
+  face selected before the tool fills Plane. Fields: Plane; the sizes (Box:
+  Length, Width, Height; Cylinder: Diameter, Height; Sphere: Diameter;
+  Torus: Diameter through the tube's middle, Tube diameter); X, Y (the
+  centre in the plane's frame, the one a sketch on it gets); Offset (off
+  the plane along its normal); Rotation (box, about its centre);
+  Operation and Bodies as for extrude. A box and a cylinder stand on the
+  plane (a negative height goes into it); a sphere and a torus are centred
+  on it. A picked face proposes its centre as X and Y, and Join, or Cut
+  for a box or cylinder with a negative height, until the user sets them.
+  In the view: arrows for each size (from the centre for lengths, widths
+  and diameters, from the base for heights, from the ring for the tube)
+  and a box's rotation arc.
 - **Bodies in the browser (P2-06, P2-08, ADR-0030):** the Bodies folder
   lists the model's bodies in timeline order, with a count badge. A new
   body is named "Body1", "Body2"… (the lowest free number) as soon as it
