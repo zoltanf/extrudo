@@ -211,6 +211,18 @@ The same definitions later form the public scripting API (FR-PRG-01). A script
 calling `doc.extrude({profile, distance: 'h'})` produces exactly the feature
 the dialog would.
 
+As built in P2-05 (ADR-0027): the web app's part is a declarative
+`FeatureDialogSpec` (`apps/web/src/features/spec.ts`) extending core's
+definition with `command` (a toolbar tool or its own), `fields`
+(selection, expression, choice, toggle; optionally `shown`), and pure
+`toInputs`/`fromInputs` (default: inputs named like the fields),
+`validate`, `manipulators` (distance arrows and angle arcs in world mm)
+and `previewStyle`. Specs are registered in `featureDialogs()`
+(`features/registry.ts`); one generic dialog and one controller per
+project (`features/dialog.ts`) do pre-selection, picking into fields
+(persistent references with fingerprints), model parameter names, checks,
+the live preview and OK/Cancel (one command).
+
 ### 4.3 Expressions and parameters
 
 - Small hand-written Pratt parser in `core/expr` (not mathjs, which is too big).
@@ -287,6 +299,15 @@ is `KernelClient`, which restarts the worker after a crash.
   Undo and parameter scrubbing often hit the cache.
 - **Cancellation:** a new recompute request cancels the running one between
   features. Previews are debounced (about 60 ms).
+- **Previews (P2-05, ADR-0027):** `preview({ doc, draft, index, base? })`
+  walks the timeline before `index`, then the draft. An evaluator may add
+  `previewTools: { shape, style: 'new'|'join'|'cut'|'intersect' }[]` to
+  its output (owned by the cache like its other shapes); a preview result
+  carries the draft's tools meshed (`tools: { mesh, style }[]`), and with
+  `base` the bodies before the draft (`base: BodyResult[]`, for editing a
+  feature). `recompute` ignores tools. `reference(body, kind, index,
+  base?)` fingerprints a sub-shape of the last recompute's bodies, or of
+  the last preview's base.
 - As built in P2-01 (ADR-0024, `packages/kernel/src/recompute/`): the
   engine walks the whole active timeline and each feature is found by its
   key, so there is no dirty index; "upstream" is the features it refers to
@@ -568,3 +589,11 @@ bundle-size budget. Every agent task must leave CI green.
   edges and vertices, occlusion by a second ray, one kind per box, face
   tints through a colour attribute, "Select other…", the selection filter
   with Select.
+- **ADR-0027** Feature dialog framework. **Written 2026-09-28** (P2-05):
+  declarative dialog specs in the web app's registry, one controller per
+  project, pre-selection, selection fields of persistent references with
+  their own filter, model parameter names per dialog, live previews
+  through the `Recomputer` with the kernel's preview tools (ghosts, cut
+  red, join green) and the bodies before an edited feature, dimmed on
+  invalid input, manipulators (distance arrow, angle arc) with a heads-up
+  box, OK as one command, e2e on `#/debug/dialog`.

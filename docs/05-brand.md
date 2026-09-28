@@ -108,8 +108,10 @@ fill, and the timeline chip background (colour at 16% over `bg`).
 | `edge` | `#C3CAD6` at 70% | `#111318` at 70% | B-rep edge lines |
 | `preselect` | amber at 45% | amber at 45% | Hover highlight |
 | `selected` | amber at 90% | amber at 90% | Selected faces, edges, bodies |
-| `preview` | `sketch` at 35% | `sketch` at 30% | Live preview of join / new-body features |
+| `preview` | `sketch` at 35% | `sketch` at 30% | Live preview of new-body features |
+| `preview-join` | `success` at 35% | `success` at 30% | Join preview ("green-tinted", UI spec §3.4; P2-05) |
 | `preview-cut` | `error` at 40% | same | Cut preview |
+| `preview-intersect` | `cat-construct` at 35% | `cat-construct` at 30% | Intersect preview (P2-05) |
 | `sketch-fixed` | `ink` | `ink` | Fully constrained sketch geometry |
 | `sketch-construction` | `muted`, dashed 6/4 | same | Construction lines (not amber, to avoid confusion with selection) |
 | `sketch-projected` | construct colour | same | Projected/included geometry |

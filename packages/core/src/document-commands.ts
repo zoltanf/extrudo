@@ -99,14 +99,20 @@ export const insertFeature = defineCommand<{ feature: Feature; index?: number }>
   },
 );
 
-/** Replaces the named inputs; inputs not named keep their values. */
-export const updateFeatureInputs = defineCommand<{ id: FeatureId; inputs: FeatureInputs }>(
-  'feature.inputs',
-  'Edit feature',
-  (draft, { id, inputs }) => {
-    Object.assign(findFeature(draft, id).inputs, inputs);
-  },
-);
+/**
+ * Replaces the named inputs; inputs not named keep their values. With
+ * `replace`, the feature's inputs become exactly `inputs` (a feature dialog's
+ * OK, P2-05: an input its dialog now hides goes away).
+ */
+export const updateFeatureInputs = defineCommand<{
+  id: FeatureId;
+  inputs: FeatureInputs;
+  replace?: boolean;
+}>('feature.inputs', 'Edit feature', (draft, { id, inputs, replace = false }) => {
+  const feature = findFeature(draft, id);
+  if (replace) feature.inputs = { ...inputs };
+  else Object.assign(feature.inputs, inputs);
+});
 
 export const renameFeature = defineCommand<{ id: FeatureId; name: string }>(
   'feature.rename',

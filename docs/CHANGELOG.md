@@ -2,6 +2,16 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-28 · **P2-05** Feature dialog framework (ADR-0027): features get
+  their command dialog from a declarative spec (selection, expression,
+  dropdown and toggle fields): it opens on the right with the current
+  selection already filled in, picks in the view go into its selection
+  fields, and the kernel previews the draft live as a translucent ghost
+  (joins green, cuts red), dimmed while an input is invalid or the
+  feature fails. Distance arrows and angle arcs drag values, with a
+  heads-up box that takes typing. OK is one undo step; a timeline chip
+  reopens the dialog for editing, with the model rolled back to the
+  feature. Tried on the dialog debug page until Extrude arrives.
 - 2026-09-28 · **P2-03** B-rep rendering and 3D selection (ADR-0026): in
   the model, the pointer pre-highlights faces, edges, vertices, sketch
   curves and profiles, a click selects (Shift or Ctrl toggles), Esc

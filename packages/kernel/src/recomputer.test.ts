@@ -1,11 +1,13 @@
 // The Recomputer against an in-process kernel with the test features. The
 // worker path (Comlink, transfers) is covered by e2e/recompute.spec.ts.
 import {
+  type BodyId,
   createDocumentStore,
   createModelStore,
   type DocumentStore,
   type ExtrudoDocument,
   type FeatureId,
+  type GeomRef,
   type ModelStore,
   renameFeature,
 } from '@extrudo/core';
@@ -188,5 +190,31 @@ describe('Recomputer', () => {
     const ended = r.preview(testFeature('f3', 'test-hole', { radius: '3 mm' }), 2);
     r.endPreview();
     expect(await ended).toBeUndefined();
+  });
+
+  it("hands over a draft's preview tools, and references with fingerprints", {
+    timeout: 30_000,
+  }, async () => {
+    const { model } = setup(testDocument([testFeature('box', 'test-box', { size: '10 mm' })]));
+    await until(() => ready(model));
+    const r = recomputer as Recomputer;
+    const refs = await Promise.all(
+      [0, 1, 2, 3, 4, 5].map((i) => r.reference('box:0' as BodyId, 'face', i)),
+    );
+    const top = refs.find((ref) => ref?.fingerprint?.dir?.[2] === 1);
+    expect(top?.kind).toBe('face');
+    expect(await r.reference('nothing' as BodyId, 'face', 0)).toBeUndefined();
+
+    const draft = testFeature(
+      'press',
+      'test-press',
+      { distance: '-3 mm' },
+      { faces: { kind: 'ref', refs: [top as GeomRef] }, operation: { kind: 'enum', value: 'cut' } },
+    );
+    const preview = await r.preview(draft, 1);
+    expect(preview?.features['press' as FeatureId]).toEqual({ status: 'ok' });
+    expect(preview?.tools.map((t) => t.style)).toEqual(['cut']);
+    // The cut changed the box: a new mesh, not the model store's.
+    expect(preview?.bodies['box:0' as BodyId]).not.toBe(model.getState().bodies['box:0' as BodyId]);
   });
 });

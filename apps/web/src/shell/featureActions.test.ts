@@ -99,6 +99,33 @@ describe('feature actions', () => {
     expect(t.session.getState().activeSketchId).toBe(t.a);
   });
 
+  it("open another feature's dialog, if its type has one (P2-05)", () => {
+    const t = setup();
+    const opened: FeatureId[] = [];
+    const actions = createFeatureActions(t, () => {}, {
+      exportSketch: () => {},
+      editFeature: (id) => {
+        opened.push(id);
+        return true;
+      },
+      hasDialog: (type) => type === 'press',
+    });
+    const press = { id: 'p' as FeatureId, type: 'press', name: 'P', suppressed: false, inputs: {} };
+    const other = { ...press, id: 'q' as FeatureId, type: 'fillet' };
+    t.store.setState({
+      doc: { ...t.s().doc, features: [...t.s().doc.features, press, other], timelineMarker: 4 },
+    });
+    expect(actions.canEdit(press, 2, 4)).toBe(true);
+    expect(actions.canEdit(other, 3, 4)).toBe(false);
+    expect(actions.canEdit(t.feature(t.a) as never, 0, 4)).toBe(true);
+    expect(actions.edit(press.id)).toBe(true);
+    expect(opened).toEqual(['p']);
+    // Not while a sketch is open.
+    actions.edit(t.a);
+    expect(actions.edit(press.id)).toBe(false);
+    expect(opened).toEqual(['p']);
+  });
+
   it('export opens the dialog for the sketch', () => {
     const t = setup();
     const opened: FeatureId[] = [];

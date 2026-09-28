@@ -4,10 +4,25 @@ import type { KernelApi } from './service';
 
 /** Starts the kernel in a module Web Worker. Pass this to `new KernelClient(…)`. */
 export function spawnBrowserKernel(): KernelConnection {
-  const worker = new Worker(new URL('./worker.ts', import.meta.url), {
-    type: 'module',
-    name: 'extrudo-kernel',
-  });
+  return connect(
+    new Worker(new URL('./worker.ts', import.meta.url), { type: 'module', name: 'extrudo-kernel' }),
+  );
+}
+
+/**
+ * The dialog debug page's kernel (`#/debug/dialog`): the app's kernel plus
+ * the engine's test feature types (`debug-worker.ts`). Not for projects.
+ */
+export function spawnDebugKernel(): KernelConnection {
+  return connect(
+    new Worker(new URL('./debug-worker.ts', import.meta.url), {
+      type: 'module',
+      name: 'extrudo-kernel-debug',
+    }),
+  );
+}
+
+function connect(worker: Worker): KernelConnection {
   const api = Comlink.wrap<KernelApi>(worker);
   // Callbacks cross the worker boundary as proxies.
   // (A Comlink proxy has no own keys to spread, so every method is listed.)
@@ -17,7 +32,7 @@ export function spawnBrowserKernel(): KernelConnection {
       api.recompute(request, onFeature && Comlink.proxy(onFeature)),
     preview: (request, onFeature) => api.preview(request, onFeature && Comlink.proxy(onFeature)),
     endPreview: () => api.endPreview(),
-    reference: (body, kind, index) => api.reference(body, kind, index),
+    reference: (body, kind, index, base) => api.reference(body, kind, index, base),
     debugTestPart: () => api.debugTestPart(),
     debugCrash: () => api.debugCrash(),
     stats: () => api.stats(),

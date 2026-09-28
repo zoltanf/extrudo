@@ -5,7 +5,7 @@
  * kernel itself runs in a worker (spawnBrowserKernel) or, in Node, through
  * `@extrudo/kernel/node`.
  */
-export { spawnBrowserKernel } from './browser';
+export { spawnBrowserKernel, spawnDebugKernel } from './browser';
 export {
   KernelClient,
   type KernelClientOptions,
@@ -93,6 +93,9 @@ export type {
   FeatureOutput,
   KernelFeatureDefinition,
   PreviewRequest,
+  PreviewTool,
+  PreviewToolMesh,
+  PreviewToolStyle,
   ProgressListener,
   RecomputeRequest,
   RecomputeResult,

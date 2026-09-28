@@ -25,6 +25,8 @@ import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
 import { MenuItem, MenuLabel, PointMenu } from '../design-system';
+import { previewSummary, type ViewPreview } from '../features/preview';
+import { combineFilters } from '../selection/filter';
 import { itemLabel, type LabelContext, selectionKey } from '../selection/items';
 import { type PickHit, type PickScene, pickBox, pickStack, pickTop } from '../selection/pick';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
@@ -37,6 +39,7 @@ import { Grid, XY_FRAME } from './Grid';
 import { NavBar } from './NavBar';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
 import { Origin } from './Origin';
+import { PreviewShapes } from './Preview';
 import {
   type PointerHandlers,
   type ScreenBox,
@@ -78,6 +81,8 @@ export interface ViewportProps {
   selection?: readonly SelectionItem[];
   /** Present in model mode while nothing else takes the pointer: picking selects (P2-03). */
   modelSelect?: ModelSelect;
+  /** A feature dialog's live preview, drawn over the bodies (P2-05). */
+  preview?: ViewPreview;
 }
 
 /**
@@ -157,6 +162,7 @@ export function Viewport({
   hover,
   selection = NO_SELECTION,
   modelSelect,
+  preview,
 }: ViewportProps) {
   const section = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -244,6 +250,8 @@ export function Viewport({
       data-highlight={sketches.find((s) => s.highlight)?.id}
       data-model-selection={modelSelect ? selectionKey(selection) : undefined}
       data-model-hover={modelSelect ? selectionKey([hover]) : undefined}
+      data-preview={previewSummary(preview)}
+      data-preview-dimmed={preview?.dimmed || undefined}
       className="relative isolate min-w-0 flex-1 overflow-hidden"
       style={{ background: 'var(--x-viewport-glow)' }}
     >
@@ -270,6 +278,7 @@ export function Viewport({
             planePicker={planePicker}
             hover={hover}
             selection={selection}
+            preview={preview}
             onFirstFrame={() => setReady(true)}
           />
           <RenderMeterProbe viewport={viewport} />
@@ -372,6 +381,7 @@ function Scene({
   planePicker,
   hover,
   selection,
+  preview,
   onFirstFrame,
 }: {
   viewport: ViewportStore;
@@ -383,6 +393,7 @@ function Scene({
   planePicker: PlanePicker | undefined;
   hover: SelectionItem | undefined;
   selection: readonly SelectionItem[];
+  preview: ViewPreview | undefined;
   onFirstFrame(): void;
 }) {
   const { projection, visualStyle, grid, origin, sketchPoints } = useStore(
@@ -467,6 +478,7 @@ function Scene({
         selection={selection}
         onBounds={setBodyBounds}
       />
+      <PreviewShapes preview={preview} colors={colors} />
       <Sketches
         store={viewport}
         sketches={sketches}
@@ -663,11 +675,11 @@ function useModelInput(
   const handlers = useMemo<PointerHandlers | undefined>(() => {
     if (!select) return undefined;
     const context = (p: ScreenPointer) => {
-      const { view, projection, visualStyle, selectionFilter } = viewport.getState();
+      const { view, projection, visualStyle, selectionFilter, fieldFilter } = viewport.getState();
       return {
         scene: pickScene(sceneRef.current, visualStyle),
         camera: { view, projection, width: p.width, height: p.height },
-        filter: selectionFilter,
+        filter: combineFilters(selectionFilter, fieldFilter),
       };
     };
     const pick = (p: ScreenPointer) => {

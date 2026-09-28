@@ -65,3 +65,17 @@ export function filterKindOf(item: SelectionItem): FilterKind | undefined {
       return undefined;
   }
 }
+
+/**
+ * The filter picking uses: the user's, narrowed by a feature dialog's
+ * selection field while it takes picks (P2-05). Both must allow a kind.
+ */
+export function combineFilters(
+  user: SelectionFilter,
+  field: SelectionFilter | undefined,
+): SelectionFilter {
+  if (!field) return user;
+  return Object.fromEntries(
+    FILTER_KINDS.map(({ value }) => [value, user[value] && field[value]]),
+  ) as SelectionFilter;
+}

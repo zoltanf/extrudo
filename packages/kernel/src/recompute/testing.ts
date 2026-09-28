@@ -25,6 +25,7 @@ import type { SketchOutputData } from '../features/sketch';
 import { KernelError, type ShapeHandle, type Vec3 } from '../kernel';
 import {
   compoundSources,
+  faceEdgeSources,
   type NamedShape,
   namedBoolean,
   namedPrism,
@@ -33,7 +34,12 @@ import {
   withHistory,
 } from '../naming/ops';
 import type { ResolvedRef } from '../naming/resolve';
-import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from './types';
+import type {
+  EvalContext,
+  FeatureOutput,
+  KernelFeatureDefinition,
+  PreviewToolStyle,
+} from './types';
 
 export interface TestFeatures {
   registry: FeatureRegistry<KernelFeatureDefinition>;
@@ -73,6 +79,13 @@ const base = { category: 'create', icon: 'test' } as const;
  * - `test-combine`: fuses the second body into the first (simplified).
  * - `test-probe`: resolves its `target` refs and records them in `probes`.
  * - `test-bad-names`: a new box whose naming table doesn't fit it.
+ *
+ * Feature dialogs (P2-05, ADR-0027):
+ * - `test-press`: press-pull of flat `faces` (one body) by `distance` along
+ *   their normal, tilted by `angle` (optional) about an in-plane axis;
+ *   `operation` `new` (default), `join`, `cut` or `intersect` with that body.
+ *   Its prism is a preview tool styled by the operation. The dialog debug
+ *   page (`#/debug/dialog`) computes it in the browser.
  * The sketch evaluator is registered too.
  */
 export function testFeatures(): TestFeatures {
@@ -302,6 +315,77 @@ export function testFeatures(): TestFeatures {
     },
   );
 
+  define(
+    'test-press',
+    z.strictObject({
+      faces: RefInputSchema,
+      distance: ExprInputSchema,
+      angle: ExprInputSchema.optional(),
+      operation: EnumInputSchema.optional(),
+    }),
+    (ctx) => {
+      const { kernel, inputs, feature } = ctx;
+      const resolved = inputs.faces.refs.map((ref) =>
+        ctx.resolve(ref, { label: 'a face to press' }),
+      );
+      const first = resolved[0];
+      if (!first) throw new KernelError('Pick a flat face.');
+      if (resolved.some((r) => r.body !== first.body))
+        throw new KernelError('Pick faces of one body.');
+      const faces = ctx.describe(first.shape).faces;
+      const infos = resolved.map((r) => faces[r.index]);
+      const normal = infos[0]?.direction;
+      if (!normal || infos.some((f) => f?.type !== 'plane' || !same(f.direction, normal))) {
+        throw new KernelError('Pick flat faces that face the same way.');
+      }
+      const distance = ctx.value('distance');
+      if (Math.abs(distance) < 1e-6) throw new KernelError('The distance is zero.');
+      const tilt = ((inputs.angle ? ctx.value('angle') : 0) * Math.PI) / 180;
+      const along = tiltAxis(normal);
+      const [c, s] = [Math.cos(tilt) * distance, Math.sin(tilt) * distance];
+      const vector: Vec3 = [
+        c * normal[0] + s * along[0],
+        c * normal[1] + s * along[1],
+        c * normal[2] + s * along[2],
+      ];
+      using scope = kernel.scope();
+      const body: NamedShape = { shape: first.shape, names: ctx.names(first.body) };
+      const sources = resolved.map((r) => faceEdgeSources(kernel, body, r.index));
+      for (const source of sources) scope.track(source.shape);
+      let source = sources[0] as SweepSource;
+      if (sources.length > 1) {
+        const compound = scope.track(kernel.compound(sources.map((s) => s.shape)));
+        source = { shape: compound, edgeSources: compoundSources(kernel, compound, sources) };
+      }
+      const made = namedPrism(kernel, { feature: feature.id, op: 'press', ...source, vector });
+      const operation = (inputs.operation?.value ?? 'new') as PreviewToolStyle;
+      const tool = { shape: made.shape, style: operation };
+      if (operation === 'new') {
+        const id = ctx.bodyId();
+        return {
+          bodies: new Map(ctx.bodies).set(id, made.shape),
+          names: new Map([[id, made.names]]),
+          previewTools: [tool],
+        };
+      }
+      const op = operation === 'join' ? 'fuse' : operation === 'cut' ? 'cut' : 'common';
+      try {
+        const result = namedBoolean(kernel, op, body, made, {
+          feature: feature.id,
+          simplify: operation === 'join',
+        });
+        return {
+          bodies: new Map(ctx.bodies).set(first.body, result.shape),
+          names: new Map([[first.body, result.names]]),
+          previewTools: [tool],
+        };
+      } catch (error) {
+        kernel.release(made.shape);
+        throw error;
+      }
+    },
+  );
+
   define('test-combine', z.strictObject({}), ({ kernel, bodies, names, feature }) => {
     const [one, two] = [...bodies];
     if (!one || !two) throw new KernelError('Needs two bodies.');
@@ -345,6 +429,26 @@ export function testFeatures(): TestFeatures {
   });
 
   return { registry, calls, seen, probes };
+}
+
+/** Whether two unit directions are the same. */
+function same(a: Vec3 | undefined, b: Vec3): boolean {
+  return a !== undefined && Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2] - 1) < 1e-9;
+}
+
+/**
+ * The in-plane direction `test-press` tilts towards: the normal crossed
+ * with Z (with X for a face that faces up or down), normalised.
+ */
+export function tiltAxis(normal: Vec3): Vec3 {
+  const other: Vec3 = Math.abs(normal[2]) > 0.9 ? [1, 0, 0] : [0, 0, 1];
+  const c: Vec3 = [
+    normal[1] * other[2] - normal[2] * other[1],
+    normal[2] * other[0] - normal[0] * other[2],
+    normal[0] * other[1] - normal[1] * other[0],
+  ];
+  const n = Math.hypot(...c);
+  return [c[0] / n, c[1] / n, c[2] / n];
 }
 
 let counter = 0;

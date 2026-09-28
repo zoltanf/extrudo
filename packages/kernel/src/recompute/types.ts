@@ -97,6 +97,27 @@ export interface FeatureOutput {
   data?: unknown;
   /** Turns the status to `warning`. */
   warnings?: readonly string[];
+  /**
+   * Shapes a feature dialog's live preview draws over the model (UI spec
+   * §3.4, ADR-0027): an extrude's prism, styled by what it does to the
+   * bodies. The cache owns them like the other shapes (they may be the same
+   * handles as a new body). Only previews mesh them; a recompute ignores them.
+   */
+  previewTools?: readonly PreviewTool[];
+}
+
+/** How a preview tool is drawn: new bodies and joins translucent, cuts red (UI spec §3.4). */
+export type PreviewToolStyle = 'new' | 'join' | 'cut' | 'intersect';
+
+export interface PreviewTool {
+  shape: ShapeHandle;
+  style: PreviewToolStyle;
+}
+
+/** A preview tool as a preview result carries it. */
+export interface PreviewToolMesh {
+  mesh: BodyMesh;
+  style: PreviewToolStyle;
 }
 
 export interface RecomputeRequest {
@@ -116,6 +137,11 @@ export interface PreviewRequest extends RecomputeRequest {
   draft: Feature;
   /** Where it goes in the timeline (for an edited feature, its own index). */
   index: number;
+  /**
+   * Also mesh the bodies before the draft (`base` in the result): what the
+   * view shows and picks while a feature is edited, rolled back to it.
+   */
+  base?: boolean;
 }
 
 export interface BodyResult {
@@ -143,6 +169,13 @@ export type RecomputeResult =
       features: Record<FeatureId, FeatureStatus>;
       /** The bodies at the timeline marker, in creation order. */
       bodies: BodyResult[];
+      /**
+       * Previews only: the draft's `previewTools`, meshed (absent when it
+       * has none or failed). Always meshed, never left out like bodies.
+       */
+      tools?: PreviewToolMesh[];
+      /** Previews with `base`: the bodies before the draft (meshes left out as for `bodies`). */
+      base?: BodyResult[];
       stats: RecomputeStats;
     }
   /** A newer request came in; this one stopped between two features. */

@@ -26,7 +26,7 @@ import { selectionSummary } from '../selection/items';
 import { formatRenderStats } from '../viewport/renderMeter';
 import type { ViewportStore } from '../viewport/store';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
-import { type FeatureActions, isEditableSketch } from './featureActions';
+import type { FeatureActions } from './featureActions';
 import { toolForFeature } from './tools';
 
 export interface TimelineProps {
@@ -123,7 +123,7 @@ export function Timeline({
                   feature={feature}
                   status={index < marker && !feature.suppressed ? statuses[feature.id] : undefined}
                   rolledBack={index >= marker}
-                  editable={isEditableSketch(feature, index, marker)}
+                  editable={actions.canEdit(feature, index, marker)}
                   actions={actions}
                 />
               </Fragment>
