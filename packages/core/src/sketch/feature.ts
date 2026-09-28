@@ -97,3 +97,25 @@ export function parseProfileRefId(id: string): { feature: FeatureId; profile: st
   if (slash <= 0 || slash === id.length - 1) return undefined;
   return { feature: id.slice(0, slash) as FeatureId, profile: id.slice(slash + 1) };
 }
+
+/**
+ * The shown sketches whose profiles `feature` uses: the ones a new feature
+ * hides when it is created (as Fusion does), so a used sketch's profile
+ * doesn't float in front of the faces made from it and take their clicks.
+ */
+export function usedSketches(
+  feature: Pick<Feature, 'inputs'>,
+  features: readonly Pick<Feature, 'id' | 'type' | 'visible'>[],
+): FeatureId[] {
+  const ids = new Set<string>();
+  for (const input of Object.values(feature.inputs)) {
+    if (input.kind !== 'ref') continue;
+    for (const ref of input.refs) {
+      const parsed = ref.kind === 'profile' ? parseProfileRefId(ref.id) : undefined;
+      if (parsed) ids.add(parsed.feature);
+    }
+  }
+  return features
+    .filter((f) => ids.has(f.id) && f.type === SKETCH_TYPE && f.visible !== false)
+    .map((f) => f.id);
+}

@@ -2,6 +2,10 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-28 · Fix: a new extrude or revolve hides the sketches whose
+  profiles it used (one undo step with it, as in Fusion), so a used
+  profile no longer floats over a pocket and takes the clicks meant for a
+  sketch on its floor.
 - 2026-09-28 · Fixes: the new **Extrudo** mouse preset is the default
   (middle-drag orbits, right-drag pans, the left button as before;
   Onshape / SolidWorks is still in the Mouse controls menu); dropdown

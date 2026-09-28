@@ -32,7 +32,9 @@ import {
   nextFeatureName,
   type SelectionItem,
   type SessionStore,
+  setFeatureVisibility,
   updateFeatureInputs,
+  usedSketches,
 } from '@extrudo/core';
 import type { BodyMesh, Preview, SubShapeKind } from '@extrudo/kernel';
 import { createStore, type StoreApi } from 'zustand/vanilla';
@@ -607,6 +609,12 @@ export function createDialogController(options: DialogControllerOptions): Dialog
           : updateFeatureInputs({ id: fresh.id, inputs: fresh.draft.inputs, replace: true });
       try {
         store.getState().dispatch(command);
+        // A new feature hides the sketches whose profiles it used, in the same undo step.
+        const used =
+          fresh.mode === 'create' ? usedSketches(fresh.draft, store.getState().doc.features) : [];
+        if (used.length > 0) {
+          store.getState().amend(setFeatureVisibility({ ids: used, visible: false }));
+        }
       } catch (error) {
         if (!(error instanceof CommandError)) throw error;
         notify('error', error.message);

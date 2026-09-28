@@ -21,6 +21,7 @@ import {
   SketchInputsSchema,
   sketchFeature,
   sketchInputs,
+  usedSketches,
 } from './feature';
 import {
   ORIGIN_PLANES,
@@ -357,6 +358,42 @@ describe('sketch feature', () => {
     // The sample's Sketch1 has no inputs (a placeholder), and Extrude1 isn't a sketch.
     expect(readSketch(doc.features[0] as (typeof doc.features)[0])).toBeUndefined();
     expect(readSketch(doc.features[1] as (typeof doc.features)[0])).toBeUndefined();
+  });
+});
+
+describe('usedSketches', () => {
+  const sketch = (id: string, visible?: boolean) => ({
+    id: id as FeatureId,
+    type: 'sketch',
+    ...(visible === false && { visible }),
+  });
+  const features = [
+    sketch('S1'),
+    sketch('S2'),
+    sketch('S3', false),
+    { ...sketch('E1'), type: 'x' },
+  ];
+
+  it('lists the shown sketches whose profiles a feature uses, once each', () => {
+    const inputs = {
+      profiles: {
+        kind: 'ref' as const,
+        refs: [
+          { kind: 'profile' as const, id: profileRefId('S2' as FeatureId, 'a') },
+          { kind: 'profile' as const, id: profileRefId('S2' as FeatureId, 'b') },
+          { kind: 'profile' as const, id: profileRefId('S1' as FeatureId, 'c') },
+          { kind: 'face' as const, id: 'E1:top' },
+        ],
+      },
+      // A sketch line as an axis doesn't use the sketch up.
+      axis: { kind: 'ref' as const, refs: [{ kind: 'sketchEntity' as const, id: 'S2/l1' }] },
+    };
+    expect(usedSketches({ inputs }, features)).toEqual(['S1', 'S2']);
+  });
+
+  it('skips hidden sketches, other features and missing ones', () => {
+    const refs = ['S3/a', 'E1/a', 'S9/a'].map((id) => ({ kind: 'profile' as const, id }));
+    expect(usedSketches({ inputs: { profiles: { kind: 'ref', refs } } }, features)).toEqual([]);
   });
 });
 

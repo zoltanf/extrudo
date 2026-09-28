@@ -10,6 +10,7 @@ import {
   insertFeature,
   originPlaneRef,
   type SketchData,
+  setFeatureVisibility,
   sketchInputs,
   type Vec3,
 } from '@extrudo/core';
@@ -19,7 +20,7 @@ import type { OpenDialog } from './dialog';
 import { extrudeDialog, extrudeManipulators, proposeOperation } from './extrude';
 import { featureDialogs, specForCommand } from './registry';
 import type { DialogContext, DialogValues, Manipulator, ManipulatorContext } from './spec';
-import { BOX, faceItem, namedBoxMesh, setupDialogs } from './testing';
+import { BOX, faceItem, namedBoxMesh, settle, setupDialogs } from './testing';
 import { defaultValues, inputsFor, mergeValues, shownFields, valuesFor } from './values';
 
 const TOP: GeomRef = { kind: 'face', id: 'box:top' };
@@ -62,6 +63,37 @@ function manipulatorContext(
 }
 
 const round = (v: Vec3) => v.map((c) => Math.round(c * 1000) / 1000 + 0);
+
+describe('OK on a new extrude', () => {
+  it('hides the sketch whose profile it used, in the same undo step; an edit does not', async () => {
+    const t = setupDialogs([extrudeDialog]);
+    const { sketch, profile } = rectangleSketch();
+    t.store.getState().dispatch(insertFeature({ feature: sketch, index: 1 }));
+    t.session.getState().select([{ kind: 'profile', id: profile.id }]);
+    t.controller.start('extrude');
+    await settle();
+    expect(t.controller.ok()).toBe(true);
+    const shown = () => t.store.getState().doc.features.find((f) => f.id === sketch.id)?.visible;
+    expect(shown()).toBe(false);
+    expect(t.store.getState().undoLabel).toBe('Add feature');
+
+    // Shown again by hand, then an edit of the extrude leaves it shown.
+    t.store.getState().dispatch(setFeatureVisibility({ ids: [sketch.id], visible: true }));
+    const extrude = t.store.getState().doc.features.at(-1)?.id as FeatureId;
+    expect(t.controller.edit(extrude)).toBe(true);
+    t.controller.setExpr('distance', '7 mm');
+    expect(t.controller.ok()).toBe(true);
+    expect(shown()).toBeUndefined();
+
+    // One undo each: the edit, the eye, then the extrude and the hiding together.
+    t.store.getState().undo();
+    t.store.getState().undo();
+    expect(shown()).toBe(false);
+    t.store.getState().undo();
+    expect(shown()).toBeUndefined();
+    expect(t.store.getState().doc.features.map((f) => f.id)).toEqual(['box', sketch.id]);
+  });
+});
 
 describe('the extrude dialog', () => {
   it('is the app’s dialog for the Extrude tool', () => {

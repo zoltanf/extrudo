@@ -255,3 +255,20 @@ shapes.
 - The debug page also registers the app's dialogs (Extrude). Its e2e
   tests stay: they cover the toggle-shown field, the custom input
   mapping and the angle arc on a ready-made box.
+
+## Amendment (used sketches hide, 2026-09-28)
+
+A user report: after a pocket was cut from a sketch on a face, a new
+sketch on the pocket's floor couldn't be picked. The pocket's own sketch
+was still shown, and its profile, where the face used to be, lay in front
+of the floor and took every click over the pocket (profiles and faces are
+picked front to back; "Select other…" reached the one behind). Now OK on a
+new feature hides the shown sketches whose profiles it used
+(`usedSketches` in core's `sketch/feature.ts`), amended into the insert's
+undo step, as Fusion's "auto-hide sketch on feature creation" does. Edits
+don't touch visibility, and a sketch line used only as an axis doesn't
+hide its sketch. Rejected: ranking a used sketch's profiles after faces in
+picking (a shown profile should pick where it is drawn; hiding also
+declutters the view), and a preference to turn it off (not needed yet; the
+eye shows a sketch again).
+
