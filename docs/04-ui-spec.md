@@ -66,6 +66,14 @@ brief, voice) is in **`05-brand.md`**. In short:
   addition: export, orientation, overhang, slicer hand-off,
   mass/filament). Insert and export aren't modelling tools, so they aren't
   in SOLID.
+- **Export model** (P2-12, ADR-0034): 3D Print › Export, File › "Export
+  3MF, STL or STEP…", or a body's menu (that body). A small dialog: the
+  bodies as checkboxes (the selection's bodies, else every shown body),
+  the format (3MF first, "for slicers"; STL; STEP), and for meshes
+  Coarse / Medium / Fine or Custom (deviation and angle fields). The
+  summary line says what the file holds ("1 body, 620 triangles,
+  watertight", or which bodies aren't closed) before Export saves it.
+  Format and resolution are remembered.
 - **Tool groups:** each group shows 3–6 most-used tools as buttons plus a
   dropdown with the full list. Users can pin tools to the toolbar.
 - **Browser (left):** collapsible tree with an eye toggle per item and

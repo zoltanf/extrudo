@@ -34,11 +34,13 @@ export {
   type OperationResult,
   type ShapeHandle,
   ShapeScope,
+  stepString,
   type Vec3,
 } from './kernel';
 export {
   type BodyMesh,
   EDGE_SEAM,
+  type ExportMesh,
   type Measurements,
   type MeshOptions,
   meshBuffers,
@@ -108,6 +110,7 @@ export type {
 } from './recompute/types';
 export { type Preview, Recomputer, type RecomputerOptions } from './recomputer';
 export {
+  type BodyExportMesh,
   isKernelCrash,
   type KernelApi,
   KernelCrashError,

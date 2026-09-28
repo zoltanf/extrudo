@@ -1,6 +1,7 @@
 import { type DocumentStore, renameDocument } from '@extrudo/core';
 import {
   CircleHelp,
+  FileDown,
   FilePlus2,
   House,
   Import,
@@ -42,6 +43,8 @@ export interface FileActions {
   home(): void;
   exportFile(): void;
   importFile(): void;
+  /** Opens the model's export (STL, 3MF, STEP; P2-12). */
+  exportModel?(): void;
 }
 
 export interface AppBarProps {
@@ -94,6 +97,11 @@ export function AppBar({ store, autosave, file, theme, onThemeChange, onSearch }
         <MenuItem icon={<Upload size={14} />} onSelect={file.exportFile}>
           Export .extrudo
         </MenuItem>
+        {file.exportModel && (
+          <MenuItem icon={<FileDown size={14} />} onSelect={file.exportModel}>
+            Export 3MF, STL or STEP…
+          </MenuItem>
+        )}
         <MenuItem icon={<Import size={14} />} onSelect={file.importFile}>
           Import .extrudo…
         </MenuItem>

@@ -363,10 +363,19 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   insertion at the marker; edit-feature reopens its dialog; reorder by drag with
   dependency validation; error and warning chips; "fix references" flow.
   *AC:* FR-TL-02..05.
-- [ ] **P2-12 STL, 3MF and STEP export.** Export dialog (bodies, format,
+- [x] **P2-12 STL, 3MF and STEP export.** Export dialog (bodies, format,
   resolution presets); binary STL; 3MF with objects, names, colours and units
   (verified in Bambu Studio, OrcaSlicer and PrusaSlicer); STEP AP242.
   *AC:* FR-IO-02..04; an automated manifold check on exported STL.
+  *Done 2026-09-28* (ADR-0034): the kernel meshes a copy of each body at
+  the export's deviation and welds it through the topology (closed,
+  manifold, checked by `checkManifold` in `@extrudo/io` in unit and e2e
+  tests); binary STL and 3MF (objects, names, millimetres, colours as a
+  materials-extension colour group, per triangle too) in `@extrudo/io`;
+  STEP AP242 with named products from the facade. PrusaSlicer 2.9.6,
+  OrcaSlicer 2.4.2 (CLI), lib3mf 2.5 (strict) and FreeCAD 1.1.3 read the
+  files cleanly; Bambu Studio and colours in the slicer GUIs are a manual
+  check still to do.
 - [ ] **P2-13 Measure and inspect.** Measure tool (distance, angle, radius, area,
   volume); selection bounding-box readout in the status bar.
   *AC:* FR-3DP-01.

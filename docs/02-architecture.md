@@ -111,9 +111,10 @@ and scripting simple.
 ```
 
 Dependency direction (enforced by lint rule): `apps/* → packages/*`;
-`kernel → core, sketch`; `sketch → core, io` (P1-13: sketch export builds
-`io` drawings); `storage → core`; `core` and `io` depend on nothing
-internal.
+`kernel → core, sketch` (and `io` in its tests only, a devDependency:
+P2-12's export tests check meshes with it); `sketch → core, io` (P1-13:
+sketch export builds `io` drawings); `storage → core`; `core` and `io`
+depend on nothing internal (`io` uses fflate for 3MF).
 
 ## 4. The document model
 
@@ -276,7 +277,9 @@ interface KernelApi {
     : Promise<RecomputeResult>;                      // cancellable via token
   preview(req: { doc; featureDraft: Feature }): Promise<PreviewResult>;  // live dialog preview
   profilesForSketch(sketch: SketchData, plane): Promise<ProfileRegion[]>;
-  export(req: { format: 'stl'|'3mf'|'step'; bodies: BodyId[]; opts }): Promise<Uint8Array>;
+  // P2-12 (ADR-0034), bodies of the last finished recompute:
+  exportMeshes(bodies: BodyId[], tessellation: MeshOptions): Promise<{ id; mesh: ExportMesh }[]>;
+  exportStep(bodies: { id: BodyId; name: string }[]): Promise<string>;   // AP242, mm
   measure(req: MeasureQuery): Promise<MeasureResult>;
 }
 interface RecomputeResult {
@@ -508,8 +511,11 @@ bodies.
 
 ### 5.4 Tessellation and rendering
 
-- `BRepMesh_IncrementalMesh` with deflection tied to the model size. Separate
-  (finer) settings for export.
+- `BRepMesh_IncrementalMesh` with deflection tied to the model size. Export
+  (P2-12, ADR-0034) meshes a topology copy at its own deflection (presets
+  0.1 / 0.02 / 0.005 mm) and welds nodes along edges through
+  `Poly_PolygonOnTriangulation`, so a solid gives one closed, manifold
+  mesh; the display mesh keeps per-face nodes.
 - Faces are rendered as one merged `BufferGeometry` per body, with `faceRanges`
   for picking and highlight (highlight via a vertex-colour/attribute update, not
   separate meshes).

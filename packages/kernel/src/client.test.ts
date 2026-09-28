@@ -54,6 +54,8 @@ describe('KernelClient', () => {
       preview: async () => ({ status: 'cancelled' }),
       endPreview: async () => {},
       reference: async () => undefined,
+      exportMeshes: async () => [],
+      exportStep: async () => '',
     };
     const client = new KernelClient(() => {
       spawned++;
@@ -80,6 +82,8 @@ describe('KernelClient', () => {
       preview: async () => ({ status: 'cancelled' }),
       endPreview: async () => {},
       reference: async () => undefined,
+      exportMeshes: async () => [],
+      exportStep: async () => '',
     };
     const client = new KernelClient(
       () => ({ api: crashing, terminate: () => {}, onFatal: () => {} }),

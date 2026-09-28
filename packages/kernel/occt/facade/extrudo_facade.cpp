@@ -30,6 +30,7 @@
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>
 #include <BRepBndLib.hxx>
+#include <BRepBuilderAPI_Copy.hxx>
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeShape.hxx>
@@ -50,15 +51,20 @@
 #include <BRep_Builder.hxx>
 #include <BRep_Tool.hxx>
 #include <Bnd_Box.hxx>
+#include <DESTEP_Parameters.hxx>
 #include <GCPnts_TangentialDeflection.hxx>
 #include <Geom2dAPI_InterCurveCurve.hxx>
 #include <Geom2dInt_GInter.hxx>
 #include <Geom2d_BSplineCurve.hxx>
 #include <GeomAPI_ProjectPointOnCurve.hxx>
 #include <IntRes2d_IntersectionPoint.hxx>
+#include <Message.hxx>
+#include <Message_Messenger.hxx>
+#include <Message_PrinterOStream.hxx>
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_Circle.hxx>
 #include <Geom_Curve.hxx>
+#include <IFSelect_ReturnStatus.hxx>
 #include <GProp_GProps.hxx>
 #include <NCollection_Array1.hxx>
 #include <NCollection_IndexedDataMap.hxx>
@@ -82,6 +88,12 @@
 #include <GeomAbs_CurveType.hxx>
 #include <GeomAbs_SurfaceType.hxx>
 #include <Precision.hxx>
+#include <STEPControl_Reader.hxx>
+#include <StepBasic_Product.hxx>
+#include <StepData_StepModel.hxx>
+#include <TCollection_HAsciiString.hxx>
+#include <STEPControl_Writer.hxx>
+#include <UnitsMethods_LengthUnit.hxx>
 #include <gp_Ax1.hxx>
 #include <gp_Ax2.hxx>
 #include <gp_Ax3.hxx>
@@ -102,6 +114,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -909,6 +922,137 @@ public:
   uintptr_t vertexPointsPtr() const { return reinterpret_cast<uintptr_t>(vertexPoints_.data()); }
   int vertexPointsSize() const { return static_cast<int>(vertexPoints_.size()); }
 
+  // --------------------------------------------------------------- export --
+  //
+  // Export (P2-12, ADR-0034): a welded triangle mesh for STL and 3MF, and a
+  // STEP file. Read the results with the export*Ptr/Size accessors, then
+  // call clearExport().
+
+  /**
+   * Tessellates a shape for export at an absolute deflection (mm, radians)
+   * into exportPositions (xyz as doubles) and exportIndices (three node
+   * indices per triangle, counter-clockwise seen from outside). Unlike
+   * mesh(), nodes are shared: a node on an edge is one node for both faces
+   * along it, a node at a vertex one for every face around it, so a closed
+   * solid gives a closed mesh. It meshes a copy of the shape, so the
+   * display triangulation stays as it is. Degenerate triangles (at a cone's
+   * apex, a sphere's poles) are left out. Returns the triangle count, or -1.
+   */
+  int exportMesh(int shape, double linearDeflection, double angularDeflection) {
+    beginOp();
+    clearExport();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return failExport("Export failed: unknown shape.");
+    try {
+      BRepBuilderAPI_Copy copier(*s, false, false);
+      const TopoDS_Shape copy = copier.Shape();
+      BRepMesh_IncrementalMesh mesher(copy, linearDeflection, false, angularDeflection, false);
+      if (!mesher.IsDone()) return failExport("Export failed: the body couldn't be meshed.");
+      if (!weldedMesh(copy)) {
+        clearExport();
+        return -1;
+      }
+      return static_cast<int>(exportIndices_.size() / 3);
+    } catch (...) {
+      clearExport();
+      failFromException("Export failed");
+      return -1;
+    }
+  }
+
+  /** Names the shapes of the next writeStep() in order: one pushStepName() per shape. */
+  void clearStepNames() { stepNames_.clear(); }
+  void pushStepName(const char* name) { stepNames_.emplace_back(name == nullptr ? "" : name); }
+
+  /**
+   * Writes the shapes staged with clearArgs()/pushArg() as one STEP AP242
+   * file in millimetres, each shape a product named by pushStepName() (a
+   * missing or empty name leaves OCCT's "Product <n>"). Names are STEP strings: encode
+   * non-ASCII characters as \X2\…\X0\ first. Read the text with
+   * exportTextPtr/Size. Returns its length in bytes, or -1.
+   */
+  int writeStep() {
+    beginOp();
+    clearExport();
+    quietMessages();
+    try {
+      STEPControl_Writer writer;
+      int scanned = 0;
+      for (size_t i = 0; i < args_.size(); ++i) {
+        const TopoDS_Shape* s = find(args_[i]);
+        if (s == nullptr) return failExport("STEP export failed: unknown shape.");
+        DESTEP_Parameters parameters;
+        parameters.WriteSchema = DESTEP_Parameters::WriteMode_StepSchema_AP242DIS;
+        parameters.WriteUnit = UnitsMethods_LengthUnit_Millimeter;
+        if (writer.Transfer(*s, STEPControl_AsIs, parameters) != IFSelect_RetDone) {
+          return failExport("STEP export failed: a body couldn't be translated.");
+        }
+        // OCCT names products "<name> <level>" ("Product 1"): the first
+        // product this transfer made (its root) gets the body's name as is.
+        const Handle(StepData_StepModel) model = writer.Model();
+        const int entities = model->NbEntities();
+        for (; scanned < entities; ++scanned) {
+          const Handle(StepBasic_Product) product =
+              Handle(StepBasic_Product)::DownCast(model->Value(scanned + 1));
+          if (product.IsNull()) continue;
+          if (i < stepNames_.size() && !stepNames_[i].empty()) {
+            const Handle(TCollection_HAsciiString) name =
+                new TCollection_HAsciiString(stepNames_[i].c_str());
+            product->SetId(name);
+            product->SetName(name);
+          }
+          scanned = entities;
+          break;
+        }
+      }
+      std::ostringstream out;
+      if (writer.WriteStream(out) != IFSelect_RetDone) {
+        return failExport("STEP export failed: the file couldn't be written.");
+      }
+      exportText_ = out.str();
+      return static_cast<int>(exportText_.size());
+    } catch (...) {
+      clearExport();
+      failFromException("STEP export failed");
+      return -1;
+    }
+  }
+
+  /**
+   * Reads STEP text into one shape (a compound of what the file's roots
+   * translate to). Used by the export tests; STEP import (FR-IO-05) will
+   * build on it. Returns a handle, or 0.
+   */
+  int readStep(const char* text) {
+    beginOp();
+    quietMessages();
+    try {
+      std::istringstream in(text == nullptr ? "" : text);
+      STEPControl_Reader reader;
+      if (reader.ReadStream("extrudo.step", in) != IFSelect_RetDone) {
+        return fail("STEP import failed: the file couldn't be read.");
+      }
+      if (reader.TransferRoots() <= 0) return fail("STEP import failed: the file has no shapes.");
+      return store(reader.OneShape());
+    } catch (...) {
+      return failFromException("STEP import failed");
+    }
+  }
+
+  /** Frees the export buffers once JS has copied them. */
+  void clearExport() {
+    std::vector<double>().swap(exportPositions_);
+    std::vector<uint32_t>().swap(exportIndices_);
+    std::string().swap(exportText_);
+  }
+
+  uintptr_t exportPositionsPtr() const { return reinterpret_cast<uintptr_t>(exportPositions_.data()); }
+  int exportPositionsSize() const { return static_cast<int>(exportPositions_.size()); }
+  uintptr_t exportIndicesPtr() const { return reinterpret_cast<uintptr_t>(exportIndices_.data()); }
+  int exportIndicesSize() const { return static_cast<int>(exportIndices_.size()); }
+  uintptr_t exportTextPtr() const { return reinterpret_cast<uintptr_t>(exportText_.data()); }
+  int exportTextSize() const { return static_cast<int>(exportText_.size()); }
+
   // ------------------------------------------------------ errors, memory --
 
   const char* lastError() const { return lastError_.c_str(); }
@@ -940,6 +1084,10 @@ private:
   std::vector<uint32_t> edgeRanges_;
   std::vector<uint8_t> edgeFlags_;
   std::vector<float> vertexPoints_;
+  std::vector<double> exportPositions_;
+  std::vector<uint32_t> exportIndices_;
+  std::string exportText_;
+  std::vector<std::string> stepNames_;
   std::vector<double> numbers_;
   /** Staged edges: one per curve, or a spline's pieces (sketchCurveOf_ says whose). */
   std::vector<TopoDS_Edge> sketchEdges_;
@@ -985,6 +1133,148 @@ private:
   int failCurve(const char* message) {
     fail(message);
     return -1;
+  }
+
+  int failExport(const char* message) {
+    clearExport();
+    fail(message);
+    return -1;
+  }
+
+  /**
+   * Stops OCCT's messages (the STEP translator's banner and statistics)
+   * from reaching stdout, where Emscripten prints them to the console.
+   */
+  static void quietMessages() {
+    const Handle(Message_Messenger)& messenger = Message::DefaultMessenger();
+    if (!messenger.IsNull()) messenger->RemovePrinters(STANDARD_TYPE(Message_PrinterOStream));
+  }
+
+  /** The export node at a position: adds one. */
+  int32_t addExportNode(const gp_Pnt& p) {
+    exportPositions_.push_back(p.X());
+    exportPositions_.push_back(p.Y());
+    exportPositions_.push_back(p.Z());
+    return static_cast<int32_t>(exportPositions_.size() / 3 - 1);
+  }
+
+  double exportNodeDistance(int32_t node, const gp_Pnt& p) const {
+    const size_t i = static_cast<size_t>(node) * 3;
+    return p.SquareDistance(
+        gp_Pnt(exportPositions_[i], exportPositions_[i + 1], exportPositions_[i + 2]));
+  }
+
+  /**
+   * Fills exportPositions_/exportIndices_ from the triangulation of every
+   * face of a meshed shape, sharing nodes through the topology: each face
+   * edge's polygon on the face's triangulation names the face nodes along
+   * it, which become the edge's nodes (made once, by the first face that
+   * meets the edge, their ends the edge's vertex nodes); nodes inside a
+   * face are its own. BRepMesh discretises each edge once for all its
+   * faces, so the polygons of one edge match node for node; their order
+   * along the edge is checked by position, not assumed.
+   */
+  bool weldedMesh(const TopoDS_Shape& shape) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vertices;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+    TopExp::MapShapes(shape, TopAbs_VERTEX, vertices);
+    TopExp::MapShapes(shape, TopAbs_EDGE, edges);
+    TopExp::MapShapes(shape, TopAbs_FACE, faces);
+    std::vector<int32_t> vertexNodes(static_cast<size_t>(vertices.Extent()) + 1, -1);
+    std::vector<std::vector<int32_t>> edgeNodes(static_cast<size_t>(edges.Extent()) + 1);
+    std::vector<int32_t> local;
+
+    for (int f = 1; f <= faces.Extent(); ++f) {
+      const TopoDS_Face& face = TopoDS::Face(faces(f));
+      TopLoc_Location location;
+      const Handle(Poly_Triangulation)& triangulation = BRep_Tool::Triangulation(face, location);
+      if (triangulation.IsNull()) {
+        return fail("Export failed: a face of the body couldn't be meshed.") != 0;
+      }
+      const gp_Trsf transform = location.Transformation();
+      const auto nodeAt = [&](int n) { return triangulation->Node(n).Transformed(transform); };
+      const auto vertexNode = [&](const TopoDS_Vertex& vertex, const gp_Pnt& p) {
+        int32_t& node = vertexNodes[static_cast<size_t>(vertices.FindIndex(vertex))];
+        if (node < 0) node = addExportNode(p);
+        return node;
+      };
+      local.assign(static_cast<size_t>(triangulation->NbNodes()) + 1, -1);
+
+      for (TopExp_Explorer it(face, TopAbs_EDGE); it.More(); it.Next()) {
+        const TopoDS_Edge& edge = TopoDS::Edge(it.Current());
+        const Handle(Poly_PolygonOnTriangulation)& polygon =
+            BRep_Tool::PolygonOnTriangulation(edge, triangulation, location);
+        if (polygon.IsNull()) {
+          return fail("Export failed: an edge of the body couldn't be meshed.") != 0;
+        }
+        const NCollection_Array1<int>& nodes = polygon->Nodes();
+        const int count = nodes.Length();
+        const int lower = nodes.Lower();
+        if (count == 0) continue;
+        TopoDS_Vertex first;
+        TopoDS_Vertex last;
+        TopExp::Vertices(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), first, last);
+        if (BRep_Tool::Degenerated(edge)) {
+          // A pole or an apex: every node along it is the one vertex.
+          const int32_t node = vertexNode(first, nodeAt(nodes(lower)));
+          for (int k = 0; k < count; ++k) local[static_cast<size_t>(nodes(lower + k))] = node;
+          continue;
+        }
+        std::vector<int32_t>& ids = edgeNodes[static_cast<size_t>(edges.FindIndex(edge))];
+        bool forward = true;
+        if (ids.empty()) {
+          const gp_Pnt start = nodeAt(nodes(lower));
+          forward = start.SquareDistance(BRep_Tool::Pnt(first)) <=
+                    start.SquareDistance(BRep_Tool::Pnt(last));
+          ids.assign(static_cast<size_t>(count), -1);
+          for (int k = 0; k < count; ++k) {
+            const int j = forward ? k : count - 1 - k;
+            const gp_Pnt p = nodeAt(nodes(lower + k));
+            if (j == 0) ids[0] = vertexNode(first, p);
+            else if (j == count - 1) ids[static_cast<size_t>(j)] = vertexNode(last, p);
+            else ids[static_cast<size_t>(j)] = addExportNode(p);
+          }
+        } else {
+          if (static_cast<int>(ids.size()) != count) {
+            return fail("Export failed: the mesh of two faces doesn't match along an edge.") != 0;
+          }
+          if (count >= 3) {
+            const gp_Pnt second = nodeAt(nodes(lower + 1));
+            forward = exportNodeDistance(ids[1], second) <=
+                      exportNodeDistance(ids[static_cast<size_t>(count) - 2], second);
+          } else {
+            const gp_Pnt start = nodeAt(nodes(lower));
+            forward = exportNodeDistance(ids[0], start) <= exportNodeDistance(ids[1], start);
+          }
+        }
+        for (int k = 0; k < count; ++k) {
+          const int j = forward ? k : count - 1 - k;
+          int32_t& slot = local[static_cast<size_t>(nodes(lower + k))];
+          if (slot < 0) slot = ids[static_cast<size_t>(j)];
+        }
+      }
+
+      for (int n = 1; n <= triangulation->NbNodes(); ++n) {
+        if (local[static_cast<size_t>(n)] < 0) local[static_cast<size_t>(n)] = addExportNode(nodeAt(n));
+      }
+      const bool reversed = face.Orientation() == TopAbs_REVERSED;
+      for (int t = 1; t <= triangulation->NbTriangles(); ++t) {
+        int n1 = 0;
+        int n2 = 0;
+        int n3 = 0;
+        triangulation->Triangle(t).Get(n1, n2, n3);
+        if (reversed) std::swap(n2, n3);
+        const int32_t a = local[static_cast<size_t>(n1)];
+        const int32_t b = local[static_cast<size_t>(n2)];
+        const int32_t c = local[static_cast<size_t>(n3)];
+        if (a == b || b == c || a == c) continue;
+        exportIndices_.push_back(static_cast<uint32_t>(a));
+        exportIndices_.push_back(static_cast<uint32_t>(b));
+        exportIndices_.push_back(static_cast<uint32_t>(c));
+      }
+    }
+    return true;
   }
 
   int addSketchEdge(const TopoDS_Edge& edge) {

@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  FileDown,
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
@@ -463,6 +464,18 @@ function BodyLeaf({
       <MenuItem icon={<Palette size={14} />} onSelect={() => setAppearance(true)}>
         Appearance…
       </MenuItem>
+      {actions.exportBodies && (
+        <MenuItem
+          icon={<FileDown size={14} />}
+          onSelect={() =>
+            actions.exportBodies?.(
+              selected && selection.size > 1 ? ([...selection] as BodyId[]) : [id],
+            )
+          }
+        >
+          Export…
+        </MenuItem>
+      )}
       <MenuSeparator />
       <MenuItem icon={<Trash2 size={14} />} shortcut="Del" onSelect={remove}>
         Delete

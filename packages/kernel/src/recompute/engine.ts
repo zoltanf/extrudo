@@ -169,6 +169,14 @@ export class RecomputeEngine {
     return { kind, id, fingerprint };
   }
 
+  /**
+   * The shape of a body of the last finished recompute (what the model
+   * store shows), for export. It stays the cache's: don't release it.
+   */
+  latestBody(body: BodyId): ShapeHandle | undefined {
+    return this.#latest.get(body);
+  }
+
   /** Empties the cache and gives every shape back to the kernel. */
   clear(): void {
     for (const entry of this.#entries.values()) this.#drop(entry);

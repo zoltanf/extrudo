@@ -140,6 +140,8 @@ export interface BodyActions {
   setOpacity(id: BodyId, opacity: number): void;
   /** Adds a Remove feature for the bodies; returns its ID, or `undefined` if refused. */
   remove(ids: readonly BodyId[]): FeatureId | undefined;
+  /** Opens the export with these bodies (P2-12); absent where there is no export. */
+  exportBodies?(ids: readonly BodyId[]): void;
 }
 
 export function createBodyActions(
