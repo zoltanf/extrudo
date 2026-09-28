@@ -5,27 +5,15 @@ import {
   type ExtrudeSide,
   extrudeFeature,
   extrudeSettings,
-  type FeatureId,
   type GeomRef,
   originPlane,
-  parseProfileRefId,
 } from '@extrudo/core';
 import { KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
-import { compareGeometry, deriveNames, type TopoNames } from '../naming/names';
-import {
-  faceEdgeSources,
-  type NamedShape,
-  namedBoolean,
-  namedPrism,
-  type SweepSource,
-} from '../naming/ops';
-import type {
-  EvalContext,
-  FeatureOutput,
-  KernelFeatureDefinition,
-  PreviewTool,
-} from '../recompute/types';
-import type { SketchOutputData } from './sketch';
+import { type NamedShape, namedBoolean, namedPrism, type SweepSource } from '../naming/ops';
+import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import { explicitBodies, type OperationWords, operate } from './operation';
+import { type Base, baseOf, centroidOf, PARALLEL_EPS, type Plane } from './sources';
+import { add, corners, degrees, dot, length, perpendicular, scale, sub } from './vec';
 
 /**
  * The `data` of an extrude's output: where it sits, for the dialog's
@@ -46,14 +34,11 @@ export interface ExtrudeOutputData {
   tapers: [number, number];
 }
 
-/** Distances (mm) at or below which shapes touch. */
-const TOUCH = 1e-4;
 /** Lengths (mm) at or below which an extrude has none. */
 const LENGTH_EPS = 1e-6;
-/** Cosines within this of 1 are parallel directions. */
-const PARALLEL_EPS = 1e-9;
 
-type Plane = { point: Vec3; normal: Vec3 };
+/** How an extrude speaks of itself (the shared operation code, `operation.ts`). */
+const WORDS: OperationWords = { noun: 'extrude', check: 'Check its direction and distance.' };
 
 /** One side of the extrude, resolved to numbers. */
 interface Side {
@@ -92,10 +77,10 @@ function evaluateExtrude(ctx: EvalContext<ExtrudeInputs>): FeatureOutput {
     throw new KernelError('Pick at least one profile or face to extrude.');
   }
   using scope = kernel.scope();
-  const base = baseOf(ctx, scope, settings.profiles);
+  const base = baseOf(ctx, scope, settings.profiles, WORDS.noun);
   const n = settings.flip ? scale(base.plane.normal, -1) : base.plane.normal;
   const origin = centroidOf(ctx, base.source.shape);
-  const participants = explicitBodies(ctx, settings);
+  const participants = explicitBodies(ctx, settings, WORDS);
   const sides = resolveSides(ctx, settings, base, n, origin, participants);
   const tool = sweep(ctx, scope, base.source, n, sides, settings.direction);
   const data: ExtrudeOutputData = {
@@ -106,140 +91,14 @@ function evaluateExtrude(ctx: EvalContext<ExtrudeInputs>): FeatureOutput {
     tapers: [degrees(sides[0]?.taper ?? 0), degrees(sides[1]?.taper ?? 0)],
   };
   const warnings: string[] = [];
-  const result = operate(ctx, scope, settings, tool, participants, warnings);
+  const result = operate(ctx, scope, settings, tool, participants, warnings, WORDS);
   return { ...result, data, ...(warnings.length ? { warnings } : {}) };
 }
 
 const reachOf = (side: Side | undefined, along: Vec3) =>
   side ? side.reach * Math.sign(dot(side.along, along)) : 0;
 
-// ------------------------------------------------------------------ profiles
-
-interface Base {
-  source: SweepSource;
-  plane: Plane;
-}
-
-/** The profiles and faces to sweep, united into one source, and their plane. */
-function baseOf(ctx: EvalContext<ExtrudeInputs>, scope: ShapeScope, refs: GeomRef[]): Base {
-  const parts: Base[] = [];
-  const seen = new Set<string>();
-  for (const ref of refs) {
-    const key = `${ref.kind}:${ref.id}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    parts.push(ref.kind === 'profile' ? profilePart(ctx, ref) : facePart(ctx, scope, ref));
-  }
-  const [first, ...rest] = parts as [Base, ...Base[]];
-  let source = first.source;
-  for (const part of rest) {
-    if (!coplanar(first.plane, part.plane)) {
-      throw new KernelError('Pick profiles and faces that lie in one plane.');
-    }
-    source = unite(ctx, scope, source, part.source);
-  }
-  return { source, plane: first.plane };
-}
-
-function profilePart(ctx: EvalContext<ExtrudeInputs>, ref: GeomRef): Base {
-  const parsed = parseProfileRefId(ref.id);
-  if (!parsed) throw new KernelError("One of its profiles isn't a sketch profile. Pick it again.");
-  const output = ctx.output(parsed.feature as FeatureId);
-  const data = output.data as Partial<SketchOutputData> | undefined;
-  const face = output.shapes?.[parsed.profile];
-  const info = data?.profiles?.find((p) => p.id === parsed.profile);
-  if (face === undefined || !info || !data?.frame) {
-    throw new KernelError(
-      "Can't find one of its profiles any more: an earlier change to the sketch removed it. Edit the extrude and pick it again.",
-    );
-  }
-  return {
-    source: { shape: face, edgeSources: info.edges },
-    plane: { point: data.frame.origin, normal: data.frame.normal },
-  };
-}
-
-/** A flat face of a body (press-pull): the face itself, its edges' names as sources. */
-function facePart(ctx: EvalContext<ExtrudeInputs>, scope: ShapeScope, ref: GeomRef): Base {
-  const hit = ctx.resolve(ref, { label: 'the face to extrude' });
-  const info = ctx.describe(hit.shape).faces[hit.index];
-  if (info?.type !== 'plane' || !info.direction) {
-    throw new KernelError('Can only extrude flat faces. Pick a flat face or a sketch profile.');
-  }
-  const source = faceEdgeSources(
-    ctx.kernel,
-    { shape: hit.shape, names: ctx.names(hit.body) },
-    hit.index,
-  );
-  scope.track(source.shape);
-  return { source, plane: { point: info.centroid, normal: info.direction } };
-}
-
-/**
- * Two coplanar sources as one (a region split by a sketch line, a face and
- * a profile next to it): fused and simplified, so shared edges disappear
- * and the extrude has one face per side, not one per piece. Edge sources
- * follow the fuse's history; a merged edge takes the first input's source.
- */
-function unite(
-  ctx: EvalContext<ExtrudeInputs>,
-  scope: ShapeScope,
-  a: SweepSource,
-  b: SweepSource,
-): SweepSource {
-  const { kernel } = ctx;
-  const result = scope.track(kernel.boolean('fuse', a.shape, b.shape, { simplify: true }));
-  const edgeSources: (string | null)[] = new Array(kernel.count(result.shape, 'edge')).fill(null);
-  const rank: number[] = edgeSources.map(() => Number.POSITIVE_INFINITY);
-  for (const record of result.history) {
-    if (record.from.kind !== 'edge') continue;
-    if (record.relation !== 'modified' && record.relation !== 'kept') continue;
-    const source = (record.input === 0 ? a : b).edgeSources[record.from.index] ?? null;
-    if (source === null) continue;
-    for (const to of record.to) {
-      if (to.kind !== 'edge' || (rank[to.index] as number) <= record.input) continue;
-      edgeSources[to.index] = source;
-      rank[to.index] = record.input;
-    }
-  }
-  return { shape: result.shape, edgeSources };
-}
-
-function coplanar(a: Plane, b: Plane): boolean {
-  const scaleOf = Math.max(1, length(a.point), length(b.point));
-  return (
-    Math.abs(Math.abs(dot(a.normal, b.normal)) - 1) <= PARALLEL_EPS * 1e3 &&
-    Math.abs(dot(sub(b.point, a.point), a.normal)) <= 1e-6 * scaleOf
-  );
-}
-
-/** Area centroid of a face or a compound of faces. */
-function centroidOf(ctx: EvalContext<ExtrudeInputs>, shape: ShapeHandle): Vec3 {
-  let area = 0;
-  let sum: Vec3 = [0, 0, 0];
-  for (const face of ctx.kernel.describe(shape).faces) {
-    area += face.area;
-    sum = add(sum, scale(face.centroid, face.area));
-  }
-  return area > 0 ? scale(sum, 1 / area) : sum;
-}
-
 // ------------------------------------------------------------------ extents
-
-/** The bodies named in `bodies`, or undefined for "automatic". */
-function explicitBodies(
-  ctx: EvalContext<ExtrudeInputs>,
-  settings: ExtrudeSettings,
-): BodyId[] | undefined {
-  if (settings.bodies.length === 0) return undefined;
-  const ids = [...new Set(settings.bodies)] as BodyId[];
-  if (ids.some((id) => !ctx.bodies.has(id))) {
-    throw new KernelError(
-      `One of the bodies to ${verb(settings.operation)} no longer exists. Edit the extrude and pick the bodies again.`,
-    );
-  }
-  return ids;
-}
 
 function resolveSides(
   ctx: EvalContext<ExtrudeInputs>,
@@ -572,165 +431,4 @@ function trimmer(
   });
   scope.track(box.shape);
   return box;
-}
-
-// ------------------------------------------------------------------ operations
-
-function operate(
-  ctx: EvalContext<ExtrudeInputs>,
-  scope: ShapeScope,
-  settings: ExtrudeSettings,
-  tool: NamedShape,
-  participants: BodyId[] | undefined,
-  warnings: string[],
-): Pick<FeatureOutput, 'bodies' | 'names' | 'previewTools'> {
-  const { kernel } = ctx;
-  const operation = settings.operation;
-  if (operation === 'new-body') return newBodies(ctx, scope, tool);
-
-  const targets =
-    participants ??
-    [...ctx.bodies]
-      .filter(([, shape]) => kernel.distance(shape, tool.shape) <= TOUCH)
-      .map(([id]) => id);
-  // Kept only on success: a failure below must release the tool with the scope.
-  const preview = (): PreviewTool[] => [{ shape: scope.keep(tool.shape), style: operation }];
-  const named = (id: BodyId): NamedShape => ({
-    shape: ctx.bodies.get(id) as ShapeHandle,
-    names: ctx.names(id),
-  });
-  const options = { feature: ctx.feature.id, op: 'extrude' };
-
-  if (operation === 'join') {
-    const [first, ...rest] = targets;
-    if (first === undefined) {
-      warnings.push('Nothing to join to, so the extrude made a new body.');
-      return { ...newBodies(ctx, scope, tool), previewTools: preview() };
-    }
-    let joined = namedBoolean(kernel, 'fuse', named(first), tool, { ...options, simplify: true });
-    scope.track(joined.shape);
-    for (const id of rest) {
-      joined = namedBoolean(kernel, 'fuse', joined, named(id), { ...options, simplify: true });
-      scope.track(joined.shape);
-    }
-    const bodies = new Map(ctx.bodies);
-    for (const id of rest) bodies.delete(id);
-    bodies.set(first, scope.keep(joined.shape));
-    return { bodies, names: new Map([[first, joined.names]]), previewTools: preview() };
-  }
-
-  const op = operation === 'cut' ? 'cut' : 'common';
-  const changed = new Map<BodyId, NamedShape | undefined>();
-  for (const id of targets) {
-    const before = named(id);
-    const result = namedBoolean(kernel, op, before, tool, options);
-    scope.track(result.shape);
-    const was = kernel.measure(before.shape).volume;
-    const now = kernel.measure(result.shape).volume;
-    const eps = 1e-6 * Math.max(1, Math.abs(was));
-    if (op === 'cut' && Math.abs(was - now) <= eps) continue;
-    if (now > eps) {
-      changed.set(id, result);
-    } else if (op === 'cut') {
-      changed.set(id, undefined);
-      warnings.push('The cut removed a whole body.');
-    } else if (participants) {
-      throw new KernelError(
-        'Nothing is left of one of its bodies after the intersection. Check the extrude, or pick other bodies.',
-      );
-    }
-    // An automatic intersect target it only touches stays as it is.
-  }
-  if (changed.size === 0) {
-    if (op === 'cut') {
-      throw new KernelError(
-        targets.length === 0
-          ? "The cut doesn't touch any body. Check its direction and distance."
-          : "The cut doesn't remove anything. Check its direction and distance.",
-      );
-    }
-    throw new KernelError(
-      "The extrude doesn't overlap any body, so there's nothing to intersect. Check its direction and distance.",
-    );
-  }
-  const bodies = new Map(ctx.bodies);
-  const names = new Map<BodyId, TopoNames>();
-  for (const [id, result] of changed) {
-    if (!result) {
-      bodies.delete(id);
-      continue;
-    }
-    bodies.set(id, scope.keep(result.shape));
-    names.set(id, result.names);
-  }
-  return { bodies, names, previewTools: preview() };
-}
-
-/** The tool as new bodies: one per separate solid, in geometric order. */
-function newBodies(
-  ctx: EvalContext<ExtrudeInputs>,
-  scope: ShapeScope,
-  tool: NamedShape,
-): Pick<FeatureOutput, 'bodies' | 'names'> {
-  const { kernel } = ctx;
-  const bodies = new Map(ctx.bodies);
-  const names = new Map<BodyId, TopoNames>();
-  const solids = kernel.solids(tool.shape);
-  for (const solid of solids) scope.track(solid);
-  if (solids.length === 0) throw new KernelError('The extrude made no solid. Check its profiles.');
-  if (solids.length === 1) {
-    const id = ctx.bodyId(0);
-    bodies.set(id, scope.keep(tool.shape));
-    names.set(id, tool.names);
-    return { bodies, names };
-  }
-  const placed = solids.map((solid) => {
-    const { min, max } = kernel.measure(solid).bbox;
-    return { solid, center: scale(add(min, max), 0.5) };
-  });
-  placed.sort((a, b) => compareGeometry(a.center, b.center));
-  const named = placed.map(({ solid }) => {
-    const faces = kernel.locate(solid, tool.shape, 'face').map((at) => tool.names.faces[at] ?? '');
-    return { solid, names: deriveNames(faces, kernel.describe(solid)) };
-  });
-  named.forEach(({ solid, names: table }, i) => {
-    const id = ctx.bodyId(i);
-    names.set(id, table);
-    bodies.set(id, scope.keep(solid));
-  });
-  return { bodies, names };
-}
-
-function verb(operation: ExtrudeSettings['operation']): string {
-  return operation === 'new-body' ? 'use' : operation;
-}
-
-// ------------------------------------------------------------------ vectors
-
-const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
-const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
-const scale = (a: Vec3, k: number): Vec3 => [a[0] * k, a[1] * k, a[2] * k];
-const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-const length = (a: Vec3): number => Math.sqrt(dot(a, a));
-const degrees = (radians: number) => (radians * 180) / Math.PI;
-
-/** A unit vector square to `n`. */
-function perpendicular(n: Vec3): Vec3 {
-  const helper: Vec3 = Math.abs(n[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
-  const c: Vec3 = [
-    n[1] * helper[2] - n[2] * helper[1],
-    n[2] * helper[0] - n[0] * helper[2],
-    n[0] * helper[1] - n[1] * helper[0],
-  ];
-  return scale(c, 1 / length(c));
-}
-
-function corners(min: Vec3, max: Vec3): Vec3[] {
-  const out: Vec3[] = [];
-  for (const x of [min[0], max[0]]) {
-    for (const y of [min[1], max[1]]) {
-      for (const z of [min[2], max[2]]) out.push([x, y, z]);
-    }
-  }
-  return out;
 }
