@@ -81,12 +81,47 @@ test('ViewCube edges, turn arrows and roll arrows', async ({ page }) => {
   await expect(viewport).toHaveAttribute('data-camera-up', '0,0,1');
 });
 
-test('Onshape / SolidWorks is the first preset and the default', async ({ page }) => {
+test('Extrudo is the first preset and the default', async ({ page }) => {
   await open(page);
   await page.getByRole('button', { name: 'Mouse controls' }).click();
   const presets = page.getByRole('menuitemradio');
-  await expect(presets.first()).toHaveAccessibleName(/Onshape \/ SolidWorks/);
+  await expect(presets.first()).toHaveAccessibleName(/ Extrudo$/);
   await expect(presets.first()).toHaveAttribute('aria-checked', 'true');
+  await expect(presets.nth(1)).toHaveAccessibleName(/Onshape \/ SolidWorks/);
+});
+
+test('Extrudo mouse: middle-drag orbits, right-drag pans, left-drag does neither', async ({
+  page,
+}) => {
+  const viewport = await open(page);
+  const { x, y } = await centre(viewport);
+  const direction = await attr(viewport, 'data-camera-direction');
+
+  // Orbit: the direction changes, the target stays.
+  await page.mouse.move(x, y);
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(x + 100, y + 40, { steps: 6 });
+  await page.mouse.up({ button: 'middle' });
+  await expect(viewport).not.toHaveAttribute('data-camera-direction', direction);
+  await expect(viewport).toHaveAttribute('data-camera-target', '0,0,0');
+
+  // Pan: the direction stays, the target moves.
+  const orbited = await attr(viewport, 'data-camera-direction');
+  await page.mouse.move(x, y);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(x - 120, y + 30, { steps: 6 });
+  await page.mouse.up({ button: 'right' });
+  await expect(viewport).toHaveAttribute('data-camera-direction', orbited);
+  await expect(viewport).not.toHaveAttribute('data-camera-target', '0,0,0');
+
+  // A left-drag in the empty view is a selection box: the camera stays.
+  const target = await attr(viewport, 'data-camera-target');
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 80, y + 60, { steps: 4 });
+  await page.mouse.up();
+  await expect(viewport).toHaveAttribute('data-camera-direction', orbited);
+  await expect(viewport).toHaveAttribute('data-camera-target', target);
 });
 
 test('Fusion mouse: middle-drag pans, Shift+middle-drag orbits, the wheel zooms, F6 fits', async ({

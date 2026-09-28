@@ -224,6 +224,26 @@ test('the Wall bracket template computes its bracket; its cut edits through all'
     '2 profiles',
   );
   await expect(edit.getByRole('combobox', { name: 'Operation' })).toHaveValue('cut');
+  // The options carry the theme's colours: a native list that ignores `color-scheme` (white on
+  // Linux) must not show the dark theme's light text on its own white background.
+  const contrasts = (await page.evaluate(`(() => {
+    const luminance = (colour) => {
+      const [r, g, b] = colour.match(/[\\d.]+/g).slice(0, 3).map((v) => {
+        const c = Number(v) / 255;
+        return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+      });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const options = document.querySelectorAll('select[aria-label="Operation"] option');
+    return [...options].map((option) => {
+      const style = getComputedStyle(option);
+      if (style.backgroundColor === 'rgba(0, 0, 0, 0)') return 0;
+      const [a, b] = [luminance(style.color), luminance(style.backgroundColor)];
+      return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+    });
+  })()`)) as number[];
+  expect(contrasts).toHaveLength(4);
+  for (const contrast of contrasts) expect(contrast).toBeGreaterThan(4.5);
   await expect(edit.getByRole('textbox', { name: 'Distance' })).toHaveValue('wall * 5');
   await expect(edit.getByRole('textbox', { name: 'Taper' })).toHaveValue('tilt / 3');
   await expect(viewport).toHaveAttribute('data-preview', 'cut', { timeout: 15_000 });

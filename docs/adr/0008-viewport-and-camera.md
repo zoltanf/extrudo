@@ -165,6 +165,12 @@ clicks the ViewCube's Top face and checks the camera orientation.
   Stored preferences are kept, so anyone who already has a preset saved
   keeps theirs. FR-VP-01 changed with it. The marking menu (UI spec §3.3)
   will have to open on a right-click without movement.
+- **Extrudo is the default preset and first in the menu** (the owner's
+  choice, 2026-09-28): Onshape's buttons swapped, so middle-drag orbits
+  (Ctrl/Cmd+middle-drag pans) and right-drag pans; the left button is
+  unchanged. Onshape / SolidWorks stays second in the menu. As before,
+  stored preferences are kept: whoever saved any display setting keeps
+  the preset stored with it and picks Extrudo in the Mouse controls menu.
 - **Fit frames the box, not a sphere** (user report: F6 zoomed out too
   far). `Bounds` carries the axis-aligned box of what's shown (bodies,
   sketch curves and points, placed dimension labels); `fitBox` projects

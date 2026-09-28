@@ -66,8 +66,9 @@ export const DEFAULT_SETTINGS: ViewportSettings = {
   projection: 'perspective',
   visualStyle: 'shadedEdges',
   grid: true,
-  // Right-drag orbits (2026-09-27, the owner's choice over Fusion's Shift+middle-drag).
-  preset: 'onshape',
+  // Middle-drag orbits, right-drag pans (2026-09-28, the owner's choice; Onshape's buttons
+  // swapped). Onshape / SolidWorks, the default before, stays in the menu.
+  preset: 'extrudo',
   // Like Fusion, the origin planes stay hidden until something needs them.
   origin: { point: true, xy: false, xz: false, yz: false, x: true, y: true, z: true },
   sketchPoints: true,

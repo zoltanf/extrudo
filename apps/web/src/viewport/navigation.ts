@@ -5,10 +5,15 @@
  */
 
 export type NavAction = 'orbit' | 'pan' | 'zoom';
-export type NavPreset = 'fusion' | 'blender' | 'onshape' | 'trackpad';
+export type NavPreset = 'extrudo' | 'fusion' | 'blender' | 'onshape' | 'trackpad';
 
 /** The presets in menu order; the first is the default (`DEFAULT_SETTINGS.preset`). */
 export const NAV_PRESETS: readonly { value: NavPreset; label: string; summary: string }[] = [
+  {
+    value: 'extrudo',
+    label: 'Extrudo',
+    summary: 'Middle-drag orbits, right-drag pans',
+  },
   {
     value: 'onshape',
     label: 'Onshape / SolidWorks',
@@ -46,6 +51,11 @@ export function dragAction(
   const { button, shiftKey, ctrlKey, altKey, metaKey } = input;
   if (button === 0 && tool) return tool;
   switch (preset) {
+    case 'extrudo':
+      // Onshape's buttons swapped: the middle button orbits, the right one pans.
+      if (button === 1) return ctrlKey || metaKey ? 'pan' : 'orbit';
+      if (button === 2) return 'pan';
+      return undefined;
     case 'fusion':
       if (button === 1) return shiftKey ? 'orbit' : 'pan';
       return undefined;

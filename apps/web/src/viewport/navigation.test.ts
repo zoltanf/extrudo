@@ -23,7 +23,12 @@ const input = (button: number, mods: Partial<PointerInput> = {}): PointerInput =
 
 describe('dragAction', () => {
   it.each<[NavPreset, PointerInput, NavAction | undefined]>([
-    // Fusion (UI spec §3.1)
+    // Extrudo, the default (UI spec §3.1): Onshape's buttons swapped
+    ['extrudo', input(MIDDLE), 'orbit'],
+    ['extrudo', input(MIDDLE, { ctrlKey: true }), 'pan'],
+    ['extrudo', input(RIGHT), 'pan'],
+    ['extrudo', input(LEFT), undefined],
+    // Fusion
     ['fusion', input(MIDDLE), 'pan'],
     ['fusion', input(MIDDLE, { shiftKey: true }), 'orbit'],
     ['fusion', input(LEFT), undefined],
@@ -47,7 +52,7 @@ describe('dragAction', () => {
   });
 
   it('turns a left-drag into the active nav-bar tool in every preset', () => {
-    for (const preset of ['fusion', 'blender', 'onshape', 'trackpad'] as const) {
+    for (const preset of ['extrudo', 'fusion', 'blender', 'onshape', 'trackpad'] as const) {
       expect(dragAction(preset, input(LEFT), 'zoom')).toBe('zoom');
       expect(dragAction(preset, input(LEFT), 'pan')).toBe('pan');
     }

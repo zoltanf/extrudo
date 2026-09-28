@@ -2,6 +2,11 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-28 · Fixes: the new **Extrudo** mouse preset is the default
+  (middle-drag orbits, right-drag pans, the left button as before;
+  Onshape / SolidWorks is still in the Mouse controls menu); dropdown
+  options (a dialog's Operation, for one) are readable in the dark theme
+  where the browser draws its list white.
 - 2026-09-28 · **P2-07** Revolve (ADR-0029): the Solid tab's Revolve
   turns sketch profiles or flat faces about an origin axis, a sketch line
   (construction lines too) or a straight edge: a whole turn by default,

@@ -100,21 +100,23 @@ brief, voice) is in **`05-brand.md`**. In short:
 
 ## 3. Core interactions
 
-### 3.1 Mouse and keyboard navigation (Onshape / SolidWorks preset, the default)
+### 3.1 Mouse and keyboard navigation (Extrudo preset, the default)
 
 | Action | Input |
 |---|---|
-| Orbit | Right-drag (also ViewCube drag) |
-| Pan | Middle-drag, or Ctrl + right-drag |
+| Orbit | Middle-drag (also ViewCube drag) |
+| Pan | Right-drag, or Ctrl + middle-drag |
 | Zoom | Wheel (zooms toward the cursor) |
 | Fit all | F6 or double-click middle |
 | Look at selection | Nav bar "Look at" |
 
-Other presets, in the Mouse controls menu after this one: Fusion (MMB pan,
-Shift+MMB orbit), Blender (MMB orbit, Shift+MMB pan), Trackpad (two-finger
-pan, pinch zoom, Alt+drag orbit). Since the right button orbits, the
-right-click marking menu (§3.3) must open only on a right-click without
-movement, as Onshape's context menu does.
+The Extrudo preset is Onshape / SolidWorks with the middle and right
+buttons swapped. Other presets, in the Mouse controls menu after this one:
+Onshape / SolidWorks (right-drag orbit, middle-drag or Ctrl + right-drag
+pan), Fusion (MMB pan, Shift+MMB orbit), Blender (MMB orbit, Shift+MMB
+pan), Trackpad (two-finger pan, pinch zoom, Alt+drag orbit). Since the
+right button drags, the right-click marking menu (§3.3) must open only on
+a right-click without movement, as Onshape's context menu does.
 
 ### 3.2 Selection
 

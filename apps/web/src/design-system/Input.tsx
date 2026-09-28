@@ -13,9 +13,22 @@ export const TextInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLIn
   },
 );
 
+/**
+ * The options' own colours. Some native pickers (Chromium on Linux) ignore
+ * `color-scheme` and draw a white list, where the inherited light text of
+ * the dark theme can't be read; explicit colours hold in both themes.
+ */
+const optionClass = '[&_option]:bg-raised [&_option]:text-ink';
+
 /** A native select, styled like the inputs. */
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
   function Select({ className = '', ...props }, ref) {
-    return <select ref={ref} className={`${fieldClass} bg-panel pr-1 ${className}`} {...props} />;
+    return (
+      <select
+        ref={ref}
+        className={`${fieldClass} ${optionClass} bg-panel pr-1 ${className}`}
+        {...props}
+      />
+    );
   },
 );
