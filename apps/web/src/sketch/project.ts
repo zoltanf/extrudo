@@ -21,13 +21,14 @@ import {
   type SessionStore,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { DialogKernel } from '../features/dialog';
 import { fieldFilter } from '../features/refs';
 import { readTopology } from '../selection/items';
 import { clearPickedHover } from '../selection/useModelSelection';
 import type { ViewportStore } from '../viewport/store';
 import type { ModelSelect } from '../viewport/Viewport';
+import { useBodiesBefore } from './baseBodies';
 
 /** The session tool ID of the Project tool (not a tool host tool: it picks in 3D). */
 export const PROJECT_TOOL = 'project';
@@ -63,28 +64,8 @@ export function useProjectTool({
   active,
   sketchId,
 }: ProjectToolOptions): ProjectTool {
-  const [base, setBase] = useState<Record<BodyId, BodyMesh>>();
-
   // The bodies before the sketch, when later features change them.
-  useEffect(() => {
-    if (!active || !sketchId || !kernel) return;
-    const { doc } = store.getState();
-    const index = doc.features.findIndex((f) => f.id === sketchId);
-    const feature = doc.features[index];
-    const later = doc.features
-      .slice(index + 1, doc.timelineMarker)
-      .some((f) => !f.suppressed && f.type !== 'sketch');
-    if (!feature || !later) return;
-    let current = true;
-    kernel.preview(feature, index, { base: true }).then((preview) => {
-      if (current && preview?.base) setBase(preview.base);
-    });
-    return () => {
-      current = false;
-      setBase(undefined);
-      kernel.endPreview();
-    };
-  }, [active, sketchId, kernel, store]);
+  const base = useBodiesBefore({ active, featureId: sketchId, store, kernel });
 
   // Only edges and faces can be picked; the tool's hover goes when it stops.
   useEffect(() => {

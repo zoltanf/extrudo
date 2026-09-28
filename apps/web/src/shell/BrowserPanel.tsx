@@ -190,6 +190,7 @@ export function BrowserPanel({
                     feature={feature}
                     editable={actions.canEdit(feature, index, doc.timelineMarker)}
                     rolledBack={index >= doc.timelineMarker}
+                    position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
                     active={feature.id === activeSketchId}
                     actions={actions}
                   />
@@ -260,12 +261,14 @@ function SketchLeaf({
   feature,
   editable,
   rolledBack,
+  position,
   active,
   actions,
 }: {
   feature: Feature;
   editable: boolean;
   rolledBack: boolean;
+  position: { index: number; marker: number; count: number };
   active: boolean;
   actions: FeatureActions;
 }) {
@@ -342,6 +345,7 @@ function SketchLeaf({
         editable={editable && !active}
         actions={actions}
         onRename={() => setRenaming(true)}
+        position={position}
       />
     </ContextMenu>
   );

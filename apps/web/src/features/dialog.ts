@@ -30,6 +30,7 @@ import {
   type ModelStore,
   newId,
   nextFeatureName,
+  type ReferenceIssue,
   type SelectionItem,
   type SessionStore,
   setFeatureVisibility,
@@ -126,6 +127,11 @@ export interface OpenDialog {
   checked: Checked;
   preview: DialogPreview;
   /**
+   * Fixing references (P2-11): says what the feature lost and where to pick
+   * it again, above the fields.
+   */
+  note?: string;
+  /**
    * Editing: the bodies before the feature, from the last preview. The view
    * shows and picks these instead of the model's (rolled back to the
    * feature), and the draft's references are made from them.
@@ -159,8 +165,13 @@ export interface DialogController {
   readonly state: StoreApi<DialogState>;
   /** Opens the dialog of a feature type for a new feature. Returns false if there is none. */
   start(type: string): boolean;
-  /** Opens an existing feature's dialog. Returns false if its type has none. */
-  edit(id: FeatureId): boolean;
+  /**
+   * Opens an existing feature's dialog. Returns false if its type has none.
+   * With `fix` (P2-11, "Fix References"), the references the kernel lost
+   * are taken out of their fields and guesses replaced by what it took; the
+   * first such field takes picks and the dialog says so.
+   */
+  edit(id: FeatureId, options?: { fix?: readonly ReferenceIssue[] }): boolean;
   setRefs(field: string, refs: readonly GeomRef[]): void;
   setExpr(field: string, expr: string): void;
   /** The text typed into an expression field doesn't evaluate (`undefined`: it does again). */
@@ -511,11 +522,13 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       for (const item of used) fingerprint(item);
       return true;
     },
-    edit(id) {
+    edit(id, options = {}) {
       const feature = store.getState().doc.features.find((f) => f.id === id);
       const spec = feature && dialogs.get(feature.type);
       if (!feature || !spec) return false;
-      const values = valuesFor(spec, feature, context({ mode: 'edit', id }));
+      let values = valuesFor(spec, feature, context({ mode: 'edit', id }));
+      const fixed = options.fix ? fixReferences(spec, values, options.fix) : undefined;
+      if (fixed) values = fixed.values;
       open({
         spec,
         mode: 'edit',
@@ -523,9 +536,10 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         name: feature.name,
         values,
         paramNames: storedParameterNames(feature),
-        pickField: firstPickField(spec, values),
+        pickField: fixed?.fields[0] ?? firstPickField(spec, values),
         chosen: undefined,
         ...blank,
+        ...(fixed && { note: fixNote(feature.name, spec, fixed) }),
       });
       return true;
     },
@@ -640,6 +654,74 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       if (get()) close();
     },
   };
+}
+
+/** A dialog's values with lost references taken out and guesses replaced (P2-11). */
+export interface FixedReferences {
+  values: DialogValues;
+  /** Selection fields that changed, in field order: lost ones first. */
+  fields: string[];
+  lost: number;
+  guessed: number;
+}
+
+/**
+ * Takes the references the kernel lost out of their selection fields and
+ * puts the kernel's closest match in place of a guess (ADR-0033). Pure.
+ */
+export function fixReferences(
+  spec: FeatureDialogSpec,
+  values: DialogValues,
+  issues: readonly ReferenceIssue[],
+): FixedReferences {
+  const key = (ref: { kind: string; id: string }) => `${ref.kind} ${ref.id}`;
+  const byRef = new Map(issues.map((i) => [key(i.ref), i]));
+  const refs: Record<string, GeomRef[]> = {};
+  const lostIn: string[] = [];
+  const guessedIn: string[] = [];
+  let lost = 0;
+  let guessed = 0;
+  for (const field of spec.fields) {
+    if (field.kind !== 'selection') continue;
+    const list = values.refs[field.name] ?? [];
+    const next: GeomRef[] = [];
+    for (const ref of list) {
+      const issue = byRef.get(key(ref));
+      if (issue?.state === 'lost') {
+        lost++;
+        if (!lostIn.includes(field.name)) lostIn.push(field.name);
+        continue;
+      }
+      if (issue?.state === 'guessed') {
+        guessed++;
+        if (!guessedIn.includes(field.name)) guessedIn.push(field.name);
+      }
+      const now = issue?.state === 'guessed' ? issue.now : undefined;
+      next.push(now ?? ref);
+    }
+    refs[field.name] = next;
+  }
+  const fields = [...lostIn, ...guessedIn.filter((f) => !lostIn.includes(f))];
+  return { values: { ...values, refs: { ...values.refs, ...refs } }, fields, lost, guessed };
+}
+
+/** "Extrude2 lost 1 reference: pick it again in Profiles." */
+function fixNote(name: string, spec: FeatureDialogSpec, fixed: FixedReferences): string {
+  const label = (field: string | undefined) =>
+    spec.fields.find((f) => f.name === field)?.label ?? 'its fields';
+  const parts: string[] = [];
+  if (fixed.lost > 0) {
+    const what = fixed.lost === 1 ? '1 reference' : `${fixed.lost} references`;
+    parts.push(
+      `${name} lost ${what}: pick ${fixed.lost === 1 ? 'it' : 'them'} again in ${label(fixed.fields[0])}.`,
+    );
+  }
+  if (fixed.guessed > 0) {
+    parts.push(
+      'Where the model changed, the fields show the closest match the kernel took: keep it with OK, or pick again.',
+    );
+  }
+  return parts.join(' ') || `${name}'s references are all found.`;
 }
 
 /** How long the "Sketch1 is hidden" toast stays, ms. */

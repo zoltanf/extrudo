@@ -3,12 +3,14 @@ import {
   type Command,
   CommandError,
   type DocumentStore,
+  type FeatureId,
   type GeomRef,
   isFeatureVisible,
   type ModelStore,
   type OriginPlaneId,
   originPlaneRef,
   readSketch,
+  redefineSketchPlane,
   type SelectionItem,
   type SessionStore,
 } from '@extrudo/core';
@@ -28,6 +30,7 @@ import type { Platform } from '../platform';
 import type { Autosaver } from '../project/autosave';
 import { readTopology, sketchEntityIdsIn } from '../selection/items';
 import { useModelSelection } from '../selection/useModelSelection';
+import { useBodiesBefore } from '../sketch/baseBodies';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
 import { sketchFrame } from '../sketch/frame';
 import { useHostState } from '../sketch/hostState';
@@ -248,9 +251,21 @@ export function AppShell({
     active: projecting,
     sketchId: activeSketchId,
   });
+  // Redefine Plane (P2-11): Create Sketch's plane pick, for an existing sketch. It shows and
+  // picks the bodies before the sketch, which can only lie on what comes before it.
+  const [redefining, setRedefining] = useState<FeatureId>();
+  useEffect(() => {
+    if (activeTool !== CREATE_SKETCH) setRedefining(undefined);
+  }, [activeTool]);
+  const redefineBase = useBodiesBefore({
+    active: picking && redefining !== undefined,
+    featureId: redefining,
+    store,
+    kernel,
+  });
   // Editing a feature shows and picks the bodies before it (the preview's base), and so
   // does the Project tool in a sketch that later features build on.
-  const shownBodies = project.bodies ?? dialogBodies(dialogOpen, bodies);
+  const shownBodies = project.bodies ?? redefineBase ?? dialogBodies(dialogOpen, bodies);
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
   const preview = useMemo(() => viewPreview(dialogOpen), [dialogOpen]);
   const ready = useMemo(
@@ -543,9 +558,16 @@ export function AppShell({
   const sketchOnFace = async (item: SelectionItem, fallback = false) => {
     const face = readTopology(item);
     if (face?.kind !== 'face') return;
-    const ref: GeomRef | undefined = await kernel?.reference(face.body, 'face', face.index);
+    const target = redefining;
+    const ref: GeomRef | undefined = await kernel?.reference(
+      face.body,
+      'face',
+      face.index,
+      target !== undefined && redefineBase !== undefined,
+    );
     if (ref?.fingerprint?.type === 'plane') {
-      createSketchOn(stores, ref);
+      if (target) redefineTo(target, ref);
+      else createSketchOn(stores, ref);
       return;
     }
     notify(
@@ -558,7 +580,31 @@ export function AppShell({
   };
   const sketchOnFaceRef = useRef(sketchOnFace);
   sketchOnFaceRef.current = sketchOnFace;
-  const pickPlane = (plane: OriginPlaneId) => createSketchOn(stores, originPlaneRef(plane));
+  /** Puts the sketch being redefined on `plane`: one undo step; a refusal keeps the pick going. */
+  const redefineTo = (id: FeatureId, plane: GeomRef) => {
+    try {
+      store.getState().dispatch(redefineSketchPlane({ id, plane }));
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      notify('error', error.message);
+      return;
+    }
+    cancelCreateSketch(stores);
+    setRedefining(undefined);
+  };
+  const pickPlane = (plane: OriginPlaneId) => {
+    if (redefining) redefineTo(redefining, originPlaneRef(plane));
+    else createSketchOn(stores, originPlaneRef(plane));
+  };
+  const pickPlaneRef = useRef(pickPlane);
+  pickPlaneRef.current = pickPlane;
+  const startRedefine = (id: FeatureId) => {
+    dialog?.cancel();
+    if (session.getState().activeTool !== CREATE_SKETCH) startCreateSketch(stores);
+    setRedefining(id);
+  };
+  const startRedefineRef = useRef(startRedefine);
+  startRedefineRef.current = startRedefine;
   // The timeline's and the browser's feature commands (P1-12), and sketch export (P1-13).
   const featureActions = useMemo(
     () =>
@@ -573,6 +619,11 @@ export function AppShell({
           return dialog?.edit(id) ?? false;
         },
         hasDialog: (type) => dialogs.get(type) !== undefined,
+        fixFeature: (id, issues) => {
+          if (picking) cancelCreateSketch(stores);
+          return dialog?.edit(id, { fix: issues }) ?? false;
+        },
+        redefinePlane: (id) => startRedefineRef.current(id),
       }),
     [stores, notify, session, dialog, dialogs, picking],
   );
@@ -692,7 +743,7 @@ export function AppShell({
                 session.getState().setHover(undefined);
               }
             },
-            onPick: (plane) => createSketchOn(stores, originPlaneRef(plane)),
+            onPick: (plane) => pickPlaneRef.current(plane),
             // Flat faces take a sketch too (P2-09), once the kernel can name them.
             ...(kernel && {
               faces: {
@@ -708,7 +759,7 @@ export function AppShell({
             }),
           }
         : undefined,
-    [picking, hover, session, stores, kernel],
+    [picking, hover, session, kernel],
   );
 
   return (
@@ -855,6 +906,10 @@ export function AppShell({
         {picking && (
           <PlanePrompt
             session={session}
+            {...(redefining && {
+              title: 'Redefine Plane',
+              hint: `Pick a plane or a flat face for ${doc.features.find((f) => f.id === redefining)?.name ?? 'the sketch'}, in the view or here.`,
+            })}
             onPick={pickPlane}
             onCancel={() => cancelCreateSketch(stores)}
           />
@@ -881,6 +936,7 @@ export function AppShell({
         viewport={viewport}
         model={model}
         session={session}
+        editing={dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined}
       />
       <OverConstrainedDialog host={host} />
       <ParametersDialog
