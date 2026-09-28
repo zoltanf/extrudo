@@ -1,12 +1,15 @@
 // Export (P2-12, ADR-0034): welded meshes for STL and 3MF that close up for
 // every kind of face the modelling features make, and STEP AP242 that reads
 // back to the same solids.
+import { type BodyId, type Feature, primitiveInputs } from '@extrudo/core';
 import { checkManifold, readStl, writeStl } from '@extrudo/io';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Kernel, KernelError, type ShapeHandle, stepString, type Vec3 } from './kernel';
 import type { MeshOptions } from './mesh';
 import { loadOcct } from './occt/load';
 import type { PlanarCurve, PlanarFrame } from './planar';
+import { testDocument, testFeature } from './recompute/testing';
+import { KernelService } from './service';
 
 let kernel: Kernel;
 
@@ -220,5 +223,45 @@ describe('stepString', () => {
     expect(stepString('Rocket 🚀!')).toBe('Rocket \\X4\\0001F680\\X0\\!');
     expect(stepString('tab\there\nnew')).toBe('tabherenew');
     expect(stepString('é🚀é')).toBe('\\X2\\00E9\\X0\\\\X4\\0001F680\\X0\\\\X2\\00E9\\X0\\');
+  });
+});
+
+describe('KernelService export (the primitives of P2-10)', () => {
+  const service = new KernelService(() => loadOcct());
+  afterAll(() => service.dispose());
+  const primitive = (id: string, type: 'sphere' | 'torus' | 'box', x: string): Feature => ({
+    ...testFeature(id, type),
+    inputs: primitiveInputs(type, { numbers: { x } }),
+  });
+
+  it('exports the bodies of the last recompute: welded meshes and named STEP', async () => {
+    const doc = testDocument([
+      primitive('S', 'sphere', '0 mm'),
+      primitive('T', 'torus', '60 mm'),
+      primitive('B', 'box', '-60 mm'),
+    ]);
+    const result = await service.recompute({ doc });
+    if (result.status !== 'done') throw new Error('not done');
+    const ids = result.bodies.map((b) => b.id).sort();
+    expect(ids.map((id) => id.split(':')[0])).toEqual(['B', 'S', 'T']);
+
+    const meshes = await service.exportMeshes(ids, MEDIUM);
+    expect(meshes.map((m) => m.id)).toEqual(ids);
+    for (const { mesh } of meshes) expect(checkManifold(mesh).ok).toBe(true);
+    const [, sphere, torus] = meshes.map(({ mesh }) => checkManifold(mesh));
+    // Within area × deviation of the exact sphere (radius 10).
+    const exact = (4 / 3) * Math.PI * 10 ** 3;
+    expect(Math.abs((sphere?.volume ?? 0) - exact)).toBeLessThan(4 * Math.PI * 100 * 0.05);
+    // Torus: V − E + F = 0.
+    expect((torus?.nodes ?? 0) - (torus?.edges ?? 0) + (torus?.triangles ?? 0)).toBe(0);
+
+    const text = await service.exportStep(
+      ids.map((id, i) => ({ id, name: ['Block', 'Ball', 'Ring'][i] as string })),
+    );
+    for (const name of ['Ball', 'Ring', 'Block']) expect(text).toContain(`PRODUCT('${name}'`);
+
+    await expect(service.exportMeshes(['gone' as BodyId], MEDIUM)).rejects.toThrow(
+      /no longer in the model/,
+    );
   });
 });

@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-28 · **P2-12** STL, 3MF and STEP export (ADR-0034): Export in
+  the 3D Print tab, the File menu and a body's menu. Pick bodies (the
+  selection, or every shown one), 3MF (objects with names, colours and
+  millimetres, for slicers), binary STL or STEP AP242 (exact geometry,
+  named products), and Coarse, Medium, Fine or a custom deviation and
+  angle. The kernel meshes each body at that resolution into one closed
+  surface; the dialog shows the triangle count and that every mesh is
+  watertight before saving.
 - 2026-09-28 · **P2-10** Primitives (ADR-0032): Box, Cylinder, Sphere and
   Torus in the Solid tab's Create menu, each a parametric feature. They
   open on the XY plane with a live preview; click another origin plane or

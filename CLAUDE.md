@@ -14,8 +14,8 @@ done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 (topological naming), P2-05 (feature dialogs), P2-06 (extrude), P2-07
-(revolve), P2-08 (bodies), P2-09 (sketch on face, Project) and
-P2-10 (primitives) are done. ADR-0001 chose
+(revolve), P2-08 (bodies), P2-09 (sketch on face, Project),
+P2-10 (primitives) and P2-12 (STL, 3MF, STEP export) are done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -254,7 +254,21 @@ face; default XY) + `x`/`y` in its sketch frame + `offset` (+ a box's
 `namedRevolve` (names like `box:<id>:side:front`, `cylinder:<id>:side:wall`,
 `sphere:<id>:side:surface`), no facade primitives. A dialog whose pick
 field accepts `plane` gets Create Sketch's plane-or-face picker
-(`features/planePicker.ts`) instead of the model selection. Next: see
+(`features/planePicker.ts`) instead of the model selection. ADR-0034
+(P2-12) added export: facade `exportMesh` (meshes a
+`BRepBuilderAPI_Copy` at the export's deflection, so the display
+triangulation is untouched, and welds nodes through each edge's
+`Poly_PolygonOnTriangulation`: closed, manifold), `writeStep` (AP242,
+mm, `DESTEP_Parameters` per transfer, products renamed to body names,
+`WriteStream`, OCCT printers removed) and `readStep`; `Kernel.exportMesh`
+/ `writeStep` / `readStep`, `stepString` (non-ASCII as `\X2\`);
+`KernelApi.exportMeshes`/`exportStep` export the engine's
+`latestBody` shapes (last finished recompute). `@extrudo/io` has
+`TriangleMesh`, `checkManifold`, `writeStl`/`readStl` (binary) and
+`write3mf`/`read3mf` (fflate; colours as `m:colorgroup` with object
+`pid`/`pindex` and per-triangle `pid`/`p1`). The app's
+`apps/web/src/export/` (`ExportModelDialog`, `modelExport.ts`) opens from
+3D Print › Export, the File menu and a body's menu. Next: see
 `docs/03-roadmap.md`.
 
 ## Commands
@@ -284,7 +298,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0034: STL, 3MF and STEP export (0006 is reserved) |
 
 ## Stack summary
 
@@ -710,3 +724,28 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   the home view, where no other plane is in front, and faces the same way.
   The kernel golden table updates with `pnpm vitest run -u
   packages/kernel/src/features/primitives`.
+- **Export e2e** (`e2e/export-3d.spec.ts`): the dialog is `dialog`
+  "Export model"; bodies are checkboxes by name, formats radios
+  (`/^3MF/`, `/^STL/`, `/^STEP/`), resolutions `/^Coarse/`…`/^Custom/`
+  with textboxes "Deviation" and "Angle". The summary's
+  `data-export-summary` reads "1 body, 620 triangles, watertight" once
+  meshed (poll it before Export). e2e imports `../packages/io/src/index`
+  to read and check downloads. The format and resolution are remembered
+  in the `export.model` preference (per browser context).
+- **Slicers on the dev machine** (2026-09-28): `prusa-slicer --info
+  f.3mf|f.stl` prints `manifold = yes`, facets, volume per object;
+  `orca-slicer --datadir <scratch> --outputdir <dir> --export-3mf out.3mf
+  f.3mf` re-exports (`Metadata/model_settings.config` has names and
+  `mesh_stat` repair counts; its CLI ignores file colours). `freecadcmd
+  script.py` with `Import.insert` reads STEP names and solids. lib3mf
+  installs with pip in a scratchpad venv (`lib3mf.get_wrapper()`, reader
+  `SetStrictModeActive(True)`, `IsManifoldAndOriented`). Bambu Studio
+  isn't installed.
+- **Export meshes weld through the topology, not by position** (P2-12):
+  every edge's polygon on each face's triangulation lists that face's
+  nodes along it; BRepMesh discretises an edge once, so both faces'
+  polygons match node for node. A degenerate edge (pole, apex) collapses
+  to its vertex, and triangles that become degenerate are dropped. Mesh
+  a copy (`BRepBuilderAPI_Copy(s, false, false)`): BRepMesh keeps an
+  existing triangulation that is fine enough, so meshing the cached shape
+  would leave coarse exports fine and refine the display.

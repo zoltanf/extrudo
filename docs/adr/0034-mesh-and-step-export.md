@@ -143,7 +143,8 @@ thread never calls OCCT; shapes live in the worker's cache.
   resource order, build items, the manifold check with failing controls
   (a missing triangle, a flipped one, an edge used three times, inward
   faces, unwelded corners, bad triangles and coordinates), watertight
-  kernel meshes for every solid above, STEP header, schema, unit, names
+  kernel meshes for every solid above and for P2-10's sphere, torus and
+  box through `KernelService`, STEP header, schema, unit, names
   and read-back volume, and no heap growth over 1000 export meshes and
   200 STEP write/read cycles (the memory test's pattern and control).
 - **PrusaSlicer 2.9.6** (installed on the dev machine, 2026-09-28):
