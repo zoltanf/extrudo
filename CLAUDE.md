@@ -14,8 +14,8 @@ done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 (topological naming), P2-05 (feature dialogs), P2-06 (extrude), P2-07
-(revolve), P2-08 (bodies), P2-09 (sketch on face, Project) and
-P2-10 (primitives) are done. ADR-0001 chose
+(revolve), P2-08 (bodies), P2-09 (sketch on face, Project),
+P2-10 (primitives) and P2-11 (timeline v2) are done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -254,8 +254,19 @@ face; default XY) + `x`/`y` in its sketch frame + `offset` (+ a box's
 `namedRevolve` (names like `box:<id>:side:front`, `cylinder:<id>:side:wall`,
 `sphere:<id>:side:surface`), no facade primitives. A dialog whose pick
 field accepts `plane` gets Create Sketch's plane-or-face picker
-(`features/planePicker.ts`) instead of the model selection. Next: see
-`docs/03-roadmap.md`.
+(`features/planePicker.ts`) instead of the model selection. ADR-0033
+(P2-11) added timeline v2: `packages/core/src/timeline.ts` (a feature
+depends on the features whose IDs appear in its stored references:
+profiles, bodies, face/edge names; `moveFeature` refuses a move that
+breaks that, the marker stays between the same other features;
+`replaceReferences`; expressions don't order features),
+`redefineSketchPlane`; the kernel lists lost/guessed references in
+`FeatureStatus.refs` (**throw `LostReferenceError` with the reference
+for anything an evaluator can't find**, so Fix References can offer it);
+the marker is a slider with drag and keys, chips drag to reorder, menus
+have Roll Back to Here, Move to End, Redefine Plane, Fix References
+(`dialog.edit(id, { fix })` or Redefine Plane for a sketch) and Keep
+Closest Match. Next: see `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -284,7 +295,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references (0006 is reserved) |
 
 ## Stack summary
 
@@ -710,3 +721,14 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   the home view, where no other plane is in front, and faces the same way.
   The kernel golden table updates with `pnpm vitest run -u
   packages/kernel/src/features/primitives`.
+- **Timeline v2 e2e** (`e2e/timeline-v2.spec.ts`): the marker is the
+  slider "Timeline marker" (`aria-valuenow` = active features,
+  `aria-valuetext` "After Extrude1"); while it is dragged the real marker
+  stays and `[data-marker-ghost]` holds the target index. A dragged chip
+  shows `[data-drop-index]` (and `data-drop-refused`); drag with
+  `mouse.down` and several `mouse.move` steps (> 4 px), dropping at a
+  chip's left edge + 3 px lands before it. Chips carry
+  `data-feature-status` and names like "Sketch2 (warning)". Redefine
+  Plane is the region "Redefine Plane". The "Sketch1 is hidden" toast
+  covers the first chips: dismiss it before right-clicking them. Snap to
+  grid moves off-grid clicks (5 mm snapped to 10 in a zoomed-out view).

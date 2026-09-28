@@ -359,7 +359,7 @@ and STEP. Benchmarks **B2** and **B3** buildable.
 - [x] **P2-10 Primitives.** Box, cylinder, sphere, torus with placement on a
   plane or face.
   *AC:* FR-FT-03.
-- [ ] **P2-11 Timeline v2.** Rollback marker (drag + playback buttons);
+- [x] **P2-11 Timeline v2.** Rollback marker (drag + playback buttons);
   insertion at the marker; edit-feature reopens its dialog; reorder by drag with
   dependency validation; error and warning chips; "fix references" flow.
   *AC:* FR-TL-02..05.
