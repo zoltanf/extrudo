@@ -306,7 +306,9 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       expressions,
       checked,
     };
-    const valid = canCommit(next);
+    // Not `canCommit`: a kernel refusal belongs to the draft it previewed, and a
+    // changed draft must be previewed again or the dialog never recovers.
+    const valid = checked.first === undefined && Object.keys(typing).length === 0;
     const key = JSON.stringify({ draft, index });
     const wanted = valid && kernel && (previewed?.draft !== key || previewed.doc !== doc);
     if (wanted) {

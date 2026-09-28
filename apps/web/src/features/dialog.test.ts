@@ -147,6 +147,35 @@ describe('the draft and its preview', () => {
     });
   });
 
+  it('recovers when a value the kernel refused is brought back into range', async () => {
+    const t = setupDialogs();
+    t.controller.start('fake-press');
+    t.controller.select.onClick(faceItem(1), false);
+    await settle();
+    t.kernel.previews.at(-1)?.resolve(preview());
+    await settle();
+
+    t.controller.setExpr('distance', '0.5 mm');
+    const failing = t.kernel.previews.at(-1);
+    failing?.resolve(
+      preview({ features: { [failing.draft.id]: { status: 'error', message: 'Too thin.' } } }),
+    );
+    await settle();
+    expect(t.controller.ok()).toBe(false);
+
+    // A valid value again: the refusal was the old draft's, so a new preview goes out.
+    const count = t.kernel.previews.length;
+    t.controller.setExpr('distance', '5 mm');
+    expect(t.kernel.previews.length).toBe(count + 1);
+    expect(t.open()?.preview.pending).toBe(true);
+    const fixed = t.kernel.previews.at(-1);
+    expect(fixed?.draft.inputs.distance).toMatchObject({ expr: '5 mm' });
+    fixed?.resolve(preview({ features: { [fixed.draft.id]: { status: 'ok' } } }));
+    await settle();
+    expect(t.open()?.preview.status?.status).not.toBe('error');
+    expect(canCommit(t.open() as OpenDialog)).toBe(true);
+  });
+
   it('draws the bodies a draft changed when it gives no tools, in the spec style', async () => {
     const t = setupDialogs();
     t.controller.start('fake-press');

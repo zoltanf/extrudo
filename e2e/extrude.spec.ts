@@ -250,6 +250,16 @@ test('the Wall bracket template computes its bracket; its cut edits through all'
   await expect(edit.getByRole('textbox', { name: 'Distance' })).toHaveValue('wall * 5');
   await expect(edit.getByRole('textbox', { name: 'Taper' })).toHaveValue('tilt / 3');
   await expect(viewport).toHaveAttribute('data-preview', 'cut', { timeout: 15_000 });
+  // A taper the kernel refuses, then a good one again: the dialog recovers.
+  const taper = edit.getByRole('textbox', { name: 'Taper' });
+  await taper.fill('95 deg');
+  await expect(edit).toHaveAttribute('data-preview-status', 'error', { timeout: 15_000 });
+  await expect(edit.getByText('The taper angle must be between -90° and 90°.')).toBeVisible();
+  await expect(edit).not.toHaveAttribute('data-dialog-valid');
+  await taper.fill('tilt / 3');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await expect(edit.getByText('The taper angle must be between -90° and 90°.')).toHaveCount(0);
+  await expect(edit).toHaveAttribute('data-dialog-valid', 'true');
   await edit.getByRole('combobox', { name: 'Extent' }).selectOption('through-all');
   await expect(edit.getByRole('textbox', { name: 'Distance' })).toHaveCount(0);
   await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
