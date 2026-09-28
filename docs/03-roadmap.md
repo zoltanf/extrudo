@@ -318,10 +318,28 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   colour and opacity; wireframe and hidden edges draw curved faces'
   silhouettes as the zero line of `n · (eye − p)`, updated with the
   camera. E2E in `e2e/bodies.spec.ts`.
-- [ ] **P2-09 Sketch on face and project/include.** Sketch on a planar face
+- [x] **P2-09 Sketch on face and project/include.** Sketch on a planar face
   (follows the face through recompute); Project tool (associative edges and
   silhouettes into the sketch).
   *Deps:* P2-04. *AC:* FR-SK-01 (faces), FR-SK-12.
+  *Done 2026-09-28* (ADR-0031): Create Sketch picks the nearer of a flat
+  face and an origin plane (or takes a selected flat face at once); the
+  face is a persistent reference, and the kernel resolves it on every
+  recompute and derives the frame by one rule (origin = world origin on
+  the plane, floors and roofs X along world X, walls Y up the face,
+  switching at 40° tilt), published as `SketchOutputData.frame` and, new,
+  as a per-feature report to the UI (`ModelState.sketches`; the
+  fingerprint's frame until then). The Project tool (P) picks body edges
+  and faces (on the bodies before the sketch) and stores a projection
+  record; the kernel projects exactly (lines, arcs, ellipses, splines,
+  circles seen edge-on as lines) plus cylinder and cone silhouettes (new
+  facade ops `edgeGeometry`, `faceSilhouettes`), and the app syncs the
+  projected curves (ordinary entities, held fixed by the solver, drawn in
+  the construct colour) and re-solves the sketch, amended into the undo
+  step that moved the model. A profile on a face proposes join or cut
+  like the face. Kernel, core, host and e2e tests
+  (`e2e/sketch-on-face.spec.ts`: a hole cut from a top-face sketch that
+  rides up with a taller box; a projected face following a taper).
 - [ ] **P2-10 Primitives.** Box, cylinder, sphere, torus with placement on a
   plane or face.
   *AC:* FR-FT-03.

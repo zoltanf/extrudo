@@ -324,8 +324,9 @@ is `KernelClient`, which restarts the worker after a crash.
   reference-counted; the engine checks each evaluation for leaked shapes.
   `recompute(request, onFeature)` returns per-feature status and the bodies
   at the marker, meshing only those whose `version` the caller doesn't
-  `have`. The UI side is `Recomputer` (one `KernelClient` per open
-  project), which fills the model store.
+  `have`, and each feature's optional `report` (plain JSON for the UI:
+  a sketch's frame and projections, P2-09). The UI side is `Recomputer`
+  (one `KernelClient` per open project), which fills the model store.
 - **Memory:** OCCT objects in Emscripten are not garbage-collected. All
   evaluator code uses a `using`/`scope.track()` disposal pattern, and the cache
   deletes shapes on eviction. This is a hard coding rule.
@@ -454,7 +455,21 @@ bodies.
   (`ctx.output(sketch).shapes[region]`).
 - A sketch's plane is a reference (origin plane, construction plane or a face's
   persistent ID), re-derived on each recompute, so a sketch on a face follows
-  that face.
+  that face. P2-09 (ADR-0031) built it: the evaluator resolves the face
+  with `ctx.resolve` and takes its frame by one rule (`faceSketchFrame`:
+  origin = world origin on the plane; floors and roofs X along world X,
+  walls Y up the face), published as `SketchOutputData.frame` and as the
+  sketch's report to the UI (`FeatureOutput.report` →
+  `RecomputeResult.reports` → `ModelState.sketches`); until the kernel
+  answers, the UI uses the frame of the reference's fingerprint.
+- Projected geometry (FR-SK-12, ADR-0031) is stored: a projection record
+  (`SketchData.projections`: the source edge or face as a `GeomRef`, and
+  its curves by source key) plus ordinary entities the solver holds fixed.
+  The kernel projects the sources on every recompute (exact edge geometry
+  and cylinder/cone silhouettes from the facade) and reports the curves;
+  profiles and faces come from the stored curves. The app brings the
+  sketch in line (`projectionSync`, then a solve) and amends that into the
+  undo step whose edit moved the model.
 
 ### 5.4 Tessellation and rendering
 
@@ -650,3 +665,10 @@ bundle-size budget. Every agent task must leave CI green.
   (the largest keeps the ID), the Remove feature, colour swatches and
   opacity, browser rows that pick into the selection, silhouettes of
   curved faces.
+- **ADR-0031** Sketch on face and Project. **Written 2026-09-28** (P2-09):
+  the face frame rule (world origin on the plane, X along world X on
+  floors, Y up walls, switching at 40°), frames reported to the UI with a
+  fingerprint fallback, Create Sketch picking the nearer of a flat face
+  and an origin plane, projection records with curves as fixed ordinary
+  entities, exact projection and cylinder/cone silhouettes in the kernel,
+  and the app's sync amended into the undo step that moved the model.

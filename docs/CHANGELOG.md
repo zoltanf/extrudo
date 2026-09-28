@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-28 · **P2-09** Sketch on face and Project (ADR-0031): Create
+  Sketch now also takes a flat face of a body (click it, or select it
+  first); the sketch sits on the face and moves with it when the model
+  changes. The Project tool (P, in the Sketch tab's Create menu) brings
+  body edges and faces into a sketch, outlines of cylinders included; the
+  projected curves are purple, fixed, make profiles, take constraints, and
+  follow the model when it changes. A profile drawn on a face and pushed
+  in cuts by default.
 - 2026-09-28 · **P2-08** Bodies (ADR-0030): new bodies are named Body1,
   Body2… as they appear and keep their names; the browser's Bodies folder
   shows how many there are and renames, hides, colours (ten swatches) and
