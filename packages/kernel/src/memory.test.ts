@@ -9,9 +9,18 @@
 // without Clear(), taucad/opencascade.js#40) and must trip the same limit, so
 // a probe that stops seeing leaks fails this test instead of passing it.
 
-import type { BodyId } from '@extrudo/core';
+import {
+  type BodyId,
+  type ExtrudeInputOptions,
+  extrudeInputs,
+  type Feature,
+  type GeomRef,
+  originPlaneRef,
+  type SketchData,
+  sketchInputs,
+} from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
-import { PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
+import { detectProfiles, PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { planarCurves } from './features/sketch';
 import { Kernel } from './kernel';
@@ -166,6 +175,112 @@ describe('memory', () => {
     expect(after.liveShapes).toBe(0);
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
     expect(after.heapBytes).toBe(before.heapBytes);
+  });
+
+  it(`tapering, measuring distances and splitting solids ${REBUILDS} times does not grow the heap`, {
+    timeout: 180_000,
+  }, () => {
+    // The facade ops of P2-06 (ADR-0028): tapered prisms (DraftAngle and
+    // its checks, a slot's tangent arcs, a hole), one that fails as too
+    // steep, distances between solids, and a compound's solids.
+    const b = new SketchBuilder();
+    b.line(0, 0, 30, 0);
+    b.line(30, 0, 30, 10);
+    b.line(30, 10, 0, 10);
+    b.line(0, 10, 0, 0);
+    b.circle(20, 5, 2);
+    b.line(40, 0, 50, 0);
+    b.arc(50, 3, 3, -90, 90);
+    b.line(50, 6, 40, 6);
+    b.arc(40, 3, 3, 90, 270);
+    const { curves } = planarCurves(b.sketch);
+    const frame = { origin: [0, 0, 0], x: [1, 0, 0], normal: [0, 0, 1] } as const;
+    const rebuild = (i: number) => {
+      using scope = kernel.scope();
+      const { faces } = kernel.planarFaces(curves, frame, PROFILE_TOLERANCE);
+      for (const face of faces) scope.track(face.shape);
+      const [plate, slot] = faces.sort((x, y) => x.centroid[0] - y.centroid[0]).map((f) => f.shape);
+      if (plate === undefined || slot === undefined) throw new Error('no faces');
+      const taper = ((i % 3) - 1) * 0.05;
+      const a = scope.track(kernel.prism(plate, [0, 0, 5 + (i % 5) / 10], [0, 0, 0], taper));
+      const c = scope.track(kernel.prism(slot, [0, 0, -4], [0, 0, 0], 0.08));
+      expect(() => kernel.prism(slot, [0, 0, 20], [0, 0, 0], -0.5)).toThrow(/too steep/);
+      const both = scope.track(kernel.compound([a.shape, c.shape]));
+      const block = scope.track(kernel.box([60, 20, 2], [-5, -5, 5]));
+      if (kernel.distance(block, both) > 1e-4) throw new Error('should touch');
+      const solids = kernel.solids(both);
+      for (const solid of solids) scope.track(solid);
+      if (solids.length !== 2) throw new Error(`${solids.length} solids`);
+    };
+    for (let i = 0; i < WARM_UP; i++) rebuild(i);
+    const before = kernel.stats();
+    for (let i = 0; i < REBUILDS; i++) rebuild(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(0);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+    expect(after.heapBytes).toBe(before.heapBytes);
+  });
+
+  it('recomputing real extrudes 300 times with changing values does not grow the heap', {
+    timeout: 180_000,
+  }, async () => {
+    // The extrude evaluator end to end: a block, a tapered cut through it,
+    // a join up to its face, press-pull of a face; every run a new size.
+    const engine = new RecomputeEngine(kernel, testFeatures().registry, {
+      strictLeaks: true,
+      maxEntries: 8,
+    });
+    const block = new SketchBuilder();
+    block.line(0, 0, 40, 0);
+    block.line(40, 0, 40, 30);
+    block.line(40, 30, 0, 30);
+    block.line(0, 30, 0, 0);
+    const hole = new SketchBuilder();
+    hole.circle(10, 10, 4);
+    const regions = (data: SketchData) => detectProfiles(data).map((p) => p.id);
+    const profileOf = (sketch: string, data: SketchData): GeomRef => ({
+      kind: 'profile',
+      id: `${sketch}/${regions(data)[0]}`,
+    });
+    const sketchOn = (id: string, data: SketchData): Feature => ({
+      ...testFeature(id, 'sketch'),
+      inputs: sketchInputs(originPlaneRef('origin:xy'), data),
+    });
+    const extrude = (id: string, refs: GeomRef[], options: ExtrudeInputOptions): Feature => ({
+      ...testFeature(id, 'extrude'),
+      inputs: extrudeInputs(refs, options),
+    });
+    const top: GeomRef = { kind: 'face', id: 'extrude:B:cap:end' };
+    const doc = (h: number) =>
+      testDocument([
+        sketchOn('SB', block.sketch),
+        extrude('B', [profileOf('SB', block.sketch)], { distance: `${h} mm` }),
+        sketchOn('SH', hole.sketch),
+        extrude('H', [profileOf('SH', hole.sketch)], {
+          extent: 'through-all',
+          operation: 'cut',
+          taper: '-3 deg',
+          direction: 'symmetric',
+        }),
+        extrude('P', [top], { distance: '2 mm', operation: 'join', taper: '-5 deg' }),
+      ]);
+    const run = async (i: number) => {
+      const result = await engine.recompute({ doc: doc(5 + (i % 300) / 100) });
+      if (result.status !== 'done' || result.bodies.length !== 1) throw new Error('no body');
+      for (const s of Object.values(result.features)) {
+        if (s.status !== 'ok') throw new Error(s.message);
+      }
+    };
+    for (let i = 0; i < WARM_UP; i++) await run(i);
+    const before = kernel.stats();
+    for (let i = WARM_UP; i < WARM_UP + 300; i++) await run(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(engine.size.shapes);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+    engine.clear();
+    expect(kernel.stats().liveShapes).toBe(0);
   });
 
   it('recomputing a fixture 500 times with changing values does not grow the heap', {

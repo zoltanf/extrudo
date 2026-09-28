@@ -59,12 +59,21 @@ Things the builds ran into:
 - Try facade changes natively first: a `harness.cpp` that `#include`s
   `extrudo_facade.cpp` builds with `em++` against the image's static
   libraries in seconds and runs under `node` in the container (see the
-  project's `CLAUDE.md`), leak checks (`heapTop()`) included.
+  project's `CLAUDE.md`), leak checks (`heapTop()`) included. To reach a
+  shape behind a handle from the harness (to run an OCCT check on it, say),
+  `#define private public` before the `#include` and call `find(handle)`.
 - Operations with history write `[input, kind, index, relation, n, (kind,
   index) × n]` records: relations 0 modified, 1 generated, 2 deleted, 3 kept,
   4 first and 5 last (a sweep's start and end copies). Topological naming
   (ADR-0005) reads them; `describe()` gives the geometry and adjacency it
   orders and fingerprints by.
+- `prism` takes a taper (ADR-0028): `BRepOffsetAPI_DraftAngle` on the side
+  faces, its history carried through with `ModifiedShape` (DraftAngle calls
+  a tilted face generated, not modified), and `taperHolds` because
+  DraftAngle returns "valid" solids whose sides crossed. `count`/`subShape`
+  take kind 3 for solids; `distance` measures solid by solid, since
+  `BRepExtrema_DistShapeShape` only sees inside a shape that is a solid
+  itself.
 
 ## Licensing
 

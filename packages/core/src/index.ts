@@ -14,6 +14,7 @@ export {
 export { createDocument, type NewDocumentOptions } from './document';
 export * from './document-commands';
 export * from './expr/index';
+export * from './extrude';
 export {
   type FeatureCategory,
   type FeatureDefinition,

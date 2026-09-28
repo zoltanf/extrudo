@@ -13,6 +13,8 @@ export {
   type KernelStatus,
   type SpawnKernel,
 } from './client';
+export type { ExtrudeOutputData } from './features/extrude';
+export type { SketchOutputData, SketchProfileInfo } from './features/sketch';
 export {
   decodeHistory,
   type HistoryRecord,

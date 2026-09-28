@@ -35,6 +35,7 @@ export interface FacadeBinding {
     dx: number,
     dy: number,
     dz: number,
+    taper: number,
   ): number;
   revolve(
     shape: number,
@@ -49,6 +50,7 @@ export interface FacadeBinding {
   compound(): number;
   subShape(shape: number, kind: number, index: number): number;
   locate(part: number, whole: number, kind: number): number;
+  distance(a: number, b: number): number;
   lookupPtr(): number;
   lookupSize(): number;
   describe(shape: number): number;

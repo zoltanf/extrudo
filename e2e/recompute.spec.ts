@@ -33,7 +33,8 @@ test('the kernel computes a new design, and a sketch in it', async ({ page }) =>
 test('features the kernel cannot compute show an error, with the reason', async ({ page }) => {
   await openProject(page, 'wall-bracket');
   await kernelReady(page);
-  // The template's extrudes and fillet have no geometry yet; Plane1 is rolled back.
+  // The template's extrudes have no profiles yet and the fillet no geometry;
+  // Plane1 is rolled back.
   expect(
     await chips(page).evaluateAll((els) => els.map((e) => e.getAttribute('aria-label'))),
   ).toEqual([
@@ -48,7 +49,7 @@ test('features the kernel cannot compute show an error, with the reason', async 
 
   await chip(page, 'Extrude1').hover();
   await expect(page.getByRole('tooltip')).toContainText(
-    "Extrude · error: This version of Extrudo can't compute Extrude features.",
+    'Extrude · error: Pick at least one profile or face to extrude.',
   );
 
   // Rolled back and suppressed features aren't computed, so they have no status.

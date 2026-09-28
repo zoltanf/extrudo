@@ -50,6 +50,8 @@ export interface KernelStats {
 
 const KIND_CODE: Record<SubShapeKind, number> = { face: 0, edge: 1, vertex: 2 };
 const BOOLEAN_CODE = { fuse: 0, cut: 1, common: 2 } as const;
+/** The facade's sub-shape kind code for solids (count, subShape). */
+const SOLID_CODE = 3;
 
 type TypedArrayConstructor<T> = new (buffer: ArrayBuffer, byteOffset: number, length: number) => T;
 
@@ -112,9 +114,40 @@ export class Kernel {
    * two sides) sweeps the shifted profile. History (input 0, indices of the
    * shape as passed in): `generated` (edge → side face, vertex → side
    * edge), `first` and `last` (the copies at the start and end).
+   *
+   * `taper` (radians, |taper| < π/2) tilts the side faces about their edges
+   * in the start plane: positive widens the outline along the sweep,
+   * negative narrows it (holes the other way). Only sides from lines,
+   * arcs and circles can be tapered; a taper that makes the sides meet
+   * fails. The history is the same as without a taper.
    */
-  prism(shape: ShapeHandle, vector: Vec3, shift: Vec3 = [0, 0, 0]): OperationResult {
-    return this.#withHistory(this.#facade.prism(shape, ...shift, ...vector));
+  prism(shape: ShapeHandle, vector: Vec3, shift: Vec3 = [0, 0, 0], taper = 0): OperationResult {
+    return this.#withHistory(this.#facade.prism(shape, ...shift, ...vector, taper));
+  }
+
+  /**
+   * The smallest distance between two shapes in mm: 0 where they touch,
+   * overlap or one lies inside a solid of the other.
+   */
+  distance(a: ShapeHandle, b: ShapeHandle): number {
+    const d = this.#facade.distance(a, b);
+    if (d < 0) throw new KernelError(this.#facade.lastError() || 'Unknown shape.');
+    return d;
+  }
+
+  /** New handles to each solid of a shape (a compound of solids from a boolean or a sweep). */
+  solids(shape: ShapeHandle): ShapeHandle[] {
+    const n = this.#facade.count(shape, SOLID_CODE);
+    if (n < 0) throw new KernelError('Unknown shape.');
+    const out: ShapeHandle[] = [];
+    try {
+      for (let i = 0; i < n; i++)
+        out.push(this.#check(this.#facade.subShape(shape, SOLID_CODE, i)));
+    } catch (error) {
+      this.release(...out);
+      throw error;
+    }
+    return out;
   }
 
   /**
