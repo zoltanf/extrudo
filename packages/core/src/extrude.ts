@@ -10,15 +10,14 @@
  * a dialog can keep them while the user switches back and forth.
  */
 import { z } from 'zod';
+import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
   BoolInputSchema,
   type ExprInput,
-  ExprInputSchema,
   type GeomRef,
   type GeomRefKind,
   type RefInput,
-  RefInputSchema,
   type UnitKind,
 } from './schema';
 
@@ -43,35 +42,14 @@ export type ExtrudeDirection = (typeof EXTRUDE_DIRECTIONS)[number];
 export const EXTRUDE_EXTENTS = ['distance', 'to-object', 'through-all'] as const;
 export type ExtrudeExtent = (typeof EXTRUDE_EXTENTS)[number];
 
-/**
- * - `new-body`: a body per separate solid.
- * - `join`: fused into the bodies it touches (or `bodies`), which become one.
- * - `cut`: subtracted from the bodies it overlaps (or `bodies`).
- * - `intersect`: the bodies it overlaps (or `bodies`) keep only the overlap.
- */
-export const EXTRUDE_OPERATIONS = ['new-body', 'join', 'cut', 'intersect'] as const;
-export type ExtrudeOperation = (typeof EXTRUDE_OPERATIONS)[number];
+/** The body operations (`BODY_OPERATIONS`): new body, join, cut, intersect. */
+export const EXTRUDE_OPERATIONS = BODY_OPERATIONS;
+export type ExtrudeOperation = BodyOperation;
 
 /** What can be extruded: sketch profiles (`<sketch>/<region>`) and flat faces of bodies. */
 export const EXTRUDE_PROFILE_KINDS: readonly GeomRefKind[] = ['profile', 'face'];
 /** What an extrude can go up to: a flat face, a vertex, an origin or construction plane. */
 export const EXTRUDE_OBJECT_KINDS: readonly GeomRefKind[] = ['face', 'vertex', 'plane'];
-
-const enumInput = <T extends readonly [string, ...string[]]>(values: T) =>
-  z.strictObject({ kind: z.literal('enum'), value: z.enum(values) });
-
-const exprOf = (unit: UnitKind) =>
-  ExprInputSchema.refine((input) => (input.unit ?? 'length') === unit, `must be ${an(unit)}`);
-
-const refsOf = (kinds: readonly GeomRefKind[], max = Number.POSITIVE_INFINITY) =>
-  RefInputSchema.refine(
-    (input) => input.refs.length <= max && input.refs.every((ref) => kinds.includes(ref.kind)),
-    max === 1 ? `must be one ${kinds.join(', ')}` : `must be ${kinds.join(' or ')} references`,
-  );
-
-function an(unit: UnitKind): string {
-  return unit === 'unitless' ? 'a plain number' : `an ${unit === 'angle' ? 'angle' : 'length'}`;
-}
 
 export const ExtrudeInputsSchema = z.strictObject({
   /** Profiles and flat faces, all in one plane. Missing or empty: the feature fails until some are picked. */
