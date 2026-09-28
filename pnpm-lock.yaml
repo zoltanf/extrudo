@@ -264,7 +264,11 @@ importers:
         specifier: ^5.0.15
         version: 5.0.15(@types/react@19.3.0)(immer@11.1.18)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
 
-  packages/io: {}
+  packages/io:
+    dependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
 
   packages/kernel:
     dependencies:
@@ -278,6 +282,9 @@ importers:
         specifier: ^4.4.2
         version: 4.4.2
     devDependencies:
+      '@extrudo/io':
+        specifier: workspace:*
+        version: link:../io
       '@libcascade/toolchain':
         specifier: 3.0.2
         version: 3.0.2

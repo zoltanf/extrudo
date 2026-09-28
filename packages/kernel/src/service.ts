@@ -1,7 +1,8 @@
 import type { BodyId, FeatureRegistry, GeomRef } from '@extrudo/core';
 import { kernelFeatures } from './features';
 import type { SubShapeKind } from './history';
-import { Kernel, type KernelStats } from './kernel';
+import { Kernel, KernelError, type KernelStats } from './kernel';
+import type { ExportMesh, MeshOptions } from './mesh';
 import type { OcctModule } from './occt/types';
 import { type EngineOptions, RecomputeEngine } from './recompute/engine';
 import type {
@@ -21,8 +22,7 @@ export interface KernelInfo {
 
 /**
  * The kernel worker's RPC surface (architecture §5.1). P0-09 has the plumbing
- * and the debug commands, P2-01 recompute and preview; export arrives later
- * in Phase 2.
+ * and the debug commands, P2-01 recompute and preview, P2-12 export.
  */
 export interface KernelApi {
   init(): Promise<KernelInfo>;
@@ -49,11 +49,25 @@ export interface KernelApi {
     index: number,
     base?: boolean,
   ): Promise<GeomRef | undefined>;
+  /**
+   * Bodies of the last finished recompute tessellated for STL and 3MF
+   * (P2-12, ADR-0034): welded meshes at `tessellation`, in the order
+   * asked. Rejects if a body is no longer in the model.
+   */
+  exportMeshes(bodies: readonly BodyId[], tessellation: MeshOptions): Promise<BodyExportMesh[]>;
+  /** Bodies of the last finished recompute as one STEP AP242 file, each a named product. */
+  exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string>;
   /** Builds, measures and meshes the P0-02 test part. */
   debugTestPart(): Promise<TestPart>;
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
   debugCrash(): Promise<void>;
   stats(): Promise<KernelStats>;
+}
+
+/** A body's export mesh (`KernelApi.exportMeshes`). */
+export interface BodyExportMesh {
+  id: BodyId;
+  mesh: ExportMesh;
 }
 
 /**
@@ -118,6 +132,18 @@ export class KernelService implements KernelApi {
     return this.#run(() => this.#engineOf().reference(body, kind, index, base));
   }
 
+  exportMeshes(bodies: readonly BodyId[], tessellation: MeshOptions): Promise<BodyExportMesh[]> {
+    return this.#run((kernel) =>
+      bodies.map((id) => ({ id, mesh: kernel.exportMesh(this.#bodyShape(id), tessellation) })),
+    );
+  }
+
+  exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string> {
+    return this.#run((kernel) =>
+      kernel.writeStep(bodies.map(({ id, name }) => ({ shape: this.#bodyShape(id), name }))),
+    );
+  }
+
   async debugTestPart(): Promise<TestPart> {
     return this.#run((kernel) => makeTestPart(kernel));
   }
@@ -135,6 +161,15 @@ export class KernelService implements KernelApi {
     if (this.#crashed || !this.#kernel) return;
     this.#engine?.clear();
     (await this.#kernel).dispose();
+  }
+
+  /** A body of the last recompute. Only called inside #run. */
+  #bodyShape(id: BodyId) {
+    const shape = this.#engineOf().latestBody(id);
+    if (shape === undefined) {
+      throw new KernelError('A body to export is no longer in the model. Try again.');
+    }
+    return shape;
   }
 
   /** Only called inside #run, once the kernel is ready. */

@@ -107,6 +107,18 @@ export interface FacadeBinding {
   edgeFlagsSize(): number;
   vertexPointsPtr(): number;
   vertexPointsSize(): number;
+  exportMesh(shape: number, linearDeflection: number, angularDeflection: number): number;
+  clearStepNames(): void;
+  pushStepName(name: string): void;
+  writeStep(): number;
+  readStep(text: string): number;
+  clearExport(): void;
+  exportPositionsPtr(): number;
+  exportPositionsSize(): number;
+  exportIndicesPtr(): number;
+  exportIndicesSize(): number;
+  exportTextPtr(): number;
+  exportTextSize(): number;
   lastError(): string;
   heapTop(): number;
   debugAbort(): void;

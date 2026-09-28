@@ -169,7 +169,8 @@ export function ExportSketchDialog({ store, request, files, onClose }: ExportSke
   );
 }
 
-function Choice({ legend, children }: { legend: string; children: ReactNode }) {
+/** A fieldset of options with a legend (the export dialogs). */
+export function Choice({ legend, children }: { legend: string; children: ReactNode }) {
   return (
     <fieldset className="flex flex-col gap-1">
       <legend className="mb-1 font-semibold">{legend}</legend>
@@ -178,7 +179,7 @@ function Choice({ legend, children }: { legend: string; children: ReactNode }) {
   );
 }
 
-function Radio({
+export function Radio({
   name,
   checked,
   onChange,
@@ -203,6 +204,6 @@ function Radio({
   );
 }
 
-function Hint({ children }: { children: ReactNode }) {
+export function Hint({ children }: { children: ReactNode }) {
   return <span className="ml-1 text-sm text-muted">{children}</span>;
 }

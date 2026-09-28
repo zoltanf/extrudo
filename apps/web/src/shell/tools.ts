@@ -474,7 +474,6 @@ export const TOOLS = {
     icon: 'export',
     category: 'export',
     hint: 'STL, 3MF or STEP for printing and sharing.',
-    comesWith: 'P2-12',
   },
   exportSketch: {
     id: 'exportSketch',

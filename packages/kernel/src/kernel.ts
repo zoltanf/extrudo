@@ -1,5 +1,5 @@
 import { decodeHistory, type HistoryRecord, type SubShapeKind } from './history';
-import type { BodyMesh, Measurements, MeshOptions } from './mesh';
+import type { BodyMesh, ExportMesh, Measurements, MeshOptions } from './mesh';
 import { decodeDescription, type ShapeDescription } from './naming/description';
 import type { FacadeBinding, OcctModule } from './occt/types';
 import {
@@ -301,6 +301,53 @@ export class Kernel {
     }
   }
 
+  /**
+   * Tessellates a shape for export (P2-12): welded nodes, so a closed
+   * solid gives a closed, manifold mesh. It meshes a copy at the given
+   * deflection, whatever the display mesh used.
+   */
+  exportMesh(shape: ShapeHandle, options: MeshOptions): ExportMesh {
+    const f = this.#facade;
+    if (f.exportMesh(shape, options.linearDeflection, options.angularDeflection) < 0) {
+      throw new KernelError(f.lastError() || "Couldn't mesh the body.");
+    }
+    try {
+      return {
+        positions: this.#copy(Float64Array, f.exportPositionsPtr(), f.exportPositionsSize()),
+        indices: this.#copy(Uint32Array, f.exportIndicesPtr(), f.exportIndicesSize()),
+      };
+    } finally {
+      f.clearExport();
+    }
+  }
+
+  /**
+   * A STEP AP242 file (mm) of the shapes, each a product with its name
+   * (P2-12). The text is ASCII.
+   */
+  writeStep(parts: readonly { shape: ShapeHandle; name: string }[]): string {
+    const f = this.#facade;
+    f.clearArgs();
+    f.clearStepNames();
+    for (const { shape, name } of parts) {
+      f.pushArg(shape);
+      f.pushStepName(stepString(name));
+    }
+    const size = f.writeStep();
+    f.clearStepNames();
+    if (size < 0) throw new KernelError(f.lastError() || "Couldn't write the STEP file.");
+    try {
+      return new TextDecoder('latin1').decode(this.#copy(Uint8Array, f.exportTextPtr(), size));
+    } finally {
+      f.clearExport();
+    }
+  }
+
+  /** Reads STEP text into one shape (a compound of its roots). Release it when done. */
+  readStep(text: string): ShapeHandle {
+    return this.#check(this.#facade.readStep(text));
+  }
+
   release(...shapes: ShapeHandle[]): void {
     for (const shape of shapes) this.#facade.release(shape);
   }
@@ -370,6 +417,35 @@ export class Kernel {
   #copy<T extends { slice(): T }>(Type: TypedArrayConstructor<T>, ptr: number, length: number): T {
     return new Type(this.#oc.wasmMemory.buffer as ArrayBuffer, ptr, length).slice();
   }
+}
+
+/**
+ * Text as a STEP string's content (ISO 10303-21): printable ASCII as is;
+ * other characters (and the backslash, which starts a directive) as
+ * `\X2\…\X0\` (4 hex digits each) or, beyond the BMP, `\X4\…\X0\` (8).
+ * Control characters are dropped. The writer doubles apostrophes.
+ */
+export function stepString(text: string): string {
+  let out = '';
+  let run: { width: 4 | 8; hex: string } | undefined;
+  const flush = () => {
+    if (run) out += `\\X${run.width / 2}\\${run.hex}\\X0\\`;
+    run = undefined;
+  };
+  for (const char of text) {
+    const code = char.codePointAt(0) as number;
+    if (code >= 0x20 && code < 0x7f && code !== 0x5c) {
+      flush();
+      out += char;
+    } else if (code > 0x9f || code === 0x5c) {
+      const width = code > 0xffff ? 8 : 4;
+      if (run?.width !== width) flush();
+      run ??= { width, hex: '' };
+      run.hex += code.toString(16).toUpperCase().padStart(width, '0');
+    }
+  }
+  flush();
+  return out;
 }
 
 /** A body edge's geometry (`Kernel.edgeGeometry`), in world mm. */

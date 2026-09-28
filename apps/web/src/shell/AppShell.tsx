@@ -18,6 +18,8 @@ import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
 import { type ToastOptions, ToolIcon, useTheme } from '../design-system';
+import { ExportModelDialog, type ModelExportRequest } from '../export/ExportModelDialog';
+import type { ModelExporter } from '../export/modelExport';
 import { DialogOverlay } from '../features/DialogOverlay';
 import { type DialogKernel, dialogBodies, viewPreview } from '../features/dialog';
 import { FeatureDialog } from '../features/FeatureDialog';
@@ -94,8 +96,8 @@ export interface AppShellProps {
   notify?(tone: 'info' | 'error', text: string, options?: ToastOptions): void;
   /** Feature dialogs (P2-05): the app's registry unless a debug page brings its own. */
   dialogs?: FeatureDialogs;
-  /** The project's kernel (its `Recomputer`): dialog previews and references. */
-  kernel?: DialogKernel;
+  /** The project's kernel (its `Recomputer`): dialog previews, references and export. */
+  kernel?: DialogKernel & ModelExporter;
 }
 
 /** The app's feature dialogs (`features/registry.ts`). */
@@ -133,6 +135,7 @@ export function AppShell({
   const timeline = usePanel(platform.preferences, { key: 'timeline', size: 0, min: 0, max: 0 });
   const [parametersOpen, setParametersOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<ExportRequest>();
+  const [modelExport, setModelExport] = useState<ModelExportRequest>();
   const bodies = useStore(model, (s) => s.bodies);
   const sketchReports = useStore(model, (s) => s.sketches);
   const doc = useStore(store, (s) => s.doc);
@@ -231,7 +234,11 @@ export function AppShell({
   const bodyListRef = useRef(bodyList);
   bodyListRef.current = bodyList;
   const bodyActions = useMemo(
-    () => createBodyActions({ store, session }, () => bodyListRef.current, notify),
+    () => ({
+      ...createBodyActions({ store, session }, () => bodyListRef.current, notify),
+      // A body's menu exports it (P2-12).
+      exportBodies: (ids: readonly BodyId[]) => setModelExport({ bodies: ids }),
+    }),
     [store, session, notify],
   );
   const selectedBodyIds = useMemo(
@@ -509,6 +516,7 @@ export function AppShell({
         session.getState().setTool(PROJECT_TOOL);
       }
     } else if (tool === 'finishSketch') finishSketch(stores);
+    else if (tool === 'export') setModelExport({});
     else if (tool === 'exportSketch' && activeSketchId) {
       // Profiles selected in the open sketch are offered first (P1-13).
       featureActions.exportSketch(activeSketchId);
@@ -558,6 +566,8 @@ export function AppShell({
   };
   const sketchOnFaceRef = useRef(sketchOnFace);
   sketchOnFaceRef.current = sketchOnFace;
+  // The File menu offers the model's export too (P2-12).
+  const fileActions = useMemo(() => ({ ...file, exportModel: () => setModelExport({}) }), [file]);
   const pickPlane = (plane: OriginPlaneId) => createSketchOn(stores, originPlaneRef(plane));
   // The timeline's and the browser's feature commands (P1-12), and sketch export (P1-13).
   const featureActions = useMemo(
@@ -716,7 +726,7 @@ export function AppShell({
       <AppBar
         store={store}
         autosave={autosave}
-        file={file}
+        file={fileActions}
         theme={choice}
         onThemeChange={setChoice}
         onSearch={openSearch}
@@ -897,6 +907,18 @@ export function AppShell({
         onTogglePin={togglePin}
         onRun={runCommand}
         onClose={() => setSearch(undefined)}
+      />
+      <ExportModelDialog
+        store={store}
+        session={session}
+        model={model}
+        bodies={bodyList}
+        kernel={kernel}
+        request={modelExport}
+        files={platform.files}
+        preferences={platform.preferences}
+        notify={notify}
+        onClose={() => setModelExport(undefined)}
       />
       <ExportSketchDialog
         store={store}

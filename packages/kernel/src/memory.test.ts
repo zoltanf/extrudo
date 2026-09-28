@@ -447,6 +447,36 @@ describe('memory', () => {
     expect(kernel.stats().liveShapes).toBe(0);
   });
 
+  it(`exporting a meshed and a STEP body ${REBUILDS} times does not grow the heap`, {
+    timeout: 180_000,
+  }, () => {
+    // P2-12 (ADR-0034): the welded export mesh (a copy meshed at the export's
+    // deflection) and a STEP file written and read back.
+    using scope = kernel.scope();
+    const block = scope.track(kernel.box([40, 30, 20]));
+    const hole = scope.track(kernel.cylinder(4, 40, [20, 15, -10]));
+    const body = scope.track(kernel.cut(block, hole));
+    const run = (i: number) => {
+      const fine = i % 2 === 0;
+      const mesh = kernel.exportMesh(body.shape, {
+        linearDeflection: fine ? 0.01 : 0.1,
+        angularDeflection: fine ? 0.1 : 0.5,
+      });
+      if (mesh.indices.length === 0) throw new Error('no triangles');
+      if (i % 5 === 0) {
+        const back = kernel.readStep(kernel.writeStep([{ shape: body.shape, name: `Body${i}` }]));
+        kernel.release(back);
+      }
+    };
+    for (let i = 0; i < WARM_UP; i++) run(i);
+    const before = kernel.stats();
+    for (let i = 0; i < REBUILDS; i++) run(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(3);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+  });
+
   it('the leak control trips the same limit', () => {
     // biome-ignore lint/suspicious/noExplicitAny: raw bindings are untyped in this narrow view
     const raw = oc as any;
