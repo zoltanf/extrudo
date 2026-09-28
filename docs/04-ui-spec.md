@@ -246,6 +246,24 @@ movement, as Onshape's context menu does.
 
 - Enter by: Create Sketch → pick a plane or face; double-click a sketch in the
   browser or timeline; right-click → Edit Sketch.
+- **Sketch on a face (P2-09, ADR-0031):** while Create Sketch waits, flat
+  faces of bodies hover in the preselect tint like the origin planes;
+  whichever is nearer under the pointer takes the click. A flat face
+  selected beforehand takes the sketch at once; a curved one says "A sketch
+  needs a flat face or a plane". The sketch moves with its face when the
+  model changes; its X runs along world X on floors and roofs, its Y up
+  the face on walls, and its origin is the world origin on the face's
+  plane.
+- **Project (P2-09):** `P`, or Create ▾ → Project. The view picks body edges
+  and faces (hovered in the preselect tint); a click projects the edge, or
+  the face's outline (with the silhouette lines of a cylinder or cone),
+  into the sketch. Projected curves are purple, fixed, make profiles and
+  take constraints and dimensions; when the model changes they follow it,
+  and whatever is constrained to them follows too, in the same undo step
+  as the change. Deleting one keeps it deleted; trimming or filleting it is
+  refused. Esc or Select ends the tool. In a sketch that later features
+  build on, the view shows the bodies as they were before the sketch while
+  the tool runs.
 - The camera animates to look at the plane (can be turned off). The grid
   aligns to the sketch plane. Bodies are optionally sliced or dimmed.
 - **SKETCH tab groups:** CREATE (line, rectangle ▾, circle ▾, arc ▾, polygon
@@ -299,7 +317,7 @@ Fusion-compatible where Fusion has them; remappable in settings.
 
 Shift+1…7 are Home, Top, Bottom, Front, Back, Left, Right, by key
 position (they work on any layout). The keys live in one table,
-`apps/web/src/commands/keymap.ts`; P, Q and J wait for their tools.
+`apps/web/src/commands/keymap.ts`; P is Project (P2-09); Q and J wait for their tools.
 
 ## 6. Home screen
 

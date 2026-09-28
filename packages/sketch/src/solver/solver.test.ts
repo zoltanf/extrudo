@@ -784,3 +784,26 @@ describe('applySolution', () => {
     expect(applySolution(sketch, result.solution)).toBe(sketch);
   });
 });
+
+describe('projected geometry (P2-09)', () => {
+  it('stays where the model put it, and constrained geometry follows it', () => {
+    const b = new SketchBuilder();
+    const edge = b.line(0, 0, 50, 0);
+    const mine = b.line(3, 4, 20, 30);
+    b.constrain({ type: 'coincident', a: mine.start, b: edge.end });
+    b.constrain({ type: 'horizontal', a: mine.id });
+    const sketch = {
+      ...b.sketch,
+      projections: { pr: { ref: { kind: 'edge', id: 'e[x]' }, curves: { edge: edge.id } } },
+    } as unknown as SketchData;
+    const solver = newSolver();
+    const result = solver.solve(SketchDataSchema.parse(sketch), {});
+    expect(result.ok).toBe(true);
+    const solved = applySolution(sketch, result.solution);
+    const at = (id: string) => solved.entities[id as keyof SketchData['entities']];
+    expect(at(edge.start)).toMatchObject({ x: 0, y: 0 });
+    expect(at(edge.end)).toMatchObject({ x: 50, y: 0 });
+    expect(at(mine.start)).toMatchObject({ x: 50, y: 0 });
+    expect((at(mine.end) as { y: number }).y).toBeCloseTo(0, 9);
+  });
+});

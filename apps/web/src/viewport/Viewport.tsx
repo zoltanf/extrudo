@@ -3,6 +3,7 @@ import {
   type BodyMeta,
   type FeatureId,
   type OriginPlaneId,
+  projectedEntities,
   type SelectionItem,
   type SketchFrame,
   type Vec2,
@@ -29,6 +30,7 @@ import { previewSummary, type ViewPreview } from '../features/preview';
 import { combineFilters } from '../selection/filter';
 import { itemLabel, type LabelContext, selectionKey } from '../selection/items';
 import { type PickHit, type PickScene, pickBox, pickStack, pickTop } from '../selection/pick';
+import { sketchTargetAt } from '../sketch/facePick';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
 import { Bodies } from './Bodies';
 import { CameraRig } from './CameraRig';
@@ -132,6 +134,15 @@ export interface PlanePicker {
   onHover(plane: OriginPlaneId): void;
   onLeave(plane: OriginPlaneId): void;
   onPick(plane: OriginPlaneId): void;
+  /**
+   * Flat body faces can be picked too (P2-09): the view then picks origin
+   * planes and faces itself, and the nearer one under the pointer wins
+   * (`sketchTargetAt`). Items are session face items.
+   */
+  faces?: {
+    onHover(item: SelectionItem | undefined): void;
+    onPick(item: SelectionItem): void;
+  };
 }
 
 const NO_BODIES: Record<BodyId, BodyMesh> = {};
@@ -281,6 +292,7 @@ export function Viewport({
     [silhouettes],
   );
   useModelInput(surface, viewport, modelSelect, modelScene, setBox, setOtherMenu);
+  useSketchTargetInput(surface, viewport, planePicker, modelScene, setBox);
   // The menu belongs to model mode: it closes when that ends (a sketch opens, a tool starts).
   useEffect(() => {
     if (!modelSelect) setOtherMenu(undefined);
@@ -292,7 +304,7 @@ export function Viewport({
     ? navCursor(dragging, true)
     : tool
       ? navCursor(tool, false)
-      : planePicker?.hover
+      : planePicker?.hover || (planePicker?.faces && hover?.kind === 'face')
         ? 'pointer'
         : sketchInput && sketchInput.cursor !== 'default'
           ? 'crosshair'
@@ -307,6 +319,8 @@ export function Viewport({
       data-sketch-status={sketchStatusSummary(sketches)}
       data-sketch-profiles={sketchProfilesSummary(sketches)}
       data-sketches={sketches.map((s) => s.id).join(' ')}
+      data-sketch-frames={sketchFramesSummary(sketches)}
+      data-sketch-projected={sketchProjectedSummary(sketches)}
       data-highlight={sketches.find((s) => s.highlight)?.id}
       data-model-selection={modelSelect ? selectionKey(selection) : undefined}
       data-model-hover={modelSelect ? selectionKey([hover]) : undefined}
@@ -553,6 +567,7 @@ function Scene({
         showPoints={sketchPoints}
         profileColors={profileColors}
         highlight={colors.preselect}
+        projected={colors.sketchProjected}
       />
       <Grid
         store={viewport}
@@ -573,9 +588,9 @@ function Scene({
         picking={planePicker !== undefined}
         hover={planePicker?.hover}
         highlight={{ ...colors.preselect, a: 1 }}
-        onHover={planePicker?.onHover}
-        onLeave={planePicker?.onLeave}
-        onPick={planePicker?.onPick}
+        onHover={planePicker?.faces ? undefined : planePicker?.onHover}
+        onLeave={planePicker?.faces ? undefined : planePicker?.onLeave}
+        onPick={planePicker?.faces ? undefined : planePicker?.onPick}
       />
     </>
   );
@@ -775,6 +790,60 @@ function useModelInput(
       },
     };
   }, [select, viewport, surface, onMenu]);
+  usePointerInput(surface, viewport, handlers, onBoxChange);
+}
+
+/**
+ * Create Sketch's pick of an origin plane or a flat face (P2-09): with
+ * `planePicker.faces`, the pointer hovers and a click picks whichever of
+ * the two is nearer under it (`sketchTargetAt`).
+ */
+function useSketchTargetInput(
+  surface: RefObject<HTMLDivElement | null>,
+  viewport: ViewportStore,
+  picker: PlanePicker | undefined,
+  scene: ModelScene,
+  onBoxChange: (box: ScreenBox | undefined) => void,
+) {
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
+  const pickerRef = useRef(picker);
+  pickerRef.current = picker;
+  const faces = picker?.faces !== undefined;
+  const handlers = useMemo<PointerHandlers | undefined>(() => {
+    if (!faces) return undefined;
+    const target = (p: ScreenPointer) => {
+      const { view, projection, visualStyle } = viewport.getState();
+      const all = pickScene(sceneRef.current, visualStyle);
+      return sketchTargetAt(
+        { ...all, sketches: [] },
+        { view, projection, width: p.width, height: p.height },
+        [p.x, p.y],
+      );
+    };
+    const hover = (t: ReturnType<typeof target>) => {
+      const current = pickerRef.current;
+      if (!current?.faces) return;
+      if (t?.kind === 'plane') {
+        current.faces.onHover(undefined);
+        current.onHover(t.plane);
+        return;
+      }
+      if (current.hover) current.onLeave(current.hover);
+      current.faces.onHover(t?.item);
+    };
+    return {
+      onMove: (p) => hover(viewport.getState().tool ? undefined : target(p)),
+      onClick: (p) => {
+        const t = target(p);
+        const current = pickerRef.current;
+        if (t?.kind === 'plane') current?.onPick(t.plane);
+        else if (t) current?.faces?.onPick(t.item);
+      },
+      onDragStart: () => false,
+      onLeave: () => hover(undefined),
+    };
+  }, [faces, viewport]);
   usePointerInput(surface, viewport, handlers, onBoxChange);
 }
 
@@ -985,6 +1054,42 @@ function useNavigation(
       el.removeEventListener('contextmenu', onContextMenu);
     };
   }, [section, surface, viewport, onDrag]);
+}
+
+/**
+ * Where each drawn sketch lies, for tests (P2-09): "<id>:<origin>:<normal>"
+ * per sketch, numbers to 0.001 mm: "s1:0,0,15:0,0,1 s2:0,0,0:0,-1,0".
+ */
+function sketchFramesSummary(sketches: readonly SketchDrawing[]): string | undefined {
+  if (sketches.length === 0) return undefined;
+  return sketches
+    .map((s) => `${s.id}:${fmt([...s.frame.origin])}:${fmt([...s.frame.normal])}`)
+    .join(' ');
+}
+
+/**
+ * The projected curves of each drawn sketch that has some, for tests
+ * (P2-09): "<id>:curves=4:x=0..60:y=0..40", the curves' count and the
+ * extent of their points in sketch mm.
+ */
+function sketchProjectedSummary(sketches: readonly SketchDrawing[]): string | undefined {
+  const r = (v: number) => Math.round(v * 1000) / 1000 + 0;
+  const span = (v: number[]) => `${r(Math.min(...v))}..${r(Math.max(...v))}`;
+  const out: string[] = [];
+  for (const { id, data } of sketches) {
+    let curves = 0;
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (const entity of projectedEntities(data)) {
+      const e = data.entities[entity];
+      if (e?.type === 'point') {
+        xs.push(e.x);
+        ys.push(e.y);
+      } else if (e) curves++;
+    }
+    if (curves > 0) out.push(`${id}:curves=${curves}:x=${span(xs)}:y=${span(ys)}`);
+  }
+  return out.length > 0 ? out.join(' ') : undefined;
 }
 
 /**

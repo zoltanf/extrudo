@@ -19,10 +19,12 @@ import { z } from 'zod';
 import {
   ConstraintIdSchema,
   DimensionIdSchema,
+  ProjectionIdSchema,
   type SketchEntityId,
   SketchEntityIdSchema,
 } from '../ids';
 import { PARAMETER_NAME } from '../names';
+import { type GeomRef, GeomRefSchema } from '../refs';
 
 const ref = SketchEntityIdSchema;
 
@@ -227,6 +229,28 @@ export const SketchDimensionSchema = z.discriminatedUnion('type', [
 export type SketchDimension = z.infer<typeof SketchDimensionSchema>;
 export type SketchDimensionType = SketchDimension['type'];
 
+// Projections (P2-09, FR-SK-12) -------------------------------------------------
+
+/**
+ * Model geometry projected into the sketch (the Project tool, ADR-0031): a
+ * body edge, or a face (its boundary edges and, for cylinders and cones,
+ * its silhouette lines), kept associative. The curves are ordinary entities
+ * of the sketch, fixed where the kernel projects them: the kernel reports
+ * the projection on every recompute (`SketchReport`) and the app moves
+ * them there (`syncProjections`), solving the sketch so geometry
+ * constrained to them follows.
+ *
+ * `curves` maps what each curve comes from (the source edge's persistent
+ * name, `sil:<n>` for a silhouette, `edge` for a projected edge itself) to
+ * its entity, or to `null` once the user deleted that curve, so it doesn't
+ * come back.
+ */
+export const SketchProjectionSchema = z.strictObject({
+  ref: GeomRefSchema,
+  curves: z.record(z.string(), SketchEntityIdSchema.nullable()),
+});
+export type SketchProjection = z.infer<typeof SketchProjectionSchema>;
+
 // The sketch -----------------------------------------------------------------
 
 export const SketchDataSchema = z
@@ -234,6 +258,8 @@ export const SketchDataSchema = z
     entities: z.record(SketchEntityIdSchema, SketchEntitySchema),
     constraints: z.record(ConstraintIdSchema, SketchConstraintSchema),
     dimensions: z.record(DimensionIdSchema, SketchDimensionSchema),
+    /** Projected model geometry (P2-09); absent in sketches without any. */
+    projections: z.record(ProjectionIdSchema, SketchProjectionSchema).optional(),
   })
   .superRefine((sketch, ctx) => {
     for (const issue of sketchIssues(sketch)) {
@@ -281,6 +307,7 @@ export function sketchIssues(sketch: {
   entities: Record<string, SketchEntity>;
   constraints: Record<string, SketchConstraint>;
   dimensions: Record<string, SketchDimension>;
+  projections?: Record<string, { ref: GeomRef; curves: Record<string, string | null> }>;
 }): SketchIssue[] {
   const issues: SketchIssue[] = [];
   const { entities } = sketch;
@@ -460,11 +487,29 @@ export function sketchIssues(sketch: {
     }
   }
 
+  // Each curve belongs to at most one projection; projections are of edges and faces.
+  const projectedBy = new Map<string, string>();
+  for (const [id, projection] of Object.entries(sketch.projections ?? {})) {
+    if (projection.ref.kind !== 'edge' && projection.ref.kind !== 'face') {
+      fail('projections', id, `must project an edge or a face, not a ${projection.ref.kind}`);
+    }
+    for (const [key, curve] of Object.entries(projection.curves)) {
+      if (curve === null) continue;
+      const path = ['projections', id, 'curves', key];
+      const kind = kindOf(curve);
+      if (!kind) issues.push({ path, message: `refers to missing entity "${curve}"` });
+      else if (kind === 'point') issues.push({ path, message: 'must be a curve, not a point' });
+      const other = projectedBy.get(curve);
+      if (other) issues.push({ path, message: `"${curve}" is also projected by "${other}"` });
+      else projectedBy.set(curve, id);
+    }
+  }
+
   // One ID space per sketch, so a selection can hold entities, constraints and dimensions.
-  const lists = ['entities', 'constraints', 'dimensions'] as const;
+  const lists = ['entities', 'constraints', 'dimensions', 'projections'] as const;
   const seen = new Map<string, string>();
   for (const list of lists) {
-    for (const id of Object.keys(sketch[list])) {
+    for (const id of Object.keys(sketch[list] ?? {})) {
       const other = seen.get(id);
       if (other) issues.push({ path: [list, id], message: `ID is also used in ${other}` });
       else seen.set(id, list);

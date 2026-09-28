@@ -88,7 +88,7 @@ export function PlanePrompt({ session, onPick, onCancel }: PlanePromptProps) {
       <FloatingPanel label="Create Sketch">
         <PanelTitle>Create Sketch</PanelTitle>
         <p className="text-sm text-muted" id="plane-prompt-hint">
-          Pick a plane in the view, or choose one here. Flat faces arrive with P2-09.
+          Pick a plane or a flat face in the view, or choose a plane here.
         </p>
         <fieldset
           className="m-0 grid grid-cols-3 gap-1 border-0 p-0"

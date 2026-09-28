@@ -59,6 +59,7 @@ import {
   modifySketch,
   nextModelParameterName,
   profileRefId,
+  projectionSync,
   radiusOf,
   newId as randomId,
   readSketch,
@@ -69,7 +70,9 @@ import {
   type SketchDimension,
   type SketchEntity,
   type SketchEntityId,
+  type SketchReport,
   setSketchGeometry,
+  syncProjections,
   type Vec2,
 } from '@extrudo/core';
 import type { SketchSolution, SketchSolver } from '@extrudo/sketch';
@@ -287,6 +290,15 @@ export interface ToolHost {
   editDimension(id: DimensionId | undefined): void;
   /** Answers `overConstrained`: add the dimension as driven (it measures), or drop the edit. */
   resolveOverConstrained(addDriven: boolean): void;
+  /**
+   * Brings every sketch's projected geometry in line with the kernel's
+   * reports (P2-09, `projectionSync`) and solves the sketches that changed,
+   * so geometry constrained to the projections follows. Both join the
+   * latest undo step (`DocumentState.amend`): they follow from it. A sketch
+   * that no longer solves keeps the best the solver found; its status then
+   * shows the conflict. Until the solver has loaded, the solve waits for it.
+   */
+  syncProjections(reports: Readonly<Record<FeatureId, SketchReport>>): void;
   /** Stops listening and frees the solver. */
   dispose(): void;
 }
@@ -330,6 +342,38 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     | { doc: ExtrudoDocument; data: SketchData; values: Record<string, number> }
     | undefined;
 
+  /** Sketches whose projections moved before the solver loaded: solved once it has. */
+  const unsettled = new Set<FeatureId>();
+
+  /** Solves a sketch as it is now and stores what moved, in the latest undo step. */
+  const settleProjections = (id: FeatureId) => {
+    if (!solver) {
+      unsettled.add(id);
+      ensureSolver();
+      return;
+    }
+    const doc = store.getState().doc;
+    const feature = doc.features.find((f) => f.id === id);
+    const view = feature && readSketch(feature);
+    if (!view) return;
+    const values = dimensionValues(view.data, evaluateParameters(doc), id);
+    const { solution } = solver.solve(view.data, values);
+    const points: Record<SketchEntityId, { x: number; y: number }> = {};
+    const radii: Record<SketchEntityId, number> = {};
+    for (const [key, p] of Object.entries(solution.points)) {
+      const e = view.data.entities[key as SketchEntityId];
+      if (e?.type === 'point' && (e.x !== p.x || e.y !== p.y)) {
+        points[key as SketchEntityId] = { x: p.x, y: p.y };
+      }
+    }
+    for (const [key, radius] of Object.entries(solution.radii)) {
+      const e = view.data.entities[key as SketchEntityId];
+      if (e?.type === 'circle' && e.radius !== radius) radii[key as SketchEntityId] = radius;
+    }
+    if (Object.keys(points).length + Object.keys(radii).length === 0) return;
+    store.getState().amend(setSketchGeometry({ feature: id, points, radii }));
+  };
+
   const bump = (patch: Partial<ToolHostState> = {}) =>
     state.setState((s) => ({ ...patch, revision: s.revision + 1 }));
 
@@ -366,6 +410,17 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         if (disposed) return s.dispose();
         solver = s;
         state.setState({ solverReady: true });
+        if (unsettled.size > 0) {
+          const ids = [...unsettled];
+          unsettled.clear();
+          const was = committing;
+          committing = true;
+          try {
+            for (const id of ids) settleProjections(id);
+          } finally {
+            committing = was;
+          }
+        }
         refreshStatus();
       })
       .catch((error: unknown) => {
@@ -1069,6 +1124,31 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       }
       bump();
     },
+    syncProjections(reports) {
+      // A drag in progress holds the solver; the next recompute brings the reports again.
+      if (move) return;
+      const was = committing;
+      committing = true;
+      try {
+        for (const feature of store.getState().doc.features) {
+          const view = readSketch(feature);
+          const report = reports[feature.id];
+          if (!view?.data.projections || !report) continue;
+          const change = projectionSync(view.data, report, newId);
+          if (!change) continue;
+          try {
+            store.getState().amend(syncProjections({ feature: feature.id, ...change }));
+            settleProjections(feature.id);
+          } catch (error) {
+            if (!(error instanceof CommandError)) throw error;
+            console.warn(`[sketch] couldn't update the projections of ${feature.name}:`, error);
+          }
+        }
+      } finally {
+        committing = was;
+        refreshStatus();
+      }
+    },
     dispose() {
       disposed = true;
       unsubscribeSession();
@@ -1096,11 +1176,14 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     refreshStatus();
   });
   // A sketch being edited, or dimensions a parameter change can move, need the solver.
-  const dimensioned = store
-    .getState()
-    .doc.features.some((f) =>
-      Object.values(readSketch(f)?.data.dimensions ?? {}).some((d) => !d.driven),
+  const dimensioned = store.getState().doc.features.some((f) => {
+    const data = readSketch(f)?.data;
+    // Projections (P2-09) move with the model and take the sketch along: a solve.
+    return (
+      Object.values(data?.dimensions ?? {}).some((d) => !d.driven) ||
+      Object.keys(data?.projections ?? {}).length > 0
     );
+  });
   if (session.getState().mode === 'sketch' || dimensioned) ensureSolver();
   // Undo or redo while drawing: the tool may hold points that no longer exist; start it afresh.
   const unsubscribeStore = store.subscribe((s) => {

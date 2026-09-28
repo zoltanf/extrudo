@@ -29,6 +29,8 @@ export interface SceneColors {
   sketchConflict: Rgba;
   /** Construction sketch geometry, drawn dashed. */
   sketchConstruction: Rgba;
+  /** Projected sketch geometry (P2-09): the construct colour. */
+  sketchProjected: Rgba;
   /** Closed sketch profiles (P1-11): `sketch` at 12–14 %. */
   profile: Rgba;
   /** Hover highlight; drawn at 45 % (docs/05-brand.md §3.4). */
@@ -53,6 +55,7 @@ const TOKENS: Record<keyof SceneColors, string> = {
   sketchFixed: '--x-ink',
   sketchConflict: '--x-error',
   sketchConstruction: '--x-muted',
+  sketchProjected: '--x-cat-construct',
   profile: '--x-profile-fill',
   preselect: '--x-accent',
   preview: '--x-preview',

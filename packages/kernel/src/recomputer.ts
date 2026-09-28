@@ -17,6 +17,7 @@ import type {
   FeatureStatus,
   GeomRef,
   ModelStore,
+  SketchReport,
 } from '@extrudo/core';
 import {
   KernelClient,
@@ -272,6 +273,9 @@ export class Recomputer {
         ? previous.features
         : result.features,
       bodies: sameRecord(previous.bodies, bodies) ? previous.bodies : bodies,
+      sketches: sameReports(previous.sketches, result.reports)
+        ? previous.sketches
+        : (result.reports as Record<FeatureId, SketchReport>),
       stats: {
         ms: result.stats.ms,
         evaluated: result.stats.evaluated.length,
@@ -320,6 +324,11 @@ function sameRecord<T>(a: Readonly<Record<string, T>>, b: Readonly<Record<string
   return (
     keys.length === other.length && keys.every((key, i) => other[i] === key && a[key] === b[key])
   );
+}
+
+/** Whether the kernel's reports (plain JSON) say what the model store already has. */
+function sameReports(a: Readonly<Record<string, unknown>>, b: Readonly<Record<string, unknown>>) {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function sameStatuses(

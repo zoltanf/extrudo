@@ -16,6 +16,7 @@ import { applyCommand, type Command } from './commands';
 import { type HistoryOptions, UndoHistory } from './history';
 import type { BodyId, FeatureId } from './ids';
 import type { ExtrudoDocument, GeomRefKind } from './schema';
+import type { SketchReport } from './sketch/projection';
 
 export interface DocumentState {
   /** Deep-frozen. Never mutate it; dispatch a command. */
@@ -203,6 +204,11 @@ export interface ModelState<TBody> {
   error: string | undefined;
   features: Record<FeatureId, FeatureStatus>;
   bodies: Record<BodyId, TBody>;
+  /**
+   * What the kernel reports about each sketch it computed (P2-09): its
+   * plane's frame (a sketch on a face follows the face) and projections.
+   */
+  sketches: Record<FeatureId, SketchReport>;
   stats: ModelStats | undefined;
   /**
    * The document `features` and `bodies` were computed from, when the
@@ -214,6 +220,7 @@ export interface ModelState<TBody> {
   computed(result: {
     features: Record<FeatureId, FeatureStatus>;
     bodies: Record<BodyId, TBody>;
+    sketches?: Record<FeatureId, SketchReport>;
     stats?: ModelStats;
     doc?: ExtrudoDocument;
   }): void;
@@ -229,6 +236,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     error: undefined,
     features: {} as Record<FeatureId, FeatureStatus>,
     bodies: {} as Record<BodyId, TBody>,
+    sketches: {} as Record<FeatureId, SketchReport>,
     stats: undefined,
     doc: undefined,
   });
@@ -237,8 +245,16 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     computing() {
       set({ status: 'computing', error: undefined });
     },
-    computed({ features, bodies, stats, doc }) {
-      set({ status: 'ready', error: undefined, features, bodies, stats, doc });
+    computed({ features, bodies, sketches, stats, doc }) {
+      set((s) => ({
+        status: 'ready',
+        error: undefined,
+        features,
+        bodies,
+        sketches: sketches ?? s.sketches,
+        stats,
+        doc,
+      }));
     },
     failed(error) {
       set({ status: 'failed', error });

@@ -42,6 +42,8 @@ export interface SketchesProps {
   profileColors: Readonly<Record<ProfileShade, Rgba>>;
   /** A highlighted sketch's curves. */
   highlight: Rgba;
+  /** Projected curves (P2-09): the construct colour (docs/05-brand.md §3.4). */
+  projected: Rgba;
 }
 
 /** Construction dashes, in px (docs/05-brand.md §3.4). */
@@ -56,6 +58,7 @@ export function Sketches({
   showPoints,
   profileColors,
   highlight,
+  projected,
 }: SketchesProps) {
   return sketches.map((s) => (
     <Sketch
@@ -67,6 +70,7 @@ export function Sketches({
       showPoints={showPoints}
       profileColors={profileColors}
       highlight={highlight}
+      projected={s.highlight ? highlight : projected}
     />
   ));
 }
@@ -81,6 +85,7 @@ function Sketch({
   showPoints,
   profileColors,
   highlight,
+  projected,
 }: {
   store: ViewportStore;
   drawing: SketchDrawing;
@@ -89,6 +94,7 @@ function Sketch({
   showPoints: boolean;
   profileColors: Readonly<Record<ProfileShade, Rgba>>;
   highlight: Rgba;
+  projected: Rgba;
 }) {
   const { data, frame, active, status, profiles, hoverProfile, selectedProfiles } = drawing;
   const segments = useMemo(() => sketchSegments(data, frame, status), [data, frame, status]);
@@ -144,7 +150,10 @@ function Sketch({
     };
     const dashed = new LineSegmentsGeometry();
     if (segments.construction.length > 0) dashed.setPositions(segments.construction);
+    const projectedLines = new LineSegmentsGeometry();
+    if (segments.projected.length > 0) projectedLines.setPositions(segments.projected);
     return {
+      projected: projectedLines,
       status: Object.fromEntries(STATUSES.map((s) => [s, byStatus(s)])) as Record<
         EntityStatus,
         ReturnType<typeof byStatus>
@@ -168,6 +177,7 @@ function Sketch({
         { lines: LineMaterial; dots: ReturnType<typeof createDotMaterial> }
       >,
       dashed: new LineMaterial({ linewidth: 1.25, transparent: true, dashed: true }),
+      projected: new LineMaterial({ linewidth: 1.75, transparent: true }),
     }),
     [],
   );
@@ -181,16 +191,18 @@ function Sketch({
         new LineSegments2(geometries.status[s].lines, materials.status[s].lines),
       ]),
     ) as Record<EntityStatus, LineSegments2>;
-    for (const l of [dashed, ...Object.values(solid)]) {
+    const projectedLines = new LineSegments2(geometries.projected, materials.projected);
+    for (const l of [dashed, projectedLines, ...Object.values(solid)]) {
       l.renderOrder = 4;
       l.frustumCulled = false;
     }
-    return { solid, dashed };
+    return { solid, dashed, projected: projectedLines };
   }, [geometries, materials, segments]);
 
   useEffect(
     () => () => {
       geometries.dashed.dispose();
+      geometries.projected.dispose();
       for (const g of Object.values(geometries.status)) {
         g.lines.dispose();
         g.points.dispose();
@@ -201,6 +213,7 @@ function Sketch({
   useEffect(
     () => () => {
       materials.dashed.dispose();
+      materials.projected.dispose();
       for (const m of Object.values(materials.status)) {
         m.lines.dispose();
         m.dots.material.dispose();
@@ -226,6 +239,8 @@ function Sketch({
   }
   materials.dashed.color = color(construction);
   materials.dashed.opacity = construction.a * alpha;
+  materials.projected.color = color(projected);
+  materials.projected.opacity = projected.a * alpha;
 
   // Keep the dashes a steady size on screen: the view size is the visible height in mm.
   const height = useThree((s) => s.size.height);
@@ -255,6 +270,7 @@ function Sketch({
         (s) => segments.curves[s].length > 0 && <primitive key={s} object={lines.solid[s]} />,
       )}
       {segments.construction.length > 0 && <primitive object={lines.dashed} />}
+      {segments.projected.length > 0 && <primitive object={lines.projected} />}
       <CurveMarks
         data={data}
         frame={frame}
