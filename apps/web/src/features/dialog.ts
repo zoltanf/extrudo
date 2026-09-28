@@ -222,7 +222,8 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     const doc = store.getState().doc;
     const feature = open.mode === 'edit' ? doc.features.find((f) => f.id === open.id) : undefined;
     const bodies = dialogBodies(open, model.getState().bodies);
-    return { doc, bodies, ...(feature && { feature }) };
+    const { sketches } = model.getState();
+    return { doc, bodies, sketches, ...(feature && { feature }) };
   };
 
   /** The draft of the values: inputs with parameter names, and its expressions evaluated. */

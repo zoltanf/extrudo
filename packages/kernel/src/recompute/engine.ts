@@ -213,6 +213,7 @@ export class RecomputeEngine {
     const index = new Map(doc.features.map((f, i) => [f.id, i]));
     const passed = new Map<FeatureId, Passed>();
     const features: Record<FeatureId, FeatureStatus> = {};
+    const reports: Record<FeatureId, unknown> = {};
     const evaluated: FeatureId[] = [];
     let reused = 0;
     let bodies: ReadonlyMap<BodyId, ShapeHandle> = new Map();
@@ -292,6 +293,7 @@ export class RecomputeEngine {
         continue;
       }
       passed.set(feature.id, { state: 'done', entry });
+      if (entry.output.report !== undefined) reports[feature.id] = entry.output.report;
       if (access === 'write' && entry.output.bodies) {
         bodies = entry.output.bodies;
         bodiesKey = key;
@@ -311,6 +313,7 @@ export class RecomputeEngine {
       status: 'done',
       features,
       bodies: results,
+      reports,
       ...(tools && { tools }),
       ...(baseResults && { base: baseResults }),
       stats: {

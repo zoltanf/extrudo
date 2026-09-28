@@ -15,12 +15,14 @@ import {
   type DocumentStore,
   type FeatureId,
   type GeomRef,
+  type ModelStore,
   newId,
-  planeFrame,
   readSketch,
   type SessionStore,
+  type SketchFrame,
 } from '@extrudo/core';
 import type { ViewportStore } from '../viewport/store';
+import { sketchFrame } from './frame';
 
 /** The session tool that means "Create Sketch is waiting for a plane". */
 export const CREATE_SKETCH = 'sketch';
@@ -29,6 +31,8 @@ export interface SketchModeStores {
   store: DocumentStore;
   session: SessionStore;
   viewport: ViewportStore;
+  /** The kernel's results: where sketches on faces lie (P2-09). */
+  model?: ModelStore<unknown>;
 }
 
 /** Starts Create Sketch (waits for a plane). Does nothing while a sketch is open. */
@@ -85,15 +89,25 @@ export function finishSketch({ store, session }: SketchModeStores): void {
 }
 
 /** Turns the camera to face the open sketch's plane, sketch X to the right (palette "Look at"). */
-export function lookAtSketch({ store, session, viewport }: SketchModeStores): void {
-  const frame = activeSketchFrame(store, session);
-  if (frame) viewport.getState().lookFrom(frame.normal, frame.y);
+export function lookAtSketch(stores: SketchModeStores): void {
+  const frame = activeSketchFrame(stores);
+  if (frame) stores.viewport.getState().lookFrom(frame.normal, frame.y);
 }
 
-/** The frame of the sketch being edited, if its plane is known. */
-export function activeSketchFrame(store: DocumentStore, session: SessionStore) {
+/**
+ * The frame of the sketch being edited, if its plane is known: an origin
+ * plane's, or a face's from the kernel (or, until it has answered, from the
+ * face's fingerprint).
+ */
+export function activeSketchFrame({
+  store,
+  session,
+  model,
+}: SketchModeStores): SketchFrame | undefined {
   const id = session.getState().activeSketchId;
   const feature = id && store.getState().doc.features.find((f) => f.id === id);
   const sketch = feature ? readSketch(feature) : undefined;
-  return sketch ? planeFrame(sketch.plane) : undefined;
+  return feature && sketch
+    ? sketchFrame(feature.id, sketch.plane, model?.getState().sketches)
+    : undefined;
 }

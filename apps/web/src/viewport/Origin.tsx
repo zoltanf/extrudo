@@ -13,6 +13,7 @@ import {
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import { PLANE_HALF } from '../sketch/facePick';
 import type { Rgba } from './colors';
 import { createDotMaterial } from './dots';
 import { GRID_RADIUS } from './Grid';
@@ -24,9 +25,6 @@ import type { OriginItem, ViewportStore } from './store';
  * planes span a fixed share of the view, the Z axis runs as far as the grid.
  */
 
-/** Half the width of an origin plane, as a share of the view size. */
-const PLANE_HALF = 0.16;
-
 const color = (c: Rgba) => new Color().setRGB(c.r, c.g, c.b, 'srgb');
 
 export interface OriginProps {
@@ -35,7 +33,11 @@ export interface OriginProps {
   point: Rgba;
   axisZ: Rgba;
   construct: Rgba;
-  /** Create Sketch is waiting for a plane: show all three and make them pickable. */
+  /**
+   * Create Sketch is waiting for a plane: show all three, and make them
+   * pickable with `onPick` (without it, the view picks them along with
+   * faces: `sketch/facePick.ts`).
+   */
   picking?: boolean;
   /** The plane under the pointer (or under the prompt's button) while picking. */
   hover?: OriginPlaneId;
@@ -110,7 +112,7 @@ export function Origin({
               strong={hovered}
               rotation={rotation}
               events={
-                picking
+                picking && onPick
                   ? {
                       onPointerMove: (e) => {
                         // The nearest plane under the pointer wins.

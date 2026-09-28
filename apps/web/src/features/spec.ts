@@ -19,9 +19,11 @@ import type {
   ExtrudoDocument,
   Feature,
   FeatureDefinition,
+  FeatureId,
   FeatureInputs,
   GeomRef,
   GeomRefKind,
+  SketchReport,
   UnitKind,
   Vec3,
 } from '@extrudo/core';
@@ -95,6 +97,8 @@ export interface DialogContext {
   bodies: Readonly<Record<BodyId, BodyMesh>>;
   /** The feature being edited; absent for a new one. */
   feature?: Feature;
+  /** What the kernel reports about each sketch: frames of sketches on faces (P2-09). */
+  sketches?: Readonly<Record<FeatureId, SketchReport>>;
 }
 
 export interface ManipulatorContext extends DialogContext {

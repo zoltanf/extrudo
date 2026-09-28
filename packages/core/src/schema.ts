@@ -10,9 +10,11 @@
 import { z } from 'zod';
 import { FORMAT_NAME, FORMAT_VERSION } from './format';
 import { PARAMETER_NAME } from './names';
+import { GeomRefSchema, Vec3Schema } from './refs';
 import { SketchDataSchema } from './sketch/schema';
 
 export { PARAMETER_NAME } from './names';
+export * from './refs';
 
 import {
   BodyIdSchema,
@@ -37,54 +39,6 @@ export const ParameterSchema = z.strictObject({
   comment: z.string().optional(),
 });
 export type Parameter = z.infer<typeof ParameterSchema>;
-
-/**
- * A reference to geometry: an origin plane, a face, an edge, a sketch profile…
- * `id` is a persistent name from the topological-naming service (§5.2,
- * ADR-0005), never a raw index. Face, edge and vertex references also keep
- * a fingerprint of what they pointed at, used when the name doesn't resolve.
- */
-export const GeomRefKindSchema = z.enum([
-  'plane',
-  'axis',
-  'point',
-  'face',
-  'edge',
-  'vertex',
-  'profile',
-  'body',
-  'sketchEntity',
-]);
-export type GeomRefKind = z.infer<typeof GeomRefKindSchema>;
-
-const Vec3Schema = z.tuple([z.number(), z.number(), z.number()]);
-
-/**
- * What a referenced face, edge or vertex looked like when it was picked
- * (ADR-0005). The kernel matches it against the current geometry when the
- * reference's name no longer resolves, and warns that it guessed.
- */
-export const GeomFingerprintSchema = z.strictObject({
-  /** Surface type of a face (`plane`, `cylinder`, …), curve type of an edge (`line`, `circle`, …), `point` for a vertex. */
-  type: z.string().min(1),
-  /** Area centroid of a face, midpoint of an edge, position of a vertex (mm). */
-  at: Vec3Schema,
-  /** A plane's outward normal, an axis, or a line's direction. */
-  dir: Vec3Schema.optional(),
-  /** Area (mm²) of a face, length (mm) of an edge. */
-  size: z.number().nonnegative().optional(),
-  /** Persistent names of the faces around it (of the faces next to a face). */
-  adj: z.array(z.string()).optional(),
-});
-export type GeomFingerprint = z.infer<typeof GeomFingerprintSchema>;
-
-export const GeomRefSchema = z.strictObject({
-  kind: GeomRefKindSchema,
-  id: z.string().min(1),
-  /** Faces, edges and vertices: the fallback when `id` doesn't resolve. Optional (added in P2-04). */
-  fingerprint: GeomFingerprintSchema.optional(),
-});
-export type GeomRef = z.infer<typeof GeomRefSchema>;
 
 export const ExprInputSchema = z.strictObject({
   kind: z.literal('expr'),
@@ -139,13 +93,19 @@ export const FeatureSchema = z.strictObject({
 });
 export type Feature = z.infer<typeof FeatureSchema>;
 
-/** Name, colour and visibility of a body. The body's geometry is derived, never stored. */
+/**
+ * Name, appearance and visibility of a body (ADR-0030). The body's geometry
+ * is derived, never stored; its ID is the kernel's (`<feature>:<n>`).
+ */
 export const BodyMetaSchema = z.strictObject({
   name: z.string().min(1),
+  /** `#rrggbb`; absent means the theme's default body colour. */
   color: z
     .string()
     .regex(/^#[0-9a-f]{6}$/i)
     .optional(),
+  /** 0.1 (nearly clear) to 1; absent means opaque. Added in P2-08. */
+  opacity: z.number().min(0.1).max(1).optional(),
   visible: z.boolean(),
 });
 export type BodyMeta = z.infer<typeof BodyMetaSchema>;

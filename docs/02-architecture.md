@@ -127,7 +127,7 @@ interface ExtrudoDocument {
   parameters: Parameter[];                        // user parameters
   features: Feature[];                            // THE timeline, in order
   timelineMarker: number;                         // count of active features; the rest are rolled back
-  bodies: Record<BodyId, BodyMeta>;               // name, colour, visibility (geometry is derived)
+  bodies: Record<BodyId, BodyMeta>;               // name, colour, opacity, visibility (geometry is derived; ADR-0030)
   views: NamedView[];
   meta: { created: string; modified: string; appVersion: string };  // storage sets `modified`
 }
@@ -324,8 +324,9 @@ is `KernelClient`, which restarts the worker after a crash.
   reference-counted; the engine checks each evaluation for leaked shapes.
   `recompute(request, onFeature)` returns per-feature status and the bodies
   at the marker, meshing only those whose `version` the caller doesn't
-  `have`. The UI side is `Recomputer` (one `KernelClient` per open
-  project), which fills the model store.
+  `have`, and each feature's optional `report` (plain JSON for the UI:
+  a sketch's frame and projections, P2-09). The UI side is `Recomputer`
+  (one `KernelClient` per open project), which fills the model store.
 - **Memory:** OCCT objects in Emscripten are not garbage-collected. All
   evaluator code uses a `using`/`scope.track()` disposal pattern, and the cache
   deletes shapes on eviction. This is a hard coding rule.
@@ -423,7 +424,22 @@ side of it (each part's overlap with a half-plane face). A turn that
 doesn't start at the profile (symmetric, two sides) first turns the
 profile to its start (the end face of a revolve by the start angle, edge
 sources carried through its `last` history), so the result is one sweep
-named like a one-sided one.
+named like a one-sided one. Like extrude's, its result goes through
+`splitSolids` (P2-08).
+
+Bodies (P2-08, ADR-0030, `packages/kernel/src/features/bodies.ts`): a
+body the feature made or changed that holds several separate solids is
+split into one body per solid (`splitSolids`, called on the evaluator's
+result): the largest piece keeps the body ID, the others take the
+feature's next free `<feature>:<n>` in geometric order, each with the
+whole's face names. Deleting a body is a **Remove** feature (`remove`,
+`bodyAccess: 'write'`): the body set without the bodies it names. On the
+UI thread, a recompute result names the document it is for
+(`ModelState.doc`); `followBodyNames` then stores metadata for live
+bodies without any, **amended into the latest undo step**
+(`DocumentState.amend`, `UndoHistory.amend`), so names ("Body3") never
+renumber and undo and redo take them along with the step that made the
+bodies.
 
 ### 5.3 Sketch → geometry
 
@@ -455,7 +471,21 @@ named like a one-sided one.
   (`ctx.output(sketch).shapes[region]`).
 - A sketch's plane is a reference (origin plane, construction plane or a face's
   persistent ID), re-derived on each recompute, so a sketch on a face follows
-  that face.
+  that face. P2-09 (ADR-0031) built it: the evaluator resolves the face
+  with `ctx.resolve` and takes its frame by one rule (`faceSketchFrame`:
+  origin = world origin on the plane; floors and roofs X along world X,
+  walls Y up the face), published as `SketchOutputData.frame` and as the
+  sketch's report to the UI (`FeatureOutput.report` →
+  `RecomputeResult.reports` → `ModelState.sketches`); until the kernel
+  answers, the UI uses the frame of the reference's fingerprint.
+- Projected geometry (FR-SK-12, ADR-0031) is stored: a projection record
+  (`SketchData.projections`: the source edge or face as a `GeomRef`, and
+  its curves by source key) plus ordinary entities the solver holds fixed.
+  The kernel projects the sources on every recompute (exact edge geometry
+  and cylinder/cone silhouettes from the facade) and reports the curves;
+  profiles and faces come from the stored curves. The app brings the
+  sketch in line (`projectionSync`, then a solve) and amends that into the
+  undo step whose edit moved the model.
 
 ### 5.4 Tessellation and rendering
 
@@ -464,8 +494,13 @@ named like a one-sided one.
 - Faces are rendered as one merged `BufferGeometry` per body, with `faceRanges`
   for picking and highlight (highlight via a vertex-colour/attribute update, not
   separate meshes).
-- Edges are rendered as `LineSegments2` (screen-space width). Silhouette edges
-  come later.
+- Edges are rendered as `LineSegments2` (screen-space width). Silhouette
+  edges of curved faces (P2-08, ADR-0030, `viewport/silhouette.ts`) are the
+  zero line of `n · (eye − p)` over the mesh's smooth normals, one segment
+  per triangle whose nodes change sign, recomputed in the frame loop when
+  the camera moves; drawn in the wireframe and hidden-edge styles only.
+- Bodies take their stored colour and opacity (a see-through body doesn't
+  write depth).
 - Picking: three-mesh-bvh raycast for faces, with a screen-space distance test
   against edge polylines and vertices. Selection priority follows the active
   filter.
@@ -650,3 +685,15 @@ bundle-size budget. Every agent task must leave CI green.
   half-plane overlap, symmetric and two-sided turns as one sweep from the
   profile turned to its start, extrude's sources and body operations
   shared, origin axes pickable in the model, arcs that go on round.
+- **ADR-0030** Bodies. **Written 2026-09-28** (P2-08): stored body names
+  amended into the undo step that made the bodies, one body per solid
+  (the largest keeps the ID), the Remove feature, colour swatches and
+  opacity, browser rows that pick into the selection, silhouettes of
+  curved faces.
+- **ADR-0031** Sketch on face and Project. **Written 2026-09-28** (P2-09):
+  the face frame rule (world origin on the plane, X along world X on
+  floors, Y up walls, switching at 40°), frames reported to the UI with a
+  fingerprint fallback, Create Sketch picking the nearer of a flat face
+  and an origin plane, projection records with curves as fixed ordinary
+  entities, exact projection and cylinder/cone silhouettes in the kernel,
+  and the app's sync amended into the undo step that moved the model.

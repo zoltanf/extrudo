@@ -95,6 +95,12 @@ export interface FeatureOutput {
   shapes?: Readonly<Record<string, ShapeHandle>>;
   /** Plain data for later features (plane frames, region IDs). Must be JSON-like. */
   data?: unknown;
+  /**
+   * Plain data for the UI thread (P2-09): the recompute result carries it
+   * per feature (`reports`), and the app reads it from the model store (a
+   * sketch's `SketchReport`: its frame and projections). JSON-like.
+   */
+  report?: unknown;
   /** Turns the status to `warning`. */
   warnings?: readonly string[];
   /**
@@ -169,6 +175,8 @@ export type RecomputeResult =
       features: Record<FeatureId, FeatureStatus>;
       /** The bodies at the timeline marker, in creation order. */
       bodies: BodyResult[];
+      /** `FeatureOutput.report` of every feature that computed and has one. */
+      reports: Record<FeatureId, unknown>;
       /**
        * Previews only: the draft's `previewTools`, meshed (absent when it
        * has none or failed). Always meshed, never left out like bodies.

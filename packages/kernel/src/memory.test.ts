@@ -225,6 +225,37 @@ describe('memory', () => {
     expect(after.heapBytes).toBe(before.heapBytes);
   });
 
+  it(`reading edge geometry and silhouettes ${REBUILDS} times does not grow the heap`, {
+    timeout: 180_000,
+  }, () => {
+    // The facade ops of P2-09 (ADR-0031): every edge of a cylinder cut in half
+    // (circles, arcs, lines, a seam), and the silhouettes of its curved face
+    // from several directions, clipped by the face classifier.
+    const cylinder = kernel.cylinder(5, 10);
+    const half = kernel.box([20, 10, 12], [-10, 0, -1]);
+    const cut = kernel.cut(cylinder, half);
+    kernel.release(cylinder, half);
+    const edges = kernel.count(cut.shape, 'edge');
+    const faces = kernel.count(cut.shape, 'face');
+    const read = (i: number) => {
+      for (let e = 0; e < edges; e++) kernel.edgeGeometry(cut.shape, e, 8 + (i % 16));
+      for (let f = 0; f < faces; f++) {
+        kernel.faceSilhouettes(cut.shape, f, [0, 1, 0]);
+        kernel.faceSilhouettes(cut.shape, f, [1, 0, i % 2]);
+      }
+      expect(() => kernel.edgeGeometry(cut.shape, edges, 8)).toThrow();
+    };
+    for (let i = 0; i < WARM_UP; i++) read(i);
+    const before = kernel.stats();
+    for (let i = 0; i < REBUILDS; i++) read(i);
+    const after = kernel.stats();
+    kernel.release(cut.shape);
+
+    expect(kernel.stats().liveShapes).toBe(0);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+    expect(after.heapBytes).toBe(before.heapBytes);
+  });
+
   it('recomputing real extrudes 300 times with changing values does not grow the heap', {
     timeout: 180_000,
   }, async () => {

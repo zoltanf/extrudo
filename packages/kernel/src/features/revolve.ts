@@ -12,6 +12,7 @@ import {
 import { type Axis, KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
 import { type NamedShape, namedRevolve, type SweepSource } from '../naming/ops';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
 import type { SketchOutputData } from './sketch';
 import { type Base, centroidOf, PARALLEL_EPS, type Plane, partsOf, uniteParts } from './sources';
@@ -89,7 +90,11 @@ function evaluateRevolve(ctx: EvalContext<RevolveInputs>): FeatureOutput {
   };
   const participants = explicitBodies(ctx, settings, WORDS);
   const warnings: string[] = [];
-  const result = operate(ctx, scope, settings, tool, participants, warnings, WORDS);
+  const result = splitSolids(
+    ctx,
+    scope,
+    operate(ctx, scope, settings, tool, participants, warnings, WORDS),
+  );
   return { ...result, data, ...(warnings.length ? { warnings } : {}) };
 }
 

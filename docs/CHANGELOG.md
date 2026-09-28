@@ -11,6 +11,22 @@ One line per completed roadmap task, newest first. Dates are absolute.
   round. The origin axes can now be picked (and are highlighted) in the
   model. The kernel says when the axis isn't in the profile's plane or
   the profile crosses it.
+- 2026-09-28 · **P2-09** Sketch on face and Project (ADR-0031): Create
+  Sketch now also takes a flat face of a body (click it, or select it
+  first); the sketch sits on the face and moves with it when the model
+  changes. The Project tool (P, in the Sketch tab's Create menu) brings
+  body edges and faces into a sketch, outlines of cylinders included; the
+  projected curves are purple, fixed, make profiles, take constraints, and
+  follow the model when it changes. A profile drawn on a face and pushed
+  in cuts by default.
+- 2026-09-28 · **P2-08** Bodies (ADR-0030): new bodies are named Body1,
+  Body2… as they appear and keep their names; the browser's Bodies folder
+  shows how many there are and renames, hides, colours (ten swatches) and
+  fades (opacity) them; a click selects a body. Deleting a body adds a
+  Remove feature to the timeline, so undo or rolling back brings it back.
+  A cut that splits a body makes one body per piece. Wireframe and
+  hidden-edge styles now draw the outlines of holes and other curved
+  faces.
 - 2026-09-28 · **P2-06** Extrude (ADR-0028): E extrudes selected sketch
   profiles or flat faces into solids, one side, symmetric or two sides,
   each side to a distance, up to a face or vertex, or through all, with a

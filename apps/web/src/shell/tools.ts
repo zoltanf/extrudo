@@ -27,6 +27,13 @@ export const TOOLS = {
     category: 'sketch',
     hint: 'Draw a 2D profile on a plane or a flat face.',
   },
+  project: {
+    id: 'project',
+    label: 'Project',
+    icon: 'project',
+    category: 'sketch',
+    hint: 'Bring body edges and faces into the sketch; they follow the model.',
+  },
   finishSketch: {
     id: 'finishSketch',
     label: 'Finish Sketch',
@@ -415,6 +422,13 @@ export const TOOLS = {
     hint: 'Hollow out a body, leaving walls.',
     comesWith: 'P3-03',
   },
+  remove: {
+    id: 'remove',
+    label: 'Remove',
+    icon: 'remove',
+    category: 'modify',
+    hint: 'Take bodies out of the model: select them and press Delete, or use a body menu.',
+  },
   parameters: {
     id: 'parameters',
     label: 'Parameters',
@@ -544,6 +558,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
           'slotOverall',
           'ellipse',
           'spline',
+          'project',
           'sketchMirror',
           'sketchRectangularPattern',
           'sketchCircularPattern',

@@ -2,6 +2,7 @@ import {
   CIRCLE_SEGMENTS,
   curvePolyline,
   dimensionAnchor,
+  projectedEntities,
   type SketchData,
   type SketchFrame,
   sketchToWorld,
@@ -54,7 +55,11 @@ export function curveSegments(
     }
   }
   const segments = sketchSegments({ ...data, entities }, frame);
-  const parts = [...STATUSES.map((s) => segments.curves[s]), segments.construction];
+  const parts = [
+    ...STATUSES.map((s) => segments.curves[s]),
+    segments.construction,
+    segments.projected,
+  ];
   const out = new Float32Array(parts.reduce((n, p) => n + p.length, 0));
   let o = 0;
   for (const p of parts) {
@@ -71,6 +76,8 @@ export interface SketchSegments {
   curves: Record<EntityStatus, Float32Array>;
   /** Line-segment pairs of construction curves (drawn dashed, whatever their status). */
   construction: Float32Array;
+  /** Line-segment pairs of projected curves (P2-09, drawn in the construct colour). */
+  projected: Float32Array;
   /** One xyz per sketch point, by constraint status. */
   points: Record<EntityStatus, Float32Array>;
   bounds: Bounds | undefined;
@@ -92,6 +99,8 @@ export function sketchSegments(
 ): SketchSegments {
   const solid: Record<EntityStatus, number[]> = { free: [], fixed: [], conflict: [] };
   const construction: number[] = [];
+  const projected: number[] = [];
+  const isProjected = projectedEntities(data);
   const points: Record<EntityStatus, number[]> = { free: [], fixed: [], conflict: [] };
   for (const [id, entity] of Object.entries(data.entities)) {
     const group = status?.[id] ?? 'free';
@@ -101,7 +110,11 @@ export function sketchSegments(
     }
     const line = curvePolyline(data, entity);
     if (!line) continue;
-    const out = entity.construction ? construction : solid[group];
+    const out = entity.construction
+      ? construction
+      : isProjected.has(id as keyof SketchData['entities'])
+        ? projected
+        : solid[group];
     let prev = sketchToWorld(frame, line[0] as [number, number]);
     for (let i = 1; i < line.length; i++) {
       const next = sketchToWorld(frame, line[i] as [number, number]);
@@ -128,10 +141,12 @@ export function sketchSegments(
   return {
     curves: floats(solid),
     construction: new Float32Array(construction),
+    projected: new Float32Array(projected),
     points: floats(points),
     bounds: boundsOfPositions([
       ...STATUSES.map((s) => solid[s]),
       construction,
+      projected,
       ...STATUSES.map((s) => points[s]),
       labels,
     ]),

@@ -315,14 +315,47 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   axes are pickable and highlighted in the model; pre-selection fills
   every field that takes part of the selection (profile and axis). E2E in
   a real project (`e2e/revolve.spec.ts`).
-- [ ] **P2-08 Bodies.** Browser "Bodies" folder; rename, visibility, colour and
+- [x] **P2-08 Bodies.** Browser "Bodies" folder; rename, visibility, colour and
   appearance; delete body (as a "Remove" feature); body count badge.
   Silhouette edges of curved faces (view-dependent) in the wireframe and
   hidden-edge styles; seams are already hidden (ADR-0008).
-- [ ] **P2-09 Sketch on face and project/include.** Sketch on a planar face
+  *Done 2026-09-28* (ADR-0030): every body gets stored metadata when a
+  recompute first shows it ("Body3", the lowest free number), amended into
+  the undo step that made it (`DocumentState.amend`), so names never
+  shift and undo takes them along; the Bodies folder with a count badge,
+  colour dots, rename (F2 or the menu), eyes, Appearance (ten colour
+  swatches and four opacities), rows that pick the body into the
+  selection or an open dialog and highlight it on hover; Delete (browser,
+  menu, or the view's selection) adds a **Remove** feature (core
+  definition, kernel evaluator, a Modify chip), and a feature whose
+  bodies a later one names can't be deleted. A cut or intersect that
+  leaves separate solids makes one body per solid (`splitSolids`, the
+  largest keeps the ID, the rest `<feature>:<n>`). Bodies draw with their
+  colour and opacity; wireframe and hidden edges draw curved faces'
+  silhouettes as the zero line of `n · (eye − p)`, updated with the
+  camera. E2E in `e2e/bodies.spec.ts`.
+- [x] **P2-09 Sketch on face and project/include.** Sketch on a planar face
   (follows the face through recompute); Project tool (associative edges and
   silhouettes into the sketch).
   *Deps:* P2-04. *AC:* FR-SK-01 (faces), FR-SK-12.
+  *Done 2026-09-28* (ADR-0031): Create Sketch picks the nearer of a flat
+  face and an origin plane (or takes a selected flat face at once); the
+  face is a persistent reference, and the kernel resolves it on every
+  recompute and derives the frame by one rule (origin = world origin on
+  the plane, floors and roofs X along world X, walls Y up the face,
+  switching at 40° tilt), published as `SketchOutputData.frame` and, new,
+  as a per-feature report to the UI (`ModelState.sketches`; the
+  fingerprint's frame until then). The Project tool (P) picks body edges
+  and faces (on the bodies before the sketch) and stores a projection
+  record; the kernel projects exactly (lines, arcs, ellipses, splines,
+  circles seen edge-on as lines) plus cylinder and cone silhouettes (new
+  facade ops `edgeGeometry`, `faceSilhouettes`), and the app syncs the
+  projected curves (ordinary entities, held fixed by the solver, drawn in
+  the construct colour) and re-solves the sketch, amended into the undo
+  step that moved the model. A profile on a face proposes join or cut
+  like the face. Kernel, core, host and e2e tests
+  (`e2e/sketch-on-face.spec.ts`: a hole cut from a top-face sketch that
+  rides up with a taller box; a projected face following a taper).
 - [ ] **P2-10 Primitives.** Box, cylinder, sphere, torus with placement on a
   plane or face.
   *AC:* FR-FT-03.

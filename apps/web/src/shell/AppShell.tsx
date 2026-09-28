@@ -1,13 +1,15 @@
 import {
+  type BodyId,
   type Command,
   CommandError,
   type DocumentStore,
+  type GeomRef,
   isFeatureVisible,
   type ModelStore,
   type OriginPlaneId,
   originPlaneRef,
-  planeFrame,
   readSketch,
+  type SelectionItem,
   type SessionStore,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
@@ -24,9 +26,10 @@ import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import type { Autosaver } from '../project/autosave';
-import { sketchEntityIdsIn } from '../selection/items';
+import { readTopology, sketchEntityIdsIn } from '../selection/items';
 import { useModelSelection } from '../selection/useModelSelection';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
+import { sketchFrame } from '../sketch/frame';
 import { useHostState } from '../sketch/hostState';
 import {
   CREATE_SKETCH,
@@ -45,6 +48,7 @@ import {
   SketchPalette,
 } from '../sketch/panels';
 import { profileIdsIn, sketchProfiles } from '../sketch/profiles';
+import { PROJECT_TOOL, useProjectTool } from '../sketch/project';
 import { deleteSelection } from '../sketch/selection';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
@@ -53,7 +57,7 @@ import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
 import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
-import { bodyEntries, bodyMetaOf } from './bodies';
+import { bodyEntries, bodyMetaOf, createBodyActions, followBodyNames } from './bodies';
 import { CommandSearch, type SearchOpen } from './CommandSearch';
 import { type AppCommand, buildCommands, commandShortcuts } from './commands';
 import { createFeatureActions } from './featureActions';
@@ -130,6 +134,7 @@ export function AppShell({
   const [parametersOpen, setParametersOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<ExportRequest>();
   const bodies = useStore(model, (s) => s.bodies);
+  const sketchReports = useStore(model, (s) => s.sketches);
   const doc = useStore(store, (s) => s.doc);
   const mode = useStore(session, (s) => s.mode);
   const activeSketchId = useStore(session, (s) => s.activeSketchId);
@@ -137,14 +142,15 @@ export function AppShell({
   const hover = useStore(session, (s) => s.hover);
   const picking = activeTool === CREATE_SKETCH;
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
+  const projecting = mode === 'sketch' && activeTool === PROJECT_TOOL;
   const showConstraints = useStore(viewport, (s) => s.sketchConstraints);
   const showDimensions = useStore(viewport, (s) => s.sketchDimensions);
   const showProfiles = useStore(viewport, (s) => s.sketchProfiles);
   const selection = useStore(session, (s) => s.selection);
 
   const stores = useMemo<SketchModeStores>(
-    () => ({ store, session, viewport }),
-    [store, session, viewport],
+    () => ({ store, session, viewport, model }),
+    [store, session, viewport, model],
   );
 
   // The drawing-tool host (P1-02). Made in an effect so Strict Mode's second mount gets a live
@@ -192,6 +198,19 @@ export function AppShell({
     };
   }, [store, session, viewport]);
 
+  // Projected geometry follows the model (P2-09): after each recompute of the current
+  // document, the host brings the sketches in line with the kernel's reports.
+  useEffect(() => {
+    if (!host) return;
+    const sync = (s: ReturnType<typeof model.getState>) => {
+      if (s.status === 'ready' && s.doc === store.getState().doc) host.syncProjections(s.sketches);
+    };
+    sync(model.getState());
+    return model.subscribe((s, previous) => {
+      if (s.doc !== previous.doc || s.sketches !== previous.sketches) sync(s);
+    });
+  }, [host, model, store]);
+
   // `run` changes every render; commands reach the latest one through a ref.
   const runRef = useRef<(tool: ToolId) => void>(() => {});
   // Feature dialogs (P2-05): one controller; while a dialog is open, picks go to its fields.
@@ -204,11 +223,34 @@ export function AppShell({
     kernel,
     notify,
   });
-  // The model's bodies with their names (doc.bodies, else "Body<n>").
+  // The model's bodies with their names (ADR-0030): new bodies get stored names as soon as a
+  // recompute shows them, amended into the undo step that made them.
+  useEffect(() => followBodyNames(store, model), [store, model]);
   const bodyList = useMemo(() => bodyEntries(doc, bodies), [doc, bodies]);
   const bodyMeta = useMemo(() => bodyMetaOf(bodyList), [bodyList]);
-  // Editing a feature shows and picks the bodies before it (the preview's base).
-  const shownBodies = dialogBodies(dialogOpen, bodies);
+  const bodyListRef = useRef(bodyList);
+  bodyListRef.current = bodyList;
+  const bodyActions = useMemo(
+    () => createBodyActions({ store, session }, () => bodyListRef.current, notify),
+    [store, session, notify],
+  );
+  const selectedBodyIds = useMemo(
+    () => selection.filter((item) => item.kind === 'body').map((item) => item.id as BodyId),
+    [selection],
+  );
+  // The Project tool (P2-09) picks body edges and faces in the open sketch.
+  const project = useProjectTool({
+    store,
+    session,
+    viewport,
+    kernel,
+    notify,
+    active: projecting,
+    sketchId: activeSketchId,
+  });
+  // Editing a feature shows and picks the bodies before it (the preview's base), and so
+  // does the Project tool in a sketch that later features build on.
+  const shownBodies = project.bodies ?? dialogBodies(dialogOpen, bodies);
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
   const preview = useMemo(() => viewPreview(dialogOpen), [dialogOpen]);
   const ready = useMemo(
@@ -309,6 +351,10 @@ export function AppShell({
           store.getState().redo();
         },
         ...(mode === 'sketch' && !drawing && { remove }),
+        // Delete with bodies selected in the model removes them (a Remove feature, P2-08).
+        ...(mode === 'model' &&
+          !dialogOpen &&
+          selectedBodyIds.length > 0 && { remove: () => bodyActions.remove(selectedBodyIds) }),
         ...(mode === 'sketch' &&
           host && {
             construction: { on: construction ?? false, toggle: () => host.toggleConstruction() },
@@ -332,6 +378,9 @@ export function AppShell({
       dialogCommands,
       drawing,
       remove,
+      dialogOpen,
+      selectedBodyIds,
+      bodyActions,
       construction,
       stores,
       viewport,
@@ -381,6 +430,7 @@ export function AppShell({
       })),
       ...keysFor('toolbox').map((keys) => ({ keys, run: openToolbox })),
       ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
+      ...(projecting ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }] : []),
       ...(drawing && host
         ? [
             { keys: 'Escape', run: () => host.escape() },
@@ -418,6 +468,7 @@ export function AppShell({
       session,
       stores,
       picking,
+      projecting,
       mode,
       drawing,
       host,
@@ -442,7 +493,21 @@ export function AppShell({
     if (tool === 'parameters') setParametersOpen(true);
     else if (tool === 'sketch') {
       if (picking) cancelCreateSketch(stores);
-      else startCreateSketch(stores);
+      else {
+        // A flat face selected in the model takes the sketch at once (P2-09).
+        const selected = session.getState().selection;
+        const face = selected.length === 1 ? readTopology(selected[0]) : undefined;
+        if (mode === 'model' && face?.kind === 'face' && selected[0]) {
+          void sketchOnFace(selected[0], true);
+        } else startCreateSketch(stores);
+      }
+    } else if (tool === PROJECT_TOOL) {
+      if (mode !== 'sketch') return;
+      if (projecting) session.getState().setTool(undefined);
+      else {
+        host?.stop();
+        session.getState().setTool(PROJECT_TOOL);
+      }
     } else if (tool === 'finishSketch') finishSketch(stores);
     else if (tool === 'exportSketch' && activeSketchId) {
       // Profiles selected in the open sketch are offered first (P1-13).
@@ -467,7 +532,32 @@ export function AppShell({
   const stopCommand = () => {
     if (picking) cancelCreateSketch(stores);
     else if (drawing) host?.stop();
+    else if (projecting) session.getState().setTool(undefined);
   };
+
+  /**
+   * Starts a sketch on a picked or selected face (P2-09) once the kernel has
+   * given its persistent reference: a flat face only. With `fallback`, a
+   * face that can't take a sketch leaves Create Sketch waiting for a plane.
+   */
+  const sketchOnFace = async (item: SelectionItem, fallback = false) => {
+    const face = readTopology(item);
+    if (face?.kind !== 'face') return;
+    const ref: GeomRef | undefined = await kernel?.reference(face.body, 'face', face.index);
+    if (ref?.fingerprint?.type === 'plane') {
+      createSketchOn(stores, ref);
+      return;
+    }
+    notify(
+      'error',
+      ref
+        ? 'A sketch needs a flat face or a plane: that face is curved.'
+        : "Can't sketch on that face yet: the model is still computing.",
+    );
+    if (fallback) startCreateSketch(stores);
+  };
+  const sketchOnFaceRef = useRef(sketchOnFace);
+  sketchOnFaceRef.current = sketchOnFace;
   const pickPlane = (plane: OriginPlaneId) => createSketchOn(stores, originPlaneRef(plane));
   // The timeline's and the browser's feature commands (P1-12), and sketch export (P1-13).
   const featureActions = useMemo(
@@ -491,7 +581,8 @@ export function AppShell({
   // hidden), in its status colours. Profiles are shaded (P1-11) unless the palette hides them.
   // The pointer on a sketch's chip or browser row highlights it (P1-12).
   const status = useHostState(host, (s) => s.status);
-  // An open feature dialog's picks are what the view shows selected (a revolve's axis line).
+  // An open feature dialog's picks are what the view shows selected (a revolve's axis line,
+  // the bodies in the browser).
   const shownSelection = dialogItems ?? selection;
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
@@ -500,7 +591,8 @@ export function AppShell({
       const active = feature.id === activeSketchId;
       if (!active && !isFeatureVisible(feature)) return;
       const sketch = readSketch(feature);
-      const frame = sketch && planeFrame(sketch.plane);
+      // Origin planes have fixed frames; a face's follows the face (P2-09).
+      const frame = sketch && sketchFrame(feature.id, sketch.plane, sketchReports);
       if (sketch && frame) {
         out.push({
           id: feature.id,
@@ -532,6 +624,7 @@ export function AppShell({
     showProfiles,
     hover,
     shownSelection,
+    sketchReports,
   ]);
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
   const sketchPlane = sketches.find((s) => s.active)?.frame;
@@ -542,12 +635,19 @@ export function AppShell({
     bodies,
     mode === 'model' && !picking && !dialogOpen,
   );
-  const modelSelect = dialogOpen && mode === 'model' ? dialog?.select : sessionSelect;
+  const modelSelect =
+    dialogOpen && mode === 'model' ? dialog?.select : projecting ? project.select : sessionSelect;
+  // Body rows show the bodies in the selection (the dialog's picks while one is open).
+  const selectedBodies = useMemo(
+    () => new Set(shownSelection.filter((i) => i.kind === 'body').map((i) => i.id)),
+    [shownSelection],
+  );
 
   // A drawing tool takes the pointer; with none running, the host selects and drags geometry
   // (P1-09). Until the host has loaded, a click in the view clears the selection.
   const sketchInput = useMemo<SketchInput | undefined>(() => {
-    if (!sketchPlane) return undefined;
+    // The Project tool picks in 3D instead (P2-09).
+    if (!sketchPlane || projecting) return undefined;
     if (!drawing && host) {
       return {
         frame: sketchPlane,
@@ -578,7 +678,7 @@ export function AppShell({
       onLeave: () => {},
       cursor: 'default',
     };
-  }, [drawing, host, sketchPlane, activeTool, session]);
+  }, [drawing, host, sketchPlane, activeTool, session, projecting]);
 
   const planePicker = useMemo<PlanePicker | undefined>(
     () =>
@@ -593,9 +693,22 @@ export function AppShell({
               }
             },
             onPick: (plane) => createSketchOn(stores, originPlaneRef(plane)),
+            // Flat faces take a sketch too (P2-09), once the kernel can name them.
+            ...(kernel && {
+              faces: {
+                onHover: (item: SelectionItem | undefined) => {
+                  const current = session.getState().hover;
+                  if (item) session.getState().setHover(item);
+                  else if (current?.kind === 'face') session.getState().setHover(undefined);
+                },
+                onPick: (item: SelectionItem) => {
+                  void sketchOnFaceRef.current(item);
+                },
+              },
+            }),
           }
         : undefined,
-    [picking, hover, session, stores],
+    [picking, hover, session, stores, kernel],
   );
 
   return (
@@ -613,7 +726,7 @@ export function AppShell({
         activeTool={
           picking
             ? 'sketch'
-            : drawing
+            : drawing || projecting
               ? (activeTool as ToolId)
               : dialogOpen && typeof dialogOpen.spec.command === 'string'
                 ? dialogOpen.spec.command
@@ -629,6 +742,14 @@ export function AppShell({
           activeSketchId={activeSketchId}
           actions={featureActions}
           bodies={bodyList}
+          bodyActions={bodyActions}
+          selectedBodies={selectedBodies}
+          onPickBody={
+            modelSelect
+              ? (id, toggle) => modelSelect.onClick({ kind: 'body', id }, toggle)
+              : undefined
+          }
+          onHoverBody={(id) => modelSelect?.onHover(id ? { kind: 'body', id } : undefined)}
           width={browser.size}
           collapsed={browser.collapsed}
           animate={browser.animate}
@@ -664,7 +785,7 @@ export function AppShell({
             sketchPlane={sketchPlane}
             planePicker={planePicker}
             sketchInput={sketchInput}
-            commandRunning={drawing || picking}
+            commandRunning={drawing || picking || projecting}
             onStopCommand={stopCommand}
             hover={hover}
             selection={dialogItems ?? selection}

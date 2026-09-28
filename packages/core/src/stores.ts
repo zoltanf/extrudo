@@ -16,6 +16,7 @@ import { applyCommand, type Command } from './commands';
 import { type HistoryOptions, UndoHistory } from './history';
 import type { BodyId, FeatureId } from './ids';
 import type { ExtrudoDocument, GeomRefKind } from './schema';
+import type { SketchReport } from './sketch/projection';
 
 export interface DocumentState {
   /** Deep-frozen. Never mutate it; dispatch a command. */
@@ -28,6 +29,14 @@ export interface DocumentState {
   transactionDepth: number;
   /** Applies a command and records it for undo. Throws `CommandError` and leaves the document unchanged if the command is invalid. */
   dispatch<P>(command: Command<P>): void;
+  /**
+   * Applies a command as part of the latest undo step instead of a step of
+   * its own (`UndoHistory.amend`): for a change that follows from that step,
+   * such as naming the bodies it made (ADR-0030). Undoing the step undoes
+   * both. With no step to join (a freshly opened document), the change is
+   * applied without one. Throws like `dispatch`.
+   */
+  amend<P>(command: Command<P>): void;
   undo(): void;
   redo(): void;
   beginTransaction(label: string): void;
@@ -58,6 +67,12 @@ export function createDocumentStore(
     dispatch(command) {
       const { doc, patches, inversePatches } = applyCommand(get().doc, command);
       history.record({ label: command.label, patches, inversePatches });
+      set({ doc, ...historyState() });
+    },
+    amend(command) {
+      const { doc, patches, inversePatches } = applyCommand(get().doc, command);
+      if (patches.length === 0) return;
+      history.amend({ label: command.label, patches, inversePatches });
       set({ doc, ...historyState() });
     },
     undo() {
@@ -189,12 +204,25 @@ export interface ModelState<TBody> {
   error: string | undefined;
   features: Record<FeatureId, FeatureStatus>;
   bodies: Record<BodyId, TBody>;
+  /**
+   * What the kernel reports about each sketch it computed (P2-09): its
+   * plane's frame (a sketch on a face follows the face) and projections.
+   */
+  sketches: Record<FeatureId, SketchReport>;
   stats: ModelStats | undefined;
+  /**
+   * The document `features` and `bodies` were computed from, when the
+   * producer says (the `Recomputer` does): lets followers tell a result for
+   * the current document from a stale one (body names, ADR-0030).
+   */
+  doc: ExtrudoDocument | undefined;
   computing(): void;
   computed(result: {
     features: Record<FeatureId, FeatureStatus>;
     bodies: Record<BodyId, TBody>;
+    sketches?: Record<FeatureId, SketchReport>;
     stats?: ModelStats;
+    doc?: ExtrudoDocument;
   }): void;
   failed(error: string): void;
   reset(): void;
@@ -208,15 +236,25 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     error: undefined,
     features: {} as Record<FeatureId, FeatureStatus>,
     bodies: {} as Record<BodyId, TBody>,
+    sketches: {} as Record<FeatureId, SketchReport>,
     stats: undefined,
+    doc: undefined,
   });
   return createStore<ModelState<TBody>>()((set) => ({
     ...empty(),
     computing() {
       set({ status: 'computing', error: undefined });
     },
-    computed({ features, bodies, stats }) {
-      set({ status: 'ready', error: undefined, features, bodies, stats });
+    computed({ features, bodies, sketches, stats, doc }) {
+      set((s) => ({
+        status: 'ready',
+        error: undefined,
+        features,
+        bodies,
+        sketches: sketches ?? s.sketches,
+        stats,
+        doc,
+      }));
     },
     failed(error) {
       set({ status: 'failed', error });

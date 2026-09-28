@@ -6,17 +6,19 @@
 import {
   type BodyId,
   type ExtrudoDocument,
+  type FeatureId,
   type GeomRef,
   originAxis,
   parseProfileRefId,
   parseSketchEntityRefId,
-  planeFrame,
   readSketch,
+  type SketchReport,
   sketchToWorld,
   type Vec3,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import { profileCentroid } from '@extrudo/sketch/profiles';
+import { sketchFrame } from '../sketch/frame';
 import { sketchProfiles } from '../sketch/profiles';
 
 export interface Frame {
@@ -81,12 +83,16 @@ export function meshFaceFrame(mesh: BodyMesh, face: number): Frame | undefined {
  * the document (the app's profile cache). Undefined for another kind, or
  * a profile, sketch or plane that isn't there.
  */
-export function profileFrame(doc: ExtrudoDocument, ref: GeomRef): Frame | undefined {
+export function profileFrame(
+  doc: ExtrudoDocument,
+  ref: GeomRef,
+  sketches?: Readonly<Record<FeatureId, SketchReport>>,
+): Frame | undefined {
   if (ref.kind !== 'profile') return undefined;
   const parsed = parseProfileRefId(ref.id);
   const feature = parsed && doc.features.find((f) => f.id === parsed.feature);
   const sketch = feature && readSketch(feature);
-  const frame = sketch && planeFrame(sketch.plane);
+  const frame = sketch && feature && sketchFrame(feature.id, sketch.plane, sketches);
   const profile = sketch && sketchProfiles(sketch.data).find((p) => p.id === parsed?.profile);
   if (!frame || !profile) return undefined;
   return { origin: sketchToWorld(frame, profileCentroid(profile)), normal: frame.normal };
@@ -122,14 +128,18 @@ export interface AxisLine {
  */
 export function axisLine(
   ref: GeomRef,
-  ctx: { doc: ExtrudoDocument; bodies: Readonly<Record<BodyId, BodyMesh>> },
+  ctx: {
+    doc: ExtrudoDocument;
+    bodies: Readonly<Record<BodyId, BodyMesh>>;
+    sketches?: Readonly<Record<FeatureId, SketchReport>>;
+  },
 ): AxisLine | undefined {
   if (ref.kind === 'axis') {
     const axis = originAxis(ref.id);
     return axis && { origin: axis.origin, direction: axis.direction };
   }
   if (ref.kind === 'sketchEntity') {
-    const line = sketchLine(ctx.doc, ref);
+    const line = sketchLine(ctx.doc, ref, ctx.sketches);
     return line && lineThrough(line[0], line[1]);
   }
   if (ref.kind === 'edge') {
@@ -150,13 +160,17 @@ export function axisLine(
 /**
  * The world end points of a sketch line picked in the model
  * (`<sketch>/<entity>`), or undefined when it isn't a line of a sketch on
- * a known plane.
+ * a known plane (a face's frame comes from the kernel's sketch reports).
  */
-export function sketchLine(doc: ExtrudoDocument, ref: GeomRef): [Vec3, Vec3] | undefined {
+export function sketchLine(
+  doc: ExtrudoDocument,
+  ref: GeomRef,
+  sketches?: Readonly<Record<FeatureId, SketchReport>>,
+): [Vec3, Vec3] | undefined {
   const parsed = parseSketchEntityRefId(ref.id);
   const feature = parsed && doc.features.find((f) => f.id === parsed.feature);
   const sketch = feature && readSketch(feature);
-  const frame = sketch && planeFrame(sketch.plane);
+  const frame = sketch && feature && sketchFrame(feature.id, sketch.plane, sketches);
   const line = parsed && sketch?.data.entities[parsed.entity];
   if (!frame || line?.type !== 'line') return undefined;
   const a = sketch.data.entities[line.start];

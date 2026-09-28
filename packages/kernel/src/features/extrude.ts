@@ -11,6 +11,7 @@ import {
 import { KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
 import { type NamedShape, namedBoolean, namedPrism, type SweepSource } from '../naming/ops';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
 import { type Base, baseOf, centroidOf, PARALLEL_EPS, type Plane } from './sources';
 import { add, corners, degrees, dot, length, perpendicular, scale, sub } from './vec';
@@ -91,7 +92,11 @@ function evaluateExtrude(ctx: EvalContext<ExtrudeInputs>): FeatureOutput {
     tapers: [degrees(sides[0]?.taper ?? 0), degrees(sides[1]?.taper ?? 0)],
   };
   const warnings: string[] = [];
-  const result = operate(ctx, scope, settings, tool, participants, warnings, WORDS);
+  const result = splitSolids(
+    ctx,
+    scope,
+    operate(ctx, scope, settings, tool, participants, warnings, WORDS),
+  );
   return { ...result, data, ...(warnings.length ? { warnings } : {}) };
 }
 

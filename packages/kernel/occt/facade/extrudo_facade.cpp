@@ -41,6 +41,7 @@
 #include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRepTools.hxx>
+#include <BRepTopAdaptor_FClass2d.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
@@ -453,6 +454,145 @@ public:
   uintptr_t describeNumbersPtr() const { return reinterpret_cast<uintptr_t>(describeNumbers_.data()); }
   int describeNumbersSize() const { return static_cast<int>(describeNumbers_.size()); }
 
+  // ----------------------------------------------------------- projection --
+  //
+  // What the sketch evaluator projects into a sketch plane (P2-09, ADR-0031):
+  // the exact geometry of a body edge, and the silhouette lines of a curved
+  // face. Both write geometryNumbers (read with geometryPtr/Size).
+
+  /**
+   * The geometry of edge `edge` (0-based, MapShapes order) of a shape, with
+   * `samples` points along it (at least 2, evenly spaced in its parameter,
+   * both ends included). Returns 1, or 0 on failure.
+   *
+   * geometryNumbers: [type, closed, n, point xyz × n], then for a circle
+   * [center xyz, axis xyz, x direction xyz, radius, first, last] and for an
+   * ellipse [center xyz, axis xyz, major direction xyz, major radius, minor
+   * radius, first, last]. Types as in describe(); -1 is a degenerate edge
+   * (n = 0). `first` and `last` are angles about the axis from the x or
+   * major direction; the edge's own orientation is ignored.
+   */
+  int edgeGeometry(int shape, int edge, int samples) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return fail("Unknown shape.");
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+      TopExp::MapShapes(*s, TopAbs_EDGE, edges);
+      if (edge < 0 || edge >= edges.Extent()) return fail("Edge index out of range.");
+      const TopoDS_Edge e = TopoDS::Edge(edges(edge + 1));
+      if (BRep_Tool::Degenerated(e)) {
+        geometry_.insert(geometry_.end(), {-1.0, 0.0, 0.0});
+        return 1;
+      }
+      BRepAdaptor_Curve curve(e);
+      const GeomAbs_CurveType type = curve.GetType();
+      const double first = curve.FirstParameter();
+      const double last = curve.LastParameter();
+      const int n = type == GeomAbs_Line ? 2 : std::max(2, samples);
+      geometry_.push_back(static_cast<double>(type));
+      geometry_.push_back(BRep_Tool::IsClosed(e) ? 1.0 : 0.0);
+      geometry_.push_back(static_cast<double>(n));
+      for (int i = 0; i < n; ++i) {
+        const double t = i == n - 1 ? last : first + (last - first) * i / (n - 1);
+        pushPoint(curve.Value(t));
+      }
+      if (type == GeomAbs_Circle) {
+        const gp_Circ c = curve.Circle();
+        pushPoint(c.Location());
+        pushDir(c.Axis().Direction());
+        pushDir(c.XAxis().Direction());
+        geometry_.insert(geometry_.end(), {c.Radius(), first, last});
+      } else if (type == GeomAbs_Ellipse) {
+        const gp_Elips c = curve.Ellipse();
+        pushPoint(c.Location());
+        pushDir(c.Axis().Direction());
+        pushDir(c.XAxis().Direction());
+        geometry_.insert(geometry_.end(), {c.MajorRadius(), c.MinorRadius(), first, last});
+      }
+      return 1;
+    } catch (...) {
+      geometry_.clear();
+      return failFromException("Edge geometry failed");
+    }
+  }
+
+  /**
+   * The silhouette lines of face `face` of a shape seen along (dx, dy, dz):
+   * the straight lines on a cylinder or cone where its normal is square to
+   * the view, clipped to the face. Other surfaces have none here. Returns
+   * the number of segments, or -1 on failure.
+   *
+   * geometryNumbers: [start xyz, end xyz] per segment.
+   */
+  int faceSilhouettes(int shape, int face, double dx, double dy, double dz) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      if (face < 0 || face >= faces.Extent()) {
+        fail("Face index out of range.");
+        return -1;
+      }
+      const gp_Vec view(dx, dy, dz);
+      if (view.Magnitude() <= Precision::Confusion()) {
+        fail("The view direction has no length.");
+        return -1;
+      }
+      const TopoDS_Face f = TopoDS::Face(faces(face + 1));
+      BRepAdaptor_Surface surface(f);
+      gp_Ax3 position;
+      double semiAngle = 0;
+      if (surface.GetType() == GeomAbs_Cylinder) {
+        position = surface.Cylinder().Position();
+      } else if (surface.GetType() == GeomAbs_Cone) {
+        position = surface.Cone().Position();
+        semiAngle = surface.Cone().SemiAngle();
+      } else {
+        return 0;
+      }
+      // The normal at angle u is proportional to cos(A)(cos u X + sin u Y) - sin(A) Z
+      // (either sign), so the silhouette is where cos u a + sin u b = tan(A) c.
+      const gp_Dir d(view);
+      const double a = position.XDirection().Dot(d);
+      const double b = position.YDirection().Dot(d);
+      const double c = position.Direction().Dot(d);
+      const double rho = std::hypot(a, b);
+      if (rho <= 1e-9) return 0;
+      const double k = std::tan(semiAngle) * c / rho;
+      if (std::abs(k) > 1) return 0;
+      const double phi = std::atan2(b, a);
+      const double spread = std::acos(std::max(-1.0, std::min(1.0, k)));
+      double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+      BRepTools::UVBounds(f, u0, u1, v0, v1);
+      BRepTopAdaptor_FClass2d classifier(f, Precision::PConfusion());
+      const double candidates[2] = {phi + spread, phi - spread};
+      int segments = 0;
+      for (int i = 0; i < 2; ++i) {
+        if (i == 1 && spread <= 1e-12) break;
+        double u = u0 + std::fmod(candidates[i] - u0, 2 * M_PI);
+        if (u < u0) u += 2 * M_PI;
+        if (u > u1 + 1e-9) continue;
+        segments += silhouetteRuns(surface, classifier, std::min(u, u1), v0, v1);
+      }
+      return segments;
+    } catch (...) {
+      geometry_.clear();
+      failFromException("Silhouette failed");
+      return -1;
+    }
+  }
+
+  uintptr_t geometryPtr() const { return reinterpret_cast<uintptr_t>(geometry_.data()); }
+  int geometrySize() const { return static_cast<int>(geometry_.size()); }
+
   // ------------------------------------------------------------- sketches --
   //
   // A sketch's profiles (P2-02, ADR-0025): stage its curves in the sketch
@@ -810,6 +950,7 @@ private:
   std::vector<int32_t> lookup_;
   std::vector<int32_t> describeInts_;
   std::vector<double> describeNumbers_;
+  std::vector<double> geometry_;
   /** Where each face's record starts in profileRecords_, while sketchProfiles runs. */
   std::unordered_map<const TopoDS_TShape*, size_t> recordStarts_;
 
@@ -1281,6 +1422,59 @@ private:
       if (std::abs(v) > 1e-9) return v < 0 ? d.Reversed() : d;
     }
     return d;
+  }
+
+  void pushPoint(const gp_Pnt& p) { geometry_.insert(geometry_.end(), {p.X(), p.Y(), p.Z()}); }
+  void pushDir(const gp_Dir& d) { geometry_.insert(geometry_.end(), {d.X(), d.Y(), d.Z()}); }
+
+  /**
+   * Appends the pieces of the iso line u = const between v0 and v1 that lie
+   * on the face (faceSilhouettes). The line is sampled, and each change
+   * between inside and outside is found by bisection. Returns the count.
+   */
+  int silhouetteRuns(const BRepAdaptor_Surface& surface, BRepTopAdaptor_FClass2d& classifier,
+                     double u, double v0, double v1) {
+    if (!(v1 > v0)) return 0;
+    const auto inside = [&](double v) {
+      const TopAbs_State state = classifier.Perform(gp_Pnt2d(u, v));
+      return state == TopAbs_IN || state == TopAbs_ON;
+    };
+    const auto edgeOf = [&](double in, double out) {
+      for (int k = 0; k < 48; ++k) {
+        const double mid = (in + out) / 2;
+        if (inside(mid)) in = mid;
+        else out = mid;
+      }
+      return in;
+    };
+    const int steps = 64;
+    int count = 0;
+    double start = 0;
+    bool open = false;
+    double previous = v0;
+    for (int i = 0; i <= steps; ++i) {
+      const double v = i == steps ? v1 : v0 + (v1 - v0) * i / steps;
+      const bool in = inside(v);
+      if (in && !open) {
+        start = i == 0 ? v : edgeOf(v, previous);
+        open = true;
+      } else if (!in && open) {
+        count += pushRun(surface, u, start, edgeOf(previous, v));
+        open = false;
+      }
+      previous = v;
+    }
+    if (open) count += pushRun(surface, u, start, v1);
+    return count;
+  }
+
+  int pushRun(const BRepAdaptor_Surface& surface, double u, double from, double to) {
+    const gp_Pnt a = surface.Value(u, from);
+    const gp_Pnt b = surface.Value(u, to);
+    if (a.Distance(b) <= Precision::Confusion()) return 0;
+    pushPoint(a);
+    pushPoint(b);
+    return 1;
   }
 
   void pushNumbers(double size, const gp_Pnt& p, const gp_Dir* d) {

@@ -1,6 +1,6 @@
 import { type BodyMesh, EDGE_SEAM } from '@extrudo/kernel';
 import { describe, expect, it } from 'vitest';
-import { boundsOf, edgeSegments } from './Bodies';
+import { boundsOf, edgeSegments } from './bodyGeometry';
 
 const mesh = (
   positions: number[],

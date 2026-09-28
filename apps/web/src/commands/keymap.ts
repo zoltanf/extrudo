@@ -26,6 +26,7 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   sketchOffset: ['O'],
   sketchFillet: ['F'],
   sketchMove: ['M'],
+  project: ['P'],
   construction: ['X'],
   // Solid (these tools arrive in Phases 2 and 3)
   extrude: ['E'],

@@ -36,6 +36,7 @@ export {
   type Migration,
   type MigrationContext,
 } from './migrations';
+export * from './remove';
 export * from './revolve';
 export * from './schema';
 export * from './sketch/commands';
@@ -43,6 +44,7 @@ export * from './sketch/curves';
 export * from './sketch/dimensions';
 export * from './sketch/feature';
 export * from './sketch/planes';
+export * from './sketch/projection';
 export * from './sketch/schema';
 export {
   createDocumentStore,

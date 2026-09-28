@@ -1,5 +1,6 @@
 import { FeatureRegistry } from '@extrudo/core';
 import type { KernelFeatureDefinition } from '../recompute/types';
+import { kernelRemove } from './bodies';
 import { kernelExtrude } from './extrude';
 import { kernelRevolve } from './revolve';
 import { kernelSketch } from './sketch';
@@ -9,5 +10,6 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
   return new FeatureRegistry<KernelFeatureDefinition>()
     .register(kernelSketch as unknown as KernelFeatureDefinition)
     .register(kernelExtrude as unknown as KernelFeatureDefinition)
-    .register(kernelRevolve as unknown as KernelFeatureDefinition);
+    .register(kernelRevolve as unknown as KernelFeatureDefinition)
+    .register(kernelRemove as unknown as KernelFeatureDefinition);
 }

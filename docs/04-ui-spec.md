@@ -82,7 +82,9 @@ brief, voice) is in **`05-brand.md`**. In short:
   command ends a nav tool. Each nav tool has its own cursor (an orbit
   arrow, a magnifier, a hand), also during a navigation drag. Then fit
   (F6), ortho/perspective, visual style, grid, mouse controls and named
-  views.
+  views. The wireframe and hidden-edge styles also draw the silhouettes
+  of curved faces (the outline of a hole or a cylinder as seen now), which
+  follow the camera; seams are never drawn (P2-08).
 - A running tool is highlighted on the toolbar: its tile, or, for a tool
   from a group's menu, the group's label.
 - **Command dialog (right, floating):** appears for the active feature and is
@@ -245,15 +247,51 @@ movement, as Onshape's context menu does.
   isn't in the profiles' plane, when a profile crosses the axis or the
   profiles lie on both sides of it, and when the angles are 0, beyond a
   whole turn or cancel out.
-- **Bodies in the browser (P2-06):** the Bodies folder lists the
-  model's bodies in timeline order; a body with no name of its own is
-  "Body1", "Body2"… until its eye is used (which stores the name) or
-  P2-08's rename.
+- **Bodies in the browser (P2-06, P2-08, ADR-0030):** the Bodies folder
+  lists the model's bodies in timeline order, with a count badge. A new
+  body is named "Body1", "Body2"… (the lowest free number) as soon as it
+  appears, and keeps that name: removing another body renumbers nothing.
+  Each row has a colour dot, the name and an eye. A click selects the
+  body in the model (Shift or Ctrl toggles), or puts it in an open
+  dialog's field (an extrude's Bodies); the pointer on a row highlights
+  the body in the view. F2 renames, Delete removes (all selected bodies
+  when the row is one of them). The right-click menu: Rename, Hide/Show,
+  Appearance… (a popover on the dot: colour swatches, Default first, and
+  opacity Opaque, 75 %, 50 %, 25 %; each choice is one undo step) and
+  Delete. The folder's eye hides or shows all bodies in one step.
+- **Removing bodies:** Delete (the browser, the body menu, or Delete in
+  the view with bodies selected) adds a **Remove** feature at the marker
+  (a Modify chip, "Remove1"): the body is still made by its features and
+  taken out after them, so undo, suppressing or deleting the Remove, or
+  rolling the marker back before it brings the body back. A feature whose
+  bodies a later Remove (or an extrude's Bodies) names can't be deleted
+  until that one is changed.
+- **One body per solid:** a cut or intersect that leaves a body in
+  separate pieces makes one body per piece; the largest keeps the body's
+  name, colour and references, the others are new bodies.
 
 ## 4. Sketch mode
 
 - Enter by: Create Sketch → pick a plane or face; double-click a sketch in the
   browser or timeline; right-click → Edit Sketch.
+- **Sketch on a face (P2-09, ADR-0031):** while Create Sketch waits, flat
+  faces of bodies hover in the preselect tint like the origin planes;
+  whichever is nearer under the pointer takes the click. A flat face
+  selected beforehand takes the sketch at once; a curved one says "A sketch
+  needs a flat face or a plane". The sketch moves with its face when the
+  model changes; its X runs along world X on floors and roofs, its Y up
+  the face on walls, and its origin is the world origin on the face's
+  plane.
+- **Project (P2-09):** `P`, or Create ▾ → Project. The view picks body edges
+  and faces (hovered in the preselect tint); a click projects the edge, or
+  the face's outline (with the silhouette lines of a cylinder or cone),
+  into the sketch. Projected curves are purple, fixed, make profiles and
+  take constraints and dimensions; when the model changes they follow it,
+  and whatever is constrained to them follows too, in the same undo step
+  as the change. Deleting one keeps it deleted; trimming or filleting it is
+  refused. Esc or Select ends the tool. In a sketch that later features
+  build on, the view shows the bodies as they were before the sketch while
+  the tool runs.
 - The camera animates to look at the plane (can be turned off). The grid
   aligns to the sketch plane. Bodies are optionally sliced or dimmed.
 - **SKETCH tab groups:** CREATE (line, rectangle ▾, circle ▾, arc ▾, polygon
@@ -307,7 +345,7 @@ Fusion-compatible where Fusion has them; remappable in settings.
 
 Shift+1…7 are Home, Top, Bottom, Front, Back, Left, Right, by key
 position (they work on any layout). The keys live in one table,
-`apps/web/src/commands/keymap.ts`; P, Q and J wait for their tools.
+`apps/web/src/commands/keymap.ts`; P is Project (P2-09); Q and J wait for their tools.
 
 ## 6. Home screen
 
