@@ -9,6 +9,7 @@ import { mentions, parameterNames, renameReferences } from './expr/parameters';
 import type { BodyId, FeatureId, ParameterId } from './ids';
 import {
   type BodyMeta,
+  type ExtrudoDocument,
   type Feature,
   type FeatureInputs,
   PARAMETER_NAME,
@@ -197,24 +198,81 @@ export const moveTimelineMarker = defineCommand<{ index: number }>(
   },
 );
 
-/** Creates the body's metadata or changes part of it. */
-export const updateBody = defineCommand<{ id: BodyId; changes: Partial<BodyMeta> }>(
-  'body.update',
-  'Change body',
-  (draft, { id, changes }) => {
-    const body = draft.bodies[id];
-    if (body) {
-      Object.assign(body, changes);
-    } else {
-      const { name, visible = true, ...rest } = changes;
-      draft.bodies[id] = { name: requireName(name ?? ''), visible, ...rest };
+/** Body metadata fields that can be cleared back to their defaults. */
+export type ClearableBodyField = 'color' | 'opacity';
+
+/**
+ * Creates the body's metadata or changes part of it; `clear` removes
+ * optional fields (the default colour, opaque again). A name is trimmed and
+ * can't be empty.
+ */
+export const updateBody = defineCommand<{
+  id: BodyId;
+  changes: Partial<BodyMeta>;
+  clear?: readonly ClearableBodyField[];
+}>('body.update', 'Change body', (draft, { id, changes, clear = [] }) => {
+  const { name, visible, ...rest } = changes;
+  let body = draft.bodies[id];
+  if (!body) {
+    body = { name: requireName(name ?? ''), visible: visible ?? true };
+    draft.bodies[id] = body;
+  } else {
+    if (name !== undefined) body.name = requireName(name);
+    if (visible !== undefined) body.visible = visible;
+  }
+  for (const [key, value] of Object.entries(rest)) {
+    if (value !== undefined) Object.assign(body, { [key]: value });
+  }
+  for (const key of clear) delete body[key];
+});
+
+/**
+ * Stores metadata for bodies that have none (ADR-0030): the names the app
+ * gave them when they first appeared ("Body3"). Bodies that already have
+ * metadata keep it. The app amends this into the undo step that made the
+ * bodies (`DocumentState.amend`), so undo and redo take the names with them.
+ */
+export const nameBodies = defineCommand<{ bodies: Readonly<Record<BodyId, BodyMeta>> }>(
+  'body.name',
+  'Name bodies',
+  (draft, { bodies }) => {
+    for (const [id, meta] of Object.entries(bodies) as [BodyId, BodyMeta][]) {
+      if (draft.bodies[id]) continue;
+      draft.bodies[id] = { ...meta, name: requireName(meta.name) };
     }
   },
 );
 
-/** Names of the features whose references point into feature `id` (`<id>/…` reference IDs). */
+/**
+ * The names new bodies get, in the order given: "Body1", "Body2"…, the
+ * lowest numbers that no stored body (live or gone) and no earlier new body
+ * uses. Pure, so the name the browser shows before it is stored is the one
+ * that gets stored.
+ */
+export function newBodyNames(
+  doc: Pick<ExtrudoDocument, 'bodies'>,
+  ids: readonly BodyId[],
+): Record<BodyId, string> {
+  const taken = new Set(Object.values(doc.bodies).map((m) => m.name));
+  const names = {} as Record<BodyId, string>;
+  let next = 1;
+  for (const id of ids) {
+    while (taken.has(`Body${next}`)) next++;
+    const name = `Body${next}`;
+    names[id] = name;
+    taken.add(name);
+  }
+  return names;
+}
+
+/**
+ * Names of the features whose references point into feature `id`: `<id>/…`
+ * reference IDs (a sketch's profiles), and bodies it made (`<id>:<n>`, a
+ * Remove or an extrude's picked bodies, ADR-0030).
+ */
 function featuresReferring(draft: DocumentDraft, id: FeatureId): string[] {
   const prefix = `${id}/`;
+  const bodies = `${id}:`;
   return draft.features
     .filter(
       (f) =>
@@ -222,7 +280,12 @@ function featuresReferring(draft: DocumentDraft, id: FeatureId): string[] {
         Object.values(f.inputs).some(
           (input) =>
             input.kind === 'ref' &&
-            input.refs.some((ref) => ref.id === id || ref.id.startsWith(prefix)),
+            input.refs.some(
+              (ref) =>
+                ref.id === id ||
+                ref.id.startsWith(prefix) ||
+                (ref.kind === 'body' && ref.id.startsWith(bodies)),
+            ),
         ),
     )
     .map((f) => f.name);

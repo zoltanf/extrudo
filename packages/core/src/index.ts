@@ -35,6 +35,7 @@ export {
   type Migration,
   type MigrationContext,
 } from './migrations';
+export * from './remove';
 export * from './schema';
 export * from './sketch/commands';
 export * from './sketch/curves';

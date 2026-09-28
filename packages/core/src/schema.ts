@@ -139,13 +139,19 @@ export const FeatureSchema = z.strictObject({
 });
 export type Feature = z.infer<typeof FeatureSchema>;
 
-/** Name, colour and visibility of a body. The body's geometry is derived, never stored. */
+/**
+ * Name, appearance and visibility of a body (ADR-0030). The body's geometry
+ * is derived, never stored; its ID is the kernel's (`<feature>:<n>`).
+ */
 export const BodyMetaSchema = z.strictObject({
   name: z.string().min(1),
+  /** `#rrggbb`; absent means the theme's default body colour. */
   color: z
     .string()
     .regex(/^#[0-9a-f]{6}$/i)
     .optional(),
+  /** 0.1 (nearly clear) to 1; absent means opaque. Added in P2-08. */
+  opacity: z.number().min(0.1).max(1).optional(),
   visible: z.boolean(),
 });
 export type BodyMeta = z.infer<typeof BodyMetaSchema>;

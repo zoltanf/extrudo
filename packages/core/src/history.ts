@@ -49,6 +49,27 @@ export class UndoHistory {
     if (this.#levels.length === 1 && level.undo.length > this.#limit) level.undo.shift();
   }
 
+  /**
+   * Adds a change that has already been applied to the latest step, as if
+   * that step had made it (ADR-0030: names for the bodies a step made). The
+   * latest step is the innermost open level's, or, while that has none, the
+   * nearest enclosing level's; cancelling a transaction then leaves the
+   * change, since it belongs to the step before. With no step anywhere
+   * (a freshly opened document) the change isn't recorded. Redo steps stay.
+   * Returns whether the change joined a step.
+   */
+  amend(entry: HistoryEntry): boolean {
+    if (entry.patches.length === 0) return false;
+    for (let i = this.#levels.length - 1; i >= 0; i--) {
+      const last = this.#levels[i]?.undo.at(-1);
+      if (!last) continue;
+      last.patches = [...last.patches, ...entry.patches];
+      last.inversePatches = [...entry.inversePatches, ...last.inversePatches];
+      return true;
+    }
+    return false;
+  }
+
   get canUndo(): boolean {
     return this.#top.undo.length > 0;
   }
