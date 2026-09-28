@@ -167,8 +167,12 @@ viewport's `origin` settings `x`, `y`, `z`) as segments as long as the
 grid reaches (`GRID_RADIUS × view size` each way); `nearAxes` picks them
 by the ray's closest approach within 6 px, like edges, under the
 `construction` filter kind, **after** vertices, edges and sketch curves
-(a sketch line on an axis is the more specific pick) and hidden behind
-faces like them. Boxes never take them. `Origin.tsx` draws a hovered or
+(a sketch line on an axis is the more specific pick) **and after profiles
+and faces**: the axes run through the model, and a click on a profile
+the Z axis passes behind must take the profile (found by P2-09's e2e
+test after the merge). Over a face, an axis is offered by "Select
+other…"; an axis field's filter leaves faces and profiles out, so there
+the axis is picked directly. Hidden axes are offered last. Boxes never take them. `Origin.tsx` draws a hovered or
 selected axis as a thick accent line over the grid's (`AxisHighlight`);
 "Select other…" names them "X axis"…; the session's hover of an axis is
 cleared with the other picked kinds. Sketch lines were already pickable

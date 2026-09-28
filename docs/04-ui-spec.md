@@ -149,8 +149,9 @@ movement, as Onshape's context menu does.
   it filters.
 - **Origin axes (P2-07, ADR-0029)** are picked like edges wherever they
   are drawn (X and Y along the grid, Z by the origin, as far as the grid
-  reaches; hidden ones not), after vertices, edges and sketch curves, and
-  never by a box. A picked or pre-highlighted axis is drawn over in the
+  reaches; hidden ones not), after vertices, edges, sketch curves,
+  profiles and faces (over a body, "Select other…" offers them; a
+  dialog's axis field filters faces out), and never by a box. A picked or pre-highlighted axis is drawn over in the
   accent. "Select other…" names them "X axis", "Y axis", "Z axis".
 - The status bar sums up the selection ("2 faces", "1 edge, 2 vertices").
 - Esc clears the selection, or cancels the active tool (or a drag in

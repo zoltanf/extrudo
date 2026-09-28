@@ -413,8 +413,10 @@ function curveDistance(data: SketchData, id: SketchEntityId, p: Vec2): number {
  * Everything under the pointer at `at` (view px) that the filter allows,
  * in "Select other…" order: vertices, edges and sketch curves near the
  * pointer (nearest first, visible before hidden), then profiles and faces
- * front to back (a profile before a face it lies on), then bodies front to
- * back. At most `STACK_LIMIT` items.
+ * front to back (a profile before a face it lies on), then origin axes
+ * near the pointer (they run through the model, so a face or profile under
+ * the pointer wins; P2-07), then bodies front to back. At most
+ * `STACK_LIMIT` items.
  */
 export function pickStack(
   scene: PickScene,
@@ -448,7 +450,8 @@ export function pickStack(
   ];
   const sketches = sketchHits(e, scene, filter);
   small.push(...near(sketches.curves));
-  if (filter.construction) small.push(...near(nearAxes(e, scene)));
+  // Origin axes run through the model: they come after profiles and faces (P2-07).
+  const axes = filter.construction ? near(nearAxes(e, scene)) : [];
 
   const areas: (PickHit & { rank: number })[] = [];
   for (const p of sketches.profiles) {
@@ -486,8 +489,10 @@ export function pickStack(
   const stack = [
     ...small.filter((h) => !h.occluded),
     ...areas.map(({ rank: _, ...hit }) => hit),
+    ...axes.filter((h) => !h.occluded),
     ...bodies,
     ...small.filter((h) => h.occluded),
+    ...axes.filter((h) => h.occluded),
   ];
   return stack.slice(0, STACK_LIMIT);
 }

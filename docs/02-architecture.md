@@ -518,7 +518,7 @@ bodies.
   (P2-04) by `topologyRef`/`selectionRefs`.
 - P2-07 (ADR-0029) adds the origin axes to model picking: `PickScene.axes`
   (drawn axes only), picked by the ray's closest approach like edges, after
-  them, as `{ kind: 'axis', id: 'origin:x' }` items; `Origin.tsx` draws a
+  edges, profiles and faces, as `{ kind: 'axis', id: 'origin:x' }` items; `Origin.tsx` draws a
   hovered or selected axis in the accent.
 
 ## 6. Storage and file format
