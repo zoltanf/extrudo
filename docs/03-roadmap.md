@@ -298,7 +298,23 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   model's bodies ("Body1"… without stored names). The Wall bracket
   template computes its bracket (symmetric L, tapered holes cut).
   E2E in a real project (`e2e/extrude.spec.ts`).
-- [ ] **P2-07 Revolve.** FR-FT-02.
+- [x] **P2-07 Revolve.** FR-FT-02.
+  *Done 2026-09-28* (ADR-0029): core `revolve` feature (profiles or flat
+  faces; an origin axis, a sketch line, construction or not, or a
+  straight body edge; one side, symmetric, two sides; an angle, a whole
+  turn by default; flip; new body, join, cut, intersect with automatic or
+  picked bodies) and its kernel evaluator (axis in the profiles' plane,
+  profiles on one side of it by half-plane overlap, symmetric and
+  two-sided turns as one sweep from the profile turned to its start, so
+  every face is named like a one-sided revolve; sketch-line axes placed
+  by the sketch output's frame and its new `lines` table; extrude's
+  sources and body operations moved to shared modules unchanged; 36-case
+  golden table, a 300-recompute memory test). The Revolve dialog on the
+  P2-05 framework, with an angle arc about the axis that goes on round a
+  whole turn (symmetric at half the angle, one arc per side); the origin
+  axes are pickable and highlighted in the model; pre-selection fills
+  every field that takes part of the selection (profile and axis). E2E in
+  a real project (`e2e/revolve.spec.ts`).
 - [ ] **P2-08 Bodies.** Browser "Bodies" folder; rename, visibility, colour and
   appearance; delete body (as a "Remove" feature); body count badge.
   Silhouette edges of curved faces (view-dependent) in the wireframe and

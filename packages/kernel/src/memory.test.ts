@@ -15,7 +15,10 @@ import {
   extrudeInputs,
   type Feature,
   type GeomRef,
+  originAxisRef,
   originPlaneRef,
+  type RevolveInputOptions,
+  revolveInputs,
   type SketchData,
   sketchInputs,
 } from '@extrudo/core';
@@ -281,6 +284,103 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
     engine.clear();
     expect(kernel.stats().liveShapes).toBe(0);
+  });
+
+  it('recomputing real revolves 300 times with changing values does not grow the heap', {
+    timeout: 180_000,
+  }, async () => {
+    // The revolve evaluator end to end (ADR-0029): a block, a symmetric groove
+    // cut about the Z axis (the profile turned to its start first), a ring
+    // joined about a construction line, a flat face turned about a body edge.
+    //
+    // Every run starts from an empty cache. With cached shapes kept between
+    // runs the heap top moves by 16 MB every few hundred runs: OCCT's
+    // booleans and mesher grow their incremental allocator's blocks up to
+    // 16 MB, and live cached shapes split the freed block. Cleared each run
+    // the heap stays flat, so that is fragmentation, not a leak (ADR-0029).
+    const engine = new RecomputeEngine(kernel, testFeatures().registry, {
+      strictLeaks: true,
+      maxEntries: 8,
+    });
+    const rectangle = (b: SketchBuilder, x: number, y: number, w: number, h: number) => {
+      const bottom = b.line(x, y, x + w, y).id;
+      b.line(x + w, y, x + w, y + h);
+      b.line(x + w, y + h, x, y + h);
+      b.line(x, y + h, x, y);
+      return bottom;
+    };
+    const block = new SketchBuilder();
+    const front = rectangle(block, 0, 0, 40, 30);
+    const regions = (data: SketchData) => detectProfiles(data).map((p) => p.id);
+    const profileOf = (sketch: string, data: SketchData): GeomRef => ({
+      kind: 'profile',
+      id: `${sketch}/${regions(data)[0]}`,
+    });
+    const sketchOn = (id: string, data: SketchData, plane: 'origin:xy' | 'origin:xz'): Feature => ({
+      ...testFeature(id, 'sketch'),
+      inputs: sketchInputs(originPlaneRef(plane), data),
+    });
+    const revolve = (
+      id: string,
+      refs: GeomRef[],
+      axis: GeomRef,
+      options: RevolveInputOptions,
+    ): Feature => ({ ...testFeature(id, 'revolve'), inputs: revolveInputs(refs, axis, options) });
+    const groove = new SketchBuilder();
+    rectangle(groove, 10, 5, 8, 10);
+    const ring = new SketchBuilder();
+    rectangle(ring, 45, 0, 3, 4);
+    const axis = ring.line(50, -5, 50, 20, true).id;
+    const doc = (a: number) =>
+      testDocument([
+        sketchOn('SB', block.sketch, 'origin:xy'),
+        {
+          ...testFeature('B', 'extrude'),
+          inputs: extrudeInputs([profileOf('SB', block.sketch)], {
+            distance: '20 mm',
+            direction: 'symmetric',
+          }),
+        },
+        sketchOn('SG', groove.sketch, 'origin:xz'),
+        revolve('G', [profileOf('SG', groove.sketch)], originAxisRef('origin:z'), {
+          angle: `${a} deg`,
+          direction: 'symmetric',
+          operation: 'cut',
+        }),
+        sketchOn('SR', ring.sketch, 'origin:xy'),
+        revolve(
+          'R',
+          [profileOf('SR', ring.sketch)],
+          { kind: 'sketchEntity', id: `SR/${axis}` },
+          {
+            direction: 'two-sides',
+            angle: `${a} deg`,
+            angle2: '20 deg',
+          },
+        ),
+        revolve(
+          'F',
+          [{ kind: 'face', id: 'extrude:B:cap:end' }],
+          { kind: 'edge', id: `e[extrude:B:cap:end|extrude:B:side:${front}]` },
+          { angle: '30 deg', operation: 'join' },
+        ),
+      ]);
+    const run = async (i: number) => {
+      const result = await engine.recompute({ doc: doc(60 + (i % 100) * 0.3) });
+      if (result.status !== 'done' || result.bodies.length !== 2) throw new Error('no bodies');
+      for (const s of Object.values(result.features)) {
+        if (s.status === 'error') throw new Error(s.message);
+      }
+      engine.clear();
+    };
+    // One run through every angle first (the largest blocks OCCT asks for).
+    for (let i = 0; i < 100; i++) await run(i);
+    const before = kernel.stats();
+    for (let i = 100; i < 400; i++) await run(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(0);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
   it('recomputing a fixture 500 times with changing values does not grow the heap', {

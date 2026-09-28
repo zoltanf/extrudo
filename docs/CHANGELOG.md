@@ -2,6 +2,15 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-28 · **P2-07** Revolve (ADR-0029): the Solid tab's Revolve
+  turns sketch profiles or flat faces about an origin axis, a sketch line
+  (construction lines too) or a straight edge: a whole turn by default,
+  or an angle one way, symmetric or two ways, flipped as needed; new
+  body, join, cut or intersect. Select a profile and an axis first and
+  both land in the dialog; an arc in the view drags the angle all the way
+  round. The origin axes can now be picked (and are highlighted) in the
+  model. The kernel says when the axis isn't in the profile's plane or
+  the profile crosses it.
 - 2026-09-28 · **P2-06** Extrude (ADR-0028): E extrudes selected sketch
   profiles or flat faces into solids, one side, symmetric or two sides,
   each side to a distance, up to a face or vertex, or through all, with a
