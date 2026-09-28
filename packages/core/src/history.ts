@@ -49,6 +49,25 @@ export class UndoHistory {
     if (this.#levels.length === 1 && level.undo.length > this.#limit) level.undo.shift();
   }
 
+  /**
+   * Adds a change that has already been applied to the latest step of the
+   * innermost level, as if it had been part of it, and leaves the redo
+   * steps alone. With no step to join (a document just opened), the change
+   * isn't recorded at all: undo can't take it back. For changes that follow
+   * from the last one rather than from the user (P2-09: projected geometry
+   * catching up with the model it follows).
+   */
+  amend(entry: Omit<HistoryEntry, 'label'>): void {
+    if (entry.patches.length === 0) return;
+    const last = this.#top.undo.at(-1);
+    if (!last) return;
+    this.#top.undo[this.#top.undo.length - 1] = {
+      label: last.label,
+      patches: [...last.patches, ...entry.patches],
+      inversePatches: [...entry.inversePatches, ...last.inversePatches],
+    };
+  }
+
   get canUndo(): boolean {
     return this.#top.undo.length > 0;
   }

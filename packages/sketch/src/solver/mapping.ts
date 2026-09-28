@@ -13,16 +13,17 @@
  * of an angle) are read from the current coordinates, which the document
  * stores solved, so they're stable from one solve to the next.
  */
-import type {
-  SketchArc,
-  SketchCircle,
-  SketchConstraint,
-  SketchData,
-  SketchDimension,
-  SketchEllipse,
-  SketchEntity,
-  SketchLine,
-  SketchPoint,
+import {
+  projectedEntities,
+  type SketchArc,
+  type SketchCircle,
+  type SketchConstraint,
+  type SketchData,
+  type SketchDimension,
+  type SketchEllipse,
+  type SketchEntity,
+  type SketchLine,
+  type SketchPoint,
 } from '@extrudo/core';
 import type { SketchPrimitive } from '@salusoft89/planegcs/dist/sketch/sketch_primitive.js';
 
@@ -149,6 +150,13 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
       // Lines and splines are their points; the others have parameters of their own.
       if (e.type !== 'line' && e.type !== 'spline') fixedCurves.add(c.entity);
     }
+  }
+  // Projected geometry (P2-09) follows the model, not the sketch: fixed as if by `fix`.
+  for (const id of projectedEntities(sketch)) {
+    const e = entities[id];
+    if (!e) continue;
+    if (e.type === 'point') fixedPoints.add(id);
+    else if (e.type !== 'line' && e.type !== 'spline') fixedCurves.add(id);
   }
   const fixed = new Set<string>(fixedPoints);
   for (const [id, e] of Object.entries(entities)) {

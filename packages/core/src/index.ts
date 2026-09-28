@@ -41,6 +41,7 @@ export * from './sketch/curves';
 export * from './sketch/dimensions';
 export * from './sketch/feature';
 export * from './sketch/planes';
+export * from './sketch/projection';
 export * from './sketch/schema';
 export {
   createDocumentStore,

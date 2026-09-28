@@ -58,6 +58,10 @@ export interface FacadeBinding {
   describeIntsSize(): number;
   describeNumbersPtr(): number;
   describeNumbersSize(): number;
+  edgeGeometry(shape: number, edge: number, samples: number): number;
+  faceSilhouettes(shape: number, face: number, dx: number, dy: number, dz: number): number;
+  geometryPtr(): number;
+  geometrySize(): number;
   sketchClear(): void;
   sketchLine(x0: number, y0: number, x1: number, y1: number): number;
   sketchArc(cx: number, cy: number, radius: number, from: number, sweep: number): number;

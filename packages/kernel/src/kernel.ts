@@ -226,6 +226,40 @@ export class Kernel {
     return { faces, skipped };
   }
 
+  /**
+   * The exact geometry of edge `edge` of a shape (P2-09: what a sketch
+   * projects), with `samples` points along it for curves that aren't lines.
+   */
+  edgeGeometry(shape: ShapeHandle, edge: number, samples = 24): EdgeGeometry {
+    const f = this.#facade;
+    if (!f.edgeGeometry(shape, edge, samples)) {
+      throw new KernelError(f.lastError() || 'Unknown edge.');
+    }
+    return decodeEdgeGeometry(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize()));
+  }
+
+  /**
+   * The silhouette lines of face `face` seen along `direction`: the lines
+   * of a cylinder or cone where its normal is square to the view, clipped
+   * to the face (P2-09). None for other surfaces.
+   */
+  faceSilhouettes(shape: ShapeHandle, face: number, direction: Vec3): [Vec3, Vec3][] {
+    const f = this.#facade;
+    const n = f.faceSilhouettes(shape, face, direction[0], direction[1], direction[2]);
+    if (n < 0) throw new KernelError(f.lastError() || 'Unknown face.');
+    const v = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+    const out: [Vec3, Vec3][] = [];
+    for (let i = 0; i < n; i++) {
+      const o = 6 * i;
+      const at = (k: number) => v[o + k] as number;
+      out.push([
+        [at(0), at(1), at(2)],
+        [at(3), at(4), at(5)],
+      ]);
+    }
+    return out;
+  }
+
   count(shape: ShapeHandle, kind: SubShapeKind): number {
     const n = this.#facade.count(shape, KIND_CODE[kind]);
     if (n < 0) throw new KernelError('Unknown shape.');
@@ -336,6 +370,66 @@ export class Kernel {
   #copy<T extends { slice(): T }>(Type: TypedArrayConstructor<T>, ptr: number, length: number): T {
     return new Type(this.#oc.wasmMemory.buffer as ArrayBuffer, ptr, length).slice();
   }
+}
+
+/** A body edge's geometry (`Kernel.edgeGeometry`), in world mm. */
+export type EdgeGeometry =
+  | { type: 'degenerate' }
+  | {
+      type: 'line' | 'circle' | 'ellipse' | 'other';
+      closed: boolean;
+      /** Points along the edge, ends included, evenly spaced in its parameter. */
+      points: Vec3[];
+      /** Circles and ellipses. */
+      conic?: {
+        center: Vec3;
+        axis: Vec3;
+        /** The x (circle) or major (ellipse) direction, from which angles count. */
+        xDirection: Vec3;
+        /** Radius, or major radius. */
+        radius: number;
+        /** Ellipses: the minor radius. */
+        minor?: number;
+        /** Angles about the axis from the x direction, radians. */
+        first: number;
+        last: number;
+      };
+    };
+
+/** Decodes the facade's edgeGeometry numbers. */
+export function decodeEdgeGeometry(v: Float64Array): EdgeGeometry {
+  let k = 0;
+  const num = () => v[k++] as number;
+  const vec = (): Vec3 => [num(), num(), num()];
+  const code = num();
+  if (code < 0) return { type: 'degenerate' };
+  const closed = num() !== 0;
+  const n = num();
+  const points: Vec3[] = [];
+  for (let i = 0; i < n; i++) points.push(vec());
+  const type = code === 0 ? 'line' : code === 1 ? 'circle' : code === 2 ? 'ellipse' : 'other';
+  if (type === 'circle') {
+    const [center, axis, xDirection] = [vec(), vec(), vec()];
+    const radius = num();
+    return {
+      type,
+      closed,
+      points,
+      conic: { center, axis, xDirection, radius, first: num(), last: num() },
+    };
+  }
+  if (type === 'ellipse') {
+    const [center, axis, xDirection] = [vec(), vec(), vec()];
+    const radius = num();
+    const minor = num();
+    return {
+      type,
+      closed,
+      points,
+      conic: { center, axis, xDirection, radius, minor, first: num(), last: num() },
+    };
+  }
+  return { type, closed, points };
 }
 
 /** Releases every tracked shape on dispose, in reverse order. */

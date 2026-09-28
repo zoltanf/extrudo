@@ -9,7 +9,7 @@ import { insertFeature, refuseIfUsed } from '../document-commands';
 import { isReservedName } from '../expr/evaluate';
 import { nextModelParameterName, parameterNames } from '../expr/parameters';
 import { nextFeatureName } from '../features';
-import type { ConstraintId, DimensionId, FeatureId, SketchEntityId } from '../ids';
+import type { ConstraintId, DimensionId, FeatureId, ProjectionId, SketchEntityId } from '../ids';
 import type { Feature, GeomRef } from '../schema';
 import { dimensionRefs } from './dimensions';
 import { SKETCH_TYPE, sketchFeature, sketchInputs } from './feature';
@@ -147,6 +147,7 @@ function changeSketch(draft: DocumentDraft, change: SketchChange & { feature: Fe
     if (!(id in data.constraints)) throw new CommandError(`The sketch has no constraint "${id}".`);
     delete data.constraints[id];
   }
+  refuseProjectedEdits(data, Object.keys(update));
   for (const id of remove.entities ?? []) {
     if (!(id in data.entities)) throw new CommandError(`The sketch has no entity "${id}".`);
     delete data.entities[id];
@@ -203,6 +204,7 @@ function changeSketch(draft: DocumentDraft, change: SketchChange & { feature: Fe
     if (!d) throw new CommandError(`The sketch has no dimension "${id}".`);
     d.expr = expr;
   }
+  forgetRemovedProjections(data);
   const issue = sketchIssues(data)[0];
   if (issue) throw new CommandError(`Can't do that: ${issue.path.join('.')} ${issue.message}.`);
 }
@@ -257,6 +259,7 @@ export const removeFromSketch = defineCommand<RemoveFromSketchPayload>(
     for (const id of removal.entities) delete data.entities[id];
     for (const id of allConstraints) delete data.constraints[id];
     for (const id of allDimensions) delete data.dimensions[id];
+    forgetRemovedProjections(data);
   },
 );
 
@@ -437,9 +440,51 @@ function moveGeometry(
   }
 }
 
-function sketchDraft(draft: DocumentDraft, id: FeatureId): SketchData {
+/** The sketch content of feature `id` in a command's draft; throws if it isn't a sketch. */
+export function sketchDraft(draft: DocumentDraft, id: FeatureId): SketchData {
   const feature = draft.features.find((f) => f.id === id);
   const input = feature?.type === SKETCH_TYPE ? feature.inputs.sketch : undefined;
   if (input?.kind !== 'sketchData') throw new CommandError(`There's no sketch "${id}".`);
   return input.sketch as SketchData;
+}
+
+/**
+ * After entities are removed from a sketch: projected curves that went are
+ * marked deleted (`null`) in their projection (P2-09), so a later sync
+ * doesn't bring them back, and a projection with no curve left goes too.
+ * The commands that remove entities call it.
+ */
+export function forgetRemovedProjections(data: SketchData): void {
+  if (!data.projections) return;
+  for (const [pid, projection] of Object.entries(data.projections)) {
+    let live = false;
+    for (const [key, id] of Object.entries(projection.curves)) {
+      if (id === null) continue;
+      if (id in data.entities) live = true;
+      else projection.curves[key] = null;
+    }
+    if (Object.keys(projection.curves).length > 0 && !live) {
+      delete data.projections[pid as ProjectionId];
+    }
+  }
+  if (Object.keys(data.projections).length === 0) delete data.projections;
+}
+
+/** Whether a change edits projected geometry (P2-09), which only follows the model. */
+function refuseProjectedEdits(data: SketchData, ids: readonly string[]): void {
+  if (!data.projections) return;
+  const projected = new Set<string>();
+  for (const projection of Object.values(data.projections)) {
+    for (const id of Object.values(projection.curves)) {
+      const e = id === null ? undefined : data.entities[id];
+      if (!e || id === null) continue;
+      projected.add(id);
+      for (const p of entityPoints(e)) projected.add(p);
+    }
+  }
+  if (ids.some((id) => projected.has(id))) {
+    throw new CommandError(
+      "Projected geometry follows the model and can't be changed here. Delete it, or change the model.",
+    );
+  }
 }

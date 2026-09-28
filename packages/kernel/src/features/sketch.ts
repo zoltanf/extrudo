@@ -1,12 +1,18 @@
 import {
   ellipseShape,
+  faceSketchFrame,
   fitSpline,
+  type GeomRef,
   originPlane,
+  type ProjectedCurve,
+  type ProjectionId,
+  type ProjectionReport,
   type SketchData,
   type SketchEntity,
   type SketchEntityId,
   type SketchFrame,
   type SketchInputs,
+  type SketchReport,
   sketchFeature,
   type Vec2,
 } from '@extrudo/core';
@@ -19,7 +25,8 @@ import {
 } from '@extrudo/sketch/profiles';
 import { KernelError } from '../kernel';
 import type { PlanarCurve, PlanarFace } from '../planar';
-import type { KernelFeatureDefinition } from '../recompute/types';
+import type { EvalContext, KernelFeatureDefinition } from '../recompute/types';
+import { projectEdge, projectSegment } from './projection';
 
 /** A profile of a sketch as later features see it (`SketchOutputData.profiles`). */
 export interface SketchProfileInfo {
@@ -38,6 +45,11 @@ export interface SketchProfileInfo {
  * profile `<sketch>/<region>` reads `ctx.output(sketch).shapes[region]`.
  */
 export interface SketchOutputData {
+  /**
+   * The sketch-to-world frame: sketch (x, y) is `origin + x·x + y·y` in
+   * world mm. An origin plane's fixed frame, or a face's (`faceSketchFrame`,
+   * P2-09), which follows the face through recompute.
+   */
   frame: SketchFrame;
   /** Largest first. */
   profiles: SketchProfileInfo[];
@@ -51,18 +63,18 @@ export interface SketchOutputData {
  */
 export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
   ...sketchFeature,
-  // A sketch on a face follows that face, so it depends on the bodies.
-  bodyAccess: (inputs) => (inputs.plane.refs[0]?.kind === 'face' ? 'read' : 'none'),
-  evaluate({ kernel, inputs }) {
-    const plane = inputs.plane.refs[0];
-    if (plane?.kind === 'face') {
-      throw new KernelError("This version of Extrudo can't place a sketch on a face.");
-    }
-    const frame = plane ? originPlane(plane.id)?.frame : undefined;
-    if (!frame) {
-      throw new KernelError("Can't find this sketch's plane. Edit the sketch to pick another.");
-    }
+  // A sketch on a face follows that face, and projections follow their sources:
+  // both depend on the bodies.
+  bodyAccess: (inputs) =>
+    inputs.plane.refs[0]?.kind === 'face' ||
+    Object.keys(inputs.sketch.sketch.projections ?? {}).length > 0
+      ? 'read'
+      : 'none',
+  evaluate(ctx) {
+    const { kernel, inputs } = ctx;
+    const frame = sketchFrame(ctx, inputs.plane.refs[0]);
     const data = inputs.sketch.sketch;
+    const projections = projectAll(ctx, data, frame);
     const { curves, ids } = planarCurves(data);
     using scope = kernel.scope();
     const { faces } = kernel.planarFaces(curves, frame, PROFILE_TOLERANCE);
@@ -92,9 +104,98 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
       });
     }
     const output: SketchOutputData = { frame, profiles };
-    return { shapes, data: output };
+    const report: SketchReport = {
+      frame,
+      ...(Object.keys(projections).length > 0 && { projections }),
+    };
+    return { shapes, data: output, report };
   },
 };
+
+/**
+ * The sketch's frame: an origin plane's, or a flat face's (P2-09), resolved
+ * through topological naming so the sketch follows the face.
+ */
+function sketchFrame(ctx: EvalContext<SketchInputs>, plane: GeomRef | undefined): SketchFrame {
+  if (plane?.kind === 'face') {
+    const hit = ctx.resolve(plane, { label: 'the face to sketch on' });
+    const face = ctx.describe(hit.shape).faces[hit.index];
+    if (face?.type !== 'plane' || !face.direction) {
+      throw new KernelError(
+        "The face this sketch is on isn't flat any more. Delete the sketch, or undo the change that curved the face.",
+      );
+    }
+    return faceSketchFrame(face.centroid, face.direction);
+  }
+  const frame = plane ? originPlane(plane.id)?.frame : undefined;
+  if (!frame) {
+    throw new KernelError("Can't find this sketch's plane. Edit the sketch to pick another.");
+  }
+  return frame;
+}
+
+/**
+ * Where each projection's source is now, in the sketch plane (P2-09): the
+ * curves by key, as `SketchProjection.curves` keys them. A source that
+ * can't be found is reported lost, with a warning; the sketch still
+ * computes with the curves where they were.
+ */
+function projectAll(
+  ctx: EvalContext<SketchInputs>,
+  data: SketchData,
+  frame: SketchFrame,
+): Record<ProjectionId, ProjectionReport> {
+  const out: Record<ProjectionId, ProjectionReport> = {};
+  for (const [pid, projection] of Object.entries(data.projections ?? {})) {
+    const { ref } = projection;
+    const what = ref.kind === 'face' ? 'face' : 'edge';
+    try {
+      out[pid as ProjectionId] = { curves: projectSource(ctx, ref, frame) };
+    } catch (error) {
+      if (!(error instanceof KernelError)) throw error;
+      ctx.warn(
+        `Lost a projected ${what} after an earlier change; its curves stay where they were. Delete them, or project the ${what} again.`,
+      );
+      out[pid as ProjectionId] = { lost: true };
+    }
+  }
+  return out;
+}
+
+/** The curves of one projected edge or face, by key. */
+function projectSource(
+  ctx: EvalContext<SketchInputs>,
+  ref: GeomRef,
+  frame: SketchFrame,
+): Record<string, ProjectedCurve> {
+  const { kernel } = ctx;
+  const curves: Record<string, ProjectedCurve> = {};
+  if (ref.kind === 'edge') {
+    const hit = ctx.resolve(ref, { label: 'the projected edge' });
+    const curve = projectEdge(kernel.edgeGeometry(hit.shape, hit.index), frame);
+    if (curve) curves.edge = curve;
+    return curves;
+  }
+  const hit = ctx.resolve(ref, { label: 'the projected face' });
+  const description = ctx.describe(hit.shape);
+  const names = ctx.names(hit.body).edges;
+  using scope = kernel.scope();
+  const face = scope.track(kernel.subShape(hit.shape, 'face', hit.index));
+  const edges = [...new Set(kernel.locate(face, hit.shape, 'edge'))].filter((i) => i >= 0);
+  for (const edge of edges) {
+    // A seam (a cylinder meeting itself) bounds only this face: not an outline.
+    const around = description.edges[edge]?.faces ?? [];
+    if (around.length === 1 && around[0] === hit.index) continue;
+    const curve = projectEdge(kernel.edgeGeometry(hit.shape, edge), frame);
+    const key = names[edge] ?? `edge#${edge}`;
+    if (curve) curves[key] = curve;
+  }
+  kernel.faceSilhouettes(hit.shape, hit.index, frame.normal).forEach((segment, i) => {
+    const curve = projectSegment(segment, frame);
+    if (curve) curves[`sil:${i}`] = curve;
+  });
+  return curves;
+}
 
 const faceArea = (faces: readonly PlanarFace[], i: number) => (faces[i] as PlanarFace).area;
 

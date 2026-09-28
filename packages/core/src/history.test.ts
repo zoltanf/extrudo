@@ -36,6 +36,27 @@ describe('UndoHistory', () => {
     expect(history.canRedo).toBe(false);
   });
 
+  it('amends the latest step, so one undo takes back both (P2-09)', () => {
+    const history = new UndoHistory();
+    // Nothing to amend yet: the change stays, unrecorded.
+    let doc = sampleDocument();
+    const silent = applyCommand(doc, renameDocument({ name: 'Silent' }));
+    history.amend(silent);
+    doc = silent.doc;
+    expect(history.canUndo).toBe(false);
+
+    doc = run(history, doc, renameFeature({ id: fid('f2'), name: 'Base' }));
+    const follow = applyCommand(doc, renameFeature({ id: fid('f3'), name: 'Follows' }));
+    history.amend(follow);
+    doc = follow.doc;
+    expect(history.undoLabel).toBe('Rename feature');
+    doc = history.undo(doc);
+    expect(doc.features.map((f) => f.name)).toEqual(['Sketch1', 'Extrude1', 'Fillet1']);
+    expect(doc.name).toBe('Silent');
+    doc = history.redo(doc);
+    expect(doc.features.map((f) => f.name)).toEqual(['Sketch1', 'Base', 'Follows']);
+  });
+
   it('ignores changes that changed nothing', () => {
     const history = new UndoHistory();
     run(history, sampleDocument(), renameDocument({ name: 'Sample' }));
