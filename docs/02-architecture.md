@@ -127,7 +127,7 @@ interface ExtrudoDocument {
   parameters: Parameter[];                        // user parameters
   features: Feature[];                            // THE timeline, in order
   timelineMarker: number;                         // count of active features; the rest are rolled back
-  bodies: Record<BodyId, BodyMeta>;               // name, colour, visibility (geometry is derived)
+  bodies: Record<BodyId, BodyMeta>;               // name, colour, opacity, visibility (geometry is derived; ADR-0030)
   views: NamedView[];
   meta: { created: string; modified: string; appVersion: string };  // storage sets `modified`
 }
@@ -410,6 +410,20 @@ prisms from the sketch plane, side 2's faces named `side2:<source>`.
 intersect for the dialog's preview; the cache owns those handles like any
 output shape.
 
+Bodies (P2-08, ADR-0030, `packages/kernel/src/features/bodies.ts`): a
+body the feature made or changed that holds several separate solids is
+split into one body per solid (`splitSolids`, called on the evaluator's
+result): the largest piece keeps the body ID, the others take the
+feature's next free `<feature>:<n>` in geometric order, each with the
+whole's face names. Deleting a body is a **Remove** feature (`remove`,
+`bodyAccess: 'write'`): the body set without the bodies it names. On the
+UI thread, a recompute result names the document it is for
+(`ModelState.doc`); `followBodyNames` then stores metadata for live
+bodies without any, **amended into the latest undo step**
+(`DocumentState.amend`, `UndoHistory.amend`), so names ("Body3") never
+renumber and undo and redo take them along with the step that made the
+bodies.
+
 ### 5.3 Sketch → geometry
 
 - Solving happens in the main thread. The kernel receives solved geometry
@@ -449,8 +463,13 @@ output shape.
 - Faces are rendered as one merged `BufferGeometry` per body, with `faceRanges`
   for picking and highlight (highlight via a vertex-colour/attribute update, not
   separate meshes).
-- Edges are rendered as `LineSegments2` (screen-space width). Silhouette edges
-  come later.
+- Edges are rendered as `LineSegments2` (screen-space width). Silhouette
+  edges of curved faces (P2-08, ADR-0030, `viewport/silhouette.ts`) are the
+  zero line of `n · (eye − p)` over the mesh's smooth normals, one segment
+  per triangle whose nodes change sign, recomputed in the frame loop when
+  the camera moves; drawn in the wireframe and hidden-edge styles only.
+- Bodies take their stored colour and opacity (a see-through body doesn't
+  write depth).
 - Picking: three-mesh-bvh raycast for faces, with a screen-space distance test
   against edge polylines and vertices. Selection priority follows the active
   filter.
@@ -626,3 +645,8 @@ bundle-size budget. Every agent task must leave CI green.
   prisms for tapered two-sided extrudes, trimming at inclined objects,
   participants by distance, one body per solid, preview tools in the
   feature output.
+- **ADR-0030** Bodies. **Written 2026-09-28** (P2-08): stored body names
+  amended into the undo step that made the bodies, one body per solid
+  (the largest keeps the ID), the Remove feature, colour swatches and
+  opacity, browser rows that pick into the selection, silhouettes of
+  curved faces.
