@@ -1,9 +1,12 @@
 import {
   createDocument,
   createDocumentStore,
+  createModelStore,
   createSessionStore,
   type FeatureId,
+  type GeomRef,
   originPlaneRef,
+  readSketch,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { memoryPreferences } from '../platform';
@@ -16,6 +19,7 @@ function setup() {
     store: createDocumentStore(createDocument()),
     session: createSessionStore(),
     viewport: createViewportStore({ preferences: memoryPreferences(), reducedMotion: () => true }),
+    model: createModelStore<unknown>(),
   };
   const messages: string[] = [];
   const actions = createFeatureActions(stores, (tone, text) => messages.push(`${tone}: ${text}`));
@@ -124,6 +128,72 @@ describe('feature actions', () => {
     actions.edit(t.a);
     expect(actions.edit(press.id)).toBe(false);
     expect(opened).toEqual(['p']);
+  });
+
+  it('roll the marker and move features, one step each, refused while a sketch is open (P2-11)', () => {
+    const t = setup();
+    t.actions.rollTo(1);
+    expect(t.s().doc.timelineMarker).toBe(1);
+    expect(t.s().undoLabel).toBe('Move timeline marker');
+    // Rolled back already: no step.
+    t.actions.rollTo(1);
+    t.s().undo();
+    expect(t.s().doc.timelineMarker).toBe(2);
+    expect(t.actions.moveProblem(t.b, 0)).toBeUndefined();
+    expect(t.actions.move(t.b, 0)).toBe(true);
+    expect(t.s().doc.features.map((f) => f.id)).toEqual([t.b, t.a]);
+    expect(t.s().undoLabel).toBe('Move feature');
+    t.actions.edit(t.a);
+    expect(t.actions.moveProblem(t.b, 1)).toBe('Finish the sketch first.');
+    expect(t.actions.move(t.b, 1)).toBe(false);
+    t.actions.rollTo(0);
+    expect(t.s().doc.timelineMarker).toBe(2);
+    expect(t.messages).toEqual([
+      'info: Finish the sketch first.',
+      'info: Finish the sketch first.',
+    ]);
+  });
+
+  it('fix references: redefine a lost plane, open a dialog, keep closest matches', () => {
+    const t = setup();
+    const fixed: string[] = [];
+    const actions = createFeatureActions(t, (tone, text) => t.messages.push(`${tone}: ${text}`), {
+      exportSketch: () => {},
+      fixFeature: (id, issues) => {
+        fixed.push(`dialog ${id} ${issues.length}`);
+        return true;
+      },
+      redefinePlane: (id) => fixed.push(`plane ${id}`),
+    });
+    const plane = readSketch(t.feature(t.a) as never)?.plane as GeomRef;
+    const now: GeomRef = { kind: 'plane', id: 'origin:yz' };
+    t.model.getState().computed({
+      features: {
+        [t.a]: { status: 'warning', refs: [{ ref: plane, state: 'guessed', now }] },
+      },
+      bodies: {},
+    });
+    expect(actions.issues(t.a)).toHaveLength(1);
+    expect(actions.issues(t.b)).toEqual([]);
+    actions.fix(t.a);
+    actions.fix(t.b);
+    expect(fixed).toEqual([`plane ${t.a}`]);
+    actions.keepClosest(t.a);
+    expect(readSketch(t.feature(t.a) as never)?.plane).toEqual(now);
+    expect(t.s().undoLabel).toBe('Fix references');
+
+    const press = { id: 'p' as FeatureId, type: 'press', name: 'P', suppressed: false, inputs: {} };
+    t.store.setState({
+      doc: { ...t.s().doc, features: [...t.s().doc.features, press], timelineMarker: 3 },
+    });
+    t.model.getState().computed({
+      features: { p: { status: 'error', refs: [{ ref: plane, state: 'lost' }] } } as never,
+      bodies: {},
+    });
+    actions.fix(press.id);
+    expect(fixed).toEqual([`plane ${t.a}`, 'dialog p 1']);
+    actions.redefinePlane(t.b);
+    expect(fixed.at(-1)).toBe(`plane ${t.b}`);
   });
 
   it('export opens the dialog for the sketch', () => {

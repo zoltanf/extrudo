@@ -7,6 +7,9 @@ import { clicker, kernelReady, openProject, projector, sketchOnXY } from './help
 // editing reopen the dialog. The Wall bracket template computes a body.
 
 test.use({ viewport: { width: 1440, height: 900 } });
+// Three extrudes, undo, redo and an edit, each waiting for the kernel: about 22 s alone,
+// over 30 s in a full parallel run on a busy machine.
+test.describe.configure({ timeout: 60_000 });
 
 let errors: string[] = [];
 

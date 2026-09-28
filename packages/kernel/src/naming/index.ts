@@ -39,7 +39,13 @@ export {
   type SweepSource,
   withHistory,
 } from './ops';
-export { type NamedBody, type ResolvedRef, type ResolveOptions, resolveRef } from './resolve';
+export {
+  LostReferenceError,
+  type NamedBody,
+  type ResolvedRef,
+  type ResolveOptions,
+  resolveRef,
+} from './resolve';
 export {
   createdName,
   edgeName,

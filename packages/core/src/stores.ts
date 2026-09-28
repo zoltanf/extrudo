@@ -15,7 +15,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { applyCommand, type Command } from './commands';
 import { type HistoryOptions, UndoHistory } from './history';
 import type { BodyId, FeatureId } from './ids';
-import type { ExtrudoDocument, GeomRefKind } from './schema';
+import type { ExtrudoDocument, GeomRef, GeomRefKind } from './schema';
 import type { SketchReport } from './sketch/projection';
 
 export interface DocumentState {
@@ -183,6 +183,29 @@ function nextSelection(
 export interface FeatureStatus {
   status: 'ok' | 'warning' | 'error';
   message?: string;
+  /**
+   * References the kernel couldn't follow exactly (P2-11, ADR-0033): lost
+   * ones and closest-match guesses. The timeline's "Fix references" reads
+   * them. Absent when there are none.
+   */
+  refs?: ReferenceIssue[];
+}
+
+/**
+ * A stored reference the kernel lost or guessed (ADR-0005 resolution,
+ * ADR-0033). `ref` names it as stored (kind and ID; a feature may store the
+ * same reference in several inputs).
+ */
+export interface ReferenceIssue {
+  ref: { kind: GeomRefKind; id: string };
+  /** `lost`: not found, the feature failed or skipped it; `guessed`: the closest match was taken. */
+  state: 'lost' | 'guessed';
+  /**
+   * For a guess: a reference to what the kernel took (its current name and
+   * fingerprint), when that differs from the stored one. Storing it in place
+   * of `ref` ("Keep closest match") makes the reference exact again.
+   */
+  now?: GeomRef;
 }
 
 /** How the last recompute went, for the status bar. */

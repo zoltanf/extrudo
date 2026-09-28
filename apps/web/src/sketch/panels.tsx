@@ -69,6 +69,9 @@ function PanelTitle({ children }: { children: ReactNode }) {
 
 export interface PlanePromptProps {
   session: SessionStore;
+  /** Default "Create Sketch"; Redefine Plane (P2-11) names its own. */
+  title?: string;
+  hint?: string;
   onPick(plane: OriginPlaneId): void;
   onCancel(): void;
 }
@@ -77,7 +80,13 @@ export interface PlanePromptProps {
  * Create Sketch, waiting for a plane: pick one in the viewport or here.
  * Hovering a button highlights its plane in the viewport.
  */
-export function PlanePrompt({ session, onPick, onCancel }: PlanePromptProps) {
+export function PlanePrompt({
+  session,
+  title = 'Create Sketch',
+  hint = 'Pick a plane or a flat face in the view, or choose a plane here.',
+  onPick,
+  onCancel,
+}: PlanePromptProps) {
   const hover = useStore(session, (s) => (s.hover?.kind === 'plane' ? s.hover.id : undefined));
   const leave = (id: OriginPlaneId) => {
     const current = session.getState().hover;
@@ -85,10 +94,10 @@ export function PlanePrompt({ session, onPick, onCancel }: PlanePromptProps) {
   };
   return (
     <PanelColumn>
-      <FloatingPanel label="Create Sketch">
-        <PanelTitle>Create Sketch</PanelTitle>
+      <FloatingPanel label={title}>
+        <PanelTitle>{title}</PanelTitle>
         <p className="text-sm text-muted" id="plane-prompt-hint">
-          Pick a plane or a flat face in the view, or choose a plane here.
+          {hint}
         </p>
         <fieldset
           className="m-0 grid grid-cols-3 gap-1 border-0 p-0"

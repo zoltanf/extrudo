@@ -10,6 +10,7 @@ import {
 } from '@extrudo/core';
 import { KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
 import { type NamedShape, namedBoolean, namedPrism, type SweepSource } from '../naming/ops';
+import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
@@ -252,7 +253,8 @@ function inclinedSide(
 function objectPlane(ctx: EvalContext<ExtrudeInputs>, ref: GeomRef, along: Vec3): Plane {
   if (ref.kind === 'plane') {
     const frame = originPlane(ref.id)?.frame;
-    if (!frame) throw new KernelError("Can't find the plane to extrude to. Pick it again.");
+    if (!frame)
+      throw new LostReferenceError("Can't find the plane to extrude to. Pick it again.", ref);
     return { point: frame.origin, normal: frame.normal };
   }
   const label = ref.kind === 'vertex' ? 'the vertex to extrude to' : 'the face to extrude to';

@@ -11,6 +11,7 @@ import { nextModelParameterName, parameterNames } from '../expr/parameters';
 import { nextFeatureName } from '../features';
 import type { ConstraintId, DimensionId, FeatureId, ProjectionId, SketchEntityId } from '../ids';
 import type { Feature, GeomRef } from '../schema';
+import { checkNewReferences } from '../timeline';
 import { dimensionRefs } from './dimensions';
 import { SKETCH_TYPE, sketchFeature, sketchInputs } from './feature';
 import { originPlane } from './planes';
@@ -31,12 +32,7 @@ export const createSketch = defineCommand<{ id: FeatureId; plane: GeomRef; name?
   'sketch.create',
   'Create sketch',
   (draft, { id, plane, name }) => {
-    if (plane.kind !== 'plane' && plane.kind !== 'face') {
-      throw new CommandError('A sketch needs a plane or a flat face.');
-    }
-    if (plane.kind === 'plane' && plane.id.startsWith('origin:') && !originPlane(plane.id)) {
-      throw new CommandError(`There's no origin plane "${plane.id}".`);
-    }
+    checkSketchPlane(plane);
     const feature: Feature = {
       id,
       type: SKETCH_TYPE,
@@ -48,6 +44,37 @@ export const createSketch = defineCommand<{ id: FeatureId; plane: GeomRef; name?
     insert.recipe(draft, insert.payload);
   },
 );
+
+/**
+ * Puts a sketch on another plane or flat face (P2-11, ADR-0033): "Redefine
+ * Plane", also the fix for a sketch whose face was lost. The sketch's
+ * content stays as it is in sketch coordinates. Refused for a face made by
+ * the sketch itself or a later feature.
+ */
+export const redefineSketchPlane = defineCommand<{ id: FeatureId; plane: GeomRef }>(
+  'sketch.plane',
+  'Redefine sketch plane',
+  (draft, { id, plane }) => {
+    const index = draft.features.findIndex((f) => f.id === id);
+    const feature = draft.features[index];
+    const input = feature?.inputs.plane;
+    if (!feature || feature.type !== SKETCH_TYPE || input?.kind !== 'ref') {
+      throw new CommandError(`Feature ${id} isn't a sketch.`);
+    }
+    checkSketchPlane(plane);
+    checkNewReferences(draft, index, [plane]);
+    input.refs = [plane];
+  },
+);
+
+function checkSketchPlane(plane: GeomRef): void {
+  if (plane.kind !== 'plane' && plane.kind !== 'face') {
+    throw new CommandError('A sketch needs a plane or a flat face.');
+  }
+  if (plane.kind === 'plane' && plane.id.startsWith('origin:') && !originPlane(plane.id)) {
+    throw new CommandError(`There's no origin plane "${plane.id}".`);
+  }
+}
 
 export interface AddToSketchPayload {
   feature: FeatureId;

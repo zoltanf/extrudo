@@ -23,6 +23,7 @@ import {
   type FeatureRegistry,
   type FeatureStatus,
   type GeomRef,
+  type ReferenceIssue,
 } from '@extrudo/core';
 import type { SubShapeKind } from '../history';
 import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
@@ -30,7 +31,7 @@ import type { MeshOptions } from '../mesh';
 import type { ShapeDescription } from '../naming/description';
 import { fingerprintOf } from '../naming/fingerprint';
 import { namesOf, positionalNames, type TopoNames } from '../naming/names';
-import { resolveRef } from '../naming/resolve';
+import { LostReferenceError, resolveRef } from '../naming/resolve';
 import { hashOf } from './hash';
 import type {
   BodyResult,
@@ -402,6 +403,13 @@ export class RecomputeEngine {
   ): Entry {
     const kernel = this.#kernel;
     const warnings: string[] = [];
+    // References it lost or guessed (ADR-0033), by kind and ID; a loss outranks a guess.
+    const issues = new Map<string, ReferenceIssue>();
+    const note = (ref: GeomRef, state: ReferenceIssue['state'], now?: GeomRef) => {
+      const key = `${ref.kind} ${ref.id}`;
+      if (issues.get(key)?.state === 'lost') return;
+      issues.set(key, { ref: { kind: ref.kind, id: ref.id }, state, ...(now && { now }) });
+    };
     const bodyNames = (id: BodyId): TopoNames => {
       const shape = bodies.get(id);
       const names = shape === undefined ? undefined : this.#names.get(shape);
@@ -418,8 +426,31 @@ export class RecomputeEngine {
       describe,
       resolve(ref, options) {
         const named = [...bodies].map(([id, shape]) => ({ id, shape, names: bodyNames(id) }));
-        const resolved = resolveRef(ref, named, describe, options);
-        if (resolved.warning) warnings.push(resolved.warning);
+        let resolved: ReturnType<typeof resolveRef>;
+        try {
+          resolved = resolveRef(ref, named, describe, options);
+        } catch (error) {
+          if (error instanceof LostReferenceError) note(error.ref, 'lost');
+          throw error;
+        }
+        if (resolved.warning) {
+          warnings.push(resolved.warning);
+          // What it took instead, as a reference that would resolve exactly ("Keep closest match").
+          const now: GeomRef | undefined =
+            resolved.id === ref.id
+              ? undefined
+              : {
+                  kind: resolved.kind,
+                  id: resolved.id,
+                  fingerprint: fingerprintOf(
+                    describe(resolved.shape),
+                    bodyNames(resolved.body),
+                    resolved.kind,
+                    resolved.index,
+                  ),
+                };
+          note(ref, 'guessed', now);
+        }
         return resolved;
       },
       warn(message) {
@@ -449,6 +480,7 @@ export class RecomputeEngine {
     } catch (error) {
       // A WASM abort kills the kernel; the service turns it into a crash.
       if (error instanceof WebAssembly.RuntimeError) throw error;
+      if (error instanceof LostReferenceError) note(error.ref, 'lost');
       if (!(error instanceof KernelError)) console.error(error);
       const message = error instanceof Error ? error.message : String(error);
       status = {
@@ -457,6 +489,8 @@ export class RecomputeEngine {
       };
       output = undefined;
     }
+    if (status.status !== 'ok' && issues.size > 0)
+      status = { ...status, refs: [...issues.values()] };
 
     const handles = output ? outputHandles(output) : [];
     const fresh = handles.filter((h) => !this.#refs.has(h));

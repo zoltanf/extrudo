@@ -321,6 +321,7 @@ describe('topological naming', { timeout: 60_000 }, () => {
       status: 'error',
       message:
         "Can't find its edge any more: an earlier change removed it. Edit the feature and pick it again.",
+      refs: [{ ref: { kind: 'edge', id: expect.any(String) }, state: 'lost' }],
     });
   });
 
@@ -380,6 +381,7 @@ describe('topological naming', { timeout: 60_000 }, () => {
     expect(status(result, 'P')).toMatchObject({
       status: 'error',
       message: expect.stringMatching(/^Can't find its face any more/),
+      refs: [{ ref: { kind: 'face', id: E(`side:${p.right}`) }, state: 'lost' }],
     });
   });
 
@@ -405,6 +407,18 @@ describe('topological naming', { timeout: 60_000 }, () => {
       status: 'warning',
       message:
         'Lost its face after an earlier change and picked the closest match. Check the result, or edit the feature and pick it again.',
+      // What it took, with a fresh fingerprint: storing it makes the reference exact (ADR-0033).
+      refs: [
+        {
+          ref: { kind: 'face', id: top.id },
+          state: 'guessed',
+          now: {
+            kind: 'face',
+            id: `extrude:E2:side:${p.top}`,
+            fingerprint: expect.objectContaining({ type: 'plane' }),
+          },
+        },
+      ],
     });
     // Nothing like it left (a revolved ring instead): an error, not a wild guess.
     const b = new SketchBuilder();
@@ -434,6 +448,9 @@ describe('topological naming', { timeout: 60_000 }, () => {
     expect(status(result, 'Q')).toMatchObject({
       status: 'warning',
       message: expect.stringMatching(/^Its face was split/),
+      refs: [
+        { ref: { kind: 'face', id: E('cap:end') }, state: 'guessed', now: { id: E('cap:end#2') } },
+      ],
     });
   });
 

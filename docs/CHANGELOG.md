@@ -2,6 +2,16 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-28 · **P2-11** Timeline v2 (ADR-0033): drag the rollback marker
+  (or focus it and use the arrow keys, Home and End); drag chips to
+  reorder them, refused with a message when a feature would come before
+  something it uses; Roll Back to Here and Move to End in the chip and
+  browser menus. A sketch can move to another plane or face (Redefine
+  Plane). When a change loses a face, edge, profile or plane a feature
+  used, Fix References picks it again (in the feature's dialog, or a new
+  plane for a sketch); when the kernel took the closest match (a warning
+  chip), Keep Closest Match stores it. While a dialog edits a feature, the
+  timeline shows the marker after it.
 - 2026-09-28 · **P2-12** STL, 3MF and STEP export (ADR-0034): Export in
   the 3D Print tab, the File menu and a body's menu. Pick bodies (the
   selection, or every shown one), 3MF (objects with names, colours and

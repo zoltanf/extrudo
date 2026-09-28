@@ -24,6 +24,7 @@ import {
   profileKey,
 } from '@extrudo/sketch/profiles';
 import { KernelError } from '../kernel';
+import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve, PlanarFace } from '../planar';
 import type { EvalContext, KernelFeatureDefinition } from '../recompute/types';
 import { projectEdge, projectSegment } from './projection';
@@ -135,7 +136,8 @@ function sketchFrame(ctx: EvalContext<SketchInputs>, plane: GeomRef | undefined)
   }
   const frame = plane ? originPlane(plane.id)?.frame : undefined;
   if (!frame) {
-    throw new KernelError("Can't find this sketch's plane. Edit the sketch to pick another.");
+    const message = "Can't find this sketch's plane. Redefine its plane to pick another.";
+    throw plane ? new LostReferenceError(message, plane) : new KernelError(message);
   }
   return frame;
 }

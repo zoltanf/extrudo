@@ -100,6 +100,22 @@ brief, voice) is in **`05-brand.md`**. In short:
 - **Timeline (bottom):** playback buttons, feature chips with category colour
   and icon, and a rollback marker (a draggable ▼ handle). The chip tooltip
   shows the name, type and status message.
+- **As built (P2-11, ADR-0033):** the marker is a slider: drag it (a ghost
+  shows the gap, chips behind it dim, the model rolls when it is let go,
+  one undo step), or focus it and use ←/→, Home and End. Drag a chip to
+  move it: an accent line shows where it goes, red with the reason when
+  the move would put a feature before something it uses (or after
+  something that uses it); dropping there says why in a toast, Esc puts
+  it back. New features go in at the marker. The chip and browser menus
+  add Roll Back (Forward) to Here, Move to End, Redefine Plane… (sketches)
+  and, when the kernel lost or guessed a reference, Fix References… and
+  Keep Closest Match. Fix References opens the feature's dialog with the
+  lost picks taken out, a note above the fields and the field waiting for
+  a pick; for a sketch it is Redefine Plane: Create Sketch's plane prompt
+  titled "Redefine Plane", picking planes and the faces made before the
+  sketch. While a dialog edits a feature, the marker shows dashed after it
+  and later chips dim; the marker and chips stay put meanwhile, as while a
+  sketch is open.
 - **Status bar:** selection summary (e.g. "2 edges"), measure readout (bbox of
   the selection), kernel status (spinner while recomputing), units, and the
   viewport's render rate ("58 fps · 1.4 ms": frames drawn in the last

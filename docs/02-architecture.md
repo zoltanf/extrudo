@@ -330,6 +330,16 @@ is `KernelClient`, which restarts the worker after a crash.
   `have`, and each feature's optional `report` (plain JSON for the UI:
   a sketch's frame and projections, P2-09). The UI side is `Recomputer`
   (one `KernelClient` per open project), which fills the model store.
+- **Reference issues (P2-11, ADR-0033):** a warning or error status lists
+  the references the feature lost or the kernel guessed
+  (`FeatureStatus.refs`: `{ ref, state: 'lost'|'guessed', now? }`, `now`
+  being what a guess took). Evaluators throw `LostReferenceError` (a
+  `KernelError` with the reference) for anything they can't find; the
+  engine records it, and wraps `ctx.resolve` for guesses. Timeline order
+  is checked in core (`packages/core/src/timeline.ts`): a feature builds on
+  the features named in its stored references (profiles, bodies, face and
+  edge names), and `moveFeature` refuses a move that breaks that;
+  expressions don't order features.
 - **Memory:** OCCT objects in Emscripten are not garbage-collected. All
   evaluator code uses a `using`/`scope.track()` disposal pattern, and the cache
   deletes shapes on eviction. This is a hard coding rule.

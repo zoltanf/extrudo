@@ -22,6 +22,7 @@ import {
 import { PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
 import { KernelError, type ShapeScope, type Vec3 } from '../kernel';
 import { type NamedShape, namedPrism, namedRevolve } from '../naming/ops';
+import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve, PlanarFrame } from '../planar';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
@@ -138,8 +139,9 @@ function planeFrame(ctx: EvalContext, ref: GeomRef, noun: string): SketchFrame {
   }
   const frame = ref.kind === 'plane' ? originPlane(ref.id)?.frame : undefined;
   if (!frame) {
-    throw new KernelError(
+    throw new LostReferenceError(
       `Can't find the plane the ${noun} sits on. Edit the ${noun} and pick another.`,
+      ref,
     );
   }
   return frame;

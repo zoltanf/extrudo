@@ -304,6 +304,40 @@ describe('OK and Cancel', () => {
     expect(t.controller.edit('box' as FeatureId)).toBe(false);
   });
 
+  it('fixes references: lost ones out, guesses replaced, the field taking picks (P2-11)', () => {
+    const t = setupDialogs();
+    t.session.getState().select([faceItem(1), faceItem(2)]);
+    t.controller.start('fake-press');
+    t.controller.ok();
+    const id = t.store.getState().doc.features[1]?.id as FeatureId;
+    const now = { kind: 'face' as const, id: 'box:front#1' };
+    expect(
+      t.controller.edit(id, {
+        fix: [
+          { ref: { kind: 'face', id: 'box:top' }, state: 'lost' },
+          { ref: { kind: 'face', id: 'box:front' }, state: 'guessed', now },
+        ],
+      }),
+    ).toBe(true);
+    const open = t.open() as OpenDialog;
+    expect(open.values.refs.faces).toEqual([now]);
+    expect(open.pickField).toBe('faces');
+    expect(open.note).toBe(
+      'Press1 lost 1 reference: pick it again in Faces. Where the model changed, the fields show the closest match the kernel took: keep it with OK, or pick again.',
+    );
+    t.controller.select.onClick(faceItem(5), false);
+    expect(t.controller.ok()).toBe(true);
+    const faces = t.store.getState().doc.features[1]?.inputs.faces;
+    expect(faces?.kind === 'ref' && faces.refs.map((r) => r.id)).toEqual([
+      'box:front#1',
+      'box:right',
+    ]);
+    // One undo step.
+    t.store.getState().undo();
+    const back = t.store.getState().doc.features[1]?.inputs.faces;
+    expect(back?.kind === 'ref' && back.refs.map((r) => r.id)).toEqual(['box:top', 'box:front']);
+  });
+
   it('gives the manipulators the field values in the context', () => {
     const t = setupDialogs();
     t.session.getState().select([faceItem(1)]);

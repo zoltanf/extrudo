@@ -606,8 +606,14 @@ describe('revolve', { timeout: 120_000 }, () => {
     ];
     for (const [features, message] of cases) {
       const result = await run(testDocument(features));
-      expect(status(result, 'V'), message).toEqual({ status: 'error', message });
+      // Lost references are listed too (ADR-0033); the lost-reference tests check them.
+      const { refs: _, ...plain } = status(result, 'V');
+      expect(plain, message).toEqual({ status: 'error', message });
     }
+    const lostAxis = await run(testDocument([p.feature, revolve('V', [pick], line('S', 'gone'))]));
+    expect(status(lostAxis, 'V').refs).toEqual([
+      { ref: { kind: 'sketchEntity', id: 'S/gone' }, state: 'lost' },
+    ]);
 
     // A curved edge as the axis, a curved face to revolve.
     const c = new SketchBuilder();

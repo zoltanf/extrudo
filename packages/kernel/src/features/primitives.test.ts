@@ -389,10 +389,13 @@ describe('primitives', { timeout: 120_000 }, () => {
     ];
     for (const [type, options, message] of cases) {
       const result = await fresh(testDocument([primitive('P', type, options)]));
-      expect(status(result, 'P'), `${type} ${JSON.stringify(options)}`).toEqual({
-        status: 'error',
-        message,
-      });
+      const { refs, ...plain } = status(result, 'P');
+      expect(plain, `${type} ${JSON.stringify(options)}`).toEqual({ status: 'error', message });
+      // A lost plane or face is listed for "Fix References" (ADR-0033).
+      const lost = (options as { plane?: { kind: string; id: string } }).plane;
+      expect(refs).toEqual(
+        lost ? [{ ref: { kind: lost.kind, id: lost.id }, state: 'lost' }] : undefined,
+      );
       expect(result.bodies).toEqual([]);
     }
   });

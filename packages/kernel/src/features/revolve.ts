@@ -11,6 +11,7 @@ import {
 } from '@extrudo/core';
 import { type Axis, KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
 import { type NamedShape, namedRevolve, type SweepSource } from '../naming/ops';
+import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
@@ -105,7 +106,9 @@ function axisOf(ctx: EvalContext<RevolveInputs>, ref: GeomRef): Axis {
   switch (ref.kind) {
     case 'axis': {
       const found = originAxis(ref.id);
-      if (!found) throw new KernelError("Can't find the axis to revolve about. Pick it again.");
+      if (!found) {
+        throw new LostReferenceError("Can't find the axis to revolve about. Pick it again.", ref);
+      }
       return { origin: found.origin, direction: found.direction };
     }
     case 'sketchEntity':
@@ -140,8 +143,9 @@ function sketchLineAxis(ctx: EvalContext<RevolveInputs>, ref: GeomRef): Axis {
     | undefined;
   const line = data?.lines?.[parsed.entity];
   if (!data?.frame || !line) {
-    throw new KernelError(
+    throw new LostReferenceError(
       "Can't find the axis line any more: an earlier change to its sketch removed it. Edit the revolve and pick another axis.",
+      ref,
     );
   }
   const a = sketchToWorld(data.frame, line[0]);

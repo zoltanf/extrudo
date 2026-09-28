@@ -123,6 +123,11 @@ export function FeatureDialogPanel({
         </button>
       </header>
       <div className="flex min-h-0 flex-col gap-2.5 overflow-y-auto p-3">
+        {open.note && (
+          <p role="note" aria-label="Fix references" className="text-sm text-warning">
+            {open.note}
+          </p>
+        )}
         {shownFields(spec, open.values).map((field) => (
           <FieldRow
             key={field.name}
