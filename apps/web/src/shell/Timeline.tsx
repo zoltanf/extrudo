@@ -117,6 +117,8 @@ export function Timeline({
   const [chipDrag, setChipDrag] = useState<ChipDrag>();
   // The marker stays put while dragged (it holds the pointer); a ghost shows where it goes.
   const shown = editIndex >= 0 ? editIndex + 1 : marker;
+  // The marker is drawn between other chips after a key moves it: focus follows it there.
+  const refocus = useRef(false);
 
   return (
     <section
@@ -174,6 +176,7 @@ export function Timeline({
                     locked={locked}
                     onDrag={setMarkerDrag}
                     onMove={move}
+                    refocus={refocus}
                   />
                 )}
                 <Chip
@@ -202,6 +205,7 @@ export function Timeline({
                 locked={locked}
                 onDrag={setMarkerDrag}
                 onMove={move}
+                refocus={refocus}
               />
             )}
             {chipDrag && <DropIndicator drag={chipDrag} />}
@@ -493,6 +497,7 @@ function Marker({
   locked,
   onDrag,
   onMove,
+  refocus,
 }: {
   list: RefObject<HTMLOListElement | null>;
   features: readonly Feature[];
@@ -503,8 +508,16 @@ function Marker({
   locked: boolean;
   onDrag(drag: MarkerDrag | undefined): void;
   onMove(index: number): void;
+  /** Set before a key moves it: the marker in its new place takes the focus. */
+  refocus: RefObject<boolean>;
 }) {
   const drag = useRef<{ from: number; at: number }>(undefined);
+  const slider = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    slider.current?.focus();
+  });
   const count = features.length;
   const gapAt = (x: number): MarkerDrag => {
     const el = list.current;
@@ -561,7 +574,10 @@ function Marker({
     event.preventDefault();
     event.stopPropagation();
     if (to === -2) return end(false);
-    if (to >= 0 && to <= count && to !== index) onMove(to);
+    if (to >= 0 && to <= count && to !== index) {
+      refocus.current = true;
+      onMove(to);
+    }
   };
   const before = features[index - 1]?.name;
   const text = editing
@@ -577,6 +593,7 @@ function Marker({
     >
       {/* A hit area wider than the bar; the slider carries the marker's name and value. */}
       <div
+        ref={slider}
         role="slider"
         tabIndex={0}
         aria-label="Timeline marker"
