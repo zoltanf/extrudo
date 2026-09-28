@@ -26,7 +26,7 @@ export function FeatureMenuItems({
   onRename,
 }: {
   feature: Feature;
-  /** An active, valid sketch: offer Edit Sketch. */
+  /** An active, valid sketch, or a feature with a dialog: offer Edit Sketch / Edit Feature. */
   editable: boolean;
   actions: FeatureActions;
   onRename(): void;
@@ -38,7 +38,7 @@ export function FeatureMenuItems({
       {editable && (
         <>
           <MenuItem icon={<Pencil size={14} />} onSelect={() => actions.edit(feature.id)}>
-            Edit Sketch
+            {readSketch(feature) ? 'Edit Sketch' : 'Edit Feature'}
           </MenuItem>
           <MenuSeparator />
         </>

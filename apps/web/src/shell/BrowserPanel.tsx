@@ -23,7 +23,7 @@ import { useStore } from 'zustand';
 import { ContextMenu, IconButton, ToolIcon } from '../design-system';
 import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
-import { type FeatureActions, isEditableSketch } from './featureActions';
+import type { FeatureActions } from './featureActions';
 
 export const BROWSER_ID = 'browser-panel';
 
@@ -153,7 +153,7 @@ export function BrowserPanel({
                   <SketchLeaf
                     key={feature.id}
                     feature={feature}
-                    editable={isEditableSketch(feature, index, doc.timelineMarker)}
+                    editable={actions.canEdit(feature, index, doc.timelineMarker)}
                     rolledBack={index >= doc.timelineMarker}
                     active={feature.id === activeSketchId}
                     actions={actions}

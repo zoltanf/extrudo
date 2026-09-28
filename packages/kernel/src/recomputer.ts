@@ -15,6 +15,7 @@ import type {
   Feature,
   FeatureId,
   FeatureStatus,
+  GeomRef,
   ModelStore,
 } from '@extrudo/core';
 import {
@@ -23,8 +24,9 @@ import {
   type KernelStatus,
   type SpawnKernel,
 } from './client';
+import type { SubShapeKind } from './history';
 import type { BodyMesh } from './mesh';
-import type { BodyResult, RecomputeResult } from './recompute/types';
+import type { BodyResult, PreviewToolMesh, RecomputeResult } from './recompute/types';
 import { isKernelCrash } from './service';
 
 export interface RecomputerOptions {
@@ -41,7 +43,12 @@ export interface RecomputerOptions {
 
 export interface Preview {
   features: Record<FeatureId, FeatureStatus>;
+  /** The bodies after the draft. Unchanged ones are the model store's own meshes (same objects). */
   bodies: Record<BodyId, BodyMesh>;
+  /** The draft's preview tools (ADR-0027); empty when it has none. */
+  tools: PreviewToolMesh[];
+  /** With `base`: the bodies before the draft (editing a feature shows the model rolled back to it). */
+  base?: Record<BodyId, BodyMesh>;
 }
 
 export class Recomputer {
@@ -60,6 +67,8 @@ export class Recomputer {
   readonly #crashed = new Map<FeatureId, Feature>();
   /** Meshes held, with the version the kernel gave each. */
   #meshes = new Map<BodyId, { version: string; mesh: BodyMesh }>();
+  /** The base meshes of the open dialog's last preview (editing), kept while it is open. */
+  #baseMeshes = new Map<BodyId, { version: string; mesh: BodyMesh }>();
   #preview:
     | {
         timer: ReturnType<typeof setTimeout>;
@@ -109,7 +118,11 @@ export class Recomputer {
    * draft has stayed the same for `previewDelayMs`. Resolves `undefined`
    * when a newer preview (or `endPreview`) supersedes it or it fails.
    */
-  preview(draft: Feature, index: number): Promise<Preview | undefined> {
+  preview(
+    draft: Feature,
+    index: number,
+    options: { base?: boolean } = {},
+  ): Promise<Preview | undefined> {
     this.#supersedePreview();
     const sequence = ++this.#previewSequence;
     return new Promise((resolve) => {
@@ -117,8 +130,9 @@ export class Recomputer {
         this.#preview = undefined;
         try {
           const doc = this.#document.getState().doc;
+          const have = { ...this.#have(), ...this.#baseHave() };
           const result = await this.client.call((api) =>
-            api.preview({ doc, draft, index, have: this.#have() }),
+            api.preview({ doc, draft, index, have, ...(options.base && { base: true }) }),
           );
           if (sequence !== this.#previewSequence || result.status !== 'done') {
             resolve(undefined);
@@ -126,16 +140,53 @@ export class Recomputer {
           }
           const bodies: Record<BodyId, BodyMesh> = {};
           for (const body of result.bodies) {
-            const mesh = body.mesh ?? this.#held(body);
+            const mesh = body.mesh ?? this.#held(body) ?? this.#heldBase(body);
             if (mesh) bodies[body.id] = mesh;
           }
-          resolve({ features: result.features, bodies });
+          let base: Record<BodyId, BodyMesh> | undefined;
+          if (result.base) {
+            base = {};
+            const held = new Map<BodyId, { version: string; mesh: BodyMesh }>();
+            for (const body of result.base) {
+              const mesh = body.mesh ?? this.#held(body) ?? this.#heldBase(body);
+              if (!mesh) continue;
+              base[body.id] = mesh;
+              held.set(body.id, { version: body.version, mesh });
+            }
+            this.#baseMeshes = held;
+          }
+          resolve({
+            features: result.features,
+            bodies,
+            tools: result.tools ?? [],
+            ...(base && { base }),
+          });
         } catch {
           resolve(undefined);
         }
       }, this.#previewDelayMs);
       this.#preview = { timer, resolve };
     });
+  }
+
+  /**
+   * The persistent reference of a face, edge or vertex of a body the model
+   * store shows (by its mesh index), or with `base` of the last preview's
+   * base, with its fingerprint (ADR-0005): what a feature dialog's
+   * selection field stores. Undefined if the kernel no longer has it or
+   * can't be reached.
+   */
+  async reference(
+    body: BodyId,
+    kind: SubShapeKind,
+    index: number,
+    base = false,
+  ): Promise<GeomRef | undefined> {
+    try {
+      return await this.client.call((api) => api.reference(body, kind, index, base));
+    } catch {
+      return undefined;
+    }
   }
 
   /** The dialog closed: drops a pending preview. */
@@ -147,6 +198,7 @@ export class Recomputer {
   #endPreview(): void {
     this.#supersedePreview();
     this.#previewSequence++;
+    this.#baseMeshes = new Map();
   }
 
   #supersedePreview(): void {
@@ -239,6 +291,20 @@ export class Recomputer {
 
   #have(): Record<BodyId, string> {
     return Object.fromEntries([...this.#meshes].map(([id, { version }]) => [id, version]));
+  }
+
+  /** The held base meshes a preview may leave out (where the model has another version). */
+  #baseHave(): Record<BodyId, string> {
+    const have: Record<BodyId, string> = {};
+    for (const [id, { version }] of this.#baseMeshes) {
+      if (this.#meshes.get(id)?.version !== version) have[id] = version;
+    }
+    return have;
+  }
+
+  #heldBase(body: BodyResult): BodyMesh | undefined {
+    const held = this.#baseMeshes.get(body.id);
+    return held?.version === body.version ? held.mesh : undefined;
   }
 
   #held(body: BodyResult): BodyMesh | undefined {

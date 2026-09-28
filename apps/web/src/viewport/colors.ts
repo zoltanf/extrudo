@@ -33,6 +33,11 @@ export interface SceneColors {
   profile: Rgba;
   /** Hover highlight; drawn at 45 % (docs/05-brand.md §3.4). */
   preselect: Rgba;
+  /** Feature dialog previews (P2-05): a new body, a join, a cut, an intersection. */
+  preview: Rgba;
+  previewJoin: Rgba;
+  previewCut: Rgba;
+  previewIntersect: Rgba;
 }
 
 const TOKENS: Record<keyof SceneColors, string> = {
@@ -50,6 +55,10 @@ const TOKENS: Record<keyof SceneColors, string> = {
   sketchConstruction: '--x-muted',
   profile: '--x-profile-fill',
   preselect: '--x-accent',
+  preview: '--x-preview',
+  previewJoin: '--x-preview-join',
+  previewCut: '--x-preview-cut',
+  previewIntersect: '--x-preview-intersect',
 };
 
 const FALLBACK: Rgba = { r: 0.5, g: 0.5, b: 0.5, a: 1 };

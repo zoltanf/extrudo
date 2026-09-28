@@ -80,6 +80,21 @@ describe('buildCommands', () => {
     expect(ctx.notify).toHaveBeenCalledWith('info', 'Extrude arrives with P2-06.');
   });
 
+  it('runs a tool a registered feature dialog makes ready (P2-05)', () => {
+    const ctx = context('model', { ready: new Set(['extrude']) });
+    const extrude = byId(ctx).get('extrude');
+    expect(extrude?.unavailable).toBeUndefined();
+    expect(extrude?.keys).toEqual(['E']);
+    extrude?.run();
+    expect(ctx.runTool).toHaveBeenCalledWith('extrude');
+  });
+
+  it("lists feature dialogs' own commands in model mode only", () => {
+    const own = { id: 'debugPress', label: 'Press (test)', group: 'Debug', keys: [], run: vi.fn() };
+    expect(byId(context('model', { dialogCommands: [own] })).get('debugPress')).toBe(own);
+    expect(byId(context('sketch', { dialogCommands: [own] })).has('debugPress')).toBe(false);
+  });
+
   it('turns the camera to the standard views', () => {
     const ctx = context('model');
     const lookFrom = vi.spyOn(ctx.viewport.getState(), 'lookFrom');

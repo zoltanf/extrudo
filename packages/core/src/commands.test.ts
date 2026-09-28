@@ -128,6 +128,16 @@ describe('document commands', () => {
     });
     doc = apply(doc, setFeatureSuppressed({ id: fid('f2'), suppressed: true }));
     expect(doc.features[1]?.suppressed).toBe(true);
+    // A dialog's OK replaces the inputs as a whole (P2-05).
+    doc = apply(
+      doc,
+      updateFeatureInputs({
+        id: fid('f2'),
+        inputs: { distance: { kind: 'expr', expr: '4 mm' } },
+        replace: true,
+      }),
+    );
+    expect(doc.features[1]?.inputs).toEqual({ distance: { kind: 'expr', expr: '4 mm' } });
   });
 
   it('show and hide features in one step, storing nothing while shown', () => {

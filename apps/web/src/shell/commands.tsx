@@ -64,6 +64,13 @@ export interface CommandContext {
   timeline: { collapsed: boolean; toggle(): void };
   file: FileActions;
   theme: { choice: ThemeChoice; set(choice: ThemeChoice): void };
+  /**
+   * Tools that work because a feature dialog is registered for them
+   * (P2-05), even while `shell/tools.ts` still names the task that brings them.
+   */
+  ready?: ReadonlySet<string>;
+  /** Commands of feature dialogs without a toolbar tool (a debug page's), in model mode. */
+  dialogCommands?: readonly AppCommand[];
 }
 
 const icon = (Icon: typeof Box) => <Icon size={16} strokeWidth={1.75} />;
@@ -80,7 +87,7 @@ const VIEWS: { id: string; face?: FaceName; label: string }[] = [
 
 function toolCommand(id: ToolId, group: string, ctx: CommandContext): AppCommand {
   const tool: Tool = TOOLS[id];
-  const unavailable = tool.comesWith && `Arrives with ${tool.comesWith}.`;
+  const unavailable = !isToolReady(tool, ctx.ready) && `Arrives with ${tool.comesWith}.`;
   return {
     id,
     label: tool.label,
@@ -136,6 +143,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
       }
     }
   }
+  if (ctx.mode === 'model') for (const command of ctx.dialogCommands ?? []) add(command);
   plain('undo', 'Undo', 'Edit', ctx.undo, { icon: icon(Undo2) });
   plain('redo', 'Redo', 'Edit', ctx.redo, { icon: icon(Redo2) });
   if (ctx.remove) plain('delete', 'Delete', 'Edit', ctx.remove, { icon: icon(Trash2) });
@@ -195,6 +203,11 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     }
   }
   return out;
+}
+
+/** Whether a tool runs: built, or made ready by a registered feature dialog (P2-05). */
+export function isToolReady(tool: Pick<Tool, 'id' | 'comesWith'>, ready?: ReadonlySet<string>) {
+  return tool.comesWith === undefined || (ready?.has(tool.id) ?? false);
 }
 
 /** One shortcut per key of every command that has keys. */

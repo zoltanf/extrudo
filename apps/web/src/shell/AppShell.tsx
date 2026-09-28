@@ -15,7 +15,12 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
-import { useTheme } from '../design-system';
+import { ToolIcon, useTheme } from '../design-system';
+import { DialogOverlay } from '../features/DialogOverlay';
+import { type DialogKernel, dialogBodies, viewPreview } from '../features/dialog';
+import { FeatureDialog } from '../features/FeatureDialog';
+import { type FeatureDialogs, featureDialogs, specForCommand } from '../features/registry';
+import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import type { Autosaver } from '../project/autosave';
@@ -82,7 +87,14 @@ export interface AppShellProps {
   platform: Platform;
   /** Shows a short message (a refused edit); the project page's toasts. */
   notify?(tone: 'info' | 'error', text: string): void;
+  /** Feature dialogs (P2-05): the app's registry unless a debug page brings its own. */
+  dialogs?: FeatureDialogs;
+  /** The project's kernel (its `Recomputer`): dialog previews and references. */
+  kernel?: DialogKernel;
 }
+
+/** The app's feature dialogs (`features/registry.ts`). */
+const APP_DIALOGS = featureDialogs();
 
 /**
  * The browser's own right-click menu ("Copy, Select all") has nothing for a
@@ -108,6 +120,8 @@ export function AppShell({
   file,
   platform,
   notify = () => {},
+  dialogs = APP_DIALOGS,
+  kernel,
 }: AppShellProps) {
   const { choice, setChoice } = useTheme(platform.preferences);
   const browser = usePanel(platform.preferences, { key: 'browser', size: 248, min: 180, max: 480 });
@@ -177,6 +191,60 @@ export function AppShell({
     };
   }, [store, session, viewport]);
 
+  // `run` changes every render; commands reach the latest one through a ref.
+  const runRef = useRef<(tool: ToolId) => void>(() => {});
+  // Feature dialogs (P2-05): one controller; while a dialog is open, picks go to its fields.
+  const { controller: dialog, open: dialogOpen } = useFeatureDialogs({
+    store,
+    session,
+    model,
+    viewport,
+    dialogs,
+    kernel,
+    notify,
+  });
+  // Editing a feature shows and picks the bodies before it (the preview's base).
+  const shownBodies = dialogBodies(dialogOpen, bodies);
+  const dialogItems = useDialogItems(dialogOpen, shownBodies);
+  const preview = useMemo(() => viewPreview(dialogOpen), [dialogOpen]);
+  const ready = useMemo(
+    () =>
+      new Set(
+        dialogs
+          .list()
+          .map((spec) => spec.command)
+          .filter((c): c is ToolId => typeof c === 'string'),
+      ),
+    [dialogs],
+  );
+  const dialogCommands = useMemo(
+    () =>
+      dialogs.list().flatMap((spec) => {
+        const c = spec.command;
+        if (typeof c === 'string') return [];
+        return [
+          {
+            id: c.id,
+            label: c.label,
+            group: c.group,
+            keywords: `${c.group} ${c.hint}`,
+            icon: <ToolIcon name={c.icon} category={c.category} size={16} />,
+            keys: keysFor(c.id),
+            run: () => runRef.current(c.id as ToolId),
+          },
+        ];
+      }),
+    [dialogs],
+  );
+  // A dialog stops a nav tool, like any command.
+  useEffect(() => {
+    if (dialogOpen) viewport.getState().setTool(undefined);
+  }, [dialogOpen, viewport]);
+  // Feature dialogs belong to the model: opening a sketch (from the timeline, say) ends one.
+  useEffect(() => {
+    if (mode === 'sketch') dialog?.cancel();
+  }, [mode, dialog]);
+
   // Deleting a dimension another expression uses is refused; say why.
   const remove = useMemo(
     () => () => {
@@ -217,8 +285,6 @@ export function AppShell({
     window.addEventListener('pointermove', onMove);
     return () => window.removeEventListener('pointermove', onMove);
   }, []);
-  // `run` changes every render; commands reach the latest one through a ref.
-  const runRef = useRef<(tool: ToolId) => void>(() => {});
   const commands = useMemo(
     () =>
       buildCommands({
@@ -229,8 +295,15 @@ export function AppShell({
           else runRef.current(tool);
         },
         notify,
-        undo: () => store.getState().undo(),
-        redo: () => store.getState().redo(),
+        // Undo and redo end an open dialog first (its draft isn't in the history).
+        undo: () => {
+          dialog?.cancel();
+          store.getState().undo();
+        },
+        redo: () => {
+          dialog?.cancel();
+          store.getState().redo();
+        },
         ...(mode === 'sketch' && !drawing && { remove }),
         ...(mode === 'sketch' &&
           host && {
@@ -242,12 +315,17 @@ export function AppShell({
         timeline: { collapsed: timeline.collapsed, toggle: timeline.toggle },
         file,
         theme: { choice, set: setChoice },
+        ready,
+        dialogCommands,
       }),
     [
       mode,
       host,
       notify,
       store,
+      dialog,
+      ready,
+      dialogCommands,
       drawing,
       remove,
       construction,
@@ -280,6 +358,18 @@ export function AppShell({
 
   const shortcuts = useMemo(
     () => [
+      // An open feature dialog: Esc cancels it (a field whose text doesn't evaluate reverts
+      // that first and keeps the key), Enter presses OK (fields press it after committing).
+      ...(dialogOpen && dialog
+        ? [
+            {
+              keys: 'Escape',
+              inFields: true,
+              run: () => dialog.cancel(),
+            },
+            { keys: 'Enter', run: () => dialog.ok() },
+          ]
+        : []),
       ...commandShortcuts(commands),
       ...keysFor('commandPalette').map((keys) => ({
         keys,
@@ -318,11 +408,33 @@ export function AppShell({
           ]
         : []),
     ],
-    [commands, openToolbox, session, stores, picking, mode, drawing, host, viewport],
+    [
+      commands,
+      openToolbox,
+      session,
+      stores,
+      picking,
+      mode,
+      drawing,
+      host,
+      viewport,
+      dialogOpen,
+      dialog,
+    ],
   );
   useShortcuts(shortcuts);
 
   const run = (tool: ToolId) => {
+    // A feature dialog's command opens it (P2-05); another tool (not Parameters) ends it.
+    const spec = specForCommand(dialogs, tool);
+    if (spec) {
+      if (mode === 'model') {
+        if (picking) cancelCreateSketch(stores);
+        dialog?.start(spec.type);
+      }
+      return;
+    }
+    if (tool !== 'parameters') dialog?.cancel();
     if (tool === 'parameters') setParametersOpen(true);
     else if (tool === 'sketch') {
       if (picking) cancelCreateSketch(stores);
@@ -362,8 +474,13 @@ export function AppShell({
             sketch: id,
             selected: profileIdsIn(session.getState().selection, id),
           }),
+        editFeature: (id) => {
+          if (picking) cancelCreateSketch(stores);
+          return dialog?.edit(id) ?? false;
+        },
+        hasDialog: (type) => dialogs.get(type) !== undefined,
       }),
-    [stores, notify, session],
+    [stores, notify, session, dialog, dialogs, picking],
   );
 
   // Every active, unsuppressed, shown sketch on a known plane is drawn (the open one even if
@@ -406,7 +523,12 @@ export function AppShell({
   const sketchPlane = sketches.find((s) => s.active)?.frame;
   // In the model, with no command running, the view picks bodies, sketch curves and
   // profiles (P2-03). Sketch mode keeps its own picking (the tool host).
-  const modelSelect = useModelSelection(session, bodies, mode === 'model' && !picking);
+  const sessionSelect = useModelSelection(
+    session,
+    bodies,
+    mode === 'model' && !picking && !dialogOpen,
+  );
+  const modelSelect = dialogOpen && mode === 'model' ? dialog?.select : sessionSelect;
 
   // A drawing tool takes the pointer; with none running, the host selects and drags geometry
   // (P1-09). Until the host has loaded, a click in the view clears the selection.
@@ -474,8 +596,17 @@ export function AppShell({
       />
       <Toolbar
         mode={mode}
-        activeTool={picking ? 'sketch' : drawing ? (activeTool as ToolId) : undefined}
+        activeTool={
+          picking
+            ? 'sketch'
+            : drawing
+              ? (activeTool as ToolId)
+              : dialogOpen && typeof dialogOpen.spec.command === 'string'
+                ? dialogOpen.spec.command
+                : undefined
+        }
         onRun={run}
+        ready={ready}
       />
       <main className="relative flex min-h-0">
         <BrowserPanel
@@ -512,7 +643,7 @@ export function AppShell({
         >
           <Viewport
             viewport={viewport}
-            bodies={bodies}
+            bodies={shownBodies}
             meta={doc.bodies}
             sketches={sketches}
             sketchPlane={sketchPlane}
@@ -521,9 +652,18 @@ export function AppShell({
             commandRunning={drawing || picking}
             onStopCommand={stopCommand}
             hover={hover}
-            selection={selection}
+            selection={dialogItems ?? selection}
             modelSelect={modelSelect}
+            preview={preview}
           >
+            {dialogOpen && dialog && (
+              <DialogOverlay
+                controller={dialog}
+                viewport={viewport}
+                settings={doc.settings}
+                bodies={shownBodies}
+              />
+            )}
             {showConstraints && tools && activeSketchId && sketchPlane && (
               <tools.Glyphs
                 store={store}
@@ -583,6 +723,7 @@ export function AppShell({
             onCancel={() => cancelCreateSketch(stores)}
           />
         )}
+        {dialog && <FeatureDialog controller={dialog} settings={doc.settings} />}
         {mode === 'sketch' && activeSketch && (
           <PanelColumn>
             <SketchPalette

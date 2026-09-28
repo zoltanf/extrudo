@@ -38,11 +38,17 @@ export interface KernelApi {
   endPreview(): Promise<void>;
   /**
    * A reference to a face, edge or vertex of a body the last recompute
-   * returned (its index in the body's mesh), with its persistent name and
-   * fingerprint (ADR-0005): what a feature's `ref` input stores. Undefined
-   * if the body or the sub-shape is gone.
+   * returned (its index in the body's mesh), or with `base` one the last
+   * preview returned as its base (editing a feature), with its persistent
+   * name and fingerprint (ADR-0005): what a feature's `ref` input stores.
+   * Undefined if the body or the sub-shape is gone.
    */
-  reference(body: BodyId, kind: SubShapeKind, index: number): Promise<GeomRef | undefined>;
+  reference(
+    body: BodyId,
+    kind: SubShapeKind,
+    index: number,
+    base?: boolean,
+  ): Promise<GeomRef | undefined>;
   /** Builds, measures and meshes the P0-02 test part. */
   debugTestPart(): Promise<TestPart>;
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
@@ -103,8 +109,13 @@ export class KernelService implements KernelApi {
     this.#engine?.endPreview();
   }
 
-  reference(body: BodyId, kind: SubShapeKind, index: number): Promise<GeomRef | undefined> {
-    return this.#run(() => this.#engineOf().reference(body, kind, index));
+  reference(
+    body: BodyId,
+    kind: SubShapeKind,
+    index: number,
+    base = false,
+  ): Promise<GeomRef | undefined> {
+    return this.#run(() => this.#engineOf().reference(body, kind, index, base));
   }
 
   async debugTestPart(): Promise<TestPart> {

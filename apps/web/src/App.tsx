@@ -11,6 +11,9 @@ const KernelDebug = lazy(() =>
 const SolverDebug = lazy(() =>
   import('./debug/SolverDebug').then((m) => ({ default: m.SolverDebug })),
 );
+const DialogDebug = lazy(() =>
+  import('./debug/DialogDebug').then((m) => ({ default: m.DialogDebug })),
+);
 
 /** Hash routes (Electron-safe, architecture §8): home, a project, debug pages. */
 export function App({ platform }: { platform: Platform }) {
@@ -30,6 +33,12 @@ export function App({ platform }: { platform: Platform }) {
       return (
         <Suspense fallback={null}>
           <SolverDebug />
+        </Suspense>
+      );
+    case 'debug-dialog':
+      return (
+        <Suspense fallback={null}>
+          <DialogDebug platform={platform} />
         </Suspense>
       );
     case 'not-found':

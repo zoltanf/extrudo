@@ -43,6 +43,11 @@
   --x-axis-y: #5fcf78;
   --x-axis-z: #5b8cff;
   --x-profile-fill: rgb(90 169 255 / 14%);
+  /* Feature previews (P2-05): new bodies, joins, cuts, intersections */
+  --x-preview: rgb(90 169 255 / 35%);
+  --x-preview-join: rgb(61 214 140 / 35%);
+  --x-preview-cut: rgb(255 107 107 / 40%);
+  --x-preview-intersect: rgb(165 144 255 / 35%);
 
   /* 2 Logo (extrudo-mark-dark.svg) */
   --x-logo-top: #ffc76a;
@@ -88,6 +93,10 @@
   --x-axis-y: #23994a;
   --x-axis-z: #2f63e0;
   --x-profile-fill: rgb(47 134 240 / 12%);
+  --x-preview: rgb(47 134 240 / 30%);
+  --x-preview-join: rgb(27 158 94 / 30%);
+  --x-preview-cut: rgb(217 61 61 / 40%);
+  --x-preview-intersect: rgb(124 92 255 / 30%);
 
   --x-logo-top: #ffbe55;
   --x-logo-side: #d9861f;

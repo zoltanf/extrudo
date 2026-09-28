@@ -3,6 +3,7 @@ import { type ButtonHTMLAttributes, forwardRef, useEffect, useState } from 'reac
 import { keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
 import { Menu, MenuItem, MenuLabel, ToolIcon, Tooltip } from '../design-system';
+import { isToolReady } from './commands';
 import { type TabId, TOOLS, type Tool, type ToolId, visibleTabs } from './tools';
 
 export interface ToolbarProps {
@@ -12,10 +13,12 @@ export interface ToolbarProps {
   activeTool?: ToolId;
   /** Runs a tool that works today (see `Tool.comesWith`). */
   onRun(tool: ToolId): void;
+  /** Tools a registered feature dialog makes work (P2-05). */
+  ready?: ReadonlySet<string>;
 }
 
 /** Tabs and tool groups (UI spec §2). */
-export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
+export function Toolbar({ mode = 'model', activeTool, onRun, ready }: ToolbarProps) {
   const home: TabId = mode === 'sketch' ? 'sketch' : 'solid';
   const [tab, setTab] = useState<TabId>(home);
   // Entering or leaving a sketch brings its tab forward.
@@ -66,6 +69,7 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
                     <ToolButton
                       key={id}
                       tool={TOOLS[id]}
+                      ready={isToolReady(TOOLS[id], ready)}
                       shortcut={shortcutFor(id)}
                       pressed={activeTool === id}
                       onRun={() => onRun(id)}
@@ -79,6 +83,7 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
                     <ToolButton
                       key={id}
                       tool={TOOLS[id]}
+                      ready={isToolReady(TOOLS[id], ready)}
                       shortcut={shortcutFor(id)}
                       pressed={activeTool === id}
                       onRun={() => onRun(id)}
@@ -106,7 +111,7 @@ export function Toolbar({ mode = 'model', activeTool, onRun }: ToolbarProps) {
                   return (
                     <MenuItem
                       key={id}
-                      disabled={tool.comesWith !== undefined}
+                      disabled={!isToolReady(tool, ready)}
                       shortcut={shortcutFor(id)}
                       icon={<ToolIcon name={tool.icon} category={tool.category} size={16} />}
                       onSelect={() => onRun(id)}
@@ -152,19 +157,21 @@ function shortcutFor(id: ToolId): string | undefined {
 
 function ToolButton({
   tool,
+  ready,
   shortcut,
   pressed,
   onRun,
   compact = false,
 }: {
   tool: Tool;
+  ready: boolean;
   shortcut: string | undefined;
   pressed: boolean;
   onRun(): void;
   /** An icon-only 26 px button, labelled for assistive tech. */
   compact?: boolean;
 }) {
-  const unavailable = tool.comesWith !== undefined;
+  const unavailable = !ready;
   const tooltip = {
     label: tool.label,
     shortcut,

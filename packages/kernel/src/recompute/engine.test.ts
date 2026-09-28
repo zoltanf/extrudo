@@ -1,7 +1,9 @@
 import {
   type BodyId,
   type ExtrudoDocument,
+  type Feature,
   type FeatureId,
+  type GeomRef,
   originPlaneRef,
   sketchInputs,
 } from '@extrudo/core';
@@ -330,6 +332,122 @@ describe('cancellation', () => {
     const preview = await done(engine.preview({ doc, draft, index: 1 }));
     expect(preview.stats.evaluated).toEqual(ids('f2'));
     expect(Object.keys(preview.features)).toEqual(ids('f1', 'f2'));
+  });
+});
+
+describe('preview tools (P2-05)', () => {
+  /** A box and a reference to its top face (+Z), from the last recompute. */
+  async function boxWithTop() {
+    const doc = testDocument([testFeature('box', 'test-box', { size: '10 mm' })]);
+    await recompute(doc);
+    for (let i = 0; i < 6; i++) {
+      const ref = engine.reference('box:0' as BodyId, 'face', i);
+      if (ref?.fingerprint?.dir?.[2] === 1) return { doc, top: ref };
+    }
+    throw new Error('no top face');
+  }
+  const press = (top: GeomRef, operation: string, distance = '5 mm', angle?: string) =>
+    testFeature(
+      'press',
+      'test-press',
+      { distance },
+      {
+        faces: { kind: 'ref', refs: [top] },
+        operation: { kind: 'enum', value: operation },
+        ...(angle && { angle: { kind: 'expr', expr: angle, unit: 'angle' } }),
+      },
+    );
+  const zRange = (positions: Float32Array) => {
+    const z = positions.filter((_, i) => i % 3 === 2);
+    return [Math.min(...z), Math.max(...z)];
+  };
+
+  it.each([
+    ['new', 2, [10, 15]],
+    ['join', 1, [10, 15]],
+    ['cut', 1, [5, 10]],
+    ['intersect', 1, [5, 10]],
+  ] as const)(
+    "meshes the draft's %s tool with its style, previews only",
+    async (operation, bodies, range) => {
+      const { doc, top } = await boxWithTop();
+      const distance = operation === 'cut' || operation === 'intersect' ? '-5 mm' : '5 mm';
+      const draft = press(top, operation, distance);
+      const preview = await done(engine.preview({ doc, draft, index: 1 }));
+      expect(preview.features['press' as FeatureId]).toEqual({ status: 'ok' });
+      expect(preview.bodies).toHaveLength(bodies);
+      expect(preview.tools?.map((t) => t.style)).toEqual([operation]);
+      const mesh = preview.tools?.[0]?.mesh;
+      expect(zRange(mesh?.positions ?? new Float32Array())).toEqual(range);
+
+      // The same feature committed: no tools in a recompute, and no new evaluation.
+      const committed = { ...doc, features: [...doc.features, draft], timelineMarker: 2 };
+      const result = await recompute(committed);
+      expect(result.tools).toBeUndefined();
+      expect(result.stats.evaluated).toEqual([]);
+    },
+  );
+
+  it('tilts the press by its angle', async () => {
+    const { doc, top } = await boxWithTop();
+    const preview = await done(
+      engine.preview({ doc, draft: press(top, 'new', '10 mm', '60 deg'), index: 1 }),
+    );
+    const [, zMax] = zRange(preview.tools?.[0]?.mesh.positions ?? new Float32Array());
+    expect(zMax).toBeCloseTo(10 + 10 * Math.cos(Math.PI / 3), 4);
+  });
+
+  it('has no tools when the draft fails', async () => {
+    const { doc, top } = await boxWithTop();
+    const preview = await done(engine.preview({ doc, draft: press(top, 'new', '0 mm'), index: 1 }));
+    expect(preview.features['press' as FeatureId]).toEqual({
+      status: 'error',
+      message: 'The distance is zero.',
+    });
+    expect(preview.tools).toBeUndefined();
+  });
+
+  it('gives the bodies before the draft for editing, and references into them', async () => {
+    const { doc, top } = await boxWithTop();
+    const draft = press(top, 'join', '5 mm');
+    const committed = { ...doc, features: [...doc.features, draft], timelineMarker: 2 };
+    const model = await recompute(committed);
+    const tall = (r: typeof model) => zRange(r.bodies[0]?.mesh?.positions ?? new Float32Array());
+    expect(tall(model)).toEqual([0, 15]);
+    // Edit it: the base is the box before the press, meshed; without `base`, none.
+    const edited = press(top, 'join', '2 mm');
+    const preview = await done(
+      engine.preview({ doc: committed, draft: edited, index: 1, base: true }),
+    );
+    const base = preview.base?.[0];
+    expect(zRange(base?.mesh?.positions ?? new Float32Array())).toEqual([0, 10]);
+    expect(base?.mesh?.faceIds).toContain(top.id);
+    expect(
+      (await done(engine.preview({ doc: committed, draft: edited, index: 1 }))).base,
+    ).toBeUndefined();
+    // With `base`, references come from the base; the model's top face moved up.
+    await done(engine.preview({ doc: committed, draft: edited, index: 1, base: true }));
+    const at = base?.mesh?.faceIds?.indexOf(top.id) ?? -1;
+    expect(engine.reference('box:0' as BodyId, 'face', at, true)?.fingerprint?.at[2]).toBeCloseTo(
+      10,
+      6,
+    );
+    engine.endPreview();
+    expect(engine.reference('box:0' as BodyId, 'face', at, true)).toBeUndefined();
+  });
+
+  it('owns tool shapes in the cache and gives them back with the entry', async () => {
+    const { doc, top } = await boxWithTop();
+    const before = kernel.stats().liveShapes;
+    const [join, cut, fresh] = ['join', 'cut', 'new'].map((op) => press(top, op, '-2 mm'));
+    for (const draft of [join, cut, join, fresh]) {
+      await done(engine.preview({ doc, draft: draft as Feature, index: 1 }));
+    }
+    // join and cut each hold a result and a tool; new holds one prism as body and tool.
+    expect(kernel.stats().liveShapes).toBe(before + 5);
+    expect(kernel.stats().liveShapes).toBe(engine.size.shapes);
+    engine.clear();
+    expect(kernel.stats().liveShapes).toBe(0);
   });
 });
 

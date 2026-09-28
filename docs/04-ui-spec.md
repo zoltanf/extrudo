@@ -178,6 +178,27 @@ movement, as Onshape's context menu does.
 - Invalid input: the field shows a red underline and the message; the preview
   keeps the last valid result, dimmed.
 - OK commits one undoable step and adds (or updates) the timeline chip.
+- **As built (P2-05, ADR-0027):** the dialog floats top-right below the
+  ViewCube, non-modal, and moves when dragged by its title. Selection
+  fields are buttons: the one taking picks has the accent border ("Pick a
+  face", or "2 faces" with a clear ✕); clicking one makes it take the
+  picks. While a field takes picks, a click in the view adds or removes an
+  item (replaces it for single-pick fields, then the next empty field
+  takes over), a box adds, and only what the field accepts pre-highlights
+  (the selection filter narrows to it). The view highlights the dialog's
+  picks. Opening a dialog fills its first field that accepts the current
+  selection. Expressions preview while typing; text that doesn't evaluate
+  keeps OK disabled and dims the preview. A failing draft's message shows
+  above OK, the preview keeps its last good state, dimmed, and OK is
+  disabled. Preview ghosts are drawn through the model: new bodies in the
+  preview blue, joins green, cuts red, intersections violet. Dragging an
+  arrow or arc writes a number with its unit ("12.5 mm", "15 deg"),
+  replacing the expression, snapped to a round step for the zoom. The
+  heads-up box sits by the active handle; typing a number with no text
+  field focused goes into it, Tab too. Enter in a field commits it and
+  presses OK; Esc on text that doesn't evaluate puts the last value back,
+  otherwise Esc cancels. Editing a feature (double-click its chip, or
+  "Edit Feature") shows the model as it was before the feature.
 
 ## 4. Sketch mode
 

@@ -38,6 +38,7 @@ import type {
   FeatureOutput,
   KernelFeatureDefinition,
   PreviewRequest,
+  PreviewToolMesh,
   ProgressListener,
   RecomputeRequest,
   RecomputeResult,
@@ -89,6 +90,8 @@ export class RecomputeEngine {
   readonly #descriptions = new Map<ShapeHandle, ShapeDescription>();
   /** The bodies at the marker of the last finished recompute (not preview). */
   #latest: ReadonlyMap<BodyId, ShapeHandle> = new Map();
+  /** The bodies before the draft of the last finished preview (pinned with it). */
+  #previewBase: ReadonlyMap<BodyId, ShapeHandle> = new Map();
   readonly #pinned: Record<Channel, Set<string>> = { recompute: new Set(), preview: new Set() };
   readonly #generation: Record<Channel, number> = { recompute: 0, preview: 0 };
   /** Keys used by walks still running: eviction must not free shapes they hold. */
@@ -116,7 +119,15 @@ export class RecomputeEngine {
   recompute(request: RecomputeRequest, onFeature?: ProgressListener): Promise<RecomputeResult> {
     const generation = ++this.#generation.recompute;
     const { doc } = request;
-    return this.#walk(doc, doc.timelineMarker, request, 'recompute', generation, onFeature);
+    return this.#walk(
+      doc,
+      doc.timelineMarker,
+      request,
+      'recompute',
+      generation,
+      onFeature,
+      undefined,
+    );
   }
 
   /**
@@ -130,23 +141,25 @@ export class RecomputeEngine {
     const { doc, draft, index } = request;
     const features = [...doc.features.slice(0, index), draft];
     const trial: ExtrudoDocument = { ...doc, features, timelineMarker: features.length };
-    return this.#walk(trial, features.length, request, 'preview', generation, onFeature);
+    return this.#walk(trial, features.length, request, 'preview', generation, onFeature, draft.id);
   }
 
   /** The dialog closed: cancels a running preview and lets the cache evict its results. */
   endPreview(): void {
     this.#generation.preview++;
     this.#pinned.preview = new Set();
+    this.#previewBase = new Map();
   }
 
   /**
    * A reference to one face, edge or vertex of a body of the last finished
-   * recompute (its sub-shape index as in the body's mesh): its persistent
-   * name and fingerprint, ready to store in a feature's `ref` input.
-   * Undefined if there is no such body or sub-shape.
+   * recompute (its sub-shape index as in the body's mesh), or with `base`
+   * of the last preview's bodies before its draft (editing a feature): its
+   * persistent name and fingerprint, ready to store in a feature's `ref`
+   * input. Undefined if there is no such body or sub-shape.
    */
-  reference(body: BodyId, kind: SubShapeKind, index: number): GeomRef | undefined {
-    const shape = this.#latest.get(body);
+  reference(body: BodyId, kind: SubShapeKind, index: number, base = false): GeomRef | undefined {
+    const shape = (base ? this.#previewBase : this.#latest).get(body);
     const names = shape === undefined ? undefined : this.#names.get(shape);
     if (shape === undefined || !names) return undefined;
     const id = namesOf(names, kind)[index];
@@ -160,6 +173,7 @@ export class RecomputeEngine {
     for (const entry of this.#entries.values()) this.#drop(entry);
     this.#entries.clear();
     this.#latest = new Map();
+    this.#previewBase = new Map();
     this.#pinned.recompute.clear();
     this.#pinned.preview.clear();
   }
@@ -171,11 +185,12 @@ export class RecomputeEngine {
     channel: Channel,
     generation: number,
     onFeature: ProgressListener | undefined,
+    draft: FeatureId | undefined,
   ): Promise<RecomputeResult> {
     const used = new Set<string>();
     this.#inFlight.add(used);
     try {
-      return await this.#run(doc, end, request, channel, generation, onFeature, used);
+      return await this.#run(doc, end, request, channel, generation, onFeature, used, draft);
     } finally {
       this.#inFlight.delete(used);
     }
@@ -189,6 +204,7 @@ export class RecomputeEngine {
     generation: number,
     onFeature: ProgressListener | undefined,
     used: Set<string>,
+    draft: FeatureId | undefined,
   ): Promise<RecomputeResult> {
     const start = performance.now();
     const cancelled = () => this.#generation[channel] !== generation;
@@ -202,7 +218,11 @@ export class RecomputeEngine {
     let bodies: ReadonlyMap<BodyId, ShapeHandle> = new Map();
     let bodiesKey = EMPTY_BODIES;
 
+    /** The bodies before the draft (previews). */
+    let base: ReadonlyMap<BodyId, ShapeHandle> | undefined;
+
     for (const feature of doc.features.slice(0, end)) {
+      if (feature.id === draft) base = bodies;
       if (feature.suppressed) {
         passed.set(feature.id, { state: 'suppressed' });
         continue;
@@ -281,6 +301,33 @@ export class RecomputeEngine {
     if (cancelled()) return { status: 'cancelled' };
     this.#pinned[channel] = new Set(used);
     if (channel === 'recompute') this.#latest = bodies;
+    if (channel === 'preview') this.#previewBase = base ?? new Map();
+    const results = this.#meshAll(bodies, request, features);
+    const tools = draft === undefined ? undefined : this.#toolMeshes(passed.get(draft), request);
+    const wantsBase = channel === 'preview' && (request as PreviewRequest).base === true;
+    const baseResults = wantsBase ? this.#meshAll(base ?? new Map(), request, features) : undefined;
+    this.#evict();
+    return {
+      status: 'done',
+      features,
+      bodies: results,
+      ...(tools && { tools }),
+      ...(baseResults && { base: baseResults }),
+      stats: {
+        evaluated,
+        reused,
+        ms: performance.now() - start,
+        liveShapes: this.#kernel.stats().liveShapes,
+      },
+    };
+  }
+
+  /** Meshes of bodies, left out where the caller `have`s their version. */
+  #meshAll(
+    bodies: ReadonlyMap<BodyId, ShapeHandle>,
+    request: RecomputeRequest,
+    features: Record<FeatureId, FeatureStatus>,
+  ): BodyResult[] {
     const results: BodyResult[] = [];
     for (const [id, shape] of bodies) {
       const version = this.#versions.get(shape) ?? hashOf('shape', shape);
@@ -308,18 +355,29 @@ export class RecomputeEngine {
         }
       }
     }
-    this.#evict();
-    return {
-      status: 'done',
-      features,
-      bodies: results,
-      stats: {
-        evaluated,
-        reused,
-        ms: performance.now() - start,
-        liveShapes: this.#kernel.stats().liveShapes,
-      },
-    };
+    return results;
+  }
+
+  /**
+   * The preview tools of a preview's draft, meshed. A tool that can't be
+   * meshed is left out: the preview is a hint, the feature's status says
+   * what went wrong with the feature itself.
+   */
+  #toolMeshes(state: Passed | undefined, request: RecomputeRequest): PreviewToolMesh[] | undefined {
+    const tools = state?.state === 'done' ? state.entry.output?.previewTools : undefined;
+    if (!tools?.length) return undefined;
+    const out: PreviewToolMesh[] = [];
+    for (const { shape, style } of tools) {
+      try {
+        out.push({
+          mesh: this.#kernel.mesh(shape, request.tessellation ?? DEFAULT_TESSELLATION),
+          style,
+        });
+      } catch (error) {
+        if (!(error instanceof KernelError)) throw error;
+      }
+    }
+    return out;
   }
 
   #evaluate(
@@ -489,9 +547,15 @@ export class RecomputeEngine {
   }
 }
 
-/** Every shape an output holds, once each. */
+/** Every shape an output holds, once each: bodies, named shapes and preview tools. */
 function outputHandles(output: FeatureOutput): ShapeHandle[] {
-  return [...new Set([...(output.bodies?.values() ?? []), ...Object.values(output.shapes ?? {})])];
+  return [
+    ...new Set([
+      ...(output.bodies?.values() ?? []),
+      ...Object.values(output.shapes ?? {}),
+      ...(output.previewTools ?? []).map((t) => t.shape),
+    ]),
+  ];
 }
 
 /** The values of a feature's `expr` inputs, or the first error as a message. */

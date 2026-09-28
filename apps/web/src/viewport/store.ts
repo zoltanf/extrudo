@@ -117,6 +117,11 @@ export interface ViewportState extends ViewportSettings {
    * For the session only: not a saved preference.
    */
   selectionFilter: SelectionFilter;
+  /**
+   * A feature dialog's selection field narrows picking to what it takes
+   * while it is the pick field (P2-05). Not shown in the filter menu.
+   */
+  fieldFilter: SelectionFilter | undefined;
 
   /** Moves the camera at once (drags, wheel) and stops any animation. */
   setView(view: View): void;
@@ -146,6 +151,7 @@ export interface ViewportState extends ViewportSettings {
   setRenderStats(stats: RenderStats | undefined): void;
   setSelectionFilter(kind: FilterKind, on: boolean): void;
   resetSelectionFilter(): void;
+  setFieldFilter(filter: SelectionFilter | undefined): void;
 }
 
 export type ViewportStore = StoreApi<ViewportState>;
@@ -196,6 +202,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       snapshot: undefined,
       renderStats: undefined,
       selectionFilter: DEFAULT_FILTER,
+      fieldFilter: undefined,
 
       setView(view) {
         set({ view, transition: undefined });
@@ -275,6 +282,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       },
       resetSelectionFilter() {
         set({ selectionFilter: DEFAULT_FILTER });
+      },
+      setFieldFilter(fieldFilter) {
+        if (fieldFilter !== get().fieldFilter) set({ fieldFilter });
       },
     };
   });

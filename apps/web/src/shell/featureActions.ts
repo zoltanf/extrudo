@@ -12,6 +12,7 @@
 import {
   type Command,
   CommandError,
+  type Feature,
   type FeatureId,
   isFeatureVisible,
   readSketch,
@@ -23,8 +24,13 @@ import {
 import { editSketch, type SketchModeStores } from '../sketch/mode';
 
 export interface FeatureActions {
-  /** Opens a sketch. Returns `false` if the feature isn't an editable sketch. */
+  /**
+   * Opens a sketch, or another feature's dialog (P2-05). Returns `false` if
+   * the feature can't be edited that way.
+   */
   edit(id: FeatureId): boolean;
+  /** Whether `edit` can open the feature at `index` (a timeline chip, a browser row). */
+  canEdit(feature: Feature, index: number, marker: number): boolean;
   /** Renames a feature. Returns `false`, and says why, if the name is refused (empty). */
   rename(id: FeatureId, name: string): boolean;
   /** Shows or hides features (a browser eye or a folder's eye). */
@@ -39,10 +45,18 @@ export interface FeatureActions {
   exportSketch(id: FeatureId): void;
 }
 
+export interface FeatureDialogActions {
+  exportSketch(id: FeatureId): void;
+  /** Opens a feature's dialog for editing (P2-05); `false` if its type has none. */
+  editFeature?(id: FeatureId): boolean;
+  /** Whether a feature type has a dialog. */
+  hasDialog?(type: string): boolean;
+}
+
 export function createFeatureActions(
   stores: SketchModeStores,
   notify: (tone: 'info' | 'error', text: string) => void,
-  dialogs: { exportSketch(id: FeatureId): void } = { exportSketch: () => {} },
+  dialogs: FeatureDialogActions = { exportSketch: () => {} },
 ): FeatureActions {
   const { store, session } = stores;
   const run = (command: Command<unknown>): boolean => {
@@ -64,7 +78,15 @@ export function createFeatureActions(
   };
 
   return {
-    edit: (id) => editSketch(stores, id),
+    edit(id) {
+      const f = feature(id);
+      if (f && readSketch(f)) return editSketch(stores, id);
+      if (!f || session.getState().mode === 'sketch') return false;
+      return dialogs.editFeature?.(id) ?? false;
+    },
+    canEdit: (f, index, marker) =>
+      isEditableSketch(f, index, marker) ||
+      (readSketch(f) === undefined && (dialogs.hasDialog?.(f.type) ?? false)),
     rename(id, name) {
       const current = feature(id);
       if (!current) return false;

@@ -262,10 +262,24 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   `BodyMesh`; `GeomRef.fingerprint`; `ctx.resolve` (exact, related name,
   fingerprint with a warning, else an error); `KernelApi.reference`. A
   19-scenario suite and a 1000-rebuild memory test.
-- [ ] **P2-05 Feature dialog framework.** Right-side command dialog: selection
+- [x] **P2-05 Feature dialog framework.** Right-side command dialog: selection
   fields (with count, clear, filter), `<ExpressionInput>` fields, dropdowns,
   OK/Cancel, live preview, validation messages; in-canvas manipulators (distance
   arrow, angle arc) with a heads-up value box.
+  *Done 2026-09-28* (ADR-0027): declarative dialog specs registered in
+  `featureDialogs()` (their tool's command then runs, and timeline chips
+  open them for editing); one generic, draggable, non-modal dialog with
+  selection, expression, choice and toggle fields; pre-selection;
+  selection fields of persistent references with fingerprints and their
+  own selection filter; model parameter names per dialog; live previews
+  through the `Recomputer`, drawn as ghosts from the kernel's new
+  `previewTools` (new, join green, cut red, intersect), dimmed with the
+  last good result on invalid input or a kernel error (whose message the
+  dialog shows); editing shows the model rolled back to the feature
+  (`preview(…, base)`); a distance arrow and an angle arc with a heads-up
+  box that takes typing; OK as one command (insert, or replace the
+  inputs). E2E on the dialog debug page (`#/debug/dialog`, a test
+  press-pull) until Extrude has its dialog.
 - [ ] **P2-06 Extrude.** All options in FR-FT-01; cut preview shown red; face
   extrude (press-pull on planar faces).
   *AC:* FR-FT-01; kernel golden tests for each option combination.
