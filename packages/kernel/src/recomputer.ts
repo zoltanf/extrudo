@@ -276,12 +276,12 @@ export class Recomputer {
       sketches: sameReports(previous.sketches, result.reports)
         ? previous.sketches
         : (result.reports as Record<FeatureId, SketchReport>),
-      source: doc,
       stats: {
         ms: result.stats.ms,
         evaluated: result.stats.evaluated.length,
         reused: result.stats.reused,
       },
+      doc,
     });
   }
 

@@ -26,6 +26,20 @@ describe('document store', () => {
     expect(store.getState().doc.name).toBe('Bracket');
   });
 
+  it('amends a change into the latest undo step', () => {
+    const store = createDocumentStore(sampleDocument());
+    const s = () => store.getState();
+    s().amend(renameDocument({ name: 'Loaded' }));
+    expect(s()).toMatchObject({ doc: { name: 'Loaded' }, canUndo: false });
+    s().dispatch(renameFeature({ id: fid('f1'), name: 'A' }));
+    s().amend(renameDocument({ name: 'Bracket' }));
+    expect(s()).toMatchObject({ doc: { name: 'Bracket' }, undoLabel: 'Rename feature' });
+    s().undo();
+    expect(s().doc).toMatchObject({ name: 'Loaded', features: [{ name: 'Sketch1' }, {}, {}] });
+    s().redo();
+    expect(s().doc.name).toBe('Bracket');
+  });
+
   it('freezes the document so components cannot mutate it', () => {
     const store = createDocumentStore(sampleDocument());
     expect(Object.isFrozen(store.getState().doc.features[0])).toBe(true);

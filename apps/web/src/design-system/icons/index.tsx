@@ -62,6 +62,7 @@ export const ICON_NAMES = [
   'fillet',
   'chamfer',
   'shell',
+  'remove',
   'box',
   'hole',
   'rectangular-pattern',

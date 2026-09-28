@@ -423,6 +423,13 @@ export const TOOLS = {
     hint: 'Hollow out a body, leaving walls.',
     comesWith: 'P3-03',
   },
+  remove: {
+    id: 'remove',
+    label: 'Remove',
+    icon: 'remove',
+    category: 'modify',
+    hint: 'Take bodies out of the model: select them and press Delete, or use a body menu.',
+  },
   parameters: {
     id: 'parameters',
     label: 'Parameters',

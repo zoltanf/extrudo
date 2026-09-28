@@ -299,10 +299,25 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   template computes its bracket (symmetric L, tapered holes cut).
   E2E in a real project (`e2e/extrude.spec.ts`).
 - [ ] **P2-07 Revolve.** FR-FT-02.
-- [ ] **P2-08 Bodies.** Browser "Bodies" folder; rename, visibility, colour and
+- [x] **P2-08 Bodies.** Browser "Bodies" folder; rename, visibility, colour and
   appearance; delete body (as a "Remove" feature); body count badge.
   Silhouette edges of curved faces (view-dependent) in the wireframe and
   hidden-edge styles; seams are already hidden (ADR-0008).
+  *Done 2026-09-28* (ADR-0030): every body gets stored metadata when a
+  recompute first shows it ("Body3", the lowest free number), amended into
+  the undo step that made it (`DocumentState.amend`), so names never
+  shift and undo takes them along; the Bodies folder with a count badge,
+  colour dots, rename (F2 or the menu), eyes, Appearance (ten colour
+  swatches and four opacities), rows that pick the body into the
+  selection or an open dialog and highlight it on hover; Delete (browser,
+  menu, or the view's selection) adds a **Remove** feature (core
+  definition, kernel evaluator, a Modify chip), and a feature whose
+  bodies a later one names can't be deleted. A cut or intersect that
+  leaves separate solids makes one body per solid (`splitSolids`, the
+  largest keeps the ID, the rest `<feature>:<n>`). Bodies draw with their
+  colour and opacity; wireframe and hidden edges draw curved faces'
+  silhouettes as the zero line of `n · (eye − p)`, updated with the
+  camera. E2E in `e2e/bodies.spec.ts`.
 - [ ] **P2-09 Sketch on face and project/include.** Sketch on a planar face
   (follows the face through recompute); Project tool (associative edges and
   silhouettes into the sketch).

@@ -121,6 +121,16 @@ fill, and the timeline chip background (colour at 16% over `bg`).
 | `axis-y` | `#5FCF78` | `#23994A` | Y axis |
 | `axis-z` | `#5B8CFF` | `#2F63E0` | Z axis |
 
+**Body swatches** (P2-08, ADR-0030). A body's colour is stored in the
+document as a fixed `#rrggbb`, the same in both themes, so the picker
+offers swatches rather than tokens: Default (no colour stored: the
+theme's `body-default`), and mid-tone versions of the category hues that
+read under the scene's light in either theme: Blue `#5B7CFF`, Teal
+`#22B3C2`, Green `#2FBF8F`, Amber `#F2B21B`, Coral `#FF7A66`, Pink
+`#F0609A`, Violet `#8F75FF`, plus White `#E9EBF0` and Charcoal `#3B404C`
+(filament colours people print in). Opacity presets: opaque, 75 %, 50 %,
+25 %. Selection tints still blend towards amber over any body colour.
+
 Contrast: `ink` and `muted` meet WCAG AA on `bg`, `panel` and `raised` in
 both themes. Amber is for fills, outlines and highlights, never for body text
 on light backgrounds (`#E08A1E` on white is only about 2.6:1). State is never

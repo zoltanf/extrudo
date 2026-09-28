@@ -36,27 +36,6 @@ describe('UndoHistory', () => {
     expect(history.canRedo).toBe(false);
   });
 
-  it('amends the latest step, so one undo takes back both (P2-09)', () => {
-    const history = new UndoHistory();
-    // Nothing to amend yet: the change stays, unrecorded.
-    let doc = sampleDocument();
-    const silent = applyCommand(doc, renameDocument({ name: 'Silent' }));
-    history.amend(silent);
-    doc = silent.doc;
-    expect(history.canUndo).toBe(false);
-
-    doc = run(history, doc, renameFeature({ id: fid('f2'), name: 'Base' }));
-    const follow = applyCommand(doc, renameFeature({ id: fid('f3'), name: 'Follows' }));
-    history.amend(follow);
-    doc = follow.doc;
-    expect(history.undoLabel).toBe('Rename feature');
-    doc = history.undo(doc);
-    expect(doc.features.map((f) => f.name)).toEqual(['Sketch1', 'Extrude1', 'Fillet1']);
-    expect(doc.name).toBe('Silent');
-    doc = history.redo(doc);
-    expect(doc.features.map((f) => f.name)).toEqual(['Sketch1', 'Base', 'Follows']);
-  });
-
   it('ignores changes that changed nothing', () => {
     const history = new UndoHistory();
     run(history, sampleDocument(), renameDocument({ name: 'Sample' }));
@@ -150,6 +129,42 @@ describe('transactions', () => {
     const history = new UndoHistory();
     expect(() => history.commit()).toThrow('No transaction is open.');
     expect(() => history.cancel(sampleDocument())).toThrow('No transaction is open.');
+  });
+
+  it('amend adds a change to the latest step, so undo and redo take it along', () => {
+    const history = new UndoHistory();
+    const start = sampleDocument();
+    let doc = run(history, start, renameDocument({ name: 'A' }));
+    const amended = applyCommand(doc, renameFeature({ id: fid('f1'), name: 'Named' }));
+    expect(history.amend({ label: 'Name', ...amended })).toBe(true);
+    doc = amended.doc;
+    expect(history.undoLabel).toBe('Rename document');
+    const undone = history.undo(doc);
+    expect(undone).toEqual(start);
+    expect(history.redo(undone)).toEqual(doc);
+  });
+
+  it('amend joins the enclosing step while a transaction has none, and keeps redo', () => {
+    const history = new UndoHistory();
+    let doc = run(history, sampleDocument(), renameDocument({ name: 'A' }));
+    doc = run(history, doc, renameDocument({ name: 'B' }));
+    doc = history.undo(doc);
+    history.begin('Edit Sketch1');
+    const amended = applyCommand(doc, renameFeature({ id: fid('f1'), name: 'Named' }));
+    history.amend({ label: 'Name', ...amended });
+    doc = history.cancel(amended.doc);
+    // The change belongs to the step before the transaction: cancel leaves it.
+    expect(doc.features[0]?.name).toBe('Named');
+    expect(history.canRedo).toBe(true);
+    doc = history.undo(doc);
+    expect([doc.name, doc.features[0]?.name]).toEqual(['Sample', 'Sketch1']);
+  });
+
+  it('amend with no step records nothing', () => {
+    const history = new UndoHistory();
+    const amended = applyCommand(sampleDocument(), renameDocument({ name: 'A' }));
+    expect(history.amend({ label: 'Name', ...amended })).toBe(false);
+    expect(history.canUndo).toBe(false);
   });
 
   it('clear drops everything, open transactions included', () => {

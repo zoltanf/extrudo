@@ -84,7 +84,7 @@ const ready = (model: ModelStore<BodyMesh>) => model.getState().status === 'read
 
 describe('Recomputer', () => {
   it('computes the document and fills the model store', { timeout: 30_000 }, async () => {
-    const { model } = setup(chainDocument(3));
+    const { model, document } = setup(chainDocument(3));
     expect(model.getState().status).toBe('idle');
     await until(() => ready(model));
     const state = model.getState();
@@ -96,6 +96,8 @@ describe('Recomputer', () => {
       f3: { status: 'ok' },
     });
     expect(state.stats).toMatchObject({ evaluated: 3, reused: 0 });
+    // The result says which document it is for (body names follow it, ADR-0030).
+    expect(state.doc).toBe(document.getState().doc);
   });
 
   it('sends a burst of edits as one request, and keeps unchanged meshes', {
