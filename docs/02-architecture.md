@@ -427,6 +427,15 @@ sources carried through its `last` history), so the result is one sweep
 named like a one-sided one. Like extrude's, its result goes through
 `splitSolids` (P2-08).
 
+Primitives (P2-10, ADR-0032, `packages/kernel/src/features/primitives.ts`):
+`box`, `cylinder`, `sphere` and `torus` sit on an origin plane or a flat
+face (resolved by name; the face's sketch frame, `faceSketchFrame`) at x,
+y and an offset in that frame. They are planar faces from `planarFaces`
+swept by `namedPrism` (box, cylinder) or a whole-turn `namedRevolve` (a
+half disc, a circle), so every face is named (`box:<id>:side:front`…),
+then go through extrude's `operate` and `splitSolids`. No facade
+primitives: `makeBox`/`makeCylinder` have no history.
+
 Bodies (P2-08, ADR-0030, `packages/kernel/src/features/bodies.ts`): a
 body the feature made or changed that holds several separate solids is
 split into one body per solid (`splitSolids`, called on the evaluator's
@@ -697,3 +706,8 @@ bundle-size budget. Every agent task must leave CI green.
   and an origin plane, projection records with curves as fixed ordinary
   entities, exact projection and cylinder/cone silhouettes in the kernel,
   and the app's sync amended into the undo step that moved the model.
+- **ADR-0032** Primitives. **Written 2026-09-28** (P2-10): four feature
+  types with a shared placement (plane or flat face, x/y in its sketch
+  frame, offset, a box's rotation), solids from named prisms and revolves
+  of planar faces, proposals (XY, the face's centre, join/cut), and
+  Create Sketch's plane-or-face picker reused for a dialog's Plane field.

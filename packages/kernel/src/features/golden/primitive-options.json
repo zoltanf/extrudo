@@ -1,0 +1,930 @@
+{
+ "box on XY at (20, 15) new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 6800,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": []
+   },
+   "P:0": {
+    "volume": 1536,
+    "area": 832,
+    "bbox": [
+     10.1,
+     5.8,
+     0,
+     29.9,
+     24.2,
+     8
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "box:P:cap:end",
+     "box:P:cap:start",
+     "box:P:side:back",
+     "box:P:side:front",
+     "box:P:side:left",
+     "box:P:side:right"
+    ]
+   }
+  }
+ },
+ "box on XY at (20, 15) join": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 6800,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": []
+   }
+  }
+ },
+ "box on XY at (20, 15) cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 22464,
+    "area": 7248,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     11,
+     24,
+     16,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "box:P:cap:end",
+     "box:P:side:back",
+     "box:P:side:front",
+     "box:P:side:left",
+     "box:P:side:right"
+    ]
+   }
+  }
+ },
+ "box on XY at (20, 15) intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 1536,
+    "area": 832,
+    "bbox": [
+     10.1,
+     5.8,
+     0,
+     29.9,
+     24.2,
+     8
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "box:P:cap:end",
+     "box:P:side:back",
+     "box:P:side:front",
+     "box:P:side:left",
+     "box:P:side:right"
+    ]
+   }
+  }
+ },
+ "box on the top face at (30, 20) new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 6800,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": []
+   },
+   "P:0": {
+    "volume": 1536,
+    "area": 832,
+    "bbox": [
+     20.1,
+     10.8,
+     10,
+     39.9,
+     29.2,
+     18
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "box:P:cap:end",
+     "box:P:cap:start",
+     "box:P:side:back",
+     "box:P:side:front",
+     "box:P:side:left",
+     "box:P:side:right"
+    ]
+   }
+  }
+ },
+ "box on the top face at (30, 20) join": {
+  "bodies": {
+   "B:0": {
+    "volume": 25536,
+    "area": 7248,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     18
+    ],
+    "counts": [
+     11,
+     24,
+     16,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "box:P:cap:end",
+     "box:P:side:back",
+     "box:P:side:front",
+     "box:P:side:left",
+     "box:P:side:right"
+    ]
+   }
+  }
+ },
+ "box on the top face at (30, 20) cut": {
+  "error": "The cut doesn't remove anything. Check its size and where it sits."
+ },
+ "box on the top face at (30, 20) intersect": {
+  "error": "The box doesn't overlap any body, so there's nothing to intersect. Check its size and where it sits."
+ },
+ "cylinder on XY at (20, 15) new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 6800,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": []
+   },
+   "P:0": {
+    "volume": 678.6,
+    "area": 452.4,
+    "bbox": [
+     14,
+     9,
+     -6,
+     26,
+     21,
+     0
+    ],
+    "counts": [
+     3,
+     3,
+     2,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "cylinder:P:cap:end",
+     "cylinder:P:cap:start",
+     "cylinder:P:side:wall"
+    ]
+   }
+  }
+ },
+ "cylinder on XY at (20, 15) join": {
+  "bodies": {
+   "B:0": {
+    "volume": 24678.6,
+    "area": 7026.2,
+    "bbox": [
+     0,
+     0,
+     -6,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     8,
+     15,
+     10,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "cylinder:P:cap:end",
+     "cylinder:P:side:wall"
+    ]
+   }
+  }
+ },
+ "cylinder on XY at (20, 15) cut": {
+  "error": "The cut doesn't remove anything. Check its size and where it sits."
+ },
+ "cylinder on XY at (20, 15) intersect": {
+  "error": "The cylinder doesn't overlap any body, so there's nothing to intersect. Check its size and where it sits."
+ },
+ "cylinder on the top face at (30, 20) new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 6800,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": []
+   },
+   "P:0": {
+    "volume": 678.6,
+    "area": 452.4,
+    "bbox": [
+     24,
+     14,
+     4,
+     36,
+     26,
+     10
+    ],
+    "counts": [
+     3,
+     3,
+     2,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "cylinder:P:cap:end",
+     "cylinder:P:cap:start",
+     "cylinder:P:side:wall"
+    ]
+   }
+  }
+ },
+ "cylinder on the top face at (30, 20) join": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 6800,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": []
+   }
+  }
+ },
+ "cylinder on the top face at (30, 20) cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 23321.4,
+    "area": 7026.2,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     8,
+     15,
+     10,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "cylinder:P:cap:end",
+     "cylinder:P:side:wall"
+    ]
+   }
+  }
+ },
+ "cylinder on the top face at (30, 20) intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 678.6,
+    "area": 452.4,
+    "bbox": [
+     24,
+     14,
+     4,
+     36,
+     26,
+     10
+    ],
+    "counts": [
+     3,
+     3,
+     2,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "cylinder:P:cap:end",
+     "cylinder:P:side:wall"
+    ]
+   }
+  }
+ },
+ "sphere on XY at (20, 15) new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 6800,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": []
+   },
+   "P:0": {
+    "volume": 1436.8,
+    "area": 615.8,
+    "bbox": [
+     12.9,
+     7.9,
+     -7.1,
+     27.1,
+     22.1,
+     7.1
+    ],
+    "counts": [
+     1,
+     3,
+     2,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "sphere:P:side:surface"
+    ]
+   }
+  }
+ },
+ "sphere on XY at (20, 15) join": {
+  "bodies": {
+   "B:0": {
+    "volume": 24718.4,
+    "area": 6953.9,
+    "bbox": [
+     0,
+     0,
+     -7,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     7,
+     15,
+     10,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "sphere:P:side:surface"
+    ]
+   }
+  }
+ },
+ "sphere on XY at (20, 15) cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 23281.6,
+    "area": 6953.9,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     7,
+     15,
+     10,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "sphere:P:side:surface"
+    ]
+   }
+  }
+ },
+ "sphere on XY at (20, 15) intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 718.4,
+    "area": 461.8,
+    "bbox": [
+     13,
+     8,
+     0,
+     27,
+     22,
+     7
+    ],
+    "counts": [
+     2,
+     3,
+     2,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "sphere:P:side:surface"
+    ]
+   }
+  }
+ },
+ "sphere on the top face at (30, 20) new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 6800,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": []
+   },
+   "P:0": {
+    "volume": 1436.8,
+    "area": 615.8,
+    "bbox": [
+     22.9,
+     12.9,
+     2.9,
+     37.1,
+     27.1,
+     17.1
+    ],
+    "counts": [
+     1,
+     3,
+     2,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "sphere:P:side:surface"
+    ]
+   }
+  }
+ },
+ "sphere on the top face at (30, 20) join": {
+  "bodies": {
+   "B:0": {
+    "volume": 24718.4,
+    "area": 6953.9,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     17
+    ],
+    "counts": [
+     7,
+     15,
+     10,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "sphere:P:side:surface"
+    ]
+   }
+  }
+ },
+ "sphere on the top face at (30, 20) cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 23281.6,
+    "area": 6953.9,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     7,
+     15,
+     10,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "sphere:P:side:surface"
+    ]
+   }
+  }
+ },
+ "sphere on the top face at (30, 20) intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 718.4,
+    "area": 461.8,
+    "bbox": [
+     23,
+     13,
+     3,
+     37,
+     27,
+     10
+    ],
+    "counts": [
+     2,
+     3,
+     2,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "sphere:P:side:surface"
+    ]
+   }
+  }
+ },
+ "torus on XY at (20, 15) new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 6800,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": []
+   },
+   "P:0": {
+    "volume": 1776.5,
+    "area": 1184.4,
+    "bbox": [
+     7,
+     2,
+     -1,
+     33,
+     28,
+     5
+    ],
+    "counts": [
+     1,
+     2,
+     1,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "torus:P:side:surface"
+    ]
+   }
+  }
+ },
+ "torus on XY at (20, 15) join": {
+  "bodies": {
+   "B:0": {
+    "volume": 24194.6,
+    "area": 6836.1,
+    "bbox": [
+     0,
+     0,
+     -1,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     8,
+     15,
+     10,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "torus:P:side:surface"
+    ]
+   }
+  }
+ },
+ "torus on XY at (20, 15) cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 22418.1,
+    "area": 7386.3,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     9,
+     17,
+     11,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "torus:P:side:surface#1",
+     "torus:P:side:surface#2"
+    ]
+   }
+  }
+ },
+ "torus on XY at (20, 15) intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 1581.9,
+    "area": 1148.3,
+    "bbox": [
+     7,
+     2,
+     0,
+     33,
+     28,
+     5
+    ],
+    "counts": [
+     3,
+     5,
+     3,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "torus:P:side:surface#1",
+     "torus:P:side:surface#2"
+    ]
+   }
+  }
+ },
+ "torus on the top face at (30, 20) new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 6800,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     6,
+     12,
+     8,
+     1
+    ],
+    "valid": true,
+    "names": []
+   },
+   "P:0": {
+    "volume": 1776.5,
+    "area": 1184.4,
+    "bbox": [
+     17,
+     7,
+     9,
+     43,
+     33,
+     15
+    ],
+    "counts": [
+     1,
+     2,
+     1,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "torus:P:side:surface"
+    ]
+   }
+  }
+ },
+ "torus on the top face at (30, 20) join": {
+  "bodies": {
+   "B:0": {
+    "volume": 25581.9,
+    "area": 7386.3,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     15
+    ],
+    "counts": [
+     9,
+     17,
+     11,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "torus:P:side:surface#1",
+     "torus:P:side:surface#2"
+    ]
+   }
+  }
+ },
+ "torus on the top face at (30, 20) cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 23805.4,
+    "area": 6836.1,
+    "bbox": [
+     0,
+     0,
+     0,
+     60,
+     40,
+     10
+    ],
+    "counts": [
+     8,
+     15,
+     10,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "torus:P:side:surface"
+    ]
+   }
+  }
+ },
+ "torus on the top face at (30, 20) intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 194.6,
+    "area": 598.1,
+    "bbox": [
+     17.7,
+     7.7,
+     9,
+     42.3,
+     32.3,
+     10
+    ],
+    "counts": [
+     2,
+     3,
+     2,
+     1
+    ],
+    "valid": true,
+    "names": [
+     "torus:P:side:surface"
+    ]
+   }
+  }
+ }
+}
