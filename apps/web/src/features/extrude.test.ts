@@ -16,7 +16,7 @@ import {
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { outline, profilesOf } from '../project/templates';
-import type { OpenDialog } from './dialog';
+import { HIDDEN_TOAST_MS, hiddenMessage, type OpenDialog } from './dialog';
 import { extrudeDialog, extrudeManipulators, proposeOperation } from './extrude';
 import { featureDialogs, specForCommand } from './registry';
 import type { DialogContext, DialogValues, Manipulator, ManipulatorContext } from './spec';
@@ -76,14 +76,25 @@ describe('OK on a new extrude', () => {
     const shown = () => t.store.getState().doc.features.find((f) => f.id === sketch.id)?.visible;
     expect(shown()).toBe(false);
     expect(t.store.getState().undoLabel).toBe('Add feature');
+    // A toast says so for a while, with a button that shows it again (its own undo step).
+    expect(t.messages).toEqual(['info: Sketch1 is hidden: Extrude1 used its profile.']);
+    const toast = t.toasts[0];
+    expect(toast?.lifetime).toBe(HIDDEN_TOAST_MS);
+    expect(toast?.action?.label).toBe('Show');
+    toast?.action?.run();
+    expect(shown()).toBeUndefined();
+    expect(t.store.getState().undoLabel).toBe('Change visibility');
+    t.store.getState().undo();
+    expect(shown()).toBe(false);
 
-    // Shown again by hand, then an edit of the extrude leaves it shown.
+    // Shown again by hand, then an edit of the extrude leaves it shown, and says nothing.
     t.store.getState().dispatch(setFeatureVisibility({ ids: [sketch.id], visible: true }));
     const extrude = t.store.getState().doc.features.at(-1)?.id as FeatureId;
     expect(t.controller.edit(extrude)).toBe(true);
     t.controller.setExpr('distance', '7 mm');
     expect(t.controller.ok()).toBe(true);
     expect(shown()).toBeUndefined();
+    expect(t.messages).toHaveLength(1);
 
     // One undo each: the edit, the eye, then the extrude and the hiding together.
     t.store.getState().undo();
@@ -92,6 +103,24 @@ describe('OK on a new extrude', () => {
     t.store.getState().undo();
     expect(shown()).toBeUndefined();
     expect(t.store.getState().doc.features.map((f) => f.id)).toEqual(['box', sketch.id]);
+  });
+});
+
+describe('hiddenMessage', () => {
+  const features = ['Sketch1', 'Sketch2', 'Sketch3'].map((name, i) => ({
+    id: `S${i + 1}` as FeatureId,
+    name,
+  }));
+  it('names one sketch, or lists several', () => {
+    expect(hiddenMessage(features, ['S2' as FeatureId], 'Revolve1')).toBe(
+      'Sketch2 is hidden: Revolve1 used its profile.',
+    );
+    expect(hiddenMessage(features, ['S1', 'S3'] as FeatureId[], 'Extrude2')).toBe(
+      'Sketch1 and Sketch3 are hidden: Extrude2 used their profiles.',
+    );
+    expect(hiddenMessage(features, ['S1', 'S2', 'S3'] as FeatureId[], 'Extrude2')).toBe(
+      'Sketch1, Sketch2 and Sketch3 are hidden: Extrude2 used their profiles.',
+    );
   });
 });
 

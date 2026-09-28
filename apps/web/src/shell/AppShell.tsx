@@ -17,7 +17,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
-import { ToolIcon, useTheme } from '../design-system';
+import { type ToastOptions, ToolIcon, useTheme } from '../design-system';
 import { DialogOverlay } from '../features/DialogOverlay';
 import { type DialogKernel, dialogBodies, viewPreview } from '../features/dialog';
 import { FeatureDialog } from '../features/FeatureDialog';
@@ -91,7 +91,7 @@ export interface AppShellProps {
   file: FileActions;
   platform: Platform;
   /** Shows a short message (a refused edit); the project page's toasts. */
-  notify?(tone: 'info' | 'error', text: string): void;
+  notify?(tone: 'info' | 'error', text: string, options?: ToastOptions): void;
   /** Feature dialogs (P2-05): the app's registry unless a debug page brings its own. */
   dialogs?: FeatureDialogs;
   /** The project's kernel (its `Recomputer`): dialog previews and references. */

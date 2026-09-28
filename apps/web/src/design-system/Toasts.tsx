@@ -3,7 +3,15 @@ import { useCallback, useRef, useState } from 'react';
 
 export type ToastTone = 'info' | 'success' | 'error';
 
-export interface Toast {
+/** What a toast can carry besides its text. */
+export interface ToastOptions {
+  /** A button beside the text (e.g. "Show"); clicking it runs `run` and closes the toast. */
+  action?: { label: string; run(): void };
+  /** How long it stays, ms; errors stay until dismissed whatever this says. */
+  lifetime?: number;
+}
+
+export interface Toast extends ToastOptions {
   id: number;
   tone: ToastTone;
   text: string;
@@ -11,7 +19,10 @@ export interface Toast {
 
 const LIFETIME_MS = 6000;
 
-/** Short messages after an action ("Exported bracket.extrudo."). Errors stay until dismissed. */
+/**
+ * Short messages after an action ("Exported bracket.extrudo."), some with a
+ * button ("Sketch2 is hidden… Show"). Errors stay until dismissed.
+ */
 export function useToasts() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const next = useRef(1);
@@ -19,10 +30,10 @@ export function useToasts() {
     setToasts((all) => all.filter((t) => t.id !== id));
   }, []);
   const push = useCallback(
-    (tone: ToastTone, text: string) => {
+    (tone: ToastTone, text: string, options: ToastOptions = {}) => {
       const id = next.current++;
-      setToasts((all) => [...all.slice(-2), { id, tone, text }]);
-      if (tone !== 'error') setTimeout(() => dismiss(id), LIFETIME_MS);
+      setToasts((all) => [...all.slice(-2), { id, tone, text, ...options }]);
+      if (tone !== 'error') setTimeout(() => dismiss(id), options.lifetime ?? LIFETIME_MS);
     },
     [dismiss],
   );
@@ -50,6 +61,18 @@ export function Toasts({ toasts, onDismiss }: { toasts: Toast[]; onDismiss(id: n
             aria-hidden="true"
           />
           <span className="flex-1">{t.text}</span>
+          {t.action && (
+            <button
+              type="button"
+              onClick={() => {
+                onDismiss(t.id);
+                t.action?.run();
+              }}
+              className="-my-0.5 h-7 shrink-0 rounded-control px-2 font-medium text-accent hover:bg-accent-soft"
+            >
+              {t.action.label}
+            </button>
+          )}
           <button
             type="button"
             aria-label="Dismiss"

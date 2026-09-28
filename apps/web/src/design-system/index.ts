@@ -23,6 +23,6 @@ export {
   PointMenu,
 } from './Menu';
 export { Popover } from './Popover';
-export { type Toast, Toasts, type ToastTone, useToasts } from './Toasts';
+export { type Toast, type ToastOptions, Toasts, type ToastTone, useToasts } from './Toasts';
 export { Tooltip, TooltipProvider } from './Tooltip';
 export { applyInitialTheme, resolveTheme, type Theme, type ThemeChoice, useTheme } from './theme';

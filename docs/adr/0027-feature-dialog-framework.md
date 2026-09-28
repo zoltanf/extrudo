@@ -267,7 +267,10 @@ new feature hides the shown sketches whose profiles it used
 (`usedSketches` in core's `sketch/feature.ts`), amended into the insert's
 undo step, as Fusion's "auto-hide sketch on feature creation" does. Edits
 don't touch visibility, and a sketch line used only as an axis doesn't
-hide its sketch. Rejected: ranking a used sketch's profiles after faces in
+hide its sketch. A toast says which sketches were hidden, for 12 s, with
+a Show button that shows them again as their own undo step (toasts can
+now carry an action and a lifetime: `ToastOptions`, passed through
+`notify`). Rejected: ranking a used sketch's profiles after faces in
 picking (a shown profile should pick where it is drawn; hiding also
 declutters the view), and a preference to turn it off (not needed yet; the
 eye shows a sketch again).

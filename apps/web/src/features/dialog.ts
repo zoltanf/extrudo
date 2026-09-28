@@ -38,6 +38,7 @@ import {
 } from '@extrudo/core';
 import type { BodyMesh, Preview, SubShapeKind } from '@extrudo/kernel';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { ToastOptions } from '../design-system';
 import { readTopology } from '../selection/items';
 import { clearPickedHover, createModelSelect } from '../selection/useModelSelection';
 import type { ModelSelect } from '../viewport/Viewport';
@@ -151,7 +152,7 @@ export interface DialogControllerOptions {
   dialogs: FeatureDialogs;
   /** Absent until the kernel exists (tests without one get no previews). */
   kernel?: DialogKernel;
-  notify?(tone: 'info' | 'error', text: string): void;
+  notify?(tone: 'info' | 'error', text: string, options?: ToastOptions): void;
 }
 
 export interface DialogController {
@@ -607,10 +608,11 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         fresh.mode === 'create'
           ? insertFeature({ feature: fresh.draft, index: fresh.index })
           : updateFeatureInputs({ id: fresh.id, inputs: fresh.draft.inputs, replace: true });
+      let used: FeatureId[] = [];
       try {
         store.getState().dispatch(command);
         // A new feature hides the sketches whose profiles it used, in the same undo step.
-        const used =
+        used =
           fresh.mode === 'create' ? usedSketches(fresh.draft, store.getState().doc.features) : [];
         if (used.length > 0) {
           store.getState().amend(setFeatureVisibility({ ids: used, visible: false }));
@@ -622,6 +624,12 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       }
       close();
       session.getState().clearSelection();
+      if (used.length > 0) {
+        notify('info', hiddenMessage(store.getState().doc.features, used, fresh.draft.name), {
+          action: { label: 'Show', run: () => showSketches(store, used) },
+          lifetime: HIDDEN_TOAST_MS,
+        });
+      }
       return true;
     },
     cancel() {
@@ -632,6 +640,31 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       if (get()) close();
     },
   };
+}
+
+/** How long the "Sketch1 is hidden" toast stays, ms. */
+export const HIDDEN_TOAST_MS = 12_000;
+
+/** "Sketch1 is hidden: Extrude1 used its profile." (one name, or two and more). */
+export function hiddenMessage(
+  features: readonly Pick<Feature, 'id' | 'name'>[],
+  ids: readonly FeatureId[],
+  by: string,
+): string {
+  const names = ids.map((id) => features.find((f) => f.id === id)?.name ?? id);
+  if (names.length === 1) return `${names[0]} is hidden: ${by} used its profile.`;
+  const list = `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+  return `${list} are hidden: ${by} used their profiles.`;
+}
+
+/** Shows sketches again (the toast's "Show"), those still there and hidden; one undo step. */
+function showSketches(store: DocumentStore, ids: readonly FeatureId[]) {
+  const hidden = ids.filter(
+    (id) => store.getState().doc.features.find((f) => f.id === id)?.visible === false,
+  );
+  if (hidden.length > 0) {
+    store.getState().dispatch(setFeatureVisibility({ ids: hidden, visible: true }));
+  }
 }
 
 /** An expression's value if it evaluated. */

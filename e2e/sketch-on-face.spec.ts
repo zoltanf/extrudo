@@ -146,16 +146,22 @@ test('sketches on a top face, cuts a hole from it, and follows the face', async 
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:8:60,40,15');
   await page.screenshot({ path: test.info().outputPath('hole-on-top.png') });
   // The cut used Sketch2's profile, so Sketch2 is hidden: over the hole the pointer finds its
-  // floor, not the used profile floating where the top face was. Its eye shows it again.
+  // floor, not the used profile floating where the top face was. A toast says so, and its
+  // Show button shows the sketch again.
   expect(await sketchIds(page)).not.toContain(faceSketch);
   await page.mouse.move(centre.x + 3, centre.y + 3);
   await page.mouse.move(centre.x, centre.y);
   await expect.poll(() => attr(viewport, 'data-model-hover')).toMatch(/^face:/);
-  await page
-    .getByRole('complementary', { name: 'Browser' })
-    .getByRole('button', { name: 'Show Sketch2' })
-    .click();
+  const toast = page.getByRole('status').filter({ hasText: 'Sketch2 is hidden' });
+  await expect(toast).toHaveText(/Sketch2 is hidden: Extrude2 used its profile\./);
+  await toast.getByRole('button', { name: 'Show' }).click();
+  await expect(toast).toBeHidden();
   await expect.poll(() => sketchIds(page)).toContain(faceSketch);
+  await expect(
+    page
+      .getByRole('complementary', { name: 'Browser' })
+      .getByRole('button', { name: 'Hide Sketch2' }),
+  ).toBeVisible();
 
   // A taller box: the sketch rides up with the top face, and the hole with it.
   await chip(page, 'Extrude1').dblclick();

@@ -9,6 +9,7 @@ import type { BodyMesh } from '@extrudo/kernel';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import type { ToastOptions } from '../design-system';
 import type { SelectionFilter } from '../selection/filter';
 import type { ViewportStore } from '../viewport/store';
 import {
@@ -33,7 +34,7 @@ export interface FeatureDialogsOptions {
   dialogs: FeatureDialogs;
   /** The project's `Recomputer`; may arrive after the first render. */
   kernel: DialogKernel | undefined;
-  notify(tone: 'info' | 'error', text: string): void;
+  notify(tone: 'info' | 'error', text: string, options?: ToastOptions): void;
 }
 
 export function useFeatureDialogs({
@@ -67,7 +68,7 @@ export function useFeatureDialogs({
         reference: (body, kind, index, base) =>
           kernelRef.current?.reference(body, kind, index, base) ?? Promise.resolve(undefined),
       },
-      notify: (tone, text) => notifyRef.current(tone, text),
+      notify: (tone, text, options) => notifyRef.current(tone, text, options),
     });
     setController(c);
     return () => c.dispose();

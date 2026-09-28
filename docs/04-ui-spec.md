@@ -191,8 +191,10 @@ a right-click without movement, as Onshape's context menu does.
 - OK commits one undoable step and adds (or updates) the timeline chip.
   A new feature that used sketch profiles hides those sketches in the same
   step (as Fusion does), so a used profile doesn't float in front of the
-  faces made from it and take their clicks; the eye in the browser shows
-  it again. Editing a feature doesn't change visibility.
+  faces made from it and take their clicks. A toast (bottom left, 12 s)
+  says so ("Sketch1 is hidden: Extrude1 used its profile.") with a Show
+  button; the eye in the browser shows it again too. Editing a feature
+  doesn't change visibility.
 - **As built (P2-05, ADR-0027):** the dialog floats top-right below the
   ViewCube, non-modal, and moves when dragged by its title. Selection
   fields are buttons: the one taking picks has the accent border ("Pick a

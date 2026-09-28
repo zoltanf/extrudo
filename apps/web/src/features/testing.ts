@@ -3,6 +3,7 @@
  * kind, a document with one box body, the box's mesh with persistent IDs,
  * and a fake kernel whose previews the test resolves.
  */
+
 import {
   type BodyId,
   createDocument,
@@ -16,6 +17,7 @@ import {
   type GeomRef,
 } from '@extrudo/core';
 import type { BodyMesh, Preview, PreviewToolStyle } from '@extrudo/kernel';
+import type { ToastOptions } from '../design-system';
 import { boxMesh } from '../selection/testing';
 import { createDialogController, type DialogKernel } from './dialog';
 import { faceFrame } from './geometry';
@@ -145,6 +147,8 @@ export function setupDialogs(specs: FeatureDialogSpec[] = [fakeSpec]) {
   model.getState().computed({ features: {}, bodies: { [BOX]: mesh } });
   const kernel = fakeKernel();
   const messages: string[] = [];
+  /** The options of each message (a toast's action, its lifetime). */
+  const toasts: (ToastOptions | undefined)[] = [];
   const dialogs = new FeatureRegistry<FeatureDialogSpec>();
   for (const spec of specs) dialogs.register(spec);
   const controller = createDialogController({
@@ -153,10 +157,13 @@ export function setupDialogs(specs: FeatureDialogSpec[] = [fakeSpec]) {
     model,
     dialogs,
     kernel,
-    notify: (tone, text) => messages.push(`${tone}: ${text}`),
+    notify: (tone, text, options) => {
+      messages.push(`${tone}: ${text}`);
+      toasts.push(options);
+    },
   });
   const open = () => controller.state.getState().open;
-  return { store, session, model, mesh, kernel, messages, controller, open, dialogs };
+  return { store, session, model, mesh, kernel, messages, toasts, controller, open, dialogs };
 }
 
 /** The session item of face `index` of the box. */
