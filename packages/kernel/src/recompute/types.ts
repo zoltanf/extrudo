@@ -97,6 +97,17 @@ export interface FeatureOutput {
   data?: unknown;
   /** Turns the status to `warning`. */
   warnings?: readonly string[];
+  /**
+   * Tool shapes for a dialog's live preview (P2-06): an extrude's swept
+   * shape before it joins, cuts or intersects, drawn in the operation's
+   * style (a cut in red). The cache owns them like `shapes`.
+   */
+  previewTools?: readonly PreviewTool[];
+}
+
+export interface PreviewTool {
+  shape: ShapeHandle;
+  style: 'new' | 'join' | 'cut' | 'intersect';
 }
 
 export interface RecomputeRequest {

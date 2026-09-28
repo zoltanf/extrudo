@@ -491,7 +491,13 @@ export class RecomputeEngine {
 
 /** Every shape an output holds, once each. */
 function outputHandles(output: FeatureOutput): ShapeHandle[] {
-  return [...new Set([...(output.bodies?.values() ?? []), ...Object.values(output.shapes ?? {})])];
+  return [
+    ...new Set([
+      ...(output.bodies?.values() ?? []),
+      ...Object.values(output.shapes ?? {}),
+      ...(output.previewTools ?? []).map((tool) => tool.shape),
+    ]),
+  ];
 }
 
 /** The values of a feature's `expr` inputs, or the first error as a message. */

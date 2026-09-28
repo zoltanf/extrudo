@@ -1,0 +1,2657 @@
+{
+ "one-side distance new-body taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1178.1,
+    "area": 628.32,
+    "bbox": [
+     4.99,
+     5,
+     -0.01,
+     15.01,
+     15,
+     15.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side distance new-body taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 895.94,
+    "area": 532.22,
+    "bbox": [
+     4.95,
+     4.97,
+     -0.05,
+     15.05,
+     15.03,
+     15.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side distance new-body taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1514.36,
+    "area": 738.84,
+    "bbox": [
+     3.64,
+     3.66,
+     -0.05,
+     16.36,
+     16.34,
+     15.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side distance join taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24392.7,
+    "area": 5357.08,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     15.01
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side distance join taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24239.95,
+    "area": 5312.45,
+    "bbox": [
+     -0.04,
+     -0.04,
+     -10.04,
+     40.04,
+     30.04,
+     15.04
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side distance join taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24583.52,
+    "area": 5408.92,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     15.05
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side distance cut taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 23214.6,
+    "area": 5514.16,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     10.01
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side distance cut taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 23344.01,
+    "area": 5512.85,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side distance cut taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 23069.16,
+    "area": 5513.06,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side distance intersect taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 785.4,
+    "area": 471.24,
+    "bbox": [
+     4.99,
+     5,
+     -0.01,
+     15.01,
+     15,
+     10.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side distance intersect taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 655.99,
+    "area": 419.77,
+    "bbox": [
+     4.95,
+     4.97,
+     -0.05,
+     15.05,
+     15.03,
+     10.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side distance intersect taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 930.84,
+    "area": 529.92,
+    "bbox": [
+     4.08,
+     4.1,
+     -0.05,
+     15.92,
+     15.9,
+     10.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side to-object new-body taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 785.4,
+    "area": 471.24,
+    "bbox": [
+     4.99,
+     5,
+     -0.01,
+     15.01,
+     15,
+     10.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side to-object new-body taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 655.99,
+    "area": 419.77,
+    "bbox": [
+     4.95,
+     4.97,
+     -0.05,
+     15.05,
+     15.03,
+     10.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side to-object new-body taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 930.84,
+    "area": 529.92,
+    "bbox": [
+     4.08,
+     4.1,
+     -0.05,
+     15.92,
+     15.9,
+     10.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side to-object join taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   }
+  }
+ },
+ "one-side to-object join taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   }
+  }
+ },
+ "one-side to-object join taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   }
+  }
+ },
+ "one-side to-object cut taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 23214.6,
+    "area": 5514.16,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     10.01
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side to-object cut taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 23344.01,
+    "area": 5512.85,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side to-object cut taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 23069.16,
+    "area": 5513.06,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side to-object intersect taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 785.4,
+    "area": 471.24,
+    "bbox": [
+     4.99,
+     5,
+     -0.01,
+     15.01,
+     15,
+     10.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side to-object intersect taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 655.99,
+    "area": 419.77,
+    "bbox": [
+     4.95,
+     4.97,
+     -0.05,
+     15.05,
+     15.03,
+     10.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side to-object intersect taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 930.84,
+    "area": 529.92,
+    "bbox": [
+     4.08,
+     4.1,
+     -0.05,
+     15.92,
+     15.9,
+     10.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all new-body taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 863.94,
+    "area": 502.65,
+    "bbox": [
+     4.99,
+     5,
+     -0.01,
+     15.01,
+     15,
+     11.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all new-body taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 708.32,
+    "area": 443.27,
+    "bbox": [
+     4.95,
+     4.97,
+     -0.05,
+     15.05,
+     15.03,
+     11.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all new-body taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1040.89,
+    "area": 570.5,
+    "bbox": [
+     3.99,
+     4.01,
+     -0.05,
+     16.01,
+     15.99,
+     11.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all join taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24078.54,
+    "area": 5231.42,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     11.01
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all join taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24052.33,
+    "area": 5223.5,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     11.01
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all join taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24110.05,
+    "area": 5240.58,
+    "bbox": [
+     -0.02,
+     -0.02,
+     -10.02,
+     40.02,
+     30.02,
+     11.02
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all cut taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 23214.6,
+    "area": 5514.16,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     10.01
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all cut taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 23344.01,
+    "area": 5512.85,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all cut taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 23069.16,
+    "area": 5513.06,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all intersect taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 785.4,
+    "area": 471.24,
+    "bbox": [
+     4.99,
+     5,
+     -0.01,
+     15.01,
+     15,
+     10.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all intersect taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 655.99,
+    "area": 419.77,
+    "bbox": [
+     4.95,
+     4.97,
+     -0.05,
+     15.05,
+     15.03,
+     10.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "one-side through-all intersect taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 930.84,
+    "area": 529.92,
+    "bbox": [
+     4.08,
+     4.1,
+     -0.05,
+     15.92,
+     15.9,
+     10.05
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric distance new-body taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1178.1,
+    "area": 628.32,
+    "bbox": [
+     4.99,
+     5,
+     -7.51,
+     15.01,
+     15,
+     7.51
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric distance new-body taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1030.26,
+    "area": 560.56,
+    "bbox": [
+     4.95,
+     4.97,
+     -7.55,
+     15.05,
+     15.03,
+     7.55
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric distance new-body taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1339.47,
+    "area": 705.09,
+    "bbox": [
+     4.3,
+     4.31,
+     -7.55,
+     15.7,
+     15.69,
+     7.55
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric distance join taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   }
+  }
+ },
+ "symmetric distance join taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   }
+  }
+ },
+ "symmetric distance join taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   }
+  }
+ },
+ "symmetric distance cut taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22821.9,
+    "area": 5828.32,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     10.01
+    ],
+    "faces": 9,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric distance cut taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22969.74,
+    "area": 5760.56,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 10,
+    "edges": 17,
+    "vertices": 11,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric distance cut taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22660.53,
+    "area": 5905.09,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 10,
+    "edges": 17,
+    "vertices": 11,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric distance intersect taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1178.1,
+    "area": 628.32,
+    "bbox": [
+     4.99,
+     5,
+     -7.51,
+     15.01,
+     15,
+     7.51
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric distance intersect taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1030.26,
+    "area": 560.56,
+    "bbox": [
+     4.95,
+     4.97,
+     -7.55,
+     15.05,
+     15.03,
+     7.55
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric distance intersect taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1339.47,
+    "area": 705.09,
+    "bbox": [
+     4.3,
+     4.31,
+     -7.55,
+     15.7,
+     15.69,
+     7.55
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric to-object new-body taper 0 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric to-object new-body taper -5 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric to-object new-body taper 5 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric to-object join taper 0 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric to-object join taper -5 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric to-object join taper 5 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric to-object cut taper 0 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric to-object cut taper -5 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric to-object cut taper 5 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric to-object intersect taper 0 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric to-object intersect taper -5 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric to-object intersect taper 5 deg": {
+  "error": "A symmetric extrude can't end at an object. Use two sides instead."
+ },
+ "symmetric through-all new-body taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1727.88,
+    "area": 848.23,
+    "bbox": [
+     4.99,
+     5,
+     -11.01,
+     15.01,
+     15,
+     11.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric through-all new-body taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1416.64,
+    "area": 729.45,
+    "bbox": [
+     4.95,
+     4.97,
+     -11.05,
+     15.05,
+     15.03,
+     11.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric through-all new-body taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 2081.79,
+    "area": 983.93,
+    "bbox": [
+     3.99,
+     4.01,
+     -11.05,
+     16.01,
+     15.99,
+     11.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric through-all join taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24157.08,
+    "area": 5262.83,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -11.01,
+     40.01,
+     30.01,
+     11.01
+    ],
+    "faces": 10,
+    "edges": 18,
+    "vertices": 12,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1#1",
+     "extrude:E:side:c1#2"
+    ]
+   }
+  }
+ },
+ "symmetric through-all join taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24104.67,
+    "area": 5247,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -11.01,
+     40.01,
+     30.01,
+     11.01
+    ],
+    "faces": 10,
+    "edges": 18,
+    "vertices": 12,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric through-all join taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24220.11,
+    "area": 5281.17,
+    "bbox": [
+     -0.02,
+     -0.02,
+     -11.02,
+     40.02,
+     30.02,
+     11.02
+    ],
+    "faces": 10,
+    "edges": 18,
+    "vertices": 12,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric through-all cut taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22429.2,
+    "area": 5671.24,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     10.01
+    ],
+    "faces": 7,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric through-all cut taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22688.03,
+    "area": 5668.62,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 17,
+    "vertices": 11,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric through-all cut taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22138.32,
+    "area": 5669.04,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 17,
+    "vertices": 11,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric through-all intersect taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1570.8,
+    "area": 785.4,
+    "bbox": [
+     4.99,
+     5,
+     -10.01,
+     15.01,
+     15,
+     10.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric through-all intersect taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1311.97,
+    "area": 682.46,
+    "bbox": [
+     4.95,
+     4.97,
+     -10.05,
+     15.05,
+     15.03,
+     10.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric through-all intersect taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1861.68,
+    "area": 902.76,
+    "bbox": [
+     4.08,
+     4.1,
+     -10.05,
+     15.92,
+     15.9,
+     10.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance new-body taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1570.8,
+    "area": 785.4,
+    "bbox": [
+     4.99,
+     5,
+     -5.01,
+     15.01,
+     15,
+     15.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance new-body taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1268.42,
+    "area": 677.38,
+    "bbox": [
+     4.95,
+     4.97,
+     -5.05,
+     15.05,
+     15.03,
+     15.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance new-body taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1886.84,
+    "area": 883.99,
+    "bbox": [
+     3.64,
+     3.66,
+     -5.05,
+     16.36,
+     16.34,
+     15.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance join taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24392.7,
+    "area": 5357.08,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     15.01
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance join taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24239.95,
+    "area": 5312.45,
+    "bbox": [
+     -0.04,
+     -0.04,
+     -10.04,
+     40.04,
+     30.04,
+     15.04
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance join taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24583.52,
+    "area": 5408.92,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     15.05
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance cut taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22821.9,
+    "area": 5671.24,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     10.01
+    ],
+    "faces": 8,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance cut taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22971.54,
+    "area": 5658.01,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 9,
+    "edges": 17,
+    "vertices": 11,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance cut taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22696.68,
+    "area": 5658.22,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 9,
+    "edges": 17,
+    "vertices": 11,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance intersect taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1178.1,
+    "area": 628.32,
+    "bbox": [
+     4.99,
+     5,
+     -5.01,
+     15.01,
+     15,
+     10.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance intersect taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1028.46,
+    "area": 564.92,
+    "bbox": [
+     4.95,
+     4.97,
+     -5.05,
+     15.05,
+     15.03,
+     10.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides distance intersect taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1303.32,
+    "area": 675.08,
+    "bbox": [
+     4.08,
+     4.1,
+     -5.05,
+     15.92,
+     15.9,
+     10.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides to-object new-body taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1570.8,
+    "area": 785.4,
+    "bbox": [
+     4.99,
+     5,
+     -10.01,
+     15.01,
+     15,
+     10.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides to-object new-body taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1361.94,
+    "area": 702.27,
+    "bbox": [
+     4.95,
+     4.97,
+     -10.05,
+     15.05,
+     15.03,
+     10.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides to-object new-body taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1636.79,
+    "area": 812.42,
+    "bbox": [
+     4.08,
+     4.1,
+     -10.05,
+     15.92,
+     15.9,
+     10.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides to-object join taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   }
+  }
+ },
+ "two-sides to-object join taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   }
+  }
+ },
+ "two-sides to-object join taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   }
+  }
+ },
+ "two-sides to-object cut taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22429.2,
+    "area": 5671.24,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     10.01
+    ],
+    "faces": 7,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides to-object cut taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22638.06,
+    "area": 5669.47,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 17,
+    "vertices": 11,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides to-object cut taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22363.21,
+    "area": 5669.68,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 17,
+    "vertices": 11,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides to-object intersect taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1570.8,
+    "area": 785.4,
+    "bbox": [
+     4.99,
+     5,
+     -10.01,
+     15.01,
+     15,
+     10.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides to-object intersect taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1361.94,
+    "area": 702.27,
+    "bbox": [
+     4.95,
+     4.97,
+     -10.05,
+     15.05,
+     15.03,
+     10.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides to-object intersect taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1636.79,
+    "area": 812.42,
+    "bbox": [
+     4.08,
+     4.1,
+     -10.05,
+     15.92,
+     15.9,
+     10.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides through-all new-body taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1727.88,
+    "area": 848.23,
+    "bbox": [
+     4.99,
+     5,
+     -11.01,
+     15.01,
+     15,
+     11.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides through-all new-body taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1476.48,
+    "area": 752.3,
+    "bbox": [
+     4.95,
+     4.97,
+     -11.05,
+     15.05,
+     15.03,
+     11.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides through-all new-body taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1809.05,
+    "area": 879.54,
+    "bbox": [
+     3.99,
+     4.01,
+     -11.05,
+     16.01,
+     15.99,
+     11.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides through-all join taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24157.08,
+    "area": 5262.83,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -11.01,
+     40.01,
+     30.01,
+     11.01
+    ],
+    "faces": 10,
+    "edges": 18,
+    "vertices": 12,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1#1",
+     "extrude:E:side:c1#2"
+    ]
+   }
+  }
+ },
+ "two-sides through-all join taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24114.54,
+    "area": 5250.03,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -11.01,
+     40.01,
+     30.01,
+     11.01
+    ],
+    "faces": 10,
+    "edges": 18,
+    "vertices": 12,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides through-all join taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 24172.26,
+    "area": 5267.11,
+    "bbox": [
+     -0.02,
+     -0.02,
+     -11.02,
+     40.02,
+     30.02,
+     11.02
+    ],
+    "faces": 10,
+    "edges": 18,
+    "vertices": 12,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides through-all cut taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22429.2,
+    "area": 5671.24,
+    "bbox": [
+     -0.01,
+     -0.01,
+     -10.01,
+     40.01,
+     30.01,
+     10.01
+    ],
+    "faces": 7,
+    "edges": 15,
+    "vertices": 10,
+    "extrudeFaces": [
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides through-all cut taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22638.06,
+    "area": 5669.47,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 17,
+    "vertices": 11,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides through-all cut taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 22363.21,
+    "area": 5669.68,
+    "bbox": [
+     -0.05,
+     -0.05,
+     -10.05,
+     40.05,
+     30.05,
+     10.05
+    ],
+    "faces": 8,
+    "edges": 17,
+    "vertices": 11,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides through-all intersect taper 0 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1570.8,
+    "area": 785.4,
+    "bbox": [
+     4.99,
+     5,
+     -10.01,
+     15.01,
+     15,
+     10.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides through-all intersect taper -5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1361.94,
+    "area": 702.27,
+    "bbox": [
+     4.95,
+     4.97,
+     -10.05,
+     15.05,
+     15.03,
+     10.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "two-sides through-all intersect taper 5 deg": {
+  "bodies": {
+   "B:0": {
+    "volume": 1636.79,
+    "area": 812.42,
+    "bbox": [
+     4.08,
+     4.1,
+     -10.05,
+     15.92,
+     15.9,
+     10.05
+    ],
+    "faces": 4,
+    "edges": 5,
+    "vertices": 3,
+    "extrudeFaces": [
+     "extrude:E:side2:c1",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ }
+}

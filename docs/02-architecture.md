@@ -211,6 +211,14 @@ The same definitions later form the public scripting API (FR-PRG-01). A script
 calling `doc.extrude({profile, distance: 'h'})` produces exactly the feature
 the dialog would.
 
+As built for extrude (P2-06, ADR-0028): `packages/core/src/extrude.ts` holds
+the inputs schema, where every input but `profiles` is optional with a
+default (`extrudeSettings` fills them in; the kernel and the UI read the same
+defaults) and inputs a direction doesn't use are ignored rather than refused,
+so a dialog can keep them. Cross-field rules are the evaluator's and come
+back as the feature's status. `extrudeInputs(profiles, options)` builds the
+inputs from plain options, which is what a script call will do.
+
 ### 4.3 Expressions and parameters
 
 - Small hand-written Pratt parser in `core/expr` (not mathjs, which is too big).
@@ -365,6 +373,21 @@ As built in P2-04 (ADR-0005, `packages/kernel/src/naming/`):
   vertices, face by face), silent if unique; else the best fingerprint
   scoring ≥ 0.6. Guesses turn the feature into a warning; no match fails
   it with a message that says to pick again.
+
+As built in P2-06 (ADR-0028, `packages/kernel/src/features/extrude.ts`):
+the extrude unions its profiles and faces into one planar source (a 2D
+fuse that carries edge sources through history), sweeps it with the
+facade's `prism`, whose optional taper runs `BRepOffsetAPI_DraftAngle` on
+the side faces and returns the straight sweep's history carried through
+the draft (checked for sides that cross or cones past their tip), trims a
+side at an inclined "to object" face with a box whose face in the plane is
+named as the end cap, and makes new bodies (one per solid) or joins, cuts
+or intersects the participants (automatic: the bodies it touches, by the
+facade's `distance`). A tapered symmetric or two-sided extrude is two
+prisms from the sketch plane, side 2's faces named `side2:<source>`.
+`FeatureOutput.previewTools` carries the swept tool of a join, cut or
+intersect for the dialog's preview; the cache owns those handles like any
+output shape.
 
 ### 5.3 Sketch → geometry
 
@@ -568,3 +591,9 @@ bundle-size budget. Every agent task must leave CI green.
   edges and vertices, occlusion by a second ray, one kind per box, face
   tints through a colour attribute, "Select other…", the selection filter
   with Select.
+- **ADR-0028** Extrude. **Written 2026-09-28** (P2-06, kernel and document
+  part): optional inputs with shared defaults, profiles unioned before the
+  sweep, taper through `DraftAngle` with history and sanity checks, two
+  prisms for tapered two-sided extrudes, trimming at inclined objects,
+  participants by distance, one body per solid, preview tools in the
+  feature output.

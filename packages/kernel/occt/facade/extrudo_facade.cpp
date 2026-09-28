@@ -34,7 +34,9 @@
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeShape.hxx>
 #include <BRepCheck_Analyzer.hxx>
+#include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
+#include <BRepOffsetAPI_DraftAngle.hxx>
 #include <BRepGProp.hxx>
 #include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
@@ -61,6 +63,7 @@
 #include <NCollection_IndexedDataMap.hxx>
 #include <NCollection_IndexedMap.hxx>
 #include <NCollection_List.hxx>
+#include <NCollection_Map.hxx>
 #include <Poly_PolygonOnTriangulation.hxx>
 #include <Poly_Triangulation.hxx>
 #include <Standard_Failure.hxx>
@@ -226,21 +229,36 @@ public:
    * Sweeps a face (or a compound of faces, or any shape) along (dx, dy, dz),
    * after moving it by (ox, oy, oz): a shift lets an extrude start below its
    * sketch plane (symmetric, two sides) without changing sub-shape order.
+   *
+   * A non-zero `taper` (radians, |taper| < π/2) tilts every side face about
+   * its edge in the start plane (BRepOffsetAPI_DraftAngle, neutral plane =
+   * the start plane): positive widens the outline along the sweep, negative
+   * narrows it; holes do the opposite. Planes become tilted planes and
+   * cylinders cones; sides of other surfaces (ellipses, splines) can't be
+   * tapered. The history is that of the straight sweep carried through the
+   * taper, so side faces keep their sources.
    */
-  int prism(int shape, double ox, double oy, double oz, double dx, double dy, double dz) {
+  int prism(int shape, double ox, double oy, double oz, double dx, double dy, double dz,
+            double taper) {
     beginOp();
     const TopoDS_Shape* input = find(shape);
     if (input == nullptr) return fail("Extrude failed: unknown input shape.");
     try {
       const gp_Vec along(dx, dy, dz);
       if (along.Magnitude() <= Precision::Confusion()) return fail("Extrude failed: the distance is zero.");
+      if (std::abs(taper) >= M_PI / 2 - Precision::Angular()) {
+        return fail("The taper angle must be between -90° and 90°.");
+      }
       const TopoDS_Shape base = shifted(*input, ox, oy, oz);
       BRepPrimAPI_MakePrism builder(base, along, false, true);
       builder.Build();
       if (!builder.IsDone()) return fail("Extrude failed: OCCT could not sweep this shape.");
-      const TopoDS_Shape result = builder.Shape();
-      recordSweep(builder, base, result);
-      return store(result);
+      const TopoDS_Shape swept = builder.Shape();
+      if (std::abs(taper) <= Precision::Angular()) {
+        recordSweep(builder, base, swept);
+        return store(swept);
+      }
+      return taperSweep(builder, base, swept, along, taper);
     } catch (...) {
       return failFromException("Extrude failed");
     }
@@ -296,7 +314,7 @@ public:
     }
   }
 
-  /** A new handle to one sub-shape (kind, 0-based index) of a shape, or 0. */
+  /** A new handle to one sub-shape (kind as for count(), 0-based index) of a shape, or 0. */
   int subShape(int shape, int kind, int index) {
     beginOp();
     const TopoDS_Shape* s = find(shape);
@@ -327,6 +345,40 @@ public:
     TopExp::MapShapes(*w, kindToEnum(kind), wholeMap);
     for (int i = 1; i <= partMap.Extent(); ++i) lookup_.push_back(wholeMap.FindIndex(partMap(i)) - 1);
     return partMap.Extent();
+  }
+
+  /**
+   * The smallest distance between two shapes (0 where they touch or one
+   * is inside a solid of the other), or -1. Compared solid by solid, so a
+   * compound of solids (what booleans return) counts its insides too.
+   */
+  double distance(int a, int b) {
+    beginOp();
+    const TopoDS_Shape* sa = find(a);
+    const TopoDS_Shape* sb = find(b);
+    if (sa == nullptr || sb == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    try {
+      const std::vector<TopoDS_Shape> partsA = solidsOrSelf(*sa);
+      const std::vector<TopoDS_Shape> partsB = solidsOrSelf(*sb);
+      double best = -1;
+      for (const TopoDS_Shape& pa : partsA) {
+        for (const TopoDS_Shape& pb : partsB) {
+          BRepExtrema_DistShapeShape measure(pa, pb, Extrema_ExtFlag_MIN);
+          if (!measure.IsDone()) continue;
+          const double d = measure.InnerSolution() ? 0.0 : measure.Value();
+          if (best < 0 || d < best) best = d;
+          if (best <= 0) return 0;
+        }
+      }
+      if (best < 0) fail("Couldn't measure the distance between these shapes.");
+      return best;
+    } catch (...) {
+      failFromException("Distance failed");
+      return -1;
+    }
   }
 
   uintptr_t lookupPtr() const { return reinterpret_cast<uintptr_t>(lookup_.data()); }
@@ -602,7 +654,7 @@ public:
 
   // ------------------------------------------------------------- topology --
 
-  /** Number of sub-shapes of a kind (0 = face, 1 = edge, 2 = vertex), or -1 for an unknown handle. */
+  /** Number of sub-shapes of a kind (0 = face, 1 = edge, 2 = vertex, 3 = solid), or -1 for an unknown handle. */
   int count(int shape, int kind) {
     const TopoDS_Shape* s = find(shape);
     if (s == nullptr) return -1;
@@ -1017,6 +1069,8 @@ private:
         return TopAbs_FACE;
       case 1:
         return TopAbs_EDGE;
+      case 3:
+        return TopAbs_SOLID;
       default:
         return TopAbs_VERTEX;
     }
@@ -1057,6 +1111,135 @@ private:
     gp_Trsf move;
     move.SetTranslation(gp_Vec(x, y, z));
     return shape.Moved(TopLoc_Location(move));
+  }
+
+  /**
+   * Tapers a straight sweep's side faces (see prism) and records the sweep's
+   * history carried through the taper. Fails with a message for the user
+   * when OCCT can't tilt a side or the sides meet before the end.
+   */
+  int taperSweep(BRepPrimAPI_MakePrism& builder, const TopoDS_Shape& base, const TopoDS_Shape& swept,
+                 const gp_Vec& along, double taper) {
+    const gp_Dir pull(along);
+    const double height = along.Magnitude();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> vertices;
+    TopExp::MapShapes(base, TopAbs_VERTEX, vertices);
+    if (vertices.IsEmpty()) return fail("Extrude failed: the profile has no vertices.");
+    const gp_Pln neutral(BRep_Tool::Pnt(TopoDS::Vertex(vertices(1))), pull);
+    // DraftAngle removes matter on the pull side for a positive angle: a
+    // positive taper here widens, so the sign flips.
+    BRepOffsetAPI_DraftAngle draft(swept);
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+    TopExp::MapShapes(base, TopAbs_EDGE, edges);
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> done;
+    for (int i = 1; i <= edges.Extent(); ++i) {
+      for (NCollection_List<TopoDS_Shape>::Iterator it(builder.Generated(edges(i))); it.More(); it.Next()) {
+        if (it.Value().ShapeType() != TopAbs_FACE || done.Contains(it.Value())) continue;
+        const TopoDS_Face& side = TopoDS::Face(it.Value());
+        BRepAdaptor_Surface surface(side, false);
+        const GeomAbs_SurfaceType type = surface.GetType();
+        if (type != GeomAbs_Plane && type != GeomAbs_Cylinder && type != GeomAbs_Cone) {
+          return fail("Can't taper sides made from ellipses or splines yet. Set the taper to 0.");
+        }
+        draft.Add(side, pull, -taper, neutral, true);
+        if (!draft.AddDone()) {
+          return fail("Can't taper this profile's sides. Try a smaller angle or a simpler profile.");
+        }
+        // Adding a face also tapers the faces tangent to it; adding one of
+        // those again is a no-op.
+        done.Add(side);
+      }
+    }
+    draft.Build();
+    if (!draft.IsDone()) {
+      return fail("The taper is too steep for this distance: the sides meet before the end. Use a smaller angle or distance.");
+    }
+    const TopoDS_Shape result = draft.Shape();
+    if (!taperHolds(builder, draft, base, result, neutral, pull, height)) {
+      return fail("The taper is too steep for this distance: the sides meet before the end. Use a smaller angle or distance.");
+    }
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultMaps[3];
+    for (int kind = 0; kind < 3; ++kind) TopExp::MapShapes(result, kindToEnum(kind), resultMaps[kind]);
+    for (int kind = 0; kind < 3; ++kind) {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> baseMap;
+      TopExp::MapShapes(base, kindToEnum(kind), baseMap);
+      for (int i = 1; i <= baseMap.Extent(); ++i) {
+        const TopoDS_Shape& sub = baseMap(i);
+        appendRelation(throughModifier(draft, builder.Generated(sub)), resultMaps, 0, kind, i - 1, 1);
+        NCollection_List<TopoDS_Shape> ends;
+        ends.Append(builder.FirstShape(sub));
+        appendRelation(throughModifier(draft, ends), resultMaps, 0, kind, i - 1, 4);
+        ends.Clear();
+        ends.Append(builder.LastShape(sub));
+        appendRelation(throughModifier(draft, ends), resultMaps, 0, kind, i - 1, 5);
+      }
+    }
+    return store(result);
+  }
+
+  /**
+   * Whether a narrowing taper still has room: DraftAngle happily tilts
+   * sides past each other, and the result can even pass BRepCheck. So,
+   * besides validity and volume: every straight edge of the end cap runs
+   * the same way as the profile edge it comes from (sides that met turn it
+   * round), and no cone a tapered circle or arc became has its tip before
+   * the end.
+   */
+  static bool taperHolds(BRepPrimAPI_MakePrism& builder, const BRepOffsetAPI_DraftAngle& draft,
+                         const TopoDS_Shape& base, const TopoDS_Shape& result, const gp_Pln& neutral,
+                         const gp_Dir& pull, double height) {
+    BRepCheck_Analyzer analyzer(result);
+    GProp_GProps props;
+    BRepGProp::VolumeProperties(result, props);
+    if (!analyzer.IsValid() || std::abs(props.Mass()) <= Precision::Confusion()) return false;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+    TopExp::MapShapes(result, TopAbs_FACE, faces);
+    for (int i = 1; i <= faces.Extent(); ++i) {
+      BRepAdaptor_Surface surface(TopoDS::Face(faces(i)), false);
+      if (surface.GetType() != GeomAbs_Cone) continue;
+      const double tip = gp_Vec(neutral.Location(), surface.Cone().Apex()).Dot(gp_Vec(pull));
+      if (tip > Precision::Confusion() && tip < height - 1e-9 * std::max(1.0, height)) return false;
+    }
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+    TopExp::MapShapes(base, TopAbs_EDGE, edges);
+    for (int i = 1; i <= edges.Extent(); ++i) {
+      const TopoDS_Edge& from = TopoDS::Edge(edges(i));
+      const TopoDS_Shape last = builder.LastShape(from);
+      if (last.IsNull() || last.ShapeType() != TopAbs_EDGE) continue;
+      const TopoDS_Shape now = draft.ModifiedShape(last);
+      if (now.IsNull() || now.ShapeType() != TopAbs_EDGE) continue;
+      TopoDS_Vertex a0, a1, b0, b1;
+      TopExp::Vertices(from, a0, a1);
+      TopExp::Vertices(TopoDS::Edge(now), b0, b1);
+      if (a0.IsNull() || a1.IsNull() || b0.IsNull() || b1.IsNull() || a0.IsSame(a1)) continue;
+      const gp_Vec was(BRep_Tool::Pnt(a0), BRep_Tool::Pnt(a1));
+      const gp_Vec is(BRep_Tool::Pnt(b0), BRep_Tool::Pnt(b1));
+      if (was.Dot(is) <= Precision::Confusion() * was.Magnitude()) return false;
+    }
+    return true;
+  }
+
+  /**
+   * What the taper made of each shape. DraftAngle reports a tilted face as
+   * generated, not modified, so ask ModifiedShape, which maps any sub-shape.
+   */
+  static NCollection_List<TopoDS_Shape> throughModifier(const BRepOffsetAPI_DraftAngle& draft,
+                                                        const NCollection_List<TopoDS_Shape>& shapes) {
+    NCollection_List<TopoDS_Shape> out;
+    for (NCollection_List<TopoDS_Shape>::Iterator it(shapes); it.More(); it.Next()) {
+      if (it.Value().IsNull()) continue;
+      const TopoDS_Shape now = draft.ModifiedShape(it.Value());
+      if (!now.IsNull()) out.Append(now);
+    }
+    return out;
+  }
+
+  /** The solids of a shape, or the shape itself if it has none. */
+  static std::vector<TopoDS_Shape> solidsOrSelf(const TopoDS_Shape& shape) {
+    std::vector<TopoDS_Shape> out;
+    for (TopExp_Explorer e(shape, TopAbs_SOLID); e.More(); e.Next()) out.push_back(e.Current());
+    if (out.empty()) out.push_back(shape);
+    return out;
   }
 
   /** History of a sweep (see the sweeps section): generated, first and last per sub-shape of `base`. */

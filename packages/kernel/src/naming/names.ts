@@ -125,6 +125,18 @@ export interface SweepNaming {
   edgeSources: readonly (string | null | undefined)[];
   /** The result's description (`Kernel.describe`). */
   result: ShapeDescription;
+  /**
+   * Roles in the names, default `cap:start`, `cap:end` and `side`. The
+   * second half of a tapered two-sided extrude sweeps from the sketch plane
+   * the other way: its far cap is `cap:start` and its sides `side2`.
+   */
+  roles?: SweepRoles;
+}
+
+export interface SweepRoles {
+  start?: string;
+  end?: string;
+  side?: string;
 }
 
 /**
@@ -134,7 +146,7 @@ export interface SweepNaming {
  * (a curve that bounds a profile twice, several profiles).
  */
 export function nameSweep(naming: SweepNaming): TopoNames {
-  const { op, feature, history, edgeSources, result } = naming;
+  const { op, feature, history, edgeSources, result, roles = {} } = naming;
   const raw: (string | undefined)[] = result.faces.map(() => undefined);
   const put = (to: HistoryRecord['to'], name: string) => {
     for (const t of to) if (t.kind === 'face' && raw[t.index] === undefined) raw[t.index] = name;
@@ -143,11 +155,14 @@ export function nameSweep(naming: SweepNaming): TopoNames {
     if (record.input !== 0) continue;
     const { from, relation } = record;
     if (from.kind === 'face' && relation === 'first') {
-      put(record.to, createdName(op, feature, 'cap:start'));
+      put(record.to, createdName(op, feature, roles.start ?? 'cap:start'));
     } else if (from.kind === 'face' && relation === 'last') {
-      put(record.to, createdName(op, feature, 'cap:end'));
+      put(record.to, createdName(op, feature, roles.end ?? 'cap:end'));
     } else if (from.kind === 'edge' && relation === 'generated') {
-      put(record.to, createdName(op, feature, 'side', edgeSources[from.index] ?? '_'));
+      put(
+        record.to,
+        createdName(op, feature, roles.side ?? 'side', edgeSources[from.index] ?? '_'),
+      );
     }
   }
   return deriveNames(

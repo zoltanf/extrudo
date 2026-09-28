@@ -8,7 +8,7 @@
  */
 import type { SubShapeKind } from '../history';
 import type { Axis, BooleanOptions, Kernel, OperationResult, ShapeHandle, Vec3 } from '../kernel';
-import { nameSweep, namesOf, propagateNames, type TopoNames } from './names';
+import { nameSweep, namesOf, propagateNames, type SweepRoles, type TopoNames } from './names';
 
 /** A shape and its naming table. */
 export interface NamedShape {
@@ -35,6 +35,10 @@ export interface PrismOptions extends SweepSource {
   vector: Vec3;
   /** Move the profile by this before sweeping (symmetric and two-sided extrudes). */
   shift?: Vec3;
+  /** Taper of the sides in radians (`Kernel.prism`). Names don't depend on it. */
+  taper?: number;
+  /** Other roles in the names (`SweepNaming.roles`). */
+  roles?: SweepRoles;
 }
 
 /**
@@ -43,8 +47,15 @@ export interface PrismOptions extends SweepSource {
  * profile edge; `#n` where names repeat.
  */
 export function namedPrism(kernel: Kernel, options: PrismOptions): NamedShape {
-  const result = kernel.prism(options.shape, options.vector, options.shift);
-  return nameSwept(kernel, result, options.op ?? 'extrude', options.feature, options.edgeSources);
+  const result = kernel.prism(options.shape, options.vector, options.shift, options.taper);
+  return nameSwept(
+    kernel,
+    result,
+    options.op ?? 'extrude',
+    options.feature,
+    options.edgeSources,
+    options.roles,
+  );
 }
 
 export interface RevolveOptions extends SweepSource {
@@ -68,6 +79,7 @@ function nameSwept(
   op: string,
   feature: string,
   edgeSources: SweepSource['edgeSources'],
+  roles?: SweepRoles,
 ): NamedShape {
   try {
     const names = nameSweep({
@@ -76,6 +88,7 @@ function nameSwept(
       history: result.history,
       edgeSources,
       result: kernel.describe(result.shape),
+      ...(roles ? { roles } : {}),
     });
     return { shape: result.shape, names };
   } catch (error) {

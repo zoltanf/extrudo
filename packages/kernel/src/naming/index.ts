@@ -22,6 +22,7 @@ export {
   positionalNames,
   propagateNames,
   type SweepNaming,
+  type SweepRoles,
   type TopoNames,
 } from './names';
 export {
