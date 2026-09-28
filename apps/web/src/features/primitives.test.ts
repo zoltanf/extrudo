@@ -155,6 +155,12 @@ describe('the primitive dialogs', () => {
     );
   });
 
+  it('shows a primitive stored without a plane on the XY plane', () => {
+    const ctx = { doc: setupDialogs().store.getState().doc, bodies };
+    const feature = { id: 'P', type: 'box', name: 'Box1', inputs: {} } as Feature;
+    expect(valuesFor(boxDialog, feature, ctx).refs.plane).toEqual([originPlaneRef('origin:xy')]);
+  });
+
   it('wants a flat face to sit on', () => {
     const curved: BodyMesh = namedBoxMesh();
     const positions = Float32Array.from(curved.positions);

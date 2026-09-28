@@ -47,6 +47,7 @@ import {
   type ManipulatorContext,
   type ProposeContext,
 } from './spec';
+import { defaultFromInputs } from './values';
 
 const OPERATIONS = [
   { value: 'new-body', label: 'New body' },
@@ -98,7 +99,7 @@ function numberField(type: PrimitiveType, number: PrimitiveNumber): DialogField 
 /** The dialog of one primitive type; its command is the toolbar tool of the same ID. */
 function primitiveDialog(type: PrimitiveType): FeatureDialogSpec {
   const feature = PRIMITIVE_FEATURES[type] as FeatureDefinition;
-  return defineFeatureDialog({
+  const spec: FeatureDialogSpec = defineFeatureDialog({
     ...feature,
     command: type satisfies ToolId,
     fields: [
@@ -132,6 +133,12 @@ function primitiveDialog(type: PrimitiveType): FeatureDialogSpec {
         shown: (v) => (v.choices.operation ?? 'new-body') !== 'new-body',
       },
     ],
+    // A primitive stored without a plane sits on XY (`DEFAULT_PLACEMENT`): show it so.
+    fromInputs(inputs) {
+      const values = defaultFromInputs(spec, inputs);
+      const plane = values.refs?.plane?.length ? values.refs.plane : [DEFAULT_PLACEMENT];
+      return { ...values, refs: { ...values.refs, plane } };
+    },
     validate(values, ctx) {
       const plane = values.refs.plane?.[0];
       if (plane?.kind === 'face' && isCurvedFace(plane, ctx)) {
@@ -144,6 +151,7 @@ function primitiveDialog(type: PrimitiveType): FeatureDialogSpec {
     previewStyle: (values) =>
       PREVIEW_STYLE[(values.choices.operation ?? 'new-body') as BodyOperation] ?? 'new',
   });
+  return spec;
 }
 
 export const boxDialog = primitiveDialog('box');
