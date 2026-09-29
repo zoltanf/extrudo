@@ -277,7 +277,11 @@ export function DimensionLabels({
                 ? undefined
                 : 'color-mix(in srgb, var(--x-raised) 92%, transparent)',
             }}
-            onPointerEnter={() => setHover(id)}
+            // Over, not Enter: a label often appears under a still pointer (at the Dimension
+            // tool's last click), and when the editor it replaces goes in the same frame,
+            // Chrome sends `pointerover` from the layer with no `pointerout`, which React's
+            // emulated `pointerenter` skips.
+            onPointerOver={() => setHover(id)}
             onPointerLeave={() => setHover((h) => (h === id ? undefined : h))}
             onPointerDown={(event) => down(id, event)}
             onPointerMove={move}
