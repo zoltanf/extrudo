@@ -332,8 +332,8 @@ pnpm check        # typecheck + Biome + package boundaries + Vitest. Must pass.
 pnpm e2e          # build + Playwright (run `pnpm e2e:install` once)
 pnpm format       # Biome auto-fix
 pnpm wasm         # download the OCCT and planegcs WASM for the current inputs (check/dev/build do this)
-pnpm occt build   # build OCCT locally with Docker (~11 min); see packages/kernel/occt/README.md
-pnpm planegcs build  # build planegcs locally with Docker (~2 min); see packages/sketch/planegcs/README.md
+pnpm occt build   # build OCCT locally with Docker (~11 min; Arch workstation only); see packages/kernel/occt/README.md
+pnpm planegcs build  # build planegcs locally with Docker (~2 min; Arch workstation only); see packages/sketch/planegcs/README.md
 ```
 
 Package dependency rules live in `scripts/check-boundaries.mjs` (run by
@@ -393,8 +393,34 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 
 ## Environment notes
 
-- Node 26 and pnpm 12 come from mise (`~/.config/mise/config.toml`). CI uses
-  Node 24 LTS; `engines.node` is `>=24`.
+### Dev machines
+
+The project is developed on two machines. Check which one you are on first
+(`grep ^ID= /etc/os-release`, `command -v docker`), because the OCCT and
+planegcs builds, screenshot baselines and some tools only work on one of
+them. Notes further down that name a machine apply to that machine only.
+
+| | **Arch workstation** (original) | **Ubuntu machine** (since 2026-09-29) |
+|---|---|---|
+| OS | Arch Linux | Ubuntu 26.04, 4 cores |
+| Node, pnpm | Node 26 + pnpm 12 from mise (`~/.config/mise/config.toml`) | Node 24 + pnpm 12 from nvm (no mise) |
+| Docker | Yes (`docker` group; socket-activated daemon) | **No Docker, no emscripten, no sudo** |
+| OCCT / planegcs WASM | `pnpm occt build` / `pnpm planegcs build` locally, or CI | **CI only**: `gh workflow run ci.yml --ref <branch>` (below) |
+| Facade checks | `em++ -fsyntax-only` and the native harness in the image | None locally: each compile error costs a CI round |
+| Playwright browser | Playwright's own Chromium (`pnpm e2e:install`) | System Chrome: `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` |
+| Screenshot baselines | Regenerate, then check in the Playwright Ubuntu docker image | 5 shots fail locally (Chrome renders differently; they pass in CI): `shell.spec.ts:35` dark/light, `sketch.spec.ts:140`, `storage.spec.ts:223` dark/light. New baselines: take them from CI's `playwright-report` artifact (`gh run download <id>`) |
+| E2E load | Full parallel run fine | Only one full e2e at a time, `--workers=2`; under load timeouts give false failures. Prefer single specs locally and the full suite through CI on the branch |
+| Inkscape, rsvg-convert | Installed | Not installed |
+| Slicers, FreeCAD | `prusa-slicer`, `orca-slicer`, `freecadcmd` | Not installed |
+| `brotli` CLI | – | Not installed (`scripts/measure-startup.mjs` uses Node's zlib) |
+
+- **Git identity:** check `git config user.email` before committing. The
+  Ubuntu machine had none set, so its first commits carried the machine's
+  hostname as the author address; set the same name and address as the
+  Arch workstation's commits (`git log --format='%an <%ae>'`), per repo if
+  need be. A hostname in history is a home-network detail (see below).
+- CI uses Node 24 LTS; `engines.node` is `>=24`. Both machines' Node
+  versions work.
 - **pnpm 12 refuses packages published less than a day or so ago**
   (`minimumReleaseAge`). If an install adds a `minimumReleaseAgeExclude` entry
   to `pnpm-workspace.yaml`, don't keep it: relax the version range (e.g.
@@ -406,8 +432,9 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   only while Playwright polls IPv4).
 - **`biome migrate` rewrote `"recommended": true` into `"preset": "none"`**,
   which silently disables all rules. The config uses `"preset": "recommended"`.
-- Playwright's own Chromium headless shell works on Arch. If it ever breaks,
-  set `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/chromium`.
+- Playwright's own Chromium headless shell works on the Arch workstation. If
+  it ever breaks, set `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/chromium`. The
+  Ubuntu machine uses `/usr/bin/google-chrome-stable` (see Dev machines).
 - Don't use `pkill -f <pattern>` in a compound shell command: the pattern
   matches the shell itself and kills it. Kill by PID or port instead.
 - This project is intended to become **public open source**. Unlike the rest
@@ -431,10 +458,11 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   metadata** (for example `tagFaces`): brepjs only sends face hashes to the
   kernel when there is something to propagate.
 - **Custom OCCT builds need Docker** (2.4 GB image, about 12 minutes per
-  build; on a machine without it use CI, see the Ubuntu note below). The user is in the `docker` group (since 2026-09-25; plain
-  `docker` works since the next login, seen 2026-09-27). The daemon is
-  socket-activated.
-- **Prototype facade code natively first** (P2-02): the image has OCCT's
+  build), so they run locally only on the Arch workstation; elsewhere use CI
+  (the CI note below). On the Arch workstation the user is in the `docker`
+  group (since 2026-09-25; plain `docker` works since the next login, seen
+  2026-09-27). The daemon is socket-activated.
+- **Prototype facade code natively first** (P2-02, Arch workstation): the image has OCCT's
   static WASM libraries (`/opencascade.js/build/occt-libraries/libTK*.a`)
   and node. A `harness.cpp` that `#include`s `extrudo_facade.cpp` and
   calls its methods from `main()` builds with `em++ -std=c++17 -O1
@@ -449,8 +477,8 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 - **The planegcs WASM is not in git either** (`packages/sketch/planegcs/dist/`):
   CI's `planegcs` job publishes `planegcs-<hash>`, `pnpm wasm` fetches both
   builds. After changing `build.sh`, the `Dockerfile` or the patch, run
-  `pnpm planegcs build` (through `newgrp docker` if needed) or let CI build
-  it. Its clone lives in `packages/sketch/node_modules/.cache/planegcs-build/`,
+  `pnpm planegcs build` (Arch workstation; through `newgrp docker` if
+  needed) or let CI build it (the only way on the Ubuntu machine). Its clone lives in `packages/sketch/node_modules/.cache/planegcs-build/`,
   under node_modules so Vitest skips the clone's own tests (it ran them when
   the clone sat in `planegcs/.work/`). Sketch tests
   import `../../planegcs/dist/planegcs.js`; the browser loads it through
@@ -465,19 +493,22 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   once per input hash (config + `facade/` + toolchain version) and published as
   the GitHub release `occt-<hash>`; `pnpm occt ensure` downloads it with `gh`.
   After changing the config or the facade, run `pnpm occt build` locally
-  (through `newgrp docker` until the next login) or push and let CI build it.
+  (Arch workstation; through `newgrp docker` until the next login) or let CI
+  build it (the only way on the Ubuntu machine: the CI note below).
   The CI path is proven (run 36179601320, 2026-09-25): the `occt` job took
   about 16 minutes and published the release before the tests ran. After a
   local rebuild, restart the dev server: it keeps serving the old WASM.
 - **Facade C++ (`packages/kernel/occt/facade/`):** the toolchain binds every
   class in the file, so it holds one class with no overloaded names. Check it
-  in seconds with `em++ -fsyntax-only` inside the image (README) before a
-  10-minute build. OCCT 8 deprecates `TopTools_*`/`TColStd_*` typedefs (use
+  in seconds with `em++ -fsyntax-only` inside the image (README, Arch
+  workstation) before a 10-minute build. OCCT 8 deprecates `TopTools_*`/`TColStd_*` typedefs (use
   `NCollection_*`), `Standard_False`, and `Standard_Failure::GetMessageString`
   (use `what()`); `DynamicType()` isn't available on `Standard_Failure`.
   `mallinfo()` doesn't link, so the memory probe is `sbrk(0)` (`heapTop()`).
-- **Screenshot baselines** (`e2e/*-snapshots/`) are made locally and must
-  pass in the Playwright Ubuntu image, which renders like CI. Check with
+- **Screenshot baselines** (`e2e/*-snapshots/`) are made locally on the Arch
+  workstation and must pass in the Playwright Ubuntu image, which renders
+  like CI (on the Ubuntu machine take them from CI's artifact instead: Dev
+  machines). Check with
   `echo "docker run --rm --ipc=host -e CI=1 -v $PWD:/work -w /work --user
   $(id -u):$(id -g) -e HOME=/tmp mcr.microsoft.com/playwright:v1.63.0-noble
   node node_modules/@playwright/test/cli.js test e2e/shell.spec.ts" | newgrp
@@ -607,7 +638,8 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   (`Tooltip` does); anchor popovers on a plain element.
 - **Export golden files** (`packages/sketch/src/export/golden/`) are
   rewritten with `UPDATE_GOLDEN=1 pnpm vitest run packages/sketch/src/export`;
-  review the diff. Inkscape is installed (2026-09-27): `inkscape
+  review the diff. Inkscape is installed on the Arch workstation
+  (2026-09-27; not on the Ubuntu machine): `inkscape
   --query-width f.svg` gives px at 96/in (377.953 = 100 mm), and
   `--export-type=png --export-dpi=25.4 --export-area-page` makes 1 px = 1 mm
   (`rsvg-convert -d 25.4 -p 25.4` works too). ezdxf isn't installed; a throwaway venv in the scratchpad
@@ -793,7 +825,8 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   meshed (poll it before Export). e2e imports `../packages/io/src/index`
   to read and check downloads. The format and resolution are remembered
   in the `export.model` preference (per browser context).
-- **Slicers on the dev machine** (2026-09-28): `prusa-slicer --info
+- **Slicers on the Arch workstation** (2026-09-28; none on the Ubuntu
+  machine): `prusa-slicer --info
   f.3mf|f.stl` prints `manifold = yes`, facets, volume per object;
   `orca-slicer --datadir <scratch> --outputdir <dir> --export-3mf out.3mf
   f.3mf` re-exports (`Metadata/model_settings.config` has names and
@@ -848,8 +881,8 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   (`dist/sw.js`), never in dev. Agent worktrees in `.claude/worktrees/`
   are gitignored, so Biome (which reads `.gitignore`) skips their nested
   `biome.json`.
-- **The dev machine has no Docker** (Ubuntu since 2026-09-29), so OCCT builds
-  go through CI: push a branch (only `main` and pull requests trigger CI by
+- **OCCT builds through CI** (the only way on the Ubuntu machine, which has
+  no Docker; works from either machine): push a branch (only `main` and pull requests trigger CI by
   themselves) and run `gh workflow run ci.yml --ref <branch>`; the `occt`
   job builds that branch's inputs in about 14 minutes and publishes
   `occt-<hash>`, then `pnpm occt ensure` downloads it. The dispatch needs the
@@ -858,9 +891,8 @@ Vitest + Playwright · Biome. Desktop later: Electron.
 - **`node scripts/measure-startup.mjs`** prints the size table and times a
   first visit, a repeat visit and an offline visit under CDP throttling
   (`--mbit`, `--no-browser`); it uses `PLAYWRIGHT_CHROMIUM_PATH` for a
-  system Chromium. The 2026-09-29 dev machine (Ubuntu, no Docker, no
-  emscripten, Chrome 154 at `/usr/bin/google-chrome`) can't build OCCT or
-  regenerate Arch-rendered screenshot baselines faithfully.
+  system Chromium (on the Ubuntu machine `/usr/bin/google-chrome`). The
+  ADR-0037 numbers were measured on the Ubuntu machine.
 - **Benchmark e2e** (`e2e/benchmark-b1.spec.ts`, `-b2`, `-b3`; helpers in
   `e2e/benchmark-helpers.ts`): a new parameter's unit is the New parameter
   row's select (`Length` unless you pass `'angle'` to `addParameter`), and
@@ -880,6 +912,6 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   group ("Parallel") lives in the toolbar, not the palette. `data-bodies`
   rounds sizes to 0.1 mm. `exportProject(page, 'b2-storage-box.extrudo')`
   writes `fixtures/benchmarks/` only with `WRITE_FIXTURES=1`. Each spec
-  takes about 20 s alone (B3 about 30 s); no Playwright browser is
-  installed on the dev machine, so run with
-  `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable`.
+  takes about 20 s alone (B3 about 30 s); on the Ubuntu machine run with
+  `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` (no Playwright
+  browser installed there).
