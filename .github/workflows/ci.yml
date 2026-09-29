@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Manual runs build the OCCT WASM of a branch's inputs (e.g. a trim experiment).
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
