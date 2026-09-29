@@ -6,9 +6,8 @@ The decision and its measurements are in
 
 | Path | What |
 |---|---|
-| `libcascade.config.ts` | Build config for `@libcascade/toolchain`: the bound OCCT classes, the facade, emcc settings. |
+| `libcascade.config.ts` | Build config for `@libcascade/toolchain`: the facade (the only binding: no raw OCCT class is bound), emcc settings. |
 | `facade/extrudo_facade.cpp` | The facade (LGPL-2.1-or-later, see `facade/LICENSE`). It owns OCCT memory: shapes sit in an arena behind integer handles, builders live on the C++ stack, and results, history and meshes come back as flat arrays. |
-| `closure.mjs` | Prints the base classes and referenced types the binding list needs (`node closure.mjs --refs`). `libcascade check` does not catch these. |
 | `occt.mjs` | Build, publish and download (below). Run it as `pnpm occt <command>` from the repo root. |
 | `dist/` | The build output (gitignored): `extrudo_occt_single.{js,wasm,d.ts}` and the `init.js` loader. |
 
@@ -53,9 +52,21 @@ Things the builds ran into:
   the `NCollection_*` templates directly.
 - `mallinfo()` does not link in this build, so the memory probe is `sbrk(0)`
   (`heapTop()`).
-- The binding list must include every base class of a bound class and the types
-  its methods use (`closure.mjs`), `MODULARIZE` + `EXPORT_ES6`, and the three
-  exception helpers in `EXPORTED_RUNTIME_METHODS`.
+- The binding list is `['ExtrudoFacade']` (ADR-0037): the facade's public
+  methods take and return ints, doubles and pointers, so no OCCT type crosses
+  embind, and binding raw classes only added code and start-up work (198
+  classes were 22 % of the WASM). **Don't expose an OCCT type in a facade
+  method.** If a raw class is ever needed again, list it in `bindings` and
+  also every base class (embind refuses to construct a class whose base is
+  unbound) and every type its methods take or return; `libcascade check`
+  sees neither. `libcascade check` (`pnpm occt check`) now proves that
+  `src/` uses no raw symbol.
+- The build needs `MODULARIZE` + `EXPORT_ES6` and the three exception helpers
+  in `EXPORTED_RUNTIME_METHODS`.
+- Builds without Docker: on a machine with none, push a branch and run
+  `gh workflow run ci.yml --ref <branch>`; the `occt` job builds the branch's
+  inputs (about 14 minutes) and publishes `occt-<hash>`, which
+  `pnpm occt ensure` downloads.
 - Try facade changes natively first: a `harness.cpp` that `#include`s
   `extrudo_facade.cpp` builds with `em++` against the image's static
   libraries in seconds and runs under `node` in the container (see the

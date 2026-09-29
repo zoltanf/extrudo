@@ -147,20 +147,18 @@ describe('errors and ownership', () => {
     expect(kernel.stats().liveShapes).toBe(before);
   });
 
-  it('disposes raw bindings through OcctScope', () => {
-    // biome-ignore lint/suspicious/noExplicitAny: raw bindings are untyped in this narrow view
-    const raw = oc as any;
-    let deleted = 0;
+  it('disposes objects through OcctScope', () => {
+    // The build binds no raw OCCT classes (ADR-0037); the scope only needs `delete()`.
+    const calls: string[] = [];
+    const object = (name: string, clearable: boolean) => ({
+      delete: () => calls.push(`${name}.delete`),
+      ...(clearable ? { Clear: () => calls.push(`${name}.Clear`) } : {}),
+    });
     {
       using scope = new OcctScope();
-      const p = scope.track(new raw.gp_Pnt(1, 2, 3));
-      const original = p.delete.bind(p);
-      p.delete = () => {
-        deleted++;
-        original();
-      };
-      expect(p.X()).toBe(1);
+      scope.track(object('a', false));
+      scope.track(object('b', true));
     }
-    expect(deleted).toBe(1);
+    expect(calls).toEqual(['b.Clear', 'b.delete', 'a.delete']);
   });
 });

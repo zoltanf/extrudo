@@ -395,11 +395,12 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   worker precaches the app, both WASM files and every lazy chunk (build
   plugin lists them; updates keep one generation of old files), a web app
   manifest and icons, registration through `platform/` in production
-  builds only; measured with `scripts/measure-startup.mjs` at 50 Mbit: 5.7
-  MB brotli in all, first visit home screen 1.0 s, repeat visit 0.27 s,
-  kernel ready 1.3 s after opening a project. Further OCCT trimming is
-  proposed in the ADR (the kernel uses no raw bindings) but wasn't built:
-  no Docker on the machine.
+  builds only; the OCCT build binds only the facade (no raw classes, built
+  by CI: WASM 20.19 to 15.76 MB raw, 4.52 to 3.69 MB brotli, cold start
+  about 2.5 times faster); measured with `scripts/measure-startup.mjs` at
+  50 Mbit: 4.9 MB brotli in all (5.7 MB before the trim), first visit home
+  screen 0.8 s, repeat visit 0.22 s, kernel ready 1.1 s after opening a
+  project.
 - [x] **P2-16 File-format spec.** Write `docs/file-format.md` from the zod
   schema. Done 2026-09-29: `docs/file-format.md` specifies the `.extrudo` zip
   (entries, manifest, versions, import rules), format versioning and

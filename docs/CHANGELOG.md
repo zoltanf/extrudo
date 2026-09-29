@@ -18,11 +18,13 @@ One line per completed roadmap task, newest first. Dates are absolute.
   offline. A small service worker precaches everything (both WASM files,
   the kernel worker, every lazy chunk; updates keep the previous version's
   files for tabs still open), and a web app manifest with icons lets
-  browsers install it. Measured at 50 Mbit: the whole app is 5.7 MB
-  brotli, a first visit shows the home screen in 1.0 s, a repeat visit in
-  0.27 s, the kernel is ready 1.3 s after opening a project.
-  `node scripts/measure-startup.mjs` repeats the measurement. Further OCCT
-  trimming is proposed, not built.
+  browsers install it. The OCCT build now binds only the C++ facade (the
+  kernel never used the 198 raw classes it carried): the WASM shrinks from
+  4.52 to 3.69 MB brotli (20.19 to 15.76 MB raw) and instantiates about 2.5
+  times faster. Measured at 50 Mbit: the whole app is 4.9 MB brotli, a
+  first visit shows the home screen in 0.8 s, a repeat visit in 0.22 s, the
+  kernel is ready 1.1 s after opening a project.
+  `node scripts/measure-startup.mjs` repeats the measurement.
 - 2026-09-29 · **P2-14** Version history (ADR-0036): Ctrl+S (or File ›
   Save version…) saves the design as V1, V2, … with a description. The
   Versions dialog (File › Version history…, or the clock beside the

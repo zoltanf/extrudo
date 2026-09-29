@@ -158,9 +158,9 @@ depend on replicad or brepjs. Use them as code references.**
    booleans, fillet and chamfer, shell, meshing, STEP I/O. The facade keeps
    shapes in an arena and hands JS integer handles, like occt-wasm (the one
    candidate with no growth). It returns results, history for faces, edges and
-   vertices, and meshes as flat arrays in one copy. The raw bindings stay for
-   read-only queries and prototyping, always inside a disposal scope with
-   `Clear()` before `delete()` on booleans.
+   vertices, and meshes as flat arrays in one copy. (Amended by ADR-0037: the
+   raw bindings this planned to keep for read-only queries were never used and
+   are gone from the build; the binding list is the facade alone.)
    - A Vitest memory test (≥ 1000 rebuilds on a small initial heap, fail on
      growth, plus a leak control that must fail) guards it in CI.
    - Reported upstream on 2026-09-25 as
@@ -229,8 +229,8 @@ depend on replicad or brepjs. Use them as code references.**
     classes halves the size.
 - **P2-15** keeps the service-worker precache and the NFR-02 measurement. The
   trimmed build itself moves to P0-09. (Done in ADR-0037: the shipped build
-  is 4.52 MB brotli; the kernel uses no raw bindings, so a facade-only
-  binding list is proposed there.)
+  was 4.52 MB brotli; with a facade-only binding list it is 3.69 MB, and the
+  cold start about 2.5 times faster.)
 - **I/O:** OCCT's `StlAPI_Writer` can only write ASCII through the bindings,
   because `ASCIIMode()` returns a reference that JS can't assign. So STL (and
   3MF) are written in JS from the export tessellation, in `packages/io` (MIT).

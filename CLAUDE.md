@@ -308,9 +308,11 @@ files into `dist/sw.js` and versions it; registration in
 `platform/serviceWorker.ts`, production web builds only), a web app
 manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
-also found that the kernel uses no raw OCCT bindings: a facade-only
-binding list is **proposed but unbuilt** (no Docker on that machine); the
-OCCT input hash is unchanged.
+also found that the kernel uses no raw OCCT bindings, so the build's
+binding list is now just `ExtrudoFacade` (built by CI: WASM 15.76 MB raw,
+3.69 MB brotli, was 20.19/4.52; OCCT input hash `3df02e42e490`; **don't
+expose an OCCT type in a facade method**, and no raw access from JS: the
+memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
 (`e2e/benchmark-b2.spec.ts`, `-b3`, shared steps in
 `e2e/benchmark-helpers.ts`) and keeps the designs of B1, B2 and B3 as
@@ -429,7 +431,7 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   metadata** (for example `tagFaces`): brepjs only sends face hashes to the
   kernel when there is something to propagate.
 - **Custom OCCT builds need Docker** (2.4 GB image, about 12 minutes per
-  build). The user is in the `docker` group (since 2026-09-25; plain
+  build; on a machine without it use CI, see the Ubuntu note below). The user is in the `docker` group (since 2026-09-25; plain
   `docker` works since the next login, seen 2026-09-27). The daemon is
   socket-activated.
 - **Prototype facade code natively first** (P2-02): the image has OCCT's
@@ -441,10 +443,9 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   TKOffset TKPrim TKShHealing TKTopAlgo TKGeomAlgo TKBRep TKGeomBase TKG3d
   TKG2d TKMath TKernel TKMesh>` and runs with `node` in the container in
   about 3 s, versus 12 minutes for `pnpm occt build`. Leak checks work
-  there too (`heapTop()` over 300 vs 1500 iterations). The binding list needs every base class and referenced
-  type (`custom-build/closure.mjs`); `libcascade check` doesn't catch those.
-  `MODULARIZE` + `EXPORT_ES6` and the three exception helpers in
-  `EXPORTED_RUNTIME_METHODS` are required.
+  there too (`heapTop()` over 300 vs 1500 iterations). `MODULARIZE` +
+  `EXPORT_ES6` and the three exception helpers in `EXPORTED_RUNTIME_METHODS`
+  are required.
 - **The planegcs WASM is not in git either** (`packages/sketch/planegcs/dist/`):
   CI's `planegcs` job publishes `planegcs-<hash>`, `pnpm wasm` fetches both
   builds. After changing `build.sh`, the `Dockerfile` or the patch, run
@@ -847,6 +848,13 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   (`dist/sw.js`), never in dev. Agent worktrees in `.claude/worktrees/`
   are gitignored, so Biome (which reads `.gitignore`) skips their nested
   `biome.json`.
+- **The dev machine has no Docker** (Ubuntu since 2026-09-29), so OCCT builds
+  go through CI: push a branch (only `main` and pull requests trigger CI by
+  themselves) and run `gh workflow run ci.yml --ref <branch>`; the `occt`
+  job builds that branch's inputs in about 14 minutes and publishes
+  `occt-<hash>`, then `pnpm occt ensure` downloads it. The dispatch needs the
+  workflow file on `main`; runs of one ref cancel each other, so run
+  experiments from separate branches (and delete the branch afterwards).
 - **`node scripts/measure-startup.mjs`** prints the size table and times a
   first visit, a repeat visit and an offline visit under CDP throttling
   (`--mbit`, `--no-browser`); it uses `PLAYWRIGHT_CHROMIUM_PATH` for a

@@ -29,7 +29,7 @@ import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles, PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { planarCurves } from './features/sketch';
-import { Kernel } from './kernel';
+import { Kernel, type ShapeHandle } from './kernel';
 import { positionalNames } from './naming/names';
 import {
   compoundSources,
@@ -531,23 +531,28 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
-  it('the leak control trips the same limit', () => {
-    // biome-ignore lint/suspicious/noExplicitAny: raw bindings are untyped in this narrow view
-    const raw = oc as any;
+  it('the leak control trips the same limit', { timeout: 120_000 }, () => {
+    // The WASM build binds no raw OCCT classes (ADR-0037), so the control leaks
+    // through the facade instead: meshed cuts (the triangulation stays on the
+    // shape) whose results are never released.
+    const kept: ShapeHandle[] = [];
     const leakyCut = () => {
-      const box = new raw.BRepPrimAPI_MakeBox(40, 30, 20);
-      const point = new raw.gp_Pnt(20, 15, -1);
-      const dir = new raw.gp_Dir(0, 0, 1);
-      const axis = new raw.gp_Ax2(point, dir);
-      const cylinder = new raw.BRepPrimAPI_MakeCylinder(axis, 4, 22);
-      const progress = new raw.Message_ProgressRange();
-      const cut = new raw.BRepAlgoAPI_Cut(box.Shape(), cylinder.Shape(), progress);
-      // No cut.Clear() before delete(): this is the leak.
-      for (const o of [cut, progress, cylinder, axis, dir, point, box]) o.delete();
+      using scope = kernel.scope();
+      const block = scope.track(kernel.box([40, 30, 20]));
+      const hole = scope.track(kernel.cylinder(4, 22, [20, 15, -1]));
+      const cut = kernel.cut(block, hole).shape;
+      kept.push(cut);
+      kernel.mesh(cut, { linearDeflection: 0.01, angularDeflection: 0.1 });
     };
     for (let i = 0; i < WARM_UP; i++) leakyCut();
-    const before = kernel.stats().heapTop;
+    const before = kernel.stats();
     for (let i = 0; i < 300; i++) leakyCut();
-    expect(kernel.stats().heapTop - before).toBeGreaterThan(LIMIT_BYTES);
+    const after = kernel.stats();
+    try {
+      expect(after.liveShapes - before.liveShapes).toBe(300);
+      expect(after.heapTop - before.heapTop).toBeGreaterThan(LIMIT_BYTES);
+    } finally {
+      for (const handle of kept) kernel.release(handle);
+    }
   });
 });
