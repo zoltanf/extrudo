@@ -404,9 +404,9 @@ them. Notes further down that name a machine apply to that machine only.
 |---|---|---|
 | OS | Arch Linux | Ubuntu 26.04, 4 cores |
 | Node, pnpm | Node 26 + pnpm 12 from mise (`~/.config/mise/config.toml`) | Node 24 + pnpm 12 from nvm (no mise) |
-| Docker | Yes (`docker` group; socket-activated daemon) | **No Docker, no emscripten, no sudo** |
-| OCCT / planegcs WASM | `pnpm occt build` / `pnpm planegcs build` locally, or CI | **CI only**: `gh workflow run ci.yml --ref <branch>` (below) |
-| Facade checks | `em++ -fsyntax-only` and the native harness in the image | None locally: each compile error costs a CI round |
+| Docker | Yes (`docker` group; socket-activated daemon) | Yes since 2026-09-29 (`docker.io` from Ubuntu; `docker` group). Until the next login, run it through `sg docker -c '…'` (`sg`/`newgrp` come from `util-linux-extra`). No emscripten outside the image, no sudo for agents |
+| OCCT / planegcs WASM | `pnpm occt build` / `pnpm planegcs build` locally, or CI | Prefer CI (`gh workflow run ci.yml --ref <branch>`, below): a local build competes for the 4 cores. Local builds are possible but not tried yet |
+| Facade checks | `em++ -fsyntax-only` and the native harness in the image | Same, through `sg docker -c`: the pinned image `ghcr.io/taucad/opencascade.js:3.0.2-single-threaded` is pulled; the syntax check takes about 8 s |
 | Playwright browser | Playwright's own Chromium (`pnpm e2e:install`) | System Chrome: `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` |
 | Screenshot baselines | Regenerate, then check in the Playwright Ubuntu docker image | 5 shots fail locally (Chrome renders differently; they pass in CI): `shell.spec.ts:35` dark/light, `sketch.spec.ts:140`, `storage.spec.ts:223` dark/light. New baselines: take them from CI's `playwright-report` artifact (`gh run download <id>`) |
 | E2E load | Full parallel run fine | Only one full e2e at a time, `--workers=2`; under load timeouts give false failures. Prefer single specs locally and the full suite through CI on the branch |
@@ -478,7 +478,7 @@ them. Notes further down that name a machine apply to that machine only.
   CI's `planegcs` job publishes `planegcs-<hash>`, `pnpm wasm` fetches both
   builds. After changing `build.sh`, the `Dockerfile` or the patch, run
   `pnpm planegcs build` (Arch workstation; through `newgrp docker` if
-  needed) or let CI build it (the only way on the Ubuntu machine). Its clone lives in `packages/sketch/node_modules/.cache/planegcs-build/`,
+  needed) or let CI build it (preferred on the Ubuntu machine). Its clone lives in `packages/sketch/node_modules/.cache/planegcs-build/`,
   under node_modules so Vitest skips the clone's own tests (it ran them when
   the clone sat in `planegcs/.work/`). Sketch tests
   import `../../planegcs/dist/planegcs.js`; the browser loads it through
@@ -494,7 +494,7 @@ them. Notes further down that name a machine apply to that machine only.
   the GitHub release `occt-<hash>`; `pnpm occt ensure` downloads it with `gh`.
   After changing the config or the facade, run `pnpm occt build` locally
   (Arch workstation; through `newgrp docker` until the next login) or let CI
-  build it (the only way on the Ubuntu machine: the CI note below).
+  build it (preferred on the Ubuntu machine: the CI note below).
   The CI path is proven (run 36179601320, 2026-09-25): the `occt` job took
   about 16 minutes and published the release before the tests ran. After a
   local rebuild, restart the dev server: it keeps serving the old WASM.
@@ -881,8 +881,8 @@ them. Notes further down that name a machine apply to that machine only.
   (`dist/sw.js`), never in dev. Agent worktrees in `.claude/worktrees/`
   are gitignored, so Biome (which reads `.gitignore`) skips their nested
   `biome.json`.
-- **OCCT builds through CI** (the only way on the Ubuntu machine, which has
-  no Docker; works from either machine): push a branch (only `main` and pull requests trigger CI by
+- **OCCT builds through CI** (the preferred way on the 4-core Ubuntu
+  machine; works from either machine): push a branch (only `main` and pull requests trigger CI by
   themselves) and run `gh workflow run ci.yml --ref <branch>`; the `occt`
   job builds that branch's inputs in about 14 minutes and publishes
   `occt-<hash>`, then `pnpm occt ensure` downloads it. The dispatch needs the
