@@ -52,7 +52,7 @@ async function visualStyle(page: Page, style: string) {
 test('renames, hides, colours and removes a body from the browser', async ({ page }) => {
   const viewport = await openProject(page, 'wall-bracket');
   await kernelReady(page);
-  await expect(viewport).toHaveAttribute('data-bodies', 'Bracket:10:40,80,60');
+  await expect(viewport).toHaveAttribute('data-bodies', 'Bracket:12:40,80,60');
   await expect(badge(page)).toHaveText('1');
 
   // F2 renames; the name is stored, so it survives a reload.
@@ -61,18 +61,18 @@ test('renames, hides, colours and removes a body from the browser', async ({ pag
   const field = browserOf(page).getByRole('textbox', { name: 'Rename Bracket' });
   await field.fill('Mount');
   await field.press('Enter');
-  await expect(viewport).toHaveAttribute('data-bodies', 'Mount:10:40,80,60');
+  await expect(viewport).toHaveAttribute('data-bodies', 'Mount:12:40,80,60');
   await page.reload();
   await expect(viewport).toHaveAttribute('data-ready', 'true');
   await kernelReady(page);
-  await expect(viewport).toHaveAttribute('data-bodies', 'Mount:10:40,80,60');
+  await expect(viewport).toHaveAttribute('data-bodies', 'Mount:12:40,80,60');
 
   // The eye hides it in the view and shows it again.
   await browserOf(page).getByRole('button', { name: 'Hide Mount' }).click();
   await expect(viewport).not.toHaveAttribute('data-bodies');
   await expect(bodyRow(page, 'Mount')).toBeVisible();
   await browserOf(page).getByRole('button', { name: 'Show Mount' }).click();
-  await expect(viewport).toHaveAttribute('data-bodies', 'Mount:10:40,80,60');
+  await expect(viewport).toHaveAttribute('data-bodies', 'Mount:12:40,80,60');
 
   // Appearance from the body's menu: a colour and an opacity, each one undo step.
   await bodyRow(page, 'Mount').click({ button: 'right' });
@@ -102,7 +102,7 @@ test('renames, hides, colours and removes a body from the browser', async ({ pag
   await page.keyboard.press('Control+z');
   await expect(chip(page, 'Remove1')).toHaveCount(0);
   await kernelReady(page);
-  await expect(viewport).toHaveAttribute('data-bodies', 'Mount:10:40,80,60');
+  await expect(viewport).toHaveAttribute('data-bodies', 'Mount:12:40,80,60');
   await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#5b7cff:1');
 
   // The body menu's Delete does the same.

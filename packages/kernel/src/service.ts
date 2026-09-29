@@ -51,6 +51,13 @@ export interface KernelApi {
     base?: boolean,
   ): Promise<GeomRef | undefined>;
   /**
+   * The edges of the chain of tangent-continuous edges around an edge of a
+   * body (indices in the body's mesh, the edge itself included; `base` as
+   * for `reference`): what a fillet rounds together (P3-01, ADR-0038).
+   * Undefined if the body is gone.
+   */
+  tangentChain(body: BodyId, edge: number, base?: boolean): Promise<number[] | undefined>;
+  /**
    * Bodies of the last finished recompute tessellated for STL and 3MF
    * (P2-12, ADR-0034): welded meshes at `tessellation`, in the order
    * asked. Rejects if a body is no longer in the model.
@@ -138,6 +145,10 @@ export class KernelService implements KernelApi {
     base = false,
   ): Promise<GeomRef | undefined> {
     return this.#run(() => this.#engineOf().reference(body, kind, index, base));
+  }
+
+  tangentChain(body: BodyId, edge: number, base = false): Promise<number[] | undefined> {
+    return this.#run(() => this.#engineOf().tangentChain(body, edge, base));
   }
 
   exportMeshes(bodies: readonly BodyId[], tessellation: MeshOptions): Promise<BodyExportMesh[]> {

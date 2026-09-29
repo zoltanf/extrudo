@@ -192,6 +192,19 @@ export class Recomputer {
   }
 
   /**
+   * The edges (mesh indices, the edge itself included) of the tangent
+   * chain around an edge of a body the model store shows (P3-01): what a
+   * fillet rounds together. Undefined if the kernel can't say.
+   */
+  async tangentChain(body: BodyId, edge: number, base = false): Promise<number[] | undefined> {
+    try {
+      return await this.client.call((api) => api.tangentChain(body, edge, base));
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
    * Bodies the model store shows, tessellated for STL and 3MF (P2-12):
    * welded meshes at `tessellation`. Rejects if the kernel can't do it.
    */

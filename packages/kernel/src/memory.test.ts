@@ -29,7 +29,7 @@ import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles, PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { planarCurves } from './features/sketch';
-import { Kernel, type ShapeHandle } from './kernel';
+import { FilletError, Kernel, type ShapeHandle } from './kernel';
 import { positionalNames } from './naming/names';
 import {
   compoundSources,
@@ -528,6 +528,42 @@ describe('memory', () => {
     const after = kernel.stats();
 
     expect(after.liveShapes).toBe(3);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+  });
+
+  it(`filleting ${REBUILDS} times, failing ones with their diagnosis included, does not grow the heap`, {
+    timeout: 300_000,
+  }, () => {
+    // P3-01: several radii through the builder on the facade's stack, a
+    // failed fillet whose maximum radius is found by probing (a dozen
+    // builders per failure), a tangent chain query and a mixed-radii
+    // refusal: all inside the facade, none may leave anything behind.
+    const rebuild = (i: number) => {
+      using scope = kernel.scope();
+      const plate = scope.track(kernel.box([40, 30, 2 + (i % 3) / 10]));
+      const rounded = scope.track(kernel.fillet(plate, [0, 2, 4, 6], [5, 5, 5, 5]));
+      const chain = kernel.tangentChain(rounded.shape, 0);
+      if (chain.length < 2) throw new Error('no chain');
+      scope.track(kernel.fillet(plate, [0, 2], [1, 1.5]));
+      try {
+        kernel.fillet(plate, [0, 1], 3);
+        throw new Error('a 3 mm fillet of a 2 mm plate should fail');
+      } catch (error) {
+        if (!(error instanceof FilletError)) throw error;
+      }
+      try {
+        kernel.fillet(rounded.shape, chain.slice(0, 2), [0.5, 0.7]);
+        throw new Error('two radii on one chain should fail');
+      } catch (error) {
+        if (!(error instanceof FilletError)) throw error;
+      }
+    };
+    for (let i = 0; i < WARM_UP; i++) rebuild(i);
+    const before = kernel.stats();
+    for (let i = 0; i < REBUILDS; i++) rebuild(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(before.liveShapes);
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 

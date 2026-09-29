@@ -433,8 +433,27 @@ Takes bodies out of the model without touching the features that made them.
 Rolling the timeline back past it, suppressing it or deleting it brings the
 bodies back.
 
-Reserved for later: `plane` (construction plane) and the modify features
-(fillet, chamfer, shell, hole, patterns, ...) will be new feature types;
+### 6.8 `fillet`
+
+Rounds edges of a body with a constant radius (P3-01). A fillet has up to
+8 **edge sets**, each with its own radius: set 1 is `edges` + `radius`,
+set `n` is `edges<n>` + `radius<n>` (`edges2`, `radius2`, ..., `edges8`,
+`radius8`). Every input is optional.
+
+| Input | Kind | Rule |
+|---|---|---|
+| `edges`, `edges2` ... `edges8` | `ref` | Refs of kind `edge` (persistent edge names, section 8); a set with no edges is ignored |
+| `radius`, `radius2` ... `radius8` | `expr` | Length; greater than 0 when the kernel evaluates it (not checked by the schema); a set with edges needs its radius |
+
+The kernel rounds the whole chain of tangent-continuous edges around each
+edge you name, with one radius, so edges of one chain must share a radius
+(two sets that reach one chain with different radii fail). Edges of
+different bodies are rounded body by body. The faces it makes are named
+`fillet:<feature id>:from:(<edge name>)`. No new keys: a fillet is a
+feature with `ref` and `expr` inputs like the others.
+
+Reserved for later: `plane` (construction plane) and the other modify
+features (chamfer, shell, hole, patterns, ...) will be new feature types;
 old readers see them as unknown types.
 
 ---
@@ -773,7 +792,7 @@ exports.
 the file.
 
 **Known gaps in format 1** (things a tool author might expect that are not
-there yet): no construction plane, axis or point features; no fillet,
+there yet): no construction plane, axis or point features; no
 chamfer, shell, hole or pattern features; no imported bodies or
 `attachments/`; no `cache/`; no extension mechanism for third-party keys.
 Each will arrive as new feature types or optional fields, or as a

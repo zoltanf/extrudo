@@ -8,6 +8,7 @@ import {
   extrudeInputs,
   type Feature,
   type FeatureId,
+  filletInputs,
   type GeomRef,
   newId,
   originPlaneRef,
@@ -20,6 +21,7 @@ import {
   type UnitKind,
   type Vec2,
 } from '@extrudo/core';
+import { createdName, edgeName } from '@extrudo/kernel';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { APP_VERSION } from '../version';
 
@@ -49,8 +51,10 @@ export const TEMPLATES: readonly Template[] = [
  * 2.4 mm thick), which Extrude1 pulls `width` wide, symmetric about the
  * plane. Sketch2 has two screw holes on the XY plane, 20 mm either side of
  * the middle, which Extrude2 cuts `wall * 5` up through the foot with a
- * slight taper (`tilt / 3`), so they widen towards the top. Fillet1 has no
- * geometry yet (an error) and Plane1 is rolled back, to show the marker.
+ * slight taper (`tilt / 3`), so they widen towards the top. Fillet1 rounds
+ * the bend two ways (P3-01): the inside corner with `wall / 2` and the
+ * outside one with `wall * 1.5`, two edge sets that stay concentric when
+ * `wall` changes. Plane1 is rolled back, to show the marker.
  */
 export function wallBracket(): ExtrudoDocument {
   const param = (
@@ -107,14 +111,32 @@ export function wallBracket(): ExtrudoDocument {
       { distance: 'd3', taper: 'd2' },
     ),
   );
+  // The bend's two edges, named after the side faces of Sketch1's outline
+  // (ADR-0005): the inside corner between sides 2 and 3, the outside one
+  // between sides 5 and 0.
+  const sides = lineIds(profile).map((line) => createdName('extrude', extrude1.id, 'side', line));
+  const bend = (a: number, b: number): GeomRef => ({
+    kind: 'edge',
+    id: edgeName([sides[a] as string, sides[b] as string]),
+  });
+  const filletSets = filletInputs([
+    { edges: [bend(2, 3)], radius: 'wall / 2' },
+    { edges: [bend(5, 0)], radius: 'wall * 1.5' },
+  ]);
+  for (const [key, paramName] of [
+    ['radius', 'd4'],
+    ['radius2', 'd6'],
+  ] as const) {
+    const input = filletSets[key];
+    if (input?.kind === 'expr') filletSets[key] = { ...input, paramName };
+  }
+  const fillet1 = feature('fillet', 'Fillet1', filletSets);
   const features = [
     sketch1,
     extrude1,
     sketch2,
     extrude2,
-    feature('fillet', 'Fillet1', {
-      radius: { kind: 'expr', expr: 'wall / 2', paramName: 'd4', unit: 'length' },
-    }),
+    fillet1,
     feature('plane', 'Plane1', {
       offset: { kind: 'expr', expr: '10 mm', paramName: 'd5', unit: 'length' },
     }),
@@ -134,6 +156,13 @@ export function wallBracket(): ExtrudoDocument {
     // Extrude1's body (the kernel's `<feature>:<n>` ID), which the cut keeps.
     bodies: { [`${extrude1.id}:0` as BodyId]: { name: 'Bracket', visible: true } },
   };
+}
+
+/** The IDs of a sketch's lines, in the order they were made. */
+function lineIds(data: SketchData): SketchEntityId[] {
+  return Object.entries(data.entities)
+    .filter(([, entity]) => entity.type === 'line')
+    .map(([id]) => id as SketchEntityId);
 }
 
 /** Every closed profile of a sketch, as references (region IDs as the kernel names them). */

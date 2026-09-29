@@ -424,7 +424,6 @@ export const TOOLS = {
     icon: 'fillet',
     category: 'modify',
     hint: 'Round the selected edges.',
-    comesWith: 'P3-01',
   },
   chamfer: {
     id: 'chamfer',

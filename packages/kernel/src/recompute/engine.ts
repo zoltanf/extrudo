@@ -170,6 +170,20 @@ export class RecomputeEngine {
   }
 
   /**
+   * The edges (sub-shape indices, the edge itself included) of the chain of
+   * tangent-continuous edges around one edge of a body of the last finished
+   * recompute, or with `base` of the last preview's base: what a fillet
+   * rounds together (P3-01). Undefined if there is no such body.
+   */
+  tangentChain(body: BodyId, edge: number, base = false): number[] | undefined {
+    const shape = (base ? this.#previewBase : this.#latest).get(body);
+    if (shape === undefined || edge < 0 || edge >= this.#kernel.count(shape, 'edge')) {
+      return undefined;
+    }
+    return this.#kernel.tangentChain(shape, edge);
+  }
+
+  /**
    * The shape of a body of the last finished recompute (what the model
    * store shows), for export. It stays the cache's: don't release it.
    */

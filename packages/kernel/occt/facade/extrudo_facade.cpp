@@ -1821,15 +1821,15 @@ private:
 
   /**
    * The largest value below `failing` for which `works` holds, by
-   * bisection (10 steps, so within 0.2 % of `failing`), or 0 if even
-   * failing / 256 doesn't work.
+   * bisection from 0 (7 steps, so within 0.8 % of `failing`: more would
+   * only refine digits the message drops, and a failing build can take a
+   * second), or 0 if nothing down to failing / 128 works.
    */
   template <typename Probe>
   static double largestThatWorks(Probe works, double failing) {
-    double good = failing / 256;
-    if (!works(good)) return 0;
+    double good = 0;
     double bad = failing;
-    for (int step = 0; step < 10; ++step) {
+    for (int step = 0; step < 7; ++step) {
       const double middle = 0.5 * (good + bad);
       if (works(middle)) good = middle;
       else bad = middle;

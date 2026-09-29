@@ -19,6 +19,32 @@ export class KernelError extends Error {
   override name = 'KernelError';
 }
 
+/**
+ * Why a fillet failed, for messages a person can act on (P3-01, ADR-0038):
+ * the facade's diagnosis of the failed fillet. Edge indices are the shape's.
+ */
+export type FilletProblem =
+  /** The radius is too large for a chain of tangent edges; `max` is the largest that works (0: none). */
+  | { kind: 'too-large'; edges: number[]; max: number }
+  /** OCCT can't fillet this edge (it isn't between two faces). */
+  | { kind: 'unfilletable'; edges: number[] }
+  /** Edges of one tangent chain were given different radii. */
+  | { kind: 'mixed-radii'; edges: number[] }
+  /** Each chain works alone, not all together; `factor` is the largest scale of all radii that works. */
+  | { kind: 'together'; edges: number[]; factor: number }
+  | { kind: 'other' };
+
+/** A fillet OCCT couldn't build, with its diagnosis. */
+export class FilletError extends KernelError {
+  override name = 'FilletError';
+  constructor(
+    message: string,
+    readonly problems: readonly FilletProblem[],
+  ) {
+    super(message);
+  }
+}
+
 export interface OperationResult {
   shape: ShapeHandle;
   history: HistoryRecord[];
@@ -78,11 +104,44 @@ export class Kernel {
     return this.#check(this.#facade.makeCylinder(...origin, ...axis, radius, height));
   }
 
-  /** Fillets edges (indices into the shape's edge list) with one radius. */
-  fillet(shape: ShapeHandle, edges: readonly number[], radius: number): OperationResult {
-    this.#facade.clearArgs();
-    for (const edge of edges) this.#facade.pushArg(edge);
-    return this.#withHistory(this.#facade.fillet(shape, radius));
+  /**
+   * Fillets edges (indices into the shape's edge list) with `radius`: one
+   * value for all, or one per edge. OCCT rounds a whole chain of
+   * tangent-continuous edges once one of them is given, so edges of one
+   * chain must share a radius. A failure is a `FilletError` with the
+   * facade's diagnosis (which chains, and the largest radius that works).
+   * History: input 0; a filleted edge is deleted and generates its face.
+   */
+  fillet(
+    shape: ShapeHandle,
+    edges: readonly number[],
+    radius: number | readonly number[],
+  ): OperationResult {
+    const f = this.#facade;
+    f.clearArgs();
+    f.clearNumbers();
+    edges.forEach((edge, i) => {
+      f.pushArg(edge);
+      f.pushNumber(typeof radius === 'number' ? radius : (radius[i] as number));
+    });
+    const handle = f.fillet(shape);
+    if (handle === 0) {
+      throw new FilletError(
+        f.lastError() || 'The fillet failed.',
+        decodeFilletProblems(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize())),
+      );
+    }
+    return this.#withHistory(handle);
+  }
+
+  /**
+   * The edges (indices) of the tangent-continuous chain around `edge`, the
+   * edge included: what `fillet` rounds together.
+   */
+  tangentChain(shape: ShapeHandle, edge: number): number[] {
+    const f = this.#facade;
+    if (f.tangentChain(shape, edge) < 0) throw new KernelError(f.lastError() || 'Unknown edge.');
+    return Array.from(this.#copy(Int32Array, f.lookupPtr(), f.lookupSize()));
   }
 
   /** `target` minus `tool`. History: input 0 is the target, 1 the tool. */
@@ -544,6 +603,26 @@ export function decodeEdgeGeometry(v: Float64Array): EdgeGeometry {
     };
   }
   return { type, closed, points };
+}
+
+/** Decodes the facade's fillet diagnosis: [status, n, n × [m, edge × m, value]]. */
+export function decodeFilletProblems(v: Float64Array): FilletProblem[] {
+  if (v.length < 2) return [{ kind: 'other' }];
+  const status = v[0] as number;
+  const count = v[1] as number;
+  const problems: FilletProblem[] = [];
+  let k = 2;
+  for (let n = 0; n < count; n++) {
+    const m = v[k++] as number;
+    const edges = Array.from(v.subarray(k, k + m), (x) => Math.round(x));
+    k += m;
+    const value = v[k++] as number;
+    if (status === 1) problems.push({ kind: 'too-large', edges, max: value });
+    else if (status === 2) problems.push({ kind: 'unfilletable', edges });
+    else if (status === 3) problems.push({ kind: 'mixed-radii', edges });
+    else if (status === 4) problems.push({ kind: 'together', edges, factor: value });
+  }
+  return problems.length > 0 ? problems : [{ kind: 'other' }];
 }
 
 /** `Kernel.properties`: lengths in mm, areas in mm², volumes in mm³. */
