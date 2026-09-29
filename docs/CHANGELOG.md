@@ -2,6 +2,11 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-29 · **P2-16** File-format spec: `docs/file-format.md` documents
+  the `.extrudo` container, versioning and migrations, the document JSON
+  (parameters, expressions, every feature type, sketch data, references)
+  and a complete example, with a test that keeps it in step with the
+  schema.
 - 2026-09-29 · **P2-15** WASM size and startup (ADR-0037): the app works
   offline. A small service worker precaches everything (both WASM files,
   the kernel worker, every lazy chunk; updates keep the previous version's

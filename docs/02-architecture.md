@@ -595,7 +595,7 @@ cache/             OPTIONAL: brep per body, dropped if stale/unknown version
 Why our own format: Fusion's `.f3d` is proprietary and undocumented. STEP
 stores only final geometry, not history or parameters. So `.extrudo` is the
 editable source, and STEP, STL and 3MF are exports. The format spec is
-published in `docs/file-format.md` (written in Phase 2) so other tools can read
+published in [`docs/file-format.md`](file-format.md) so other tools can read
 it.
 
 ## 7. Web platform details

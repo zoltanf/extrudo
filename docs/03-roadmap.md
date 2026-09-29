@@ -400,8 +400,13 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   kernel ready 1.3 s after opening a project. Further OCCT trimming is
   proposed in the ADR (the kernel uses no raw bindings) but wasn't built:
   no Docker on the machine.
-- [ ] **P2-16 File-format spec.** Write `docs/file-format.md` from the zod
-  schema.
+- [x] **P2-16 File-format spec.** Write `docs/file-format.md` from the zod
+  schema. Done 2026-09-29: `docs/file-format.md` specifies the `.extrudo` zip
+  (entries, manifest, versions, import rules), format versioning and
+  migrations, every document field, feature type and input, sketch data,
+  references and names, with a complete example. A test
+  (`packages/storage/src/file-format-doc.test.ts`) loads the example through
+  the real schema and fails when a key, type or enum value is undocumented.
 - [ ] **P2-17 Benchmarks B2, B3 E2E.**
 
 **Phase 2 exit (v0.2):** the first real printable parts; the classic
