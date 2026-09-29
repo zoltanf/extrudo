@@ -148,4 +148,15 @@ describe('buildCommands', () => {
       expect(new Set(ids).size).toBe(ids.length);
     }
   });
+
+  it('offers Notification History where the toasts have one (P3-16), without a key clash', () => {
+    const open = vi.fn();
+    for (const mode of ['model', 'sketch'] as const) {
+      expect(byId(context(mode)).has('notificationHistory')).toBe(false);
+      const command = byId(context(mode, { notifications: { open } })).get('notificationHistory');
+      expect(command).toMatchObject({ label: 'Notification History', group: 'Panels' });
+      command?.run();
+    }
+    expect(open).toHaveBeenCalledTimes(2);
+  });
 });

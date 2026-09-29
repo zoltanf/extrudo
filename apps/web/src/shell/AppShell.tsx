@@ -19,7 +19,14 @@ import { type CSSProperties, lazy, Suspense, useEffect, useMemo, useRef, useStat
 import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
-import { type Toast, type ToastOptions, Toasts, ToolIcon, useTheme } from '../design-system';
+import {
+  type NotificationStore,
+  type Toast,
+  type ToastOptions,
+  Toasts,
+  ToolIcon,
+  useTheme,
+} from '../design-system';
 import { ExportModelDialog, type ModelExportRequest } from '../export/ExportModelDialog';
 import type { ModelExporter } from '../export/modelExport';
 import { DialogOverlay } from '../features/DialogOverlay';
@@ -114,7 +121,12 @@ export interface AppShellProps {
    * The project page's toasts (`useToasts`), drawn in the view's bottom-right
    * corner, or at the foot of the sketch palette while a sketch is open.
    */
-  toasts?: { toasts: Toast[]; onDismiss(id: number): void };
+  toasts?: {
+    toasts: Toast[];
+    onDismiss(id: number): void;
+    /** The session's notification history (P3-16): a button below the toasts opens it. */
+    history?: NotificationStore;
+  };
   /** Feature dialogs (P2-05): the app's registry unless a debug page brings its own. */
   dialogs?: FeatureDialogs;
   /** The project's kernel (its `Recomputer`): dialog previews, references, export, measuring. */
@@ -434,6 +446,9 @@ export function AppShell({
         theme: { choice, set: setChoice },
         ready,
         dialogCommands,
+        ...(toasts?.history && {
+          notifications: { open: () => toasts.history?.getState().setOpen(true) },
+        }),
       }),
     [
       mode,
@@ -458,6 +473,7 @@ export function AppShell({
       fileActions,
       choice,
       setChoice,
+      toasts?.history,
     ],
   );
   const openToolbox = useMemo(

@@ -2,6 +2,12 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-29 · **P3-16** Notification history (ADR-0041): a bell button
+  below the toasts (and Ctrl+K "Notification History") opens the session's
+  earlier notifications, newest first with errors in a group on top,
+  repeats counted, an unread badge, Clear all; a notification's action
+  stays clickable while it still applies (Show for a hidden sketch) and
+  shows disabled once it doesn't.
 - 2026-09-29 · **P2-17** Benchmarks B2 and B3 (ADR-0039): the parametric
   storage box (cut from a solid, sketch on its top face, exported as 3MF
   and STL) and the phone stand (two bodies joined into one, parametric

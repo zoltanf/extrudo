@@ -642,7 +642,11 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       session.getState().clearSelection();
       if (used.length > 0) {
         notify('info', hiddenMessage(store.getState().doc.features, used, fresh.draft.name), {
-          action: { label: 'Show', run: () => showSketches(store, used) },
+          action: {
+            label: 'Show',
+            run: () => showSketches(store, used),
+            available: () => hiddenSketches(store, used).length > 0,
+          },
           lifetime: HIDDEN_TOAST_MS,
         });
       }
@@ -741,11 +745,16 @@ export function hiddenMessage(
   return `${list} are hidden: ${by} used their profiles.`;
 }
 
-/** Shows sketches again (the toast's "Show"), those still there and hidden; one undo step. */
-function showSketches(store: DocumentStore, ids: readonly FeatureId[]) {
-  const hidden = ids.filter(
+/** Those of `ids` that are still there and hidden (the "Show" button applies while there are any). */
+function hiddenSketches(store: DocumentStore, ids: readonly FeatureId[]): FeatureId[] {
+  return ids.filter(
     (id) => store.getState().doc.features.find((f) => f.id === id)?.visible === false,
   );
+}
+
+/** Shows sketches again (the toast's "Show"), those still there and hidden; one undo step. */
+function showSketches(store: DocumentStore, ids: readonly FeatureId[]) {
+  const hidden = hiddenSketches(store, ids);
   if (hidden.length > 0) {
     store.getState().dispatch(setFeatureVisibility({ ids: hidden, visible: true }));
   }

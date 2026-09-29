@@ -94,7 +94,7 @@ function ProjectEditor({
     [platform],
   );
   const autosave = useAutosave(store, viewport, platform);
-  const { toasts, push, dismiss } = useToasts();
+  const { toasts, push, dismiss, notifications } = useToasts();
   useFirstThumbnail(doc.id, hasThumbnail, viewport, platform);
 
   const file = useMemo<FileActions>(
@@ -132,7 +132,7 @@ function ProjectEditor({
       file={file}
       platform={platform}
       notify={push}
-      toasts={{ toasts, onDismiss: dismiss }}
+      toasts={{ toasts, onDismiss: dismiss, history: notifications }}
       kernel={recomputer}
     />
   );

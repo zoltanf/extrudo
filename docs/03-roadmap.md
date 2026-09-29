@@ -456,11 +456,18 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
 - [ ] **P3-14 Benchmarks B4–B7 E2E.**
 - [ ] **P3-15 Public release prep:** license, README, contribution guide, code
   of conduct, hosted demo, issue templates.
-- [ ] **P3-16 Notification history.** A button beside the toasts (the view's
+- [x] **P3-16 Notification history.** A button beside the toasts (the view's
   bottom-right corner) opens the session's earlier notifications, errors
   first-class, with their actions where they still apply (e.g. Show a
   hidden sketch). Asked for by the owner on 2026-09-28, when toasts moved
-  into the view.
+  into the view. Done 2026-09-29 (ADR-0041): every notification is kept for
+  the session (repeats counted, at most 100) in the toasts' store; a bell
+  button below the toasts (drawn once something was notified, with an
+  unread badge, red for errors) and Ctrl+K "Notification History" open a
+  panel with errors in a group of their own on top, then the rest, newest
+  first; an action's optional `available()` says whether it still applies
+  (Show for a hidden sketch), else its button is disabled; clear all; Esc
+  closes and returns focus; session only.
 
 **Phase 3 exit (v0.3 MVP):** a hobbyist can model typical functional prints
 end to end, faster than in Fusion 360.

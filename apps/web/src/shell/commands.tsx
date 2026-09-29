@@ -6,6 +6,7 @@
  * same way as its key.
  */
 import {
+  Bell,
   Box,
   FilePlus2,
   History,
@@ -65,6 +66,8 @@ export interface CommandContext {
   browser: { collapsed: boolean; toggle(): void };
   timeline: { collapsed: boolean; toggle(): void };
   file: FileActions;
+  /** The notification history (P3-16): absent where there are no toasts to open it from. */
+  notifications?: { open(): void };
   theme: { choice: ThemeChoice; set(choice: ThemeChoice): void };
   /**
    * Tools that work because a feature dialog is registered for them
@@ -176,6 +179,12 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     ctx.timeline.toggle,
     { icon: icon(PanelBottom), keywords: 'Panels timeline history' },
   );
+  if (ctx.notifications) {
+    plain('notificationHistory', 'Notification History', 'Panels', ctx.notifications.open, {
+      icon: icon(Bell),
+      keywords: 'Panels notifications messages toasts errors log earlier',
+    });
+  }
 
   plain('newDesign', 'New Design', 'File', ctx.file.newDesign, { icon: icon(FilePlus2) });
   plain('allDesigns', 'All Designs', 'File', ctx.file.home, {

@@ -112,7 +112,15 @@ brief, voice) is in **`05-brand.md`**. In short:
 - **Toasts** appear in the view's bottom-right corner, newest at the
   bottom; while a sketch is open they sit at the foot of the sketch
   palette's column, so they never cover it. Errors stay until dismissed.
-  A button to show earlier notifications is planned (P3-16).
+  **Notification history (P3-16, ADR-0041):** once something has been
+  notified, a bell button sits below the toasts (badge: how many came since
+  the list was last opened, red if one is an error). It opens a panel of
+  the session's earlier notifications, newest first with errors in a group
+  of their own on top, then the rest; repeats show ×n and the time; Clear
+  all empties it. An action stays clickable while it still applies (Show
+  for a hidden sketch) and shows disabled once it doesn't. Esc closes the
+  panel and returns focus to the button; Ctrl+K "Notification History"
+  opens it any time. The list is session-only.
 - **ViewCube (top-right):** faces, edges and corners are clickable. Home icon.
   Rotate-90° arrows appear when face-on. Drag to orbit.
 - **Nav bar (bottom center, floating pill):** the pointer modes first:

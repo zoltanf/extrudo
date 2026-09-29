@@ -1,43 +1,27 @@
 import { X } from 'lucide-react';
-import { useCallback, useRef, useState } from 'react';
+import { useMemo } from 'react';
+import { useStore } from 'zustand';
+import { NotificationHistory } from './NotificationHistory';
+import {
+  createNotifications,
+  type NotificationStore,
+  type Toast,
+  type ToastTone,
+} from './notifications';
 
-export type ToastTone = 'info' | 'success' | 'error';
-
-/** What a toast can carry besides its text. */
-export interface ToastOptions {
-  /** A button beside the text (e.g. "Show"); clicking it runs `run` and closes the toast. */
-  action?: { label: string; run(): void };
-  /** How long it stays, ms; errors stay until dismissed whatever this says. */
-  lifetime?: number;
-}
-
-export interface Toast extends ToastOptions {
-  id: number;
-  tone: ToastTone;
-  text: string;
-}
-
-const LIFETIME_MS = 6000;
+export type { Toast, ToastAction, ToastOptions, ToastTone } from './notifications';
 
 /**
  * Short messages after an action ("Exported bracket.extrudo."), some with a
- * button ("Sketch2 is hidden… Show"). Errors stay until dismissed.
+ * button ("Sketch2 is hidden… Show"). Errors stay until dismissed. Every
+ * message also goes into the session's history (`notifications`, P3-16), which
+ * the button beside the toasts opens.
  */
 export function useToasts() {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-  const next = useRef(1);
-  const dismiss = useCallback((id: number) => {
-    setToasts((all) => all.filter((t) => t.id !== id));
-  }, []);
-  const push = useCallback(
-    (tone: ToastTone, text: string, options: ToastOptions = {}) => {
-      const id = next.current++;
-      setToasts((all) => [...all.slice(-2), { id, tone, text, ...options }]);
-      if (tone !== 'error') setTimeout(() => dismiss(id), options.lifetime ?? LIFETIME_MS);
-    },
-    [dismiss],
-  );
-  return { toasts, push, dismiss };
+  const notifications = useMemo(() => createNotifications(), []);
+  const toasts = useStore(notifications, (s) => s.toasts);
+  const { push, dismiss } = notifications.getState();
+  return { toasts, push, dismiss, notifications };
 }
 
 const DOT: Record<ToastTone, string> = {
@@ -65,10 +49,13 @@ export function Toasts({
   toasts,
   onDismiss,
   place = 'screen',
+  history,
 }: {
   toasts: Toast[];
   onDismiss(id: number): void;
   place?: ToastPlace;
+  /** The notification store: a button below the toasts opens its history. */
+  history?: NotificationStore;
 }) {
   return (
     <div className={`pointer-events-none flex flex-col items-end gap-2 ${PLACES[place]}`}>
@@ -105,6 +92,7 @@ export function Toasts({
           </button>
         </div>
       ))}
+      {history && <NotificationHistory store={history} />}
     </div>
   );
 }

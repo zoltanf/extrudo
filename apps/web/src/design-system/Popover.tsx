@@ -5,6 +5,7 @@ export interface PopoverProps {
   trigger: ReactElement;
   children: ReactNode;
   side?: 'top' | 'right' | 'bottom' | 'left';
+  align?: 'start' | 'center' | 'end';
   label?: string;
   /** Controlled state; leave both out for an uncontrolled popover. */
   open?: boolean;
@@ -18,6 +19,7 @@ export function Popover({
   trigger,
   children,
   side = 'bottom',
+  align = 'center',
   label,
   open,
   onOpenChange,
@@ -30,6 +32,7 @@ export function Popover({
       <Radix.Portal>
         <Radix.Content
           side={side}
+          align={align}
           sideOffset={6}
           collisionPadding={8}
           aria-label={label}

@@ -19,7 +19,7 @@ engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 P2-13 (measure and inspect), P2-14 (version history), P2-15 (WASM
 size and startup, offline precache), P2-16 (file-format spec,
 `docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
-fixtures) are done.
+fixtures) are done. Phase 3: P3-16 (notification history) is done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -320,7 +320,15 @@ ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
 `WRITE_FIXTURES=1` rewrites them), recomputed headless in
 `packages/kernel/src/benchmarks.test.ts`. Combine doesn't exist yet: B3
 merges two bodies by a join extrude that touches both (P3-06 adds the
-real step).
+real step). ADR-0041 (P3-16) added the notification history: the toasts'
+store (`design-system/notifications.ts`, vanilla Zustand, `useToasts()`
+returns it as `notifications`) records every `push` for the session
+(repeats merged with a count, at most 100), the bell button below the
+toasts (`NotificationHistory.tsx`, drawn once something was notified) and
+the command "Notification History" open a popover with errors grouped on
+top; a `ToastAction` may carry `available()` so the history disables a
+stale button. **A new toast action should say whether it still applies.**
+Session only.
 Next: Phase 3, **P3-01** (fillet). See `docs/03-roadmap.md`.
 
 ## Commands
@@ -351,7 +359,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0039: benchmarks B2 and B3, fixtures (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0041: notification history (0006 is reserved) |
 
 ## Stack summary
 
@@ -915,3 +923,13 @@ them. Notes further down that name a machine apply to that machine only.
   takes about 20 s alone (B3 about 30 s); on the Ubuntu machine run with
   `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` (no Playwright
   browser installed there).
+- **Notification history e2e** (`e2e/notifications.spec.ts`): the bell is the
+  button "Notification history…" (its name adds ", 2 new, 1 error"; it carries
+  `data-unread` and `data-unread-errors`, and doesn't exist until something
+  was notified); the panel is `dialog` "Notification history" with regions
+  "Errors" and "Earlier", rows `[data-notification="error|info|success"]`
+  (a repeat has `[data-count]`), and a stale action is a disabled button named
+  "Show (no longer applies)". The bell sits in the view's bottom-right
+  corner, under the toasts: dismiss the toasts (`Dismiss`) before clicking
+  near there. Unit tests use `createNotifications({ now, later })` with injected
+  clock and timers; `renderToStaticMarkup` sees only the store's initial state.

@@ -22,9 +22,17 @@ export {
   MenuSeparator,
   PointMenu,
 } from './Menu';
+export { NotificationHistory } from './NotificationHistory';
+export {
+  createNotifications,
+  type Notification,
+  type NotificationState,
+  type NotificationStore,
+} from './notifications';
 export { Popover } from './Popover';
 export {
   type Toast,
+  type ToastAction,
   type ToastOptions,
   type ToastPlace,
   Toasts,
