@@ -2,6 +2,8 @@
  * @extrudo/core: the document model and everything that is pure data.
  * See docs/02-architecture.md §4 and ADR-0003. Must not use the DOM or WASM.
  */
+
+export * from './chamfer';
 export {
   applyCommand,
   type Command,

@@ -6,6 +6,7 @@
  * browser row open it for editing.
  */
 import { FeatureRegistry } from '@extrudo/core';
+import { chamferDialog } from './chamfer';
 import { CONSTRUCTION_DIALOGS } from './construction';
 import { extrudeDialog } from './extrude';
 import { filletDialog } from './fillet';
@@ -19,7 +20,8 @@ export function featureDialogs(): FeatureDialogs {
   const dialogs = new FeatureRegistry<FeatureDialogSpec>()
     .register(extrudeDialog)
     .register(revolveDialog)
-    .register(filletDialog);
+    .register(filletDialog)
+    .register(chamferDialog);
   // Box, cylinder, sphere and torus (P2-10, ADR-0032).
   for (const spec of PRIMITIVE_DIALOGS) dialogs.register(spec);
   // Construction planes, axes and points (P3-05, ADR-0040).

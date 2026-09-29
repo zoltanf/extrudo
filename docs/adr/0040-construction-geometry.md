@@ -35,7 +35,7 @@ everything had to come from what the kernel already reports.
    `referencedFeatures` sees it, so ordering, moves, "delete refused while
    used", Fix References and the cache keys work unchanged. The `point`
    reference kind, reserved in format 1, is now used
-   (`docs/file-format.md` 6.9 and 8). Origin IDs (`origin:xy`) can't clash
+   (`docs/file-format.md` 6.10 and 8). Origin IDs (`origin:xy`) can't clash
    with a UUID.
 3. **Pure arithmetic in TypeScript, no facade change.** Planes, axes and
    points come from `describe` (face centroids and normals, edge

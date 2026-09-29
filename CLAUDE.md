@@ -19,9 +19,9 @@ engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 P2-13 (measure and inspect), P2-14 (version history), P2-15 (WASM
 size and startup, offline precache), P2-16 (file-format spec,
 `docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
-fixtures) are done. Phase 3: P3-01 (fillet), P3-05 (construction
-geometry), P3-11 (marking menu, context menus) and P3-16 (notification
-history) are done.
+fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-05
+(construction geometry), P3-11 (marking menu, context menus) and P3-16
+(notification history) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -383,7 +383,20 @@ Sketch). "Repeat last" is the `repeatLast` command (`ctx.repeat`, the last
 tool through `runTool`/`run`, `isRepeatable`). Preference `marking.radial`.
 Browser folders, origin rows, Parameters rows and home cards have context
 menus.
-Next: Phase 3 in three tracks: **P3-02** (chamfer), **P3-06** (combine,
+ADR-0043 (P3-02) added chamfer: `packages/core/src/chamfer.ts` (up to 8
+edge sets as plain inputs, **each set with its own type**: `edges`,
+`mode` = equal / two-distances / distance-angle, `distance`, `distanceB`,
+`angle`, `flip`, then `edges2`, `mode2` …: `chamferSets`, `chamferInputs`),
+the evaluator `packages/kernel/src/features/chamfer.ts` (same shape as
+fillet's; faces `chamfer:<id>:from:(<edge>)`), the facade's
+`chamfer(shape)` (staged edges + four numbers each: mode, a, b, flip; the
+reference face of an edge is the lower-numbered of its two faces, `flip`
+takes the other; on failure a fillet-style diagnosis whose too-large value
+is a **factor** the distances scale by, read through `Kernel.chamfer`'s
+`ChamferError.problems`; it uses `largestThatWorks` and the fillet's tangent
+chain query) and the dialog `apps/web/src/features/chamfer.ts` (a Type
+dropdown per set). The Chamfer tile has no default key.
+Next: Phase 3 in three tracks: **P3-03** (shell), **P3-06** (combine,
 move/copy, mirror) and **P3-09** (section analysis). See `docs/03-roadmap.md`.
 
 ## Commands
@@ -414,7 +427,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer (0006 is reserved) |
 
 ## Stack summary
 
@@ -968,6 +981,20 @@ them. Notes further down that name a machine apply to that machine only.
   A failing fillet is diagnosed by rebuilding it (about a second per
   failing build when 12 edges collide): keep such cases out of previews
   and tests that run many times.
+- **Chamfer e2e** (`e2e/chamfer.spec.ts`, P3-02): the tool has no key: click
+  the toolbar's Chamfer tile (`getByRole('button', { name: /^Chamfer/ })`,
+  after picking an edge for pre-selection). The dialog is the region
+  "Chamfer dialog" / "Edit Chamfer1 dialog"; set 1 has the button "Edges"
+  (`exact: true`), the combobox "Type" (options "Equal distance", "Two
+  distances", "Distance and angle": a Radix select, click it, then the
+  option) and the textboxes "Distance", "Second distance" (two distances),
+  "Angle" (distance and angle) and the checkbox "Flip" (both non-equal
+  types); set 2 names get " 2" ("Edges 2", "Type 2", "Distance 2" …). Fields
+  of other types aren't in the DOM. The message is in the region "Feature
+  status". Kernel-side, the golden table is
+  `pnpm vitest run -u packages/kernel/src/features/chamfer`; a chamfer's
+  failed build is diagnosed by rebuilding it like fillet's (keep failing
+  cases out of previews that run often).
 - **Facade checks with Docker on the Ubuntu machine** (since 2026-09-29;
   `sg docker -c '…'` until the shell has the group): `em++
   -fsyntax-only` and the native harness both run in

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { HistoryRecord } from './history';
-import { FilletError, Kernel, KernelError } from './kernel';
+import { ChamferError, FilletError, Kernel, KernelError } from './kernel';
 import { EDGE_SEAM } from './mesh';
 import { loadOcct } from './occt/load';
 import { OcctScope } from './occt/scope';
@@ -208,6 +208,120 @@ describe('errors and ownership', () => {
     }
     // Different radii on separate chains are fine.
     scope.track(kernel.fillet(plate, [0, 2], [1, 1.5]));
+  });
+
+  it('records chamfer history and sizes the three modes as documented (P3-02)', () => {
+    using scope = kernel.scope();
+    const box = scope.track(kernel.box([40, 30, 20]));
+    const volume = (shape: Parameters<typeof kernel.measure>[0]) => kernel.measure(shape).volume;
+    const full = 40 * 30 * 20;
+    const equal = scope.track(kernel.chamfer(box, [0], { mode: 'equal', distance: 3 }));
+    expect(kernel.count(equal.shape, 'face')).toBe(7);
+    // A right triangle with 3 mm legs off the edge's length (20, 30 or 40 mm).
+    const length = (2 * (full - volume(equal.shape))) / 9;
+    expect([20, 30, 40].map((l) => Math.abs(l - length) < 1e-6)).toContain(true);
+    // The chamfered edge is deleted and generates its chamfer face; the faces around survive.
+    const edge = find(equal.history, 0, 'edge', 0);
+    expect(edge.map((r) => r.relation).sort()).toEqual(['deleted', 'generated']);
+    expect(
+      edge.find((r) => r.relation === 'generated')?.to.filter((t) => t.kind === 'face'),
+    ).toHaveLength(1);
+    // Two distances: the area is the same either way, only the faces swap.
+    for (const flip of [false, true]) {
+      const two = scope.track(
+        kernel.chamfer(box, [0], { mode: 'two-distances', distance: 2, distanceB: 5, flip }),
+      );
+      expect(volume(two.shape)).toBeCloseTo(full - 0.5 * 2 * 5 * length, 2);
+    }
+    // Distance and angle: a 45° chamfer is the equal one.
+    const angled = scope.track(
+      kernel.chamfer(box, [0], { mode: 'distance-angle', distance: 3, angle: Math.PI / 4 }),
+    );
+    expect(volume(angled.shape)).toBeCloseTo(volume(equal.shape), 3);
+  });
+
+  it('diagnoses a chamfer that is too large: the chain and the factor that works', () => {
+    using scope = kernel.scope();
+    const box = scope.track(kernel.box([10, 10, 10]));
+    for (const spec of [
+      { mode: 'equal', distance: 50 },
+      { mode: 'two-distances', distance: 50, distanceB: 4 },
+      { mode: 'distance-angle', distance: 50, angle: Math.PI / 6 },
+    ] as const) {
+      try {
+        kernel.chamfer(box, [0], spec);
+        expect.unreachable(`a ${spec.mode} chamfer of 50 mm on a 10 mm box`);
+      } catch (error) {
+        expect(error).toBeInstanceOf(ChamferError);
+        const [problem] = (error as ChamferError).problems;
+        expect(problem?.kind).toBe('too-large');
+        if (problem?.kind !== 'too-large') return;
+        expect(problem.edges).toEqual([0]);
+        expect(problem.factor).toBeGreaterThan(0);
+        expect(problem.factor).toBeLessThan(1);
+        const scaled =
+          spec.mode === 'two-distances'
+            ? { ...spec, distance: 50 * problem.factor, distanceB: 4 * problem.factor }
+            : { ...spec, distance: 50 * problem.factor };
+        scope.track(kernel.chamfer(box, [0], scaled));
+      }
+    }
+  });
+
+  it('diagnoses chamfers that only fail together, and refuses one chain with two settings', {
+    timeout: 60_000,
+  }, () => {
+    using scope = kernel.scope();
+    const box = scope.track(kernel.box([10, 10, 10]));
+    const all = Array.from({ length: 12 }, (_, i) => i);
+    try {
+      kernel.chamfer(box, all, { mode: 'equal', distance: 6 });
+      expect.unreachable('chamfering all 12 edges of a 10 mm cube by 6 mm');
+    } catch (error) {
+      const [problem] = (error as ChamferError).problems;
+      expect(problem?.kind).toBe('together');
+      if (problem?.kind !== 'together') return;
+      // Distances meet at 5 mm: a factor a bit under 5 / 6 works.
+      expect(problem.factor).toBeGreaterThan(0.7);
+      expect(problem.factor).toBeLessThan(0.86);
+      scope.track(kernel.chamfer(box, all, { mode: 'equal', distance: 6 * problem.factor }));
+    }
+    const plate = scope.track(kernel.box([40, 40, 2]));
+    const rounded = scope.track(kernel.fillet(plate, [0, 2, 4, 6], [5, 5, 5, 5]));
+    let rim: number[] | undefined;
+    for (let e = 0; e < kernel.count(rounded.shape, 'edge') && !rim; e++) {
+      const chain = kernel.tangentChain(rounded.shape, e);
+      if (chain.length === 8) rim = chain;
+    }
+    const [first, second] = rim as number[];
+    // The chain takes one setting: both edges alone are fine, two distances are not.
+    scope.track(
+      kernel.chamfer(rounded.shape, [first as number, second as number], {
+        mode: 'equal',
+        distance: 0.5,
+      }),
+    );
+    try {
+      kernel.chamfer(
+        rounded.shape,
+        [first as number, second as number],
+        [
+          { mode: 'equal', distance: 0.5 },
+          { mode: 'equal', distance: 0.7 },
+        ],
+      );
+      expect.unreachable('two settings on one chain');
+    } catch (error) {
+      const [problem] = (error as ChamferError).problems;
+      expect(problem?.kind).toBe('mixed');
+    }
+    // Bad arguments are plain kernel errors.
+    expect(() => kernel.chamfer(box, [99], { mode: 'equal', distance: 1 })).toThrow(
+      /edge index out of range/,
+    );
+    expect(() =>
+      kernel.chamfer(box, [0], { mode: 'distance-angle', distance: 1, angle: 2 }),
+    ).toThrow(/angle must be between/);
   });
 
   it('releases scoped shapes', () => {

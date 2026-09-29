@@ -321,7 +321,7 @@ A sketch on a plane or a flat face (label "Sketch", category sketch).
 
 | Input | Kind | Required | Rule |
 |---|---|---|---|
-| `plane` | `ref` | yes | Exactly one reference, of kind `plane` (an origin plane `origin:xy`, `origin:xz`, `origin:yz`, or a construction plane's feature ID, 6.9) or `face`. |
+| `plane` | `ref` | yes | Exactly one reference, of kind `plane` (an origin plane `origin:xy`, `origin:xz`, `origin:yz`, or a construction plane's feature ID, 6.10) or `face`. |
 | `sketch` | `sketchData` | yes | The sketch content (section 7). |
 
 A sketch's 2D frame (origin, X, Y, normal) is *derived*: for an origin plane
@@ -452,7 +452,37 @@ different bodies are rounded body by body. The faces it makes are named
 `fillet:<feature id>:from:(<edge name>)`. No new keys: a fillet is a
 feature with `ref` and `expr` inputs like the others.
 
-### 6.9 Construction features
+### 6.9 `chamfer`
+
+Bevels edges of a body (P3-02). Like a fillet it has up to 8 **edge sets**,
+and each set has its **own type and values**. The names of set 1 are plain,
+set `n` appends its number: `edges`, `mode`, `distance`, `distanceB`,
+`angle`, `flip`, then `edges2`, `mode2`, `distance2`, `distanceB2`,
+`angle2`, `flip2`, ..., up to `edges8` ... `flip8`. Every input is optional.
+
+| Input | Kind | Rule |
+|---|---|---|
+| `edges`, `edges2` ... `edges8` | `ref` | Refs of kind `edge` (persistent edge names, section 8); a set with no edges is ignored |
+| `mode`, `mode2` ... | `enum` | `equal` (default), `two-distances` or `distance-angle` |
+| `distance`, `distance2` ... | `expr` | Length, greater than 0 when the kernel evaluates it (not checked by the schema); needed by every type |
+| `distanceB`, `distanceB2` ... | `expr` | Length: the second distance of `two-distances` |
+| `angle`, `angle2` ... | `expr` | Angle, between 0 and 90 deg (exclusive) when evaluated: the angle of `distance-angle` |
+| `flip`, `flip2` ... | `bool` | Swaps which of the edge's two faces takes `distance`, for `two-distances` and `distance-angle` (default false) |
+
+`equal` puts the chamfer `distance` from the edge on both faces.
+`two-distances` puts `distance` on the set's first face and `distanceB` on
+the other; the first face is the lower-numbered of the two faces around the
+edge in the kernel's face order (the first edge of a chain of tangent edges
+decides for the chain). `distance-angle` puts `distance` on the first face,
+with the chamfer at `angle` to that face (45 deg is the equal chamfer). As
+in a fillet, the kernel bevels the whole chain of tangent-continuous edges
+around each edge you name, with one setting, so edges of one chain must
+share their set's type and values. Edges of different bodies are bevelled
+body by body. The faces it makes are named
+`chamfer:<feature id>:from:(<edge name>)`. No new keys: a chamfer is a
+feature with `ref`, `enum`, `expr` and `bool` inputs like the others.
+
+### 6.10 Construction features
 
 Nine feature types (category construct) make no body: each makes a plane, an
 axis or a point that later features refer to (section 8: a reference of kind
@@ -602,7 +632,7 @@ A `GeomRef` points at geometry made by earlier features. It is stored in
 
 | `kind` | `id` | Made by |
 |---|---|---|
-| `plane` | `origin:xy`, `origin:xz`, `origin:yz`; or a construction plane feature's ID (`<featureId>`, 6.9) | fixed, or a construction feature |
+| `plane` | `origin:xy`, `origin:xz`, `origin:yz`; or a construction plane feature's ID (`<featureId>`, 6.10) | fixed, or a construction feature |
 | `axis` | `origin:x`, `origin:y`, `origin:z`; or a construction axis feature's ID | fixed, or a construction feature |
 | `profile` | `<sketchFeatureId>/<regionId>`: the sketch feature and the region within it. A region's ID is a hash of the curves around its outer loop and the direction each runs in, so it survives moving and resizing | derived from the sketch |
 | `sketchEntity` | `<sketchFeatureId>/<entityId>` (a curve or point picked outside its sketch) | sketch |
@@ -610,7 +640,7 @@ A `GeomRef` points at geometry made by earlier features. It is stored in
 | `face` | a face name, `op:feature:role[:source]` with optional `#n` split suffixes | kernel |
 | `edge` | `e[face|face…]` with optional `@n` | kernel |
 | `vertex` | `v[face|face…]` with optional `@n` | kernel |
-| `point` | a construction point feature's ID (`<featureId>`, 6.9) | construction feature |
+| `point` | a construction point feature's ID (`<featureId>`, 6.10) | construction feature |
 
 **Topological names** (ADR-0005) describe *why* a face exists, not where it
 is, so they stay valid when upstream features change. Grammar:

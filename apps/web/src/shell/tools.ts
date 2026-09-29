@@ -431,7 +431,6 @@ export const TOOLS = {
     icon: 'chamfer',
     category: 'modify',
     hint: 'Bevel the selected edges.',
-    comesWith: 'P3-02',
   },
   shell: {
     id: 'shell',

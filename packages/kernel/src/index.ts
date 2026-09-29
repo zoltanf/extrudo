@@ -39,6 +39,9 @@ export {
 export {
   type Axis,
   type BooleanOptions,
+  ChamferError,
+  type ChamferProblem,
+  type ChamferSpec,
   FilletError,
   type FilletProblem,
   Kernel,

@@ -18,7 +18,7 @@
 // - Handles are positive ints; 0 means the call failed and lastError() says why.
 // - Sub-shape kinds: 0 = face, 1 = edge, 2 = vertex. Sub-shape indices are
 //   0-based positions in TopExp::MapShapes order for that kind.
-// - Integer arguments that are lists (fillet edges) are staged with
+// - Integer arguments that are lists (fillet and chamfer edges) are staged with
 //   clearArgs() / pushArg() before the call; lists of numbers (spline poles
 //   and knots, fillet radii) with clearNumbers() / pushNumber().
 
@@ -36,6 +36,7 @@
 #include <BRepBuilderAPI_MakeShape.hxx>
 #include <BRepCheck_Analyzer.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
+#include <BRepFilletAPI_MakeChamfer.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepOffsetAPI_DraftAngle.hxx>
 #include <BRepGProp.hxx>
@@ -299,6 +300,114 @@ public:
       lookup_.clear();
       lookup_.push_back(edge);
       return 1;
+    }
+  }
+
+  /**
+   * Chamfers edges of `shape` (P3-02): the staged edges (clearArgs/pushArg,
+   * 0-based edge indices) with four staged numbers per edge
+   * (clearNumbers/pushNumber): [mode, a, b, flip].
+   * - mode 0, equal distance: `a` on both faces; `b` and `flip` are ignored.
+   * - mode 1, two distances: `a` measured on the reference face, `b` on the
+   *   other.
+   * - mode 2, distance and angle: `a` measured on the reference face, `b`
+   *   the angle (radians, 0..π/2) the chamfer makes with it.
+   * The reference face of an edge is the lower-numbered of the two faces
+   * next to it, the other one when `flip` is 1. As in fillet(), OCCT
+   * chamfers a whole chain of tangent-continuous edges once one of them is
+   * added, so the edges of a chain need the same four numbers, and the
+   * first staged edge of a chain decides its reference face. Records
+   * history for input 0 (a chamfered edge is deleted and generates its
+   * chamfer face).
+   *
+   * On failure it returns 0 with a message in lastError() and, in
+   * geometryNumbers, the diagnosis in fillet()'s layout
+   * [status, n, n × [m, edge × m, value]]:
+   * - 1 the distances are too large for a chain: its m edges and the
+   *   largest factor (0..1; 0: none works) its distances (not the angle)
+   *   can be scaled by, found by bisection;
+   * - 2 an edge can't be chamfered (not between two faces): [1, edge, 0];
+   * - 3 one chain got different settings: its staged edges, value 0;
+   * - 4 every chain works alone but not all together: all staged edges and
+   *   the largest factor all distances can be scaled by, 0 if none;
+   * - 5 anything else: n = 0.
+   */
+  int chamfer(int shape) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Chamfer failed: unknown input shape.");
+    if (args_.empty() || numbers_.size() != args_.size() * 4) {
+      return fail("Chamfer failed: pick edges and give each its distances.");
+    }
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*input, TopAbs_EDGE, edges);
+      TopExp::MapShapes(*input, TopAbs_FACE, faces);
+      NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeFaces;
+      TopExp::MapShapesAndUniqueAncestors(*input, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+      const std::vector<int> staged = args_;
+      const std::vector<double> spec = numbers_;
+      for (size_t i = 0; i < staged.size(); ++i) {
+        if (staged[i] < 0 || staged[i] >= edges.Extent()) return fail("Chamfer failed: edge index out of range.");
+        const int mode = static_cast<int>(spec[4 * i]);
+        const double a = spec[4 * i + 1];
+        const double b = spec[4 * i + 2];
+        if (mode < 0 || mode > 2) return fail("Chamfer failed: unknown mode.");
+        if (!(a > 0)) return fail("Chamfer failed: the distance must be greater than 0.");
+        if (mode == 1 && !(b > 0)) return fail("Chamfer failed: the second distance must be greater than 0.");
+        if (mode == 2 && !(b > 0 && b < 1.5707963267948966)) {
+          return fail("Chamfer failed: the angle must be between 0 and 90 degrees.");
+        }
+      }
+      BRepFilletAPI_MakeChamfer builder(*input);
+      std::vector<int> contourOf;
+      std::vector<int> bad;
+      const int added = addChamfers(builder, edges, faces, edgeFaces, staged, spec, contourOf, bad);
+      if (added == 1) {
+        geometry_.push_back(2);
+        geometry_.push_back(static_cast<double>(bad.size()));
+        for (int position : bad) {
+          geometry_.push_back(1);
+          geometry_.push_back(staged[position]);
+          geometry_.push_back(0);
+        }
+        return fail("Chamfer failed: an edge can't be chamfered.");
+      }
+      if (added == 2) {
+        geometry_.push_back(3);
+        geometry_.push_back(1);
+        geometry_.push_back(static_cast<double>(bad.size()));
+        for (int position : bad) geometry_.push_back(staged[position]);
+        geometry_.push_back(0);
+        return fail("Chamfer failed: one chain of tangent edges got different settings.");
+      }
+      // The chains, before Build: a failed Build can leave the builder unfit to ask.
+      std::vector<std::vector<int>> chains(static_cast<size_t>(builder.NbContours()) + 1);
+      for (int contour = 1; contour <= builder.NbContours(); ++contour) {
+        for (int j = 1; j <= builder.NbEdges(contour); ++j) {
+          const int at = edges.FindIndex(builder.Edge(contour, j)) - 1;
+          if (at >= 0) chains[contour].push_back(at);
+        }
+      }
+      TopoDS_Shape result;
+      try {
+        builder.Build();
+        if (builder.IsDone()) result = builder.Shape();
+      } catch (...) {
+        result.Nullify();
+      }
+      if (!result.IsNull() && BRepCheck_Analyzer(result).IsValid()) {
+        recordHistory(builder, *input, 0, result);
+        return store(result);
+      }
+      return explainChamfer(*input, edges, faces, edgeFaces, staged, spec, contourOf, chains);
+    } catch (...) {
+      geometry_.clear();
+      geometry_.push_back(5);
+      geometry_.push_back(0);
+      return failFromException("Chamfer failed");
     }
   }
 
@@ -1887,6 +1996,166 @@ private:
     }
     geometry_[1] = records;
     return fail("Fillet failed: the radius is probably too large for the selected edges.");
+  }
+
+  using EdgeFaceMap =
+      NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>;
+
+  /**
+   * The reference face of a chamfer on `edge`: the lower-numbered of its two
+   * faces, the other with `flip`. Null when the edge isn't between two
+   * different faces.
+   */
+  static TopoDS_Face referenceFace(const EdgeFaceMap& edgeFaces, const TopoDS_Shape& edge,
+                                   const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                                   bool flip) {
+    const int at = edgeFaces.FindIndex(edge);
+    if (at == 0) return TopoDS_Face();
+    std::vector<int> around;
+    for (const TopoDS_Shape& face : edgeFaces(at)) around.push_back(faces.FindIndex(face));
+    if (around.size() != 2 || around[0] == around[1]) return TopoDS_Face();
+    std::sort(around.begin(), around.end());
+    return TopoDS::Face(faces(around[flip ? 1 : 0]));
+  }
+
+  /**
+   * Adds the edges of a chamfer to `builder` (see chamfer() for `spec`, four
+   * numbers per staged edge). Fills `contourOf` with each staged edge's
+   * contour (0 if OCCT can't chamfer it). Returns 0, 1 (some edge can't be
+   * chamfered: `bad` lists their positions in `staged`) or 2 (a chain got
+   * different settings: `bad` lists its positions).
+   */
+  static int addChamfers(BRepFilletAPI_MakeChamfer& builder,
+                         const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& edges,
+                         const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                         const EdgeFaceMap& edgeFaces, const std::vector<int>& staged,
+                         const std::vector<double>& spec, std::vector<int>& contourOf,
+                         std::vector<int>& bad) {
+    contourOf.assign(staged.size(), 0);
+    for (size_t i = 0; i < staged.size(); ++i) {
+      const TopoDS_Edge edge = TopoDS::Edge(edges(staged[i] + 1));
+      const int mode = static_cast<int>(spec[4 * i]);
+      const double a = spec[4 * i + 1];
+      const double b = spec[4 * i + 2];
+      if (mode == 0) {
+        builder.Add(a, edge);
+        continue;
+      }
+      const TopoDS_Face face = referenceFace(edgeFaces, edge, faces, spec[4 * i + 3] > 0.5);
+      if (face.IsNull()) continue;
+      if (mode == 1) builder.Add(a, b, edge, face);
+      else builder.AddDA(a, b, edge, face);
+    }
+    for (size_t i = 0; i < staged.size(); ++i) {
+      contourOf[i] = builder.Contour(TopoDS::Edge(edges(staged[i] + 1)));
+      if (contourOf[i] == 0) bad.push_back(static_cast<int>(i));
+    }
+    if (!bad.empty()) return 1;
+    for (int contour = 1; contour <= builder.NbContours(); ++contour) {
+      std::vector<int> members;
+      for (size_t i = 0; i < staged.size(); ++i) {
+        if (contourOf[i] == contour) members.push_back(static_cast<int>(i));
+      }
+      for (int position : members) {
+        for (int k = 0; k < 4; ++k) {
+          if (std::abs(spec[4 * position + k] - spec[4 * members[0] + k]) > 1e-9) {
+            bad = members;
+            return 2;
+          }
+        }
+      }
+    }
+    return 0;
+  }
+
+  /** The staged settings of `positions`, with the distances scaled by `factor` (angles stay). */
+  static std::vector<double> scaledSpec(const std::vector<double>& spec, const std::vector<int>& positions,
+                                        double factor) {
+    std::vector<double> out;
+    for (int position : positions) {
+      const int mode = static_cast<int>(spec[4 * position]);
+      out.push_back(mode);
+      out.push_back(spec[4 * position + 1] * factor);
+      out.push_back(mode == 1 ? spec[4 * position + 2] * factor : spec[4 * position + 2]);
+      out.push_back(spec[4 * position + 3]);
+    }
+    return out;
+  }
+
+  /** Whether these chamfers build a valid solid (a probe: nothing is kept). */
+  bool chamferWorks(const TopoDS_Shape& input,
+                    const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& edges,
+                    const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                    const EdgeFaceMap& edgeFaces, const std::vector<int>& staged,
+                    const std::vector<double>& spec) {
+    try {
+      BRepFilletAPI_MakeChamfer builder(input);
+      std::vector<int> contourOf;
+      std::vector<int> bad;
+      if (addChamfers(builder, edges, faces, edgeFaces, staged, spec, contourOf, bad) != 0) return false;
+      builder.Build();
+      if (!builder.IsDone()) return false;
+      const TopoDS_Shape result = builder.Shape();
+      return !result.IsNull() && BRepCheck_Analyzer(result).IsValid();
+    } catch (...) {
+      return false;
+    }
+  }
+
+  /**
+   * Fills geometry_ after a chamfer failed (see chamfer()): finds the chains
+   * that fail alone and the largest factor their distances take; if none
+   * does, the largest factor all distances can be scaled by. Returns 0 with
+   * lastError set. Same shape as explainFillet().
+   */
+  int explainChamfer(const TopoDS_Shape& input,
+                     const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& edges,
+                     const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                     const EdgeFaceMap& edgeFaces, const std::vector<int>& staged,
+                     const std::vector<double>& spec, const std::vector<int>& contourOf,
+                     const std::vector<std::vector<int>>& chains) {
+    geometry_.clear();
+    geometry_.push_back(1);
+    geometry_.push_back(0);
+    int records = 0;
+    for (size_t contour = 1; contour < chains.size(); ++contour) {
+      std::vector<int> positions;
+      std::vector<int> subset;
+      for (size_t i = 0; i < staged.size(); ++i) {
+        if (contourOf[i] != static_cast<int>(contour)) continue;
+        positions.push_back(static_cast<int>(i));
+        subset.push_back(staged[i]);
+      }
+      if (subset.empty() || chamferWorks(input, edges, faces, edgeFaces, subset, scaledSpec(spec, positions, 1.0))) {
+        continue;
+      }
+      const double largest = largestThatWorks(
+          [&](double factor) {
+            return chamferWorks(input, edges, faces, edgeFaces, subset, scaledSpec(spec, positions, factor));
+          },
+          1.0);
+      geometry_.push_back(static_cast<double>(chains[contour].size()));
+      for (int at : chains[contour]) geometry_.push_back(at);
+      geometry_.push_back(largest);
+      ++records;
+    }
+    if (records == 0) {
+      // Each chain builds alone, so they get in each other's way.
+      geometry_[0] = 4;
+      std::vector<int> all;
+      for (size_t i = 0; i < staged.size(); ++i) all.push_back(static_cast<int>(i));
+      const double factor = largestThatWorks(
+          [&](double f) {
+            return chamferWorks(input, edges, faces, edgeFaces, staged, scaledSpec(spec, all, f));
+          },
+          1.0);
+      geometry_.push_back(static_cast<double>(staged.size()));
+      for (int at : staged) geometry_.push_back(at);
+      geometry_.push_back(factor);
+      records = 1;
+    }
+    geometry_[1] = records;
+    return fail("Chamfer failed: the distances are probably too large for the selected edges.");
   }
 
   template <typename Builder>

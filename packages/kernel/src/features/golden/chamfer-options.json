@@ -1,0 +1,120 @@
+{
+ "equal 0.5": {
+  "volume": 23995,
+  "faces": 7,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])"
+  ]
+ },
+ "equal 5": {
+  "volume": 23500,
+  "faces": 7,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])"
+  ]
+ },
+ "equal 18": {
+  "volume": 17520,
+  "faces": 7,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])"
+  ]
+ },
+ "equal 25 too large": {
+  "error": "Distance 25 mm is too large for edge 10 (max ≈ 19 mm)."
+ },
+ "two 2 and 6": {
+  "volume": 23760,
+  "faces": 7,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])"
+  ]
+ },
+ "two 2 and 6 flipped": {
+  "volume": 23760,
+  "faces": 7,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])"
+  ]
+ },
+ "two 30 and 1 too large": {
+  "error": "Distances 30 mm and 1 mm are too large for edge 10. Try up to 19 mm and 0.66 mm."
+ },
+ "angle 5 at 30": {
+  "volume": 23711.32,
+  "faces": 7,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])"
+  ]
+ },
+ "angle 5 at 60 flipped": {
+  "volume": 23133.97,
+  "faces": 7,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])"
+  ]
+ },
+ "angle 5 at 89": {
+  "error": "Distance 5 mm at 89° is too large for edge 10 (max ≈ 0.5 mm)."
+ },
+ "angle 40 at 30 too large": {
+  "error": "Distance 40 mm at 30° is too large for edge 10 (max ≈ 19 mm)."
+ },
+ "vertical corner 8": {
+  "volume": 23360,
+  "faces": 7,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:side:l2|extrude:B:side:l5])"
+  ]
+ },
+ "two edges one set": {
+  "volume": 23840,
+  "faces": 8,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])",
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l8])"
+  ]
+ },
+ "two sets, two types": {
+  "volume": 23777.25,
+  "faces": 9,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l11])",
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])",
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l8])"
+  ]
+ },
+ "three edges meet at a corner": {
+  "volume": 23825.33,
+  "faces": 9,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l11])",
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])",
+   "chamfer:F:from:(e[extrude:B:side:l2|extrude:B:side:l5])"
+  ]
+ },
+ "three edges meet 16": {
+  "volume": 15210.67,
+  "faces": 9,
+  "valid": true,
+  "chamferFaces": [
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l11])",
+   "chamfer:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])",
+   "chamfer:F:from:(e[extrude:B:side:l2|extrude:B:side:l5])"
+  ]
+ },
+ "three edges meet, too large": {
+  "error": "Distance 25 mm is too large for edge 10 (max ≈ 19 mm). Distance 25 mm is too large for edge 12 (max ≈ 19 mm)."
+ }
+}

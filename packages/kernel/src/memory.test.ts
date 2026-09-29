@@ -29,7 +29,7 @@ import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles, PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { planarCurves } from './features/sketch';
-import { FilletError, Kernel, type ShapeHandle } from './kernel';
+import { ChamferError, FilletError, Kernel, type ShapeHandle } from './kernel';
 import { positionalNames } from './naming/names';
 import {
   compoundSources,
@@ -567,6 +567,62 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
+  it(`chamfering ${REBUILDS} times, failing ones with their diagnosis included, does not grow the heap`, {
+    timeout: 300_000,
+  }, () => {
+    // P3-02: the three modes through the builder on the facade's stack, a
+    // failed chamfer whose maximum distance is found by probing (a dozen
+    // builders per failure), a chain refused for two settings and an edge
+    // that isn't between two faces: all inside the facade, none may leave
+    // anything behind.
+    const rebuild = (i: number) => {
+      using scope = kernel.scope();
+      const plate = scope.track(kernel.box([40, 30, 2 + (i % 3) / 10]));
+      scope.track(kernel.chamfer(plate, [0, 2, 4, 6], { mode: 'equal', distance: 0.5 }));
+      scope.track(
+        kernel.chamfer(
+          plate,
+          [0, 2],
+          [
+            { mode: 'two-distances', distance: 0.4, distanceB: 0.8, flip: i % 2 === 0 },
+            { mode: 'distance-angle', distance: 0.6, angle: Math.PI / 6, flip: i % 2 === 1 },
+          ],
+        ),
+      );
+      const rounded = scope.track(kernel.fillet(plate, [0, 2, 4, 6], [5, 5, 5, 5]));
+      const chain = kernel.tangentChain(rounded.shape, 0);
+      if (chain.length < 2) throw new Error('no chain');
+      const failing = (run: () => unknown, what: string) => {
+        try {
+          run();
+        } catch (error) {
+          if (error instanceof ChamferError) return;
+          throw error;
+        }
+        throw new Error(`${what} should fail`);
+      };
+      failing(
+        () => kernel.chamfer(plate, [0, 1], { mode: 'equal', distance: 3 }),
+        'a 3 mm chamfer of a 2 mm plate',
+      );
+      failing(
+        () =>
+          kernel.chamfer(rounded.shape, chain.slice(0, 2), [
+            { mode: 'equal', distance: 0.5 },
+            { mode: 'equal', distance: 0.7 },
+          ]),
+        'two settings on one chain',
+      );
+    };
+    for (let i = 0; i < WARM_UP; i++) rebuild(i);
+    const before = kernel.stats();
+    for (let i = 0; i < REBUILDS; i++) rebuild(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(before.liveShapes);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+  });
+
   it('the leak control trips the same limit', { timeout: 120_000 }, () => {
     // The WASM build binds no raw OCCT classes (ADR-0037), so the control leaks
     // through the facade instead: meshed cuts (the triangulation stays on the
@@ -587,6 +643,30 @@ describe('memory', () => {
     try {
       expect(after.liveShapes - before.liveShapes).toBe(300);
       expect(after.heapTop - before.heapTop).toBeGreaterThan(LIMIT_BYTES);
+    } finally {
+      for (const handle of kept) kernel.release(handle);
+    }
+  });
+
+  it('the chamfer leak control trips the same limit', { timeout: 120_000 }, () => {
+    // The chamfer test above passes because nothing is kept: the same
+    // chamfers whose results are kept and meshed must show as live shapes.
+    // (Last in the file: it raises the heap's high-water mark, which the
+    // generic control above needs to still be low.)
+    const kept: ShapeHandle[] = [];
+    const leakyChamfer = () => {
+      using scope = kernel.scope();
+      const plate = scope.track(kernel.box([40, 30, 2]));
+      const chamfered = kernel.chamfer(plate, [0, 2, 4, 6], { mode: 'equal', distance: 0.5 }).shape;
+      kept.push(chamfered);
+      kernel.mesh(chamfered, { linearDeflection: 0.01, angularDeflection: 0.1 });
+    };
+    for (let i = 0; i < WARM_UP; i++) leakyChamfer();
+    const before = kernel.stats();
+    for (let i = 0; i < 300; i++) leakyChamfer();
+    const after = kernel.stats();
+    try {
+      expect(after.liveShapes - before.liveShapes).toBe(300);
     } finally {
       for (const handle of kept) kernel.release(handle);
     }

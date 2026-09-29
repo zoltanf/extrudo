@@ -45,6 +45,47 @@ export class FilletError extends KernelError {
   }
 }
 
+/**
+ * Why a chamfer failed (P3-02, ADR-0043): the facade's diagnosis, in the same
+ * shapes as a fillet's. Edge indices are the shape's.
+ */
+export type ChamferProblem =
+  /**
+   * The distances are too large for a chain of tangent edges; `factor` is the
+   * largest scale (0..1) of its distances that works (0: none does).
+   */
+  | { kind: 'too-large'; edges: number[]; factor: number }
+  /** OCCT can't chamfer this edge (it isn't between two faces). */
+  | { kind: 'unchamferable'; edges: number[] }
+  /** Edges of one tangent chain were given different settings. */
+  | { kind: 'mixed'; edges: number[] }
+  /** Each chain works alone, not all together; `factor` is the largest scale of all distances that works. */
+  | { kind: 'together'; edges: number[]; factor: number }
+  | { kind: 'other' };
+
+/** A chamfer OCCT couldn't build, with its diagnosis. */
+export class ChamferError extends KernelError {
+  override name = 'ChamferError';
+  constructor(
+    message: string,
+    readonly problems: readonly ChamferProblem[],
+  ) {
+    super(message);
+  }
+}
+
+/** One edge's chamfer: how it is sized (P3-02). */
+export type ChamferSpec =
+  /** `distance` from the edge on both faces. */
+  | { mode: 'equal'; distance: number }
+  /**
+   * `distance` on the reference face (the lower-numbered of the two around
+   * the edge, the other with `flip`), `distanceB` on the other.
+   */
+  | { mode: 'two-distances'; distance: number; distanceB: number; flip?: boolean }
+  /** `distance` on the reference face, the chamfer at `angle` (radians) to it. */
+  | { mode: 'distance-angle'; distance: number; angle: number; flip?: boolean };
+
 export interface OperationResult {
   shape: ShapeHandle;
   history: HistoryRecord[];
@@ -142,6 +183,43 @@ export class Kernel {
     const f = this.#facade;
     if (f.tangentChain(shape, edge) < 0) throw new KernelError(f.lastError() || 'Unknown edge.');
     return Array.from(this.#copy(Int32Array, f.lookupPtr(), f.lookupSize()));
+  }
+
+  /**
+   * Chamfers edges (indices into the shape's edge list), each with its own
+   * `ChamferSpec` (or one for all). As in a fillet, OCCT chamfers a whole
+   * chain of tangent-continuous edges once one of them is given, so edges of
+   * one chain must share their spec, and the first of them listed picks the
+   * chain's reference face. A failure is a `ChamferError` with the facade's
+   * diagnosis. History: input 0; a chamfered edge is deleted and generates
+   * its face.
+   */
+  chamfer(
+    shape: ShapeHandle,
+    edges: readonly number[],
+    spec: ChamferSpec | readonly ChamferSpec[],
+  ): OperationResult {
+    const f = this.#facade;
+    f.clearArgs();
+    f.clearNumbers();
+    edges.forEach((edge, i) => {
+      const one = 'mode' in spec ? spec : (spec[i] as ChamferSpec);
+      f.pushArg(edge);
+      f.pushNumber(one.mode === 'equal' ? 0 : one.mode === 'two-distances' ? 1 : 2);
+      f.pushNumber(one.distance);
+      f.pushNumber(
+        one.mode === 'equal' ? 0 : one.mode === 'two-distances' ? one.distanceB : one.angle,
+      );
+      f.pushNumber(one.mode !== 'equal' && one.flip ? 1 : 0);
+    });
+    const handle = f.chamfer(shape);
+    if (handle === 0) {
+      throw new ChamferError(
+        f.lastError() || 'The chamfer failed.',
+        decodeChamferProblems(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize())),
+      );
+    }
+    return this.#withHistory(handle);
   }
 
   /** `target` minus `tool`. History: input 0 is the target, 1 the tool. */
@@ -620,6 +698,26 @@ export function decodeFilletProblems(v: Float64Array): FilletProblem[] {
     if (status === 1) problems.push({ kind: 'too-large', edges, max: value });
     else if (status === 2) problems.push({ kind: 'unfilletable', edges });
     else if (status === 3) problems.push({ kind: 'mixed-radii', edges });
+    else if (status === 4) problems.push({ kind: 'together', edges, factor: value });
+  }
+  return problems.length > 0 ? problems : [{ kind: 'other' }];
+}
+
+/** Decodes the facade's chamfer diagnosis (fillet's layout): [status, n, n × [m, edge × m, value]]. */
+export function decodeChamferProblems(v: Float64Array): ChamferProblem[] {
+  if (v.length < 2) return [{ kind: 'other' }];
+  const status = v[0] as number;
+  const count = v[1] as number;
+  const problems: ChamferProblem[] = [];
+  let k = 2;
+  for (let n = 0; n < count; n++) {
+    const m = v[k++] as number;
+    const edges = Array.from(v.subarray(k, k + m), (x) => Math.round(x));
+    k += m;
+    const value = v[k++] as number;
+    if (status === 1) problems.push({ kind: 'too-large', edges, factor: value });
+    else if (status === 2) problems.push({ kind: 'unchamferable', edges });
+    else if (status === 3) problems.push({ kind: 'mixed', edges });
     else if (status === 4) problems.push({ kind: 'together', edges, factor: value });
   }
   return problems.length > 0 ? problems : [{ kind: 'other' }];

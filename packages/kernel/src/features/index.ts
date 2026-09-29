@@ -1,6 +1,7 @@
 import { FeatureRegistry } from '@extrudo/core';
 import type { KernelFeatureDefinition } from '../recompute/types';
 import { kernelRemove } from './bodies';
+import { kernelChamfer } from './chamfer';
 import { KERNEL_CONSTRUCTION } from './construction';
 import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
@@ -15,7 +16,8 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
     .register(kernelExtrude as unknown as KernelFeatureDefinition)
     .register(kernelRevolve as unknown as KernelFeatureDefinition)
     .register(kernelRemove as unknown as KernelFeatureDefinition)
-    .register(kernelFillet as unknown as KernelFeatureDefinition);
+    .register(kernelFillet as unknown as KernelFeatureDefinition)
+    .register(kernelChamfer as unknown as KernelFeatureDefinition);
   // Box, cylinder, sphere and torus (P2-10, ADR-0032).
   for (const primitive of KERNEL_PRIMITIVES) {
     registry.register(primitive as unknown as KernelFeatureDefinition);

@@ -2,6 +2,12 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-29 · **P3-02** Chamfer (ADR-0043): bevel edges in up to eight sets,
+  each with its own type (equal distance, two distances with a Flip for
+  which face takes distance 1, distance and angle); picking an edge takes
+  its tangent chain; the preview is live. A chamfer that can't be built says
+  why with the largest distance that works ("Distance 50 mm is too large for
+  edge 12 (max ≈ 19 mm)"). The Modify group's Chamfer tile is ready.
 - 2026-09-29 · **P3-11** Marking menu and context menus (ADR-0042): a
   right-click without movement opens a ring of eight command wedges
   (Sketch, Extrude, Fillet, Move, Press Pull, Undo, Repeat last, Delete;
@@ -18,7 +24,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
   features with dialogs, previews and Shift+P / Shift+A / Shift+X keys. They
   work as sketch planes, primitive placements, extrude "to object" planes
   and revolve axes, are drawn and pickable in the view, and are listed in
-  the browser's Construction folder (`docs/file-format.md` 6.9).
+  the browser's Construction folder (`docs/file-format.md` 6.10).
 - 2026-09-29 · **P3-01** Fillet (ADR-0038): round edges with several edge
   sets, each with its own radius; picking an edge takes its tangent chain;
   the preview is live. A fillet that can't be built says why in plain words

@@ -444,7 +444,19 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   references Fix References can repair. The Wall bracket's Fillet1 now
   computes (two sets: the bend's inside and outside corners). No on-canvas
   radius handle and no variable radius yet.
-- [ ] **P3-02 Chamfer** (3 modes). FR-FT-05.
+- [x] **P3-02 Chamfer** (3 modes). FR-FT-05. *Done 2026-09-29* (ADR-0043):
+  up to eight edge sets per chamfer, each with its own type and values:
+  equal distance, two distances (distance 1 goes on the edge's lower-numbered
+  face, Flip takes the other) and distance and angle; picking an edge
+  brings its tangent chain (fillet's query); live preview; the facade builds
+  the chamfer on its stack and, when it fails, finds the failing chains and
+  the largest factor their distances take by bisection, so the message reads
+  "Distance 50 mm is too large for edge 12 (max ≈ 19 mm)" (also: two
+  distances, distance and angle, an edge that can't be chamfered, two
+  settings in one chain, chamfers that collide). Faces are named
+  `chamfer:<id>:from:(<edge>)`; lost edges go through Fix References. The
+  Modify group's Chamfer tile is ready; it has no default key. No on-canvas
+  handles and no pickable reference face (a default and Flip).
 - [ ] **P3-03 Shell.** FR-FT-06.
 - [ ] **P3-04 Hole** (placement by sketch points or click; types; presets incl.
   heat-set inserts). FR-FT-07.
