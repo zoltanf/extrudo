@@ -16,6 +16,8 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   undo: ['Mod+Z'],
   redo: ['Mod+Y', 'Mod+Shift+Z'],
   delete: ['Delete', 'Backspace'],
+  // File (P2-14)
+  saveVersion: ['Mod+S'],
   // Sketch
   line: ['L'],
   rectangle: ['R'],

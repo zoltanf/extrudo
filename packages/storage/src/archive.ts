@@ -1,7 +1,8 @@
 /**
- * The `.extrudo` file: a zip with a manifest, the document and an optional
- * thumbnail (docs/02-architecture.md §6.2). Attachments and the geometry
- * cache come with the features that need them.
+ * The `.extrudo` file: a zip with a manifest, the document, an optional
+ * thumbnail and the project's versions (docs/02-architecture.md §6.2,
+ * ADR-0036). Attachments and the geometry cache come with the features
+ * that need them.
  */
 import {
   type ExtrudoDocument,
@@ -12,6 +13,7 @@ import {
 } from '@extrudo/core';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { ArchiveError } from './types';
+import { readVersionIndex, type StoredVersion, writeVersionIndex } from './versions';
 
 export interface Manifest {
   format: typeof FORMAT_NAME;
@@ -24,14 +26,22 @@ export interface Manifest {
 export interface Archive extends LoadResult {
   manifest: Manifest;
   thumbnail?: Uint8Array;
+  /** Saved versions, oldest first, each migrated and validated; none in older files. */
+  versions: StoredVersion[];
 }
 
 const MANIFEST = 'manifest.json';
 const DOCUMENT = 'document.json';
 const THUMBNAIL = 'thumbnail.png';
+const VERSION_INDEX = 'versions/index.json';
+const versionFile = (n: number) => `versions/${n}.json`;
 
-/** Packs a document (and its thumbnail) into `.extrudo` bytes. */
-export function writeArchive(doc: ExtrudoDocument, thumbnail?: Uint8Array): Uint8Array {
+/** Packs a document (with its thumbnail and versions) into `.extrudo` bytes. */
+export function writeArchive(
+  doc: ExtrudoDocument,
+  thumbnail?: Uint8Array,
+  versions: readonly StoredVersion[] = [],
+): Uint8Array {
   const manifest: Manifest = {
     format: FORMAT_NAME,
     formatVersion: FORMAT_VERSION,
@@ -45,6 +55,12 @@ export function writeArchive(doc: ExtrudoDocument, thumbnail?: Uint8Array): Uint
     [DOCUMENT]: json(doc),
     // PNG is already compressed.
     ...(thumbnail ? { [THUMBNAIL]: [thumbnail, { level: 0 }] } : {}),
+    ...(versions.length > 0
+      ? {
+          [VERSION_INDEX]: json(writeVersionIndex(versions.map((v) => v.summary))),
+          ...Object.fromEntries(versions.map((v) => [versionFile(v.summary.number), json(v.doc)])),
+        }
+      : {}),
   });
 }
 
@@ -78,7 +94,35 @@ export function readArchive(bytes: Uint8Array): Archive {
   }
   const result = loadDocument(raw);
   const thumbnail = entries[THUMBNAIL];
-  return { ...result, manifest: manifest as Manifest, ...(thumbnail ? { thumbnail } : {}) };
+  return {
+    ...result,
+    manifest: manifest as Manifest,
+    ...(thumbnail ? { thumbnail } : {}),
+    versions: readVersions(entries),
+  };
+}
+
+/** The archive's versions, each through core's migrations and validation. */
+function readVersions(entries: Record<string, Uint8Array>): StoredVersion[] {
+  const indexBytes = entries[VERSION_INDEX];
+  if (!indexBytes) return [];
+  const summaries = readVersionIndex(parseJson(indexBytes));
+  if (!summaries) {
+    throw new ArchiveError(
+      'damaged',
+      "This Extrudo file is damaged: its version list can't be read.",
+    );
+  }
+  return summaries.map((summary) => {
+    const raw = parseJson(entries[versionFile(summary.number)]);
+    if (raw === undefined) {
+      throw new ArchiveError(
+        'damaged',
+        `This Extrudo file is damaged: version ${summary.number} is missing or unreadable.`,
+      );
+    }
+    return { summary, doc: loadDocument(raw).doc };
+  });
 }
 
 function parseJson(bytes: Uint8Array | undefined): unknown {

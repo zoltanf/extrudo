@@ -2,6 +2,13 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-29 · **P2-14** Version history (ADR-0036): Ctrl+S (or File ›
+  Save version…) saves the design as V1, V2, … with a description. The
+  Versions dialog (File › Version history…, or the clock beside the
+  design's name) lists them; Restore brings one back as a single undo
+  step and first keeps what you had as a version too, and Open copy opens
+  one as a separate design. Versions are stored with the project and
+  travel in exported `.extrudo` files.
 - 2026-09-29 · **P2-13** Measure and inspect (ADR-0035): Measure (`I`, in
   Solid › Inspect and 3D Print › Prepare) shows a picked body's volume and
   area, a face's area, type, radius or normal, an edge's length, radius

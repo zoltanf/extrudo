@@ -19,7 +19,14 @@ function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): 
     viewport: createViewportStore({ preferences: memoryPreferences(), reducedMotion: () => true }),
     browser: { collapsed: false, toggle: vi.fn() },
     timeline: { collapsed: false, toggle: vi.fn() },
-    file: { newDesign: vi.fn(), home: vi.fn(), exportFile: vi.fn(), importFile: vi.fn() },
+    file: {
+      newDesign: vi.fn(),
+      home: vi.fn(),
+      exportFile: vi.fn(),
+      importFile: vi.fn(),
+      saveVersion: vi.fn(),
+      versionHistory: vi.fn(),
+    },
     theme: { choice: 'dark', set: vi.fn() },
     ...over,
   };
@@ -43,6 +50,14 @@ describe('buildCommands', () => {
       'toolbox',
     ]);
     expect(Object.keys(DEFAULT_KEYMAP).filter((id) => !ids.has(id))).toEqual([]);
+  });
+
+  it('offers Save Version on Ctrl+S and Version History in both modes (P2-14)', () => {
+    for (const mode of ['model', 'sketch'] as const) {
+      const commands = byId(context(mode));
+      expect(commands.get('saveVersion')).toMatchObject({ group: 'File', keys: ['Mod+S'] });
+      expect(commands.get('versionHistory')?.group).toBe('File');
+    }
   });
 
   it('offers the Sketch tab in a sketch and the Solid tab outside one', () => {

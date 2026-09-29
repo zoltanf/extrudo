@@ -110,6 +110,7 @@ zip (§6.2).
   tolerance. Use `--update-snapshots=all` after a visible change.
 - **P2-14** adds `save(doc, { asVersion })`, `versions` and `loadVersion`
   (gzipped copies under `projects/<id>/versions/`), and wires Ctrl+S.
+  Done as `saveVersion(doc, description)` instead (ADR-0036).
 - **Desktop (Phase 6)** implements `ProjectStore` over plain `.extrudo`
   files in a folder through Electron IPC.
 

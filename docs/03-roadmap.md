@@ -381,9 +381,12 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   *AC:* FR-3DP-01. Done 2026-09-29 (ADR-0035): exact measures from the
   kernel (`KernelApi.inspect`); two plain clicks measure between two
   things; the status bar shows the selection's size.
-- [ ] **P2-14 Version history.** "Save version" with a description; version list
+- [x] **P2-14 Version history.** "Save version" with a description; version list
   panel; open or restore an old version.
-  *AC:* FR-PRJ-03.
+  *AC:* FR-PRJ-03. Done 2026-09-29 (ADR-0036): Ctrl+S opens the Versions
+  dialog; Restore is one undo step and keeps the current state as a
+  version first; Open copy opens a version as a new design; versions
+  travel in `.extrudo` files.
 - [ ] **P2-15 WASM size and startup.** Custom trimmed OCCT build; service worker
   precache (PWA); measure against NFR-02. The trimmed build itself moved to
   P0-09 (ADR-0001: 4.34 MB brotli, about 200 ms cold start); this task trims

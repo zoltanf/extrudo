@@ -57,6 +57,15 @@ brief, voice) is in **`05-brand.md`**. In short:
   name (click to rename, dropdown for version history), save status,
   settings, help (menu: Search commands, Toolbox; the tutorial later), theme
   toggle.
+- **Versions** (P2-14, ADR-0036): Ctrl+S, File › Save version… or
+  Version history…, the clock icon beside the project name, or the
+  palette open one dialog: a Description field with Save version on top
+  (Enter saves V<n> and closes; a toast says so), then the saved
+  versions newest first (V<n>, description, when, the name if it has
+  changed) with Open copy (a new design, "<name> V<n>") and Restore (one
+  undo step, "Restore version"; what was there is kept as a version
+  first, "Before restoring V<n>", unless the newest version already
+  holds it). Restore ends an open sketch or feature dialog first.
 - **No workspace switcher** (removed 2026-09-27): no second workspace is
   planned, and a one-item dropdown did nothing. The 3D Print tab covers the
   printing "mode".

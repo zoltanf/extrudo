@@ -67,6 +67,25 @@ describe('.extrudo archives', () => {
     }
   });
 
+  it('carries versions, and refuses a version the file lists but lacks', () => {
+    const d = doc();
+    const summary = { number: 3, description: 'fit', created: d.meta.created, name: 'Old' };
+    const bytes = writeArchive(d, undefined, [{ summary, doc: { ...d, name: 'Old' } }]);
+    expect(Object.keys(unzipSync(bytes)).sort()).toEqual([
+      'document.json',
+      'manifest.json',
+      'versions/3.json',
+      'versions/index.json',
+    ]);
+    const archive = readArchive(bytes);
+    expect(archive.versions).toEqual([{ summary, doc: { ...d, name: 'Old' } }]);
+    expect(readArchive(writeArchive(d)).versions).toEqual([]);
+
+    const entries = unzipSync(bytes);
+    delete entries['versions/3.json'];
+    expect(() => readArchive(zipSync(entries))).toThrow('version 3 is missing');
+  });
+
   it('passes on core errors for documents from a newer Extrudo', () => {
     const newer = { ...doc(), formatVersion: FORMAT_VERSION + 1 };
     const bytes = zipSync({

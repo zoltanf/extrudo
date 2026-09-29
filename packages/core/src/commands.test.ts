@@ -11,6 +11,7 @@ import {
   removeParameter,
   renameDocument,
   renameFeature,
+  restoreVersion,
   setFeatureSuppressed,
   setFeatureVisibility,
   updateBody,
@@ -395,3 +396,23 @@ function randomCommand(
       });
   }
 }
+
+describe('restoreVersion', () => {
+  it("brings back a version's content, keeping the ID, name and dates, as one undo step", () => {
+    const old = sampleDocument();
+    let now = apply(old, renameDocument({ name: 'Renamed' }));
+    now = apply(now, removeParameter({ id: old.parameters[0]?.id as never }));
+    now = apply(now, updateSettings({ units: 'in' }));
+    const version = { ...old, id: now.id, name: 'Old name', meta: { ...old.meta, created: 'x' } };
+    const history = new UndoHistory();
+    const result = applyCommand(now, restoreVersion({ doc: version }));
+    history.record({ label: 'Restore version', ...result });
+    expect(result.doc.name).toBe('Renamed');
+    expect(result.doc.meta).toEqual(now.meta);
+    expect(result.doc.parameters).toEqual(old.parameters);
+    expect(result.doc.settings).toEqual(old.settings);
+    expect(result.doc.features).toEqual(old.features);
+    expect(DocumentSchema.safeParse(result.doc).success).toBe(true);
+    expect(history.undo(result.doc)).toEqual(now);
+  });
+});

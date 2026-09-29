@@ -10,13 +10,14 @@ export interface DialogProps {
   /** Buttons on the right of the title bar (undo, close…). */
   actions?: ReactNode;
   children: ReactNode;
-  /** `large` for tables (Parameters), `small` for a form of a few fields. */
-  size?: 'large' | 'small';
+  /** `large` for tables (Parameters), `medium` for a short list, `small` for a few fields. */
+  size?: 'large' | 'medium' | 'small';
   className?: string;
 }
 
 const WIDTHS = {
   large: 'w-[min(1040px,calc(100vw-32px))]',
+  medium: 'w-[min(600px,calc(100vw-32px))]',
   small: 'w-[min(440px,calc(100vw-32px))]',
 };
 

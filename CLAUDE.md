@@ -9,14 +9,15 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-28):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
+**Status (2026-09-29):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 (topological naming), P2-05 (feature dialogs), P2-06 (extrude), P2-07
 (revolve), P2-08 (bodies), P2-09 (sketch on face, Project), P2-10
-(primitives), P2-11 (timeline v2) and P2-12 (STL, 3MF, STEP export)
-are done. ADR-0001 chose
+(primitives), P2-11 (timeline v2), P2-12 (STL, 3MF, STEP export),
+P2-13 (measure and inspect) and P2-14 (version history) are done.
+ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -281,8 +282,25 @@ for anything an evaluator can't find**, so Fix References can offer it);
 the marker is a slider with drag and keys, chips drag to reorder, menus
 have Roll Back to Here, Move to End, Redefine Plane, Fix References
 (`dialog.edit(id, { fix })` or Redefine Plane for a sketch) and Keep
-Closest Match. Next: **P2-13** (measure and inspect). See
-`docs/03-roadmap.md`.
+Closest Match. ADR-0035 (P2-13) added measuring: `KernelApi.inspect(targets)`
+(topology items of the last finished recompute, like export) returns an
+`Inspection` (`packages/kernel/src/inspect.ts`: per item exact volume,
+area, length, radii, normal/axis, centre, tight box; for two, the
+distance with closest points, the angle, the centre distance) from new
+facade calls (`distance` leaves the closest points, `properties`,
+`surfaceGeometry`); **`measure()` keeps its loose, fast box** for
+extrude. The app's `apps/web/src/measure/` has `useInspection` (the
+status bar's "Selection size"), the Measure tool (`I`, session tool
+`measure`, two plain clicks pick two things: `createMeasureSelect`), its
+panel and the in-view line. ADR-0036 (P2-14) added versions:
+`ProjectStore.saveVersion`/`versions`/`loadVersion`
+(`projects/<id>/versions/index.json` + `<n>.json.gz`; `.extrudo` files
+carry `versions/`), core's `restoreVersion` command (one undo step; ID,
+name and dates stay), `apps/web/src/project/versions.ts` (restore keeps
+the current state as a version first; Open copy makes a new design) and
+`VersionsDialog.tsx` (Ctrl+S, File menu, the clock beside the name).
+Next: **P2-15** (WASM size and startup; run it alone, it touches the
+OCCT build). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -311,7 +329,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history (0006 is reserved) |
 
 ## Stack summary
 
@@ -782,3 +800,18 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   Plane is the region "Redefine Plane". The "Sketch1 is hidden" toast
   covers the first chips: dismiss it before right-clicking them. Snap to
   grid moves off-grid clicks (5 mm snapped to 10 in a zoomed-out view).
+- **Measure e2e** (`e2e/measure.spec.ts`): the panel is the region
+  "Measure" (`data-measure-state` empty/pending/ready/error), values are
+  `[data-measure-row="<section>/<label>"]` ("Between/Distance",
+  "Face 6 · Body1/Area": face numbers follow the kernel's order, so
+  match item rows by suffix), the line is `[data-measure-line]` ("x1,y1
+  x2,y2" in view px); the status bar's `output[aria-label="Selection
+  size"]` reads "40.00 × 20.00 × 0.00 mm ·". Measure isn't in the Sketch
+  tab (bodies only).
+- **Versions e2e** (`e2e/versions.spec.ts`): Ctrl+S opens the dialog
+  "Versions" with the textbox "Description" focused; the list is
+  "Saved versions" (items carry `data-version`), buttons "Restore V1",
+  "Open V1 as a copy"; toasts "Saved V1.", "Restored V1. What you had is
+  kept as V2…". The app bar has a "Version history" button beside the
+  name (it moved the centred name a little: shell/sketch baselines).
+

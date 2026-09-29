@@ -8,6 +8,7 @@
 import {
   Box,
   FilePlus2,
+  History,
   House,
   Import,
   Maximize,
@@ -15,6 +16,7 @@ import {
   PanelBottom,
   PanelLeft,
   Redo2,
+  Save,
   ScanEye,
   Sun,
   SunMoon,
@@ -180,6 +182,18 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     icon: icon(House),
     keywords: 'File home projects open',
   });
+  if (ctx.file.saveVersion) {
+    plain('saveVersion', 'Save Version…', 'File', ctx.file.saveVersion, {
+      icon: icon(Save),
+      keywords: 'File save version snapshot history checkpoint',
+    });
+  }
+  if (ctx.file.versionHistory) {
+    plain('versionHistory', 'Version History…', 'File', ctx.file.versionHistory, {
+      icon: icon(History),
+      keywords: 'File versions restore revert history',
+    });
+  }
   plain('exportProject', 'Export .extrudo', 'File', ctx.file.exportFile, {
     icon: icon(Upload),
     keywords: 'File download save project backup',

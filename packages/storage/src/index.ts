@@ -18,4 +18,6 @@ export {
   ProjectNotFoundError,
   type ProjectStore,
   type ProjectSummary,
+  type VersionSummary,
 } from './types';
+export type { StoredVersion } from './versions';

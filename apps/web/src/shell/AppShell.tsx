@@ -40,6 +40,9 @@ import { MeasurePanel } from '../measure/MeasurePanel';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import type { Autosaver } from '../project/autosave';
+import { VersionsDialog } from '../project/VersionsDialog';
+import type { VersionContext } from '../project/versions';
+import { navigate, projectHref } from '../routes';
 import { readTopology, sketchEntityIdsIn } from '../selection/items';
 import { useModelSelection } from '../selection/useModelSelection';
 import { useBodiesBefore } from '../sketch/baseBodies';
@@ -106,7 +109,7 @@ export interface AppShellProps {
   file: FileActions;
   platform: Platform;
   /** Shows a short message (a refused edit); the project page's toasts. */
-  notify?(tone: 'info' | 'error', text: string, options?: ToastOptions): void;
+  notify?(tone: 'info' | 'success' | 'error', text: string, options?: ToastOptions): void;
   /**
    * The project page's toasts (`useToasts`), drawn in the view's bottom-right
    * corner, or at the foot of the sketch palette while a sketch is open.
@@ -158,8 +161,21 @@ export function AppShell({
   const [parametersOpen, setParametersOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<ExportRequest>();
   const [modelExport, setModelExport] = useState<ModelExportRequest>();
-  // The File menu offers the model's export too (P2-12).
-  const fileActions = useMemo(() => ({ ...file, exportModel: () => setModelExport({}) }), [file]);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const versionContext = useMemo<VersionContext>(
+    () => ({ store, autosave, projects: platform.projects }),
+    [store, autosave, platform],
+  );
+  // The File menu offers the model's export too (P2-12), and versions (P2-14).
+  const fileActions = useMemo(
+    () => ({
+      ...file,
+      exportModel: () => setModelExport({}),
+      saveVersion: () => setVersionsOpen(true),
+      versionHistory: () => setVersionsOpen(true),
+    }),
+    [file],
+  );
   const bodies = useStore(model, (s) => s.bodies);
   const sketchReports = useStore(model, (s) => s.sketches);
   const doc = useStore(store, (s) => s.doc);
@@ -1071,6 +1087,19 @@ export function AppShell({
         request={exportRequest}
         files={platform.files}
         onClose={() => setExportRequest(undefined)}
+      />
+      <VersionsDialog
+        open={versionsOpen}
+        onOpenChange={setVersionsOpen}
+        ctx={versionContext}
+        notify={notify}
+        beforeRestore={() => {
+          // The restore is one undo step of its own: end what holds a transaction open.
+          dialog?.cancel();
+          if (session.getState().activeTool === CREATE_SKETCH) cancelCreateSketch(stores);
+          if (session.getState().mode === 'sketch') finishSketch(stores);
+        }}
+        onOpenCopy={(id) => navigate(projectHref(id))}
       />
     </div>
   );

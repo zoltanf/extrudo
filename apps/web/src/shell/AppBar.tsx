@@ -3,6 +3,7 @@ import {
   CircleHelp,
   FileDown,
   FilePlus2,
+  History,
   House,
   Import,
   Menu as MenuIcon,
@@ -45,6 +46,10 @@ export interface FileActions {
   importFile(): void;
   /** Opens the model's export (STL, 3MF, STEP; P2-12). */
   exportModel?(): void;
+  /** Opens the Versions dialog at its description field (P2-14). */
+  saveVersion?(): void;
+  /** Opens the Versions dialog (P2-14). */
+  versionHistory?(): void;
 }
 
 export interface AppBarProps {
@@ -89,10 +94,20 @@ export function AppBar({ store, autosave, file, theme, onThemeChange, onSearch }
         <MenuItem icon={<House size={14} />} onSelect={file.home}>
           All designs
         </MenuItem>
-        {/* Versions arrive with P2-14; autosave covers saving until then. */}
-        <MenuItem disabled icon={<Save size={14} />} shortcut={shortcutLabel('Mod+S')}>
-          Save version
+        {/* Autosave keeps the design; a version keeps a state of it to come back to (P2-14). */}
+        <MenuItem
+          disabled={!file.saveVersion}
+          icon={<Save size={14} />}
+          shortcut={keyLabel('saveVersion')}
+          onSelect={file.saveVersion}
+        >
+          Save version…
         </MenuItem>
+        {file.versionHistory && (
+          <MenuItem icon={<History size={14} />} onSelect={file.versionHistory}>
+            Version history…
+          </MenuItem>
+        )}
         <MenuSeparator />
         <MenuItem icon={<Upload size={14} />} onSelect={file.exportFile}>
           Export .extrudo
@@ -151,6 +166,15 @@ export function AppBar({ store, autosave, file, theme, onThemeChange, onSearch }
         </Tooltip>
         <span className="text-muted">/</span>
         <ProjectName store={store} name={name} />
+        {file.versionHistory && (
+          <IconButton
+            label="Version history"
+            hint="Saved versions of this design: save one, restore one, or open one as a copy."
+            onClick={file.versionHistory}
+          >
+            <History size={16} strokeWidth={1.75} />
+          </IconButton>
+        )}
         <SaveStatus autosave={autosave} />
       </div>
 

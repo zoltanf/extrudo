@@ -566,11 +566,13 @@ interface ProjectStore {
   exportFile(id): Promise<Blob>;              // .extrudo
   importFile(blob): Promise<ProjectSummary>;  // a copy if the ID exists
 }
-// P2-14 adds save(doc, { asVersion }), versions(id), loadVersion(id, v).
+// P2-14 (ADR-0036): saveVersion(doc, description), versions(id) newest first,
+// loadVersion(id, n) migrated and validated, with the project's ID.
 ```
 
 - **Web:** IndexedDB (`extrudo`) holds the project index. OPFS holds
-  `projects/<id>/document.json` and `thumbnail.png` (later `versions/` and
+  `projects/<id>/document.json`, `thumbnail.png` and `versions/`
+  (`index.json` plus `<n>.json.gz` per version, ADR-0036; later
   attachments); where OPFS can't write files, an IndexedDB `files` store
   does. `createWritable` replaces a file atomically on `close()`. The
   document is written before the index entry.
@@ -584,6 +586,8 @@ interface ProjectStore {
 manifest.json      { format:"extrudo", formatVersion, appVersion, created, units }
 document.json      the ExtrudoDocument (source of truth)
 thumbnail.png      256×256
+versions/          OPTIONAL: index.json { versions: [{ number, description, created, name }] }
+                   and <n>.json per saved version (ADR-0036)
 attachments/       fonts, canvas images, imported STEP/STL referenced by features
 cache/             OPTIONAL: brep per body, dropped if stale/unknown version
 ```

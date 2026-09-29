@@ -162,3 +162,82 @@ describe('ProjectStore', () => {
     expect(await other.list()).toHaveLength(2);
   });
 });
+
+describe('ProjectStore versions (P2-14)', () => {
+  it('saves versions, lists them newest first and loads each as it was', async () => {
+    const { store, files } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    expect(await store.versions(d.id)).toEqual([]);
+
+    const v1 = await store.saveVersion(d, '  First fit  ');
+    expect(v1).toEqual({
+      number: 1,
+      description: 'First fit',
+      created: '2026-09-25T10:00:02.000Z',
+      name: 'Bracket',
+    });
+    const later = { ...d, name: 'Bracket v2', parameters: [] };
+    const v2 = await store.saveVersion(later, '');
+    expect(v2.number).toBe(2);
+    // Saving a version saves the document too.
+    expect((await store.load(d.id)).name).toBe('Bracket v2');
+    expect((await store.versions(d.id)).map((v) => [v.number, v.name])).toEqual([
+      [2, 'Bracket v2'],
+      [1, 'Bracket'],
+    ]);
+
+    const old = await store.loadVersion(d.id, 1);
+    expect(old.name).toBe('Bracket');
+    expect(old.parameters).toEqual(d.parameters);
+    expect(old.meta.modified).toBe(v1.created);
+    expect((await store.loadVersion(d.id, 2)).parameters).toEqual([]);
+    expect(files.paths()).toEqual([
+      `projects/${d.id}/document.json`,
+      `projects/${d.id}/versions/1.json.gz`,
+      `projects/${d.id}/versions/2.json.gz`,
+      `projects/${d.id}/versions/index.json`,
+    ]);
+
+    // Purging takes the versions along.
+    await store.purge(d.id);
+    expect(files.paths()).toEqual([]);
+  });
+
+  it('refuses versions of unknown projects and says when one is missing or damaged', async () => {
+    const { store, files } = setup();
+    const d = doc('Bracket');
+    await expect(store.saveVersion(d, 'x')).rejects.toBeInstanceOf(ProjectNotFoundError);
+    await store.save(d);
+    await store.saveVersion(d, 'x');
+    await expect(store.loadVersion(d.id, 7)).rejects.toThrow(
+      'Version 7 of this project is missing',
+    );
+    await files.write(`projects/${d.id}/versions/1.json.gz`, new Uint8Array([1, 2, 3]));
+    await expect(store.loadVersion(d.id, 1)).rejects.toThrow(
+      'Version 1 of this project is damaged',
+    );
+    await files.write(`projects/${d.id}/versions/index.json`, new TextEncoder().encode('{'));
+    await expect(store.versions(d.id)).rejects.toThrow('version list is damaged');
+  });
+
+  it('exports versions in the .extrudo file and imports them, also into a copy', async () => {
+    const { store } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    await store.saveVersion({ ...d, name: 'Early' }, 'early');
+    await store.saveVersion(d, 'late');
+    const file = await store.exportFile(d.id);
+
+    const other = setup().store;
+    await other.importFile(file);
+    expect((await other.versions(d.id)).map((v) => v.description)).toEqual(['late', 'early']);
+    expect((await other.loadVersion(d.id, 1)).name).toBe('Early');
+
+    const copy = await other.importFile(file);
+    expect((await other.versions(copy.id)).map((v) => v.number)).toEqual([2, 1]);
+    const early = await other.loadVersion(copy.id, 1);
+    expect(early.id).toBe(copy.id);
+    expect(early.name).toBe('Early');
+  });
+});
