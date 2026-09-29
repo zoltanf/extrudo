@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { HistoryRecord } from './history';
-import { Kernel, KernelError } from './kernel';
+import { FilletError, Kernel, KernelError } from './kernel';
 import { EDGE_SEAM } from './mesh';
 import { loadOcct } from './occt/load';
 import { OcctScope } from './occt/scope';
@@ -135,6 +135,79 @@ describe('errors and ownership', () => {
     expect(() => kernel.fillet(box, [0], 50)).toThrow(KernelError);
     expect(() => kernel.fillet(box, [99], 1)).toThrow(/edge index out of range/);
     expect(kernel.isValid(box)).toBe(true);
+  });
+
+  it('diagnoses a fillet that is too large: the chain and the largest radius that works', () => {
+    using scope = kernel.scope();
+    const box = scope.track(kernel.box([10, 10, 10]));
+    try {
+      kernel.fillet(box, [0], 50);
+      expect.unreachable('a 50 mm fillet of a 10 mm box');
+    } catch (error) {
+      expect(error).toBeInstanceOf(FilletError);
+      const [problem] = (error as FilletError).problems;
+      expect(problem?.kind).toBe('too-large');
+      if (problem?.kind !== 'too-large') return;
+      expect(problem.edges).toEqual([0]);
+      // Faces are 10 mm wide: a radius just under that works, and the probe says so.
+      expect(problem.max).toBeGreaterThan(9);
+      expect(problem.max).toBeLessThan(10.01);
+      scope.track(kernel.fillet(box, [0], problem.max));
+    }
+  });
+
+  it('diagnoses fillets that only fail together, with the factor that works', {
+    timeout: 60_000,
+  }, () => {
+    using scope = kernel.scope();
+    const box = scope.track(kernel.box([10, 10, 10]));
+    const all = Array.from({ length: 12 }, (_, i) => i);
+    try {
+      kernel.fillet(box, all, 6);
+      expect.unreachable('rounding all 12 edges of a 10 mm cube by 6 mm');
+    } catch (error) {
+      const [problem] = (error as FilletError).problems;
+      expect(problem?.kind).toBe('together');
+      if (problem?.kind !== 'together') return;
+      // Radii meet at 5 mm: a factor a bit under 5 / 6 works.
+      expect(problem.factor).toBeGreaterThan(0.7);
+      expect(problem.factor).toBeLessThan(0.86);
+      scope.track(kernel.fillet(box, all, 6 * problem.factor));
+    }
+  });
+
+  it('rounds a whole chain of tangent edges and refuses two radii on one chain', () => {
+    using scope = kernel.scope();
+    const plate = scope.track(kernel.box([40, 40, 2]));
+    // Every plate edge is alone in its chain (its neighbours are square to it).
+    expect(kernel.tangentChain(plate, 3)).toEqual([3]);
+    const rounded = scope.track(kernel.fillet(plate, [0, 2, 4, 6], [5, 5, 5, 5]));
+    expect(kernel.count(rounded.shape, 'face')).toBe(10);
+    // The rim of the top face is now four lines and four arcs, tangent to each other.
+    let rim: number[] | undefined;
+    for (let e = 0; e < kernel.count(rounded.shape, 'edge') && !rim; e++) {
+      const chain = kernel.tangentChain(rounded.shape, e);
+      if (chain.length === 8) rim = chain;
+    }
+    expect(rim).toBeDefined();
+    expect(new Set(rim).size).toBe(8);
+    // One edge of it rounds the whole rim, in one go.
+    const [first, second] = rim as number[];
+    const one = scope.track(kernel.fillet(rounded.shape, [first as number], 0.5));
+    expect(kernel.count(one.shape, 'face')).toBe(18);
+    // Two radii on one chain: refused, naming the chain.
+    try {
+      kernel.fillet(rounded.shape, [first as number, second as number], [0.5, 0.7]);
+      expect.unreachable('two radii on one chain');
+    } catch (error) {
+      const [problem] = (error as FilletError).problems;
+      expect(problem?.kind).toBe('mixed-radii');
+      if (problem?.kind === 'mixed-radii') {
+        expect(problem.edges.sort()).toEqual([first, second].sort());
+      }
+    }
+    // Different radii on separate chains are fine.
+    scope.track(kernel.fillet(plate, [0, 2], [1, 1.5]));
   });
 
   it('releases scoped shapes', () => {

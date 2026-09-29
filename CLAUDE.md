@@ -19,7 +19,7 @@ engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 P2-13 (measure and inspect), P2-14 (version history), P2-15 (WASM
 size and startup, offline precache), P2-16 (file-format spec,
 `docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
-fixtures) are done. Phase 3: P3-16 (notification history) is done.
+fixtures) are done. Phase 3: P3-01 (fillet) and P3-16 (notification history) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -320,7 +320,25 @@ ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
 `WRITE_FIXTURES=1` rewrites them), recomputed headless in
 `packages/kernel/src/benchmarks.test.ts`. Combine doesn't exist yet: B3
 merges two bodies by a join extrude that touches both (P3-06 adds the
-real step). ADR-0041 (P3-16) added the notification history: the toasts'
+real step). ADR-0038
+(P3-01) added fillet: `packages/core/src/fillet.ts` (up to 8 edge sets as
+plain inputs `edges`/`radius`, `edges2`/`radius2` …: `filletSets`,
+`filletInputs`), the evaluator `packages/kernel/src/features/fillet.ts`
+(edges by `ctx.resolve`, one body at a time, faces `fillet:<id>:from:(<edge>)`
+through `withHistory`), the facade's `fillet(shape)` (staged edge indices
++ one radius per edge, builder on the C++ stack, result checked with
+`BRepCheck_Analyzer`; on failure it **diagnoses**: which chains fail alone
+and the largest radius that works by bisection, or all radii scaled together,
+or an edge that can't be filleted, or two radii in one chain, read through
+`Kernel.fillet`'s `FilletError.problems`) and `tangentChain(shape, edge)`
+(OCCT rounds the whole tangent chain of any edge you add, so a set is whole
+chains: `KernelApi.tangentChain`, and `SelectionField.tangentChain` makes the
+dialog add or remove a picked edge's chain). Messages are worded in the
+evaluator ("Radius 50 mm is too large for edge 12 (max ≈ 19 mm)", maximum
+rounded down to two digits so it works). The Wall bracket's Fillet1 has two
+sets (inside corner `wall / 2`, outside `wall * 1.5`), its edges named from
+Extrude1's id and Sketch1's lines, and the bracket has 12 faces.
+ADR-0041 (P3-16) added the notification history: the toasts'
 store (`design-system/notifications.ts`, vanilla Zustand, `useToasts()`
 returns it as `notifications`) records every `push` for the session
 (repeats merged with a count, at most 100), the bell button below the
@@ -329,7 +347,7 @@ the command "Notification History" open a popover with errors grouped on
 top; a `ToastAction` may carry `available()` so the history disables a
 stale button. **A new toast action should say whether it still applies.**
 Session only.
-Next: Phase 3, **P3-01** (fillet). See `docs/03-roadmap.md`.
+Next: **P3-02** (chamfer). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -359,7 +377,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0041: notification history (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0041: notification history (0006 is reserved) |
 
 ## Stack summary
 
@@ -702,9 +720,10 @@ them. Notes further down that name a machine apply to that machine only.
   compiles the OCCT WASM. Wait for the first recompute with
   `kernelReady(page)` (`e2e/helpers.ts`: the status bar's "Kernel" output,
   `data-model-status="ready"`) before screenshots or status checks. The
-  Wall bracket template computes one body, "Bracket" (40×80×60 mm, 10
-  faces); only Fillet1 is an error ("Fillet1 (error)" in the chip's name,
-  "6 features · mm · 1 error"; "(rolled back)" Plane1 has no status).
+  Wall bracket template computes one body, "Bracket" (40×80×60 mm, 12
+  faces); Fillet1 computes since P3-01, and only rolling forward brings in
+  Plane1, an error until P3-05 ("Plane1 (error)", "6 features · mm · 1
+  error"; "(rolled back)" Plane1 has no status).
   Sketch1/Sketch2 can't be deleted while the extrudes use them. Error
   toasts have role `alert` and sit in the view's bottom-right corner (at
   the foot of the sketch palette in a sketch): dismiss them ("Dismiss")
@@ -877,6 +896,34 @@ them. Notes further down that name a machine apply to that machine only.
   kept as V2…". The app bar has a "Version history" button beside the
   name (it moved the centred name a little: shell/sketch baselines).
 
+- **Fillet e2e** (`e2e/fillet.spec.ts`, P3-01): the dialog is the region
+  "Fillet dialog" / "Edit Fillet1 dialog", set 1 the buttons "Edges"
+  (`exact: true`: "Edges 2" contains it; text "1 edge", "7 edges", or the
+  prompt "Pick edges" when empty) and the textbox "Radius" (`exact`), set 2
+  "Edges 2" / "Radius 2" once set 1 has edges. A message in the region
+  "Feature status" (role `status`), OK disabled while the preview errors.
+  Pick edges the way `model-select.spec.ts` does: hover a couple of pixels
+  below the projected midpoint until `data-model-hover` is an `edge:…`,
+  then click. On a cube from the Box tool (x, y ±10, z 0…20; home view
+  from +X, −Y, +Z) the midpoints (0, −10, 20), (10, 0, 20) and (10, −10,
+  10) are visible. A picked edge brings its tangent chain a moment later
+  (a kernel call): poll the count. The Cancel button's name is "Cancel
+  Esc" (the dialog header also has an icon "Cancel"). Kernel-side, the
+  fillet golden table is `pnpm vitest run -u packages/kernel/src/features/fillet`.
+  A failing fillet is diagnosed by rebuilding it (about a second per
+  failing build when 12 edges collide): keep such cases out of previews
+  and tests that run many times.
+- **Facade checks with Docker on the Ubuntu machine** (since 2026-09-29;
+  `sg docker -c '…'` until the shell has the group): `em++
+  -fsyntax-only` and the native harness both run in
+  `ghcr.io/taucad/opencascade.js:3.0.2-single-threaded` (`--user 0`, harness
+  in the scratchpad, `-sERROR_ON_UNDEFINED_SYMBOLS=0` and `TKDESTEP TKXSBase
+  TKDE` among the libs so the whole facade links). Real OCCT 8.0.1 headers
+  are also at `https://raw.githubusercontent.com/Open-Cascade-SAS/OCCT/b8f597c677811d1f9f4d8a97f5ae2825c0353a42/src/…`
+  (the tag's tarball works for grepping the sources: `src/ModelingAlgorithms/TKFillet/…`).
+  Changing the facade changes the OCCT input hash, so `pnpm build`/`pnpm
+  wasm` fail until CI has published it; `pnpm --filter @extrudo/web build`
+  and Vitest/Playwright still work with the `dist/` you have.
 - **Service worker and e2e** (P2-15, `e2e/pwa.spec.ts`): the config sets
   `serviceWorkers: 'block'` for every test (each fresh context would
   otherwise cache 20 MB of WASM); `pwa.spec.ts` opts in with

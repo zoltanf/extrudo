@@ -1,0 +1,79 @@
+{
+ "one edge 0.5": {
+  "volume": 23997.85,
+  "faces": 7,
+  "valid": true,
+  "filletFaces": [
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])"
+  ]
+ },
+ "one edge 5": {
+  "volume": 23785.4,
+  "faces": 7,
+  "valid": true,
+  "filletFaces": [
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])"
+  ]
+ },
+ "one edge 18": {
+  "volume": 21218.76,
+  "faces": 7,
+  "valid": true,
+  "filletFaces": [
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])"
+  ]
+ },
+ "one edge 25 too large": {
+  "error": "Radius 25 mm is too large for edge 10 (max ≈ 19 mm)."
+ },
+ "vertical corner 8": {
+  "volume": 23725.31,
+  "faces": 7,
+  "valid": true,
+  "filletFaces": [
+   "fillet:F:from:(e[extrude:B:side:l2|extrude:B:side:l5])"
+  ]
+ },
+ "two edges one set": {
+  "volume": 23931.33,
+  "faces": 8,
+  "valid": true,
+  "filletFaces": [
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])",
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l8])"
+  ]
+ },
+ "two sets": {
+  "volume": 23932.35,
+  "faces": 9,
+  "valid": true,
+  "filletFaces": [
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l11])",
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])",
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l8])"
+  ]
+ },
+ "three edges meet at a corner": {
+  "volume": 23924.28,
+  "faces": 9,
+  "valid": true,
+  "filletFaces": [
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l11])",
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])",
+   "fillet:F:from:(e[extrude:B:side:l2|extrude:B:side:l5])"
+  ]
+ },
+ "three edges meet 16": {
+  "volume": 19840.94,
+  "faces": 9,
+  "valid": true,
+  "filletFaces": [
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l11])",
+   "fillet:F:from:(e[extrude:B:cap:end|extrude:B:side:l2])",
+   "fillet:F:from:(e[extrude:B:side:l2|extrude:B:side:l5])"
+  ]
+ },
+ "three edges meet, too large": {
+  "error": "Radius 25 mm is too large for edge 10 (max ≈ 19 mm). Radius 25 mm is too large for edge 12 (max ≈ 19 mm)."
+ }
+}

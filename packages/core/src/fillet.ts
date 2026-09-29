@@ -1,0 +1,91 @@
+/**
+ * The fillet feature (P3-01, ADR-0038, FR-FT-04): rounds edges of a body
+ * with a constant radius. The kernel adds its evaluator and the web app its
+ * dialog, each in its own registry keyed by `FILLET_TYPE` (ADR-0003).
+ *
+ * **Edge sets.** A fillet has up to `FILLET_MAX_SETS` sets of edges, each
+ * with its own radius: set 1 is `edges` + `radius`, set `n` is `edges<n>` +
+ * `radius<n>` (`edges2`, `radius2` …). Every input is optional; a set
+ * without edges is ignored, one with edges needs its radius. The inputs are
+ * plain `ref` and `expr` inputs, so the document schema is unchanged.
+ *
+ * **Tangent chains.** OCCT rounds the whole chain of tangent-continuous
+ * edges once one of them is given, with one radius. A dialog therefore adds
+ * the chain of an edge you pick, and two sets that reach one chain with
+ * different radii fail with a message (`mixed-radii`).
+ */
+import { z } from 'zod';
+import { exprOf, refsOf } from './feature-inputs';
+import type { FeatureDefinition } from './features';
+import type { ExprInput, GeomRef, RefInput } from './schema';
+
+export const FILLET_TYPE = 'fillet';
+
+/** How many edge sets a fillet can have. */
+export const FILLET_MAX_SETS = 8;
+
+/** The input holding set `n`'s (1-based) edges: `edges`, `edges2`, … */
+export const filletEdgesKey = (n: number) => (n === 1 ? 'edges' : `edges${n}`);
+/** The input holding set `n`'s radius: `radius`, `radius2`, … */
+export const filletRadiusKey = (n: number) => (n === 1 ? 'radius' : `radius${n}`);
+
+/** The kinds of reference a fillet takes: edges of bodies. */
+export const FILLET_EDGE_KINDS = ['edge'] as const;
+
+const shape: Record<string, z.ZodType> = {};
+for (let n = 1; n <= FILLET_MAX_SETS; n++) {
+  shape[filletEdgesKey(n)] = refsOf(FILLET_EDGE_KINDS).optional();
+  shape[filletRadiusKey(n)] = exprOf('length').optional();
+}
+
+/** A fillet's inputs: `edges`/`radius`, `edges2`/`radius2` … (all optional). */
+export type FilletInputs = Record<string, RefInput | ExprInput>;
+
+export const FilletInputsSchema = z.strictObject(shape) as unknown as z.ZodType<FilletInputs>;
+
+export const filletFeature: FeatureDefinition<FilletInputs> = {
+  type: FILLET_TYPE,
+  label: 'Fillet',
+  category: 'modify',
+  icon: 'fillet',
+  inputsSchema: FilletInputsSchema,
+};
+
+/** One set of a fillet: its edges and the input holding its radius. */
+export interface FilletSet {
+  /** 1-based. */
+  n: number;
+  edges: GeomRef[];
+  /** The `expr` input's name, absent while the set has none. */
+  radius: string | undefined;
+}
+
+/** The sets of a fillet that have edges, in order. */
+export function filletSets(inputs: FilletInputs): FilletSet[] {
+  const sets: FilletSet[] = [];
+  for (let n = 1; n <= FILLET_MAX_SETS; n++) {
+    const edges = inputs[filletEdgesKey(n)];
+    if (edges?.kind !== 'ref' || edges.refs.length === 0) continue;
+    const radius = filletRadiusKey(n);
+    sets.push({
+      n,
+      edges: edges.refs,
+      radius: inputs[radius]?.kind === 'expr' ? radius : undefined,
+    });
+  }
+  return sets;
+}
+
+/**
+ * A fillet's inputs from plain sets (tests, scripts, templates; the dialog
+ * builds the same shape). Radii get the length unit; `paramName`s are left
+ * to the caller.
+ */
+export function filletInputs(sets: readonly { edges: GeomRef[]; radius: string }[]): FilletInputs {
+  const inputs: FilletInputs = {};
+  sets.slice(0, FILLET_MAX_SETS).forEach(({ edges, radius }, i) => {
+    inputs[filletEdgesKey(i + 1)] = { kind: 'ref', refs: edges };
+    inputs[filletRadiusKey(i + 1)] = { kind: 'expr', expr: radius, unit: 'length' };
+  });
+  return inputs;
+}

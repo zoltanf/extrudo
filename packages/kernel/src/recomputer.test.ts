@@ -69,6 +69,7 @@ function bind(service: KernelService) {
     preview: service.preview.bind(service),
     endPreview: () => service.endPreview(),
     reference: service.reference.bind(service),
+    tangentChain: service.tangentChain.bind(service),
     exportMeshes: service.exportMeshes.bind(service),
     exportStep: service.exportStep.bind(service),
     inspect: service.inspect.bind(service),

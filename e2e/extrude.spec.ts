@@ -217,7 +217,7 @@ test('the Wall bracket template computes its bracket; its cut edits through all'
 }) => {
   const viewport = await openProject(page, 'wall-bracket');
   await kernelReady(page);
-  await expect(viewport).toHaveAttribute('data-bodies', 'Bracket:10:40,80,60');
+  await expect(viewport).toHaveAttribute('data-bodies', 'Bracket:12:40,80,60');
   const browser = page.getByRole('complementary', { name: 'Browser' });
   await expect(browser.getByRole('button', { name: 'Hide Bracket' })).toBeVisible();
 
@@ -272,5 +272,5 @@ test('the Wall bracket template computes its bracket; its cut edits through all'
   await expect(edit).toBeHidden();
   await kernelReady(page);
   await expect(chip(page, 'Extrude2')).toHaveAccessibleName('Extrude2');
-  await expect(viewport).toHaveAttribute('data-bodies', 'Bracket:10:40,80,60');
+  await expect(viewport).toHaveAttribute('data-bodies', 'Bracket:12:40,80,60');
 });

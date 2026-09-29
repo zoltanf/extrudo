@@ -2,6 +2,12 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-29 · **P3-01** Fillet (ADR-0038): round edges with several edge
+  sets, each with its own radius; picking an edge takes its tangent chain;
+  the preview is live. A fillet that can't be built says why in plain words
+  with the largest radius that works ("Radius 50 mm is too large for edge
+  12 (max ≈ 19 mm)"), found by the kernel. The Wall bracket template's
+  Fillet1 computes now.
 - 2026-09-29 · **P3-16** Notification history (ADR-0041): a bell button
   below the toasts (and Ctrl+K "Notification History") opens the session's
   earlier notifications, newest first with errors in a group on top,

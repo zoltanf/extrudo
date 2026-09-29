@@ -33,13 +33,13 @@ describe('templates', () => {
     const statuses = Object.fromEntries(
       doc.features.map((f) => [f.name, result.features[f.id]?.status]),
     );
-    // Fillet1 has no evaluator yet; Plane1 is rolled back.
+    // Plane1 is rolled back.
     expect(statuses).toEqual({
       Sketch1: 'ok',
       Extrude1: 'ok',
       Sketch2: 'ok',
       Extrude2: 'ok',
-      Fillet1: 'error',
+      Fillet1: 'ok',
       Plane1: undefined,
     });
     const [body] = result.bodies;
@@ -49,15 +49,15 @@ describe('templates', () => {
     const p = body?.mesh?.positions ?? new Float32Array();
     const range = (k: number) => {
       const values = Array.from({ length: p.length / 3 }, (_, i) => p[3 * i + k] ?? 0);
-      return [Math.min(...values), Math.max(...values)].map((v) => Math.round(v * 100) / 100);
+      return [Math.min(...values), Math.max(...values)].map((v) => Math.round(v * 100) / 100 + 0);
     };
     expect([range(0), range(1), range(2)]).toEqual([
       [0, 40],
       [-40, 40],
       [0, 60],
     ]);
-    // Eight faces of the L, and a tapered wall per hole.
-    expect((body?.mesh?.faceRanges.length ?? 0) / 2).toBe(10);
+    // Eight faces of the L, a tapered wall per hole and two fillet faces along the bend.
+    expect((body?.mesh?.faceRanges.length ?? 0) / 2).toBe(12);
     engine.clear();
   });
 });

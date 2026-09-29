@@ -65,6 +65,11 @@ export interface SelectionField extends FieldBase {
   max?: number;
   /** "Pick a face" when empty; default from `accepts`. */
   prompt?: string;
+  /**
+   * Picking an edge adds the chain of tangent-continuous edges around it,
+   * and unpicking one removes the chain (fillet: OCCT rounds whole chains).
+   */
+  tangentChain?: boolean;
 }
 
 /** An `<ExpressionInput>`: an expression with a unit, which becomes a model parameter (`d7`). */

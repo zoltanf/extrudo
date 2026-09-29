@@ -430,8 +430,20 @@ parametric box exported as 3MF opens in a slicer and prints.
 Goal: the modify toolset that makes parts printable and pretty. Benchmarks
 **B4–B7**. This is the first public release candidate.
 
-- [ ] **P3-01 Fillet** (constant radius, edge sets, tangent chains; preview;
+- [x] **P3-01 Fillet** (constant radius, edge sets, tangent chains; preview;
   friendly failure messages with a suggested max radius). FR-FT-04, FR-UX-06.
+  *Done 2026-09-29* (ADR-0038): up to eight edge sets per fillet, each with
+  its own radius expression (`edges`/`radius`, `edges2`/`radius2` …); picking
+  an edge brings its whole tangent chain, because OCCT rounds chains (the
+  dialog asks the kernel, `KernelApi.tangentChain`); live preview; the facade
+  builds the fillet on its stack and, when it fails, finds the failing chains
+  and the largest radius that works by bisection, so the message reads
+  "Radius 50 mm is too large for edge 12 (max ≈ 19 mm)" (also: an edge that
+  can't be filleted, two radii in one chain, fillets that collide at a
+  corner). Faces are named `fillet:<id>:from:(<edge>)`; lost edges are
+  references Fix References can repair. The Wall bracket's Fillet1 now
+  computes (two sets: the bend's inside and outside corners). No on-canvas
+  radius handle and no variable radius yet.
 - [ ] **P3-02 Chamfer** (3 modes). FR-FT-05.
 - [ ] **P3-03 Shell.** FR-FT-06.
 - [ ] **P3-04 Hole** (placement by sketch points or click; types; presets incl.

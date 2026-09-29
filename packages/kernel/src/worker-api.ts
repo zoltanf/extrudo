@@ -15,6 +15,7 @@ export function workerApi(service: KernelService): KernelApi {
     preview: async (request, onFeature) => transfer(await service.preview(request, onFeature)),
     endPreview: () => service.endPreview(),
     reference: (body, kind, index, base) => service.reference(body, kind, index, base),
+    tangentChain: (body, edge, base) => service.tangentChain(body, edge, base),
     exportMeshes: async (bodies, tessellation) => {
       const meshes = await service.exportMeshes(bodies, tessellation);
       return Comlink.transfer(

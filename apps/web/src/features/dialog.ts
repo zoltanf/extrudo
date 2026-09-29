@@ -40,7 +40,7 @@ import {
 import type { BodyMesh, Preview, SubShapeKind } from '@extrudo/kernel';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { ToastOptions } from '../design-system';
-import { readTopology } from '../selection/items';
+import { readTopology, topologyItem } from '../selection/items';
 import { clearPickedHover, createModelSelect } from '../selection/useModelSelection';
 import type { ModelSelect } from '../viewport/Viewport';
 import type { ViewPreview } from './preview';
@@ -87,6 +87,12 @@ export interface DialogKernel {
     index: number,
     base?: boolean,
   ): Promise<GeomRef | undefined>;
+  /**
+   * The edges (mesh indices, the edge itself included) of the tangent
+   * chain around an edge, for selection fields with `tangentChain` (fillet,
+   * P3-01). Absent: picks stay single edges.
+   */
+  tangentChain?(body: BodyId, edge: number, base?: boolean): Promise<number[] | undefined>;
 }
 
 export interface DialogPreview {
@@ -405,15 +411,21 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     const max = field.max ?? Number.POSITIVE_INFINITY;
     let refs = [...(open.values.refs[field.name] ?? [])];
     const picked: SelectionItem[] = [];
+    /** Edges picked or unpicked whose tangent chain follows (`tangentChain` fields). */
+    const chained: { item: SelectionItem; mode: 'add' | 'remove' }[] = [];
     for (const item of items) {
       if (!accepts(field.accepts, item)) continue;
       const ref = itemRef(item, bodies);
       if (!ref) continue;
       const at = refs.findIndex((r) => r.kind === ref.kind && r.id === ref.id);
       if (at >= 0) {
-        if (mode === 'toggle') refs.splice(at, 1);
+        if (mode === 'toggle') {
+          refs.splice(at, 1);
+          chained.push({ item, mode: 'remove' });
+        }
         continue;
       }
+      chained.push({ item, mode: 'add' });
       if (max === 1) refs = [ref];
       else if (refs.length < max) refs.push(ref);
       else continue;
@@ -424,6 +436,43 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     const pickField = full ? (nextPickField(open, values, field.name) ?? field.name) : field.name;
     refresh({ ...open, pickField }, values);
     for (const item of picked) fingerprint(item);
+    if (field.tangentChain)
+      for (const { item, mode } of chained) followChain(field.name, item, mode);
+  };
+
+  /**
+   * A picked edge brings its tangent chain (OCCT rounds the whole chain,
+   * so a set is made of whole chains); unpicking one takes the chain out.
+   */
+  const followChain = (field: string, item: SelectionItem, mode: 'add' | 'remove') => {
+    const topology = readTopology(item);
+    if (!kernel?.tangentChain || topology?.kind !== 'edge') return;
+    const mine = generation;
+    const base = get()?.base !== undefined;
+    kernel
+      .tangentChain(topology.body, topology.index, base)
+      .then((indices) => {
+        const open = get();
+        if (!open || mine !== generation || !indices || indices.length < 2) return;
+        const bodies = dialogBodies(open, model.getState().bodies);
+        const refs = [...(open.values.refs[field] ?? [])];
+        const added: SelectionItem[] = [];
+        for (const index of indices) {
+          const member = topologyItem({ kind: 'edge', body: topology.body, index });
+          const ref = itemRef(member, bodies);
+          if (!ref) continue;
+          const at = refs.findIndex((r) => r.kind === ref.kind && r.id === ref.id);
+          if (mode === 'add' && at < 0) {
+            refs.push(ref);
+            added.push(member);
+          } else if (mode === 'remove' && at >= 0) {
+            refs.splice(at, 1);
+          }
+        }
+        refresh(open, { ...open.values, refs: { ...open.values.refs, [field]: refs } });
+        for (const member of added) fingerprint(member);
+      })
+      .catch(() => {});
   };
 
   const select: ModelSelect = {
@@ -497,6 +546,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         (f): f is SelectionField => f.kind === 'selection',
       );
       const used: SelectionItem[] = [];
+      const chained: { field: string; item: SelectionItem }[] = [];
       for (const target of fields) {
         const refs: GeomRef[] = [];
         for (const item of selection) {
@@ -506,6 +556,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
           if (ref && !refs.some((r) => r.kind === ref.kind && r.id === ref.id)) {
             refs.push(ref);
             used.push(item);
+            if (target.tangentChain) chained.push({ field: target.name, item });
           }
         }
         if (refs.length > 0) values = { ...values, refs: { ...values.refs, [target.name]: refs } };
@@ -522,6 +573,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         ...blank,
       });
       for (const item of used) fingerprint(item);
+      for (const { field, item } of chained) followChain(field, item, 'add');
       return true;
     },
     edit(id, options = {}) {

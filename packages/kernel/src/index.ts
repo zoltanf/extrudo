@@ -39,6 +39,8 @@ export {
 export {
   type Axis,
   type BooleanOptions,
+  FilletError,
+  type FilletProblem,
   Kernel,
   KernelError,
   type KernelStats,
