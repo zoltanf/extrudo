@@ -20,7 +20,8 @@ P2-13 (measure and inspect), P2-14 (version history), P2-15 (WASM
 size and startup, offline precache), P2-16 (file-format spec,
 `docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
 fixtures) are done. Phase 3: P3-01 (fillet), P3-05 (construction
-geometry) and P3-16 (notification history) are done.
+geometry), P3-11 (marking menu, context menus) and P3-16 (notification
+history) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -366,8 +367,24 @@ in the app use `planeFrame(ref, construction)` / `sketchFrame(…, construction)
 The view draws them (`viewport/Construction.tsx`, steady size) and picks them
 (`PickScene.planes/points/axes`; planes also in `sketchTargetAt`);
 the browser has a Construction folder.
+ADR-0042 (P3-11) added the right-click marking menu:
+`design-system/MarkingMenu.tsx` draws eight wedges and a list (pure
+geometry in `marking.ts`); **a wedge is a command ID** in the two tables in
+`commands/marking.ts` (`MODEL_SLOTS`, `SKETCH_SLOTS`; `resolveSlots` matches
+them with `buildCommands`, a missing or `unavailable` command leaves its
+wedge dimmed, so **a task that adds Move, Press Pull or Fillet only adds
+the command** and drops `comesWith`); the list is `shell/contextEntries.tsx`
+(pure; reuses commands, `BodyActions`, `FeatureActions`); `shell/viewMenu.tsx`
+`useViewMenu` answers the view's request (`viewport/viewMenu.ts`), selecting
+what is under the pointer; `PointerHandlers.onContextMenu` is the right-click
+without movement (`onMenu` stays the long press, "Select other…", and the
+right-click where no `viewMenu` is passed: dialogs, Measure, Create
+Sketch). "Repeat last" is the `repeatLast` command (`ctx.repeat`, the last
+tool through `runTool`/`run`, `isRepeatable`). Preference `marking.radial`.
+Browser folders, origin rows, Parameters rows and home cards have context
+menus.
 Next: Phase 3 in three tracks: **P3-02** (chamfer), **P3-06** (combine,
-move/copy, mirror) and **P3-11** (marking menu). See `docs/03-roadmap.md`.
+move/copy, mirror) and **P3-09** (section analysis). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -397,7 +414,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus (0006 is reserved) |
 
 ## Stack summary
 
@@ -1018,3 +1035,19 @@ them. Notes further down that name a machine apply to that machine only.
   corner, under the toasts: dismiss the toasts (`Dismiss`) before clicking
   near there. Unit tests use `createNotifications({ now, later })` with injected
   clock and timers; `renderToStaticMarkup` sees only the store's initial state.
+- **Marking menu e2e** (`e2e/marking-menu.spec.ts`): right-click without
+  movement opens `menu` "Marking menu" (`data-marking-menu="radial|list"`)
+  with wedges `[data-marking-slot="<command id>"]` (`aria-disabled` when
+  dimmed; `[data-wedge="n"]` in the ring's SVG carries `data-active` under
+  the pointer) and list rows `[data-marking-entry="<id>"]` (`selectOther`,
+  `sketchOnFace`, `measure`, `hideBody`, `appearance`, `fit`, `projection`,
+  `delete`, `cancelTool`...); the ring is `[data-marking-ring]`, the list
+  `[data-marking-list]`. Wedges pick on pointer release from the pointer's
+  direction, so click them or press-move-release from the ring's centre
+  (`ringCentre`). A right-click selects what is under it: the pointer at the
+  middle of the wall bracket often hovers an edge, so `overFace` scans for
+  `data-model-hover` `face:`. The sketch ring has no Delete wedge (the list
+  does). While a sketch tool runs the selection overlay
+  (`[data-selected-entities]`) is gone; `[data-sketch-summary]` is on both
+  overlays. The debug kernel page has no `viewMenu`, so its right-click is
+  still "Select other…" (`model-select.spec.ts`).

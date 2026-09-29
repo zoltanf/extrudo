@@ -16,6 +16,7 @@ import type { BodyMesh } from '@extrudo/kernel';
 import { type CSSProperties, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
+import { isRepeatable } from '../commands/marking';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
 import {
   type NotificationStore,
@@ -88,7 +89,8 @@ import { createFeatureActions } from './featureActions';
 import { Splitter, usePanel } from './panels';
 import { Timeline } from './Timeline';
 import { Toolbar } from './Toolbar';
-import type { ToolId } from './tools';
+import { TOOLS, type ToolId } from './tools';
+import { useMarkingStyle, useViewMenu } from './viewMenu';
 
 /** The toolbox's pins until the user changes them (P1-14). */
 const DEFAULT_PINS = ['sketch', 'line', 'rectangle', 'circle', 'dimension', 'trim', 'parameters'];
@@ -392,6 +394,9 @@ export function AppShell({
   const construction = useHostState(host, (s) => s.construction);
   const [search, setSearch] = useState<SearchOpen>();
   const [recent, setRecent] = useState<string[]>([]);
+  // Repeat last (P3-11): the last tool run through the commands or the toolbar.
+  const [lastTool, setLastTool] = useState<string>();
+  const markingStyle = useMarkingStyle(platform.preferences);
   const [pinned, setPinned] = useState<string[]>(() =>
     platform.preferences.get<string[]>(PINS_KEY, DEFAULT_PINS),
   );
@@ -415,6 +420,7 @@ export function AppShell({
       buildCommands({
         mode,
         runTool: (tool) => {
+          if (isRepeatable(tool)) setLastTool(tool);
           // A key or a search result starts a sketch tool; only the toolbar toggles it off.
           if (isSketchTool(tool) && host) host.start(tool);
           else runRef.current(tool);
@@ -444,6 +450,8 @@ export function AppShell({
         timeline: { collapsed: timeline.collapsed, toggle: timeline.toggle },
         file: fileActions,
         theme: { choice, set: setChoice },
+        ...(lastTool && { repeat: { id: lastTool } }),
+        markingMenu: { radial: markingStyle.radial, toggle: markingStyle.toggle },
         ready,
         dialogCommands,
         ...(toasts?.history && {
@@ -474,6 +482,9 @@ export function AppShell({
       choice,
       setChoice,
       toasts?.history,
+      lastTool,
+      markingStyle.radial,
+      markingStyle.toggle,
     ],
   );
   const openToolbox = useMemo(
@@ -565,6 +576,7 @@ export function AppShell({
   useShortcuts(shortcuts);
 
   const run = (tool: ToolId) => {
+    if (isRepeatable(tool)) setLastTool(tool);
     // A feature dialog's command opens it (P2-05); another tool (not Parameters) ends it.
     const spec = specForCommand(dialogs, tool);
     if (spec) {
@@ -775,6 +787,30 @@ export function AppShell({
   }, [doc.features, doc.timelineMarker, constructionReports, editedId]);
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
   const sketchPlane = sketches.find((s) => s.active)?.frame;
+  // The right-click marking menu (P3-11): offered while nothing else owns the pointer.
+  const runningTool = useMemo(
+    () =>
+      drawing && host
+        ? { label: TOOLS[activeTool as ToolId]?.label ?? 'Tool', cancel: () => host.stop() }
+        : undefined,
+    [drawing, host, activeTool],
+  );
+  const { menu: viewMenu, popover: appearancePopover } = useViewMenu({
+    mode,
+    session,
+    viewport,
+    commands,
+    bodies: bodyList,
+    bodyActions,
+    features: doc.features,
+    featureActions,
+    enabled:
+      mode === 'model'
+        ? !picking && !dialogOpen && !projecting && !measuring
+        : !projecting && sketchPlane !== undefined,
+    radial: markingStyle.radial,
+    ...(runningTool && { runningTool }),
+  });
   // In the model, with no command running, the view picks bodies, sketch curves and
   // profiles (P2-03). Sketch mode keeps its own picking (the tool host).
   const sessionSelect = useModelSelection(
@@ -970,6 +1006,7 @@ export function AppShell({
             selection={dialogItems ?? selection}
             modelSelect={modelSelect}
             preview={preview}
+            viewMenu={viewMenu}
           >
             {dialogOpen && dialog && (
               <DialogOverlay
@@ -1037,6 +1074,7 @@ export function AppShell({
               />
             )}
           </Viewport>
+          {appearancePopover}
         </Suspense>
         {picking && (
           <PlanePrompt

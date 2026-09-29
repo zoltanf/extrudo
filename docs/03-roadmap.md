@@ -468,8 +468,21 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
 - [ ] **P3-09 Section analysis.** FR-VP-06.
 - [ ] **P3-10 3D-print aids:** mass properties with filament presets, overhang
   shading, place on bed. FR-3DP-02..04.
-- [ ] **P3-11 Marking menu** (right-click radial) and context menus
-  everywhere. FR-UX-03.
+- [x] **P3-11 Marking menu** (right-click radial) and context menus
+  everywhere. FR-UX-03. Done 2026-09-29 (ADR-0042): a right-click without
+  movement opens a ring of eight wedges (model: Sketch, Extrude, Fillet,
+  Move, Press Pull, Undo, Repeat last, Delete; sketch: Line, Rectangle,
+  Circle, Dimension, Trim, Undo, Construction, Finish Sketch) and a list
+  below it that depends on what is under the pointer or selected (Select
+  other…, Sketch on Face, Measure, Hide Body, Appearance…, Export…, view
+  commands over empty space; Cancel, Delete, Look At Sketch in a sketch).
+  Wedges are command IDs in two tables, dimmed until the command exists
+  (Fillet, Move, Press Pull); click, aim-and-click or press-drag-release
+  (flick) picks; arrows, Tab, Enter and Esc work; right-drag still
+  navigates; "Right-Click Menu: Use a List" in Ctrl+K turns the ring into a
+  plain list. Repeat last repeats the last tool started through commands.
+  Folders, origin rows, parameter rows and design cards got context
+  menus.
 - [ ] **P3-12 Onboarding:** first-run tutorial, template gallery (B2, B4, B5 as
   starters), tool tooltips with animated demos. FR-UX-04, -05.
 - [ ] **P3-13 Hardening pass:** robustness fuzzing (random parameter changes on

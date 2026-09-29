@@ -163,14 +163,27 @@ export function BrowserPanel({
               }}
             >
               {ORIGIN_ITEMS.map(({ value, label }) => (
-                <Leaf key={value}>
-                  <span className={origin[value] ? '' : 'text-muted'}>{label}</span>
-                  <EyeToggle
-                    name={label}
-                    visible={origin[value]}
-                    onToggle={() => viewport.getState().setOrigin(value, !origin[value])}
-                  />
-                </Leaf>
+                <ContextMenu
+                  key={value}
+                  label={`${label} menu`}
+                  trigger={
+                    <Leaf>
+                      <span className={origin[value] ? '' : 'text-muted'}>{label}</span>
+                      <EyeToggle
+                        name={label}
+                        visible={origin[value]}
+                        onToggle={() => viewport.getState().setOrigin(value, !origin[value])}
+                      />
+                    </Leaf>
+                  }
+                >
+                  <MenuItem
+                    icon={origin[value] ? <EyeOff size={14} /> : <Eye size={14} />}
+                    onSelect={() => viewport.getState().setOrigin(value, !origin[value])}
+                  >
+                    {origin[value] ? 'Hide' : 'Show'}
+                  </MenuItem>
+                </ContextMenu>
               ))}
             </Folder>
             <Folder
@@ -249,6 +262,16 @@ export function BrowserPanel({
               label="Bodies"
               icon={<Box size={14} />}
               count={bodies.length}
+              menu={
+                bodies.length > 0 && bodyActions.exportBodies ? (
+                  <MenuItem
+                    icon={<FileDown size={14} />}
+                    onSelect={() => bodyActions.exportBodies?.(bodies.map((b) => b.id))}
+                  >
+                    Export all bodies…
+                  </MenuItem>
+                ) : undefined
+              }
               eye={
                 bodies.length > 0
                   ? {
@@ -533,7 +556,7 @@ function BodyLeaf({
 }
 
 /** Colour swatches and opacity presets (ADR-0030); each choice is one undo step. */
-function AppearancePanel({ body, actions }: { body: BodyEntry; actions: BodyActions }) {
+export function AppearancePanel({ body, actions }: { body: BodyEntry; actions: BodyActions }) {
   const { id, meta } = body;
   const opacity = meta.opacity ?? 1;
   const group = `appearance-${id}`;
@@ -607,6 +630,7 @@ function Folder({
   defaultOpen = true,
   eye,
   count,
+  menu,
   children,
 }: {
   label: string;
@@ -616,40 +640,64 @@ function Folder({
   count?: number;
   /** A folder eye: shows everything in it when all is hidden, else hides it all. */
   eye?: { visible: boolean; onToggle(): void };
+  /**
+   * More items for the folder row's right-click menu (P3-11), after the ones every folder has
+   * (Expand or Collapse, and Show or Hide all when there is an eye).
+   */
+  menu?: ReactNode;
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const header = (
+    <div className="flex h-7 items-center rounded-input pr-1 hover:bg-accent-soft">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+        className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-input px-1 text-left"
+      >
+        <span className="text-muted">
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
+        <span className="grid w-4 place-items-center text-muted">{icon}</span>
+        {label}
+        {count !== undefined && count > 0 && (
+          <span
+            data-folder-count={count}
+            className="ml-1 rounded-full bg-accent-soft px-1.5 font-mono text-xs text-muted"
+          >
+            {count}
+          </span>
+        )}
+      </button>
+      {eye && (
+        <EyeToggle
+          name={`all ${label.toLowerCase()}`}
+          visible={eye.visible}
+          onToggle={eye.onToggle}
+        />
+      )}
+    </div>
+  );
   return (
     <li>
-      <div className="flex h-7 items-center rounded-input pr-1 hover:bg-accent-soft">
-        <button
-          type="button"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-          className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-input px-1 text-left"
+      <ContextMenu label={`${label} menu`} trigger={header}>
+        <MenuItem
+          icon={open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          onSelect={() => setOpen(!open)}
         >
-          <span className="text-muted">
-            {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </span>
-          <span className="grid w-4 place-items-center text-muted">{icon}</span>
-          {label}
-          {count !== undefined && count > 0 && (
-            <span
-              data-folder-count={count}
-              className="ml-1 rounded-full bg-accent-soft px-1.5 font-mono text-xs text-muted"
-            >
-              {count}
-            </span>
-          )}
-        </button>
+          {open ? 'Collapse' : 'Expand'}
+        </MenuItem>
         {eye && (
-          <EyeToggle
-            name={`all ${label.toLowerCase()}`}
-            visible={eye.visible}
-            onToggle={eye.onToggle}
-          />
+          <MenuItem
+            icon={eye.visible ? <EyeOff size={14} /> : <Eye size={14} />}
+            onSelect={eye.onToggle}
+          >
+            {eye.visible ? 'Hide' : 'Show'} all {label.toLowerCase()}
+          </MenuItem>
         )}
-      </div>
+        {menu}
+      </ContextMenu>
       {open && <ul className="pb-1">{children}</ul>}
     </li>
   );

@@ -25,7 +25,7 @@ import type { DirectionalLight } from 'three';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
-import { MenuItem, MenuLabel, PointMenu } from '../design-system';
+import { type MarkingEntry, MarkingMenu, MenuItem, MenuLabel, PointMenu } from '../design-system';
 import { previewSummary, type ViewPreview } from '../features/preview';
 import { combineFilters } from '../selection/filter';
 import { itemLabel, type LabelContext, selectionKey } from '../selection/items';
@@ -68,6 +68,7 @@ import { type SketchDrawing, sketchSegments, unionBounds } from './sketchGeometr
 import type { Bounds, OriginItem, ViewportStore, VisualStyle } from './store';
 import { ViewCube } from './ViewCube';
 import { namedDirection } from './viewcube';
+import type { ViewMenu, ViewMenuContent, ViewMenuRequest } from './viewMenu';
 
 export interface ViewportProps {
   viewport: ViewportStore;
@@ -101,6 +102,12 @@ export interface ViewportProps {
   preview?: ViewPreview;
   /** Construction planes, axes and points to draw and pick (P3-05). */
   construction?: readonly ConstructionDrawing[];
+  /**
+   * The right-click marking menu (P3-11): present while the pointer is free to select (model
+   * mode with no dialog or tool, sketch mode). Without it, a right click without movement
+   * opens "Select other…" directly, as it did before.
+   */
+  viewMenu?: ViewMenu;
 }
 
 /**
@@ -239,6 +246,7 @@ export function Viewport({
   modelSelect,
   preview,
   construction = NO_CONSTRUCTION,
+  viewMenu,
 }: ViewportProps) {
   const section = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -295,7 +303,6 @@ export function Viewport({
 
   useNavigation(section, surface, viewport, setDragging);
   const [box, setBox] = useState<ScreenBox>();
-  useSketchInput(surface, viewport, sketchInput, setBox);
   const [otherMenu, setOtherMenu] = useState<OtherMenu>();
   // Construction geometry, with a dialog's preview (P3-05); hover and selection highlight it.
   const drawnConstruction = useMemo(
@@ -306,6 +313,22 @@ export function Viewport({
     () => ({ bodies, meta, sketches, construction }),
     [bodies, meta, sketches, construction],
   );
+  // The marking menu (P3-11): the shell fills it in when the view reports a right click.
+  const [marking, setMarking] = useState<OpenViewMenu>();
+  const viewMenuRef = useRef(viewMenu);
+  viewMenuRef.current = viewMenu;
+  const openViewMenu = useMemo(
+    () => (at: { x: number; y: number }, request: ViewMenuRequest, hits: readonly PickHit[]) => {
+      const content = viewMenuRef.current?.open(request, at);
+      if (content) setMarking({ at, content, hits });
+    },
+    [],
+  );
+  const hasViewMenu = viewMenu !== undefined;
+  useEffect(() => {
+    if (!hasViewMenu) setMarking(undefined);
+  }, [hasViewMenu]);
+  useSketchInput(surface, viewport, sketchInput, setBox, hasViewMenu ? openViewMenu : undefined);
   const bodiesKey = useMemo(() => bodiesSummary(bodies, meta), [bodies, meta]);
   const appearanceKey = useMemo(() => bodyAppearanceSummary(bodies, meta), [bodies, meta]);
   // Silhouette segments drawn per body (wireframe and hidden edges), summed into
@@ -322,7 +345,15 @@ export function Viewport({
     },
     [silhouettes],
   );
-  useModelInput(surface, viewport, modelSelect, modelScene, setBox, setOtherMenu);
+  useModelInput(
+    surface,
+    viewport,
+    modelSelect,
+    modelScene,
+    setBox,
+    setOtherMenu,
+    hasViewMenu ? openViewMenu : undefined,
+  );
   useSketchTargetInput(surface, viewport, planePicker, modelScene, setBox);
   // The menu belongs to model mode: it closes when that ends (a sketch opens, a tool starts).
   useEffect(() => {
@@ -401,6 +432,11 @@ export function Viewport({
         scene={modelScene}
         select={modelSelect}
         onClose={() => setOtherMenu(undefined)}
+      />
+      <ViewMarkingMenu
+        menu={marking}
+        onClose={() => setMarking(undefined)}
+        onSelectOther={(hits, at) => setOtherMenu({ hits: [...hits], at, toggle: false })}
       />
       <ViewCube store={viewport} />
       <NavBar store={viewport} commandRunning={commandRunning} onStopCommand={onStopCommand} />
@@ -735,6 +771,11 @@ function useSketchInput(
   viewport: ViewportStore,
   input: SketchInput | undefined,
   onBoxChange: (box: ScreenBox | undefined) => void,
+  onContext?: (
+    at: { x: number; y: number },
+    request: ViewMenuRequest,
+    hits: readonly PickHit[],
+  ) => void,
 ) {
   const handlers = useMemo<PointerHandlers | undefined>(() => {
     if (!input) return undefined;
@@ -790,8 +831,18 @@ function useSketchInput(
         },
       }),
       onLeave: input.onLeave,
+      // A right click without movement opens the marking menu (P3-11).
+      ...(onContext && {
+        onContextMenu: (p: ScreenPointer) => {
+          const r = surface.current?.getBoundingClientRect();
+          // The press moved pointer capture to the section, which made the tool host forget what
+          // was under the pointer: point at it again before the menu asks.
+          onPlane(input.onMove)(p);
+          if (r) onContext({ x: r.left + p.x, y: r.top + p.y }, { mode: 'sketch', stack: [] }, []);
+        },
+      }),
     };
-  }, [input, viewport]);
+  }, [input, viewport, surface, onContext]);
   usePointerInput(surface, viewport, handlers, onBoxChange);
 }
 
@@ -823,6 +874,11 @@ function useModelInput(
   scene: ModelScene,
   onBoxChange: (box: ScreenBox | undefined) => void,
   onMenu: (menu: OtherMenu | undefined) => void,
+  onContext?: (
+    at: { x: number; y: number },
+    request: ViewMenuRequest,
+    hits: readonly PickHit[],
+  ) => void,
 ) {
   // The latest scene without re-binding the listeners on every change.
   const sceneRef = useRef(scene);
@@ -869,8 +925,25 @@ function useModelInput(
         select.onHover(undefined);
         onMenu({ hits, at: { x: r.left + p.x, y: r.top + p.y }, toggle: p.toggle });
       },
+      // A right click without movement opens the marking menu (P3-11), over empty space too.
+      ...(onContext && {
+        onContextMenu: (p: ScreenPointer) => {
+          const el = surface.current;
+          if (!el || viewport.getState().tool) return;
+          const c = context(p);
+          const top = pickTop(c.scene, c.camera, [p.x, p.y], c.filter);
+          const hits = pickStack(c.scene, c.camera, [p.x, p.y], c.filter);
+          const r = el.getBoundingClientRect();
+          select.onHover(undefined);
+          onContext(
+            { x: r.left + p.x, y: r.top + p.y },
+            { mode: 'model', ...(top && { top }), stack: hits.map((h) => h.item) },
+            hits,
+          );
+        },
+      }),
     };
-  }, [select, viewport, surface, onMenu]);
+  }, [select, viewport, surface, onMenu, onContext]);
   usePointerInput(surface, viewport, handlers, onBoxChange);
 }
 
@@ -958,6 +1031,50 @@ function pickScene(scene: ModelScene, style: VisualStyle): PickScene {
       })),
     occluding: style !== 'wireframe',
   };
+}
+
+/** The marking menu while it is open: where, what the shell put in it, the stack under the pointer. */
+interface OpenViewMenu {
+  at: { x: number; y: number };
+  content: ViewMenuContent;
+  hits: readonly PickHit[];
+}
+
+/**
+ * The marking menu (P3-11, ADR-0042). The view adds "Select other…" at the
+ * top of the list when several things lie under the pointer; the shell's
+ * content supplies the ring and the rest.
+ */
+function ViewMarkingMenu({
+  menu,
+  onClose,
+  onSelectOther,
+}: {
+  menu: OpenViewMenu | undefined;
+  onClose(): void;
+  onSelectOther(hits: readonly PickHit[], at: { x: number; y: number }): void;
+}) {
+  const entries = useMemo<MarkingEntry[]>(() => {
+    if (!menu) return [];
+    const rest = menu.content.entries;
+    if (menu.hits.length === 0) return [...rest];
+    const other: MarkingEntry = {
+      id: 'selectOther',
+      label: 'Select other…',
+      onSelect: () => onSelectOther(menu.hits, menu.at),
+    };
+    const [head, ...tail] = rest;
+    return head ? [other, { ...head, separatorBefore: true }, ...tail] : [other];
+  }, [menu, onSelectOther]);
+  return (
+    <MarkingMenu
+      at={menu?.at}
+      slots={menu?.content.slots ?? []}
+      entries={entries}
+      radial={menu?.content.radial ?? true}
+      onClose={onClose}
+    />
+  );
 }
 
 /**

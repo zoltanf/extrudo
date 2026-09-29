@@ -1,7 +1,15 @@
 import type { ProjectSummary } from '@extrudo/storage';
 import { Copy, Ellipsis, FolderOpen, Pencil, RotateCcw, Trash2, Upload } from 'lucide-react';
 import { useState } from 'react';
-import { Button, IconButton, Menu, MenuItem, MenuSeparator, TextInput } from '../design-system';
+import {
+  Button,
+  ContextMenu,
+  IconButton,
+  Menu,
+  MenuItem,
+  MenuSeparator,
+  TextInput,
+} from '../design-system';
 import type { Platform } from '../platform';
 import { projectHref } from '../routes';
 import { useThumbnailUrl } from './hooks';
@@ -44,6 +52,39 @@ export function ProjectCard({
     else setDraft(project.name);
   };
 
+  const menuItems = (
+    <>
+      <MenuItem
+        icon={<FolderOpen size={14} />}
+        onSelect={() => {
+          window.location.hash = href;
+        }}
+      >
+        Open
+      </MenuItem>
+      <MenuItem
+        icon={<Pencil size={14} />}
+        onSelect={() => {
+          setDraft(project.name);
+          // After the menu has closed and returned focus.
+          setTimeout(() => setRenaming(true));
+        }}
+      >
+        Rename
+      </MenuItem>
+      <MenuItem icon={<Copy size={14} />} onSelect={() => actions.duplicate(project)}>
+        Duplicate
+      </MenuItem>
+      <MenuItem icon={<Upload size={14} />} onSelect={() => actions.exportFile(project)}>
+        Export .extrudo
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.trash(project)}>
+        Move to trash
+      </MenuItem>
+    </>
+  );
+
   const picture = (
     <div
       className="aspect-[4/3] overflow-hidden rounded-t-card"
@@ -55,7 +96,7 @@ export function ProjectCard({
     </div>
   );
 
-  return (
+  const card = (
     <li className="group relative flex flex-col rounded-card border border-line bg-raised transition-shadow duration-(--x-fast) hover:shadow-raised focus-within:shadow-raised">
       {picture}
       <div className="flex items-center gap-1 py-2 pr-1.5 pl-3">
@@ -125,37 +166,16 @@ export function ProjectCard({
               </IconButton>
             }
           >
-            <MenuItem
-              icon={<FolderOpen size={14} />}
-              onSelect={() => {
-                window.location.hash = href;
-              }}
-            >
-              Open
-            </MenuItem>
-            <MenuItem
-              icon={<Pencil size={14} />}
-              onSelect={() => {
-                setDraft(project.name);
-                // After the menu has closed and returned focus.
-                setTimeout(() => setRenaming(true));
-              }}
-            >
-              Rename
-            </MenuItem>
-            <MenuItem icon={<Copy size={14} />} onSelect={() => actions.duplicate(project)}>
-              Duplicate
-            </MenuItem>
-            <MenuItem icon={<Upload size={14} />} onSelect={() => actions.exportFile(project)}>
-              Export .extrudo
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.trash(project)}>
-              Move to trash
-            </MenuItem>
+            {menuItems}
           </Menu>
         )}
       </div>
     </li>
+  );
+  // The same menu on a right-click anywhere on the card (P3-11); a trashed one has buttons.
+  return (
+    <ContextMenu label={`${project.name} actions`} disabled={trashed || renaming} trigger={card}>
+      {menuItems}
+    </ContextMenu>
   );
 }

@@ -189,13 +189,15 @@ a right-click without movement, as Onshape's context menu does.
   highlight). Shift or Ctrl+click → toggle.
 - Drag left-to-right = **window** (fully inside); right-to-left = **crossing**
   (touching). The rectangle style differs (solid vs dashed).
-- Long-press (500 ms), or a right-click without movement → "Select
-  other…", lists the stacked geometry under the cursor: vertices, edges
-  and sketch curves near it, then profiles and faces front to back
-  (hidden ones marked "(hidden)"), then bodies. The pointer or the arrow
-  keys on a row pre-highlight it; a click selects it. When the marking
-  menu (§3.3) comes, right-click opens it and "Select other…" moves into
-  it; the long press stays.
+- Long-press (500 ms) → "Select other…", lists the stacked geometry
+  under the cursor: vertices, edges and sketch curves near it, then
+  profiles and faces front to back (hidden ones marked "(hidden)"), then
+  bodies. The pointer or the arrow keys on a row pre-highlight it; a
+  click selects it. **Since P3-11 (ADR-0042) a right-click without
+  movement opens the marking menu (§3.3)**, whose list starts with
+  "Select other…"; the long press still opens the list directly, and
+  where the marking menu isn't offered (a feature dialog, Measure) a
+  right-click opens it as before.
 - **In the model (P2-03, ADR-0026)** the pointer picks body faces, edges
   (within 6 px) and vertices (within 8 px), sketch curves and profiles. A
   vertex near the pointer wins, then an edge or curve, then the front
@@ -228,8 +230,35 @@ a right-click without movement, as Onshape's context menu does.
 
 - **Toolbar**, **shortcut**, **S toolbox** (searchable popup at the cursor,
   pinnable), **Ctrl+K** command palette, and the **right-click marking menu**
-  (radial, 8 slots: Repeat last, Delete, Press Pull, Undo, Sketch, Extrude,
-  Fillet, Move, plus an overflow list below).
+  (radial, 8 slots, plus an overflow list below; P3-11, ADR-0042).
+- **The marking menu (P3-11):** a right-click **without movement** (a
+  right-drag navigates) opens a ring of eight wedges round the pointer and
+  a list under it (above it when there is no room; both stay inside the
+  window). A right-click first selects what is under the pointer, unless it
+  is selected already. Each wedge is a command, so it has the command's
+  keys and availability: one that can't run here, or isn't built yet
+  (Fillet, Move, Press Pull), stays in place, dimmed, with the reason as its
+  tooltip. In the model, clockwise from the top: **Sketch, Extrude, Fillet,
+  Move, Press Pull, Undo, Repeat last, Delete**. In a sketch: **Line,
+  Rectangle, Circle, Dimension, Trim, Undo, Construction, Finish Sketch**.
+  Pick a wedge by clicking it, by aiming (the pointer's direction from the
+  centre picks the wedge, so it needn't touch the label) or by a **flick**:
+  press the left button in the ring, drag towards a wedge, release. A press
+  and release in the ring's middle does nothing; Esc or a click outside
+  closes. Keyboard: arrows jump to the wedge in that direction (Down from
+  the bottom wedge goes into the list), Tab walks everything, Enter runs.
+  **Repeat last** runs the last tool started through the commands, the
+  toolbar or the menu (not Undo, Delete, views or dialogs such as
+  Parameters). The **list** depends on what was right-clicked: for a
+  face, edge or vertex, Select other…, Sketch on Face (one flat face),
+  Measure, Hide Body, Appearance…, Export…; for a body also Delete; for a
+  profile or sketch curve, Edit Sketch and Hide Sketch; for a construction
+  plane, axis or point, Edit, Hide and Delete; over empty space,
+  Fit, Home View, Orthographic/Perspective, Redo and Show All Bodies when
+  some are hidden; in a sketch, Cancel (while a tool runs), Delete
+  (named for a constraint or dimension), Look At Sketch, Fit, Redo,
+  Repeat. "Right-Click Menu: Use a List" in Ctrl+K swaps the ring for one
+  plain list.
 - **Search (P1-14):** the palette opens at the top of the window over a
   dimmed page, the toolbox at the pointer with its pinned commands as
   tiles above the search field's results. Both search the commands
@@ -346,7 +375,10 @@ a right-click without movement, as Onshape's context menu does.
   body in the model (Shift or Ctrl toggles), or puts it in an open
   dialog's field (an extrude's Bodies); the pointer on a row highlights
   the body in the view. F2 renames, Delete removes (all selected bodies
-  when the row is one of them). The right-click menu: Rename, Hide/Show,
+  when the row is one of them). Folders have right-click menus too (P3-11:
+  Expand/Collapse, Show/Hide all, Export all bodies), and so do the origin
+  rows, user-parameter rows in the Parameters dialog and design cards on the
+  home screen. The body right-click menu: Rename, Hide/Show,
   Appearance… (a popover on the dot: colour swatches, Default first, and
   opacity Opaque, 75 %, 50 %, 25 %; each choice is one undo step) and
   Delete. The folder's eye hides or shows all bodies in one step.

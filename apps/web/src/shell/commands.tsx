@@ -8,6 +8,7 @@
 import {
   Bell,
   Box,
+  Circle,
   FilePlus2,
   History,
   House,
@@ -17,6 +18,7 @@ import {
   PanelBottom,
   PanelLeft,
   Redo2,
+  Repeat2,
   Save,
   ScanEye,
   Sun,
@@ -68,6 +70,13 @@ export interface CommandContext {
   file: FileActions;
   /** The notification history (P3-16): absent where there are no toasts to open it from. */
   notifications?: { open(): void };
+  /**
+   * The last tool run through the commands (P3-11, see `isRepeatable`): "Repeat last" runs
+   * it again. Absent until one has run, or when it isn't offered in this mode.
+   */
+  repeat?: { id: string };
+  /** The right-click menu's style (P3-11): the ring, or one plain list. */
+  markingMenu?: { radial: boolean; toggle(): void };
   theme: { choice: ThemeChoice; set(choice: ThemeChoice): void };
   /**
    * Tools that work because a feature dialog is registered for them
@@ -151,6 +160,14 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
   if (ctx.mode === 'model') for (const command of ctx.dialogCommands ?? []) add(command);
   plain('undo', 'Undo', 'Edit', ctx.undo, { icon: icon(Undo2) });
   plain('redo', 'Redo', 'Edit', ctx.redo, { icon: icon(Redo2) });
+  // Repeat last (P3-11): the last tool again, when this mode offers it and it can run.
+  const last = ctx.repeat && out.find((c) => c.id === ctx.repeat?.id && !c.unavailable);
+  if (last) {
+    plain('repeatLast', `Repeat ${last.short ?? last.label}`, 'Edit', last.run, {
+      icon: icon(Repeat2),
+      keywords: 'Edit repeat again last command',
+    });
+  }
   if (ctx.remove) plain('delete', 'Delete', 'Edit', ctx.remove, { icon: icon(Trash2) });
 
   const view = () => ctx.viewport.getState();
@@ -179,6 +196,15 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     ctx.timeline.toggle,
     { icon: icon(PanelBottom), keywords: 'Panels timeline history' },
   );
+  if (ctx.markingMenu) {
+    plain(
+      'markingMenuStyle',
+      ctx.markingMenu.radial ? 'Right-Click Menu: Use a List' : 'Right-Click Menu: Use the Ring',
+      'Panels',
+      ctx.markingMenu.toggle,
+      { icon: icon(Circle), keywords: 'Panels marking menu radial right click context list' },
+    );
+  }
   if (ctx.notifications) {
     plain('notificationHistory', 'Notification History', 'Panels', ctx.notifications.open, {
       icon: icon(Bell),

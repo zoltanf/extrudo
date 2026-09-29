@@ -13,6 +13,12 @@ export { fieldClass, Select, TextInput } from './Input';
 export { ICON_NAMES, type IconName, type ToolCategory, ToolIcon } from './icons';
 export { LogoMark, Wordmark } from './Logo';
 export {
+  type MarkingEntry,
+  MarkingMenu,
+  type MarkingMenuProps,
+  type MarkingSlot,
+} from './MarkingMenu';
+export {
   ContextMenu,
   Menu,
   MenuCheckboxItem,

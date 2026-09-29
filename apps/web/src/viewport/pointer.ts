@@ -37,8 +37,13 @@ export interface PointerHandlers {
   /** A selection box from `from` (the press) to `to` (the release). */
   onBox?(from: ScreenPointer, to: ScreenPointer): void;
   onLeave(): void;
-  /** A left press held still for `LONG_PRESS_MS`, or a right click without movement. */
+  /**
+   * A left press held still for `LONG_PRESS_MS` ("Select other…"), or a right click without
+   * movement when there is no `onContextMenu`.
+   */
   onMenu?(pointer: ScreenPointer): void;
+  /** A right click without movement (P3-11: the marking menu); a right drag navigates instead. */
+  onContextMenu?(pointer: ScreenPointer): void;
 }
 
 /** A selection box being drawn, in view px: from the press to the pointer. */
@@ -195,7 +200,7 @@ export function usePointerInput(
         rightPress = undefined;
         if (Math.hypot(e.clientX - x, e.clientY - y) <= CLICK_SLOP) {
           const { infer, toggle } = modifiers(e);
-          handlers.onMenu?.(at(x, y, infer, toggle));
+          (handlers.onContextMenu ?? handlers.onMenu)?.(at(x, y, infer, toggle));
         }
         return;
       }

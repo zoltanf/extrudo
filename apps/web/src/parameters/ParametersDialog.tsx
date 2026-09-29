@@ -19,8 +19,18 @@ import {
 import { Redo2, Trash2, Undo2, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
-import { shortcutLabel } from '../commands/shortcuts';
-import { Button, Dialog, DialogClose, IconButton, Select, TextInput } from '../design-system';
+import { isEditable, shortcutLabel } from '../commands/shortcuts';
+import {
+  Button,
+  ContextMenu,
+  Dialog,
+  DialogClose,
+  IconButton,
+  MenuItem,
+  MenuSeparator,
+  Select,
+  TextInput,
+} from '../design-system';
 import { withDimensionExpr } from './drafts';
 import { ExpressionInput } from './ExpressionInput';
 import { Message } from './Message';
@@ -55,6 +65,8 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
   const [message, setMessage] = useState('');
+  // A right-click in a text field of a row keeps the browser's own menu (copy, paste).
+  const [nativeRow, setNativeRow] = useState<string>();
 
   /** Dispatches a command; a rejected one shows its message instead of throwing. */
   const run = (command: Command<unknown>): boolean => {
@@ -142,8 +154,11 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
           <tbody>
             {user.map(({ p, id }) => {
               const comment = doc.parameters.find((q) => q.id === id)?.comment ?? '';
-              return (
-                <tr key={id}>
+              const row = (
+                <tr
+                  key={id}
+                  onPointerDownCapture={(e) => setNativeRow(isEditable(e.target) ? id : undefined)}
+                >
                   <td className={td}>
                     <TextField
                       label={`Name of ${p.name}`}
@@ -203,6 +218,28 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
                     </IconButton>
                   </td>
                 </tr>
+              );
+              return (
+                <ContextMenu
+                  key={id}
+                  label={`${p.name} menu`}
+                  disabled={nativeRow === id}
+                  trigger={row}
+                >
+                  <MenuItem
+                    icon={<Trash2 size={14} />}
+                    onSelect={() => run(removeParameter({ id }))}
+                  >
+                    Delete {p.name}
+                  </MenuItem>
+                  <MenuSeparator />
+                  <MenuItem icon={<Undo2 size={14} />} disabled={!canUndo} onSelect={undo}>
+                    {undoLabel ? `Undo ${undoLabel}` : 'Undo'}
+                  </MenuItem>
+                  <MenuItem icon={<Redo2 size={14} />} disabled={!canRedo} onSelect={redo}>
+                    {redoLabel ? `Redo ${redoLabel}` : 'Redo'}
+                  </MenuItem>
+                </ContextMenu>
               );
             })}
           </tbody>

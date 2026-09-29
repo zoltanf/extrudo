@@ -2,6 +2,16 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-29 · **P3-11** Marking menu and context menus (ADR-0042): a
+  right-click without movement opens a ring of eight command wedges
+  (Sketch, Extrude, Fillet, Move, Press Pull, Undo, Repeat last, Delete;
+  in a sketch the drawing tools, Undo, Construction and Finish Sketch) and
+  a list that depends on what was right-clicked (Select other…, Sketch on
+  Face, Measure, Hide Body, Appearance…, view commands over empty space);
+  click, flick (press, drag, release), arrows, Tab and Esc work, a
+  right-drag still navigates, and Ctrl+K "Right-Click Menu: Use a List"
+  swaps the ring for a plain list. Browser folders, origin rows, parameter
+  rows and design cards got context menus.
 - 2026-09-29 · **P3-05** Construction geometry (ADR-0040): offset plane,
   plane at angle, midplane, plane through 3 points, tangent plane, axis
   through 2 points / a cylinder / along an edge, and point, as timeline
