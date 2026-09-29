@@ -51,8 +51,8 @@ describe('the slot tables', () => {
       ...buildCommands(context('model', { repeat: { id: 'extrude' } })).map((c) => c.id),
       ...buildCommands(context('sketch', { repeat: { id: 'line' } })).map((c) => c.id),
     ]);
-    // Arrive with P3-06 and P3-08; the wedges wait for them (with `comesWith`).
-    const later = new Set(['move', 'pressPull']);
+    // Arrives with P3-08; the wedge waits for it (with `comesWith`).
+    const later = new Set(['pressPull']);
     for (const s of [...MODEL_SLOTS, ...SKETCH_SLOTS]) {
       if (later.has(s.command)) expect(s.comesWith).toBeDefined();
       else expect(offered.has(s.command) || s.command === 'delete').toBe(true);
@@ -61,11 +61,11 @@ describe('the slot tables', () => {
 });
 
 describe('resolveSlots', () => {
-  // Without Move and Press Pull, which later tasks add (their tests must not break then).
+  // Without Press Pull, which a later task adds (its tests must not break then).
   const model = (over: Partial<CommandContext> = {}) =>
     resolveSlots(
       MODEL_SLOTS,
-      buildCommands(context('model', over)).filter((c) => !['move', 'pressPull'].includes(c.id)),
+      buildCommands(context('model', over)).filter((c) => c.id !== 'pressPull'),
     );
 
   it('lights the wedges whose commands are offered', () => {
@@ -74,6 +74,7 @@ describe('resolveSlots', () => {
     expect(by('sketch')).toMatchObject({ disabled: false, label: 'Sketch' });
     expect(by('extrude')).toMatchObject({ disabled: false, label: 'Extrude' });
     expect(by('undo')?.disabled).toBe(false);
+    expect(by('move')).toMatchObject({ disabled: false, label: 'Move' });
     expect(by('delete')?.disabled).toBe(false);
     expect(by('repeatLast')).toMatchObject({ disabled: false, label: 'Repeat Extrude' });
   });
@@ -90,7 +91,6 @@ describe('resolveSlots', () => {
     const by = (id: string) => slots[slot(MODEL_SLOTS, id)];
     expect(by('delete')).toMatchObject({ disabled: true, hint: 'Select something to delete.' });
     expect(by('repeatLast')).toMatchObject({ disabled: true, label: 'Repeat last' });
-    expect(by('move')).toMatchObject({ disabled: true, hint: 'Arrives with P3-06.' });
     expect(by('pressPull')).toMatchObject({ disabled: true, hint: 'Arrives with P3-08.' });
   });
 
@@ -104,14 +104,17 @@ describe('resolveSlots', () => {
 
   it('lights a wedge the day its command joins the list, with no change to the table', () => {
     const extra: AppCommand = {
-      id: 'move',
-      label: 'Move',
+      id: 'pressPull',
+      label: 'Press Pull',
       group: 'Modify',
       keys: [],
       run: vi.fn(),
     };
     const slots = resolveSlots(MODEL_SLOTS, [...buildCommands(context('model')), extra]);
-    expect(slots[slot(MODEL_SLOTS, 'move')]).toMatchObject({ disabled: false, command: extra });
+    expect(slots[slot(MODEL_SLOTS, 'pressPull')]).toMatchObject({
+      disabled: false,
+      command: extra,
+    });
   });
 
   it('offers the sketch tools in a sketch, and leaves Sketch out of it', () => {

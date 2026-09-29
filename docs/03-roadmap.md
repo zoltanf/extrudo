@@ -417,8 +417,8 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   two bodies, then one by a join that bridges them; 3MF) are built through
   the UI in `e2e/benchmark-b2.spec.ts` and `-b3`; their designs, and B1's,
   are the fixtures in `fixtures/benchmarks/`, recomputed headless by
-  `packages/kernel/src/benchmarks.test.ts`. The standalone Combine step of
-  B3 comes with P3-06.
+  `packages/kernel/src/benchmarks.test.ts`. B3's merge became a real
+  Combine in P3-06.
 
 **Phase 2 exit (v0.2):** the first real printable parts; the classic
 parametric box exported as 3MF opens in a slicer and prints.
@@ -471,8 +471,21 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   orders and protects them, and lost references go through Fix References.
   The view draws and picks them; the browser's Construction folder lists
   them with eyes; the `point` reference kind is now used.
-- [ ] **P3-06 Combine, Move/Copy** (with transform gizmo) **and Mirror.**
-  FR-FT-09, -10, -11 (mirror).
+- [x] **P3-06 Combine, Move/Copy** (with transform gizmo) **and Mirror.**
+  FR-FT-09, -10, -11 (mirror). *Done 2026-09-30* (ADR-0044): **Combine**
+  joins, cuts or intersects a target body with tool bodies (tools used up
+  unless kept; a join of bodies that don't touch, a cut that removes nothing
+  and an empty intersection say why); **Move/Copy** has a free mode (X, Y, Z
+  distances and turns, with an in-view gizmo: an arrow and a ring per axis),
+  a rotate-about-axis mode (origin or construction axis, straight edge,
+  sketch line) and point to point, and a copy option that keeps the original;
+  **Mirror** about an origin or construction plane or a flat face, as a copy
+  (default), in place or joined to the original. One new facade method,
+  `transform` (a 3 × 4 matrix through `BRepBuilderAPI_Transform` with
+  history), so faces keep their names through a move or mirror; copies get
+  names of their own so references stay unambiguous. B3 now merges its two
+  bodies with a real Combine (fixture rewritten). Mirroring *features* is not
+  built: it belongs with the feature patterns (P3-07).
 - [ ] **P3-07 Patterns** (rectangular, circular, on path) for bodies, features
   and faces. FR-FT-11.
 - [ ] **P3-08 Press/Pull, Offset face, Split body, Scale, Draft.** FR-FT-08,

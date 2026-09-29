@@ -63,6 +63,7 @@ export const ICON_NAMES = [
   'chamfer',
   'shell',
   'remove',
+  'combine',
   'box',
   'cylinder',
   'sphere',

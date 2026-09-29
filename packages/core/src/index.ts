@@ -4,6 +4,7 @@
  */
 
 export * from './chamfer';
+export * from './combine';
 export {
   applyCommand,
   type Command,
@@ -40,6 +41,8 @@ export {
   type Migration,
   type MigrationContext,
 } from './migrations';
+export * from './mirror';
+export * from './move';
 export * from './primitives';
 export * from './remove';
 export * from './revolve';

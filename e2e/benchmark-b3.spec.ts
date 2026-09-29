@@ -7,11 +7,11 @@ import {
   expectNoProblems,
   exportModel,
   exportProject,
-  homeView,
   objectsOf3mf,
   openParameters,
   renameProject,
   round,
+  selectBodies,
   setParameters,
   settled,
   solidFacts,
@@ -29,15 +29,15 @@ import {
   projector,
 } from './helpers';
 
-// P2-17: benchmark B3 (requirements §7) built through the UI: a phone
-// stand of two bodies that are combined. A base plate (Sketch1 on XY,
-// Extrude1, a new body) and a tilted back rest (Sketch2 on YZ, dimensioned
-// by `setback`, `base`, `rest`, `rise` and the angle `tilt`; Extrude2, a
-// second body) stand apart until a strip on the base's top face
-// (Sketch3, Extrude3) is joined: it touches both bodies, so they become one.
-// The Combine feature comes with P3-06; until then a join that bridges two
-// bodies is how they merge. Parameters change the stand, and its 3MF export
-// is one closed solid with the volume they give.
+// P2-17, extended in P3-06: benchmark B3 (requirements §7) built through
+// the UI: a phone stand of two bodies that are combined. A base plate
+// (Sketch1 on XY, Extrude1, a new body) and a tilted back rest (Sketch2 on
+// YZ, dimensioned by `setback`, `base`, `rest`, `rise` and the angle `tilt`;
+// Extrude2, a second body) stand side by side, the rest's foot on the
+// plate's top face. The Combine feature joins them into one body (P3-06;
+// before it, a strip extruded across the foot bridged them). Parameters
+// change the stand, and its 3MF export is one closed solid with the volume
+// they give.
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -52,20 +52,14 @@ test.afterEach(() => {
   expect(errors).toEqual([]);
 });
 
-/** The stand's volume: base plate, back rest and the strip, less where the strip overlaps the rest (mm³). */
+/** The stand's volume: the base plate and the back rest, which only touch (mm³). */
 const standVolume = (p: {
   width: number;
   depth: number;
   base: number;
   rest: number;
   rise: number;
-  brace: number;
-  stripDepth: number;
-}) =>
-  p.width * p.depth * p.base +
-  p.width * p.rest * p.rise +
-  p.width * p.stripDepth * p.brace -
-  p.width * p.rest * p.brace;
+}) => p.width * p.depth * p.base + p.width * p.rest * p.rise;
 
 test('B3: a phone stand of two bodies, combined', async ({ page }) => {
   // Three sketches, three extrudes, a parameter edit and an export, each
@@ -84,7 +78,6 @@ test('B3: a phone stand of two bodies, combined', async ({ page }) => {
   await addParameter(page, 'rest', '10 mm');
   await addParameter(page, 'rise', '60 mm');
   await addParameter(page, 'tilt', '70 deg', 'angle');
-  await addParameter(page, 'brace', '4 mm');
   await closeParameters(page);
 
   const dimension = async (
@@ -273,7 +266,7 @@ test('B3: a phone stand of two bodies, combined', async ({ page }) => {
   await expect(second).toBeHidden();
   await kernelReady(page);
   await expect(chip(page, 'Extrude2')).toHaveAccessibleName('Extrude2');
-  // Two bodies, apart: the rest's height is `rise`, and it leans back by rise / tan(tilt) more than it is thick.
+  // Two bodies, side by side: the rest's height is `rise`, and it leans back by rise / tan(tilt) more than it is thick.
   const lean = 60 / Math.tan((70 * Math.PI) / 180);
   await expect(viewport).toHaveAttribute(
     'data-bodies',
@@ -281,50 +274,23 @@ test('B3: a phone stand of two bodies, combined', async ({ page }) => {
   );
   await expect(browser.locator('[data-folder-count]')).toHaveText('2');
 
-  // Sketch3 on the plate's top face: a strip across the foot of the rest.
-  await homeView(page);
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
-  await expect(page.getByRole('region', { name: 'Create Sketch' })).toContainText('flat face');
-  const top = (await projector(viewport))([30, 20, 10]);
-  await page.mouse.move(top.x, top.y);
-  await page.mouse.click(top.x, top.y);
-  await expect(chip(page, 'Sketch3')).toBeVisible();
-  await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
-  await settled(viewport);
-  await zoomOutTo(page, (await projector(viewport))([30, 40, 10]), 150);
-  const flat = await projector(viewport);
-  const onFace = (x: number, y: number) => flat([x, y, 10]);
-  const clickFace = clicker(page, onFace);
-  await page.keyboard.press('r');
-  await expect(toolPrompt(page)).toBeVisible();
-  await clickFace(0, 40);
-  await clickFace(60, 70);
-  await page.keyboard.press('Escape');
-  await expect(toolPrompt(page)).toHaveCount(0);
-  await expect(viewport).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
-  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  // Combine1: the plate is the target, the rest the tool; the rest is used up.
+  const combineTile = page.getByRole('button', { name: 'Combine', exact: true });
+  await selectBodies(page, ['Body1', 'Body2']);
+  await combineTile.click();
+  const combine = page.getByRole('region', { name: 'Combine dialog' });
+  await expect(combine).toBeVisible();
+  await expect(combine.getByRole('button', { name: 'Target', exact: true })).toContainText(
+    '1 body',
+  );
+  await expect(combine.getByRole('button', { name: 'Tools', exact: true })).toContainText('1 body');
+  await expect(combine.getByRole('combobox', { name: 'Operation' })).toHaveValue('join');
+  await expect(combine).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await combine.getByRole('button', { name: 'OK' }).click();
+  await expect(combine).toBeHidden();
   await kernelReady(page);
-  await expect(chip(page, 'Sketch3')).toHaveAccessibleName('Sketch3');
-
-  // Extrude3, joined: the strip touches both bodies, so they become one (Combine is P3-06).
-  const strip = onFace(30, 45);
-  await page.mouse.move(strip.x, strip.y);
-  await page.mouse.click(strip.x, strip.y);
-  await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
-  await page.keyboard.press('e');
-  const join = page.getByRole('region', { name: 'Extrude dialog' });
-  await expect(join).toBeVisible();
-  await join.getByRole('combobox', { name: 'Operation' }).selectOption('join');
-  await join.getByRole('textbox', { name: 'Distance' }).fill('brace');
-  await expect(viewport).toHaveAttribute('data-preview', 'join', { timeout: 15_000 });
-  await expect(join).toHaveAttribute('data-preview-status', 'ok');
-  await join.getByRole('button', { name: 'OK' }).click();
-  await expect(join).toBeHidden();
-  await kernelReady(page);
-  await expect(chip(page, 'Extrude3')).toHaveAccessibleName('Extrude3');
-  // The base, the rest and the strip in one solid, 60 wide; the rest leans past the base's back edge.
-  await expect(viewport).toHaveAttribute('data-bodies', `Body1:14:60,${(60 + lean).toFixed(1)},70`);
-  await expect(browser.locator('[data-folder-count]')).toHaveText('1');
+  await expect(chip(page, 'Combine1')).toHaveAccessibleName('Combine1');
+  // The base and the rest in one solid, 60 wide; the rest leans past the base's back edge.
   await expectNoProblems(page);
   await page.screenshot({ path: test.info().outputPath('stand.png') });
 
@@ -334,7 +300,7 @@ test('B3: a phone stand of two bodies, combined', async ({ page }) => {
   // Parameters: a thicker base, a taller rest that leans further back.
   await setParameters(page, { base: '12 mm', rise: '70 mm', tilt: '65 deg' });
   await kernelReady(page);
-  await expect(chip(page, 'Extrude3')).toHaveAccessibleName('Extrude3');
+  await expect(chip(page, 'Combine1')).toHaveAccessibleName('Combine1');
   await expectNoProblems(page);
   const backY = 60 + 70 / Math.tan((65 * Math.PI) / 180);
   await expect(viewport).toHaveAttribute(
@@ -350,7 +316,7 @@ test('B3: a phone stand of two bodies, combined', async ({ page }) => {
   const facts = solidFacts((objects[0] as (typeof objects)[number]).mesh);
   expect(round(facts.size, 2)).toEqual([60, Number(backY.toFixed(2)), 82]);
   expect(facts.volume).toBeCloseTo(
-    standVolume({ width: 60, depth: 80, base: 12, rest: 10, rise: 70, brace: 4, stripDepth: 30 }),
+    standVolume({ width: 60, depth: 80, base: 12, rest: 10, rise: 70 }),
     0,
   );
 });

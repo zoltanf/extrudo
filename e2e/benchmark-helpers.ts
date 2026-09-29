@@ -24,6 +24,23 @@ const parameters = (page: Page) => page.getByRole('dialog', { name: 'Parameters'
 const expression = (page: Page, name: string) =>
   parameters(page).getByRole('textbox', { name: `Expression of ${name}`, exact: true });
 
+/** Selects bodies by name in the browser's Bodies folder: a click, then Shift-clicks for the rest. */
+export async function selectBodies(page: Page, names: readonly string[]) {
+  const browser = page.getByRole('complementary', { name: 'Browser' });
+  const [first, ...rest] = names;
+  if (first === undefined) return;
+  await browser.getByRole('button', { name: first, exact: true }).click();
+  for (const name of rest) {
+    await browser.getByRole('button', { name, exact: true }).click({ modifiers: ['Shift'] });
+  }
+  for (const name of names) {
+    await expect(browser.getByRole('button', { name, exact: true })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  }
+}
+
 export const attr = async (el: Locator, name: string) => (await el.getAttribute(name)) ?? '';
 
 export async function openParameters(page: Page) {

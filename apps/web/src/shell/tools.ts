@@ -447,6 +447,28 @@ export const TOOLS = {
     category: 'modify',
     hint: 'Take bodies out of the model: select them and press Delete, or use a body menu.',
   },
+  move: {
+    id: 'move',
+    label: 'Move/Copy',
+    short: 'Move',
+    icon: 'move',
+    category: 'modify',
+    hint: 'Move or turn bodies with the gizmo, about an axis or point to point. Copy keeps the original.',
+  },
+  mirror: {
+    id: 'mirror',
+    label: 'Mirror',
+    icon: 'mirror',
+    category: 'modify',
+    hint: 'Mirror bodies about a plane or a flat face, as copies or in place.',
+  },
+  combine: {
+    id: 'combine',
+    label: 'Combine',
+    icon: 'combine',
+    category: 'modify',
+    hint: 'Join, cut or intersect a target body with tool bodies.',
+  },
   parameters: {
     id: 'parameters',
     label: 'Parameters',
@@ -600,6 +622,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
         more: ['box', 'cylinder', 'sphere', 'torus', 'hole', 'pattern'],
       },
       { label: 'Modify', tools: ['fillet', 'chamfer', 'shell', 'parameters'] },
+      { label: 'Transform', tools: ['move', 'mirror', 'combine'] },
       {
         label: 'Construct',
         tools: ['offsetPlane', 'axisThroughPoints', 'constructionPoint'],

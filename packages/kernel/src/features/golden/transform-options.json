@@ -1,0 +1,387 @@
+{
+  "move free dx dy dz": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          1,
+          2,
+          3
+        ],
+        "max": [
+          41,
+          32,
+          23
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "move free rx 45": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          -2.678,
+          -7.678
+        ],
+        "max": [
+          40,
+          32.678,
+          27.678
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "move free ry 30 rz 60": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          -4.151,
+          -11.83,
+          -8.66
+        ],
+        "max": [
+          44.151,
+          41.83,
+          28.66
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "move free all": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          -1.676,
+          -7.816,
+          -8.542
+        ],
+        "max": [
+          51.676,
+          37.816,
+          28.542
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "move rotate z 90": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          -30,
+          0,
+          0
+        ],
+        "max": [
+          0,
+          40,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "move rotate x 45": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          -14.142,
+          0
+        ],
+        "max": [
+          40,
+          21.213,
+          35.355
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "move copy": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "M:0",
+        "min": [
+          50,
+          0,
+          0
+        ],
+        "max": [
+          90,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "move two bodies": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          40,
+          -40,
+          0
+        ],
+        "max": [
+          70,
+          0,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "B:0",
+        "min": [
+          40,
+          60,
+          0
+        ],
+        "max": [
+          50,
+          70,
+          10
+        ],
+        "volume": 1000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "mirror yz copy": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "R:0",
+        "min": [
+          -40,
+          0,
+          0
+        ],
+        "max": [
+          0,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "mirror yz move": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          -40,
+          0,
+          0
+        ],
+        "max": [
+          0,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "mirror xy copy": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "R:0",
+        "min": [
+          0,
+          0,
+          -20
+        ],
+        "max": [
+          40,
+          30,
+          0
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "mirror yz join": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          -40,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 48000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "mirror two bodies": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "B:0",
+        "min": [
+          100,
+          20,
+          0
+        ],
+        "max": [
+          110,
+          30,
+          10
+        ],
+        "volume": 1000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "R:0",
+        "min": [
+          -40,
+          0,
+          0
+        ],
+        "max": [
+          0,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "R:1",
+        "min": [
+          -110,
+          20,
+          0
+        ],
+        "max": [
+          -100,
+          30,
+          10
+        ],
+        "volume": 1000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  }
+}

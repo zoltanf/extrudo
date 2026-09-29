@@ -9,7 +9,9 @@ import {
   BODY_OPERATIONS,
   BodyMetaSchema,
   boxFeature,
+  COMBINE_OPERATIONS,
   CONSTRUCTION_FEATURES,
+  combineFeature,
   cylinderFeature,
   DocumentSchema,
   EXTRUDE_DIRECTIONS,
@@ -24,6 +26,9 @@ import {
   InputSchema,
   LengthUnitSchema,
   loadDocument,
+  MOVE_MODES,
+  mirrorFeature,
+  moveBodiesFeature,
   NamedViewSchema,
   ORIGIN_AXES,
   ORIGIN_PLANES,
@@ -79,6 +84,9 @@ const FEATURES = [
   extrudeFeature,
   revolveFeature,
   removeBodiesFeature,
+  combineFeature,
+  moveBodiesFeature,
+  mirrorFeature,
   boxFeature,
   cylinderFeature,
   sphereFeature,
@@ -149,6 +157,8 @@ describe('docs/file-format.md', () => {
       ...EXTRUDE_DIRECTIONS,
       ...EXTRUDE_EXTENTS,
       ...REVOLVE_DIRECTIONS,
+      ...COMBINE_OPERATIONS,
+      ...MOVE_MODES,
     ];
     const origin = [...ORIGIN_PLANES.map((p) => p.id), ...ORIGIN_AXES.map((a) => a.id)];
     expect(missing([...inputs, ...choices, ...origin])).toEqual([]);

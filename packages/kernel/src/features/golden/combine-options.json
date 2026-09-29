@@ -1,0 +1,413 @@
+{
+  "join overlapping keepTools=false": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          70,
+          30,
+          20
+        ],
+        "volume": 42000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "join inside keepTools=false": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "join overlapping keepTools=true": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          70,
+          30,
+          20
+        ],
+        "volume": 42000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "B:0",
+        "min": [
+          30,
+          0,
+          0
+        ],
+        "max": [
+          70,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "join inside keepTools=true": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "D:0",
+        "min": [
+          5,
+          5,
+          0
+        ],
+        "max": [
+          15,
+          15,
+          10
+        ],
+        "volume": 1000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "join two tools": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          110,
+          30,
+          20
+        ],
+        "volume": 66000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "cut overlapping keepTools=false": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          30,
+          30,
+          20
+        ],
+        "volume": 18000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "cut inside keepTools=false": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 23000,
+        "faces": 11,
+        "valid": true
+      }
+    ]
+  },
+  "cut overlapping keepTools=true": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          30,
+          30,
+          20
+        ],
+        "volume": 18000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "B:0",
+        "min": [
+          30,
+          0,
+          0
+        ],
+        "max": [
+          70,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "cut inside keepTools=true": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 23000,
+        "faces": 11,
+        "valid": true
+      },
+      {
+        "id": "D:0",
+        "min": [
+          5,
+          5,
+          0
+        ],
+        "max": [
+          15,
+          15,
+          10
+        ],
+        "volume": 1000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "cut two tools": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          30,
+          30,
+          20
+        ],
+        "volume": 18000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "intersect overlapping keepTools=false": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          30,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 6000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "intersect inside keepTools=false": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          5,
+          5,
+          0
+        ],
+        "max": [
+          15,
+          15,
+          10
+        ],
+        "volume": 1000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "intersect overlapping keepTools=true": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          30,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 6000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "B:0",
+        "min": [
+          30,
+          0,
+          0
+        ],
+        "max": [
+          70,
+          30,
+          20
+        ],
+        "volume": 24000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "intersect inside keepTools=true": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          5,
+          5,
+          0
+        ],
+        "max": [
+          15,
+          15,
+          10
+        ],
+        "volume": 1000,
+        "faces": 6,
+        "valid": true
+      },
+      {
+        "id": "D:0",
+        "min": [
+          5,
+          5,
+          0
+        ],
+        "max": [
+          15,
+          15,
+          10
+        ],
+        "volume": 1000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  },
+  "intersect two tools": {
+    "errors": [],
+    "bodies": [
+      {
+        "id": "A:0",
+        "min": [
+          30,
+          0,
+          0
+        ],
+        "max": [
+          40,
+          30,
+          20
+        ],
+        "volume": 6000,
+        "faces": 6,
+        "valid": true
+      }
+    ]
+  }
+}

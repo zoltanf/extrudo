@@ -246,6 +246,21 @@ export class Kernel {
   }
 
   /**
+   * Moves, turns or mirrors a shape by a 3 × 4 matrix (the rows of its
+   * rotation or reflection, each followed by its translation: see
+   * `features/matrix.ts`). A scale fails. The result is a rebuilt shape, not
+   * a located one, with the input's sub-shape order. History (input 0):
+   * every face, edge and vertex is `modified` into its image.
+   */
+  transform(shape: ShapeHandle, matrix: readonly number[]): OperationResult {
+    if (matrix.length !== 12) throw new KernelError('A transform needs 12 numbers.');
+    const f = this.#facade;
+    f.clearNumbers();
+    for (const value of matrix) f.pushNumber(value);
+    return this.#withHistory(f.transform(shape));
+  }
+
+  /**
    * Sweeps a shape (a face, a compound of faces) along `vector`, after
    * moving it by `shift`: an extrude that starts off its plane (symmetric,
    * two sides) sweeps the shifted profile. History (input 0, indices of the

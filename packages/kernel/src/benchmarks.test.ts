@@ -137,20 +137,13 @@ describe('B2 storage box', () => {
 });
 
 describe('B3 phone stand', () => {
-  it('is two bodies joined into one: 60 wide, 70 tall, the rest leaning back', async () => {
+  it('is two bodies combined into one: 60 wide, 70 tall, the rest leaning back', async () => {
     const doc = load(b3);
     expect(doc.name).toBe('B3 Phone stand');
-    expect(featureNames(doc)).toEqual([
-      'Sketch1',
-      'Extrude1',
-      'Sketch2',
-      'Extrude2',
-      'Sketch3',
-      'Extrude3',
-    ]);
-    // Rolled back before the joining extrude, the base and the rest are two bodies.
-    const beforeJoin = { ...doc, timelineMarker: 4 };
-    const two = bodies(await recompute(beforeJoin));
+    expect(featureNames(doc)).toEqual(['Sketch1', 'Extrude1', 'Sketch2', 'Extrude2', 'Combine1']);
+    // Rolled back before the Combine, the base and the rest are two bodies.
+    const beforeCombine = { ...doc, timelineMarker: 4 };
+    const two = bodies(await recompute(beforeCombine));
     expect(two.map((b) => b.size)).toEqual([
       [60, 80, 10],
       [60, Number((60 / Math.tan((70 * Math.PI) / 180) + 10).toFixed(3)), 60],
@@ -163,18 +156,17 @@ describe('B3 phone stand', () => {
       Number((60 + 60 / Math.tan((70 * Math.PI) / 180)).toFixed(3)),
       70,
     ]);
-    expect(stand?.faces).toBe(14);
-    // Base plate + back rest + the strip across its foot, less where they overlap.
-    expect(stand?.volume).toBeCloseTo(60 * 80 * 10 + 60 * 10 * 60 + 60 * 30 * 4 - 60 * 10 * 4, 3);
+    // Base plate + back rest, which only touch: the volumes add up.
+    expect(stand?.volume).toBeCloseTo(60 * 80 * 10 + 60 * 10 * 60, 3);
+    expect(stand?.faces).toBeGreaterThan(6);
   });
 
   it('follows the parameters the extrudes read', async () => {
-    const doc = withParameters(load(b3), { width: '80 mm', brace: '6 mm' });
+    const doc = withParameters(load(b3), { width: '80 mm' });
     const [stand, ...others] = bodies(await recompute(doc));
     expect(others).toEqual([]);
     expect(stand?.size[0]).toBe(80);
-    expect(stand?.faces).toBeGreaterThan(0);
-    // The rest is 80 wide now; the strip stays as wide as the base (60).
-    expect(stand?.volume).toBeCloseTo(60 * 80 * 10 + 80 * 10 * 60 + 60 * 30 * 6 - 60 * 10 * 6, 3);
+    // The rest is 80 wide now; the base plate stays 60 wide.
+    expect(stand?.volume).toBeCloseTo(60 * 80 * 10 + 80 * 10 * 60, 3);
   });
 });

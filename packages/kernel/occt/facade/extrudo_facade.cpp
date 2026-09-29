@@ -34,6 +34,7 @@
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeShape.hxx>
+#include <BRepBuilderAPI_Transform.hxx>
 #include <BRepCheck_Analyzer.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepFilletAPI_MakeChamfer.hxx>
@@ -441,6 +442,41 @@ public:
       }
     } catch (...) {
       return failFromException("Boolean failed");
+    }
+  }
+
+  // ----------------------------------------------------------- transforms --
+
+  /**
+   * Moves, turns or mirrors `shape` by the staged matrix (P3-06): 12 numbers
+   * (clearNumbers/pushNumber), the rows of a 3 × 4 matrix, [r11 r12 r13 tx,
+   * r21 r22 r23 ty, r31 r32 r33 tz]. The 3 × 3 part must be a rotation or a
+   * reflection (determinant -1: a mirror); a scale fails. The geometry is
+   * rebuilt (BRepBuilderAPI_Transform, copy = true), not given a location,
+   * so the result is an ordinary shape that later operations can combine,
+   * and a mirror comes out with its faces turned outward. Sub-shape order
+   * is that of the input. Records history for input 0: every sub-shape is
+   * modified into its image.
+   */
+  int transform(int shape) {
+    beginOp();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Transform failed: unknown input shape.");
+    if (numbers_.size() != 12) return fail("Transform failed: the matrix needs 12 numbers.");
+    try {
+      const std::vector<double>& m = numbers_;
+      gp_Trsf trsf;
+      trsf.SetValues(m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11]);
+      if (std::abs(std::abs(trsf.ScaleFactor()) - 1.0) > 1e-9) {
+        return fail("Transform failed: the matrix scales; only moves, turns and mirrors are allowed.");
+      }
+      BRepBuilderAPI_Transform builder(*input, trsf, true);
+      if (!builder.IsDone()) return fail("Transform failed: OCCT could not transform this shape.");
+      const TopoDS_Shape result = builder.Shape();
+      recordHistory(builder, *input, 0, result);
+      return store(result);
+    } catch (...) {
+      return failFromException("Transform failed");
     }
   }
 

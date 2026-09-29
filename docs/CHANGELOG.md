@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-30 · **P3-06** Combine, Move/Copy and Mirror (ADR-0044): Combine
+  joins, cuts or intersects a target body with tool bodies (keep the tools
+  if you like); Move/Copy moves and turns bodies with an in-view gizmo (an
+  arrow and a ring per axis), about a picked axis, or point to point, and can
+  keep the original; Mirror reflects bodies about a plane or flat face, as a
+  copy, in place or joined to the original. Faces keep their names through
+  all three, so later features still find them. Benchmark B3 now uses a real
+  Combine. New facade method `transform`, OCCT input hash `6e7b034fedff`.
 - 2026-09-29 · **P3-02** Chamfer (ADR-0043): bevel edges in up to eight sets,
   each with its own type (equal distance, two distances with a Flip for
   which face takes distance 1, distance and angle); picking an edge takes

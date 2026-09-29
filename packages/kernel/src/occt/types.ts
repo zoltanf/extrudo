@@ -29,6 +29,7 @@ export interface FacadeBinding {
   tangentChain(shape: number, edge: number): number;
   chamfer(shape: number): number;
   boolean(op: number, a: number, b: number, simplify: boolean): number;
+  transform(shape: number): number;
   prism(
     shape: number,
     ox: number,
