@@ -3,7 +3,8 @@
   "compilerOptions": {
     "lib": ["es2023", "esnext.disposable", "dom", "dom.iterable"],
     "jsx": "react-jsx",
+    "allowImportingTsExtensions": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "vite.config.ts", "pwa/precache-plugin.ts"]
 }

@@ -1,11 +1,12 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
+import { precachePlugin } from './pwa/precache-plugin.ts';
 
 export default defineConfig({
   // Relative asset URLs so the same build loads from file:// inside Electron.
   base: './',
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), precachePlugin()],
   build: {
     // The main chunk holds three.js's core (~380 kB), since the viewport store
     // uses its math and three.core doesn't tree-shake. The R3F viewport itself

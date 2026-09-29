@@ -39,4 +39,5 @@ export async function webPlatform(): Promise<Platform> {
 export { type FileAccess, safeFileName, webFiles } from './files';
 export { memoryPreferences, type Preferences, webPreferences } from './preferences';
 export { memoryRescue, type RescueStore, recoverRescued, webRescue } from './rescue';
+export { offlineSupported, registerServiceWorker } from './serviceWorker';
 export { type Persistence, type StorageAccess, webStorage } from './storage';

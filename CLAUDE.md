@@ -16,7 +16,8 @@ engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 (topological naming), P2-05 (feature dialogs), P2-06 (extrude), P2-07
 (revolve), P2-08 (bodies), P2-09 (sketch on face, Project), P2-10
 (primitives), P2-11 (timeline v2), P2-12 (STL, 3MF, STEP export),
-P2-13 (measure and inspect) and P2-14 (version history) are done.
+P2-13 (measure and inspect), P2-14 (version history) and P2-15 (WASM
+size and startup, offline precache) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -299,8 +300,16 @@ carry `versions/`), core's `restoreVersion` command (one undo step; ID,
 name and dates stay), `apps/web/src/project/versions.ts` (restore keeps
 the current state as a version first; Open copy makes a new design) and
 `VersionsDialog.tsx` (Ctrl+S, File menu, the clock beside the name).
-Next: **P2-15** (WASM size and startup; run it alone, it touches the
-OCCT build). See `docs/03-roadmap.md`.
+ADR-0037 (P2-15) added the offline precache: a hand-written service
+worker (`apps/web/pwa/sw.js`; `pwa/precache-plugin.ts` lists the build's
+files into `dist/sw.js` and versions it; registration in
+`platform/serviceWorker.ts`, production web builds only), a web app
+manifest and icons; `scripts/measure-startup.mjs` measures size and
+startup against NFR-02 (all three targets hold with a wide margin). It
+also found that the kernel uses no raw OCCT bindings: a facade-only
+binding list is **proposed but unbuilt** (no Docker on that machine); the
+OCCT input hash is unchanged. Next: **P2-16** (file-format spec). See
+`docs/03-roadmap.md`.
 
 ## Commands
 
@@ -329,7 +338,7 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache (0006 is reserved) |
 
 ## Stack summary
 
@@ -815,3 +824,21 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   kept as V2…". The app bar has a "Version history" button beside the
   name (it moved the centred name a little: shell/sketch baselines).
 
+- **Service worker and e2e** (P2-15, `e2e/pwa.spec.ts`): the config sets
+  `serviceWorkers: 'block'` for every test (each fresh context would
+  otherwise cache 20 MB of WASM); `pwa.spec.ts` opts in with
+  `test.use({ serviceWorkers: 'allow' })`. Wait for
+  `navigator.serviceWorker.ready` (resolves after the whole precache);
+  the cache is `extrudo-precache`, its keys absolute URLs, and
+  `context.setOffline(true)` + `page.reload()` proves the offline path. The
+  cache is matched with `ignoreVary` because `vite preview` sends
+  `Vary: Origin`. The worker exists only in `pnpm build` output
+  (`dist/sw.js`), never in dev. Agent worktrees in `.claude/worktrees/`
+  are gitignored, so Biome (which reads `.gitignore`) skips their nested
+  `biome.json`.
+- **`node scripts/measure-startup.mjs`** prints the size table and times a
+  first visit, a repeat visit and an offline visit under CDP throttling
+  (`--mbit`, `--no-browser`); it uses `PLAYWRIGHT_CHROMIUM_PATH` for a
+  system Chromium. The 2026-09-29 dev machine (Ubuntu, no Docker, no
+  emscripten, Chrome 154 at `/usr/bin/google-chrome`) can't build OCCT or
+  regenerate Arch-rendered screenshot baselines faithfully.

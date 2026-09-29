@@ -387,10 +387,19 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   dialog; Restore is one undo step and keeps the current state as a
   version first; Open copy opens a version as a new design; versions
   travel in `.extrudo` files.
-- [ ] **P2-15 WASM size and startup.** Custom trimmed OCCT build; service worker
+- [x] **P2-15 WASM size and startup.** Custom trimmed OCCT build; service worker
   precache (PWA); measure against NFR-02. The trimmed build itself moved to
   P0-09 (ADR-0001: 4.34 MB brotli, about 200 ms cold start); this task trims
   further and adds the precache.
+  *AC:* NFR-02, NFR-06. Done 2026-09-29 (ADR-0037): a hand-written service
+  worker precaches the app, both WASM files and every lazy chunk (build
+  plugin lists them; updates keep one generation of old files), a web app
+  manifest and icons, registration through `platform/` in production
+  builds only; measured with `scripts/measure-startup.mjs` at 50 Mbit: 5.7
+  MB brotli in all, first visit home screen 1.0 s, repeat visit 0.27 s,
+  kernel ready 1.3 s after opening a project. Further OCCT trimming is
+  proposed in the ADR (the kernel uses no raw bindings) but wasn't built:
+  no Docker on the machine.
 - [ ] **P2-16 File-format spec.** Write `docs/file-format.md` from the zod
   schema.
 - [ ] **P2-17 Benchmarks B2, B3 E2E.**

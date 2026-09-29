@@ -607,10 +607,16 @@ it.
 - **WASM size:** the full prebuilt libcascade build is 42.7 MB raw, 8.2 MB
   brotli, and takes about 0.8 s to initialise. Our own trimmed build (P0-02,
   198 bindings) is 19.9 MB raw, 4.34 MB brotli, and starts in about 0.2 s.
-  From P0-09 on we ship our own build. Target under 8 MB brotli. Serve with long-lived caching plus the service
-  worker.
-- **PWA:** a service worker (Workbox via `vite-plugin-pwa`) precaches the app
-  and WASM for offline use and install.
+  From P0-09 on we ship our own build. The shipped build with the facade (P2-14) is 4.52 MB brotli. Target under
+  8 MB brotli. Serve with long-lived caching plus the service worker.
+- **PWA (ADR-0037):** a hand-written service worker (`apps/web/pwa/sw.js`,
+  listed and versioned at build time by `pwa/precache-plugin.ts`, registered
+  through `platform/serviceWorker.ts` in production web builds only)
+  precaches the app, both WASM files and every lazy chunk, answers from that
+  cache first, and keeps one generation of old files across an update. With a
+  web app manifest the app installs. Measured at 50 Mbit: 5.7 MB brotli in
+  all, home screen 1.0 s on a first visit and 0.27 s on a repeat one, kernel
+  ready 1.3 s after a project opens (`scripts/measure-startup.mjs`).
 
 ## 8. Electron readiness checklist (applies from day one)
 

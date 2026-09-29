@@ -8,7 +8,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { applyInitialTheme, TooltipProvider } from './design-system';
-import { webPlatform, webPreferences } from './platform';
+import { registerServiceWorker, webPlatform, webPreferences } from './platform';
 import { StartupError } from './StartupError';
 
 const root = document.getElementById('root');
@@ -29,3 +29,5 @@ webPlatform().then(
     ),
   (error: unknown) => reactRoot.render(<StartupError error={error} />),
 );
+
+registerServiceWorker();

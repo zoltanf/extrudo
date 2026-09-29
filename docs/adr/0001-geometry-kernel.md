@@ -228,7 +228,9 @@ depend on replicad or brepjs. Use them as code references.**
     is −0.9% brotli for −14% symbols. Going from the full surface to about 200
     classes halves the size.
 - **P2-15** keeps the service-worker precache and the NFR-02 measurement. The
-  trimmed build itself moves to P0-09.
+  trimmed build itself moves to P0-09. (Done in ADR-0037: the shipped build
+  is 4.52 MB brotli; the kernel uses no raw bindings, so a facade-only
+  binding list is proposed there.)
 - **I/O:** OCCT's `StlAPI_Writer` can only write ASCII through the bindings,
   because `ASCIIMode()` returns a reference that JS can't assign. So STL (and
   3MF) are written in JS from the export tessellation, in `packages/io` (MIT).

@@ -25,6 +25,9 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
     trace: 'retain-on-failure',
+    // The production build registers a service worker that precaches 20 MB of
+    // WASM; only e2e/pwa.spec.ts wants it.
+    serviceWorkers: 'block',
   },
   projects: [
     {
