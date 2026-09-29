@@ -13,6 +13,7 @@
 import { freeze } from 'immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { applyCommand, type Command } from './commands';
+import type { ConstructionReport } from './construction';
 import { type HistoryOptions, UndoHistory } from './history';
 import type { BodyId, FeatureId } from './ids';
 import type { ExtrudoDocument, GeomRef, GeomRefKind } from './schema';
@@ -232,6 +233,11 @@ export interface ModelState<TBody> {
    * plane's frame (a sketch on a face follows the face) and projections.
    */
   sketches: Record<FeatureId, SketchReport>;
+  /**
+   * What the kernel reports about each construction plane, axis and point
+   * (P3-05): where it is, for drawing, picking and as a sketch's frame.
+   */
+  construction: Record<FeatureId, ConstructionReport>;
   stats: ModelStats | undefined;
   /**
    * The document `features` and `bodies` were computed from, when the
@@ -244,6 +250,7 @@ export interface ModelState<TBody> {
     features: Record<FeatureId, FeatureStatus>;
     bodies: Record<BodyId, TBody>;
     sketches?: Record<FeatureId, SketchReport>;
+    construction?: Record<FeatureId, ConstructionReport>;
     stats?: ModelStats;
     doc?: ExtrudoDocument;
   }): void;
@@ -260,6 +267,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     features: {} as Record<FeatureId, FeatureStatus>,
     bodies: {} as Record<BodyId, TBody>,
     sketches: {} as Record<FeatureId, SketchReport>,
+    construction: {} as Record<FeatureId, ConstructionReport>,
     stats: undefined,
     doc: undefined,
   });
@@ -268,13 +276,14 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     computing() {
       set({ status: 'computing', error: undefined });
     },
-    computed({ features, bodies, sketches, stats, doc }) {
+    computed({ features, bodies, sketches, construction, stats, doc }) {
       set((s) => ({
         status: 'ready',
         error: undefined,
         features,
         bodies,
         sketches: sketches ?? s.sketches,
+        construction: construction ?? s.construction,
         stats,
         doc,
       }));

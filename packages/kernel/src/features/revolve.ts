@@ -15,6 +15,7 @@ import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
+import { lineOf } from './references';
 import type { SketchOutputData } from './sketch';
 import { type Base, centroidOf, PARALLEL_EPS, type Plane, partsOf, uniteParts } from './sources';
 import { add, dot, length, scale, sub, unit } from './vec';
@@ -106,10 +107,10 @@ function axisOf(ctx: EvalContext<RevolveInputs>, ref: GeomRef): Axis {
   switch (ref.kind) {
     case 'axis': {
       const found = originAxis(ref.id);
-      if (!found) {
-        throw new LostReferenceError("Can't find the axis to revolve about. Pick it again.", ref);
-      }
-      return { origin: found.origin, direction: found.direction };
+      if (found) return { origin: found.origin, direction: found.direction };
+      // A construction axis (P3-05).
+      const line = lineOf(ctx as unknown as EvalContext, ref, 'the axis to revolve about');
+      return { origin: line.origin, direction: line.direction };
     }
     case 'sketchEntity':
       return sketchLineAxis(ctx, ref);

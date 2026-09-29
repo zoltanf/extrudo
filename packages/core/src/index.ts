@@ -11,6 +11,7 @@ export {
   type DocumentDraft,
   defineCommand,
 } from './commands';
+export * from './construction';
 export { createDocument, type NewDocumentOptions } from './document';
 export * from './document-commands';
 export * from './expr/index';

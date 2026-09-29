@@ -205,7 +205,20 @@ export function viewPreview(open: OpenDialog | undefined): ViewPreview | undefin
   const drawing = open?.preview.drawing;
   if (!open || !drawing) return undefined;
   const invalid = open.checked.first !== undefined || Object.keys(open.typing).length > 0;
-  return { shapes: drawing.shapes, dimmed: invalid || open.preview.status?.status === 'error' };
+  const dimmed = invalid || open.preview.status?.status === 'error';
+  return {
+    shapes: drawing.shapes,
+    dimmed,
+    ...(drawing.construction && {
+      construction: {
+        id: open.id,
+        name: open.name,
+        report: drawing.construction,
+        preview: true,
+        dimmed,
+      },
+    }),
+  };
 }
 
 /**
@@ -242,8 +255,8 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     const doc = store.getState().doc;
     const feature = open.mode === 'edit' ? doc.features.find((f) => f.id === open.id) : undefined;
     const bodies = dialogBodies(open, model.getState().bodies);
-    const { sketches } = model.getState();
-    return { doc, bodies, sketches, ...(feature && { feature }) };
+    const { sketches, construction } = model.getState();
+    return { doc, bodies, sketches, construction, ...(feature && { feature }) };
   };
 
   /** The draft of the values: inputs with parameter names, and its expressions evaluated. */

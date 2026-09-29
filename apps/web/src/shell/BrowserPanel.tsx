@@ -3,6 +3,7 @@ import {
   type DocumentStore,
   type Feature,
   type FeatureId,
+  isConstructionType,
   isFeatureVisible,
 } from '@extrudo/core';
 import {
@@ -41,6 +42,7 @@ import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
 import { BODY_COLORS, BODY_OPACITIES, type BodyActions, type BodyEntry } from './bodies';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
+import { toolForFeature } from './tools';
 
 export const BROWSER_ID = 'browser-panel';
 
@@ -104,6 +106,10 @@ export function BrowserPanel({
   const sketches = doc.features
     .map((feature, index) => ({ feature, index }))
     .filter(({ feature }) => feature.type === 'sketch');
+  const constructions = doc.features
+    .map((feature, index) => ({ feature, index }))
+    .filter(({ feature }) => isConstructionType(feature.type));
+  const constructionShown = constructions.some(({ feature }) => isFeatureVisible(feature));
   const originShown = ORIGIN_ITEMS.some(({ value }) => origin[value]);
   const sketchesShown = sketches.some(({ feature }) => isFeatureVisible(feature));
   const bodiesShown = bodies.some(({ meta }) => meta.visible);
@@ -202,8 +208,42 @@ export function BrowserPanel({
             <Folder
               label="Construction"
               icon={<ToolIcon name="offset-plane" category="construct" size={16} />}
+              eye={
+                constructions.length > 0
+                  ? {
+                      visible: constructionShown,
+                      onToggle: () =>
+                        actions.setVisible(
+                          constructions.map(({ feature }) => feature.id),
+                          !constructionShown,
+                        ),
+                    }
+                  : undefined
+              }
             >
-              <Leaf muted>No construction geometry yet</Leaf>
+              {constructions.length === 0 ? (
+                <Leaf muted>No construction geometry yet</Leaf>
+              ) : (
+                constructions.map(({ feature, index }) => (
+                  <SketchLeaf
+                    key={feature.id}
+                    feature={feature}
+                    editable={actions.canEdit(feature, index, doc.timelineMarker)}
+                    rolledBack={index >= doc.timelineMarker}
+                    position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
+                    active={false}
+                    actions={actions}
+                    data-construction={feature.id}
+                    icon={
+                      <ToolIcon
+                        name={toolForFeature(feature.type).icon}
+                        category="construct"
+                        size={14}
+                      />
+                    }
+                  />
+                ))
+              )}
             </Folder>
             <Folder
               label="Bodies"
@@ -266,6 +306,8 @@ function SketchLeaf({
   position,
   active,
   actions,
+  icon,
+  'data-construction': constructionId,
 }: {
   feature: Feature;
   editable: boolean;
@@ -273,6 +315,9 @@ function SketchLeaf({
   position: { index: number; marker: number; count: number };
   active: boolean;
   actions: FeatureActions;
+  /** A small icon before the name (construction rows, P3-05). */
+  icon?: ReactNode;
+  'data-construction'?: string;
 }) {
   const [renaming, setRenaming] = useState(false);
   const visible = isFeatureVisible(feature);
@@ -296,10 +341,12 @@ function SketchLeaf({
       trigger={
         <Leaf
           active={active}
+          data-construction={constructionId}
           onDoubleClick={editable && !renaming ? () => actions.edit(feature.id) : undefined}
           onPointerEnter={() => actions.hover(feature.id)}
           onPointerLeave={() => actions.hover(undefined)}
         >
+          {icon && <span className="-ml-5 grid w-4 place-items-center">{icon}</span>}
           {renaming ? (
             <RenameField
               name={feature.name}

@@ -4,17 +4,11 @@
  * origin planes are both offered; the nearer one under the pointer wins.
  * Only flat faces count: a curved face can't hold a sketch.
  */
-import {
-  type BodyId,
-  ORIGIN_PLANES,
-  type OriginPlaneId,
-  type SelectionItem,
-  type Vec3,
-} from '@extrudo/core';
+import { type BodyId, ORIGIN_PLANES, type SelectionItem, type Vec3 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import { DEFAULT_FILTER, type SelectionFilter } from '../selection/filter';
 import { readTopology } from '../selection/items';
-import { type PickCamera, type PickScene, pickStack } from '../selection/pick';
+import { type PickCamera, type PickPlane, type PickScene, pickStack } from '../selection/pick';
 import { rayPlane, viewRay } from '../viewport/camera';
 
 /** Only faces: what Create Sketch and the Project tool's face picks take. */
@@ -26,13 +20,14 @@ export const FACES_ONLY: SelectionFilter = Object.fromEntries(
 export const PLANE_HALF = 0.16;
 
 export type SketchTarget =
-  | { kind: 'plane'; plane: OriginPlaneId }
-  | { kind: 'face'; item: SelectionItem };
+  /** An origin plane (`origin:xy`) or a construction plane (its feature's ID, P3-05). */
+  { kind: 'plane'; plane: string } | { kind: 'face'; item: SelectionItem };
 
 /**
  * The origin plane or flat face under the pointer, whichever is nearer
  * along the pick ray; hidden faces and curved faces don't count. Origin
- * planes are the squares the view draws around the origin.
+ * planes are the squares the view draws around the origin; construction
+ * planes (`scene.planes`, P3-05) are the squares drawn around their anchors.
  */
 export function sketchTargetAt(
   scene: PickScene,
@@ -49,7 +44,7 @@ export function sketchTargetAt(
     hit && topology && mesh && isFlatFace(mesh, topology.index)
       ? { item: hit.item, depth: hit.depth }
       : undefined;
-  const plane = originPlaneAt(camera, at);
+  const plane = originPlaneAt(camera, at, scene.planes);
   if (face && (!plane || face.depth <= plane.depth)) return { kind: 'face', item: face.item };
   return plane ? { kind: 'plane', plane: plane.plane } : undefined;
 }
@@ -58,19 +53,24 @@ export function sketchTargetAt(
 export function originPlaneAt(
   camera: PickCamera,
   at: readonly [number, number],
-): { plane: OriginPlaneId; depth: number } | undefined {
+  extra: readonly PickPlane[] = [],
+): { plane: string; depth: number } | undefined {
   const { view, projection, width, height } = camera;
   const ndc: [number, number] = [(at[0] / width) * 2 - 1, 1 - (at[1] / height) * 2];
   const ray = viewRay(view, projection, width / height, ndc);
   const half = view.size * PLANE_HALF;
-  let best: { plane: OriginPlaneId; depth: number } | undefined;
-  for (const { id, frame } of ORIGIN_PLANES) {
+  let best: { plane: string; depth: number } | undefined;
+  const squares: PickPlane[] = [
+    ...ORIGIN_PLANES.map(({ id, frame }) => ({ id, frame, anchor: [0, 0, 0] as Vec3, half })),
+    ...extra,
+  ];
+  for (const { id, frame, anchor, half: reach } of squares) {
     const p = rayPlane(ray, frame.origin, frame.normal);
     if (!p) continue;
-    const point: Vec3 = [p.x, p.y, p.z];
+    const point: Vec3 = [p.x - anchor[0], p.y - anchor[1], p.z - anchor[2]];
     const u = point[0] * frame.x[0] + point[1] * frame.x[1] + point[2] * frame.x[2];
     const v = point[0] * frame.y[0] + point[1] * frame.y[1] + point[2] * frame.y[2];
-    if (Math.abs(u) > half || Math.abs(v) > half) continue;
+    if (Math.abs(u) > reach || Math.abs(v) > reach) continue;
     const depth = p.sub(ray.origin).dot(ray.direction) / ray.direction.length();
     if (!best || depth < best.depth) best = { plane: id, depth };
   }

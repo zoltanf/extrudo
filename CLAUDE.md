@@ -19,7 +19,8 @@ engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 P2-13 (measure and inspect), P2-14 (version history), P2-15 (WASM
 size and startup, offline precache), P2-16 (file-format spec,
 `docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
-fixtures) are done. Phase 3: P3-01 (fillet) and P3-16 (notification history) are done.
+fixtures) are done. Phase 3: P3-01 (fillet), P3-05 (construction
+geometry) and P3-16 (notification history) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -347,7 +348,26 @@ the command "Notification History" open a popover with errors grouped on
 top; a `ToastAction` may carry `available()` so the history disables a
 stale button. **A new toast action should say whether it still applies.**
 Session only.
-Next: **P3-02** (chamfer). See `docs/03-roadmap.md`.
+ADR-0040 (P3-05) added construction geometry: nine feature types
+(`offsetPlane`, `planeAtAngle`, `midplane`, `planeThroughPoints`,
+`tangentPlane`, `axisThroughPoints`, `axisThroughCylinder`,
+`axisAlongEdge`, `constructionPoint`; `packages/core/src/construction.ts`,
+kernel `features/construction.ts`, dialogs `apps/web/src/features/construction.ts`)
+that make no body but a plane, axis or point, **referred to by the
+feature's own ID** (`{kind: 'plane'|'axis'|'point', id: <feature ID>}`,
+`constructionRef`), so the engine's dependencies, timeline ordering and
+Fix References work unchanged. The kernel computes them in TypeScript from
+`describe`/`surfaceGeometry`/`edgeGeometry` (no facade change) and reports
+a `ConstructionReport` (`FeatureOutput.report`/`data`, `ModelState.construction`,
+`Preview.construction`); a plane's frame is `faceSketchFrame` of the plane
+alone. **A kernel evaluator that takes a plane, axis or point reference
+reads it with `planeOf`/`lineOf`/`pointOf`** (`features/references.ts`);
+in the app use `planeFrame(ref, construction)` / `sketchFrame(…, construction)`.
+The view draws them (`viewport/Construction.tsx`, steady size) and picks them
+(`PickScene.planes/points/axes`; planes also in `sketchTargetAt`);
+the browser has a Construction folder.
+Next: Phase 3 in three tracks: **P3-02** (chamfer), **P3-06** (combine,
+move/copy, mirror) and **P3-11** (marking menu). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -377,7 +397,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0041: notification history (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history (0006 is reserved) |
 
 ## Stack summary
 
@@ -722,8 +742,9 @@ them. Notes further down that name a machine apply to that machine only.
   `data-model-status="ready"`) before screenshots or status checks. The
   Wall bracket template computes one body, "Bracket" (40×80×60 mm, 12
   faces); Fillet1 computes since P3-01, and only rolling forward brings in
-  Plane1, an error until P3-05 ("Plane1 (error)", "6 features · mm · 1
-  error"; "(rolled back)" Plane1 has no status).
+  Plane1, the template's placeholder of the old `plane` type, which stays an
+  error on purpose ("Plane1 (error)", "6 features · mm · 1 error";
+  "(rolled back)" Plane1 has no status).
   Sketch1/Sketch2 can't be deleted while the extrudes use them. Error
   toasts have role `alert` and sit in the view's bottom-right corner (at
   the foot of the sketch palette in a sketch): dismiss them ("Dismiss")
@@ -889,6 +910,23 @@ them. Notes further down that name a machine apply to that machine only.
   x2,y2" in view px); the status bar's `output[aria-label="Selection
   size"]` reads "40.00 × 20.00 × 0.00 mm ·". Measure isn't in the Sketch
   tab (bodies only).
+- **Construction e2e** (`e2e/construction.spec.ts`, P3-05): the Viewport
+  region's `data-construction` lists the drawn construction features
+  (`Offset_Plane1:plane:<origin>:<normal>`, `…:axis:<point>:<direction>`,
+  `…:point:<x,y,z>`, spaces in names as `_`, a dialog's preview
+  `preview:`-prefixed); the browser's Construction rows carry
+  `data-construction="<feature id>"` and eyes ("Hide Offset Plane1").
+  The Construct group's tiles are "Offset Plane", "2-Point Axis" and
+  "Point" (the others sit in its menu); its dialogs are the regions
+  "Offset Plane dialog", "Axis Through 2 Points dialog"… A plane field
+  picks like Create Sketch (click a plane's square, `clickAt` a world
+  point with x ≥ 0, y ≤ 0, z = 0 in the home view); the axis and point
+  fields pick in the model. Create Sketch lists construction planes as
+  buttons in the group "Construction planes". **An extrude hides its
+  sketch**, so `data-sketch-frames` is empty until "Show Sketch1". A
+  construction axis lying on an origin axis loses the pick to the origin
+  one: offset it. `sketchOnXY` opens a *new* project; use `newSketchOnXY`
+  in an open one.
 - **Versions e2e** (`e2e/versions.spec.ts`): Ctrl+S opens the dialog
   "Versions" with the textbox "Description" focused; the list is
   "Saved versions" (items carry `data-version`), buttons "Restore V1",

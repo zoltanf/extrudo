@@ -163,7 +163,7 @@ export function proposeRevolveOperation(values: DialogValues): Partial<DialogVal
  */
 export function revolveFrame(
   values: DialogValues,
-  ctx: Pick<DialogContext, 'doc' | 'bodies' | 'sketches'>,
+  ctx: Pick<DialogContext, 'doc' | 'bodies' | 'sketches' | 'construction'>,
 ): { axis: AxisLine; zero: Vec3 } | undefined {
   const ref = values.refs.axis?.[0];
   const line = ref && axisLine(ref, ctx);

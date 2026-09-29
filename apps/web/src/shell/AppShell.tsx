@@ -7,8 +7,6 @@ import {
   type GeomRef,
   isFeatureVisible,
   type ModelStore,
-  type OriginPlaneId,
-  originPlaneRef,
   readSketch,
   redefineSketchPlane,
   type SelectionItem,
@@ -77,6 +75,7 @@ import { PROJECT_TOOL, useProjectTool } from '../sketch/project';
 import { deleteSelection } from '../sketch/selection';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
+import type { ConstructionDrawing } from '../viewport/constructionGeometry';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
@@ -190,6 +189,7 @@ export function AppShell({
   );
   const bodies = useStore(model, (s) => s.bodies);
   const sketchReports = useStore(model, (s) => s.sketches);
+  const constructionReports = useStore(model, (s) => s.construction);
   const doc = useStore(store, (s) => s.doc);
   const mode = useStore(session, (s) => s.mode);
   const activeSketchId = useStore(session, (s) => s.activeSketchId);
@@ -671,9 +671,11 @@ export function AppShell({
     cancelCreateSketch(stores);
     setRedefining(undefined);
   };
-  const pickPlane = (plane: OriginPlaneId) => {
-    if (redefining) redefineTo(redefining, originPlaneRef(plane));
-    else createSketchOn(stores, originPlaneRef(plane));
+  // An origin plane (`origin:xy`) or a construction plane (its feature's ID, P3-05).
+  const pickPlane = (plane: string) => {
+    const ref: GeomRef = { kind: 'plane', id: plane };
+    if (redefining) redefineTo(redefining, ref);
+    else createSketchOn(stores, ref);
   };
   const pickPlaneRef = useRef(pickPlane);
   pickPlaneRef.current = pickPlane;
@@ -722,7 +724,8 @@ export function AppShell({
       if (!active && !isFeatureVisible(feature)) return;
       const sketch = readSketch(feature);
       // Origin planes have fixed frames; a face's follows the face (P2-09).
-      const frame = sketch && sketchFrame(feature.id, sketch.plane, sketchReports);
+      const frame =
+        sketch && sketchFrame(feature.id, sketch.plane, sketchReports, constructionReports);
       if (sketch && frame) {
         out.push({
           id: feature.id,
@@ -755,7 +758,21 @@ export function AppShell({
     hover,
     shownSelection,
     sketchReports,
+    constructionReports,
   ]);
+  // Shown construction planes, axes and points the kernel has reported (P3-05); the one a dialog
+  // edits is drawn as its preview instead.
+  const editedId = dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined;
+  const constructionDrawings = useMemo(() => {
+    const out: ConstructionDrawing[] = [];
+    doc.features.forEach((feature, index) => {
+      if (index >= doc.timelineMarker || feature.suppressed || !isFeatureVisible(feature)) return;
+      if (feature.id === editedId) return;
+      const report = constructionReports[feature.id];
+      if (report) out.push({ id: feature.id, name: feature.name, report });
+    });
+    return out;
+  }, [doc.features, doc.timelineMarker, constructionReports, editedId]);
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
   const sketchPlane = sketches.find((s) => s.active)?.frame;
   // In the model, with no command running, the view picks bodies, sketch curves and
@@ -833,7 +850,7 @@ export function AppShell({
     () =>
       picking
         ? {
-            hover: hover?.kind === 'plane' ? (hover.id as OriginPlaneId) : undefined,
+            hover: hover?.kind === 'plane' ? hover.id : undefined,
             onHover: (plane) => session.getState().setHover({ kind: 'plane', id: plane }),
             onLeave: (plane) => {
               const current = session.getState().hover;
@@ -945,6 +962,7 @@ export function AppShell({
             sketches={sketches}
             sketchPlane={sketchPlane}
             planePicker={planePicker}
+            construction={constructionDrawings}
             sketchInput={sketchInput}
             commandRunning={drawing || picking || projecting || measuring}
             onStopCommand={stopCommand}
@@ -1027,6 +1045,9 @@ export function AppShell({
               title: 'Redefine Plane',
               hint: `Pick a plane or a flat face for ${doc.features.find((f) => f.id === redefining)?.name ?? 'the sketch'}, in the view or here.`,
             })}
+            planes={constructionDrawings
+              .filter((c) => c.report.kind === 'plane')
+              .map((c) => ({ id: c.id, name: c.name }))}
             onPick={pickPlane}
             onCancel={() => cancelCreateSketch(stores)}
           />

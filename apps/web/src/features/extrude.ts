@@ -220,11 +220,13 @@ export function proposeOperation(
  */
 export function extrudeFrame(
   refs: readonly GeomRef[],
-  ctx: Pick<DialogContext, 'doc' | 'bodies' | 'sketches'>,
+  ctx: Pick<DialogContext, 'doc' | 'bodies' | 'sketches' | 'construction'>,
 ): Frame | undefined {
   return meanFrame(
     refs.map((ref) =>
-      ref.kind === 'face' ? faceFrame(ctx.bodies, ref) : profileFrame(ctx.doc, ref, ctx.sketches),
+      ref.kind === 'face'
+        ? faceFrame(ctx.bodies, ref)
+        : profileFrame(ctx.doc, ref, ctx.sketches, ctx.construction),
     ),
   );
 }

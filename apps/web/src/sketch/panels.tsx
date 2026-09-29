@@ -10,7 +10,6 @@ import {
   LENGTH,
   lineEnds,
   ORIGIN_PLANES,
-  type OriginPlaneId,
   radiusOf,
   readSketch,
   type SelectionItem,
@@ -72,7 +71,9 @@ export interface PlanePromptProps {
   /** Default "Create Sketch"; Redefine Plane (P2-11) names its own. */
   title?: string;
   hint?: string;
-  onPick(plane: OriginPlaneId): void;
+  /** Shown construction planes (P3-05), listed after the origin planes. */
+  planes?: readonly { id: string; name: string }[];
+  onPick(plane: string): void;
   onCancel(): void;
 }
 
@@ -84,11 +85,12 @@ export function PlanePrompt({
   session,
   title = 'Create Sketch',
   hint = 'Pick a plane or a flat face in the view, or choose a plane here.',
+  planes = [],
   onPick,
   onCancel,
 }: PlanePromptProps) {
   const hover = useStore(session, (s) => (s.hover?.kind === 'plane' ? s.hover.id : undefined));
-  const leave = (id: OriginPlaneId) => {
+  const leave = (id: string) => {
     const current = session.getState().hover;
     if (current?.kind === 'plane' && current.id === id) session.getState().setHover(undefined);
   };
@@ -118,6 +120,26 @@ export function PlanePrompt({
             </Button>
           ))}
         </fieldset>
+        {planes.length > 0 && (
+          <fieldset
+            className="m-0 flex flex-col gap-1 border-0 p-0"
+            aria-label="Construction planes"
+          >
+            {planes.map((plane) => (
+              <Button
+                key={plane.id}
+                className={`justify-start truncate px-2 ${hover === plane.id ? 'border-accent bg-accent-soft' : ''}`}
+                onClick={() => onPick(plane.id)}
+                onPointerEnter={() => session.getState().setHover({ kind: 'plane', id: plane.id })}
+                onPointerLeave={() => leave(plane.id)}
+                onFocus={() => session.getState().setHover({ kind: 'plane', id: plane.id })}
+                onBlur={() => leave(plane.id)}
+              >
+                {plane.name}
+              </Button>
+            ))}
+          </fieldset>
+        )}
         <Button variant="ghost" className="self-end" onClick={onCancel}>
           Cancel <kbd className="font-mono text-xs text-muted">Esc</kbd>
         </Button>

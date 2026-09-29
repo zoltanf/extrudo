@@ -455,21 +455,73 @@ export const TOOLS = {
     category: 'modify',
     hint: 'Named values and expressions that drive the model.',
   },
-  plane: {
-    id: 'plane',
+  offsetPlane: {
+    id: 'offsetPlane',
     label: 'Offset Plane',
     icon: 'offset-plane',
     category: 'construct',
-    hint: 'A plane parallel to a face or plane.',
-    comesWith: 'P3-05',
+    hint: 'A plane parallel to a plane or a flat face, a distance away.',
   },
-  axis: {
-    id: 'axis',
-    label: 'Axis',
+  planeAtAngle: {
+    id: 'planeAtAngle',
+    label: 'Plane at Angle',
+    short: 'Angle Plane',
+    icon: 'plane-angle',
+    category: 'construct',
+    hint: 'A plane turned about a line, at an angle from a reference plane.',
+  },
+  midplane: {
+    id: 'midplane',
+    label: 'Midplane',
+    icon: 'midplane',
+    category: 'construct',
+    hint: 'The plane halfway between two parallel planes or faces.',
+  },
+  planeThroughPoints: {
+    id: 'planeThroughPoints',
+    label: 'Plane Through 3 Points',
+    short: '3-Point Plane',
+    icon: 'plane-3-points',
+    category: 'construct',
+    hint: 'A plane through three points.',
+  },
+  tangentPlane: {
+    id: 'tangentPlane',
+    label: 'Tangent Plane',
+    icon: 'plane-tangent',
+    category: 'construct',
+    hint: 'A plane touching a cylindrical, conical or spherical face.',
+  },
+  axisThroughPoints: {
+    id: 'axisThroughPoints',
+    label: 'Axis Through 2 Points',
+    short: '2-Point Axis',
     icon: 'axis',
     category: 'construct',
-    hint: 'A construction axis for revolves and patterns.',
-    comesWith: 'P3-05',
+    hint: 'A construction axis through two points, for revolves and patterns.',
+  },
+  axisThroughCylinder: {
+    id: 'axisThroughCylinder',
+    label: 'Axis Through Cylinder',
+    short: 'Cylinder Axis',
+    icon: 'axis-cylinder',
+    category: 'construct',
+    hint: 'The axis of a cylindrical, conical or toroidal face.',
+  },
+  axisAlongEdge: {
+    id: 'axisAlongEdge',
+    label: 'Axis Along Edge',
+    short: 'Edge Axis',
+    icon: 'axis-edge',
+    category: 'construct',
+    hint: 'An axis along a straight edge or sketch line, or through a circular edge.',
+  },
+  constructionPoint: {
+    id: 'constructionPoint',
+    label: 'Point',
+    icon: 'point',
+    category: 'construct',
+    hint: 'A construction point at a vertex, a circle center, a face center or coordinates.',
   },
   measure: {
     id: 'measure',
@@ -549,7 +601,18 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
         more: ['box', 'cylinder', 'sphere', 'torus', 'hole', 'pattern'],
       },
       { label: 'Modify', tools: ['fillet', 'chamfer', 'shell', 'parameters'] },
-      { label: 'Construct', tools: ['plane'], more: ['axis'] },
+      {
+        label: 'Construct',
+        tools: ['offsetPlane', 'axisThroughPoints', 'constructionPoint'],
+        more: [
+          'planeAtAngle',
+          'midplane',
+          'planeThroughPoints',
+          'tangentPlane',
+          'axisThroughCylinder',
+          'axisAlongEdge',
+        ],
+      },
       { label: 'Inspect', tools: ['measure'] },
     ],
   },
@@ -632,5 +695,7 @@ export function visibleTabs(mode: 'model' | 'sketch') {
 
 /** The tool that made a feature, for its timeline chip. Unknown types show as a sketch. */
 export function toolForFeature(type: string): Tool {
+  // The Wall bracket template's placeholder `plane` type, from before P3-05.
+  if (type === 'plane') return TOOLS.offsetPlane;
   return (TOOLS as Record<string, Tool>)[type] ?? TOOLS.sketch;
 }

@@ -8,16 +8,18 @@
  * change stay here: each request says which versions it has. When a feature
  * crashes the kernel, it is marked as an error and skipped until it changes.
  */
-import type {
-  BodyId,
-  DocumentStore,
-  ExtrudoDocument,
-  Feature,
-  FeatureId,
-  FeatureStatus,
-  GeomRef,
-  ModelStore,
-  SketchReport,
+import {
+  type BodyId,
+  type ConstructionReport,
+  type DocumentStore,
+  type ExtrudoDocument,
+  type Feature,
+  type FeatureId,
+  type FeatureStatus,
+  type GeomRef,
+  isConstructionReport,
+  type ModelStore,
+  type SketchReport,
 } from '@extrudo/core';
 import {
   KernelClient,
@@ -51,6 +53,8 @@ export interface Preview {
   tools: PreviewToolMesh[];
   /** With `base`: the bodies before the draft (editing a feature shows the model rolled back to it). */
   base?: Record<BodyId, BodyMesh>;
+  /** The draft's plane, axis or point when it is a construction feature that computed (P3-05). */
+  construction?: ConstructionReport;
 }
 
 export class Recomputer {
@@ -157,11 +161,13 @@ export class Recomputer {
             }
             this.#baseMeshes = held;
           }
+          const own = result.reports[draft.id];
           resolve({
             features: result.features,
             bodies,
             tools: result.tools ?? [],
             ...(base && { base }),
+            ...(isConstructionReport(own) && { construction: own }),
           });
         } catch {
           resolve(undefined);
@@ -302,15 +308,24 @@ export class Recomputer {
     }
     // Unchanged records keep their identity, so views that read them don't redraw.
     const previous = this.#model.getState();
+    // Construction features report their plane, axis or point; sketches their frame (P3-05).
+    const sketches: Record<string, unknown> = {};
+    const construction: Record<string, unknown> = {};
+    for (const [id, report] of Object.entries(result.reports)) {
+      (isConstructionReport(report) ? construction : sketches)[id] = report;
+    }
     const bodies = Object.fromEntries([...meshes].map(([id, { mesh }]) => [id, mesh]));
     this.#model.getState().computed({
       features: sameStatuses(previous.features, result.features)
         ? previous.features
         : result.features,
       bodies: sameRecord(previous.bodies, bodies) ? previous.bodies : bodies,
-      sketches: sameReports(previous.sketches, result.reports)
+      sketches: sameReports(previous.sketches, sketches)
         ? previous.sketches
-        : (result.reports as Record<FeatureId, SketchReport>),
+        : (sketches as Record<FeatureId, SketchReport>),
+      construction: sameReports(previous.construction, construction)
+        ? previous.construction
+        : (construction as Record<FeatureId, ConstructionReport>),
       stats: {
         ms: result.stats.ms,
         evaluated: result.stats.evaluated.length,

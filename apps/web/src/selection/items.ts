@@ -19,6 +19,7 @@ import {
   type FeatureId,
   type GeomRef,
   originAxis,
+  originPlane,
   parseProfileRefId,
   parseSketchEntityRefId,
   type SelectionItem,
@@ -245,6 +246,8 @@ export function sketchEntityIdsIn(
 
 export interface LabelContext {
   bodyName(id: BodyId): string | undefined;
+  /** The name of a construction feature (a plane, axis or point reference's ID, P3-05). */
+  feature?(id: string): string | undefined;
   sketch(id: FeatureId): { name?: string; data: SketchData } | undefined;
 }
 
@@ -283,6 +286,12 @@ export function itemLabel(item: SelectionItem, context: LabelContext): string {
   }
   const axis = item.kind === 'axis' ? originAxis(item.id) : undefined;
   if (axis) return axis.label;
+  const plane = item.kind === 'plane' ? originPlane(item.id) : undefined;
+  if (plane) return plane.label;
+  if (item.kind === 'plane' || item.kind === 'axis' || item.kind === 'point') {
+    const name = context.feature?.(item.id);
+    if (name) return name;
+  }
   const [one] = NOUNS[item.kind] ?? [item.kind];
   return one.charAt(0).toUpperCase() + one.slice(1);
 }

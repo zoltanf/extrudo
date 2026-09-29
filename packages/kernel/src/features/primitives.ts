@@ -27,6 +27,7 @@ import type { PlanarCurve, PlanarFrame } from '../planar';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
+import { planeOf } from './references';
 import { add, cross, scale, unit } from './vec';
 
 /**
@@ -137,14 +138,12 @@ function planeFrame(ctx: EvalContext, ref: GeomRef, noun: string): SketchFrame {
     }
     return faceSketchFrame(face.centroid, face.direction);
   }
-  const frame = ref.kind === 'plane' ? originPlane(ref.id)?.frame : undefined;
-  if (!frame) {
-    throw new LostReferenceError(
-      `Can't find the plane the ${noun} sits on. Edit the ${noun} and pick another.`,
-      ref,
-    );
-  }
-  return frame;
+  const origin = ref.kind === 'plane' ? originPlane(ref.id)?.frame : undefined;
+  if (origin) return origin;
+  // A construction plane (P3-05).
+  const lost = `Can't find the plane the ${noun} sits on. Edit the ${noun} and pick another.`;
+  if (ref.kind === 'plane') return planeOf(ctx, ref, `the plane the ${noun} sits on`, lost).frame;
+  throw new LostReferenceError(lost, ref);
 }
 
 // ------------------------------------------------------------------ the solids

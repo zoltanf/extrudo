@@ -34,6 +34,10 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   extrude: ['E'],
   fillet: ['F'],
   hole: ['H'],
+  // Construction geometry (P3-05): Fusion has no defaults for these.
+  offsetPlane: ['Shift+P'],
+  axisThroughPoints: ['Shift+A'],
+  constructionPoint: ['Shift+X'],
   measure: ['I'],
   // View: F6 is Fusion's; Shift+1…7 are ours.
   fit: ['F6'],

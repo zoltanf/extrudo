@@ -272,10 +272,12 @@ function SelectionControl({
     refs.length === 0
       ? pickPrompt(field)
       : refs.length === 1 && refs[0]?.kind === 'axis'
-        ? (originAxis(refs[0].id)?.label ?? '1 axis')
+        ? (originAxis(refs[0].id)?.label ?? constructionName(refs[0], controller) ?? '1 axis')
         : refs.length === 1 && refs[0]?.kind === 'plane'
-          ? (originPlane(refs[0].id)?.label ?? '1 plane')
-          : `${refs.length} ${countNoun(refs, refs.length)}`;
+          ? (originPlane(refs[0].id)?.label ?? constructionName(refs[0], controller) ?? '1 plane')
+          : refs.length === 1 && refs[0]?.kind === 'point'
+            ? (constructionName(refs[0], controller) ?? '1 point')
+            : `${refs.length} ${countNoun(refs, refs.length)}`;
   return (
     <div
       className={`flex h-8 items-center rounded-input border ${active ? 'border-accent bg-accent-soft' : 'border-line'}`}
@@ -308,6 +310,11 @@ function SelectionControl({
 }
 
 /** "faces", "profiles": what a field holds (picks of one kind: its noun; else "items"). */
+/** The name of the construction feature a plane, axis or point reference names (P3-05). */
+function constructionName(ref: GeomRef, controller: DialogController): string | undefined {
+  return controller.context()?.doc.features.find((f) => f.id === ref.id)?.name;
+}
+
 function countNoun(refs: readonly GeomRef[], n: number): string {
   const kinds = [...new Set(refs.map((r) => r.kind))];
   return kinds.length === 1 ? acceptsNoun(kinds, n !== 1) : n === 1 ? 'item' : 'items';

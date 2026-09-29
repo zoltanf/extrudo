@@ -9,6 +9,7 @@ import {
   BODY_OPERATIONS,
   BodyMetaSchema,
   boxFeature,
+  CONSTRUCTION_FEATURES,
   cylinderFeature,
   DocumentSchema,
   EXTRUDE_DIRECTIONS,
@@ -82,6 +83,7 @@ const FEATURES = [
   cylinderFeature,
   sphereFeature,
   torusFeature,
+  ...Object.values(CONSTRUCTION_FEATURES),
 ];
 
 describe('docs/file-format.md', () => {

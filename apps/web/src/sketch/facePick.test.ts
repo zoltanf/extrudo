@@ -88,3 +88,40 @@ describe('sketchFrame', () => {
     expect(sketchFrame(F, { kind: 'plane', id: 'origin:xz' }, {})?.normal).toEqual([0, -1, 0]);
   });
 });
+
+describe('construction planes (P3-05)', () => {
+  const frame = faceSketchFrame([0, 0, 25], [0, 0, 1]);
+  const scene: PickScene = {
+    bodies: [],
+    sketches: [],
+    occluding: true,
+    planes: [{ id: 'OP', frame, anchor: [60, 60, 25], half: 20 }],
+  };
+  const top = cameraFrom([0, 0, 1], { size: 200 });
+
+  it('are offered beside the origin planes, around their anchors', () => {
+    expect(sketchTargetAt(scene, top, topViewPx(top, 60, 60))).toEqual({
+      kind: 'plane',
+      plane: 'OP',
+    });
+    expect(sketchTargetAt(scene, top, topViewPx(top, 5, 5))).toEqual({
+      kind: 'plane',
+      plane: 'origin:xy',
+    });
+    expect(sketchTargetAt(scene, top, topViewPx(top, 90, 60))).toBeUndefined();
+  });
+
+  it('the nearer plane wins where squares overlap', () => {
+    // From above, the plane at z = 25 is nearer than the XY plane under it.
+    const over = [{ id: 'OP', frame, anchor: [0, 0, 25] as const, half: 20 }];
+    expect(originPlaneAt(top, topViewPx(top, 5, 5), over)).toMatchObject({ plane: 'OP' });
+  });
+
+  it('give a sketch their frame once the kernel has reported it', () => {
+    const F = 'f' as FeatureId;
+    const plane = { kind: 'plane' as const, id: 'OP' };
+    expect(sketchFrame(F, plane, {})).toBeUndefined();
+    const reports = { OP: { kind: 'plane', frame, anchor: [0, 0, 25] } } as never;
+    expect(sketchFrame(F, plane, {}, reports)?.origin).toEqual([0, 0, 25]);
+  });
+});

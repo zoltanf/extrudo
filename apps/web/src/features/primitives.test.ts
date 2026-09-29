@@ -305,7 +305,7 @@ describe('picking the plane', () => {
     expect(open()?.pickField).toBe('plane');
     expect(dialogPlanePick(t.controller, open())).toBe(true);
     let picker = dialogPlanePicker(t.controller, open(), t.session, undefined);
-    expect(picker?.selected).toBe('origin:xy');
+    expect(picker?.selected).toEqual(['origin:xy']);
     expect(picker?.faces).toBeDefined();
 
     picker?.onHover('origin:yz');
@@ -316,7 +316,7 @@ describe('picking the plane', () => {
     picker?.onPick('origin:xz');
     expect(open()?.values.refs.plane).toEqual([XZ]);
     picker = dialogPlanePicker(t.controller, open(), t.session, { kind: 'plane', id: 'origin:yz' });
-    expect(picker).toMatchObject({ selected: 'origin:xz', hover: 'origin:yz' });
+    expect(picker).toMatchObject({ selected: ['origin:xz'], hover: 'origin:yz' });
 
     // The box's top face: the dialog centres on it and proposes a join.
     picker?.faces?.onPick(faceItem(1));

@@ -108,6 +108,11 @@ export function activeSketchFrame({
   const feature = id && store.getState().doc.features.find((f) => f.id === id);
   const sketch = feature ? readSketch(feature) : undefined;
   return feature && sketch
-    ? sketchFrame(feature.id, sketch.plane, model?.getState().sketches)
+    ? sketchFrame(
+        feature.id,
+        sketch.plane,
+        model?.getState().sketches,
+        model?.getState().construction,
+      )
     : undefined;
 }

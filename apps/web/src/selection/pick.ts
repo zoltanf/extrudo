@@ -90,13 +90,33 @@ export interface PickAxis {
   half: number;
 }
 
+/** A drawn construction plane (P3-05): picked where the ray meets its square. */
+export interface PickPlane {
+  /** The reference ID: the construction feature's ID. */
+  id: string;
+  frame: SketchFrame;
+  /** The centre of the square drawn, a point of the plane. */
+  anchor: readonly [number, number, number];
+  /** Half the square's side, mm. */
+  half: number;
+}
+
+/** A drawn construction point (P3-05): picked like a vertex, as `{ kind: 'point', id }`. */
+export interface PickPoint {
+  id: string;
+  at: readonly [number, number, number];
+}
+
 export interface PickScene {
   /** Visible bodies. */
   bodies: readonly PickBody[];
   /** Drawn sketches. */
   sketches: readonly PickSketch[];
-  /** Drawn origin axes (the `construction` filter kind); none when absent. */
+  /** Drawn origin axes and construction axes (the `construction` filter kind); none when absent. */
   axes?: readonly PickAxis[];
+  /** Drawn construction planes and points (P3-05); none when absent. */
+  planes?: readonly PickPlane[];
+  points?: readonly PickPoint[];
   /** Faces are drawn (not wireframe), so they hide what is behind them. */
   occluding: boolean;
 }
@@ -344,6 +364,43 @@ function nearAxes(e: Eye, scene: PickScene): Near[] {
   return out;
 }
 
+/** Construction points near the pointer, like vertices. */
+function nearPoints(e: Eye, scene: PickScene): Near[] {
+  const out: Near[] = [];
+  const { origin: o, direction: d } = e.ray;
+  for (const point of scene.points ?? []) {
+    const [x, y, z] = point.at;
+    const s = (x - o.x) * d.x + (y - o.y) * d.y + (z - o.z) * d.z;
+    if (s < 0) continue;
+    const dist = Math.hypot(o.x + s * d.x - x, o.y + s * d.y - y, o.z + s * d.z - z);
+    const px = dist / perPixelAt(e, x, y, z);
+    if (px <= VERTEX_PX)
+      out.push({ item: { kind: 'point', id: point.id }, px, depth: s, at: [x, y, z] });
+  }
+  return out;
+}
+
+/** Construction planes under the pointer: where the ray meets each drawn square. */
+function planeHits(e: Eye, scene: PickScene): { item: SelectionItem; depth: number }[] {
+  const out: { item: SelectionItem; depth: number }[] = [];
+  const ray = { origin: e.ray.origin, direction: e.ray.direction };
+  for (const plane of scene.planes ?? []) {
+    const hit = rayPlane(ray, plane.frame.origin, plane.frame.normal);
+    if (!hit) continue;
+    const u =
+      (hit.x - plane.anchor[0]) * plane.frame.x[0] +
+      (hit.y - plane.anchor[1]) * plane.frame.x[1] +
+      (hit.z - plane.anchor[2]) * plane.frame.x[2];
+    const v =
+      (hit.x - plane.anchor[0]) * plane.frame.y[0] +
+      (hit.y - plane.anchor[1]) * plane.frame.y[1] +
+      (hit.z - plane.anchor[2]) * plane.frame.y[2];
+    if (Math.abs(u) > plane.half || Math.abs(v) > plane.half) continue;
+    out.push({ item: { kind: 'plane', id: plane.id }, depth: hit.distanceTo(e.ray.origin) });
+  }
+  return out.sort((a, b) => a.depth - b.depth);
+}
+
 /** Whether a sketch entity may be picked with this filter. */
 function acceptsEntity(filter: SelectionFilter) {
   return (entity: SketchEntity) =>
@@ -448,11 +505,17 @@ export function pickStack(
   const small: PickHit[] = [
     ...(filter.vertices ? near(nearVertices(e, scene)) : []),
     ...(filter.edges ? near(nearEdges(e, scene)) : []),
+    // Construction points are picked like vertices (P3-05).
+    ...(filter.construction ? near(nearPoints(e, scene)) : []),
   ];
   const sketches = sketchHits(e, scene, filter);
   small.push(...near(sketches.curves));
   // Origin axes run through the model: they come after profiles and faces (P2-07).
   const axes = filter.construction ? near(nearAxes(e, scene)) : [];
+  // Construction planes: only where nothing but empty space or a body lies in front (P3-05).
+  const planes: PickHit[] = filter.construction
+    ? planeHits(e, scene).map((p) => ({ ...p, px: 0, occluded: behind(p.depth) }))
+    : [];
 
   const areas: (PickHit & { rank: number })[] = [];
   for (const p of sketches.profiles) {
@@ -491,9 +554,11 @@ export function pickStack(
     ...small.filter((h) => !h.occluded),
     ...areas.map(({ rank: _, ...hit }) => hit),
     ...axes.filter((h) => !h.occluded),
+    ...planes.filter((h) => !h.occluded),
     ...bodies,
     ...small.filter((h) => h.occluded),
     ...axes.filter((h) => h.occluded),
+    ...planes.filter((h) => h.occluded),
   ];
   return stack.slice(0, STACK_LIMIT);
 }

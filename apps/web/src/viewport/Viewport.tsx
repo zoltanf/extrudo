@@ -3,7 +3,6 @@ import {
   type BodyMeta,
   type FeatureId,
   ORIGIN_AXES,
-  type OriginPlaneId,
   projectedEntities,
   type SelectionItem,
   type SketchFrame,
@@ -42,8 +41,15 @@ import { sketchTargetAt } from '../sketch/facePick';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
 import { Bodies } from './Bodies';
 import { CameraRig } from './CameraRig';
+import { Construction } from './Construction';
 import { basis, orbit, pan, rayPlane, type View, viewRay, worldPerPixel, zoomAt } from './camera';
 import { type Rgba, type SceneColors, useSceneColors } from './colors';
+import {
+  type ConstructionDrawing,
+  constructionPick,
+  constructionState,
+  constructionSummary,
+} from './constructionGeometry';
 import { navCursor } from './cursors';
 import { GRID_RADIUS, Grid, XY_FRAME } from './Grid';
 import { NavBar } from './NavBar';
@@ -93,6 +99,8 @@ export interface ViewportProps {
   modelSelect?: ModelSelect;
   /** A feature dialog's live preview, drawn over the bodies (P2-05). */
   preview?: ViewPreview;
+  /** Construction planes, axes and points to draw and pick (P3-05). */
+  construction?: readonly ConstructionDrawing[];
 }
 
 /**
@@ -138,12 +146,13 @@ export interface SketchInput {
 export const VIEW_PASSTHROUGH = 'data-view-passthrough';
 
 export interface PlanePicker {
-  hover: OriginPlaneId | undefined;
-  /** The plane already picked (a feature dialog's Plane field, P2-10): drawn highlighted. */
-  selected?: OriginPlaneId;
-  onHover(plane: OriginPlaneId): void;
-  onLeave(plane: OriginPlaneId): void;
-  onPick(plane: OriginPlaneId): void;
+  /** An origin plane (`origin:xy`) or a construction plane (its feature's ID, P3-05). */
+  hover: string | undefined;
+  /** The planes already picked (a feature dialog's Plane field, P2-10): drawn highlighted. */
+  selected?: readonly string[];
+  onHover(plane: string): void;
+  onLeave(plane: string): void;
+  onPick(plane: string): void;
   /**
    * Flat body faces can be picked too (P2-09): the view then picks origin
    * planes and faces itself, and the nearer one under the pointer wins
@@ -159,6 +168,7 @@ const NO_BODIES: Record<BodyId, BodyMesh> = {};
 const NO_META: Record<BodyId, BodyMeta> = {};
 const NO_SKETCHES: readonly SketchDrawing[] = [];
 const NO_SELECTION: readonly SelectionItem[] = [];
+const NO_CONSTRUCTION: readonly ConstructionDrawing[] = [];
 
 /**
  * The drawn bodies for tests (`data-bodies`): name, face count and the
@@ -228,6 +238,7 @@ export function Viewport({
   selection = NO_SELECTION,
   modelSelect,
   preview,
+  construction = NO_CONSTRUCTION,
 }: ViewportProps) {
   const section = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -286,7 +297,15 @@ export function Viewport({
   const [box, setBox] = useState<ScreenBox>();
   useSketchInput(surface, viewport, sketchInput, setBox);
   const [otherMenu, setOtherMenu] = useState<OtherMenu>();
-  const modelScene = useMemo(() => ({ bodies, meta, sketches }), [bodies, meta, sketches]);
+  // Construction geometry, with a dialog's preview (P3-05); hover and selection highlight it.
+  const drawnConstruction = useMemo(
+    () => (preview?.construction ? [...construction, preview.construction] : construction),
+    [construction, preview?.construction],
+  );
+  const modelScene = useMemo(
+    () => ({ bodies, meta, sketches, construction }),
+    [bodies, meta, sketches, construction],
+  );
   const bodiesKey = useMemo(() => bodiesSummary(bodies, meta), [bodies, meta]);
   const appearanceKey = useMemo(() => bodyAppearanceSummary(bodies, meta), [bodies, meta]);
   // Silhouette segments drawn per body (wireframe and hidden edges), summed into
@@ -338,6 +357,7 @@ export function Viewport({
       data-model-hover={modelSelect ? selectionKey([hover]) : undefined}
       data-bodies={bodiesKey}
       data-body-appearance={appearanceKey}
+      data-construction={constructionSummary(drawnConstruction)}
       data-preview={previewSummary(preview)}
       data-preview-dimmed={preview?.dimmed || undefined}
       className="relative isolate min-w-0 flex-1 overflow-hidden"
@@ -367,6 +387,7 @@ export function Viewport({
             hover={hover}
             selection={selection}
             preview={preview}
+            construction={drawnConstruction}
             onSilhouettes={onSilhouettes}
             onFirstFrame={() => setReady(true)}
           />
@@ -471,6 +492,7 @@ function Scene({
   hover,
   selection,
   preview,
+  construction,
   onSilhouettes,
   onFirstFrame,
 }: {
@@ -484,6 +506,7 @@ function Scene({
   hover: SelectionItem | undefined;
   selection: readonly SelectionItem[];
   preview: ViewPreview | undefined;
+  construction: readonly ConstructionDrawing[];
   onSilhouettes(body: BodyId, segments: number): void;
   onFirstFrame(): void;
 }) {
@@ -541,6 +564,15 @@ function Scene({
     }),
     [colors],
   );
+
+  const constructionStates = useMemo(() => {
+    const out = new Map<string, 'hover' | 'selected'>();
+    for (const item of construction) {
+      const state = constructionState(item, hover, selection);
+      if (state) out.set(item.id, state);
+    }
+    return out;
+  }, [construction, hover, selection]);
 
   const gridFrame = sketchPlane ?? XY_FRAME;
   const gridAxes = [gridFrame.x, gridFrame.y].map((axis) => worldAxis(axis, colors, origin));
@@ -605,6 +637,14 @@ function Scene({
         onLeave={planePicker?.faces ? undefined : planePicker?.onLeave}
         onPick={planePicker?.faces ? undefined : planePicker?.onPick}
         axisHighlights={axisHighlights(hover, selection)}
+      />
+      <Construction
+        store={viewport}
+        items={construction}
+        color={colors.construct}
+        highlight={{ ...colors.preselect, a: 1 }}
+        preview={{ ...colors.preview, a: 1 }}
+        states={constructionStates}
       />
     </>
   );
@@ -760,6 +800,7 @@ interface ModelScene {
   bodies: Record<BodyId, BodyMesh>;
   meta: Record<BodyId, BodyMeta>;
   sketches: readonly SketchDrawing[];
+  construction: readonly ConstructionDrawing[];
 }
 
 /** "Select other…": the stacked items under the pointer, and where the menu opens (client px). */
@@ -791,8 +832,14 @@ function useModelInput(
     const context = (p: ScreenPointer) => {
       const { view, projection, visualStyle, selectionFilter, fieldFilter, origin } =
         viewport.getState();
+      const made = constructionPick(sceneRef.current.construction, view.size);
       return {
-        scene: { ...pickScene(sceneRef.current, visualStyle), axes: originAxes(origin, view.size) },
+        scene: {
+          ...pickScene(sceneRef.current, visualStyle),
+          axes: [...originAxes(origin, view.size), ...made.axes],
+          planes: made.planes,
+          points: made.points,
+        },
         camera: { view, projection, width: p.width, height: p.height },
         filter: combineFilters(selectionFilter, fieldFilter),
       };
@@ -849,8 +896,9 @@ function useSketchTargetInput(
     const target = (p: ScreenPointer) => {
       const { view, projection, visualStyle } = viewport.getState();
       const all = pickScene(sceneRef.current, visualStyle);
+      const made = constructionPick(sceneRef.current.construction, view.size);
       return sketchTargetAt(
-        { ...all, sketches: [] },
+        { ...all, sketches: [], planes: made.planes },
         { view, projection, width: p.width, height: p.height },
         [p.x, p.y],
       );
@@ -958,6 +1006,7 @@ function SelectOtherMenu({
 function labelContext(scene: ModelScene): LabelContext {
   return {
     bodyName: (id) => scene.meta[id]?.name,
+    feature: (id) => scene.construction.find((c) => c.id === id)?.name,
     sketch: (id) => {
       const s = scene.sketches.find((d) => d.id === id);
       return s && { name: s.name, data: s.data };

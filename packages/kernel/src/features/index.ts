@@ -1,6 +1,7 @@
 import { FeatureRegistry } from '@extrudo/core';
 import type { KernelFeatureDefinition } from '../recompute/types';
 import { kernelRemove } from './bodies';
+import { KERNEL_CONSTRUCTION } from './construction';
 import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
 import { KERNEL_PRIMITIVES } from './primitives';
@@ -18,6 +19,10 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
   // Box, cylinder, sphere and torus (P2-10, ADR-0032).
   for (const primitive of KERNEL_PRIMITIVES) {
     registry.register(primitive as unknown as KernelFeatureDefinition);
+  }
+  // Construction planes, axes and points (P3-05, ADR-0040).
+  for (const construction of KERNEL_CONSTRUCTION) {
+    registry.register(construction as unknown as KernelFeatureDefinition);
   }
   return registry;
 }

@@ -40,9 +40,9 @@ export interface OriginProps {
    */
   picking?: boolean;
   /** The plane under the pointer (or under the prompt's button) while picking. */
-  hover?: OriginPlaneId;
+  hover?: string;
   /** A plane already picked (a feature dialog's, P2-10), highlighted like the hovered one while picking. */
-  selected?: OriginPlaneId | undefined;
+  selected?: readonly string[] | undefined;
   /** Hover colour (`preselect`). */
   highlight?: Rgba;
   onHover?(plane: OriginPlaneId): void;
@@ -107,7 +107,7 @@ export function Origin({
         {PLANES.map(({ item, rotation }) => {
           const id = `origin:${item}` as const;
           if (!picking && !visible[item]) return null;
-          const hovered = picking && (hover === id || selected === id);
+          const hovered = picking && (hover === id || (selected?.includes(id) ?? false));
           return (
             <Plane
               key={item}
@@ -255,10 +255,10 @@ function ZAxis({ color: c }: { color: Rgba }) {
   return <primitive object={line} frustumCulled={false} renderOrder={2} />;
 }
 
-type PlaneEvents = Pick<ThreeElements['mesh'], 'onPointerMove' | 'onPointerOut' | 'onClick'>;
+export type PlaneEvents = Pick<ThreeElements['mesh'], 'onPointerMove' | 'onPointerOut' | 'onClick'>;
 
 /** A square origin plane from −1 to 1 (scaled by the parent): a faint fill and an outline. */
-function Plane({
+export function Plane({
   color: c,
   rotation,
   strong = false,

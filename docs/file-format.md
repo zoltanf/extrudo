@@ -321,7 +321,7 @@ A sketch on a plane or a flat face (label "Sketch", category sketch).
 
 | Input | Kind | Required | Rule |
 |---|---|---|---|
-| `plane` | `ref` | yes | Exactly one reference, of kind `plane` (an origin plane `origin:xy`, `origin:xz`, `origin:yz`) or `face`. |
+| `plane` | `ref` | yes | Exactly one reference, of kind `plane` (an origin plane `origin:xy`, `origin:xz`, `origin:yz`, or a construction plane's feature ID, 6.9) or `face`. |
 | `sketch` | `sketchData` | yes | The sketch content (section 7). |
 
 A sketch's 2D frame (origin, X, Y, normal) is *derived*: for an origin plane
@@ -452,9 +452,35 @@ different bodies are rounded body by body. The faces it makes are named
 `fillet:<feature id>:from:(<edge name>)`. No new keys: a fillet is a
 feature with `ref` and `expr` inputs like the others.
 
-Reserved for later: `plane` (construction plane) and the other modify
-features (chamfer, shell, hole, patterns, ...) will be new feature types;
-old readers see them as unknown types.
+### 6.9 Construction features
+
+Nine feature types (category construct) make no body: each makes a plane, an
+axis or a point that later features refer to (section 8: a reference of kind
+`plane`, `axis` or `point` whose `id` is the *feature's ID*). Every input is
+optional in the schema (a missing pick is an error the kernel reports), and
+every reference input takes at most the count shown.
+
+| Type | Makes | Inputs |
+|---|---|---|
+| `offsetPlane` | plane | `plane` (`ref`, one of kind `plane` or `face`); `distance` (`expr` length, default 0): along the plane's normal (a face's outward one) |
+| `planeAtAngle` | plane | `axis` (`ref`, one of kind `axis`, `edge` or `sketchEntity`: the line the plane turns about); `plane` (`ref`, one `plane` or `face`: where the angle counts from; without it 0 deg is the plane through the line whose normal is as vertical as possible); `angle` (`expr` angle, default 0, right-handed about the line) |
+| `midplane` | plane | `planes` (`ref`, two of kind `plane` or `face`, parallel): the plane halfway between |
+| `planeThroughPoints` | plane | `points` (`ref`, three of kind `point` or `vertex`, not on one line); the normal follows their order (right-handed) |
+| `tangentPlane` | plane | `face` (`ref`, one `face`: cylindrical, conical or spherical); `plane` (`ref`, one `plane` or `face`: says where round the face it touches, by its normal); `angle` (`expr` angle, default 0: turns the touching point about the face's axis) |
+| `axisThroughPoints` | axis | `points` (`ref`, two different points of kind `point` or `vertex`): from the first to the second |
+| `axisThroughCylinder` | axis | `face` (`ref`, one `face`: cylindrical, conical, toroidal or of revolution): the face's own axis |
+| `axisAlongEdge` | axis | `edge` (`ref`, one of kind `edge` or `sketchEntity`): a straight edge or sketch line, or a circular edge's axis through its centre |
+| `constructionPoint` | point | `at` (`ref`, one of kind `point`, `vertex`, `edge` or `face`: a circular edge gives its centre, another edge its middle, a face its centre; without it the origin); `x`, `y`, `z` (`expr` length, default 0): moves it along the world axes |
+
+A plane's 2D frame is derived from the plane alone, by the rule of a sketch on
+a flat face (6.2), so a sketch or primitive on a construction plane follows
+it. The kernel computes and reports everything; nothing but the inputs is
+stored. A feature that uses a construction feature must come after it in the
+timeline, and deleting one that is used is refused (section 8).
+
+Reserved for later: the other modify features (chamfer, shell, hole,
+patterns, ...) will be new feature types; old readers see them as unknown
+types.
 
 ---
 
@@ -576,15 +602,15 @@ A `GeomRef` points at geometry made by earlier features. It is stored in
 
 | `kind` | `id` | Made by |
 |---|---|---|
-| `plane` | `origin:xy`, `origin:xz`, `origin:yz` (construction planes later) | fixed |
-| `axis` | `origin:x`, `origin:y`, `origin:z` | fixed |
+| `plane` | `origin:xy`, `origin:xz`, `origin:yz`; or a construction plane feature's ID (`<featureId>`, 6.9) | fixed, or a construction feature |
+| `axis` | `origin:x`, `origin:y`, `origin:z`; or a construction axis feature's ID | fixed, or a construction feature |
 | `profile` | `<sketchFeatureId>/<regionId>`: the sketch feature and the region within it. A region's ID is a hash of the curves around its outer loop and the direction each runs in, so it survives moving and resizing | derived from the sketch |
 | `sketchEntity` | `<sketchFeatureId>/<entityId>` (a curve or point picked outside its sketch) | sketch |
 | `body` | a body ID, `<featureId>:<n>`: the first body a feature makes is `<featureId>:0` | kernel |
 | `face` | a face name, `op:feature:role[:source]` with optional `#n` split suffixes | kernel |
 | `edge` | `e[face|face…]` with optional `@n` | kernel |
 | `vertex` | `v[face|face…]` with optional `@n` | kernel |
-| `point` | reserved for construction points; unused in format 1 | |
+| `point` | a construction point feature's ID (`<featureId>`, 6.9) | construction feature |
 
 **Topological names** (ADR-0005) describe *why* a face exists, not where it
 is, so they stay valid when upstream features change. Grammar:

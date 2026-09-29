@@ -9,6 +9,7 @@
  * the kernel on each recompute (`SketchReport.frame`); for a face the frame
  * follows one rule, `faceSketchFrame`, from the face's plane.
  */
+import { type ConstructionReports, constructionPlaneFrame } from '../construction';
 import type { GeomRef } from '../schema';
 
 export type Vec2 = readonly [number, number];
@@ -58,10 +59,16 @@ export function originPlaneRef(id: OriginPlaneId): GeomRef {
 
 /**
  * The frame of a sketch plane, when it can be known without the kernel:
- * today, the origin planes. `undefined` for faces and construction planes.
+ * an origin plane's, or a construction plane's from the kernel's report
+ * (`construction`, the model store's, P3-05). `undefined` for faces and for
+ * a construction plane the kernel hasn't reported.
  */
-export function planeFrame(ref: GeomRef): SketchFrame | undefined {
-  return ref.kind === 'plane' ? originPlane(ref.id)?.frame : undefined;
+export function planeFrame(
+  ref: GeomRef,
+  construction?: ConstructionReports,
+): SketchFrame | undefined {
+  if (ref.kind !== 'plane') return undefined;
+  return originPlane(ref.id)?.frame ?? constructionPlaneFrame(ref, construction);
 }
 
 /**

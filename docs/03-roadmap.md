@@ -448,8 +448,17 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
 - [ ] **P3-03 Shell.** FR-FT-06.
 - [ ] **P3-04 Hole** (placement by sketch points or click; types; presets incl.
   heat-set inserts). FR-FT-07.
-- [ ] **P3-05 Construction geometry** (all planes, axes and points in
-  FR-FT-13; browser "Construction" folder).
+- [x] **P3-05 Construction geometry** (all planes, axes and points in
+  FR-FT-13; browser "Construction" folder). Done 2026-09-29 (ADR-0040): nine
+  timeline features (offset plane, plane at angle, midplane, plane through 3
+  points, tangent plane, axis through 2 points, through a cylinder, along an
+  edge, and point) with dialogs and live previews, computed in the kernel
+  from geometry it already reports (no facade change). They are referred to
+  by their feature ID (`plane`, `axis`, `point` references), so sketches,
+  primitives, extrude "to object" and revolve axes use them, the timeline
+  orders and protects them, and lost references go through Fix References.
+  The view draws and picks them; the browser's Construction folder lists
+  them with eyes; the `point` reference kind is now used.
 - [ ] **P3-06 Combine, Move/Copy** (with transform gizmo) **and Mirror.**
   FR-FT-09, -10, -11 (mirror).
 - [ ] **P3-07 Patterns** (rectangular, circular, on path) for bodies, features

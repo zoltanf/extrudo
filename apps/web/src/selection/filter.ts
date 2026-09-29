@@ -24,7 +24,11 @@ export const FILTER_KINDS: readonly { value: FilterKind; label: string; hint: st
   { value: 'vertices', label: 'Vertices', hint: 'Body corners' },
   { value: 'sketches', label: 'Sketches', hint: 'Sketch curves' },
   { value: 'profiles', label: 'Profiles', hint: 'Closed sketch regions' },
-  { value: 'construction', label: 'Construction', hint: 'Construction sketch curves' },
+  {
+    value: 'construction',
+    label: 'Construction',
+    hint: 'Construction planes, axes, points and sketch curves',
+  },
 ];
 
 export const DEFAULT_FILTER: SelectionFilter = {

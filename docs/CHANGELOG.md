@@ -2,6 +2,13 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-29 · **P3-05** Construction geometry (ADR-0040): offset plane,
+  plane at angle, midplane, plane through 3 points, tangent plane, axis
+  through 2 points / a cylinder / along an edge, and point, as timeline
+  features with dialogs, previews and Shift+P / Shift+A / Shift+X keys. They
+  work as sketch planes, primitive placements, extrude "to object" planes
+  and revolve axes, are drawn and pickable in the view, and are listed in
+  the browser's Construction folder (`docs/file-format.md` 6.9).
 - 2026-09-29 · **P3-01** Fillet (ADR-0038): round edges with several edge
   sets, each with its own radius; picking an edge takes its tangent chain;
   the preview is live. A fillet that can't be built says why in plain words

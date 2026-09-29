@@ -5,12 +5,7 @@
  * click puts the plane or face into the field. The field's own picks show
  * as the selected plane.
  */
-import {
-  ORIGIN_PLANES,
-  type OriginPlaneId,
-  type SelectionItem,
-  type SessionStore,
-} from '@extrudo/core';
+import type { SelectionItem, SessionStore } from '@extrudo/core';
 import type { PlanePicker } from '../viewport/Viewport';
 import type { DialogController, OpenDialog } from './dialog';
 import type { SelectionField } from './spec';
@@ -42,11 +37,12 @@ export function dialogPlanePicker(
   const field = planeField(open);
   if (!controller || !field) return undefined;
   const { select } = controller;
-  const picked = open?.values.refs[field.name]?.find((r) => r.kind === 'plane')?.id;
-  const selected = ORIGIN_PLANES.find((p) => p.id === picked)?.id;
+  const selected = (open?.values.refs[field.name] ?? [])
+    .filter((r) => r.kind === 'plane')
+    .map((r) => r.id);
   return {
-    hover: hover?.kind === 'plane' ? (hover.id as OriginPlaneId) : undefined,
-    ...(selected && { selected }),
+    hover: hover?.kind === 'plane' ? hover.id : undefined,
+    ...(selected.length > 0 && { selected }),
     onHover: (plane) => select.onHover({ kind: 'plane', id: plane }),
     onLeave: (plane) => {
       const current = session.getState().hover;

@@ -16,6 +16,7 @@
  */
 import type {
   BodyId,
+  ConstructionReports,
   ExtrudoDocument,
   Feature,
   FeatureDefinition,
@@ -104,6 +105,8 @@ export interface DialogContext {
   feature?: Feature;
   /** What the kernel reports about each sketch: frames of sketches on faces (P2-09). */
   sketches?: Readonly<Record<FeatureId, SketchReport>>;
+  /** What the kernel reports about each construction plane, axis and point (P3-05). */
+  construction?: ConstructionReports;
 }
 
 export interface ManipulatorContext extends DialogContext {

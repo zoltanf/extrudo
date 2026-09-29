@@ -28,6 +28,7 @@ import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve, PlanarFace } from '../planar';
 import type { EvalContext, KernelFeatureDefinition } from '../recompute/types';
 import { projectEdge, projectSegment } from './projection';
+import { planeOf } from './references';
 
 /** A profile of a sketch as later features see it (`SketchOutputData.profiles`). */
 export interface SketchProfileInfo {
@@ -120,8 +121,9 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
 };
 
 /**
- * The sketch's frame: an origin plane's, or a flat face's (P2-09), resolved
- * through topological naming so the sketch follows the face.
+ * The sketch's frame: an origin plane's, a construction plane's (P3-05), or
+ * a flat face's (P2-09), resolved through topological naming so the sketch
+ * follows the face.
  */
 function sketchFrame(ctx: EvalContext<SketchInputs>, plane: GeomRef | undefined): SketchFrame {
   if (plane?.kind === 'face') {
@@ -134,12 +136,14 @@ function sketchFrame(ctx: EvalContext<SketchInputs>, plane: GeomRef | undefined)
     }
     return faceSketchFrame(face.centroid, face.direction);
   }
-  const frame = plane ? originPlane(plane.id)?.frame : undefined;
-  if (!frame) {
-    const message = "Can't find this sketch's plane. Redefine its plane to pick another.";
-    throw plane ? new LostReferenceError(message, plane) : new KernelError(message);
+  const origin = plane ? originPlane(plane.id)?.frame : undefined;
+  if (origin) return origin;
+  // A construction plane (P3-05): the feature's own frame, followed through recompute.
+  const message = "Can't find this sketch's plane. Redefine its plane to pick another.";
+  if (plane?.kind === 'plane' && !plane.id.startsWith('origin:')) {
+    return planeOf(ctx as unknown as EvalContext, plane, "this sketch's plane", message).frame;
   }
-  return frame;
+  throw plane ? new LostReferenceError(message, plane) : new KernelError(message);
 }
 
 /**

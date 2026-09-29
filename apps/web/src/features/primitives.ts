@@ -163,7 +163,7 @@ export const torusDialog = primitiveDialog('torus');
 export const PRIMITIVE_DIALOGS = [boxDialog, cylinderDialog, sphereDialog, torusDialog] as const;
 
 /** Whether a picked face is one the view's meshes show as curved (the kernel says the rest). */
-function isCurvedFace(ref: GeomRef, ctx: Pick<DialogContext, 'bodies'>): boolean {
+function isCurvedFace(ref: GeomRef, ctx: Pick<DialogContext, 'bodies' | 'construction'>): boolean {
   for (const mesh of Object.values(ctx.bodies)) {
     const face = mesh.faceIds?.indexOf(ref.id) ?? -1;
     if (face >= 0) return !isFlatFace(mesh, face);
@@ -178,10 +178,10 @@ function isCurvedFace(ref: GeomRef, ctx: Pick<DialogContext, 'bodies'>): boolean
  */
 export function placementFrame(
   ref: GeomRef | undefined,
-  ctx: Pick<DialogContext, 'bodies'>,
+  ctx: Pick<DialogContext, 'bodies' | 'construction'>,
 ): SketchFrame | undefined {
   if (!ref) return undefined;
-  if (ref.kind !== 'face') return planeFrame(ref);
+  if (ref.kind !== 'face') return planeFrame(ref, ctx.construction);
   const frame = faceFrame(ctx.bodies, ref);
   return frame ? faceSketchFrame(frame.origin, frame.normal) : fingerprintFrame(ref);
 }
@@ -202,7 +202,7 @@ function numberValue(type: PrimitiveType, ctx: Pick<ManipulatorContext, 'value'>
 export function primitiveFrame(
   type: PrimitiveType,
   values: DialogValues,
-  ctx: Pick<ManipulatorContext, 'bodies' | 'value'>,
+  ctx: Pick<ManipulatorContext, 'bodies' | 'construction' | 'value'>,
 ): { frame: SketchFrame; plane: SketchFrame } | undefined {
   const plane = placementFrame(values.refs.plane?.[0], ctx);
   if (!plane) return undefined;
@@ -264,7 +264,7 @@ export function primitiveManipulators(
 export function proposePrimitive(
   type: PrimitiveType,
   values: DialogValues,
-  ctx: Pick<ProposeContext, 'bodies' | 'value'>,
+  ctx: Pick<ProposeContext, 'bodies' | 'construction' | 'value'>,
 ): Partial<DialogValues> {
   const picked = values.refs.plane ?? [];
   const plane = picked[0] ?? DEFAULT_PLACEMENT;
@@ -285,7 +285,7 @@ export function proposePrimitive(
 /** A face's area centroid in its sketch frame, from the meshes (the fingerprint's until then). */
 function faceCentre(
   ref: GeomRef,
-  ctx: Pick<DialogContext, 'bodies'>,
+  ctx: Pick<DialogContext, 'bodies' | 'construction'>,
 ): readonly number[] | undefined {
   const frame = placementFrame(ref, ctx);
   const centroid = faceFrame(ctx.bodies, ref)?.origin ?? ref.fingerprint?.at;

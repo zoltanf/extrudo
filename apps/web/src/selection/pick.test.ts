@@ -290,3 +290,45 @@ describe('origin axes (P2-07)', () => {
     expect(pickBox(empty, iso, [0, 0], [2000, 2000], DEFAULT_FILTER)).toEqual([]);
   });
 });
+
+describe('construction planes and points (P3-05)', () => {
+  const frame = planeFrame(originPlaneRef('origin:xy')) as SketchFrame;
+  // A plane at z = 20 drawn as a 30 mm square around (0, 0, 20), and a point beside the cube.
+  const offset: SketchFrame = { ...frame, origin: [0, 0, 20] };
+  const world: PickScene = {
+    bodies: [],
+    sketches: [],
+    occluding: true,
+    planes: [{ id: 'OP', frame: offset, anchor: [0, 0, 20], half: 15 }],
+    points: [{ id: 'PT', at: [40, 0, 0] }],
+  };
+  const top = cameraFrom([0, 0, 1], { size: 200 });
+
+  it('a plane is picked inside its square, not outside', () => {
+    expect(pickTop(world, top, topViewPx(top, 5, 5), DEFAULT_FILTER)).toEqual({
+      kind: 'plane',
+      id: 'OP',
+    });
+    expect(pickTop(world, top, topViewPx(top, 25, 5), DEFAULT_FILTER)).toBeUndefined();
+    expect(pickTop(world, top, topViewPx(top, 5, 5), without('construction'))).toBeUndefined();
+  });
+
+  it('a point is picked like a vertex, within 8 px', () => {
+    const [x, y] = topViewPx(top, 40, 0);
+    expect(pickTop(world, top, [x + 4, y], DEFAULT_FILTER)).toEqual({ kind: 'point', id: 'PT' });
+    expect(pickTop(world, top, [x + 20, y], DEFAULT_FILTER)).toBeUndefined();
+  });
+
+  it('a body face wins over a plane; the plane stays in the stack after the face', () => {
+    const both: PickScene = { ...world, bodies: [{ id: B, mesh: cube }] };
+    const point = topViewPx(top, 5, 5);
+    expect(pickTop(both, top, point, DEFAULT_FILTER)).toEqual({ kind: 'face', id: 'b:1' });
+    // The cube's top and bottom faces, then the plane, then the body.
+    expect(pickStack(both, top, point, DEFAULT_FILTER).map((h) => h.item.kind)).toEqual([
+      'face',
+      'face',
+      'plane',
+      'body',
+    ]);
+  });
+});
