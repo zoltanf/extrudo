@@ -2,6 +2,13 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-29 · **P2-17** Benchmarks B2 and B3 (ADR-0039): the parametric
+  storage box (cut from a solid, sketch on its top face, exported as 3MF
+  and STL) and the phone stand (two bodies joined into one, parametric
+  angle, 3MF) are built through the UI in end-to-end specs, and the
+  designs of B1, B2 and B3 are saved as fixtures (`fixtures/benchmarks/`)
+  that the kernel tests recompute. B3's standalone Combine step waits for
+  P3-06: until then bodies merge by a join that touches both.
 - 2026-09-29 · **P2-16** File-format spec: `docs/file-format.md` documents
   the `.extrudo` container, versioning and migrations, the document JSON
   (parameters, expressions, every feature type, sketch data, references)

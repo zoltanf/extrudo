@@ -20,6 +20,7 @@
   "devDependencies": {
     "@extrudo/io": "workspace:*",
     "@libcascade/toolchain": "3.0.2",
+    "fflate": "^0.8.3",
     "zod": "^4.6.5"
   }
 }

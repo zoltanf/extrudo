@@ -17,8 +17,9 @@ engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 (revolve), P2-08 (bodies), P2-09 (sketch on face, Project), P2-10
 (primitives), P2-11 (timeline v2), P2-12 (STL, 3MF, STEP export),
 P2-13 (measure and inspect), P2-14 (version history), P2-15 (WASM
-size and startup, offline precache) and P2-16 (file-format spec,
-`docs/file-format.md`) are done.
+size and startup, offline precache), P2-16 (file-format spec,
+`docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
+fixtures) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -309,8 +310,16 @@ manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
 also found that the kernel uses no raw OCCT bindings: a facade-only
 binding list is **proposed but unbuilt** (no Docker on that machine); the
-OCCT input hash is unchanged. Next: **P2-17** (benchmarks B2, B3). See
-`docs/03-roadmap.md`.
+OCCT input hash is unchanged.
+ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
+(`e2e/benchmark-b2.spec.ts`, `-b3`, shared steps in
+`e2e/benchmark-helpers.ts`) and keeps the designs of B1, B2 and B3 as
+`.extrudo` fixtures the app exported (`fixtures/benchmarks/`,
+`WRITE_FIXTURES=1` rewrites them), recomputed headless in
+`packages/kernel/src/benchmarks.test.ts`. Combine doesn't exist yet: B3
+merges two bodies by a join extrude that touches both (P3-06 adds the
+real step).
+Next: Phase 3, **P3-01** (fillet). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -340,7 +349,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0039: benchmarks B2 and B3, fixtures (0006 is reserved) |
 
 ## Stack summary
 
@@ -844,3 +853,25 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   system Chromium. The 2026-09-29 dev machine (Ubuntu, no Docker, no
   emscripten, Chrome 154 at `/usr/bin/google-chrome`) can't build OCCT or
   regenerate Arch-rendered screenshot baselines faithfully.
+- **Benchmark e2e** (`e2e/benchmark-b1.spec.ts`, `-b2`, `-b3`; helpers in
+  `e2e/benchmark-helpers.ts`): a new parameter's unit is the New parameter
+  row's select (`Length` unless you pass `'angle'` to `addParameter`), and
+  `floor` is an expression function: don't name a parameter that. In a
+  sketch on a face the camera is perspective and looks at the body's
+  middle, not the plane, so map sketch points with `projector(viewport)`
+  at the plane's world coordinates (`flat([x, y, z])`), never the flat
+  `mapping()`; a face sketch opens fitted so tight that its edges sit
+  under the nav bar: `zoomOutTo(page, point, 150)` first, one wheel step
+  at a time. On a YZ sketch the sketch x is world Y and y is world Z
+  (camera direction `-1,0,0`). The origin is no entity: a Point tool click
+  at (0, 0) is auto-fixed and dimensions can start from it. A projected
+  face outline is four separate lines (no coincident constraints): Offset
+  takes one line only; dimension the sides to the projected ones instead.
+  A `d` dimension on two parallel lines is their distance; on two lines
+  that meet it is the angle (the label's sector picks it). The Constraints
+  group ("Parallel") lives in the toolbar, not the palette. `data-bodies`
+  rounds sizes to 0.1 mm. `exportProject(page, 'b2-storage-box.extrudo')`
+  writes `fixtures/benchmarks/` only with `WRITE_FIXTURES=1`. Each spec
+  takes about 20 s alone (B3 about 30 s); no Playwright browser is
+  installed on the dev machine, so run with
+  `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable`.

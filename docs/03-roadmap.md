@@ -407,7 +407,17 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   references and names, with a complete example. A test
   (`packages/storage/src/file-format-doc.test.ts`) loads the example through
   the real schema and fails when a key, type or enum value is undocumented.
-- [ ] **P2-17 Benchmarks B2, B3 E2E.**
+- [x] **P2-17 Benchmarks B2, B3 E2E.**
+  *Done 2026-09-29* (ADR-0039): B2 (storage box: parameters, sketch on XY,
+  extrude, sketch on the top face with the outline projected and four
+  `wall` dimensions, cut by `height - bottom`; 3MF and STL closed, exact
+  size and volume) and B3 (phone stand: base plate, a tilted back rest
+  dimensioned by `setback`, `base`, `rest`, `rise` and the angle `tilt`,
+  two bodies, then one by a join that bridges them; 3MF) are built through
+  the UI in `e2e/benchmark-b2.spec.ts` and `-b3`; their designs, and B1's,
+  are the fixtures in `fixtures/benchmarks/`, recomputed headless by
+  `packages/kernel/src/benchmarks.test.ts`. The standalone Combine step of
+  B3 comes with P3-06.
 
 **Phase 2 exit (v0.2):** the first real printable parts; the classic
 parametric box exported as 3MF opens in a slicer and prints.

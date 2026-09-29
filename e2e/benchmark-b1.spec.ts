@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { type Download, expect, type Page, test } from '@playwright/test';
+import { exportProject, renameProject } from './benchmark-helpers';
 import { clicker, counts, mapping, newSketchOnXY, openProject, saveStatus } from './helpers';
 
 // P1-15: benchmark B1 (requirements §7) built through the UI, the Phase 1
@@ -81,6 +82,7 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
   // run in parallel (each opens a project, which starts a kernel worker).
   test.setTimeout(60_000);
   await openProject(page);
+  await renameProject(page, 'B1 Plate');
 
   // The user parameters first; `margin` keeps the holes centred.
   await openParameters(page);
@@ -280,6 +282,9 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
     'fx: ⌀6.00',
   ]);
   await expect(dof(page)).toHaveText('Fully constrained ✓');
+
+  // The design as it stands is the benchmark's fixture (fixtures/benchmarks/).
+  await exportProject(page, 'b1-plate.extrudo');
 
   // The export is the plate as the parameters now make it, to the digit.
   await page
