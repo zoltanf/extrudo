@@ -23,6 +23,7 @@ export function workerApi(service: KernelService): KernelApi {
       );
     },
     exportStep: (bodies) => service.exportStep(bodies),
+    inspect: (targets) => service.inspect(targets),
     debugTestPart: async () => {
       const part = await service.debugTestPart();
       return Comlink.transfer(part, meshBuffers(part.mesh));

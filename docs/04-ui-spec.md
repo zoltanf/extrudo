@@ -74,6 +74,19 @@ brief, voice) is in **`05-brand.md`**. In short:
   summary line says what the file holds ("1 body, 620 triangles,
   watertight", or which bodies aren't closed) before Export saves it.
   Format and resolution are remembered.
+- **Measure** (P2-13, ADR-0035): Solid › Inspect or 3D Print › Prepare,
+  key `I`. A panel where feature dialogs open, pressed like a tool
+  (Esc or Close ends it; the selection stays). It measures the model
+  selection: a plain click adds until two things are picked, the next
+  starts again with itself; Shift toggles. One thing: a body's volume,
+  area and centre; a face's type, area, radius and diameter or normal;
+  an edge's type, length, radius, sweep, centre; a vertex's position.
+  Two: "Between" first (minimum distance with its ΔX, ΔY, ΔZ, the angle
+  where both have a direction, the centre distance of holes, circles
+  and vertices), with a dashed line and label between the closest
+  points in the view. Three or more: totals. Always the bounding box.
+  Values are in the document's unit and precision and can be selected
+  to copy.
 - **Tool groups:** each group shows 3–6 most-used tools as buttons plus a
   dropdown with the full list. Users can pin tools to the toolbar.
 - **Browser (left):** collapsible tree with an eye toggle per item and
@@ -127,7 +140,8 @@ brief, voice) is in **`05-brand.md`**. In short:
   and later chips dim; the marker and chips stay put meanwhile, as while a
   sketch is open.
 - **Status bar:** selection summary (e.g. "2 edges"), measure readout (bbox of
-  the selection), kernel status (spinner while recomputing), units, and the
+  the selection: "40.00 × 20.00 × 0.00 mm", the exact box of what is
+  selected in the model, P2-13), kernel status (spinner while recomputing), units, and the
   viewport's render rate ("58 fps · 1.4 ms": frames drawn in the last
   second and the mean time to draw one; "idle" while the view is still,
   since it only redraws on change).

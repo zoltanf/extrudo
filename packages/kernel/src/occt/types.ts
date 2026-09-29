@@ -89,6 +89,8 @@ export interface FacadeBinding {
   isValid(shape: number): boolean;
   measure(shape: number): boolean;
   measured(index: number): number;
+  properties(shape: number): boolean;
+  surfaceGeometry(shape: number, face: number): number;
   mesh(shape: number, linearDeflection: number, angularDeflection: number): boolean;
   clearMesh(): void;
   positionsPtr(): number;

@@ -28,6 +28,15 @@ import { FeatureDialog } from '../features/FeatureDialog';
 import { dialogPlanePick, dialogPlanePicker } from '../features/planePicker';
 import { type FeatureDialogs, featureDialogs, specForCommand } from '../features/registry';
 import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs';
+import { sizeText } from '../measure/format';
+import {
+  createMeasureSelect,
+  MEASURE_TOOL,
+  type MeasureKernel,
+  useInspection,
+} from '../measure/inspection';
+import { MeasureOverlay } from '../measure/MeasureOverlay';
+import { MeasurePanel } from '../measure/MeasurePanel';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import type { Autosaver } from '../project/autosave';
@@ -105,8 +114,8 @@ export interface AppShellProps {
   toasts?: { toasts: Toast[]; onDismiss(id: number): void };
   /** Feature dialogs (P2-05): the app's registry unless a debug page brings its own. */
   dialogs?: FeatureDialogs;
-  /** The project's kernel (its `Recomputer`): dialog previews, references and export. */
-  kernel?: DialogKernel & ModelExporter;
+  /** The project's kernel (its `Recomputer`): dialog previews, references, export, measuring. */
+  kernel?: DialogKernel & ModelExporter & MeasureKernel;
 }
 
 /** The app's feature dialogs (`features/registry.ts`). */
@@ -149,6 +158,8 @@ export function AppShell({
   const [parametersOpen, setParametersOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<ExportRequest>();
   const [modelExport, setModelExport] = useState<ModelExportRequest>();
+  // The File menu offers the model's export too (P2-12).
+  const fileActions = useMemo(() => ({ ...file, exportModel: () => setModelExport({}) }), [file]);
   const bodies = useStore(model, (s) => s.bodies);
   const sketchReports = useStore(model, (s) => s.sketches);
   const doc = useStore(store, (s) => s.doc);
@@ -159,6 +170,7 @@ export function AppShell({
   const picking = activeTool === CREATE_SKETCH;
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
   const projecting = mode === 'sketch' && activeTool === PROJECT_TOOL;
+  const measuring = mode === 'model' && activeTool === MEASURE_TOOL;
   const showConstraints = useStore(viewport, (s) => s.sketchConstraints);
   const showDimensions = useStore(viewport, (s) => s.sketchDimensions);
   const showProfiles = useStore(viewport, (s) => s.sketchProfiles);
@@ -245,6 +257,13 @@ export function AppShell({
   const bodyList = useMemo(() => bodyEntries(doc, bodies), [doc, bodies]);
   const bodyMeta = useMemo(() => bodyMetaOf(bodyList), [bodyList]);
   const bodyListRef = useRef(bodyList);
+  // Measure and inspect (P2-13): the kernel measures the selected topology, for the status
+  // bar's size readout and the Measure panel.
+  const inspection = useInspection(kernel, selection, bodies, mode === 'model' && !dialogOpen);
+  const bodyName = useMemo(() => {
+    const names = new Map(bodyList.map((b) => [b.id, b.meta.name]));
+    return (id: BodyId) => names.get(id);
+  }, [bodyList]);
   bodyListRef.current = bodyList;
   const bodyActions = useMemo(
     () => ({
@@ -395,7 +414,7 @@ export function AppShell({
         viewport,
         browser: { collapsed: browser.collapsed, toggle: browser.toggle },
         timeline: { collapsed: timeline.collapsed, toggle: timeline.toggle },
-        file,
+        file: fileActions,
         theme: { choice, set: setChoice },
         ready,
         dialogCommands,
@@ -420,7 +439,7 @@ export function AppShell({
       browser.toggle,
       timeline.collapsed,
       timeline.toggle,
-      file,
+      fileActions,
       choice,
       setChoice,
     ],
@@ -469,6 +488,7 @@ export function AppShell({
             { keys: 'Enter', run: () => host.enter() },
           ]
         : []),
+      ...(measuring ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }] : []),
       // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
       // the selection (P2-03).
       ...(mode === 'model' && !picking
@@ -501,6 +521,7 @@ export function AppShell({
       stores,
       picking,
       projecting,
+      measuring,
       mode,
       drawing,
       host,
@@ -517,6 +538,7 @@ export function AppShell({
     if (spec) {
       if (mode === 'model') {
         if (picking) cancelCreateSketch(stores);
+        if (measuring) session.getState().setTool(undefined);
         dialog?.start(spec.type);
       }
       return;
@@ -542,7 +564,14 @@ export function AppShell({
       }
     } else if (tool === 'finishSketch') finishSketch(stores);
     else if (tool === 'export') setModelExport({});
-    else if (tool === 'exportSketch' && activeSketchId) {
+    else if (tool === MEASURE_TOOL) {
+      if (mode !== 'model') return;
+      if (measuring) session.getState().setTool(undefined);
+      else {
+        if (picking) cancelCreateSketch(stores);
+        session.getState().setTool(MEASURE_TOOL);
+      }
+    } else if (tool === 'exportSketch' && activeSketchId) {
       // Profiles selected in the open sketch are offered first (P1-13).
       featureActions.exportSketch(activeSketchId);
     } else if (isSketchTool(tool) && host) {
@@ -565,7 +594,7 @@ export function AppShell({
   const stopCommand = () => {
     if (picking) cancelCreateSketch(stores);
     else if (drawing) host?.stop();
-    else if (projecting) session.getState().setTool(undefined);
+    else if (projecting || measuring) session.getState().setTool(undefined);
   };
 
   /**
@@ -610,8 +639,6 @@ export function AppShell({
     cancelCreateSketch(stores);
     setRedefining(undefined);
   };
-  // The File menu offers the model's export too (P2-12).
-  const fileActions = useMemo(() => ({ ...file, exportModel: () => setModelExport({}) }), [file]);
   const pickPlane = (plane: OriginPlaneId) => {
     if (redefining) redefineTo(redefining, originPlaneRef(plane));
     else createSketchOn(stores, originPlaneRef(plane));
@@ -706,6 +733,11 @@ export function AppShell({
     bodies,
     mode === 'model' && !picking && !dialogOpen,
   );
+  // While Measure runs, two plain clicks pick two things to measure between.
+  const measureSelect = useMemo(
+    () => (measuring && sessionSelect ? createMeasureSelect(session, sessionSelect) : undefined),
+    [measuring, sessionSelect, session],
+  );
   const modelSelect =
     dialogOpen && mode === 'model'
       ? dialogPlanePick(dialog, dialogOpen)
@@ -713,7 +745,7 @@ export function AppShell({
         : dialog?.select
       : projecting
         ? project.select
-        : sessionSelect;
+        : (measureSelect ?? sessionSelect);
   // Body rows show the bodies in the selection (the dialog's picks while one is open).
   const selectedBodies = useMemo(
     () => new Set(shownSelection.filter((i) => i.kind === 'body').map((i) => i.id)),
@@ -811,7 +843,7 @@ export function AppShell({
         activeTool={
           picking
             ? 'sketch'
-            : drawing || projecting
+            : drawing || projecting || measuring
               ? (activeTool as ToolId)
               : dialogOpen && typeof dialogOpen.spec.command === 'string'
                 ? dialogOpen.spec.command
@@ -882,7 +914,7 @@ export function AppShell({
             sketchPlane={sketchPlane}
             planePicker={planePicker}
             sketchInput={sketchInput}
-            commandRunning={drawing || picking || projecting}
+            commandRunning={drawing || picking || projecting || measuring}
             onStopCommand={stopCommand}
             hover={hover}
             selection={dialogItems ?? selection}
@@ -895,6 +927,13 @@ export function AppShell({
                 viewport={viewport}
                 settings={doc.settings}
                 bodies={shownBodies}
+              />
+            )}
+            {measuring && inspection.inspection?.pair && (
+              <MeasureOverlay
+                pair={inspection.inspection.pair}
+                viewport={viewport}
+                settings={doc.settings}
               />
             )}
             {showConstraints && tools && activeSketchId && sketchPlane && (
@@ -961,6 +1000,16 @@ export function AppShell({
           />
         )}
         {dialog && <FeatureDialog controller={dialog} settings={doc.settings} />}
+        {measuring && (
+          <MeasurePanel
+            state={inspection}
+            settings={doc.settings}
+            bodyName={bodyName}
+            others={selection.length - inspection.targets.length}
+            onClear={() => session.getState().clearSelection()}
+            onClose={() => session.getState().setTool(undefined)}
+          />
+        )}
         {mode === 'sketch' && activeSketch && (
           <PanelColumn>
             <SketchPalette
@@ -985,6 +1034,9 @@ export function AppShell({
         model={model}
         session={session}
         editing={dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined}
+        selectionSize={
+          inspection.inspection?.bbox && sizeText(inspection.inspection.bbox, doc.settings)
+        }
       />
       <OverConstrainedDialog host={host} />
       <ParametersDialog

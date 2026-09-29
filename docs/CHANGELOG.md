@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-29 · **P2-13** Measure and inspect (ADR-0035): Measure (`I`, in
+  Solid › Inspect and 3D Print › Prepare) shows a picked body's volume and
+  area, a face's area, type, radius or normal, an edge's length, radius
+  and sweep, a vertex's position; two plain clicks measure between two
+  things: minimum distance with ΔX, ΔY, ΔZ and a line in the view, the
+  angle, the distance between hole centres. All from the kernel's exact
+  geometry. The status bar shows the size of the box around the
+  selection.
 - 2026-09-28 · **P2-11** Timeline v2 (ADR-0033): drag the rollback marker
   (or focus it and use the arrow keys, Home and End); drag chips to
   reorder them, refused with a message when a feature would come before

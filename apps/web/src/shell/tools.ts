@@ -477,8 +477,7 @@ export const TOOLS = {
     label: 'Measure',
     icon: 'measure',
     category: 'inspect',
-    hint: 'Distances, angles and areas.',
-    comesWith: 'P2-13',
+    hint: 'Distances, angles, areas and volumes. Pick one thing, or two to measure between.',
   },
   insertSvg: {
     id: 'insertSvg',
@@ -608,7 +607,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
           'symmetric',
         ],
       },
-      { label: 'Inspect', tools: ['measure'] },
+      // Measure works on bodies (P2-13); measuring sketch geometry comes later.
       { label: 'Export', tools: ['exportSketch'] },
     ],
   },

@@ -56,6 +56,7 @@ describe('KernelClient', () => {
       reference: async () => undefined,
       exportMeshes: async () => [],
       exportStep: async () => '',
+      inspect: async () => ({ items: [] }),
     };
     const client = new KernelClient(() => {
       spawned++;
@@ -84,6 +85,7 @@ describe('KernelClient', () => {
       reference: async () => undefined,
       exportMeshes: async () => [],
       exportStep: async () => '',
+      inspect: async () => ({ items: [] }),
     };
     const client = new KernelClient(
       () => ({ api: crashing, terminate: () => {}, onFatal: () => {} }),

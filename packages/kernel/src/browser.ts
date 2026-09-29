@@ -35,6 +35,7 @@ function connect(worker: Worker): KernelConnection {
     reference: (body, kind, index, base) => api.reference(body, kind, index, base),
     exportMeshes: (bodies, tessellation) => api.exportMeshes(bodies, tessellation),
     exportStep: (bodies) => api.exportStep(bodies),
+    inspect: (targets) => api.inspect(targets),
     debugTestPart: () => api.debugTestPart(),
     debugCrash: () => api.debugCrash(),
     stats: () => api.stats(),

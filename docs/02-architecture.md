@@ -280,7 +280,9 @@ interface KernelApi {
   // P2-12 (ADR-0034), bodies of the last finished recompute:
   exportMeshes(bodies: BodyId[], tessellation: MeshOptions): Promise<{ id; mesh: ExportMesh }[]>;
   exportStep(bodies: { id: BodyId; name: string }[]): Promise<string>;   // AP242, mm
-  measure(req: MeasureQuery): Promise<MeasureResult>;
+  // P2-13 (ADR-0035): exact measures of picked bodies, faces, edges, vertices; for two,
+  // the distance with its closest points, the angle and the centre distance.
+  inspect(targets: { kind; body: BodyId; index }[]): Promise<Inspection>;
 }
 interface RecomputeResult {
   perFeature: Record<FeatureId, { status: 'ok'|'warning'|'error'; message?: string }>;

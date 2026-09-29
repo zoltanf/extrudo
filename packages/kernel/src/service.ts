@@ -1,6 +1,7 @@
 import type { BodyId, FeatureRegistry, GeomRef } from '@extrudo/core';
 import { kernelFeatures } from './features';
 import type { SubShapeKind } from './history';
+import { type Inspection, type InspectTarget, inspectShapes } from './inspect';
 import { Kernel, KernelError, type KernelStats } from './kernel';
 import type { ExportMesh, MeshOptions } from './mesh';
 import type { OcctModule } from './occt/types';
@@ -57,6 +58,13 @@ export interface KernelApi {
   exportMeshes(bodies: readonly BodyId[], tessellation: MeshOptions): Promise<BodyExportMesh[]>;
   /** Bodies of the last finished recompute as one STEP AP242 file, each a named product. */
   exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string>;
+  /**
+   * Measures bodies, faces, edges and vertices of the last finished
+   * recompute (P2-13, ADR-0035): each item's properties, the box around
+   * them and, for two, their distance and angle. Rejects if a body is no
+   * longer in the model.
+   */
+  inspect(targets: readonly InspectTarget[]): Promise<Inspection>;
   /** Builds, measures and meshes the P0-02 test part. */
   debugTestPart(): Promise<TestPart>;
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
@@ -144,6 +152,15 @@ export class KernelService implements KernelApi {
     );
   }
 
+  inspect(targets: readonly InspectTarget[]): Promise<Inspection> {
+    return this.#run((kernel) =>
+      inspectShapes(
+        kernel,
+        targets.map((target) => ({ body: this.#bodyShape(target.body, 'measure'), target })),
+      ),
+    );
+  }
+
   async debugTestPart(): Promise<TestPart> {
     return this.#run((kernel) => makeTestPart(kernel));
   }
@@ -164,10 +181,10 @@ export class KernelService implements KernelApi {
   }
 
   /** A body of the last recompute. Only called inside #run. */
-  #bodyShape(id: BodyId) {
+  #bodyShape(id: BodyId, purpose: 'export' | 'measure' = 'export') {
     const shape = this.#engineOf().latestBody(id);
     if (shape === undefined) {
-      throw new KernelError('A body to export is no longer in the model. Try again.');
+      throw new KernelError(`A body to ${purpose} is no longer in the model. Try again.`);
     }
     return shape;
   }

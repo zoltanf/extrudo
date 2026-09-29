@@ -26,6 +26,7 @@ import {
   type SpawnKernel,
 } from './client';
 import type { SubShapeKind } from './history';
+import type { Inspection, InspectTarget } from './inspect';
 import type { BodyMesh, MeshOptions } from './mesh';
 import type { BodyResult, PreviewToolMesh, RecomputeResult } from './recompute/types';
 import { type BodyExportMesh, isKernelCrash } from './service';
@@ -201,6 +202,14 @@ export class Recomputer {
   /** Bodies the model store shows as one STEP AP242 file, each a product with its name. */
   exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string> {
     return this.client.call((api) => api.exportStep(bodies));
+  }
+
+  /**
+   * Measures what the model store shows (P2-13): bodies, faces, edges and
+   * vertices by mesh index. Rejects if the kernel can't do it.
+   */
+  inspect(targets: readonly InspectTarget[]): Promise<Inspection> {
+    return this.client.call((api) => api.inspect(targets));
   }
 
   /** The dialog closed: drops a pending preview. */

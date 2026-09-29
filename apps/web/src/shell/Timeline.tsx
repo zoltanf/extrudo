@@ -57,6 +57,8 @@ export interface TimelineProps {
    * comes later, and holds the marker and the chips still.
    */
   editing?: FeatureId;
+  /** The size of the box around the selection ("40.00 × 80.00 × 60.00 mm", P2-13). */
+  selectionSize?: string | undefined;
 }
 
 /** A chip being dragged to a new place (FR-TL-04). */
@@ -100,6 +102,7 @@ export function Timeline({
   model,
   session,
   editing,
+  selectionSize,
 }: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
   const statuses = useStore(model ?? NO_MODEL, (s) => s.features);
@@ -221,7 +224,7 @@ export function Timeline({
         </>
       )}
       <span className="flex-1" />
-      {session && <SelectionState session={session} />}
+      {session && <SelectionState session={session} size={selectionSize} />}
       <output className="font-mono text-[11px] whitespace-nowrap text-muted" aria-label="Status">
         {activeSketch ? `Editing ${activeSketch} · ` : ''}
         {count} {count === 1 ? 'feature' : 'features'} · {doc.settings.units}
@@ -427,17 +430,37 @@ function StatusGlyph({ status }: { status: 'warning' | 'error' }) {
 
 const NO_MODEL = createModelStore<BodyMesh>();
 
-/** The selection summary (UI spec §2): "2 faces", "1 edge"; nothing while nothing is selected. */
-function SelectionState({ session }: { session: SessionStore }) {
+/**
+ * The selection summary (UI spec §2): "2 faces", "1 edge"; nothing while
+ * nothing is selected. Then the size of the box around it (P2-13), once
+ * the kernel has measured it.
+ */
+function SelectionState({ session, size }: { session: SessionStore; size?: string | undefined }) {
   const summary = useStore(session, (s) => selectionSummary(s.selection));
   if (!summary) return null;
   return (
-    <output
-      aria-label="Selection"
-      className="font-mono text-[11px] whitespace-nowrap text-ink tabular-nums"
-    >
-      {summary} ·
-    </output>
+    <>
+      <output
+        aria-label="Selection"
+        className="font-mono text-[11px] whitespace-nowrap text-ink tabular-nums"
+      >
+        {summary} ·
+      </output>
+      {size && (
+        <Tooltip
+          label="Selection size"
+          hint="The box around the selection along X, Y and Z. Measure (I) says more."
+        >
+          <output
+            aria-label="Selection size"
+            data-selection-size={size}
+            className="-ml-1 font-mono text-[11px] whitespace-nowrap text-ink tabular-nums"
+          >
+            {size} ·
+          </output>
+        </Tooltip>
+      )}
+    </>
   );
 }
 

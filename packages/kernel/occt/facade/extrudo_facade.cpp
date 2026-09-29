@@ -98,11 +98,15 @@
 #include <gp_Ax2.hxx>
 #include <gp_Ax3.hxx>
 #include <gp_Circ.hxx>
+#include <gp_Cone.hxx>
+#include <gp_Cylinder.hxx>
 #include <gp_Elips.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Pnt2d.hxx>
 #include <gp_Dir.hxx>
 #include <gp_Pnt.hxx>
+#include <gp_Sphere.hxx>
+#include <gp_Torus.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Vec.hxx>
 
@@ -365,9 +369,14 @@ public:
    * The smallest distance between two shapes (0 where they touch or one
    * is inside a solid of the other), or -1. Compared solid by solid, so a
    * compound of solids (what booleans return) counts its insides too.
+   *
+   * geometryNumbers: the closest points [on a xyz, on b xyz] (P2-13's
+   * measure draws the line between them). Where one shape is inside the
+   * other, both are a point of the inner one.
    */
   double distance(int a, int b) {
     beginOp();
+    geometry_.clear();
     const TopoDS_Shape* sa = find(a);
     const TopoDS_Shape* sb = find(b);
     if (sa == nullptr || sb == nullptr) {
@@ -383,7 +392,15 @@ public:
           BRepExtrema_DistShapeShape measure(pa, pb, Extrema_ExtFlag_MIN);
           if (!measure.IsDone()) continue;
           const double d = measure.InnerSolution() ? 0.0 : measure.Value();
-          if (best < 0 || d < best) best = d;
+          if (best < 0 || d < best) {
+            best = d;
+            geometry_.clear();
+            if (measure.NbSolution() > 0) {
+              const gp_Pnt onA = measure.PointOnShape1(1);
+              pushPoint(onA);
+              pushPoint(measure.InnerSolution() ? onA : measure.PointOnShape2(1));
+            }
+          }
           if (best <= 0) return 0;
         }
       }
@@ -860,7 +877,135 @@ public:
     }
   }
 
-  double measured(int index) const { return index >= 0 && index < 8 ? measured_[index] : 0.0; }
+  /**
+   * What the Measure tool shows of a shape (P2-13), read with measured(i):
+   * 0 = volume (solids only), 1 = area (faces only), 2..4 = bbox min xyz,
+   * 5..7 = bbox max xyz, 8 = length (edges, when there are no faces),
+   * 9..11 = centre of mass of the volume, else the area, else the length,
+   * else the vertex. Unlike measure(), the box is tight: it comes from the
+   * exact geometry, not the triangulation or tolerances.
+   */
+  bool properties(int shape) {
+    beginOp();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return fail("Unknown shape.") != 0;
+    try {
+      for (double& m : measured_) m = 0.0;
+      const bool solids = TopExp_Explorer(*s, TopAbs_SOLID).More();
+      const bool faces = TopExp_Explorer(*s, TopAbs_FACE).More();
+      const bool edges = TopExp_Explorer(*s, TopAbs_EDGE).More();
+      GProp_GProps props;
+      if (solids) {
+        BRepGProp::VolumeProperties(*s, props);
+        measured_[0] = props.Mass();
+      }
+      if (faces) {
+        GProp_GProps area;
+        BRepGProp::SurfaceProperties(*s, area);
+        measured_[1] = area.Mass();
+        if (!solids) props = area;
+      }
+      if (edges && !faces) {
+        BRepGProp::LinearProperties(*s, props);
+        measured_[8] = props.Mass();
+      }
+      gp_Pnt centre;
+      if (solids || faces || edges) {
+        centre = props.CentreOfMass();
+      } else {
+        TopExp_Explorer vertex(*s, TopAbs_VERTEX);
+        if (vertex.More()) centre = BRep_Tool::Pnt(TopoDS::Vertex(vertex.Current()));
+      }
+      measured_[9] = centre.X();
+      measured_[10] = centre.Y();
+      measured_[11] = centre.Z();
+      Bnd_Box box;
+      BRepBndLib::AddOptimal(*s, box, false, false);
+      if (!box.IsVoid()) {
+        box.Get(measured_[2], measured_[3], measured_[4], measured_[5], measured_[6], measured_[7]);
+      }
+      return true;
+    } catch (...) {
+      failFromException("Measure failed");
+      return false;
+    }
+  }
+
+  double measured(int index) const { return index >= 0 && index < 12 ? measured_[index] : 0.0; }
+
+  /**
+   * The surface under face `face` of a shape (P2-13). geometryNumbers:
+   * [type, origin xyz, direction xyz, radius, second], types as describe()
+   * gives them. A plane: a point on it and its normal out of the face. A
+   * cylinder: a point on its axis, the axis (canonical sign), the radius. A
+   * cone: the apex, the axis, the radius at the reference plane, the half
+   * angle (radians). A sphere: the centre, its polar axis, the radius. A
+   * torus: the centre, the axis, the major and the minor radius. A surface
+   * of revolution: a point on its axis and the axis; an extrusion: its
+   * direction. Otherwise only the type. Returns 1, or 0 on failure.
+   */
+  int surfaceGeometry(int shape, int face) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return fail("Unknown shape.");
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      if (face < 0 || face >= faces.Extent()) return fail("Face index out of range.");
+      const TopoDS_Face f = TopoDS::Face(faces(face + 1));
+      BRepAdaptor_Surface surface(f);
+      const GeomAbs_SurfaceType type = surface.GetType();
+      geometry_.push_back(static_cast<double>(type));
+      const auto axis = [this](const gp_Pnt& origin, const gp_Dir& direction, double r1, double r2) {
+        pushPoint(origin);
+        pushDir(direction);
+        geometry_.insert(geometry_.end(), {r1, r2});
+      };
+      switch (type) {
+        case GeomAbs_Plane: {
+          const gp_Pln plane = surface.Plane();
+          const gp_Dir normal = plane.Axis().Direction();
+          axis(plane.Location(), f.Orientation() == TopAbs_REVERSED ? normal.Reversed() : normal, 0, 0);
+          break;
+        }
+        case GeomAbs_Cylinder: {
+          const gp_Cylinder c = surface.Cylinder();
+          axis(c.Location(), canonical(c.Axis().Direction()), c.Radius(), 0);
+          break;
+        }
+        case GeomAbs_Cone: {
+          const gp_Cone c = surface.Cone();
+          axis(c.Apex(), canonical(c.Axis().Direction()), c.RefRadius(), c.SemiAngle());
+          break;
+        }
+        case GeomAbs_Sphere: {
+          const gp_Sphere c = surface.Sphere();
+          axis(c.Location(), canonical(c.Position().Direction()), c.Radius(), 0);
+          break;
+        }
+        case GeomAbs_Torus: {
+          const gp_Torus c = surface.Torus();
+          axis(c.Location(), canonical(c.Axis().Direction()), c.MajorRadius(), c.MinorRadius());
+          break;
+        }
+        case GeomAbs_SurfaceOfRevolution: {
+          const gp_Ax1 a = surface.AxeOfRevolution();
+          axis(a.Location(), canonical(a.Direction()), 0, 0);
+          break;
+        }
+        case GeomAbs_SurfaceOfExtrusion:
+          axis(gp_Pnt(0, 0, 0), canonical(surface.Direction()), 0, 0);
+          break;
+        default:
+          break;
+      }
+      return 1;
+    } catch (...) {
+      geometry_.clear();
+      return failFromException("Surface geometry failed");
+    }
+  }
 
   // ----------------------------------------------------------------- mesh --
 
@@ -1075,7 +1220,7 @@ private:
   std::vector<int> args_;
   std::vector<int32_t> history_;
   std::string lastError_;
-  double measured_[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+  double measured_[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
   std::vector<float> positions_;
   std::vector<float> normals_;
   std::vector<uint32_t> indices_;

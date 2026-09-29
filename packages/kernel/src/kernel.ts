@@ -135,6 +135,19 @@ export class Kernel {
     return d;
   }
 
+  /**
+   * `distance`, with the closest points: `from` on `a`, `to` on `b` (the
+   * same point of the inner shape where one is inside the other).
+   */
+  closestPoints(a: ShapeHandle, b: ShapeHandle): { distance: number; from: Vec3; to: Vec3 } {
+    const distance = this.distance(a, b);
+    const f = this.#facade;
+    const v = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+    if (v.length < 6) throw new KernelError("Couldn't find the closest points of these shapes.");
+    const at = (k: number) => v[k] as number;
+    return { distance, from: [at(0), at(1), at(2)], to: [at(3), at(4), at(5)] };
+  }
+
   /** New handles to each solid of a shape (a compound of solids from a boolean or a sweep). */
   solids(shape: ShapeHandle): ShapeHandle[] {
     const n = this.#facade.count(shape, SOLID_CODE);
@@ -278,6 +291,31 @@ export class Kernel {
       area: m(1),
       bbox: { min: [m(2), m(3), m(4)], max: [m(5), m(6), m(7)] },
     };
+  }
+
+  /**
+   * What the Measure tool shows of a shape (P2-13): volume of its solids,
+   * area of its faces, length of its edges when it has no faces, the centre
+   * of mass of the highest of those (a vertex's point), and a tight box
+   * from the exact geometry (`measure`'s box may be looser).
+   */
+  properties(shape: ShapeHandle): ShapeProperties {
+    if (!this.#facade.properties(shape)) throw new KernelError(this.#facade.lastError());
+    const m = (i: number) => this.#facade.measured(i);
+    return {
+      volume: m(0),
+      area: m(1),
+      length: m(8),
+      centroid: [m(9), m(10), m(11)],
+      bbox: { min: [m(2), m(3), m(4)], max: [m(5), m(6), m(7)] },
+    };
+  }
+
+  /** The surface under face `face` of a shape: its kind and, where it has them, axis and radii. */
+  surfaceGeometry(shape: ShapeHandle, face: number): SurfaceGeometry {
+    const f = this.#facade;
+    if (!f.surfaceGeometry(shape, face)) throw new KernelError(f.lastError() || 'Unknown face.');
+    return decodeSurfaceGeometry(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize()));
   }
 
   mesh(shape: ShapeHandle, options: MeshOptions): BodyMesh {
@@ -506,6 +544,69 @@ export function decodeEdgeGeometry(v: Float64Array): EdgeGeometry {
     };
   }
   return { type, closed, points };
+}
+
+/** `Kernel.properties`: lengths in mm, areas in mm², volumes in mm³. */
+export interface ShapeProperties {
+  volume: number;
+  area: number;
+  length: number;
+  centroid: Vec3;
+  bbox: { min: Vec3; max: Vec3 };
+}
+
+/** The facade's surface type codes (as `describe` gives them). */
+const SURFACE_KINDS = [
+  'plane',
+  'cylinder',
+  'cone',
+  'sphere',
+  'torus',
+  'bezier',
+  'bspline',
+  'revolution',
+  'extrusion',
+  'offset',
+] as const;
+
+/** A face's surface (`Kernel.surfaceGeometry`), in world mm. */
+export interface SurfaceGeometry {
+  type: (typeof SURFACE_KINDS)[number] | 'other';
+  /**
+   * A plane: a point on it. A cylinder, a revolution: a point on the axis.
+   * A cone: the apex. A sphere, a torus: the centre.
+   */
+  origin?: Vec3;
+  /**
+   * A plane: its normal out of the face. Otherwise the axis (a sphere's
+   * polar one; an extrusion's direction), sign canonical.
+   */
+  direction?: Vec3;
+  /** Cylinder, sphere; a cone's radius at its reference plane; a torus's major radius. */
+  radius?: number;
+  /** A torus: the minor radius. */
+  minorRadius?: number;
+  /** A cone: the half angle, radians. */
+  halfAngle?: number;
+}
+
+/** Decodes the facade's surfaceGeometry numbers. */
+export function decodeSurfaceGeometry(v: Float64Array): SurfaceGeometry {
+  const type = SURFACE_KINDS[v[0] as number] ?? 'other';
+  if (v.length < 9) return { type };
+  const at = (k: number) => v[k] as number;
+  const out: SurfaceGeometry = {
+    type,
+    origin: [at(1), at(2), at(3)],
+    direction: [at(4), at(5), at(6)],
+  };
+  if (type === 'cylinder' || type === 'sphere' || type === 'cone' || type === 'torus') {
+    out.radius = at(7);
+  }
+  if (type === 'torus') out.minorRadius = at(8);
+  if (type === 'cone') out.halfAngle = at(8);
+  if (type === 'extrusion') delete out.origin;
+  return out;
 }
 
 /** Releases every tracked shape on dispose, in reverse order. */

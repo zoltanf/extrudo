@@ -74,6 +74,12 @@ Things the builds ran into:
   take kind 3 for solids; `distance` measures solid by solid, since
   `BRepExtrema_DistShapeShape` only sees inside a shape that is a solid
   itself.
+- Measuring (ADR-0035): `distance` also leaves the closest points in
+  `geometryNumbers`; `properties` gives volume (solids only), area,
+  length, centre of mass and a tight box (`BRepBndLib::AddOptimal`
+  without triangulation or tolerances; `measure` keeps the fast, loose
+  box extrude uses); `surfaceGeometry` a face's surface type, axis or
+  normal (out of the face) and radii.
 
 ## Licensing
 

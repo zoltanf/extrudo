@@ -376,9 +376,11 @@ and STEP. Benchmarks **B2** and **B3** buildable.
   OrcaSlicer 2.4.2 (CLI), lib3mf 2.5 (strict) and FreeCAD 1.1.3 read the
   files cleanly; Bambu Studio and colours in the slicer GUIs are a manual
   check still to do.
-- [ ] **P2-13 Measure and inspect.** Measure tool (distance, angle, radius, area,
+- [x] **P2-13 Measure and inspect.** Measure tool (distance, angle, radius, area,
   volume); selection bounding-box readout in the status bar.
-  *AC:* FR-3DP-01.
+  *AC:* FR-3DP-01. Done 2026-09-29 (ADR-0035): exact measures from the
+  kernel (`KernelApi.inspect`); two plain clicks measure between two
+  things; the status bar shows the selection's size.
 - [ ] **P2-14 Version history.** "Save version" with a description; version list
   panel; open or restore an old version.
   *AC:* FR-PRJ-03.

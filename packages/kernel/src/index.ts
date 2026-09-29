@@ -26,6 +26,17 @@ export {
   type SubShapeRef,
 } from './history';
 export {
+  type Box,
+  type Inspection,
+  type InspectKind,
+  type InspectTarget,
+  type ItemMeasure,
+  type Line3,
+  type PairMeasure,
+  pairMeasure,
+  unionBox,
+} from './inspect';
+export {
   type Axis,
   type BooleanOptions,
   Kernel,
@@ -33,7 +44,9 @@ export {
   type KernelStats,
   type OperationResult,
   type ShapeHandle,
+  type ShapeProperties,
   ShapeScope,
+  type SurfaceGeometry,
   stepString,
   type Vec3,
 } from './kernel';
