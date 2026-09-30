@@ -341,8 +341,9 @@ export function extentOf(
   mesh: TriangleMesh,
   keep: (x: number, y: number, z: number) => boolean = () => true,
 ) {
-  const min = [Infinity, Infinity, Infinity];
-  const max = [-Infinity, -Infinity, -Infinity];
+  type Vec3 = [number, number, number];
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
   const p = mesh.positions;
   for (let i = 0; i + 2 < p.length; i += 3) {
     const v = [p[i] as number, p[i + 1] as number, p[i + 2] as number];
@@ -352,7 +353,8 @@ export function extentOf(
       max[k] = Math.max(max[k] as number, v[k] as number);
     }
   }
-  return { min, max, size: max.map((v, k) => v - (min[k] as number)) };
+  const size: Vec3 = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+  return { min, max, size };
 }
 
 /** Back to the Solid tab (a model export leaves the 3D Print tab open). */
