@@ -887,22 +887,43 @@ describe('memory', () => {
 
 // P3-13 (ADR-0029's open item): the same revolve document with the cache kept
 // between runs, as in the app, for a long session. Measurement only:
-// `HEAP_RUNS=4000 pnpm vitest run packages/kernel/src/memory.test.ts -t "warm cache"`.
-const HEAP_RUNS = Number(
-  (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env
-    .HEAP_RUNS ?? 0,
-);
+// `HEAP_RUNS=700 pnpm vitest run packages/kernel/src/memory.test.ts -t "warm cache"`
+// (about 0.3 s a run). `HEAP_MAX_ENTRIES=24` sets the cache size; `HEAP_ONLY=G`
+// (R, F, GF, RF, GR) keeps only those revolves and what they need. ADR-0051 §6
+// has the numbers: all three together grow, no subset does.
+const ENV =
+  (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
+const HEAP_RUNS = Number(ENV.HEAP_RUNS ?? 0);
 describe.runIf(HEAP_RUNS > 0)('heap with a warm cache', () => {
   it('warm cache: heap top of revolve recomputes', { timeout: 3_600_000 }, async () => {
-    const engine = new RecomputeEngine(kernel, testFeatures().registry);
+    const maxEntries = Number(ENV.HEAP_MAX_ENTRIES ?? 256);
+    const engine = new RecomputeEngine(kernel, testFeatures().registry, { maxEntries });
     const doc = revolveDocument();
-    const samples: number[] = [];
+    const samples: string[] = [];
     for (let i = 0; i < HEAP_RUNS; i++) {
-      const result = await engine.recompute({ doc: doc(60 + (i % 100) * 0.3) });
+      const full = doc(60 + (i % 100) * 0.3);
+      // `HEAP_ONLY=G` (or R, F) keeps one revolve and what it needs, to find the one that grows.
+      const drop: Record<string, string[]> = {
+        G: ['SR', 'R', 'F'],
+        R: ['SG', 'G', 'F'],
+        F: ['SG', 'G', 'SR', 'R'],
+        GF: ['SR', 'R'],
+        RF: ['SG', 'G'],
+        GR: ['F'],
+      };
+      const gone = drop[ENV.HEAP_ONLY ?? ''] ?? [];
+      const features = full.features.filter((f) => !gone.includes(f.id));
+      const result = await engine.recompute({
+        doc: { ...full, features, timelineMarker: features.length },
+      });
       if (result.status !== 'done') throw new Error('not done');
-      if ((i + 1) % 250 === 0) samples.push(Math.round(kernel.stats().heapTop / 2 ** 17) / 8);
+      if ((i + 1) % 100 === 0) {
+        const { heapTop, heapBytes, liveShapes } = kernel.stats();
+        const mb = (bytes: number) => Math.round(bytes / 2 ** 17) / 8;
+        samples.push(`top ${mb(heapTop)} MB, memory ${mb(heapBytes)} MB, ${liveShapes} shapes`);
+      }
     }
     engine.clear();
-    expect.soft({ 'heap top (MB) every 250 runs': samples }).toBeUndefined();
+    expect.soft({ maxEntries, 'every 100 runs': samples }).toBeUndefined();
   });
 });
