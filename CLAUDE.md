@@ -490,9 +490,11 @@ interfere). A path is a polyline (`pathFromRefs`; the sketch output has
 `curves`). Mirror's `objects: 'features'` uses the same `replayFeatures`.
 The dialogs have a new field kind `features` (a checkbox list of
 `repeatableFeatures`). No facade change.
-Next: **P3-04** (hole), then **P3-08** (press/pull, offset face, split,
-scale, draft). Since 2026-09-30 tasks run one at a time, not in
-parallel tracks. See `docs/03-roadmap.md`.
+Next, one task at a time (not parallel tracks, since 2026-09-30): **P3-04**
+(hole), **P3-08** (press/pull, offset face, split, scale, draft), **P3-17**
+(polish: open items from the ADRs), P3-12, P3-13, P3-14, then P3-15 after
+the owner's decisions. Carried-over items are listed under those tasks in
+`docs/03-roadmap.md`; deeper ones are the P4-12 backlog.
 
 ## Commands
 

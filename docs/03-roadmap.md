@@ -519,7 +519,13 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   distance arrow per direction and an angle ring. No facade change. Not
   built: patterns of faces, a skip list.
 - [ ] **P3-08 Press/Pull, Offset face, Split body, Scale, Draft.** FR-FT-08,
-  -12.
+  -12. Also, carried over (2026-09-30): the marking menu's Press Pull wedge
+  lights up once a `pressPull` command exists (`commands/marking.ts`,
+  ADR-0042); patterns of faces, left out of P3-07 until Offset face exists
+  (ADR-0047); one press-pull proposal rule for faces, so a revolved face
+  turned into its body proposes a cut and a profile sketched on a body's
+  face follows the extrude rule (ADR-0028, ADR-0029). Big enough to run as
+  two agent tasks: Press/Pull + Offset face, then Split + Scale + Draft.
 - [x] **P3-09 Section analysis.** FR-VP-06. Done 2026-09-30 (ADR-0045):
   Solid › Inspect › Section Analysis (Shift+S, Ctrl+K) cuts the view at an
   origin plane, a construction plane or a flat face, with an offset
@@ -567,9 +573,32 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   starters), tool tooltips with animated demos. FR-UX-04, -05.
 - [ ] **P3-13 Hardening pass:** robustness fuzzing (random parameter changes on
   fixtures must not crash), perf profiling against NFR-01, accessibility audit.
+  Also, carried over (2026-09-30):
+  - WASM heap growth with a warm engine cache (ADR-0029): measure a long
+    scripted editing session in the browser; if it keeps growing, trim the
+    cache or cap OCCT's allocator blocks.
+  - Silhouettes recomputed per frame on big meshes (ADR-0030), and
+    overlapping curved pattern instances (7.9 s for 10 × 10, ADR-0047):
+    profile; a facade call that fuses a list of shapes at once, and
+    silhouettes off the per-frame path.
+  - Export meshes in one blocking call (ADR-0034): chunked meshing with
+    progress and Cancel.
+  - `manifest.formatVersion` isn't checked on read, and strict schemas make
+    older readers reject newer optional fields (`docs/file-format.md`): warn
+    on a newer file version, read unknown optional keys leniently, tests.
+  - Versions (ADR-0036): two tabs can lose an index entry (lock across tabs
+    with the Web Locks API); Delete / prune versions.
+  - The first new error of a recompute becomes a notification, so it is in
+    the history (ADR-0041).
 - [ ] **P3-14 Benchmarks B4–B7 E2E.**
 - [ ] **P3-15 Public release prep:** license, README, contribution guide, code
-  of conduct, hosted demo, issue templates.
+  of conduct, hosted demo, issue templates. **Needs the owner's decisions
+  first** (license, hosting). Also, carried over (2026-09-30): the service
+  worker's "update available" toast; the host serves `sw.js` and
+  `index.html` with `no-cache` and sets COOP/COEP (ADR-0037); the manual
+  slicer check of the exported 3MF, STL and STEP in the OrcaSlicer and
+  PrusaSlicer GUIs, by the owner, on the Arch workstation (ADR-0034); check
+  upstream taucad/opencascade.js#40 and name it in the NOTICE file.
 - [x] **P3-16 Notification history.** A button beside the toasts (the view's
   bottom-right corner) opens the session's earlier notifications, errors
   first-class, with their actions where they still apply (e.g. Show a
@@ -582,6 +611,36 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   first; an action's optional `available()` says whether it still applies
   (Show for a hidden sketch), else its button is disabled; clear all; Esc
   closes and returns focus; session only.
+- [ ] **P3-17 Polish: open items carried from Phase 2 and 3.** Added
+  2026-09-30 by the owner, to run after P3-08 and before P3-12. Small UX gaps
+  the ADRs left open:
+  - A Remove feature dialog (edit which bodies it removes; ADR-0030, -0033).
+  - A custom colour field in Appearance, beside the swatches (`BodyMeta`;
+    schema and `docs/file-format.md`; ADR-0030).
+  - Timeline: auto-scroll while dragging near the edges; move several
+    selected features at once (ADR-0033).
+  - Feature status (✕/⚠) in browser rows, as on timeline chips (ADR-0024,
+    -0033).
+  - A right-click menu (Delete) on constraint glyphs and dimension labels
+    (ADR-0042).
+  - Selection fields name a single pick ("Line · Sketch1", not "1 sketch
+    curve"); origin axes are drawn while an axis field takes picks (ADR-0029).
+  - Offset follows a projected face outline: projected curves chain by
+    shared endpoints in `chainOf` (ADR-0031, ADR-0039).
+  - The notification panel re-reads `available()` when the document changes
+    (ADR-0041).
+  - Measure: sketch entities and origin geometry as targets; debounce the
+    status bar's "Selection size" (ADR-0035).
+  - Place on Bed: a Spin angle about Z, several bodies; Overhang Analysis:
+    the down direction from a picked face (ADR-0048).
+  - Section analysis clips vertex dots and projected sketch curves too
+    (ADR-0045).
+  - A checked-in screenshot of the overhang shading, taken in CI's
+    Playwright image (ADR-0048).
+  - Strike open items the ADRs still list that later tasks did: construction
+    axes and planes as revolve axes and primitive planes, sketches on
+    construction planes (P3-05); Redefine Plane (P2-11); revolve's
+    `splitSolids`, body names and colours (P2-08); the Move wedge (P3-06).
 
 **Phase 3 exit (v0.3 MVP):** a hobbyist can model typical functional prints
 end to end, faster than in Fusion 360.
@@ -603,6 +662,30 @@ end to end, faster than in Fusion 360.
 - [ ] **P4-09 Timeline groups; linked folder storage.** FR-TL-06, FR-PRJ-06.
 - [ ] **P4-10 Rib/web; variable-radius fillet.** FR-FT-17.
 - [ ] **P4-11 Benchmarks B8–B10 E2E.**
+- [ ] **P4-12 Modeling depth backlog (from the Phase 3 ADRs).** Added
+  2026-09-30; split into tasks as needed:
+  - Fillet and chamfer: on-canvas radius/distance handles, more than 8 sets,
+    a pickable reference face for chamfer (ADR-0038, -0043; variable radius
+    is P4-10).
+  - Shell: a thickness per face; removing faces next to a fillet (ADR-0046).
+  - Primitives: position handles and a click point as the centre, torus
+    placement options, a box from two corners (ADR-0032).
+  - Construction: point on path, point through two edges, plane along a
+    path, midplane of non-parallel planes, tangent planes on tori and
+    free-form faces, planes in box selection (ADR-0040).
+  - Extrude to object on curved faces and bodies, with an offset; revolve
+    "to"; taper on ellipse and spline sides; symmetric half-length
+    (ADR-0028, -0029).
+  - Silhouettes of spheres, tori and free-form faces (HLR); projecting
+    vertices and bodies, an "include" mode; Intersect and Slice
+    (ADR-0031).
+  - STEP colours (XDE) (ADR-0034; the readers are P4-06).
+  - Section analysis on several planes, a section box, sections saved with
+    named views, a hatch per material (ADR-0045).
+  - Print Info: support volume, infill, cost per kg (ADR-0048).
+  - Patterns: a skip list, count and path handles (ADR-0047).
+  - A ghost of lost geometry in the view (ADR-0005, -0033); remappable
+    marking-menu wedges (ADR-0042).
 
 ---
 
