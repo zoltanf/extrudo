@@ -18,13 +18,11 @@ import {
   renameBody,
   renameProject,
   setParameters,
-  settled,
   solidFacts,
   solidTab,
   turnView,
-  zoomOutTo,
 } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool, projector } from './helpers';
+import { kernelReady, openProject, pickTool } from './helpers';
 
 // P3-14: benchmark B5 (requirements §7) built through the UI: a PCB
 // enclosure. A tray (a Box shelled open at the top) with a screw post in one
@@ -211,7 +209,10 @@ test('B5: a PCB enclosure with screw posts and countersunk lid screws', async ({
   // The lid's six faces and a cone and a wall for each hole.
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:27:80,60,25 Body2:10:80,60,3');
 
-  // Mirror1: both holes to the right, about the YZ plane (picked where no body is in front).
+  // Mirror1: both holes to the right, about the YZ plane. With the lid hidden, the plane's
+  // square shows over the open tray: a click there picks it.
+  const browser = page.getByRole('complementary', { name: 'Browser' });
+  await browser.getByRole('button', { name: 'Hide Body2' }).click();
   await page.getByRole('button', { name: 'Mirror', exact: true }).click();
   const mirror = page.getByRole('region', { name: 'Mirror dialog' });
   await expect(mirror).toBeVisible();
@@ -219,26 +220,11 @@ test('B5: a PCB enclosure with screw posts and countersunk lid screws', async ({
   await tick(mirror, ['Hole2', 'Hole3']);
   const plane = mirror.getByRole('button', { name: 'Plane', exact: true });
   await plane.click();
-  await zoomOutTo(page, at([0, 0, 0]), 250);
-  await settled(viewport);
-  at = await projector(viewport);
   const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
-  for (const [y, z] of [
-    [-0.5, 0.95],
-    [-0.9, 0.9],
-    [-0.2, 0.95],
-    [-0.95, 0.5],
-  ] as const) {
-    const p = at([0, y * half, z * half]);
-    await page.mouse.move(p.x, p.y);
-    await page.mouse.click(p.x, p.y);
-    if ((await plane.textContent()) === 'YZ plane') break;
-    if ((await plane.textContent()) !== 'Pick a plane or flat face') {
-      await mirror.getByRole('button', { name: 'Clear Plane' }).click();
-    }
-  }
+  await clickAt(page, at, [0, -half * 0.5, half * 0.5]);
   await expect(plane).toHaveText('YZ plane');
   await ok(page, mirror);
+  await browser.getByRole('button', { name: 'Show Body2' }).click();
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:27:80,60,25 Body2:14:80,60,3');
 
   await renameBody(page, 'Body1', 'Enclosure');
