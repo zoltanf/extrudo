@@ -41,6 +41,8 @@
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepOffsetAPI_DraftAngle.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
+#include <BRepOffset_MakeOffset.hxx>
+#include <BRepBuilderAPI_MakeSolid.hxx>
 #include <BRepGProp.hxx>
 #include <BRepLProp_SLProps.hxx>
 #include <BRepLib_ToolTriangulatedShape.hxx>
@@ -492,6 +494,108 @@ public:
     } catch (...) {
       pushShellStatus(5, 0);
       return failFromException("Shell failed");
+    }
+  }
+
+  /**
+   * Moves faces of the solid `shape` along their normals (P3-08, offset
+   * face): the staged faces (clearArgs/pushArg, 0-based face indices,
+   * duplicates ignored) each move by `distance` mm, positive along the
+   * face's outward normal (the body grows there: out of a wall, into a
+   * hole), negative against it. The faces next to them are extended or
+   * trimmed to follow (sharp joins, `GeomAbs_Intersection`), so a slanted
+   * neighbour keeps its slope and a cylinder's wall changes its radius.
+   * OCCT moves the faces that run smoothly into a picked face (a fillet
+   * around a pad) by the same distance, so `tangentFaces` says which these
+   * are. Records history for input 0: every face generates its (offset)
+   * image; a face the offset swallows is deleted.
+   *
+   * On failure it returns 0 with a message in lastError() and, in
+   * geometryNumbers, [status, value]:
+   * - 1 the distance is too large: the largest distance of the same sign
+   *   (as a magnitude) that works, by bisection (value);
+   * - 2 OCCT can't offset these faces at any distance worth trying (value 0);
+   * - 3 the body isn't a solid (value 0);
+   * - 4 the solid has an inner void (more than one shell), which the offset
+   *   can't handle (value 0);
+   * - 5 anything else (an OCCT exception): value 0.
+   */
+  int offsetFaces(int shape, double distance) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Offset failed: unknown input shape.");
+    if (!(std::fabs(distance) > 1e-9)) return fail("Offset failed: the distance must not be 0.");
+    try {
+      if (!TopExp_Explorer(*input, TopAbs_SOLID).More()) {
+        pushShellStatus(3, 0);
+        return fail("Offset failed: the body isn't a solid.");
+      }
+      int shells = 0;
+      for (TopExp_Explorer it(*input, TopAbs_SHELL); it.More(); it.Next()) ++shells;
+      if (shells != 1) {
+        pushShellStatus(4, 0);
+        return fail("Offset failed: the solid has an inner void.");
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*input, TopAbs_FACE, faces);
+      std::vector<int> picked;
+      for (int index : args_) {
+        if (index < 0 || index >= faces.Extent()) return fail("Offset failed: face index out of range.");
+        if (std::find(picked.begin(), picked.end(), index) == picked.end()) picked.push_back(index);
+      }
+      if (picked.empty()) return fail("Offset failed: no face to offset.");
+      // OCCT offsets a face's smooth neighbours with it: those are checked too.
+      const std::vector<int> moving = smoothClosure(*input, faces, picked);
+      {
+        // A copy for every build, as in shell(): OCCT repairs its input in place.
+        const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> copyFaces;
+        TopExp::MapShapes(copy, TopAbs_FACE, copyFaces);
+        if (copyFaces.Extent() == faces.Extent()) {
+          BRepOffset_MakeOffset builder;
+          TopoDS_Shape result;
+          if (buildOffset(builder, copy, copyFaces, picked, distance, result) &&
+              offsetIsGood(builder, copy, copyFaces, moving, result, distance)) {
+            recordHistory(builder, copy, 0, result);
+            return store(result);
+          }
+        }
+      }
+      return explainOffset(*input, picked, moving, distance);
+    } catch (...) {
+      pushShellStatus(5, 0);
+      return failFromException("Offset failed");
+    }
+  }
+
+  /**
+   * The faces (indices, in lookupPtr/lookupSize) that run smoothly into
+   * face `face` and each other, the face itself included: the faces OCCT's
+   * offset moves together (a fillet around a pad moves with the pad's top).
+   * Returns the count, or -1.
+   */
+  int tangentFaces(int shape, int face) {
+    beginOp();
+    lookup_.clear();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*input, TopAbs_FACE, faces);
+      if (face < 0 || face >= faces.Extent()) {
+        fail("Face index out of range.");
+        return -1;
+      }
+      for (int index : smoothClosure(*input, faces, std::vector<int>{face})) lookup_.push_back(index);
+      return static_cast<int>(lookup_.size());
+    } catch (...) {
+      lookup_.clear();
+      lookup_.push_back(face);
+      return 1;
     }
   }
 
@@ -2441,6 +2545,165 @@ private:
                             : "Shell failed: OCCT can't offset this body.");
   }
 
+  // ------------------------------------------------------------ offset face --
+
+  /**
+   * The faces of `body` that run smoothly into the picked faces, them
+   * included, as sorted indices: the closure under "shares an edge with a
+   * normal within 4 degrees", the angle OCCT's offset calls tangent.
+   */
+  static std::vector<int> smoothClosure(const TopoDS_Shape& body,
+                                        const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                                        const std::vector<int>& picked) {
+    EdgeFaceMap edgeFaces;
+    TopExp::MapShapesAndUniqueAncestors(body, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+    std::vector<bool> seen(static_cast<size_t>(faces.Extent()), false);
+    std::vector<int> queue;
+    for (int index : picked) {
+      if (index >= 0 && index < faces.Extent() && !seen[static_cast<size_t>(index)]) {
+        seen[static_cast<size_t>(index)] = true;
+        queue.push_back(index);
+      }
+    }
+    for (size_t head = 0; head < queue.size(); ++head) {
+      const TopoDS_Face face = TopoDS::Face(faces(queue[head] + 1));
+      for (TopExp_Explorer it(face, TopAbs_EDGE); it.More(); it.Next()) {
+        const TopoDS_Edge edge = TopoDS::Edge(it.Current());
+        const int at = edgeFaces.FindIndex(edge);
+        if (at == 0) continue;
+        for (const TopoDS_Shape& other : edgeFaces(at)) {
+          if (other.IsSame(face)) continue;
+          const int otherIndex = faces.FindIndex(other) - 1;
+          if (otherIndex < 0 || seen[static_cast<size_t>(otherIndex)]) continue;
+          gp_Dir a;
+          gp_Dir b;
+          if (edgeNormal(edge, face, a) && edgeNormal(edge, TopoDS::Face(other), b) && a.Dot(b) > 0.99756) {
+            seen[static_cast<size_t>(otherIndex)] = true;
+            queue.push_back(otherIndex);
+          }
+        }
+      }
+    }
+    std::sort(queue.begin(), queue.end());
+    return queue;
+  }
+
+  /**
+   * `shape` as a solid with positive volume: a solid as it is, a shell
+   * closed into one (OCCT's offset gives a shell for most bodies). A null
+   * shape when it is neither or doesn't close.
+   */
+  static TopoDS_Shape asSolid(const TopoDS_Shape& shape) {
+    TopoDS_Solid solid;
+    if (shape.ShapeType() == TopAbs_SOLID) {
+      solid = TopoDS::Solid(shape);
+    } else if (shape.ShapeType() == TopAbs_SHELL) {
+      BRepBuilderAPI_MakeSolid maker;
+      maker.Add(TopoDS::Shell(shape));
+      if (!maker.IsDone()) return TopoDS_Shape();
+      solid = maker.Solid();
+    } else if (shape.ShapeType() == TopAbs_COMPOUND) {
+      int solids = 0;
+      for (TopExp_Explorer it(shape, TopAbs_SOLID); it.More(); it.Next()) {
+        solid = TopoDS::Solid(it.Current());
+        ++solids;
+      }
+      if (solids != 1) return TopoDS_Shape();
+    } else {
+      return TopoDS_Shape();
+    }
+    if (volumeOf(solid) < 0) return solid.Reversed();
+    return solid;
+  }
+
+  /**
+   * Builds the offset of `input` (a copy, see offsetFaces) into `result`
+   * with `builder`, kept by the caller for its history: a skin offset of
+   * 0 everywhere but on the picked faces (0-based indices into `faces`),
+   * which move by `distance`, with sharp joins.
+   */
+  static bool buildOffset(BRepOffset_MakeOffset& builder, const TopoDS_Shape& input,
+                          const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                          const std::vector<int>& picked, double distance, TopoDS_Shape& result) {
+    try {
+      builder.Initialize(input, 0.0, 1e-4, BRepOffset_Skin, true, false, GeomAbs_Intersection, false, false);
+      for (int index : picked) builder.SetOffsetOnFace(TopoDS::Face(faces(index + 1)), distance);
+      builder.MakeOffsetShape();
+      if (!builder.IsDone()) return false;
+      result = asSolid(builder.Shape());
+      return !result.IsNull();
+    } catch (...) {
+      result.Nullify();
+      return false;
+    }
+  }
+
+  /**
+   * Whether `result` is a sound offset of `input`: a valid solid that has
+   * grown where faces moved out and shrunk where they moved in, and whose
+   * moved faces stay at least `|distance|` from the faces they came from.
+   * OCCT "succeeds" with valid junk when a face is pushed past a curved
+   * face's axis (the offset cylinder turns inside out): the distance, and
+   * the volume for the sphere and torus, show it.
+   */
+  static bool offsetIsGood(BRepOffset_MakeOffset& builder, const TopoDS_Shape& input,
+                           const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                           const std::vector<int>& moving, const TopoDS_Shape& result, double distance) {
+    if (result.IsNull() || !TopExp_Explorer(result, TopAbs_SOLID).More()) return false;
+    if (!BRepCheck_Analyzer(result).IsValid()) return false;
+    const double volume = volumeOf(result);
+    const double before = volumeOf(input);
+    if (!(volume > 0)) return false;
+    const double slack = 1e-6 * before;
+    if (distance > 0 && volume < before - slack) return false;
+    if (distance < 0 && volume > before + slack) return false;
+    BRep_Builder compounds;
+    TopoDS_Compound originals;
+    TopoDS_Compound offsets;
+    compounds.MakeCompound(originals);
+    compounds.MakeCompound(offsets);
+    bool any = false;
+    for (int index : moving) {
+      const TopoDS_Shape& face = faces(index + 1);
+      for (const TopoDS_Shape& made : builder.Generated(face)) {
+        if (made.ShapeType() != TopAbs_FACE) continue;
+        compounds.Add(offsets, made);
+        any = true;
+      }
+      compounds.Add(originals, face);
+    }
+    if (!any) return true;
+    BRepExtrema_DistShapeShape measure(originals, offsets, Extrema_ExtFlag_MIN);
+    if (!measure.IsDone()) return true;
+    return measure.Value() >= 0.999 * std::fabs(distance) - 1e-3;
+  }
+
+  /** Whether the offset builds and is sound (a probe: nothing is kept), on a fresh copy. */
+  static bool offsetWorks(const TopoDS_Shape& input, const std::vector<int>& picked,
+                          const std::vector<int>& moving, double distance) {
+    const TopoDS_Shape copy = BRepBuilderAPI_Copy(input, true, false).Shape();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+    TopExp::MapShapes(copy, TopAbs_FACE, faces);
+    BRepOffset_MakeOffset builder;
+    TopoDS_Shape result;
+    return buildOffset(builder, copy, faces, picked, distance, result) &&
+           offsetIsGood(builder, copy, faces, moving, result, distance);
+  }
+
+  /**
+   * Fills geometry_ after an offset failed (see offsetFaces()): the largest
+   * distance of the same sign that works, or "none does".
+   */
+  int explainOffset(const TopoDS_Shape& input, const std::vector<int>& picked,
+                    const std::vector<int>& moving, double distance) {
+    const double sign = distance < 0 ? -1.0 : 1.0;
+    const double largest = largestThatWorks(
+        [&](double m) { return offsetWorks(input, picked, moving, sign * m); }, std::fabs(distance));
+    pushShellStatus(largest > 0 ? 1 : 2, largest);
+    return fail(largest > 0 ? "Offset failed: the distance is too large for this body."
+                            : "Offset failed: OCCT can't offset these faces.");
+  }
+
   template <typename Builder>
   int finishBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, bool simplify) {
     builder.SetRunParallel(false);
@@ -2800,7 +3063,8 @@ private:
   }
 
   /** Appends history records for the faces, edges and vertices of one input. */
-  void recordHistory(BRepBuilderAPI_MakeShape& builder, const TopoDS_Shape& input, int inputIndex,
+  template <typename Builder>
+  void recordHistory(Builder& builder, const TopoDS_Shape& input, int inputIndex,
                      const TopoDS_Shape& result) {
     NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultMaps[3];
     for (int kind = 0; kind < 3; ++kind) TopExp::MapShapes(result, kindToEnum(kind), resultMaps[kind]);
