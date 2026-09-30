@@ -106,7 +106,9 @@ scope (found by a leak test).
   `mirror` and names are `mirror:<f>:from:(<name>)`, like its body copies.
   `bodies`, `copy` and `join` are ignored in that mode.
 - **Faces** are not patterned. A face pattern is Press/Pull or an offset of
-  a face repeated (P3-08), which needs those features first.
+  a face repeated (P3-08), which needs those features first. Offset Face
+  exists since P3-08, and the face pattern did not fall out of it: see
+  ADR-0051 §8.
 
 ### 4. One boolean for many instances
 

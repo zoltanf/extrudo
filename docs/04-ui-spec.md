@@ -272,9 +272,8 @@ a right-click without movement, as Onshape's context menu does.
   a list under it (above it when there is no room; both stay inside the
   window). A right-click first selects what is under the pointer, unless it
   is selected already. Each wedge is a command, so it has the command's
-  keys and availability: one that can't run here, or isn't built yet
-  (Fillet, Move, Press Pull), stays in place, dimmed, with the reason as its
-  tooltip. In the model, clockwise from the top: **Sketch, Extrude, Fillet,
+  keys and availability: one that can't run here, or isn't built yet,
+  stays in place, dimmed, with the reason as its tooltip. In the model, clockwise from the top: **Sketch, Extrude, Fillet,
   Move, Press Pull, Undo, Repeat last, Delete**. In a sketch: **Line,
   Rectangle, Circle, Dimension, Trim, Undo, Construction, Finish Sketch**.
   Pick a wedge by clicking it, by aiming (the pointer's direction from the
@@ -361,7 +360,9 @@ a right-click without movement, as Onshape's context menu does.
   per side that ends at a distance, from the profiles' centre along the
   plane's normal (flipped by Flip; side 2 the other way; a symmetric
   arrow reaches half the length), and a taper arc at the end of each
-  side. **Press-pull:** select a flat face and press E; pulled out
+  side. **Press-pull:** select a flat face and press E (Q, Press Pull, opens
+  Offset Face for a face instead, which moves it like a pad and extends the
+  faces around it; ADR-0051); pulled out
   (a positive distance) the dialog proposes Join, pushed in (a negative
   distance, or Flip) Cut, and the preview turns from green to red.
   Profiles propose New body. Once the user picks an operation it stays;
@@ -418,6 +419,23 @@ a right-click without movement, as Onshape's context menu does.
   the countersink's diameter and angle, and Flip (holes go into a face, down
   from an origin plane). In the view: arrows for the diameter, the blind depth
   and the counterbore or countersink diameter on the first hole.
+- **Press Pull and Offset Face (P3-08, ADR-0051):** Q, Solid › Modify ›
+  Press Pull, and the marking menu's Press Pull wedge push or pull what is
+  selected by opening the dialog that fits it, with the selection in its first
+  field: a **face** of a body opens Offset Face, an **edge** Fillet, a
+  **sketch profile** Extrude (with several kinds selected a profile wins over
+  a face over an edge). With nothing usable selected it says so (a toast:
+  select a face, an edge or a profile) and starts nothing. **Offset Face**
+  (Solid › Modify) moves faces along their normals: Faces (any face, flat or
+  curved; picking one also picks the faces that run smoothly into it, since
+  they move together, and unpicking takes them out) and Distance (2 mm by
+  default: **positive moves the faces out of the body**, so a pad grows and a
+  hole's wall closes in; negative moves them in). The neighbours extend or trim
+  to follow, a cylinder's wall changes its radius, and every face keeps its
+  name. In the view: a distance arrow on the first face along its outward
+  normal (on a point of the surface for a curved face); the preview replaces
+  the body. A distance that is too far says how far it may go ("Face 6 can't
+  move in by 25 mm: that is too far for this body (max ≈ 19 mm)").
 - **Bodies in the browser (P2-06, P2-08, ADR-0030):** the Bodies folder
   lists the model's bodies in timeline order, with a count badge. A new
   body is named "Body1", "Body2"… (the lowest free number) as soon as it

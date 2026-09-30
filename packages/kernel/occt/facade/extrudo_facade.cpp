@@ -518,7 +518,10 @@ public:
    * - 3 the body isn't a solid (value 0);
    * - 4 the solid has an inner void (more than one shell), which the offset
    *   can't handle (value 0);
-   * - 5 anything else (an OCCT exception): value 0.
+   * - 5 anything else (an OCCT exception): value 0;
+   * - 6 a smooth chain of faces has a sharp edge inside it (fillets that meet
+   *   at a corner without a blend): OCCT's offset traps the wasm heap on such
+   *   bodies, so it is not tried (value 0).
    */
   int offsetFaces(int shape, double distance) {
     beginOp();
@@ -545,8 +548,14 @@ public:
         if (std::find(picked.begin(), picked.end(), index) == picked.end()) picked.push_back(index);
       }
       if (picked.empty()) return fail("Offset failed: no face to offset.");
-      // OCCT offsets a face's smooth neighbours with it: those are checked too.
-      const std::vector<int> moving = smoothClosure(*input, faces, picked);
+      // OCCT offsets a face's smooth neighbours with it: those are checked too. A chain with
+      // a sharp edge inside it (fillets meeting at a corner) traps OCCT's offset: refused.
+      std::vector<int> chain;
+      if (smoothChains(*input, faces, chain)) {
+        pushShellStatus(6, 0);
+        return fail("Offset failed: rounded edges meet at a sharp corner.");
+      }
+      const std::vector<int> moving = smoothClosure(chain, picked);
       {
         // A copy for every build, as in shell(): OCCT repairs its input in place.
         const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
@@ -590,7 +599,9 @@ public:
         fail("Face index out of range.");
         return -1;
       }
-      for (int index : smoothClosure(*input, faces, std::vector<int>{face})) lookup_.push_back(index);
+      std::vector<int> chain;
+      smoothChains(*input, faces, chain);
+      for (int index : smoothClosure(chain, std::vector<int>{face})) lookup_.push_back(index);
       return static_cast<int>(lookup_.size());
     } catch (...) {
       lookup_.clear();
@@ -2548,44 +2559,75 @@ private:
   // ------------------------------------------------------------ offset face --
 
   /**
-   * The faces of `body` that run smoothly into the picked faces, them
-   * included, as sorted indices: the closure under "shares an edge with a
-   * normal within 4 degrees", the angle OCCT's offset calls tangent.
+   * How the faces of a body run into each other: its smooth chains (sets of
+   * faces connected through edges where their normals agree within 4
+   * degrees, the angle OCCT's offset calls tangent), and whether any chain
+   * has a sharp edge inside it (two of its faces meeting at a crease, as two
+   * fillets do at the corner of a box whose top edges are rounded). OCCT's
+   * offset corrupts the wasm heap on such bodies (a memory access trap at
+   * some distances, an empty result at others), so they are refused.
+   * Fills `chain` (per face: the lowest face index of its chain) and returns
+   * whether some chain has a sharp edge inside it.
    */
-  static std::vector<int> smoothClosure(const TopoDS_Shape& body,
-                                        const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
-                                        const std::vector<int>& picked) {
+  static bool smoothChains(const TopoDS_Shape& body,
+                           const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                           std::vector<int>& chain) {
     EdgeFaceMap edgeFaces;
     TopExp::MapShapesAndUniqueAncestors(body, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
-    std::vector<bool> seen(static_cast<size_t>(faces.Extent()), false);
-    std::vector<int> queue;
-    for (int index : picked) {
-      if (index >= 0 && index < faces.Extent() && !seen[static_cast<size_t>(index)]) {
-        seen[static_cast<size_t>(index)] = true;
-        queue.push_back(index);
+    const int count = faces.Extent();
+    chain.assign(static_cast<size_t>(count), 0);
+    for (int i = 0; i < count; ++i) chain[static_cast<size_t>(i)] = i;
+    const auto root = [&chain](int i) {
+      while (chain[static_cast<size_t>(i)] != i) {
+        chain[static_cast<size_t>(i)] = chain[static_cast<size_t>(chain[static_cast<size_t>(i)])];
+        i = chain[static_cast<size_t>(i)];
+      }
+      return i;
+    };
+    std::vector<std::pair<int, int>> creases;
+    for (int e = 1; e <= edgeFaces.Extent(); ++e) {
+      std::vector<int> around;
+      for (const TopoDS_Shape& other : edgeFaces(e)) {
+        const int index = faces.FindIndex(other) - 1;
+        if (index >= 0 && std::find(around.begin(), around.end(), index) == around.end()) around.push_back(index);
+      }
+      // A seam (one face) or a stray edge has nothing to connect.
+      if (around.size() != 2) continue;
+      const TopoDS_Edge edge = TopoDS::Edge(edgeFaces.FindKey(e));
+      gp_Dir a;
+      gp_Dir b;
+      if (edgeNormal(edge, TopoDS::Face(faces(around[0] + 1)), a) &&
+          edgeNormal(edge, TopoDS::Face(faces(around[1] + 1)), b) && a.Dot(b) > 0.99756) {
+        const int ra = root(around[0]);
+        const int rb = root(around[1]);
+        if (ra != rb) chain[static_cast<size_t>(std::max(ra, rb))] = std::min(ra, rb);
+      } else {
+        creases.emplace_back(around[0], around[1]);
       }
     }
-    for (size_t head = 0; head < queue.size(); ++head) {
-      const TopoDS_Face face = TopoDS::Face(faces(queue[head] + 1));
-      for (TopExp_Explorer it(face, TopAbs_EDGE); it.More(); it.Next()) {
-        const TopoDS_Edge edge = TopoDS::Edge(it.Current());
-        const int at = edgeFaces.FindIndex(edge);
-        if (at == 0) continue;
-        for (const TopoDS_Shape& other : edgeFaces(at)) {
-          if (other.IsSame(face)) continue;
-          const int otherIndex = faces.FindIndex(other) - 1;
-          if (otherIndex < 0 || seen[static_cast<size_t>(otherIndex)]) continue;
-          gp_Dir a;
-          gp_Dir b;
-          if (edgeNormal(edge, face, a) && edgeNormal(edge, TopoDS::Face(other), b) && a.Dot(b) > 0.99756) {
-            seen[static_cast<size_t>(otherIndex)] = true;
-            queue.push_back(otherIndex);
-          }
+    for (int i = 0; i < count; ++i) chain[static_cast<size_t>(i)] = root(i);
+    bool sharpInside = false;
+    for (const auto& crease : creases) {
+      if (chain[static_cast<size_t>(crease.first)] == chain[static_cast<size_t>(crease.second)]) sharpInside = true;
+    }
+    return sharpInside;
+  }
+
+  /**
+   * The faces of the smooth chains the picked faces belong to, them
+   * included, as sorted indices: the faces OCCT's offset moves together.
+   */
+  static std::vector<int> smoothClosure(const std::vector<int>& chain, const std::vector<int>& picked) {
+    std::vector<int> moving;
+    for (size_t i = 0; i < chain.size(); ++i) {
+      for (int index : picked) {
+        if (index >= 0 && index < static_cast<int>(chain.size()) && chain[static_cast<size_t>(index)] == chain[i]) {
+          moving.push_back(static_cast<int>(i));
+          break;
         }
       }
     }
-    std::sort(queue.begin(), queue.end());
-    return queue;
+    return moving;
   }
 
   /**

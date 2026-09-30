@@ -30,7 +30,14 @@ import { detectProfiles, PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mirror, rotation, translation } from './features/matrix';
 import { planarCurves } from './features/sketch';
-import { ChamferError, FilletError, Kernel, type ShapeHandle, ShellError } from './kernel';
+import {
+  ChamferError,
+  FilletError,
+  Kernel,
+  OffsetFaceError,
+  type ShapeHandle,
+  ShellError,
+} from './kernel';
 import { positionalNames } from './naming/names';
 import {
   compoundSources,
@@ -709,6 +716,65 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
+  it(`offsetting faces ${REBUILDS} times, failing ones with their diagnosis included, does not grow the heap`, {
+    timeout: 300_000,
+  }, () => {
+    // P3-08: offsets of planar and curved faces out and in, a rounded body whose
+    // smooth chain moves together, a face pushed too far (the largest distance is
+    // found by probing), a wall pushed past a cylinder's axis and a sealed void
+    // (refused): OCCT's offset builder lives on the facade's stack and works on a
+    // copy of the body, so none may leave anything behind.
+    const rebuild = (i: number) => {
+      using scope = kernel.scope();
+      const plate = scope.track(kernel.box([40, 30, 10 + (i % 3) / 10]));
+      scope.track(kernel.offsetFaces(plate, [0], 1 + (i % 4) / 10));
+      scope.track(kernel.offsetFaces(plate, [1, 3], -1));
+      const rounded = scope.track(kernel.fillet(plate, [0, 2, 4, 6], [3, 3, 3, 3]));
+      // Whatever those four edges make, a refusal (rounded edges that meet at a corner) is fine.
+      try {
+        scope.track(kernel.offsetFaces(rounded.shape, [0], 1));
+      } catch (error) {
+        if (!(error instanceof OffsetFaceError)) throw error;
+      }
+      kernel.tangentFaces(rounded.shape, 0);
+      const blended = scope.track(
+        kernel.fillet(
+          plate,
+          Array.from({ length: 12 }, (_, edge) => edge),
+          Array(12).fill(2),
+        ),
+      );
+      scope.track(kernel.offsetFaces(blended.shape, [0], 1));
+      const cylinder = scope.track(kernel.cylinder(6, 20));
+      const hollow = scope.track(kernel.shell(plate, [], 1));
+      const failing = (run: () => unknown, what: string) => {
+        try {
+          run();
+        } catch (error) {
+          if (error instanceof OffsetFaceError) return;
+          throw error;
+        }
+        throw new Error(`${what} should fail`);
+      };
+      failing(() => kernel.offsetFaces(plate, [0], -30), 'pushing a 10 mm plate 30 mm in');
+      failing(() => kernel.offsetFaces(hollow.shape, [0], 1), 'offsetting a sealed void');
+      for (let face = 0; face < 3; face++) {
+        try {
+          scope.track(kernel.offsetFaces(cylinder, [face], -8));
+        } catch (error) {
+          if (!(error instanceof OffsetFaceError)) throw error;
+        }
+      }
+    };
+    for (let i = 0; i < WARM_UP; i++) rebuild(i);
+    const before = kernel.stats();
+    for (let i = 0; i < REBUILDS; i++) rebuild(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(before.liveShapes);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+  });
+
   it('the leak control trips the same limit', { timeout: 120_000 }, () => {
     // The WASM build binds no raw OCCT classes (ADR-0037), so the control leaks
     // through the facade instead: meshed cuts (the triangulation stays on the
@@ -773,6 +839,29 @@ describe('memory', () => {
     for (let i = 0; i < WARM_UP; i++) leakyShell();
     const before = kernel.stats();
     for (let i = 0; i < 300; i++) leakyShell();
+    const after = kernel.stats();
+    try {
+      expect(after.liveShapes - before.liveShapes).toBe(300);
+    } finally {
+      for (const handle of kept) kernel.release(handle);
+    }
+  });
+
+  it('the offset leak control trips the same limit', { timeout: 120_000 }, () => {
+    // The offset test above passes because nothing is kept: the same offsets
+    // whose results are kept and meshed must show as live shapes. (After the
+    // other controls: it raises the heap's high-water mark.)
+    const kept: ShapeHandle[] = [];
+    const leakyOffset = () => {
+      using scope = kernel.scope();
+      const plate = scope.track(kernel.box([40, 30, 10]));
+      const moved = kernel.offsetFaces(plate, [0], 1).shape;
+      kept.push(moved);
+      kernel.mesh(moved, { linearDeflection: 0.01, angularDeflection: 0.1 });
+    };
+    for (let i = 0; i < WARM_UP; i++) leakyOffset();
+    const before = kernel.stats();
+    for (let i = 0; i < 300; i++) leakyOffset();
     const after = kernel.stats();
     try {
       expect(after.liveShapes - before.liveShapes).toBe(300);

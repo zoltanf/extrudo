@@ -2,6 +2,18 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-30 · **P3-08 (first half)** Press Pull and Offset Face (ADR-0051):
+  Q (Solid › Modify, the marking menu's wedge) pushes or pulls what is
+  selected: a face opens the new Offset Face, an edge Fillet, a sketch profile
+  Extrude, with the selection already in the dialog. Offset Face moves faces
+  along their normals (positive out), the faces next to them following: a pad
+  grows or sinks, a cylinder wall changes radius, a hole narrows or widens, and
+  fillets round a pad move with it (the dialog picks the whole chain). Every face
+  keeps its name, so a fillet after an offset survives editing it; a distance
+  that is too far says how far it may go. Extrude and Revolve now share one
+  press-pull rule: a face swept into its body, or a profile drawn on a face,
+  proposes a cut, out of it a join. Facade change (new `offsetFaces` and
+  `tangentFaces`); Split, Scale, Draft and face patterns are still to do.
 - 2026-09-30 · **P3-04** Hole (ADR-0049): the Hole tool (H, Create's menu)
   drills simple, counterbore or countersink holes, blind (drill point 118° by
   default, 0° for a flat bottom) or through all, at the point you click on a

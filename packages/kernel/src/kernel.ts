@@ -127,6 +127,11 @@ export type OffsetFaceProblem =
   | { kind: 'not-solid' }
   /** The solid has an inner void (more than one shell). */
   | { kind: 'void' }
+  /**
+   * Some smooth chain of faces has a sharp edge inside it (fillets that meet at a corner
+   * without a blend): OCCT's offset traps on such bodies, so it isn't tried.
+   */
+  | { kind: 'sharp-chain' }
   | { kind: 'other' };
 
 /** An offset OCCT couldn't build, with its diagnosis. */
@@ -886,6 +891,8 @@ export function decodeOffsetFaceProblems(v: Float64Array): OffsetFaceProblem[] {
       return [{ kind: 'not-solid' }];
     case 4:
       return [{ kind: 'void' }];
+    case 6:
+      return [{ kind: 'sharp-chain' }];
     default:
       return [{ kind: 'other' }];
   }

@@ -372,4 +372,5 @@ kernel (one body, 40 × 80 × 60 mm, 10 faces).
   at the mean centroid of all picks.
 - Picking origin planes for To object (they aren't pickable in the model
   yet); faces and vertices work.
-- The press-pull rule for profiles sketched on a body's face (P2-09).
+- The press-pull rule for profiles sketched on a body's face (P2-09):
+  done, and unified with revolve's, in ADR-0051.

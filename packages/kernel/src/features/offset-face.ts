@@ -146,6 +146,8 @@ function problemMessage(
       return 'Offset Face needs a solid body.';
     case 'void':
       return "This body has a sealed cavity inside, which Offset Face can't handle yet. Offset the faces before hollowing the body closed, or open the cavity with a shell.";
+    case 'sharp-chain':
+      return "This body has rounded edges that meet at a sharp corner (two fillets meeting where the third edge isn't rounded), and OCCT can't offset a body like that without corrupting its memory. Offset the faces before rounding the edges, or round all the edges at the corner so they blend.";
     case 'other':
       return "The faces couldn't be offset. Try a smaller distance or other faces.";
   }
