@@ -98,3 +98,50 @@ test('saves versions, restores one, and opens one as a copy', async ({ page }) =
   await kernelReady(page);
   await expect(chip(page, 'Fillet1')).toHaveCount(0);
 });
+
+test('deletes a version after asking, and prunes the older ones (P3-13)', async ({ page }) => {
+  await openProject(page);
+  const dialog = versionsDialog(page);
+  const items = dialog.getByRole('list', { name: 'Saved versions' }).getByRole('listitem');
+  // Twelve versions, two more than the prune keeps.
+  for (let n = 1; n <= 12; n++) {
+    await page.keyboard.press('Control+s');
+    await dialog.getByRole('textbox', { name: 'Description' }).fill(`Step ${n}`);
+    await page.keyboard.press('Enter');
+    await expect(toast(page, `Saved V${n}.`)).toBeVisible();
+  }
+  await page.getByRole('button', { name: 'Version history' }).click();
+  await expect(items).toHaveCount(12);
+
+  // One version: the confirmation can be declined, then accepted.
+  await dialog.getByRole('button', { name: 'Delete V12' }).click();
+  const confirm = page.getByRole('alertdialog', { name: 'Delete V12?' });
+  await expect(confirm).toBeVisible();
+  await confirm.getByRole('button', { name: 'Cancel' }).click();
+  await expect(items).toHaveCount(12);
+  await dialog.getByRole('button', { name: 'Delete V12' }).click();
+  await confirm.getByRole('button', { name: 'Delete' }).click();
+  await expect(items).toHaveCount(11);
+  await expect(items.first()).toHaveAttribute('data-version', '11');
+  await expect(dialog.getByRole('status', { name: 'Versions status' })).toHaveText('Deleted V12.');
+
+  // Prune: the newest ten stay.
+  await dialog.getByRole('button', { name: 'Delete older versions' }).click();
+  await page
+    .getByRole('alertdialog', { name: 'Delete V1?' })
+    .getByRole('button', { name: 'Delete' })
+    .click();
+  await expect(items).toHaveCount(10);
+  await expect(dialog.getByRole('button', { name: 'Delete older versions' })).toHaveCount(0);
+  await expect(items.last()).toHaveAttribute('data-version', '2');
+
+  // Numbers aren't reused: the next version is V13.
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+s');
+  await page.keyboard.press('Enter');
+  await expect(toast(page, 'Saved V13.')).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Version history' }).click();
+  await expect(items).toHaveCount(11);
+  await expect(items.first()).toHaveAttribute('data-version', '13');
+});

@@ -10,7 +10,7 @@ import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { memoryFiles } from './files';
 import { memoryIndex } from './idb';
-import { createProjectStore } from './project-store';
+import { createProjectStore, localLock } from './project-store';
 import { ProjectNotFoundError } from './types';
 
 function setup() {
@@ -277,5 +277,76 @@ describe('ProjectStore versions (P2-14)', () => {
     const early = await other.loadVersion(copy.id, 1);
     expect(early.id).toBe(copy.id);
     expect(early.name).toBe('Early');
+  });
+
+  it('deletes versions, and never gives a deleted number out again (P3-13)', async () => {
+    const { store, files } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    for (const note of ['one', 'two', 'three']) await store.saveVersion(d, note);
+    await store.deleteVersions(d.id, [3, 1, 99]);
+    expect((await store.versions(d.id)).map((v) => [v.number, v.description])).toEqual([
+      [2, 'two'],
+    ]);
+    expect(files.paths()).toEqual([
+      `projects/${d.id}/document.json`,
+      `projects/${d.id}/versions/2.json.gz`,
+      `projects/${d.id}/versions/index.json`,
+    ]);
+    await expect(store.loadVersion(d.id, 3)).rejects.toThrow(
+      'Version 3 of this project is missing',
+    );
+    // The newest was deleted, and still the next one is V4.
+    expect((await store.saveVersion(d, 'four')).number).toBe(4);
+    await store.deleteVersions(d.id, [2, 4]);
+    expect(await store.versions(d.id)).toEqual([]);
+    expect((await store.saveVersion(d, 'five')).number).toBe(5);
+    await expect(store.deleteVersions(doc('Other').id, [1])).rejects.toBeInstanceOf(
+      ProjectNotFoundError,
+    );
+  });
+
+  it('reads an index without `next` (written before P3-13) by its highest number', async () => {
+    const { store, files } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    await store.saveVersion(d, 'one');
+    await store.saveVersion(d, 'two');
+    const path = `projects/${d.id}/versions/index.json`;
+    const { versions } = JSON.parse(new TextDecoder().decode(await files.read(path)));
+    await files.write(path, new TextEncoder().encode(JSON.stringify({ versions })));
+    expect((await store.saveVersion(d, 'three')).number).toBe(3);
+  });
+
+  /** Two stores over the same files and index: two tabs of one browser. */
+  function twoTabs(lock?: ReturnType<typeof localLock>) {
+    const files = memoryFiles();
+    const index = memoryIndex();
+    const tab = () => createProjectStore({ index, files, ...(lock ? { lock } : {}) });
+    return [tab(), tab()] as const;
+  }
+
+  it('keeps every version when two tabs save at the same moment, holding a shared lock', async () => {
+    const [a, b] = twoTabs(localLock());
+    const d = doc('Bracket');
+    await a.save(d);
+    await Promise.all([
+      a.saveVersion(d, 'a1'),
+      b.saveVersion(d, 'b1'),
+      a.saveVersion(d, 'a2'),
+      b.saveVersion(d, 'b2'),
+      b.deleteVersions(d.id, [1]),
+    ]);
+    const versions = await a.versions(d.id);
+    expect(versions.map((v) => v.number)).toEqual([4, 3, 2]);
+    expect(new Set(versions.map((v) => v.description)).size).toBe(3);
+  });
+
+  it('loses an entry without a shared lock (the control)', async () => {
+    const [a, b] = twoTabs();
+    const d = doc('Bracket');
+    await a.save(d);
+    await Promise.all([a.saveVersion(d, 'a1'), b.saveVersion(d, 'b1')]);
+    expect((await a.versions(d.id)).length).toBeLessThan(2);
   });
 });

@@ -76,11 +76,14 @@ are ignored.
 
 ### 2.2 `versions/index.json`
 
-`{ "versions": [ … ] }`, oldest first; each element:
+`{ "versions": [ … ], "next": 4 }`, versions oldest first. `next` (optional
+integer, since P3-13) is the number the next version gets: versions can be
+deleted, and numbers are never given out twice. Without it (older files) the
+next number is one past the highest listed. Each element:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `number` | integer, at least 1 | 1, 2, 3, ... in the order saved ("V3"). Names the entry `versions/<number>.json`. |
+| `number` | integer, at least 1 | 1, 2, 3, ... in the order saved ("V3"); gaps where versions were deleted. Names the entry `versions/<number>.json`. |
 | `description` | string | What the person saving it wrote; may be empty. |
 | `created` | ISO 8601 string | When the version was saved. |
 | `name` | string | The project's name then. |
@@ -97,10 +100,11 @@ gives it a new one).
 
 1. Unzip. Not a zip: error `not-a-zip`.
 2. `manifest.json` missing, unparsable, or `format` not `extrudo`: error
-   `not-extrudo`.
+   `not-extrudo`. No integer `formatVersion`: error `damaged`.
 3. `document.json` missing or not JSON: error `damaged`.
 4. Load `document.json` through the pipeline of section 3 (may fail with
-   `not-a-document`, `too-new`, `invalid`).
+   `not-a-document`, `too-new`, `invalid`). The file counts as newer when the
+   manifest's or the document's `formatVersion` is newer than the reader's.
 5. Read the thumbnail and the versions if present.
 6. When the project's `id` is already in the reader's store, the app imports
    the file as a **copy** with a new ID rather than overwriting.
