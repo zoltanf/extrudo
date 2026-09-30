@@ -889,7 +889,7 @@ describe('memory', () => {
 // between runs, as in the app, for a long session. Measurement only:
 // `HEAP_RUNS=700 pnpm vitest run packages/kernel/src/memory.test.ts -t "warm cache"`
 // (about 0.3 s a run). `HEAP_MAX_ENTRIES=24` sets the cache size; `HEAP_ONLY=G`
-// (R, F, GF, RF, GR) keeps only those revolves and what they need. ADR-0051 §6
+// (R, F, GF, RF, GR) keeps only those revolves and what they need. ADR-0052 §6
 // has the numbers: all three together grow, no subset does.
 const ENV =
   (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
