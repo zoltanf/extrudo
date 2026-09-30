@@ -26,6 +26,7 @@
     "planegcs": "node packages/sketch/planegcs/planegcs.mjs"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@biomejs/biome": "^2.5.14",
     "@playwright/test": "^1.63.0",
     "@types/node": "^26.6.2",

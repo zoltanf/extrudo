@@ -149,7 +149,7 @@ export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): 
 
       <footer className="flex shrink-0 justify-end gap-2 border-t border-line px-3 py-2">
         <Button variant="primary" onClick={onClose}>
-          Done <kbd className="font-mono text-xs opacity-70">Esc</kbd>
+          Done <kbd className="font-mono text-xs opacity-85">Esc</kbd>
         </Button>
       </footer>
     </section>

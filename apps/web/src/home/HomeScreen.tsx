@@ -110,7 +110,8 @@ export function HomeScreen({ platform }: { platform: Platform }) {
                     <Plus size={22} strokeWidth={2.25} />
                   </span>
                   <span className="text-lg font-semibold">New design</span>
-                  <span className="text-sm text-muted">An empty design in millimetres.</span>
+                  {/* Muted grey falls below 4.5:1 on the accent tint (P3-13 axe audit). */}
+                  <span className="text-sm text-ink/75">An empty design in millimetres.</span>
                 </button>
                 {TEMPLATES.map((t) => (
                   <button
