@@ -1,0 +1,212 @@
+{
+ "top +5": {
+  "volume": 30000,
+  "bbox": [
+   0,
+   0,
+   0,
+   40,
+   30,
+   25
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "top -5": {
+  "volume": 18000,
+  "bbox": [
+   0,
+   0,
+   0,
+   40,
+   30,
+   15
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "top -19": {
+  "volume": 1200,
+  "bbox": [
+   0,
+   0,
+   0,
+   40,
+   30,
+   1
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "top -20 (nothing left)": {
+  "error": "Face 6 can't move in by 20 mm: that is too far for this body (max ≈ 19 mm). Try a smaller distance."
+ },
+ "top -25 too far": {
+  "error": "Face 6 can't move in by 25 mm: that is too far for this body (max ≈ 19 mm). Try a smaller distance."
+ },
+ "bottom +3": {
+  "volume": 27600,
+  "bbox": [
+   0,
+   0,
+   -3,
+   40,
+   30,
+   20
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "front +4": {
+  "volume": 27200,
+  "bbox": [
+   0,
+   -4,
+   0,
+   40,
+   30,
+   20
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "front -10": {
+  "volume": 16000,
+  "bbox": [
+   0,
+   10,
+   0,
+   40,
+   30,
+   20
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "right and top +2": {
+  "volume": 27720,
+  "bbox": [
+   0,
+   0,
+   0,
+   42,
+   30,
+   22
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "cylinder wall +3": {
+  "volume": 10618.58,
+  "bbox": [
+   -13,
+   -13.02,
+   -0.02,
+   13.02,
+   13.02,
+   20.02
+  ],
+  "faces": 3,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:c1"
+  ]
+ },
+ "cylinder wall -9": {
+  "volume": 62.83,
+  "bbox": [
+   -1,
+   -1,
+   0,
+   1,
+   1,
+   20
+  ],
+  "faces": 3,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:c1"
+  ]
+ },
+ "cylinder wall -12 too far": {
+  "error": "Face 1 can't move in by 12 mm: that is too far for this body (max ≈ 9.9 mm). Try a smaller distance."
+ },
+ "cylinder top +6": {
+  "volume": 8168.14,
+  "bbox": [
+   -10,
+   -10.02,
+   -0.02,
+   10.02,
+   10.02,
+   26.02
+  ],
+  "faces": 3,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:c1"
+  ]
+ }
+}

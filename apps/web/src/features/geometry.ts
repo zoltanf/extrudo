@@ -28,6 +28,67 @@ export interface Frame {
   origin: Vec3;
   /** Unit length: a face's outward normal (area-weighted), a sketch plane's normal. */
   normal: Vec3;
+  /**
+   * How much the face's normals agree, 0 to 1 (a face's triangles only): 1 for a flat
+   * face, less the more it curves, near 0 for a whole cylinder wall.
+   */
+  flatness?: number;
+}
+
+/**
+ * Where an arrow that moves a face sits (P3-08): a flat face's centroid
+ * and normal, and for a curved face (a cylinder's wall, whose mean normal
+ * is meaningless) a point of the surface near the centroid with the normal
+ * there. Undefined for another kind or a face the meshes don't have.
+ */
+export function surfaceFrame(
+  bodies: Readonly<Record<BodyId, BodyMesh>>,
+  ref: GeomRef,
+): Frame | undefined {
+  if (ref.kind !== 'face') return undefined;
+  for (const mesh of Object.values(bodies)) {
+    const face = mesh.faceIds?.indexOf(ref.id) ?? -1;
+    if (face >= 0) return meshSurfaceFrame(mesh, face);
+  }
+  return undefined;
+}
+
+/** `surfaceFrame` of face `face` (index in `faceRanges`) of a mesh. */
+export function meshSurfaceFrame(mesh: BodyMesh, face: number): Frame | undefined {
+  const mean = meshFaceFrame(mesh, face);
+  if (mean && (mean.flatness ?? 1) >= 0.98) return mean;
+  const first = mesh.faceRanges[2 * face] ?? 0;
+  const count = mesh.faceRanges[2 * face + 1] ?? 0;
+  const centre = mean?.origin;
+  let best: number | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let t = first; t < first + count; t++) {
+    for (let k = 0; k < 3; k++) {
+      const node = mesh.indices[3 * t + k] ?? 0;
+      const p = mesh.positions;
+      const d = centre
+        ? Math.hypot(
+            (p[3 * node] ?? 0) - centre[0],
+            (p[3 * node + 1] ?? 0) - centre[1],
+            (p[3 * node + 2] ?? 0) - centre[2],
+          )
+        : 0;
+      if (d < bestDistance) {
+        bestDistance = d;
+        best = node;
+      }
+    }
+  }
+  if (best === undefined) return mean;
+  const at = (a: Float32Array): Vec3 => [
+    a[3 * best] ?? 0,
+    a[3 * best + 1] ?? 0,
+    a[3 * best + 2] ?? 0,
+  ];
+  const n = at(mesh.normals);
+  const length = Math.hypot(n[0], n[1], n[2]);
+  if (length <= 0) return mean;
+  return { origin: at(mesh.positions), normal: [n[0] / length, n[1] / length, n[2] / length] };
 }
 
 /**
@@ -77,6 +138,7 @@ export function meshFaceFrame(mesh: BodyMesh, face: number): Frame | undefined {
   return {
     origin: [(c[0] ?? 0) / area, (c[1] ?? 0) / area, (c[2] ?? 0) / area],
     normal: [(n[0] ?? 0) / length, (n[1] ?? 0) / length, (n[2] ?? 0) / length],
+    flatness: Math.min(1, length / (2 * area)),
   };
 }
 

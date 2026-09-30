@@ -132,6 +132,7 @@ context menu at all.
   own right-clicks (they navigate); a menu on them (Delete constraint) is a
   small follow-up.
 - Press Pull and Move wedges wait for P3-08 and P3-06; the Fillet wedge lit up
-  with P3-01 without any change here.
+  with P3-01 without any change here, and so did the others (Press Pull with
+  P3-08: only the command was added).
 - A user setting to remap wedges: the tables are data, so a settings page
   could layer overrides as it will for the keymap.

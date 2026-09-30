@@ -451,6 +451,20 @@ export const TOOLS = {
     category: 'modify',
     hint: 'Hollow out a body, leaving walls.',
   },
+  pressPull: {
+    id: 'pressPull',
+    label: 'Press Pull',
+    icon: 'press-pull',
+    category: 'modify',
+    hint: 'Push or pull what is selected: a face moves, an edge is rounded, a sketch profile is extruded.',
+  },
+  offsetFace: {
+    id: 'offsetFace',
+    label: 'Offset Face',
+    icon: 'offset-face',
+    category: 'modify',
+    hint: 'Move faces along their normals; the faces next to them follow. A curved wall changes its radius.',
+  },
   remove: {
     id: 'remove',
     label: 'Remove',
@@ -663,7 +677,10 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
           'pathPattern',
         ],
       },
-      { label: 'Modify', tools: ['fillet', 'chamfer', 'shell', 'parameters'] },
+      {
+        label: 'Modify',
+        tools: ['pressPull', 'fillet', 'chamfer', 'shell', 'offsetFace', 'parameters'],
+      },
       { label: 'Transform', tools: ['move', 'mirror', 'combine'] },
       {
         label: 'Construct',

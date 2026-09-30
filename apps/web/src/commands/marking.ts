@@ -4,9 +4,9 @@
  * `resolveSlots`, which matches them with the commands offered right now
  * (`buildCommands`). A slot never runs anything of its own: it runs the
  * command. A slot whose command isn't offered here (`sketch` inside a
- * sketch), or doesn't exist yet (Press Pull before P3-08),
- * stays in place, dimmed, so the ring keeps its layout; the day the
- * command appears in `buildCommands`, the slot lights up with no change here.
+ * sketch), or doesn't exist yet, stays in place, dimmed, so the ring keeps
+ * its layout; the day the command appears in `buildCommands`, the slot
+ * lights up with no change here (Press Pull did so in P3-08).
  */
 import type { IconName, ToolCategory } from '../design-system';
 import type { AppCommand } from '../shell/commands';
@@ -34,8 +34,7 @@ export const MODEL_SLOTS: readonly SlotSpec[] = [
   {
     command: 'pressPull',
     label: 'Press Pull',
-    icon: { name: 'extrude', category: 'create' },
-    comesWith: 'P3-08',
+    icon: { name: 'press-pull', category: 'modify' },
   },
   { command: 'undo', label: 'Undo' },
   { command: 'repeatLast', label: 'Repeat last' },

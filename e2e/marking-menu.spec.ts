@@ -115,7 +115,8 @@ test('a right-click on a face opens the ring and the list, selecting the face', 
   await expect(slot(page, 'undo')).toBeEnabled();
   // Fillet is a real command since P3-01.
   await expect(slot(page, 'fillet')).toBeEnabled();
-  // Delete is for bodies; Move and Press Pull wait for their tasks.
+  // Press Pull is a real command since P3-08; Delete is for bodies.
+  await expect(slot(page, 'pressPull')).toBeEnabled();
   await expect(slot(page, 'delete')).toHaveAttribute('aria-disabled', 'true');
   await expect(slot(page, 'repeatLast')).toHaveAttribute('aria-disabled', 'true');
 

@@ -47,6 +47,8 @@ export {
   Kernel,
   KernelError,
   type KernelStats,
+  OffsetFaceError,
+  type OffsetFaceProblem,
   type OperationResult,
   type ShapeHandle,
   type ShapeProperties,

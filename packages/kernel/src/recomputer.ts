@@ -27,7 +27,7 @@ import {
   type KernelStatus,
   type SpawnKernel,
 } from './client';
-import type { SubShapeKind } from './history';
+import type { SmoothKind, SubShapeKind } from './history';
 import type { Inspection, InspectTarget } from './inspect';
 import type { BodyMesh, MeshOptions } from './mesh';
 import type { BodyResult, PreviewToolMesh, RecomputeResult } from './recompute/types';
@@ -202,9 +202,14 @@ export class Recomputer {
    * chain around an edge of a body the model store shows (P3-01): what a
    * fillet rounds together. Undefined if the kernel can't say.
    */
-  async tangentChain(body: BodyId, edge: number, base = false): Promise<number[] | undefined> {
+  async tangentChain(
+    body: BodyId,
+    index: number,
+    base = false,
+    kind: SmoothKind = 'edge',
+  ): Promise<number[] | undefined> {
     try {
-      return await this.client.call((api) => api.tangentChain(body, edge, base));
+      return await this.client.call((api) => api.tangentChain(body, index, base, kind));
     } catch {
       return undefined;
     }

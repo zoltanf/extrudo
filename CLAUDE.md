@@ -23,7 +23,8 @@ fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-03
 (shell), P3-05 (construction geometry), P3-06 (combine, move/copy, mirror),
 P3-04 (hole), P3-07 (patterns, mirrored features), P3-09 (section
 analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus) and
-P3-16 (notification history) are done.
+P3-16 (notification history) are done; P3-08 is half done (Press/Pull and
+Offset face; Split body, Scale and Draft remain).
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -512,9 +513,37 @@ match). **Sketch points** are `sketchEntity` refs to points
 on the hidden selection-filter key `sketchPoints`, the view then draws and
 picks the points of the shown sketches. A hole is a patternable feature
 (`repeatableFeatures` counts it as a cut).
-Next, one task at a time (not parallel tracks, since 2026-09-30): **P3-08**
-(press/pull, offset face, split, scale, draft), **P3-17** (polish: open
-items from the ADRs), P3-12, P3-13, P3-14, then P3-15 after the owner's
+ADR-0051 (P3-08, first half) added **Offset Face** and **Press Pull**:
+`packages/core/src/offset-face.ts` (feature `offsetFace`: `faces`, `distance`,
+**positive moves along the outward normal**, so a pad grows and a hole's wall
+closes in), the evaluator `packages/kernel/src/features/offset-face.ts`
+(**every face keeps its name**: the facade's face-to-face `generated` is read
+as `modified`, `facesKeepNames`) and the facade's `offsetFaces(shape,
+distance)` (`BRepOffset_MakeOffset` with a global offset of 0, `SetOffsetOnFace`
+on the picked faces, sharp `GeomAbs_Intersection` joins, on a copy, builder on
+the stack; the skin is closed into a solid by hand; a result must be valid,
+have grown or shrunk the right way and keep the moved faces at least the
+distance from their images, since OCCT returns valid junk for a wall pushed
+past a cylinder's axis; bisection gives `[status, value]` read through
+`OffsetFaceError.problems`; solids with a sealed void are refused, and **so are
+bodies where one smooth chain has a sharp edge inside it** (two fillets
+meeting at a corner, `smoothChains`): OCCT's offset traps the wasm heap on
+them whichever face is offset, even the floor).
+**OCCT moves the faces that run smoothly into a picked face together** (angle
+under 4 degrees), so the facade's `tangentFaces` and `KernelApi.tangentChain(…,
+kind)` let the dialog's face field (`tangentChain: true`) pick the whole chain
+like fillet's edges. **Press Pull (`Q`) is a command, not a feature**
+(`features/pressPull.ts`, `pressPullTarget`; `AppShell.run`): it opens the
+dialog that fits the selection with it filled in, a profile Extrude, a face
+Offset Face, an edge Fillet, or toasts what to select. **Extrude and Revolve
+propose their operation through one rule** (`features/operation.ts`:
+`proposeSweep`, `isOnBody`; `extrudeTravel`, `revolveTravel` say which way the
+sweep leaves the face): new body for plain profiles, join out of a body or both
+ways, cut into it, for faces and for profiles of a sketch on a face. Patterns
+of faces did not fall out of Offset Face and stay open.
+Next, one task at a time (not parallel tracks, since 2026-09-30): the
+second half of **P3-08** (split body, scale, draft), **P3-17** (polish:
+open items from the ADRs), P3-12, P3-13, P3-14, then P3-15 after the owner's
 decisions. Carried-over items are listed under those tasks in
 `docs/03-roadmap.md`; deeper ones are the P4-12 backlog.
 
@@ -546,7 +575,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0051: press/pull, offset face (0006 and 0050 are reserved) |
 
 ## Stack summary
 
@@ -1318,3 +1347,22 @@ them. Notes further down that name a machine apply to that machine only.
   a few points). Volumes read from a 3MF are a tessellation short of exact
   (`toBeCloseTo(v, -1)` for a cylinder hole). A copy body is "Body2" and so
   on in creation order.
+- **Press/Pull e2e** (`e2e/press-pull.spec.ts`, P3-08): with a face selected
+  (hover until `data-model-hover` is a `face:`, then click; the cube from the
+  Box tool has its top at (0, 0, 20)) press `q`: the dialog is the region
+  "Offset Face dialog" / "Edit Offset Face1 dialog" (the chip's name has a
+  space, `chip(page, 'Offset Face1')`), the pick field the button "Faces"
+  (`exact: true`: "1 face", or more once a smooth chain came along: a cube's
+  faces are alone, a rounded body's are not) and the textbox "Distance"
+  (`exact`, 2 mm by default, positive out). A cube pulled 5 mm is
+  `Body1:6:20,20,25`; a too-far distance says "can't move in by 25 mm: that is
+  too far for this body (max ≈ 15 mm)" in the region "Feature status". A
+  cylinder's wall is picked at `(r·0.707, −r·0.707, h/2)` in the home view. `q`
+  on an edge opens "Fillet dialog" ("1 edge"), on a profile selected in the
+  model "Extrude dialog"; with nothing selected a toast says "Select a face to
+  move, an edge to round or a sketch profile to extrude, then press Q." The
+  marking menu's wedge is `[data-marking-slot="pressPull"]` (enabled since
+  P3-08). Kernel-side: `pnpm vitest run -u packages/kernel/src/features/offset-face`
+  rewrites the golden table; the facade's native harness lives in the
+  scratchpad (`#define private public` over `extrudo_facade.cpp`, sweeps of
+  every face at eight distances found no heap trap, unlike the shell's).

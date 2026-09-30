@@ -26,6 +26,7 @@ import type { PreviewToolStyle } from '@extrudo/kernel';
 import { extrudeFrame } from './extrude';
 import { type AxisLine, axisLine } from './geometry';
 import { cross } from './manipulate';
+import { proposeSweep, type Travel } from './operation';
 import {
   type DialogContext,
   type DialogValues,
@@ -127,7 +128,7 @@ export const revolveDialog = defineFeatureDialog({
     }
     return undefined;
   },
-  propose: (values) => proposeRevolveOperation(values),
+  propose: (values, ctx) => proposeRevolveOperation(values, ctx),
   manipulators: (values, ctx) => revolveManipulators(values, ctx),
   previewStyle: (values) =>
     PREVIEW_STYLE[(values.choices.operation ?? 'new-body') as RevolveOperation] ?? 'new',
@@ -144,16 +145,53 @@ function isSketchLine(doc: ExtrudoDocument, ref: GeomRef): boolean {
 }
 
 /**
- * The operation a revolve proposes (ADR-0029): profiles make a new body,
- * faces of a body join it (a face turned about one of its edges grows the
- * body, as Fusion does). The framework applies it only while the user
- * hasn't picked an operation.
+ * The operation a revolve proposes (ADR-0029, unified with extrude's in
+ * `operation.ts`, ADR-0051): profiles make a new body; faces of a body, and
+ * profiles of a sketch on a body's face, join it when side 1 turns out of the
+ * body, cut it when it turns into the body (a face turned about one of its
+ * edges grows or carves the body, as Fusion does), and join when the turn
+ * goes both ways or is a whole one. The framework applies it only while the
+ * user hasn't picked an operation.
  */
-export function proposeRevolveOperation(values: DialogValues): Partial<DialogValues> | undefined {
-  const refs = values.refs.profiles ?? [];
-  if (refs.length === 0) return undefined;
-  const operation: RevolveOperation = refs.some((r) => r.kind === 'face') ? 'join' : 'new-body';
-  return { choices: { operation } };
+export function proposeRevolveOperation(
+  values: DialogValues,
+  ctx: Pick<ManipulatorContext, 'value'> & Partial<DialogContext>,
+): Partial<DialogValues> | undefined {
+  const operation = proposeSweep(values.refs.profiles ?? [], revolveTravel(values, ctx), ctx.doc);
+  return operation ? { choices: { operation } } : undefined;
+}
+
+/**
+ * Which way side 1 of the revolve leaves the profiles' faces: out of their
+ * body (along the outward normal), into it, or both ways (symmetric, two
+ * sides, a whole turn). The first way is the one side 1 starts turning at the
+ * profiles' centre, `axis × (centre − foot)` (reversed by a negative angle);
+ * without an axis yet, or for a face square to the axis (which starts turning
+ * along itself), it is out, the join a revolve always proposed. Undefined
+ * while the angle doesn't evaluate.
+ */
+export function revolveTravel(
+  values: DialogValues,
+  ctx: Pick<ManipulatorContext, 'value'> & Partial<DialogContext>,
+): Travel | undefined {
+  if (values.choices.direction === 'symmetric' || twoSides(values)) return 'both';
+  const angle = ctx.value('angle');
+  if (angle === undefined || angle === 0) return undefined;
+  if (Math.abs(angle) >= 360) return 'both';
+  if (!ctx.doc || !ctx.bodies) return 'out';
+  const context = {
+    doc: ctx.doc,
+    bodies: ctx.bodies,
+    sketches: ctx.sketches,
+    construction: ctx.construction,
+  };
+  const frame = revolveFrame(values, context);
+  const normal = extrudeFrame(values.refs.profiles ?? [], context)?.normal;
+  if (!frame || !normal) return 'out';
+  const turning = cross(frame.axis.direction, frame.zero);
+  const along =
+    (turning[0] * normal[0] + turning[1] * normal[1] + turning[2] * normal[2]) * Math.sign(angle);
+  return along < -1e-6 ? 'in' : 'out';
 }
 
 /**

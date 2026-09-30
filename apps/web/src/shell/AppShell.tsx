@@ -32,6 +32,7 @@ import { DialogOverlay } from '../features/DialogOverlay';
 import { type DialogKernel, dialogBodies, viewPreview } from '../features/dialog';
 import { FeatureDialog } from '../features/FeatureDialog';
 import { dialogPlanePick, dialogPlanePicker } from '../features/planePicker';
+import { PRESS_PULL, PRESS_PULL_PROMPT, pressPullTarget } from '../features/pressPull';
 import { type FeatureDialogs, featureDialogs, specForCommand } from '../features/registry';
 import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs';
 import { sizeText } from '../measure/format';
@@ -647,6 +648,18 @@ export function AppShell({
     session.getState().setTool(OVERHANG_TOOL);
   };
   const run = (tool: ToolId) => {
+    // Press Pull (P3-08) runs the tool that fits the selection; Repeat last repeats Press Pull.
+    if (tool === PRESS_PULL) {
+      if (mode !== 'model') return;
+      const target = pressPullTarget(session.getState().selection);
+      if (!target) {
+        notify('info', PRESS_PULL_PROMPT);
+        return;
+      }
+      run(target);
+      setLastTool(PRESS_PULL);
+      return;
+    }
     if (isRepeatable(tool)) setLastTool(tool);
     // A feature dialog's command opens it (P2-05); another tool (not Parameters) ends it.
     const spec = specForCommand(dialogs, tool);

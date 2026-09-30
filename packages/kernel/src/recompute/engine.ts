@@ -25,7 +25,7 @@ import {
   type GeomRef,
   type ReferenceIssue,
 } from '@extrudo/core';
-import type { SubShapeKind } from '../history';
+import type { SmoothKind, SubShapeKind } from '../history';
 import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
 import type { MeshOptions } from '../mesh';
 import type { ShapeDescription } from '../naming/description';
@@ -173,14 +173,23 @@ export class RecomputeEngine {
    * The edges (sub-shape indices, the edge itself included) of the chain of
    * tangent-continuous edges around one edge of a body of the last finished
    * recompute, or with `base` of the last preview's base: what a fillet
-   * rounds together (P3-01). Undefined if there is no such body.
+   * rounds together (P3-01). With `kind` `face`, the faces that run
+   * smoothly into one face, which an offset moves together (P3-08).
+   * Undefined if there is no such body.
    */
-  tangentChain(body: BodyId, edge: number, base = false): number[] | undefined {
+  tangentChain(
+    body: BodyId,
+    index: number,
+    base = false,
+    kind: SmoothKind = 'edge',
+  ): number[] | undefined {
     const shape = (base ? this.#previewBase : this.#latest).get(body);
-    if (shape === undefined || edge < 0 || edge >= this.#kernel.count(shape, 'edge')) {
+    if (shape === undefined || index < 0 || index >= this.#kernel.count(shape, kind)) {
       return undefined;
     }
-    return this.#kernel.tangentChain(shape, edge);
+    return kind === 'face'
+      ? this.#kernel.tangentFaces(shape, index)
+      : this.#kernel.tangentChain(shape, index);
   }
 
   /**

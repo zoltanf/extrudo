@@ -14,6 +14,7 @@ import { filletDialog } from './fillet';
 import { holeDialog } from './hole';
 import { mirrorDialog } from './mirror';
 import { moveDialog } from './move';
+import { offsetFaceDialog } from './offset-face';
 import { PATTERN_DIALOGS } from './pattern';
 import { placeOnBedDialog } from './place-on-bed';
 import { PRIMITIVE_DIALOGS } from './primitives';
@@ -40,6 +41,8 @@ export function featureDialogs(): FeatureDialogs {
   dialogs.register(placeOnBedDialog);
   // Hole (P3-04, ADR-0049).
   dialogs.register(holeDialog);
+  // Offset Face (P3-08, ADR-0051); Press/Pull opens it, Fillet or Extrude.
+  dialogs.register(offsetFaceDialog);
   // Rectangular, circular and path patterns (P3-07, ADR-0047).
   for (const spec of PATTERN_DIALOGS) dialogs.register(spec);
   return dialogs;

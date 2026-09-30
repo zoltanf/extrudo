@@ -532,13 +532,28 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   distance arrow per direction and an angle ring. No facade change. Not
   built: patterns of faces, a skip list.
 - [ ] **P3-08 Press/Pull, Offset face, Split body, Scale, Draft.** FR-FT-08,
-  -12. Also, carried over (2026-09-30): the marking menu's Press Pull wedge
-  lights up once a `pressPull` command exists (`commands/marking.ts`,
-  ADR-0042); patterns of faces, left out of P3-07 until Offset face exists
-  (ADR-0047); one press-pull proposal rule for faces, so a revolved face
-  turned into its body proposes a cut and a profile sketched on a body's
-  face follows the extrude rule (ADR-0028, ADR-0029). Big enough to run as
-  two agent tasks: Press/Pull + Offset face, then Split + Scale + Draft.
+  -12. **First half done 2026-09-30 (ADR-0051): Press/Pull and Offset Face.**
+  Solid › Modify has Press Pull (Q, the marking menu's wedge, Ctrl+K), which
+  opens the dialog that fits the selection with it filled in: a face opens
+  Offset Face, an edge Fillet, a sketch profile Extrude (a profile wins over a
+  face over an edge); with nothing usable selected it says what to select. Offset
+  Face (a new feature `offsetFace`: `faces`, `distance`, positive out along the
+  outward normal) moves faces of any kind, the neighbours extended or trimmed
+  to follow: a pad grows or sinks, a cylinder wall changes its radius, a hole
+  narrows or widens, and the faces that run smoothly into a picked face (fillets)
+  move with it (the dialog picks the chain and shows it). Built by OCCT's offset
+  with per-face values and sharp joins in a new facade method `offsetFaces`
+  (plus `tangentFaces`); junk OCCT calls valid is refused by a distance test,
+  a failure says the largest distance that works, and **every face keeps its
+  name**, so fillets and holes after an offset survive editing it. Press-pull's
+  proposal is one rule for Extrude and Revolve now (`features/operation.ts`):
+  a face turned into its body, or a profile drawn on a face swept into it,
+  proposes a cut, out of it a join. Not done: patterns of faces (they don't fall
+  out of Offset Face, see the ADR). **Left for the second half:** Split body
+  (by a plane or face), Scale (uniform and non-uniform), Draft; open items of
+  ADR-0051 (a distance per face, solids with a sealed void, bodies whose
+  rounded edges meet at a sharp corner, self-intersecting offsets, face
+  patterns). Big enough to run as two agent tasks.
 - [x] **P3-09 Section analysis.** FR-VP-06. Done 2026-09-30 (ADR-0045):
   Solid › Inspect › Section Analysis (Shift+S, Ctrl+K) cuts the view at an
   origin plane, a construction plane or a flat face, with an offset

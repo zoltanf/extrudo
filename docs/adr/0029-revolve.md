@@ -280,4 +280,5 @@ reading nearest the last one, within ±360°) instead of wrapping at
 - The arc starts at the axis; for large profiles an arc through the
   profile's centre would be easier to grab.
 - The press-pull style proposal for faces is only "join"; a face turned
-  into its body should propose a cut (the way extrude's rule does).
+  into its body should propose a cut (the way extrude's rule does). Done in
+  P3-08: one rule for both, ADR-0051 §7.

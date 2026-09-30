@@ -53,10 +53,12 @@ describe('manipulator frames', () => {
     expect(meshFaceFrame(boxMesh([0, 0, 0], [10, 20, 30]), 1)).toEqual({
       origin: [5, 10, 30],
       normal: [0, 0, 1],
+      flatness: 1,
     });
     expect(faceFrame({ [BOX]: namedBoxMesh() }, { kind: 'face', id: 'box:left' })).toEqual({
       origin: [0, 5, 5],
       normal: [-1, 0, 0],
+      flatness: 1,
     });
     expect(faceFrame({}, { kind: 'face', id: 'box:left' })).toBeUndefined();
     expect(

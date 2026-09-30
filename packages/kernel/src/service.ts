@@ -1,6 +1,6 @@
 import type { BodyId, FeatureRegistry, GeomRef } from '@extrudo/core';
 import { kernelFeatures } from './features';
-import type { SubShapeKind } from './history';
+import type { SmoothKind, SubShapeKind } from './history';
 import { type Inspection, type InspectTarget, inspectShapes } from './inspect';
 import { Kernel, KernelError, type KernelStats } from './kernel';
 import type { ExportMesh, MeshOptions } from './mesh';
@@ -56,7 +56,12 @@ export interface KernelApi {
    * for `reference`): what a fillet rounds together (P3-01, ADR-0038).
    * Undefined if the body is gone.
    */
-  tangentChain(body: BodyId, edge: number, base?: boolean): Promise<number[] | undefined>;
+  tangentChain(
+    body: BodyId,
+    index: number,
+    base?: boolean,
+    kind?: SmoothKind,
+  ): Promise<number[] | undefined>;
   /**
    * Bodies of the last finished recompute tessellated for STL and 3MF
    * (P2-12, ADR-0034): welded meshes at `tessellation`, in the order
@@ -147,8 +152,13 @@ export class KernelService implements KernelApi {
     return this.#run(() => this.#engineOf().reference(body, kind, index, base));
   }
 
-  tangentChain(body: BodyId, edge: number, base = false): Promise<number[] | undefined> {
-    return this.#run(() => this.#engineOf().tangentChain(body, edge, base));
+  tangentChain(
+    body: BodyId,
+    index: number,
+    base = false,
+    kind: SmoothKind = 'edge',
+  ): Promise<number[] | undefined> {
+    return this.#run(() => this.#engineOf().tangentChain(body, index, base, kind));
   }
 
   exportMeshes(bodies: readonly BodyId[], tessellation: MeshOptions): Promise<BodyExportMesh[]> {

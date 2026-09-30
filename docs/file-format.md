@@ -713,6 +713,31 @@ point's ID (`<point id>.wall`), so a face keeps its name when other points
 are added or removed. The hole dialog's presets (M2 to M8 clearance, heat-set
 inserts) only fill these inputs in the app; nothing about a preset is stored.
 
+### 6.18 `offsetFace`
+
+Moves faces of bodies along their normals by a distance (P3-08, ADR-0051); the
+faces next to them are extended or trimmed to follow. No new keys: a feature
+with `ref` and `expr` inputs like the others.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `faces` | `ref` | yes | Refs of kind `face` (persistent face names, section 8): the faces to move. May lie on several bodies, each of which is offset on its own. Empty: an error until one is picked |
+| `distance` | `expr` | yes | Length. **Positive moves a face along its outward normal**: the body grows there (a pad grows, a hole's wall closes in). Negative moves it in. 0 is an error when the kernel evaluates it (not checked by the schema) |
+
+Faces that run smoothly into a picked face (their normals at the shared edge
+within 4 degrees: the fillets round a pad) move with it by the same distance,
+whether or not they are listed; the app's dialog lists them. A planar face moves
+like a pad growing or sinking, a cylinder's wall changes its radius, a cone
+keeps its angle. **Every face keeps its name**, so later features that refer
+to a moved face keep finding it, and the distance can be edited freely; a face
+the offset swallows is gone, and a face OCCT splits gets `#n`. A solid with a
+sealed void inside (a body shelled closed), a body whose rounded edges meet at a
+sharp corner (two fillets with no blend between them, which OCCT's offset can't
+do safely), a distance that makes the body vanish or cross itself, and faces
+OCCT can't offset are reported as errors, with the largest distance that works
+where one does. Press Pull is not a feature: it
+opens an Offset Face, a Fillet or an Extrude in the app.
+
 ---
 
 ## 7. Sketch data (`sketchData`)
