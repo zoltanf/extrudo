@@ -65,13 +65,14 @@ file it edited should keep unknown entries when it can.
 | Field | Type | Meaning |
 |---|---|---|
 | `format` | `"extrudo"` | Required. The file is refused ("not an Extrudo project") unless this is exactly the string `extrudo`. |
-| `formatVersion` | integer | The document format version the writer used (currently 1). Informational: the reader trusts `document.json`'s own `formatVersion`, not this one. |
+| `formatVersion` | integer | Required. The format version the writer used (currently 1). A file without an integer here is refused as damaged. A reader migrates by `document.json`'s own `formatVersion`, but treats the file as newer when either number is above what it knows (section 3). |
 | `appVersion` | string | Version of the app that wrote the file (copy of `meta.appVersion`). |
 | `created` | ISO 8601 string | Copy of `meta.created`. |
 | `units` | `mm`, `cm`, `m` or `in` | Copy of `settings.units`. |
 
 The manifest lets a file browser show a project without parsing the document.
-Only `format` is checked when reading; unknown manifest fields are ignored.
+`format` and `formatVersion` are checked when reading; unknown manifest fields
+are ignored.
 
 ### 2.2 `versions/index.json`
 
@@ -119,25 +120,37 @@ integer; the current one is **1**). The rules:
   expression inputs, `bodies[..].opacity`, `visible`, a sketch's
   `projections`, a reference's `fingerprint` were all added this way), and new
   feature types (`Feature.type` is an open string).
-- **Objects are strict.** Every object in the schema rejects unknown keys.
-  Consequence: a reader of version *N* rejects a file of version *N* that
-  contains an optional field added after that reader was built, exactly as it
-  would reject a typo. Writers of other tools must not add private keys to
-  the document; there is no `extensions` bag in format 1.
+- **Objects are strict, reading is lenient.** Every object in the schema
+  names the keys it doesn't know, and the reader **leaves them out** and
+  tells the user (since P3-13; before, a file with an optional field added
+  after the reader was built was refused like a typo). So an older reader
+  opens a newer file of the same version, losing only what it doesn't know.
+  The same holds for a feature's input names: the recompute ignores an input
+  its feature type doesn't define and marks the feature with a warning
+  ("This version of Extrudo doesn't know the input…"). Writers of other
+  tools must not add private keys to the document all the same: a reader
+  drops them, and there is no `extensions` bag in format 1.
 - **Reading a document** (`loadDocument`):
   1. The value must be an object with `format === "extrudo"` and an integer
      `formatVersion`, else `not-a-document`.
-  2. `formatVersion` greater than the reader's known version: error
-     `too-new` ("saved by a newer Extrudo... Update Extrudo to open it").
-     A reader must **not** guess; it must refuse (or open read-only through
-     its own means), never write back a downgraded file.
+  2. `formatVersion` greater than the reader's known version: the reader
+     tries to read it **as its own version**, leaving out unknown keys. If
+     that validates, the document opens and the user is told it came from a
+     newer Extrudo and what was left out (`loadNotice`); if anything else
+     fails (a changed type or shape), the error is `too-new` ("saved by a
+     newer Extrudo… Update Extrudo to open it"), with the issues. Opening an
+     imported file this way never changes the file (the project is a copy);
+     a stored project opened this way is written back in the reader's
+     version when it is saved, which the notice says. The app keeps no
+     read-only mode.
   3. Otherwise the raw JSON is copied and migrated one step at a time
      (`from → from + 1`) until it is at the current version. Migrations work
      on raw JSON and never on the current types, are pure, and get their IDs
      and timestamps from the caller so they can be tested.
-  4. The result is validated against the current schema (section 4 onwards);
-     a failure is `invalid` ("the document is damaged") with the list of
-     issues.
+  4. The result is validated against the current schema (section 4 onwards),
+     leaving out unknown keys as above (`LoadResult.dropped` lists their
+     paths, like `features.0.inputs.distance.tolerance`); any other failure is
+     `invalid` ("the document is damaged") with the list of issues.
 - **Writing** always writes the current version; a file read at an older
   version is saved back at the current one.
 - **Version 0** is a draft shape from before the v1 schema (top-level
@@ -151,8 +164,9 @@ integer; the current one is **1**). The rules:
 
 ## 4. The document
 
-`document.json` is one JSON object. Every object below is **strict** (unknown
-keys are an error). "Required" means the key must be present.
+`document.json` is one JSON object. Every object below is **strict**: the
+schema names unknown keys, and a reader leaves them out (section 3).
+"Required" means the key must be present.
 
 | Key | Type | Required | Meaning and constraints |
 |---|---|---|---|
@@ -312,7 +326,8 @@ before something it uses. Expressions do not order features.
 | `sketchData` | `sketch` (SketchData, required) | A sketch's 2D content (section 7). Only the `sketch` feature uses it. |
 
 Feature-specific rules below are enforced by the per-type inputs schema (each
-inputs object is strict too: unknown input names are an error). "Optional"
+inputs object is strict too: the recompute ignores unknown input names with
+a warning, section 3). "Optional"
 inputs may be absent; the default is what a reader must assume.
 
 ### 6.2 `sketch`

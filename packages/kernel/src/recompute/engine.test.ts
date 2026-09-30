@@ -187,6 +187,33 @@ describe('feature status', () => {
     });
   });
 
+  it('leaves out input names it does not know, with a warning (a newer Extrudo, P3-13)', async () => {
+    const doc = testDocument([
+      testFeature('f1', 'test-box', { size: '10 mm' }, { rounded: { kind: 'bool', value: true } }),
+      testFeature(
+        'f2',
+        'test-grow',
+        { height: '1 mm' },
+        { mode: { kind: 'enum', value: 'up' }, side: { kind: 'bool', value: false } },
+      ),
+      // Unknown names don't excuse a missing one.
+      testFeature('f3', 'test-grow', {}, { mode: { kind: 'enum', value: 'up' } }),
+    ]);
+    const result = await recompute(doc);
+    expect(result.features).toEqual({
+      f1: {
+        status: 'warning',
+        message: `This version of Extrudo doesn't know the input "rounded" and left it out.`,
+      },
+      f2: {
+        status: 'warning',
+        message: `This version of Extrudo doesn't know the inputs "mode", "side" and left them out.`,
+      },
+      f3: { status: 'error', message: expect.stringMatching(/^Invalid inputs: /) },
+    });
+    expect(result.bodies).toHaveLength(1);
+  });
+
   it('fails a feature whose reference is suppressed, failed, later or gone', async () => {
     const pad = (id: string, target: string) =>
       testFeature(

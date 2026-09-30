@@ -25,6 +25,7 @@ import {
   type GeomRef,
   type ReferenceIssue,
 } from '@extrudo/core';
+import type { z } from 'zod';
 import type { SmoothKind, SubShapeKind } from '../history';
 import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
 import type { MeshOptions } from '../mesh';
@@ -273,7 +274,13 @@ export class RecomputeEngine {
         fail(`This version of Extrudo can't compute ${typeLabel(feature.type)} features.`);
         continue;
       }
-      const parsed = definition.inputsSchema.safeParse(feature.inputs);
+      let parsed = definition.inputsSchema.safeParse(feature.inputs);
+      // Input names this version doesn't know (a newer Extrudo added them, P3-13) are left out.
+      const ignored = unknownInputs(parsed);
+      if (ignored.length > 0) {
+        const known = Object.entries(feature.inputs).filter(([name]) => !ignored.includes(name));
+        parsed = definition.inputsSchema.safeParse(Object.fromEntries(known));
+      }
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
         fail(`Invalid inputs: ${issue?.path.join('.') || 'inputs'} ${issue?.message ?? ''}`.trim());
@@ -328,7 +335,7 @@ export class RecomputeEngine {
         evaluated.push(feature.id);
       }
       used.add(key);
-      features[feature.id] = entry.status;
+      features[feature.id] = ignored.length > 0 ? withIgnored(entry.status, ignored) : entry.status;
       if (!entry.output) {
         passed.set(feature.id, { state: 'failed' });
         continue;
@@ -721,4 +728,23 @@ export function yieldToEvents(): Promise<void> {
     };
     channel.port2.postMessage(null);
   });
+}
+
+/**
+ * The input names a feature's inputs schema didn't recognise, when those are
+ * its only complaints: inputs a newer Extrudo added to the feature type.
+ */
+function unknownInputs(parsed: { success: boolean; error?: z.ZodError }): string[] {
+  if (parsed.success || !parsed.error) return [];
+  const { issues } = parsed.error;
+  const unknown = issues.every((i) => i.code === 'unrecognized_keys' && i.path.length === 0);
+  return unknown ? issues.flatMap((i) => (i.code === 'unrecognized_keys' ? i.keys : [])) : [];
+}
+
+/** A status that also says which inputs were left out (a warning unless it is an error). */
+function withIgnored(status: FeatureStatus, ignored: readonly string[]): FeatureStatus {
+  if (status.status === 'error') return status;
+  const note = `This version of Extrudo doesn't know ${ignored.length === 1 ? 'the input' : 'the inputs'} ${ignored.map((n) => `"${n}"`).join(', ')} and left ${ignored.length === 1 ? 'it' : 'them'} out.`;
+  const message = status.status === 'warning' ? `${status.message} ${note}` : note;
+  return { ...status, status: 'warning', message };
 }

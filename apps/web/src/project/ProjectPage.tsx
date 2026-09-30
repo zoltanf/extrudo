@@ -14,9 +14,19 @@ import { HOME_HREF, navigate, projectHref } from '../routes';
 import type { FileActions } from '../shell/AppBar';
 import { AppShell } from '../shell/AppShell';
 import { createViewportStore, type ViewportStore } from '../viewport/store';
-import { createProject, describeError, exportProject, importProject } from './actions';
+import {
+  createProject,
+  describeError,
+  exportProject,
+  importProject,
+  loadProject,
+  takeOpenNotices,
+} from './actions';
 import { type Autosaver, allSaved, closeAutosaver, createAutosaver } from './autosave';
 import { useRecompute } from './useRecompute';
+
+/** How long a notice about the opened file stays (it is long, and it is in the history after). */
+const NOTICE_LIFETIME_MS = 20_000;
 
 type Loaded =
   | { kind: 'loading' }
@@ -35,7 +45,7 @@ export function ProjectPage({ id, platform }: { id: string; platform: Platform }
       await allSaved();
       const projectId = id as ProjectId;
       const [doc, summary] = await Promise.all([
-        platform.projects.load(projectId),
+        loadProject(platform, projectId),
         platform.projects.get(projectId),
       ]);
       if (!cancelled) setLoaded({ kind: 'ready', doc, hasThumbnail: !!summary?.hasThumbnail });
@@ -96,6 +106,11 @@ function ProjectEditor({
   const autosave = useAutosave(store, viewport, platform);
   const { toasts, push, dismiss, notifications } = useToasts();
   useFirstThumbnail(doc.id, hasThumbnail, viewport, platform);
+  // What opening needed to leave out (a file from a newer Extrudo, P3-13): long, so it stays a while.
+  useEffect(() => {
+    for (const notice of takeOpenNotices(doc.id))
+      push('info', notice, { lifetime: NOTICE_LIFETIME_MS });
+  }, [doc.id, push]);
 
   const file = useMemo<FileActions>(
     () => ({

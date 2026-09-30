@@ -128,6 +128,36 @@ test('export and import round-trip a project as an .extrudo file', async ({ page
   );
 });
 
+test('opens a design a newer Extrudo saved, and says what it left out (P3-13)', async ({
+  page,
+}) => {
+  await openProject(page);
+  await rename(page, 'From the future');
+  const id = page.url().split('/').pop() as string;
+  await page.goto('./');
+  // What a newer Extrudo would have stored: a higher format version and a key this one doesn't know.
+  const edited = await page.evaluate(`(async () => {
+    const root = await navigator.storage.getDirectory();
+    const dir = await (await root.getDirectoryHandle('projects')).getDirectoryHandle(${JSON.stringify(id)});
+    const handle = await dir.getFileHandle('document.json');
+    const doc = JSON.parse(await (await handle.getFile()).text());
+    doc.formatVersion = 2;
+    doc.lighting = 'studio';
+    const writable = await handle.createWritable();
+    await writable.write(JSON.stringify(doc));
+    await writable.close();
+    return true;
+  })()`);
+  expect(edited).toBe(true);
+  await card(page, 'From the future').getByRole('link', { name: 'From the future' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Project name: From the future. Rename' }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('status').filter({ hasText: 'saved by a newer Extrudo (file format 2' }),
+  ).toContainText("1 setting this version doesn't know was left out.");
+});
+
 test('import refuses a file that is not a project', async ({ page }) => {
   await page.goto('./');
   const [chooser] = await Promise.all([

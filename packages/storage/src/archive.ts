@@ -23,6 +23,11 @@ export interface Manifest {
   units: string;
 }
 
+/**
+ * `loadedVersion` is the newer of the manifest's and the document's format
+ * version: a file from a newer Extrudo may keep an older document and still
+ * carry parts (in the zip) this version doesn't read.
+ */
 export interface Archive extends LoadResult {
   manifest: Manifest;
   thumbnail?: Uint8Array;
@@ -85,6 +90,12 @@ export function readArchive(bytes: Uint8Array): Archive {
       "This zip isn't an Extrudo project: it has no Extrudo manifest.",
     );
   }
+  if (!Number.isInteger(manifest.formatVersion)) {
+    throw new ArchiveError(
+      'damaged',
+      'This Extrudo file is damaged: its manifest has no format version.',
+    );
+  }
   const raw = parseJson(entries[DOCUMENT]);
   if (raw === undefined) {
     throw new ArchiveError(
@@ -96,6 +107,8 @@ export function readArchive(bytes: Uint8Array): Archive {
   const thumbnail = entries[THUMBNAIL];
   return {
     ...result,
+    // A newer container (the manifest) counts as a newer file even if its document isn't.
+    loadedVersion: Math.max(result.loadedVersion, manifest.formatVersion as number),
     manifest: manifest as Manifest,
     ...(thumbnail ? { thumbnail } : {}),
     versions: readVersions(entries),

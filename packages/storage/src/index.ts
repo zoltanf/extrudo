@@ -14,6 +14,7 @@ export {
 export {
   ArchiveError,
   type ArchiveErrorCode,
+  type LoadOptions,
   type ProjectId,
   ProjectNotFoundError,
   type ProjectStore,

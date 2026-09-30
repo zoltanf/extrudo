@@ -49,11 +49,15 @@ describe('.extrudo archives', () => {
     ['not a zip', strToU8('hello'), 'not-a-zip'],
     ['a zip without a manifest', zipSync({ 'a.txt': strToU8('a') }), 'not-extrudo'],
     ['another format', zipSync({ 'manifest.json': strToU8('{"format":"other"}') }), 'not-extrudo'],
-    ['no document', zipSync({ 'manifest.json': strToU8('{"format":"extrudo"}') }), 'damaged'],
+    [
+      'no document',
+      zipSync({ 'manifest.json': strToU8('{"format":"extrudo","formatVersion":1}') }),
+      'damaged',
+    ],
     [
       'a broken document',
       zipSync({
-        'manifest.json': strToU8('{"format":"extrudo"}'),
+        'manifest.json': strToU8('{"format":"extrudo","formatVersion":1}'),
         'document.json': strToU8('{oops'),
       }),
       'damaged',
@@ -86,12 +90,41 @@ describe('.extrudo archives', () => {
     expect(() => readArchive(zipSync(entries))).toThrow('version 3 is missing');
   });
 
-  it('passes on core errors for documents from a newer Extrudo', () => {
-    const newer = { ...doc(), formatVersion: FORMAT_VERSION + 1 };
+  it("passes on core errors for documents from a newer Extrudo it can't read", () => {
+    const newer = { ...doc(), formatVersion: FORMAT_VERSION + 1, features: 'reshaped' };
     const bytes = zipSync({
-      'manifest.json': strToU8('{"format":"extrudo"}'),
+      'manifest.json': strToU8(`{"format":"extrudo","formatVersion":${FORMAT_VERSION + 1}}`),
       'document.json': strToU8(JSON.stringify(newer)),
     });
     expect(() => readArchive(bytes)).toThrow(DocumentLoadError);
+  });
+
+  it("checks the manifest's format version (P3-13)", () => {
+    const d = doc();
+    const file = (manifest: object, document: object = d) =>
+      zipSync({
+        'manifest.json': strToU8(JSON.stringify({ format: 'extrudo', ...manifest })),
+        'document.json': strToU8(JSON.stringify(document)),
+      });
+    expect(() => readArchive(file({}))).toThrow(ArchiveError);
+    expect(() => readArchive(file({ formatVersion: '1' }))).toThrow('no format version');
+    expect(readArchive(file({ formatVersion: FORMAT_VERSION })).loadedVersion).toBe(FORMAT_VERSION);
+    // A newer container counts as a newer file, even with a document this version reads.
+    const newer = readArchive(file({ formatVersion: FORMAT_VERSION + 1 }));
+    expect(newer.doc).toEqual(d);
+    expect(newer.loadedVersion).toBe(FORMAT_VERSION + 1);
+  });
+
+  it('reads unknown keys leniently and lists them', () => {
+    const d = doc();
+    const raw = { ...d, formatVersion: FORMAT_VERSION + 1, lighting: 'studio' };
+    const archive = readArchive(
+      zipSync({
+        'manifest.json': strToU8(`{"format":"extrudo","formatVersion":${FORMAT_VERSION + 1}}`),
+        'document.json': strToU8(JSON.stringify(raw)),
+      }),
+    );
+    expect(archive.doc).toEqual(d);
+    expect(archive.dropped).toEqual(['lighting']);
   });
 });

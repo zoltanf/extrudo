@@ -10,6 +10,7 @@ import {
   type DocumentId,
   type ExtrudoDocument,
   loadDocument,
+  loadNotice,
 } from '@extrudo/core';
 import { gunzipSync, gzipSync } from 'fflate';
 import { readArchive, writeArchive } from './archive';
@@ -17,6 +18,7 @@ import { type FileStore, memoryFiles } from './files';
 import { memoryIndex, type ProjectIndex } from './idb';
 import {
   ArchiveError,
+  type LoadOptions,
   type ProjectId,
   ProjectNotFoundError,
   type ProjectStore,
@@ -59,7 +61,7 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     return summary;
   };
 
-  const load = async (id: ProjectId): Promise<ExtrudoDocument> => {
+  const load = async (id: ProjectId, options?: LoadOptions): Promise<ExtrudoDocument> => {
     await summaryOf(id);
     const bytes = await files.read(documentPath(id));
     if (!bytes) throw new ArchiveError('damaged', "This project's document is missing.");
@@ -69,7 +71,10 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     } catch {
       throw new ArchiveError('damaged', "This project's document is damaged.");
     }
-    return loadDocument(raw).doc;
+    const result = loadDocument(raw);
+    const notice = loadNotice(result, 'drops');
+    if (notice) options?.onNotice?.(notice);
+    return result.doc;
   };
 
   const save = async (doc: ExtrudoDocument): Promise<ProjectSummary> => {
@@ -232,8 +237,10 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
       const bytes = writeArchive(await load(id), await readThumbnail(id), await allVersions(id));
       return new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/zip' });
     },
-    async importFile(file) {
+    async importFile(file, options) {
       const archive = readArchive(new Uint8Array(await file.arrayBuffer()));
+      const notice = loadNotice(archive, 'copy');
+      if (notice) options?.onNotice?.(notice);
       const { doc, thumbnail, versions } = archive;
       if (await index.get(doc.id)) {
         const copy = await saveCopy(doc, doc.name, thumbnail);

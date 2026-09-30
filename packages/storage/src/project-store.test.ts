@@ -6,6 +6,7 @@ import {
   type ExtrudoDocument,
   type ParameterId,
 } from '@extrudo/core';
+import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { memoryFiles } from './files';
 import { memoryIndex } from './idb';
@@ -45,6 +46,43 @@ const doc = (name: string): ExtrudoDocument =>
 const png = (...bytes: number[]) => new Blob([new Uint8Array([137, 80, 78, 71, ...bytes])]);
 
 describe('ProjectStore', () => {
+  it('opens a document a newer Extrudo saved, and says what it left out (P3-13)', async () => {
+    const { store, files } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    const path = `projects/${d.id}/document.json`;
+    const stored = JSON.parse(new TextDecoder().decode(await files.read(path)));
+    await files.write(
+      path,
+      new TextEncoder().encode(JSON.stringify({ ...stored, formatVersion: 2, grid: { step: 5 } })),
+    );
+    const notices: string[] = [];
+    const loaded = await store.load(d.id, { onNotice: (m) => notices.push(m) });
+    expect(loaded.name).toBe('Bracket');
+    expect(notices).toEqual([
+      "This design was saved by a newer Extrudo (file format 2; this version reads 1). 1 setting this version doesn't know was left out. Saving here loses them; reload to update Extrudo first if you need them.",
+    ]);
+    // An ordinary load says nothing.
+    await store.save(loaded);
+    await store.load(d.id, { onNotice: (m) => notices.push(m) });
+    expect(notices).toHaveLength(1);
+  });
+
+  it('imports a newer file, and says the file itself is unchanged', async () => {
+    const { store } = setup();
+    const d = { ...doc('Bracket'), formatVersion: 2, grid: { step: 5 } };
+    const file = new Blob([
+      zipSync({
+        'manifest.json': strToU8('{"format":"extrudo","formatVersion":2}'),
+        'document.json': strToU8(JSON.stringify(d)),
+      }) as Uint8Array<ArrayBuffer>,
+    ]);
+    const notices: string[] = [];
+    const summary = await store.importFile(file, { onNotice: (m) => notices.push(m) });
+    expect(summary.name).toBe('Bracket');
+    expect(notices[0]).toMatch(/left out\. The file itself is unchanged\.$/);
+  });
+
   it('saves and loads a document, stamping modified and the app version', async () => {
     const { store } = setup();
     const d = doc('Bracket');
