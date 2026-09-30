@@ -246,7 +246,8 @@ export async function clickWhere(
   dy = 0,
 ) {
   const { x, y } = at(p);
-  // A move right after the view turned can go unanswered: nudge the pointer until it is.
+  // Each poll moves the pointer again, a pixel up or down, so a pick on the edge of the
+  // tolerance still lands.
   let nudge = 0;
   await expect
     .poll(async () => {
