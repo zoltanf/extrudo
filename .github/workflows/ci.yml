@@ -97,7 +97,8 @@ jobs:
     name: Typecheck, lint, unit and E2E tests
     needs: [occt, planegcs]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The job took 27-30 minutes by P3-04 (164 e2e tests on one worker).
+    timeout-minutes: 50
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
