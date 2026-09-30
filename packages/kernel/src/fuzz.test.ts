@@ -379,6 +379,8 @@ async function fuzz(name: string, dataUrl: string, seed: number) {
   const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
   // `messages` counts feature messages (numbers as N) for `FUZZ_REPORT=1`.
   const stats = { applied: 0, refused: 0, errors: 0, messages: {} as Record<string, number> };
+  // Warm recompute times of the edits (ms), for `FUZZ_REPORT=1`.
+  const times: number[] = [];
   let doc = original;
   try {
     await recompute(engine, doc);
@@ -395,7 +397,9 @@ async function fuzz(name: string, dataUrl: string, seed: number) {
       const at = `${name} step ${step} (seed ${seed}) after ${JSON.stringify(mutation)}`;
       let result: Done;
       try {
+        const started = performance.now();
         ({ doc, result } = await recomputeAndSync(engine, next, newId));
+        times.push(performance.now() - started);
       } catch (error) {
         throw new Error(`${at} crashed: ${error}`);
       }
@@ -420,7 +424,9 @@ async function fuzz(name: string, dataUrl: string, seed: number) {
     engine.clear();
   }
   expect(kernel.stats().liveShapes, `${name}: shapes left after clearing`).toBe(baseline);
-  return stats;
+  const sorted = times.sort((a, b) => a - b);
+  const at = (q: number) => Math.round(sorted[Math.floor(q * (sorted.length - 1))] ?? 0);
+  return { ...stats, ms: { median: at(0.5), p95: at(0.95), max: at(1) } };
 }
 
 describe('fuzzing the benchmark fixtures', () => {
@@ -472,5 +478,41 @@ describe('what the fuzzer found', () => {
     } finally {
       engine.clear();
     }
+  });
+});
+
+// P3-13 (ADR-0029's open item): the WASM heap over a long scripted editing
+// session with a warm cache, as in the app. Measurement only:
+// `FUZZ_HEAP=3000 pnpm vitest run packages/kernel/src/fuzz.test.ts -t heap`
+// reports the heap every 250 steps of B3 and B2 edits.
+describe.runIf(env.FUZZ_HEAP)('heap over a long editing session', () => {
+  it('heap', { timeout: 3_600_000 }, async () => {
+    const steps = Number(env.FUZZ_HEAP);
+    const report: Record<string, number[]> = {};
+    for (const [name, dataUrl] of [
+      ['B3', b3],
+      ['B2', b2],
+    ] as const) {
+      const random = prng(SEED);
+      const newId = idSource();
+      const original = load(dataUrl);
+      const targets = targetsOf(original);
+      const engine = new RecomputeEngine(kernel, kernelFeatures());
+      const samples: number[] = [];
+      let doc = original;
+      try {
+        await recompute(engine, doc);
+        for (let step = 1; step <= steps; step++) {
+          if (random() < 0.08) doc = original;
+          const next = apply(doc, pickMutation(doc, targets, random));
+          if (next) ({ doc } = await recomputeAndSync(engine, next, newId));
+          if (step % 250 === 0) samples.push(Math.round(kernel.stats().heapTop / 2 ** 17) / 8);
+        }
+      } finally {
+        engine.clear();
+      }
+      report[`${name} heap top (MB) every 250 steps`] = samples;
+    }
+    expect.soft(report).toBeUndefined();
   });
 });
