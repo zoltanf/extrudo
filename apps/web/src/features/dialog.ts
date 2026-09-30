@@ -36,6 +36,7 @@ import {
   setFeatureVisibility,
   updateFeatureInputs,
   usedSketches,
+  type Vec3,
 } from '@extrudo/core';
 import type { BodyMesh, Preview, SubShapeKind } from '@extrudo/kernel';
 import { createStore, type StoreApi } from 'zustand/vanilla';
@@ -186,6 +187,12 @@ export interface DialogController {
   setToggle(field: string, value: boolean): void;
   /** Makes a selection field the one picks go to. */
   pickInto(field: string): void;
+  /**
+   * A click on a plane or face where the view picks planes (P2-10): puts it
+   * into the pick field. With a spec that places by click (`placeAt`) it
+   * adds rather than toggles and also sets where the click was.
+   */
+  pickAt(item: SelectionItem, at?: Vec3): void;
   /** Makes an expression field's manipulator the active one (the heads-up box). */
   activate(field: string | undefined): void;
   /** The viewport's model-mode picking while a dialog is open. */
@@ -369,8 +376,17 @@ export function createDialogController(options: DialogControllerOptions): Dialog
   ) => {
     const open = get();
     if (!open) return;
-    const { values = open.values, typing = open.typing } = change(open);
-    refresh(choose(open, field), values, typing);
+    const changed = change(open);
+    const { typing = open.typing } = changed;
+    let values = changed.values ?? open.values;
+    let next = choose(open, field);
+    // The spec's follow-ups to a change (a preset's sizes) are the user's too.
+    const more = changed.values ? open.spec.onChange?.(field, values) : undefined;
+    if (more) {
+      for (const name of changedFields(values, more)) next = choose(next, name);
+      values = mergeValues(values, more);
+    }
+    refresh(next, values, typing);
   };
 
   const fieldOf = (open: OpenDialog, name: string | undefined): DialogField | undefined =>
@@ -447,7 +463,8 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     const values = { ...open.values, refs: { ...open.values.refs, [field.name]: refs } };
     const full = max === 1 && refs.length === 1;
     const pickField = full ? (nextPickField(open, values, field.name) ?? field.name) : field.name;
-    refresh({ ...open, pickField }, values);
+    // A pick is the user's choice: `propose` leaves that field alone from now on.
+    refresh(choose({ ...open, pickField }, field.name), values);
     for (const item of picked) fingerprint(item);
     if (field.tangentChain)
       for (const { item, mode } of chained) followChain(field.name, item, mode);
@@ -632,6 +649,27 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       update(field, (open) => ({
         values: { ...open.values, toggles: { ...open.values.toggles, [field]: value } },
       })),
+    pickAt(item, at) {
+      const current = get();
+      const spec = current?.spec;
+      if (!current || !spec?.placeAt) {
+        select.onClick(item, false);
+        return;
+      }
+      pick([item], 'add');
+      const now = get();
+      const world = at;
+      if (!now || !world) return;
+      const ctx: ManipulatorContext = {
+        ...context(now),
+        value: (f) => okValue(now.expressions, f),
+      };
+      const placed = spec.placeAt(world, now.values, ctx);
+      if (!placed) return;
+      let next = now;
+      for (const name of changedFields(now.values, placed)) next = choose(next, name);
+      refresh(next, mergeValues(now.values, placed));
+    },
     pickInto(field) {
       const current = get();
       if (current && current.pickField !== field) {

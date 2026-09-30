@@ -448,10 +448,16 @@ function planeHits(e: Eye, scene: PickScene): { item: SelectionItem; depth: numb
   return out.sort((a, b) => a.depth - b.depth);
 }
 
-/** Whether a sketch entity may be picked with this filter. */
+/**
+ * Whether a sketch entity may be picked with this filter: curves through
+ * `sketches` (construction ones through `construction`), points only while
+ * a dialog's field asks for them (`sketchPoints`, P3-04).
+ */
 function acceptsEntity(filter: SelectionFilter) {
   return (entity: SketchEntity) =>
-    entity.type !== 'point' && (!entity.construction || filter.construction);
+    entity.type === 'point'
+      ? filter.sketchPoints
+      : filter.sketches && (!entity.construction || filter.construction);
 }
 
 /** Sketch curves and profiles where the ray meets each sketch's plane. */
@@ -469,8 +475,9 @@ function sketchHits(e: Eye, scene: PickScene, filter: SelectionFilter) {
     const at: [number, number, number] = [hit.x, hit.y, hit.z];
     const point = worldToSketch(sketch.frame, at);
     const perPixel = perPixelAt(e, ...at);
-    if (filter.sketches) {
-      const id = pickEntity(sketch.data, point, EDGE_PX * perPixel, acceptsEntity(filter));
+    if (filter.sketches || filter.sketchPoints) {
+      const reach = (filter.sketchPoints ? VERTEX_PX : EDGE_PX) * perPixel;
+      const id = pickEntity(sketch.data, point, reach, acceptsEntity(filter));
       if (id) {
         const px = curveDistance(sketch.data, id, point) / perPixel;
         curves.push({
@@ -498,6 +505,7 @@ function sketchHits(e: Eye, scene: PickScene, filter: SelectionFilter) {
 
 function curveDistance(data: SketchData, id: SketchEntityId, p: Vec2): number {
   const entity = data.entities[id];
+  if (entity?.type === 'point') return Math.hypot(p[0] - entity.x, p[1] - entity.y);
   const line = entity && curvePolyline(data, entity);
   if (!line) return 0;
   let best = Infinity;

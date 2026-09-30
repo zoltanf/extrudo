@@ -24,6 +24,9 @@ import {
   GeomFingerprintSchema,
   GeomRefKindSchema,
   GeomRefSchema,
+  HOLE_EXTENTS,
+  HOLE_KINDS,
+  holeFeature,
   InputSchema,
   LengthUnitSchema,
   loadDocument,
@@ -96,6 +99,7 @@ const FEATURES = [
   moveBodiesFeature,
   mirrorFeature,
   shellFeature,
+  holeFeature,
   placeOnBedFeature,
   rectangularPatternFeature,
   circularPatternFeature,
@@ -175,6 +179,8 @@ describe('docs/file-format.md', () => {
       ...PATTERN_OBJECTS,
       ...PATTERN_MEASURES,
       ...PATTERN_ANGLES,
+      ...HOLE_KINDS,
+      ...HOLE_EXTENTS,
     ];
     const origin = [...ORIGIN_PLANES.map((p) => p.id), ...ORIGIN_AXES.map((a) => a.id)];
     expect(missing([...inputs, ...choices, ...origin])).toEqual([]);

@@ -71,6 +71,14 @@ export interface SelectionField extends FieldBase {
    * and unpicking one removes the chain (fillet: OCCT rounds whole chains).
    */
   tangentChain?: boolean;
+  /**
+   * The field takes sketch points (`sketchEntity` references to points) and
+   * no curves (a hole's Points, P3-04): the view draws the points of the
+   * shown sketches and picks them.
+   */
+  sketchPoints?: boolean;
+  /** What a pick is called, singular and plural, where the kinds don't say ("point", "points"). */
+  noun?: readonly [string, string];
 }
 
 /** An `<ExpressionInput>`: an expression with a unit, which becomes a model parameter (`d7`). */
@@ -237,6 +245,24 @@ export interface FeatureDialogSpec<I extends FeatureInputs = FeatureInputs>
    * (`ctx.chosen`), before the draft is checked and previewed.
    */
   propose?(values: DialogValues, ctx: ProposeContext): Partial<DialogValues> | undefined;
+  /**
+   * Called after the user changed a field (`field`), with the new values:
+   * values to set on top of them, which count as the user's (a hole's
+   * Preset fills the size fields, and any edit that leaves a preset goes
+   * back to Custom). Pure; not called for what `propose` changes.
+   */
+  onChange?(field: string, values: DialogValues): Partial<DialogValues> | undefined;
+  /**
+   * The user clicked the point `world` (mm) on the plane or face they just
+   * picked into the pick field: the values that place the feature there (a
+   * hole's X and Y). Its presence also makes such a click add the plane or
+   * face (clicking the same one again moves the point instead of un-picking it).
+   */
+  placeAt?(
+    world: Vec3,
+    values: DialogValues,
+    ctx: ManipulatorContext,
+  ): Partial<DialogValues> | undefined;
   /** Checks beyond each field's own (pick counts, expressions): the first problem. */
   validate?(values: DialogValues, ctx: DialogContext): DialogIssue | undefined;
   /** In-canvas handles for expression fields, in world mm. */

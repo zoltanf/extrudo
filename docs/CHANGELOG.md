@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-30 · **P3-04** Hole (ADR-0049): the Hole tool (H, Create's menu)
+  drills simple, counterbore or countersink holes, blind (drill point 118° by
+  default, 0° for a flat bottom) or through all, at the point you click on a
+  face or at picked sketch points, with presets for M2 to M8 clearance and
+  M2 to M5 heat-set inserts (sizes fill in, nothing is stored). The preview
+  is live, with arrows for the diameter and depth; the faces keep their names
+  when sizes change, patterns and mirrors repeat holes, and a hole that misses
+  the body says so. No facade change.
 - 2026-09-30 · **P3-07** Patterns (ADR-0047): Rectangular, Circular and Path
   Pattern (Solid › Create menu) of bodies (copies, or joined to the
   original) or of features (the tool of an extrude, revolve or primitive that

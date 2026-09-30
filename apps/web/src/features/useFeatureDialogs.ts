@@ -92,7 +92,7 @@ const filters = new WeakMap<DialogField, SelectionFilter>();
 function filterOf(field: Extract<DialogField, { kind: 'selection' }>): SelectionFilter {
   let filter = filters.get(field);
   if (!filter) {
-    filter = fieldFilter(field.accepts);
+    filter = fieldFilter(field.accepts, field);
     filters.set(field, filter);
   }
   return filter;

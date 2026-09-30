@@ -403,6 +403,21 @@ a right-click without movement, as Onshape's context menu does.
   In the view: arrows for each size (from the centre for lengths, widths
   and diameters, from the base for heights, from the ring for the tube)
   and a box's rotation arc.
+- **Hole (P3-04, ADR-0049):** H, or Solid › Create ▾ → Hole. The dialog
+  opens like a primitive's (XY plane, live cut preview; a face selected
+  first fills Plane and proposes its centre), and **a click on a face or
+  plane square while Plane takes picks also puts the hole where you
+  clicked** (X and Y in the plane's frame; click again to move it). Points
+  picks sketch points instead: the view draws the points of the shown
+  sketches, each picked one gets a hole dropped onto the plane, and X and
+  Y go. Fields: Plane, Points, X, Y, **Preset** (M2 to M8 clearance, heat-set
+  inserts M2 to M5: it fills the sizes, which stay editable; the dropdown shows
+  the preset the sizes match, else Custom), Type (simple, counterbore,
+  countersink), Extent (through all, blind), Diameter, Depth and Drill point
+  (blind; 118° default, 0° is flat), the counterbore's diameter and depth or
+  the countersink's diameter and angle, and Flip (holes go into a face, down
+  from an origin plane). In the view: arrows for the diameter, the blind depth
+  and the counterbore or countersink diameter on the first hole.
 - **Bodies in the browser (P2-06, P2-08, ADR-0030):** the Bodies folder
   lists the model's bodies in timeline order, with a count badge. A new
   body is named "Body1", "Body2"… (the lowest free number) as soon as it

@@ -823,6 +823,11 @@ export function AppShell({
   // An open feature dialog's picks are what the view shows selected (a revolve's axis line,
   // the bodies in the browser).
   const shownSelection = dialogItems ?? selection;
+  // A dialog picking sketch points (a hole's) has the view draw every shown sketch's points.
+  const pickingSketchPoints = useMemo(() => {
+    const field = dialogOpen?.spec.fields.find((f) => f.name === dialogOpen.pickField);
+    return field?.kind === 'selection' && field.sketchPoints === true;
+  }, [dialogOpen]);
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
     doc.features.forEach((feature, index) => {
@@ -843,6 +848,7 @@ export function AppShell({
           highlight: hover?.kind === 'feature' && hover.id === feature.id,
           status: active ? status?.entities : undefined,
           // Curves picked in model mode (P2-03).
+          ...(!active && pickingSketchPoints && { showPoints: true }),
           ...(!active && {
             hoverEntity: sketchEntityIdsIn([hover], feature.id)[0],
             selectedEntities: sketchEntityIdsIn(shownSelection, feature.id),
@@ -864,6 +870,7 @@ export function AppShell({
     showProfiles,
     hover,
     shownSelection,
+    pickingSketchPoints,
     sketchReports,
     constructionReports,
   ]);

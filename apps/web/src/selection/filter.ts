@@ -13,7 +13,13 @@ export type FilterKind =
   | 'vertices'
   | 'sketches'
   | 'profiles'
-  | 'construction';
+  | 'construction'
+  /**
+   * Sketch points (P3-04): never in the nav bar's list and off by default;
+   * only a feature dialog's field for sketch points turns it on (a hole's
+   * Points), and then it narrows picking to points.
+   */
+  | 'sketchPoints';
 
 export type SelectionFilter = Readonly<Record<FilterKind, boolean>>;
 
@@ -39,6 +45,7 @@ export const DEFAULT_FILTER: SelectionFilter = {
   sketches: true,
   profiles: true,
   construction: true,
+  sketchPoints: false,
 };
 
 /** Whether a filter differs from the default (the nav bar marks it). */
@@ -79,7 +86,11 @@ export function combineFilters(
   field: SelectionFilter | undefined,
 ): SelectionFilter {
   if (!field) return user;
-  return Object.fromEntries(
-    FILTER_KINDS.map(({ value }) => [value, user[value] && field[value]]),
-  ) as SelectionFilter;
+  return {
+    ...(Object.fromEntries(
+      FILTER_KINDS.map(({ value }) => [value, user[value] && field[value]]),
+    ) as SelectionFilter),
+    // Not in the user's list: the dialog's field alone says.
+    sketchPoints: field.sketchPoints,
+  };
 }

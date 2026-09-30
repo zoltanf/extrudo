@@ -618,7 +618,7 @@ ones. Three feature types share these inputs:
 |---|---|---|---|
 | `objects` | `enum` | no | `bodies` (default) or `features` |
 | `bodies` | `ref` | with `bodies` | Refs of kind `body`, each once. Empty or missing: an error until some are picked |
-| `features` | `ref` | with `features` | Refs of kind `feature` (`{"kind": "feature", "id": "<feature id>"}`): the features to repeat, in the order they are applied. Each must come earlier in the timeline, be a solid feature that **joins or cuts** (`extrude`, `revolve`, a primitive) and not be suppressed; the pattern depends on it like on any feature it refers to |
+| `features` | `ref` | with `features` | Refs of kind `feature` (`{"kind": "feature", "id": "<feature id>"}`): the features to repeat, in the order they are applied. Each must come earlier in the timeline, be a solid feature that **joins or cuts** (`extrude`, `revolve`, a primitive, a `hole`, which always cuts) and not be suppressed; the pattern depends on it like on any feature it refers to |
 | `join` | `bool` | no | Bodies only; default `false`: the copies are new bodies `<feature id>:<n>`. `true`: they are fused into the original body, and a copy that doesn't touch it becomes a body of its own with a warning |
 
 Counts are `expr` inputs of unit `unitless` that must evaluate to a whole
@@ -676,8 +676,42 @@ needs is an error.
 
 Skipping single instances is not supported yet.
 
-Reserved for later: the other modify features (hole, ...) will be
-new feature types; old readers see them as unknown types.
+### 6.17 `hole`
+
+Drills holes into the bodies below a plane or a flat face (P3-04, ADR-0049).
+It makes no body of its own: it always cuts, like a `cut` operation, and a
+pattern or mirror can repeat it as a feature (6.16). Every input is
+optional; a minimal hole is `{}`: a 5 mm blind hole, 10 mm deep, in the XY
+plane at the origin.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `plane` | `ref` | no | At most one ref, of kind `plane` (an origin or construction plane) or `face` (a flat face). Where the holes start. Missing or empty: the XY plane |
+| `points` | `ref` | no | Refs of kind `sketchEntity` naming sketch **points** (`<sketch feature id>/<point id>`, section 8): one hole at each, the point dropped along the plane's normal onto the plane, so a sketch on the face or on a parallel plane both work. Empty or missing: one hole at `x`, `y` |
+| `x`, `y` | `expr` | no | Length, default 0. The one hole's place in the plane's sketch frame, the frame a sketch on that plane gets (for a face: the world origin projected onto it, X along world X on faces within 40 degrees of horizontal, else Y up the face, 6.2). Not used with `points` |
+| `type` | `enum` | no | `simple` (default), `counterbore` (a wider flat-bottomed step at the top) or `countersink` (a cone at the top) |
+| `extent` | `enum` | no | `blind` (default) or `through` (runs past every body along its way) |
+| `diameter` | `expr` | no | Length, default 5 mm; greater than 0 |
+| `depth` | `expr` | no | Length, default 10 mm. Blind only: from the plane to the end of the full diameter |
+| `tipAngle` | `expr` | no | Angle, default 118 deg. Blind only: the drill point's full angle, a cone beyond `depth`; `0 deg` makes a flat bottom; must be under 180 deg |
+| `cbDiameter`, `cbDepth` | `expr` | no | Length, defaults 10 mm and 4 mm. Counterbore only: the step's diameter (larger than `diameter`) and its depth from the plane (less than `depth` when blind) |
+| `csDiameter`, `csAngle` | `expr` | no | Length default 10 mm, angle default 90 deg. Countersink only: the cone's diameter at the plane (larger than `diameter`) and its full opening angle (between 0 and 180 deg) |
+| `flip` | `bool` | no | Default `false`. The holes go against the plane's normal: into a face (whose normal points out of the body), down from an origin plane. `true` reverses that |
+
+Holes are solids of revolution about their axis, cut from every body they
+touch. The kernel warns when some of several holes cut nothing and reports
+an error when none does (no body there, or the wrong `flip`), when a size
+doesn't fit (a counterbore wider than the body's hole, a countersink or
+counterbore deeper than a blind hole) and when a sketch point is gone.
+At most 200 holes per feature; two points in one place make one hole.
+
+Names: the faces a hole makes are `hole:<feature id>:side:<part>`, where
+the part is `wall` (the cylinder), `tip` (the drill point's cone) or `floor`
+(a flat bottom), `cbwall` and `cbfloor` (the counterbore's wall and floor)
+or `cone` (the countersink). With `points`, each part is prefixed with the
+point's ID (`<point id>.wall`), so a face keeps its name when other points
+are added or removed. The hole dialog's presets (M2 to M8 clearance, heat-set
+inserts) only fill these inputs in the app; nothing about a preset is stored.
 
 ---
 

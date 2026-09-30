@@ -6,6 +6,7 @@ import { kernelCombine } from './combine';
 import { KERNEL_CONSTRUCTION } from './construction';
 import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
+import { kernelHole } from './hole';
 import { kernelCircularPattern, kernelPathPattern, kernelRectangularPattern } from './pattern';
 import { kernelPlaceOnBed } from './place-on-bed';
 import { KERNEL_PRIMITIVES } from './primitives';
@@ -44,5 +45,7 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
     .register(kernelRectangularPattern as unknown as KernelFeatureDefinition)
     .register(kernelCircularPattern as unknown as KernelFeatureDefinition)
     .register(kernelPathPattern as unknown as KernelFeatureDefinition);
+  // Hole (P3-04, ADR-0049).
+  registry.register(kernelHole as unknown as KernelFeatureDefinition);
   return registry;
 }

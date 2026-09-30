@@ -88,19 +88,19 @@ describe('buildCommands', () => {
 
   it('says when a tool arrives instead of running it', () => {
     const ctx = context('model');
-    const hole = byId(ctx).get('hole');
-    expect(hole?.unavailable).toBe('Arrives with P3-04.');
-    hole?.run();
+    const slicer = byId(ctx).get('slicer');
+    expect(slicer?.unavailable).toBe('Arrives with P4-08.');
+    slicer?.run();
     expect(ctx.runTool).not.toHaveBeenCalled();
-    expect(ctx.notify).toHaveBeenCalledWith('info', 'Hole arrives with P3-04.');
+    expect(ctx.notify).toHaveBeenCalledWith('info', 'Send to Slicer arrives with P4-08.');
   });
 
   it('runs a tool a registered feature dialog makes ready (P2-05)', () => {
-    const ctx = context('model', { ready: new Set(['hole']) });
-    const hole = byId(ctx).get('hole');
-    expect(hole?.unavailable).toBeUndefined();
-    hole?.run();
-    expect(ctx.runTool).toHaveBeenCalledWith('hole');
+    const ctx = context('model', { ready: new Set(['slicer']) });
+    const slicer = byId(ctx).get('slicer');
+    expect(slicer?.unavailable).toBeUndefined();
+    slicer?.run();
+    expect(ctx.runTool).toHaveBeenCalledWith('slicer');
   });
 
   it('runs Revolve (P2-07)', () => {

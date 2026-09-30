@@ -32,15 +32,14 @@ describe('sketchTargetAt', () => {
       occluding: true,
     };
     const top = cameraFrom([0, 0, 1], { target: [0, 0, 0], size: 200 });
-    expect(sketchTargetAt(scene, top, topViewPx(top, 30, 30))).toEqual({
-      kind: 'face',
-      item: { kind: 'face', id: 'b:1' },
-    });
+    const face = sketchTargetAt(scene, top, topViewPx(top, 30, 30));
+    expect(face).toMatchObject({ kind: 'face', item: { kind: 'face', id: 'b:1' } });
+    // Where the click met the face (P3-04): its point in the world.
+    expect(face?.at.map((v) => Math.round(v * 100) / 100)).toEqual([30, 30, 10]);
     // Near the origin there is no face: the XY plane is under the pointer.
-    expect(sketchTargetAt(scene, top, topViewPx(top, 5, 5))).toEqual({
-      kind: 'plane',
-      plane: 'origin:xy',
-    });
+    const plane = sketchTargetAt(scene, top, topViewPx(top, 5, 5));
+    expect(plane).toMatchObject({ kind: 'plane', plane: 'origin:xy' });
+    expect(plane?.at.map((v) => Math.round(v * 100) / 100)).toEqual([5, 5, 0]);
     // Outside the planes' squares, nothing.
     expect(sketchTargetAt(scene, top, topViewPx(top, -80, -80))).toBeUndefined();
   });
@@ -53,7 +52,7 @@ describe('sketchTargetAt', () => {
       occluding: true,
     };
     const top = cameraFrom([0, 0, 1], { size: 200 });
-    expect(sketchTargetAt(scene, top, topViewPx(top, 0, 0))).toEqual({
+    expect(sketchTargetAt(scene, top, topViewPx(top, 0, 0))).toMatchObject({
       kind: 'plane',
       plane: 'origin:xy',
     });
@@ -100,11 +99,11 @@ describe('construction planes (P3-05)', () => {
   const top = cameraFrom([0, 0, 1], { size: 200 });
 
   it('are offered beside the origin planes, around their anchors', () => {
-    expect(sketchTargetAt(scene, top, topViewPx(top, 60, 60))).toEqual({
+    expect(sketchTargetAt(scene, top, topViewPx(top, 60, 60))).toMatchObject({
       kind: 'plane',
       plane: 'OP',
     });
-    expect(sketchTargetAt(scene, top, topViewPx(top, 5, 5))).toEqual({
+    expect(sketchTargetAt(scene, top, topViewPx(top, 5, 5))).toMatchObject({
       kind: 'plane',
       plane: 'origin:xy',
     });
@@ -123,5 +122,26 @@ describe('construction planes (P3-05)', () => {
     expect(sketchFrame(F, plane, {})).toBeUndefined();
     const reports = { OP: { kind: 'plane', frame, anchor: [0, 0, 25] } } as never;
     expect(sketchFrame(F, plane, {}, reports)?.origin).toEqual([0, 0, 25]);
+  });
+});
+
+describe('where a click meets a face (P3-04)', () => {
+  it('is on the face in a perspective view too', () => {
+    const scene: PickScene = {
+      bodies: [{ id: B, mesh: boxMesh([-20, -20, 0], [20, 20, 20]) }],
+      sketches: [],
+      occluding: true,
+    };
+    const home = cameraFrom([1, -1, 1], {
+      target: [0, 0, 20],
+      size: 80,
+      projection: 'perspective',
+    });
+    const target = sketchTargetAt(scene, home, [home.width / 2, home.height / 2]);
+    expect(target).toMatchObject({ kind: 'face' });
+    expect(target?.at.map((v) => Math.round(v * 100) / 100)).toEqual([0, 0, 20]);
+    const off = sketchTargetAt(scene, home, [home.width / 2 + 40, home.height / 2 + 20]);
+    expect(off?.kind).toBe('face');
+    expect(off?.at[2]).toBeCloseTo(20, 3);
   });
 });

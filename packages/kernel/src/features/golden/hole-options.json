@@ -1,0 +1,140 @@
+{
+ "simple blind 5x6": {
+  "volume": 23872.36,
+  "faces": 8,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:tip",
+   "hole:H:side:wall"
+  ]
+ },
+ "simple blind default depth (tip pokes through)": {
+  "volume": 23803.65,
+  "faces": 7,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:wall"
+  ]
+ },
+ "simple blind flat": {
+  "volume": 23882.19,
+  "faces": 8,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:floor",
+   "hole:H:side:wall"
+  ]
+ },
+ "simple blind 90 point": {
+  "volume": 23865.83,
+  "faces": 8,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:tip",
+   "hole:H:side:wall"
+  ]
+ },
+ "simple through 8": {
+  "volume": 23497.35,
+  "faces": 7,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:wall"
+  ]
+ },
+ "simple through from below": {
+  "volume": 23497.35,
+  "faces": 7,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:wall"
+  ]
+ },
+ "counterbore blind": {
+  "volume": 23781.34,
+  "faces": 10,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:cbfloor",
+   "hole:H:side:cbwall",
+   "hole:H:side:tip",
+   "hole:H:side:wall"
+  ]
+ },
+ "counterbore through": {
+  "volume": 23761.24,
+  "faces": 9,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:cbfloor",
+   "hole:H:side:cbwall",
+   "hole:H:side:wall"
+  ]
+ },
+ "countersink blind": {
+  "volume": 23860.92,
+  "faces": 9,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:cone",
+   "hole:H:side:tip",
+   "hole:H:side:wall"
+  ]
+ },
+ "countersink through 82": {
+  "volume": 23810.34,
+  "faces": 8,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:cone",
+   "hole:H:side:wall"
+  ]
+ },
+ "deeper than the block, blind": {
+  "volume": 23803.65,
+  "faces": 7,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:wall"
+  ]
+ },
+ "on the edge": {
+  "volume": 23858.63,
+  "faces": 9,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:wall#1",
+   "hole:H:side:wall#2"
+  ]
+ },
+ "flat bottom exactly through": {
+  "volume": 23803.65,
+  "faces": 7,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:wall"
+  ]
+ },
+ "big diameter": {
+  "volume": 12658.85,
+  "faces": 7,
+  "solids": 1,
+  "valid": true,
+  "holeFaces": [
+   "hole:H:side:wall"
+  ]
+ }
+}

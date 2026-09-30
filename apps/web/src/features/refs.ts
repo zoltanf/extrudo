@@ -67,9 +67,21 @@ const FILTER_OF: Record<GeomRefKind, FilterKind[]> = {
   feature: [],
 };
 
-/** The selection filter of a field: only what it accepts. */
-export function fieldFilter(accepts: readonly GeomRefKind[]): SelectionFilter {
-  const allowed = new Set(accepts.flatMap((kind) => FILTER_OF[kind]));
+/**
+ * The selection filter of a field: only what it accepts. A field for
+ * sketch points (`sketchPoints`, a hole's Points) takes those and no
+ * curves: sketch entity picks become points.
+ */
+export function fieldFilter(
+  accepts: readonly GeomRefKind[],
+  options: { sketchPoints?: boolean } = {},
+): SelectionFilter {
+  const allowed = new Set<FilterKind>(accepts.flatMap((kind) => FILTER_OF[kind]));
+  if (options.sketchPoints) {
+    allowed.delete('sketches');
+    allowed.delete('construction');
+    allowed.add('sketchPoints');
+  }
   return Object.fromEntries(
     (Object.keys(DEFAULT_FILTER) as FilterKind[]).map((kind) => [kind, allowed.has(kind)]),
   ) as SelectionFilter;

@@ -25,6 +25,7 @@ import { z } from 'zod';
 import { EXTRUDE_TYPE } from './extrude';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
+import { HOLE_TYPE } from './hole';
 import { BOX_TYPE, CYLINDER_TYPE, SPHERE_TYPE, TORUS_TYPE } from './primitives';
 import { REVOLVE_AXIS_KINDS, REVOLVE_TYPE } from './revolve';
 import {
@@ -51,7 +52,8 @@ export type PatternObjects = (typeof PATTERN_OBJECTS)[number];
 
 /**
  * The feature types whose tool a pattern (or a mirror) can replay: the ones
- * that make a solid and join or cut it (extrude, revolve, the primitives).
+ * that make a solid and join or cut it (extrude, revolve, the primitives)
+ * or always cut (a hole, P3-04).
  */
 export const PATTERNABLE_FEATURE_TYPES: readonly string[] = [
   EXTRUDE_TYPE,
@@ -60,6 +62,7 @@ export const PATTERNABLE_FEATURE_TYPES: readonly string[] = [
   CYLINDER_TYPE,
   SPHERE_TYPE,
   TORUS_TYPE,
+  HOLE_TYPE,
 ];
 
 /** What a rectangular pattern goes along and a circular one turns about. */

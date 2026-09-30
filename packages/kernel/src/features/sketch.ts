@@ -68,6 +68,13 @@ export interface SketchOutputData {
    * follows (`<sketch>/<curve>`, P3-07). Placed in the world with `frame`.
    */
   curves?: Record<SketchEntityId, SketchPathCurve>;
+  /**
+   * Every point of the sketch (loose points, curve ends and centres, and
+   * construction points), in sketch coordinates: what a hole's sketch
+   * points refer to (`<sketch>/<point>`, P3-04). Placed in the world with
+   * `frame`.
+   */
+  points?: Record<SketchEntityId, Vec2>;
 }
 
 /** A sketch curve as a path pattern walks it: exact arcs, polylines for the rest. */
@@ -129,6 +136,7 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
       profiles,
       lines: sketchLines(data),
       curves: sketchCurves(data),
+      points: sketchPoints(data),
     };
     const report: SketchReport = {
       frame,
@@ -240,6 +248,15 @@ export function sketchLines(data: SketchData): Record<SketchEntityId, readonly [
         [b.x, b.y],
       ];
     }
+  }
+  return out;
+}
+
+/** The sketch's points by entity ID, in sketch coordinates (see `SketchOutputData.points`). */
+export function sketchPoints(data: SketchData): Record<SketchEntityId, Vec2> {
+  const out: Record<SketchEntityId, Vec2> = {};
+  for (const [id, e] of Object.entries(data.entities) as [SketchEntityId, SketchEntity][]) {
+    if (e.type === 'point') out[id] = [e.x, e.y];
   }
   return out;
 }

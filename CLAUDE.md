@@ -21,9 +21,9 @@ size and startup, offline precache), P2-16 (file-format spec,
 `docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
 fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-03
 (shell), P3-05 (construction geometry), P3-06 (combine, move/copy, mirror),
-P3-07 (patterns, mirrored features), P3-09 (section analysis), P3-10
-(3D-print aids), P3-11 (marking menu, context menus) and P3-16
-(notification history) are done.
+P3-04 (hole), P3-07 (patterns, mirrored features), P3-09 (section
+analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus) and
+P3-16 (notification history) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -490,10 +490,32 @@ interfere). A path is a polyline (`pathFromRefs`; the sketch output has
 `curves`). Mirror's `objects: 'features'` uses the same `replayFeatures`.
 The dialogs have a new field kind `features` (a checkbox list of
 `repeatableFeatures`). No facade change.
-Next, one task at a time (not parallel tracks, since 2026-09-30): **P3-04**
-(hole), **P3-08** (press/pull, offset face, split, scale, draft), **P3-17**
-(polish: open items from the ADRs), P3-12, P3-13, P3-14, then P3-15 after
-the owner's decisions. Carried-over items are listed under those tasks in
+ADR-0049 (P3-04) added hole: `packages/core/src/hole.ts` (one feature type
+that **always cuts**: `plane`, `points`, `x`/`y`, `type` simple /
+counterbore / countersink, `extent` blind / through, `diameter`, `depth`,
+`tipAngle`, `cb*`, `cs*`, `flip`; `holeSettings`, `holeInputs`, and
+`HOLE_PRESETS`: M2 to M8 normal-fit clearance with counterbore and
+countersink sizes, M2 to M5 heat-set inserts), the evaluator
+`packages/kernel/src/features/hole.ts` (**no facade change**: each hole is a
+half section `holeSection` turned by `namedRevolve`, the holes merged by
+`mergeTools` and cut by `operate`; depth is to the end of the full diameter,
+the drill point adds to it; faces `hole:<id>:side:wall|tip|floor|cbwall|
+cbfloor|cone`, prefixed `<point>.` with sketch points; a hole that cuts
+nothing is an error, some of several a warning) and the dialog
+`apps/web/src/features/hole.ts`. **A click on a face places the hole**: the
+plane picker passes the pick ray's world point (`SketchTarget.at`), and a
+spec's `placeAt` turns it into X and Y (and makes a click add, not toggle,
+the face); `FeatureDialogSpec.onChange` lets the Preset dropdown fill the
+sizes (the preset is not an input: `presetOf` shows the preset the sizes
+match). **Sketch points** are `sketchEntity` refs to points
+(`SketchOutputData.points`); a dialog field with `sketchPoints: true` turns
+on the hidden selection-filter key `sketchPoints`, the view then draws and
+picks the points of the shown sketches. A hole is a patternable feature
+(`repeatableFeatures` counts it as a cut).
+Next, one task at a time (not parallel tracks, since 2026-09-30): **P3-08**
+(press/pull, offset face, split, scale, draft), **P3-17** (polish: open
+items from the ADRs), P3-12, P3-13, P3-14, then P3-15 after the owner's
+decisions. Carried-over items are listed under those tasks in
 `docs/03-roadmap.md`; deeper ones are the P4-12 backlog.
 
 ## Commands
@@ -524,7 +546,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole (0006 is reserved) |
 
 ## Stack summary
 
@@ -1261,6 +1283,26 @@ them. Notes further down that name a machine apply to that machine only.
   shading itself is a shader patch, so it isn't in the counts: check
   it with a screenshot (none is checked in). Kernel-side tests:
   `pnpm vitest run packages/kernel/src/features/place-on-bed`.
+- **Hole e2e** (`e2e/hole.spec.ts`, P3-04): press `h` (after Shift+1 and a
+  settled `projector`); the dialog is the region "Hole dialog" / "Edit Hole1
+  dialog". While Plane is the pick field a click on a face picks it **and
+  places the hole** at the clicked point (`X`/`Y` textboxes read "4.98 mm":
+  compare with `toBeCloseTo`, or `fill` exact values). The Box tool's cube with
+  Length, Width and Height 40 mm has its top at z = 40 (click world
+  `(x, y, 40)`). Fields: buttons "Plane" ("XY plane", "1 face") and "Points"
+  ("Or pick sketch points", "2 points"), comboboxes "Preset" (`selectOption({
+  label: 'M4 clearance' })`, values `m4-clearance`, `m3-insert`, `custom`),
+  "Type" (`simple`/`counterbore`/`countersink`) and "Extent"
+  (`through`/`blind`), textboxes "Diameter" and "Depth" (`exact`), "Drill
+  point", "Counterbore diameter"… and the checkbox "Flip". X and Y are gone
+  once points are picked; Depth and Drill point show only for Blind. A
+  through hole in the cube is `Body1:7:40,40,40`, a blind one with a cone 8,
+  a counterbore adds two faces. Sketch points on the cube's bottom (an XY
+  sketch) are occluded from above: click Points, press Shift+3 and pick them
+  from below with a settled `projector`. Volumes from the 3MF are a
+  tessellation short (`toBeCloseTo(v, -2)` for several holes). A hole that only
+  touches the body says "The cut doesn't remove anything". Kernel-side, the
+  golden table is `pnpm vitest run -u packages/kernel/src/features/hole`.
 - **Pattern e2e** (`e2e/pattern.spec.ts`, P3-07): the tools are in Create's
   menu (`pickTool(page, 'Rectangular Pattern' | 'Circular Pattern' | 'Path
   Pattern')`); dialogs are the regions "Rectangular Pattern dialog"…, fields

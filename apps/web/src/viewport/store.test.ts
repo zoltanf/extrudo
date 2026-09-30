@@ -157,7 +157,10 @@ describe('viewport store', () => {
 describe('selection filter', () => {
   it('starts with everything, changes per kind, resets, and is not a preference', () => {
     const { store, preferences } = setup();
-    expect(Object.values(store.getState().selectionFilter).every(Boolean)).toBe(true);
+    const { sketchPoints, ...listed } = store.getState().selectionFilter;
+    expect(Object.values(listed).every(Boolean)).toBe(true);
+    // Sketch points are off: only a dialog's Points field turns them on (P3-04).
+    expect(sketchPoints).toBe(false);
     store.getState().setSelectionFilter('faces', false);
     expect(store.getState().selectionFilter.faces).toBe(false);
     expect(store.getState().selectionFilter.edges).toBe(true);

@@ -472,8 +472,21 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   `:rim:(<removed face>)` and `:round:(<edge>)`. The Modify group's Shell tile
   is ready; it has no default key. No on-canvas handle and one thickness for
   the whole shell.
-- [ ] **P3-04 Hole** (placement by sketch points or click; types; presets incl.
-  heat-set inserts). FR-FT-07.
+- [x] **P3-04 Hole** (placement by sketch points or click; types; presets incl.
+  heat-set inserts). FR-FT-07. *Done 2026-09-30* (ADR-0049): the `hole`
+  feature (H, Solid › Create's menu) drills simple, counterbored or
+  countersunk holes, blind (with a drill point of 118° by default, 0° for a
+  flat bottom) or through all, from a plane or flat face, at the point you
+  click on the face (X and Y in the face's frame) or at picked sketch points
+  (dropped onto the plane). Presets fill the sizes: M2 to M8 clearance (normal
+  fit, with the socket-head counterbore and flat-head countersink) and
+  heat-set inserts M2 to M5; nothing about a preset is stored. Each hole is a
+  turned half section (no facade change); faces are `hole:<id>:side:<part>`
+  and survive size changes; a hole that misses the body says so (an error when
+  none reaches it, a warning when some do not); patterns and mirrors repeat a
+  hole as a feature. Sketch points are pickable in the model view while a
+  dialog's Points field picks. Open: a `bodies` input, several clicked points
+  in one feature, vendor insert lists, close/coarse fits.
 - [x] **P3-05 Construction geometry** (all planes, axes and points in
   FR-FT-13; browser "Construction" folder). Done 2026-09-29 (ADR-0040): nine
   timeline features (offset plane, plane at angle, midplane, plane through 3

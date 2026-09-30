@@ -406,8 +406,7 @@ export const TOOLS = {
     label: 'Hole',
     icon: 'hole',
     category: 'create',
-    hint: 'Simple, counterbored or countersunk holes.',
-    comesWith: 'P3-04',
+    hint: 'Simple, counterbored or countersunk holes, blind or through, at a click or at sketch points.',
   },
   rectangularPattern: {
     id: 'rectangularPattern',

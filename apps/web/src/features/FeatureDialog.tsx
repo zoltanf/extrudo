@@ -281,7 +281,7 @@ function SelectionControl({
           ? (originPlane(refs[0].id)?.label ?? constructionName(refs[0], controller) ?? '1 plane')
           : refs.length === 1 && refs[0]?.kind === 'point'
             ? (constructionName(refs[0], controller) ?? '1 point')
-            : `${refs.length} ${countNoun(refs, refs.length)}`;
+            : `${refs.length} ${field.noun ? field.noun[refs.length === 1 ? 0 : 1] : countNoun(refs, refs.length)}`;
   return (
     <div
       className={`flex h-8 items-center rounded-input border ${active ? 'border-accent bg-accent-soft' : 'border-line'}`}

@@ -11,6 +11,7 @@ import {
   type EntityStatus,
   PROFILE_SHADES,
   type ProfileShade,
+  pointPositions,
   profileTriangles,
   type SketchDrawing,
   STATUSES,
@@ -285,8 +286,21 @@ function Sketch({
         color={{ ...highlight, a: highlight.a * 0.75 }}
         width={2.5}
       />
-      {active &&
-        showPoints &&
+      <PointMarks
+        data={data}
+        frame={frame}
+        ids={drawing.selectedEntities ?? NONE}
+        color={highlight}
+        size={9}
+      />
+      <PointMarks
+        data={data}
+        frame={frame}
+        ids={drawing.hoverEntity ? [drawing.hoverEntity] : NONE}
+        color={{ ...highlight, a: highlight.a * 0.75 }}
+        size={8}
+      />
+      {((active && showPoints) || drawing.showPoints) &&
         STATUSES.map(
           (s) =>
             segments.points[s].length > 0 && (
@@ -307,6 +321,47 @@ function Sketch({
 }
 
 const NONE: readonly string[] = [];
+
+/** Points picked in model mode (a hole's), drawn as dots in the accent over the sketch. */
+function PointMarks({
+  data,
+  frame,
+  ids,
+  color: c,
+  size,
+}: {
+  data: SketchDrawing['data'];
+  frame: SketchDrawing['frame'];
+  ids: readonly string[];
+  color: Rgba;
+  size: number;
+}) {
+  const key = ids.join();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `ids`.
+  const positions = useMemo(() => pointPositions(data, frame, ids), [data, frame, key]);
+  const geometry = useMemo(() => {
+    const g = new BufferGeometry();
+    g.setAttribute('position', new BufferAttribute(positions, 3));
+    return g;
+  }, [positions]);
+  const dots = useMemo(() => createDotMaterial(), []);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  useEffect(() => () => dots.material.dispose(), [dots]);
+  if (positions.length === 0) return null;
+  dots.uniforms.uColor.value = color(c);
+  dots.uniforms.uAlpha.value = c.a;
+  return (
+    <points
+      geometry={geometry}
+      material={dots.material}
+      renderOrder={6}
+      frustumCulled={false}
+      onBeforeRender={(renderer) => {
+        dots.uniforms.uSize.value = size * renderer.getPixelRatio();
+      }}
+    />
+  );
+}
 
 /** Curves picked in model mode (P2-03), drawn over the sketch in the accent. */
 function CurveMarks({

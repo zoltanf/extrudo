@@ -127,7 +127,8 @@ function placement(ctx: EvalContext, settings: PrimitiveSettings, n: Numbers, no
   return { origin, x, y: cross(plane.normal, x), normal: plane.normal } satisfies SketchFrame;
 }
 
-function planeFrame(ctx: EvalContext, ref: GeomRef, noun: string): SketchFrame {
+/** The frame of the plane or flat face a feature sits on (the hole shares it). */
+export function planeFrame(ctx: EvalContext, ref: GeomRef, noun: string): SketchFrame {
   if (ref.kind === 'face') {
     const hit = ctx.resolve(ref, { label: `the face the ${noun} sits on` });
     const face = ctx.describe(hit.shape).faces[hit.index];
@@ -152,7 +153,7 @@ function planeFrame(ctx: EvalContext, ref: GeomRef, noun: string): SketchFrame {
  * The one face between `curves` in `frame`, with each edge's source from
  * `sources` (by curve), tracked in the scope.
  */
-function planarFace(
+export function planarFace(
   ctx: EvalContext,
   scope: ShapeScope,
   curves: readonly PlanarCurve[],
@@ -178,7 +179,7 @@ const flat = (frame: SketchFrame): PlanarFrame => ({
  * frame whose 2D (u, v) is `origin + u·x + v·normal`: what a sphere and a
  * torus revolve about the normal.
  */
-const upright = (frame: SketchFrame): PlanarFrame => ({
+export const upright = (frame: SketchFrame): PlanarFrame => ({
   origin: frame.origin,
   x: frame.x,
   normal: scale(frame.y, -1),
@@ -255,7 +256,7 @@ const buildTorus: Build = (ctx, scope, frame, n) => {
   return turn(ctx, scope, face, frame);
 };
 
-const circle = (center: readonly [number, number], radius: number): PlanarCurve => ({
+export const circle = (center: readonly [number, number], radius: number): PlanarCurve => ({
   kind: 'arc',
   center,
   radius,

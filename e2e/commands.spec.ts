@@ -121,8 +121,11 @@ test('the toolbox opens at the pointer with pinned commands', async ({ page }) =
 
 test('shortcuts: tools that come later say so, Shift+digits turn the view', async ({ page }) => {
   const viewport = await openProject(page);
-  await page.keyboard.press('h');
-  await expect(page.getByText('Hole arrives with P3-04.')).toBeVisible();
+  // No tool that is still to come has a key now (Hole's H runs since P3-04), so its tile says so.
+  await page.getByRole('tab', { name: '3D Print' }).click();
+  await page.getByRole('button', { name: 'Send to Slicer', exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Arrives with P4-08.');
+  await page.getByRole('tab', { name: 'Solid' }).click();
 
   await page.keyboard.press('Shift+2');
   await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');

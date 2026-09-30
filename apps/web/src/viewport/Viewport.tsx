@@ -171,7 +171,8 @@ export interface PlanePicker {
   selected?: readonly string[];
   onHover(plane: string): void;
   onLeave(plane: string): void;
-  onPick(plane: string): void;
+  /** `at`: where the click met the plane, world mm (a hole's clicked point, P3-04). */
+  onPick(plane: string, at?: Vec3): void;
   /**
    * Flat body faces can be picked too (P2-09): the view then picks origin
    * planes and faces itself, and the nearer one under the pointer wins
@@ -179,7 +180,8 @@ export interface PlanePicker {
    */
   faces?: {
     onHover(item: SelectionItem | undefined): void;
-    onPick(item: SelectionItem): void;
+    /** `at`: where the click met the face, world mm. */
+    onPick(item: SelectionItem, at?: Vec3): void;
   };
 }
 
@@ -1029,8 +1031,8 @@ function useSketchTargetInput(
       onClick: (p) => {
         const t = target(p);
         const current = pickerRef.current;
-        if (t?.kind === 'plane') current?.onPick(t.plane);
-        else if (t) current?.faces?.onPick(t.item);
+        if (t?.kind === 'plane') current?.onPick(t.plane, t.at);
+        else if (t) current?.faces?.onPick(t.item, t.at);
       },
       onDragStart: () => false,
       onLeave: () => hover(undefined),

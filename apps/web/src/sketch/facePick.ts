@@ -20,8 +20,13 @@ export const FACES_ONLY: SelectionFilter = Object.fromEntries(
 export const PLANE_HALF = 0.16;
 
 export type SketchTarget =
-  /** An origin plane (`origin:xy`) or a construction plane (its feature's ID, P3-05). */
-  { kind: 'plane'; plane: string } | { kind: 'face'; item: SelectionItem };
+  | /** An origin plane (`origin:xy`) or a construction plane (its feature's ID, P3-05). */ {
+      kind: 'plane';
+      plane: string;
+      /** Where the pointer's ray meets it, world mm (a hole's clicked point, P3-04). */
+      at: Vec3;
+    }
+  | { kind: 'face'; item: SelectionItem; at: Vec3 };
 
 /**
  * The origin plane or flat face under the pointer, whichever is nearer
@@ -45,8 +50,23 @@ export function sketchTargetAt(
       ? { item: hit.item, depth: hit.depth }
       : undefined;
   const plane = originPlaneAt(camera, at, scene.planes);
-  if (face && (!plane || face.depth <= plane.depth)) return { kind: 'face', item: face.item };
-  return plane ? { kind: 'plane', plane: plane.plane } : undefined;
+  if (face && (!plane || face.depth <= plane.depth)) {
+    const ray = pickRay(camera, at);
+    const hitAt: Vec3 = [
+      ray.origin.x + ray.direction.x * face.depth,
+      ray.origin.y + ray.direction.y * face.depth,
+      ray.origin.z + ray.direction.z * face.depth,
+    ];
+    return { kind: 'face', item: face.item, at: hitAt };
+  }
+  return plane ? { kind: 'plane', plane: plane.plane, at: plane.at } : undefined;
+}
+
+/** The pick ray through a point of the view (px). */
+function pickRay(camera: PickCamera, at: readonly [number, number]) {
+  const { view, projection, width, height } = camera;
+  const ndc: [number, number] = [(at[0] / width) * 2 - 1, 1 - (at[1] / height) * 2];
+  return viewRay(view, projection, width / height, ndc);
 }
 
 /** The nearest origin plane square under the pointer, with its depth along the pick ray. */
@@ -54,12 +74,11 @@ export function originPlaneAt(
   camera: PickCamera,
   at: readonly [number, number],
   extra: readonly PickPlane[] = [],
-): { plane: string; depth: number } | undefined {
-  const { view, projection, width, height } = camera;
-  const ndc: [number, number] = [(at[0] / width) * 2 - 1, 1 - (at[1] / height) * 2];
-  const ray = viewRay(view, projection, width / height, ndc);
+): { plane: string; depth: number; at: Vec3 } | undefined {
+  const { view } = camera;
+  const ray = pickRay(camera, at);
   const half = view.size * PLANE_HALF;
-  let best: { plane: string; depth: number } | undefined;
+  let best: { plane: string; depth: number; at: Vec3 } | undefined;
   const squares: PickPlane[] = [
     ...ORIGIN_PLANES.map(({ id, frame }) => ({ id, frame, anchor: [0, 0, 0] as Vec3, half })),
     ...extra,
@@ -71,8 +90,9 @@ export function originPlaneAt(
     const u = point[0] * frame.x[0] + point[1] * frame.x[1] + point[2] * frame.x[2];
     const v = point[0] * frame.y[0] + point[1] * frame.y[1] + point[2] * frame.y[2];
     if (Math.abs(u) > reach || Math.abs(v) > reach) continue;
+    const hit: Vec3 = [p.x, p.y, p.z];
     const depth = p.sub(ray.origin).dot(ray.direction) / ray.direction.length();
-    if (!best || depth < best.depth) best = { plane: id, depth };
+    if (!best || depth < best.depth) best = { plane: id, depth, at: hit };
   }
   return best;
 }

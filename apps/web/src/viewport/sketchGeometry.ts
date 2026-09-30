@@ -35,8 +35,27 @@ export interface SketchDrawing {
   selectedProfiles?: readonly string[];
   /** A curve under the pointer in model mode (P2-03): its entity ID. */
   hoverEntity?: string;
-  /** Curves selected in model mode (entity IDs). */
+  /** Curves and points selected in model mode (entity IDs). */
   selectedEntities?: readonly string[];
+  /**
+   * Draw the sketch's points although it isn't being edited: a feature
+   * dialog's field is picking sketch points (a hole's, P3-04).
+   */
+  showPoints?: boolean;
+}
+
+/** World positions (xyz each) of those of `ids` that are points of the sketch. */
+export function pointPositions(
+  data: SketchData,
+  frame: SketchFrame,
+  ids: readonly string[],
+): Float32Array {
+  const out: number[] = [];
+  for (const id of ids) {
+    const entity = data.entities[id as keyof SketchData['entities']];
+    if (entity?.type === 'point') out.push(...sketchToWorld(frame, [entity.x, entity.y]));
+  }
+  return new Float32Array(out);
 }
 
 /**

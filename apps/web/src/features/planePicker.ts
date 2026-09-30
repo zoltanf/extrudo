@@ -5,7 +5,7 @@
  * click puts the plane or face into the field. The field's own picks show
  * as the selected plane.
  */
-import type { SelectionItem, SessionStore } from '@extrudo/core';
+import type { SelectionItem, SessionStore, Vec3 } from '@extrudo/core';
 import type { PlanePicker } from '../viewport/Viewport';
 import type { DialogController, OpenDialog } from './dialog';
 import type { SelectionField } from './spec';
@@ -48,11 +48,11 @@ export function dialogPlanePicker(
       const current = session.getState().hover;
       if (current?.kind === 'plane' && current.id === plane) session.getState().setHover(undefined);
     },
-    onPick: (plane) => select.onClick({ kind: 'plane', id: plane }, false),
+    onPick: (plane, at) => controller.pickAt({ kind: 'plane', id: plane }, at),
     ...(field.accepts.includes('face') && {
       faces: {
         onHover: (item: SelectionItem | undefined) => select.onHover(item),
-        onPick: (item: SelectionItem) => select.onClick(item, false),
+        onPick: (item: SelectionItem, at?: Vec3) => controller.pickAt(item, at),
       },
     }),
   };
