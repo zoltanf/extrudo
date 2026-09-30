@@ -79,3 +79,57 @@ combine).
   gains about a minute.
 - A change to the Extrude dialog's field names, the sketch palette or the
   Project tool's behaviour breaks these specs first, which is the point.
+
+## Amendment 2026-09-30: B4, B5 and B7 (P3-14)
+
+Code: `e2e/benchmark-b4.spec.ts`, `-b5`, `-b7`, new steps in
+`e2e/benchmark-helpers.ts` (`turnView`, `clickEdge`, `pickAxis`,
+`primitive`, `ok`, `renameBody`, `extentOf`, `solidTab`…), fixtures
+`b4-box-with-lid`, `b5-pcb-enclosure`, `b7-knurled-knob`, and their headless
+recompute in `packages/kernel/src/benchmarks.test.ts`. B6 (wall hook:
+fillets on intersecting edges, draft) waits for Draft (P3-08).
+
+1. **B4 and B5 start from primitives, B7 from a sketch.** A Box or Cylinder
+   dialog takes parameter expressions directly (`length - 2 * (wall +
+   clearance)`), so the specs skip sketching and dimensioning where the
+   benchmark doesn't exercise them, stay near 30 s, and the headless test
+   can change every parameter (nothing waits for the app's re-solve).
+   B7 needs a profile to revolve: a rectangle from the origin with two
+   dimensions on XZ (sketch x is world X, y is world Z; camera direction
+   `0,1,0`).
+2. **B4 checks the fit, not just sizes.** The lid is a plate on an offset
+   plane at `height` (a body of its own) and a lip joined under it, the
+   cavity less `clearance` on each side. The e2e reads the 3MF: the lid's
+   nodes below the rim are the lip, the box's nodes above the floor and
+   inside the walls the cavity; the gap on each side is the clearance,
+   before and after `clearance` and `length` change. The headless test
+   measures it exactly: the box and the lid share no volume, and lifted
+   1 mm off the rim the lid is `clearance` from the box (the lip's
+   tightest side).
+3. **B5's lid holes are blind, as deep as the lid, with a flat point.**
+   "Through all" runs past every body and cuts every body it touches, so
+   it would drill the posts and the floor below the lid (a hole has no
+   "this body only"; noted for P3-17/P4-12). The countersink comes from
+   the M3 clearance preset, the posts' holes from the M3 heat-set insert
+   preset.
+4. **Posts by a 2 × 2 rectangular pattern, lid holes by two holes and a
+   Mirror.** A pattern or mirror replays extrudes, revolves, primitives
+   and holes, not other patterns or mirrors (`PATTERNABLE_FEATURE_TYPES`),
+   so one mirror of one hole makes two corners, not four.
+5. **The headless box is the display mesh's.** `measure()`'s box is loose
+   (about 0.02 mm more around shelled and curved bodies); the mesh's nodes
+   lie on the exact vertices. B2 and B3 give the same numbers either way.
+6. **B7's grooves stay clear of the chamfer's inner edge.** A groove as
+   deep as the chamfer is wide (radius = `bevel`) touches the edge and
+   splits the chamfer face once per groove (58 faces instead of 41 for 18
+   grooves). That's right geometry, not a bug; the parameter change uses a
+   1.8 mm groove.
+
+Rejected: zooming out until the YZ plane's square clears the enclosure to
+pick it for the Mirror (a dozen wheel steps; hiding the lid shows the
+square over the open tray, two clicks); B4 and B5 from sketches (slower,
+and their sketch dimensions couldn't change in the headless test).
+
+Each spec takes 25 to 30 s alone on the Arch workstation (up to about
+39 s for B5 beside another spec); the 3MF exports of all three are
+manifold in PrusaSlicer (`prusa-slicer --info`).

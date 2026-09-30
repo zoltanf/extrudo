@@ -604,6 +604,17 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   - The first new error of a recompute becomes a notification, so it is in
     the history (ADR-0041).
 - [ ] **P3-14 Benchmarks B4–B7 E2E.**
+  *B4, B5 and B7 done 2026-09-30* (ADR-0039 amendment), built through the UI
+  in `e2e/benchmark-b4.spec.ts`, `-b5`, `-b7`, exported as fixtures and
+  recomputed headless: B4 (box with a lid that fits: Box, Shell, bottom
+  Chamfer, an offset plane at the rim carrying the lid, a lip joined under
+  it `clearance` inside the cavity, filleted top; two bodies in the 3MF, the
+  gap on each side equal to `clearance` before and after it changes), B5
+  (PCB enclosure: shelled tray, a screw post with an M3 heat-set insert hole
+  patterned 2 × 2, a lid with countersunk M3 holes mirrored; volumes exact
+  to 0.1 %) and B7 (knurled knob: revolved profile, chamfered top, a groove
+  repeated by a circular pattern, a shaft hole; `dia`, `grooves` and
+  `groove` change it). **B6 (wall hook) waits for Draft** (P3-08).
 - [ ] **P3-15 Public release prep:** license, README, contribution guide, code
   of conduct, hosted demo, issue templates. **Needs the owner's decisions
   first** (license, hosting). Also, carried over (2026-09-30): the service

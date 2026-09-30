@@ -2,6 +2,12 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-30 · **P3-14** (part) Benchmarks B4, B5, B7 (ADR-0039 amendment):
+  a box with a lid that fits by a clearance parameter, a PCB enclosure with
+  screw posts and countersunk lid screws, and a knurled knob, each built
+  through the UI in an e2e spec, parameter-driven, exported as 3MF (closed,
+  sizes and volumes checked; the lid's gap is the clearance) and kept as a
+  fixture the kernel recomputes headless. B6 waits for Draft.
 - 2026-09-30 · **P3-04** Hole (ADR-0049): the Hole tool (H, Create's menu)
   drills simple, counterbore or countersink holes, blind (drill point 118° by
   default, 0° for a flat bottom) or through all, at the point you click on a
