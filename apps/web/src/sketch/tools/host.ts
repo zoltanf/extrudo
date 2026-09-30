@@ -84,6 +84,7 @@ import {
   pickEntity,
   type SketchStatus,
   sketchStatus,
+  solveGradually,
   unmetDimensions,
 } from '@extrudo/sketch/inference';
 import { profileAt } from '@extrudo/sketch/profiles';
@@ -342,13 +343,21 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     | { doc: ExtrudoDocument; data: SketchData; values: Record<string, number> }
     | undefined;
 
-  /** Sketches whose projections moved before the solver loaded: solved once it has. */
-  const unsettled = new Set<FeatureId>();
+  /**
+   * Sketches whose projections moved before the solver loaded, with the
+   * sketch before the first of those moves: solved once the solver is in.
+   */
+  const unsettled = new Map<FeatureId, SketchData | undefined>();
 
-  /** Solves a sketch as it is now and stores what moved, in the latest undo step. */
-  const settleProjections = (id: FeatureId) => {
+  /**
+   * Solves a sketch as it is now and stores what moved, in the latest undo
+   * step. `before` is the sketch before its projections moved: the solve
+   * goes from there in steps (`solveGradually`), so geometry held at a
+   * distance from a projected edge stays on its side when the edge moves far.
+   */
+  const settleProjections = (id: FeatureId, before?: SketchData) => {
     if (!solver) {
-      unsettled.add(id);
+      if (!unsettled.has(id)) unsettled.set(id, before);
       ensureSolver();
       return;
     }
@@ -357,7 +366,9 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     const view = feature && readSketch(feature);
     if (!view) return;
     const values = dimensionValues(view.data, evaluateParameters(doc), id);
-    const { solution } = solver.solve(view.data, values);
+    const { solution } = before
+      ? solveGradually(solver, before, view.data, values, values)
+      : solver.solve(view.data, values);
     const points: Record<SketchEntityId, { x: number; y: number }> = {};
     const radii: Record<SketchEntityId, number> = {};
     for (const [key, p] of Object.entries(solution.points)) {
@@ -411,12 +422,12 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         solver = s;
         state.setState({ solverReady: true });
         if (unsettled.size > 0) {
-          const ids = [...unsettled];
+          const pending = [...unsettled];
           unsettled.clear();
           const was = committing;
           committing = true;
           try {
-            for (const id of ids) settleProjections(id);
+            for (const [id, before] of pending) settleProjections(id, before);
           } finally {
             committing = was;
           }
@@ -494,7 +505,11 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       const values = dimensionValues(view.data, now, feature.id);
       const oldValues = oldView ? dimensionValues(oldView.data, was, feature.id) : {};
       if (oldView && sameValues(values, oldValues)) continue;
-      const result = active.solve(view.data, values);
+      // In steps from the old values when they change a lot (P3-13), so a
+      // line held at a distance doesn't jump to the other side of its edge.
+      const result = oldView
+        ? solveGradually(active, oldView.data, view.data, oldValues, values)
+        : active.solve(view.data, values);
       const unsolved = () => !oldView || active.solve(oldView.data, oldValues).ok;
       const refused = () =>
         new CommandError(
@@ -1138,7 +1153,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           if (!change) continue;
           try {
             store.getState().amend(syncProjections({ feature: feature.id, ...change }));
-            settleProjections(feature.id);
+            settleProjections(feature.id, view.data);
           } catch (error) {
             if (!(error instanceof CommandError)) throw error;
             console.warn(`[sketch] couldn't update the projections of ${feature.name}:`, error);

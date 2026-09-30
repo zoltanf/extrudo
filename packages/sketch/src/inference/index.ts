@@ -1,5 +1,7 @@
 // Pure (no WASM): the constraint tools set a new tangent's side with it (P1-06).
 
+// Pure too: the host solves parameter changes and projection syncs in steps (P3-13).
+export { MAX_STEPS, solveGradually, stepsBetween } from '../solver/gradual';
 // Pure too: the tool host turns a solve into sketch colours with it (P1-08).
 export {
   DIMENSION_TOLERANCE,
