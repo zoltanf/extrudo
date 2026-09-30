@@ -31,7 +31,7 @@ import type { SmoothKind, SubShapeKind } from './history';
 import type { Inspection, InspectTarget } from './inspect';
 import type { BodyMesh, MeshOptions } from './mesh';
 import type { BodyResult, PreviewToolMesh, RecomputeResult } from './recompute/types';
-import { type BodyExportMesh, isKernelCrash } from './service';
+import { type BodyExportMesh, type ExportProgress, isKernelCrash } from './service';
 
 export interface RecomputerOptions {
   spawn: SpawnKernel;
@@ -219,8 +219,12 @@ export class Recomputer {
    * Bodies the model store shows, tessellated for STL and 3MF (P2-12):
    * welded meshes at `tessellation`. Rejects if the kernel can't do it.
    */
-  exportMeshes(bodies: readonly BodyId[], tessellation: MeshOptions): Promise<BodyExportMesh[]> {
-    return this.client.call((api) => api.exportMeshes(bodies, tessellation));
+  exportMeshes(
+    bodies: readonly BodyId[],
+    tessellation: MeshOptions,
+    onProgress?: ExportProgress,
+  ): Promise<BodyExportMesh[]> {
+    return this.client.call((api) => api.exportMeshes(bodies, tessellation, onProgress));
   }
 
   /** Bodies the model store shows as one STEP AP242 file, each a product with its name. */

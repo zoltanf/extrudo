@@ -201,6 +201,27 @@ export class RecomputeEngine {
     return this.#latest.get(body);
   }
 
+  /**
+   * Holds the shapes of bodies of the last finished recompute until
+   * `release` (P3-13): work that yields between kernel calls (a chunked
+   * export) keeps them even if a recompute meanwhile drops them from the
+   * cache. Undefined for a body that isn't in the model.
+   */
+  hold(bodies: readonly BodyId[]): { shapes: (ShapeHandle | undefined)[]; release(): void } {
+    const shapes = bodies.map((id) => this.#latest.get(id));
+    const held = shapes.filter((h): h is ShapeHandle => h !== undefined);
+    for (const h of held) this.#refs.set(h, (this.#refs.get(h) ?? 0) + 1);
+    let released = false;
+    return {
+      shapes,
+      release: () => {
+        if (released) return;
+        released = true;
+        for (const h of held) this.#unref(h);
+      },
+    };
+  }
+
   /** Empties the cache and gives every shape back to the kernel. */
   clear(): void {
     for (const entry of this.#entries.values()) this.#drop(entry);
@@ -617,19 +638,22 @@ export class RecomputeEngine {
   }
 
   #drop(entry: Entry): void {
-    for (const h of entry.handles) {
-      const refs = (this.#refs.get(h) ?? 0) - 1;
-      if (refs > 0) {
-        this.#refs.set(h, refs);
-        continue;
-      }
-      this.#refs.delete(h);
-      this.#versions.delete(h);
-      this.#makers.delete(h);
-      this.#names.delete(h);
-      this.#descriptions.delete(h);
-      this.#kernel.release(h);
+    for (const h of entry.handles) this.#unref(h);
+  }
+
+  /** One holder less; the last one gives the shape back to the kernel. */
+  #unref(h: ShapeHandle): void {
+    const refs = (this.#refs.get(h) ?? 0) - 1;
+    if (refs > 0) {
+      this.#refs.set(h, refs);
+      return;
     }
+    this.#refs.delete(h);
+    this.#versions.delete(h);
+    this.#makers.delete(h);
+    this.#names.delete(h);
+    this.#descriptions.delete(h);
+    this.#kernel.release(h);
   }
 }
 

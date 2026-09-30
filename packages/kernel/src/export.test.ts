@@ -9,7 +9,7 @@ import type { MeshOptions } from './mesh';
 import { loadOcct } from './occt/load';
 import type { PlanarCurve, PlanarFrame } from './planar';
 import { testDocument, testFeature } from './recompute/testing';
-import { KernelService } from './service';
+import { isExportCancelled, KernelService } from './service';
 
 let kernel: Kernel;
 
@@ -263,5 +263,72 @@ describe('KernelService export (the primitives of P2-10)', () => {
     await expect(service.exportMeshes(['gone' as BodyId], MEDIUM)).rejects.toThrow(
       /no longer in the model/,
     );
+  });
+
+  it('meshes body by body with progress, and stops when told to (P3-13)', async () => {
+    const doc = testDocument([
+      primitive('S', 'sphere', '0 mm'),
+      primitive('T', 'torus', '60 mm'),
+      primitive('B', 'box', '-60 mm'),
+    ]);
+    const result = await service.recompute({ doc });
+    if (result.status !== 'done') throw new Error('not done');
+    const ids = result.bodies.map((b) => b.id);
+    const seen: [number, number][] = [];
+    const meshes = await service.exportMeshes(ids, MEDIUM, (done, total) => {
+      seen.push([done, total]);
+    });
+    expect(meshes).toHaveLength(3);
+    expect(seen).toEqual([
+      [0, 3],
+      [1, 3],
+      [2, 3],
+      [3, 3],
+    ]);
+
+    // `false` stops before the next body; nothing is left behind.
+    const before = (await service.stats()).liveShapes;
+    let calls = 0;
+    const stopped = service.exportMeshes(ids, MEDIUM, async () => ++calls < 2);
+    await expect(stopped).rejects.toSatisfy(isExportCancelled);
+    expect(calls).toBe(2);
+    expect((await service.stats()).liveShapes).toBe(before);
+  });
+
+  it('keeps the bodies it exports while a recompute in between drops them (P3-13)', async () => {
+    const small = new KernelService(() => loadOcct(), { engine: { maxEntries: 1 } });
+    try {
+      const first = await small.recompute({
+        doc: testDocument([primitive('S', 'sphere', '0 mm'), primitive('B', 'box', '-60 mm')]),
+      });
+      if (first.status !== 'done') throw new Error('not done');
+      const ids = first.bodies.map((b) => b.id);
+      let recomputed = false;
+      const meshes = await small.exportMeshes(ids, MEDIUM, async (done) => {
+        // After the first body, another document replaces the model and the cache.
+        if (done === 1 && !recomputed) {
+          recomputed = true;
+          const other = await small.recompute({
+            doc: testDocument([primitive('T', 'torus', '0 mm')]),
+          });
+          expect(other.status).toBe('done');
+        }
+      });
+      expect(recomputed).toBe(true);
+      expect(meshes.map(({ mesh }) => checkManifold(mesh).ok)).toEqual([true, true]);
+      // The held shapes went back to the kernel afterwards: only the torus is left.
+      const other = await small.recompute({
+        doc: testDocument([primitive('T', 'torus', '0 mm')]),
+      });
+      expect(other.status).toBe('done');
+      const shapes = (await small.stats()).liveShapes;
+      await small.exportMeshes(
+        other.status === 'done' ? other.bodies.map((b) => b.id) : [],
+        MEDIUM,
+      );
+      expect((await small.stats()).liveShapes).toBe(shapes);
+    } finally {
+      await small.dispose();
+    }
   });
 });

@@ -6,7 +6,7 @@
  */
 import type { BodyId, BodyMeta, SelectionItem } from '@extrudo/core';
 import { checkManifold, type ManifoldReport, write3mf, writeStl } from '@extrudo/io';
-import type { BodyExportMesh, MeshOptions } from '@extrudo/kernel';
+import type { BodyExportMesh, ExportProgress, MeshOptions } from '@extrudo/kernel';
 import { safeFileName } from '../platform/files';
 import { readTopology } from '../selection/items';
 import { APP_VERSION } from '../version';
@@ -52,7 +52,11 @@ export function initialBodies(
 
 /** What the kernel does for an export: the project's `Recomputer`. */
 export interface ModelExporter {
-  exportMeshes(bodies: readonly BodyId[], tessellation: MeshOptions): Promise<BodyExportMesh[]>;
+  exportMeshes(
+    bodies: readonly BodyId[],
+    tessellation: MeshOptions,
+    onProgress?: ExportProgress,
+  ): Promise<BodyExportMesh[]>;
   exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string>;
 }
 
@@ -70,15 +74,22 @@ export interface MeshedBodies {
   triangles: number;
 }
 
-/** Tessellates the bodies in the kernel and checks each mesh is closed and manifold. */
+/**
+ * Tessellates the bodies in the kernel and checks each mesh is closed and
+ * manifold. The kernel meshes one body at a time (P3-13): `onProgress`
+ * hears how many are done, and returning `false` from it stops the kernel
+ * before the next body (the promise then rejects; see `isExportCancelled`).
+ */
 export async function meshBodies(
   kernel: ModelExporter,
   bodies: readonly ExportBody[],
   tessellation: MeshOptions,
+  onProgress?: ExportProgress,
 ): Promise<MeshedBodies> {
   const meshes = await kernel.exportMeshes(
     bodies.map((b) => b.id),
     tessellation,
+    onProgress,
   );
   const reports = meshes.map(({ mesh }) => checkManifold(mesh));
   return {

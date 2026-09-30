@@ -134,6 +134,9 @@ export type {
 export { type Preview, Recomputer, type RecomputerOptions } from './recomputer';
 export {
   type BodyExportMesh,
+  ExportCancelledError,
+  type ExportProgress,
+  isExportCancelled,
   isKernelCrash,
   type KernelApi,
   KernelCrashError,

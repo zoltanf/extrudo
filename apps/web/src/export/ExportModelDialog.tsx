@@ -9,7 +9,7 @@ import {
   type ModelStore,
   type SessionStore,
 } from '@extrudo/core';
-import type { MeshOptions } from '@extrudo/kernel';
+import { isExportCancelled, type MeshOptions } from '@extrudo/kernel';
 import { X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
@@ -163,6 +163,8 @@ export function ExportModelDialog({
   const [meshed, setMeshed] = useState<{ key: string; result: MeshedBodies }>();
   const [problem, setProblem] = useState<string>();
   const [busy, setBusy] = useState(false);
+  /** Bodies meshed so far of the run for `key` (P3-13). */
+  const [progress, setProgress] = useState<{ key: string; done: number; total: number }>();
   const key = JSON.stringify([selected.map((b) => b.id), tessellation]);
   useEffect(() => {
     setProblem(undefined);
@@ -170,14 +172,21 @@ export function ExportModelDialog({
       return;
     }
     if (meshed?.key === key) return;
+    // Another choice, closing the dialog (Cancel) or a new model stops this run in the
+    // kernel before its next body, so a fine export of a big model doesn't hold it up.
     let cancelled = false;
     const timer = setTimeout(() => {
-      meshBodies(kernel, selected, tessellation).then(
+      meshBodies(kernel, selected, tessellation, (done, total) => {
+        if (cancelled) return false;
+        setProgress({ key, done, total });
+        return true;
+      }).then(
         (result) => {
           if (!cancelled) setMeshed({ key, result });
         },
         (error: unknown) => {
-          if (!cancelled) setProblem(error instanceof Error ? error.message : String(error));
+          if (cancelled || isExportCancelled(error)) return;
+          setProblem(error instanceof Error ? error.message : String(error));
         },
       );
     }, 120);
@@ -204,8 +213,13 @@ export function ExportModelDialog({
   else if (!meshFormat) {
     summary = { text: `${count}, exact geometry in millimetres (AP242)`, tone: 'muted' };
   } else if (!tessellation) summary = { text: 'Fix the custom resolution.', tone: 'error' };
-  else if (!ready) summary = { text: `Meshing ${count}…`, tone: 'muted' };
-  else {
+  else if (!ready) {
+    const at = progress?.key === key && progress.total > 1 ? progress : undefined;
+    summary = {
+      text: at ? `Meshing ${count}… ${at.done} of ${at.total} done` : `Meshing ${count}…`,
+      tone: 'muted',
+    };
+  } else {
     const open = openBodies(ready);
     const triangles = ready.triangles.toLocaleString('en-US');
     const size = settings.format === 'stl' ? `, ${formatBytes(stlBytes(ready.triangles))}` : '';
@@ -390,6 +404,9 @@ export function ExportModelDialog({
           </Choice>
         )}
 
+        {meshFormat && !ready && !problem && current && tessellation && selected.length > 0 && (
+          <MeshingBar progress={progress?.key === key ? progress : undefined} />
+        )}
         <p className="min-h-5 text-sm" aria-live="polite" data-export-summary={summary.text}>
           <span
             className={
@@ -414,5 +431,30 @@ export function ExportModelDialog({
         </div>
       </form>
     </Dialog>
+  );
+}
+
+/**
+ * How far meshing is (P3-13): a bar by bodies done, or a moving one while the
+ * first body (or the only one) is meshed. The dialog's Cancel stops it.
+ */
+function MeshingBar({ progress }: { progress?: { done: number; total: number } | undefined }) {
+  const known = progress && progress.total > 1;
+  const share = known ? progress.done / progress.total : undefined;
+  return (
+    <div
+      role="progressbar"
+      aria-label="Meshing"
+      aria-valuemin={0}
+      aria-valuemax={known ? progress.total : undefined}
+      aria-valuenow={known ? progress.done : undefined}
+      data-export-progress={known ? `${progress.done}/${progress.total}` : 'busy'}
+      className="h-1 overflow-hidden rounded-full bg-accent-soft"
+    >
+      <div
+        className={`h-full rounded-full bg-accent ${share === undefined ? 'w-1/3 animate-pulse' : 'transition-[width] duration-(--x-fast)'}`}
+        style={share === undefined ? undefined : { width: `${Math.max(4, share * 100)}%` }}
+      />
+    </div>
   );
 }

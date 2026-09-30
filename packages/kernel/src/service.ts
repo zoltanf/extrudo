@@ -2,10 +2,10 @@ import type { BodyId, FeatureRegistry, GeomRef } from '@extrudo/core';
 import { kernelFeatures } from './features';
 import type { SmoothKind, SubShapeKind } from './history';
 import { type Inspection, type InspectTarget, inspectShapes } from './inspect';
-import { Kernel, KernelError, type KernelStats } from './kernel';
+import { Kernel, KernelError, type KernelStats, type ShapeHandle } from './kernel';
 import type { ExportMesh, MeshOptions } from './mesh';
 import type { OcctModule } from './occt/types';
-import { type EngineOptions, RecomputeEngine } from './recompute/engine';
+import { type EngineOptions, RecomputeEngine, yieldToEvents } from './recompute/engine';
 import type {
   KernelFeatureDefinition,
   PreviewRequest,
@@ -65,9 +65,17 @@ export interface KernelApi {
   /**
    * Bodies of the last finished recompute tessellated for STL and 3MF
    * (P2-12, ADR-0034): welded meshes at `tessellation`, in the order
-   * asked. Rejects if a body is no longer in the model.
+   * asked. Rejects if a body is no longer in the model. Meshes one body at
+   * a time (P3-13) and lets other calls in between (a recompute waits for
+   * one body, not the whole export); before each body and at the end it
+   * calls `onProgress(done, total)`, and a `false` from it stops the export
+   * with an `ExportCancelledError`.
    */
-  exportMeshes(bodies: readonly BodyId[], tessellation: MeshOptions): Promise<BodyExportMesh[]>;
+  exportMeshes(
+    bodies: readonly BodyId[],
+    tessellation: MeshOptions,
+    onProgress?: ExportProgress,
+  ): Promise<BodyExportMesh[]>;
   /** Bodies of the last finished recompute as one STEP AP242 file, each a named product. */
   exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string>;
   /**
@@ -82,6 +90,24 @@ export interface KernelApi {
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
   debugCrash(): Promise<void>;
   stats(): Promise<KernelStats>;
+}
+
+/** Hears how far an export is; returns `false` to stop it (it may be async, across the worker). */
+export type ExportProgress = (
+  done: number,
+  total: number,
+) => boolean | undefined | Promise<boolean | undefined>;
+
+/** An export stopped by its `onProgress` (P3-13). */
+export class ExportCancelledError extends Error {
+  override name = 'ExportCancelledError';
+  constructor() {
+    super('The export was cancelled.');
+  }
+}
+
+export function isExportCancelled(error: unknown): boolean {
+  return error instanceof Error && error.name === 'ExportCancelledError';
 }
 
 /** A body's export mesh (`KernelApi.exportMeshes`). */
@@ -161,10 +187,30 @@ export class KernelService implements KernelApi {
     return this.#run(() => this.#engineOf().tangentChain(body, index, base, kind));
   }
 
-  exportMeshes(bodies: readonly BodyId[], tessellation: MeshOptions): Promise<BodyExportMesh[]> {
-    return this.#run((kernel) =>
-      bodies.map((id) => ({ id, mesh: kernel.exportMesh(this.#bodyShape(id), tessellation) })),
-    );
+  exportMeshes(
+    bodies: readonly BodyId[],
+    tessellation: MeshOptions,
+    onProgress?: ExportProgress,
+  ): Promise<BodyExportMesh[]> {
+    return this.#run(async (kernel) => {
+      const held = this.#engineOf().hold(bodies);
+      try {
+        if (held.shapes.some((h) => h === undefined)) {
+          throw new KernelError('A body to export is no longer in the model. Try again.');
+        }
+        const out: BodyExportMesh[] = [];
+        for (const [i, id] of bodies.entries()) {
+          if ((await onProgress?.(i, bodies.length)) === false) throw new ExportCancelledError();
+          out.push({ id, mesh: kernel.exportMesh(held.shapes[i] as ShapeHandle, tessellation) });
+          // A recompute, or the caller's cancel, gets its turn between bodies.
+          if (i < bodies.length - 1) await yieldToEvents();
+        }
+        await onProgress?.(bodies.length, bodies.length);
+        return out;
+      } finally {
+        held.release();
+      }
+    });
   }
 
   exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string> {

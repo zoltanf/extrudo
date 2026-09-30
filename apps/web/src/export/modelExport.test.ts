@@ -31,8 +31,13 @@ function tetra(x: number): TriangleMesh {
 function fakeKernel(meshes: Record<string, TriangleMesh>) {
   const calls: unknown[][] = [];
   const kernel: ModelExporter = {
-    async exportMeshes(bodies, tessellation) {
+    async exportMeshes(bodies, tessellation, onProgress) {
       calls.push(['meshes', [...bodies], tessellation]);
+      // As the kernel does (P3-13): ask before each body, and say when all are done.
+      for (const [i] of bodies.entries()) {
+        if ((await onProgress?.(i, bodies.length)) === false) throw new Error('cancelled');
+      }
+      await onProgress?.(bodies.length, bodies.length);
       return bodies.map((b) => {
         const mesh = meshes[b];
         if (!mesh) throw new Error(`no body ${b}`);
@@ -91,6 +96,18 @@ describe('model files', () => {
     expect(meshed.triangles).toBe(8);
     expect(meshed.reports.map((r) => r.ok)).toEqual([true, true]);
     expect(openBodies(meshed)).toEqual([]);
+  });
+
+  it('passes the progress on, and a false from it stops the meshing (P3-13)', async () => {
+    const { kernel } = fakeKernel(meshes);
+    const seen: string[] = [];
+    await meshBodies(kernel, bodies, RESOLUTIONS.fine, (done, total) => {
+      seen.push(`${done}/${total}`);
+    });
+    expect(seen).toEqual(['0/2', '1/2', '2/2']);
+    await expect(meshBodies(kernel, bodies, RESOLUTIONS.fine, (done) => done < 1)).rejects.toThrow(
+      'cancelled',
+    );
   });
 
   it('names bodies whose mesh is open', async () => {

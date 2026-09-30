@@ -16,8 +16,8 @@ export function workerApi(service: KernelService): KernelApi {
     endPreview: () => service.endPreview(),
     reference: (body, kind, index, base) => service.reference(body, kind, index, base),
     tangentChain: (body, index, base, kind) => service.tangentChain(body, index, base, kind),
-    exportMeshes: async (bodies, tessellation) => {
-      const meshes = await service.exportMeshes(bodies, tessellation);
+    exportMeshes: async (bodies, tessellation, onProgress) => {
+      const meshes = await service.exportMeshes(bodies, tessellation, onProgress);
       return Comlink.transfer(
         meshes,
         meshes.flatMap(({ mesh }) => [mesh.positions.buffer, mesh.indices.buffer] as ArrayBuffer[]),

@@ -34,7 +34,8 @@ function connect(worker: Worker): KernelConnection {
     endPreview: () => api.endPreview(),
     reference: (body, kind, index, base) => api.reference(body, kind, index, base),
     tangentChain: (body, index, base, kind) => api.tangentChain(body, index, base, kind),
-    exportMeshes: (bodies, tessellation) => api.exportMeshes(bodies, tessellation),
+    exportMeshes: (bodies, tessellation, onProgress) =>
+      api.exportMeshes(bodies, tessellation, onProgress && Comlink.proxy(onProgress)),
     exportStep: (bodies) => api.exportStep(bodies),
     inspect: (targets) => api.inspect(targets),
     debugTestPart: () => api.debugTestPart(),
