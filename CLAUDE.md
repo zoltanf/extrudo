@@ -20,8 +20,8 @@ P2-13 (measure and inspect), P2-14 (version history), P2-15 (WASM
 size and startup, offline precache), P2-16 (file-format spec,
 `docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
 fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-05
-(construction geometry), P3-11 (marking menu, context menus) and P3-16
-(notification history) are done.
+(construction geometry), P3-06 (combine, move/copy, mirror), P3-11
+(marking menu, context menus) and P3-16 (notification history) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -320,9 +320,8 @@ ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
 `e2e/benchmark-helpers.ts`) and keeps the designs of B1, B2 and B3 as
 `.extrudo` fixtures the app exported (`fixtures/benchmarks/`,
 `WRITE_FIXTURES=1` rewrites them), recomputed headless in
-`packages/kernel/src/benchmarks.test.ts`. Combine doesn't exist yet: B3
-merges two bodies by a join extrude that touches both (P3-06 adds the
-real step). ADR-0038
+`packages/kernel/src/benchmarks.test.ts` (B3 merges its two bodies with a
+real Combine since P3-06). ADR-0038
 (P3-01) added fillet: `packages/core/src/fillet.ts` (up to 8 edge sets as
 plain inputs `edges`/`radius`, `edges2`/`radius2` …: `filletSets`,
 `filletInputs`), the evaluator `packages/kernel/src/features/fillet.ts`
@@ -396,8 +395,28 @@ is a **factor** the distances scale by, read through `Kernel.chamfer`'s
 `ChamferError.problems`; it uses `largestThatWorks` and the fillet's tangent
 chain query) and the dialog `apps/web/src/features/chamfer.ts` (a Type
 dropdown per set). The Chamfer tile has no default key.
-Next: Phase 3 in three tracks: **P3-03** (shell), **P3-06** (combine,
-move/copy, mirror) and **P3-09** (section analysis). See `docs/03-roadmap.md`.
+ADR-0044 (P3-06) added three body features: `combine` (target body + tool
+bodies, join/cut/intersect through `namedBoolean`, tools used up unless
+`keepTools`, strict messages instead of silent no-ops; `core/src/combine.ts`,
+`kernel/src/features/combine.ts`), `move` (modes `free`: turns about the
+world axes through the bodies' box centre then a move, `rotate`: about an
+axis, `point-to-point`; `copy` adds `<feature>:<n>` bodies) and `mirror`
+(about a plane or flat face, `copy` default true, `join` fuses copy and
+original; **mirroring features is P3-07's**), Move and Mirror in
+`kernel/src/features/transform.ts` on the facade's `transform(shape)` (12
+staged numbers, a 3×4 matrix built in `features/matrix.ts`;
+`BRepBuilderAPI_Transform` with copy = true, so the result is rebuilt
+geometry, and history records every sub-shape as modified). **A copy's faces
+are renamed `<op>:<feature>:from:(<name>)`**: with the original's names
+`resolveRef` sees two exact matches and guesses by fingerprint. The gizmo is
+the dialog framework's manipulators (`apps/web/src/features/move.ts`:
+`moveManipulators`, an arrow per axis from its box face and a ring per axis
+at the box centre); the Solid tab has a Transform group (Move `M`, Mirror,
+Combine) and bodies selected before a tool fill its fields in order.
+The marking menu's Move wedge is the `move` command (ADR-0042).
+Next: Phase 3 in three tracks: **P3-03** (shell), **P3-07** (patterns,
+which also takes mirroring features) and **P3-09** (section analysis).
+See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -427,7 +446,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror (0006 is reserved) |
 
 ## Stack summary
 
@@ -1052,6 +1071,33 @@ them. Notes further down that name a machine apply to that machine only.
   takes about 20 s alone (B3 about 30 s); on the Ubuntu machine run with
   `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` (no Playwright
   browser installed there).
+- **Combine and Move/Mirror e2e** (`e2e/combine.spec.ts`,
+  `e2e/move-mirror.spec.ts`, P3-06): the Transform group's tiles are the
+  buttons "Move", "Mirror" and "Combine" (`exact: true`: a chip "Move1"
+  matches a regex); dialogs are the regions "Combine dialog", "Move dialog",
+  "Mirror dialog". Select bodies first with `selectBodies(page, ['Body1',
+  'Body2'])` (`e2e/benchmark-helpers.ts`: a click, then Shift-clicks on the
+  browser rows): the first is the Combine target, the rest its tools, both
+  fields read "1 body" (buttons "Target" and "Tools", `exact: true`, since
+  "Clear Target" also matches). A Move that moves nothing previews as a
+  *warning* ("Nothing moves"), so wait for `data-preview-status` /^(ok|warning)$/.
+  The gizmo is `data-manipulators="distance:dx angle:rx distance:dy …"`
+  with handles `[data-manipulator-handle="dx"]`; in the home view drag an
+  arrow along the projected axis (the value snaps, so 80 px gave 4.6 mm
+  there). Positions are read from the 3MF export (`exportModel` +
+  `objectsOf3mf` + `meshBounds`; it opens the 3D Print tab, click "Solid"
+  again). Picking the X axis for Rotate: try points along it until
+  `data-model-hover` is `axis:origin:x` (the dialog covers the right
+  edge). The plane picker for Mirror works as in the primitives spec
+  (click a plane's square, `[0, -h·0.6, h·0.6]` for YZ). Kernel tests:
+  `pnpm vitest run -u packages/kernel/src/features/combine` and
+  `…/transform` rewrite the golden tables.
+- **The scratchpad is shared between agents in one session**: put harness
+  files in your own subfolder (`<scratchpad>/<task>/`); `harness.js` from
+  another task once ran in place of a fresh build. Shell commands that
+  mix `&&`, heredocs and `python3 -` are sometimes refused by the worktree
+  guard: write scripts with the Write tool and run them as one plain
+  command.
 - **Notification history e2e** (`e2e/notifications.spec.ts`): the bell is the
   button "Notification history…" (its name adds ", 2 new, 1 error"; it carries
   `data-unread` and `data-unread-errors`, and doesn't exist until something

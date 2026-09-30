@@ -34,6 +34,8 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   extrude: ['E'],
   fillet: ['F'],
   hole: ['H'],
+  // Transform and combine bodies (P3-06): M is Move in the model, Sketch Move in a sketch.
+  move: ['M'],
   // Construction geometry (P3-05): Fusion has no defaults for these.
   offsetPlane: ['Shift+P'],
   axisThroughPoints: ['Shift+A'],

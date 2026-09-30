@@ -28,6 +28,7 @@ import {
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles, PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { mirror, rotation, translation } from './features/matrix';
 import { planarCurves } from './features/sketch';
 import { ChamferError, FilletError, Kernel, type ShapeHandle } from './kernel';
 import { positionalNames } from './naming/names';
@@ -218,6 +219,52 @@ describe('memory', () => {
       for (const solid of solids) scope.track(solid);
       if (solids.length !== 2) throw new Error(`${solids.length} solids`);
     };
+    for (let i = 0; i < WARM_UP; i++) rebuild(i);
+    const before = kernel.stats();
+    for (let i = 0; i < REBUILDS; i++) rebuild(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(0);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+    expect(after.heapBytes).toBe(before.heapBytes);
+  });
+
+  it(`moving, turning and mirroring named bodies ${REBUILDS} times does not grow the heap`, {
+    timeout: 180_000,
+  }, () => {
+    // The facade transform of P3-06 (ADR-0044): translations, turns and
+    // mirrors of a cut body through their history, a mirrored copy fused
+    // back to its original, and a mesh of the result.
+    const rebuild = (i: number) => {
+      using scope = kernel.scope();
+      const box = scope.track(kernel.box([20, 10, 6]));
+      const hole = scope.track(kernel.cylinder(2, 10, [10, 5, -2]));
+      const body = scope.track(kernel.cut(box, hole));
+      const names = positionalNames('B', 'B', kernel.describe(body.shape));
+      const angle = (i % 90) * (Math.PI / 180);
+      const matrices = [
+        translation([i % 7, 1, 2]),
+        rotation([3, 4, 5], [1, 1, 0], angle),
+        mirror([(i % 5) - 10, 0, 0], [1, 0, 0]),
+      ];
+      matrices.forEach((matrix, k) => {
+        const moved = withHistory(kernel, kernel.transform(body.shape, matrix), [names], {
+          op: 'move',
+          feature: 'M',
+        });
+        scope.track(moved.shape);
+        kernel.mesh(moved.shape, { linearDeflection: 0.1, angularDeflection: 0.5 });
+        if (k === 2) {
+          const joined = namedBoolean(kernel, 'fuse', { shape: body.shape, names }, moved, {
+            feature: 'J',
+            simplify: true,
+          });
+          scope.track(joined.shape);
+        }
+      });
+      expect(() => kernel.transform(body.shape, scaling)).toThrow(/scales/);
+    };
+    const scaling = [2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0];
     for (let i = 0; i < WARM_UP; i++) rebuild(i);
     const before = kernel.stats();
     for (let i = 0; i < REBUILDS; i++) rebuild(i);

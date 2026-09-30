@@ -508,6 +508,60 @@ it. The kernel computes and reports everything; nothing but the inputs is
 stored. A feature that uses a construction feature must come after it in the
 timeline, and deleting one that is used is refused (section 8).
 
+### 6.11 `combine`
+
+Joins, cuts or intersects a target body with tool bodies (P3-06).
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `target` | `ref` | yes | At most one ref, of kind `body` (a body ID). Empty: the kernel reports "Pick the target body." |
+| `tools` | `ref` | yes | Refs of kind `body`. Empty: an error until some are picked |
+| `operation` | `enum` | no | `join` (default), `cut` or `intersect` |
+| `keepTools` | `bool` | no | Default `false`: the tool bodies are used up |
+
+The result keeps the target's body ID, name and colour; the tools leave the
+body set unless `keepTools`. `join` needs every tool to touch the target (or a
+tool that does); `cut` and `intersect` fail with a message when nothing would
+change or nothing would be left. A result of several separate solids becomes
+one body per solid (`<feature id>:<n>`). Faces keep the names of the target
+and of the tools' faces that end up in the result (section 8).
+
+### 6.12 `move`
+
+Moves or turns bodies, optionally as copies (P3-06). Every input but `bodies`
+is optional and defaults to "no move".
+
+| Input | Kind | Rule |
+|---|---|---|
+| `bodies` | `ref` | Refs of kind `body`. Empty: an error until some are picked |
+| `mode` | `enum` | `free` (default), `rotate` or `point-to-point` |
+| `dx`, `dy`, `dz` | `expr` | Length. `free`: the move along the world axes, after the turns |
+| `rx`, `ry`, `rz` | `expr` | Angle. `free`: turns about the world X, Y and Z axes through the centre of the bodies' bounding box, in that order |
+| `axis` | `ref` | At most one ref of kind `axis`, `edge` or `sketchEntity`. `rotate`: the axis to turn about |
+| `angle` | `expr` | Angle. `rotate`: right-handed about the axis |
+| `from`, `to` | `ref` | At most one ref each, of kind `vertex` or `point`. `point-to-point`: the bodies move by the vector from `from` to `to` |
+| `copy` | `bool` | Default `false`. `true`: the bodies stay and moved copies are new bodies `<feature id>:<n>`, in the order of `bodies` |
+
+A move keeps the body IDs, so references to the moved bodies and to their
+faces still resolve. A copy's faces are named
+`move:<feature id>:from:(<the original face's name>)`, so a reference means one
+body. Fields of the other modes are not stored.
+
+### 6.13 `mirror`
+
+Mirrors bodies about a plane (P3-06).
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `bodies` | `ref` | yes | Refs of kind `body`. Empty: an error until some are picked |
+| `plane` | `ref` | yes | At most one ref, of kind `plane` (an origin or construction plane) or a flat `face` |
+| `copy` | `bool` | no | Default `true`: the originals stay and the mirrored copies are new bodies `<feature id>:<n>`. `false`: the bodies themselves are mirrored and keep their IDs |
+| `join` | `bool` | no | Default `false`; only with `copy`. Fuses each copy into its original (which keeps its ID); a copy that doesn't touch it stays a body of its own |
+
+A copy's faces are named `mirror:<feature id>:from:(<the original face's name>)`.
+Mirroring features (replaying them about the plane) is not part of `mirror`;
+patterns of features come with the pattern features.
+
 Reserved for later: the other modify features (chamfer, shell, hole,
 patterns, ...) will be new feature types; old readers see them as unknown
 types.

@@ -13,7 +13,7 @@ describe('benchmark fixtures', () => {
   it.each([
     ['B1 Plate', b1, ['Sketch1']],
     ['B2 Storage box', b2, ['Sketch1', 'Extrude1', 'Sketch2', 'Extrude2']],
-    ['B3 Phone stand', b3, ['Sketch1', 'Extrude1', 'Sketch2', 'Extrude2', 'Sketch3', 'Extrude3']],
+    ['B3 Phone stand', b3, ['Sketch1', 'Extrude1', 'Sketch2', 'Extrude2', 'Combine1']],
   ])('%s opens as it was saved', (name, file, features) => {
     const archive = readArchive(bytesOf(file));
     expect(archive.migrated).toBe(false);

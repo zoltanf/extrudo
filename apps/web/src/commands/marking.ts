@@ -4,7 +4,7 @@
  * `resolveSlots`, which matches them with the commands offered right now
  * (`buildCommands`). A slot never runs anything of its own: it runs the
  * command. A slot whose command isn't offered here (`sketch` inside a
- * sketch), or doesn't exist yet (Fillet before P3-01, Move before P3-06),
+ * sketch), or doesn't exist yet (Press Pull before P3-08),
  * stays in place, dimmed, so the ring keeps its layout; the day the
  * command appears in `buildCommands`, the slot lights up with no change here.
  */
@@ -30,12 +30,7 @@ export const MODEL_SLOTS: readonly SlotSpec[] = [
   { command: 'sketch', label: 'Sketch', icon: { name: 'create-sketch', category: 'sketch' } },
   { command: 'extrude', label: 'Extrude', icon: { name: 'extrude', category: 'create' } },
   { command: 'fillet', label: 'Fillet', icon: { name: 'fillet', category: 'modify' } },
-  {
-    command: 'move',
-    label: 'Move',
-    icon: { name: 'move', category: 'modify' },
-    comesWith: 'P3-06',
-  },
+  { command: 'move', label: 'Move', icon: { name: 'move', category: 'modify' } },
   {
     command: 'pressPull',
     label: 'Press Pull',

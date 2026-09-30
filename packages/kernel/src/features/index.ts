@@ -2,12 +2,14 @@ import { FeatureRegistry } from '@extrudo/core';
 import type { KernelFeatureDefinition } from '../recompute/types';
 import { kernelRemove } from './bodies';
 import { kernelChamfer } from './chamfer';
+import { kernelCombine } from './combine';
 import { KERNEL_CONSTRUCTION } from './construction';
 import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
 import { KERNEL_PRIMITIVES } from './primitives';
 import { kernelRevolve } from './revolve';
 import { kernelSketch } from './sketch';
+import { kernelMirror, kernelMove } from './transform';
 
 /** Every feature type the kernel can compute (architecture §4.2). */
 export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
@@ -26,5 +28,10 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
   for (const construction of KERNEL_CONSTRUCTION) {
     registry.register(construction as unknown as KernelFeatureDefinition);
   }
+  // Combine, Move/Copy and Mirror (P3-06, ADR-0044).
+  registry
+    .register(kernelCombine as unknown as KernelFeatureDefinition)
+    .register(kernelMove as unknown as KernelFeatureDefinition)
+    .register(kernelMirror as unknown as KernelFeatureDefinition);
   return registry;
 }

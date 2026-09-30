@@ -7,9 +7,12 @@
  */
 import { FeatureRegistry } from '@extrudo/core';
 import { chamferDialog } from './chamfer';
+import { combineDialog } from './combine';
 import { CONSTRUCTION_DIALOGS } from './construction';
 import { extrudeDialog } from './extrude';
 import { filletDialog } from './fillet';
+import { mirrorDialog } from './mirror';
+import { moveDialog } from './move';
 import { PRIMITIVE_DIALOGS } from './primitives';
 import { revolveDialog } from './revolve';
 import { commandId, type FeatureDialogSpec } from './spec';
@@ -26,6 +29,8 @@ export function featureDialogs(): FeatureDialogs {
   for (const spec of PRIMITIVE_DIALOGS) dialogs.register(spec);
   // Construction planes, axes and points (P3-05, ADR-0040).
   for (const spec of CONSTRUCTION_DIALOGS) dialogs.register(spec);
+  // Combine, Move/Copy and Mirror (P3-06, ADR-0044).
+  dialogs.register(combineDialog).register(moveDialog).register(mirrorDialog);
   return dialogs;
 }
 
