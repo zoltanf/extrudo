@@ -19,9 +19,9 @@ engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
 P2-13 (measure and inspect), P2-14 (version history), P2-15 (WASM
 size and startup, offline precache), P2-16 (file-format spec,
 `docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
-fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-05
-(construction geometry), P3-06 (combine, move/copy, mirror), P3-09
-(section analysis), P3-11 (marking menu, context menus) and P3-16
+fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-03
+(shell), P3-05 (construction geometry), P3-06 (combine, move/copy, mirror),
+P3-09 (section analysis), P3-11 (marking menu, context menus) and P3-16
 (notification history) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
@@ -434,9 +434,24 @@ Solid › Inspect › Section Analysis (`Shift+S`, session tool `section`,
 panel `SectionPanel`, arrow `SectionOverlay`), the browser has an
 Analysis folder while a section exists, and a selected flat face takes it
 at once ("Section Here" in the context list).
-Next: Phase 3 in three tracks: **P3-03** (shell), **P3-07** (patterns,
-which also takes mirroring features) and **P3-10** (3D-print aids).
-See `docs/03-roadmap.md`.
+ADR-0046 (P3-03) added shell: `packages/core/src/shell.ts` (inputs `faces`,
+`bodies` (bodies hollowed closed), `thickness`, `direction` inside/outside:
+`shellSettings`, `shellInputs`), the evaluator
+`packages/kernel/src/features/shell.ts` (faces by `ctx.resolve`, one body at
+a time, `nameShell`: **the outer skin keeps the original face names in both
+directions**, new faces are `shell:<id>:inner|rim|round:(<source>)`) and the
+facade's `shell(shape, thickness, outside)` (`MakeThickSolid` on the stack
+and **on a copy of the body**; a result must pass
+`BRepCheck_Analyzer`, a positive volume and **a minimum distance from the
+offset faces to their originals of at least the thickness**, because OCCT
+builds valid junk for a wall thicker than a curved face's radius; a removed
+face tangent to a neighbour is **refused before OCCT runs** since OCCT
+corrupts the wasm heap there, `touchesTangentFace`; with no removed face OCCT
+returns only the skin, so the solid with a void is assembled by hand; on
+failure the thickness is bisected: `[status, value]` read through
+`Kernel.shell`'s `ShellError.problems`). The Shell tile has no default key.
+Next: Phase 3: **P3-04** (hole), **P3-07** (patterns, which also takes
+mirroring features) and **P3-10** (3D-print aids). See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -466,7 +481,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis (0006 is reserved)|
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell (0006 is reserved) |
 
 ## Stack summary
 
@@ -1034,6 +1049,23 @@ them. Notes further down that name a machine apply to that machine only.
   `pnpm vitest run -u packages/kernel/src/features/chamfer`; a chamfer's
   failed build is diagnosed by rebuilding it like fillet's (keep failing
   cases out of previews that run often).
+- **Shell e2e** (`e2e/shell-feature.spec.ts`, P3-03; not `shell.spec.ts`, the
+  app shell's): the tool has no key: click the toolbar's Shell tile
+  (`getByRole('button', { name: /^Shell/ })`) after picking the top face
+  (hover until `data-model-hover` is a `face:`, then click at world (0, 0, 20)
+  of the Box tool's cube). The dialog is the region "Shell dialog" / "Edit
+  Shell1 dialog": the button "Faces to remove" ("1 face", prompt "Pick
+  faces"), the button "Body" ("1 body"; it shows only while no face is
+  picked), the textbox "Thickness" (`exact`, default "2 mm") and the combobox
+  "Direction" (`inside`/`outside`, `selectOption`). A cube shelled inside
+  with its top removed is `Body1:11:20,20,20` in `data-bodies`, outside
+  `Body1:<n>:24,24,22`, hollowed closed `Body1:12:20,20,20`. A 12 mm wall on
+  the 20 mm cube says "(max ≈ 9.9 mm)". Kernel-side, the golden table is
+  `pnpm vitest run -u packages/kernel/src/features/shell`. A shell that fails
+  is diagnosed by rebuilding it (7 builds, about 80 ms for a box); a removed
+  face next to a fillet is refused without running OCCT (its offset traps the
+  wasm heap: a `RuntimeError: memory access out of bounds` that can show up
+  calls later, so never let a probe reach it).
 - **Facade checks with Docker on the Ubuntu machine** (since 2026-09-29;
   `sg docker -c '…'` until the shell has the group): `em++
   -fsyntax-only` and the native harness both run in

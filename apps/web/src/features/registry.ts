@@ -15,6 +15,7 @@ import { mirrorDialog } from './mirror';
 import { moveDialog } from './move';
 import { PRIMITIVE_DIALOGS } from './primitives';
 import { revolveDialog } from './revolve';
+import { shellDialog } from './shell';
 import { commandId, type FeatureDialogSpec } from './spec';
 
 export type FeatureDialogs = FeatureRegistry<FeatureDialogSpec>;
@@ -24,7 +25,8 @@ export function featureDialogs(): FeatureDialogs {
     .register(extrudeDialog)
     .register(revolveDialog)
     .register(filletDialog)
-    .register(chamferDialog);
+    .register(chamferDialog)
+    .register(shellDialog);
   // Box, cylinder, sphere and torus (P2-10, ADR-0032).
   for (const spec of PRIMITIVE_DIALOGS) dialogs.register(spec);
   // Construction planes, axes and points (P3-05, ADR-0040).

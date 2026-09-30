@@ -30,7 +30,7 @@ import { detectProfiles, PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mirror, rotation, translation } from './features/matrix';
 import { planarCurves } from './features/sketch';
-import { ChamferError, FilletError, Kernel, type ShapeHandle } from './kernel';
+import { ChamferError, FilletError, Kernel, type ShapeHandle, ShellError } from './kernel';
 import { positionalNames } from './naming/names';
 import {
   compoundSources,
@@ -670,6 +670,45 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
+  it(`shelling ${REBUILDS} times, failing ones with their diagnosis included, does not grow the heap`, {
+    timeout: 300_000,
+  }, () => {
+    // P3-03: shells inside, outside and closed through the builder on the
+    // facade's stack (each on a copy of the body), a shell too thick whose
+    // largest thickness is found by probing, a removed face next to a fillet
+    // (refused before OCCT runs) and a cylinder's wall (nothing to hold):
+    // all inside the facade, none may leave anything behind.
+    const rebuild = (i: number) => {
+      using scope = kernel.scope();
+      const plate = scope.track(kernel.box([40, 30, 10 + (i % 3) / 10]));
+      scope.track(kernel.shell(plate, [0], 1 + (i % 4) / 10));
+      scope.track(kernel.shell(plate, [1], 1, 'outside'));
+      scope.track(kernel.shell(plate, [], 1 + (i % 2) / 10));
+      const rounded = scope.track(kernel.fillet(plate, [0, 2, 4, 6], [3, 3, 3, 3]));
+      scope.track(kernel.shell(rounded.shape, [], 1));
+      const failing = (run: () => unknown, what: string) => {
+        try {
+          run();
+        } catch (error) {
+          if (error instanceof ShellError) return;
+          throw error;
+        }
+        throw new Error(`${what} should fail`);
+      };
+      failing(() => kernel.shell(plate, [0], 30), 'a 30 mm wall on a 10 mm plate');
+      failing(() => kernel.shell(plate, [0, 1, 2, 3, 4, 5], 1), 'removing every face');
+      const cylinder = scope.track(kernel.cylinder(6, 20));
+      failing(() => kernel.shell(cylinder, [0], 1), "a cylinder's whole wall");
+    };
+    for (let i = 0; i < WARM_UP; i++) rebuild(i);
+    const before = kernel.stats();
+    for (let i = 0; i < REBUILDS; i++) rebuild(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(before.liveShapes);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+  });
+
   it('the leak control trips the same limit', { timeout: 120_000 }, () => {
     // The WASM build binds no raw OCCT classes (ADR-0037), so the control leaks
     // through the facade instead: meshed cuts (the triangulation stays on the
@@ -711,6 +750,29 @@ describe('memory', () => {
     for (let i = 0; i < WARM_UP; i++) leakyChamfer();
     const before = kernel.stats();
     for (let i = 0; i < 300; i++) leakyChamfer();
+    const after = kernel.stats();
+    try {
+      expect(after.liveShapes - before.liveShapes).toBe(300);
+    } finally {
+      for (const handle of kept) kernel.release(handle);
+    }
+  });
+
+  it('the shell leak control trips the same limit', { timeout: 120_000 }, () => {
+    // The shell test above passes because nothing is kept: the same shells
+    // whose results are kept and meshed must show as live shapes. (After the
+    // other controls: it raises the heap's high-water mark.)
+    const kept: ShapeHandle[] = [];
+    const leakyShell = () => {
+      using scope = kernel.scope();
+      const plate = scope.track(kernel.box([40, 30, 10]));
+      const shelled = kernel.shell(plate, [0], 1).shape;
+      kept.push(shelled);
+      kernel.mesh(shelled, { linearDeflection: 0.01, angularDeflection: 0.1 });
+    };
+    for (let i = 0; i < WARM_UP; i++) leakyShell();
+    const before = kernel.stats();
+    for (let i = 0; i < 300; i++) leakyShell();
     const after = kernel.stats();
     try {
       expect(after.liveShapes - before.liveShapes).toBe(300);

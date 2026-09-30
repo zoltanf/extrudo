@@ -562,9 +562,32 @@ A copy's faces are named `mirror:<feature id>:from:(<the original face's name>)`
 Mirroring features (replaying them about the plane) is not part of `mirror`;
 patterns of features come with the pattern features.
 
-Reserved for later: the other modify features (chamfer, shell, hole,
-patterns, ...) will be new feature types; old readers see them as unknown
-types.
+### 6.14 `shell`
+
+Hollows bodies with walls of a given thickness (P3-03).
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `faces` | `ref` | no | Refs of kind `face` (persistent face names, section 8): the faces to remove, the openings. May lie on several bodies |
+| `bodies` | `ref` | no | Refs of kind `body` (body IDs): bodies to hollow closed, with no opening. Bodies of the picked faces are shelled anyway |
+| `thickness` | `expr` | yes | Length, greater than 0 when the kernel evaluates it (not checked by the schema) |
+| `direction` | `enum` | no | `inside` (default) or `outside` |
+
+At least one face or body is needed (the kernel reports it otherwise). Each
+body with faces picked is shelled with those faces removed; a body without
+any becomes a closed solid with a sealed void. `inside` keeps the body's
+outer surface where it is and cuts the cavity into it; `outside` keeps the
+surface as the cavity and grows the walls outwards, so the part gets
+bigger. The outer skin keeps the faces' names in both directions; the faces
+the shell makes are named `shell:<feature id>:inner:(<face name>)` (the
+cavity), `shell:<feature id>:rim:(<removed face name>)` (around an opening)
+and `shell:<feature id>:round:(<edge or vertex name>)` (a rounded join). A
+removed face that runs smoothly into a neighbour (next to a fillet) is
+refused. No new keys: a shell is a feature with `ref`, `expr` and `enum`
+inputs like the others.
+
+Reserved for later: the other modify features (hole, patterns, ...) will be
+new feature types; old readers see them as unknown types.
 
 ---
 
@@ -902,8 +925,7 @@ exports.
 the file.
 
 **Known gaps in format 1** (things a tool author might expect that are not
-there yet): no construction plane, axis or point features; no
-chamfer, shell, hole or pattern features; no imported bodies or
+there yet): no hole, pattern, move or combine features; no imported bodies or
 `attachments/`; no `cache/`; no extension mechanism for third-party keys.
 Each will arrive as new feature types or optional fields, or as a
 `formatVersion` bump with a migration (section 3).

@@ -438,7 +438,6 @@ export const TOOLS = {
     icon: 'shell',
     category: 'modify',
     hint: 'Hollow out a body, leaving walls.',
-    comesWith: 'P3-03',
   },
   remove: {
     id: 'remove',
