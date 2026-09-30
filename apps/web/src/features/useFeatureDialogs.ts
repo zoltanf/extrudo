@@ -67,8 +67,8 @@ export function useFeatureDialogs({
         endPreview: () => kernelRef.current?.endPreview(),
         reference: (body, kind, index, base) =>
           kernelRef.current?.reference(body, kind, index, base) ?? Promise.resolve(undefined),
-        tangentChain: (body, edge, base) =>
-          kernelRef.current?.tangentChain?.(body, edge, base) ?? Promise.resolve(undefined),
+        tangentChain: (body, index, base, kind) =>
+          kernelRef.current?.tangentChain?.(body, index, base, kind) ?? Promise.resolve(undefined),
       },
       notify: (tone, text, options) => notifyRef.current(tone, text, options),
     });

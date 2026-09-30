@@ -51,22 +51,16 @@ describe('the slot tables', () => {
       ...buildCommands(context('model', { repeat: { id: 'extrude' } })).map((c) => c.id),
       ...buildCommands(context('sketch', { repeat: { id: 'line' } })).map((c) => c.id),
     ]);
-    // Arrives with P3-08; the wedge waits for it (with `comesWith`).
-    const later = new Set(['pressPull']);
     for (const s of [...MODEL_SLOTS, ...SKETCH_SLOTS]) {
-      if (later.has(s.command)) expect(s.comesWith).toBeDefined();
-      else expect(offered.has(s.command) || s.command === 'delete').toBe(true);
+      expect(offered.has(s.command) || s.command === 'delete').toBe(true);
+      expect(s.comesWith).toBeUndefined();
     }
   });
 });
 
 describe('resolveSlots', () => {
-  // Without Press Pull, which a later task adds (its tests must not break then).
   const model = (over: Partial<CommandContext> = {}) =>
-    resolveSlots(
-      MODEL_SLOTS,
-      buildCommands(context('model', over)).filter((c) => c.id !== 'pressPull'),
-    );
+    resolveSlots(MODEL_SLOTS, buildCommands(context('model', over)));
 
   it('lights the wedges whose commands are offered', () => {
     const slots = model({ repeat: { id: 'extrude' }, remove: vi.fn() });
@@ -91,7 +85,18 @@ describe('resolveSlots', () => {
     const by = (id: string) => slots[slot(MODEL_SLOTS, id)];
     expect(by('delete')).toMatchObject({ disabled: true, hint: 'Select something to delete.' });
     expect(by('repeatLast')).toMatchObject({ disabled: true, label: 'Repeat last' });
-    expect(by('pressPull')).toMatchObject({ disabled: true, hint: 'Arrives with P3-08.' });
+    // A command that is not built yet says which task brings it.
+    const later = resolveSlots([{ command: 'later', label: 'Later', comesWith: 'P9-99' }], []);
+    expect(later[0]).toMatchObject({ disabled: true, hint: 'Arrives with P9-99.' });
+  });
+
+  it('lights Press Pull: it is a command of the Solid tab (P3-08)', () => {
+    const slots = model();
+    expect(slots[slot(MODEL_SLOTS, 'pressPull')]).toMatchObject({
+      disabled: false,
+      label: 'Press Pull',
+    });
+    expect(slots[slot(MODEL_SLOTS, 'pressPull')]?.command?.keys).toEqual(['Q']);
   });
 
   it('dims a command that is offered but not built yet, with its own hint', () => {
@@ -103,15 +108,16 @@ describe('resolveSlots', () => {
   });
 
   it('lights a wedge the day its command joins the list, with no change to the table', () => {
+    const table = [{ command: 'soon', label: 'Soon' }];
+    expect(resolveSlots(table, buildCommands(context('model')))[0]?.disabled).toBe(true);
     const extra: AppCommand = {
-      id: 'pressPull',
-      label: 'Press Pull',
+      id: 'soon',
+      label: 'Soon',
       group: 'Modify',
       keys: [],
       run: vi.fn(),
     };
-    const slots = resolveSlots(MODEL_SLOTS, [...buildCommands(context('model')), extra]);
-    expect(slots[slot(MODEL_SLOTS, 'pressPull')]).toMatchObject({
+    expect(resolveSlots(table, [...buildCommands(context('model')), extra])[0]).toMatchObject({
       disabled: false,
       command: extra,
     });

@@ -93,7 +93,12 @@ export interface DialogKernel {
    * chain around an edge, for selection fields with `tangentChain` (fillet,
    * P3-01). Absent: picks stay single edges.
    */
-  tangentChain?(body: BodyId, edge: number, base?: boolean): Promise<number[] | undefined>;
+  tangentChain?(
+    body: BodyId,
+    index: number,
+    base?: boolean,
+    kind?: 'edge' | 'face',
+  ): Promise<number[] | undefined>;
 }
 
 export interface DialogPreview {
@@ -472,15 +477,18 @@ export function createDialogController(options: DialogControllerOptions): Dialog
 
   /**
    * A picked edge brings its tangent chain (OCCT rounds the whole chain,
-   * so a set is made of whole chains); unpicking one takes the chain out.
+   * so a set is made of whole chains), a picked face the faces that run
+   * smoothly into it (an offset moves them together, P3-08); unpicking one
+   * takes the chain out.
    */
   const followChain = (field: string, item: SelectionItem, mode: 'add' | 'remove') => {
     const topology = readTopology(item);
-    if (!kernel?.tangentChain || topology?.kind !== 'edge') return;
+    if (!kernel?.tangentChain || (topology?.kind !== 'edge' && topology?.kind !== 'face')) return;
+    const kind = topology.kind;
     const mine = generation;
     const base = get()?.base !== undefined;
     kernel
-      .tangentChain(topology.body, topology.index, base)
+      .tangentChain(topology.body, topology.index, base, kind)
       .then((indices) => {
         const open = get();
         if (!open || mine !== generation || !indices || indices.length < 2) return;
@@ -488,7 +496,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         const refs = [...(open.values.refs[field] ?? [])];
         const added: SelectionItem[] = [];
         for (const index of indices) {
-          const member = topologyItem({ kind: 'edge', body: topology.body, index });
+          const member = topologyItem({ kind, body: topology.body, index });
           const ref = itemRef(member, bodies);
           if (!ref) continue;
           const at = refs.findIndex((r) => r.kind === ref.kind && r.id === ref.id);

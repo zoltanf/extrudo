@@ -44,6 +44,7 @@ export {
 } from './migrations';
 export * from './mirror';
 export * from './move';
+export * from './offset-face';
 export * from './pattern';
 export * from './place-on-bed';
 export * from './primitives';

@@ -9,6 +9,7 @@ import {
   REVOLVE_OPERATIONS,
   RevolveInputsSchema,
   revolveInputs,
+  type SketchData,
   sketchInputs,
   type Vec3,
 } from '@extrudo/core';
@@ -16,7 +17,12 @@ import { describe, expect, it } from 'vitest';
 import { outline, profilesOf } from '../project/templates';
 import { axisLine, sketchLine } from './geometry';
 import { featureDialogs, specForCommand } from './registry';
-import { revolveDialog, revolveFrame, revolveManipulators } from './revolve';
+import {
+  proposeRevolveOperation,
+  revolveDialog,
+  revolveFrame,
+  revolveManipulators,
+} from './revolve';
 import type { DialogContext, DialogValues, ManipulatorContext } from './spec';
 import { BOX, namedBoxMesh, setupDialogs } from './testing';
 import { defaultValues, inputsFor, mergeValues, shownFields, valuesFor } from './values';
@@ -73,6 +79,12 @@ const manipulatorContext = (base: DialogContext): ManipulatorContext => ({
   ...base,
   value: () => 90,
 });
+
+/** The operation a revolve of these values proposes with the angle field at `angle` degrees. */
+function proposal(over: Partial<DialogValues>, angle: number | undefined) {
+  const ctx = { ...context(), value: () => angle } as ManipulatorContext;
+  return proposeRevolveOperation(values(over), ctx)?.choices?.operation;
+}
 
 const round = (v: Vec3) => v.map((c) => Math.round(c * 1000) / 1000 + 0);
 
@@ -160,13 +172,50 @@ describe('the revolve dialog', () => {
 
   it('proposes a new body for profiles and a join for faces', () => {
     const { profile } = rectangleSketch();
-    expect(revolveDialog.propose?.(values({ refs: { profiles: [profile] } }), {} as never)).toEqual(
-      { choices: { operation: 'new-body' } },
-    );
-    expect(revolveDialog.propose?.(values({ refs: { profiles: [TOP] } }), {} as never)).toEqual({
-      choices: { operation: 'join' },
+    expect(proposal({ refs: { profiles: [profile] } }, 90)).toBe('new-body');
+    expect(proposal({ refs: { profiles: [TOP] } }, 90)).toBe('join');
+    expect(proposal({}, 90)).toBeUndefined();
+  });
+
+  it('proposes a cut for a face turned into its body, a join out of it (P3-08)', () => {
+    // TOP is the top of the box (z = 10, normal +Z): a positive turn about the Y axis
+    // takes its centre (5, 5, 10) down and across, into the box.
+    const refs = { profiles: [TOP], axis: [Y] };
+    expect(proposal({ refs }, 90)).toBe('cut');
+    expect(proposal({ refs, toggles: { flip: true } }, 90)).toBe('join');
+    expect(proposal({ refs }, -90)).toBe('join');
+    expect(proposal({ refs, toggles: { flip: true } }, -90)).toBe('cut');
+    // A whole turn, symmetric and two-sided turns go both ways.
+    expect(proposal({ refs }, 360)).toBe('join');
+    expect(proposal({ refs, choices: { direction: 'symmetric' } }, 90)).toBe('join');
+    expect(proposal({ refs, choices: { direction: 'two-sides' } }, 90)).toBe('join');
+    // Without an axis the way isn't known: the join it always proposed. No angle, no proposal.
+    expect(proposal({ refs: { profiles: [TOP] } }, 90)).toBe('join');
+    expect(proposal({ refs }, undefined)).toBeUndefined();
+  });
+
+  it('treats a profile sketched on a face like the face (P2-09, P3-08)', () => {
+    const { sketch, profile } = rectangleSketch();
+    const onFace: Feature = {
+      ...sketch,
+      inputs: sketchInputs(TOP, (sketch.inputs.sketch as { sketch: SketchData }).sketch),
+    };
+    const ctx = (angle: number): Pick<ManipulatorContext, 'value' | 'doc'> => ({
+      doc: context([onFace]).doc,
+      value: () => angle,
     });
-    expect(revolveDialog.propose?.(values({}), {} as never)).toBeUndefined();
+    const op = (over: Partial<DialogValues>, angle: number) =>
+      proposeRevolveOperation(
+        values({ refs: { profiles: [profile], axis: [Y] }, ...over }),
+        ctx(angle),
+      )?.choices?.operation;
+    // Drawn on a body's face the profile joins or cuts; on a plain plane it is a new body.
+    expect(op({}, 360)).toBe('join');
+    expect(['join', 'cut']).toContain(op({}, 90));
+    const plain = { ...ctx(90), doc: context([sketch]).doc };
+    expect(proposeRevolveOperation(values({ refs: { profiles: [profile] } }), plain)).toEqual({
+      choices: { operation: 'new-body' },
+    });
   });
 
   it('fills the profiles and the axis from what was selected before Revolve', () => {

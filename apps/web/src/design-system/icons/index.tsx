@@ -62,6 +62,8 @@ export const ICON_NAMES = [
   'fillet',
   'chamfer',
   'shell',
+  'press-pull',
+  'offset-face',
   'remove',
   'combine',
   'box',

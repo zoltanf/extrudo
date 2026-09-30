@@ -117,6 +117,29 @@ export class ShellError extends KernelError {
 /** Which side of a body's surface the walls of a shell are built on. */
 export type ShellSide = 'inside' | 'outside';
 
+/** Why moving faces failed (P3-08, ADR-0051): the facade's diagnosis. */
+export type OffsetFaceProblem =
+  /** The distance is too large for the body; `max` is the largest that works (mm, a magnitude). */
+  | { kind: 'too-far'; max: number }
+  /** OCCT can't offset these faces at any distance worth trying. */
+  | { kind: 'unoffsettable' }
+  /** The shape isn't a solid. */
+  | { kind: 'not-solid' }
+  /** The solid has an inner void (more than one shell). */
+  | { kind: 'void' }
+  | { kind: 'other' };
+
+/** An offset OCCT couldn't build, with its diagnosis. */
+export class OffsetFaceError extends KernelError {
+  override name = 'OffsetFaceError';
+  constructor(
+    message: string,
+    readonly problems: readonly OffsetFaceProblem[],
+  ) {
+    super(message);
+  }
+}
+
 export interface OperationResult {
   shape: ShapeHandle;
   history: HistoryRecord[];
@@ -280,6 +303,39 @@ export class Kernel {
       );
     }
     return this.#withHistory(handle);
+  }
+
+  /**
+   * Moves faces of a solid (P3-08): each of `faces` (indices into the
+   * shape's face list) by `distance` mm along its outward normal (positive
+   * grows the body there, negative cuts into it), the faces next to them
+   * extended or trimmed to follow. OCCT moves the faces that run smoothly
+   * into a picked one with it (`tangentFaces`). A failure is an
+   * `OffsetFaceError` with the facade's diagnosis. History: input 0; every
+   * face generates its offset image, a face the offset swallows is deleted.
+   */
+  offsetFaces(shape: ShapeHandle, faces: readonly number[], distance: number): OperationResult {
+    const f = this.#facade;
+    f.clearArgs();
+    for (const face of faces) f.pushArg(face);
+    const handle = f.offsetFaces(shape, distance);
+    if (handle === 0) {
+      throw new OffsetFaceError(
+        f.lastError() || 'The offset failed.',
+        decodeOffsetFaceProblems(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize())),
+      );
+    }
+    return this.#withHistory(handle);
+  }
+
+  /**
+   * The faces (indices) of the smooth chain around `face`, the face
+   * included: the faces `offsetFaces` moves together with it.
+   */
+  tangentFaces(shape: ShapeHandle, face: number): number[] {
+    const f = this.#facade;
+    if (f.tangentFaces(shape, face) < 0) throw new KernelError(f.lastError() || 'Unknown face.');
+    return Array.from(this.#copy(Int32Array, f.lookupPtr(), f.lookupSize()));
   }
 
   /** `target` minus `tool`. History: input 0 is the target, 1 the tool. */
@@ -813,6 +869,23 @@ export function decodeShellProblems(v: Float64Array): ShellProblem[] {
       return [{ kind: 'not-solid' }];
     case 6:
       return [{ kind: 'tangent', face: Math.round(value) }];
+    default:
+      return [{ kind: 'other' }];
+  }
+}
+
+/** Decodes the facade's offset diagnosis: [status, value]. */
+export function decodeOffsetFaceProblems(v: Float64Array): OffsetFaceProblem[] {
+  if (v.length < 2) return [{ kind: 'other' }];
+  switch (v[0]) {
+    case 1:
+      return [{ kind: 'too-far', max: v[1] as number }];
+    case 2:
+      return [{ kind: 'unoffsettable' }];
+    case 3:
+      return [{ kind: 'not-solid' }];
+    case 4:
+      return [{ kind: 'void' }];
     default:
       return [{ kind: 'other' }];
   }

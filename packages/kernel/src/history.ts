@@ -5,6 +5,9 @@
 
 export type SubShapeKind = 'face' | 'edge' | 'vertex';
 
+/** What a tangent chain is made of: edges (fillet, chamfer) or faces (offset face). */
+export type SmoothKind = 'edge' | 'face';
+
 /** Kinds in the facade's numeric order (0 = face, 1 = edge, 2 = vertex). */
 export const SUB_SHAPE_KINDS: readonly SubShapeKind[] = ['face', 'edge', 'vertex'];
 

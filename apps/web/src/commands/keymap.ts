@@ -33,6 +33,8 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   // Solid (these tools arrive in Phases 2 and 3)
   extrude: ['E'],
   fillet: ['F'],
+  // Press Pull (P3-08): Fusion's key.
+  pressPull: ['Q'],
   hole: ['H'],
   // Transform and combine bodies (P3-06): M is Move in the model, Sketch Move in a sketch.
   move: ['M'],

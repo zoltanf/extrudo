@@ -16,13 +16,12 @@ import {
   type ExtrudeOperation,
   extrudeFeature,
   type GeomRef,
-  parseProfileRefId,
-  readSketch,
   type Vec3,
 } from '@extrudo/core';
 import type { PreviewToolStyle } from '@extrudo/kernel';
 import { type Frame, faceFrame, meanFrame, profileFrame } from './geometry';
 import { along, cross } from './manipulate';
+import { proposeSweep, type Travel } from './operation';
 import {
   type DialogContext,
   type DialogValues,
@@ -176,37 +175,37 @@ export const extrudeDialog = defineFeatureDialog({
 });
 
 /**
- * The press-pull rule (ADR-0028): profiles make a new body; flat faces
- * join when side 1 goes out of their body (along the face's outward
- * normal) and cut when it goes in (a negative distance or flip; through
- * all goes in only when flipped). A symmetric extrude goes both ways and
- * joins; to-object and an invalid distance propose nothing. The framework
- * applies it only while the user hasn't picked an operation. A profile of a
- * sketch on a body's face (P2-09) counts as that face: drawn on a lid and
- * pushed in, it cuts.
+ * The press-pull rule (ADR-0028, unified in `operation.ts`, ADR-0051):
+ * profiles make a new body; flat faces, and profiles of a sketch on a body's
+ * face (P2-09), join when side 1 goes out of their body (along the face's
+ * outward normal) and cut when it goes in (a negative distance or flip;
+ * through all goes in only when flipped). A symmetric or two-sided extrude
+ * goes both ways and joins; to-object and an invalid distance propose
+ * nothing. The framework applies it only while the user hasn't picked an
+ * operation.
  */
 export function proposeOperation(
   values: DialogValues,
   ctx: Pick<ManipulatorContext, 'value'> & Partial<Pick<ManipulatorContext, 'doc'>>,
 ): Partial<DialogValues> | undefined {
-  const refs = values.refs.profiles ?? [];
-  if (refs.length === 0) return undefined;
-  const operation = (op: ExtrudeOperation) => ({ choices: { operation: op } });
-  const onFace = (ref: GeomRef) => {
-    const sketch = ref.kind === 'profile' ? parseProfileRefId(ref.id)?.feature : undefined;
-    const feature = sketch && ctx.doc?.features.find((f) => f.id === sketch);
-    return (feature && readSketch(feature)?.plane.kind) === 'face';
-  };
-  if (!refs.some((r) => r.kind === 'face' || onFace(r))) return operation('new-body');
-  if (values.choices.direction === 'symmetric') return operation('join');
+  const operation = proposeSweep(values.refs.profiles ?? [], extrudeTravel(values, ctx), ctx.doc);
+  return operation ? { choices: { operation } } : undefined;
+}
+
+/** Which way side 1 of the extrude leaves its faces: out of the body, into it, or both ways. */
+export function extrudeTravel(
+  values: DialogValues,
+  ctx: Pick<ManipulatorContext, 'value'>,
+): Travel | undefined {
+  if (values.choices.direction === 'symmetric' || twoSides(values)) return 'both';
   const flip = values.toggles.flip === true ? -1 : 1;
   switch (extentOf(values, 1)) {
     case 'through-all':
-      return operation(flip > 0 ? 'join' : 'cut');
+      return flip > 0 ? 'out' : 'in';
     case 'distance': {
       const distance = ctx.value('distance');
       if (distance === undefined || distance === 0) return undefined;
-      return operation(distance * flip > 0 ? 'join' : 'cut');
+      return distance * flip > 0 ? 'out' : 'in';
     }
     default:
       return undefined;
