@@ -96,6 +96,23 @@ brief, voice) is in **`05-brand.md`**. In short:
   points in the view. Three or more: totals. Always the bounding box.
   Values are in the document's unit and precision and can be selected
   to copy.
+- **Section Analysis** (P3-09, ADR-0045): Solid › Inspect, `Shift+S`, the
+  context list's "Section Here" on a flat face. A panel in the same
+  corner as Measure (Esc or Done closes it; the section stays). A new
+  section asks for a plane: click an origin plane, a construction plane
+  or a flat face in the view, or a button in the panel (a flat face
+  selected beforehand is taken at once). The model is then cut away on
+  the side the arrow points to, through the middle of the part, and the
+  cut is filled with the body's colour tinted teal and hatched. The panel
+  has the plane ("Change"), the Offset (an expression field), Flip and
+  "Show section"; the arrow's handle in the view drags the offset, with
+  the same snapping as a dialog's arrows. Faces, edges and silhouettes
+  are clipped, the grid, origin and sketches aren't; a click passes
+  through what is cut away and is stopped by the cap. The section is view
+  state, not part of the design: it is not saved, not undone, and stays
+  while the model is edited. The browser's Analysis folder lists it (click
+  to edit; the eye turns it off and on; the menu removes it). Sketch mode
+  draws the model without it.
 - **Tool groups:** each group shows 3–6 most-used tools as buttons plus a
   dropdown with the full list. Users can pin tools to the toolbar.
 - **Browser (left):** collapsible tree with an eye toggle per item and
@@ -468,7 +485,8 @@ Fusion-compatible where Fusion has them; remappable in settings.
 
 Shift+1…7 are Home, Top, Bottom, Front, Back, Left, Right, by key
 position (they work on any layout). The keys live in one table,
-`apps/web/src/commands/keymap.ts`; P is Project (P2-09); Q and J wait for their tools.
+`apps/web/src/commands/keymap.ts`; P is Project (P2-09); Shift+S is Section
+Analysis (P3-09); Q and J wait for their tools.
 
 ## 6. Home screen
 

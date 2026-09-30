@@ -2,10 +2,19 @@ import type { BodyId, BodyMeta, SelectionItem } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { BufferAttribute, BufferGeometry, Color, GreaterDepth, type Material } from 'three';
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  GreaterDepth,
+  type Material,
+  Plane,
+  Vector3,
+} from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import type { SectionClip } from '../section/clip';
 import {
   type BodyHighlight,
   bodyHighlight,
@@ -15,8 +24,9 @@ import {
   vertexPositions,
 } from '../selection/highlight';
 import { boundsOf, edgeSegments } from './bodyGeometry';
-import type { Rgba } from './colors';
+import { capColors, type Rgba } from './colors';
 import { createDotMaterial } from './dots';
+import { SectionCap } from './SectionCap';
 import {
   curvedFaces,
   type SilhouetteView,
@@ -33,7 +43,9 @@ import type { Bounds, VisualStyle } from './store';
  * are drawn over the body in the accent (P2-03, ADR-0026). Vertices only
  * show as dots while hovered or selected. Bodies take their stored colour
  * and opacity; in the wireframe and hidden-edge styles, curved faces show
- * their silhouette for the current camera (P2-08, ADR-0030).
+ * their silhouette for the current camera (P2-08, ADR-0030). A section
+ * analysis (P3-09, ADR-0045) clips faces, edges and silhouettes with a
+ * clipping plane on their materials and caps the cut (`SectionCap`).
  */
 
 export interface BodiesProps {
@@ -51,6 +63,22 @@ export interface BodiesProps {
   onBounds(bounds: Bounds | undefined): void;
   /** Silhouette segments drawn per body, after each change (tests read the total). */
   onSilhouettes?(body: BodyId, segments: number): void;
+  /** A section analysis (P3-09): what lies on the clip's side is not drawn, and the cut is capped. */
+  section?: { clip: SectionClip; color: Rgba; hatch: Rgba };
+}
+
+/** The clipping plane as three.js keeps it: it keeps what lies on its normal's side. */
+export function clipPlanes(clip: SectionClip | undefined): Plane[] | undefined {
+  if (!clip) return undefined;
+  const n = new Vector3(-clip.normal[0], -clip.normal[1], -clip.normal[2]);
+  return [
+    new Plane(
+      n,
+      clip.normal[0] * clip.origin[0] +
+        clip.normal[1] * clip.origin[1] +
+        clip.normal[2] * clip.origin[2],
+    ),
+  ];
 }
 
 const NO_SELECTION: readonly SelectionItem[] = [];
@@ -66,6 +94,7 @@ export function Bodies({
   selection = NO_SELECTION,
   onBounds,
   onSilhouettes,
+  section,
 }: BodiesProps) {
   const shown = useMemo(
     () =>
@@ -74,8 +103,10 @@ export function Bodies({
   );
   const bounds = useMemo(() => boundsOf(shown.map(([, mesh]) => mesh)), [shown]);
   useEffect(() => onBounds(bounds), [bounds, onBounds]);
+  const clip = section?.clip;
+  const planes = useMemo(() => clipPlanes(clip), [clip]);
 
-  return shown.map(([id, mesh]) => (
+  return shown.map(([id, mesh], index) => (
     <Body
       key={id}
       id={id}
@@ -87,6 +118,7 @@ export function Bodies({
       accent={highlight}
       marks={bodyHighlight(id, mesh, hover, selection)}
       onSilhouettes={onSilhouettes}
+      {...(section && planes && { section: { ...section, planes, order: 10 + 3 * index } })}
     />
   ));
 }
@@ -106,6 +138,7 @@ function Body({
   accent,
   marks,
   onSilhouettes,
+  section,
 }: {
   id: BodyId;
   mesh: BodyMesh;
@@ -117,7 +150,9 @@ function Body({
   accent: Rgba;
   marks: BodyHighlight;
   onSilhouettes?(body: BodyId, segments: number): void;
+  section?: { clip: SectionClip; color: Rgba; hatch: Rgba; planes: Plane[]; order: number };
 }) {
+  const planes = section?.planes ?? null;
   const faces = useMemo(() => {
     const g = new BufferGeometry();
     g.setAttribute('position', new BufferAttribute(mesh.positions, 3));
@@ -163,6 +198,9 @@ function Body({
   visibleEdges.opacity = edge.a;
   hiddenEdges.color = edgeColor;
   hiddenEdges.opacity = edge.a * 0.35;
+  // The edges and silhouettes are clipped like the faces (P3-09).
+  visibleEdges.clippingPlanes = planes;
+  hiddenEdges.clippingPlanes = planes;
 
   const showFaces = style !== 'wireframe';
   const showEdges = style !== 'shaded';
@@ -184,8 +222,19 @@ function Body({
             opacity={opacity}
             // A see-through body doesn't hide what is behind it.
             depthWrite={opacity >= 1}
+            clippingPlanes={planes}
           />
         </mesh>
+      )}
+      {showFaces && section && (
+        <SectionCap
+          faces={faces}
+          mesh={mesh}
+          clip={section.clip}
+          planes={section.planes}
+          {...capColors(body, section.color, section.hatch)}
+          order={section.order}
+        />
       )}
       {showEdges && <primitive object={edgeLines} />}
       {style === 'hiddenEdges' && <primitive object={hiddenLines} />}
@@ -198,8 +247,15 @@ function Body({
           onCount={onSilhouettes}
         />
       )}
-      <EdgeMarks mesh={mesh} edges={marks.selectedEdges} color={accent} width={3} />
-      <EdgeMarks mesh={mesh} edges={marks.hoverEdges} color={accent} width={2.5} over />
+      <EdgeMarks mesh={mesh} edges={marks.selectedEdges} color={accent} width={3} planes={planes} />
+      <EdgeMarks
+        mesh={mesh}
+        edges={marks.hoverEdges}
+        color={accent}
+        width={2.5}
+        over
+        planes={planes}
+      />
       <VertexMarks mesh={mesh} vertices={marks.selectedVertices} color={accent} />
       <VertexMarks mesh={mesh} vertices={marks.hoverVertices} color={accent} />
     </group>
@@ -306,11 +362,13 @@ function EdgeMarks({
   color,
   width,
   over = false,
+  planes,
 }: {
   mesh: BodyMesh;
   edges: readonly number[];
   color: Rgba;
   width: number;
+  planes: Plane[] | null;
   /** Drawn over everything, so a hidden edge offered by "Select other…" shows. */
   over?: boolean;
 }) {
@@ -335,6 +393,7 @@ function EdgeMarks({
   if (!line) return null;
   line.material.color = new Color().setRGB(color.r, color.g, color.b, 'srgb');
   line.material.opacity = color.a;
+  line.material.clippingPlanes = planes;
   return <primitive object={line} />;
 }
 

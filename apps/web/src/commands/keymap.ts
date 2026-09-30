@@ -41,6 +41,8 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   axisThroughPoints: ['Shift+A'],
   constructionPoint: ['Shift+X'],
   measure: ['I'],
+  // Section Analysis (P3-09): Fusion has no default for it.
+  section: ['Shift+S'],
   // View: F6 is Fusion's; Shift+1…7 are ours.
   fit: ['F6'],
   viewHome: ['Shift+1'],

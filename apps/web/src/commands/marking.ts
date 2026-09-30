@@ -116,6 +116,7 @@ export const NOT_REPEATABLE: ReadonlySet<string> = new Set([
   'exportSketch',
   'sketch',
   'measure',
+  'section',
 ]);
 
 /** Whether running the tool `id` counts as "the last command" for Repeat last. */

@@ -80,6 +80,7 @@ export const ICON_NAMES = [
   'axis-edge',
   'axis',
   'measure',
+  'section',
   'insert-svg',
   'export',
   'place-on-bed',

@@ -40,6 +40,7 @@ function input(over: Partial<ContextInput> = {}): ContextInput {
     selection: [],
     commands: [
       cmd('sketch'),
+      cmd('section'),
       cmd('measure'),
       cmd('delete'),
       cmd('redo'),
@@ -91,10 +92,11 @@ describe('the overflow list in the model', () => {
     expect(fit).toHaveBeenCalled();
   });
 
-  it('adds Sketch on Face, Measure and the body entries for a face', () => {
+  it('adds Sketch on Face, Section Here, Measure and the body entries for a face', () => {
     const i = input({ selection: [item('face', 'B:0:3')] });
     expect(ids(i)).toEqual([
       'sketchOnFace',
+      'sectionHere',
       'measure',
       'hideBody',
       'appearance',
@@ -109,11 +111,16 @@ describe('the overflow list in the model', () => {
     const sketch = i.commands.find((c) => c.id === 'sketch');
     find(i, 'sketchOnFace')?.onSelect();
     expect(sketch?.run).toHaveBeenCalled();
+    // Section Here runs Section Analysis, which cuts at the selected face (P3-09).
+    const section = i.commands.find((c) => c.id === 'section');
+    find(i, 'sectionHere')?.onSelect();
+    expect(section?.run).toHaveBeenCalled();
   });
 
   it('offers no Sketch on Face for two faces, or for an edge', () => {
     const two = input({ selection: [item('face', 'B:0:1'), item('face', 'B:0:2')] });
     expect(ids(two)).not.toContain('sketchOnFace');
+    expect(ids(two)).not.toContain('sectionHere');
     expect(ids(two)).toContain('measure');
     expect(ids(input({ selection: [item('edge', 'B:0:1')] }))).not.toContain('sketchOnFace');
   });

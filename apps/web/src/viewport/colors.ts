@@ -40,6 +40,10 @@ export interface SceneColors {
   previewJoin: Rgba;
   previewCut: Rgba;
   previewIntersect: Rgba;
+  /** The cap on a section analysis' cut (P3-09): the Inspect category's teal. */
+  section: Rgba;
+  /** The hatch lines on the cap: `ink`, which contrasts with the fill in both themes. */
+  sectionHatch: Rgba;
 }
 
 const TOKENS: Record<keyof SceneColors, string> = {
@@ -62,6 +66,8 @@ const TOKENS: Record<keyof SceneColors, string> = {
   previewJoin: '--x-preview-join',
   previewCut: '--x-preview-cut',
   previewIntersect: '--x-preview-intersect',
+  section: '--x-cat-inspect',
+  sectionHatch: '--x-ink',
 };
 
 const FALLBACK: Rgba = { r: 0.5, g: 0.5, b: 0.5, a: 1 };
@@ -89,6 +95,22 @@ export function parseCssColor(text: string): Rgba | undefined {
   const [r, g, b, a] = [...parts.slice(0, 3).map(channel), alpha(parts[3])];
   if ([r, g, b, a].some((x) => x === undefined || Number.isNaN(x))) return undefined;
   return { r: r as number, g: g as number, b: b as number, a: a as number };
+}
+
+/**
+ * The cap of a section on a body (P3-09): the body's own colour pulled towards the section
+ * teal, so caps tell the bodies apart and still read as one kind of thing, and the hatch
+ * lines in `ink` over it at a fraction of their strength. sRGB, 0…1.
+ */
+export function capColors(body: Rgba, section: Rgba, ink: Rgba): { fill: Rgba; hatch: Rgba } {
+  const mix = (a: Rgba, b: Rgba, t: number): Rgba => ({
+    r: a.r + (b.r - a.r) * t,
+    g: a.g + (b.g - a.g) * t,
+    b: a.b + (b.b - a.b) * t,
+    a: 1,
+  });
+  const fill = mix(body, section, 0.55);
+  return { fill, hatch: mix(fill, ink, 0.45) };
 }
 
 /** Reads the scene colours from the tokens on <html>. */

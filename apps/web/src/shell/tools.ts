@@ -551,6 +551,14 @@ export const TOOLS = {
     category: 'inspect',
     hint: 'Distances, angles, areas and volumes. Pick one thing, or two to measure between.',
   },
+  section: {
+    id: 'section',
+    label: 'Section Analysis',
+    short: 'Section',
+    icon: 'section',
+    category: 'inspect',
+    hint: 'Cut the view through a plane, with the cut filled in. Look inside without changing the model.',
+  },
   insertSvg: {
     id: 'insertSvg',
     label: 'Insert SVG',
@@ -635,7 +643,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
           'axisAlongEdge',
         ],
       },
-      { label: 'Inspect', tools: ['measure'] },
+      { label: 'Inspect', tools: ['measure', 'section'] },
     ],
   },
   {

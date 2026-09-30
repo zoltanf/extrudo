@@ -157,7 +157,7 @@ describe('Repeat last', () => {
     for (const id of ['line', 'rectangle', 'extrude', 'fillet', 'dimension', 'trim', 'box']) {
       expect(isRepeatable(id)).toBe(true);
     }
-    for (const id of ['finishSketch', 'parameters', 'export', 'sketch', 'measure']) {
+    for (const id of ['finishSketch', 'parameters', 'export', 'sketch', 'measure', 'section']) {
       expect(isRepeatable(id)).toBe(false);
     }
   });

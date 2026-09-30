@@ -72,6 +72,19 @@ export interface BrowserPanelProps {
   onPickBody?(id: BodyId, toggle: boolean): void;
   /** The pointer on a body's row (`undefined` when it leaves): the view highlights the body. */
   onHoverBody?(id: BodyId | undefined): void;
+  /**
+   * The section analysis (P3-09), while there is one: an Analysis folder with its row. The eye
+   * clips the view or not, a click opens the panel, the menu removes it.
+   */
+  section?: {
+    label: string;
+    on: boolean;
+    /** The panel is open. */
+    active: boolean;
+    onToggle(): void;
+    onEdit(): void;
+    onRemove(): void;
+  };
 }
 
 /**
@@ -99,6 +112,7 @@ export function BrowserPanel({
   selectedBodies = NO_BODIES,
   onPickBody,
   onHoverBody,
+  section,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
@@ -258,6 +272,42 @@ export function BrowserPanel({
                 ))
               )}
             </Folder>
+            {section && (
+              <Folder
+                label="Analysis"
+                icon={<ToolIcon name="section" category="inspect" size={16} />}
+                eye={{ visible: section.on, onToggle: section.onToggle }}
+              >
+                <ContextMenu
+                  label="Section menu"
+                  trigger={
+                    <Leaf active={section.active} data-section-row={section.on ? 'on' : 'off'}>
+                      <button
+                        type="button"
+                        onClick={section.onEdit}
+                        className={`min-w-0 flex-1 truncate text-left ${section.on ? '' : 'text-muted'}`}
+                      >
+                        {section.label}
+                      </button>
+                      <EyeToggle name="section" visible={section.on} onToggle={section.onToggle} />
+                    </Leaf>
+                  }
+                >
+                  <MenuItem icon={<Pencil size={14} />} onSelect={section.onEdit}>
+                    Edit
+                  </MenuItem>
+                  <MenuItem
+                    icon={section.on ? <EyeOff size={14} /> : <Eye size={14} />}
+                    onSelect={section.onToggle}
+                  >
+                    {section.on ? 'Hide' : 'Show'}
+                  </MenuItem>
+                  <MenuItem icon={<Trash2 size={14} />} onSelect={section.onRemove}>
+                    Remove
+                  </MenuItem>
+                </ContextMenu>
+              </Folder>
+            )}
             <Folder
               label="Bodies"
               icon={<Box size={14} />}

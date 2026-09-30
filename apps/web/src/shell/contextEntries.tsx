@@ -5,7 +5,7 @@
  * entries reuse the commands (`buildCommands`), `BodyActions`,
  * `FeatureActions` and the viewport store, and add no logic of their own.
  *
- * Model: a face, edge or vertex (Sketch on Face, Measure), its body (Hide,
+ * Model: a face, edge or vertex (Sketch on Face, Section Here, Measure), its body (Hide,
  * Appearance, Export, Delete), a sketch curve or profile (Edit Sketch,
  * Hide Sketch); empty space (Fit, Home View, projection, Redo, Show All
  * Bodies), a construction plane, axis or point (Edit, Hide/Show, Delete;
@@ -36,6 +36,7 @@ import {
   Repeat2,
   Ruler,
   ScanEye,
+  ScissorsLineDashed,
   SquareDashedMousePointer,
   Trash2,
   X,
@@ -192,6 +193,15 @@ function modelGroups(input: ContextInput): MarkingEntry[][] {
       commandEntry(input, 'sketch', 'Sketch on Face', {
         id: 'sketchOnFace',
         icon: icon(<SquareDashedMousePointer {...small} />),
+      }),
+    );
+  }
+  if (faces.length === 1 && selection.length === 1) {
+    // Section Analysis cuts the view at a flat face selected beforehand (P3-09).
+    geometry.push(
+      commandEntry(input, 'section', 'Section Here', {
+        id: 'sectionHere',
+        icon: icon(<ScissorsLineDashed {...small} />),
       }),
     );
   }

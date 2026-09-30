@@ -1,6 +1,13 @@
 import type { BodyMesh, PreviewToolStyle } from '@extrudo/kernel';
 import { useEffect, useMemo } from 'react';
-import { BufferAttribute, BufferGeometry, Color, FrontSide, MeshBasicMaterial } from 'three';
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  FrontSide,
+  MeshBasicMaterial,
+  type Plane,
+} from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
@@ -13,16 +20,20 @@ import type { Rgba, SceneColors } from './colors';
  * tools (or the bodies it changed) as translucent ghosts over the model,
  * coloured by what they do: new bodies in the preview blue, joins green,
  * cuts red, intersections violet. They are drawn through the bodies (no
- * depth test), so a cut inside a part shows where it removes material.
+ * depth test), so a cut inside a part shows where it removes material. A
+ * section analysis clips them like the bodies (P3-09).
  * The model's bodies stay underneath, drawn and picked as usual. A dimmed
  * preview (invalid input, a failing draft) is fainter.
  */
 export function PreviewShapes({
   preview,
   colors,
+  planes = null,
 }: {
   preview: ViewPreview | undefined;
   colors: SceneColors;
+  /** The section's clipping plane, when the view is clipped. */
+  planes?: Plane[] | null;
 }) {
   if (!preview) return null;
   return preview.shapes.map((shape, i) => (
@@ -32,6 +43,7 @@ export function PreviewShapes({
       mesh={shape.mesh}
       color={styleColor(shape.style, colors)}
       dimmed={preview.dimmed}
+      planes={planes}
     />
   ));
 }
@@ -49,7 +61,17 @@ export function styleColor(style: PreviewToolStyle, colors: SceneColors): Rgba {
   }
 }
 
-function PreviewShape({ mesh, color, dimmed }: { mesh: BodyMesh; color: Rgba; dimmed: boolean }) {
+function PreviewShape({
+  mesh,
+  color,
+  dimmed,
+  planes,
+}: {
+  mesh: BodyMesh;
+  color: Rgba;
+  dimmed: boolean;
+  planes: Plane[] | null;
+}) {
   const faces = useMemo(() => {
     const g = new BufferGeometry();
     g.setAttribute('position', new BufferAttribute(mesh.positions, 3));
@@ -102,6 +124,8 @@ function PreviewShape({ mesh, color, dimmed }: { mesh: BodyMesh; color: Rgba; di
   fill.opacity = color.a * fade;
   lines.color = rgb;
   lines.opacity = Math.min(1, color.a * 2.2) * fade;
+  fill.clippingPlanes = planes;
+  lines.clippingPlanes = planes;
   if (outline) outline.renderOrder = 9;
   return (
     <group>

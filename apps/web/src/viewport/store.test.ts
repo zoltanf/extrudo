@@ -167,6 +167,43 @@ describe('selection filter', () => {
   });
 });
 
+describe('section analysis', () => {
+  const plane = { kind: 'plane', id: 'origin:xy' } as const;
+
+  it('is view state: none at first, edited in parts, kept when turned off, never a preference', () => {
+    const { store, preferences } = setup();
+    expect(store.getState().section).toBeUndefined();
+    // Nothing to edit yet.
+    store.getState().updateSection({ on: false });
+    expect(store.getState().section).toBeUndefined();
+
+    store.getState().setSection({ plane, offset: '20 mm', flip: false, on: true });
+    store.getState().updateSection({ flip: true });
+    store.getState().updateSection({ offset: '5 mm' });
+    expect(store.getState().section).toEqual({ plane, offset: '5 mm', flip: true, on: true });
+
+    // Off and on again picks up where it was.
+    store.getState().updateSection({ on: false });
+    expect(store.getState().section).toEqual({ plane, offset: '5 mm', flip: true, on: false });
+    store.getState().updateSection({ on: true });
+    expect(store.getState().section?.offset).toBe('5 mm');
+
+    expect(JSON.stringify(preferences.get('viewport', {}))).not.toContain('offset');
+    store.getState().setSection(undefined);
+    expect(store.getState().section).toBeUndefined();
+  });
+
+  it('is not touched by the camera or the display settings', () => {
+    const { store } = setup();
+    store.getState().setSection({ plane, offset: '1 mm', flip: false, on: true });
+    const section = store.getState().section;
+    store.getState().setProjection('orthographic');
+    store.getState().setVisualStyle('wireframe');
+    store.getState().home(true);
+    expect(store.getState().section).toBe(section);
+  });
+});
+
 describe('gridStep', () => {
   it('snaps to the finest grid level at least 12 px wide, never below 1 mm', () => {
     expect(gridStep(0.01)).toBe(1);

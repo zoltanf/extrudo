@@ -49,6 +49,9 @@ import type { Autosaver } from '../project/autosave';
 import { VersionsDialog } from '../project/VersionsDialog';
 import type { VersionContext } from '../project/versions';
 import { navigate, projectHref } from '../routes';
+import { SectionOverlay } from '../section/SectionOverlay';
+import { SectionPanel } from '../section/SectionPanel';
+import { planeName, SECTION_TOOL, useSection } from '../section/useSection';
 import { readTopology, sketchEntityIdsIn } from '../selection/items';
 import { useModelSelection } from '../selection/useModelSelection';
 import { useBodiesBefore } from '../sketch/baseBodies';
@@ -201,6 +204,7 @@ export function AppShell({
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
   const projecting = mode === 'sketch' && activeTool === PROJECT_TOOL;
   const measuring = mode === 'model' && activeTool === MEASURE_TOOL;
+  const sectioning = mode === 'model' && activeTool === SECTION_TOOL;
   const showConstraints = useStore(viewport, (s) => s.sketchConstraints);
   const showDimensions = useStore(viewport, (s) => s.sketchDimensions);
   const showProfiles = useStore(viewport, (s) => s.sketchProfiles);
@@ -294,6 +298,31 @@ export function AppShell({
     const names = new Map(bodyList.map((b) => [b.id, b.meta.name]));
     return (id: BodyId) => names.get(id);
   }, [bodyList]);
+  // Section analysis (P3-09): a clipping plane over the model, view state kept in the viewport
+  // store. The tool's panel and arrow are open while `sectioning`; the section outlasts them.
+  const section = useSection({
+    session,
+    viewport,
+    doc,
+    bodies,
+    construction: constructionReports,
+    kernel,
+    notify,
+    active: sectioning,
+    model: mode === 'model',
+    hover,
+  });
+  const sectionPlane = section.state
+    ? planeName(section.state.plane, {
+        construction: (id) => doc.features.find((f) => f.id === id)?.name,
+        faceBody: (face) => {
+          const found = (Object.entries(bodies) as [BodyId, BodyMesh][]).find(([, mesh]) =>
+            mesh.faceIds?.includes(face),
+          );
+          return found && bodyName(found[0]);
+        },
+      })
+    : 'Plane';
   bodyListRef.current = bodyList;
   const bodyActions = useMemo(
     () => ({
@@ -531,7 +560,9 @@ export function AppShell({
             { keys: 'Enter', run: () => host.enter() },
           ]
         : []),
-      ...(measuring ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }] : []),
+      ...(measuring || sectioning
+        ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }]
+        : []),
       // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
       // the selection (P2-03).
       ...(mode === 'model' && !picking
@@ -565,6 +596,7 @@ export function AppShell({
       picking,
       projecting,
       measuring,
+      sectioning,
       mode,
       drawing,
       host,
@@ -575,6 +607,13 @@ export function AppShell({
   );
   useShortcuts(shortcuts);
 
+  /** Opens the Section Analysis panel on the section as it is (the browser's row). */
+  const openSection = () => {
+    if (mode !== 'model') return;
+    if (picking) cancelCreateSketch(stores);
+    dialog?.cancel();
+    session.getState().setTool(SECTION_TOOL);
+  };
   const run = (tool: ToolId) => {
     if (isRepeatable(tool)) setLastTool(tool);
     // A feature dialog's command opens it (P2-05); another tool (not Parameters) ends it.
@@ -582,7 +621,7 @@ export function AppShell({
     if (spec) {
       if (mode === 'model') {
         if (picking) cancelCreateSketch(stores);
-        if (measuring) session.getState().setTool(undefined);
+        if (measuring || sectioning) session.getState().setTool(undefined);
         dialog?.start(spec.type);
       }
       return;
@@ -615,6 +654,16 @@ export function AppShell({
         if (picking) cancelCreateSketch(stores);
         session.getState().setTool(MEASURE_TOOL);
       }
+    } else if (tool === SECTION_TOOL) {
+      if (mode !== 'model') return;
+      if (picking) cancelCreateSketch(stores);
+      // A flat face selected in the model takes the section at once, like Create Sketch (P3-09).
+      const selected = session.getState().selection;
+      const face = selected.length === 1 ? selected[0] : undefined;
+      if (face && readTopology(face)?.kind === 'face') {
+        session.getState().setTool(SECTION_TOOL);
+        void section.pickFace(face);
+      } else session.getState().setTool(sectioning ? undefined : SECTION_TOOL);
     } else if (tool === 'exportSketch' && activeSketchId) {
       // Profiles selected in the open sketch are offered first (P1-13).
       featureActions.exportSketch(activeSketchId);
@@ -638,7 +687,7 @@ export function AppShell({
   const stopCommand = () => {
     if (picking) cancelCreateSketch(stores);
     else if (drawing) host?.stop();
-    else if (projecting || measuring) session.getState().setTool(undefined);
+    else if (projecting || measuring || sectioning) session.getState().setTool(undefined);
   };
 
   /**
@@ -806,7 +855,7 @@ export function AppShell({
     featureActions,
     enabled:
       mode === 'model'
-        ? !picking && !dialogOpen && !projecting && !measuring
+        ? !picking && !dialogOpen && !projecting && !measuring && !section.choosing
         : !projecting && sketchPlane !== undefined,
     radial: markingStyle.radial,
     ...(runningTool && { runningTool }),
@@ -823,8 +872,9 @@ export function AppShell({
     () => (measuring && sessionSelect ? createMeasureSelect(session, sessionSelect) : undefined),
     [measuring, sessionSelect, session],
   );
-  const modelSelect =
-    dialogOpen && mode === 'model'
+  const modelSelect = section.choosing
+    ? undefined
+    : dialogOpen && mode === 'model'
       ? dialogPlanePick(dialog, dialogOpen)
         ? undefined
         : dialog?.select
@@ -909,8 +959,8 @@ export function AppShell({
               },
             }),
           }
-        : dialogPlanes,
-    [picking, hover, session, kernel, dialogPlanes],
+        : (section.planePicker ?? dialogPlanes),
+    [picking, hover, session, kernel, dialogPlanes, section.planePicker],
   );
 
   return (
@@ -928,7 +978,7 @@ export function AppShell({
         activeTool={
           picking
             ? 'sketch'
-            : drawing || projecting || measuring
+            : drawing || projecting || measuring || sectioning
               ? (activeTool as ToolId)
               : dialogOpen && typeof dialogOpen.spec.command === 'string'
                 ? dialogOpen.spec.command
@@ -963,6 +1013,16 @@ export function AppShell({
                 : undefined
             }
             onHoverBody={(id) => modelSelect?.onHover(id ? { kind: 'body', id } : undefined)}
+            {...(section.state && {
+              section: {
+                label: `Section · ${sectionPlane}`,
+                on: section.state.on,
+                active: sectioning,
+                onToggle: () => section.setOn(!section.state?.on),
+                onEdit: openSection,
+                onRemove: section.remove,
+              },
+            })}
             width={browser.size}
             collapsed={browser.collapsed}
             animate={browser.animate}
@@ -1000,13 +1060,14 @@ export function AppShell({
             planePicker={planePicker}
             construction={constructionDrawings}
             sketchInput={sketchInput}
-            commandRunning={drawing || picking || projecting || measuring}
+            commandRunning={drawing || picking || projecting || measuring || section.choosing}
             onStopCommand={stopCommand}
             hover={hover}
             selection={dialogItems ?? selection}
             modelSelect={modelSelect}
             preview={preview}
             viewMenu={viewMenu}
+            sectionClip={section.clip}
           >
             {dialogOpen && dialog && (
               <DialogOverlay
@@ -1015,6 +1076,9 @@ export function AppShell({
                 settings={doc.settings}
                 bodies={shownBodies}
               />
+            )}
+            {sectioning && (
+              <SectionOverlay tool={section} viewport={viewport} settings={doc.settings} />
             )}
             {measuring && inspection.inspection?.pair && (
               <MeasureOverlay
@@ -1091,6 +1155,17 @@ export function AppShell({
           />
         )}
         {dialog && <FeatureDialog controller={dialog} settings={doc.settings} />}
+        {sectioning && (
+          <SectionPanel
+            tool={section}
+            settings={doc.settings}
+            planeLabel={sectionPlane}
+            constructionPlanes={constructionDrawings
+              .filter((c) => c.report.kind === 'plane')
+              .map((c) => ({ id: c.id, name: c.name }))}
+            onClose={() => session.getState().setTool(undefined)}
+          />
+        )}
         {measuring && (
           <MeasurePanel
             state={inspection}

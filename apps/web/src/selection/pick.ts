@@ -35,6 +35,7 @@ import { pickEntity } from '@extrudo/sketch/inference';
 import { type Profile, profileAt } from '@extrudo/sketch/profiles';
 import { BufferAttribute, BufferGeometry, DoubleSide, Ray, Vector3 } from 'three';
 import { MeshBVH } from 'three-mesh-bvh';
+import { clipDistance, isClipped, type SectionClip } from '../section/clip';
 import {
   basis,
   cameraPosition,
@@ -119,6 +120,11 @@ export interface PickScene {
   points?: readonly PickPoint[];
   /** Faces are drawn (not wireframe), so they hide what is behind them. */
   occluding: boolean;
+  /**
+   * A section analysis (P3-09): what lies on the clipped side isn't drawn, so it is never
+   * picked, and the caps drawn on the cut hide what is behind them.
+   */
+  clip?: SectionClip;
 }
 
 export interface PickHit {
@@ -224,9 +230,48 @@ function hidden(e: Eye, scene: PickScene, x: number, y: number, z: number): bool
   const far = length - OCCLUSION_PX * perPixelAt(e, x, y, z);
   if (far <= 0) return false;
   for (const body of scene.bodies) {
-    if (indexOf(body.mesh).bvh.raycastFirst(ray, DoubleSide, 0, far)) return true;
+    if (keptHit(indexOf(body.mesh).bvh, ray, far, scene.clip)) return true;
   }
-  return false;
+  // A cap on the cut lies between the camera and the point.
+  return scene.clip !== undefined && capDepth(scene, ray, far) !== undefined;
+}
+
+/** Whether the ray meets a face within `far`, ignoring what a section clips away. */
+function keptHit(bvh: MeshBVH, ray: Ray, far: number, clip: SectionClip | undefined): boolean {
+  if (!clip) return bvh.raycastFirst(ray, DoubleSide, 0, far) !== null;
+  return bvh
+    .raycast(ray, DoubleSide, 0, far)
+    .some((hit) => !isClipped(clip, hit.point.x, hit.point.y, hit.point.z));
+}
+
+/**
+ * Where the ray meets the cap of a section within `far`, if it does (P3-09): the ray runs from
+ * the clipped side through the plane into a body, so the plane is covered there (the first face
+ * behind it is one seen from the inside). Undefined when nothing is capped along the ray.
+ */
+function capDepth(scene: PickScene, ray: Ray, far: number): number | undefined {
+  const clip = scene.clip;
+  if (!clip) return undefined;
+  const n = clip.normal;
+  const slope = -(ray.direction.x * n[0] + ray.direction.y * n[1] + ray.direction.z * n[2]);
+  const start = clipDistance(clip, ray.origin.x, ray.origin.y, ray.origin.z);
+  // Only a ray that starts on the clipped side and heads for the plane crosses it there.
+  if (start <= 0 || slope <= 1e-9) return undefined;
+  const t = start / slope;
+  if (t >= far) return undefined;
+  for (const body of scene.bodies) {
+    const hit = indexOf(body.mesh).bvh.raycastFirst(ray, DoubleSide, t + 1e-7, Infinity);
+    if (!hit || hit.faceIndex == null) continue;
+    const { normals, indices } = body.mesh;
+    const v = 3 * (indices[3 * hit.faceIndex] ?? 0);
+    const facing =
+      ray.direction.x * (normals[v] ?? 0) +
+      ray.direction.y * (normals[v + 1] ?? 0) +
+      ray.direction.z * (normals[v + 2] ?? 0);
+    // Leaving the solid: the ray was inside it when it crossed the plane.
+    if (facing > 0) return t;
+  }
+  return undefined;
 }
 
 // Pointer picking -----------------------------------------------------------------
@@ -245,6 +290,7 @@ function faceHits(e: Eye, scene: PickScene) {
     const { bvh, triangleFace } = indexOf(body.mesh);
     const nearest = new Map<number, number>();
     for (const hit of bvh.raycast(e.ray, DoubleSide)) {
+      if (scene.clip && isClipped(scene.clip, hit.point.x, hit.point.y, hit.point.z)) continue;
       const face = triangleFace[hit.faceIndex ?? 0] ?? 0;
       const seen = nearest.get(face);
       if (seen === undefined || hit.distance < seen) nearest.set(face, hit.distance);
@@ -292,6 +338,7 @@ function nearEdges(e: Eye, scene: PickScene): Near[] {
         const qz = az + u * vz;
         const dist = Math.hypot(o.x + s * d.x - qx, o.y + s * d.y - qy, o.z + s * d.z - qz);
         const px = dist / perPixelAt(e, qx, qy, qz);
+        if (scene.clip && isClipped(scene.clip, qx, qy, qz)) continue;
         if (px <= EDGE_PX && (!best || px < best.px)) {
           best = {
             item: topologyItem({ kind: 'edge', body: body.id, index: edge }),
@@ -318,7 +365,7 @@ function nearVertices(e: Eye, scene: PickScene): Near[] {
       const y = v[i + 1] ?? 0;
       const z = v[i + 2] ?? 0;
       const s = (x - o.x) * d.x + (y - o.y) * d.y + (z - o.z) * d.z;
-      if (s < 0) continue;
+      if (s < 0 || (scene.clip && isClipped(scene.clip, x, y, z))) continue;
       const dist = Math.hypot(o.x + s * d.x - x, o.y + s * d.y - y, o.z + s * d.z - z);
       const px = dist / perPixelAt(e, x, y, z);
       if (px <= VERTEX_PX) {
@@ -485,7 +532,13 @@ export function pickStack(
   if (camera.width <= 0 || camera.height <= 0) return [];
   const e = eyeFor(camera, at);
   const faces = faceHits(e, scene);
-  const front = scene.occluding ? faces[0]?.depth : undefined;
+  // A cap on the cut hides what lies behind it, as a face does.
+  const cap = scene.occluding ? capDepth(scene, e.ray, Infinity) : undefined;
+  const nearest = faces[0]?.depth;
+  const front =
+    scene.occluding && (nearest !== undefined || cap !== undefined)
+      ? Math.min(nearest ?? Infinity, cap ?? Infinity)
+      : undefined;
   const slack = (depth: number) => {
     const p = e.ray.at(depth, new Vector3());
     return OCCLUSION_PX * perPixelAt(e, p.x, p.y, p.z);
@@ -705,6 +758,29 @@ function projectNodes(mesh: BodyMesh, project: ReturnType<typeof projector>) {
   return out;
 }
 
+/** Whether every node of a face is on the side a section clips away: nothing of it is drawn. */
+function faceClipped(mesh: BodyMesh, face: number, clip: SectionClip): boolean {
+  const first = mesh.faceRanges[2 * face] ?? 0;
+  const count = mesh.faceRanges[2 * face + 1] ?? 0;
+  const p = mesh.positions;
+  for (let t = first; t < first + count; t++) {
+    for (let k = 0; k < 3; k++) {
+      const i = 3 * (mesh.indices[3 * t + k] ?? 0);
+      if (!isClipped(clip, p[i] ?? 0, p[i + 1] ?? 0, p[i + 2] ?? 0)) return false;
+    }
+  }
+  return true;
+}
+
+/** Whether every point of an edge (`count` points from `first`) is on the clipped side. */
+function edgeClipped(mesh: BodyMesh, first: number, count: number, clip: SectionClip): boolean {
+  const p = mesh.edgePoints;
+  for (let k = first; k < first + count; k++) {
+    if (!isClipped(clip, p[3 * k] ?? 0, p[3 * k + 1] ?? 0, p[3 * k + 2] ?? 0)) return false;
+  }
+  return count > 0;
+}
+
 /** Whether a face (its triangles) lies wholly inside the box (window) or meets it (crossing). */
 function faceIn(mesh: BodyMesh, nodes: Float64Array, face: number, r: Rect, mode: BoxMode) {
   const first = mesh.faceRanges[2 * face] ?? 0;
@@ -796,6 +872,7 @@ export function pickBox(
     faces: () =>
       scene.bodies.flatMap(({ id, mesh }) =>
         Array.from({ length: faceCount(mesh) }, (_, f) => f)
+          .filter((f) => !scene.clip || !faceClipped(mesh, f, scene.clip))
           .filter((f) => faceIn(mesh, nodesOf(mesh), f, r, mode))
           .map((f) => topologyItem({ kind: 'face', body: id, index: f })),
       ),
@@ -807,6 +884,7 @@ export function pickBox(
           if (((edgeFlags[e] ?? 0) & EDGE_SEAM) !== 0) continue;
           const first = edgeRanges[2 * e] ?? 0;
           const count = edgeRanges[2 * e + 1] ?? 0;
+          if (scene.clip && edgeClipped(mesh, first, count, scene.clip)) continue;
           const points = Array.from({ length: count }, (_, k) =>
             project(
               p[3 * (first + k)] ?? 0,
@@ -825,6 +903,8 @@ export function pickBox(
         const out: SelectionItem[] = [];
         const v = mesh.vertices;
         for (let i = 0; i + 2 < v.length; i += 3) {
+          if (scene.clip && isClipped(scene.clip, v[i] ?? 0, v[i + 1] ?? 0, v[i + 2] ?? 0))
+            continue;
           const s = project(v[i] ?? 0, v[i + 1] ?? 0, v[i + 2] ?? 0);
           if (s && inside(r, s)) out.push(topologyItem({ kind: 'vertex', body: id, index: i / 3 }));
         }

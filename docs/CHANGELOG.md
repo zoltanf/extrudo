@@ -2,6 +2,15 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-30 · **P3-09** Section analysis (ADR-0045): Section Analysis in
+  Solid › Inspect (Shift+S, Ctrl+K, "Section Here" in the face context
+  list) cuts the view through an origin plane, a construction plane or a
+  flat face, with the cut filled and hatched (one cap per body, in the
+  body's colour tinted towards the Inspect teal). An offset expression, a
+  Flip and a draggable arrow set the cut; faces, edges and silhouettes are
+  clipped, the grid and origin aren't, and clicks pass through what is cut
+  away. It is view state kept through edits and recomputes; the browser's
+  Analysis folder turns it off and on, edits or removes it.
 - 2026-09-30 · **P3-06** Combine, Move/Copy and Mirror (ADR-0044): Combine
   joins, cuts or intersects a target body with tool bodies (keep the tools
   if you like); Move/Copy moves and turns bodies with an in-view gizmo (an
@@ -9,7 +18,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
   keep the original; Mirror reflects bodies about a plane or flat face, as a
   copy, in place or joined to the original. Faces keep their names through
   all three, so later features still find them. Benchmark B3 now uses a real
-  Combine. New facade method `transform`, OCCT input hash `6e7b034fedff`.
+  Combine. New facade method `transform`, OCCT input hash `8057072e8cdd`.
 - 2026-09-29 · **P3-02** Chamfer (ADR-0043): bevel edges in up to eight sets,
   each with its own type (equal distance, two distances with a Flip for
   which face takes distance 1, distance and angle); picking an edge takes

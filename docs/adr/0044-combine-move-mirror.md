@@ -174,7 +174,8 @@ features for both.
 
 ## Consequences
 
-- OCCT input hash `6e7b034fedff` (one new facade method and its include);
+- OCCT input hash `8057072e8cdd` with chamfer (`6e7b034fedff` before the
+  rebase onto it; one new facade method and its include);
   the WASM is 19 KB bigger raw (15.79 MB, was 15.77 with the fillet).
 - `benchmark-b3.spec.ts` builds the stand with Combine1 instead of the strip
   (Sketch3, Extrude3): five features, the base and the rest in one body of

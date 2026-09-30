@@ -490,7 +490,19 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   and faces. FR-FT-11.
 - [ ] **P3-08 Press/Pull, Offset face, Split body, Scale, Draft.** FR-FT-08,
   -12.
-- [ ] **P3-09 Section analysis.** FR-VP-06.
+- [x] **P3-09 Section analysis.** FR-VP-06. Done 2026-09-30 (ADR-0045):
+  Solid › Inspect › Section Analysis (Shift+S, Ctrl+K) cuts the view at an
+  origin plane, a construction plane or a flat face, with an offset
+  expression along the normal, a Flip, and a draggable arrow in the view.
+  The cut is capped (stencil buffer, per body: the body's colour towards
+  the Inspect teal, screen-space hatch in `ink`, readable in both
+  themes); faces, edges, silhouettes and dialog previews are clipped, the
+  grid, origin and sketches aren't, and picking skips what is cut away
+  and what the cap hides. The section is view state in the viewport store
+  (not in the document, not undoable), survives recomputes and edits, and
+  is turned off and on, edited or removed from the browser's Analysis
+  folder; a selected flat face takes it at once ("Section Here" in the
+  context list). Model mode only; a sketch is drawn without it.
 - [ ] **P3-10 3D-print aids:** mass properties with filament presets, overhang
   shading, place on bed. FR-3DP-02..04.
 - [x] **P3-11 Marking menu** (right-click radial) and context menus

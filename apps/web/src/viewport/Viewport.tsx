@@ -27,6 +27,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
 import { type MarkingEntry, MarkingMenu, MenuItem, MenuLabel, PointMenu } from '../design-system';
 import { previewSummary, type ViewPreview } from '../features/preview';
+import { clipSummary, type SectionClip, sectionSummary } from '../section/clip';
 import { combineFilters } from '../selection/filter';
 import { itemLabel, type LabelContext, selectionKey } from '../selection/items';
 import {
@@ -39,7 +40,7 @@ import {
 } from '../selection/pick';
 import { sketchTargetAt } from '../sketch/facePick';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
-import { Bodies } from './Bodies';
+import { Bodies, clipPlanes } from './Bodies';
 import { CameraRig } from './CameraRig';
 import { Construction } from './Construction';
 import { basis, orbit, pan, rayPlane, type View, viewRay, worldPerPixel, zoomAt } from './camera';
@@ -108,6 +109,11 @@ export interface ViewportProps {
    * opens "Select other…" directly, as it did before.
    */
   viewMenu?: ViewMenu;
+  /**
+   * The section analysis' clipping plane while it is on (P3-09, ADR-0045): bodies and their
+   * edges are clipped and capped, and picking ignores what is clipped away.
+   */
+  sectionClip?: SectionClip;
 }
 
 /**
@@ -247,12 +253,14 @@ export function Viewport({
   preview,
   construction = NO_CONSTRUCTION,
   viewMenu,
+  sectionClip,
 }: ViewportProps) {
   const section = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
   const colors = useSceneColors();
   const tool = useStore(viewport, (s) => s.tool);
   const projection = useStore(viewport, (s) => s.projection);
+  const sectionState = useStore(viewport, (s) => s.section);
   const [dragging, setDragging] = useState<NavAction>();
   const [ready, setReady] = useState(false);
 
@@ -310,8 +318,8 @@ export function Viewport({
     [construction, preview?.construction],
   );
   const modelScene = useMemo(
-    () => ({ bodies, meta, sketches, construction }),
-    [bodies, meta, sketches, construction],
+    () => ({ bodies, meta, sketches, construction, clip: sectionClip }),
+    [bodies, meta, sketches, construction, sectionClip],
   );
   // The marking menu (P3-11): the shell fills it in when the view reports a right click.
   const [marking, setMarking] = useState<OpenViewMenu>();
@@ -389,6 +397,8 @@ export function Viewport({
       data-bodies={bodiesKey}
       data-body-appearance={appearanceKey}
       data-construction={constructionSummary(drawnConstruction)}
+      data-section={sectionSummary(sectionState)}
+      data-section-clip={clipSummary(sectionClip)}
       data-preview={previewSummary(preview)}
       data-preview-dimmed={preview?.dimmed || undefined}
       className="relative isolate min-w-0 flex-1 overflow-hidden"
@@ -404,7 +414,8 @@ export function Viewport({
           frameloop="demand"
           flat
           dpr={[1, 2]}
-          gl={{ antialias: true, alpha: true }}
+          // The stencil buffer caps a section analysis' cut (P3-09).
+          gl={{ antialias: true, alpha: true, stencil: true }}
           aria-label="3D view"
         >
           <Scene
@@ -419,6 +430,7 @@ export function Viewport({
             selection={selection}
             preview={preview}
             construction={drawnConstruction}
+            sectionClip={sectionClip}
             onSilhouettes={onSilhouettes}
             onFirstFrame={() => setReady(true)}
           />
@@ -529,6 +541,7 @@ function Scene({
   selection,
   preview,
   construction,
+  sectionClip,
   onSilhouettes,
   onFirstFrame,
 }: {
@@ -543,6 +556,7 @@ function Scene({
   selection: readonly SelectionItem[];
   preview: ViewPreview | undefined;
   construction: readonly ConstructionDrawing[];
+  sectionClip: SectionClip | undefined;
   onSilhouettes(body: BodyId, segments: number): void;
   onFirstFrame(): void;
 }) {
@@ -558,6 +572,12 @@ function Scene({
   );
   const invalidate = useThree((s) => s.invalidate);
   const get = useThree((s) => s.get);
+  // Clipping planes on materials (a section analysis, P3-09) need this switched on.
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    gl.localClippingEnabled = sectionClip !== undefined;
+  }, [gl, sectionClip]);
+  const previewPlanes = useMemo(() => clipPlanes(sectionClip) ?? null, [sectionClip]);
   // Uniforms change during render, which R3F doesn't see: ask for a frame after every render.
   useEffect(() => invalidate());
 
@@ -637,8 +657,11 @@ function Scene({
         selection={selection}
         onBounds={setBodyBounds}
         onSilhouettes={onSilhouettes}
+        {...(sectionClip && {
+          section: { clip: sectionClip, color: colors.section, hatch: colors.sectionHatch },
+        })}
       />
-      <PreviewShapes preview={preview} colors={colors} />
+      <PreviewShapes preview={preview} colors={colors} planes={previewPlanes} />
       <Sketches
         store={viewport}
         sketches={sketches}
@@ -852,6 +875,8 @@ interface ModelScene {
   meta: Record<BodyId, BodyMeta>;
   sketches: readonly SketchDrawing[];
   construction: readonly ConstructionDrawing[];
+  /** The section's clipping plane while it is on (P3-09). */
+  clip?: SectionClip | undefined;
 }
 
 /** "Select other…": the stacked items under the pointer, and where the menu opens (client px). */
@@ -1030,6 +1055,7 @@ function pickScene(scene: ModelScene, style: VisualStyle): PickScene {
         ...(s.profiles && { profiles: s.profiles }),
       })),
     occluding: style !== 'wireframe',
+    ...(scene.clip && { clip: scene.clip }),
   };
 }
 

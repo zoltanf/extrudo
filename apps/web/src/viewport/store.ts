@@ -6,6 +6,7 @@
  */
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { Preferences } from '../platform';
+import type { SectionState } from '../section/clip';
 import { DEFAULT_FILTER, type FilterKind, type SelectionFilter } from '../selection/filter';
 import {
   easeCamera,
@@ -131,6 +132,12 @@ export interface ViewportState extends ViewportSettings {
    * while it is the pick field (P2-05). Not shown in the filter menu.
    */
   fieldFilter: SelectionFilter | undefined;
+  /**
+   * The section analysis (P3-09, ADR-0045): a clipping plane over the model. View state for
+   * the open project: not in the document, not undoable, not a preference; it survives
+   * recomputes and lasts until it is removed or the project closes.
+   */
+  section: SectionState | undefined;
 
   /** Moves the camera at once (drags, wheel) and stops any animation. */
   setView(view: View): void;
@@ -164,6 +171,10 @@ export interface ViewportState extends ViewportSettings {
   setSelectionFilter(kind: FilterKind, on: boolean): void;
   resetSelectionFilter(): void;
   setFieldFilter(filter: SelectionFilter | undefined): void;
+  /** Starts, replaces or (`undefined`) removes the section. */
+  setSection(section: SectionState | undefined): void;
+  /** Changes part of the section; nothing while there is none. */
+  updateSection(patch: Partial<SectionState>): void;
 }
 
 export type ViewportStore = StoreApi<ViewportState>;
@@ -222,6 +233,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       renderStats: undefined,
       selectionFilter: DEFAULT_FILTER,
       fieldFilter: undefined,
+      section: undefined,
 
       setView(view) {
         set({ view, transition: undefined });
@@ -308,6 +320,13 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       },
       setFieldFilter(fieldFilter) {
         if (fieldFilter !== get().fieldFilter) set({ fieldFilter });
+      },
+      setSection(section) {
+        set({ section });
+      },
+      updateSection(patch) {
+        const current = get().section;
+        if (current) set({ section: { ...current, ...patch } });
       },
     };
   });
