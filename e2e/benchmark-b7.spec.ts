@@ -22,7 +22,6 @@ import {
   solidTab,
   toolPrompt,
   turnView,
-  viewportOf,
 } from './benchmark-helpers';
 import { clicker, kernelReady, openProject, pickTool, projector } from './helpers';
 

@@ -23,7 +23,6 @@ import {
   solidTab,
   startPrimitive,
   turnView,
-  viewportOf,
   zoomOutTo,
 } from './benchmark-helpers';
 import { kernelReady, openProject, projector } from './helpers';
