@@ -88,19 +88,19 @@ describe('buildCommands', () => {
 
   it('says when a tool arrives instead of running it', () => {
     const ctx = context('model');
-    const shell = byId(ctx).get('shell');
-    expect(shell?.unavailable).toBe('Arrives with P3-03.');
-    shell?.run();
+    const hole = byId(ctx).get('hole');
+    expect(hole?.unavailable).toBe('Arrives with P3-04.');
+    hole?.run();
     expect(ctx.runTool).not.toHaveBeenCalled();
-    expect(ctx.notify).toHaveBeenCalledWith('info', 'Shell arrives with P3-03.');
+    expect(ctx.notify).toHaveBeenCalledWith('info', 'Hole arrives with P3-04.');
   });
 
   it('runs a tool a registered feature dialog makes ready (P2-05)', () => {
-    const ctx = context('model', { ready: new Set(['shell']) });
-    const shell = byId(ctx).get('shell');
-    expect(shell?.unavailable).toBeUndefined();
-    shell?.run();
-    expect(ctx.runTool).toHaveBeenCalledWith('shell');
+    const ctx = context('model', { ready: new Set(['hole']) });
+    const hole = byId(ctx).get('hole');
+    expect(hole?.unavailable).toBeUndefined();
+    hole?.run();
+    expect(ctx.runTool).toHaveBeenCalledWith('hole');
   });
 
   it('runs Revolve (P2-07)', () => {

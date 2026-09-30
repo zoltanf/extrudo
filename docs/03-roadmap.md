@@ -457,7 +457,21 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   `chamfer:<id>:from:(<edge>)`; lost edges go through Fix References. The
   Modify group's Chamfer tile is ready; it has no default key. No on-canvas
   handles and no pickable reference face (a default and Flip).
-- [ ] **P3-03 Shell.** FR-FT-06.
+- [x] **P3-03 Shell.** FR-FT-06. *Done 2026-09-30* (ADR-0046): pick faces to
+  remove (openings, on one or several bodies), a thickness expression and a
+  direction (inside, the default, or outside); with no face a body picked in
+  the Body field is hollowed closed, a sealed void. The facade's `shell`
+  builds it with `BRepOffsetAPI_MakeThickSolid` on the stack and on a copy of
+  the body, and checks the result by its distance to the faces it was offset
+  from (OCCT builds valid junk when a wall is thicker than a curved face's
+  radius); on failure it bisects the thickness, so the message reads "A 12 mm
+  wall is too thick for this body (max ≈ 9.9 mm)". A removed face that runs
+  smoothly into a neighbour (next to a fillet) is refused before OCCT runs,
+  because OCCT corrupts its heap there. The outer skin keeps the original
+  face names in both directions; new faces are `shell:<id>:inner:(<face>)`,
+  `:rim:(<removed face>)` and `:round:(<edge>)`. The Modify group's Shell tile
+  is ready; it has no default key. No on-canvas handle and one thickness for
+  the whole shell.
 - [ ] **P3-04 Hole** (placement by sketch points or click; types; presets incl.
   heat-set inserts). FR-FT-07.
 - [x] **P3-05 Construction geometry** (all planes, axes and points in

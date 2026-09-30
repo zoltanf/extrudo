@@ -86,6 +86,37 @@ export type ChamferSpec =
   /** `distance` on the reference face, the chamfer at `angle` (radians) to it. */
   | { mode: 'distance-angle'; distance: number; angle: number; flip?: boolean };
 
+/**
+ * Why a shell failed (P3-03, ADR-0046): the facade's diagnosis. Face indices
+ * are the shape's.
+ */
+export type ShellProblem =
+  /** The thickness is too large for the body; `max` is the largest that works (mm). */
+  | { kind: 'too-thick'; max: number }
+  /** OCCT can't offset the body at any thickness worth trying (fillets, tangent faces). */
+  | { kind: 'unshellable' }
+  /** Every face was picked for removal. */
+  | { kind: 'all-faces' }
+  /** The shape isn't a solid. */
+  | { kind: 'not-solid' }
+  /** A removed face runs smoothly into a neighbour (next to a fillet): OCCT can't open it. */
+  | { kind: 'tangent'; face: number }
+  | { kind: 'other' };
+
+/** A shell OCCT couldn't build, with its diagnosis. */
+export class ShellError extends KernelError {
+  override name = 'ShellError';
+  constructor(
+    message: string,
+    readonly problems: readonly ShellProblem[],
+  ) {
+    super(message);
+  }
+}
+
+/** Which side of a body's surface the walls of a shell are built on. */
+export type ShellSide = 'inside' | 'outside';
+
 export interface OperationResult {
   shape: ShapeHandle;
   history: HistoryRecord[];
@@ -217,6 +248,35 @@ export class Kernel {
       throw new ChamferError(
         f.lastError() || 'The chamfer failed.',
         decodeChamferProblems(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize())),
+      );
+    }
+    return this.#withHistory(handle);
+  }
+
+  /**
+   * Hollows a solid (P3-03): walls of `thickness` mm built `inside` (the
+   * outside stays where it is) or `outside` (the surface becomes the cavity
+   * and the part grows). `faces` (indices into the shape's face list) are
+   * removed as openings; none makes a closed hollow solid with a void. A
+   * failure is a `ShellError` with the facade's diagnosis. History: input 0;
+   * the faces that stay are kept and each generates its offset face, a
+   * removed face is modified into the rim around the opening, edges and
+   * vertices of the surface generate the rounded joins.
+   */
+  shell(
+    shape: ShapeHandle,
+    faces: readonly number[],
+    thickness: number,
+    side: ShellSide = 'inside',
+  ): OperationResult {
+    const f = this.#facade;
+    f.clearArgs();
+    for (const face of faces) f.pushArg(face);
+    const handle = f.shell(shape, thickness, side === 'outside');
+    if (handle === 0) {
+      throw new ShellError(
+        f.lastError() || 'The shell failed.',
+        decodeShellProblems(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize())),
       );
     }
     return this.#withHistory(handle);
@@ -736,6 +796,26 @@ export function decodeChamferProblems(v: Float64Array): ChamferProblem[] {
     else if (status === 4) problems.push({ kind: 'together', edges, factor: value });
   }
   return problems.length > 0 ? problems : [{ kind: 'other' }];
+}
+
+/** Decodes the facade's shell diagnosis: [status, value]. */
+export function decodeShellProblems(v: Float64Array): ShellProblem[] {
+  if (v.length < 2) return [{ kind: 'other' }];
+  const value = v[1] as number;
+  switch (v[0]) {
+    case 1:
+      return [{ kind: 'too-thick', max: value }];
+    case 2:
+      return [{ kind: 'unshellable' }];
+    case 3:
+      return [{ kind: 'all-faces' }];
+    case 4:
+      return [{ kind: 'not-solid' }];
+    case 6:
+      return [{ kind: 'tangent', face: Math.round(value) }];
+    default:
+      return [{ kind: 'other' }];
+  }
 }
 
 /** `Kernel.properties`: lengths in mm, areas in mm², volumes in mm³. */

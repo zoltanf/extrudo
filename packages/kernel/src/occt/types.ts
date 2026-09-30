@@ -28,6 +28,7 @@ export interface FacadeBinding {
   fillet(shape: number): number;
   tangentChain(shape: number, edge: number): number;
   chamfer(shape: number): number;
+  shell(shape: number, thickness: number, outside: boolean): number;
   boolean(op: number, a: number, b: number, simplify: boolean): number;
   transform(shape: number): number;
   prism(

@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { HistoryRecord } from './history';
-import { ChamferError, FilletError, Kernel, KernelError } from './kernel';
+import { ChamferError, FilletError, Kernel, KernelError, ShellError } from './kernel';
 import { EDGE_SEAM } from './mesh';
 import { loadOcct } from './occt/load';
 import { OcctScope } from './occt/scope';
@@ -322,6 +322,105 @@ describe('errors and ownership', () => {
     expect(() =>
       kernel.chamfer(box, [0], { mode: 'distance-angle', distance: 1, angle: 2 }),
     ).toThrow(/angle must be between/);
+  });
+
+  it('shells a solid inside and outside, records history, and closes it when no face is given (P3-03)', () => {
+    using scope = kernel.scope();
+    const box = scope.track(kernel.box([40, 30, 20]));
+    const full = 40 * 30 * 20;
+    const volume = (shape: Parameters<typeof kernel.measure>[0]) => kernel.measure(shape).volume;
+    for (let face = 0; face < 6; face++) {
+      const inside = scope.track(kernel.shell(box, [face], 2));
+      expect(kernel.isValid(inside.shape)).toBe(true);
+      // Five outer faces, five inner ones and the rim around the opening.
+      expect(kernel.count(inside.shape, 'face')).toBe(11);
+      expect(volume(inside.shape)).toBeLessThan(full);
+      // The removed face becomes the rim; every other face is kept and offsets to an inner face.
+      const removed = find(inside.history, 0, 'face', face);
+      expect(removed.map((r) => r.relation)).toEqual(['modified']);
+      for (let other = 0; other < 6; other++) {
+        if (other === face) continue;
+        const relations = find(inside.history, 0, 'face', other)
+          .map((r) => r.relation)
+          .sort();
+        expect(relations).toEqual(['generated', 'kept']);
+      }
+    }
+    // Inside: the outside stays where it is, the walls are 2 mm all round.
+    const top = scope.track(kernel.shell(box, [0], 2, 'inside'));
+    const bbox = kernel.measure(top.shape).bbox;
+    expect(bbox.max.map((x) => Math.round(x * 100) / 100)).toEqual([40, 30, 20]);
+    // Outside: the surface is the cavity and the part grows by 2 mm where there are walls.
+    const grown = scope.track(kernel.shell(box, [0], 2, 'outside'));
+    expect(kernel.isValid(grown.shape)).toBe(true);
+    expect(kernel.measure(grown.shape).bbox.max[0]).toBeGreaterThan(40);
+    // No face: a closed solid with a void inside.
+    const closed = scope.track(kernel.shell(box, [], 2));
+    expect(kernel.isValid(closed.shape)).toBe(true);
+    expect(kernel.count(closed.shape, 'face')).toBe(12);
+    expect(volume(closed.shape)).toBeCloseTo(full - 36 * 26 * 16, 3);
+    const closedOut = scope.track(kernel.shell(box, [], 2, 'outside'));
+    expect(kernel.isValid(closedOut.shape)).toBe(true);
+    expect(kernel.measure(closedOut.shape).bbox.max.map((x) => Math.round(x * 100) / 100)).toEqual([
+      42, 32, 22,
+    ]);
+    // The original is untouched by all of it.
+    expect(volume(box)).toBeCloseTo(full, 6);
+    expect(kernel.count(box, 'face')).toBe(6);
+  });
+
+  it('diagnoses a shell that fails: too thick with the maximum, all faces, tangent faces, no walls', () => {
+    using scope = kernel.scope();
+    const box = scope.track(kernel.box([40, 30, 20]));
+    const problemOf = (run: () => unknown) => {
+      try {
+        run();
+      } catch (error) {
+        expect(error).toBeInstanceOf(ShellError);
+        return (error as ShellError).problems[0];
+      }
+      return expect.unreachable('the shell should have failed');
+    };
+    for (const closed of [false, true]) {
+      const problem = problemOf(() => kernel.shell(box, closed ? [] : [0], 12));
+      expect(problem?.kind).toBe('too-thick');
+      if (problem?.kind !== 'too-thick') return;
+      // Walls meet at half of the smallest dimension the cavity has.
+      expect(problem.max).toBeGreaterThan(9);
+      expect(problem.max).toBeLessThan(10.01);
+      scope.track(kernel.shell(box, closed ? [] : [0], problem.max));
+    }
+    expect(problemOf(() => kernel.shell(box, [0, 1, 2, 3, 4, 5], 1))?.kind).toBe('all-faces');
+    // Faces that run smoothly into a neighbour can't be opened.
+    const rounded = scope.track(
+      kernel.fillet(
+        box,
+        Array.from({ length: 12 }, (_, i) => i),
+        Array(12).fill(4),
+      ),
+    );
+    const tangent = problemOf(() => kernel.shell(rounded.shape, [0], 2));
+    expect(tangent).toEqual({ kind: 'tangent', face: 0 });
+    // The rounded body can still be hollowed closed.
+    const closed = scope.track(kernel.shell(rounded.shape, [], 2));
+    expect(kernel.isValid(closed.shape)).toBe(true);
+    // A cylinder's whole side can't be removed: nothing holds the walls.
+    const cylinder = scope.track(kernel.cylinder(10, 30));
+    let wall = -1;
+    for (let face = 0; face < 3 && wall < 0; face++) {
+      try {
+        kernel.shell(cylinder, [face], 2);
+      } catch (error) {
+        if ((error as ShellError).problems[0]?.kind === 'unshellable') wall = face;
+      }
+    }
+    expect(wall).toBeGreaterThanOrEqual(0);
+    // A wall thicker than the radius is refused, not built inside out.
+    const thick = problemOf(() => kernel.shell(cylinder, [1 + (wall === 1 ? 1 : 0)], 12));
+    expect(thick?.kind).toBe('too-thick');
+    // Bad arguments are plain kernel errors.
+    expect(() => kernel.shell(box, [99], 1)).toThrow(/face index out of range/);
+    expect(() => kernel.shell(box, [0], 0)).toThrow(/thickness must be greater than 0/);
   });
 
   it('releases scoped shapes', () => {

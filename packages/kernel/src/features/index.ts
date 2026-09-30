@@ -8,6 +8,7 @@ import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
 import { KERNEL_PRIMITIVES } from './primitives';
 import { kernelRevolve } from './revolve';
+import { kernelShell } from './shell';
 import { kernelSketch } from './sketch';
 import { kernelMirror, kernelMove } from './transform';
 
@@ -19,7 +20,8 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
     .register(kernelRevolve as unknown as KernelFeatureDefinition)
     .register(kernelRemove as unknown as KernelFeatureDefinition)
     .register(kernelFillet as unknown as KernelFeatureDefinition)
-    .register(kernelChamfer as unknown as KernelFeatureDefinition);
+    .register(kernelChamfer as unknown as KernelFeatureDefinition)
+    .register(kernelShell as unknown as KernelFeatureDefinition);
   // Box, cylinder, sphere and torus (P2-10, ADR-0032).
   for (const primitive of KERNEL_PRIMITIVES) {
     registry.register(primitive as unknown as KernelFeatureDefinition);

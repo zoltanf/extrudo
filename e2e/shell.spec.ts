@@ -128,9 +128,10 @@ test('the timeline marker moves with playback, and Ctrl+Z undoes it', async ({ p
 
 test('tools that are not built yet say when they arrive', async ({ page }) => {
   await open(page);
-  await page.getByRole('button', { name: 'Shell', exact: true }).hover();
-  await expect(page.getByRole('tooltip')).toContainText('Arrives with P3-03.');
-  await expect(page.getByRole('button', { name: 'Shell', exact: true })).toHaveAttribute(
+  await page.getByRole('tab', { name: '3D Print' }).click();
+  await page.getByRole('button', { name: 'Place on Bed', exact: true }).hover();
+  await expect(page.getByRole('tooltip')).toContainText('Arrives with P3-10.');
+  await expect(page.getByRole('button', { name: 'Place on Bed', exact: true })).toHaveAttribute(
     'aria-disabled',
     'true',
   );

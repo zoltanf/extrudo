@@ -47,6 +47,7 @@ export * from './primitives';
 export * from './remove';
 export * from './revolve';
 export * from './schema';
+export * from './shell';
 export * from './sketch/commands';
 export * from './sketch/curves';
 export * from './sketch/dimensions';

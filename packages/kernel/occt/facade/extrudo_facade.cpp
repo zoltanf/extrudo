@@ -40,7 +40,9 @@
 #include <BRepFilletAPI_MakeChamfer.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepOffsetAPI_DraftAngle.hxx>
+#include <BRepOffsetAPI_MakeThickSolid.hxx>
 #include <BRepGProp.hxx>
+#include <BRepLProp_SLProps.hxx>
 #include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRepTools.hxx>
@@ -85,6 +87,8 @@
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
 #include <TopoDS_Shape.hxx>
+#include <TopoDS_Shell.hxx>
+#include <TopoDS_Solid.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Wire.hxx>
 #include <GeomAbs_CurveType.hxx>
@@ -409,6 +413,85 @@ public:
       geometry_.push_back(5);
       geometry_.push_back(0);
       return failFromException("Chamfer failed");
+    }
+  }
+
+  /**
+   * Shells the solid `shape` (P3-03): hollows it with walls of `thickness`
+   * (> 0) mm, `outside` growing the walls outwards from the original
+   * surface (the original becomes the cavity) and otherwise inwards (the
+   * outside stays where it is). The staged args (clearArgs/pushArg,
+   * 0-based face indices, duplicates ignored) are the faces to remove, the
+   * openings; none stages a closed, hollow solid with a void inside.
+   * Records history for input 0: a removed face is deleted, the faces that
+   * stay are kept, each generates its offset face and each edge of a removed
+   * face its rim.
+   *
+   * On failure it returns 0 with a message in lastError() and, in
+   * geometryNumbers, [status, value]:
+   * - 1 the thickness is too large: the largest thickness that works, by
+   *   bisection (value);
+   * - 2 OCCT can't offset the body at any thickness worth trying (value 0):
+   *   typically fillets or tangent faces;
+   * - 3 every face would be removed (value 0);
+   * - 4 the body isn't a solid (value 0);
+   * - 5 anything else (an OCCT exception): value 0;
+   * - 6 a removed face flows smoothly (tangent) into a neighbouring face,
+   *   as next to a fillet: OCCT's offset corrupts its heap there, so it is
+   *   not tried. Value: the face's index.
+   */
+  int shell(int shape, double thickness, bool outside) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Shell failed: unknown input shape.");
+    if (!(thickness > 0)) return fail("Shell failed: the thickness must be greater than 0.");
+    try {
+      if (!TopExp_Explorer(*input, TopAbs_SOLID).More()) {
+        pushShellStatus(4, 0);
+        return fail("Shell failed: the body isn't a solid.");
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*input, TopAbs_FACE, faces);
+      std::vector<int> removed;
+      for (int index : args_) {
+        if (index < 0 || index >= faces.Extent()) return fail("Shell failed: face index out of range.");
+        if (std::find(removed.begin(), removed.end(), index) == removed.end()) removed.push_back(index);
+      }
+      if (static_cast<int>(removed.size()) >= faces.Extent()) {
+        pushShellStatus(3, 0);
+        return fail("Shell failed: every face would be removed.");
+      }
+      for (int index : removed) {
+        if (touchesTangentFace(*input, TopoDS::Face(faces(index + 1)))) {
+          pushShellStatus(6, index);
+          return fail("Shell failed: a removed face is tangent to its neighbours.");
+        }
+      }
+      {
+        // OCCT's offset repairs the shape it is given in place (edge
+        // tolerances, curves through SameParameter), which would change the
+        // cached body every preview builds on, so every build (and every
+        // probe of the diagnosis) gets its own copy. A copy keeps the
+        // original's sub-shape order, so indices and history carry over.
+        const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> copyFaces;
+        TopExp::MapShapes(copy, TopAbs_FACE, copyFaces);
+        if (copyFaces.Extent() == faces.Extent()) {
+          BRepOffsetAPI_MakeThickSolid builder;
+          TopoDS_Shape result;
+          if (buildShell(builder, copy, copyFaces, removed, thickness, outside, result) &&
+              shellIsGood(builder, copy, copyFaces, removed, result, thickness, outside)) {
+            recordHistory(builder, copy, 0, result);
+            return store(result);
+          }
+        }
+      }
+      // The failed builder is gone before the probes start (see explainShell).
+      return explainShell(*input, removed, thickness, outside);
+    } catch (...) {
+      pushShellStatus(5, 0);
+      return failFromException("Shell failed");
     }
   }
 
@@ -2192,6 +2275,170 @@ private:
     }
     geometry_[1] = records;
     return fail("Chamfer failed: the distances are probably too large for the selected edges.");
+  }
+
+  // ------------------------------------------------------------------ shell --
+
+  /**
+   * Whether `face` meets a neighbouring face without a crease along one of
+   * its edges: their normals agree (within about 2 degrees) at the edge's
+   * middle. Seams (a face meeting itself) don't count.
+   */
+  static bool touchesTangentFace(const TopoDS_Shape& body, const TopoDS_Face& face) {
+    EdgeFaceMap edgeFaces;
+    TopExp::MapShapesAndUniqueAncestors(body, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+    for (TopExp_Explorer it(face, TopAbs_EDGE); it.More(); it.Next()) {
+      const TopoDS_Edge edge = TopoDS::Edge(it.Current());
+      const int at = edgeFaces.FindIndex(edge);
+      if (at == 0) continue;
+      for (const TopoDS_Shape& other : edgeFaces(at)) {
+        if (other.IsSame(face)) continue;
+        gp_Dir a;
+        gp_Dir b;
+        if (edgeNormal(edge, face, a) && edgeNormal(edge, TopoDS::Face(other), b) &&
+            a.Dot(b) > 0.9994) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** The outward normal of `face` at the middle of `edge`; false if it can't be found. */
+  static bool edgeNormal(const TopoDS_Edge& edge, const TopoDS_Face& face, gp_Dir& normal) {
+    double first = 0;
+    double last = 0;
+    const opencascade::handle<Geom2d_Curve> pcurve = BRep_Tool::CurveOnSurface(edge, face, first, last);
+    if (pcurve.IsNull()) return false;
+    const gp_Pnt2d uv = pcurve->Value(0.5 * (first + last));
+    BRepAdaptor_Surface surface(face);
+    BRepLProp_SLProps props(surface, uv.X(), uv.Y(), 1, 1e-7);
+    if (!props.IsNormalDefined()) return false;
+    normal = props.Normal();
+    if (face.Orientation() == TopAbs_REVERSED) normal.Reverse();
+    return true;
+  }
+
+  void pushShellStatus(int status, double value) {
+    geometry_.clear();
+    geometry_.push_back(status);
+    geometry_.push_back(value);
+  }
+
+  /**
+   * Builds the shell of `input` into `result` with `builder` (kept by the
+   * caller for its history). `removed` are 0-based face indices. Without
+   * removed faces OCCT returns only the offset skin, so the solid with a
+   * void is put together here. False when OCCT can't build it.
+   */
+  static bool buildShell(BRepOffsetAPI_MakeThickSolid& builder, const TopoDS_Shape& input,
+                         const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                         const std::vector<int>& removed, double thickness, bool outside,
+                         TopoDS_Shape& result) {
+    try {
+      NCollection_List<TopoDS_Shape> closing;
+      for (int index : removed) closing.Append(faces(index + 1));
+      builder.MakeThickSolidByJoin(input, closing, outside ? thickness : -thickness, 1e-3);
+      if (!builder.IsDone()) return false;
+      result = builder.Shape();
+      if (removed.empty()) result = hollowSolid(input, result, outside);
+      return !result.IsNull();
+    } catch (...) {
+      result.Nullify();
+      return false;
+    }
+  }
+
+  /**
+   * A solid with a void from the original `input` and its offset skin (what
+   * OCCT gives for a shell without openings): the outer surface is the
+   * original when hollowing inwards and the skin when growing outwards.
+   */
+  static TopoDS_Shape hollowSolid(const TopoDS_Shape& input, const TopoDS_Shape& skin, bool outside) {
+    BRep_Builder builder;
+    TopoDS_Solid solid;
+    builder.MakeSolid(solid);
+    for (TopExp_Explorer it(input, TopAbs_SHELL); it.More(); it.Next()) {
+      builder.Add(solid, outside ? it.Current().Reversed() : it.Current());
+    }
+    for (TopExp_Explorer it(skin, TopAbs_SHELL); it.More(); it.Next()) {
+      builder.Add(solid, it.Current().Reversed());
+    }
+    solid.Closed(true);
+    return solid;
+  }
+
+  static double volumeOf(const TopoDS_Shape& shape) {
+    GProp_GProps props;
+    BRepGProp::VolumeProperties(shape, props);
+    return props.Mass();
+  }
+
+  /**
+   * Whether `result` is a sound shell of `input`: a valid solid with a
+   * positive volume (smaller than the original's when hollowing inwards),
+   * whose offset faces stay at least the thickness from the faces they were
+   * offset from. OCCT "succeeds" with valid solids that are junk when the
+   * thickness is beyond a curved face's radius (the offset cylinder turns
+   * inside out), and only this distance shows it.
+   */
+  static bool shellIsGood(BRepOffsetAPI_MakeThickSolid& builder, const TopoDS_Shape& input,
+                          const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                          const std::vector<int>& removed, const TopoDS_Shape& result, double thickness,
+                          bool outside) {
+    if (result.IsNull() || !TopExp_Explorer(result, TopAbs_SOLID).More()) return false;
+    if (!BRepCheck_Analyzer(result).IsValid()) return false;
+    const double volume = volumeOf(result);
+    if (!(volume > 0)) return false;
+    if (!outside && !(volume < volumeOf(input) * (1 - 1e-6))) return false;
+    BRep_Builder compounds;
+    TopoDS_Compound originals;
+    TopoDS_Compound offsets;
+    compounds.MakeCompound(originals);
+    compounds.MakeCompound(offsets);
+    bool any = false;
+    for (int i = 1; i <= faces.Extent(); ++i) {
+      if (std::find(removed.begin(), removed.end(), i - 1) != removed.end()) continue;
+      const TopoDS_Shape& face = faces(i);
+      for (const TopoDS_Shape& made : builder.Generated(face)) {
+        if (made.ShapeType() != TopAbs_FACE) continue;
+        compounds.Add(offsets, made);
+        any = true;
+      }
+      compounds.Add(originals, face);
+    }
+    if (!any) return true;
+    BRepExtrema_DistShapeShape measure(originals, offsets, Extrema_ExtFlag_MIN);
+    if (!measure.IsDone()) return true;
+    return measure.Value() >= 0.999 * thickness - 1e-3;
+  }
+
+  /**
+   * Whether the shell builds and is sound (a probe: nothing is kept). Works
+   * on a fresh copy of `input`, like shell() (see there).
+   */
+  static bool shellWorks(const TopoDS_Shape& input, const std::vector<int>& removed, double thickness,
+                         bool outside) {
+    const TopoDS_Shape copy = BRepBuilderAPI_Copy(input, true, false).Shape();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+    TopExp::MapShapes(copy, TopAbs_FACE, faces);
+    BRepOffsetAPI_MakeThickSolid builder;
+    TopoDS_Shape result;
+    return buildShell(builder, copy, faces, removed, thickness, outside, result) &&
+           shellIsGood(builder, copy, faces, removed, result, thickness, outside);
+  }
+
+  /**
+   * Fills geometry_ after a shell failed (see shell()): the largest
+   * thickness that works, or "nothing does". Returns 0 with lastError set.
+   */
+  int explainShell(const TopoDS_Shape& input, const std::vector<int>& removed, double thickness,
+                   bool outside) {
+    const double largest = largestThatWorks(
+        [&](double t) { return shellWorks(input, removed, t, outside); }, thickness);
+    pushShellStatus(largest > 0 ? 1 : 2, largest);
+    return fail(largest > 0 ? "Shell failed: the thickness is too large for this body."
+                            : "Shell failed: OCCT can't offset this body.");
   }
 
   template <typename Builder>

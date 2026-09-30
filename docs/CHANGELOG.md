@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-30 · **P3-03** Shell (ADR-0046): hollow a body by removing faces
+  (on one or several bodies) and giving a wall thickness, inside or outside
+  the surface; with no face a body is hollowed closed, a sealed void. The
+  preview is live. A wall that is too thick says how thick it may be ("A
+  12 mm wall is too thick for this body (max ≈ 9.9 mm)"), and a face next to
+  a fillet, which OCCT can't open, is refused with a reason. The outside
+  keeps its face names in both directions. The Modify group's Shell tile is
+  ready. OCCT input hash `6384f5ae452a` (with P3-06's `transform`).
 - 2026-09-30 · **P3-09** Section analysis (ADR-0045): Section Analysis in
   Solid › Inspect (Shift+S, Ctrl+K, "Section Here" in the face context
   list) cuts the view through an origin plane, a construction plane or a

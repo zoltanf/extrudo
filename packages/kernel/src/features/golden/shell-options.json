@@ -1,0 +1,302 @@
+{
+ "top removed 2": {
+  "volume": 7152,
+  "faces": 11,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:cap:end)"
+  ]
+ },
+ "top removed 0.5": {
+  "volume": 1945.5,
+  "faces": 11,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:cap:end)"
+  ]
+ },
+ "top removed 9.5": {
+  "volume": 21574.5,
+  "faces": 11,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:cap:end)"
+  ]
+ },
+ "top removed 16 too thick": {
+  "error": "A 16 mm wall is too thick for this body (max ≈ 14 mm). Try a thinner wall."
+ },
+ "top removed outside 2": {
+  "volume": 8707.91,
+  "faces": 23,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:cap:end)",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l11])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:side:l11|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:side:l11|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:side:l2|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:side:l5|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l11|extrude:B:side:l2])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l11|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l2|extrude:B:side:l5])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l5|extrude:B:side:l8])"
+  ]
+ },
+ "top removed outside 15": {
+  "volume": 105945.79,
+  "faces": 23,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:cap:end)",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l11])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:side:l11|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:side:l11|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:side:l2|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:side:l5|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l11|extrude:B:side:l2])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l11|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l2|extrude:B:side:l5])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l5|extrude:B:side:l8])"
+  ]
+ },
+ "bottom removed 3": {
+  "volume": 10128,
+  "faces": 11,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:end)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:cap:start)"
+  ]
+ },
+ "front removed 2": {
+  "volume": 7872,
+  "faces": 11,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:end)",
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:side:l2)"
+  ]
+ },
+ "front removed outside 2": {
+  "volume": 9570.74,
+  "faces": 23,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:end)",
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:side:l2)",
+   "shell:S:round:(e[extrude:B:cap:end|extrude:B:side:l11])",
+   "shell:S:round:(e[extrude:B:cap:end|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:cap:end|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l11])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:side:l11|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:side:l5|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:end|extrude:B:side:l11|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:end|extrude:B:side:l5|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l11|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l5|extrude:B:side:l8])"
+  ]
+ },
+ "top and front removed 2": {
+  "volume": 5856,
+  "faces": 10,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:cap:end)",
+   "shell:S:rim:(extrude:B:side:l2)"
+  ]
+ },
+ "top and right removed outside 1.5": {
+  "volume": 5368.61,
+  "faces": 17,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:cap:end)",
+   "shell:S:rim:(extrude:B:side:l5)",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l11])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:side:l11|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:side:l11|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l11|extrude:B:side:l2])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l11|extrude:B:side:l8])"
+  ]
+ },
+ "closed 2": {
+  "volume": 9024,
+  "faces": 12,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:end)",
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)"
+  ]
+ },
+ "closed 9": {
+  "volume": 23472,
+  "faces": 12,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:end)",
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)"
+  ]
+ },
+ "closed 11 too thick": {
+  "error": "A 11 mm wall is too thick for this body (max ≈ 9.9 mm). Try a thinner wall."
+ },
+ "closed outside 3": {
+  "volume": 18257.79,
+  "faces": 32,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:end)",
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:round:(e[extrude:B:cap:end|extrude:B:side:l11])",
+   "shell:S:round:(e[extrude:B:cap:end|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:cap:end|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:cap:end|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l11])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:side:l11|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:side:l11|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:side:l2|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:side:l5|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:end|extrude:B:side:l11|extrude:B:side:l2])",
+   "shell:S:round:(v[extrude:B:cap:end|extrude:B:side:l11|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:end|extrude:B:side:l2|extrude:B:side:l5])",
+   "shell:S:round:(v[extrude:B:cap:end|extrude:B:side:l5|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l11|extrude:B:side:l2])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l11|extrude:B:side:l8])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l2|extrude:B:side:l5])",
+   "shell:S:round:(v[extrude:B:cap:start|extrude:B:side:l5|extrude:B:side:l8])"
+  ]
+ },
+ "rounded, top removed 2": {
+  "volume": 6861.86,
+  "faces": 19,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l2]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l8]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l2|extrude:B:side:l5]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l5|extrude:B:side:l8]))",
+   "shell:S:rim:(extrude:B:cap:end)"
+  ]
+ },
+ "rounded, top removed 6 too thick": {
+  "error": "A 6 mm wall is too thick for this body (max ≈ 4.9 mm). Try a thinner wall."
+ },
+ "rounded, closed 2": {
+  "volume": 8718.41,
+  "faces": 20,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:end)",
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l2]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l8]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l2|extrude:B:side:l5]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l5|extrude:B:side:l8]))"
+  ]
+ },
+ "rounded, top removed outside 2": {
+  "volume": 8294.65,
+  "faces": 27,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l2]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l8]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l2|extrude:B:side:l5]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l5|extrude:B:side:l8]))",
+   "shell:S:rim:(extrude:B:cap:end)",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l11])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:cap:start|fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l2])])",
+   "shell:S:round:(e[extrude:B:cap:start|fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l8])])",
+   "shell:S:round:(e[extrude:B:cap:start|fillet:R:from:(e[extrude:B:side:l2|extrude:B:side:l5])])",
+   "shell:S:round:(e[extrude:B:cap:start|fillet:R:from:(e[extrude:B:side:l5|extrude:B:side:l8])])"
+  ]
+ }
+}
