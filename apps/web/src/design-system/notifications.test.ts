@@ -49,6 +49,16 @@ describe('notifications', () => {
     expect(t.state().history).toHaveLength(3);
   });
 
+  it('records a quiet notification in the history only (P3-13)', () => {
+    const t = setup();
+    t.state().push('error', 'Extrude2: no profile.', { quiet: true });
+    t.state().push('info', 'Heads up.', { quiet: true });
+    expect(t.state().toasts).toEqual([]);
+    expect(t.timers).toEqual([]);
+    expect(t.state().history.map((n) => n.text)).toEqual(['Heads up.', 'Extrude2: no profile.']);
+    expect(unread(t.state())).toEqual({ count: 2, errors: 1 });
+  });
+
   it('keeps three toasts on screen but every notification in the history', () => {
     const t = setup();
     for (const n of [1, 2, 3, 4]) t.state().push('error', `E${n}`);

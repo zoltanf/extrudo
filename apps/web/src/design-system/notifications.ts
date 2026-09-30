@@ -26,6 +26,12 @@ export interface ToastOptions {
   action?: ToastAction;
   /** How long it stays, ms; errors stay until dismissed whatever this says. */
   lifetime?: number;
+  /**
+   * Only into the history, no toast (P3-13): for news the view already
+   * shows in place, such as a recompute's error on its timeline chip. The
+   * bell's badge still counts it.
+   */
+  quiet?: boolean;
 }
 
 export interface Toast extends ToastOptions {
@@ -99,14 +105,18 @@ export function createNotifications(env: NotificationEnv = {}): NotificationStor
         seq,
         // Looking at the history counts as seeing what arrives while it's open.
         seen: s.open ? seq : s.seen,
-        toasts: [...s.toasts.slice(1 - TOAST_LIMIT), { id, tone, text, ...options }],
+        toasts: options.quiet
+          ? s.toasts
+          : [...s.toasts.slice(1 - TOAST_LIMIT), { id, tone, text, ...options }],
         history: record(
           s.history,
           { tone, text, at: now(), seq, action: options.action },
           () => nextEntry++,
         ),
       }));
-      if (tone !== 'error') later(() => get().dismiss(id), options.lifetime ?? TOAST_LIFETIME_MS);
+      if (tone !== 'error' && !options.quiet) {
+        later(() => get().dismiss(id), options.lifetime ?? TOAST_LIFETIME_MS);
+      }
     },
     dismiss(id) {
       if (get().toasts.some((t) => t.id === id)) {

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { clicker, kernelReady, sketchOnXY } from './helpers';
+import { clicker, kernelReady, openProject, sketchOnXY } from './helpers';
 
 // P3-16 (ADR-0041): the notification history. A button below the toasts (the
 // view's bottom-right corner) opens the session's earlier notifications: errors
@@ -142,4 +142,45 @@ test('lists earlier notifications, errors first, with actions that still apply',
   await page.keyboard.press('Enter');
   await expect(history(page)).toBeVisible();
   await expect(history(page).getByText('Nothing yet.')).toBeVisible();
+});
+
+test("a recompute's first new error goes into the history, with Edit (P3-13)", async ({ page }) => {
+  await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  await expect(bell(page)).toHaveCount(0);
+
+  // A width of 0 breaks Extrude1 (and what needs it): one quiet entry, no toast.
+  await page.getByRole('button', { name: 'Parameters', exact: true }).click();
+  const parameters = page.getByRole('dialog', { name: 'Parameters' });
+  const width = parameters.getByRole('textbox', { name: 'Expression of width', exact: true });
+  await width.fill('0 mm');
+  await width.press('Enter');
+  await page.keyboard.press('Escape');
+  await expect(chip(page, 'Extrude1')).toHaveAccessibleName(/error/);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(bell(page)).toHaveAccessibleName(/1 new, 1 error/);
+  await bell(page).click();
+  const panel = history(page);
+  const errorsGroup = panel.getByRole('region', { name: /^Errors/ });
+  await expect(errorsGroup.locator('[data-notification="error"]')).toHaveCount(1);
+  await expect(errorsGroup).toContainText('Extrude1: ');
+  const edit = errorsGroup.getByRole('button', { name: 'Edit', exact: true });
+  await expect(edit).toBeEnabled();
+
+  // Edit opens the feature's dialog.
+  await edit.click();
+  await expect(page.getByRole('region', { name: 'Edit Extrude1 dialog' })).toBeVisible();
+  // The panel stays open after an action (ADR-0041); close it, then the dialog.
+  await bell(page).click();
+  await expect(history(page)).toBeHidden();
+  await page.getByRole('button', { name: 'Cancel Esc' }).click();
+  await expect(page.getByRole('region', { name: 'Edit Extrude1 dialog' })).toBeHidden();
+
+  // Fixed: the action no longer applies.
+  await page.keyboard.press('Control+z');
+  await expect(chip(page, 'Extrude1')).not.toHaveAccessibleName(/error/);
+  await bell(page).click();
+  await expect(
+    history(page).getByRole('button', { name: 'Edit (no longer applies)' }),
+  ).toBeDisabled();
 });
