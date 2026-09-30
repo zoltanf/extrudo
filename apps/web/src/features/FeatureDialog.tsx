@@ -13,7 +13,8 @@ import { ExpressionInput } from '../parameters/ExpressionInput';
 import { Message } from '../parameters/Message';
 import { TOOLS, type Tool } from '../shell/tools';
 import { canCommit, commitProblem, type DialogController, type OpenDialog } from './dialog';
-import type { DialogField, FeatureDialogSpec, SelectionField } from './spec';
+import { repeatableFeatures } from './featureList';
+import type { DialogField, FeatureDialogSpec, FeatureListField, SelectionField } from './spec';
 import { acceptsNoun, pickPrompt, shownFields } from './values';
 
 export interface FeatureDialogProps {
@@ -198,6 +199,9 @@ function FieldRow({
     case 'selection':
       control = <SelectionControl field={field} open={open} controller={controller} />;
       break;
+    case 'features':
+      control = <FeatureListControl field={field} open={open} controller={controller} />;
+      break;
     case 'expression':
       control = (
         <FieldExpression
@@ -306,6 +310,64 @@ function SelectionControl({
         </button>
       )}
     </div>
+  );
+}
+
+/**
+ * A list of features to tick (patterns and mirror): each a checkbox with its
+ * name and what it does; an empty list says what to make first.
+ */
+function FeatureListControl({
+  field,
+  open,
+  controller,
+}: {
+  field: FeatureListField;
+  open: OpenDialog;
+  controller: DialogController;
+}) {
+  const doc = controller.context()?.doc;
+  const listed = doc ? repeatableFeatures(doc, open.index, field.types) : [];
+  const ticked = open.values.refs[field.name] ?? [];
+  // A ticked feature that is no longer listed (suppressed, moved after the draft) stays so it can be unticked.
+  const stale = ticked.filter((ref) => !listed.some((f) => f.id === ref.id));
+  if (listed.length === 0 && stale.length === 0) {
+    return (
+      <p className="pt-1.5 text-sm text-muted">
+        Nothing to repeat yet: make an extrude, revolve or primitive that joins or cuts.
+      </p>
+    );
+  }
+  const toggle = (id: string, on: boolean) => {
+    const others = ticked.filter((ref) => ref.id !== id);
+    controller.setRefs(field.name, on ? [...others, { kind: 'feature', id }] : others);
+  };
+  return (
+    <ul aria-label={field.label} className="flex flex-col gap-1 pt-1">
+      {[
+        ...listed.map((f) => ({ ...f, stale: false })),
+        ...stale.map((ref) => ({
+          id: ref.id,
+          name: doc?.features.find((f) => f.id === ref.id)?.name ?? ref.id,
+          operation: undefined,
+          stale: true,
+        })),
+      ].map((f) => (
+        <li key={f.id}>
+          <label className="flex min-w-0 cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              data-feature={f.id}
+              className="size-4 accent-(--x-accent)"
+              checked={ticked.some((ref) => ref.id === f.id)}
+              onChange={(event) => toggle(f.id, event.target.checked)}
+            />
+            <span className="min-w-0 flex-1 truncate">{f.name}</span>
+            <span className="text-xs text-muted">{f.stale ? 'unavailable' : f.operation}</span>
+          </label>
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -16,6 +16,7 @@ describe('the mirror dialog', () => {
     const values = defaultValues(mirrorDialog);
     expect(values.toggles.copy).toBe(true);
     expect(shownFields(mirrorDialog, values).map((f) => f.name)).toEqual([
+      'objects',
       'bodies',
       'plane',
       'copy',
@@ -23,10 +24,34 @@ describe('the mirror dialog', () => {
     ]);
     const moved = mergeValues(values, { toggles: { copy: false } });
     expect(shownFields(mirrorDialog, moved).map((f) => f.name)).toEqual([
+      'objects',
       'bodies',
       'plane',
       'copy',
     ]);
+  });
+
+  it('mirrors features instead of bodies: a feature list, no copy or join', () => {
+    const features = mergeValues(defaultValues(mirrorDialog), { choices: { objects: 'features' } });
+    expect(shownFields(mirrorDialog, features).map((f) => f.name)).toEqual([
+      'objects',
+      'features',
+      'plane',
+    ]);
+    const t = setupDialogs([mirrorDialog]);
+    t.controller.start('mirror');
+    t.controller.setChoice('objects', 'features');
+    t.controller.setRefs('plane', [originPlaneRef('origin:yz')]);
+    expect(t.controller.ok()).toBe(false);
+    t.controller.setRefs('features', [{ kind: 'feature', id: 'e2' }]);
+    expect(MirrorInputsSchema.safeParse(t.open()?.draft.inputs).success).toBe(true);
+    expect(t.controller.ok()).toBe(true);
+    const feature = t.store.getState().doc.features.at(-1);
+    expect(mirrorSettings(feature?.inputs as never)).toMatchObject({
+      objects: 'features',
+      features: [{ kind: 'feature', id: 'e2' }],
+      bodies: [],
+    });
   });
 
   it('picks its plane like Create Sketch: the plane field takes planes and flat faces', () => {

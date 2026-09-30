@@ -63,6 +63,8 @@ const FILTER_OF: Record<GeomRefKind, FilterKind[]> = {
   plane: ['construction'],
   axis: ['construction'],
   point: ['construction'],
+  // Features are ticked in the dialog, not picked in the view.
+  feature: [],
 };
 
 /** The selection filter of a field: only what it accepts. */

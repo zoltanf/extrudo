@@ -6,7 +6,7 @@
  * and radians.
  */
 import type { Vec3 } from '../kernel';
-import { cross, dot, unit } from './vec';
+import { cross, dot, length, perpendicular, unit } from './vec';
 
 /** Twelve numbers: three rows of a 3 × 3 matrix, each with its translation. */
 export type Matrix12 = readonly number[] & { readonly length: 12 };
@@ -48,6 +48,21 @@ export function rotation(origin: Vec3, direction: Vec3, angle: number): Matrix12
       (r[3 * row + 1] as number) * origin[1] +
       (r[3 * row + 2] as number) * origin[2]);
   return matrix(r[0], r[1], r[2], t(0), r[3], r[4], r[5], t(1), r[6], r[7], r[8], t(2));
+}
+
+/**
+ * The smallest turn about `origin` that takes direction `from` to
+ * direction `to` (the identity when they agree, a half turn about some
+ * perpendicular when they are opposite).
+ */
+export function turnTo(origin: Vec3, from: Vec3, to: Vec3): Matrix12 {
+  const f = unit(from);
+  const t = unit(to);
+  const axis = cross(f, t);
+  const sine = length(axis);
+  const cosine = dot(f, t);
+  if (sine < 1e-12) return cosine > 0 ? IDENTITY : rotation(origin, perpendicular(f), Math.PI);
+  return rotation(origin, axis, Math.atan2(sine, cosine));
 }
 
 /** A reflection in the plane through `point` with normal `normal`. */

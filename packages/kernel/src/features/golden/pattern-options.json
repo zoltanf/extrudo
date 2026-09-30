@@ -1,0 +1,454 @@
+{
+  "rect 3 spacing": [
+    {
+      "id": "A:0",
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        40,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:6",
+      "min": [
+        50,
+        0,
+        0
+      ],
+      "max": [
+        90,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:55",
+      "min": [
+        100,
+        0,
+        0
+      ],
+      "max": [
+        140,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    }
+  ],
+  "rect 3 extent": [
+    {
+      "id": "A:0",
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        40,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:6",
+      "min": [
+        0,
+        45,
+        0
+      ],
+      "max": [
+        40,
+        75,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:55",
+      "min": [
+        0,
+        90,
+        0
+      ],
+      "max": [
+        40,
+        120,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    }
+  ],
+  "rect 4 symmetric": [
+    {
+      "id": "A:0",
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        40,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:1",
+      "min": [
+        -50,
+        0,
+        0
+      ],
+      "max": [
+        -10,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:6",
+      "min": [
+        50,
+        0,
+        0
+      ],
+      "max": [
+        90,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:55",
+      "min": [
+        100,
+        0,
+        0
+      ],
+      "max": [
+        140,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    }
+  ],
+  "rect 2x2": [
+    {
+      "id": "A:0",
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        40,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:6",
+      "min": [
+        50,
+        0,
+        0
+      ],
+      "max": [
+        90,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:15",
+      "min": [
+        0,
+        40,
+        0
+      ],
+      "max": [
+        40,
+        70,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:78",
+      "min": [
+        50,
+        40,
+        0
+      ],
+      "max": [
+        90,
+        70,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    }
+  ],
+  "rect 3 join": [
+    {
+      "id": "A:0",
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        120,
+        30,
+        20
+      ],
+      "volume": 72000,
+      "faces": 6,
+      "valid": true
+    }
+  ],
+  "circ 4 total": [
+    {
+      "id": "A:0",
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        40,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:6",
+      "min": [
+        -30,
+        0,
+        0
+      ],
+      "max": [
+        0,
+        40,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:55",
+      "min": [
+        -40,
+        -30,
+        0
+      ],
+      "max": [
+        0,
+        0,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:231",
+      "min": [
+        0,
+        -40,
+        0
+      ],
+      "max": [
+        30,
+        0,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    }
+  ],
+  "circ 3 quarter": [
+    {
+      "id": "A:0",
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        40,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:6",
+      "min": [
+        -21.213,
+        0,
+        0
+      ],
+      "max": [
+        28.284,
+        49.497,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:55",
+      "min": [
+        -30,
+        0,
+        0
+      ],
+      "max": [
+        0,
+        40,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    }
+  ],
+  "circ 3 step symmetric": [
+    {
+      "id": "A:0",
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        40,
+        30,
+        20
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:1",
+      "min": [
+        -10,
+        0,
+        0
+      ],
+      "max": [
+        34.641,
+        30,
+        37.321
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    },
+    {
+      "id": "P:6",
+      "min": [
+        0,
+        0,
+        -20
+      ],
+      "max": [
+        44.641,
+        30,
+        17.321
+      ],
+      "volume": 24000,
+      "faces": 6,
+      "valid": true
+    }
+  ],
+  "hole rect 3": [
+    {
+      "id": "L:0",
+      "min": [
+        0,
+        0,
+        0
+      ],
+      "max": [
+        100,
+        100,
+        10
+      ],
+      "volume": 98492.036,
+      "faces": 9,
+      "valid": true
+    }
+  ],
+  "hole circ 4": [
+    {
+      "id": "L:0",
+      "min": [
+        -50,
+        -50,
+        0
+      ],
+      "max": [
+        50,
+        50,
+        10
+      ],
+      "volume": 97989.381,
+      "faces": 10,
+      "valid": true
+    }
+  ]
+}

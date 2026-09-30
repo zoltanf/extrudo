@@ -6,6 +6,7 @@ import { kernelCombine } from './combine';
 import { KERNEL_CONSTRUCTION } from './construction';
 import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
+import { kernelCircularPattern, kernelPathPattern, kernelRectangularPattern } from './pattern';
 import { kernelPlaceOnBed } from './place-on-bed';
 import { KERNEL_PRIMITIVES } from './primitives';
 import { kernelRevolve } from './revolve';
@@ -38,5 +39,10 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
     .register(kernelMirror as unknown as KernelFeatureDefinition);
   // Place on Bed (P3-10, ADR-0048).
   registry.register(kernelPlaceOnBed as unknown as KernelFeatureDefinition);
+  // Rectangular, circular and path patterns (P3-07, ADR-0047).
+  registry
+    .register(kernelRectangularPattern as unknown as KernelFeatureDefinition)
+    .register(kernelCircularPattern as unknown as KernelFeatureDefinition)
+    .register(kernelPathPattern as unknown as KernelFeatureDefinition);
   return registry;
 }

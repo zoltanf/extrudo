@@ -29,6 +29,8 @@ import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../rec
 import { splitSolids } from './bodies';
 import { compose, IDENTITY, type Matrix12, mirror, rotation, translation } from './matrix';
 import { TOUCH } from './operation';
+import { replayFeatures } from './pattern';
+import type { Placement } from './pattern-layout';
 import { lineOf, planeOf, pointOf } from './references';
 
 const RADIANS = Math.PI / 180;
@@ -180,9 +182,29 @@ export const kernelMirror: KernelFeatureDefinition<MirrorInputs> = {
   evaluate: evaluateMirror,
 };
 
+/**
+ * Mirrors features (P3-07, ADR-0047): the tool of each chosen solid feature
+ * reflected in the plane and joined or cut like the feature did.
+ */
+function mirrorFeatures(
+  ctx: EvalContext<MirrorInputs>,
+  settings: ReturnType<typeof mirrorSettings>,
+): FeatureOutput {
+  if (!settings.plane) throw new KernelError('Pick the plane to mirror in.');
+  const { frame } = planeOf(ctx, settings.plane, 'the mirror plane');
+  using scope = ctx.kernel.scope();
+  const placement: Placement = {
+    label: '',
+    slot: 0,
+    matrix: mirror(frame.origin, frame.normal),
+  };
+  return replayFeatures(ctx, scope, settings.features, [placement], 'mirror');
+}
+
 function evaluateMirror(ctx: EvalContext<MirrorInputs>): FeatureOutput {
   const settings = mirrorSettings(ctx.inputs);
   const { kernel } = ctx;
+  if (settings.objects === 'features') return mirrorFeatures(ctx, settings);
   const ids = existing(ctx, settings.bodies, 'mirror');
   if (!settings.plane) throw new KernelError('Pick the plane to mirror in.');
   const { frame } = planeOf(ctx, settings.plane, 'the mirror plane');

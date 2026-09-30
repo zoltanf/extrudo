@@ -66,7 +66,9 @@ export function operate(
       .filter(([, shape]) => kernel.distance(shape, tool.shape) <= TOUCH)
       .map(([id]) => id);
   // Kept only on success: a failure below must release the tool with the scope.
-  const preview = (): PreviewTool[] => [{ shape: scope.keep(tool.shape), style: operation }];
+  const preview = (): PreviewTool[] => [
+    { shape: scope.keep(tool.shape), style: operation, names: tool.names },
+  ];
   const named = (id: BodyId): NamedShape => ({
     shape: ctx.bodies.get(id) as ShapeHandle,
     names: ctx.names(id),

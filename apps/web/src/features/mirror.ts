@@ -5,13 +5,26 @@
  * stay and the mirrored bodies are new) and, with a copy, "Join". Fields
  * are named like the feature's inputs (`MirrorInputs`).
  */
-import { MIRROR_PLANE_KINDS, mirrorFeature } from '@extrudo/core';
-import { defineFeatureDialog } from './spec';
+import { MIRROR_PLANE_KINDS, mirrorFeature, PATTERNABLE_FEATURE_TYPES } from '@extrudo/core';
+import { type DialogValues, defineFeatureDialog } from './spec';
+
+const forBodies = (v: DialogValues) => (v.choices.objects ?? 'bodies') === 'bodies';
 
 export const mirrorDialog = defineFeatureDialog({
   ...mirrorFeature,
   command: 'mirror',
   fields: [
+    {
+      kind: 'choice',
+      name: 'objects',
+      label: 'Mirror',
+      options: [
+        { value: 'bodies', label: 'Bodies' },
+        { value: 'features', label: 'Features' },
+      ],
+      default: 'bodies',
+      hint: 'Mirror whole bodies, or repeat features (a hole, a boss) on the other side of the plane.',
+    },
     {
       kind: 'selection',
       name: 'bodies',
@@ -19,6 +32,15 @@ export const mirrorDialog = defineFeatureDialog({
       accepts: ['body'],
       prompt: 'Pick bodies',
       hint: 'The bodies to mirror.',
+      shown: forBodies,
+    },
+    {
+      kind: 'features',
+      name: 'features',
+      label: 'Features',
+      types: PATTERNABLE_FEATURE_TYPES,
+      hint: 'Extrudes, revolves and primitives that join or cut: their tool is mirrored and applied again.',
+      shown: (v) => !forBodies(v),
     },
     {
       kind: 'selection',
@@ -35,6 +57,7 @@ export const mirrorDialog = defineFeatureDialog({
       label: 'Copy',
       default: true,
       hint: 'Keep the originals and add mirrored bodies. Off: mirror the bodies themselves.',
+      shown: forBodies,
     },
     {
       kind: 'toggle',
@@ -42,7 +65,7 @@ export const mirrorDialog = defineFeatureDialog({
       label: 'Join',
       default: false,
       hint: 'Fuse each mirrored copy into its original, so a symmetric part comes from half of it.',
-      shown: (v) => v.toggles.copy ?? true,
+      shown: (v) => forBodies(v) && (v.toggles.copy ?? true),
     },
   ],
   // The result is new (or moved) bodies over the model's own.

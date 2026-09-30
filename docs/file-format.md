@@ -549,18 +549,21 @@ body. Fields of the other modes are not stored.
 
 ### 6.13 `mirror`
 
-Mirrors bodies about a plane (P3-06).
+Mirrors bodies, or features, about a plane (P3-06, features in P3-07).
 
 | Input | Kind | Required | Rule |
 |---|---|---|---|
-| `bodies` | `ref` | yes | Refs of kind `body`. Empty: an error until some are picked |
+| `objects` | `enum` | no | `bodies` (default) or `features`: what is mirrored |
+| `bodies` | `ref` | with `bodies` | Refs of kind `body`. Empty or missing: an error until some are picked |
+| `features` | `ref` | with `features` | Refs of kind `feature`: the features whose tools are mirrored (6.16) |
 | `plane` | `ref` | yes | At most one ref, of kind `plane` (an origin or construction plane) or a flat `face` |
-| `copy` | `bool` | no | Default `true`: the originals stay and the mirrored copies are new bodies `<feature id>:<n>`. `false`: the bodies themselves are mirrored and keep their IDs |
-| `join` | `bool` | no | Default `false`; only with `copy`. Fuses each copy into its original (which keeps its ID); a copy that doesn't touch it stays a body of its own |
+| `copy` | `bool` | no | Bodies only. Default `true`: the originals stay and the mirrored copies are new bodies `<feature id>:<n>`. `false`: the bodies themselves are mirrored and keep their IDs |
+| `join` | `bool` | no | Bodies only; default `false`; only with `copy`. Fuses each copy into its original (which keeps its ID); a copy that doesn't touch it stays a body of its own |
 
 A copy's faces are named `mirror:<feature id>:from:(<the original face's name>)`.
-Mirroring features (replaying them about the plane) is not part of `mirror`;
-patterns of features come with the pattern features.
+With `features`, the tool of each listed feature is reflected in the plane
+and joined or cut like the feature did (6.16 says which features qualify);
+`bodies`, `copy` and `join` are ignored.
 
 ### 6.14 `shell`
 
@@ -605,7 +608,75 @@ keeps its name, so references to the body and its faces still resolve. The
 feature warns when the face is already on the bed, and when part of the body
 ends up below z = 0.
 
-Reserved for later: the other modify features (hole, patterns, ...) will be
+### 6.16 Patterns: `rectangularPattern`, `circularPattern`, `pathPattern`
+
+Copies of bodies, or repeats of features, in a layout (P3-07, ADR-0047).
+The original counts as the first instance: a `count` of 3 makes two new
+ones. Three feature types share these inputs:
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `objects` | `enum` | no | `bodies` (default) or `features` |
+| `bodies` | `ref` | with `bodies` | Refs of kind `body`, each once. Empty or missing: an error until some are picked |
+| `features` | `ref` | with `features` | Refs of kind `feature` (`{"kind": "feature", "id": "<feature id>"}`): the features to repeat, in the order they are applied. Each must come earlier in the timeline, be a solid feature that **joins or cuts** (`extrude`, `revolve`, a primitive) and not be suppressed; the pattern depends on it like on any feature it refers to |
+| `join` | `bool` | no | Bodies only; default `false`: the copies are new bodies `<feature id>:<n>`. `true`: they are fused into the original body, and a copy that doesn't touch it becomes a body of its own with a warning |
+
+Counts are `expr` inputs of unit `unitless` that must evaluate to a whole
+number from 1 up; a pattern makes at most 1000 instances. Distances are
+`expr` inputs of unit `length`, angles of unit `angle`.
+
+With `features`, the tool the feature made (the solid it extruded, revolved
+or built) is copied to every instance, and one boolean joins it to, or cuts
+it from, the bodies it touches. Instances that overlap each other are fused
+first.
+
+Names: every face of an instance is named
+`pattern:<feature id>:<label>:from:(<the original face's name>)`, where the
+label is the instance's position in the layout (`1`, `2`, `m1` for -1,
+`1x2` for a grid position), so a reference to a face of one instance keeps
+resolving when the counts change. A copy's body ID is `<feature id>:<n>`
+with `n` derived from the same position, so it stays too.
+
+#### `rectangularPattern`
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `direction1` | `ref` | yes | One ref of kind `axis` (origin or construction), `sketchEntity` (a sketch line) or `edge` (a straight edge). Missing: an error until picked |
+| `count1` | `expr` | no | Unitless. Default `2` |
+| `distance1` | `expr` | no | Length. Default 20 mm |
+| `measure1` | `enum` | no | `spacing` (default: the distance is between neighbours) or `extent` (from the first instance to the last) |
+| `symmetric1` | `bool` | no | Default `false`. `true`: the original sits in the middle of the row (for an even count, one place before the middle) |
+| `direction2` | `ref` | no | A second direction, as `direction1`, makes a grid; it must not be parallel to the first |
+| `count2`, `distance2`, `measure2`, `symmetric2` | as `count1`… | no | The second direction's series (used only with `direction2`) |
+
+#### `circularPattern`
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `axis` | `ref` | yes | One ref of kind `axis`, `sketchEntity` or `edge`, as a direction above |
+| `count` | `expr` | no | Unitless. Default `3` |
+| `angle` | `expr` | no | Angle. Default 360 deg. Right-handed about the axis |
+| `measure` | `enum` | no | `total` (default: the angle is the whole spread; a whole turn or more is divided into `count` equal parts, less into `count - 1`) or `step` (the angle between neighbours) |
+| `symmetric` | `bool` | no | Default `false`. The original in the middle of the series |
+
+#### `pathPattern`
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `path` | `ref` | yes | Refs of kind `sketchEntity` (`<sketch>/<curve>`) and `edge`, chained end to end (the kernel reorders and reverses pieces as they meet); the first is walked in its own direction |
+| `count` | `expr` | no | Unitless. Default `3` |
+| `distance` | `expr` | no | Length. Default 20 mm |
+| `measure` | `enum` | no | `spacing` (default) or `extent`, as above |
+| `aligned` | `bool` | no | Default `false`: instances keep the original's orientation. `true`: each turns with the path's direction, about the path's start |
+| `flip` | `bool` | no | Default `false`. `true`: walk the path from its other end |
+
+The first instance is taken to sit at the start of the path and the others
+move by the way the path went from there. A path shorter than the pattern
+needs is an error.
+
+Skipping single instances is not supported yet.
+
+Reserved for later: the other modify features (hole, ...) will be
 new feature types; old readers see them as unknown types.
 
 ---
@@ -720,7 +791,7 @@ A `GeomRef` points at geometry made by earlier features. It is stored in
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
-| `kind` | one of `plane`, `axis`, `point`, `face`, `edge`, `vertex`, `profile`, `body`, `sketchEntity` | yes | What kind of thing. |
+| `kind` | one of `plane`, `axis`, `point`, `face`, `edge`, `vertex`, `profile`, `body`, `sketchEntity`, `feature` | yes | What kind of thing. |
 | `id` | string | yes | Non-empty. The **persistent name** (below), never an index into a mesh or a shape. |
 | `fingerprint` | GeomFingerprint | no | For `face`, `edge` and `vertex`: what the target looked like when picked; used when `id` no longer resolves. |
 
@@ -737,6 +808,7 @@ A `GeomRef` points at geometry made by earlier features. It is stored in
 | `edge` | `e[face|face…]` with optional `@n` | kernel |
 | `vertex` | `v[face|face…]` with optional `@n` | kernel |
 | `point` | a construction point feature's ID (`<featureId>`, 6.10) | construction feature |
+| `feature` | a feature's ID (`<featureId>`): the feature itself, for a pattern or mirror that repeats it (6.16) | the timeline |
 
 **Topological names** (ADR-0005) describe *why* a face exists, not where it
 is, so they stay valid when upstream features change. Grammar:

@@ -60,6 +60,8 @@ export interface EvalContext<I extends FeatureInputs = FeatureInputs> {
    * The engine has checked it exists and succeeded.
    */
   output(feature: FeatureId): FeatureOutput;
+  /** The name of a feature of the document ("Extrude1"), for messages; undefined if there is none. */
+  featureName(feature: FeatureId): string | undefined;
   /** A stable body ID for the `n`th body this feature creates. */
   bodyId(n?: number): BodyId;
   /** The naming table of a body before this feature (ADR-0005). */
@@ -118,6 +120,11 @@ export type PreviewToolStyle = 'new' | 'join' | 'cut' | 'intersect';
 export interface PreviewTool {
   shape: ShapeHandle;
   style: PreviewToolStyle;
+  /**
+   * The naming table of `shape` (P3-07): patterns and mirrors replay a
+   * feature's tool, and name the copies' faces from it.
+   */
+  names?: TopoNames;
 }
 
 /** A preview tool as a preview result carries it. */

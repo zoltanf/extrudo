@@ -306,7 +306,16 @@ export class RecomputeEngine {
       } else {
         onFeature?.(feature.id);
         const outputs = new Map(dependencies.map((id, i) => [id, upstream[i]?.output]));
-        entry = this.#evaluate(definition, feature, parsed.data, values, bodies, outputs, key);
+        entry = this.#evaluate(
+          definition,
+          feature,
+          parsed.data,
+          values,
+          bodies,
+          outputs,
+          key,
+          (id) => doc.features[index.get(id) ?? -1]?.name,
+        );
         evaluated.push(feature.id);
       }
       used.add(key);
@@ -414,6 +423,7 @@ export class RecomputeEngine {
     bodies: ReadonlyMap<BodyId, ShapeHandle>,
     outputs: ReadonlyMap<FeatureId, FeatureOutput | undefined>,
     key: string,
+    featureName: (id: FeatureId) => string | undefined,
   ): Entry {
     const kernel = this.#kernel;
     const warnings: string[] = [];
@@ -480,6 +490,7 @@ export class RecomputeEngine {
         if (!output) throw new Error(`${feature.name} doesn't refer to feature ${id}.`);
         return output;
       },
+      featureName,
       bodyId: (n = 0) => `${feature.id}:${n}` as BodyId,
     };
 

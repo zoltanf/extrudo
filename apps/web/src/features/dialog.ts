@@ -753,7 +753,7 @@ export function fixReferences(
   let lost = 0;
   let guessed = 0;
   for (const field of spec.fields) {
-    if (field.kind !== 'selection') continue;
+    if (field.kind !== 'selection' && field.kind !== 'features') continue;
     const list = values.refs[field.name] ?? [];
     const next: GeomRef[] = [];
     for (const ref of list) {

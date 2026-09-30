@@ -13,6 +13,7 @@ import { extrudeDialog } from './extrude';
 import { filletDialog } from './fillet';
 import { mirrorDialog } from './mirror';
 import { moveDialog } from './move';
+import { PATTERN_DIALOGS } from './pattern';
 import { placeOnBedDialog } from './place-on-bed';
 import { PRIMITIVE_DIALOGS } from './primitives';
 import { revolveDialog } from './revolve';
@@ -36,6 +37,8 @@ export function featureDialogs(): FeatureDialogs {
   dialogs.register(combineDialog).register(moveDialog).register(mirrorDialog);
   // Place on Bed (P3-10, ADR-0048).
   dialogs.register(placeOnBedDialog);
+  // Rectangular, circular and path patterns (P3-07, ADR-0047).
+  for (const spec of PATTERN_DIALOGS) dialogs.register(spec);
   return dialogs;
 }
 

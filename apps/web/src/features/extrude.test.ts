@@ -158,6 +158,7 @@ describe('the extrude dialog', () => {
               for (const field of shownFields(extrudeDialog, v)) {
                 const kind = {
                   selection: 'refs',
+                  features: 'refs',
                   expression: 'exprs',
                   choice: 'choices',
                   toggle: 'toggles',

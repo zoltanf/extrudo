@@ -14,7 +14,7 @@
   `packages/kernel/src/features/place-on-bed.ts` with `faceDown` in
   `features/matrix.ts`, the dialog `apps/web/src/features/place-on-bed.ts`.
   **No facade change, no migration; one new feature type, documented in
-  `docs/file-format.md` (6.14).**
+  `docs/file-format.md` (6.15).**
 - **Builds on:** ADR-0035 (`KernelApi.inspect` gives exact volumes), ADR-0034
   (export writes the bodies as they are), ADR-0044 (`transform`,
   `transformBodies`, names carried through the move), ADR-0045 (an analysis is

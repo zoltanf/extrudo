@@ -93,7 +93,26 @@ export interface ToggleField extends FieldBase {
   default: boolean;
 }
 
-export type DialogField = SelectionField | ExpressionField | ChoiceField | ToggleField;
+/**
+ * A list of the document's features before the draft, to tick (P3-07: the
+ * features a pattern or mirror repeats). Its value is `feature` references,
+ * kept in `values.refs` like a selection field's; nothing is picked in the
+ * view. Only features of `types` that join or cut are listed.
+ */
+export interface FeatureListField extends FieldBase {
+  kind: 'features';
+  /** The feature types that can be ticked. */
+  types: readonly string[];
+  /** Default 1: an empty list is an issue. */
+  min?: number;
+}
+
+export type DialogField =
+  | SelectionField
+  | ExpressionField
+  | ChoiceField
+  | ToggleField
+  | FeatureListField;
 
 /** What the spec's functions may look at besides the values. */
 export interface DialogContext {

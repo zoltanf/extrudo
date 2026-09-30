@@ -70,6 +70,7 @@ export const ICON_NAMES = [
   'torus',
   'hole',
   'rectangular-pattern',
+  'path-pattern',
   'parameters',
   'offset-plane',
   'plane-angle',

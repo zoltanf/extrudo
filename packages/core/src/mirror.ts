@@ -6,14 +6,17 @@
  * keep their IDs. With `join` (only with `copy`), each copy is fused into
  * its original, which becomes one body: a symmetric part from half of it.
  *
- * Mirroring features (replaying them about the plane) is not part of this
- * feature: it takes bodies only (ADR-0044, patterns of features are P3-07).
- * The kernel adds its evaluator and the web app its dialog, each in its own
+ * With `objects` = `features` (P3-07, ADR-0047) it mirrors *features*
+ * instead: the tool of each chosen solid feature (extrude, revolve, a
+ * primitive) is reflected in the plane and joined or cut like the feature
+ * did, so a hole or boss made on one side appears on the other. Bodies are
+ * ignored then, and `copy` and `join` don't apply. The kernel adds its evaluator and the web app its dialog, each in its own
  * registry keyed by `MIRROR_TYPE` (ADR-0003).
  */
 import { z } from 'zod';
-import { refsOf } from './feature-inputs';
+import { enumInput, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
+import { PATTERN_OBJECTS, type PatternObjects } from './pattern';
 import { PLACEMENT_KINDS } from './primitives';
 import { BoolInputSchema, type GeomRef } from './schema';
 
@@ -23,8 +26,12 @@ export const MIRROR_TYPE = 'mirror';
 export const MIRROR_PLANE_KINDS = PLACEMENT_KINDS;
 
 export const MirrorInputsSchema = z.strictObject({
+  /** Default `bodies`; `features` mirrors the tools of `features` instead (P3-07). */
+  objects: enumInput(PATTERN_OBJECTS).optional(),
   /** The bodies to mirror (`body` references). Empty: the feature fails until some are picked. */
-  bodies: refsOf(['body']),
+  bodies: refsOf(['body']).optional(),
+  /** `features`: the features whose tools are mirrored (`feature` references, feature IDs). */
+  features: refsOf(['feature']).optional(),
   /** The mirror plane. Empty: the feature fails until one is picked. */
   plane: refsOf(MIRROR_PLANE_KINDS, 1),
   /** Keep the originals and add mirrored copies. Default true. */
@@ -44,8 +51,11 @@ export const mirrorFeature: FeatureDefinition<MirrorInputs> = {
 
 /** A mirror's inputs with every default filled in: what the kernel builds. */
 export interface MirrorSettings {
+  objects: PatternObjects;
   /** Body references, each once. */
   bodies: GeomRef[];
+  /** Feature references, each once (`objects` = `features`). */
+  features: GeomRef[];
   plane: GeomRef | undefined;
   copy: boolean;
   /** Only with `copy`. */
@@ -56,8 +66,13 @@ export interface MirrorSettings {
 export function mirrorSettings(inputs: MirrorInputs): MirrorSettings {
   const seen = new Set<string>();
   const copy = inputs.copy?.value ?? true;
+  const features = new Set<string>();
   return {
-    bodies: inputs.bodies.refs.filter((ref) => !seen.has(ref.id) && seen.add(ref.id)),
+    objects: inputs.objects?.value ?? 'bodies',
+    bodies: (inputs.bodies?.refs ?? []).filter((ref) => !seen.has(ref.id) && seen.add(ref.id)),
+    features: (inputs.features?.refs ?? []).filter(
+      (ref) => !features.has(ref.id) && features.add(ref.id),
+    ),
     plane: inputs.plane.refs[0],
     copy,
     join: copy && (inputs.join?.value ?? false),
@@ -67,6 +82,8 @@ export function mirrorSettings(inputs: MirrorInputs): MirrorSettings {
 export interface MirrorInputOptions {
   copy?: boolean;
   join?: boolean;
+  /** Feature IDs whose tools are mirrored: makes `objects` `features` (the bodies may be empty). */
+  features?: readonly string[];
 }
 
 /** A mirror's inputs from body IDs and a plane (tests, scripts; the dialog builds the same shape). */
@@ -81,5 +98,12 @@ export function mirrorInputs(
   };
   if (options.copy !== undefined) inputs.copy = { kind: 'bool', value: options.copy };
   if (options.join !== undefined) inputs.join = { kind: 'bool', value: options.join };
+  if (options.features) {
+    inputs.objects = { kind: 'enum', value: 'features' };
+    inputs.features = {
+      kind: 'ref',
+      refs: options.features.map((id): GeomRef => ({ kind: 'feature', id })),
+    };
+  }
   return inputs;
 }

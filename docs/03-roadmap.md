@@ -498,10 +498,26 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   `transform` (a 3 × 4 matrix through `BRepBuilderAPI_Transform` with
   history), so faces keep their names through a move or mirror; copies get
   names of their own so references stay unambiguous. B3 now merges its two
-  bodies with a real Combine (fixture rewritten). Mirroring *features* is not
-  built: it belongs with the feature patterns (P3-07).
-- [ ] **P3-07 Patterns** (rectangular, circular, on path) for bodies, features
-  and faces. FR-FT-11.
+  bodies with a real Combine (fixture rewritten). Mirroring *features* came
+  with the patterns (P3-07).
+- [x] **P3-07 Patterns** (rectangular, circular, on path) for bodies, features
+  and faces. FR-FT-11. Done 2026-09-30 (ADR-0047): Rectangular, Circular and
+  Path Pattern in Solid › Create's menu. A pattern copies bodies (new bodies,
+  or Join: fused into the original) or repeats *features*: the tool of an
+  extrude, revolve or primitive that joins or cuts is copied to every instance
+  and joined or cut like the feature did (the dialog lists the eligible
+  features; reference kind `feature`). Rectangular: one or two directions
+  (axis, straight edge, sketch line), count and distance (between neighbours
+  or first to last), symmetric; circular: axis, count, whole angle or angle
+  between instances; path: sketch curves and edges chained end to end,
+  spacing or extent, optionally turning with the path. Counts and distances
+  are expressions; the original counts as an instance. Instance faces are
+  `pattern:<id>:<label>:from:(<name>)`, labelled by position, so names and
+  body IDs stay when counts grow. Many instances go through one boolean
+  (interfering instances are fused in trees first): a 10 × 10 pattern takes
+  0.5 to 2 s. Mirror got the same features mode. Ghosts in the preview, a
+  distance arrow per direction and an angle ring. No facade change. Not
+  built: patterns of faces, a skip list.
 - [ ] **P3-08 Press/Pull, Offset face, Split body, Scale, Draft.** FR-FT-08,
   -12.
 - [x] **P3-09 Section analysis.** FR-VP-06. Done 2026-09-30 (ADR-0045):

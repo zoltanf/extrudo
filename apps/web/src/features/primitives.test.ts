@@ -117,6 +117,7 @@ describe('the primitive dialogs', () => {
           for (const field of shownFields(spec, v)) {
             const kind = {
               selection: 'refs',
+              features: 'refs',
               expression: 'exprs',
               choice: 'choices',
               toggle: 'toggles',

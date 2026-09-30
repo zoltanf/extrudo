@@ -105,6 +105,7 @@ describe('the revolve dialog', () => {
             for (const field of shownFields(revolveDialog, v)) {
               const kind = {
                 selection: 'refs',
+                features: 'refs',
                 expression: 'exprs',
                 choice: 'choices',
                 toggle: 'toggles',

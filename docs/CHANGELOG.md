@@ -2,6 +2,16 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-30 · **P3-07** Patterns (ADR-0047): Rectangular, Circular and Path
+  Pattern (Solid › Create menu) of bodies (copies, or joined to the
+  original) or of features (the tool of an extrude, revolve or primitive that
+  joins or cuts, repeated at every instance), with counts and distances as
+  expressions, symmetric layouts, a second direction for grids, a whole or
+  partial angle, and paths of sketch curves and edges; instance faces are
+  named per instance so references survive count changes, and many
+  instances go through one boolean (10 × 10 in 0.5 to 2 s). Mirror also
+  mirrors features now. Ghosts, distance arrows and an angle ring in the
+  view; no facade change.
 - 2026-09-30 · **P3-10** 3D-print aids (ADR-0048): 3D Print › Prepare gets
   Print Info (volume, weight and filament length for PLA, PETG, ABS, TPU or a
   density of your own, 1.75 or 2.85 mm filament, from the exact volumes, solid

@@ -32,7 +32,7 @@ export function defaultValues(spec: FeatureDialogSpec): DialogValues {
     [K in keyof DialogValues]: Record<string, DialogValues[K][string]>;
   };
   for (const field of spec.fields) {
-    if (field.kind === 'selection') values.refs[field.name] = [];
+    if (field.kind === 'selection' || field.kind === 'features') values.refs[field.name] = [];
     else if (field.kind === 'expression') values.exprs[field.name] = field.default;
     else if (field.kind === 'choice') values.choices[field.name] = field.default;
     else values.toggles[field.name] = field.default;
@@ -90,6 +90,7 @@ export function defaultInputs(spec: FeatureDialogSpec, values: DialogValues): Fe
 function fieldInput(field: DialogField, values: DialogValues): Input | undefined {
   switch (field.kind) {
     case 'selection':
+    case 'features':
       return { kind: 'ref', refs: [...(values.refs[field.name] ?? [])] };
     case 'expression':
       return { kind: 'expr', expr: values.exprs[field.name] ?? field.default, unit: field.unit };
@@ -111,8 +112,10 @@ export function defaultFromInputs(
   const toggles: Record<string, boolean> = {};
   for (const field of spec.fields) {
     const input = inputs[field.name];
-    if (field.kind === 'selection' && input?.kind === 'ref') refs[field.name] = [...input.refs];
-    else if (field.kind === 'expression' && input?.kind === 'expr') exprs[field.name] = input.expr;
+    if ((field.kind === 'selection' || field.kind === 'features') && input?.kind === 'ref') {
+      refs[field.name] = [...input.refs];
+    } else if (field.kind === 'expression' && input?.kind === 'expr')
+      exprs[field.name] = input.expr;
     else if (field.kind === 'choice' && input?.kind === 'enum') choices[field.name] = input.value;
     else if (field.kind === 'toggle' && input?.kind === 'bool') toggles[field.name] = input.value;
   }
@@ -221,6 +224,7 @@ const NOUNS: Record<GeomRefKind, [string, string]> = {
   profile: ['profile', 'profiles'],
   body: ['body', 'bodies'],
   sketchEntity: ['sketch curve', 'sketch curves'],
+  feature: ['feature', 'features'],
 };
 
 /** "face", "profile or face": what a field takes, for its messages. */
@@ -288,6 +292,9 @@ export function checkValues(
       if (!message && refs.some((r) => !field.accepts.includes(r.kind))) {
         message = `Pick only ${acceptsNoun(field.accepts, true)}.`;
       }
+    } else if (field.kind === 'features') {
+      const count = (values.refs[field.name] ?? []).length;
+      if (count < (field.min ?? 1)) message = 'Tick at least one feature.';
     } else if (field.kind === 'expression') {
       // The field itself underlines and explains it (`<ExpressionInput>`).
       const result = expressions.get(field.name);

@@ -21,6 +21,8 @@ export const GeomRefKindSchema = z.enum([
   'profile',
   'body',
   'sketchEntity',
+  /** A feature of the timeline (P3-07): what a pattern or mirror replays. `id` is the feature's ID. */
+  'feature',
 ]);
 export type GeomRefKind = z.infer<typeof GeomRefKindSchema>;
 

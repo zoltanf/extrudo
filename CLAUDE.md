@@ -21,8 +21,9 @@ size and startup, offline precache), P2-16 (file-format spec,
 `docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
 fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-03
 (shell), P3-05 (construction geometry), P3-06 (combine, move/copy, mirror),
-P3-09 (section analysis), P3-10 (3D-print aids), P3-11 (marking menu,
-context menus) and P3-16 (notification history) are done.
+P3-07 (patterns, mirrored features), P3-09 (section analysis), P3-10
+(3D-print aids), P3-11 (marking menu, context menus) and P3-16
+(notification history) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -403,7 +404,7 @@ bodies, join/cut/intersect through `namedBoolean`, tools used up unless
 world axes through the bodies' box centre then a move, `rotate`: about an
 axis, `point-to-point`; `copy` adds `<feature>:<n>` bodies) and `mirror`
 (about a plane or flat face, `copy` default true, `join` fuses copy and
-original; **mirroring features is P3-07's**), Move and Mirror in
+original; features are mirrored since P3-07), Move and Mirror in
 `kernel/src/features/transform.ts` on the facade's `transform(shape)` (12
 staged numbers, a 3×4 matrix built in `features/matrix.ts`;
 `BRepBuilderAPI_Transform` with copy = true, so the result is rebuilt
@@ -468,8 +469,29 @@ down > sin N, bed contact excluded; `data-overhang`) and shaded per fragment
 by a patch of the face material (`viewport/overhangShading.ts`,
 `onBeforeCompile`, colour token `--x-error`); a row in the browser's
 Analysis folder next to the section's.
-Next: **P3-07** (patterns, which also takes mirroring features), then
-**P3-04** (hole). Since 2026-09-30 tasks run one at a time, not in
+ADR-0047 (P3-07) added patterns: `rectangularPattern`, `circularPattern` and
+`pathPattern` (`packages/core/src/pattern.ts`, kernel `features/pattern.ts`,
+`pattern-layout.ts`, `pattern-path.ts`, dialogs `apps/web/src/features/pattern.ts`;
+the tools sit in Solid › Create's menu). The **original counts as an instance**
+(count 3 = two copies). `objects` is `bodies` (copies, or `join` into the
+original) or `features`: the tool a solid feature that joins or cuts made
+(`operate`'s `PreviewTool` now carries its `names`) is copied to every
+placement and applied by `operate` again. A feature is referred to by
+`{kind: 'feature', id}` (a new `GeomRefKind`; the engine's and the timeline's
+dependency rules follow its ID, so ordering, delete-refusal and Fix
+References just work; `EvalContext.featureName` is for messages). Every layout
+is a list of `Placement`s (`Matrix12`, label, slot; `seriesOf`, `seriesStep`,
+`angularStep`, `slotOf` in core are the shared maths); **instance faces are
+`pattern:<id>:<label>:from:(<name>)` and copy body IDs come from the
+instance's position, so both survive a growing count**. Many instances are
+one boolean: `mergeTools` fuses instances that interfere in trees and passes
+the groups as one compound (OCCT refuses a compound argument whose solids
+interfere). A path is a polyline (`pathFromRefs`; the sketch output has
+`curves`). Mirror's `objects: 'features'` uses the same `replayFeatures`.
+The dialogs have a new field kind `features` (a checkbox list of
+`repeatableFeatures`). No facade change.
+Next: **P3-04** (hole), then **P3-08** (press/pull, offset face, split,
+scale, draft). Since 2026-09-30 tasks run one at a time, not in
 parallel tracks. See `docs/03-roadmap.md`.
 
 ## Commands
@@ -500,7 +522,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0048: 3D-print aids (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids (0006 is reserved) |
 
 ## Stack summary
 
@@ -1237,3 +1259,18 @@ them. Notes further down that name a machine apply to that machine only.
   shading itself is a shader patch, so it isn't in the counts: check
   it with a screenshot (none is checked in). Kernel-side tests:
   `pnpm vitest run packages/kernel/src/features/place-on-bed`.
+- **Pattern e2e** (`e2e/pattern.spec.ts`, P3-07): the tools are in Create's
+  menu (`pickTool(page, 'Rectangular Pattern' | 'Circular Pattern' | 'Path
+  Pattern')`); dialogs are the regions "Rectangular Pattern dialog"…, fields
+  the buttons "Direction"/"Axis"/"Path" (`exact: true`) and textboxes "Count",
+  "Distance" (`exact`), the combobox "Pattern" (Mirror's is "Mirror") with
+  `bodies`/`features`, and for features a list of checkboxes named like
+  `Cylinder1 cut` (`[data-feature]`). The ghosts are `data-preview` ("new
+  new" for two copies, one `cut` for a repeated hole); handles
+  `data-manipulators="distance:distance1"` / `angle:angle`. After switching to
+  Features the pick field is stale: click the "Axis"/"Plane" button first. The
+  Z axis is pickable above a 20 mm cube at (0, 0, 25…45) in the home view; a
+  mirror plane at YZ needs a click where no body is in front (the spec tries
+  a few points). Volumes read from a 3MF are a tessellation short of exact
+  (`toBeCloseTo(v, -1)` for a cylinder hole). A copy body is "Body2" and so
+  on in creation order.

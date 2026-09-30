@@ -1,4 +1,5 @@
 import {
+  curvePolyline,
   ellipseShape,
   faceSketchFrame,
   fitSpline,
@@ -61,7 +62,19 @@ export interface SketchOutputData {
    * (`<sketch>/<line>`, ADR-0029). Placed in the world with `frame`.
    */
   lines?: Record<SketchEntityId, readonly [Vec2, Vec2]>;
+  /**
+   * Every curve of the sketch (lines, arcs, circles, ellipses, splines),
+   * construction ones too, in sketch coordinates: what a path pattern
+   * follows (`<sketch>/<curve>`, P3-07). Placed in the world with `frame`.
+   */
+  curves?: Record<SketchEntityId, SketchPathCurve>;
 }
+
+/** A sketch curve as a path pattern walks it: exact arcs, polylines for the rest. */
+export type SketchPathCurve =
+  | { type: 'polyline'; points: Vec2[] }
+  /** Counter-clockwise from angle `from` (radians) by `sweep`; a circle is a whole turn. */
+  | { type: 'arc'; center: Vec2; radius: number; from: number; sweep: number };
 
 /**
  * The sketch feature in the kernel (P2-02, ADR-0025). The sketch is solved
@@ -111,7 +124,12 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
         edges: face.edges.map((c) => ids[c] ?? null),
       });
     }
-    const output: SketchOutputData = { frame, profiles, lines: sketchLines(data) };
+    const output: SketchOutputData = {
+      frame,
+      profiles,
+      lines: sketchLines(data),
+      curves: sketchCurves(data),
+    };
     const report: SketchReport = {
       frame,
       ...(Object.keys(projections).length > 0 && { projections }),
@@ -221,6 +239,39 @@ export function sketchLines(data: SketchData): Record<SketchEntityId, readonly [
         [a.x, a.y],
         [b.x, b.y],
       ];
+    }
+  }
+  return out;
+}
+
+/** The path-pattern form of every curve of a sketch (see `SketchOutputData.curves`). */
+function sketchCurves(data: SketchData): Record<SketchEntityId, SketchPathCurve> {
+  const out: Record<SketchEntityId, SketchPathCurve> = {};
+  const point = (id: SketchEntityId): Vec2 | undefined => {
+    const p = data.entities[id];
+    return p?.type === 'point' ? [p.x, p.y] : undefined;
+  };
+  for (const [id, e] of Object.entries(data.entities) as [SketchEntityId, SketchEntity][]) {
+    if (e.type === 'circle') {
+      const center = point(e.center);
+      if (center) out[id] = { type: 'arc', center, radius: e.radius, from: 0, sweep: 2 * Math.PI };
+    } else if (e.type === 'arc') {
+      const [center, start, end] = [point(e.center), point(e.start), point(e.end)];
+      if (!center || !start || !end) continue;
+      const from = Math.atan2(start[1] - center[1], start[0] - center[0]);
+      const to = Math.atan2(end[1] - center[1], end[0] - center[0]);
+      let sweep = (to - from) % (2 * Math.PI);
+      if (sweep <= 1e-12) sweep += 2 * Math.PI;
+      out[id] = {
+        type: 'arc',
+        center,
+        radius: Math.hypot(start[0] - center[0], start[1] - center[1]),
+        from,
+        sweep,
+      };
+    } else if (e.type !== 'point') {
+      const points = curvePolyline(data, e);
+      if (points) out[id] = { type: 'polyline', points };
     }
   }
   return out;

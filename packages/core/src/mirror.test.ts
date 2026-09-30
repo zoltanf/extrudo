@@ -9,6 +9,8 @@ describe('mirror inputs', () => {
     const inputs = mirrorInputs(['B:0'], plane);
     expect(MirrorInputsSchema.safeParse(inputs).success).toBe(true);
     expect(mirrorSettings(inputs)).toEqual({
+      objects: 'bodies',
+      features: [],
       bodies: [{ kind: 'body', id: 'B:0' }],
       plane,
       copy: true,
