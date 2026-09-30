@@ -103,3 +103,25 @@ export function determinant(m: Matrix12): number {
   ];
   return dot(row(0), cross(row(1), row(2)));
 }
+
+/**
+ * Place on Bed (P3-10, ADR-0048): the turn and move that put a plane face,
+ * whose outward normal is `normal` and which contains `point`, flat on the
+ * XY plane facing down (normal -Z) at z = 0. The turn is the smallest one
+ * (about the axis `normal × -Z` through `point`, so the face's own centre
+ * stays where it is in X and Y; a face already up is turned half a turn
+ * about X); the move is then straight down by the height of `point`. Pure.
+ */
+export function faceDown(normal: Vec3, point: Vec3): Matrix12 {
+  const n = unit(normal);
+  // n · (-Z) is the cosine of the angle to turn through; n × (-Z) = (-ny, nx, 0) the axis.
+  const axis: Vec3 = [0 - n[1], n[0], 0];
+  const sine = Math.hypot(axis[0], axis[1]);
+  const turn =
+    sine < 1e-9
+      ? n[2] < 0
+        ? IDENTITY
+        : rotation(point, [1, 0, 0], Math.PI)
+      : rotation(point, axis, Math.atan2(sine, 0 - n[2]));
+  return compose(translation([0, 0, 0 - point[2]]), turn);
+}

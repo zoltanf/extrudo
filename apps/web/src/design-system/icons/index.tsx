@@ -84,6 +84,8 @@ export const ICON_NAMES = [
   'insert-svg',
   'export',
   'place-on-bed',
+  'print-info',
+  'overhang',
   'send-to-slicer',
 ] as const;
 

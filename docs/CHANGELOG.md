@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-30 · **P3-10** 3D-print aids (ADR-0048): 3D Print › Prepare gets
+  Print Info (volume, weight and filament length for PLA, PETG, ABS, TPU or a
+  density of your own, 1.75 or 2.85 mm filament, from the exact volumes, solid
+  at 100 % infill), Overhang Analysis (faces leaning out more than an angle
+  from a chosen down direction are shaded red; the bed is left out; a row in
+  the browser's Analysis folder) and Place on Bed (pick a flat face: its body
+  turns so the face lies on the bed, a real feature you can undo, edit and
+  export; also in a flat face's context list).
 - 2026-09-30 · **P3-03** Shell (ADR-0046): hollow a body by removing faces
   (on one or several bodies) and giving a wall thickness, inside or outside
   the surface; with no face a body is hollowed closed, a sealed void. The

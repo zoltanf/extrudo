@@ -41,6 +41,7 @@ function input(over: Partial<ContextInput> = {}): ContextInput {
     commands: [
       cmd('sketch'),
       cmd('section'),
+      cmd('placeOnBed'),
       cmd('measure'),
       cmd('delete'),
       cmd('redo'),
@@ -97,6 +98,7 @@ describe('the overflow list in the model', () => {
     expect(ids(i)).toEqual([
       'sketchOnFace',
       'sectionHere',
+      'placeOnBed',
       'measure',
       'hideBody',
       'appearance',
@@ -115,12 +117,17 @@ describe('the overflow list in the model', () => {
     const section = i.commands.find((c) => c.id === 'section');
     find(i, 'sectionHere')?.onSelect();
     expect(section?.run).toHaveBeenCalled();
+    // Place on Bed starts its dialog with the selected face picked (P3-10).
+    const bed = i.commands.find((c) => c.id === 'placeOnBed');
+    find(i, 'placeOnBed')?.onSelect();
+    expect(bed?.run).toHaveBeenCalled();
   });
 
   it('offers no Sketch on Face for two faces, or for an edge', () => {
     const two = input({ selection: [item('face', 'B:0:1'), item('face', 'B:0:2')] });
     expect(ids(two)).not.toContain('sketchOnFace');
     expect(ids(two)).not.toContain('sectionHere');
+    expect(ids(two)).not.toContain('placeOnBed');
     expect(ids(two)).toContain('measure');
     expect(ids(input({ selection: [item('edge', 'B:0:1')] }))).not.toContain('sketchOnFace');
   });

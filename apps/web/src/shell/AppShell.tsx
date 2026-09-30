@@ -45,6 +45,9 @@ import { MeasureOverlay } from '../measure/MeasureOverlay';
 import { MeasurePanel } from '../measure/MeasurePanel';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
+import { OverhangPanel } from '../print/OverhangPanel';
+import { PrintInfoPanel } from '../print/PrintInfoPanel';
+import { OVERHANG_TOOL, PRINT_INFO_TOOL, useOverhang, usePrintInfo } from '../print/usePrintAids';
 import type { Autosaver } from '../project/autosave';
 import { VersionsDialog } from '../project/VersionsDialog';
 import type { VersionContext } from '../project/versions';
@@ -205,6 +208,8 @@ export function AppShell({
   const projecting = mode === 'sketch' && activeTool === PROJECT_TOOL;
   const measuring = mode === 'model' && activeTool === MEASURE_TOOL;
   const sectioning = mode === 'model' && activeTool === SECTION_TOOL;
+  const printing = mode === 'model' && activeTool === PRINT_INFO_TOOL;
+  const overhanging = mode === 'model' && activeTool === OVERHANG_TOOL;
   const showConstraints = useStore(viewport, (s) => s.sketchConstraints);
   const showDimensions = useStore(viewport, (s) => s.sketchDimensions);
   const showProfiles = useStore(viewport, (s) => s.sketchProfiles);
@@ -312,6 +317,17 @@ export function AppShell({
     model: mode === 'model',
     hover,
   });
+  // 3D-print aids (P3-10): weight and filament estimates, and the overhang shading (view state
+  // in the viewport store, like the section).
+  const printInfo = usePrintInfo({
+    kernel,
+    preferences: platform.preferences,
+    doc,
+    selection,
+    bodyList,
+    meshes: bodies,
+    active: printing,
+  });
   const sectionPlane = section.state
     ? planeName(section.state.plane, {
         construction: (id) => doc.features.find((f) => f.id === id)?.name,
@@ -361,6 +377,13 @@ export function AppShell({
   // Editing a feature shows and picks the bodies before it (the preview's base), and so
   // does the Project tool in a sketch that later features build on.
   const shownBodies = project.bodies ?? redefineBase ?? dialogBodies(dialogOpen, bodies);
+  const overhang = useOverhang({
+    viewport,
+    doc,
+    bodies: shownBodies,
+    meta: bodyMeta,
+    model: mode === 'model',
+  });
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
   const preview = useMemo(() => viewPreview(dialogOpen), [dialogOpen]);
   const ready = useMemo(
@@ -560,7 +583,7 @@ export function AppShell({
             { keys: 'Enter', run: () => host.enter() },
           ]
         : []),
-      ...(measuring || sectioning
+      ...(measuring || sectioning || printing || overhanging
         ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }]
         : []),
       // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
@@ -597,6 +620,8 @@ export function AppShell({
       projecting,
       measuring,
       sectioning,
+      printing,
+      overhanging,
       mode,
       drawing,
       host,
@@ -614,6 +639,13 @@ export function AppShell({
     dialog?.cancel();
     session.getState().setTool(SECTION_TOOL);
   };
+  /** Opens the Overhang Analysis panel on the analysis as it is (the browser's row). */
+  const openOverhang = () => {
+    if (mode !== 'model') return;
+    if (picking) cancelCreateSketch(stores);
+    dialog?.cancel();
+    session.getState().setTool(OVERHANG_TOOL);
+  };
   const run = (tool: ToolId) => {
     if (isRepeatable(tool)) setLastTool(tool);
     // A feature dialog's command opens it (P2-05); another tool (not Parameters) ends it.
@@ -621,7 +653,8 @@ export function AppShell({
     if (spec) {
       if (mode === 'model') {
         if (picking) cancelCreateSketch(stores);
-        if (measuring || sectioning) session.getState().setTool(undefined);
+        if (measuring || sectioning || printing || overhanging)
+          session.getState().setTool(undefined);
         dialog?.start(spec.type);
       }
       return;
@@ -664,6 +697,18 @@ export function AppShell({
         session.getState().setTool(SECTION_TOOL);
         void section.pickFace(face);
       } else session.getState().setTool(sectioning ? undefined : SECTION_TOOL);
+    } else if (tool === PRINT_INFO_TOOL) {
+      if (mode !== 'model') return;
+      if (picking) cancelCreateSketch(stores);
+      session.getState().setTool(printing ? undefined : PRINT_INFO_TOOL);
+    } else if (tool === OVERHANG_TOOL) {
+      if (mode !== 'model') return;
+      if (overhanging) session.getState().setTool(undefined);
+      else {
+        if (picking) cancelCreateSketch(stores);
+        overhang.start();
+        session.getState().setTool(OVERHANG_TOOL);
+      }
     } else if (tool === 'exportSketch' && activeSketchId) {
       // Profiles selected in the open sketch are offered first (P1-13).
       featureActions.exportSketch(activeSketchId);
@@ -687,7 +732,8 @@ export function AppShell({
   const stopCommand = () => {
     if (picking) cancelCreateSketch(stores);
     else if (drawing) host?.stop();
-    else if (projecting || measuring || sectioning) session.getState().setTool(undefined);
+    else if (projecting || measuring || sectioning || printing || overhanging)
+      session.getState().setTool(undefined);
   };
 
   /**
@@ -978,7 +1024,7 @@ export function AppShell({
         activeTool={
           picking
             ? 'sketch'
-            : drawing || projecting || measuring || sectioning
+            : drawing || projecting || measuring || sectioning || printing || overhanging
               ? (activeTool as ToolId)
               : dialogOpen && typeof dialogOpen.spec.command === 'string'
                 ? dialogOpen.spec.command
@@ -1021,6 +1067,21 @@ export function AppShell({
                 onToggle: () => section.setOn(!section.state?.on),
                 onEdit: openSection,
                 onRemove: section.remove,
+              },
+            })}
+            {...(overhang.state && {
+              overhang: {
+                label: `Overhangs · ${overhang.state.down.toUpperCase()} · ${
+                  overhang.degrees === undefined ? '?' : Math.round(overhang.degrees)
+                }°`,
+                on: overhang.state.on,
+                active: overhanging,
+                onToggle: () => overhang.setOn(!overhang.state?.on),
+                onEdit: openOverhang,
+                onRemove: () => {
+                  overhang.remove();
+                  if (overhanging) session.getState().setTool(undefined);
+                },
               },
             })}
             width={browser.size}
@@ -1068,6 +1129,9 @@ export function AppShell({
             preview={preview}
             viewMenu={viewMenu}
             sectionClip={section.clip}
+            {...(overhang.summary !== undefined && {
+              overhang: { view: overhang.view, summary: overhang.summary },
+            })}
           >
             {dialogOpen && dialog && (
               <DialogOverlay
@@ -1163,6 +1227,16 @@ export function AppShell({
             constructionPlanes={constructionDrawings
               .filter((c) => c.report.kind === 'plane')
               .map((c) => ({ id: c.id, name: c.name }))}
+            onClose={() => session.getState().setTool(undefined)}
+          />
+        )}
+        {printing && (
+          <PrintInfoPanel info={printInfo} onClose={() => session.getState().setTool(undefined)} />
+        )}
+        {overhanging && (
+          <OverhangPanel
+            tool={overhang}
+            settings={doc.settings}
             onClose={() => session.getState().setTool(undefined)}
           />
         )}

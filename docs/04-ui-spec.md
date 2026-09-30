@@ -113,6 +113,25 @@ brief, voice) is in **`05-brand.md`**. In short:
   while the model is edited. The browser's Analysis folder lists it (click
   to edit; the eye turns it off and on; the menu removes it). Sketch mode
   draws the model without it.
+- **Print aids** (P3-10, ADR-0048), all in 3D Print › Prepare. *Print Info*:
+  a panel like Measure's. Material (PLA, PETG, ABS, TPU with their g/cm³, or
+  Custom density as an expression field) and filament diameter (1.75 or
+  2.85 mm) above; below, the volume, weight and filament length of the
+  selected bodies (a face or edge counts for its body) or, with none
+  selected, of every shown body. The note "Solid, 100 % infill" says infill
+  isn't modelled. The choice is remembered. *Overhang Analysis*: a panel with
+  an Angle (an expression field, 0–90°, 45° default), Down (-Z the bed, +Z,
+  ±Y, ±X) and "Show overhangs", and a line saying how many faces and how much
+  area overhang. Faces whose normal points more than the angle below the
+  horizontal are shaded red (the error colour, both themes); faces lying on the
+  lowest level of the model are not overhangs. It is view state like the
+  section: not saved, not undone; closing the panel leaves the shading on;
+  the browser's Analysis folder has its row (click to edit, eye, menu with
+  Remove). It works with a section on and is off in sketch mode. *Place on
+  Bed*: a dialog with one Face field (a flat face selected beforehand is taken
+  at once); the preview shows the body turned so the face lies on the bed
+  (z = 0); a warning says when part of the body would end up below it. Also
+  "Place on Bed" in the context list of a flat face.
 - **Tool groups:** each group shows 3–6 most-used tools as buttons plus a
   dropdown with the full list. Users can pin tools to the toolbar.
 - **Browser (left):** collapsible tree with an eye toggle per item and

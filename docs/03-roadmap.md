@@ -517,8 +517,21 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   is turned off and on, edited or removed from the browser's Analysis
   folder; a selected flat face takes it at once ("Section Here" in the
   context list). Model mode only; a sketch is drawn without it.
-- [ ] **P3-10 3D-print aids:** mass properties with filament presets, overhang
-  shading, place on bed. FR-3DP-02..04.
+- [x] **P3-10 3D-print aids:** mass properties with filament presets, overhang
+  shading, place on bed. FR-3DP-02..04. Done 2026-09-30 (ADR-0048): 3D Print ›
+  Prepare has Print Info (volume, weight and filament length of the selected or
+  all shown bodies from the kernel's exact volumes; PLA 1.24, PETG 1.27, ABS 1.04,
+  TPU 1.21 g/cm³ or a custom density expression; 1.75 or 2.85 mm filament; kept
+  in the `print.material` preference; "solid, 100 % infill"), Overhang Analysis
+  (view state like the section: faces whose normal points more than N° (an
+  angle expression, 45° default) below the horizontal for a chosen down
+  direction (-Z default) are shaded in the error colour by a shader patch, faces
+  on the lowest level are not overhangs; counts in `data-overhang`; a row in the
+  browser's Analysis folder) and Place on Bed (a new feature `placeOnBed`, one
+  flat face: the kernel turns its body by the smallest rotation so the face lies
+  on z = 0 facing down, recomputed from the face on every change; context entry
+  on a flat face; undoable, exports as it lies). No facade, schema-version or
+  migration change.
 - [x] **P3-11 Marking menu** (right-click radial) and context menus
   everywhere. FR-UX-03. Done 2026-09-29 (ADR-0042): a right-click without
   movement opens a ring of eight wedges (model: Sketch, Extrude, Fillet,

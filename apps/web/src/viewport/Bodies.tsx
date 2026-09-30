@@ -14,6 +14,7 @@ import {
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import type { OverhangView } from '../print/overhang';
 import type { SectionClip } from '../section/clip';
 import {
   type BodyHighlight,
@@ -26,6 +27,7 @@ import {
 import { boundsOf, edgeSegments } from './bodyGeometry';
 import { capColors, type Rgba } from './colors';
 import { createDotMaterial } from './dots';
+import { createOverhangShading } from './overhangShading';
 import { SectionCap } from './SectionCap';
 import {
   curvedFaces,
@@ -65,6 +67,8 @@ export interface BodiesProps {
   onSilhouettes?(body: BodyId, segments: number): void;
   /** A section analysis (P3-09): what lies on the clip's side is not drawn, and the cut is capped. */
   section?: { clip: SectionClip; color: Rgba; hatch: Rgba };
+  /** An overhang analysis (P3-10, ADR-0048): the faces it flags are shaded in `color`. */
+  overhang?: { view: OverhangView; color: Rgba };
 }
 
 /** The clipping plane as three.js keeps it: it keeps what lies on its normal's side. */
@@ -95,6 +99,7 @@ export function Bodies({
   onBounds,
   onSilhouettes,
   section,
+  overhang,
 }: BodiesProps) {
   const shown = useMemo(
     () =>
@@ -118,6 +123,7 @@ export function Bodies({
       accent={highlight}
       marks={bodyHighlight(id, mesh, hover, selection)}
       onSilhouettes={onSilhouettes}
+      {...(overhang && { overhang })}
       {...(section && planes && { section: { ...section, planes, order: 10 + 3 * index } })}
     />
   ));
@@ -139,6 +145,7 @@ function Body({
   marks,
   onSilhouettes,
   section,
+  overhang,
 }: {
   id: BodyId;
   mesh: BodyMesh;
@@ -151,8 +158,12 @@ function Body({
   marks: BodyHighlight;
   onSilhouettes?(body: BodyId, segments: number): void;
   section?: { clip: SectionClip; color: Rgba; hatch: Rgba; planes: Plane[]; order: number };
+  overhang?: { view: OverhangView; color: Rgba };
 }) {
   const planes = section?.planes ?? null;
+  // The overhang shading is one patch of the face material; its settings are uniforms.
+  const shading = useMemo(() => createOverhangShading(), []);
+  shading.set(overhang?.view, overhang?.color ?? body);
   const faces = useMemo(() => {
     const g = new BufferGeometry();
     g.setAttribute('position', new BufferAttribute(mesh.positions, 3));
@@ -223,6 +234,8 @@ function Body({
             // A see-through body doesn't hide what is behind it.
             depthWrite={opacity >= 1}
             clippingPlanes={planes}
+            onBeforeCompile={shading.onBeforeCompile}
+            customProgramCacheKey={shading.cacheKey}
           />
         </mesh>
       )}

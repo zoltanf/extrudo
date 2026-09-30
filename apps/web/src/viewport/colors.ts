@@ -44,6 +44,8 @@ export interface SceneColors {
   section: Rgba;
   /** The hatch lines on the cap: `ink`, which contrasts with the fill in both themes. */
   sectionHatch: Rgba;
+  /** The overhang analysis' shading (P3-10). */
+  overhang: Rgba;
 }
 
 const TOKENS: Record<keyof SceneColors, string> = {
@@ -68,6 +70,7 @@ const TOKENS: Record<keyof SceneColors, string> = {
   previewIntersect: '--x-preview-intersect',
   section: '--x-cat-inspect',
   sectionHatch: '--x-ink',
+  overhang: '--x-error',
 };
 
 const FALLBACK: Rgba = { r: 0.5, g: 0.5, b: 0.5, a: 1 };

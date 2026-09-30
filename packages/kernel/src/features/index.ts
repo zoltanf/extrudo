@@ -6,6 +6,7 @@ import { kernelCombine } from './combine';
 import { KERNEL_CONSTRUCTION } from './construction';
 import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
+import { kernelPlaceOnBed } from './place-on-bed';
 import { KERNEL_PRIMITIVES } from './primitives';
 import { kernelRevolve } from './revolve';
 import { kernelShell } from './shell';
@@ -35,5 +36,7 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
     .register(kernelCombine as unknown as KernelFeatureDefinition)
     .register(kernelMove as unknown as KernelFeatureDefinition)
     .register(kernelMirror as unknown as KernelFeatureDefinition);
+  // Place on Bed (P3-10, ADR-0048).
+  registry.register(kernelPlaceOnBed as unknown as KernelFeatureDefinition);
   return registry;
 }

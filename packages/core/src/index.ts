@@ -43,6 +43,7 @@ export {
 } from './migrations';
 export * from './mirror';
 export * from './move';
+export * from './place-on-bed';
 export * from './primitives';
 export * from './remove';
 export * from './revolve';

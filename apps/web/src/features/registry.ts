@@ -13,6 +13,7 @@ import { extrudeDialog } from './extrude';
 import { filletDialog } from './fillet';
 import { mirrorDialog } from './mirror';
 import { moveDialog } from './move';
+import { placeOnBedDialog } from './place-on-bed';
 import { PRIMITIVE_DIALOGS } from './primitives';
 import { revolveDialog } from './revolve';
 import { shellDialog } from './shell';
@@ -33,6 +34,8 @@ export function featureDialogs(): FeatureDialogs {
   for (const spec of CONSTRUCTION_DIALOGS) dialogs.register(spec);
   // Combine, Move/Copy and Mirror (P3-06, ADR-0044).
   dialogs.register(combineDialog).register(moveDialog).register(mirrorDialog);
+  // Place on Bed (P3-10, ADR-0048).
+  dialogs.register(placeOnBedDialog);
   return dialogs;
 }
 

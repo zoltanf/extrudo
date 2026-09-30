@@ -586,6 +586,25 @@ removed face that runs smoothly into a neighbour (next to a fillet) is
 refused. No new keys: a shell is a feature with `ref`, `expr` and `enum`
 inputs like the others.
 
+### 6.15 `placeOnBed`
+
+Turns the body a flat face belongs to so that face lies on the build plate
+(P3-10). One input; the rotation and the move are computed on every
+recompute, not stored.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `face` | `ref` | yes | At most one ref, of kind `face`, a flat face. Empty: an error until one is picked |
+
+The body is the one the face is in. It turns by the smallest rotation that
+makes the face's outward normal point along -Z (about the horizontal axis
+`normal x -Z` through the face's centre; a face that faces up turns half a
+turn about X), then moves along Z so the face lies at z = 0. The X and Y of
+the face's centre stay where they were. The body keeps its ID and every face
+keeps its name, so references to the body and its faces still resolve. The
+feature warns when the face is already on the bed, and when part of the body
+ends up below z = 0.
+
 Reserved for later: the other modify features (hole, patterns, ...) will be
 new feature types; old readers see them as unknown types.
 

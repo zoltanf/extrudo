@@ -76,15 +76,20 @@ export interface BrowserPanelProps {
    * The section analysis (P3-09), while there is one: an Analysis folder with its row. The eye
    * clips the view or not, a click opens the panel, the menu removes it.
    */
-  section?: {
-    label: string;
-    on: boolean;
-    /** The panel is open. */
-    active: boolean;
-    onToggle(): void;
-    onEdit(): void;
-    onRemove(): void;
-  };
+  section?: AnalysisEntry;
+  /** The overhang analysis (P3-10), while there is one: a row in the same folder. */
+  overhang?: AnalysisEntry;
+}
+
+/** One row of the Analysis folder: a view analysis with its eye, its panel and its removal. */
+export interface AnalysisEntry {
+  label: string;
+  on: boolean;
+  /** The panel is open. */
+  active: boolean;
+  onToggle(): void;
+  onEdit(): void;
+  onRemove(): void;
 }
 
 /**
@@ -113,6 +118,7 @@ export function BrowserPanel({
   onPickBody,
   onHoverBody,
   section,
+  overhang,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
@@ -272,40 +278,34 @@ export function BrowserPanel({
                 ))
               )}
             </Folder>
-            {section && (
+            {(section || overhang) && (
               <Folder
                 label="Analysis"
                 icon={<ToolIcon name="section" category="inspect" size={16} />}
-                eye={{ visible: section.on, onToggle: section.onToggle }}
+                eye={{
+                  visible: Boolean(section?.on || overhang?.on),
+                  onToggle: () => {
+                    const on = Boolean(section?.on || overhang?.on);
+                    for (const entry of [section, overhang]) {
+                      if (entry && entry.on === on) entry.onToggle();
+                    }
+                  },
+                }}
               >
-                <ContextMenu
-                  label="Section menu"
-                  trigger={
-                    <Leaf active={section.active} data-section-row={section.on ? 'on' : 'off'}>
-                      <button
-                        type="button"
-                        onClick={section.onEdit}
-                        className={`min-w-0 flex-1 truncate text-left ${section.on ? '' : 'text-muted'}`}
-                      >
-                        {section.label}
-                      </button>
-                      <EyeToggle name="section" visible={section.on} onToggle={section.onToggle} />
-                    </Leaf>
-                  }
-                >
-                  <MenuItem icon={<Pencil size={14} />} onSelect={section.onEdit}>
-                    Edit
-                  </MenuItem>
-                  <MenuItem
-                    icon={section.on ? <EyeOff size={14} /> : <Eye size={14} />}
-                    onSelect={section.onToggle}
-                  >
-                    {section.on ? 'Hide' : 'Show'}
-                  </MenuItem>
-                  <MenuItem icon={<Trash2 size={14} />} onSelect={section.onRemove}>
-                    Remove
-                  </MenuItem>
-                </ContextMenu>
+                {section && (
+                  <AnalysisRow
+                    name="section"
+                    entry={section}
+                    rowAttribute={{ 'data-section-row': section.on ? 'on' : 'off' }}
+                  />
+                )}
+                {overhang && (
+                  <AnalysisRow
+                    name="overhang"
+                    entry={overhang}
+                    rowAttribute={{ 'data-overhang-row': overhang.on ? 'on' : 'off' }}
+                  />
+                )}
               </Folder>
             )}
             <Folder
@@ -772,5 +772,47 @@ function Leaf({
     >
       {children}
     </li>
+  );
+}
+
+/** A row of the Analysis folder (P3-09, P3-10): name (opens the panel), eye, and a menu. */
+function AnalysisRow({
+  name,
+  entry,
+  rowAttribute,
+}: {
+  name: string;
+  entry: AnalysisEntry;
+  rowAttribute: Record<string, string>;
+}) {
+  return (
+    <ContextMenu
+      label={`${name === 'section' ? 'Section' : 'Overhang'} menu`}
+      trigger={
+        <Leaf active={entry.active} {...rowAttribute}>
+          <button
+            type="button"
+            onClick={entry.onEdit}
+            className={`min-w-0 flex-1 truncate text-left ${entry.on ? '' : 'text-muted'}`}
+          >
+            {entry.label}
+          </button>
+          <EyeToggle name={name} visible={entry.on} onToggle={entry.onToggle} />
+        </Leaf>
+      }
+    >
+      <MenuItem icon={<Pencil size={14} />} onSelect={entry.onEdit}>
+        Edit
+      </MenuItem>
+      <MenuItem
+        icon={entry.on ? <EyeOff size={14} /> : <Eye size={14} />}
+        onSelect={entry.onToggle}
+      >
+        {entry.on ? 'Hide' : 'Show'}
+      </MenuItem>
+      <MenuItem icon={<Trash2 size={14} />} onSelect={entry.onRemove}>
+        Remove
+      </MenuItem>
+    </ContextMenu>
   );
 }

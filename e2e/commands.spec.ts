@@ -64,10 +64,10 @@ test('the palette finds commands by fuzzy search and runs them', async ({ page }
   // Only the Sketch tab's tools are offered in a sketch; later ones say when they arrive.
   await palette(page).getByRole('combobox').fill('extrude');
   await expect(palette(page).getByRole('option')).toHaveCount(0);
-  await palette(page).getByRole('combobox').fill('place on bed');
-  const later = palette(page).getByRole('option', { name: /^Place on Bed/ });
+  await palette(page).getByRole('combobox').fill('send to slicer');
+  const later = palette(page).getByRole('option', { name: /^Send to Slicer/ });
   await expect(later).toHaveAttribute('aria-disabled', 'true');
-  await expect(later).toContainText('Arrives with P3-10.');
+  await expect(later).toContainText('Arrives with P4-08.');
   await page.keyboard.press('Escape');
   await expect(palette(page)).toBeHidden();
 });

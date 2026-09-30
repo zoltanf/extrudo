@@ -23,6 +23,7 @@ import {
   type SelectionItem,
 } from '@extrudo/core';
 import {
+  ArrowDownToLine,
   CirclePlay,
   Eraser,
   Eye,
@@ -202,6 +203,14 @@ function modelGroups(input: ContextInput): MarkingEntry[][] {
       commandEntry(input, 'section', 'Section Here', {
         id: 'sectionHere',
         icon: icon(<ScissorsLineDashed {...small} />),
+      }),
+    );
+  }
+  if (faces.length === 1 && selection.length === 1) {
+    // Place on Bed turns the face's body so the face lies on the bed (P3-10).
+    geometry.push(
+      commandEntry(input, 'placeOnBed', 'Place on Bed', {
+        icon: icon(<ArrowDownToLine {...small} />),
       }),
     );
   }

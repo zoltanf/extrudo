@@ -586,8 +586,22 @@ export const TOOLS = {
     label: 'Place on Bed',
     icon: 'place-on-bed',
     category: 'export',
-    hint: 'Turn a face down onto the print bed.',
-    comesWith: 'P3-10',
+    hint: 'Turn a flat face down onto the print bed: the body turns with it.',
+  },
+  printInfo: {
+    id: 'printInfo',
+    label: 'Print Info',
+    icon: 'print-info',
+    category: 'export',
+    hint: 'Volume, weight and filament length for PLA, PETG, ABS, TPU or your own density.',
+  },
+  overhang: {
+    id: 'overhang',
+    label: 'Overhang Analysis',
+    short: 'Overhangs',
+    icon: 'overhang',
+    category: 'export',
+    hint: 'Shade the faces that lean out more than an angle: they need support to print.',
   },
   slicer: {
     id: 'slicer',
@@ -711,7 +725,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
     id: 'print',
     label: '3D Print',
     groups: [
-      { label: 'Prepare', tools: ['placeOnBed', 'measure'] },
+      { label: 'Prepare', tools: ['placeOnBed', 'measure', 'printInfo', 'overhang'] },
       { label: 'Output', tools: ['export', 'slicer'] },
     ],
   },

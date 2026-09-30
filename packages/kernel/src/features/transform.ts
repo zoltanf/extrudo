@@ -48,7 +48,7 @@ function existing(ctx: EvalContext, refs: readonly GeomRef[], what: string): Bod
 }
 
 /** A body moved by `matrix`: its source, the new shape (tracked in the scope) and its names. */
-interface Image {
+export interface Image {
   source: BodyId;
   /** The ID it takes in the output: the source's for a move, a new `<feature>:<n>` for a copy. */
   id: BodyId;
@@ -60,7 +60,7 @@ interface Image {
  * transform's history. The new shapes belong to `scope`; the caller keeps
  * the ones it puts in the output.
  */
-function transformBodies(
+export function transformBodies(
   ctx: EvalContext,
   scope: ShapeScope,
   ids: readonly BodyId[],
@@ -84,7 +84,7 @@ function transformBodies(
 }
 
 /** The output body set with the images in it (a copy adds them, a move replaces the sources). */
-function withImages(ctx: EvalContext, scope: ShapeScope, images: readonly Image[]) {
+export function withImages(ctx: EvalContext, scope: ShapeScope, images: readonly Image[]) {
   const bodies = new Map(ctx.bodies);
   const names = new Map<BodyId, TopoNames>();
   for (const { id, named } of images) {
@@ -94,7 +94,7 @@ function withImages(ctx: EvalContext, scope: ShapeScope, images: readonly Image[
   return { bodies, names };
 }
 
-function isIdentity(matrix: Matrix12): boolean {
+export function isIdentity(matrix: Matrix12): boolean {
   return matrix.every((value, i) => Math.abs(value - (IDENTITY[i] as number)) < 1e-12);
 }
 

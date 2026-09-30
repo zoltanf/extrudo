@@ -6,6 +6,7 @@
  */
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { Preferences } from '../platform';
+import type { OverhangState } from '../print/overhang';
 import type { SectionState } from '../section/clip';
 import { DEFAULT_FILTER, type FilterKind, type SelectionFilter } from '../selection/filter';
 import {
@@ -138,6 +139,12 @@ export interface ViewportState extends ViewportSettings {
    * recomputes and lasts until it is removed or the project closes.
    */
   section: SectionState | undefined;
+  /**
+   * The overhang analysis (P3-10, ADR-0048): faces steeper than an angle shaded in the view.
+   * View state like the section: not in the document, not undoable, lasts while the project is
+   * open.
+   */
+  overhang: OverhangState | undefined;
 
   /** Moves the camera at once (drags, wheel) and stops any animation. */
   setView(view: View): void;
@@ -175,6 +182,10 @@ export interface ViewportState extends ViewportSettings {
   setSection(section: SectionState | undefined): void;
   /** Changes part of the section; nothing while there is none. */
   updateSection(patch: Partial<SectionState>): void;
+  /** Starts, replaces or (`undefined`) removes the overhang analysis. */
+  setOverhang(overhang: OverhangState | undefined): void;
+  /** Changes part of the overhang analysis; nothing while there is none. */
+  updateOverhang(patch: Partial<OverhangState>): void;
 }
 
 export type ViewportStore = StoreApi<ViewportState>;
@@ -234,6 +245,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       selectionFilter: DEFAULT_FILTER,
       fieldFilter: undefined,
       section: undefined,
+      overhang: undefined,
 
       setView(view) {
         set({ view, transition: undefined });
@@ -327,6 +339,13 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       updateSection(patch) {
         const current = get().section;
         if (current) set({ section: { ...current, ...patch } });
+      },
+      setOverhang(overhang) {
+        set({ overhang });
+      },
+      updateOverhang(patch) {
+        const current = get().overhang;
+        if (current) set({ overhang: { ...current, ...patch } });
       },
     };
   });

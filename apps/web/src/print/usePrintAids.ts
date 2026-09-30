@@ -1,0 +1,317 @@
+/**
+ * The logic of the 3D-print aids (P3-10, ADR-0048), called from `AppShell`:
+ *
+ * - `usePrintInfo`: the weight and filament estimate of the selected bodies (or every shown
+ *   one) from the kernel's exact volumes (`KernelApi.inspect`), the material kept in the
+ *   `print.material` preference.
+ * - `useOverhang`: the overhang analysis in the viewport store (view state, like the section),
+ *   the angle evaluated in the document's parameters, and the view and counts it gives the
+ *   viewport.
+ */
+import {
+  type BodyId,
+  type BodyMeta,
+  type EvaluateResult,
+  ExprError,
+  type ExtrudoDocument,
+  evaluateParameters,
+  formatQuantity,
+  type SelectionItem,
+} from '@extrudo/core';
+import type { BodyMesh, Inspection, InspectTarget } from '@extrudo/kernel';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useStore } from 'zustand';
+import { initialBodies } from '../export/modelExport';
+import type { MeasureKernel } from '../measure/inspection';
+import type { Preferences } from '../platform';
+import { readTopology } from '../selection/items';
+import type { ViewportStore } from '../viewport/store';
+import {
+  DEFAULT_MATERIAL,
+  type MaterialChoice,
+  type PrintEstimate,
+  presetDensity,
+  printEstimate,
+} from './material';
+import {
+  analyzeOverhang,
+  bedLevel,
+  DEFAULT_DOWN,
+  DEFAULT_OVERHANG_ANGLE,
+  type DownId,
+  downVector,
+  OVERHANG_RANGE,
+  type OverhangReport,
+  type OverhangState,
+  type OverhangView,
+  overhangSummary,
+  thresholdOf,
+} from './overhang';
+
+/** The tools' IDs: the session's `activeTool` while their panel is open. */
+export const PRINT_INFO_TOOL = 'printInfo';
+export const OVERHANG_TOOL = 'overhang';
+
+const MATERIAL_PREFERENCE = 'print.material';
+
+// ---------------------------------------------------------------- print info
+
+export interface PrintInfoBody {
+  id: BodyId;
+  name: string;
+  /** mm³. */
+  volume: number;
+}
+
+export interface PrintInfo {
+  /** Estimates come from these bodies: the selected ones, or every shown one. */
+  scope: 'selected' | 'shown';
+  choice: MaterialChoice;
+  setChoice(change: Partial<MaterialChoice>): void;
+  /** Evaluates the custom density (a plain number, g/cm³). */
+  evaluateDensity(expression: string): EvaluateResult;
+  /** The density in use, g/cm³; undefined while a custom one doesn't evaluate. */
+  density: number | undefined;
+  state: 'empty' | 'pending' | 'ready' | 'error';
+  bodies: PrintInfoBody[];
+  /** Total volume, mm³. */
+  volume: number | undefined;
+  estimate: PrintEstimate | undefined;
+  error?: string;
+}
+
+export interface PrintInfoOptions {
+  kernel: MeasureKernel | undefined;
+  preferences: Preferences;
+  doc: ExtrudoDocument;
+  selection: readonly SelectionItem[];
+  /** The model's bodies with their names, and their meshes (a change asks the kernel again). */
+  bodyList: readonly { id: BodyId; meta: BodyMeta }[];
+  meshes: Readonly<Record<BodyId, BodyMesh>>;
+  /** The panel is open. */
+  active: boolean;
+}
+
+export function usePrintInfo({
+  kernel,
+  preferences,
+  doc,
+  selection,
+  bodyList,
+  meshes,
+  active,
+}: PrintInfoOptions): PrintInfo {
+  const [choice, setChoiceState] = useState<MaterialChoice>(() => ({
+    ...DEFAULT_MATERIAL,
+    ...preferences.get<Partial<MaterialChoice>>(MATERIAL_PREFERENCE, {}),
+  }));
+  const setChoice = useCallback(
+    (change: Partial<MaterialChoice>) =>
+      setChoiceState((current) => {
+        const next = { ...current, ...change };
+        preferences.set(MATERIAL_PREFERENCE, next);
+        return next;
+      }),
+    [preferences],
+  );
+
+  const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
+  const evaluateDensity = useCallback(
+    (expression: string): EvaluateResult => {
+      const result = evaluation.evaluate(expression, 'unitless');
+      if (!result.ok || result.value > 0) return result;
+      return {
+        ok: false,
+        error: new ExprError('A density is more than 0 g/cm³.', {
+          start: 0,
+          end: expression.length,
+        }),
+      };
+    },
+    [evaluation],
+  );
+  const density = useMemo(() => {
+    if (choice.material !== 'custom') return presetDensity(choice.material);
+    const result = evaluateDensity(choice.density);
+    return result.ok ? result.value : undefined;
+  }, [choice.material, choice.density, evaluateDensity]);
+
+  // The bodies: those selected (a face or an edge picks its body), else every shown one.
+  const ids = useMemo(() => initialBodies(bodyList, selection), [bodyList, selection]);
+  const scope = useMemo(() => {
+    const live = new Set(bodyList.map((b) => b.id));
+    return selection.some((item) => {
+      const body = readTopology(item)?.body;
+      return body !== undefined && live.has(body);
+    })
+      ? 'selected'
+      : 'shown';
+  }, [selection, bodyList]);
+  const key = ids.join(' ');
+
+  const [measured, setMeasured] = useState<{
+    key: string;
+    inspection?: Inspection;
+    error?: string;
+  }>();
+  const kernelRef = useRef(kernel);
+  kernelRef.current = kernel;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `ids`; new meshes ask again.
+  useEffect(() => {
+    const k = kernelRef.current;
+    if (!active || !k || ids.length === 0) return;
+    let current = true;
+    const targets: InspectTarget[] = ids.map((body) => ({ kind: 'body', body, index: 0 }));
+    k.inspect(targets).then(
+      (inspection) => {
+        if (current) setMeasured({ key, inspection });
+      },
+      (error: unknown) => {
+        if (current)
+          setMeasured({ key, error: error instanceof Error ? error.message : String(error) });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [active, key, meshes, kernel !== undefined]);
+
+  const names = useMemo(() => new Map(bodyList.map((b) => [b.id, b.meta.name])), [bodyList]);
+  const fresh = measured?.key === key ? measured : undefined;
+  const bodies = useMemo<PrintInfoBody[]>(() => {
+    const items = fresh?.inspection?.items ?? [];
+    return ids.flatMap((id, i) => {
+      const item = items[i];
+      return item?.kind === 'body' ? [{ id, name: names.get(id) ?? id, volume: item.volume }] : [];
+    });
+  }, [fresh, ids, names]);
+  const volume = fresh?.inspection ? bodies.reduce((sum, b) => sum + b.volume, 0) : undefined;
+  const estimate =
+    volume !== undefined && density !== undefined
+      ? printEstimate(volume, density, choice.diameter)
+      : undefined;
+  const state: PrintInfo['state'] =
+    ids.length === 0 ? 'empty' : fresh?.error ? 'error' : fresh?.inspection ? 'ready' : 'pending';
+  return {
+    scope,
+    choice,
+    setChoice,
+    evaluateDensity,
+    density,
+    state,
+    bodies,
+    volume,
+    estimate,
+    ...(fresh?.error && { error: fresh.error }),
+  };
+}
+
+// ------------------------------------------------------------------ overhang
+
+export interface OverhangTool {
+  state: OverhangState | undefined;
+  /** The angle in degrees: the last one that evaluated, or none yet. */
+  degrees: number | undefined;
+  /** Evaluates an angle expression, 0…90°. */
+  evaluate(expression: string): EvaluateResult;
+  /** What the viewport shades with (absent while off, in sketch mode or with no bodies). */
+  view: OverhangView | undefined;
+  /** The counts over the shown bodies (only while `view` is there). */
+  report: OverhangReport | undefined;
+  /** `data-overhang`: the setting and the counts. */
+  summary: string | undefined;
+  /** Starts the analysis (default 45°, -Z) if there is none, and switches it on. */
+  start(): void;
+  setAngle(expression: string): void;
+  setDown(down: DownId): void;
+  setOn(on: boolean): void;
+  remove(): void;
+}
+
+export interface OverhangOptions {
+  viewport: ViewportStore;
+  doc: ExtrudoDocument;
+  bodies: Readonly<Record<BodyId, BodyMesh>>;
+  meta: Readonly<Record<BodyId, BodyMeta>>;
+  /** Model mode: a sketch is drawn without the analysis. */
+  model: boolean;
+}
+
+export function useOverhang({ viewport, doc, bodies, meta, model }: OverhangOptions): OverhangTool {
+  const state = useStore(viewport, (s) => s.overhang);
+  const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
+  const settings = doc.settings;
+  const evaluate = useCallback(
+    (expression: string): EvaluateResult => {
+      const result = evaluation.evaluate(expression, 'angle');
+      if (!result.ok) return result;
+      if (result.value >= OVERHANG_RANGE.min && result.value <= OVERHANG_RANGE.max) return result;
+      const text = (v: number) => formatQuantity(v, result.dim, { ...settings, precision: 0 });
+      return {
+        ok: false,
+        error: new ExprError(
+          `Between ${text(OVERHANG_RANGE.min)} and ${text(OVERHANG_RANGE.max)}.`,
+          {
+            start: 0,
+            end: expression.length,
+          },
+        ),
+      };
+    },
+    [evaluation, settings],
+  );
+
+  // An angle that stopped evaluating (a parameter it used was deleted) keeps its last value.
+  const lastAngle = useRef<number>(undefined);
+  const result = state ? evaluate(state.angle) : undefined;
+  if (!state) lastAngle.current = undefined;
+  else if (result?.ok) lastAngle.current = result.value;
+  const degrees = lastAngle.current;
+
+  const shown = useMemo(
+    () =>
+      (Object.entries(bodies) as [BodyId, BodyMesh][])
+        .filter(([id]) => meta[id]?.visible ?? true)
+        .map(([id, mesh]) => ({ id, mesh })),
+    [bodies, meta],
+  );
+  const on = state?.on ?? false;
+  const down = state?.down ?? DEFAULT_DOWN;
+  const view = useMemo<OverhangView | undefined>(() => {
+    if (!model || !on || degrees === undefined || shown.length === 0) return undefined;
+    const vector = downVector(down);
+    return {
+      down: vector,
+      threshold: thresholdOf(degrees),
+      bed: bedLevel(
+        shown.map((s) => s.mesh),
+        vector,
+      ),
+    };
+  }, [model, on, degrees, down, shown]);
+  const report = useMemo(() => (view ? analyzeOverhang(shown, view) : undefined), [view, shown]);
+  const summary = state ? overhangSummary(state, degrees, report) : undefined;
+
+  return {
+    state,
+    degrees,
+    evaluate,
+    view,
+    report,
+    summary,
+    start: () => {
+      const current = viewport.getState().overhang;
+      viewport
+        .getState()
+        .setOverhang(
+          current
+            ? { ...current, on: true }
+            : { angle: DEFAULT_OVERHANG_ANGLE, down: DEFAULT_DOWN, on: true },
+        );
+    },
+    setAngle: (angle) => viewport.getState().updateOverhang({ angle }),
+    setDown: (next) => viewport.getState().updateOverhang({ down: next }),
+    setOn: (value) => viewport.getState().updateOverhang({ on: value }),
+    remove: () => viewport.getState().setOverhang(undefined),
+  };
+}

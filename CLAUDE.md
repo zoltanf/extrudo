@@ -21,8 +21,8 @@ size and startup, offline precache), P2-16 (file-format spec,
 `docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
 fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-03
 (shell), P3-05 (construction geometry), P3-06 (combine, move/copy, mirror),
-P3-09 (section analysis), P3-11 (marking menu, context menus) and P3-16
-(notification history) are done.
+P3-09 (section analysis), P3-10 (3D-print aids), P3-11 (marking menu,
+context menus) and P3-16 (notification history) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -450,8 +450,27 @@ corrupts the wasm heap there, `touchesTangentFace`; with no removed face OCCT
 returns only the skin, so the solid with a void is assembled by hand; on
 failure the thickness is bisected: `[status, value]` read through
 `Kernel.shell`'s `ShellError.problems`). The Shell tile has no default key.
-Next: Phase 3: **P3-04** (hole), **P3-07** (patterns, which also takes
-mirroring features) and **P3-10** (3D-print aids). See `docs/03-roadmap.md`.
+ADR-0048 (P3-10) added the 3D-print aids (`apps/web/src/print/`, no
+facade or schema-version change): **Place on Bed is its own feature
+`placeOnBed`** (`core/src/place-on-bed.ts`, kernel `features/place-on-bed.ts`,
+dialog `features/place-on-bed.ts`; one flat `face` input, the kernel works
+out the smallest turn and the drop to z = 0 with `faceDown` in
+`features/matrix.ts` on every recompute, through the same `transformBodies`
+as Move, so names survive; warns when the face is already on the bed or
+the body reaches below it; also a flat face's context entry).
+**Print Info** (`usePrintInfo`, `PrintInfoPanel`) sums `KernelApi.inspect`
+body volumes and turns them into weight and filament length
+(`material.ts`; the material is the `print.material` preference, not a
+document setting). **Overhang analysis is view state** (`viewport.overhang`,
+`OverhangState`: an angle expression, a `down` axis, `on`), classified
+per triangle on the CPU for the counts (`print/overhang.ts`: normal ·
+down > sin N, bed contact excluded; `data-overhang`) and shaded per fragment
+by a patch of the face material (`viewport/overhangShading.ts`,
+`onBeforeCompile`, colour token `--x-error`); a row in the browser's
+Analysis folder next to the section's.
+Next: **P3-07** (patterns, which also takes mirroring features), then
+**P3-04** (hole). Since 2026-09-30 tasks run one at a time, not in
+parallel tracks. See `docs/03-roadmap.md`.
 
 ## Commands
 
@@ -481,7 +500,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0048: 3D-print aids (0006 is reserved) |
 
 ## Stack summary
 
@@ -1194,3 +1213,27 @@ them. Notes further down that name a machine apply to that machine only.
   plane): use y = 20. Sketch mode leaves the camera looking at the sketch:
   press Shift+1 and re-read the projector. The two `section-*.png`
   screenshots (full page, dark and light) come from CI's image.
+- **Print aids e2e** (`e2e/print-aids.spec.ts`, P3-10): the 3D Print tab's
+  Prepare group has the buttons "Place on Bed", "Print Info" and
+  "Overhangs" (`/^Overhang/`). The Print Info panel is the region "Print
+  Info" (`data-print-state` `empty`/`pending`/`ready`/`error`, rows
+  `[data-print-row="volume|weight|filament"]`, the native selects and
+  fields "Material" (`selectOption('petg')`, `'custom'`), the textbox
+  "Density" and the radios "1.75 mm" / "2.85 mm"; a density of 0 shows the
+  expression error and isn't taken). The Overhang panel is the region
+  "Overhang Analysis" (textbox "Angle" with `exact: true`, combobox "Down"
+  with `selectOption('+z')`, checkbox "Show overhangs", buttons "Done" and
+  "Remove"); the Viewport region's `data-overhang` reads "down=-z angle=45
+  faces=1 triangles=11 area=226 bed=90" (counts are over the shown bodies;
+  `… off` while the shading is off; absent with no analysis), the
+  browser row is `[data-overhang-row="on|off"]` (eye "Hide overhang").
+  The wall bracket is an L in XZ extruded ±40 mm along Y: its outer wall
+  face (x = 0, 80 × 60) is the one to lay down; look at it with Shift+6 and
+  click (0, 0, 30) after the camera settles (a point 1 mm from the
+  L-shaped end faces or the wall's thin edges hits an edge or the wrong
+  face). Laying it down makes `data-bodies` "Bracket:12:60,80,40". The
+  dialog is the region "Place on Bed dialog" (button "Face"); the
+  context entry is `[data-marking-entry="placeOnBed"]`. The overhang
+  shading itself is a shader patch, so it isn't in the counts: check
+  it with a screenshot (none is checked in). Kernel-side tests:
+  `pnpm vitest run packages/kernel/src/features/place-on-bed`.

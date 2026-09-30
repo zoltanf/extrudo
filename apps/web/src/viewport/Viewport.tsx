@@ -27,6 +27,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
 import { type MarkingEntry, MarkingMenu, MenuItem, MenuLabel, PointMenu } from '../design-system';
 import { previewSummary, type ViewPreview } from '../features/preview';
+import type { OverhangView } from '../print/overhang';
 import { clipSummary, type SectionClip, sectionSummary } from '../section/clip';
 import { combineFilters } from '../selection/filter';
 import { itemLabel, type LabelContext, selectionKey } from '../selection/items';
@@ -114,6 +115,11 @@ export interface ViewportProps {
    * edges are clipped and capped, and picking ignores what is clipped away.
    */
   sectionClip?: SectionClip;
+  /**
+   * The overhang analysis (P3-10, ADR-0048): `view` is what the bodies are shaded with (absent
+   * while it is off), `summary` the counts for `data-overhang`.
+   */
+  overhang?: { view: OverhangView | undefined; summary: string };
 }
 
 /**
@@ -254,6 +260,7 @@ export function Viewport({
   construction = NO_CONSTRUCTION,
   viewMenu,
   sectionClip,
+  overhang,
 }: ViewportProps) {
   const section = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -399,6 +406,7 @@ export function Viewport({
       data-construction={constructionSummary(drawnConstruction)}
       data-section={sectionSummary(sectionState)}
       data-section-clip={clipSummary(sectionClip)}
+      data-overhang={overhang?.summary}
       data-preview={previewSummary(preview)}
       data-preview-dimmed={preview?.dimmed || undefined}
       className="relative isolate min-w-0 flex-1 overflow-hidden"
@@ -431,6 +439,7 @@ export function Viewport({
             preview={preview}
             construction={drawnConstruction}
             sectionClip={sectionClip}
+            overhang={overhang?.view}
             onSilhouettes={onSilhouettes}
             onFirstFrame={() => setReady(true)}
           />
@@ -542,6 +551,7 @@ function Scene({
   preview,
   construction,
   sectionClip,
+  overhang,
   onSilhouettes,
   onFirstFrame,
 }: {
@@ -557,6 +567,7 @@ function Scene({
   preview: ViewPreview | undefined;
   construction: readonly ConstructionDrawing[];
   sectionClip: SectionClip | undefined;
+  overhang: OverhangView | undefined;
   onSilhouettes(body: BodyId, segments: number): void;
   onFirstFrame(): void;
 }) {
@@ -657,6 +668,7 @@ function Scene({
         selection={selection}
         onBounds={setBodyBounds}
         onSilhouettes={onSilhouettes}
+        {...(overhang && { overhang: { view: overhang, color: colors.overhang } })}
         {...(sectionClip && {
           section: { clip: sectionClip, color: colors.section, hatch: colors.sectionHatch },
         })}
