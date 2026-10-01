@@ -1427,6 +1427,19 @@ them. Notes further down that name a machine apply to that machine only.
   such experiments builds in the image by its digest (the tag shows as
   `<none>` on the Arch workstation): `docker run --rm --user 0 -v
   <dir>:/w -w /w --entrypoint sh <image id> -c 'em++ … && node h.js'`.
+- **The fuzzer covers B1-B5 and B7** (P3-17, ADR-0038/0047 amendments);
+  `FUZZ_SEED=7 FUZZ_STEPS=1000` on B5 reaches a pattern of 2 × 20 instances
+  that takes 55 s to recompute (open: pattern colour classes, ADR-0050 §6).
+  **A wasm trap (`RuntimeError: null function or function signature
+  mismatch`) is a null-pointer call inside OCCT**: find it by dumping the
+  failing body (`kernel.writeStep` in a wrapper around the call), reading it
+  back in a native harness built with `-g2 -sNODERAWFS=1` (function names
+  appear in the trace) and sweeping the parameter in separate processes. The
+  fillet one is `Geom2dAdaptor_Curve::EvalD1` under `ChFi3d_Builder::StartSol`
+  when a round's contact line leaves a face through a wall parallel to the
+  edge; the facade refuses it first (`filletRollsOff`). **Never `scope.keep`
+  inside a loop or round that can still throw**: keep after the last thing
+  that can fail (a later failure leaks what was kept; strict leaks catches it).
 - **Accessibility e2e** (`e2e/a11y.spec.ts`): axe per screen, both themes;
   a new violation fails with its node HTML. Add an entry to `KNOWN` only with
   a reason. Toasts behind a modal dialog are inert for assistive tech (and

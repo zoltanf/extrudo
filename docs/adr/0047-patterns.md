@@ -196,3 +196,29 @@ placeholder tool `pattern` is gone.
   patterns of a feature that changes a body (fillet, chamfer, Shell) or of
   a Hole feature, once P3-04 lands, should go through the same route
   (`operate`) or a `tool` output of their own.
+
+## Amendment 2026-10-01: a failed round releases what earlier rounds kept (P3-17)
+
+Fuzzing B5 (seed 20260983) found `Rectangular Pattern1` leaving 2 shapes
+behind: it repeats Cylinder1 (a join) and Hole1 (a cut); with Hole1 moved off
+the post, the first round's `operate` had `keep`-ed its tool and joined body
+out of the pattern's scope, the second round's cut then missed every body and
+threw, and nothing owned the kept shapes any more. `replayFeatures` now takes
+what each round kept back into the scope (`adopt`) and keeps only the final
+outputs after the last round, so a failure releases them all; `patternBodies`
+keeps its copies after every body worked (same rule as shell: "keep only when
+everything worked"), and Mirror's join does too. Tests: `fuzz.test.ts` "B5
+releases the shapes of a pattern whose second round fails" (strict leaks).
+**Rule for new evaluators: never `scope.keep` inside a loop or round that can
+still throw; keep after the last thing that can fail.** B5 is in the fuzzer's
+list.
+
+**Found by the same runs, not fixed:** `count2 × 10` on B5's Rectangular
+Pattern1 (2 × 20 instances of the post and its hole, most of them off the
+box, so separate bodies) recomputes in 54 s to 162 s (seeds 7 and 2026, B5
+steps 734 and 305: "a recompute that long is a hang"). Profiling 2 × 6 shows
+`kernel.distance` is 90 % of the time (73 calls at 75 ms): `operate` asks it
+once per body for the merged tool, and a compound of many solids against
+many bodies grows with both. A bounding-box filter doesn't help (the tool's
+box spans every body); the fix is per-instance targets or the colour-class
+plan already listed under P3-17. The default 200-step run doesn't reach it.

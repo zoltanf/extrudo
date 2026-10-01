@@ -220,6 +220,8 @@ function patternBodies(
   const names = new Map<BodyId, TopoNames>();
   const previewTools: PreviewTool[] = [];
   const warnings: string[] = [];
+  // Kept only when every body worked: a failure releases them all with the scope.
+  const kept: ShapeHandle[] = [];
   ids.forEach((id, bodyIndex) => {
     const original: NamedShape = { shape: ctx.bodies.get(id) as ShapeHandle, names: ctx.names(id) };
     const copies = placements.map((placement) => ({
@@ -230,7 +232,8 @@ function patternBodies(
       for (const { placement, named } of copies) {
         // The instance's slot and the body's position make the ID, so it stays when counts grow.
         const copyId = ctx.bodyId(pairSlots(placement.slot, bodyIndex));
-        bodies.set(copyId, scope.keep(named.shape));
+        bodies.set(copyId, named.shape);
+        kept.push(named.shape);
         names.set(copyId, named.names);
       }
       return;
@@ -247,10 +250,13 @@ function patternBodies(
       simplify: true,
     });
     scope.track(joined.shape);
-    bodies.set(id, scope.keep(joined.shape));
+    bodies.set(id, joined.shape);
+    kept.push(joined.shape);
     names.set(id, joined.names);
-    previewTools.push({ shape: scope.keep(tool.shape), style: 'join', names: tool.names });
+    previewTools.push({ shape: tool.shape, style: 'join', names: tool.names });
+    kept.push(tool.shape);
   });
+  for (const shape of new Set(kept)) scope.keep(shape);
   const result = settings.join
     ? splitSolids(ctx, scope, { bodies, names, previewTools })
     : { bodies, names, previewTools };
@@ -283,6 +289,14 @@ export function replayFeatures(
   const previewTools: PreviewTool[] = [];
   const warnings: string[] = [];
   const original = new Set(ctx.bodies.values());
+  // What the rounds so far made and `operate` kept, tracked again until the last round has
+  // worked: a round that fails releases them all with the scope.
+  const held = new Set<ShapeHandle>();
+  const adopt = (shape: ShapeHandle) => {
+    if (original.has(shape) || held.has(shape)) return;
+    held.add(shape);
+    scope.track(shape);
+  };
 
   refs.forEach((ref, k) => {
     const id = ref.id as FeatureId;
@@ -331,11 +345,8 @@ export function replayFeatures(
       ),
     );
     bodies = result.bodies ?? before;
-    // A body this pattern made in an earlier round and this round replaced is no longer output.
-    const alive = new Set(bodies.values());
-    for (const handle of before.values()) {
-      if (!original.has(handle) && !alive.has(handle)) scope.track(handle);
-    }
+    for (const shape of bodies.values()) adopt(shape);
+    for (const tool of result.previewTools ?? []) adopt(tool.shape);
     for (const [body, table] of result.names ?? []) names.set(body, table);
     previewTools.push(...(result.previewTools ?? []));
     if (tool.style === 'join' && bodies.size > before.size) {
@@ -343,6 +354,9 @@ export function replayFeatures(
     }
   });
   for (const body of [...names.keys()]) if (!bodies.has(body)) names.delete(body);
+  // A body an earlier round made and a later one replaced is no longer output: it goes with the scope.
+  const output = new Set([...bodies.values(), ...previewTools.map((tool) => tool.shape)]);
+  for (const shape of held) if (output.has(shape)) scope.keep(shape);
   return {
     bodies,
     names,

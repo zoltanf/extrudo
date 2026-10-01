@@ -2,6 +2,16 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-10-01 · **P3-17 (first item)** Two bugs the fuzzer found in B4 and B5
+  (ADR-0038 and ADR-0047 amendments): a fillet radius that reaches a parallel
+  wall of an adjacent face (a lid side face with a step 3 mm below its edge)
+  trapped OCCT; the facade now refuses it before OCCT runs, with the usual
+  "max ≈" message and probes that stay below it. A pattern whose later round
+  failed leaked the shapes its earlier rounds kept (the same latent leak in
+  Fillet, Chamfer and Mirror's join is fixed too). B4 and B5 join the fuzzer
+  (1000 steps on four seeds each; the only further finding is a pattern of
+  2 × 20 instances that takes a minute or more, left open). OCCT input hash
+  `5449f61f15d6` (release `occt-5449f61f15d6`).
 - 2026-09-30 · **P3-14** (part) Benchmarks B4, B5, B7 (ADR-0039 amendment):
   a box with a lid that fits by a clearance parameter, a PCB enclosure with
   screw posts and countersunk lid screws, and a knurled knob, each built

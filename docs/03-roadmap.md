@@ -660,12 +660,16 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
 - [ ] **P3-17 Polish: open items carried from Phase 2 and 3.** Added
   2026-09-30 by the owner, to run after P3-08 and before P3-12. Small UX gaps
   the ADRs left open:
-  - **First, two bugs the fuzzer found** in B4 and B5 (2026-10-01, when the
-    P3-14 fixtures were added to `packages/kernel/src/fuzz.test.ts`): B4
-    step 5 (seed 20260982), its fillet radius set to `(rounding) * 2`, traps
-    OCCT ("null function or function signature mismatch"); B5 step 11 (seed
-    20260983), a hole's `y` set to `(-py) * 1.25`, leaves 2 shapes behind in
-    Rectangular Pattern1. Fix both, then add B4 and B5 to the fuzzer's list.
+  - ~~**First, two bugs the fuzzer found** in B4 and B5~~ **Done 2026-10-01**
+    (`fix-fuzz-b4-b5`; ADR-0038 and ADR-0047 amendments). B4 step 5 (seed
+    20260982): a fillet radius of `(rounding) * 2` ran into a wall of the
+    lid's side faces and trapped OCCT; the facade now refuses a radius that
+    reaches a parallel wall of an adjacent face before OCCT runs ("max ≈
+    2.9 mm"). B5 step 11 (seed 20260983): a failed second round of
+    Rectangular Pattern1 left the first round's kept shapes behind; rounds
+    now keep their results only after the last one worked (the same latent
+    leak in Fillet, Chamfer and Mirror's join is fixed). B4 and B5 are in the
+    fuzzer's list.
   - A Remove feature dialog (edit which bodies it removes; ADR-0030, -0033).
   - A custom colour field in Appearance, beside the swatches (`BodyMeta`;
     schema and `docs/file-format.md`; ADR-0030).
@@ -689,6 +693,11 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
     (ADR-0045).
   - A checked-in screenshot of the overhang shading, taken in CI's
     Playwright image (ADR-0048).
+  - Patterns: `count2 × 10` on B5's Rectangular Pattern1 (2 × 20 instances)
+    takes 54-162 s, 90 % in `kernel.distance` from `operate`'s target filter
+    (fuzzer seeds 7 and 2026; ADR-0047 amendment): find targets per instance
+    or by grid, not a distance per body for the whole tool. Then raise the
+    fuzzer's B5 seeds.
   - Patterns: cut or join interfering instances one colour class of the
     interference graph at a time instead of tree-fusing them (1.9 s vs
     3.8 s for 10 × 10 overlapping holes; ADR-0050 §6).

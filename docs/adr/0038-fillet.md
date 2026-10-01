@@ -151,3 +151,60 @@ the native harness on the pinned image):
   chain without a normal to draw it along.
 - The dialog's preview after a failed radius keeps the last good drawing,
   dimmed (ADR-0027), and the message shows in the dialog.
+
+## Amendment 2026-10-01: a radius that runs into a wall (P3-17)
+
+The fuzzer (P3-13) found, on benchmark B4, a fillet that **traps OCCT**
+(`RuntimeError: null function or function signature mismatch`, no C++
+exception to catch). Doubling the lid's round to 3 mm while its lip was
+made longer than the lid left the lid's side faces with a 3 mm strip above a
+step; a 3 mm round (and 4 and 6 mm, but not 2.99 or 3.001) is exactly the
+face's depth there. Run natively in the OCCT image with function names
+(`harness.cpp` over the facade, a STEP of the failing body), the trap is
+`Geom2dAdaptor_Curve::EvalD1` called from `BRepBlend_SurfRstConstRad::Values`
+inside `ChFi3d_Builder::PerformSetOfSurfOnElSpine`: when the round's contact
+line leaves a face through a boundary edge in the middle of the edge's run,
+OCCT walks the restriction ("Rst") with a `BRepAdaptor_Curve2d` that was
+never initialised (`ChFi3d_Builder::StartSol` builds it for the obstacle
+and doesn't check the pcurve), and a null handle's virtual call is a call
+through a null function table entry. Every edge of the body does have its
+pcurves; the shape is valid. A trap is not a C++ exception, so the
+facade's `catch (...)` never sees it, and no destructor runs: a worker that
+hits it is restarted (`KernelClient`), losing the cache.
+
+**Decision.** The facade refuses the radius **before OCCT runs**
+(`filletRollsOff`, in `addFillets`): a round of radius r touches each of the
+two faces at `r · tan(turn / 2)` from the edge (turn = the angle between
+their normals; r for a right angle), and when a face next to a straight edge
+has a straight boundary edge of its own, parallel to it on the face's side
+and overlapping its length (`wallBeside`: the far side of a thin strip, a
+step or a pocket wall), at or inside that distance, the round has no face to
+sit on along that wall. The refusal takes the diagnosis's route
+(`explainFillet`, status 1, "Radius 3 mm is too large for edge 10 (max ≈
+2.9 mm).") and its bisection probes use the same check (`filletWorks`), so
+no probe reaches a radius that traps either; the maximum it finds is the
+wall's distance, rounded down to two digits like any other. Only straight
+edges between flat faces are checked (curved faces and arcs go to OCCT as
+before). OCCT accepts some radii larger than a wall (a 10 mm round on the
+same body "succeeds" with a valid but absurd solid); those are refused too,
+which is the safer reading of "too large".
+
+Tests: `fuzz.test.ts` "B4 refuses a fillet that runs into a wall instead of
+trapping OCCT" (the three fuzzer edits, expects the "max ≈ 2.9 mm" message and
+that 2.5 mm still rounds); the memory test's failed fillets pass through
+`filletRollsOff` (a 3 mm round of a 2 mm plate). B4 is in the fuzzer's list.
+
+Rejected: a bound from the faces' overall extent (the failing face is the
+whole 33 mm wall minus a notch, so its extent says nothing); checking that
+the contact line lies inside the face at sample points (a face that narrows
+towards the ends of the edge legitimately leaves it there); catching the
+trap (`RuntimeError` is not a C++ exception, and the heap may be corrupt).
+Still open: a face whose far boundary is slanted or curved, or an edge that
+is an arc, can lead OCCT into the same walk unguarded (chamfers use another
+builder; 1000-step fuzz runs of B4, which has one, on four seeds found no trap there); the worker restart is the net.
+
+**Another fix in the same pass:** a fillet (and chamfer) of several bodies
+kept each body's result as soon as it was built, so a later body that
+failed left the earlier ones behind; results are now kept only when every
+body worked, like shell and offset face (`fillet.test.ts` "a body that can not
+be filleted releases the others").

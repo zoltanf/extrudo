@@ -44,6 +44,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import b1 from '../../../fixtures/benchmarks/b1-plate.extrudo?url&inline';
 import b2 from '../../../fixtures/benchmarks/b2-storage-box.extrudo?url&inline';
 import b3 from '../../../fixtures/benchmarks/b3-phone-stand.extrudo?url&inline';
+import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline';
+import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
 import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
 import { kernelFeatures } from './features';
 import { Kernel } from './kernel';
@@ -435,10 +437,8 @@ describe('fuzzing the benchmark fixtures', () => {
     ['B1', b1],
     ['B2', b2],
     ['B3', b3],
-    // B4 and B5 wait for two bugs this fuzzer found (P3-17): doubling B4's
-    // fillet radius traps OCCT ("null function or function signature
-    // mismatch"), and moving a B5 hole leaves 2 shapes behind in its
-    // rectangular pattern (seeds 20260982, 20260983).
+    ['B4', b4],
+    ['B5', b5],
     ['B7', b7],
   ];
   for (const [name, dataUrl] of cases) {
@@ -454,6 +454,73 @@ describe('fuzzing the benchmark fixtures', () => {
 });
 
 describe('what the fuzzer found', () => {
+  it('B4 refuses a fillet that runs into a wall instead of trapping OCCT', async () => {
+    // The lid's fillet on the top edges, radius 3 mm, with the lip made 10 % too long and the
+    // wall 0 (Shell1 fails): the lip sticks out of the lid's side faces, so those faces have
+    // a step 3 mm below the edge. A round of 3 mm (or 4, 6) used to trap OCCT in
+    // `Geom2dAdaptor_Curve::EvalD1` ("null function or function signature mismatch").
+    const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+    try {
+      const original = load(b4);
+      const lip = original.features.find((f) => f.name === 'Box3') as Feature;
+      const fillet = original.features.find((f) => f.name === 'Fillet1') as Feature;
+      let doc: ExtrudoDocument | undefined = original;
+      for (const m of [
+        {
+          kind: 'input',
+          feature: lip.id,
+          input: 'length',
+          expr: '(length - 2 * (wall + clearance)) * 1.1',
+        },
+        { kind: 'parameter', name: 'wall', expr: '(2 mm) * 0' },
+        { kind: 'input', feature: fillet.id, input: 'radius', expr: '(rounding) * 2' },
+      ] as Mutation[]) {
+        doc = doc && apply(doc, m);
+        if (!doc) throw new Error(`${JSON.stringify(m)} refused`);
+      }
+      const result = await recompute(engine, doc);
+      const status = result.features[fillet.id];
+      expect(status?.status).toBe('error');
+      expect(status?.message).toMatch(/^Radius 3 mm is too large for edge \d+ \(max ≈ 2\.9 mm\)\./);
+      // Smaller radii still round it.
+      const fine = apply(doc, {
+        kind: 'input',
+        feature: fillet.id,
+        input: 'radius',
+        expr: '2.5 mm',
+      });
+      if (!fine) throw new Error('2.5 mm refused');
+      expect((await recompute(engine, fine)).features[fillet.id]?.status).toMatch(/^(ok|warning)$/);
+    } finally {
+      engine.clear();
+    }
+  });
+
+  it('B5 releases the shapes of a pattern whose second round fails', async () => {
+    // Rectangular Pattern1 repeats Cylinder1 (a join) and Hole1 (a cut). Moving the hole off
+    // the post (x 0, y -37.5 mm) makes the cut miss every body, after the join of the first
+    // round had kept its shapes: they were never released (strict leaks: "left 2 shapes").
+    const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+    try {
+      const original = load(b5);
+      const hole = original.features.find((f) => f.name === 'Hole1') as Feature;
+      const pattern = original.features.find((f) => f.name === 'Rectangular Pattern1') as Feature;
+      let doc: ExtrudoDocument | undefined = original;
+      for (const m of [
+        { kind: 'input', feature: hole.id, input: 'x', expr: '(-px) * 0' },
+        { kind: 'input', feature: hole.id, input: 'y', expr: '(-py) * 1.25' },
+      ] as Mutation[]) {
+        doc = doc && apply(doc, m);
+        if (!doc) throw new Error(`${JSON.stringify(m)} refused`);
+      }
+      const result = await recompute(engine, doc);
+      expect(result.features[pattern.id]?.status).toBe('error');
+      expect(result.features[pattern.id]?.message).toMatch(/^The cut doesn't touch any body/);
+    } finally {
+      engine.clear();
+    }
+  });
+
   it('B2 keeps its cut when the box gets much shallower than its walls are thick', async () => {
     // Sketch2 sits on the box's top and holds the inner outline 3 mm inside
     // the projected edges. Solved in one go, depth 60 -> 30 moved the far edge

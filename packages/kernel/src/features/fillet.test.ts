@@ -269,6 +269,33 @@ describe('fillet', { timeout: 120_000 }, () => {
     expect(measure('C:0').faces).toBe(7);
   });
 
+  it('a body that can not be filleted releases the others (strict leaks)', async () => {
+    // B is rounded, then C fails (a 10 mm cube can't take a 6 mm round on every edge it is
+    // asked for): the shape made for B must not outlive the failed evaluation.
+    const one = block();
+    const b = new SketchBuilder();
+    const l = rect(b, 100, 0, 10, 10);
+    const features = [
+      ...one.features,
+      sketch('SC', b.sketch),
+      extrude('C', 'SC', b.sketch, '10 mm'),
+    ];
+    const first = ok(await run(testDocument(features)));
+    const inB = refTo(first, 'edge', between(cap, side(one.lines.bottom)));
+    const inC = refTo(first, 'edge', between('extrude:C:cap:end', `extrude:C:side:${l.bottom}`));
+    const result = await run(
+      testDocument([
+        ...features,
+        fillet('F', [
+          { edges: [inB], radius: '1 mm' },
+          { edges: [inC], radius: '30 mm' },
+        ]),
+      ]),
+    );
+    expect(status(result, 'F').status).toBe('error');
+    expect(kernel.stats().liveShapes).toBeGreaterThan(0);
+  });
+
   it('too large a radius says which edge and how large it may be, and that maximum works', async () => {
     const base = block();
     const edge = between(cap, side(base.lines.bottom));

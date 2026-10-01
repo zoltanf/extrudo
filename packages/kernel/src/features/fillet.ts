@@ -1,7 +1,7 @@
 import { type BodyId, type FilletInputs, filletFeature, filletSets } from '@extrudo/core';
 import { FilletError, type FilletProblem, KernelError, type ShapeHandle } from '../kernel';
 import type { TopoNames } from '../naming/names';
-import { withHistory } from '../naming/ops';
+import { type NamedShape, withHistory } from '../naming/ops';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 
 /**
@@ -68,6 +68,7 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
   using scope = kernel.scope();
   const bodies = new Map(ctx.bodies);
   const names = new Map<BodyId, TopoNames>();
+  const made = new Map<BodyId, NamedShape>();
   for (const [body, picks] of byBody) {
     const shape = ctx.bodies.get(body) as ShapeHandle;
     let result: ReturnType<typeof kernel.fillet>;
@@ -86,6 +87,10 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
       op: 'fillet',
       feature: ctx.feature.id,
     });
+    made.set(body, named);
+  }
+  // Kept only when every body worked: a failure releases them all with the scope.
+  for (const [body, named] of made) {
     bodies.set(body, scope.keep(named.shape));
     names.set(body, named.names);
   }

@@ -218,6 +218,7 @@ function evaluateMirror(ctx: EvalContext<MirrorInputs>): FeatureOutput {
   // doesn't touch its original stays a body of its own.
   const bodies = new Map(ctx.bodies);
   const names = new Map<BodyId, TopoNames>();
+  const kept: ShapeHandle[] = [];
   let apart = 0;
   let extra = 0;
   for (const { source, named } of images) {
@@ -227,7 +228,8 @@ function evaluateMirror(ctx: EvalContext<MirrorInputs>): FeatureOutput {
     };
     if (kernel.distance(original.shape, named.shape) > TOUCH) {
       const id = ctx.bodyId(extra++);
-      bodies.set(id, scope.keep(named.shape));
+      bodies.set(id, named.shape);
+      kept.push(named.shape);
       names.set(id, named.names);
       apart++;
       continue;
@@ -238,9 +240,12 @@ function evaluateMirror(ctx: EvalContext<MirrorInputs>): FeatureOutput {
       simplify: true,
     });
     scope.track(joined.shape);
-    bodies.set(source, scope.keep(joined.shape));
+    bodies.set(source, joined.shape);
+    kept.push(joined.shape);
     names.set(source, joined.names);
   }
+  // Kept only when every copy worked: a failure releases them all with the scope.
+  for (const shape of kept) scope.keep(shape);
   if (apart > 0) {
     ctx.warn(
       apart === 1

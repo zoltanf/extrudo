@@ -220,10 +220,12 @@ public:
       }
       const std::vector<int> staged = args_;
       const std::vector<double> radii = numbers_;
+      EdgeFaceMap edgeFaces;
+      TopExp::MapShapesAndUniqueAncestors(*input, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
       BRepFilletAPI_MakeFillet builder(*input);
       std::vector<int> contourOf;
       std::vector<int> bad;
-      const int added = addFillets(builder, edges, staged, radii, contourOf, bad);
+      const int added = addFillets(builder, edges, edgeFaces, staged, radii, contourOf, bad);
       if (added == 1) {
         geometry_.push_back(2);
         geometry_.push_back(static_cast<double>(bad.size()));
@@ -250,6 +252,10 @@ public:
           if (at >= 0) chains[contour].push_back(at);
         }
       }
+      // A radius that rolls off a flat face goes straight to the diagnosis: OCCT can trap there.
+      if (added == 3) {
+        return explainFillet(*input, edges, edgeFaces, staged, radii, contourOf, chains);
+      }
       TopoDS_Shape result;
       try {
         builder.Build();
@@ -261,7 +267,7 @@ public:
         recordHistory(builder, *input, 0, result);
         return store(result);
       }
-      return explainFillet(*input, edges, staged, radii, contourOf, chains);
+      return explainFillet(*input, edges, edgeFaces, staged, radii, contourOf, chains);
     } catch (...) {
       geometry_.clear();
       geometry_.push_back(5);
@@ -2107,16 +2113,115 @@ private:
     }
   }
 
+  using EdgeFaceMap =
+      NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>;
+
+  /**
+   * The distance from the straight edge `edge` to the nearest straight
+   * boundary edge of the flat face `face` that runs parallel to it on the
+   * face's side and overlaps its length (a step or pocket wall, or the
+   * face's far side): how far a round can reach into the face before that
+   * wall is in its way. -1 when there is none or it can't be told (the edge
+   * isn't a line, the face isn't flat).
+   */
+  static double wallBeside(const TopoDS_Edge& edge, const TopoDS_Face& face) {
+    try {
+      BRepAdaptor_Surface surface(face);
+      if (surface.GetType() != GeomAbs_Plane) return -1;
+      BRepAdaptor_Curve line(edge);
+      if (line.GetType() != GeomAbs_Line) return -1;
+      gp_Dir normal;
+      if (!edgeNormal(edge, face, normal)) return -1;
+      // The edge as the face's wire runs along it: the face lies to its left
+      // seen from the outward normal.
+      gp_Vec along(line.Line().Direction());
+      bool found = false;
+      for (TopExp_Explorer it(face, TopAbs_EDGE); it.More(); it.Next()) {
+        if (!it.Current().IsSame(edge)) continue;
+        if (it.Current().Orientation() == TopAbs_REVERSED) along.Reverse();
+        found = true;
+        break;
+      }
+      if (!found) return -1;
+      const gp_Vec inward = gp_Vec(normal).Crossed(along);
+      if (inward.Magnitude() < 1e-9) return -1;
+      const gp_Vec inside = inward.Normalized();
+      const gp_Vec direction = along.Normalized();
+      const gp_Pnt origin = line.Value(line.FirstParameter());
+      const double length = gp_Vec(origin, line.Value(line.LastParameter())).Dot(direction);
+      const double span = std::abs(length);
+      const double start = std::min(0.0, length);
+      double nearest = -1;
+      for (TopExp_Explorer it(face, TopAbs_EDGE); it.More(); it.Next()) {
+        if (it.Current().IsSame(edge)) continue;
+        BRepAdaptor_Curve wall(TopoDS::Edge(it.Current()));
+        if (wall.GetType() != GeomAbs_Line) continue;
+        const gp_Vec p1(origin, wall.Value(wall.FirstParameter()));
+        const gp_Vec p2(origin, wall.Value(wall.LastParameter()));
+        const gp_Vec run = p2 - p1;
+        if (run.Magnitude() < 1e-9) continue;
+        if (run.Normalized().Crossed(direction).Magnitude() > 0.01) continue;
+        const double d1 = p1.Dot(inside);
+        const double d2 = p2.Dot(inside);
+        const double distance = std::min(d1, d2);
+        if (distance < 1e-6) continue;
+        const double t1 = p1.Dot(direction);
+        const double t2 = p2.Dot(direction);
+        const double lo = std::max(std::min(t1, t2), start);
+        const double hi = std::min(std::max(t1, t2), start + span);
+        if (hi - lo < 1e-3) continue;
+        if (nearest < 0 || distance < nearest) nearest = distance;
+      }
+      return nearest;
+    } catch (...) {
+      return -1;
+    }
+  }
+
+  /**
+   * Whether a fillet of `radius` on `edge` would run into a wall parallel to
+   * it: the round touches each face at `radius * tan(turn / 2)` from the
+   * edge (turn = the angle between the faces' normals), so a face with a
+   * wall of its own (the far side of a thin strip, a step) at or inside that
+   * distance leaves the round no face to sit on, along the wall's length.
+   * OCCT trips over this in some shapes (a face notched by a step: its
+   * restriction-edge walk reads a curve that was never set and traps in
+   * `Geom2dAdaptor_Curve::EvalD1`, "null function or function signature
+   * mismatch"), and a trap can corrupt the heap, so the radius is refused
+   * before OCCT runs. Only straight edges between flat faces are checked.
+   */
+  static bool filletRollsOff(const EdgeFaceMap& edgeFaces, const TopoDS_Edge& edge, double radius) {
+    const int at = edgeFaces.FindIndex(edge);
+    if (at == 0) return false;
+    std::vector<TopoDS_Face> around;
+    for (const TopoDS_Shape& face : edgeFaces(at)) around.push_back(TopoDS::Face(face));
+    if (around.size() != 2) return false;
+    gp_Dir a;
+    gp_Dir b;
+    if (!edgeNormal(edge, around[0], a) || !edgeNormal(edge, around[1], b)) return false;
+    const double cosine = std::max(-1.0, std::min(1.0, a.Dot(b)));
+    const double turn = std::acos(cosine);
+    if (turn < 1e-6) return false;
+    const double touch = turn > 3.14159 ? 1e9 : radius * std::tan(0.5 * turn);
+    for (const TopoDS_Face& face : around) {
+      const double wall = wallBeside(edge, face);
+      if (wall >= 0 && touch >= wall - 1e-6) return true;
+    }
+    return false;
+  }
+
   /**
    * Adds the edges of a fillet to `builder`, one radius per chain of tangent
    * edges (the radius of its first staged edge; `staged` are edge indices,
    * `radii` one per staged edge). Fills `contourOf` with each staged edge's
    * contour (a chain's number in the builder, 0 if OCCT can't fillet the
    * edge). Returns 0, 1 (some edge can't be filleted: `bad` lists their
-   * positions in `staged`) or 2 (a chain got two radii: `bad` lists its).
+   * positions in `staged`), 2 (a chain got two radii: `bad` lists its) or
+   * 3 (a radius rolls off a flat face: see filletRollsOff; don't build).
    */
   static int addFillets(BRepFilletAPI_MakeFillet& builder,
                         const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& edges,
+                        const EdgeFaceMap& edgeFaces,
                         const std::vector<int>& staged, const std::vector<double>& radii,
                         std::vector<int>& contourOf, std::vector<int>& bad) {
     contourOf.assign(staged.size(), 0);
@@ -2141,18 +2246,28 @@ private:
       }
       for (int j = 1; j <= builder.NbEdges(contour); ++j) builder.SetRadius(radius, contour, j);
     }
+    // Last, so that a chain with two radii or an edge that can't be filleted is reported first.
+    for (int contour = 1; contour <= builder.NbContours(); ++contour) {
+      for (size_t i = 0; i < staged.size(); ++i) {
+        if (contourOf[i] != contour) continue;
+        for (int j = 1; j <= builder.NbEdges(contour); ++j) {
+          if (filletRollsOff(edgeFaces, builder.Edge(contour, j), radii[i])) return 3;
+        }
+        break;
+      }
+    }
     return 0;
   }
 
   /** Whether these fillets build a valid solid (a probe: nothing is kept). */
   bool filletWorks(const TopoDS_Shape& input,
                    const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& edges,
-                   const std::vector<int>& staged, const std::vector<double>& radii) {
+                   const EdgeFaceMap& edgeFaces, const std::vector<int>& staged, const std::vector<double>& radii) {
     try {
       BRepFilletAPI_MakeFillet builder(input);
       std::vector<int> contourOf;
       std::vector<int> bad;
-      if (addFillets(builder, edges, staged, radii, contourOf, bad) != 0) return false;
+      if (addFillets(builder, edges, edgeFaces, staged, radii, contourOf, bad) != 0) return false;
       builder.Build();
       if (!builder.IsDone()) return false;
       const TopoDS_Shape result = builder.Shape();
@@ -2187,7 +2302,7 @@ private:
    */
   int explainFillet(const TopoDS_Shape& input,
                     const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& edges,
-                    const std::vector<int>& staged, const std::vector<double>& radii,
+                    const EdgeFaceMap& edgeFaces, const std::vector<int>& staged, const std::vector<double>& radii,
                     const std::vector<int>& contourOf, const std::vector<std::vector<int>>& chains) {
     geometry_.clear();
     geometry_.push_back(1);
@@ -2201,11 +2316,11 @@ private:
         subset.push_back(staged[i]);
         subsetRadii.push_back(radii[i]);
       }
-      if (subset.empty() || filletWorks(input, edges, subset, subsetRadii)) continue;
+      if (subset.empty() || filletWorks(input, edges, edgeFaces, subset, subsetRadii)) continue;
       const double failing = subsetRadii[0];
       const double largest = largestThatWorks(
           [&](double radius) {
-            return filletWorks(input, edges, subset, std::vector<double>(subset.size(), radius));
+            return filletWorks(input, edges, edgeFaces, subset, std::vector<double>(subset.size(), radius));
           },
           failing);
       geometry_.push_back(static_cast<double>(chains[contour].size()));
@@ -2220,7 +2335,7 @@ private:
           [&](double f) {
             std::vector<double> scaled(radii);
             for (double& r : scaled) r *= f;
-            return filletWorks(input, edges, staged, scaled);
+            return filletWorks(input, edges, edgeFaces, staged, scaled);
           },
           1.0);
       geometry_.push_back(static_cast<double>(staged.size()));
@@ -2231,9 +2346,6 @@ private:
     geometry_[1] = records;
     return fail("Fillet failed: the radius is probably too large for the selected edges.");
   }
-
-  using EdgeFaceMap =
-      NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>;
 
   /**
    * The reference face of a chamfer on `edge`: the lower-numbered of its two

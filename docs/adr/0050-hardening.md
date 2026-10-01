@@ -304,5 +304,6 @@ about 5.3:1).
 - The feature dialog's "Enter" hint contrast (§7).
 - A face-level chunked export would need facade support (§5).
 - The manual accessibility pass (§7).
-- The fuzzer covers the benchmark fixtures; add new fixtures (B4–B7, P3-14)
-  to its list when they exist.
+- The fuzzer covers the benchmark fixtures; add new fixtures (B6, when it
+  exists) to its list. B4, B5 and B7 are in it since P3-17's first item
+  (ADR-0038 and ADR-0047 amendments: the two bugs it found there).
