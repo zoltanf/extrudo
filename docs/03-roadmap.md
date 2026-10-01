@@ -531,7 +531,7 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   0.5 to 2 s. Mirror got the same features mode. Ghosts in the preview, a
   distance arrow per direction and an angle ring. No facade change. Not
   built: patterns of faces, a skip list.
-- [ ] **P3-08 Press/Pull, Offset face, Split body, Scale, Draft.** FR-FT-08,
+- [x] **P3-08 Press/Pull, Offset face, Split body, Scale, Draft.** FR-FT-08,
   -12. **First half done 2026-09-30 (ADR-0051): Press/Pull and Offset Face.**
   Solid › Modify has Press Pull (Q, the marking menu's wedge, Ctrl+K), which
   opens the dialog that fits the selection with it filled in: a face opens
@@ -553,7 +553,22 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   (by a plane or face), Scale (uniform and non-uniform), Draft; open items of
   ADR-0051 (a distance per face, solids with a sealed void, bodies whose
   rounded edges meet at a sharp corner, self-intersecting offsets, face
-  patterns). Big enough to run as two agent tasks.
+  patterns). Big enough to run as two agent tasks. **Second half done
+  2026-10-01 (ADR-0053): Split Body, Scale and Draft**, in Solid › Modify's
+  menu. Split Body cuts bodies along an origin or construction plane or a
+  flat face's plane; each side is a body (the largest keeps the body), or one
+  side is kept; faces cut in two are `#1`/`#2`, the new ones
+  `split:<id>:cut:above|below`. Scale works about a vertex, a construction
+  point or the bodies' box centre, by one factor or one per axis, in place or
+  as a copy; a per-axis scale keeps flat faces flat and straight edges
+  straight (OCCT makes everything B-splines; the facade puts planes and lines
+  back). Draft tilts flat, cylindrical and conical faces about a neutral plane
+  (its normal the pull, Flip), with an angle arc in the view; drafts whose
+  faces cross are refused with the largest angle that works. New facade
+  methods `scale` and `draft`; every face keeps its name through all three.
+  Left open (ADR-0053): drafting next to fillets, splitting by curved faces or
+  bodies, cylinders scaled along their axis stay B-splines, B-spline volumes
+  0.8 % off in measurements.
 - [x] **P3-09 Section analysis.** FR-VP-06. Done 2026-09-30 (ADR-0045):
   Solid › Inspect › Section Analysis (Shift+S, Ctrl+K) cuts the view at an
   origin plane, a construction plane or a flat face, with an offset
@@ -625,7 +640,7 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
     with the Web Locks API); Delete / prune versions.
   - The first new error of a recompute becomes a notification, so it is in
     the history (ADR-0041).
-- [ ] **P3-14 Benchmarks B4–B7 E2E.**
+- [x] **P3-14 Benchmarks B4–B7 E2E.**
   *B4, B5 and B7 done 2026-09-30* (ADR-0039 amendment), built through the UI
   in `e2e/benchmark-b4.spec.ts`, `-b5`, `-b7`, exported as fixtures and
   recomputed headless: B4 (box with a lid that fits: Box, Shell, bottom
@@ -636,7 +651,12 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   patterned 2 × 2, a lid with countersunk M3 holes mirrored; volumes exact
   to 0.1 %) and B7 (knurled knob: revolved profile, chamfered top, a groove
   repeated by a circular pattern, a shaft hole; `dia`, `grooves` and
-  `groove` change it). **B6 (wall hook) waits for Draft** (P3-08).
+  `groove` change it). *B6 done 2026-10-01* (ADR-0053): the wall hook, three
+  joined boxes (plate, arm, lip), the arm's sides and top drafted by `taper`
+  about the plate's front face, the plate's four top edges (meeting at its
+  corners) and the inside corner under the arm filleted; `e2e/benchmark-b6.spec.ts`,
+  fixture `b6-wall-hook.extrudo`, recomputed headless with the drafted volume
+  exact, and in the fuzzer's list.
 - [ ] **P3-15 Public release prep:** license, README, contribution guide, code
   of conduct, hosted demo, issue templates. **Needs the owner's decisions
   first** (license, hosting). Also, carried over (2026-09-30): the service

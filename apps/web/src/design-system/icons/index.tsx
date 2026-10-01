@@ -64,6 +64,8 @@ export const ICON_NAMES = [
   'shell',
   'press-pull',
   'offset-face',
+  'split-body',
+  'draft',
   'remove',
   'combine',
   'box',

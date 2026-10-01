@@ -145,6 +145,33 @@ export class OffsetFaceError extends KernelError {
   }
 }
 
+/** Why tilting faces failed (P3-08, draft): the facade's diagnosis. */
+export type DraftProblem =
+  /** The angle is too steep for the body; `max` is the largest that works (degrees, a magnitude). */
+  | { kind: 'too-steep'; max: number }
+  /** OCCT can't tilt this face about the neutral plane (its neighbours can't follow). */
+  | { kind: 'refused'; face: number }
+  /** The face isn't flat, cylindrical or conical. */
+  | { kind: 'surface'; face: number }
+  /** The face is parallel to the neutral plane: there is no line to turn it about. */
+  | { kind: 'parallel'; face: number }
+  /** No angle worth trying works. */
+  | { kind: 'undraftable' }
+  /** The shape isn't a solid. */
+  | { kind: 'not-solid' }
+  | { kind: 'other' };
+
+/** A draft OCCT couldn't build, with its diagnosis. */
+export class DraftError extends KernelError {
+  override name = 'DraftError';
+  constructor(
+    message: string,
+    readonly problems: readonly DraftProblem[],
+  ) {
+    super(message);
+  }
+}
+
 export interface OperationResult {
   shape: ShapeHandle;
   history: HistoryRecord[];
@@ -379,6 +406,50 @@ export class Kernel {
     f.clearNumbers();
     for (const value of matrix) f.pushNumber(value);
     return this.#withHistory(f.transform(shape));
+  }
+
+  /**
+   * Scales a shape about `centre` by `factors` along the world X, Y and Z
+   * axes (P3-08), each greater than 0. Equal factors keep every surface's
+   * type; different ones make curved faces B-splines (a cylinder scaled
+   * across its axis has an elliptic section) while flat faces stay planes
+   * and the straight edges between them lines. History (input 0): every
+   * face, edge and vertex is `modified` into its image.
+   */
+  scale(shape: ShapeHandle, centre: Vec3, factors: Vec3): OperationResult {
+    const f = this.#facade;
+    f.clearNumbers();
+    for (const value of [...centre, ...factors]) f.pushNumber(value);
+    return this.#withHistory(f.scale(shape));
+  }
+
+  /**
+   * Tilts faces of a solid (P3-08, draft): each of `faces` (indices into the
+   * shape's face list) turns by `angle` radians about the line where it
+   * meets the neutral plane (through `plane.origin`, normal `plane.normal`,
+   * the pull direction). Positive removes matter on the pull side, so the
+   * body narrows along the pull. Only flat, cylindrical and conical faces
+   * tilt; faces that run smoothly into a picked one tilt with it. A failure
+   * is a `DraftError` with the facade's diagnosis. History (input 0): every
+   * sub-shape is `modified` into its image.
+   */
+  draft(
+    shape: ShapeHandle,
+    faces: readonly number[],
+    plane: { origin: Vec3; normal: Vec3 },
+    angle: number,
+  ): OperationResult {
+    const f = this.#facade;
+    f.clearArgs();
+    for (const face of faces) f.pushArg(face);
+    const handle = f.draft(shape, ...plane.origin, ...plane.normal, angle);
+    if (handle === 0) {
+      throw new DraftError(
+        f.lastError() || 'The draft failed.',
+        decodeDraftProblems(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize())),
+      );
+    }
+    return this.#withHistory(handle);
   }
 
   /**
@@ -893,6 +964,28 @@ export function decodeOffsetFaceProblems(v: Float64Array): OffsetFaceProblem[] {
       return [{ kind: 'void' }];
     case 6:
       return [{ kind: 'sharp-chain' }];
+    default:
+      return [{ kind: 'other' }];
+  }
+}
+
+/** Decodes the facade's draft diagnosis: [status, value]. */
+export function decodeDraftProblems(v: Float64Array): DraftProblem[] {
+  if (v.length < 2) return [{ kind: 'other' }];
+  const value = v[1] as number;
+  switch (v[0]) {
+    case 1:
+      return [{ kind: 'too-steep', max: (value * 180) / Math.PI }];
+    case 2:
+      return [{ kind: 'refused', face: Math.round(value) }];
+    case 3:
+      return [{ kind: 'surface', face: Math.round(value) }];
+    case 4:
+      return [{ kind: 'not-solid' }];
+    case 6:
+      return [{ kind: 'undraftable' }];
+    case 7:
+      return [{ kind: 'parallel', face: Math.round(value) }];
     default:
       return [{ kind: 'other' }];
   }

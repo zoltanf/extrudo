@@ -36,7 +36,7 @@ import { lineOf, planeOf, pointOf } from './references';
 const RADIANS = Math.PI / 180;
 
 /** The bodies a feature works on, by ID: the ones that exist, else a lost reference. */
-function existing(ctx: EvalContext, refs: readonly GeomRef[], what: string): BodyId[] {
+export function existing(ctx: EvalContext, refs: readonly GeomRef[], what: string): BodyId[] {
   if (refs.length === 0) throw new KernelError(`Pick the bodies to ${what}.`);
   return refs.map((ref) => {
     if (!ctx.bodies.has(ref.id as BodyId)) {
@@ -161,7 +161,7 @@ function moveMatrix(
 }
 
 /** The centre of the box that holds the bodies (the exact, tight boxes). */
-function centreOf(ctx: EvalContext, ids: readonly BodyId[]): Vec3 {
+export function centreOf(ctx: EvalContext, ids: readonly BodyId[]): Vec3 {
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
   for (const id of ids) {

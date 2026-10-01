@@ -20,6 +20,7 @@ import b2 from '../../../fixtures/benchmarks/b2-storage-box.extrudo?url&inline';
 import b3 from '../../../fixtures/benchmarks/b3-phone-stand.extrudo?url&inline';
 import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline';
 import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
+import b6 from '../../../fixtures/benchmarks/b6-wall-hook.extrudo?url&inline';
 import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
 import { kernelFeatures } from './features';
 import { translation } from './features/matrix';
@@ -357,5 +358,74 @@ describe('B7 knurled knob', () => {
     const volume = knob?.volume ?? 0;
     expect(volume).toBeGreaterThan(knobVolume(18, 1.8));
     expect(volume).toBeLessThan(knobVolume(18, 1.8) + 18);
+  });
+});
+
+/**
+ * The wall hook's volume with its draft and without fillets: the plate, and
+ * in front of it the arm and the lip, whose sides (and the arm's top) lean in
+ * by `taper` from the plate's front face. Polynomials in x of degree two,
+ * integrated exactly by Simpson's rule.
+ */
+function draftedHook(p: {
+  wall: number;
+  width: number;
+  height: number;
+  arm: number;
+  reach: number;
+  lip: number;
+  taper: number;
+}) {
+  const t = Math.tan((p.taper * Math.PI) / 180);
+  const width = (x: number) => p.arm - 2 * (x - p.wall) * t;
+  const simpson = (a: number, b: number, f: (x: number) => number) =>
+    ((b - a) / 6) * (f(a) + 4 * f((a + b) / 2) + f(b));
+  const armEnd = p.reach - p.wall;
+  return (
+    p.wall * p.width * p.height +
+    simpson(p.wall, armEnd, (x) => width(x) * (p.wall - (x - p.wall) * t)) +
+    simpson(armEnd, p.reach, (x) => width(x) * p.lip)
+  );
+}
+
+describe('B6 wall hook', () => {
+  const sizes = { wall: 5, width: 30, height: 60, arm: 16, reach: 40, lip: 15, taper: 3 };
+
+  it('is one body: three boxes joined, the arm drafted, fillets where edges meet', async () => {
+    const doc = load(b6);
+    expect(doc.name).toBe('B6 Wall hook');
+    expect(featureNames(doc)).toEqual(['Box1', 'Box2', 'Box3', 'Draft1', 'Fillet1']);
+    expect(doc.parameters.map((p) => [p.name, p.expression])).toEqual(
+      expect.arrayContaining([
+        ['reach', '40 mm'],
+        ['taper', '3 deg'],
+        ['radius', '2 mm'],
+      ]),
+    );
+    // Before the draft: the three boxes make one body of 12 600 mm³.
+    const [boxes, ...extra] = bodies(await recompute({ ...doc, timelineMarker: 3 }));
+    expect(extra).toEqual([]);
+    expect(boxes?.size.map((v) => Math.round(v * 10) / 10)).toEqual([40, 30, 60]);
+    expect(boxes?.volume).toBeCloseTo(5 * 30 * 60 + 35 * 16 * 5 + 5 * 16 * 10, 3);
+    // The draft keeps every face and narrows the arm towards its tip.
+    const [drafted] = bodies(await recompute({ ...doc, timelineMarker: 4 }));
+    expect(drafted?.faces).toBe(boxes?.faces);
+    expect(drafted?.volume).toBeCloseTo(draftedHook(sizes), 3);
+    // The fillets round the plate's top (four edges meeting at its corners) and fill the
+    // corner under the arm: a few faces more, a little less matter.
+    const [hook, ...others] = bodies(await recompute(doc));
+    expect(others).toEqual([]);
+    expect(hook?.size.map((v) => Math.round(v * 10) / 10)).toEqual([40, 30, 60]);
+    expect(hook?.faces).toBeGreaterThan((drafted?.faces ?? 0) + 4);
+    expect(Math.abs((hook?.volume ?? 0) / draftedHook(sizes) - 1)).toBeLessThan(0.01);
+  });
+
+  it('follows its parameters: a longer arm and a steeper draft', async () => {
+    const doc = withParameters(load(b6), { reach: '50 mm', taper: '5 deg', radius: '1.5 mm' });
+    const [hook, ...others] = bodies(await recompute(doc));
+    expect(others).toEqual([]);
+    expect(hook?.size.map((v) => Math.round(v * 10) / 10)).toEqual([50, 30, 60]);
+    const [drafted] = bodies(await recompute({ ...doc, timelineMarker: 4 }));
+    expect(drafted?.volume).toBeCloseTo(draftedHook({ ...sizes, reach: 50, taper: 5 }), 3);
   });
 });

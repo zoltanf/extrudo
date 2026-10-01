@@ -1,0 +1,139 @@
+{
+ "YZ both": {
+  "B:0": {
+   "volume": 12000,
+   "bbox": [
+    -20,
+    -15,
+    0,
+    0,
+    15,
+    20
+   ],
+   "faces": 6,
+   "valid": true,
+   "names": [
+    "extrude:B:cap:end#1",
+    "extrude:B:cap:start#1",
+    "extrude:B:side:l11",
+    "extrude:B:side:l2#1",
+    "extrude:B:side:l8#1",
+    "split:S:cut:below"
+   ]
+  },
+  "S:0": {
+   "volume": 12000,
+   "bbox": [
+    0,
+    -15,
+    0,
+    20,
+    15,
+    20
+   ],
+   "faces": 6,
+   "valid": true,
+   "names": [
+    "extrude:B:cap:end#2",
+    "extrude:B:cap:start#2",
+    "extrude:B:side:l2#2",
+    "extrude:B:side:l5",
+    "extrude:B:side:l8#2",
+    "split:S:cut:above"
+   ]
+  }
+ },
+ "YZ above": {
+  "B:0": {
+   "volume": 12000,
+   "bbox": [
+    0,
+    -15,
+    0,
+    20,
+    15,
+    20
+   ],
+   "faces": 6,
+   "valid": true,
+   "names": [
+    "extrude:B:cap:end",
+    "extrude:B:cap:start",
+    "extrude:B:side:l2",
+    "extrude:B:side:l5",
+    "extrude:B:side:l8",
+    "split:S:cut:above"
+   ]
+  }
+ },
+ "YZ below": {
+  "B:0": {
+   "volume": 12000,
+   "bbox": [
+    -20,
+    -15,
+    0,
+    0,
+    15,
+    20
+   ],
+   "faces": 6,
+   "valid": true,
+   "names": [
+    "extrude:B:cap:end",
+    "extrude:B:cap:start",
+    "extrude:B:side:l11",
+    "extrude:B:side:l2",
+    "extrude:B:side:l8",
+    "split:S:cut:below"
+   ]
+  }
+ },
+ "XZ both": {
+  "B:0": {
+   "volume": 12000,
+   "bbox": [
+    -20,
+    -15,
+    0,
+    20,
+    0,
+    20
+   ],
+   "faces": 6,
+   "valid": true,
+   "names": [
+    "extrude:B:cap:end#1",
+    "extrude:B:cap:start#1",
+    "extrude:B:side:l11#1",
+    "extrude:B:side:l2",
+    "extrude:B:side:l5#1",
+    "split:S:cut:above"
+   ]
+  },
+  "S:0": {
+   "volume": 12000,
+   "bbox": [
+    -20,
+    0,
+    0,
+    20,
+    15,
+    20
+   ],
+   "faces": 6,
+   "valid": true,
+   "names": [
+    "extrude:B:cap:end#2",
+    "extrude:B:cap:start#2",
+    "extrude:B:side:l11#2",
+    "extrude:B:side:l5#2",
+    "extrude:B:side:l8",
+    "split:S:cut:below"
+   ]
+  }
+ },
+ "XY no cut": {
+  "error": "The plane doesn't cut the body: it lies wholly on one side. Pick a plane that goes through it."
+ }
+}

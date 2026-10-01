@@ -4,6 +4,7 @@ import { kernelRemove } from './bodies';
 import { kernelChamfer } from './chamfer';
 import { kernelCombine } from './combine';
 import { KERNEL_CONSTRUCTION } from './construction';
+import { kernelDraft } from './draft';
 import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
 import { kernelHole } from './hole';
@@ -12,8 +13,10 @@ import { kernelCircularPattern, kernelPathPattern, kernelRectangularPattern } fr
 import { kernelPlaceOnBed } from './place-on-bed';
 import { KERNEL_PRIMITIVES } from './primitives';
 import { kernelRevolve } from './revolve';
+import { kernelScale } from './scale';
 import { kernelShell } from './shell';
 import { kernelSketch } from './sketch';
+import { kernelSplitBody } from './split-body';
 import { kernelMirror, kernelMove } from './transform';
 
 /** Every feature type the kernel can compute (architecture §4.2). */
@@ -50,5 +53,10 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
   registry.register(kernelHole as unknown as KernelFeatureDefinition);
   // Offset Face (P3-08, ADR-0051).
   registry.register(kernelOffsetFace as unknown as KernelFeatureDefinition);
+  // Split Body, Scale and Draft (P3-08, second half).
+  registry
+    .register(kernelSplitBody as unknown as KernelFeatureDefinition)
+    .register(kernelScale as unknown as KernelFeatureDefinition)
+    .register(kernelDraft as unknown as KernelFeatureDefinition);
   return registry;
 }

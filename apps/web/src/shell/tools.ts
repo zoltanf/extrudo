@@ -465,6 +465,28 @@ export const TOOLS = {
     category: 'modify',
     hint: 'Move faces along their normals; the faces next to them follow. A curved wall changes its radius.',
   },
+  splitBody: {
+    id: 'splitBody',
+    label: 'Split Body',
+    short: 'Split',
+    icon: 'split-body',
+    category: 'modify',
+    hint: 'Cut bodies in two along a plane or a flat face; each side becomes a body. Keep both or one.',
+  },
+  scale: {
+    id: 'scale',
+    label: 'Scale',
+    icon: 'scale',
+    category: 'modify',
+    hint: 'Make bodies larger or smaller about a point, by one factor or one per axis.',
+  },
+  draft: {
+    id: 'draft',
+    label: 'Draft',
+    icon: 'draft',
+    category: 'modify',
+    hint: 'Tilt faces by a few degrees about a plane, so the part comes off the bed or out of a mould.',
+  },
   remove: {
     id: 'remove',
     label: 'Remove',
@@ -680,6 +702,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
       {
         label: 'Modify',
         tools: ['pressPull', 'fillet', 'chamfer', 'shell', 'offsetFace', 'parameters'],
+        more: ['draft', 'splitBody', 'scale'],
       },
       { label: 'Transform', tools: ['move', 'mirror', 'combine'] },
       {

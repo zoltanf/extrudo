@@ -757,6 +757,63 @@ OCCT can't offset are reported as errors, with the largest distance that works
 where one does. Press Pull is not a feature: it
 opens an Offset Face, a Fillet or an Extrude in the app.
 
+### 6.19 `splitBody`
+
+Cuts bodies in two along a plane (P3-08, ADR-0053). No new keys.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `bodies` | `ref` | yes | Refs of kind `body` (body IDs): the bodies to cut. Empty: an error until some are picked |
+| `plane` | `ref` | yes | One ref of kind `plane` (an origin or construction plane) or `face` (a flat face, taken as its whole plane, past its edges). Empty: an error until one is picked |
+| `keep` | `enum` | no | `both` (default), `above` (the side the plane's normal points to: +Z for the XY plane, outside the body for a face) or `below` |
+
+Each side becomes a body of its own, and a side that falls apart into several
+solids becomes several bodies. The **largest piece keeps the body's ID** (and
+so its name and colour); the others get the feature's IDs `<feature>:<n>`
+(ADR-0030). A face the plane cuts in two keeps its name with `#1` and `#2`
+(one piece in each body, so names stay unique); the new faces on the plane are
+`split:<feature>:cut:above` and `split:<feature>:cut:below`. A body the plane
+doesn't cut stays whole with a warning (an error if none is cut), and keeping
+a side that has nothing of a body in it is an error.
+
+### 6.20 `scale`
+
+Makes bodies larger or smaller about a point (P3-08, ADR-0053). No new keys.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `bodies` | `ref` | yes | Refs of kind `body`: the bodies to scale. Empty: an error until some are picked |
+| `point` | `ref` | no | At most one ref of kind `vertex` or `point` (a construction point): the point that stays where it is. Absent or empty: the centre of the box that holds the bodies |
+| `mode` | `enum` | no | `uniform` (default) or `non-uniform` |
+| `factor` | `expr` | no | `uniform`: plain number (`unitless`), default 1 |
+| `x`, `y`, `z` | `expr` | no | `non-uniform`: plain numbers, the factors along the world X, Y and Z axes, default 1 each |
+| `copy` | `bool` | no | Keep the bodies and add scaled copies (`<feature>:<n>`). Default false |
+
+Every factor must be greater than 0 (an error otherwise; a mirror is
+`mirror`); all factors 1 is a warning. Faces keep their names (a copy's faces
+are `scale:<feature>:from:(<name>)`, as for `move`). A uniform scale keeps every
+surface's type; a non-uniform one turns curved faces into B-spline surfaces (a
+cylinder scaled across its axis has an elliptic section), while flat faces stay
+planes and the straight edges between them lines.
+
+### 6.21 `draft`
+
+Tilts faces by an angle about a neutral plane (P3-08, ADR-0053). No new keys.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `faces` | `ref` | yes | Refs of kind `face`: the faces to tilt, on one or several bodies. Empty: an error until one is picked |
+| `plane` | `ref` | yes | One ref of kind `plane` or `face` (a flat face): the neutral plane. The faces turn about the line where each meets it; its normal is the pull direction |
+| `angle` | `expr` | yes | Angle. **Positive narrows the body along the pull** (matter goes on the pull side of the plane and comes on the other); negative widens it. 0, and 90° or more, are errors when the kernel evaluates it |
+| `flip` | `bool` | no | Pull against the plane's normal. Default false |
+
+Only flat, cylindrical and conical faces tilt (a cylinder becomes a cone);
+faces that run smoothly into a picked face tilt with it. **Every face keeps its
+name.** A face parallel to the neutral plane, a face of another kind, faces
+whose rounded or chamfered neighbours can't follow, and an angle that makes
+faces cross are reported as errors, with the largest angle that works where
+one does.
+
 ---
 
 ## 7. Sketch data (`sketchData`)

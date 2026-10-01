@@ -9,6 +9,7 @@ import { FeatureRegistry } from '@extrudo/core';
 import { chamferDialog } from './chamfer';
 import { combineDialog } from './combine';
 import { CONSTRUCTION_DIALOGS } from './construction';
+import { draftDialog } from './draft';
 import { extrudeDialog } from './extrude';
 import { filletDialog } from './fillet';
 import { holeDialog } from './hole';
@@ -20,8 +21,10 @@ import { placeOnBedDialog } from './place-on-bed';
 import { PRIMITIVE_DIALOGS } from './primitives';
 import { removeDialog } from './remove';
 import { revolveDialog } from './revolve';
+import { scaleDialog } from './scale';
 import { shellDialog } from './shell';
 import { commandId, type FeatureDialogSpec } from './spec';
+import { splitBodyDialog } from './split-body';
 
 export type FeatureDialogs = FeatureRegistry<FeatureDialogSpec>;
 
@@ -46,6 +49,8 @@ export function featureDialogs(): FeatureDialogs {
   dialogs.register(offsetFaceDialog);
   // Rectangular, circular and path patterns (P3-07, ADR-0047).
   for (const spec of PATTERN_DIALOGS) dialogs.register(spec);
+  // Split Body, Scale and Draft (P3-08, second half).
+  dialogs.register(splitBodyDialog).register(scaleDialog).register(draftDialog);
   // Remove: edit which bodies a Remove takes out (P3-17).
   dialogs.register(removeDialog);
   return dialogs;

@@ -43,6 +43,8 @@ export {
   ChamferError,
   type ChamferProblem,
   type ChamferSpec,
+  DraftError,
+  type DraftProblem,
   FilletError,
   type FilletProblem,
   Kernel,

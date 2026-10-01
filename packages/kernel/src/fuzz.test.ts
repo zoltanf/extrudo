@@ -46,6 +46,7 @@ import b2 from '../../../fixtures/benchmarks/b2-storage-box.extrudo?url&inline';
 import b3 from '../../../fixtures/benchmarks/b3-phone-stand.extrudo?url&inline';
 import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline';
 import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
+import b6 from '../../../fixtures/benchmarks/b6-wall-hook.extrudo?url&inline';
 import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
 import { kernelFeatures } from './features';
 import { Kernel } from './kernel';
@@ -439,6 +440,7 @@ describe('fuzzing the benchmark fixtures', () => {
     ['B3', b3],
     ['B4', b4],
     ['B5', b5],
+    ['B6', b6],
     ['B7', b7],
   ];
   for (const [name, dataUrl] of cases) {

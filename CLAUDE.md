@@ -23,9 +23,9 @@ fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-03
 (shell), P3-05 (construction geometry), P3-06 (combine, move/copy, mirror),
 P3-04 (hole), P3-07 (patterns, mirrored features), P3-09 (section
 analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus),
-P3-13 (hardening) and P3-16 (notification history) are done; P3-08 is
-half done (Press/Pull and Offset face; Split body, Scale and Draft remain)
-and P3-14 partly (benchmarks B4, B5 and B7; B6 waits for Draft).
+P3-08 (press/pull, offset face, split body, scale, draft), P3-13
+(hardening), P3-14 (benchmarks B4 to B7) and P3-16 (notification history)
+are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -566,10 +566,37 @@ propose their operation through one rule** (`features/operation.ts`:
 sweep leaves the face): new body for plain profiles, join out of a body or both
 ways, cut into it, for faces and for profiles of a sketch on a face. Patterns
 of faces did not fall out of Offset Face and stay open.
-Next, one task at a time (not parallel tracks, since 2026-09-30): the
-second half of **P3-08** (split body, scale, draft), **P3-17** (polish:
-open items from the ADRs), P3-12, P3-14 (B6 once Draft exists), then P3-15 after the owner's
-decisions. Carried-over items are listed under those tasks in
+ADR-0053 (P3-08, second half; B6 of P3-14) added **Split Body**, **Scale** and
+**Draft** (core `split-body.ts`, `scale.ts`, `draft.ts`; kernel
+`features/split-body.ts`, `scale.ts`, `draft.ts`; dialogs of the same names;
+tools in Solid › Modify's menu, no keys). **Split Body needs no facade
+change**: each side is the `common` of the body and a box on that side of the
+plane (placed by `transform`), the two sides named as one compound so a face
+cut in two is `#1`/`#2` (names stay unique across bodies, which `resolveRef`
+needs) and the plane's faces `split:<id>:cut:above|below`; `splitSolids` gives
+the largest piece the body's ID; `keep` both/above/below (above = along the
+plane's normal). **Scale** is the facade's `scale(shape)` (six staged numbers:
+centre and X/Y/Z factors > 0; centre default the bodies' box centre,
+`centreOf`): equal factors through `gp_Trsf`, unequal through
+`BRepBuilderAPI_GTransform`, **which makes every surface and curve a B-spline**;
+`restoreCanonical` puts flat faces back on planes and straight edges between
+them on lines (`BRepTools_ReShape`), history through `ModifiedShape` (its
+`Modified` is broken) in `recordImages`. **Draft** is the facade's
+`draft(shape, point, normal, angle)` (staged faces; neutral plane through the
+point, its normal the pull, `flip` reverses; positive narrows along the pull):
+`BRepOffsetAPI_DraftAngle` on a copy (`ConnectedFaces` throws: don't call it),
+faces other than planes, cylinders and cones and planes parallel to the
+neutral plane refused before OCCT runs, **results whose faces crossed refused**
+(edge ends out of order through their vertices' images, a cone's tip inside
+its face), the largest angle by bisection, `DraftError.problems`. Every face
+keeps its name through all three; Scale copies are renamed like Move's. The
+Draft dialog's angle arc starts along the pull. B6 (wall hook) is three joined
+boxes, Draft1 on the arm about the plate's front face, Fillet1 on the plate's
+top edges and the inside corner (`e2e/benchmark-b6.spec.ts`, fixture
+`b6-wall-hook.extrudo`, in the fuzzer's list).
+Next, one task at a time (not parallel tracks, since 2026-09-30):
+**P3-17** (polish: open items from the ADRs), P3-12, then P3-15 after the
+owner's decisions. Carried-over items are listed under those tasks in
 `docs/03-roadmap.md`; deeper ones are the P4-12 backlog.
 
 ## Commands
@@ -600,7 +627,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0053: split body, scale, draft, benchmark B6 (0006 is reserved) |
 
 ## Stack summary
 
@@ -1242,8 +1269,8 @@ them. Notes further down that name a machine apply to that machine only.
   takes about 20 s alone (B3 about 30 s); on the Ubuntu machine run with
   `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` (no Playwright
   browser installed there).
-- **Benchmarks B4–B7** (`e2e/benchmark-b4.spec.ts`, `-b5`, `-b7`, P3-14; B6
-  waits for Draft): shared steps in `e2e/benchmark-helpers.ts`:
+- **Benchmarks B4–B7** (`e2e/benchmark-b4.spec.ts`, `-b5`, `-b6`, `-b7`,
+  P3-14; B6 with P3-08's Draft): shared steps in `e2e/benchmark-helpers.ts`:
   `primitive(page, 'Box', fields, operation)` fills a primitive on XY and
   commits it, `turnView(page, 'Shift+3')` turns and returns a settled
   `projector`, `clickEdge`/`clickWhere` poll `data-model-hover` before the
@@ -1261,8 +1288,7 @@ them. Notes further down that name a machine apply to that machine only.
   over an open cavity (it wins over the floor behind it). In a sketch,
   dimensioning a rectangle side moves the opposite side: pick the next
   side where it is now. Body rows rename with `renameBody` (F2); the 3MF's
-  object names are the body names. A B6 spec would add Draft and fillets
-  on intersecting edges to these steps.
+  object names are the body names.
 - **Combine and Move/Mirror e2e** (`e2e/combine.spec.ts`,
   `e2e/move-mirror.spec.ts`, P3-06): the Transform group's tiles are the
   buttons "Move", "Mirror" and "Combine" (`exact: true`: a chip "Move1"
@@ -1450,4 +1476,27 @@ them. Notes further down that name a machine apply to that machine only.
   V1?" with Cancel/Delete.
 - **Newer files in e2e**: write `projects/<id>/document.json` in OPFS from
   `page.evaluate` (see `storage.spec.ts`) to simulate a newer Extrudo.
-
+- **Split Body, Scale and Draft e2e** (`e2e/split-body.spec.ts`,
+  `scale.spec.ts`, `draft.spec.ts`, P3-08): the tools are in the Solid tab's
+  Modify menu (`getByRole('button', { name: 'Modify', exact: true })`, then
+  `menuitem` `/^Split Body/`, `/^Scale/`, `/^Draft/`); dialogs are the regions
+  "Split Body dialog", "Scale dialog", "Draft dialog" (and "Edit Split Body1
+  dialog"…). Split: buttons "Bodies" and "Plane", combobox "Keep"
+  (`both`/`above`/`below`); a cube from the Box tool split by YZ is
+  `Body1:6:10,20,20 Body2:6:10,20,20`. Scale: combobox "Scale type"
+  (`uniform`/`non-uniform`), textboxes "Scale factor", "X factor"… (`exact`),
+  checkbox "Create copy"; a factor of 1 previews as a *warning*. Draft: buttons
+  "Faces" (`exact`) and "Plane", textbox "Angle" (`exact`, default "3 deg"),
+  checkbox "Flip", `data-manipulators="angle:angle"`. A plane field picks like
+  Create Sketch (no `data-model-hover`): click an origin plane's square beside
+  the body in the view a new design opens with (the camera is wide enough
+  there; after Shift+1 the cube covers the squares). Kernel golden tables:
+  `pnpm vitest run -u packages/kernel/src/features/split-body` (`scale`,
+  `draft`). The facade's native harness for these lives in the scratchpad
+  (sweeps of 5,544 drafts and the scales of 11 bodies trapped nothing).
+- **Benchmark B6 e2e** (`e2e/benchmark-b6.spec.ts`): three Box dialogs with
+  parameter expressions (Operation `join` for the arm and the lip), Draft
+  faces picked in the home view and the arm's far side from Shift+5, the
+  plane picked on the plate's front face, five fillet edges picked in the home
+  view. Radius 3 mm is refused on the 5 mm plate (its front and back top
+  fillets meet), which the spec avoids. About 18 s alone.
