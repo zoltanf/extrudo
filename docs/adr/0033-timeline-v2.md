@@ -155,8 +155,8 @@ said which reference the kernel lost or guessed.
 - ~~Moving several features at once~~ (done in P3-17), and groups (FR-TL-06).
 - ~~The browser shows no feature status yet (ADR-0024 open item).~~ Done in
   P3-17 (amendment below).
-- Remove features have no dialog (ADR-0030): a lost body reference there
-  says "has no dialog yet".
+- ~~Remove features have no dialog (ADR-0030): a lost body reference there
+  says "has no dialog yet".~~ Done in P3-17 (ADR-0030 amendment).
 
 ## Amendment (P3-17)
 

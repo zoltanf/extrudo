@@ -222,6 +222,21 @@ test('a cut through a plate makes two bodies, named without shifting', async ({ 
   await kernelReady(page);
   await expect(viewport).toHaveAttribute('data-bodies', 'Body2:6:10,20,10');
   await expect(badge(page)).toHaveText('1');
+  // The Remove's chip opens its dialog (P3-17): Body2 picked from the browser joins Body1.
+  await chip(page, 'Remove1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Remove1 dialog' });
+  const picked = edit.getByRole('button', { name: 'Bodies', exact: true });
+  await expect(picked).toHaveText('Body1');
+  await bodyRow(page, 'Body2').click();
+  await expect(picked).toHaveText('2 bodies');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).not.toHaveAttribute('data-bodies');
+  await page.keyboard.press('Control+z');
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body2:6:10,20,10');
   // Undoing the cut takes the second body and its name away.
   await page.keyboard.press('Control+z');
   await page.keyboard.press('Control+z');

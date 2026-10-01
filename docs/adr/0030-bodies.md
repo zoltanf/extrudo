@@ -230,8 +230,8 @@ name:colour-or-`default`:opacity per drawn body) and `data-silhouettes`
 
 ## Open
 
-- A Remove dialog (edit which bodies it removes); the Remove chip opens
-  nothing yet.
+- ~~A Remove dialog (edit which bodies it removes); the Remove chip opens
+  nothing yet.~~ Done in P3-17 (amendment below).
 - ~~Custom colours (a colour field) beyond the swatches.~~ Done in P3-17
   (amendment below).
 - Piece IDs shift when an earlier participant of the same feature splits
@@ -255,4 +255,12 @@ name:colour-or-`default`:opacity per drawn body) and `data-silhouettes`
   invalid without committing. While the colour is none of the swatches
   (`isSwatch`), no swatch is checked and the custom picker is outlined
   (`data-custom-colour`).
+- **A Remove dialog** (`features/remove.ts`): one selection field, Bodies,
+  named like the input, so the framework's default mapping reads and writes
+  it. Registering it makes the Remove chip and Fix References open it (a
+  lost body is taken out of the field and the field waits for a pick), and
+  it brings a command of its own, "Remove Bodies" (Solid › Modify, Ctrl+K;
+  no toolbar tile, no key), that makes a Remove from picked or pre-selected
+  bodies, as Delete does at once. No new feature type: it is the existing
+  `remove`. The preview is the model without the bodies.
 
