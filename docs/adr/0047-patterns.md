@@ -222,3 +222,24 @@ once per body for the merged tool, and a compound of many solids against
 many bodies grows with both. A bounding-box filter doesn't help (the tool's
 box spans every body); the fix is per-instance targets or the colour-class
 plan already listed under P3-17. The default 200-step run doesn't reach it.
+
+## Amendment (P3-17, part 2): targets solid by solid
+
+The 54 s to 162 s case above is fixed without a facade change. `operate`'s
+automatic targets (`touchingBodies` in `features/operation.ts`, also used by
+every solid feature) are now found in two steps: a body whose (loose) box
+doesn't meet the tool's box is out, and the others are asked **solid by solid
+of the tool**, each solid's own box first, with `kernel.distance` only for the
+pairs whose boxes meet. A tool of one solid keeps the single exact distance.
+The answer is the same; the cost no longer grows with bodies x instances.
+Hole's "holes that reach no body" check does the same box-first test.
+`boxesTouch` moved from `pattern.ts` to `operation.ts`.
+
+Numbers (this machine, B5 with `count2 x 10`, `BENCH=1 pnpm vitest run
+packages/kernel/src/pattern-bench.test.ts`, which also prints the time per
+`Kernel` method): **55.2 s -> 2.4 s** (`kernel.distance` 53 s -> 0.04 s over the
+recompute; x3: 6.3 s -> 1.0 s). The fuzzer's `FUZZ_SEED=7` and `FUZZ_SEED=2026`
+at `FUZZ_STEPS=1000` on B5 now finish in 103 s and 69 s with the slowest step
+at 1.6 s and 2.6 s. The fuzzer keeps both sequences (at its step count + 100)
+and a regression test "B5 recomputes a pattern of 2 x 20 instances in seconds"
+(under 15 s, the warning about separate bodies).

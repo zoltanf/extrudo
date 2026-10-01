@@ -53,7 +53,7 @@ import type {
   PreviewTool,
 } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { type OperationWords, operate, TOUCH } from './operation';
+import { type Box, boxesTouch, type OperationWords, operate, TOUCH } from './operation';
 import {
   circularPlacements,
   limitInstances,
@@ -108,18 +108,6 @@ function replicate(
   );
   return { shape: moved.shape, names: deriveNames(faces, kernel.describe(moved.shape)) };
 }
-
-interface Box {
-  min: readonly number[];
-  max: readonly number[];
-}
-
-const boxesTouch = (a: Box, b: Box): boolean =>
-  [0, 1, 2].every(
-    (k) =>
-      (a.min[k] as number) <= (b.max[k] as number) + TOUCH &&
-      (b.min[k] as number) <= (a.max[k] as number) + TOUCH,
-  );
 
 /**
  * Copies merged into one shape for a single boolean: instances that touch

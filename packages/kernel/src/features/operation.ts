@@ -60,11 +60,7 @@ export function operate(
   const operation = settings.operation;
   if (operation === 'new-body') return newBodies(ctx, scope, tool, words);
 
-  const targets =
-    participants ??
-    [...ctx.bodies]
-      .filter(([, shape]) => kernel.distance(shape, tool.shape) <= TOUCH)
-      .map(([id]) => id);
+  const targets = participants ?? touchingBodies(ctx, scope, tool.shape);
   // Kept only on success: a failure below must release the tool with the scope.
   const preview = (): PreviewTool[] => [
     { shape: scope.keep(tool.shape), style: operation, names: tool.names },
@@ -138,6 +134,53 @@ export function operate(
     names.set(id, result.names);
   }
   return { bodies, names, previewTools: preview() };
+}
+
+/** A box as `Kernel.measure` gives it (loose: it never cuts into the shape). */
+export interface Box {
+  min: readonly number[];
+  max: readonly number[];
+}
+
+/** Whether two boxes meet or lie within `TOUCH` of each other. */
+export const boxesTouch = (a: Box, b: Box): boolean =>
+  [0, 1, 2].every(
+    (k) =>
+      (a.min[k] as number) <= (b.max[k] as number) + TOUCH &&
+      (b.min[k] as number) <= (a.max[k] as number) + TOUCH,
+  );
+
+/**
+ * The bodies a tool touches (within `TOUCH`), for an operation with automatic
+ * participants. One exact `distance` between a body and the whole tool is slow
+ * when the tool is many solids (a pattern's 40 holes: seconds per body), and
+ * most pairs are far apart, so: a body whose box doesn't meet the tool's box
+ * is out, and the others are asked solid by solid of the tool, boxes first
+ * (P3-17). The exact answer is the same.
+ */
+export function touchingBodies(ctx: EvalContext, scope: ShapeScope, tool: ShapeHandle): BodyId[] {
+  const { kernel } = ctx;
+  const toolBox = kernel.measure(tool).bbox;
+  const near: { id: BodyId; shape: ShapeHandle; box: Box }[] = [];
+  for (const [id, shape] of ctx.bodies) {
+    const box = kernel.measure(shape).bbox;
+    if (boxesTouch(box, toolBox)) near.push({ id, shape, box });
+  }
+  if (near.length === 0) return [];
+  const solids = kernel.solids(tool);
+  for (const solid of solids) scope.track(solid);
+  // One solid (or something that has none): the exact distance to the whole tool.
+  if (solids.length < 2) {
+    return near.filter(({ shape }) => kernel.distance(shape, tool) <= TOUCH).map(({ id }) => id);
+  }
+  const parts = solids.map((shape) => ({ shape, box: kernel.measure(shape).bbox }));
+  return near
+    .filter(({ shape, box }) =>
+      parts.some(
+        (part) => boxesTouch(box, part.box) && kernel.distance(shape, part.shape) <= TOUCH,
+      ),
+    )
+    .map(({ id }) => id);
 }
 
 /** The tool as new bodies: one per separate solid, in geometric order. */
