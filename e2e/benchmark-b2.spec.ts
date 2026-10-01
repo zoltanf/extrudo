@@ -157,34 +157,27 @@ test('B2: a parametric storage box, cut from a solid', async ({ page }) => {
   const flat = await projector(viewport);
   const onFace = (x: number, y: number) => flat([x, y, 40]);
   const clickFace = clicker(page, onFace);
-  // A rectangle inside the outline, then each of its sides `wall` from the projected side.
-  await page.keyboard.press('r');
+  // Offset picks the whole projected outline (its four sides meet where the face's edges do),
+  // then the side to go to and a distance (3 mm, inward); the first distance becomes `wall`,
+  // and the other three sides follow it.
+  await page.keyboard.press('o');
   await expect(toolPrompt(page)).toBeVisible();
-  await clickFace(10, 10);
-  await clickFace(70, 50);
-  await page.keyboard.press('Escape');
-  await expect(toolPrompt(page)).toHaveCount(0);
+  await clickFace(40, 0);
+  await expect(toolPrompt(page)).toContainText('Move to the side to offset to');
+  const inner = onFace(40, 10);
+  await page.mouse.move(inner.x, inner.y);
+  await page.keyboard.type('3');
+  await page.keyboard.press('Enter');
   await expect(viewport).toHaveAttribute('data-sketch-profiles', 'profiles=2 holes=1');
-  await page.keyboard.press('d');
-  // Per side: a point on the inner side, on the projected side, and where the label goes.
-  const sides = [
-    { inner: [40, 10], outer: [40, 0], label: [55, 5] },
-    { inner: [40, 50], outer: [40, 60], label: [55, 55] },
-    { inner: [10, 30], outer: [0, 30], label: [5, 45] },
-    { inner: [70, 30], outer: [80, 30], label: [75, 45] },
-  ] as const;
-  for (const { inner, outer, label } of sides) {
-    await clickFace(inner[0], inner[1]);
-    await clickFace(outer[0], outer[1]);
-    await clickFace(label[0], label[1]);
-    const value = page.getByRole('textbox', { name: /^Value of d\d+$/ });
-    await expect(value).toBeFocused();
-    await value.fill('wall');
-    await value.press('Enter');
-    await expect(page.locator('[data-dimension-editor]')).toHaveCount(0);
-  }
   await page.keyboard.press('Escape');
   await expect(toolPrompt(page)).toHaveCount(0);
+  await expect(page.locator('[data-dimension]')).toHaveCount(4);
+  await page.locator('[data-dimension]').first().dblclick();
+  const distance = page.getByRole('textbox', { name: /^Value of d\d+$/ });
+  await expect(distance).toBeFocused();
+  await distance.fill('wall');
+  await distance.press('Enter');
+  await expect(page.locator('[data-dimension-editor]')).toHaveCount(0);
   await expect(page.locator('[data-dimension]')).toHaveText(Array(4).fill('fx: 3.00'));
   await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
   await kernelReady(page);

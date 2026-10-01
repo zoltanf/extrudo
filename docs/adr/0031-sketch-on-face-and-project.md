@@ -295,3 +295,16 @@ joins; pushed in, it cuts.
   through splits by related names, as `ctx.resolve` does, would keep them.
 - ~~Sketches on construction planes (P3-05) use the same report channel.~~
   Done in P3-05 (ADR-0040).
+
+## Amendment (P3-17)
+
+**Offset follows a projected outline.** `chainOf` (`packages/sketch/src/modify/offset.ts`)
+joins the ends of **projected** curves that lie in one place (within 10 nm) as
+if a coincident constraint tied them, so Offset on a projected face outline takes
+the whole outline (four sides, or lines and arcs of a rounded one), not one line.
+Only projected curves are joined this way: two sketched lines that merely end at
+one spot are still two chains. A projected outline has no tangent constraints,
+so `offset()` adds a tangent constraint between the new pieces wherever two
+projected neighbours (a line and an arc, or two arcs) run smoothly into each
+other; without them a rounded outline's offset kept 8 freedoms. The benchmark
+B2 now uses Offset instead of four hand-made dimensions (ADR-0039 item 2).
