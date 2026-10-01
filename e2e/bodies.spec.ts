@@ -83,6 +83,22 @@ test('renames, hides, colours and removes a body from the browser', async ({ pag
   await panel.getByRole('radio', { name: '50 %' }).check();
   await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#5b7cff:0.5');
   await page.screenshot({ path: test.info().outputPath('blue-half.png') });
+  // Any colour by its hex code (P3-17): one more undo step; no swatch is checked then.
+  const hex = panel.getByRole('textbox', { name: 'Hex colour' });
+  await hex.fill('#12AB9');
+  await hex.press('Enter');
+  await expect(hex).toHaveAttribute('aria-invalid', 'true');
+  await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#5b7cff:0.5');
+  await hex.fill('#12ab90');
+  await hex.press('Enter');
+  await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#12ab90:0.5');
+  await expect(panel.getByRole('radio', { name: 'Blue' })).not.toBeChecked();
+  await expect(panel.getByLabel('Custom colour')).toHaveAttribute('data-custom-colour', 'true');
+  // (Ctrl+Z in a text field is the field's own undo.)
+  await hex.blur();
+  await page.keyboard.press('Control+z');
+  await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#5b7cff:0.5');
+  await panel.getByRole('radio', { name: '50 %' }).focus();
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
   await page.keyboard.press('Control+z');

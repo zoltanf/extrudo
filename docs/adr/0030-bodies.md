@@ -232,7 +232,8 @@ name:colour-or-`default`:opacity per drawn body) and `data-silhouettes`
 
 - A Remove dialog (edit which bodies it removes); the Remove chip opens
   nothing yet.
-- Custom colours (a colour field) beyond the swatches.
+- ~~Custom colours (a colour field) beyond the swatches.~~ Done in P3-17
+  (amendment below).
 - Piece IDs shift when an earlier participant of the same feature splits
   into a different number of pieces (a multi-body cut); names follow the
   IDs.
@@ -240,3 +241,18 @@ name:colour-or-`default`:opacity per drawn body) and `data-silhouettes`
   thread; fine for Phase 2 models, measure with P2-15 on big meshes.
 - ~~Revolve (P2-07) should call `splitSolids` on its result.~~ Done: revolve
   calls `splitSolids`.
+
+## Amendment (P3-17)
+
+- **A custom colour beside the swatches.** Appearance has the system colour
+  picker and a hex field below the swatches. **No schema change**:
+  `BodyMeta.color` was always any `#rrggbb`, the swatches only a choice of
+  values, so there is no new key, no migration and no format version.
+  The picker commits on its native `change` (when the choice is made), not
+  on every `input` while it is dragged, so a pick is one undo step; the
+  hex field commits on Enter or blur, takes `#rgb` or `#rrggbb` with or
+  without `#` (`parseBodyColor`), stores lower case and marks anything else
+  invalid without committing. While the colour is none of the swatches
+  (`isSwatch`), no swatch is checked and the custom picker is outlined
+  (`data-custom-colour`).
+

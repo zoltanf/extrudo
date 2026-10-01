@@ -115,6 +115,23 @@ export const BODY_COLORS: readonly { value: string | undefined; label: string }[
   { value: '#3b404c', label: 'Charcoal' },
 ];
 
+/**
+ * A colour typed into Appearance's custom field (P3-17) as the document stores it: `#rrggbb`
+ * in lower case. Takes `#rgb` and `#rrggbb`, with or without the `#`, around spaces; anything
+ * else is `undefined`.
+ */
+export function parseBodyColor(text: string): string | undefined {
+  const hex = text.trim().replace(/^#/, '').toLowerCase();
+  if (/^[0-9a-f]{6}$/.test(hex)) return `#${hex}`;
+  if (/^[0-9a-f]{3}$/.test(hex)) return `#${[...hex].map((c) => c + c).join('')}`;
+  return undefined;
+}
+
+/** Whether a stored colour is one of the swatches (else the custom field shows it). */
+export function isSwatch(color: string | undefined): boolean {
+  return BODY_COLORS.some((c) => c.value === color);
+}
+
 /** Opacity presets; 1 (opaque) is stored as no opacity at all. */
 export const BODY_OPACITIES: readonly { value: number; label: string }[] = [
   { value: 1, label: 'Opaque' },

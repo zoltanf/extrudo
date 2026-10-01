@@ -211,7 +211,7 @@ first recompute that produces it.
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `name` | string | yes | Non-empty. Defaults are `Body1`, `Body2`, ... and are never reused. |
-| `color` | string `#rrggbb` | no | Six hex digits (either case). Absent: the theme's default body colour. |
+| `color` | string `#rrggbb` | no | Six hex digits (either case): a swatch or any custom colour (the app writes lower case). Absent: the theme's default body colour. |
 | `opacity` | number 0.1 to 1 | no | Absent: opaque. |
 | `visible` | boolean | yes | Whether the body is drawn. |
 

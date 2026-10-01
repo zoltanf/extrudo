@@ -28,6 +28,8 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
+  useEffect,
+  useRef,
   useState,
 } from 'react';
 import { useStore } from 'zustand';
@@ -37,11 +39,19 @@ import {
   MenuItem,
   MenuSeparator,
   Popover,
+  TextInput,
   ToolIcon,
   Tooltip,
 } from '../design-system';
 import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
-import { BODY_COLORS, BODY_OPACITIES, type BodyActions, type BodyEntry } from './bodies';
+import {
+  BODY_COLORS,
+  BODY_OPACITIES,
+  type BodyActions,
+  type BodyEntry,
+  isSwatch,
+  parseBodyColor,
+} from './bodies';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
 import { type FeatureProblem, featureProblem, StatusGlyph } from './featureStatus';
@@ -632,6 +642,89 @@ function BodyLeaf({
   );
 }
 
+/**
+ * Any colour beside the swatches (P3-17): the system colour picker, which commits when it
+ * closes (one undo step, not one per drag), and the hex code, committed by Enter or leaving
+ * the field. Marked while the body's colour is none of the swatches.
+ */
+function CustomColor({
+  color,
+  onPick,
+}: {
+  color: string | undefined;
+  onPick(color: string): void;
+}) {
+  const custom = color !== undefined && !isSwatch(color);
+  const [draft, setDraft] = useState<string>();
+  const picker = useRef<HTMLInputElement>(null);
+  const pick = useRef(onPick);
+  pick.current = onPick;
+  // React's onChange on a colour input fires on every move of the picker; the native `change`
+  // fires once, when the choice is made.
+  useEffect(() => {
+    const el = picker.current;
+    if (!el) return;
+    const onChange = () => {
+      const value = parseBodyColor(el.value);
+      if (value) pick.current(value);
+    };
+    el.addEventListener('change', onChange);
+    return () => el.removeEventListener('change', onChange);
+  }, []);
+  const text = draft ?? (custom ? color : '');
+  const parsed = draft === undefined ? undefined : parseBodyColor(draft);
+  const commit = () => {
+    if (draft === undefined) return;
+    if (parsed && parsed !== color) onPick(parsed);
+    if (parsed || draft.trim() === '') setDraft(undefined);
+  };
+  return (
+    <div className="col-span-5 mt-1 flex items-center gap-2">
+      <label
+        title="Custom colour"
+        className={`relative grid size-8 shrink-0 place-items-center rounded-input border ${custom ? 'border-accent outline-2 outline-accent' : 'border-line'}`}
+      >
+        <input
+          ref={picker}
+          type="color"
+          aria-label="Custom colour"
+          data-custom-colour={custom || undefined}
+          defaultValue={color ?? '#8c93a3'}
+          key={color ?? 'default'}
+          className="absolute inset-0 size-full cursor-pointer opacity-0"
+        />
+        <span
+          className="pointer-events-none size-5 rounded-full border border-line"
+          style={{
+            background: custom
+              ? color
+              : 'conic-gradient(#ff7a66, #f2b21b, #2fbf8f, #22b3c2, #5b7cff, #f0609a, #ff7a66)',
+          }}
+        />
+      </label>
+      <TextInput
+        aria-label="Hex colour"
+        placeholder="#rrggbb"
+        spellCheck={false}
+        value={text}
+        aria-invalid={draft !== undefined && draft.trim() !== '' && !parsed ? true : undefined}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+          } else if (event.key === 'Escape' && draft !== undefined) {
+            event.stopPropagation();
+            setDraft(undefined);
+          }
+        }}
+        className="min-w-0 flex-1 font-mono"
+      />
+    </div>
+  );
+}
+
 /** Colour swatches and opacity presets (ADR-0030); each choice is one undo step. */
 export function AppearancePanel({ body, actions }: { body: BodyEntry; actions: BodyActions }) {
   const { id, meta } = body;
@@ -659,6 +752,7 @@ export function AppearancePanel({ body, actions }: { body: BodyEntry; actions: B
             />
           </label>
         ))}
+        <CustomColor color={meta.color} onPick={(color) => actions.setColor(id, color)} />
       </fieldset>
       <fieldset className="grid grid-cols-4 gap-1">
         <legend className="mb-1.5 text-xs font-semibold tracking-[0.08em] text-muted uppercase">
