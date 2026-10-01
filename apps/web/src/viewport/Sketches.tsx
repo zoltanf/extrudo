@@ -1,6 +1,13 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo } from 'react';
-import { BufferAttribute, BufferGeometry, Color, DoubleSide, MeshBasicMaterial } from 'three';
+import {
+  BufferAttribute,
+  BufferGeometry,
+  Color,
+  DoubleSide,
+  MeshBasicMaterial,
+  type Plane,
+} from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
@@ -45,6 +52,11 @@ export interface SketchesProps {
   highlight: Rgba;
   /** Projected curves (P2-09): the construct colour (docs/05-brand.md §3.4). */
   projected: Rgba;
+  /**
+   * A section's clipping planes (P3-09): they clip the projected curves, which stand for the
+   * model's edges (P3-17). The sketch's own curves and points stay whole.
+   */
+  clip?: Plane[] | null;
 }
 
 /** Construction dashes, in px (docs/05-brand.md §3.4). */
@@ -60,6 +72,7 @@ export function Sketches({
   profileColors,
   highlight,
   projected,
+  clip = null,
 }: SketchesProps) {
   return sketches.map((s) => (
     <Sketch
@@ -72,6 +85,7 @@ export function Sketches({
       profileColors={profileColors}
       highlight={highlight}
       projected={s.highlight ? highlight : projected}
+      clip={clip}
     />
   ));
 }
@@ -87,6 +101,7 @@ function Sketch({
   profileColors,
   highlight,
   projected,
+  clip,
 }: {
   store: ViewportStore;
   drawing: SketchDrawing;
@@ -96,6 +111,7 @@ function Sketch({
   profileColors: Readonly<Record<ProfileShade, Rgba>>;
   highlight: Rgba;
   projected: Rgba;
+  clip: Plane[] | null;
 }) {
   const { data, frame, active, status, profiles, hoverProfile, selectedProfiles } = drawing;
   const segments = useMemo(() => sketchSegments(data, frame, status), [data, frame, status]);
@@ -242,6 +258,7 @@ function Sketch({
   materials.dashed.opacity = construction.a * alpha;
   materials.projected.color = color(projected);
   materials.projected.opacity = projected.a * alpha;
+  materials.projected.clippingPlanes = clip;
 
   // Keep the dashes a steady size on screen: the view size is the visible height in mm.
   const height = useThree((s) => s.size.height);

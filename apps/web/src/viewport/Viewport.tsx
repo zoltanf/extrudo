@@ -702,6 +702,7 @@ function Scene({
         profileColors={profileColors}
         highlight={colors.preselect}
         projected={colors.sketchProjected}
+        clip={previewPlanes}
       />
       <Grid
         store={viewport}
