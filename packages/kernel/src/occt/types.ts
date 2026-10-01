@@ -33,6 +33,17 @@ export interface FacadeBinding {
   tangentFaces(shape: number, face: number): number;
   boolean(op: number, a: number, b: number, simplify: boolean): number;
   transform(shape: number): number;
+  scale(shape: number): number;
+  draft(
+    shape: number,
+    px: number,
+    py: number,
+    pz: number,
+    nx: number,
+    ny: number,
+    nz: number,
+    angle: number,
+  ): number;
   prism(
     shape: number,
     ox: number,

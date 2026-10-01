@@ -35,6 +35,7 @@
 #include <BRepBuilderAPI_MakeFace.hxx>
 #include <BRepBuilderAPI_MakeShape.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
+#include <BRepBuilderAPI_GTransform.hxx>
 #include <BRepCheck_Analyzer.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepFilletAPI_MakeChamfer.hxx>
@@ -48,6 +49,8 @@
 #include <BRepLib_ToolTriangulatedShape.hxx>
 #include <BRepMesh_IncrementalMesh.hxx>
 #include <BRepTools.hxx>
+#include <BRepTools_ReShape.hxx>
+#include <BRepLib.hxx>
 #include <BRepTopAdaptor_FClass2d.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
@@ -70,6 +73,11 @@
 #include <Geom_BSplineCurve.hxx>
 #include <Geom_Circle.hxx>
 #include <Geom_Curve.hxx>
+#include <Geom_Plane.hxx>
+#include <Geom_TrimmedCurve.hxx>
+#include <Geom_Surface.hxx>
+#include <Geom2d_Curve.hxx>
+#include <GeomLib_IsPlanarSurface.hxx>
 #include <IFSelect_ReturnStatus.hxx>
 #include <GProp_GProps.hxx>
 #include <NCollection_Array1.hxx>
@@ -116,6 +124,10 @@
 #include <gp_Sphere.hxx>
 #include <gp_Torus.hxx>
 #include <gp_Trsf.hxx>
+#include <gp_GTrsf.hxx>
+#include <gp_Lin.hxx>
+#include <gp_Mat.hxx>
+#include <gp_XYZ.hxx>
 #include <gp_Vec.hxx>
 
 #include <unistd.h>
@@ -1645,6 +1657,159 @@ public:
   int exportIndicesSize() const { return static_cast<int>(exportIndices_.size()); }
   uintptr_t exportTextPtr() const { return reinterpret_cast<uintptr_t>(exportText_.data()); }
   int exportTextSize() const { return static_cast<int>(exportText_.size()); }
+
+  // ------------------------------------------------ scale and draft (P3-08) --
+
+  /**
+   * Scales `shape` about a point (P3-08, scale): 6 staged numbers
+   * (clearNumbers/pushNumber), [cx, cy, cz, sx, sy, sz], the centre and the
+   * factors along the world X, Y and Z axes, each greater than 0. Equal
+   * factors scale uniformly (gp_Trsf through BRepBuilderAPI_Transform, copy
+   * = true): every surface keeps its type, a cylinder stays a cylinder.
+   * Different factors go through gp_GTrsf (BRepBuilderAPI_GTransform), which
+   * turns every surface and curve into a B-spline first; faces that come out
+   * flat are put back on planes and straight edges between such faces on
+   * lines (`restoreCanonical`), so a box stays a box that can be sketched on.
+   * Curved faces stay B-splines (a cylinder scaled across its axis has an
+   * elliptic section). Records history for input 0: every sub-shape is
+   * modified into its image.
+   */
+  int scale(int shape) {
+    beginOp();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Scale failed: unknown input shape.");
+    if (numbers_.size() != 6) return fail("Scale failed: it needs a centre and three factors.");
+    const gp_Pnt centre(numbers_[0], numbers_[1], numbers_[2]);
+    const double f[3] = {numbers_[3], numbers_[4], numbers_[5]};
+    for (double factor : f) {
+      if (!std::isfinite(factor) || !(factor > 1e-9)) {
+        return fail("Scale failed: every factor must be greater than 0.");
+      }
+    }
+    try {
+      const double largest = std::max(f[0], std::max(f[1], f[2]));
+      const bool uniform =
+          std::abs(f[0] - f[1]) <= 1e-12 * largest && std::abs(f[0] - f[2]) <= 1e-12 * largest;
+      if (uniform) {
+        gp_Trsf trsf;
+        trsf.SetScale(centre, f[0]);
+        BRepBuilderAPI_Transform builder(*input, trsf, true);
+        if (!builder.IsDone()) return fail("Scale failed: OCCT could not scale this shape.");
+        const TopoDS_Shape result = builder.Shape();
+        recordHistory(builder, *input, 0, result);
+        return store(result);
+      }
+      gp_GTrsf gtrsf;
+      gtrsf.SetVectorialPart(gp_Mat(f[0], 0, 0, 0, f[1], 0, 0, 0, f[2]));
+      gtrsf.SetTranslationPart(
+          gp_XYZ(centre.X() * (1 - f[0]), centre.Y() * (1 - f[1]), centre.Z() * (1 - f[2])));
+      BRepBuilderAPI_GTransform builder(*input, gtrsf, true);
+      if (!builder.IsDone()) return fail("Scale failed: OCCT could not scale this shape.");
+      const TopoDS_Shape scaled = builder.Shape();
+      // The B-spline result, with flat faces and straight edges put back on planes and
+      // lines where that gives a valid shape; else the B-spline result as it is.
+      Handle(BRepTools_ReShape) reshape = new BRepTools_ReShape();
+      TopoDS_Shape result = restoreCanonical(scaled, reshape);
+      if (result.IsNull() || !BRepCheck_Analyzer(result).IsValid()) {
+        result = scaled;
+        reshape.Nullify();
+      }
+      if (!BRepCheck_Analyzer(result).IsValid()) return fail("Scale failed: OCCT could not scale this shape.");
+      recordImages(*input, result, [&](const TopoDS_Shape& sub) {
+        TopoDS_Shape image = builder.ModifiedShape(sub);
+        if (!reshape.IsNull() && !image.IsNull()) image = reshape->Value(image);
+        return image;
+      });
+      return store(result);
+    } catch (...) {
+      return failFromException("Scale failed");
+    }
+  }
+
+  /**
+   * Tilts faces of the solid `shape` (P3-08, draft): the staged faces
+   * (clearArgs/pushArg, 0-based face indices, duplicates ignored) turn by
+   * `angle` radians about the line where each meets the neutral plane, the
+   * plane through (px, py, pz) whose normal (nx, ny, nz) is the pull
+   * direction. A positive angle removes matter on the pull side of the
+   * neutral plane and adds it on the other (the body narrows along the pull,
+   * as a part drawn out of a mould does); a negative angle the opposite.
+   * Only flat, cylindrical and conical faces can be tilted: planes become
+   * tilted planes, cylinders cones. OCCT drafts the faces that run smoothly
+   * into a picked one with it. Built on a copy (BRepOffsetAPI_DraftAngle) and
+   * checked: OCCT returns "valid" solids whose faces have crossed. Records
+   * history for input 0: every sub-shape is modified into its image
+   * (DraftAngle calls tilted faces "generated": ModifiedShape is read).
+   *
+   * On failure it returns 0 with a message in lastError() and, in
+   * geometryNumbers, [status, value]:
+   * - 1 the angle is too steep: the largest angle of the same sign that
+   *   works (radians, a magnitude), by bisection;
+   * - 2 OCCT can't tilt a face about this plane (value: the face's index);
+   * - 3 a face isn't flat, cylindrical or conical (value: its index);
+   * - 4 the shape isn't a solid (value 0);
+   * - 5 anything else (an OCCT exception): value 0;
+   * - 6 no angle works (value 0);
+   * - 7 a face is parallel to the neutral plane, so it has no line to turn
+   *   about (value: its index).
+   */
+  int draft(int shape, double px, double py, double pz, double nx, double ny, double nz, double angle) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Draft failed: unknown input shape.");
+    if (!(std::abs(angle) > 1e-9)) return fail("Draft failed: the angle must not be 0.");
+    if (std::abs(angle) >= M_PI / 2 - 1e-6) return fail("Draft failed: the angle must be under 90 degrees.");
+    if (gp_Vec(nx, ny, nz).Magnitude() <= 1e-12) return fail("Draft failed: the pull direction has no length.");
+    try {
+      if (!TopExp_Explorer(*input, TopAbs_SOLID).More()) {
+        pushShellStatus(4, 0);
+        return fail("Draft failed: the body isn't a solid.");
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*input, TopAbs_FACE, faces);
+      std::vector<int> picked;
+      for (int index : args_) {
+        if (index < 0 || index >= faces.Extent()) return fail("Draft failed: face index out of range.");
+        if (std::find(picked.begin(), picked.end(), index) == picked.end()) picked.push_back(index);
+      }
+      if (picked.empty()) return fail("Draft failed: no face to draft.");
+      const gp_Dir pull(nx, ny, nz);
+      const gp_Pln neutral(gp_Pnt(px, py, pz), pull);
+      for (int index : picked) {
+        const int problem = undraftable(TopoDS::Face(faces(index + 1)), pull);
+        if (problem != 0) {
+          pushShellStatus(problem, index);
+          return fail(problem == 3 ? "Draft failed: a face isn't flat, cylindrical or conical."
+                                   : "Draft failed: a face is parallel to the neutral plane.");
+        }
+      }
+      {
+        // A copy for every build, as in shell(); the copy keeps the sub-shape order.
+        const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> copyFaces;
+        TopExp::MapShapes(copy, TopAbs_FACE, copyFaces);
+        if (copyFaces.Extent() == faces.Extent()) {
+          BRepOffsetAPI_DraftAngle builder(copy);
+          int refused = -1;
+          TopoDS_Shape result;
+          if (buildDraft(builder, copyFaces, picked, pull, neutral, angle, refused, result) &&
+              draftIsGood(builder, copy, result)) {
+            recordImages(copy, result, [&](const TopoDS_Shape& sub) { return builder.ModifiedShape(sub); });
+            return store(result);
+          }
+          if (refused >= 0) {
+            pushShellStatus(2, refused);
+            return fail("Draft failed: OCCT can't tilt a face about this plane.");
+          }
+        }
+      }
+      return explainDraft(*input, picked, pull, neutral, angle);
+    } catch (...) {
+      pushShellStatus(5, 0);
+      return failFromException("Draft failed");
+    }
+  }
 
   // ------------------------------------------------------ errors, memory --
 
@@ -3381,5 +3546,245 @@ private:
     out.push_back(static_cast<float>(p.X()));
     out.push_back(static_cast<float>(p.Y()));
     out.push_back(static_cast<float>(p.Z()));
+  }
+
+  // ------------------------------------------- scale and draft helpers (P3-08) --
+
+  /**
+   * History for input 0 of an operation that maps every sub-shape of
+   * `input` to one image (`imageOf`, null if none): modified, or kept when
+   * the image is the sub-shape itself. Images not in `result` are skipped.
+   */
+  template <typename ImageOf>
+  void recordImages(const TopoDS_Shape& input, const TopoDS_Shape& result, ImageOf imageOf) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultMaps[3];
+    for (int kind = 0; kind < 3; ++kind) TopExp::MapShapes(result, kindToEnum(kind), resultMaps[kind]);
+    for (int kind = 0; kind < 3; ++kind) {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> inputMap;
+      TopExp::MapShapes(input, kindToEnum(kind), inputMap);
+      for (int i = 1; i <= inputMap.Extent(); ++i) {
+        const TopoDS_Shape& sub = inputMap(i);
+        TopoDS_Shape image;
+        try {
+          image = imageOf(sub);
+        } catch (...) {
+          image.Nullify();
+        }
+        if (image.IsNull() || enumToKind(image.ShapeType()) != kind) continue;
+        const int found = resultMaps[kind].FindIndex(image);
+        if (found <= 0) continue;
+        pushRecord(0, kind, i - 1, image.IsSame(sub) ? 3 : 0);
+        history_.push_back(1);
+        history_.push_back(kind);
+        history_.push_back(found - 1);
+      }
+    }
+  }
+
+  /**
+   * `shape` (a non-uniform scale's all-B-spline result) with the faces that
+   * are flat put back on planes and the straight edges between them on
+   * lines, through `reshape` (its Value() maps an old sub-shape to the new
+   * one). A null shape when nothing could be done safely.
+   */
+  static TopoDS_Shape restoreCanonical(const TopoDS_Shape& shape, const Handle(BRepTools_ReShape)& reshape) {
+    try {
+      BRep_Builder builder;
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(shape, TopAbs_FACE, faces);
+      NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> flat;
+      for (int i = 1; i <= faces.Extent(); ++i) {
+        const TopoDS_Face& face = TopoDS::Face(faces(i));
+        TopLoc_Location location;
+        const Handle(Geom_Surface) surface = BRep_Tool::Surface(face, location);
+        if (surface.IsNull() || surface->IsKind(STANDARD_TYPE(Geom_Plane))) continue;
+        GeomLib_IsPlanarSurface planar(surface, 1e-7);
+        if (!planar.IsPlanar()) continue;
+        // The plane with the B-spline's own normal (not the face's), so the face keeps its side.
+        double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+        BRepTools::UVBounds(face, u0, u1, v0, v1);
+        gp_Pnt p;
+        gp_Vec du, dv;
+        surface->D1((u0 + u1) / 2, (v0 + v1) / 2, p, du, dv);
+        const gp_Vec n = du.Crossed(dv);
+        if (n.Magnitude() <= 1e-12) continue;
+        const Handle(Geom_Plane) plane = new Geom_Plane(gp_Pln(planar.Plan().Location(), gp_Dir(n)));
+        const double tolerance = BRep_Tool::Tolerance(face);
+        for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
+          builder.UpdateEdge(TopoDS::Edge(e.Current()), Handle(Geom2d_Curve)(), surface, location,
+                             BRep_Tool::Tolerance(TopoDS::Edge(e.Current())));
+        }
+        builder.UpdateFace(face, plane, location, tolerance);
+        flat.Add(face);
+      }
+      // Straight edges whose faces are all flat now: lines through their vertices.
+      EdgeFaceMap edgeFaces;
+      TopExp::MapShapesAndUniqueAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+      for (int e = 1; e <= edgeFaces.Extent(); ++e) {
+        const TopoDS_Edge edge = TopoDS::Edge(edgeFaces.FindKey(e));
+        if (BRep_Tool::Degenerated(edge)) continue;
+        bool allFlat = !edgeFaces(e).IsEmpty();
+        for (const TopoDS_Shape& face : edgeFaces(e)) allFlat = allFlat && flat.Contains(face);
+        if (!allFlat) continue;
+        double first = 0, last = 0;
+        Handle(Geom_Curve) curve = BRep_Tool::Curve(edge, first, last);
+        const Handle(Geom_TrimmedCurve) trimmed = Handle(Geom_TrimmedCurve)::DownCast(curve);
+        if (!trimmed.IsNull()) curve = trimmed->BasisCurve();
+        const Handle(Geom_BSplineCurve) spline = Handle(Geom_BSplineCurve)::DownCast(curve);
+        if (spline.IsNull() || spline->Degree() != 1 || spline->NbPoles() != 2) continue;
+        TopoDS_Vertex a;
+        TopoDS_Vertex b;
+        TopExp::Vertices(TopoDS::Edge(edge.Oriented(TopAbs_FORWARD)), a, b);
+        if (a.IsNull() || b.IsNull() || a.IsSame(b)) continue;
+        const gp_Pnt pa = BRep_Tool::Pnt(a);
+        const gp_Pnt pb = BRep_Tool::Pnt(b);
+        if (pa.Distance(pb) <= Precision::Confusion()) continue;
+        BRepBuilderAPI_MakeEdge make(gp_Lin(pa, gp_Dir(gp_Vec(pa, pb))), a, b);
+        if (!make.IsDone()) continue;
+        TopoDS_Edge line = make.Edge();
+        builder.UpdateEdge(line, std::max(BRep_Tool::Tolerance(edge), Precision::Confusion()));
+        reshape->Replace(edge.Oriented(TopAbs_FORWARD), line);
+      }
+      TopoDS_Shape out = reshape->Apply(shape);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> outFaces;
+      TopExp::MapShapes(out, TopAbs_FACE, outFaces);
+      for (int i = 1; i <= outFaces.Extent(); ++i) {
+        const TopoDS_Face& face = TopoDS::Face(outFaces(i));
+        if (!BRep_Tool::Surface(face)->IsKind(STANDARD_TYPE(Geom_Plane))) continue;
+        for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
+          BRepLib::BuildPCurveForEdgeOnPlane(TopoDS::Edge(e.Current()), face);
+        }
+      }
+      return out;
+    } catch (...) {
+      return TopoDS_Shape();
+    }
+  }
+
+  /**
+   * Why a face can't be drafted along `pull`, before OCCT tries: 3 its
+   * surface isn't a plane, cylinder or cone; 7 it is a plane square to the
+   * pull (parallel to the neutral plane: no line to turn about). 0 if fine.
+   */
+  static int undraftable(const TopoDS_Face& face, const gp_Dir& pull) {
+    BRepAdaptor_Surface surface(face, false);
+    switch (surface.GetType()) {
+      case GeomAbs_Plane:
+        return std::abs(surface.Plane().Axis().Direction().Dot(pull)) > 1 - 1e-9 ? 7 : 0;
+      case GeomAbs_Cylinder:
+      case GeomAbs_Cone:
+        return 0;
+      default:
+        return 3;
+    }
+  }
+
+  /**
+   * Adds the picked faces (indices into `faces`) to `builder` and builds it
+   * into `result`. `refused` is the index of a face OCCT wouldn't take (-1).
+   */
+  static bool buildDraft(BRepOffsetAPI_DraftAngle& builder,
+                         const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                         const std::vector<int>& picked, const gp_Dir& pull, const gp_Pln& neutral,
+                         double angle, int& refused, TopoDS_Shape& result) {
+    refused = -1;
+    try {
+      for (int index : picked) {
+        // A face drafted with an earlier one (its smooth chain) is a no-op to add again.
+        // (ConnectedFaces would say which, but it throws in this OCCT.)
+        builder.Add(TopoDS::Face(faces(index + 1)), pull, angle, neutral, true);
+        if (!builder.AddDone()) {
+          refused = index;
+          return false;
+        }
+      }
+      builder.Build();
+      if (!builder.IsDone()) return false;
+      result = builder.Shape();
+      return !result.IsNull();
+    } catch (...) {
+      result.Nullify();
+      return false;
+    }
+  }
+
+  /**
+   * Whether a draft's `result` is sound: a valid solid with a positive
+   * volume whose faces haven't crossed. DraftAngle tilts faces past each
+   * other and the result can pass BRepCheck, so: the ends of every edge
+   * keep their order along it (faces that met turn the edges between them
+   * round), and no cone has its tip inside its own face (a cylinder drafted
+   * past its radius).
+   */
+  static bool draftIsGood(const BRepOffsetAPI_DraftAngle& builder, const TopoDS_Shape& input,
+                          const TopoDS_Shape& result) {
+    if (result.IsNull() || !TopExp_Explorer(result, TopAbs_SOLID).More()) return false;
+    if (!BRepCheck_Analyzer(result).IsValid()) return false;
+    if (!(volumeOf(result) > 0)) return false;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+    TopExp::MapShapes(input, TopAbs_EDGE, edges);
+    for (int i = 1; i <= edges.Extent(); ++i) {
+      const TopoDS_Edge& from = TopoDS::Edge(edges(i));
+      if (BRep_Tool::Degenerated(from)) continue;
+      TopoDS_Vertex a0, a1;
+      TopExp::Vertices(from, a0, a1);
+      if (a0.IsNull() || a1.IsNull() || a0.IsSame(a1)) continue;
+      // The images of the two ends, whichever way OCCT runs the new edge.
+      TopoDS_Shape b0;
+      TopoDS_Shape b1;
+      try {
+        b0 = builder.ModifiedShape(a0);
+        b1 = builder.ModifiedShape(a1);
+      } catch (...) {
+        continue;
+      }
+      if (b0.IsNull() || b1.IsNull() || b0.ShapeType() != TopAbs_VERTEX || b1.ShapeType() != TopAbs_VERTEX) {
+        return false;
+      }
+      const gp_Vec was(BRep_Tool::Pnt(a0), BRep_Tool::Pnt(a1));
+      const gp_Vec is(BRep_Tool::Pnt(TopoDS::Vertex(b0)), BRep_Tool::Pnt(TopoDS::Vertex(b1)));
+      if (was.Dot(is) <= Precision::Confusion() * was.Magnitude()) return false;
+    }
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+    TopExp::MapShapes(result, TopAbs_FACE, faces);
+    for (int i = 1; i <= faces.Extent(); ++i) {
+      const TopoDS_Face& face = TopoDS::Face(faces(i));
+      BRepAdaptor_Surface surface(face, false);
+      if (surface.GetType() != GeomAbs_Cone) continue;
+      const gp_Cone cone = surface.Cone();
+      const double sine = std::sin(cone.SemiAngle());
+      if (std::abs(sine) <= 1e-12) continue;
+      // Along the generatrix the radius is R + v sin(α): the tip is at v = -R / sin(α).
+      const double tip = -cone.RefRadius() / sine;
+      double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+      BRepTools::UVBounds(face, u0, u1, v0, v1);
+      const double slack = 1e-7 * std::max(1.0, std::abs(v1 - v0));
+      if (tip > v0 + slack && tip < v1 - slack) return false;
+    }
+    return true;
+  }
+
+  /** Whether the draft builds and is sound (a probe: nothing is kept), on a fresh copy. */
+  static bool draftWorks(const TopoDS_Shape& input, const std::vector<int>& picked, const gp_Dir& pull,
+                         const gp_Pln& neutral, double angle) {
+    const TopoDS_Shape copy = BRepBuilderAPI_Copy(input, true, false).Shape();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+    TopExp::MapShapes(copy, TopAbs_FACE, faces);
+    BRepOffsetAPI_DraftAngle builder(copy);
+    int refused = -1;
+    TopoDS_Shape result;
+    return buildDraft(builder, faces, picked, pull, neutral, angle, refused, result) &&
+           draftIsGood(builder, copy, result);
+  }
+
+  /** Fills geometry_ after a draft failed (see draft()): the largest angle that works, or none. */
+  int explainDraft(const TopoDS_Shape& input, const std::vector<int>& picked, const gp_Dir& pull,
+                   const gp_Pln& neutral, double angle) {
+    const double sign = angle < 0 ? -1.0 : 1.0;
+    const double largest = largestThatWorks(
+        [&](double a) { return draftWorks(input, picked, pull, neutral, sign * a); }, std::abs(angle));
+    pushShellStatus(largest > 0 ? 1 : 6, largest);
+    return fail(largest > 0 ? "Draft failed: the angle is too steep for this body."
+                            : "Draft failed: OCCT can't draft these faces.");
   }
 };

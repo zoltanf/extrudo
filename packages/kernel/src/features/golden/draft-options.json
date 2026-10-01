@@ -1,0 +1,113 @@
+{
+ "sides 3 about XY": {
+  "volume": 22561.88,
+  "bbox": [
+   -20,
+   -15,
+   0,
+   20,
+   15,
+   20
+  ],
+  "faces": "plane plane plane plane plane plane",
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "sides -3 about XY": {
+  "volume": 25496.71,
+  "bbox": [
+   -21.05,
+   -16.05,
+   0,
+   21.05,
+   16.05,
+   20
+  ],
+  "faces": "plane plane plane plane plane plane",
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "sides 3 flipped": {
+  "volume": 25496.71,
+  "bbox": [
+   -21.05,
+   -16.05,
+   0,
+   21.05,
+   16.05,
+   20
+  ],
+  "faces": "plane plane plane plane plane plane",
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "one side 10": {
+  "volume": 22589.38,
+  "bbox": [
+   -20,
+   -15,
+   0,
+   20,
+   15,
+   20
+  ],
+  "faces": "plane plane plane plane plane plane",
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "sides 10 about the top": {
+  "volume": 29268.79,
+  "bbox": [
+   -23.53,
+   -18.53,
+   0,
+   23.53,
+   18.53,
+   20
+  ],
+  "faces": "plane plane plane plane plane plane",
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "sides 45 too steep": {
+  "error": "The faces can't tilt by 45°: that is too steep for this body (max ≈ 36°). Try a smaller angle."
+ },
+ "top parallel": {
+  "error": "Face 6 is parallel to the neutral plane, so there is no line to tilt it about. Pick the side faces, or another plane."
+ }
+}

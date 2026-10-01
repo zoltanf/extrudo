@@ -17,6 +17,7 @@ export {
 export * from './construction';
 export { createDocument, type NewDocumentOptions } from './document';
 export * from './document-commands';
+export * from './draft';
 export * from './expr/index';
 export * from './extrude';
 export * from './feature-inputs';
@@ -51,6 +52,7 @@ export * from './place-on-bed';
 export * from './primitives';
 export * from './remove';
 export * from './revolve';
+export * from './scale';
 export * from './schema';
 export * from './shell';
 export * from './sketch/commands';
@@ -60,6 +62,7 @@ export * from './sketch/feature';
 export * from './sketch/planes';
 export * from './sketch/projection';
 export * from './sketch/schema';
+export * from './split-body';
 export {
   createDocumentStore,
   createModelStore,

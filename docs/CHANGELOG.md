@@ -2,6 +2,14 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-10-01 · **P3-08** (second half) and **P3-14** (B6) Split Body, Scale,
+  Draft and benchmark B6 (ADR-0053): bodies cut along a plane or flat face
+  into a body per side (or one side kept); bodies scaled about a point,
+  uniformly or per axis (flat faces stay flat), in place or as copies; faces
+  tilted about a neutral plane, too-steep drafts refused with the largest
+  angle that works. Every face keeps its name through all three. B6, a wall
+  hook with a drafted arm and fillets meeting at the plate's corners, is built
+  through the UI, kept as a fixture and fuzzed. OCCT input hash `0ba43e09d993` (release `occt-0ba43e09d993`).
 - 2026-10-01 · **P3-17 (first item)** Two bugs the fuzzer found in B4 and B5
   (ADR-0038 and ADR-0047 amendments): a fillet radius that reaches a parallel
   wall of an adjacent face (a lid side face with a step 3 mm below its edge)

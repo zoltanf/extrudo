@@ -1,0 +1,128 @@
+{
+ "block x2": {
+  "volume": 192000,
+  "bbox": [
+   -20,
+   -15,
+   -10,
+   60,
+   45,
+   30
+  ],
+  "faces": "plane plane plane plane plane plane",
+  "lines": 12,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "block x0.25": {
+  "volume": 375,
+  "bbox": [
+   15,
+   11.25,
+   7.5,
+   25,
+   18.75,
+   12.5
+  ],
+  "faces": "plane plane plane plane plane plane",
+  "lines": 12,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "block 2,1,0.5": {
+  "volume": 24000,
+  "bbox": [
+   -20,
+   0,
+   5,
+   60,
+   30,
+   15
+  ],
+  "faces": "plane plane plane plane plane plane",
+  "lines": 12,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "block 1,1,1.5": {
+  "volume": 36000,
+  "bbox": [
+   0,
+   0,
+   -5,
+   40,
+   30,
+   25
+  ],
+  "faces": "plane plane plane plane plane plane",
+  "lines": 12,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:l11",
+   "extrude:B:side:l2",
+   "extrude:B:side:l5",
+   "extrude:B:side:l8"
+  ]
+ },
+ "cylinder x3": {
+  "volume": 169646,
+  "bbox": [
+   -30,
+   -30,
+   -20,
+   30,
+   30,
+   40
+  ],
+  "faces": "cylinder plane plane",
+  "lines": 1,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:c1"
+  ]
+ },
+ "cylinder 1,2,1": {
+  "volume": 12663.27,
+  "bbox": [
+   -10,
+   -20,
+   0,
+   10,
+   20,
+   20
+  ],
+  "faces": "bspline plane plane",
+  "lines": 0,
+  "valid": true,
+  "names": [
+   "extrude:B:cap:end",
+   "extrude:B:cap:start",
+   "extrude:B:side:c1"
+  ]
+ }
+}

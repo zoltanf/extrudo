@@ -32,6 +32,7 @@ import { mirror, rotation, translation } from './features/matrix';
 import { planarCurves } from './features/sketch';
 import {
   ChamferError,
+  DraftError,
   FilletError,
   Kernel,
   OffsetFaceError,
@@ -778,6 +779,62 @@ describe('memory', () => {
         } catch (error) {
           if (!(error instanceof OffsetFaceError)) throw error;
         }
+      }
+    };
+    for (let i = 0; i < WARM_UP; i++) rebuild(i);
+    const before = kernel.stats();
+    for (let i = 0; i < OFFSET_REBUILDS; i++) rebuild(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(before.liveShapes);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+  });
+
+  it(`scaling and drafting ${OFFSET_REBUILDS} times, failing drafts with their diagnosis included, does not grow the heap`, {
+    timeout: 300_000,
+  }, () => {
+    // P3-08: uniform scales (BRepBuilderAPI_Transform) and per-axis ones
+    // (GTransform, then flat faces and straight edges put back on planes and
+    // lines through a ReShape); drafts of planar and cylindrical faces in both
+    // directions, a draft too steep for the body (the largest angle is found by
+    // probing), a face parallel to the plane and faces next to rounded edges
+    // (refused). Every builder lives on the facade's stack and works on a copy.
+    const XY = { origin: [0, 0, 0] as const, normal: [0, 0, 1] as const };
+    const rebuild = (i: number) => {
+      using scope = kernel.scope();
+      const plate = scope.track(kernel.box([40, 30, 10 + (i % 3) / 10]));
+      const cylinder = scope.track(kernel.cylinder(6, 20));
+      scope.track(kernel.scale(plate, [1, 2, 3], [2, 2, 2]));
+      scope.track(kernel.scale(plate, [0, 0, 0], [1.5, 1, 0.5 + (i % 4) / 10]));
+      scope.track(kernel.scale(cylinder, [0, 0, 0], [2, 1, 1]));
+      // The box's side faces are 0 to 3 (its floor and top 4 and 5).
+      scope.track(kernel.draft(plate, [0, 1, 2, 3], XY, ((3 + (i % 5)) * Math.PI) / 180));
+      scope.track(kernel.draft(plate, [0], XY, (-4 * Math.PI) / 180));
+      scope.track(kernel.draft(cylinder, [0], XY, (5 * Math.PI) / 180));
+      const failing = (run: () => unknown, what: string) => {
+        try {
+          run();
+        } catch (error) {
+          if (error instanceof DraftError) return;
+          throw error;
+        }
+        throw new Error(`${what} should fail`);
+      };
+      failing(() => kernel.draft(plate, [0, 1, 2, 3], XY, (60 * Math.PI) / 180), 'a 60° draft');
+      failing(
+        () => kernel.draft(plate, [5], XY, (5 * Math.PI) / 180),
+        'a face parallel to the plane',
+      );
+      if (i % 4 === 0) {
+        const rounded = scope.track(
+          kernel.fillet(
+            plate,
+            Array.from({ length: 12 }, (_, edge) => edge),
+            Array(12).fill(2),
+          ),
+        );
+        failing(() => kernel.draft(rounded.shape, [0], XY, (5 * Math.PI) / 180), 'a rounded box');
+        scope.track(kernel.scale(rounded.shape, [0, 0, 0], [1, 2, 1]));
       }
     };
     for (let i = 0; i < WARM_UP; i++) rebuild(i);
