@@ -47,11 +47,25 @@ export function explicitBodies(
   return ids;
 }
 
+/**
+ * A tool made of many solids that may overlap each other (P3-17: a pattern's
+ * instances for a cut). `shape` holds all of them (for drawing and for finding the bodies
+ * they touch); `passes` are compounds of solids that don't interfere, each a
+ * valid boolean argument, which a join or cut applies one after the other: the
+ * result is the same as one boolean with their union, without fusing them
+ * first. A tool of one pass is an ordinary tool.
+ */
+export interface ToolSet extends NamedShape {
+  passes: readonly NamedShape[];
+  /** More than one pass: `shape` is not a valid boolean argument. */
+  interferes: boolean;
+}
+
 export function operate(
   ctx: EvalContext,
   scope: ShapeScope,
   settings: OperationSettings,
-  tool: NamedShape,
+  tool: NamedShape | ToolSet,
   participants: BodyId[] | undefined,
   warnings: string[],
   words: OperationWords,
@@ -60,14 +74,16 @@ export function operate(
   const operation = settings.operation;
   if (operation === 'new-body') return newBodies(ctx, scope, tool, words);
 
-  const targets =
-    participants ??
-    [...ctx.bodies]
-      .filter(([, shape]) => kernel.distance(shape, tool.shape) <= TOUCH)
-      .map(([id]) => id);
+  const targets = participants ?? touchingBodies(ctx, scope, tool.shape);
+  const set = 'passes' in tool && tool.interferes ? tool : undefined;
   // Kept only on success: a failure below must release the tool with the scope.
   const preview = (): PreviewTool[] => [
-    { shape: scope.keep(tool.shape), style: operation, names: tool.names },
+    {
+      shape: scope.keep(tool.shape),
+      style: operation,
+      names: tool.names,
+      ...(set && { interferes: true }),
+    },
   ];
   const named = (id: BodyId): NamedShape => ({
     shape: ctx.bodies.get(id) as ShapeHandle,
@@ -81,6 +97,8 @@ export function operate(
       warnings.push(`Nothing to join to, so the ${words.noun} made a new body.`);
       return { ...newBodies(ctx, scope, tool, words), previewTools: preview() };
     }
+    // (A tool set of overlapping instances is only made for cuts: joins fuse them first.)
+    if (set) throw new KernelError(`Overlapping instances can't be joined in passes.`);
     let joined = namedBoolean(kernel, 'fuse', named(first), tool, { ...options, simplify: true });
     scope.track(joined.shape);
     for (const id of rest) {
@@ -94,11 +112,28 @@ export function operate(
   }
 
   const op = operation === 'cut' ? 'cut' : 'common';
+  if (set && op === 'common') {
+    // The intersection with a union isn't a sequence of intersections.
+    throw new KernelError(`Overlapping instances can't be intersected. ${words.check}`);
+  }
   const changed = new Map<BodyId, NamedShape | undefined>();
   for (const id of targets) {
     const before = named(id);
-    const result = namedBoolean(kernel, op, before, tool, options);
-    scope.track(result.shape);
+    let result = before;
+    // One boolean per pass, each on what the last left; a pass that removes the body ends it.
+    for (const pass of set?.passes ?? [tool]) {
+      // Passes simplify (merge faces the next pass split again): the fused tool they stand
+      // in for had its faces merged, so the walls of overlapping instances stay whole.
+      result = namedBoolean(
+        kernel,
+        op,
+        result,
+        pass,
+        set ? { ...options, simplify: true } : options,
+      );
+      scope.track(result.shape);
+      if (set && kernel.measure(result.shape).volume <= 0) break;
+    }
     const was = kernel.measure(before.shape).volume;
     const now = kernel.measure(result.shape).volume;
     const eps = 1e-6 * Math.max(1, Math.abs(was));
@@ -138,6 +173,53 @@ export function operate(
     names.set(id, result.names);
   }
   return { bodies, names, previewTools: preview() };
+}
+
+/** A box as `Kernel.measure` gives it (loose: it never cuts into the shape). */
+export interface Box {
+  min: readonly number[];
+  max: readonly number[];
+}
+
+/** Whether two boxes meet or lie within `TOUCH` of each other. */
+export const boxesTouch = (a: Box, b: Box): boolean =>
+  [0, 1, 2].every(
+    (k) =>
+      (a.min[k] as number) <= (b.max[k] as number) + TOUCH &&
+      (b.min[k] as number) <= (a.max[k] as number) + TOUCH,
+  );
+
+/**
+ * The bodies a tool touches (within `TOUCH`), for an operation with automatic
+ * participants. One exact `distance` between a body and the whole tool is slow
+ * when the tool is many solids (a pattern's 40 holes: seconds per body), and
+ * most pairs are far apart, so: a body whose box doesn't meet the tool's box
+ * is out, and the others are asked solid by solid of the tool, boxes first
+ * (P3-17). The exact answer is the same.
+ */
+export function touchingBodies(ctx: EvalContext, scope: ShapeScope, tool: ShapeHandle): BodyId[] {
+  const { kernel } = ctx;
+  const toolBox = kernel.measure(tool).bbox;
+  const near: { id: BodyId; shape: ShapeHandle; box: Box }[] = [];
+  for (const [id, shape] of ctx.bodies) {
+    const box = kernel.measure(shape).bbox;
+    if (boxesTouch(box, toolBox)) near.push({ id, shape, box });
+  }
+  if (near.length === 0) return [];
+  const solids = kernel.solids(tool);
+  for (const solid of solids) scope.track(solid);
+  // One solid (or something that has none): the exact distance to the whole tool.
+  if (solids.length < 2) {
+    return near.filter(({ shape }) => kernel.distance(shape, tool) <= TOUCH).map(({ id }) => id);
+  }
+  const parts = solids.map((shape) => ({ shape, box: kernel.measure(shape).bbox }));
+  return near
+    .filter(({ shape, box }) =>
+      parts.some(
+        (part) => boxesTouch(box, part.box) && kernel.distance(shape, part.shape) <= TOUCH,
+      ),
+    )
+    .map(({ id }) => id);
 }
 
 /** The tool as new bodies: one per separate solid, in geometric order. */

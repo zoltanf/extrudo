@@ -71,17 +71,37 @@ export function OverhangPanel({
                 }}
               />
               <span className="text-sm text-muted">Down</span>
-              <Select
-                aria-label="Down"
-                value={state.down}
-                onChange={(event) => tool.setDown(event.target.value as DownId)}
-              >
-                {DOWN_DIRECTIONS.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.label}
-                  </option>
-                ))}
-              </Select>
+              <div className="flex min-w-0 flex-col gap-1.5">
+                <Select
+                  aria-label="Down"
+                  value={state.face ? 'face' : state.down}
+                  onChange={(event) => {
+                    // The face option only shows what is picked: choosing an axis replaces it.
+                    if (event.target.value !== 'face') tool.setDown(event.target.value as DownId);
+                  }}
+                >
+                  {state.face && <option value="face">Picked face</option>}
+                  {DOWN_DIRECTIONS.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.label}
+                    </option>
+                  ))}
+                </Select>
+                <Button
+                  variant="secondary"
+                  disabled={tool.selectedFace === undefined}
+                  title={
+                    tool.selectedFace
+                      ? 'Down is the outward direction of the selected flat face.'
+                      : 'Select a flat face in the model first.'
+                  }
+                  onClick={() => {
+                    if (tool.selectedFace) void tool.pickFace(tool.selectedFace);
+                  }}
+                >
+                  Use selected face
+                </Button>
+              </div>
               <span className="text-sm text-muted">View</span>
               <label className="flex items-center gap-2 text-base">
                 <input

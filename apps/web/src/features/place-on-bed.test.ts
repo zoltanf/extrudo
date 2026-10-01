@@ -9,13 +9,32 @@ describe('the Place on Bed dialog', () => {
     expect(specForCommand(featureDialogs(), 'placeOnBed')?.type).toBe('placeOnBed');
   });
 
-  it('takes one face', () => {
-    expect(placeOnBedDialog.fields).toHaveLength(1);
+  it('takes faces (one per body) and a spin angle', () => {
+    expect(placeOnBedDialog.fields).toHaveLength(2);
     expect(placeOnBedDialog.fields[0]).toMatchObject({
       kind: 'selection',
       name: 'face',
       accepts: ['face'],
-      max: 1,
+    });
+    expect(placeOnBedDialog.fields[0]).not.toHaveProperty('max');
+    expect(placeOnBedDialog.fields[1]).toMatchObject({
+      kind: 'expression',
+      name: 'spin',
+      unit: 'angle',
+    });
+  });
+
+  it('puts two picked faces and the spin into the feature', () => {
+    const t = setupDialogs([placeOnBedDialog]);
+    t.session.getState().select([faceItem(1), faceItem(2)]);
+    t.controller.start('placeOnBed');
+    expect(t.open()?.values.refs.face).toHaveLength(2);
+    t.controller.setExpr('spin', '30 deg');
+    expect(t.controller.ok()).toBe(true);
+    const feature = t.store.getState().doc.features.at(-1);
+    expect(feature?.inputs).toMatchObject({
+      face: { refs: [{ id: FACE_IDS[1] }, { id: FACE_IDS[2] }] },
+      spin: { expr: '30 deg', unit: 'angle' },
     });
   });
 

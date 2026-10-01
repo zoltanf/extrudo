@@ -307,3 +307,38 @@ about 5.3:1).
 - The fuzzer covers the benchmark fixtures; add new fixtures (B6, when it
   exists) to its list. B4, B5 and B7 are in it since P3-17's first item
   (ADR-0038 and ADR-0047 amendments: the two bugs it found there).
+
+## Amendment (P3-17)
+
+**§7: the OK button hint.** The feature dialog's "Enter" hint on the OK button is at
+85 % opacity like the Esc hints of the other accent buttons (4.9:1 in the light
+theme, was 3.9:1 at 70 %); `KNOWN` in `e2e/a11y.spec.ts` is empty again and the
+audit passes in both themes.
+
+**§6: pattern colour classes.** Done for cuts (ADR-0047 amendment): overlapping
+10 x 10 holes 7.7 s -> 3.7 s in `pattern.test.ts` (the 5.5 s / 3.8 s harness
+numbers above were a different machine and a bare boolean). The B5 case of the
+fuzzer (count2 x 10) was a separate problem, fixed by finding targets solid by
+solid: 55 s -> 2.4 s.
+
+**§6: the warm-cache heap growth, attributed, not fixed (moved to P4-12).**
+Every `Kernel` call of the revolve document's recomputes was wrapped and the
+heap top read around it (`HEAP_ATTRIBUTE=1 HEAP_RUNS=600 pnpm vitest run
+packages/kernel/src/memory.test.ts -t "warm cache"`; a call's growth is its own
+less its callees'). **All of it is `mesh`**: 4 jumps of 16 MB (35 -> 83 MB) in
+1200 calls, every other call 0 bytes. The step is the WASM heap's growth
+granularity (16 MB), not a request of that size. OCCT's mesher (`BRepMesh_*`)
+creates many `NCollection_IncAllocator`s with 1 MB first blocks
+(`IMeshData::MEMORY_BLOCK_SIZE_HUGE`) and the finished triangulations stay
+attached to the cached shapes, so the long-lived arrays are allocated between
+blocks that are freed soon after. Test of that idea: the facade's `mesh()` called
+`BRepTools::Clean` on the shape after copying the data out (nothing else uses
+the triangulation: export meshes a copy), built in CI (`occt-b94d334d702d`, a
+throwaway branch): **3 jumps in 1200 calls instead of 4, still growing**, so it
+is not the cure and was dropped (the facade is unchanged, OCCT hash
+`0ba43e09d993`). Not tried: patching OCCT's block size, a dlmalloc build with
+`heapTop` inside `mesh()` (cheap to build in CI but the growth is already
+localised), and a mitigation outside the allocator: recycling the kernel
+worker when the heap top passes a limit (NFR-03 already restarts it after a
+crash). At about 11 MB per 100 recomputes of this unusual document a session of
+a thousand edits costs about 110 MB, against a 2 GB limit.

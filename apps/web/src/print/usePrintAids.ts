@@ -16,7 +16,9 @@ import {
   type ExtrudoDocument,
   evaluateParameters,
   formatQuantity,
+  type GeomRef,
   type SelectionItem,
+  type SessionStore,
 } from '@extrudo/core';
 import type { BodyMesh, Inspection, InspectTarget } from '@extrudo/kernel';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -40,6 +42,7 @@ import {
   DEFAULT_OVERHANG_ANGLE,
   type DownId,
   downVector,
+  faceDown,
   OVERHANG_RANGE,
   type OverhangReport,
   type OverhangState,
@@ -220,10 +223,19 @@ export interface OverhangTool {
   report: OverhangReport | undefined;
   /** `data-overhang`: the setting and the counts. */
   summary: string | undefined;
+  /** What "down" is, as the browser row and the panel say it: "-Z", "Face". */
+  downLabel: string;
+  /** The picked face's direction while it is found; undefined with an axis or a lost face. */
+  faceVector: readonly [number, number, number] | undefined;
+  /** One flat face is selected in the model: Down can take it. */
+  selectedFace: SelectionItem | undefined;
   /** Starts the analysis (default 45°, -Z) if there is none, and switches it on. */
   start(): void;
   setAngle(expression: string): void;
+  /** Puts "down" on an axis (and drops a picked face). */
   setDown(down: DownId): void;
+  /** Puts "down" on a flat face (its outward normal); false with a curved one. */
+  pickFace(item: SelectionItem): Promise<boolean>;
   setOn(on: boolean): void;
   remove(): void;
 }
@@ -235,10 +247,34 @@ export interface OverhangOptions {
   meta: Readonly<Record<BodyId, BodyMeta>>;
   /** Model mode: a sketch is drawn without the analysis. */
   model: boolean;
+  /** The selection: a flat face in it can become "down". */
+  session: SessionStore;
+  /** The kernel side of naming a face: the project's `Recomputer`. */
+  kernel: OverhangKernel | undefined;
+  notify(tone: 'info' | 'error', text: string): void;
 }
 
-export function useOverhang({ viewport, doc, bodies, meta, model }: OverhangOptions): OverhangTool {
+/** The kernel side of picking a face. */
+export interface OverhangKernel {
+  reference(body: BodyId, kind: 'face', index: number): Promise<GeomRef | undefined>;
+}
+
+export function useOverhang({
+  viewport,
+  doc,
+  bodies,
+  meta,
+  model,
+  session,
+  kernel,
+  notify,
+}: OverhangOptions): OverhangTool {
   const state = useStore(viewport, (s) => s.overhang);
+  const selection = useStore(session, (s) => s.selection);
+  const selectedFace = useMemo(() => {
+    const [only] = selection;
+    return selection.length === 1 && only && readTopology(only)?.kind === 'face' ? only : undefined;
+  }, [selection]);
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
   const settings = doc.settings;
   const evaluate = useCallback(
@@ -277,8 +313,15 @@ export function useOverhang({ viewport, doc, bodies, meta, model }: OverhangOpti
   );
   const on = state?.on ?? false;
   const down = state?.down ?? DEFAULT_DOWN;
+  const face = state?.face;
+  // A picked face gives the direction (its outward normal) and the bed (its plane); the face
+  // follows the model, so this is worked out from the meshes as they are now.
+  const picked = useMemo(() => (face ? faceDown(face, bodies) : undefined), [face, bodies]);
   const view = useMemo<OverhangView | undefined>(() => {
     if (!model || !on || degrees === undefined || shown.length === 0) return undefined;
+    if (face) {
+      return picked && { down: picked.down, threshold: thresholdOf(degrees), bed: picked.bed };
+    }
     const vector = downVector(down);
     return {
       down: vector,
@@ -288,9 +331,35 @@ export function useOverhang({ viewport, doc, bodies, meta, model }: OverhangOpti
         vector,
       ),
     };
-  }, [model, on, degrees, down, shown]);
+  }, [model, on, degrees, down, face, picked, shown]);
   const report = useMemo(() => (view ? analyzeOverhang(shown, view) : undefined), [view, shown]);
-  const summary = state ? overhangSummary(state, degrees, report) : undefined;
+  const summary = state ? overhangSummary(state, degrees, report, picked?.down) : undefined;
+
+  const pickFace = useCallback(
+    async (item: SelectionItem) => {
+      const topology = readTopology(item);
+      if (topology?.kind !== 'face') return false;
+      const ref = await kernel?.reference(topology.body, 'face', topology.index);
+      if (ref?.fingerprint?.type === 'plane') {
+        const current = viewport.getState().overhang;
+        viewport.getState().setOverhang({
+          angle: current?.angle ?? DEFAULT_OVERHANG_ANGLE,
+          down: current?.down ?? DEFAULT_DOWN,
+          face: ref,
+          on: true,
+        });
+        return true;
+      }
+      notify(
+        'error',
+        ref
+          ? 'Overhangs need a flat face to go down: that face is curved.'
+          : "Can't use that face yet: the model is still computing.",
+      );
+      return false;
+    },
+    [kernel, viewport, notify],
+  );
 
   return {
     state,
@@ -310,7 +379,17 @@ export function useOverhang({ viewport, doc, bodies, meta, model }: OverhangOpti
         );
     },
     setAngle: (angle) => viewport.getState().updateOverhang({ angle }),
-    setDown: (next) => viewport.getState().updateOverhang({ down: next }),
+    setDown: (next) => {
+      const current = viewport.getState().overhang;
+      if (!current) return;
+      // An axis replaces a picked face.
+      const { face: _dropped, ...rest } = current;
+      viewport.getState().setOverhang({ ...rest, down: next });
+    },
+    pickFace,
+    downLabel: face ? 'Face' : down.toUpperCase(),
+    faceVector: picked?.down,
+    selectedFace,
     setOn: (value) => viewport.getState().updateOverhang({ on: value }),
     remove: () => viewport.getState().setOverhang(undefined),
   };

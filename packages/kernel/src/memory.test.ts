@@ -957,6 +957,38 @@ describe.runIf(HEAP_RUNS > 0)('heap with a warm cache', () => {
     const engine = new RecomputeEngine(kernel, testFeatures().registry, { maxEntries });
     const doc = revolveDocument();
     const samples: string[] = [];
+    // `HEAP_ATTRIBUTE=1`: which `Kernel` call moves the heap top (P3-17). Each call's growth
+    // is its own, less what the calls inside it grew; a jump is a call that grew the top.
+    const growth = new Map<string, { bytes: number; jumps: number; calls: number }>();
+    const originals = new Map<string, unknown>();
+    if (ENV.HEAP_ATTRIBUTE) {
+      const proto = Object.getPrototypeOf(kernel) as Record<string, unknown>;
+      const inner: number[] = [0];
+      for (const name of Object.getOwnPropertyNames(proto)) {
+        const fn = proto[name];
+        if (name === 'constructor' || name === 'stats' || typeof fn !== 'function') continue;
+        originals.set(name, fn);
+        proto[name] = function (this: Kernel, ...args: unknown[]) {
+          const before = this.stats().heapTop;
+          inner.push(0);
+          try {
+            return (fn as (...a: unknown[]) => unknown).apply(this, args);
+          } finally {
+            const children = inner.pop() ?? 0;
+            const grew = this.stats().heapTop - before;
+            inner[inner.length - 1] = (inner[inner.length - 1] ?? 0) + grew;
+            const own = grew - children;
+            const entry = growth.get(name) ?? { bytes: 0, jumps: 0, calls: 0 };
+            entry.calls++;
+            if (own > 0) {
+              entry.bytes += own;
+              entry.jumps++;
+            }
+            growth.set(name, entry);
+          }
+        };
+      }
+    }
     for (let i = 0; i < HEAP_RUNS; i++) {
       const full = doc(60 + (i % 100) * 0.3);
       // `HEAP_ONLY=G` (or R, F) keeps one revolve and what it needs, to find the one that grows.
@@ -981,6 +1013,14 @@ describe.runIf(HEAP_RUNS > 0)('heap with a warm cache', () => {
       }
     }
     engine.clear();
-    expect.soft({ maxEntries, 'every 100 runs': samples }).toBeUndefined();
+    const proto = Object.getPrototypeOf(kernel) as Record<string, unknown>;
+    for (const [name, fn] of originals) proto[name] = fn;
+    const attribution = [...growth]
+      .filter(([, g]) => g.bytes > 0)
+      .sort((a, b) => b[1].bytes - a[1].bytes)
+      .map(([name, g]) => `${name}: ${Math.round(g.bytes / 2 ** 20)} MB in ${g.jumps}/${g.calls}`);
+    expect
+      .soft({ maxEntries, 'every 100 runs': samples, ...(attribution.length && { attribution }) })
+      .toBeUndefined();
   });
 });

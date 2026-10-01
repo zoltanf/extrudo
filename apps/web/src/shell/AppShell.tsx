@@ -422,6 +422,9 @@ export function AppShell({
     bodies: shownBodies,
     meta: bodyMeta,
     model: mode === 'model',
+    session,
+    kernel,
+    notify,
   });
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
   const preview = useMemo(() => viewPreview(dialogOpen), [dialogOpen]);
@@ -1159,7 +1162,7 @@ export function AppShell({
             })}
             {...(overhang.state && {
               overhang: {
-                label: `Overhangs · ${overhang.state.down.toUpperCase()} · ${
+                label: `Overhangs · ${overhang.downLabel} · ${
                   overhang.degrees === undefined ? '?' : Math.round(overhang.degrees)
                 }°`,
                 on: overhang.state.on,

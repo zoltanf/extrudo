@@ -212,11 +212,55 @@ single flat face, which starts the dialog with the face already picked.
 
 ## Open items
 
-- A Spin angle (about Z) in Place on Bed, and Place on Bed for several bodies
-  (each on its own face).
-- The down direction from a picked face or an arbitrary vector; today it is one
-  of six axes.
+- ~~A Spin angle (about Z) in Place on Bed, and Place on Bed for several bodies
+  (each on its own face).~~ Done in P3-17 (amendment below).
+- ~~The down direction from a picked face~~ (done in P3-17, below); an
+  arbitrary vector is still open (today an axis or a face).
 - Per-body support estimates (volume of support), infill in the weight, a
   cost per kg: Print Info is for the solid part only.
 - Overhangs in the dialogs' preview shapes (only the bodies are shaded).
-- A checked-in screenshot of the shading, in CI's image.
+- ~~A checked-in screenshot of the shading, in CI's image.~~ Done in P3-17
+  (amendment below).
+
+## Amendment (P3-17)
+
+**Place on Bed: Spin and several bodies.** `placeOnBed`'s `face` input takes
+any number of faces (it took one) and gains an optional `spin` angle
+expression. No schema version change and no migration: both are additive
+(a file with one face and no spin reads and recomputes as before; a newer
+file read by an older Extrudo drops `spin` with the lenient-reading notice of
+ADR-0050, but one with several faces fails the old `max 1` check, which is
+the same as any newer feature input). `docs/file-format.md` §6.15 says it.
+The kernel resolves every face, refuses two faces of one body ("a body lies on
+one face"), and gives each body its own `faceDown` matrix, followed by a
+rotation about the vertical through the **face's centre at z = 0** by the
+spin (positive counter-clockwise from above), so the face's centre stays
+where it was in X and Y whatever the spin. Each body drops to z = 0 where it
+is: the bodies are not arranged on the plate (that is a packing problem, not
+this feature). "Already on the bed" is said only when every face is and there
+is no spin; the below-the-bed warning covers all bodies. The dialog's
+Face field takes several picks (one per body) and has a Spin field.
+
+**Overhang: down from a picked face.** `OverhangState.face` is an optional
+persistent `GeomRef` (view state like the rest, no schema). While it is set,
+"down" is the face's **outward normal** (the way Place on Bed turns it) and
+the bed is the face's **plane** (faces lying in it are bed contact): the
+model as it would print standing on that face, whether or not that face is
+its lowest level. It is resolved from the current meshes on every render
+(`faceDown` in `print/overhang.ts` over `sectionFrame`, with the
+fingerprint as the fallback), so it follows the model; a face the model no
+longer has leaves the shading off (`data-overhang` reads `down=face(?)`).
+The panel's "Use selected face" button takes the single flat face selected in
+the model (`kernel.reference`, curved faces say so), the Down list then shows
+"Picked face", and choosing an axis replaces it. `data-overhang` reads
+`down=face(-1,0,0)` (the unit direction, rounded), the browser row
+"Overhangs · Face · 45°". Not done: a context entry ("Overhangs from Here")
+and an arbitrary vector.
+
+**The shading screenshot.** `e2e/print-aids.spec.ts` takes the Viewport region
+(`overhang-shading-chromium-linux.png`, dark theme) of the wall bracket with +Z
+as down in the home view: the upward faces of the base plate are red, the wall
+is not. +Z rather than the default -Z because the bracket's overhangs under
+the default (the rounded corner) can't be seen from above. Like the section's
+shots it is made in the Playwright Ubuntu image (`--update-snapshots=all`), not
+on this machine.

@@ -373,7 +373,7 @@ function idSource() {
   return () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`;
 }
 
-async function fuzz(name: string, dataUrl: string, seed: number) {
+async function fuzz(name: string, dataUrl: string, seed: number, steps = STEPS) {
   const random = prng(seed);
   const newId = idSource();
   const original = load(dataUrl);
@@ -388,7 +388,7 @@ async function fuzz(name: string, dataUrl: string, seed: number) {
   let doc = original;
   try {
     await recompute(engine, doc);
-    for (let step = 1; step <= STEPS; step++) {
+    for (let step = 1; step <= steps; step++) {
       // Now and then start again from the fixture, so edits don't pile up forever.
       if (random() < 0.08) doc = original;
       const mutation = pickMutation(doc, targets, random);
@@ -455,7 +455,51 @@ describe('fuzzing the benchmark fixtures', () => {
   }
 });
 
+// P3-17: two more sequences on B5, the fixture with the pattern: `FUZZ_SEED=7` and `FUZZ_SEED=2026`
+// at 1000 steps are where a pattern of 2 x 20 instances once took 55 s to recompute (the target
+// filter measured every body against the whole merged tool). Here as the effective seeds
+// (`SEED + '5'.charCodeAt(0)`), at a CI-sized length.
+describe('B5 again, other sequences', () => {
+  for (const seed of [7, 2026]) {
+    it(`B5: seed ${seed}, ${STEPS + 100} steps never crash, leak or hang`, {
+      timeout: 60_000 + (STEPS + 100) * 2_000,
+    }, async () => {
+      const stats = await fuzz('B5', b5, seed + '5'.charCodeAt(0), STEPS + 100);
+      expect(stats.applied).toBeGreaterThan(STEPS / 3);
+    });
+  }
+});
+
 describe('what the fuzzer found', () => {
+  it('B5 recomputes a pattern of 2 x 20 instances in seconds (target filter per solid)', async () => {
+    // Rectangular Pattern1's second count x 10: the posts and their holes. 20 of the 40 posts
+    // stand outside the tray, so they are bodies of their own, and every later feature asks
+    // which bodies it touches. One exact distance from each body to the whole merged tool took
+    // 55 s; boxes first and solid by solid it takes about 2 s (`pattern-bench.test.ts`).
+    const engine = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
+    try {
+      const original = load(b5);
+      const pattern = original.features.find((f) => f.name === 'Rectangular Pattern1') as Feature;
+      const count2 = pattern.inputs.count2;
+      if (count2?.kind !== 'expr') throw new Error('no count2');
+      const doc = apply(original, {
+        kind: 'input',
+        feature: pattern.id,
+        input: 'count2',
+        expr: `(${count2.expr}) * 10`,
+      });
+      if (!doc) throw new Error('count2 refused');
+      const started = performance.now();
+      const result = await recompute(engine, doc);
+      expect(performance.now() - started).toBeLessThan(15_000);
+      expect(result.features[pattern.id]?.status).toBe('warning');
+      expect(result.features[pattern.id]?.message).toMatch(/separate bodies/);
+      expect(internalErrors(result, doc)).toEqual([]);
+    } finally {
+      engine.clear();
+    }
+  });
+
   it('B4 refuses a fillet that runs into a wall instead of trapping OCCT', async () => {
     // The lid's fillet on the top edges, radius 3 mm, with the lip made 10 % too long and the
     // wall 0 (Shell1 fails): the lip sticks out of the lid's side faces, so those faces have

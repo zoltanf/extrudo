@@ -135,3 +135,9 @@ every result must solve cleanly with the constraints we have.
   pieces stop meeting is refused.
 - Pattern instances and copies aren't tied to the original's position
   (see Rejected); rotating Move isn't there.
+
+## Amendment (P3-17)
+
+The chain Offset takes follows projected curves that end in one place (see the
+ADR-0031 amendment), and a smooth joint between projected neighbours gets a
+tangent constraint on the offset pieces. B2 uses it.

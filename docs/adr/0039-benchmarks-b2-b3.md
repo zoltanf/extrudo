@@ -34,7 +34,10 @@ combine).
    and offsets one line only: projected curves are separate entities that
    aren't joined by coincident constraints, and `chainOf` follows those.
    (Left as is: joining a projected face's outline is a change to ADR-0031
-   the benchmark doesn't need.)
+   the benchmark doesn't need.) **Superseded in P3-17:** `chainOf` now joins
+   projected curves that end in one place, so B2 projects the outline and
+   offsets it inward (Offset, 3 mm, the first dimension edited to `wall`);
+   see the amendment at the end. The fixture was rewritten.
 3. **B3 combines by a join that bridges two bodies.** There is no Combine
    feature before P3-06. The base plate and the back rest are two bodies
    (new-body extrudes); a strip sketched on the base's top face and
@@ -133,3 +136,12 @@ and their sketch dimensions couldn't change in the headless test).
 Each spec takes 25 to 30 s alone on the Arch workstation (up to about
 39 s for B5 beside another spec); the 3MF exports of all three are
 manifold in PrusaSlicer (`prusa-slicer --info`).
+
+## Amendment (P3-17)
+
+B2 projects the top face's outline and offsets it inward with the Offset tool
+(a typed 3 mm, then the first of the four distances edited to `wall`; the other
+three follow it) instead of a rectangle with four dimensions, now that Offset
+follows a projected outline (ADR-0031 amendment). Same faces, sizes and
+volumes; the fixture `fixtures/benchmarks/b2-storage-box.extrudo` was written
+again (`WRITE_FIXTURES=1`), and the fuzzer (200 steps) is still clean on it.

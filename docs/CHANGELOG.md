@@ -2,6 +2,18 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-10-01 · **P3-17** (part 2) Polish, done: Place on Bed takes one face
+  per body and a Spin angle about the vertical; Overhang Analysis can take a
+  picked flat face as "down"; Offset follows a projected face outline (B2
+  uses it, fixture rewritten); the OK button's key hint passes contrast in
+  the light theme (`KNOWN` is empty); a checked-in screenshot of the overhang
+  shading; `operate` finds the bodies a tool touches solid by solid, so B5's
+  2 × 20-instance pattern recomputes in 2.4 s instead of 55 s, and the fuzzer
+  keeps its seeds 7 and 2026; a pattern of cuts goes one colour class at a time
+  (overlapping 10 × 10 holes 7.7 s to 3.7 s); the warm-cache heap growth is
+  attributed to `mesh` and moved to P4-12 (a `BRepTools::Clean` experiment
+  didn't cure it). No schema version change (`placeOnBed` gains `spin` and
+  takes several faces), OCCT hash unchanged.
 - 2026-10-01 · **P3-17** (part 1, items 1–10) Polish: browser rows show
   feature status like timeline chips; a single pick is named in its field
   ("Line · Sketch1", "Body1"), and origin axes show while an axis field picks;

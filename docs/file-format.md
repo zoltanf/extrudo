@@ -611,21 +611,23 @@ inputs like the others.
 ### 6.15 `placeOnBed`
 
 Turns the body a flat face belongs to so that face lies on the build plate
-(P3-10). One input; the rotation and the move are computed on every
-recompute, not stored.
+(P3-10); with several faces, each body lies on its own face (P3-17). The
+rotation and the move are computed on every recompute, not stored.
 
 | Input | Kind | Required | Rule |
 |---|---|---|---|
-| `face` | `ref` | yes | At most one ref, of kind `face`, a flat face. Empty: an error until one is picked |
+| `face` | `ref` | yes | Refs of kind `face`, flat faces, at most one per body (two faces of one body are an error). Empty: an error until one is picked. Before P3-17 at most one |
+| `spin` | `expr` (angle) | no | A turn about the vertical (+Z) through the face's centre, after the face lies on the bed. Absent: no turn |
 
-The body is the one the face is in. It turns by the smallest rotation that
+Each body is the one its face is in. It turns by the smallest rotation that
 makes the face's outward normal point along -Z (about the horizontal axis
 `normal x -Z` through the face's centre; a face that faces up turns half a
-turn about X), then moves along Z so the face lies at z = 0. The X and Y of
-the face's centre stay where they were. The body keeps its ID and every face
-keeps its name, so references to the body and its faces still resolve. The
-feature warns when the face is already on the bed, and when part of the body
-ends up below z = 0.
+turn about X), then moves along Z so the face lies at z = 0, then turns by
+`spin` (counter-clockwise seen from above) about the vertical through the
+face's centre. The X and Y of the face's centre stay where they were. Every
+body keeps its ID and every face keeps its name, so references to the body
+and its faces still resolve. The feature warns when every face is already on
+the bed (and there is no spin), and when part of a body ends up below z = 0.
 
 ### 6.16 Patterns: `rectangularPattern`, `circularPattern`, `pathPattern`
 

@@ -125,6 +125,12 @@ export interface PreviewTool {
    * feature's tool, and name the copies' faces from it.
    */
   names?: TopoNames;
+  /**
+   * `shape` holds solids that overlap each other (P3-17: a pattern's instances, which a
+   * boolean applies one colour class at a time instead of fusing them): it is for drawing,
+   * and not a valid argument of a boolean, so replaying it is refused.
+   */
+  interferes?: boolean;
 }
 
 /** A preview tool as a preview result carries it. */

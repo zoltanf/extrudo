@@ -40,7 +40,7 @@ import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve } from '../planar';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { type OperationWords, operate, TOUCH } from './operation';
+import { boxesTouch, type OperationWords, operate, TOUCH } from './operation';
 import { mergeTools } from './pattern';
 import { planarFace, planeFrame, upright } from './primitives';
 import type { SketchOutputData } from './sketch';
@@ -117,10 +117,17 @@ export const kernelHole: KernelFeatureDefinition<HoleInputs> = {
 
     // Holes that start nowhere near a body cut nothing: say so (the cut says
     // it when none does).
-    const bodies = [...ctx.bodies.values()];
-    const misses = parts.filter(
-      (part) => !bodies.some((body) => ctx.kernel.distance(body, part.shape) <= TOUCH),
-    ).length;
+    // Boxes first: an exact distance only for a body whose box meets the hole's.
+    const bodies = [...ctx.bodies.values()].map((shape) => ({
+      shape,
+      box: ctx.kernel.measure(shape).bbox,
+    }));
+    const misses = parts.filter((part) => {
+      const box = ctx.kernel.measure(part.shape).bbox;
+      return !bodies.some(
+        (body) => boxesTouch(body.box, box) && ctx.kernel.distance(body.shape, part.shape) <= TOUCH,
+      );
+    }).length;
     if (misses > 0 && misses < parts.length) {
       warnings.push(
         `${misses} of ${parts.length} holes don't reach a body, so they cut nothing. Check the points.`,

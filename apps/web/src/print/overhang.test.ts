@@ -1,4 +1,4 @@
-import type { BodyId } from '@extrudo/core';
+import type { BodyId, GeomRef } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import { describe, expect, it } from 'vitest';
 import { boxMesh } from '../selection/testing';
@@ -8,6 +8,7 @@ import {
   bedLevel,
   DOWN_DIRECTIONS,
   downVector,
+  faceDown,
   type OverhangView,
   overhangSummary,
   thresholdOf,
@@ -193,5 +194,51 @@ describe('the directions and the summary', () => {
     expect(overhangSummary({ angle: 'x', down: '+x', on: false }, undefined, undefined)).toBe(
       'down=+x angle=? off',
     );
+  });
+});
+
+describe('a picked face as "down" (P3-17)', () => {
+  const ids = ['f-bottom', 'f-top', 'f-front', 'f-back', 'f-left', 'f-right'];
+  // A 10 mm box at x = 20..30, standing 5 mm above the origin level.
+  const box = { ...boxMesh([20, 0, 5], [30, 10, 15]), faceIds: ids };
+  const ref = (id: string): GeomRef => ({ kind: 'face', id });
+
+  it('takes the face’s outward normal as down and its plane as the bed', () => {
+    const right = faceDown(ref('f-right'), { A: box });
+    expect(right?.down).toEqual([1, 0, 0]);
+    expect(right?.bed).toBeCloseTo(30);
+    const bottom = faceDown(ref('f-bottom'), { A: box });
+    expect(bottom?.down).toEqual([0, 0, -1]);
+    expect(bottom?.bed).toBeCloseTo(-5);
+    expect(faceDown(ref('gone'), { A: box })).toBeUndefined();
+  });
+
+  it('falls back to the fingerprint of a face the meshes lack', () => {
+    const lost: GeomRef = {
+      kind: 'face',
+      id: 'gone',
+      fingerprint: { type: 'plane', at: [7, 7, 12], dir: [0, 1, 0] },
+    };
+    const found = faceDown(lost, { A: box });
+    expect(found?.down).toEqual([0, 1, 0]);
+    expect(found?.bed).toBeCloseTo(7);
+  });
+
+  it('analyses the model standing on that face: the face is bed contact', () => {
+    // Down = +X: the right face (x = 30) is on the bed; nothing else points that way.
+    const picked = faceDown(ref('f-right'), { A: box });
+    if (!picked) throw new Error('no face');
+    const report = analyzeOverhang([{ id: 'A:0' as BodyId, mesh: box }], {
+      ...picked,
+      threshold: thresholdOf(45),
+    });
+    expect(report.bed).toBe(2);
+    expect(report.triangles).toBe(0);
+  });
+
+  it('writes the face’s direction in the summary', () => {
+    const state = { angle: '45 deg', down: '-z', face: ref('f-right'), on: true } as const;
+    expect(overhangSummary(state, 45, undefined, [1, 0, 0])).toBe('down=face(1,0,0) angle=45 off');
+    expect(overhangSummary(state, 45, undefined)).toBe('down=face(?) angle=45 off');
   });
 });

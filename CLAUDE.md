@@ -9,7 +9,7 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-09-29):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
+**Status (2026-10-01):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
@@ -20,12 +20,12 @@ P2-13 (measure and inspect), P2-14 (version history), P2-15 (WASM
 size and startup, offline precache), P2-16 (file-format spec,
 `docs/file-format.md`) and P2-17 (benchmarks B2 and B3 as e2e specs and
 fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-03
-(shell), P3-05 (construction geometry), P3-06 (combine, move/copy, mirror),
-P3-04 (hole), P3-07 (patterns, mirrored features), P3-09 (section
+(shell), P3-04 (hole), P3-05 (construction geometry), P3-06 (combine,
+move/copy, mirror), P3-07 (patterns, mirrored features), P3-08 (press/pull,
+offset face, then split body, scale, draft: both halves), P3-09 (section
 analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus),
-P3-08 (press/pull, offset face, split body, scale, draft), P3-13
-(hardening), P3-14 (benchmarks B4 to B7) and P3-16 (notification history)
-are done.
+P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-16 (notification history)
+and P3-17 (polish, both parts) are done; P3-12 and P3-15 are left.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -459,16 +459,18 @@ failure the thickness is bisected: `[status, value]` read through
 ADR-0048 (P3-10) added the 3D-print aids (`apps/web/src/print/`, no
 facade or schema-version change): **Place on Bed is its own feature
 `placeOnBed`** (`core/src/place-on-bed.ts`, kernel `features/place-on-bed.ts`,
-dialog `features/place-on-bed.ts`; one flat `face` input, the kernel works
-out the smallest turn and the drop to z = 0 with `faceDown` in
-`features/matrix.ts` on every recompute, through the same `transformBodies`
-as Move, so names survive; warns when the face is already on the bed or
-the body reaches below it; also a flat face's context entry).
+dialog `features/place-on-bed.ts`; flat `face` inputs, one per body, and an
+optional `spin` angle about the vertical through the face's centre (P3-17);
+the kernel works out the smallest turn and the drop to z = 0 with `faceDown`
+in `features/matrix.ts` on every recompute, through the same
+`transformBodies` as Move, so names survive; warns when the faces are already
+on the bed or a body reaches below it; also a flat face's context entry).
 **Print Info** (`usePrintInfo`, `PrintInfoPanel`) sums `KernelApi.inspect`
 body volumes and turns them into weight and filament length
 (`material.ts`; the material is the `print.material` preference, not a
 document setting). **Overhang analysis is view state** (`viewport.overhang`,
-`OverhangState`: an angle expression, a `down` axis, `on`), classified
+`OverhangState`: an angle expression, a `down` axis or a picked flat `face`
+(its outward normal is down, its plane the bed; P3-17), `on`), classified
 per triangle on the CPU for the counts (`print/overhang.ts`: normal ·
 down > sin N, bed contact excluded; `data-overhang`) and shaded per fragment
 by a patch of the face material (`viewport/overhangShading.ts`,
@@ -491,7 +493,11 @@ is a list of `Placement`s (`Matrix12`, label, slot; `seriesOf`, `seriesStep`,
 instance's position, so both survive a growing count**. Many instances are
 one boolean: `mergeTools` fuses instances that interfere in trees and passes
 the groups as one compound (OCCT refuses a compound argument whose solids
-interfere). A path is a polyline (`pathFromRefs`; the sketch output has
+interfere); **a pattern of a cut instead colours the interference graph and
+cuts one class at a time** (`toolSet`, `ToolSet` in `features/operation.ts`;
+P3-17; joins still fuse, which measured faster), and **`operate` finds the
+bodies a tool touches solid by solid** (`touchingBodies`: boxes first, then
+the exact distance to the solids whose boxes meet). A path is a polyline (`pathFromRefs`; the sketch output has
 `curves`). Mirror's `objects: 'features'` uses the same `replayFeatures`.
 The dialogs have a new field kind `features` (a checkbox list of
 `repeatableFeatures`). No facade change.
@@ -537,7 +543,7 @@ versions"). A recompute's first new error is a **quiet** notification
 `exportMeshes(…, onProgress)` meshes body by body; `false` cancels;
 **`RecomputeEngine.hold(bodies)` keeps shapes alive across yields**.
 Silhouettes use `silhouettePlan` (facing per node). `e2e/a11y.spec.ts` is an
-axe audit of the main screens in both themes (`KNOWN` lists what's left).
+axe audit of the main screens in both themes (`KNOWN` is empty since P3-17).
 ADR-0051 (P3-08, first half) added **Offset Face** and **Press Pull**:
 `packages/core/src/offset-face.ts` (feature `offsetFace`: `faces`, `distance`,
 **positive moves along the outward normal**, so a pad grows and a hole's wall
@@ -595,9 +601,9 @@ boxes, Draft1 on the arm about the plate's front face, Fillet1 on the plate's
 top edges and the inside corner (`e2e/benchmark-b6.spec.ts`, fixture
 `b6-wall-hook.extrudo`, in the fuzzer's list).
 Next, one task at a time (not parallel tracks, since 2026-09-30):
-**P3-17** (polish: open items from the ADRs), P3-12, then P3-15 after the
-owner's decisions. Carried-over items are listed under those tasks in
-`docs/03-roadmap.md`; deeper ones are the P4-12 backlog.
+**P3-12** (onboarding), then P3-15 after the owner's decisions. Carried-over
+items are listed under those tasks in `docs/03-roadmap.md`; deeper ones are
+the P4-12 backlog.
 
 ## Commands
 
@@ -1084,8 +1090,8 @@ them. Notes further down that name a machine apply to that machine only.
   clearing the cache each run is flat, so it looks like fragmentation.
   Memory tests of big booleans clear the engine each run and warm up
   through every value first. To find which op grows, wrap
-  `Kernel.prototype` methods and log `heapTop` jumps. Unmeasured in a
-  real long session (ADR-0029 open item).
+  `Kernel.prototype` methods and log `heapTop` jumps (done in P3-17:
+  `HEAP_ATTRIBUTE=1`; it is `mesh`). Unmeasured in a real long session.
 - **Primitives e2e** (`e2e/primitives.spec.ts`): the dialogs are the
   regions "Box dialog"… (from `pickTool(page, 'Box')`), the Plane field
   the button "Plane" ("XY plane", "XZ plane", "1 face"). While Plane is the
@@ -1258,9 +1264,12 @@ them. Notes further down that name a machine apply to that machine only.
   under the nav bar: `zoomOutTo(page, point, 150)` first, one wheel step
   at a time. On a YZ sketch the sketch x is world Y and y is world Z
   (camera direction `-1,0,0`). The origin is no entity: a Point tool click
-  at (0, 0) is auto-fixed and dimensions can start from it. A projected
-  face outline is four separate lines (no coincident constraints): Offset
-  takes one line only; dimension the sides to the projected ones instead.
+  at (0, 0) is auto-fixed and dimensions can start from it. Offset takes a
+  whole projected face outline (its ends that meet are one joint, P3-17; B2
+  uses it): `o`, click a side, move to the inside, type a number (letters
+  don't go to the heads-up box: `wall` would start the Line tool), Enter,
+  then double-click a dimension label and fill in `wall` (the other three
+  follow the first).
   A `d` dimension on two parallel lines is their distance; on two lines
   that meet it is the angle (the label's sector picks it). The Constraints
   group ("Parallel") lives in the toolbar, not the palette. `data-bodies`
@@ -1380,9 +1389,17 @@ them. Notes further down that name a machine apply to that machine only.
   L-shaped end faces or the wall's thin edges hits an edge or the wrong
   face). Laying it down makes `data-bodies` "Bracket:12:60,80,40". The
   dialog is the region "Place on Bed dialog" (button "Face"); the
-  context entry is `[data-marking-entry="placeOnBed"]`. The overhang
-  shading itself is a shader patch, so it isn't in the counts: check
-  it with a screenshot (none is checked in). Kernel-side tests:
+  context entry is `[data-marking-entry="placeOnBed"]`. The dialog also has
+  the textbox "Spin" (`exact`, an angle; 90 deg swaps the bracket's X and Y
+  extents: "Bracket:12:80,60,40") and its Face field takes several faces.
+  The Overhang panel's "Use selected face" button (enabled while one flat
+  face is selected) makes its outward direction "down": `data-overhang`
+  reads `down=face(-1,0,0) angle=45 …`, the Down combobox has the value
+  `face` ("Picked face") and the browser row says "Overhangs · Face · 45°".
+  The overhang shading itself is a shader patch, so it isn't in the counts:
+  `overhang-shading-chromium-linux.png` (the Viewport region, +Z down in the
+  home view) is checked in, made in CI's image like the section shots.
+  Kernel-side tests:
   `pnpm vitest run packages/kernel/src/features/place-on-bed`.
 - **Hole e2e** (`e2e/hole.spec.ts`, P3-04): press `h` (after Shift+1 and a
   settled `projector`); the dialog is the region "Hole dialog" / "Edit Hole1
@@ -1445,7 +1462,9 @@ them. Notes further down that name a machine apply to that machine only.
   for heap samples. Warm-cache heap of the revolve document: `HEAP_RUNS=n
   … memory.test.ts -t "warm cache"` (about 0.3 s a run; `HEAP_MAX_ENTRIES`,
   `HEAP_ONLY=G|R|F|GF|RF|GR`): it grows about 11 MB per 100 recomputes with
-  all three revolves, not with any subset (ADR-0050 §6, open). **Our OCCT
+  all three revolves, not with any subset (ADR-0050 §6, P4-12 backlog):
+  `HEAP_ATTRIBUTE=1` prints which `Kernel` call grew the top, and it is
+  `mesh` alone (a `BRepTools::Clean` after meshing didn't cure it). **Our OCCT
   build already links mimalloc** (the toolchain default); `MALLOC:
   'dlmalloc'` in `libcascade.config.ts` builds (grows smoothly, 30 % slower). Silhouette
   cost: `BENCH=1 … viewport/silhouette.test.ts`; booleans of many tools:
@@ -1454,8 +1473,10 @@ them. Notes further down that name a machine apply to that machine only.
   `<none>` on the Arch workstation): `docker run --rm --user 0 -v
   <dir>:/w -w /w --entrypoint sh <image id> -c 'em++ … && node h.js'`.
 - **The fuzzer covers B1-B5 and B7** (P3-17, ADR-0038/0047 amendments);
-  `FUZZ_SEED=7 FUZZ_STEPS=1000` on B5 reaches a pattern of 2 × 20 instances
-  that takes 55 s to recompute (open: pattern colour classes, ADR-0050 §6).
+  B5's `FUZZ_SEED=7` and `FUZZ_SEED=2026` at `FUZZ_STEPS=1000` reached a
+  pattern of 2 × 20 instances that took 55 s; it takes 2.4 s since `operate`
+  finds targets solid by solid (`pattern-bench.test.ts`: `BENCH=1`, prints the
+  time per `Kernel` method), and both sequences run in the default test.
   **A wasm trap (`RuntimeError: null function or function signature
   mismatch`) is a null-pointer call inside OCCT**: find it by dumping the
   failing body (`kernel.writeStep` in a wrapper around the call), reading it

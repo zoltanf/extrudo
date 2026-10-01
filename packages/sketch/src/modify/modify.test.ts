@@ -85,7 +85,12 @@ function merge(data: SketchData, r: ModifyResult): SketchData {
   for (const [key, expr] of Object.entries(r.exprs ?? {})) {
     dimensions[key as never] = { ...(dimensions[key as never] as SketchDimension), expr };
   }
-  return SketchDataSchema.parse({ entities, constraints, dimensions });
+  return SketchDataSchema.parse({
+    entities,
+    constraints,
+    dimensions,
+    ...(data.projections && { projections: data.projections }),
+  });
 }
 
 /** Every dimension's expression read as a number of mm or degrees. */
@@ -591,6 +596,94 @@ describe('offset', () => {
     b.constrain({ type: 'coincident', a: a.end, b: c.start });
     b.constrain({ type: 'coincident', a: a.end, b: t.start });
     expect(chainOf(data(b), id(a.id))?.links.map((l) => l.id)).toEqual([a.id]);
+  });
+
+  /** A 40 × 20 outline with 4 mm round corners, as a face projects it: no joints, all projected. */
+  function projectedOutline(round: boolean) {
+    const b = new SketchBuilder();
+    const r = round ? 4 : 0;
+    const curves = round
+      ? [
+          b.line(r, 0, 40 - r, 0),
+          b.arc(40 - r, r, r, -90, 0),
+          b.line(40, r, 40, 20 - r),
+          b.arc(40 - r, 20 - r, r, 0, 90),
+          b.line(40 - r, 20, r, 20),
+          b.arc(r, 20 - r, r, 90, 180),
+          b.line(0, 20 - r, 0, r),
+          b.arc(r, r, r, 180, 270),
+        ]
+      : [b.line(0, 0, 40, 0), b.line(40, 0, 40, 20), b.line(40, 20, 0, 20), b.line(0, 20, 0, 0)];
+    const projected = {
+      ...data(b),
+      projections: {
+        proj1: {
+          ref: { kind: 'face', id: 'extrude:E:cap:end' },
+          curves: Object.fromEntries(curves.map((c, i) => [`e${i}`, c.id])),
+        },
+      },
+    } as SketchData;
+    return { curves, projected };
+  }
+
+  it('follows a projected face outline: ends in one place are a joint (P3-17)', () => {
+    const { curves, projected } = projectedOutline(false);
+    expect(projected.projections).toBeDefined();
+    const first = curves[0];
+    if (!first) throw new Error('no curve');
+    const chain = chainOf(projected, id(first.id));
+    expect(chain?.links).toHaveLength(4);
+    expect(chain?.closed).toBe(true);
+    // The same picked from any side gives the same four curves.
+    const other = chainOf(projected, id((curves[2] as { id: string }).id));
+    expect(new Set(other?.links.map((l) => l.id))).toEqual(new Set(chain?.links.map((l) => l.id)));
+    if (!chain) return;
+    const d = offsetTo(projected, chain, [20, -3]);
+    expect(d).toBeCloseTo(-3, 9);
+    const after = apply(
+      projected,
+      offset(projected, chain, d, { expr: '3', format: String }, newId),
+    );
+    const made = Object.entries(after.entities).filter(
+      ([key, e]) => e.type === 'line' && !(key in projected.entities),
+    );
+    expect(made).toHaveLength(4);
+    const xs = made.flatMap(([key]) => ends(after, key).map((p) => round(p)));
+    expect(xs).toContainEqual([-3, -3]);
+    expect(xs).toContainEqual([43, 23]);
+    expect(clean(after).dof).toBe(0);
+  });
+
+  it('follows a projected outline with round corners, arcs concentric', () => {
+    const { curves, projected } = projectedOutline(true);
+    const first = curves[0];
+    if (!first) throw new Error('no curve');
+    const chain = chainOf(projected, id(first.id));
+    expect(chain?.links).toHaveLength(8);
+    expect(chain?.closed).toBe(true);
+    if (!chain) return;
+    const d = offsetTo(projected, chain, [20, 3]);
+    expect(d).toBeGreaterThan(0);
+    const after = apply(
+      projected,
+      offset(projected, chain, d, { expr: '3', format: String }, newId),
+    );
+    const arcs = Object.entries(after.entities).filter(
+      ([key, e]) => e.type === 'arc' && !(key in projected.entities),
+    );
+    expect(arcs).toHaveLength(4);
+    for (const [, arc] of arcs) {
+      if (arc.type !== 'arc') continue;
+      expect(Math.hypot(...sub(at(after, arc.start), at(after, arc.center)))).toBeCloseTo(1, 9);
+    }
+    expect(clean(after).dof).toBe(0);
+  });
+
+  it('does not join sketched curves that merely end in one place', () => {
+    const b = new SketchBuilder();
+    const a = b.line(0, 0, 10, 0);
+    b.line(10, 0, 10, 10);
+    expect(chainOf(data(b), id(a.id))?.links).toHaveLength(1);
   });
 
   it('refuses to shrink an arc past nothing', () => {

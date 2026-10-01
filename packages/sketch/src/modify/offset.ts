@@ -35,6 +35,47 @@ export interface Chain {
   closed: boolean;
 }
 
+/** How close (mm) the ends of two projected curves must be to count as one joint. */
+const PROJECTED_JOINT = 1e-5;
+
+/** The IDs of the curves that are projections of model geometry (P2-09). */
+function projectedCurves(data: SketchData): Set<string> {
+  const out = new Set<string>();
+  for (const projection of Object.values(data.projections ?? {})) {
+    for (const curve of Object.values(projection.curves)) if (curve) out.add(curve);
+  }
+  return out;
+}
+
+/** The unit direction of a line, or of an arc at the end `at`, there. */
+function directionAt(data: SketchData, link: ChainLink, atEnd: boolean): Vec2 | undefined {
+  const e = data.entities[link.id];
+  if (e?.type === 'line') {
+    const a = pointOf(data, e.start) as Vec2;
+    const c = pointOf(data, e.end) as Vec2;
+    const len = dist(a, c);
+    return len > 0 ? [(c[0] - a[0]) / len, (c[1] - a[1]) / len] : undefined;
+  }
+  if (e?.type === 'arc') {
+    const centre = pointOf(data, e.center) as Vec2;
+    const p = pointOf(data, atEnd ? e.end : e.start) as Vec2;
+    const r = dist(centre, p);
+    return r > 0 ? [-(p[1] - centre[1]) / r, (p[0] - centre[0]) / r] : undefined;
+  }
+  return undefined;
+}
+
+/** Whether chain links `a` then `b` meet with the same tangent direction (up to a sign). */
+function smoothJoint(data: SketchData, a: ChainLink, b: ChainLink): boolean {
+  // The joint is where `a` leaves and `b` arrives, whichever way each is stored.
+  const da = directionAt(data, a, !a.reversed);
+  const db = directionAt(data, b, b.reversed);
+  return da !== undefined && db !== undefined && Math.abs(cross(da, db)) < SMOOTH;
+}
+
+/** Tangent directions this close (sine of the angle) count as one smooth joint. */
+const SMOOTH = 1e-6;
+
 type Open = Extract<SketchEntity, { type: 'line' } | { type: 'arc' }>;
 
 /**
@@ -58,6 +99,28 @@ export function chainOf(data: SketchData, id: SketchEntityId): Chain | undefined
   };
   for (const c of Object.values(data.constraints)) {
     if (c.type === 'coincident') parent.set(find(c.a), find(c.b));
+  }
+  // Projected curves (P2-09) carry no constraints between them, but the edges of a projected
+  // face outline meet where the model's edges do: their ends at the same place are joined too
+  // (P3-17). Only projected curves: two sketched lines that merely end at one spot aren't.
+  const projected = projectedCurves(data);
+  if (projected.has(id)) {
+    const loose: { point: string; at: Vec2 }[] = [];
+    for (const [key, e] of Object.entries(data.entities)) {
+      if (!projected.has(key) || (e.type !== 'line' && e.type !== 'arc')) continue;
+      for (const point of [e.start, e.end]) {
+        const at = pointOf(data, point);
+        if (at) loose.push({ point, at });
+      }
+    }
+    for (let i = 0; i < loose.length; i++) {
+      for (let j = i + 1; j < loose.length; j++) {
+        const [p, q] = [loose[i], loose[j]] as [(typeof loose)[0], (typeof loose)[0]];
+        if (dist(p.at, q.at) <= PROJECTED_JOINT && find(p.point) !== find(q.point)) {
+          parent.set(find(p.point), find(q.point));
+        }
+      }
+    }
   }
   const ends = new Map<string, { curve: SketchEntityId; point: SketchEntityId }[]>();
   for (const [key, e] of Object.entries(data.entities)) {
@@ -342,6 +405,24 @@ export function offset(
       const joint: SketchConstraint =
         reversed === undefined ? { type: c.type, a, b: bb } : { type: c.type, a, b: bb, reversed };
       b.constrain(joint);
+    }
+    // A projected outline has no tangent constraints, but where its curves run smoothly into
+    // each other (a rounded corner) the offset's must too, or the pieces could slide (P3-17).
+    const projected = projectedCurves(data);
+    for (let i = 0; i < joints; i++) {
+      const j = (i + 1) % chain.links.length;
+      const [li, lj] = [chain.links[i] as ChainLink, chain.links[j] as ChainLink];
+      if (!projected.has(li.id) || !projected.has(lj.id)) continue;
+      const [ei, ej] = [data.entities[li.id], data.entities[lj.id]];
+      if (!ei || !ej || (ei.type === 'line' && ej.type === 'line')) continue;
+      if (!smoothJoint(data, li, lj)) continue;
+      const [a, bb] = [(made[i] as (typeof made)[0]).id, (made[j] as (typeof made)[0]).id];
+      const reversed = tangentReversed(b.view(), a, bb);
+      b.constrain(
+        reversed === undefined
+          ? { type: 'tangent', a, b: bb }
+          : { type: 'tangent', a, b: bb, reversed },
+      );
     }
   }
 

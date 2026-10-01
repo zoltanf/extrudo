@@ -11,12 +11,18 @@
  * **Bed contact is not an overhang**: a triangle whose corners all lie at the lowest level of
  * the model along `d` (the plate the model would sit on) has nothing under it to support.
  *
+ * **The down direction can be a picked flat face** (P3-17): its outward normal is "down", the way
+ * Place on Bed turns it, and the face's own plane is the bed (faces lying on it are bed contact,
+ * whether or not it is the model's lowest level). The face is a persistent reference, so the
+ * direction follows the model.
+ *
  * The normal of a triangle is the mean of its three node normals (the kernel's exact surface
  * normals, so a cylinder's triangles differ from each other as the surface does), which is
  * also what the shader interpolates.
  */
-import type { BodyId } from '@extrudo/core';
+import type { BodyId, GeomRef } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
+import { sectionFrame } from '../section/clip';
 
 export type Vec3 = readonly [number, number, number];
 
@@ -49,6 +55,11 @@ export interface OverhangState {
   /** An expression in degrees, 0…90 ("45 deg", "limit"). */
   angle: string;
   down: DownId;
+  /**
+   * A flat face that goes down (a persistent reference). While present it replaces `down`: the
+   * direction is the face's outward normal and the bed is its plane.
+   */
+  face?: GeomRef;
   /** The view is shaded. */
   on: boolean;
 }
@@ -65,6 +76,24 @@ export interface OverhangView {
 
 export function downVector(id: DownId): Vec3 {
   return (DOWN_DIRECTIONS.find((d) => d.id === id) ?? DOWN_DIRECTIONS[0]).vector;
+}
+
+/**
+ * The direction and bed level a picked face gives: its outward normal as "down" and its plane as
+ * the bed. Undefined for a face the model no longer has.
+ */
+export function faceDown(
+  face: GeomRef,
+  bodies: Readonly<Record<string, BodyMesh>>,
+): { down: Vec3; bed: number } | undefined {
+  const frame = sectionFrame(face, { bodies });
+  if (!frame) return undefined;
+  const [x, y, z] = frame.normal;
+  const length = Math.hypot(x, y, z);
+  if (length === 0) return undefined;
+  const down: Vec3 = [x / length, y / length, z / length];
+  const o = frame.origin;
+  return { down, bed: o[0] * down[0] + o[1] * down[1] + o[2] * down[2] };
 }
 
 /** The threshold for an angle in degrees. */
@@ -178,8 +207,13 @@ export function overhangSummary(
   state: OverhangState,
   degrees: number | undefined,
   report: OverhangReport | undefined,
+  /** The picked face's direction, when the state has one and the model still has it. */
+  faceVector?: Vec3,
 ): string {
-  const base = `down=${state.down} angle=${degrees === undefined ? '?' : round(degrees)}`;
+  const down = state.face
+    ? `face(${faceVector ? faceVector.map((x) => round(x)).join(',') : '?'})`
+    : state.down;
+  const base = `down=${down} angle=${degrees === undefined ? '?' : round(degrees)}`;
   if (!report) return `${base} off`;
   return `${base} faces=${report.faces} triangles=${report.triangles} area=${round(report.area)} bed=${report.bed}`;
 }

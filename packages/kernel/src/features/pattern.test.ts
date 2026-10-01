@@ -670,6 +670,42 @@ describe('patterns of features', { timeout: 120_000 }, () => {
     expect(shapeOf('L:0').volume).toBeLessThan(100 * 100 * 10 - 3 * HOLE_VOLUME);
   });
 
+  it('overlapping holes are cut a colour class at a time: the union of the circles, named', async () => {
+    // Five 8 mm holes 4 mm apart (a chain: two classes). The cut is the union of the circles:
+    // at each x the chord of the nearest centre, integrated.
+    const centres = [20, 24, 28, 32, 36];
+    let area = 0;
+    const step = 0.001;
+    for (let x = 16; x < 40; x += step) {
+      const d = Math.min(...centres.map((c) => Math.abs(x + step / 2 - c)));
+      area += 2 * Math.sqrt(Math.max(0, 16 - d * d)) * step;
+    }
+    const result = ok(
+      await run([
+        ...plate(),
+        hole('H', 20, 50),
+        rect('P', { features: ['H'], direction1: AXIS_X, count1: '5', distance1: '4 mm' }),
+      ]),
+    );
+    expect(shapeOf('L:0').valid).toBe(true);
+    expect(shapeOf('L:0').volume).toBeCloseTo(100 * 100 * 10 - 10 * area, 1);
+    // The ghost is one shape of all five, and it can't be repeated again.
+    const instances = namesOf(result, 'L:0', 'face').filter((n) => n.startsWith('pattern:P:'));
+    // Plate (6) less the top and bottom plus the slot's: the same 14 faces as with the holes fused.
+    expect(shapeOf('L:0').faces).toBe(14);
+    for (const label of ['1', '2', '3', '4']) {
+      expect(instances.some((n) => n.startsWith(`pattern:P:${label}:from:`))).toBe(true);
+    }
+    const again = await run([
+      ...plate(),
+      hole('H', 20, 50),
+      rect('P', { features: ['H'], direction1: AXIS_X, count1: '5', distance1: '4 mm' }),
+      rect('Q', { features: ['P'], direction1: AXIS_Y, count1: '2', distance1: '20 mm' }),
+    ]);
+    expect(status(again, 'Q').status).toBe('error');
+    expect(status(again, 'Q').message).toMatch(/overlap/);
+  });
+
   it('several features at once, each keeping its operation', async () => {
     const result = ok(
       await run([
@@ -894,6 +930,25 @@ describe('performance', { timeout: 300_000 }, () => {
         distance2: '5 mm',
       }),
     ]);
+    expect(shapeOf('L:0').valid).toBe(true);
+  });
+
+  it('overlapping bosses: a 10 × 10 grid whose instances interfere', async () => {
+    await time('overlapping bosses 10 x 10', [
+      ...block('L', 0, 0, 120, 120, 10),
+      boss('B', 10, 10),
+      rect('P2', {
+        features: ['B'],
+        direction1: AXIS_X,
+        count1: '10',
+        distance1: '4 mm',
+        direction2: AXIS_Y,
+        count2: '10',
+        distance2: '4 mm',
+      }),
+    ]);
+    // Boxes 6 mm square at 4 mm pitch cover 42 x 42 mm, 5 mm high.
+    expect(shapeOf('L:0').volume).toBeCloseTo(120 * 120 * 10 + 42 * 42 * 5, 3);
     expect(shapeOf('L:0').valid).toBe(true);
   });
 

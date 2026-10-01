@@ -677,7 +677,9 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   first; an action's optional `available()` says whether it still applies
   (Show for a hidden sketch), else its button is disabled; clear all; Esc
   closes and returns focus; session only.
-- [ ] **P3-17 Polish: open items carried from Phase 2 and 3.** Added
+- [x] **P3-17 Polish: open items carried from Phase 2 and 3.** Done
+  2026-10-01 in two parts (part 1: items up to the Measure bullet and the
+  section clipping; part 2: the rest, one heap item moved to P4-12). Added
   2026-09-30 by the owner, to run after P3-08 and before P3-12. Small UX gaps
   the ADRs left open:
   - ~~**First, two bugs the fuzzer found** in B4 and B5~~ **Done 2026-10-01**
@@ -701,31 +703,33 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
     (ADR-0042).
   - Selection fields name a single pick ("Line · Sketch1", not "1 sketch
     curve"); origin axes are drawn while an axis field takes picks (ADR-0029).
-  - Offset follows a projected face outline: projected curves chain by
-    shared endpoints in `chainOf` (ADR-0031, ADR-0039).
+  - ~~Offset follows a projected face outline: projected curves chain by
+    shared endpoints in `chainOf` (ADR-0031, ADR-0039).~~ **Done (part 2)**;
+    B2 uses it.
   - The notification panel re-reads `available()` when the document changes
     (ADR-0041).
   - Measure: sketch entities and origin geometry as targets; debounce the
     status bar's "Selection size" (ADR-0035).
-  - Place on Bed: a Spin angle about Z, several bodies; Overhang Analysis:
-    the down direction from a picked face (ADR-0048).
+  - ~~Place on Bed: a Spin angle about Z, several bodies; Overhang Analysis:
+    the down direction from a picked face (ADR-0048).~~ **Done (part 2).**
   - Section analysis clips vertex dots and projected sketch curves too
     (ADR-0045).
-  - A checked-in screenshot of the overhang shading, taken in CI's
-    Playwright image (ADR-0048).
-  - Patterns: `count2 × 10` on B5's Rectangular Pattern1 (2 × 20 instances)
-    takes 54-162 s, 90 % in `kernel.distance` from `operate`'s target filter
-    (fuzzer seeds 7 and 2026; ADR-0047 amendment): find targets per instance
-    or by grid, not a distance per body for the whole tool. Then raise the
-    fuzzer's B5 seeds.
-  - Patterns: cut or join interfering instances one colour class of the
-    interference graph at a time instead of tree-fusing them (1.9 s vs
-    3.8 s for 10 × 10 overlapping holes; ADR-0050 §6).
-  - WASM heap growth with a warm cache on ADR-0029's revolve document (about
-    11 MB per 100 recomputes, only when all three revolves run): attribute it
-    per `Kernel` call in a dlmalloc build (ADR-0050 §6, `HEAP_ONLY`).
-  - The feature dialog's OK button key hint: 3.9:1 contrast in the light
-    theme (axe, `KNOWN` in `e2e/a11y.spec.ts`; ADR-0050 §7).
+  - ~~A checked-in screenshot of the overhang shading, taken in CI's
+    Playwright image (ADR-0048).~~ **Done (part 2).**
+  - ~~Patterns: `count2 × 10` on B5's Rectangular Pattern1 (2 × 20
+    instances) takes 54-162 s, 90 % in `kernel.distance` from `operate`'s
+    target filter~~ **Done (part 2)**: targets are found solid by solid, 55 s
+    to 2.4 s; the fuzzer keeps B5's seeds 7 and 2026 (ADR-0047 amendment).
+  - ~~Patterns: cut or join interfering instances one colour class of the
+    interference graph at a time~~ **Done for cuts (part 2)**: overlapping
+    10 × 10 holes 7.7 s to 3.7 s; joins keep the fuse, since colour classes
+    measured slower for them (ADR-0047 amendment).
+  - WASM heap growth with a warm cache on ADR-0029's revolve document:
+    attributed (all of it in `mesh`) but not fixed; moved to **P4-12** with
+    the findings (ADR-0050 amendment).
+  - ~~The feature dialog's OK button key hint: 3.9:1 contrast in the light
+    theme (axe, `KNOWN` in `e2e/a11y.spec.ts`; ADR-0050 §7).~~ **Done
+    (part 2)**; `KNOWN` is empty.
   - Strike open items the ADRs still list that later tasks did: construction
     axes and planes as revolve axes and primitive planes, sketches on
     construction planes (P3-05); Redefine Plane (P2-11); revolve's
@@ -775,6 +779,18 @@ end to end, faster than in Fusion 360.
   - Patterns: a skip list, count and path handles (ADR-0047).
   - A ghost of lost geometry in the view (ADR-0005, -0033); remappable
     marking-menu wedges (ADR-0042).
+  - WASM heap growth with a warm cache (ADR-0029, ADR-0050 §6): about 11 MB
+    per 100 recomputes of the revolve document with all three revolves.
+    Attributed in P3-17 to `mesh` alone (`HEAP_ATTRIBUTE=1`, 4 jumps of
+    16 MB in 1200 calls, every other call flat); cleaning the triangulation
+    after meshing (`BRepTools::Clean`, built in CI) gave 3 jumps instead of
+    4, so it isn't the cure. Ideas left: patch OCCT's mesher block size
+    (`IMeshData::MEMORY_BLOCK_SIZE_HUGE`, 1 MB), a dlmalloc build with
+    `heapTop` inside `mesh()`, recycling the kernel worker when the heap top
+    passes a limit.
+  - Patterns: colour classes made joins slower than fusing the instances
+    (3.9 s against 2.1 s for overlapping bosses); a cheaper join of many
+    interfering copies (ADR-0047).
 
 ---
 

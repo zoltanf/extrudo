@@ -222,3 +222,53 @@ once per body for the merged tool, and a compound of many solids against
 many bodies grows with both. A bounding-box filter doesn't help (the tool's
 box spans every body); the fix is per-instance targets or the colour-class
 plan already listed under P3-17. The default 200-step run doesn't reach it.
+
+## Amendment (P3-17, part 2): targets solid by solid
+
+The 54 s to 162 s case above is fixed without a facade change. `operate`'s
+automatic targets (`touchingBodies` in `features/operation.ts`, also used by
+every solid feature) are now found in two steps: a body whose (loose) box
+doesn't meet the tool's box is out, and the others are asked **solid by solid
+of the tool**, each solid's own box first, with `kernel.distance` only for the
+pairs whose boxes meet. A tool of one solid keeps the single exact distance.
+The answer is the same; the cost no longer grows with bodies x instances.
+Hole's "holes that reach no body" check does the same box-first test.
+`boxesTouch` moved from `pattern.ts` to `operation.ts`.
+
+Numbers (this machine, B5 with `count2 x 10`, `BENCH=1 pnpm vitest run
+packages/kernel/src/pattern-bench.test.ts`, which also prints the time per
+`Kernel` method): **55.2 s -> 2.4 s** (`kernel.distance` 53 s -> 0.04 s over the
+recompute; x3: 6.3 s -> 1.0 s). The fuzzer's `FUZZ_SEED=7` and `FUZZ_SEED=2026`
+at `FUZZ_STEPS=1000` on B5 now finish in 103 s and 69 s with the slowest step
+at 1.6 s and 2.6 s. The fuzzer keeps both sequences (at its step count + 100)
+and a regression test "B5 recomputes a pattern of 2 x 20 instances in seconds"
+(under 15 s, the warning about separate bodies).
+
+**Colour classes for cuts.** `mergeTools` fused every group of interfering instances
+before the boolean. A pattern of **features that cut** now colours the
+interference graph instead (`toolSet` in `features/pattern.ts`: first fit in
+instance order, instances that touch or overlap are neighbours, at most 8
+classes, else it falls back to fusing) and `operate` cuts the body once per
+class, each class a compound of instances that do not meet (a valid boolean
+argument), each cut on what the last left (`ToolSet` in `features/operation.ts`;
+the passes simplify, so the walls of overlapping instances stay whole: the same
+faces as with the fused tool, 14 in the five-hole slot test). A grid of
+overlapping holes is two classes. Numbers (`pattern.test.ts` timings, this
+machine): overlapping 10 x 10 holes **7.7 s -> 3.7 s**; volume the union of the
+circles (new test, integrated), valid. **Joins keep the fuse**: colour classes
+were measured slower for them (overlapping 10 x 10 bosses 3.9 s against 2.1 s,
+joined touching copies of a body 3.2 s against 1.5 s), because each join then
+fuses into the growing body. So `patternBodies` and the join rounds of
+`replayFeatures` are unchanged, and so are the golden tables.
+
+**Names.** Without interference nothing changes. Where instances of a cut
+overlap, a wall face that the second class splits and `simplify` merges again
+keeps a `#1` where the fused tool gave the plain name (instance 4 of the slot:
+`pattern:P:4:from:(cylinder:H:side:wall)#1`, was without the suffix); related-name
+resolution (ADR-0005) matches them. The preview tool of such a cut is one
+compound of all instances (for drawing and for finding the bodies they touch)
+with `PreviewTool.interferes`, which is not a valid boolean argument, so
+repeating that pattern again is refused ("repeats a tool whose instances
+overlap"); the Hole feature keeps fusing its own holes, since a Hole is
+repeatable. A pattern is not in the dialogs' list of repeatable features, so this
+only shows for a hand-edited document.
