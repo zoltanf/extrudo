@@ -44,6 +44,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import b1 from '../../../fixtures/benchmarks/b1-plate.extrudo?url&inline';
 import b2 from '../../../fixtures/benchmarks/b2-storage-box.extrudo?url&inline';
 import b3 from '../../../fixtures/benchmarks/b3-phone-stand.extrudo?url&inline';
+import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
 import { kernelFeatures } from './features';
 import { Kernel } from './kernel';
 import { loadOcct } from './occt/load';
@@ -434,6 +435,11 @@ describe('fuzzing the benchmark fixtures', () => {
     ['B1', b1],
     ['B2', b2],
     ['B3', b3],
+    // B4 and B5 wait for two bugs this fuzzer found (P3-17): doubling B4's
+    // fillet radius traps OCCT ("null function or function signature
+    // mismatch"), and moving a B5 hole leaves 2 shapes behind in its
+    // rectangular pattern (seeds 20260982, 20260983).
+    ['B7', b7],
   ];
   for (const [name, dataUrl] of cases) {
     it(`${name}: random edits never crash, leak or disagree with a cold recompute`, {

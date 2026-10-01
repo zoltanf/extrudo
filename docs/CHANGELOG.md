@@ -2,6 +2,12 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-30 · **P3-14** (part) Benchmarks B4, B5, B7 (ADR-0039 amendment):
+  a box with a lid that fits by a clearance parameter, a PCB enclosure with
+  screw posts and countersunk lid screws, and a knurled knob, each built
+  through the UI in an e2e spec, parameter-driven, exported as 3MF (closed,
+  sizes and volumes checked; the lid's gap is the clearance) and kept as a
+  fixture the kernel recomputes headless. B6 waits for Draft.
 - 2026-09-30 · **P3-13** Hardening (ADR-0050): a seeded fuzzer makes random
   parameter, dimension and expression edits on the benchmark fixtures and
   recomputes them headless (no crash, leak or cache mismatch in 4500 edits);

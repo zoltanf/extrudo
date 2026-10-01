@@ -1,6 +1,6 @@
 // The benchmark designs of requirements §7 as fixtures (P2-17): the
 // `.extrudo` files under `fixtures/benchmarks/` are what the e2e specs
-// (`e2e/benchmark-b1.spec.ts` to `-b3`) build through the UI and export
+// (`e2e/benchmark-b1.spec.ts` to `-b7`) build through the UI and export
 // (`WRITE_FIXTURES=1 pnpm e2e` rewrites them). Here each one is loaded through
 // core's migrations and recomputed with the real kernel: the bodies, their
 // size and volume are what the parameters give, and changing parameters the
@@ -18,7 +18,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import b1 from '../../../fixtures/benchmarks/b1-plate.extrudo?url&inline';
 import b2 from '../../../fixtures/benchmarks/b2-storage-box.extrudo?url&inline';
 import b3 from '../../../fixtures/benchmarks/b3-phone-stand.extrudo?url&inline';
+import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline';
+import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
+import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
 import { kernelFeatures } from './features';
+import { translation } from './features/matrix';
 import { Kernel } from './kernel';
 import { loadOcct } from './occt/load';
 import { RecomputeEngine } from './recompute/engine';
@@ -62,15 +66,26 @@ async function recompute(doc: ExtrudoDocument): Promise<Done> {
   return result;
 }
 
-/** Size, volume and face count of each body, in creation order. */
+/**
+ * Size, volume and face count of each body, in creation order. The box is
+ * the display mesh's (`measure`'s is loose: it grows by a tolerance around
+ * curved and shelled shapes); its nodes lie on the exact vertices.
+ */
 function bodies(result: Done) {
   return result.bodies.map(({ id, mesh }) => {
     const shape = engine.latestBody(id);
     if (!shape || !mesh) throw new Error(`no body ${id}`);
-    const { volume, bbox } = kernel.measure(shape);
+    const { volume } = kernel.measure(shape);
+    const min = [Infinity, Infinity, Infinity];
+    const max = [-Infinity, -Infinity, -Infinity];
+    const p = mesh.positions;
+    for (let i = 0; i < p.length; i++) {
+      min[i % 3] = Math.min(min[i % 3] as number, p[i] as number);
+      max[i % 3] = Math.max(max[i % 3] as number, p[i] as number);
+    }
     return {
-      size: bbox.max.map((v, k) => Number((v - (bbox.min[k] as number)).toFixed(3))),
-      min: bbox.min.map((v) => Number(v.toFixed(3)) + 0),
+      size: max.map((v, k) => Number((v - (min[k] as number)).toFixed(3))),
+      min: min.map((v) => Number(v.toFixed(3)) + 0),
       volume,
       faces: mesh.faceRanges.length / 2,
     };
@@ -89,6 +104,9 @@ function withParameters(doc: ExtrudoDocument, values: Record<string, string>): E
 }
 
 const featureNames = (doc: ExtrudoDocument) => doc.features.map((f) => f.name);
+/** The stored names of the computed bodies, in creation order. */
+const bodyNames = (doc: ExtrudoDocument, result: Done) =>
+  result.bodies.map(({ id }) => doc.bodies[id]?.name);
 
 describe('B1 plate with four holes', () => {
   it('is a sketch with its parameters, and no body', async () => {
@@ -168,5 +186,176 @@ describe('B3 phone stand', () => {
     expect(stand?.size[0]).toBe(80);
     // The rest is 80 wide now; the base plate stays 60 wide.
     expect(stand?.volume).toBeCloseTo(60 * 80 * 10 + 80 * 10 * 60, 3);
+  });
+});
+
+describe('B4 box with a lid that fits', () => {
+  /** The box: a block less the cavity, less the bottom chamfer (four mitred prisms). */
+  const boxVolume = (length: number, width: number) =>
+    length * width * 30 -
+    (length - 4) * (width - 4) * 28 -
+    (0.8 ** 2 * (length + width) - (4 * 0.8 ** 3) / 3);
+
+  /**
+   * How the lid sits on the box: the volume they share where it rests (none:
+   * it fits), and the gap once it is lifted 1 mm off the rim, which is the
+   * lip's clearance from the walls on its tightest side.
+   */
+  function fit() {
+    const [box, lid] = result.bodies.map(({ id }) => engine.latestBody(id));
+    if (!box || !lid) throw new Error('two bodies expected');
+    using scope = kernel.scope();
+    const common = scope.track(kernel.common(box, lid));
+    const lifted = scope.track(kernel.transform(lid, translation([0, 0, 1])));
+    return {
+      overlap: kernel.measure(common.shape).volume,
+      gap: kernel.distance(box, lifted.shape),
+    };
+  }
+
+  let result: Done;
+
+  it('is two bodies: a box shelled open and a lid whose lip is `clearance` inside it', async () => {
+    const doc = load(b4);
+    expect(doc.name).toBe('B4 Box with lid');
+    expect(featureNames(doc)).toEqual([
+      'Offset Plane1',
+      'Box1',
+      'Shell1',
+      'Chamfer1',
+      'Box2',
+      'Box3',
+      'Fillet1',
+    ]);
+    result = await recompute(doc);
+    expect(bodyNames(doc, result)).toEqual(['Box', 'Lid']);
+    const [box, lid] = bodies(result);
+    expect(box).toMatchObject({ size: [60, 40, 30], min: [-30, -20, 0], faces: 15 });
+    expect(box?.volume).toBeCloseTo(boxVolume(60, 40), 3);
+    // The plate on the rim, the lip 5 mm down into the box, four fillet faces on top.
+    expect(lid).toMatchObject({ size: [60, 40, 8], min: [-30, -20, 25], faces: 15 });
+    const block = 60 * 40 * 3 + 55.6 * 35.6 * 5;
+    // The fillets take about r² (1 − π/4) along each top edge, a little less at the corners.
+    const fillet = 1.5 ** 2 * (1 - Math.PI / 4) * 200;
+    expect(block - (lid?.volume ?? 0)).toBeGreaterThan(fillet * 0.95);
+    expect(block - (lid?.volume ?? 0)).toBeLessThan(fillet);
+    const { overlap, gap } = fit();
+    expect(overlap).toBeCloseTo(0, 6);
+    expect(gap).toBeCloseTo(0.2, 6);
+  });
+
+  it('still fits with another clearance and a longer box', async () => {
+    const doc = withParameters(load(b4), { clearance: '0.5 mm', length: '70 mm', height: '40 mm' });
+    result = await recompute(doc);
+    const [box, lid] = bodies(result);
+    expect(box).toMatchObject({ size: [70, 40, 40], faces: 15 });
+    expect(box?.volume).toBeCloseTo(
+      70 * 40 * 40 - 66 * 36 * 38 - (0.8 ** 2 * 110 - (4 * 0.8 ** 3) / 3),
+      3,
+    );
+    // The offset plane rides up with the height, the lid on it.
+    expect(lid).toMatchObject({ size: [70, 40, 8], min: [-35, -20, 35], faces: 15 });
+    const { overlap, gap } = fit();
+    expect(overlap).toBeCloseTo(0, 6);
+    expect(gap).toBeCloseTo(0.5, 6);
+  });
+});
+
+describe('B5 PCB enclosure', () => {
+  const INSERT = Math.PI * 2 * 2 * 6.5;
+  /** A countersunk M3 clearance hole through a lid: the hole and the 90° cone over it. */
+  const countersunk = (lid: number) => {
+    const [r, R] = [1.7, 3.35];
+    const h = R - r;
+    return (
+      Math.PI * r * r * lid + (Math.PI * h * (R * R + R * r + r * r)) / 3 - Math.PI * r * r * h
+    );
+  };
+  const trayVolume = (length: number, width: number, height: number) =>
+    length * width * height -
+    (length - 4) * (width - 4) * (height - 2) +
+    4 * Math.PI * 3.5 * 3.5 * (height - 2) -
+    4 * INSERT;
+
+  it('is a tray with four posts and inserts, and a lid with four countersunk holes', async () => {
+    const doc = load(b5);
+    expect(doc.name).toBe('B5 PCB enclosure');
+    expect(featureNames(doc)).toEqual([
+      'Box1',
+      'Shell1',
+      'Cylinder1',
+      'Hole1',
+      'Rectangular Pattern1',
+      'Box2',
+      'Hole2',
+      'Hole3',
+      'Mirror1',
+    ]);
+    const result = await recompute(doc);
+    expect(bodyNames(doc, result)).toEqual(['Enclosure', 'Lid']);
+    const [tray, lid] = bodies(result);
+    expect(tray).toMatchObject({ size: [80, 60, 25], faces: 27 });
+    expect(tray?.volume).toBeCloseTo(trayVolume(80, 60, 25), 2);
+    expect(lid).toMatchObject({ size: [80, 60, 3], min: [-40, -30, 25], faces: 14 });
+    expect(lid?.volume).toBeCloseTo(80 * 60 * 3 - 4 * countersunk(3), 2);
+  });
+
+  it('follows the parameters: the posts stay `inset` from the corners', async () => {
+    const doc = withParameters(load(b5), { length: '100 mm', height: '30 mm', lid: '4 mm' });
+    const [tray, lid] = bodies(await recompute(doc));
+    expect(tray).toMatchObject({ size: [100, 60, 30], faces: 27 });
+    expect(tray?.volume).toBeCloseTo(trayVolume(100, 60, 30), 2);
+    expect(lid).toMatchObject({ size: [100, 60, 4], min: [-50, -30, 30], faces: 14 });
+    expect(lid?.volume).toBeCloseTo(100 * 60 * 4 - 4 * countersunk(4), 2);
+  });
+});
+
+describe('B7 knurled knob', () => {
+  /** The area two circles (radii `a`, `b`, centres `d` apart) share. */
+  function lens(a: number, b: number, d: number) {
+    const alpha = Math.acos((d * d + a * a - b * b) / (2 * d * a));
+    const beta = Math.acos((d * d + b * b - a * a) / (2 * d * b));
+    const k = Math.sqrt((-d + a + b) * (d + a - b) * (d - a + b) * (d + a + b));
+    return a * a * alpha + b * b * beta - k / 2;
+  }
+  /**
+   * The cylinder less the chamfer's ring, the grooves and the shaft hole.
+   * Where a groove crosses the chamfer it removes less: under 1 mm³ each.
+   */
+  const knobVolume = (grooves: number, groove: number) =>
+    Math.PI * 15 * 15 * 16 -
+    2 * Math.PI * (15 - 1 / 3) * 0.5 -
+    grooves * lens(15, groove / 2, 15) * 16 -
+    Math.PI * 3 * 3 * 10;
+
+  it('is one body: revolved, chamfered, 24 grooves, a shaft hole', async () => {
+    const doc = load(b7);
+    expect(doc.name).toBe('B7 Knurled knob');
+    expect(featureNames(doc)).toEqual([
+      'Sketch1',
+      'Revolve1',
+      'Chamfer1',
+      'Cylinder1',
+      'Circular Pattern1',
+      'Hole1',
+    ]);
+    const result = await recompute(doc);
+    expect(bodyNames(doc, result)).toEqual(['Knob']);
+    const [knob] = bodies(result);
+    // Top, bottom, chamfer, a rim piece and a groove wall per groove, the shaft's wall and floor.
+    expect(knob?.faces).toBe(53);
+    expect(knob?.size[2]).toBeCloseTo(16, 3);
+    const volume = knob?.volume ?? 0;
+    expect(volume).toBeGreaterThan(knobVolume(24, 1.6));
+    expect(volume).toBeLessThan(knobVolume(24, 1.6) + 24);
+  });
+
+  it('follows the parameters the pattern and the groove read', async () => {
+    const doc = withParameters(load(b7), { grooves: '18', groove: '1.8 mm' });
+    const [knob] = bodies(await recompute(doc));
+    expect(knob?.faces).toBe(3 + 2 * 18 + 2);
+    const volume = knob?.volume ?? 0;
+    expect(volume).toBeGreaterThan(knobVolume(18, 1.8));
+    expect(volume).toBeLessThan(knobVolume(18, 1.8) + 18);
   });
 });

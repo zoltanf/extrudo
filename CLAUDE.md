@@ -24,7 +24,8 @@ fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-03
 P3-04 (hole), P3-07 (patterns, mirrored features), P3-09 (section
 analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus),
 P3-13 (hardening) and P3-16 (notification history) are done; P3-08 is
-half done (Press/Pull and Offset face; Split body, Scale and Draft remain).
+half done (Press/Pull and Offset face; Split body, Scale and Draft remain)
+and P3-14 partly (benchmarks B4, B5 and B7; B6 waits for Draft).
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -324,7 +325,10 @@ ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
 `.extrudo` fixtures the app exported (`fixtures/benchmarks/`,
 `WRITE_FIXTURES=1` rewrites them), recomputed headless in
 `packages/kernel/src/benchmarks.test.ts` (B3 merges its two bodies with a
-real Combine since P3-06). ADR-0038
+real Combine since P3-06). Its amendment (P3-14) adds B4, B5 and B7 the
+same way, B4 and B5 from primitives so every parameter changes headless
+too; B4's headless test checks the lid's fit exactly (no shared volume,
+lifted 1 mm it is `clearance` from the box). ADR-0038
 (P3-01) added fillet: `packages/core/src/fillet.ts` (up to 8 edge sets as
 plain inputs `edges`/`radius`, `edges2`/`radius2` …: `filletSets`,
 `filletInputs`), the evaluator `packages/kernel/src/features/fillet.ts`
@@ -564,7 +568,7 @@ ways, cut into it, for faces and for profiles of a sketch on a face. Patterns
 of faces did not fall out of Offset Face and stay open.
 Next, one task at a time (not parallel tracks, since 2026-09-30): the
 second half of **P3-08** (split body, scale, draft), **P3-17** (polish:
-open items from the ADRs), P3-12, P3-14, then P3-15 after the owner's
+open items from the ADRs), P3-12, P3-14 (B6 once Draft exists), then P3-15 after the owner's
 decisions. Carried-over items are listed under those tasks in
 `docs/03-roadmap.md`; deeper ones are the P4-12 backlog.
 
@@ -1238,6 +1242,27 @@ them. Notes further down that name a machine apply to that machine only.
   takes about 20 s alone (B3 about 30 s); on the Ubuntu machine run with
   `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` (no Playwright
   browser installed there).
+- **Benchmarks B4–B7** (`e2e/benchmark-b4.spec.ts`, `-b5`, `-b7`, P3-14; B6
+  waits for Draft): shared steps in `e2e/benchmark-helpers.ts`:
+  `primitive(page, 'Box', fields, operation)` fills a primitive on XY and
+  commits it, `turnView(page, 'Shift+3')` turns and returns a settled
+  `projector`, `clickEdge`/`clickWhere` poll `data-model-hover` before the
+  click, `pickAxis` tries points along an origin axis, `extentOf(mesh,
+  keep)` measures the nodes that pass a filter (B4's lip and cavity), and
+  `solidTab(page)` returns after `exportModel` (which leaves the 3D Print tab
+  open, where the Parameters button isn't). While a Hole's or primitive's
+  Plane field picks, the view has no `data-model-hover`: `clickAt` with a
+  short wait instead. Faces seen from below (Shift+3) sit under the dialog
+  on the right at the fitted zoom: `zoomOutTo` first. An origin axis behind
+  a body isn't pickable: try its points in front (negative Y in the home
+  view). The YZ plane inside a closed body can't be clicked: hide the body
+  that covers it (B5 hides the lid over the open tray). A construction
+  plane's field text is its name ("Offset Plane1"); pick it where it lies
+  over an open cavity (it wins over the floor behind it). In a sketch,
+  dimensioning a rectangle side moves the opposite side: pick the next
+  side where it is now. Body rows rename with `renameBody` (F2); the 3MF's
+  object names are the body names. A B6 spec would add Draft and fillets
+  on intersecting edges to these steps.
 - **Combine and Move/Mirror e2e** (`e2e/combine.spec.ts`,
   `e2e/move-mirror.spec.ts`, P3-06): the Transform group's tiles are the
   buttons "Move", "Mirror" and "Combine" (`exact: true`: a chip "Move1"

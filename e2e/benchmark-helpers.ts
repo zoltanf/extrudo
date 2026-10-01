@@ -9,6 +9,7 @@ import {
   readStl,
   type TriangleMesh,
 } from '../packages/io/src/index';
+import { kernelReady, pickTool, projector } from './helpers';
 
 // Shared steps of the benchmark specs (B2, B3: requirements §7): user
 // parameters, sketch views that clear the palette, camera settling, and the
@@ -219,4 +220,148 @@ export async function exportProject(page: Page, fixture: string): Promise<Buffer
     await writeFile(join(dir, fixture), bytes);
   }
   return bytes;
+}
+
+// Steps of the v0.3 benchmarks (B4, B5, B7: P3-14): model-mode picks in a
+// settled view, primitives and dialogs filled with expressions, and parts of
+// an exported mesh.
+
+/** A world (mm) → page (px) mapping of the view. */
+export type At = (p: readonly [number, number, number]) => { x: number; y: number };
+
+/** Turns the view with a shortcut (`Shift+1` home, `Shift+3` bottom…), waits for it to settle and maps it. */
+export async function turnView(page: Page, key: string): Promise<At> {
+  await page.keyboard.press(key);
+  await page.waitForTimeout(300);
+  await settled(viewportOf(page));
+  return projector(viewportOf(page));
+}
+
+/** Hovers a world point until the view reports `hover` under the pointer, then clicks there. */
+export async function clickWhere(
+  page: Page,
+  at: At,
+  p: readonly [number, number, number],
+  hover: RegExp,
+  dy = 0,
+) {
+  const { x, y } = at(p);
+  // Each poll moves the pointer again, a pixel up or down, so a pick on the edge of the
+  // tolerance still lands.
+  let nudge = 0;
+  await expect
+    .poll(async () => {
+      await page.mouse.move(x, y + dy + (nudge++ % 2));
+      return attr(viewportOf(page), 'data-model-hover');
+    })
+    .toMatch(hover);
+  await page.mouse.click(x, y + dy + ((nudge - 1) % 2));
+}
+
+/** Clicks an edge at its world midpoint, a couple of pixels off (as the selection tests do). */
+export const clickEdge = (page: Page, at: At, midpoint: readonly [number, number, number]) =>
+  clickWhere(page, at, midpoint, /^edge:/, 2);
+
+/** Clicks a plane's square (or whatever is in front) while a dialog's field picks planes. */
+export async function clickAt(page: Page, at: At, p: readonly [number, number, number]) {
+  const { x, y } = at(p);
+  await page.mouse.move(x, y);
+  await page.waitForTimeout(150);
+  await page.mouse.click(x, y);
+}
+
+/** Hovers points along an origin axis until the view reports it, then clicks. */
+export async function pickAxis(page: Page, at: At, axis: 'x' | 'y' | 'z', along: number[]) {
+  const viewport = viewportOf(page);
+  for (const t of along) {
+    const p = at(axis === 'x' ? [t, 0, 0] : axis === 'y' ? [0, t, 0] : [0, 0, t]);
+    await page.mouse.move(p.x, p.y);
+    await page.waitForTimeout(150);
+    if ((await viewport.getAttribute('data-model-hover')) === `axis:origin:${axis}`) {
+      await page.mouse.click(p.x, p.y);
+      return;
+    }
+  }
+  throw new Error(`no point of the ${axis} axis can be picked`);
+}
+
+/** Fills a dialog's textboxes by their names (exact). */
+export async function fill(dialog: Locator, fields: Record<string, string>) {
+  for (const [name, value] of Object.entries(fields)) {
+    await dialog.getByRole('textbox', { name, exact: true }).fill(value);
+  }
+}
+
+/** Waits for a dialog's preview, presses OK and waits for the recompute. */
+export async function ok(page: Page, dialog: Locator) {
+  await expect(dialog).toHaveAttribute('data-preview-status', /^(ok|warning)$/, {
+    timeout: 15_000,
+  });
+  await expect(dialog).toHaveAttribute('data-dialog-valid', 'true');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+}
+
+/** Opens a primitive from Solid › Create (`Box`, `Cylinder`…) and returns its dialog. */
+export async function startPrimitive(page: Page, label: string) {
+  await pickTool(page, label);
+  const dialog = page.getByRole('region', { name: `${label} dialog` });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** A primitive on its default plane (XY) with its fields and operation, committed. */
+export async function primitive(
+  page: Page,
+  label: string,
+  fields: Record<string, string>,
+  operation?: 'new-body' | 'join' | 'cut' | 'intersect',
+) {
+  const dialog = await startPrimitive(page, label);
+  await fill(dialog, fields);
+  if (operation) {
+    await dialog.getByRole('combobox', { name: 'Operation' }).selectOption(operation);
+  }
+  await ok(page, dialog);
+}
+
+/** Renames a body in the browser's Bodies folder (F2 on its row). */
+export async function renameBody(page: Page, from: string, to: string) {
+  const browser = page.getByRole('complementary', { name: 'Browser' });
+  await browser.getByRole('button', { name: from, exact: true }).focus();
+  await page.keyboard.press('F2');
+  const field = browser.getByRole('textbox', { name: `Rename ${from}` });
+  await field.fill(to);
+  await field.press('Enter');
+  await expect(browser.getByRole('button', { name: to, exact: true })).toBeVisible();
+}
+
+/** The extent (size along x, y, z, and the lowest corner) of a mesh's nodes that pass `keep`. */
+export function extentOf(
+  mesh: TriangleMesh,
+  keep: (x: number, y: number, z: number) => boolean = () => true,
+) {
+  type Vec3 = [number, number, number];
+  const min: Vec3 = [Infinity, Infinity, Infinity];
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity];
+  const p = mesh.positions;
+  for (let i = 0; i + 2 < p.length; i += 3) {
+    const v = [p[i] as number, p[i + 1] as number, p[i + 2] as number];
+    if (!keep(v[0] as number, v[1] as number, v[2] as number)) continue;
+    for (let k = 0; k < 3; k++) {
+      min[k] = Math.min(min[k] as number, v[k] as number);
+      max[k] = Math.max(max[k] as number, v[k] as number);
+    }
+  }
+  const size: Vec3 = [max[0] - min[0], max[1] - min[1], max[2] - min[2]];
+  return { min, max, size };
+}
+
+/** Back to the Solid tab (a model export leaves the 3D Print tab open). */
+export async function solidTab(page: Page) {
+  await page
+    .getByRole('tablist', { name: 'Toolbar tabs' })
+    .getByRole('tab', { name: 'Solid' })
+    .click();
 }
