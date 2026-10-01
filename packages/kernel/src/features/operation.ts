@@ -47,11 +47,25 @@ export function explicitBodies(
   return ids;
 }
 
+/**
+ * A tool made of many solids that may overlap each other (P3-17: a pattern's
+ * instances for a cut). `shape` holds all of them (for drawing and for finding the bodies
+ * they touch); `passes` are compounds of solids that don't interfere, each a
+ * valid boolean argument, which a join or cut applies one after the other: the
+ * result is the same as one boolean with their union, without fusing them
+ * first. A tool of one pass is an ordinary tool.
+ */
+export interface ToolSet extends NamedShape {
+  passes: readonly NamedShape[];
+  /** More than one pass: `shape` is not a valid boolean argument. */
+  interferes: boolean;
+}
+
 export function operate(
   ctx: EvalContext,
   scope: ShapeScope,
   settings: OperationSettings,
-  tool: NamedShape,
+  tool: NamedShape | ToolSet,
   participants: BodyId[] | undefined,
   warnings: string[],
   words: OperationWords,
@@ -61,9 +75,15 @@ export function operate(
   if (operation === 'new-body') return newBodies(ctx, scope, tool, words);
 
   const targets = participants ?? touchingBodies(ctx, scope, tool.shape);
+  const set = 'passes' in tool && tool.interferes ? tool : undefined;
   // Kept only on success: a failure below must release the tool with the scope.
   const preview = (): PreviewTool[] => [
-    { shape: scope.keep(tool.shape), style: operation, names: tool.names },
+    {
+      shape: scope.keep(tool.shape),
+      style: operation,
+      names: tool.names,
+      ...(set && { interferes: true }),
+    },
   ];
   const named = (id: BodyId): NamedShape => ({
     shape: ctx.bodies.get(id) as ShapeHandle,
@@ -77,6 +97,8 @@ export function operate(
       warnings.push(`Nothing to join to, so the ${words.noun} made a new body.`);
       return { ...newBodies(ctx, scope, tool, words), previewTools: preview() };
     }
+    // (A tool set of overlapping instances is only made for cuts: joins fuse them first.)
+    if (set) throw new KernelError(`Overlapping instances can't be joined in passes.`);
     let joined = namedBoolean(kernel, 'fuse', named(first), tool, { ...options, simplify: true });
     scope.track(joined.shape);
     for (const id of rest) {
@@ -90,11 +112,28 @@ export function operate(
   }
 
   const op = operation === 'cut' ? 'cut' : 'common';
+  if (set && op === 'common') {
+    // The intersection with a union isn't a sequence of intersections.
+    throw new KernelError(`Overlapping instances can't be intersected. ${words.check}`);
+  }
   const changed = new Map<BodyId, NamedShape | undefined>();
   for (const id of targets) {
     const before = named(id);
-    const result = namedBoolean(kernel, op, before, tool, options);
-    scope.track(result.shape);
+    let result = before;
+    // One boolean per pass, each on what the last left; a pass that removes the body ends it.
+    for (const pass of set?.passes ?? [tool]) {
+      // Passes simplify (merge faces the next pass split again): the fused tool they stand
+      // in for had its faces merged, so the walls of overlapping instances stay whole.
+      result = namedBoolean(
+        kernel,
+        op,
+        result,
+        pass,
+        set ? { ...options, simplify: true } : options,
+      );
+      scope.track(result.shape);
+      if (set && kernel.measure(result.shape).volume <= 0) break;
+    }
     const was = kernel.measure(before.shape).volume;
     const now = kernel.measure(result.shape).volume;
     const eps = 1e-6 * Math.max(1, Math.abs(was));

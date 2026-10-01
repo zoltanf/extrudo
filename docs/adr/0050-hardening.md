@@ -314,3 +314,9 @@ about 5.3:1).
 85 % opacity like the Esc hints of the other accent buttons (4.9:1 in the light
 theme, was 3.9:1 at 70 %); `KNOWN` in `e2e/a11y.spec.ts` is empty again and the
 audit passes in both themes.
+
+**§6: pattern colour classes.** Done for cuts (ADR-0047 amendment): overlapping
+10 x 10 holes 7.7 s -> 3.7 s in `pattern.test.ts` (the 5.5 s / 3.8 s harness
+numbers above were a different machine and a bare boolean). The B5 case of the
+fuzzer (count2 x 10) was a separate problem, fixed by finding targets solid by
+solid: 55 s -> 2.4 s.

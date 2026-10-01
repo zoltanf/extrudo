@@ -22,7 +22,10 @@
  * Instances that overlap or touch each other can't go into one boolean as a
  * compound (OCCT refuses a compound argument whose solids interfere), so
  * `mergeTools` fuses each group of interfering instances (a tree of
- * booleans) and hands the groups to the boolean as one compound.
+ * booleans) and hands the groups to the boolean as one compound. A **cut** of
+ * features does without the fuse (P3-17, `toolSet`): it colours the
+ * interference graph and cuts one colour class (a compound of instances that
+ * don't meet) at a time.
  */
 import {
   type BodyId,
@@ -53,7 +56,14 @@ import type {
   PreviewTool,
 } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { type Box, boxesTouch, type OperationWords, operate, TOUCH } from './operation';
+import {
+  type Box,
+  boxesTouch,
+  type OperationWords,
+  operate,
+  TOUCH,
+  type ToolSet,
+} from './operation';
 import {
   circularPlacements,
   limitInstances,
@@ -146,12 +156,89 @@ export function mergeTools(
     groups.set(find(i), members);
   });
   const fused = [...groups.values()].map((members) => fuseTree(ctx, scope, members, op));
-  if (fused.length === 1) return fused[0] as NamedShape;
+  return compoundOf(ctx, scope, fused);
+}
 
-  const compound = kernel.compound(fused.map((f) => f.shape));
+/** The most passes a tool set may take; more interference than that is fused instead. */
+const MAX_PASSES = 8;
+
+/**
+ * Copies for a join or cut (P3-17): instances that touch or overlap would have
+ * to be fused into one valid tool (`mergeTools`), which costs about as much as
+ * the boolean itself. Instead the **interference graph is coloured** (first fit,
+ * in instance order): each colour class is a compound of instances that don't
+ * meet, a valid boolean argument, and `operate` applies the classes one after
+ * the other: the same result as one boolean with their union. A grid of
+ * overlapping holes is two classes. Without interference it is the one compound
+ * `mergeTools` makes. With more than `MAX_PASSES` classes (a dense knot of
+ * instances) it falls back to fusing.
+ */
+export function toolSet(
+  ctx: EvalContext,
+  scope: ShapeScope,
+  parts: readonly NamedShape[],
+  op: string,
+): ToolSet {
+  const { kernel } = ctx;
+  if (parts.length === 1) {
+    const only = parts[0] as NamedShape;
+    return { ...only, passes: [only], interferes: false };
+  }
+  const boxes = parts.map((p) => kernel.measure(p.shape).bbox);
+  // Who meets whom: boxes that meet, then the exact distance.
+  const meets: number[][] = parts.map(() => []);
+  let interfering = false;
+  for (let i = 0; i < parts.length; i++) {
+    for (let j = i + 1; j < parts.length; j++) {
+      if (!boxesTouch(boxes[i] as Box, boxes[j] as Box)) continue;
+      if (kernel.distance((parts[i] as NamedShape).shape, (parts[j] as NamedShape).shape) > TOUCH) {
+        continue;
+      }
+      (meets[i] as number[]).push(j);
+      (meets[j] as number[]).push(i);
+      interfering = true;
+    }
+  }
+  if (!interfering) {
+    const whole = compoundOf(ctx, scope, parts);
+    return { ...whole, passes: [whole], interferes: false };
+  }
+  // First-fit colouring in instance order (the lowest class no neighbour has).
+  const colour: number[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const taken = new Set((meets[i] as number[]).filter((j) => j < i).map((j) => colour[j]));
+    let c = 0;
+    while (taken.has(c)) c++;
+    colour.push(c);
+  }
+  const classes = Math.max(...colour) + 1;
+  if (classes > MAX_PASSES) {
+    const merged = mergeTools(ctx, scope, parts, op);
+    return { ...merged, passes: [merged], interferes: false };
+  }
+  const passes = Array.from({ length: classes }, (_, c) =>
+    compoundOf(
+      ctx,
+      scope,
+      parts.filter((_, i) => colour[i] === c),
+    ),
+  );
+  // All instances in one shape, for drawing and for finding what they touch.
+  const whole = compoundOf(ctx, scope, parts);
+  return { ...whole, passes, interferes: true };
+}
+
+/** A tool that is one valid shape, as a tool set of one pass. */
+const fused = (tool: NamedShape): ToolSet => ({ ...tool, passes: [tool], interferes: false });
+
+/** Shapes as one compound with their names (a lone shape is returned as it is). */
+function compoundOf(ctx: EvalContext, scope: ShapeScope, parts: readonly NamedShape[]): NamedShape {
+  const { kernel } = ctx;
+  if (parts.length === 1) return parts[0] as NamedShape;
+  const compound = kernel.compound(parts.map((f) => f.shape));
   scope.track(compound);
   const faces: string[] = new Array(kernel.count(compound, 'face')).fill('');
-  for (const part of fused) {
+  for (const part of parts) {
     kernel.locate(part.shape, compound, 'face').forEach((at, k) => {
       if (at >= 0) faces[at] = part.names.faces[k] ?? '';
     });
@@ -226,6 +313,7 @@ function patternBodies(
       }
       return;
     }
+    // Joined copies are fused (a tree) first: measured faster than one fuse per colour class.
     const tool = mergeTools(
       ctx,
       scope,
@@ -303,13 +391,19 @@ export function replayFeatures(
         `${label} doesn't join or cut anything, so there is nothing to repeat. Pattern or mirror its body instead.`,
       );
     }
+    if (tool.interferes) {
+      throw new KernelError(
+        `${label} repeats a tool whose instances overlap, which can't be repeated again. Repeat the feature it repeats, or pattern its body instead.`,
+      );
+    }
     const source: NamedShape = { shape: tool.shape, names: tool.names };
-    const merged = mergeTools(
-      ctx,
-      scope,
-      placements.map((placement) => replicate(ctx, scope, source, placement, op)),
-      op,
-    );
+    const copies = placements.map((placement) => replicate(ctx, scope, source, placement, op));
+    // Cuts go one colour class at a time (half the time of fusing the holes first, in the
+    // overlapping 10 × 10 case); joins fuse the copies first, which was measured faster.
+    const merged =
+      tool.style === 'cut'
+        ? toolSet(ctx, scope, copies, op)
+        : fused(mergeTools(ctx, scope, copies, op));
 
     // The bodies as the last feature left them; new bodies get IDs of their own.
     const before = bodies;
