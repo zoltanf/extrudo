@@ -1486,6 +1486,9 @@ public:
       meshFaces(*s);
       meshEdges(*s, linearDeflection, angularDeflection);
       meshVertices(*s);
+      // EXPERIMENT (P3-17): the data is copied out; drop the triangulations so they don't
+      // outlive the mesher's blocks in the heap.
+      BRepTools::Clean(*s);
       return true;
     } catch (...) {
       clearMesh();
