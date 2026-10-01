@@ -157,7 +157,7 @@ export function FeatureDialogPanel({
             className={valid ? '' : 'opacity-45'}
             onClick={() => controller.ok()}
           >
-            OK <kbd className="font-mono text-xs opacity-70">Enter</kbd>
+            OK <kbd className="font-mono text-xs opacity-85">Enter</kbd>
           </Button>
         </Tooltip>
       </footer>

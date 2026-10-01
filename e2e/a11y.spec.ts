@@ -15,13 +15,7 @@ test.setTimeout(90_000);
  * failing node's HTML, and why. A violation is let through only if every
  * node it names matches an entry.
  */
-const KNOWN: { rule: string; node: string; why: string }[] = [
-  {
-    rule: 'color-contrast',
-    node: '<kbd class="font-mono text-xs opacity-70">Enter</kbd>',
-    why: "The feature dialog OK button's key hint (light theme, 3.9:1) is in features/FeatureDialog.tsx, which P3-04/P3-08 are changing; fix it there (drop the opacity on accent buttons).",
-  },
-];
+const KNOWN: { rule: string; node: string; why: string }[] = [];
 
 async function audit(page: Page, screen: string) {
   const results = await new AxeBuilder({ page })

@@ -307,3 +307,10 @@ about 5.3:1).
 - The fuzzer covers the benchmark fixtures; add new fixtures (B6, when it
   exists) to its list. B4, B5 and B7 are in it since P3-17's first item
   (ADR-0038 and ADR-0047 amendments: the two bugs it found there).
+
+## Amendment (P3-17)
+
+**§7: the OK button hint.** The feature dialog's "Enter" hint on the OK button is at
+85 % opacity like the Esc hints of the other accent buttons (4.9:1 in the light
+theme, was 3.9:1 at 70 %); `KNOWN` in `e2e/a11y.spec.ts` is empty again and the
+audit passes in both themes.
