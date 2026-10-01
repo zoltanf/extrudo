@@ -12,6 +12,8 @@ import { createDocumentStore } from './stores';
 import { fid } from './testing';
 import {
   moveFeature,
+  moveFeatures,
+  moveFeaturesProblem,
   moveProblem,
   referencedFeatures,
   replaceReferences,
@@ -176,6 +178,67 @@ describe('moveFeature', () => {
       "Can't move Sketch2 after Extrude2: Extrude2 uses Sketch2.",
     );
     expect(order(store.getState().doc)).toBe('S1 E1 S2 E2 S3');
+  });
+});
+
+describe('moveFeatures (P3-17)', () => {
+  it('moves several features as a block, in their order, as one undo step', () => {
+    const store = createDocumentStore(timeline());
+    const s = store.getState;
+    // Sketch2 and Extrude2 together go to the end, after Sketch3.
+    s().dispatch(moveFeatures({ ids: [fid('E2'), fid('S2')], index: 3 }));
+    expect(order(s().doc)).toBe('S1 E1 S3 S2 E2');
+    expect(s().undoLabel).toBe('Move features');
+    expect(s().doc.timelineMarker).toBe(5);
+    // Sketch1 and Sketch3 to the front (Sketch3 lands after Sketch1, keeping the order).
+    s().dispatch(moveFeatures({ ids: [fid('S3'), fid('S1')], index: 0 }));
+    expect(order(s().doc)).toBe('S1 S3 E1 S2 E2');
+    s().undo();
+    s().undo();
+    expect(order(s().doc)).toBe('S1 E1 S2 E2 S3');
+  });
+
+  it('refuses a block that would break a reference, naming it', () => {
+    const doc = timeline();
+    // Sketch2 and Extrude2 before Extrude1, which Sketch2 sits on.
+    expect(moveFeaturesProblem(doc, [fid('S2'), fid('E2')], 0)).toBe(
+      "Can't move Sketch2 before Extrude1: Sketch2 uses Extrude1.",
+    );
+    // Sketch1 and Sketch3 after Extrude1: Extrude1 uses Sketch1.
+    expect(moveFeaturesProblem(doc, [fid('S1'), fid('S3')], 3)).toBe(
+      "Can't move Sketch1 after Extrude1: Extrude1 uses Sketch1.",
+    );
+    expect(moveFeaturesProblem(doc, [fid('S1'), fid('E1')], 4)).toBe(
+      "Can't move 2 features to position 4.",
+    );
+    expect(moveFeaturesProblem(doc, [fid('S1'), fid('E1')], 3)).toBe(
+      "Can't move Extrude1 after Sketch2: Sketch2 uses Extrude1.",
+    );
+    expect(moveFeaturesProblem(doc, [fid('S2'), fid('E2')], 3)).toBeUndefined();
+    // One feature: moveProblem's wording.
+    expect(moveFeaturesProblem(doc, [fid('S2')], 0)).toBe(moveProblem(doc, fid('S2'), 0));
+    const store = createDocumentStore(doc);
+    expect(() =>
+      store.getState().dispatch(moveFeatures({ ids: [fid('S1'), fid('E1')], index: 3 })),
+    ).toThrow(CommandError);
+    expect(store.getState().canUndo).toBe(false);
+  });
+
+  it('keeps the marker between the same other features', () => {
+    // Sketch1 Extrude1 Sketch2 | Extrude2 Sketch3
+    const store = createDocumentStore(timeline(3));
+    const s = store.getState;
+    // Sketch2 (active) and Sketch3 (rolled back) to the front: both active.
+    s().dispatch(moveFeatures({ ids: [fid('S2'), fid('S3')], index: 2 }));
+    expect(order(s().doc)).toBe('S1 E1 S2 S3 E2');
+    // At the marker (2 other active features): not all were active, so rolled back.
+    expect(s().doc.timelineMarker).toBe(2);
+    s().dispatch(moveFeatures({ ids: [fid('S2'), fid('S3')], index: 2, active: true }));
+    expect(s().doc.timelineMarker).toBe(4);
+    // Nothing changes: no new step.
+    const before = s().doc;
+    s().dispatch(moveFeatures({ ids: [fid('S2'), fid('S3')], index: 2 }));
+    expect(s().doc).toBe(before);
   });
 });
 

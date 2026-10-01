@@ -201,7 +201,9 @@ brief, voice) is in **`05-brand.md`**. In short:
   sketch. While a dialog edits a feature, the marker shows dashed after it
   and later chips dim; the marker and chips stay put meanwhile, as while a
   sketch is open. The browser's sketch and construction rows show the same
-  ✕/⚠ as the chips, with the message in a tooltip (P3-17).
+  ✕/⚠ as the chips, with the message in a tooltip (P3-17). A click picks a
+  chip (Ctrl/⌘ adds, Shift a run); dragging a picked chip moves all of them
+  as a block, and a drag near the list's ends scrolls it (P3-17).
 - **Status bar:** selection summary (e.g. "2 edges"), measure readout (bbox of
   the selection: "40.00 × 20.00 × 0.00 mm", the exact box of what is
   selected in the model, P2-13; asked once the selection has been still for

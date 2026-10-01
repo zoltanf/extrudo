@@ -169,6 +169,26 @@ test('chips move by drag, unless a reference would break', async ({ page }) => {
   await page.keyboard.press('Control+z');
   await expect.poll(() => order(page)).toBe('Sketch1 Extrude1 Sketch2 Extrude2 Fillet1 Plane1');
 
+  // Picked chips move together (P3-17): a click picks Sketch2, Ctrl+click adds Plane1; dragging
+  // either takes both to the front, in their order, as one undo step.
+  await chip(page, 'Sketch2').click();
+  await chip(page, 'Plane1').click({ modifiers: ['ControlOrMeta'] });
+  const ids = (await features(page).getAttribute('data-selected-features'))?.split(' ') ?? [];
+  expect(ids).toHaveLength(2);
+  await expect(chip(page, 'Sketch2')).toHaveAttribute('aria-pressed', 'true');
+  await dragTo(page, chip(page, 'Sketch2'), await before(chip(page, 'Sketch1')));
+  await expect(indicator).toHaveAttribute('data-drop-index', '0');
+  await page.mouse.up();
+  await expect.poll(() => order(page)).toBe('Sketch2 Plane1 Sketch1 Extrude1 Extrude2 Fillet1');
+  await kernelReady(page);
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => order(page)).toBe('Sketch1 Extrude1 Sketch2 Extrude2 Fillet1 Plane1');
+  await expect(marker(page)).toHaveAttribute('aria-valuenow', '5');
+  // A click between the chips lets go of them.
+  const list = await box(features(page));
+  await page.mouse.click(list.x + list.width - 4, list.y + 2);
+  await expect(features(page)).not.toHaveAttribute('data-selected-features', /./);
+
   // Extrude2 cuts Sketch2's profiles: before Sketch2 is refused, the indicator says so.
   await dragTo(page, chip(page, 'Extrude2'), await before(chip(page, 'Sketch2')));
   await expect(indicator).toHaveAttribute('data-drop-refused', 'true');
