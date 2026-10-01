@@ -268,8 +268,9 @@ reading nearest the last one, within ±360°) instead of wrapping at
   long editing session in the browser; if the WASM heap keeps growing,
   cap OCCT's incremental allocator blocks or trim the cache harder.
 
-- Construction axes (P3-05) as `axis` references; the kernel says "Can't
-  find the axis…" for anything but the origin axes today.
+- ~~Construction axes (P3-05) as `axis` references; the kernel says "Can't
+  find the axis…" for anything but the origin axes today.~~ Done in P3-05
+  (`lineOf`, ADR-0040).
 - Revolve "to object" (Fusion's "To"), and an angle measured from a
   reference other than the profile.
 - The field names a sketch-line axis "1 sketch curve"; "Line · Sketch1"

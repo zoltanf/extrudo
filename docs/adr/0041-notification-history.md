@@ -108,9 +108,10 @@ with their actions where they still apply.
   or reopening redraws.
 - Other places that show a message on their own (inline field messages,
   the status bar) are not part of the history.
-- Recompute errors are shown on timeline chips and the status bar, not as
+- ~~Recompute errors are shown on timeline chips and the status bar, not as
   toasts, so they are not listed. A later task could notify the first
-  error of a recompute.
+  error of a recompute.~~ Done in P3-13: the first new error is a quiet
+  notification (ADR-0050 §4).
 - Unit tests read the store directly; the panel is covered end to end
   (`e2e/notifications.spec.ts`), because `renderToStaticMarkup` draws
   Zustand hooks from the initial state and cannot see later pushes.

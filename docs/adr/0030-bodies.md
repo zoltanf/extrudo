@@ -238,4 +238,5 @@ name:colour-or-`default`:opacity per drawn body) and `data-silhouettes`
   IDs.
 - Silhouettes are recomputed per frame of a camera move on the UI
   thread; fine for Phase 2 models, measure with P2-15 on big meshes.
-- Revolve (P2-07) should call `splitSolids` on its result.
+- ~~Revolve (P2-07) should call `splitSolids` on its result.~~ Done: revolve
+  calls `splitSolids`.

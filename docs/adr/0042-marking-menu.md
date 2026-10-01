@@ -131,7 +131,8 @@ context menu at all.
 - Constraint glyphs and dimension labels sit over the view and take their
   own right-clicks (they navigate); a menu on them (Delete constraint) is a
   small follow-up.
-- Press Pull and Move wedges wait for P3-08 and P3-06; the Fillet wedge lit up
+- ~~Press Pull and Move wedges wait for P3-08 and P3-06;~~ Done: the Move
+  wedge lit up with P3-06, Press Pull with P3-08; the Fillet wedge lit up
   with P3-01 without any change here, and so did the others (Press Pull with
   P3-08: only the command was added).
 - A user setting to remap wedges: the tables are data, so a settings page

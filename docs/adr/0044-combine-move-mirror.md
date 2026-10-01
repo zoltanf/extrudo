@@ -187,6 +187,6 @@ features for both.
 - The toolbar has a Transform group (Move, Mirror, Combine) in the Solid tab,
   so the shell screenshots changed.
 - Open: no drag handles on point-to-point; a `free` move's turns don't show
-  the pivot; Move has no "Repeat"; features can't be mirrored (P3-07); a
+  the pivot; Move has no "Repeat"; ~~features can't be mirrored (P3-07)~~ (done in P3-07, ADR-0047); a
   mirror of a body about a face of itself isn't special-cased (it works when
   the face is flat).

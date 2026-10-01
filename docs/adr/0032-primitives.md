@@ -174,7 +174,8 @@ for an origin plane.
 
 - Position handles (drag the centre in the plane), and a click point on
   the face as the centre instead of the face's centroid.
-- Construction planes (P3-05) as `plane` references with frames.
+- ~~Construction planes (P3-05) as `plane` references with frames.~~ Done in
+  P3-05 (`planeOf`, ADR-0040).
 - The dialog's Plane field keeps the origin planes on screen while it is
   the pick field, even after a plane is picked.
 - Fusion's torus position option (inside / on centre / outside) and a box
