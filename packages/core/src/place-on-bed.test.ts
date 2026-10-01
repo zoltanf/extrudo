@@ -8,10 +8,23 @@ describe('place on bed inputs', () => {
     expect(placeOnBedFeature.type).toBe('placeOnBed');
   });
 
-  it('refuses two faces, and anything but a face', () => {
+  it('takes several faces (one per body) and an optional spin angle', () => {
+    const a = { kind: 'face', id: 'a' } as const;
+    const b = { kind: 'face', id: 'b' } as const;
+    const inputs = placeOnBedInputs([a, b], '45 deg');
+    expect(inputs.face.refs).toEqual([a, b]);
+    expect(inputs.spin).toEqual({ kind: 'expr', expr: '45 deg', unit: 'angle' });
+    expect(PlaceOnBedInputsSchema.safeParse(inputs).success).toBe(true);
+    expect(placeOnBedInputs(a).spin).toBeUndefined();
+  });
+
+  it('refuses a spin that is not an angle, and anything but a face', () => {
     const face = { kind: 'face', id: 'a' } as const;
     expect(
-      PlaceOnBedInputsSchema.safeParse({ face: { kind: 'ref', refs: [face, face] } }).success,
+      PlaceOnBedInputsSchema.safeParse({
+        face: { kind: 'ref', refs: [face] },
+        spin: { kind: 'expr', expr: '5 mm', unit: 'length' },
+      }).success,
     ).toBe(false);
     expect(
       PlaceOnBedInputsSchema.safeParse({

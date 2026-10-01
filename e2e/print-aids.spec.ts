@@ -262,6 +262,56 @@ test('Place on Bed: a face goes down as an undoable feature, and the export foll
   await expect.poll(bodies).toBe('Bracket:12:60,80,40');
 });
 
+test('Overhangs take a picked face as down, and Place on Bed spins the part (P3-17)', async ({
+  page,
+}) => {
+  const viewport = await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  const bodies = () => viewport.getAttribute('data-bodies');
+  await expect.poll(bodies).toBe('Bracket:12:40,80,60');
+
+  // The outside of the wall, selected before any tool starts.
+  await page.keyboard.press('Shift+6');
+  const at = await settledProjector(viewport);
+  const point = at([0, 0, 30]);
+  await page.mouse.move(point.x, point.y);
+  await expect(viewport).toHaveAttribute('data-model-hover', /^face:/);
+  await page.mouse.click(point.x, point.y);
+  await expect(viewport).toHaveAttribute('data-model-selection', /^face:/);
+
+  // Overhangs: "Use selected face" makes its outward direction (-X) the way down.
+  await openPrintTab(page);
+  await page.getByRole('button', { name: /^Overhang/ }).click();
+  const panel = overhangPanel(page);
+  await expect(viewport).toHaveAttribute('data-overhang', /^down=-z /);
+  const useFace = panel.getByRole('button', { name: 'Use selected face' });
+  await expect(useFace).toBeEnabled();
+  await useFace.click();
+  await expect(viewport).toHaveAttribute('data-overhang', /^down=face\(-1,0,0\) angle=45 faces=/);
+  await expect(panel.getByRole('combobox', { name: 'Down' })).toHaveValue('face');
+  // The face is the bed now: it is bed contact, not an overhang.
+  expect((await counts(viewport)).bed).toBeGreaterThan(0);
+  const browser = page.getByRole('complementary', { name: 'Browser' });
+  await expect(browser.locator('[data-overhang-row="on"]')).toHaveText(/Overhangs · Face · 45°/);
+  // An axis from the list replaces the face.
+  await panel.getByRole('combobox', { name: 'Down' }).selectOption('-z');
+  await expect(viewport).toHaveAttribute('data-overhang', /^down=-z /);
+  await expect(panel.getByRole('combobox', { name: 'Down' })).toHaveValue('-z');
+  await panel.getByRole('button', { name: 'Remove' }).click();
+
+  // Place on Bed with a Spin: the bracket lies on the wall, then turns 90° about the vertical.
+  await openPrintTab(page);
+  await page.getByRole('button', { name: /^Place on Bed/ }).click();
+  const dialog = page.getByRole('region', { name: 'Place on Bed dialog' });
+  await expect(dialog.getByRole('button', { name: 'Face', exact: true })).toContainText('1 face');
+  await dialog.getByRole('textbox', { name: 'Spin', exact: true }).fill('90 deg');
+  await expect(dialog).toHaveAttribute('data-preview-status', /^(ok|warning)$/);
+  await page.getByRole('button', { name: /^OK/ }).click();
+  await expect(dialog).toBeHidden();
+  // 60 along X and 80 along Y without the spin: the spin swaps them.
+  await expect.poll(bodies).toBe('Bracket:12:80,60,40');
+});
+
 test('Place on Bed is in the context list of a flat face', async ({ page }) => {
   const viewport = await openProject(page, 'wall-bracket');
   await kernelReady(page);

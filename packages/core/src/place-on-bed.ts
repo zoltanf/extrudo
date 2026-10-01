@@ -11,15 +11,24 @@
  * registry keyed by `PLACE_ON_BED_TYPE` (ADR-0003).
  */
 import { z } from 'zod';
-import { refsOf } from './feature-inputs';
+import { exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
-import type { GeomRef, RefInput } from './schema';
+import type { ExprInput, GeomRef, RefInput } from './schema';
 
 export const PLACE_ON_BED_TYPE = 'placeOnBed';
 
 export const PlaceOnBedInputsSchema = z.strictObject({
-  /** The flat face that goes down. Empty: the feature fails until one is picked. */
-  face: refsOf(['face'], 1),
+  /**
+   * The flat faces that go down, one per body (P3-17: several bodies; each
+   * lies on its own face, where it is). Empty: the feature fails until one is
+   * picked. Two faces of one body is an error.
+   */
+  face: refsOf(['face']),
+  /**
+   * Turn about the vertical through the face's centre after the face lies on
+   * the bed (P3-17). Absent: no turn.
+   */
+  spin: exprOf('angle').optional(),
 });
 export type PlaceOnBedInputs = z.infer<typeof PlaceOnBedInputsSchema>;
 
@@ -31,8 +40,22 @@ export const placeOnBedFeature: FeatureDefinition<PlaceOnBedInputs> = {
   inputsSchema: PlaceOnBedInputsSchema,
 };
 
-/** A Place on Bed's inputs from the face (tests, scripts; the dialog builds the same shape). */
-export function placeOnBedInputs(face: GeomRef): PlaceOnBedInputs {
-  const input: RefInput = { kind: 'ref', refs: [face] };
-  return { face: input };
+/**
+ * A Place on Bed's inputs from the face, or faces (tests, scripts; the dialog
+ * builds the same shape), and an optional spin angle expression.
+ */
+export function placeOnBedInputs(
+  faces: GeomRef | readonly GeomRef[],
+  spin?: string,
+): PlaceOnBedInputs {
+  const input: RefInput = {
+    kind: 'ref',
+    refs: Array.isArray(faces) ? [...faces] : [faces as GeomRef],
+  };
+  const inputs: PlaceOnBedInputs = { face: input };
+  if (spin !== undefined) {
+    const expr: ExprInput = { kind: 'expr', expr: spin, unit: 'angle' };
+    inputs.spin = expr;
+  }
+  return inputs;
 }

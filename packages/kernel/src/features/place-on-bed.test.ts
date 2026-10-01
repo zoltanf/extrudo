@@ -114,9 +114,9 @@ function block(id: string, x: number, y: number, w = 40, d = 30, h = 20): Featur
   ];
 }
 
-const placeOnBed = (id: string, face: GeomRef): Feature => ({
+const placeOnBed = (id: string, face: GeomRef | GeomRef[], spin?: string): Feature => ({
   ...testFeature(id, 'placeOnBed'),
-  inputs: placeOnBedInputs(face),
+  inputs: placeOnBedInputs(face, spin),
 });
 
 async function run(features: Feature[]): Promise<Done> {
@@ -268,6 +268,55 @@ describe('placeOnBed', { timeout: 120_000 }, () => {
     expect(status(result, 'P')).toMatchObject({ status: 'warning' });
     expect(status(result, 'P').message).toMatch(/below the bed/);
     expect(shapeOf('A:0').min[2]).toBe(-20);
+  });
+
+  it('spins the body about the vertical through its face centre', async () => {
+    const first = await run(A);
+    const top = faceWhere(first, 'A:0', facing([0, 0, 1]));
+    // 90 degrees: the 40 x 30 footprint becomes 30 x 40, centred where the face centre was.
+    const result = await run([...A, placeOnBed('P', top, '90 deg')]);
+    expect(status(result, 'P')).toEqual({ status: 'ok' });
+    expect(shapeOf('A:0')).toMatchObject({
+      min: [5, -5, 0],
+      max: [35, 35, 20],
+      volume: 24_000,
+      valid: true,
+    });
+    const after = fingerprintOf(result, 'A:0', top.id);
+    expect(after?.dir?.map((x) => round(x))).toEqual([0, 0, -1]);
+    expect(after?.at.map((x) => round(x))).toEqual([20, 15, 0]);
+  });
+
+  it('spins a body that already lies on the bed, and doesn’t say nothing moves', async () => {
+    const first = await run(A);
+    const bottom = faceWhere(first, 'A:0', facing([0, 0, -1]));
+    const result = await run([...A, placeOnBed('P', bottom, '90 deg')]);
+    expect(status(result, 'P')).toEqual({ status: 'ok' });
+    expect(shapeOf('A:0').min).toEqual([5, -5, 0]);
+  });
+
+  it('puts several bodies down, each on its own face', async () => {
+    const B = block('B', 100, 0, 20, 20, 10);
+    const first = await run([...A, ...B]);
+    const topA = faceWhere(first, 'A:0', facing([0, 0, 1]));
+    const sideB = faceWhere(first, 'B:0', facing([1, 0, 0]));
+    const result = await run([...A, ...B, placeOnBed('P', [topA, sideB])]);
+    expect(status(result, 'P')).toEqual({ status: 'ok' });
+    // A turned over (same box); B on its side: 10 mm along X is the height now.
+    expect(shapeOf('A:0')).toMatchObject({ min: [0, 0, 0], max: [40, 30, 20], valid: true });
+    expect(shapeOf('B:0')).toMatchObject({ volume: 4_000, valid: true });
+    expect(shapeOf('B:0').min[2]).toBe(0);
+    expect(shapeOf('B:0').max[2]).toBe(20);
+    expect(fingerprintOf(result, 'B:0', sideB.id)?.dir?.map((x) => round(x))).toEqual([0, 0, -1]);
+  });
+
+  it('refuses two faces of one body', async () => {
+    const first = await run(A);
+    const top = faceWhere(first, 'A:0', facing([0, 0, 1]));
+    const side = faceWhere(first, 'A:0', facing([1, 0, 0]));
+    const result = await run([...A, placeOnBed('P', [top, side])]);
+    expect(status(result, 'P')).toMatchObject({ status: 'error' });
+    expect(status(result, 'P').message).toMatch(/same body/);
   });
 
   it('says what is missing or wrong', async () => {
