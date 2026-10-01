@@ -3,7 +3,6 @@ import {
   type DocumentStore,
   type Feature,
   type FeatureId,
-  type FeatureStatus,
   type ModelState,
   type ModelStore,
   type SessionStore,
@@ -16,8 +15,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  TriangleAlert,
-  X,
 } from 'lucide-react';
 import {
   Fragment,
@@ -35,6 +32,8 @@ import { formatRenderStats } from '../viewport/renderMeter';
 import type { ViewportStore } from '../viewport/store';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
+import { type FeatureProblem, featureProblem, StatusGlyph } from './featureStatus';
+import { chipSelection, edgeScrollStep } from './timelineDrag';
 import { toolForFeature } from './tools';
 
 export interface TimelineProps {
@@ -64,6 +63,8 @@ export interface TimelineProps {
 /** A chip being dragged to a new place (FR-TL-04). */
 interface ChipDrag {
   id: FeatureId;
+  /** Every feature that moves: the dragged one, or the selected chips it is one of (P3-17). */
+  ids: FeatureId[];
   /** Where it would go: its index afterwards, and whether it lands active (left of the marker). */
   index: number;
   active: boolean;
@@ -81,6 +82,37 @@ interface MarkerDrag {
 
 /** How far the pointer moves before a press on a chip becomes a drag, px. */
 const DRAG_THRESHOLD = 4;
+/**
+ * Scrolls the list while `active` and the pointer (`pointerX`, client px) is near one of its
+ * ends; `onScroll` runs after each step, so the drop or gap can follow.
+ */
+function useEdgeScroll(
+  list: RefObject<HTMLOListElement | null>,
+  active: boolean,
+  pointerX: RefObject<number | undefined>,
+  onScroll: () => void,
+) {
+  const callback = useRef(onScroll);
+  callback.current = onScroll;
+  useEffect(() => {
+    if (!active) return;
+    let frame = 0;
+    const tick = () => {
+      const el = list.current;
+      const x = pointerX.current;
+      if (el && x !== undefined) {
+        const r = el.getBoundingClientRect();
+        const step = edgeScrollStep(x, r.left, r.right);
+        const before = el.scrollLeft;
+        if (step !== 0) el.scrollLeft += step;
+        if (el.scrollLeft !== before) callback.current();
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [active, list, pointerX]);
+}
 
 /**
  * Timeline and status bar (UI spec §2). Chips follow the document's features;
@@ -122,6 +154,18 @@ export function Timeline({
   const shown = editIndex >= 0 ? editIndex + 1 : marker;
   // The marker is drawn between other chips after a key moves it: focus follows it there.
   const refocus = useRef(false);
+  // Chips picked with a click (Ctrl/⌘ adds, Shift a run): dragging one of them moves them all
+  // (P3-17). Timeline state only; features that went away drop out.
+  const [picked, setPicked] = useState<FeatureId[]>([]);
+  const anchor = useRef<FeatureId>(undefined);
+  const order = doc.features.map((f) => f.id);
+  const selected = picked.filter((id) => order.includes(id));
+  const select = (id: FeatureId, mode: 'replace' | 'toggle' | 'range') => {
+    setPicked(chipSelection(order, selected, id, mode, anchor.current));
+    if (mode !== 'range') anchor.current = id;
+  };
+  const movingWith = (id: FeatureId) =>
+    selected.length > 1 && selected.includes(id) ? selected : [id];
 
   return (
     <section
@@ -166,7 +210,15 @@ export function Timeline({
             ref={list}
             aria-label="Features"
             data-dragging={chipDrag ? 'chip' : markerDrag !== undefined ? 'marker' : undefined}
+            data-selected-features={selected.join(' ') || undefined}
             className="relative flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 py-1"
+            onClick={(event) => {
+              // A click between chips clears the chip selection, and so does Esc on a chip.
+              if (event.target === event.currentTarget) setPicked([]);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && selected.length > 0) setPicked([]);
+            }}
           >
             {doc.features.map((feature, index) => (
               <Fragment key={feature.id}>
@@ -187,15 +239,18 @@ export function Timeline({
                   index={index}
                   marker={marker}
                   count={count}
-                  status={index < marker && !feature.suppressed ? statuses[feature.id] : undefined}
+                  problem={featureProblem(feature, index, marker, statuses)}
                   rolledBack={index >= (markerDrag?.index ?? marker)}
                   dimmed={editIndex >= 0 && index > editIndex}
                   editable={actions.canEdit(feature, index, marker)}
                   actions={actions}
                   list={list}
                   locked={locked}
-                  dragging={chipDrag?.id === feature.id}
+                  dragging={chipDrag?.ids.includes(feature.id) ?? false}
                   onDrag={setChipDrag}
+                  selected={selected.includes(feature.id)}
+                  moving={movingWith(feature.id)}
+                  onSelect={select}
                 />
               </Fragment>
             ))}
@@ -244,7 +299,7 @@ function Chip({
   index,
   marker,
   count,
-  status,
+  problem,
   rolledBack,
   dimmed,
   editable,
@@ -253,13 +308,16 @@ function Chip({
   locked,
   dragging,
   onDrag,
+  selected,
+  moving,
+  onSelect,
 }: {
   feature: Feature;
   index: number;
   marker: number;
   count: number;
-  /** The kernel's verdict; only for active features. */
-  status: FeatureStatus | undefined;
+  /** The kernel's verdict; only for active features (`featureProblem`). */
+  problem: FeatureProblem | undefined;
   rolledBack: boolean;
   /** After the feature a dialog edits: drawn like a rolled-back one (not named so). */
   dimmed: boolean;
@@ -270,48 +328,73 @@ function Chip({
   locked: boolean;
   dragging: boolean;
   onDrag(drag: ChipDrag | undefined): void;
+  /** Picked with a click (P3-17). */
+  selected: boolean;
+  /** What a drag of this chip moves: it, or the selected chips when it is one of them. */
+  moving: readonly FeatureId[];
+  onSelect(id: FeatureId, mode: 'replace' | 'toggle' | 'range'): void;
 }) {
   const [renaming, setRenaming] = useState(false);
   // The press that may become a drag, then the drag's latest drop.
   const press = useRef<{ x: number; y: number; drag?: ChipDrag }>(undefined);
+  // The pointer during a drag (client px), for scrolling at the ends; a drag isn't a click.
+  const pointerX = useRef<number>(undefined);
+  const dragged = useRef(false);
   const dropAt = (x: number): ChipDrag | undefined => {
     const el = list.current;
     if (!el) return undefined;
-    const items = timelineItems(el).filter((item) => item.dataset.featureId !== feature.id);
+    const ids = [...moving];
+    const items = timelineItems(el).filter(
+      (item) => !ids.includes(item.dataset.featureId as FeatureId),
+    );
     const before = items.filter((item) => centreOf(item) < x);
     const target = before.filter((item) => item.dataset.timelineItem === 'chip').length;
     const active = !before.some((item) => item.dataset.timelineItem === 'marker');
-    const unchanged = target === index && active === index < marker;
+    const unchanged = ids.length === 1 && target === index && active === index < marker;
     const edge = before.at(-1)?.getBoundingClientRect().right;
     const next = items[before.length]?.getBoundingClientRect().left;
     const at = edge !== undefined ? edge + 3 : (next ?? 0) - 3;
     return {
       id: feature.id,
+      ids,
       index: target,
       active,
       x: at - el.getBoundingClientRect().left + el.scrollLeft,
-      problem: unchanged ? undefined : actions.moveProblem(feature.id, target),
+      problem: unchanged
+        ? undefined
+        : actions.moveProblem(ids.length === 1 ? feature.id : ids, target),
     };
   };
+  useEdgeScroll(list, dragging && press.current?.drag !== undefined, pointerX, () => {
+    const p = press.current;
+    if (!p?.drag || pointerX.current === undefined) return;
+    p.drag = dropAt(pointerX.current);
+    onDrag(p.drag);
+  });
   const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     if (event.button !== 0 || locked || renaming) return;
     press.current = { x: event.clientX, y: event.clientY };
+    dragged.current = false;
   };
   const onPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
     const p = press.current;
     if (!p) return;
     if (!p.drag && Math.hypot(event.clientX - p.x, event.clientY - p.y) < DRAG_THRESHOLD) return;
     if (!p.drag) event.currentTarget.setPointerCapture(event.pointerId);
+    pointerX.current = event.clientX;
     p.drag = dropAt(event.clientX);
     onDrag(p.drag);
   };
   const endDrag = (drop: boolean) => {
     const drag = press.current?.drag;
     press.current = undefined;
+    pointerX.current = undefined;
     if (!drag) return;
+    dragged.current = true;
     onDrag(undefined);
-    if (!drop || (drag.index === index && drag.active === index < marker)) return;
-    actions.move(drag.id, drag.index, drag.active);
+    if (!drop) return;
+    if (drag.ids.length === 1 && drag.index === index && drag.active === index < marker) return;
+    actions.move(drag.ids.length === 1 ? drag.id : drag.ids, drag.index, drag.active);
   };
   // Esc puts a dragged chip back.
   useEffect(() => {
@@ -323,10 +406,6 @@ function Chip({
     return () => window.removeEventListener('keydown', onKey, true);
   });
   const tool = toolForFeature(feature.type);
-  const problem =
-    status && status.status !== 'ok'
-      ? { status: status.status, message: status.message }
-      : undefined;
   const states = [
     rolledBack && 'rolled back',
     feature.suppressed && 'suppressed',
@@ -347,13 +426,26 @@ function Chip({
       data-timeline-item="chip"
       data-feature-id={feature.id}
       data-feature-status={problem?.status}
+      data-selected={selected || undefined}
+      aria-pressed={selected}
+      onClick={(event) => {
+        // The click that ends a drag doesn't change the selection.
+        if (dragged.current) {
+          dragged.current = false;
+          return;
+        }
+        onSelect(
+          feature.id,
+          event.shiftKey ? 'range' : event.ctrlKey || event.metaKey ? 'toggle' : 'replace',
+        );
+      }}
       onKeyDown={(event) => {
         if (event.key === 'F2') {
           event.preventDefault();
           setRenaming(true);
         }
       }}
-      className={`relative grid size-[30px] shrink-0 touch-none place-items-center rounded-control border ${feature.suppressed ? 'border-dashed' : ''} ${dragging ? 'cursor-grabbing ring-2 ring-accent' : ''}`}
+      className={`relative grid size-[30px] shrink-0 touch-none place-items-center rounded-control border ${feature.suppressed ? 'border-dashed' : ''} ${dragging ? 'cursor-grabbing ring-2 ring-accent' : selected ? 'ring-2 ring-accent/60 ring-offset-1 ring-offset-panel' : ''}`}
       style={{
         background: feature.suppressed
           ? 'transparent'
@@ -365,7 +457,7 @@ function Chip({
       }}
     >
       <ToolIcon name={tool.icon} category={tool.category} size={18} />
-      {problem && <StatusGlyph status={problem.status} />}
+      {problem && <StatusGlyph status={problem.status} corner />}
     </button>
   );
   return (
@@ -411,20 +503,6 @@ function Chip({
         />
       </Popover>
     </li>
-  );
-}
-
-/** ✕ or ⚠ on a chip's corner: the status colour always comes with a glyph (UI spec §1). */
-function StatusGlyph({ status }: { status: 'warning' | 'error' }) {
-  const Icon = status === 'error' ? X : TriangleAlert;
-  return (
-    <span
-      aria-hidden="true"
-      className="absolute -top-1 -right-1 grid size-3.5 place-items-center rounded-full text-bg"
-      style={{ background: `var(--x-${status})` }}
-    >
-      <Icon size={10} strokeWidth={3} />
-    </span>
   );
 }
 
@@ -536,6 +614,9 @@ function Marker({
 }) {
   const drag = useRef<{ from: number; at: number }>(undefined);
   const slider = useRef<HTMLDivElement>(null);
+  // The pointer while dragging (client px): the list scrolls at its ends (P3-17).
+  const pointerX = useRef<number>(undefined);
+  const [dragging, setDragging] = useState(false);
   useEffect(() => {
     if (!refocus.current) return;
     refocus.current = false;
@@ -563,18 +644,29 @@ function Marker({
     event.currentTarget.setPointerCapture(event.pointerId);
     event.currentTarget.focus();
     drag.current = { from: index, at: index };
+    setDragging(true);
   };
-  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+  const follow = (x: number) => {
     const d = drag.current;
     if (!d) return;
-    const gap = gapAt(event.clientX);
+    const gap = gapAt(x);
     if (gap.index === d.at) return;
     d.at = gap.index;
     onDrag(gap);
   };
+  useEdgeScroll(list, dragging, pointerX, () => {
+    if (pointerX.current !== undefined) follow(pointerX.current);
+  });
+  const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!drag.current) return;
+    pointerX.current = event.clientX;
+    follow(event.clientX);
+  };
   const end = (drop: boolean) => {
     const d = drag.current;
     drag.current = undefined;
+    pointerX.current = undefined;
+    setDragging(false);
     if (!d) return;
     onDrag(undefined);
     if (drop && d.at !== d.from) onMove(d.at);

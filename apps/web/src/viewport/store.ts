@@ -46,6 +46,18 @@ export const ORIGIN_ITEMS: readonly { value: OriginItem; label: string }[] = [
   { value: 'z', label: 'Z axis' },
 ];
 
+/**
+ * The origin items as drawn and picked: the browser's choice, with the three axes shown while a
+ * dialog's pick field takes axes (`pickAxes`, P3-17).
+ */
+export function shownOrigin(
+  origin: Record<OriginItem, boolean>,
+  pickAxes: boolean,
+): Record<OriginItem, boolean> {
+  if (!pickAxes || (origin.x && origin.y && origin.z)) return origin;
+  return { ...origin, x: true, y: true, z: true };
+}
+
 /** Display settings, kept in the user's preferences. */
 export interface ViewportSettings {
   projection: Projection;
@@ -134,6 +146,11 @@ export interface ViewportState extends ViewportSettings {
    */
   fieldFilter: SelectionFilter | undefined;
   /**
+   * A feature dialog's pick field takes axes (P3-17): the origin axes are drawn and pickable
+   * even where the browser hides them, as Create Sketch shows the origin planes.
+   */
+  pickAxes: boolean;
+  /**
    * The section analysis (P3-09, ADR-0045): a clipping plane over the model. View state for
    * the open project: not in the document, not undoable, not a preference; it survives
    * recomputes and lasts until it is removed or the project closes.
@@ -167,6 +184,7 @@ export interface ViewportState extends ViewportSettings {
   setVisualStyle(style: VisualStyle): void;
   setGrid(grid: boolean): void;
   setPreset(preset: NavPreset): void;
+  setPickAxes(on: boolean): void;
   setOrigin(item: OriginItem, visible: boolean): void;
   setSketchPoints(visible: boolean): void;
   setSketchConstraints(visible: boolean): void;
@@ -244,6 +262,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       renderStats: undefined,
       selectionFilter: DEFAULT_FILTER,
       fieldFilter: undefined,
+      pickAxes: false,
       section: undefined,
       overhang: undefined,
 
@@ -332,6 +351,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       },
       setFieldFilter(fieldFilter) {
         if (fieldFilter !== get().fieldFilter) set({ fieldFilter });
+      },
+      setPickAxes(pickAxes) {
+        if (pickAxes !== get().pickAxes) set({ pickAxes });
       },
       setSection(section) {
         set({ section });

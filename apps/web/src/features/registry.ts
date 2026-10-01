@@ -19,6 +19,7 @@ import { offsetFaceDialog } from './offset-face';
 import { PATTERN_DIALOGS } from './pattern';
 import { placeOnBedDialog } from './place-on-bed';
 import { PRIMITIVE_DIALOGS } from './primitives';
+import { removeDialog } from './remove';
 import { revolveDialog } from './revolve';
 import { scaleDialog } from './scale';
 import { shellDialog } from './shell';
@@ -50,6 +51,8 @@ export function featureDialogs(): FeatureDialogs {
   for (const spec of PATTERN_DIALOGS) dialogs.register(spec);
   // Split Body, Scale and Draft (P3-08, second half).
   dialogs.register(splitBodyDialog).register(scaleDialog).register(draftDialog);
+  // Remove: edit which bodies a Remove takes out (P3-17).
+  dialogs.register(removeDialog);
   return dialogs;
 }
 

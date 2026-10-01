@@ -94,6 +94,11 @@ brief, voice) is in **`05-brand.md`**. In short:
   where both have a direction, the centre distance of holes, circles
   and vertices), with a dashed line and label between the closest
   points in the view. Three or more: totals. Always the bounding box.
+  Sketch points and curves (picked in the model), origin and construction
+  axes and planes, and construction points measure too (P3-17): a curve's
+  length, radius and centre, a plane's origin and normal, an axis's
+  direction; between them (or with a vertex or straight edge) the distance,
+  and with a face or a curve the angle and centre distance only.
   Values are in the document's unit and precision and can be selected
   to copy.
 - **Section Analysis** (P3-09, ADR-0045): Solid › Inspect, `Shift+S`, the
@@ -173,6 +178,10 @@ brief, voice) is in **`05-brand.md`**. In short:
   from a group's menu, the group's label.
 - **Command dialog (right, floating):** appears for the active feature and is
   draggable. It holds selection fields, inputs, OK (Enter) and Cancel (Esc).
+  A selection field names a single pick ("Y axis", "Line · Sketch1",
+  "Profile · Sketch1", a body's name; faces, edges and vertices are counted)
+  and counts several; while a field takes axes the origin axes are drawn
+  even if the browser hides them (P3-17).
 - **Timeline (bottom):** playback buttons, feature chips with category colour
   and icon, and a rollback marker (a draggable ▼ handle). The chip tooltip
   shows the name, type and status message.
@@ -191,10 +200,14 @@ brief, voice) is in **`05-brand.md`**. In short:
   titled "Redefine Plane", picking planes and the faces made before the
   sketch. While a dialog edits a feature, the marker shows dashed after it
   and later chips dim; the marker and chips stay put meanwhile, as while a
-  sketch is open.
+  sketch is open. The browser's sketch and construction rows show the same
+  ✕/⚠ as the chips, with the message in a tooltip (P3-17). A click picks a
+  chip (Ctrl/⌘ adds, Shift a run); dragging a picked chip moves all of them
+  as a block, and a drag near the list's ends scrolls it (P3-17).
 - **Status bar:** selection summary (e.g. "2 edges"), measure readout (bbox of
   the selection: "40.00 × 20.00 × 0.00 mm", the exact box of what is
-  selected in the model, P2-13), kernel status (spinner while recomputing), units, and the
+  selected in the model, P2-13; asked once the selection has been still for
+  150 ms, P3-17), kernel status (spinner while recomputing), units, and the
   viewport's render rate ("58 fps · 1.4 ms": frames drawn in the last
   second and the mean time to draw one; "idle" while the view is still,
   since it only redraws on change).
@@ -520,7 +533,10 @@ a right-click without movement, as Onshape's context menu does.
   bottom-left corner shows the selection's type and status, a point's X/Y
   and a circle's or arc's radius (typed values move it as the constraints
   allow), a line's length and angle, the construction flag and Delete.
-  Deleting geometry also deletes its constraints and dimensions.
+  Deleting geometry also deletes its constraints and dimensions. A
+  right-click on a constraint glyph or a dimension label selects it (unless
+  it is already in the selection) and opens a small menu: Delete, and Edit
+  Value for a dimension (P3-17).
 - **Colours:** under-constrained geometry blue; fully constrained dark
   (light theme) or white (dark theme); construction dashed grey; conflicting
   red; projected purple; profiles pale fill. Status is per entity: a

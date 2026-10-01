@@ -186,4 +186,19 @@ long).
   saving a section with a named view.
 - A hatch per body material once bodies have materials; today each body's
   cap takes its colour.
-- Vertex dots and a sketch's projected curves aren't clipped.
+- ~~Vertex dots and a sketch's projected curves aren't clipped.~~ Done in
+  P3-17 (amendment below).
+
+## Amendment (P3-17)
+
+Vertex dots (a hovered or selected B-rep vertex) and a sketch's projected
+curves are clipped too. The dot material (`viewport/dots.ts`, shared with
+the origin point and sketch points) now includes three.js's clipping chunks
+and sets `clipping: true`; only `VertexMarks` gives it planes, so origin and
+sketch points stay whole. The point's clip position is its centre, so a dot
+is either drawn whole or not at all. Projected curves are a `LineMaterial`
+like body edges and take the same planes (`Sketches`' `clip`); the sketch's
+own curves, points and profiles stay unclipped, as the grid does: they are
+drawing aids on their plane, while projected curves stand for the model's
+edges.
+

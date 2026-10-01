@@ -1,13 +1,14 @@
 import type { ExtrudoDocument } from '@extrudo/core';
 import { formatQuantity, LENGTH } from '@extrudo/core';
-import type { PairMeasure, Vec3 } from '@extrudo/kernel';
+import type { Vec3 } from '@extrudo/kernel';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { viewProject } from '../viewport/camera';
 import type { ViewportStore } from '../viewport/store';
+import type { MeasuredPair } from './inspection';
 
 export interface MeasureOverlayProps {
-  pair: PairMeasure;
+  pair: MeasuredPair;
   viewport: ViewportStore;
   settings: ExtrudoDocument['settings'];
 }
@@ -42,11 +43,11 @@ export function MeasureOverlay({ pair, viewport, settings }: MeasureOverlayProps
     const ndc = viewProject(view, projection, width / height, p);
     return ndc && [((ndc[0] + 1) / 2) * width, ((1 - ndc[1]) / 2) * height];
   };
-  const a = toScreen(pair.from);
-  const b = toScreen(pair.to);
+  const a = pair.from && toScreen(pair.from);
+  const b = pair.to && toScreen(pair.to);
   const ca = pair.centers && toScreen(pair.centers.from);
   const cb = pair.centers && toScreen(pair.centers.to);
-  const label = formatQuantity(pair.distance, LENGTH, settings);
+  const label = formatQuantity(pair.distance ?? 0, LENGTH, settings);
 
   return (
     <div
@@ -95,7 +96,7 @@ export function MeasureOverlay({ pair, viewport, settings }: MeasureOverlayProps
           ))}
         </svg>
       )}
-      {a && b && pair.distance > 0 && (
+      {a && b && (pair.distance ?? 0) > 0 && (
         <div
           className="absolute -translate-x-1/2 -translate-y-1/2 rounded-control border border-line px-1.5 py-0.5 font-mono text-xs whitespace-nowrap tabular-nums shadow-raised"
           style={{

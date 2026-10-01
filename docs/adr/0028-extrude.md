@@ -362,12 +362,14 @@ kernel (one body, 40 × 80 × 60 mm, 10 faces).
 - To-object on curved faces and bodies (Fusion's "to object" on a body),
   and an offset from the object.
 - Taper on ellipse and spline sides.
-- A cut that splits a body stays one body with several solids (P2-08
-  decides whether it becomes several).
+- ~~A cut that splits a body stays one body with several solids (P2-08
+  decides whether it becomes several).~~ Done in P2-08: one body per solid
+  (`splitSolids`, ADR-0030).
 - Symmetric "half length" measurement (Fusion offers both); here
   `distance` is the whole length.
-- Body metadata (`doc.bodies` names and colours) for new bodies: P2-08.
-  Derived "Body<n>" names shift when an earlier body goes away.
+- ~~Body metadata (`doc.bodies` names and colours) for new bodies: P2-08.
+  Derived "Body<n>" names shift when an earlier body goes away.~~ Done in
+  P2-08: stored names, never reused, and colours (ADR-0030).
 - A distance arrow per picked face (ADR-0027 open item); the arrow sits
   at the mean centroid of all picks.
 - Picking origin planes for To object (they aren't pickable in the model

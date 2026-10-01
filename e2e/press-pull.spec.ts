@@ -237,7 +237,7 @@ test('Q on a sketch profile opens Extrude; with nothing selected it says what to
   const dialog = page.getByRole('region', { name: 'Extrude dialog' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText(
-    '1 profile',
+    /^Profile · Sketch\d+$/,
   );
   await expect(dialog.getByRole('combobox', { name: 'Operation' })).toHaveValue('new-body');
 });

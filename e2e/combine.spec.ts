@@ -57,8 +57,8 @@ test('cuts one cube with another, keeping the tool; one undo step', async ({ pag
 
   const dialog = await openCombine(page, ['Body1', 'Body2']);
   // The first selected body is the target, the rest are the tools.
-  await expect(dialog.getByRole('button', { name: 'Target', exact: true })).toHaveText('1 body');
-  await expect(dialog.getByRole('button', { name: 'Tools', exact: true })).toHaveText('1 body');
+  await expect(dialog.getByRole('button', { name: 'Target', exact: true })).toHaveText('Body1');
+  await expect(dialog.getByRole('button', { name: 'Tools', exact: true })).toHaveText('Body2');
   await expect(dialog.getByRole('combobox', { name: 'Operation' })).toHaveValue('join');
   await dialog.getByRole('combobox', { name: 'Operation' }).selectOption('cut');
   await dialog.getByRole('checkbox', { name: 'Keep tools' }).check();

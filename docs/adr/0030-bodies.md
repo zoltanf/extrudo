@@ -230,12 +230,37 @@ name:colour-or-`default`:opacity per drawn body) and `data-silhouettes`
 
 ## Open
 
-- A Remove dialog (edit which bodies it removes); the Remove chip opens
-  nothing yet.
-- Custom colours (a colour field) beyond the swatches.
+- ~~A Remove dialog (edit which bodies it removes); the Remove chip opens
+  nothing yet.~~ Done in P3-17 (amendment below).
+- ~~Custom colours (a colour field) beyond the swatches.~~ Done in P3-17
+  (amendment below).
 - Piece IDs shift when an earlier participant of the same feature splits
   into a different number of pieces (a multi-body cut); names follow the
   IDs.
 - Silhouettes are recomputed per frame of a camera move on the UI
   thread; fine for Phase 2 models, measure with P2-15 on big meshes.
-- Revolve (P2-07) should call `splitSolids` on its result.
+- ~~Revolve (P2-07) should call `splitSolids` on its result.~~ Done: revolve
+  calls `splitSolids`.
+
+## Amendment (P3-17)
+
+- **A custom colour beside the swatches.** Appearance has the system colour
+  picker and a hex field below the swatches. **No schema change**:
+  `BodyMeta.color` was always any `#rrggbb`, the swatches only a choice of
+  values, so there is no new key, no migration and no format version.
+  The picker commits on its native `change` (when the choice is made), not
+  on every `input` while it is dragged, so a pick is one undo step; the
+  hex field commits on Enter or blur, takes `#rgb` or `#rrggbb` with or
+  without `#` (`parseBodyColor`), stores lower case and marks anything else
+  invalid without committing. While the colour is none of the swatches
+  (`isSwatch`), no swatch is checked and the custom picker is outlined
+  (`data-custom-colour`).
+- **A Remove dialog** (`features/remove.ts`): one selection field, Bodies,
+  named like the input, so the framework's default mapping reads and writes
+  it. Registering it makes the Remove chip and Fix References open it (a
+  lost body is taken out of the field and the field waits for a pick), and
+  it brings a command of its own, "Remove Bodies" (Solid › Modify, Ctrl+K;
+  no toolbar tile, no key), that makes a Remove from picked or pre-selected
+  bodies, as Delete does at once. No new feature type: it is the existing
+  `remove`. The preview is the model without the bodies.
+

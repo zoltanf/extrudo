@@ -92,12 +92,14 @@ a face's surface or a closest point.
 ## Consequences
 
 - One kernel round trip per selection change; a box select of hundreds
-  of edges measures each (cheap, but not free). No debounce yet.
+  of edges measures each (cheap, but not free). ~~No debounce yet.~~ The
+  status bar's question waits 150 ms for a still selection since P3-17.
 - Values are shown only; nothing is stored in the document (no
   persistent measurements or driven dimensions).
-- Sketch curves, profiles, origin planes and axes can't be measured
+- ~~Sketch curves, profiles, origin planes and axes can't be measured
   yet: the panel says so. Construction geometry (P3-05) and sketch
-  measuring should add them through the same `Inspection`.
+  measuring should add them through the same `Inspection`.~~ Done in P3-17
+  (amendment below), except profiles.
 - The facade change is a new OCCT input hash (built locally and by CI).
 
 ## Rejected
@@ -114,3 +116,33 @@ a face's surface or a closest point.
 - **Two dedicated selection slots (Fusion's "Selection 1 / 2")**: the
   session selection already has order, highlight and pruning after
   recomputes; a click rule on top of it was enough.
+
+## Amendment (P3-17)
+
+- **Sketch entities and origin geometry are measured on the UI thread**
+  (`measure/analytic.ts`), not by the kernel: their geometry is exact in
+  the document (sketch coordinates in a frame, `sketchFrame`) or in the
+  kernel's construction reports, and the kernel has no shapes for them
+  (sketch evaluators return faces, origin geometry isn't a shape). A
+  sketch point is a `vertex` item, a curve an `edge` item (line, circle,
+  arc, ellipse; a spline as `other`; lengths of ellipses and splines from
+  their polyline); origin and construction axes and planes are two new
+  unbounded `ItemMeasure` kinds, `axis` and `plane`, which `pairMeasure`
+  takes for angles and centre distances (an axis is a centre line).
+  Construction points are vertices.
+- **Distances between them are computed here** (`closestBetween`) for
+  points, straight segments, axes and planes in any mix, which also covers
+  a body's vertex or straight edge (the kernel's item has its ends). A face,
+  a body or a curved edge on either side has no distance without OCCT:
+  the pair then shows only the angle and the centre distance
+  (`MeasuredPair` has an optional distance, the panel and the in-view line
+  leave it out). Exact distances from sketch curves to faces would need
+  the facade to build edges from sketch data; left for later.
+- `measureState` merges the kernel's answer and these items in selection
+  order, with labels (`pickName`: "Line · Sketch1", "X axis"); it needs no
+  kernel round trip when nothing of a body is selected. The status bar's
+  size includes sketch entities' boxes; axes and planes have none.
+- **Debounce**: outside the Measure tool, `useInspection` waits
+  `SIZE_DELAY_MS` (150 ms) after the last selection change before asking
+  the kernel; inside it, it asks at once.
+

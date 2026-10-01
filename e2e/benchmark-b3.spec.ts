@@ -280,10 +280,8 @@ test('B3: a phone stand of two bodies, combined', async ({ page }) => {
   await combineTile.click();
   const combine = page.getByRole('region', { name: 'Combine dialog' });
   await expect(combine).toBeVisible();
-  await expect(combine.getByRole('button', { name: 'Target', exact: true })).toContainText(
-    '1 body',
-  );
-  await expect(combine.getByRole('button', { name: 'Tools', exact: true })).toContainText('1 body');
+  await expect(combine.getByRole('button', { name: 'Target', exact: true })).toContainText('Body1');
+  await expect(combine.getByRole('button', { name: 'Tools', exact: true })).toContainText('Body2');
   await expect(combine.getByRole('combobox', { name: 'Operation' })).toHaveValue('join');
   await expect(combine).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
   await combine.getByRole('button', { name: 'OK' }).click();

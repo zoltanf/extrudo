@@ -88,8 +88,10 @@ function HistoryPanel({
   store: NotificationStore;
   history: readonly Notification[];
 }) {
-  // Whether an action applies is read when this draws; running one draws again.
+  // Whether an action applies is read when this draws; running one draws again, and so does
+  // a document change while the panel is open (`recheck`, P3-17).
   const [, redraw] = useState(0);
+  useStore(store, (s) => s.checks);
   const { errors, others } = grouped(history);
   const run = (n: Notification) => {
     n.action?.run();

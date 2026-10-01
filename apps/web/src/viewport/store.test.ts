@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { memoryPreferences } from '../platform';
 import { basis, orientationFor, sameView, type View, viewProject, viewRay } from './camera';
 import { gridStep } from './grid';
-import { createViewportStore, DEFAULT_SETTINGS, TRANSITION_MS } from './store';
+import { createViewportStore, DEFAULT_SETTINGS, shownOrigin, TRANSITION_MS } from './store';
 
 function setup(options: { reducedMotion?: boolean; stored?: Record<string, unknown> } = {}) {
   let time = 1000;
@@ -213,5 +213,18 @@ describe('gridStep', () => {
     expect(gridStep(0.1)).toBe(10);
     expect(gridStep(0.5)).toBe(10);
     expect(gridStep(1)).toBe(100);
+  });
+
+  it('shows and picks the origin axes while a dialog field takes axes (P3-17)', () => {
+    const { store } = setup();
+    for (const axis of ['x', 'y', 'z'] as const) store.getState().setOrigin(axis, false);
+    const { origin } = store.getState();
+    expect(shownOrigin(origin, store.getState().pickAxes)).toBe(origin);
+    store.getState().setPickAxes(true);
+    const shown = shownOrigin(origin, store.getState().pickAxes);
+    expect(shown).toMatchObject({ x: true, y: true, z: true, xy: origin.xy });
+    // Nothing to add: the same object (no re-render).
+    const all = { ...origin, x: true, y: true, z: true };
+    expect(shownOrigin(all, true)).toBe(all);
   });
 });

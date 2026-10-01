@@ -83,6 +83,22 @@ test('renames, hides, colours and removes a body from the browser', async ({ pag
   await panel.getByRole('radio', { name: '50 %' }).check();
   await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#5b7cff:0.5');
   await page.screenshot({ path: test.info().outputPath('blue-half.png') });
+  // Any colour by its hex code (P3-17): one more undo step; no swatch is checked then.
+  const hex = panel.getByRole('textbox', { name: 'Hex colour' });
+  await hex.fill('#12AB9');
+  await hex.press('Enter');
+  await expect(hex).toHaveAttribute('aria-invalid', 'true');
+  await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#5b7cff:0.5');
+  await hex.fill('#12ab90');
+  await hex.press('Enter');
+  await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#12ab90:0.5');
+  await expect(panel.getByRole('radio', { name: 'Blue' })).not.toBeChecked();
+  await expect(panel.getByLabel('Custom colour')).toHaveAttribute('data-custom-colour', 'true');
+  // (Ctrl+Z in a text field is the field's own undo.)
+  await hex.blur();
+  await page.keyboard.press('Control+z');
+  await expect(viewport).toHaveAttribute('data-body-appearance', 'Mount:#5b7cff:0.5');
+  await panel.getByRole('radio', { name: '50 %' }).focus();
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
   await page.keyboard.press('Control+z');
@@ -206,6 +222,21 @@ test('a cut through a plate makes two bodies, named without shifting', async ({ 
   await kernelReady(page);
   await expect(viewport).toHaveAttribute('data-bodies', 'Body2:6:10,20,10');
   await expect(badge(page)).toHaveText('1');
+  // The Remove's chip opens its dialog (P3-17): Body2 picked from the browser joins Body1.
+  await chip(page, 'Remove1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Remove1 dialog' });
+  const picked = edit.getByRole('button', { name: 'Bodies', exact: true });
+  await expect(picked).toHaveText('Body1');
+  await bodyRow(page, 'Body2').click();
+  await expect(picked).toHaveText('2 bodies');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).not.toHaveAttribute('data-bodies');
+  await page.keyboard.press('Control+z');
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body2:6:10,20,10');
   // Undoing the cut takes the second body and its name away.
   await page.keyboard.press('Control+z');
   await page.keyboard.press('Control+z');

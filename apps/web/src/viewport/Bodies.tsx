@@ -270,8 +270,8 @@ function Body({
         over
         planes={planes}
       />
-      <VertexMarks mesh={mesh} vertices={marks.selectedVertices} color={accent} />
-      <VertexMarks mesh={mesh} vertices={marks.hoverVertices} color={accent} />
+      <VertexMarks mesh={mesh} vertices={marks.selectedVertices} color={accent} planes={planes} />
+      <VertexMarks mesh={mesh} vertices={marks.hoverVertices} color={accent} planes={planes} />
     </group>
   );
 }
@@ -412,15 +412,20 @@ function EdgeMarks({
   return <primitive object={line} />;
 }
 
-/** B-rep vertices as dots: only the selected ones and the one under the pointer. */
+/**
+ * B-rep vertices as dots: only the selected ones and the one under the pointer. A section
+ * clips them like the edges (P3-17).
+ */
 function VertexMarks({
   mesh,
   vertices,
   color,
+  planes,
 }: {
   mesh: BodyMesh;
   vertices: readonly number[];
   color: Rgba;
+  planes: Plane[] | null;
 }) {
   const key = vertices.join();
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` stands for `vertices`.
@@ -436,6 +441,7 @@ function VertexMarks({
   if (!geometry) return null;
   dots.uniforms.uColor.value = new Color().setRGB(color.r, color.g, color.b, 'srgb');
   dots.uniforms.uAlpha.value = color.a;
+  dots.material.clippingPlanes = planes;
   return (
     <points
       geometry={geometry}

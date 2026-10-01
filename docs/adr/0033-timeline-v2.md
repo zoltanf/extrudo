@@ -148,11 +148,43 @@ said which reference the kernel lost or guessed.
 
 ## Open
 
-- Auto-scrolling the chip list while dragging near its edges (long
-  timelines).
+- ~~Auto-scrolling the chip list while dragging near its edges (long
+  timelines).~~ Done in P3-17.
 - A ghost of the lost geometry in the view (ADR-0005 open item: the
   fingerprint knows where it was).
-- Moving several features at once, and groups (FR-TL-06).
-- The browser shows no feature status yet (ADR-0024 open item).
-- Remove features have no dialog (ADR-0030): a lost body reference there
-  says "has no dialog yet".
+- ~~Moving several features at once~~ (done in P3-17), and groups (FR-TL-06).
+- ~~The browser shows no feature status yet (ADR-0024 open item).~~ Done in
+  P3-17 (amendment below).
+- ~~Remove features have no dialog (ADR-0030): a lost body reference there
+  says "has no dialog yet".~~ Done in P3-17 (ADR-0030 amendment).
+
+## Amendment (P3-17)
+
+- **Feature status in the browser.** Sketch and construction rows show the
+  same ✕/⚠ glyph as the chips, with the message in a tooltip and in the
+  name button's accessible description; the row carries
+  `data-feature-row="<id>"` and `data-feature-status`. One pure rule,
+  `featureProblem` (`shell/featureStatus.tsx`), decides for both: only
+  active features (before the marker, not suppressed) show a verdict, and
+  `ok` shows nothing. Bodies have no row status: a body is a result, and the
+  feature that failed is the one to fix.
+- **Auto-scroll.** While a chip or the marker is dragged within 32 px of the
+  chip list's ends (or past them: the dragged element holds the pointer),
+  the list scrolls each frame, up to 14 px, faster the nearer the end
+  (`edgeScrollStep` in `shell/timelineDrag.ts`), and the drop or gap is
+  worked out again after each step.
+- **Several features move together.** A click on a chip picks it, Ctrl/⌘
+  adds or removes one, Shift picks the run from the last clicked chip
+  (`chipSelection`; timeline state, not the session's selection, which is
+  the model's; `aria-pressed` and `data-selected` on chips,
+  `data-selected-features` on the list). Dragging a picked chip moves all
+  the picked ones: core's `moveFeatures({ ids, index, active })` takes them
+  out, keeps their order and puts them in as a block at `index`, one undo
+  step ("Move features"). `moveFeaturesProblem` refuses an order where any
+  feature would come before one it builds on, worded like `moveProblem`
+  for the first one found. The marker stays between the same other
+  features; landing at the marker the block keeps being active only if all
+  of it was (or as `active` says). `FeatureActions.move` and `moveProblem`
+  take one ID or several. A click between chips, or Esc on a chip, lets go
+  of the picks; the click that ends a drag doesn't change them.
+

@@ -2,6 +2,15 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-10-01 · **P3-17** (part 1, items 1–10) Polish: browser rows show
+  feature status like timeline chips; a single pick is named in its field
+  ("Line · Sketch1", "Body1"), and origin axes show while an axis field picks;
+  constraint glyphs and dimension labels have a right-click menu (Delete,
+  Edit Value); Measure takes sketch points and curves, axes, planes and
+  construction points; section analysis clips vertex dots and projected
+  curves; timeline chips can be picked and moved together, and dragging near
+  the ends scrolls; Appearance has a custom colour; a Remove feature has a
+  dialog. Each item amends its own ADR.
 - 2026-10-01 · **P3-08** (second half) and **P3-14** (B6) Split Body, Scale,
   Draft and benchmark B6 (ADR-0053): bodies cut along a plane or flat face
   into a body per side (or one side kept); bodies scaled about a point,

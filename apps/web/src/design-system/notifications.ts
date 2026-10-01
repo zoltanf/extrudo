@@ -15,8 +15,9 @@ export interface ToastAction {
   run(): void;
   /**
    * Whether the action still applies. The history asks whenever it draws
-   * (opening it, and after an action ran), so a stale button, one whose
-   * change is undone or already made, shows disabled. Absent: always applies.
+   * (opening it, after an action ran, and on `recheck`: the app calls it when
+   * the document changes, P3-17), so a stale button, one whose change is
+   * undone or already made, shows disabled. Absent: always applies.
    */
   available?(): boolean;
 }
@@ -67,11 +68,19 @@ export interface NotificationState {
   seen: number;
   /** The `seq` of the newest occurrence. */
   seq: number;
+  /** Bumped by `recheck` while the panel is open: the panel asks `available()` again. */
+  checks: number;
   push(tone: ToastTone, text: string, options?: ToastOptions): void;
   dismiss(id: number): void;
   setOpen(open: boolean): void;
   /** Forgets the history (the toasts on screen stay). */
   clear(): void;
+  /**
+   * Something the actions depend on changed (the document, P3-17): an open panel asks every
+   * action's `available()` again. Nothing happens while the panel is closed (it asks when it
+   * opens).
+   */
+  recheck(): void;
 }
 
 export type NotificationStore = StoreApi<NotificationState>;
@@ -98,6 +107,7 @@ export function createNotifications(env: NotificationEnv = {}): NotificationStor
     open: false,
     seen: 0,
     seq: 0,
+    checks: 0,
     push(tone, text, options = {}) {
       const id = nextToast++;
       const seq = get().seq + 1;
@@ -128,6 +138,11 @@ export function createNotifications(env: NotificationEnv = {}): NotificationStor
     },
     clear() {
       set({ history: [], seen: get().seq });
+    },
+    recheck() {
+      if (get().open && get().history.some((n) => n.action?.available)) {
+        set((s) => ({ checks: s.checks + 1 }));
+      }
     },
   }));
 }

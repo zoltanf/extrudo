@@ -35,6 +35,7 @@ import { withDimensionExpr } from '../../parameters/drafts';
 import { ExpressionInput } from '../../parameters/ExpressionInput';
 import { rayPlane, viewProject, viewRay } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
+import { useAnnotationMenu } from './annotationMenu';
 import { EntityHighlight } from './ConstraintGlyphs';
 import { type DimensionShape, dimensionShape, dimensionText } from './dimensionLayout';
 import type { ToolHost } from './host';
@@ -50,6 +51,8 @@ export interface DimensionLabelsProps {
   interactive: boolean;
   /** Reports a refused change (a value the sketch can't take). */
   notify(tone: 'error', text: string): void;
+  /** Deletes the selection: the right-click menu's Delete (P3-17). */
+  onDelete?(): void;
 }
 
 /** How far a default label sits from its geometry, px. */
@@ -67,7 +70,7 @@ type Screen = (p: Vec2) => [number, number] | undefined;
  * `<ExpressionInput>`; the host opens the same editor for a new dimension.
  * The editor also turns a dimension driven or driving. Hovering a label
  * highlights what it measures. A dimension that over-constrains the sketch
- * is red (P1-08).
+ * is red (P1-08). A right click opens a menu with Edit Value and Delete (P3-17).
  */
 export function DimensionLabels({
   store,
@@ -78,7 +81,14 @@ export function DimensionLabels({
   frame,
   interactive,
   notify,
+  onDelete,
 }: DimensionLabelsProps) {
+  const menu = useAnnotationMenu({
+    session,
+    interactive,
+    onDelete,
+    onEdit: (item) => host.editDimension(item.id as DimensionId),
+  });
   const layer = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useLayoutEffect(() => {
@@ -283,7 +293,10 @@ export function DimensionLabels({
             // emulated `pointerenter` skips.
             onPointerOver={() => setHover(id)}
             onPointerLeave={() => setHover((h) => (h === id ? undefined : h))}
-            onPointerDown={(event) => down(id, event)}
+            onPointerDown={(event) => {
+              menu.onPointerDown({ kind: 'dimension', id })(event);
+              down(id, event);
+            }}
             onPointerMove={move}
             onPointerUp={up}
             onPointerCancel={() => {
@@ -298,6 +311,7 @@ export function DimensionLabels({
           </button>
         ),
       )}
+      {menu.menu}
     </div>
   );
 }

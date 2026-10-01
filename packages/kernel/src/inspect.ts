@@ -70,7 +70,18 @@ export type ItemMeasure =
       /** An arc's sweep, degrees (360 for a whole circle). */
       sweep?: number;
     }
-  | { kind: 'vertex'; point: Vec3; bbox: Box };
+  | { kind: 'vertex'; point: Vec3; bbox: Box }
+  /**
+   * Unbounded geometry the UI measures itself (P3-17): an origin or construction plane, an
+   * axis. The kernel never returns these; `pairMeasure` takes them for angles and centres.
+   */
+  | { kind: 'plane'; origin: Vec3; normal: Vec3 }
+  | { kind: 'axis'; origin: Vec3; direction: Vec3 };
+
+/** The box of an item, if it is bounded (planes and axes aren't). */
+export function itemBox(item: ItemMeasure): Box | undefined {
+  return 'bbox' in item ? item.bbox : undefined;
+}
 
 /** Between two items. */
 export interface PairMeasure {
@@ -122,7 +133,9 @@ export function inspectShapes(kernel: Kernel, sources: readonly InspectSource[])
     items.push(measureItem(kernel, body, target, shape));
   }
   const out: Inspection = { items };
-  const box = unionBox(items.map((i) => i.bbox));
+  const box = unionBox(
+    items.flatMap((i) => (i.kind === 'plane' || i.kind === 'axis' ? [] : [i.bbox])),
+  );
   if (box) out.bbox = box;
   const [a, b] = items;
   const [sa, sb] = shapes;
@@ -228,6 +241,8 @@ function directionOf(item: ItemMeasure): Direction | undefined {
     if (item.normal) return { kind: 'plane', v: item.normal };
     if (item.axis) return { kind: 'line', v: item.axis.direction };
   }
+  if (item.kind === 'plane') return { kind: 'plane', v: item.normal };
+  if (item.kind === 'axis') return { kind: 'line', v: item.direction };
   return undefined;
 }
 
@@ -236,6 +251,7 @@ type Centre = { point: Vec3 } | { axis: Line3 };
 
 function centreOf(item: ItemMeasure): Centre | undefined {
   if (item.kind === 'vertex') return { point: item.point };
+  if (item.kind === 'axis') return { axis: { origin: item.origin, direction: item.direction } };
   if (item.kind === 'edge' && item.center && (item.curve === 'circle' || item.curve === 'ellipse'))
     return { point: item.center };
   if (item.kind === 'face') {

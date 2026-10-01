@@ -18,6 +18,7 @@ import { useStore } from 'zustand';
 import { type IconName, ToolIcon } from '../../design-system';
 import { viewProject } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
+import { useAnnotationMenu } from './annotationMenu';
 import { GLYPH_SIZE, glyphAnchors, layoutGlyphs } from './glyphs';
 
 export interface ConstraintGlyphsProps {
@@ -30,6 +31,8 @@ export interface ConstraintGlyphsProps {
   interactive: boolean;
   /** Constraints that conflict or are redundant (P1-08): drawn red. */
   over?: readonly string[];
+  /** Deletes the selection: the right-click menu's Delete (P3-17). */
+  onDelete?(): void;
 }
 
 /** The icon of each constraint type; a point on a curve is a coincidence. */
@@ -55,7 +58,8 @@ const ICONS: Record<SketchConstraintType, IconName> = {
  * a small icon next to each constrained entity (`glyphs.ts` places them).
  * Hovering a glyph highlights the entities it constrains and its other
  * glyphs; one that over-constrains the sketch is red (P1-08). Clicking selects the constraint (Shift or Ctrl adds or removes),
- * and Delete removes the selection (`sketch/selection.ts`). Glyphs of
+ * and Delete removes the selection (`sketch/selection.ts`); a right click opens a menu with
+ * Delete (P3-17, `annotationMenu.tsx`). Glyphs of
  * constraints added while the sketch is open flash once.
  *
  * The layer lets the wheel and the middle and right buttons through to the
@@ -69,7 +73,9 @@ export function ConstraintGlyphs({
   frame,
   interactive,
   over,
+  onDelete,
 }: ConstraintGlyphsProps) {
+  const menu = useAnnotationMenu({ session, interactive, onDelete });
   const layer = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
   useLayoutEffect(() => {
@@ -163,6 +169,7 @@ export function ConstraintGlyphs({
             }}
             onPointerEnter={() => setHover(g.constraint)}
             onPointerLeave={() => leave(g.constraint)}
+            onPointerDown={menu.onPointerDown({ kind: 'constraint', id: g.constraint })}
             onClick={(event) => {
               const add = event.shiftKey || event.ctrlKey || event.metaKey;
               session
@@ -181,6 +188,7 @@ export function ConstraintGlyphs({
           </button>
         );
       })}
+      {menu.menu}
     </div>
   );
 }

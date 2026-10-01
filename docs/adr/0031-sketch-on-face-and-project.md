@@ -281,8 +281,9 @@ joins; pushed in, it cuts.
 
 ## Open
 
-- **Redefine the plane** of an existing sketch (after its face is lost,
-  or to move it): P2-11's "fix references" flow.
+- ~~**Redefine the plane** of an existing sketch (after its face is lost,
+  or to move it): P2-11's "fix references" flow.~~ Done in P2-11
+  (Redefine Plane, ADR-0033).
 - Silhouettes of spheres, tori and free-form faces (only cylinders and
   cones now); a sphere's outline is a circle, the others need HLR.
 - Projecting vertices (a point) and whole bodies (their outline); an
@@ -292,4 +293,5 @@ joins; pushed in, it cuts.
 - When a projected face is split by a later edit, keys by edge name change
   and those curves are replaced (their constraints go). Following edges
   through splits by related names, as `ctx.resolve` does, would keep them.
-- Sketches on construction planes (P3-05) use the same report channel.
+- ~~Sketches on construction planes (P3-05) use the same report channel.~~
+  Done in P3-05 (ADR-0040).

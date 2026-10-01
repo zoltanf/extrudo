@@ -14,7 +14,14 @@ import {
   renameDocument,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
-import { bodyEntries, bodyMetaOf, createBodyActions, followBodyNames } from './bodies';
+import {
+  bodyEntries,
+  bodyMetaOf,
+  createBodyActions,
+  followBodyNames,
+  isSwatch,
+  parseBodyColor,
+} from './bodies';
 
 const feature = (id: string): Feature => ({
   id: id as FeatureId,
@@ -167,5 +174,22 @@ describe('body actions', () => {
     t.session.getState().enterSketch('A' as FeatureId);
     expect(t.a.remove([bid('B:0')])).toBeUndefined();
     expect(t.messages).toEqual(['info: Finish the sketch first.']);
+  });
+});
+
+describe('custom body colours (P3-17)', () => {
+  it('reads a typed hex code as the document stores it', () => {
+    expect(parseBodyColor('#A1B2C3')).toBe('#a1b2c3');
+    expect(parseBodyColor(' a1b2c3 ')).toBe('#a1b2c3');
+    expect(parseBodyColor('#f80')).toBe('#ff8800');
+    expect(parseBodyColor('#ff88')).toBeUndefined();
+    expect(parseBodyColor('orange')).toBeUndefined();
+    expect(parseBodyColor('')).toBeUndefined();
+  });
+
+  it('tells swatches from custom colours', () => {
+    expect(isSwatch('#5b7cff')).toBe(true);
+    expect(isSwatch(undefined)).toBe(true);
+    expect(isSwatch('#123456')).toBe(false);
   });
 });

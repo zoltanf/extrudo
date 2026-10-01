@@ -31,6 +31,7 @@ export {
   type InspectKind,
   type InspectTarget,
   type ItemMeasure,
+  itemBox,
   type Line3,
   type PairMeasure,
   pairMeasure,

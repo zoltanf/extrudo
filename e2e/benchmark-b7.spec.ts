@@ -180,7 +180,7 @@ test('B7: a knurled knob, revolved, chamfered and grooved all round', async ({ p
   await page.getByRole('button', { name: 'Revolve', exact: true }).click();
   const revolve = page.getByRole('region', { name: 'Revolve dialog' });
   await expect(revolve.getByRole('button', { name: 'Profiles', exact: true })).toHaveText(
-    '1 profile',
+    /^Profile · Sketch\d+$/,
   );
   await pickAxis(page, xz, 'z', [25, 30, 35, 40, 45, -10, -15]);
   await expect(revolve.getByRole('button', { name: 'Axis', exact: true })).toHaveText('Z axis');

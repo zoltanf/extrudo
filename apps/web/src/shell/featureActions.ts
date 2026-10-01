@@ -18,6 +18,8 @@ import {
   type FeatureId,
   isFeatureVisible,
   moveFeature,
+  moveFeatures,
+  moveFeaturesProblem,
   moveProblem,
   moveTimelineMarker,
   type ReferenceIssue,
@@ -54,12 +56,13 @@ export interface FeatureActions {
   rollTo(index: number): void;
   /**
    * Moves a feature to `index` (its position afterwards; `active` decides at
-   * the marker, see core's `moveFeature`), FR-TL-04. Returns `false`, and
-   * says why, when it would break a reference.
+   * the marker, see core's `moveFeature`), FR-TL-04. Several features move
+   * together, in their order, the first to `index` (core's `moveFeatures`,
+   * P3-17). Returns `false`, and says why, when it would break a reference.
    */
-  move(id: FeatureId, index: number, active?: boolean): boolean;
+  move(id: FeatureId | readonly FeatureId[], index: number, active?: boolean): boolean;
   /** Why `move` would be refused, or `undefined` (drag feedback). */
-  moveProblem(id: FeatureId, index: number): string | undefined;
+  moveProblem(id: FeatureId | readonly FeatureId[], index: number): string | undefined;
   /**
    * References a feature lost or the kernel guessed in the last recompute
    * (FR-TL-05), from the model store's status.
@@ -176,9 +179,19 @@ export function createFeatureActions(
         notify('info', why);
         return false;
       }
-      return run(moveFeature({ id, index, ...(active !== undefined && { active }) }));
+      const ids = typeof id === 'string' ? [id] : id;
+      const at = active !== undefined ? { active } : {};
+      return run(
+        ids.length === 1
+          ? moveFeature({ id: ids[0] as FeatureId, index, ...at })
+          : moveFeatures({ ids, index, ...at }),
+      );
     },
-    moveProblem: (id, index) => locked() ?? moveProblem(store.getState().doc, id, index),
+    moveProblem: (id, index) =>
+      locked() ??
+      (typeof id === 'string'
+        ? moveProblem(store.getState().doc, id, index)
+        : moveFeaturesProblem(store.getState().doc, id, index)),
     issues,
     fix(id) {
       const f = feature(id);

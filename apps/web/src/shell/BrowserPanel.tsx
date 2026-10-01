@@ -3,6 +3,7 @@ import {
   type DocumentStore,
   type Feature,
   type FeatureId,
+  type FeatureStatus,
   isConstructionType,
   isFeatureVisible,
 } from '@extrudo/core';
@@ -27,6 +28,8 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type ReactNode,
+  useEffect,
+  useRef,
   useState,
 } from 'react';
 import { useStore } from 'zustand';
@@ -36,12 +39,22 @@ import {
   MenuItem,
   MenuSeparator,
   Popover,
+  TextInput,
   ToolIcon,
+  Tooltip,
 } from '../design-system';
 import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
-import { BODY_COLORS, BODY_OPACITIES, type BodyActions, type BodyEntry } from './bodies';
+import {
+  BODY_COLORS,
+  BODY_OPACITIES,
+  type BodyActions,
+  type BodyEntry,
+  isSwatch,
+  parseBodyColor,
+} from './bodies';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
+import { type FeatureProblem, featureProblem, StatusGlyph } from './featureStatus';
 import { toolForFeature } from './tools';
 
 export const BROWSER_ID = 'browser-panel';
@@ -79,6 +92,8 @@ export interface BrowserPanelProps {
   section?: AnalysisEntry;
   /** The overhang analysis (P3-10), while there is one: a row in the same folder. */
   overhang?: AnalysisEntry;
+  /** The kernel's verdict per feature: rows show ✕ or ⚠ as the timeline's chips do (P3-17). */
+  statuses?: Readonly<Record<string, FeatureStatus | undefined>>;
 }
 
 /** One row of the Analysis folder: a view analysis with its eye, its panel and its removal. */
@@ -119,6 +134,7 @@ export function BrowserPanel({
   onHoverBody,
   section,
   overhang,
+  statuses = NO_STATUSES,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
@@ -231,6 +247,7 @@ export function BrowserPanel({
                     feature={feature}
                     editable={actions.canEdit(feature, index, doc.timelineMarker)}
                     rolledBack={index >= doc.timelineMarker}
+                    problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
                     position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
                     active={feature.id === activeSketchId}
                     actions={actions}
@@ -263,6 +280,7 @@ export function BrowserPanel({
                     feature={feature}
                     editable={actions.canEdit(feature, index, doc.timelineMarker)}
                     rolledBack={index >= doc.timelineMarker}
+                    problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
                     position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
                     active={false}
                     actions={actions}
@@ -376,6 +394,7 @@ function SketchLeaf({
   feature,
   editable,
   rolledBack,
+  problem,
   position,
   active,
   actions,
@@ -385,6 +404,8 @@ function SketchLeaf({
   feature: Feature;
   editable: boolean;
   rolledBack: boolean;
+  /** The kernel's warning or error, shown as on a timeline chip (P3-17). */
+  problem?: FeatureProblem;
   position: { index: number; marker: number; count: number };
   active: boolean;
   actions: FeatureActions;
@@ -398,6 +419,7 @@ function SketchLeaf({
     active && 'editing',
     rolledBack && 'rolled back',
     feature.suppressed && 'suppressed',
+    problem && (problem.message ? `${problem.status}: ${problem.message}` : problem.status),
   ].filter(Boolean);
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'F2') setRenaming(true);
@@ -415,6 +437,8 @@ function SketchLeaf({
         <Leaf
           active={active}
           data-construction={constructionId}
+          data-feature-row={feature.id}
+          data-feature-status={problem?.status}
           onDoubleClick={editable && !renaming ? () => actions.edit(feature.id) : undefined}
           onPointerEnter={() => actions.hover(feature.id)}
           onPointerLeave={() => actions.hover(undefined)}
@@ -441,6 +465,17 @@ function SketchLeaf({
             </button>
           )}
           {active && <span className="text-xs text-muted">editing</span>}
+          {problem && !renaming && (
+            <Tooltip
+              label={problem.status === 'error' ? 'Error' : 'Warning'}
+              hint={problem.message}
+              side="right"
+            >
+              <span className="grid size-5 shrink-0 place-items-center">
+                <StatusGlyph status={problem.status} />
+              </span>
+            </Tooltip>
+          )}
           {!renaming && (
             <span className="ml-auto flex items-center">
               {editable && !active && (
@@ -474,6 +509,7 @@ function SketchLeaf({
 }
 
 const NO_BODIES: ReadonlySet<string> = new Set();
+const NO_STATUSES: Readonly<Record<string, FeatureStatus | undefined>> = {};
 
 /**
  * A body in the browser (P2-08, ADR-0030): a click picks it like the view
@@ -606,6 +642,89 @@ function BodyLeaf({
   );
 }
 
+/**
+ * Any colour beside the swatches (P3-17): the system colour picker, which commits when it
+ * closes (one undo step, not one per drag), and the hex code, committed by Enter or leaving
+ * the field. Marked while the body's colour is none of the swatches.
+ */
+function CustomColor({
+  color,
+  onPick,
+}: {
+  color: string | undefined;
+  onPick(color: string): void;
+}) {
+  const custom = color !== undefined && !isSwatch(color);
+  const [draft, setDraft] = useState<string>();
+  const picker = useRef<HTMLInputElement>(null);
+  const pick = useRef(onPick);
+  pick.current = onPick;
+  // React's onChange on a colour input fires on every move of the picker; the native `change`
+  // fires once, when the choice is made.
+  useEffect(() => {
+    const el = picker.current;
+    if (!el) return;
+    const onChange = () => {
+      const value = parseBodyColor(el.value);
+      if (value) pick.current(value);
+    };
+    el.addEventListener('change', onChange);
+    return () => el.removeEventListener('change', onChange);
+  }, []);
+  const text = draft ?? (custom ? color : '');
+  const parsed = draft === undefined ? undefined : parseBodyColor(draft);
+  const commit = () => {
+    if (draft === undefined) return;
+    if (parsed && parsed !== color) onPick(parsed);
+    if (parsed || draft.trim() === '') setDraft(undefined);
+  };
+  return (
+    <div className="col-span-5 mt-1 flex items-center gap-2">
+      <label
+        title="Custom colour"
+        className={`relative grid size-8 shrink-0 place-items-center rounded-input border ${custom ? 'border-accent outline-2 outline-accent' : 'border-line'}`}
+      >
+        <input
+          ref={picker}
+          type="color"
+          aria-label="Custom colour"
+          data-custom-colour={custom || undefined}
+          defaultValue={color ?? '#8c93a3'}
+          key={color ?? 'default'}
+          className="absolute inset-0 size-full cursor-pointer opacity-0"
+        />
+        <span
+          className="pointer-events-none size-5 rounded-full border border-line"
+          style={{
+            background: custom
+              ? color
+              : 'conic-gradient(#ff7a66, #f2b21b, #2fbf8f, #22b3c2, #5b7cff, #f0609a, #ff7a66)',
+          }}
+        />
+      </label>
+      <TextInput
+        aria-label="Hex colour"
+        placeholder="#rrggbb"
+        spellCheck={false}
+        value={text}
+        aria-invalid={draft !== undefined && draft.trim() !== '' && !parsed ? true : undefined}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+          } else if (event.key === 'Escape' && draft !== undefined) {
+            event.stopPropagation();
+            setDraft(undefined);
+          }
+        }}
+        className="min-w-0 flex-1 font-mono"
+      />
+    </div>
+  );
+}
+
 /** Colour swatches and opacity presets (ADR-0030); each choice is one undo step. */
 export function AppearancePanel({ body, actions }: { body: BodyEntry; actions: BodyActions }) {
   const { id, meta } = body;
@@ -633,6 +752,7 @@ export function AppearancePanel({ body, actions }: { body: BodyEntry; actions: B
             />
           </label>
         ))}
+        <CustomColor color={meta.color} onPick={(color) => actions.setColor(id, color)} />
       </fieldset>
       <fieldset className="grid grid-cols-4 gap-1">
         <legend className="mb-1.5 text-xs font-semibold tracking-[0.08em] text-muted uppercase">

@@ -128,11 +128,28 @@ context menu at all.
 
 ## Open items
 
-- Constraint glyphs and dimension labels sit over the view and take their
+- ~~Constraint glyphs and dimension labels sit over the view and take their
   own right-clicks (they navigate); a menu on them (Delete constraint) is a
-  small follow-up.
-- Press Pull and Move wedges wait for P3-08 and P3-06; the Fillet wedge lit up
+  small follow-up.~~ Done in P3-17 (amendment below).
+- ~~Press Pull and Move wedges wait for P3-08 and P3-06;~~ Done: the Move
+  wedge lit up with P3-06, Press Pull with P3-08; the Fillet wedge lit up
   with P3-01 without any change here, and so did the others (Press Pull with
   P3-08: only the command was added).
 - A user setting to remap wedges: the tables are data, so a settings page
   could layer overrides as it will for the keymap.
+
+## Amendment (P3-17)
+
+Constraint glyphs and dimension labels have a right-click menu of their own
+(`sketch/tools/annotationMenu.tsx`), not the marking menu: what is under the
+pointer is one annotation, and a ring of sketch tools would be the wrong
+answer to a right-click on it. A right press on a glyph or label is
+remembered and its release heard on the window (the navigation captures it,
+as for the view's own ring), so a right drag still pans or orbits and only a
+right click without movement (`CLICK_SLOP`) opens the menu. The click selects
+the annotation unless it is already selected (`menuSelection`), and the menu
+acts on the selection: Delete runs the shell's `deleteSelection` (with its
+toast when a dimension's parameter is used elsewhere), Edit Value opens a
+dimension's in-place editor. No menu while a tool runs (the layer isn't
+interactive then). It is a `PointMenu` ("Constraint menu", "Dimension menu").
+

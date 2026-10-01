@@ -164,4 +164,30 @@ describe('notifications', () => {
       }),
     ).toBe(false);
   });
+
+  it('asks an open panel to re-read available() when the app says something changed (P3-17)', () => {
+    const t = setup();
+    t.state().recheck();
+    expect(t.state().checks).toBe(0);
+    let hidden = true;
+    t.state().push('info', 'Sketch1 is hidden.', {
+      action: { label: 'Show', run: () => {}, available: () => hidden },
+    });
+    // Closed: nothing to redraw (opening reads it anyway).
+    t.state().recheck();
+    expect(t.state().checks).toBe(0);
+    t.state().setOpen(true);
+    hidden = false;
+    t.state().recheck();
+    expect(t.state().checks).toBe(1);
+    expect(applies(t.state().history[0]?.action ?? { label: '', run: () => {} })).toBe(false);
+  });
+
+  it('skips the recheck when no action has a predicate', () => {
+    const t = setup();
+    t.state().push('info', 'Saved.', { action: { label: 'Undo', run: () => {} } });
+    t.state().setOpen(true);
+    t.state().recheck();
+    expect(t.state().checks).toBe(0);
+  });
 });

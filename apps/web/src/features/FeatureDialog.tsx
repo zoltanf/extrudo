@@ -1,10 +1,4 @@
-import {
-  type ExtrudoDocument,
-  formatQuantity,
-  type GeomRef,
-  originAxis,
-  originPlane,
-} from '@extrudo/core';
+import { type ExtrudoDocument, formatQuantity, type GeomRef } from '@extrudo/core';
 import { CircleAlert, X } from 'lucide-react';
 import { type KeyboardEvent, type PointerEvent, type ReactNode, useRef, useState } from 'react';
 import { useStore } from 'zustand';
@@ -14,6 +8,7 @@ import { Message } from '../parameters/Message';
 import { TOOLS, type Tool } from '../shell/tools';
 import { canCommit, commitProblem, type DialogController, type OpenDialog } from './dialog';
 import { repeatableFeatures } from './featureList';
+import { pickName } from './pickName';
 import type { DialogField, FeatureDialogSpec, FeatureListField, SelectionField } from './spec';
 import { acceptsNoun, pickPrompt, shownFields } from './values';
 
@@ -272,16 +267,12 @@ function SelectionControl({
 }) {
   const refs = open.values.refs[field.name] ?? [];
   const active = open.pickField === field.name;
+  const one = refs.length === 1 && refs[0] ? pickName(refs[0], controller.context()) : undefined;
   const text =
     refs.length === 0
       ? pickPrompt(field)
-      : refs.length === 1 && refs[0]?.kind === 'axis'
-        ? (originAxis(refs[0].id)?.label ?? constructionName(refs[0], controller) ?? '1 axis')
-        : refs.length === 1 && refs[0]?.kind === 'plane'
-          ? (originPlane(refs[0].id)?.label ?? constructionName(refs[0], controller) ?? '1 plane')
-          : refs.length === 1 && refs[0]?.kind === 'point'
-            ? (constructionName(refs[0], controller) ?? '1 point')
-            : `${refs.length} ${field.noun ? field.noun[refs.length === 1 ? 0 : 1] : countNoun(refs, refs.length)}`;
+      : (one ??
+        `${refs.length} ${field.noun ? field.noun[refs.length === 1 ? 0 : 1] : countNoun(refs, refs.length)}`);
   return (
     <div
       className={`flex h-8 items-center rounded-input border ${active ? 'border-accent bg-accent-soft' : 'border-line'}`}
@@ -373,10 +364,6 @@ function FeatureListControl({
 
 /** "faces", "profiles": what a field holds (picks of one kind: its noun; else "items"). */
 /** The name of the construction feature a plane, axis or point reference names (P3-05). */
-function constructionName(ref: GeomRef, controller: DialogController): string | undefined {
-  return controller.context()?.doc.features.find((f) => f.id === ref.id)?.name;
-}
-
 function countNoun(refs: readonly GeomRef[], n: number): string {
   const kinds = [...new Set(refs.map((r) => r.kind))];
   return kinds.length === 1 ? acceptsNoun(kinds, n !== 1) : n === 1 ? 'item' : 'items';

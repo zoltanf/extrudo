@@ -1,16 +1,15 @@
-import type { BodyId, ExtrudoDocument } from '@extrudo/core';
+import type { ExtrudoDocument } from '@extrudo/core';
 import { LoaderCircle, X } from 'lucide-react';
 import { useMemo } from 'react';
 import { Button, ToolIcon } from '../design-system';
 import { TOOLS } from '../shell/tools';
 import { measureSections } from './format';
-import type { InspectionState } from './inspection';
+import type { MeasureState } from './inspection';
 
 export interface MeasurePanelProps {
-  state: InspectionState;
+  state: MeasureState;
   settings: ExtrudoDocument['settings'];
-  bodyName(id: BodyId): string | undefined;
-  /** Something is selected that Measure can't measure (sketch curves, profiles, planes). */
+  /** Something is selected that Measure can't measure (profiles, construction features gone). */
   others: number;
   onClear(): void;
   onClose(): void;
@@ -18,7 +17,6 @@ export interface MeasurePanelProps {
 
 /** Top-right below the ViewCube, where feature dialogs open (UI spec §2). */
 const HOME = { right: 12, top: 148 };
-const NOUNS = { face: 'Face', edge: 'Edge', vertex: 'Vertex' } as const;
 
 /**
  * The Measure tool's panel (P2-13, UI spec §2): what is picked and what
@@ -29,30 +27,12 @@ const NOUNS = { face: 'Face', edge: 'Edge', vertex: 'Vertex' } as const;
  * `pending`, `ready`, `error`), and each value's `data-measure-row`
  * ("<section>/<label>").
  */
-export function MeasurePanel({
-  state,
-  settings,
-  bodyName,
-  others,
-  onClear,
-  onClose,
-}: MeasurePanelProps) {
-  const { targets, inspection, error } = state;
+export function MeasurePanel({ state, settings, others, onClear, onClose }: MeasurePanelProps) {
+  const { measurement, labels, error, status, count } = state;
   const sections = useMemo(() => {
-    if (!inspection) return [];
-    return measureSections(
-      inspection,
-      (i) => {
-        const t = targets[i];
-        if (!t) return 'Item';
-        const body = bodyName(t.body) ?? 'Body';
-        return t.kind === 'body' ? body : `${NOUNS[t.kind]} ${t.index + 1} · ${body}`;
-      },
-      settings,
-    );
-  }, [inspection, targets, bodyName, settings]);
-  const status =
-    targets.length === 0 ? 'empty' : error ? 'error' : inspection ? 'ready' : 'pending';
+    if (!measurement) return [];
+    return measureSections(measurement, (i) => labels[i] ?? 'Item', settings);
+  }, [measurement, labels, settings]);
   const tool = TOOLS.measure;
 
   return (
@@ -83,8 +63,8 @@ export function MeasurePanel({
         {status === 'empty' && (
           <p className="text-sm text-muted">
             {others > 0
-              ? 'Measure works on bodies and their faces, edges and vertices. Pick one of those.'
-              : 'Pick a body, face, edge or vertex. Pick a second one to measure between them.'}
+              ? 'Measure works on bodies, faces, edges, vertices, sketch curves and points, axes and planes. Pick one of those.'
+              : 'Pick a body, face, edge, vertex, sketch curve, axis or plane. Pick a second one to measure between them.'}
           </p>
         )}
         {status === 'pending' && (
@@ -113,12 +93,12 @@ export function MeasurePanel({
             </dl>
           </div>
         ))}
-        {status !== 'empty' && targets.length < 2 && (
+        {status !== 'empty' && count < 2 && (
           <p className="text-xs text-muted">Pick another to measure between them.</p>
         )}
       </div>
       <footer className="flex shrink-0 justify-end gap-2 border-t border-line px-3 py-2">
-        <Button variant="ghost" onClick={onClear} disabled={targets.length === 0}>
+        <Button variant="ghost" onClick={onClear} disabled={count === 0}>
           Clear
         </Button>
         <Button variant="primary" onClick={onClose}>

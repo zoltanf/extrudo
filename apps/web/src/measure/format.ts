@@ -3,7 +3,8 @@
  * rows of label and value, in the document's unit and precision.
  */
 import { ANGLE, type Dim, formatQuantity, LENGTH, type Settings } from '@extrudo/core';
-import type { Box, Inspection, ItemMeasure, Vec3 } from '@extrudo/kernel';
+import type { Box, ItemMeasure, Vec3 } from '@extrudo/kernel';
+import type { Measurement } from './inspection';
 
 const AREA: Dim = { length: 2, angle: 0 };
 const VOLUME: Dim = { length: 3, angle: 0 };
@@ -100,17 +101,32 @@ export function itemRows(item: ItemMeasure, s: Format): MeasureRow[] {
     case 'vertex':
       add('Position', triple(item.point, s));
       break;
+    case 'plane':
+      add('Type', 'Plane');
+      add('Origin', triple(item.origin, s));
+      add('Normal', item.normal.map((v) => fixed(v, s)).join(', '));
+      break;
+    case 'axis':
+      add('Type', 'Axis');
+      add('Origin', triple(item.origin, s));
+      add('Direction', item.direction.map((v) => fixed(v, s)).join(', '));
+      break;
   }
   return rows;
 }
 
-/** A pair's rows: distance with its X, Y, Z parts, angle, centre distance. */
-export function pairRows(inspection: Inspection, s: Format): MeasureRow[] {
+/**
+ * A pair's rows: distance with its X, Y, Z parts, angle, centre distance. The distance is left
+ * out where it isn't known (a plane and a face, measured on the UI thread, P3-17).
+ */
+export function pairRows(inspection: Measurement, s: Format): MeasureRow[] {
   const pair = inspection.pair;
   if (!pair) return [];
-  const rows: MeasureRow[] = [{ label: 'Distance', value: length(pair.distance, s) }];
-  if (pair.distance > 0) {
-    const d = pair.to.map((v, k) => Math.abs(v - (pair.from[k] as number))) as unknown as Vec3;
+  const rows: MeasureRow[] = [];
+  const { distance, from, to } = pair;
+  if (distance !== undefined) rows.push({ label: 'Distance', value: length(distance, s) });
+  if (distance !== undefined && distance > 0 && from && to) {
+    const d = to.map((v, k) => Math.abs(v - (from[k] as number))) as unknown as Vec3;
     rows.push({ label: 'ΔX, ΔY, ΔZ', value: triple(d, s) });
   }
   if (pair.angle !== undefined) {
@@ -162,7 +178,7 @@ function fixed(v: number, s: Format): string {
  * around them all.
  */
 export function measureSections(
-  inspection: Inspection,
+  inspection: Measurement,
   labelOf: (index: number) => string,
   s: Format,
 ): MeasureSection[] {

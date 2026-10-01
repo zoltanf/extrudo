@@ -133,6 +133,84 @@ export const moveFeature = defineCommand<{ id: FeatureId; index: number; active?
   },
 );
 
+/** The features moved by `moveFeatures`, in timeline order, and the order after the move. */
+function blockMove(
+  features: readonly Feature[],
+  ids: readonly FeatureId[],
+  index: number,
+): { moving: Feature[]; order: Feature[] } {
+  const set = new Set<string>(ids);
+  const moving = features.filter((f) => set.has(f.id));
+  const order = features.filter((f) => !set.has(f.id));
+  order.splice(index, 0, ...moving);
+  return { moving, order };
+}
+
+/**
+ * Why features `ids` can't move together to `index` (the position of the first of them
+ * afterwards, P3-17), or `undefined` if they can. They keep their order and land next to each
+ * other; the move is refused when a feature would come before one it builds on. One feature
+ * is `moveProblem`.
+ */
+export function moveFeaturesProblem(
+  doc: Pick<ExtrudoDocument, 'features'>,
+  ids: readonly FeatureId[],
+  index: number,
+): string | undefined {
+  const unique = [...new Set(ids)];
+  if (unique.length === 1) return moveProblem(doc, unique[0] as FeatureId, index);
+  const missing = unique.find((id) => !doc.features.some((f) => f.id === id));
+  if (missing !== undefined) return `Feature ${missing} doesn't exist.`;
+  if (unique.length === 0) return 'Nothing to move.';
+  const { order } = blockMove(doc.features, unique, index);
+  if (!Number.isInteger(index) || index < 0 || index > doc.features.length - unique.length) {
+    return `Can't move ${unique.length} features to position ${index}.`;
+  }
+  const moved = new Set<string>(unique);
+  const at = new Map(order.map((f, i) => [f.id, i]));
+  const dependencies = timelineDependencies(doc);
+  for (const [i, feature] of order.entries()) {
+    for (const d of dependencies.get(feature.id) ?? []) {
+      if ((at.get(d) ?? -1) < i) continue;
+      const need = order[at.get(d) ?? 0] as Feature;
+      return moved.has(feature.id)
+        ? `Can't move ${feature.name} before ${need.name}: ${feature.name} uses ${need.name}.`
+        : `Can't move ${need.name} after ${feature.name}: ${feature.name} uses ${need.name}.`;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Moves several features together to `index` (where the first lands; P3-17): they keep their
+ * order and end up next to each other, one undo step, refused with `moveFeaturesProblem`'s
+ * message. The marker stays between the same other features; the moved ones become active if
+ * they land among active features, rolled back among rolled-back ones, and at the marker take
+ * `active` (default: whether all of them were active).
+ */
+export const moveFeatures = defineCommand<{
+  ids: readonly FeatureId[];
+  index: number;
+  active?: boolean;
+}>('feature.moveMany', 'Move features', (draft, { ids, index, active }) => {
+  const unique = [...new Set(ids)];
+  const problem = moveFeaturesProblem(draft as ExtrudoDocument, unique, index);
+  if (problem) throw new CommandError(problem);
+  const marker = draft.timelineMarker;
+  const positions = unique.map((id) => draft.features.findIndex((f) => f.id === id));
+  const activeCount = positions.filter((p) => p < marker).length;
+  const before = marker - activeCount;
+  const isActive =
+    index < before ? true : index > before ? false : (active ?? activeCount === unique.length);
+  const { order } = blockMove(draft.features as Feature[], unique, index);
+  const same = order.every((f, i) => f.id === draft.features[i]?.id);
+  const nextMarker = before + (isActive ? unique.length : 0);
+  if (same && nextMarker === marker) return;
+  const byId = new Map(draft.features.map((f) => [f.id, f]));
+  draft.features = order.map((f) => byId.get(f.id) as Feature);
+  draft.timelineMarker = nextMarker;
+});
+
 /** A reference to replace, named as stored (kind and ID), and what replaces it. */
 export interface ReferenceReplacement {
   from: { kind: GeomRefKind; id: string };
