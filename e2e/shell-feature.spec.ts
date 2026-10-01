@@ -159,7 +159,7 @@ test('a body picked with no face is hollowed closed: a sealed void', async ({ pa
   await browserOf(page).getByRole('button', { name: 'Body1', exact: true }).click();
   await startShell(page);
   const dialog = page.getByRole('region', { name: 'Shell dialog' });
-  await expect(dialog.getByRole('button', { name: 'Body', exact: true })).toHaveText('1 body');
+  await expect(dialog.getByRole('button', { name: 'Body', exact: true })).toHaveText('Body1');
   await expect(dialog.getByRole('button', { name: 'Faces to remove', exact: true })).toHaveText(
     'Pick faces',
   );

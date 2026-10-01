@@ -112,7 +112,7 @@ test('extrudes a profile, press-pulls its top face out and in, with undo, redo a
   const dialog = page.getByRole('region', { name: 'Extrude dialog' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText(
-    '1 profile',
+    /^Profile · Sketch\d+$/,
   );
   await expect(dialog.getByRole('combobox', { name: 'Operation' })).toHaveValue('new-body');
   // Side 2, the object fields and the bodies don't show for one side to a distance, new body.

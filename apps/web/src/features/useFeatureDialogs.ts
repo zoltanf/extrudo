@@ -81,8 +81,16 @@ export function useFeatureDialogs({
   const field = open?.spec.fields.find((f) => f.name === open.pickField);
   useEffect(() => {
     viewport.getState().setFieldFilter(field?.kind === 'selection' ? filterOf(field) : undefined);
+    // An axis field shows the origin axes while it takes picks (P3-17).
+    viewport.getState().setPickAxes(field?.kind === 'selection' && field.accepts.includes('axis'));
   }, [viewport, field]);
-  useEffect(() => () => viewport.getState().setFieldFilter(undefined), [viewport]);
+  useEffect(
+    () => () => {
+      viewport.getState().setFieldFilter(undefined);
+      viewport.getState().setPickAxes(false);
+    },
+    [viewport],
+  );
 
   return { controller, open };
 }

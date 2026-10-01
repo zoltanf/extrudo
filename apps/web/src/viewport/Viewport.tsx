@@ -67,7 +67,13 @@ import {
 import { createRenderMeter } from './renderMeter';
 import { Sketches } from './Sketches';
 import { type SketchDrawing, sketchSegments, unionBounds } from './sketchGeometry';
-import type { Bounds, OriginItem, ViewportStore, VisualStyle } from './store';
+import {
+  type Bounds,
+  type OriginItem,
+  shownOrigin,
+  type ViewportStore,
+  type VisualStyle,
+} from './store';
 import { ViewCube } from './ViewCube';
 import { namedDirection } from './viewcube';
 import type { ViewMenu, ViewMenuContent, ViewMenuRequest } from './viewMenu';
@@ -575,16 +581,25 @@ function Scene({
   onSilhouettes(body: BodyId, segments: number): void;
   onFirstFrame(): void;
 }) {
-  const { projection, visualStyle, grid, origin, sketchPoints } = useStore(
+  const {
+    projection,
+    visualStyle,
+    grid,
+    origin: chosenOrigin,
+    pickAxes,
+    sketchPoints,
+  } = useStore(
     viewport,
-    useShallow(({ projection, visualStyle, grid, origin, sketchPoints }) => ({
+    useShallow(({ projection, visualStyle, grid, origin, pickAxes, sketchPoints }) => ({
       projection,
       visualStyle,
       grid,
       origin,
+      pickAxes,
       sketchPoints,
     })),
   );
+  const origin = useMemo(() => shownOrigin(chosenOrigin, pickAxes), [chosenOrigin, pickAxes]);
   const invalidate = useThree((s) => s.invalidate);
   const get = useThree((s) => s.get);
   // Clipping planes on materials (a section analysis, P3-09) need this switched on.
@@ -927,13 +942,13 @@ function useModelInput(
   const handlers = useMemo<PointerHandlers | undefined>(() => {
     if (!select) return undefined;
     const context = (p: ScreenPointer) => {
-      const { view, projection, visualStyle, selectionFilter, fieldFilter, origin } =
+      const { view, projection, visualStyle, selectionFilter, fieldFilter, origin, pickAxes } =
         viewport.getState();
       const made = constructionPick(sceneRef.current.construction, view.size);
       return {
         scene: {
           ...pickScene(sceneRef.current, visualStyle),
-          axes: [...originAxes(origin, view.size), ...made.axes],
+          axes: [...originAxes(shownOrigin(origin, pickAxes), view.size), ...made.axes],
           planes: made.planes,
           points: made.points,
         },

@@ -137,7 +137,7 @@ test('copies a body along a picked axis: a rectangular pattern', async ({ page }
   await selectBodies(page, ['Body1']);
   const dialog = await openDialog(page, 'Rectangular Pattern', 'Rectangular Pattern dialog');
   // The picked body is in, and the direction is the next thing to pick: the X axis.
-  await expect(dialog.getByRole('button', { name: 'Bodies', exact: true })).toHaveText('1 body');
+  await expect(dialog.getByRole('button', { name: 'Bodies', exact: true })).toHaveText('Body1');
   await dialog.getByRole('button', { name: 'Direction', exact: true }).click();
   await pickAxis(page, at, 'x', [25, 30, 35, -25, -30, -35]);
   await expect(dialog.getByRole('button', { name: 'Direction', exact: true })).toHaveText('X axis');

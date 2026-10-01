@@ -273,13 +273,33 @@ reading nearest the last one, within ±360°) instead of wrapping at
   (`lineOf`, ADR-0040).
 - Revolve "to object" (Fusion's "To"), and an angle measured from a
   reference other than the profile.
-- The field names a sketch-line axis "1 sketch curve"; "Line · Sketch1"
-  would read better (all selection fields could name single picks).
-- Origin axes are pickable only while drawn; showing them while an
+- ~~The field names a sketch-line axis "1 sketch curve"; "Line · Sketch1"
+  would read better (all selection fields could name single picks).~~
+  Done in P3-17 (amendment below).
+- ~~Origin axes are pickable only while drawn; showing them while an
   axis field takes picks (as Create Sketch shows the planes) would help
-  when they are hidden.
+  when they are hidden.~~ Done in P3-17 (amendment below).
 - The arc starts at the axis; for large profiles an arc through the
   profile's centre would be easier to grab.
 - The press-pull style proposal for faces is only "join"; a face turned
   into its body should propose a cut (the way extrude's rule does). Done in
   P3-08: one rule for both, ADR-0051 §7.
+
+## Amendment (P3-17)
+
+- **Selection fields name a single pick** (`features/pickName.ts`): origin
+  axes and planes by their label ("Y axis"), construction geometry and
+  ticked features by the feature's name, sketch points and curves as
+  "Line · Sketch1", profiles as "Profile · Sketch1", bodies by their stored
+  name. Faces, edges and vertices keep the count ("1 face"): "Face · Body1"
+  says little more, and their names are topological IDs nobody reads. A
+  pick that can't be named (a sketch since deleted, a body whose name isn't
+  stored yet) falls back to the count. Several picks are counted as before.
+- **Origin axes show while an axis field takes picks.** The dialog hook sets
+  the viewport store's `pickAxes` while the pick field accepts `axis`;
+  `shownOrigin(origin, pickAxes)` adds the three axes to what is drawn and
+  to the pick scene (`originAxes`), whatever the browser's eyes say. The
+  browser's eyes don't change: closing the dialog or moving to another field
+  hides them again. The planes stay as the browser sets them (Create Sketch
+  and plane fields have their own picker).
+

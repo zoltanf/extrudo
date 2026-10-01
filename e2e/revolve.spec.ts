@@ -69,7 +69,7 @@ test('revolves a profile about an origin axis a whole turn, then edits it to a q
   const dialog = page.getByRole('region', { name: 'Revolve dialog' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText(
-    '1 profile',
+    /^Profile · Sketch\d+$/,
   );
   await expect(dialog.getByRole('button', { name: 'Axis', exact: true })).toHaveText('Y axis');
   await expect(dialog.getByRole('textbox', { name: 'Angle' })).toHaveValue('360 deg');
@@ -133,16 +133,28 @@ test('revolves about a sketch line picked in the view, symmetric, half a turn', 
   await page.mouse.move(inside.x, inside.y);
   await page.mouse.click(inside.x, inside.y);
   await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+  // The Y axis hidden in the browser isn't picked outside a dialog…
+  await page
+    .getByRole('complementary', { name: 'Browser' })
+    .getByRole('button', { name: 'Hide Y axis' })
+    .click();
+  const onAxis = at(0, 45);
+  await page.mouse.move(onAxis.x, onAxis.y);
+  await expect.poll(() => attr(viewport, 'data-model-hover')).not.toBe('axis:origin:y');
   await page.getByRole('button', { name: 'Revolve', exact: true }).click();
   const dialog = page.getByRole('region', { name: 'Revolve dialog' });
   const axis = dialog.getByRole('button', { name: 'Axis', exact: true });
   // The axis is the field picks go to now.
   await expect(axis).toHaveAttribute('aria-pressed', 'true');
   await expect(axis).toHaveText('Pick an axis');
+  // …but the axis field shows the origin axes and picks them (P3-17).
+  await page.mouse.move(onAxis.x + 1, onAxis.y);
+  await page.mouse.move(onAxis.x, onAxis.y);
+  await expect.poll(() => attr(viewport, 'data-model-hover')).toBe('axis:origin:y');
   const onLine = at(40, 25);
   await page.mouse.move(onLine.x, onLine.y);
   await page.mouse.click(onLine.x, onLine.y);
-  await expect(axis).toHaveText('1 sketch curve');
+  await expect(axis).toHaveText(/^Line · Sketch\d+$/);
   await expect(viewport).toHaveAttribute('data-model-selection', /sketchEntity:\S+\/\S+/);
 
   await dialog.getByRole('combobox', { name: 'Direction' }).selectOption('symmetric');
@@ -161,7 +173,7 @@ test('revolves about a sketch line picked in the view, symmetric, half a turn', 
   await chip(page, 'Revolve1').dblclick();
   const edit = page.getByRole('region', { name: 'Edit Revolve1 dialog' });
   await expect(edit.getByRole('button', { name: 'Axis', exact: true })).toHaveText(
-    '1 sketch curve',
+    /^Line · Sketch\d+$/,
   );
   await edit.getByRole('combobox', { name: 'Direction' }).selectOption('two-sides');
   await edit.getByRole('textbox', { name: 'Angle', exact: true }).fill('90 deg');

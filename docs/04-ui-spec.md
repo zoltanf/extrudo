@@ -173,6 +173,10 @@ brief, voice) is in **`05-brand.md`**. In short:
   from a group's menu, the group's label.
 - **Command dialog (right, floating):** appears for the active feature and is
   draggable. It holds selection fields, inputs, OK (Enter) and Cancel (Esc).
+  A selection field names a single pick ("Y axis", "Line · Sketch1",
+  "Profile · Sketch1", a body's name; faces, edges and vertices are counted)
+  and counts several; while a field takes axes the origin axes are drawn
+  even if the browser hides them (P3-17).
 - **Timeline (bottom):** playback buttons, feature chips with category colour
   and icon, and a rollback marker (a draggable ▼ handle). The chip tooltip
   shows the name, type and status message.
