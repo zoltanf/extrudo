@@ -219,7 +219,8 @@ single flat face, which starts the dialog with the face already picked.
 - Per-body support estimates (volume of support), infill in the weight, a
   cost per kg: Print Info is for the solid part only.
 - Overhangs in the dialogs' preview shapes (only the bodies are shaded).
-- A checked-in screenshot of the shading, in CI's image.
+- ~~A checked-in screenshot of the shading, in CI's image.~~ Done in P3-17
+  (amendment below).
 
 ## Amendment (P3-17)
 
@@ -255,3 +256,11 @@ the model (`kernel.reference`, curved faces say so), the Down list then shows
 `down=face(-1,0,0)` (the unit direction, rounded), the browser row
 "Overhangs · Face · 45°". Not done: a context entry ("Overhangs from Here")
 and an arbitrary vector.
+
+**The shading screenshot.** `e2e/print-aids.spec.ts` takes the Viewport region
+(`overhang-shading-chromium-linux.png`, dark theme) of the wall bracket with +Z
+as down in the home view: the upward faces of the base plate are red, the wall
+is not. +Z rather than the default -Z because the bracket's overhangs under
+the default (the rounded corner) can't be seen from above. Like the section's
+shots it is made in the Playwright Ubuntu image (`--update-snapshots=all`), not
+on this machine.

@@ -197,6 +197,29 @@ test('Overhang analysis: shading counts follow the angle, the down direction and
   await expect(browser.locator('[data-overhang-row]')).toHaveCount(0);
 });
 
+// The shading is a shader patch, so the counts above can't see it: a screenshot of the bracket
+// with +Z as down, the faces that lean out in red (P3-17). Like the
+// section's, the image comes from CI's Playwright image (`--update-snapshots=all` in docker).
+test('Overhang shading: the faces that lean out are red (screenshot)', async ({ page }) => {
+  const viewport = await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  await openPrintTab(page);
+  await page.getByRole('button', { name: /^Overhang/ }).click();
+  await expect(viewport).toHaveAttribute('data-overhang', /faces=[1-9]/);
+  // With +Z as down every upward face leans out: the shading is plain to see from the home view.
+  await overhangPanel(page).getByRole('combobox', { name: 'Down' }).selectOption('+z');
+  await expect(viewport).toHaveAttribute('data-overhang', /^down=\+z /);
+  await overhangPanel(page).getByRole('button', { name: 'Done' }).click();
+  await page.keyboard.press('Shift+1');
+  await settledProjector(viewport);
+  await page.mouse.move(0, 0);
+  await page.evaluate('document.fonts.ready.then(() => true)');
+  await expect(viewport).toHaveScreenshot('overhang-shading.png', {
+    animations: 'disabled',
+    caret: 'hide',
+  });
+});
+
 test('Place on Bed: a face goes down as an undoable feature, and the export follows', async ({
   page,
 }) => {
