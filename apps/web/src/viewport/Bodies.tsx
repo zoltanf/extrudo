@@ -270,12 +270,7 @@ function Body({
         over
         planes={planes}
       />
-      <VertexMarks
-        mesh={mesh}
-        vertices={marks.selectedVertices}
-        color={accent}
-        planes={planes}
-      />
+      <VertexMarks mesh={mesh} vertices={marks.selectedVertices} color={accent} planes={planes} />
       <VertexMarks mesh={mesh} vertices={marks.hoverVertices} color={accent} planes={planes} />
     </group>
   );
