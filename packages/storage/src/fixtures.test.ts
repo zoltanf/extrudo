@@ -6,6 +6,7 @@ import b2 from '../../../fixtures/benchmarks/b2-storage-box.extrudo?url&inline';
 import b3 from '../../../fixtures/benchmarks/b3-phone-stand.extrudo?url&inline';
 import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline';
 import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
+import b6 from '../../../fixtures/benchmarks/b6-wall-hook.extrudo?url&inline';
 import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
 import { readArchive } from './archive';
 
@@ -37,6 +38,7 @@ describe('benchmark fixtures', () => {
         'Mirror1',
       ],
     ],
+    ['B6 Wall hook', b6, ['Box1', 'Box2', 'Box3', 'Draft1', 'Fillet1']],
     [
       'B7 Knurled knob',
       b7,

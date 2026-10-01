@@ -358,6 +358,9 @@ describe('B7 knurled knob', () => {
     const volume = knob?.volume ?? 0;
     expect(volume).toBeGreaterThan(knobVolume(18, 1.8));
     expect(volume).toBeLessThan(knobVolume(18, 1.8) + 18);
+  });
+});
+
 /**
  * The wall hook's volume with its draft and without fillets: the plate, and
  * in front of it the arm and the lip, whose sides (and the arm's top) lean in
