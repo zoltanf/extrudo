@@ -191,7 +191,8 @@ brief, voice) is in **`05-brand.md`**. In short:
   titled "Redefine Plane", picking planes and the faces made before the
   sketch. While a dialog edits a feature, the marker shows dashed after it
   and later chips dim; the marker and chips stay put meanwhile, as while a
-  sketch is open.
+  sketch is open. The browser's sketch and construction rows show the same
+  ✕/⚠ as the chips, with the message in a tooltip (P3-17).
 - **Status bar:** selection summary (e.g. "2 edges"), measure readout (bbox of
   the selection: "40.00 × 20.00 × 0.00 mm", the exact box of what is
   selected in the model, P2-13), kernel status (spinner while recomputing), units, and the

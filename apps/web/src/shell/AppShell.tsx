@@ -200,6 +200,7 @@ export function AppShell({
   const bodies = useStore(model, (s) => s.bodies);
   const sketchReports = useStore(model, (s) => s.sketches);
   const constructionReports = useStore(model, (s) => s.construction);
+  const featureStatuses = useStore(model, (s) => s.features);
   const doc = useStore(store, (s) => s.doc);
   const mode = useStore(session, (s) => s.mode);
   const activeSketchId = useStore(session, (s) => s.activeSketchId);
@@ -1093,6 +1094,7 @@ export function AppShell({
             bodies={bodyList}
             bodyActions={bodyActions}
             selectedBodies={selectedBodies}
+            statuses={featureStatuses}
             onPickBody={
               modelSelect
                 ? (id, toggle) => modelSelect.onClick({ kind: 'body', id }, toggle)

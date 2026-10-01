@@ -281,10 +281,14 @@ test.describe(() => {
     await kernelReady(page);
     await expect(chip(page, 'Sketch2')).toHaveAccessibleName('Sketch2 (warning)');
     await expect(chip(page, 'Sketch2')).toHaveAttribute('data-feature-status', 'warning');
+    // The browser's row shows the same verdict (P3-17).
+    const row = page.locator(`[data-feature-row="${sketch2}"]`);
+    await expect(row).toHaveAttribute('data-feature-status', 'warning');
     await chip(page, 'Sketch2').click({ button: 'right' });
     await menuItem(page, 'Keep Closest Match').click();
     await kernelReady(page);
     await expect(chip(page, 'Sketch2')).toHaveAccessibleName('Sketch2');
+    await expect(row).not.toHaveAttribute('data-feature-status', /./);
     await page.keyboard.press('Control+z');
     await kernelReady(page);
     await expect(chip(page, 'Sketch2')).toHaveAccessibleName('Sketch2 (warning)');
@@ -297,6 +301,7 @@ test.describe(() => {
     await menuItem(page, 'Suppress').click();
     await kernelReady(page);
     await expect(chip(page, 'Sketch2')).toHaveAccessibleName('Sketch2 (error)');
+    await expect(row).toHaveAttribute('data-feature-status', 'error');
     await chip(page, 'Sketch2').click({ button: 'right' });
     await menuItem(page, 'Fix References').click();
     const prompt = page.getByRole('region', { name: 'Redefine Plane' });

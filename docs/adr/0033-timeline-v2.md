@@ -153,6 +153,18 @@ said which reference the kernel lost or guessed.
 - A ghost of the lost geometry in the view (ADR-0005 open item: the
   fingerprint knows where it was).
 - Moving several features at once, and groups (FR-TL-06).
-- The browser shows no feature status yet (ADR-0024 open item).
+- ~~The browser shows no feature status yet (ADR-0024 open item).~~ Done in
+  P3-17 (amendment below).
 - Remove features have no dialog (ADR-0030): a lost body reference there
   says "has no dialog yet".
+
+## Amendment (P3-17)
+
+- **Feature status in the browser.** Sketch and construction rows show the
+  same ✕/⚠ glyph as the chips, with the message in a tooltip and in the
+  name button's accessible description; the row carries
+  `data-feature-row="<id>"` and `data-feature-status`. One pure rule,
+  `featureProblem` (`shell/featureStatus.tsx`), decides for both: only
+  active features (before the marker, not suppressed) show a verdict, and
+  `ok` shows nothing. Bodies have no row status: a body is a result, and the
+  feature that failed is the one to fix.

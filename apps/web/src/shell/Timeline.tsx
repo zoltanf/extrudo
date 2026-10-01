@@ -3,7 +3,6 @@ import {
   type DocumentStore,
   type Feature,
   type FeatureId,
-  type FeatureStatus,
   type ModelState,
   type ModelStore,
   type SessionStore,
@@ -16,8 +15,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  TriangleAlert,
-  X,
 } from 'lucide-react';
 import {
   Fragment,
@@ -35,6 +32,7 @@ import { formatRenderStats } from '../viewport/renderMeter';
 import type { ViewportStore } from '../viewport/store';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
+import { type FeatureProblem, featureProblem, StatusGlyph } from './featureStatus';
 import { toolForFeature } from './tools';
 
 export interface TimelineProps {
@@ -187,7 +185,7 @@ export function Timeline({
                   index={index}
                   marker={marker}
                   count={count}
-                  status={index < marker && !feature.suppressed ? statuses[feature.id] : undefined}
+                  problem={featureProblem(feature, index, marker, statuses)}
                   rolledBack={index >= (markerDrag?.index ?? marker)}
                   dimmed={editIndex >= 0 && index > editIndex}
                   editable={actions.canEdit(feature, index, marker)}
@@ -244,7 +242,7 @@ function Chip({
   index,
   marker,
   count,
-  status,
+  problem,
   rolledBack,
   dimmed,
   editable,
@@ -258,8 +256,8 @@ function Chip({
   index: number;
   marker: number;
   count: number;
-  /** The kernel's verdict; only for active features. */
-  status: FeatureStatus | undefined;
+  /** The kernel's verdict; only for active features (`featureProblem`). */
+  problem: FeatureProblem | undefined;
   rolledBack: boolean;
   /** After the feature a dialog edits: drawn like a rolled-back one (not named so). */
   dimmed: boolean;
@@ -323,10 +321,6 @@ function Chip({
     return () => window.removeEventListener('keydown', onKey, true);
   });
   const tool = toolForFeature(feature.type);
-  const problem =
-    status && status.status !== 'ok'
-      ? { status: status.status, message: status.message }
-      : undefined;
   const states = [
     rolledBack && 'rolled back',
     feature.suppressed && 'suppressed',
@@ -365,7 +359,7 @@ function Chip({
       }}
     >
       <ToolIcon name={tool.icon} category={tool.category} size={18} />
-      {problem && <StatusGlyph status={problem.status} />}
+      {problem && <StatusGlyph status={problem.status} corner />}
     </button>
   );
   return (
@@ -411,20 +405,6 @@ function Chip({
         />
       </Popover>
     </li>
-  );
-}
-
-/** ✕ or ⚠ on a chip's corner: the status colour always comes with a glyph (UI spec §1). */
-function StatusGlyph({ status }: { status: 'warning' | 'error' }) {
-  const Icon = status === 'error' ? X : TriangleAlert;
-  return (
-    <span
-      aria-hidden="true"
-      className="absolute -top-1 -right-1 grid size-3.5 place-items-center rounded-full text-bg"
-      style={{ background: `var(--x-${status})` }}
-    >
-      <Icon size={10} strokeWidth={3} />
-    </span>
   );
 }
 

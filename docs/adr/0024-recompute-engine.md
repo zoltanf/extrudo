@@ -155,5 +155,6 @@ said "kernel idle", and the kernel only ran on the debug page.
 - Tessellation tied to model size (P2-03); a fixed 0.05 mm / 0.3 rad now.
 - A single long OCCT operation can't be cancelled; only the steps between
   features can.
-- The browser panel doesn't show feature status yet; P2-11 adds error
-  chips' actions and "fix references".
+- ~~The browser panel doesn't show feature status yet; P2-11 adds error
+  chips' actions and "fix references".~~ Fix references came with P2-11,
+  browser status with P3-17 (ADR-0033 amendment).

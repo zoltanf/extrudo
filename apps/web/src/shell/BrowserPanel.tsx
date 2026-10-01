@@ -3,6 +3,7 @@ import {
   type DocumentStore,
   type Feature,
   type FeatureId,
+  type FeatureStatus,
   isConstructionType,
   isFeatureVisible,
 } from '@extrudo/core';
@@ -37,11 +38,13 @@ import {
   MenuSeparator,
   Popover,
   ToolIcon,
+  Tooltip,
 } from '../design-system';
 import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
 import { BODY_COLORS, BODY_OPACITIES, type BodyActions, type BodyEntry } from './bodies';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
+import { type FeatureProblem, featureProblem, StatusGlyph } from './featureStatus';
 import { toolForFeature } from './tools';
 
 export const BROWSER_ID = 'browser-panel';
@@ -79,6 +82,8 @@ export interface BrowserPanelProps {
   section?: AnalysisEntry;
   /** The overhang analysis (P3-10), while there is one: a row in the same folder. */
   overhang?: AnalysisEntry;
+  /** The kernel's verdict per feature: rows show ✕ or ⚠ as the timeline's chips do (P3-17). */
+  statuses?: Readonly<Record<string, FeatureStatus | undefined>>;
 }
 
 /** One row of the Analysis folder: a view analysis with its eye, its panel and its removal. */
@@ -119,6 +124,7 @@ export function BrowserPanel({
   onHoverBody,
   section,
   overhang,
+  statuses = NO_STATUSES,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
@@ -231,6 +237,7 @@ export function BrowserPanel({
                     feature={feature}
                     editable={actions.canEdit(feature, index, doc.timelineMarker)}
                     rolledBack={index >= doc.timelineMarker}
+                    problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
                     position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
                     active={feature.id === activeSketchId}
                     actions={actions}
@@ -263,6 +270,7 @@ export function BrowserPanel({
                     feature={feature}
                     editable={actions.canEdit(feature, index, doc.timelineMarker)}
                     rolledBack={index >= doc.timelineMarker}
+                    problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
                     position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
                     active={false}
                     actions={actions}
@@ -376,6 +384,7 @@ function SketchLeaf({
   feature,
   editable,
   rolledBack,
+  problem,
   position,
   active,
   actions,
@@ -385,6 +394,8 @@ function SketchLeaf({
   feature: Feature;
   editable: boolean;
   rolledBack: boolean;
+  /** The kernel's warning or error, shown as on a timeline chip (P3-17). */
+  problem?: FeatureProblem;
   position: { index: number; marker: number; count: number };
   active: boolean;
   actions: FeatureActions;
@@ -398,6 +409,7 @@ function SketchLeaf({
     active && 'editing',
     rolledBack && 'rolled back',
     feature.suppressed && 'suppressed',
+    problem && (problem.message ? `${problem.status}: ${problem.message}` : problem.status),
   ].filter(Boolean);
   const onKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'F2') setRenaming(true);
@@ -415,6 +427,8 @@ function SketchLeaf({
         <Leaf
           active={active}
           data-construction={constructionId}
+          data-feature-row={feature.id}
+          data-feature-status={problem?.status}
           onDoubleClick={editable && !renaming ? () => actions.edit(feature.id) : undefined}
           onPointerEnter={() => actions.hover(feature.id)}
           onPointerLeave={() => actions.hover(undefined)}
@@ -441,6 +455,17 @@ function SketchLeaf({
             </button>
           )}
           {active && <span className="text-xs text-muted">editing</span>}
+          {problem && !renaming && (
+            <Tooltip
+              label={problem.status === 'error' ? 'Error' : 'Warning'}
+              hint={problem.message}
+              side="right"
+            >
+              <span className="grid size-5 shrink-0 place-items-center">
+                <StatusGlyph status={problem.status} />
+              </span>
+            </Tooltip>
+          )}
           {!renaming && (
             <span className="ml-auto flex items-center">
               {editable && !active && (
@@ -474,6 +499,7 @@ function SketchLeaf({
 }
 
 const NO_BODIES: ReadonlySet<string> = new Set();
+const NO_STATUSES: Readonly<Record<string, FeatureStatus | undefined>> = {};
 
 /**
  * A body in the browser (P2-08, ADR-0030): a click picks it like the view
