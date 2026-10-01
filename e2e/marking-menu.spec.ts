@@ -413,6 +413,15 @@ test('in a sketch a right-click selects a curve and offers Delete', async ({ pag
   await page.mouse.click(b.x, b.y);
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
+  // The line's horizontal glyph has a menu of its own: Delete takes the constraint (P3-17).
+  const glyph = page.locator('[data-constraint-type="horizontal"]');
+  await expect(glyph).toHaveCount(1);
+  await glyph.click({ button: 'right' });
+  await expect(menuOf(page)).toHaveCount(0);
+  const glyphMenu = page.getByRole('menu', { name: 'Constraint menu' });
+  await expect(glyph).toHaveAttribute('aria-pressed', 'true');
+  await glyphMenu.getByRole('menuitem', { name: /^Delete/ }).click();
+  await expect(glyph).toHaveCount(0);
   const mid = at(25, 10);
   await page.mouse.move(mid.x, mid.y);
   await expect(page.locator('[data-hover-entity]')).toHaveAttribute('data-hover-entity', /.+/);

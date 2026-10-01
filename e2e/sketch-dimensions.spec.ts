@@ -123,6 +123,24 @@ test('labels select, drag, edit, turn driven and delete', async ({ page }) => {
   await page.keyboard.press('Control+Z');
   await expect(labels(page)).toHaveCount(1);
 
+  // A right-click on a label selects it and opens its menu: Edit Value, Delete (P3-17).
+  await page.mouse.click(10, 10);
+  await expect(label).toHaveAttribute('aria-pressed', 'false');
+  await label.click({ button: 'right' });
+  const menu = page.getByRole('menu', { name: 'Dimension menu' });
+  await expect(menu).toBeVisible();
+  await expect(label).toHaveAttribute('aria-pressed', 'true');
+  await menu.getByRole('menuitem', { name: /^Edit Value/ }).click();
+  // (Driven now: the editor shows the measured value and the Driven box.)
+  await expect(editor(page)).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(editor(page)).toHaveCount(0);
+  await label.click({ button: 'right' });
+  await menu.getByRole('menuitem', { name: /^Delete/ }).click();
+  await expect(labels(page)).toHaveCount(0);
+  await page.keyboard.press('Control+Z');
+  await expect(labels(page)).toHaveCount(1);
+
   // The palette hides them.
   const palette = page.getByRole('region', { name: 'Sketch palette' });
   await palette.getByRole('checkbox', { name: 'Show dimensions' }).uncheck();

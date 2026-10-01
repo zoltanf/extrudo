@@ -507,7 +507,10 @@ a right-click without movement, as Onshape's context menu does.
   bottom-left corner shows the selection's type and status, a point's X/Y
   and a circle's or arc's radius (typed values move it as the constraints
   allow), a line's length and angle, the construction flag and Delete.
-  Deleting geometry also deletes its constraints and dimensions.
+  Deleting geometry also deletes its constraints and dimensions. A
+  right-click on a constraint glyph or a dimension label selects it (unless
+  it is already in the selection) and opens a small menu: Delete, and Edit
+  Value for a dimension (P3-17).
 - **Colours:** under-constrained geometry blue; fully constrained dark
   (light theme) or white (dark theme); construction dashed grey; conflicting
   red; projected purple; profiles pale fill. Status is per entity: a

@@ -1202,6 +1202,7 @@ export function AppShell({
                 frame={sketchPlane}
                 interactive={!drawing}
                 over={status?.over}
+                onDelete={remove}
               />
             )}
             {showDimensions && tools && activeSketchId && sketchPlane && (
@@ -1214,6 +1215,7 @@ export function AppShell({
                 frame={sketchPlane}
                 interactive={!drawing}
                 notify={notify}
+                onDelete={remove}
               />
             )}
             {!drawing && tools && activeSketchId && sketchPlane && (
