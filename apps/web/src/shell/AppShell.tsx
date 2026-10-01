@@ -31,15 +31,18 @@ import type { ModelExporter } from '../export/modelExport';
 import { DialogOverlay } from '../features/DialogOverlay';
 import { type DialogKernel, dialogBodies, viewPreview } from '../features/dialog';
 import { FeatureDialog } from '../features/FeatureDialog';
+import { pickName } from '../features/pickName';
 import { dialogPlanePick, dialogPlanePicker } from '../features/planePicker';
 import { PRESS_PULL, PRESS_PULL_PROMPT, pressPullTarget } from '../features/pressPull';
 import { type FeatureDialogs, featureDialogs, specForCommand } from '../features/registry';
 import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs';
+import { analyticItem } from '../measure/analytic';
 import { sizeText } from '../measure/format';
 import {
   createMeasureSelect,
   MEASURE_TOOL,
   type MeasureKernel,
+  measureState,
   useInspection,
 } from '../measure/inspection';
 import { MeasureOverlay } from '../measure/MeasureOverlay';
@@ -104,6 +107,9 @@ import { useMarkingStyle, useViewMenu } from './viewMenu';
 const DEFAULT_PINS = ['sketch', 'line', 'rectangle', 'circle', 'dimension', 'trim', 'parameters'];
 const PINS_KEY = 'toolbox.pins';
 const RECENT = 8;
+/** How long the selection stays still before the status bar asks for its size (P3-17), ms. */
+const SIZE_DELAY_MS = 150;
+const TOPOLOGY_NOUNS = { face: 'Face', edge: 'Edge', vertex: 'Vertex' } as const;
 
 // three.js loads in its own chunk, so the shell paints before it arrives.
 const Viewport = lazy(() => import('../viewport/Viewport').then((m) => ({ default: m.Viewport })));
@@ -300,12 +306,42 @@ export function AppShell({
   const bodyMeta = useMemo(() => bodyMetaOf(bodyList), [bodyList]);
   const bodyListRef = useRef(bodyList);
   // Measure and inspect (P2-13): the kernel measures the selected topology, for the status
-  // bar's size readout and the Measure panel.
-  const inspection = useInspection(kernel, selection, bodies, mode === 'model' && !dialogOpen);
+  // bar's size readout and the Measure panel; sketch entities, axes and planes are measured
+  // here (P3-17). Outside Measure the status bar's question waits for a still selection.
+  const inspection = useInspection(
+    kernel,
+    selection,
+    bodies,
+    mode === 'model' && !dialogOpen,
+    measuring ? 0 : SIZE_DELAY_MS,
+  );
   const bodyName = useMemo(() => {
     const names = new Map(bodyList.map((b) => [b.id, b.meta.name]));
     return (id: BodyId) => names.get(id);
   }, [bodyList]);
+  const measured = useMemo(() => {
+    if (mode !== 'model' || dialogOpen)
+      return measureState(
+        [],
+        inspection,
+        () => undefined,
+        () => '',
+      );
+    const ctx = { doc, sketches: sketchReports, construction: constructionReports };
+    return measureState(
+      selection,
+      inspection,
+      (item) => {
+        const measure = analyticItem(item, ctx);
+        if (!measure) return undefined;
+        return { item: measure, label: pickName(item as GeomRef, { doc }) ?? item.kind };
+      },
+      (t) => {
+        const body = bodyName(t.body) ?? 'Body';
+        return t.kind === 'body' ? body : `${TOPOLOGY_NOUNS[t.kind]} ${t.index + 1} · ${body}`;
+      },
+    );
+  }, [mode, dialogOpen, selection, inspection, doc, sketchReports, constructionReports, bodyName]);
   // Section analysis (P3-09): a clipping plane over the model, view state kept in the viewport
   // store. The tool's panel and arrow are open while `sectioning`; the section outlasts them.
   const section = useSection({
@@ -1196,9 +1232,9 @@ export function AppShell({
             {sectioning && (
               <SectionOverlay tool={section} viewport={viewport} settings={doc.settings} />
             )}
-            {measuring && inspection.inspection?.pair && (
+            {measuring && measured.measurement?.pair && (
               <MeasureOverlay
-                pair={inspection.inspection.pair}
+                pair={measured.measurement.pair}
                 viewport={viewport}
                 settings={doc.settings}
               />
@@ -1296,10 +1332,9 @@ export function AppShell({
         )}
         {measuring && (
           <MeasurePanel
-            state={inspection}
+            state={measured}
             settings={doc.settings}
-            bodyName={bodyName}
-            others={selection.length - inspection.targets.length}
+            others={selection.length - measured.count}
             onClear={() => session.getState().clearSelection()}
             onClose={() => session.getState().setTool(undefined)}
           />
@@ -1329,7 +1364,7 @@ export function AppShell({
         session={session}
         editing={dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined}
         selectionSize={
-          inspection.inspection?.bbox && sizeText(inspection.inspection.bbox, doc.settings)
+          measured.measurement?.bbox && sizeText(measured.measurement.bbox, doc.settings)
         }
       />
       <OverConstrainedDialog host={host} />

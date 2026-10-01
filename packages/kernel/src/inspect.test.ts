@@ -47,6 +47,18 @@ describe('pairMeasure', () => {
   });
   const vertex = (point: Vec3): ItemMeasure => ({ kind: 'vertex', point, bbox: box });
 
+  it('takes unbounded planes and axes for angles and centres (P3-17)', () => {
+    const xy: ItemMeasure = { kind: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] };
+    const z: ItemMeasure = { kind: 'axis', origin: [0, 0, 0], direction: [0, 0, 1] };
+    expect(pairMeasure(xy, plane([1, 0, 0]), closest).angle).toBeCloseTo(90);
+    expect(pairMeasure(z, xy, closest).angle).toBeCloseTo(90);
+    expect(pairMeasure(z, line([0, 0, 0], [1, 0, 0]), closest).angle).toBeCloseTo(90);
+    // An axis is a centre line: a vertex 3 mm off it.
+    const c = pairMeasure(z, vertex([3, 0, 7]), { ...closest, distance: 2 });
+    expect(c.centers?.distance).toBeCloseTo(3);
+    expect(c.centers?.from).toEqual([0, 0, 7]);
+  });
+
   it('gives the angle between planes, 0–90°', () => {
     expect(pairMeasure(plane([0, 0, 1]), plane([1, 0, 0]), closest).angle).toBeCloseTo(90);
     expect(pairMeasure(plane([0, 0, 1]), plane([0, 0, -1]), closest).angle).toBeCloseTo(0);

@@ -94,6 +94,11 @@ brief, voice) is in **`05-brand.md`**. In short:
   where both have a direction, the centre distance of holes, circles
   and vertices), with a dashed line and label between the closest
   points in the view. Three or more: totals. Always the bounding box.
+  Sketch points and curves (picked in the model), origin and construction
+  axes and planes, and construction points measure too (P3-17): a curve's
+  length, radius and centre, a plane's origin and normal, an axis's
+  direction; between them (or with a vertex or straight edge) the distance,
+  and with a face or a curve the angle and centre distance only.
   Values are in the document's unit and precision and can be selected
   to copy.
 - **Section Analysis** (P3-09, ADR-0045): Solid › Inspect, `Shift+S`, the
@@ -199,7 +204,8 @@ brief, voice) is in **`05-brand.md`**. In short:
   ✕/⚠ as the chips, with the message in a tooltip (P3-17).
 - **Status bar:** selection summary (e.g. "2 edges"), measure readout (bbox of
   the selection: "40.00 × 20.00 × 0.00 mm", the exact box of what is
-  selected in the model, P2-13), kernel status (spinner while recomputing), units, and the
+  selected in the model, P2-13; asked once the selection has been still for
+  150 ms, P3-17), kernel status (spinner while recomputing), units, and the
   viewport's render rate ("58 fps · 1.4 ms": frames drawn in the last
   second and the mean time to draw one; "idle" while the view is still,
   since it only redraws on change).

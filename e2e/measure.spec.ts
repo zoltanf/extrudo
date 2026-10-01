@@ -116,10 +116,33 @@ test('measures faces, the distance and angle between two picks, and sizes the se
   await expect(itemRow('Area')).toHaveText('800.00 mm²');
   await expect(viewport.locator('[data-measure-line]')).toHaveCount(0);
 
+  // The X axis measures too (P3-17): measured here, so a face and an axis get their angle,
+  // and the axis and the box's corner vertex their distance.
+  let onAxis: { x: number; y: number } | undefined;
+  for (const x of [-35, -45, -30, -55]) {
+    const p = at([x, 0, 0]);
+    await page.mouse.move(p.x, p.y);
+    if ((await viewport.getAttribute('data-model-hover')) === 'axis:origin:x') {
+      onAxis = p;
+      break;
+    }
+    await page.waitForTimeout(100);
+    if ((await viewport.getAttribute('data-model-hover')) === 'axis:origin:x') {
+      onAxis = p;
+      break;
+    }
+  }
+  if (!onAxis) throw new Error('the X axis is not under the pointer');
+  await page.mouse.click(onAxis.x, onAxis.y);
+  await expect(panel).toHaveAttribute('data-measure-state', 'ready');
+  await expect(row('X axis/Type')).toHaveText('Axis');
+  await expect(row('Between/Angle')).toHaveText('0.00°');
+  await expect(row('Between/Distance')).toHaveCount(0);
+
   // Esc closes the tool and keeps the selection; Clear empties it.
   await page.keyboard.press('Escape');
   await expect(panel).toBeHidden();
-  await expect(selection).toHaveText('1 face ·');
+  await expect(selection).toHaveText('1 face, 1 axis ·');
   await page.keyboard.press('i');
   await expect(panel).toBeVisible();
   await panel.getByRole('button', { name: 'Clear' }).click();
