@@ -44,6 +44,11 @@ export interface LoadResult {
   /** The `formatVersion` the file had before migration. */
   loadedVersion: number;
   migrated: boolean;
+  /**
+   * Keys this version doesn't know, left out of `doc` (P3-13): a newer
+   * Extrudo added them. Paths like `features.0.inputs.depth.newKey`.
+   */
+  dropped: string[];
 }
 
 /**
@@ -128,9 +133,58 @@ function unitKindOfSymbol(symbol: unknown): string {
 /** Every migration, in order. The last one must produce `FORMAT_VERSION`. */
 export const MIGRATIONS: readonly Migration[] = [v0ToV1];
 
+/** At most this many rounds of dropping unknown keys (each round finds every one it can see). */
+const LENIENT_ROUNDS = 4;
+
+/**
+ * Validates `doc` (mutated), dropping keys the schema doesn't know. The
+ * schema's objects are strict, so an unknown key is an `unrecognized_keys`
+ * issue with its path; when those are the only issues, the keys are removed
+ * and the document is checked again. Any other issue fails.
+ */
+function parseLeniently(
+  doc: JsonObject,
+):
+  | { ok: true; doc: ExtrudoDocument; dropped: string[] }
+  | { ok: false; issues: z.core.$ZodIssue[] } {
+  const dropped: string[] = [];
+  for (let round = 0; ; round++) {
+    const parsed = DocumentSchema.safeParse(doc);
+    if (parsed.success) return { ok: true, doc: parsed.data, dropped };
+    const { issues } = parsed.error;
+    const other = issues.filter((i) => i.code !== 'unrecognized_keys');
+    if (other.length > 0 || round === LENIENT_ROUNDS)
+      return { ok: false, issues: other.length ? other : issues };
+    for (const issue of issues) {
+      if (issue.code !== 'unrecognized_keys') continue;
+      const owner = issue.path.reduce<unknown>(
+        (at, key) =>
+          isObject(at) || Array.isArray(at) ? (at as JsonObject)[key as string] : undefined,
+        doc,
+      );
+      if (!isObject(owner)) return { ok: false, issues };
+      for (const key of issue.keys) {
+        delete owner[key];
+        dropped.push([...issue.path, key].join('.'));
+      }
+    }
+  }
+}
+
+const describeIssues = (issues: readonly z.core.$ZodIssue[]) =>
+  issues
+    .slice(0, 3)
+    .map((i) => `${i.path.join('.') || '(root)'} ${i.message}`)
+    .join('; ');
+
 /**
  * Brings raw document JSON up to the current format version and validates it.
- * Throws `DocumentLoadError`.
+ * Keys a newer Extrudo added are left out (`dropped`), and a document of a
+ * newer format version is read as far as this version understands it
+ * (`loadedVersion` > `FORMAT_VERSION`); `loadNotice` words both for the
+ * user. Throws `DocumentLoadError`: `too-new` when a newer document has
+ * more than unknown keys (a changed shape, a feature type this version
+ * doesn't have).
  */
 export function loadDocument(raw: unknown, ctx?: Partial<MigrationContext>): LoadResult {
   if (!isObject(raw) || raw.format !== FORMAT_NAME || !Number.isInteger(raw.formatVersion)) {
@@ -138,10 +192,18 @@ export function loadDocument(raw: unknown, ctx?: Partial<MigrationContext>): Loa
   }
   const loadedVersion = raw.formatVersion as number;
   if (loadedVersion > FORMAT_VERSION) {
-    throw new DocumentLoadError(
-      'too-new',
-      `This document was saved by a newer Extrudo (format ${loadedVersion}; this version reads up to ${FORMAT_VERSION}). Update Extrudo to open it.`,
-    );
+    // Read it as ours: if all that's new are keys, what's left is a valid design.
+    const doc = JSON.parse(JSON.stringify(raw)) as JsonObject;
+    doc.formatVersion = FORMAT_VERSION;
+    const parsed = parseLeniently(doc);
+    if (!parsed.ok) {
+      throw new DocumentLoadError(
+        'too-new',
+        `This design was saved by a newer Extrudo (file format ${loadedVersion}; this version reads up to ${FORMAT_VERSION}) and uses things this version doesn't have. Update Extrudo to open it.`,
+        parsed.issues,
+      );
+    }
+    return { doc: parsed.doc, loadedVersion, migrated: false, dropped: parsed.dropped };
   }
   const context: MigrationContext = {
     newId: ctx?.newId ?? (() => newId()),
@@ -156,18 +218,46 @@ export function loadDocument(raw: unknown, ctx?: Partial<MigrationContext>): Loa
     }
     doc = step.migrate(doc, context);
   }
-  const parsed = DocumentSchema.safeParse(doc);
-  if (!parsed.success) {
+  const parsed = parseLeniently(doc);
+  if (!parsed.ok) {
     throw new DocumentLoadError(
       'invalid',
-      `The document is damaged: ${parsed.error.issues
-        .slice(0, 3)
-        .map((i) => `${i.path.join('.') || '(root)'} ${i.message}`)
-        .join('; ')}.`,
-      parsed.error.issues,
+      `The document is damaged: ${describeIssues(parsed.issues)}.`,
+      parsed.issues,
     );
   }
-  return { doc: parsed.data, loadedVersion, migrated: loadedVersion !== FORMAT_VERSION };
+  return {
+    doc: parsed.doc,
+    loadedVersion,
+    migrated: loadedVersion !== FORMAT_VERSION,
+    dropped: parsed.dropped,
+  };
+}
+
+/**
+ * What to tell the user about a load (P3-13), or undefined when there is
+ * nothing to say: a newer file, or unknown keys left out. `saving` is what
+ * saving does to the source: `'drops'` when the source itself is
+ * overwritten (a stored project), `'copy'` when it isn't (an imported file).
+ */
+export function loadNotice(result: LoadResult, saving: 'drops' | 'copy'): string | undefined {
+  const newer = result.loadedVersion > FORMAT_VERSION;
+  if (!newer && result.dropped.length === 0) return undefined;
+  const who = newer
+    ? `a newer Extrudo (file format ${result.loadedVersion}; this version reads ${FORMAT_VERSION})`
+    : 'a newer Extrudo';
+  const count = result.dropped.length;
+  const what =
+    count === 0
+      ? 'Everything in it is known here'
+      : `${count} ${count === 1 ? 'setting' : 'settings'} this version doesn't know ${count === 1 ? 'was' : 'were'} left out`;
+  const after =
+    saving === 'drops'
+      ? count === 0
+        ? 'Saving here writes it in this version’s format.'
+        : 'Saving here loses them; reload to update Extrudo first if you need them.'
+      : 'The file itself is unchanged.';
+  return `This design was saved by ${who}. ${what}. ${after}`;
 }
 
 function isObject(value: unknown): value is JsonObject {

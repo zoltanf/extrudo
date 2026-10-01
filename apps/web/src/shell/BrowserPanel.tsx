@@ -514,7 +514,8 @@ function BodyLeaf({
   const row = (
     <Leaf
       data-body={id}
-      aria-selected={selected}
+      // Selection is the name button's aria-pressed: a list item takes no aria-selected (axe).
+      data-selected={selected || undefined}
       className={selected ? 'bg-accent-soft' : ''}
       onPointerEnter={() => onHover?.(id)}
       onPointerLeave={() => onHover?.(undefined)}

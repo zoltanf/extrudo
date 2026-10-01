@@ -87,4 +87,52 @@ describe('syncProjections', () => {
     const edge = t.data().projections?.[P]?.curves.edge as SketchEntityId;
     expect(status?.entities[edge]).toBe('fixed');
   });
+
+  it('keeps geometry held at a distance on its side when the edge moves far (P3-13)', async () => {
+    const t = await setup();
+    const { store, host, id } = t;
+    const edgeAt = (y: number): SketchReport => ({
+      frame,
+      projections: { [P]: { curves: { edge: { type: 'line', a: [0, y], b: [50, y] } } } },
+    });
+    store
+      .getState()
+      .dispatch(addProjection({ feature: id, id: P, ref: { kind: 'edge', id: 'e[a|b]' } }));
+    host.syncProjections({ [id]: edgeAt(0) });
+    const edge = t.data().projections?.[P]?.curves.edge as SketchEntityId;
+    // A wall's inside: our horizontal line 3 mm above the projected edge.
+    store.getState().dispatch(
+      addToSketch({
+        feature: id,
+        entities: {
+          ['a' as SketchEntityId]: { type: 'point', x: 5, y: 3 },
+          ['b' as SketchEntityId]: { type: 'point', x: 45, y: 3 },
+          ['mine' as SketchEntityId]: {
+            type: 'line',
+            start: 'a' as SketchEntityId,
+            end: 'b' as SketchEntityId,
+            construction: false,
+          },
+        },
+        constraints: { ['k1' as never]: { type: 'horizontal', a: 'mine' as SketchEntityId } },
+        dimensions: {
+          ['w' as never]: {
+            type: 'distance',
+            orientation: 'aligned',
+            a: 'mine' as SketchEntityId,
+            b: edge,
+            expr: '3 mm',
+            paramName: 'd1',
+            driven: false,
+            label: { x: 0, y: 0 },
+          },
+        },
+      }),
+    );
+    // The edge moves 30 mm up, ten times the distance: the line stays above it.
+    host.syncProjections({ [id]: edgeAt(30) });
+    expect(t.point('a' as SketchEntityId)[1]).toBeCloseTo(33, 6);
+    host.syncProjections({ [id]: edgeAt(-40) });
+    expect(t.point('b' as SketchEntityId)[1]).toBeCloseTo(-37, 6);
+  });
 });

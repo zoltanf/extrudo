@@ -33,6 +33,7 @@ import {
   curvedFaces,
   type SilhouetteView,
   silhouetteCapacity,
+  silhouettePlan,
   silhouetteSegments,
 } from './silhouette';
 import type { Bounds, VisualStyle } from './store';
@@ -329,6 +330,7 @@ function Silhouettes({
   onCount?(body: BodyId, segments: number): void;
 }) {
   const curved = useMemo(() => curvedFaces(mesh), [mesh]);
+  const plan = useMemo(() => silhouettePlan(mesh, curved), [mesh, curved]);
   const buffer = useMemo(() => new Float32Array(silhouetteCapacity(curved)), [curved]);
   const geometry = useMemo(() => new LineSegmentsGeometry(), []);
   const lines = useMemo(() => {
@@ -354,7 +356,7 @@ function Silhouettes({
     const view: SilhouetteView = perspective
       ? { eye: [m[12] ?? 0, m[13] ?? 0, m[14] ?? 0] }
       : { direction: [-(m[8] ?? 0), -(m[9] ?? 0), -(m[10] ?? 1)] };
-    const count = silhouetteSegments(mesh, curved, view, buffer);
+    const count = silhouetteSegments(mesh, plan, view, buffer);
     if (count > 0) geometry.setPositions(buffer.subarray(0, count));
     lines.front.visible = count > 0;
     lines.back.visible = count > 0 && hidden !== undefined;

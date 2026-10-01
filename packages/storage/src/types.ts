@@ -34,14 +34,18 @@ export interface VersionSummary {
  * Where projects live (docs/02-architecture.md §6.1, FR-PRJ-02). The web app
  * uses OPFS + IndexedDB; the desktop app (Phase 6) will implement the same
  * interface over the file system. Version history (P2-14, ADR-0036):
- * `saveVersion`, `versions`, `loadVersion`.
+ * `saveVersion`, `versions`, `loadVersion`; `deleteVersions` (P3-13).
  */
 export interface ProjectStore {
   /** Every project, trashed ones included, most recently modified first. */
   list(): Promise<ProjectSummary[]>;
   get(id: ProjectId): Promise<ProjectSummary | undefined>;
-  /** The saved document, migrated and validated. Throws `ProjectNotFoundError`. */
-  load(id: ProjectId): Promise<ExtrudoDocument>;
+  /**
+   * The saved document, migrated and validated. Throws `ProjectNotFoundError`.
+   * A document a newer Extrudo saved is read as far as this one understands
+   * it, and `onNotice` gets what to tell the user (core's `loadNotice`).
+   */
+  load(id: ProjectId, options?: LoadOptions): Promise<ExtrudoDocument>;
   /** Creates or overwrites a project. Sets `meta.modified` on the stored copy. */
   save(doc: ExtrudoDocument): Promise<ProjectSummary>;
   /**
@@ -57,6 +61,12 @@ export interface ProjectStore {
    * Throws `ProjectNotFoundError`, or `ArchiveError` if it is missing or damaged.
    */
   loadVersion(id: ProjectId, number: number): Promise<ExtrudoDocument>;
+  /**
+   * Deletes versions for good (P3-13): the index first, then their files.
+   * Numbers that aren't there are ignored; later versions keep their numbers
+   * and new ones never reuse a deleted number. Throws `ProjectNotFoundError`.
+   */
+  deleteVersions(id: ProjectId, numbers: readonly number[]): Promise<void>;
   rename(id: ProjectId, name: string): Promise<ProjectSummary>;
   /** A copy with a new ID, named "<name> copy". */
   duplicate(id: ProjectId): Promise<ProjectSummary>;
@@ -72,9 +82,14 @@ export interface ProjectStore {
   /**
    * Adds a project from an `.extrudo` file. If a project with the same ID
    * exists, the import becomes a copy with a new ID. Throws `ArchiveError`
-   * or core's `DocumentLoadError` for files it can't read.
+   * or core's `DocumentLoadError` for files it can't read; `onNotice` as for `load`.
    */
-  importFile(file: Blob): Promise<ProjectSummary>;
+  importFile(file: Blob, options?: LoadOptions): Promise<ProjectSummary>;
+}
+
+export interface LoadOptions {
+  /** Called with a message for the user when the file needed leniency (P3-13). */
+  onNotice?: (message: string) => void;
 }
 
 export class ProjectNotFoundError extends Error {

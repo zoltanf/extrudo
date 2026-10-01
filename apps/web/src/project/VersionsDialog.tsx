@@ -1,15 +1,19 @@
 import type { VersionSummary } from '@extrudo/storage';
-import { History, Save } from 'lucide-react';
+import { History, Save, Trash2 } from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
-import { Button, Dialog, TextInput, Tooltip } from '../design-system';
+import { Button, ConfirmDialog, Dialog, IconButton, TextInput, Tooltip } from '../design-system';
 import { formatModified } from '../home/time';
 import { describeError } from './actions';
 import {
+  deleteVersions,
+  olderVersions,
   openVersionCopy,
+  PRUNE_KEEP,
   restoreVersion,
   saveVersion,
   type VersionContext,
   versionLabel,
+  versionsLabel,
 } from './versions';
 
 export interface VersionsDialogProps {
@@ -31,7 +35,9 @@ const exact = (iso: string) =>
  * description field with Save version (Ctrl+S opens the dialog there), and
  * the versions saved so far, newest first, each with Restore (brings it
  * back into this design as one undo step, keeping what is there now as a
- * version first) and Open as copy (a new design).
+ * version first), Open as copy (a new design) and Delete (P3-13); with more
+ * than `PRUNE_KEEP` versions, "Delete older versions" keeps the newest.
+ * Deleting asks first: it can't be undone.
  *
  * Test hooks: the dialog "Versions", the list "Saved versions" with an
  * item per version (`data-version` = its number).
@@ -47,6 +53,10 @@ export function VersionsDialog({
   const [description, setDescription] = useState('');
   const [versions, setVersions] = useState<VersionSummary[]>();
   const [busy, setBusy] = useState(false);
+  /** Versions waiting for the user to confirm their deletion. */
+  const [deleting, setDeleting] = useState<number[]>();
+  /** What the last deletion did, said inside the dialog (toasts sit behind a modal dialog). */
+  const [said, setSaid] = useState('');
   const id = ctx.store.getState().doc.id;
 
   useEffect(() => {
@@ -54,6 +64,7 @@ export function VersionsDialog({
     let current = true;
     setDescription('');
     setVersions(undefined);
+    setSaid('');
     ctx.projects.versions(id).then(
       (list) => {
         if (current) setVersions(list);
@@ -104,6 +115,16 @@ export function VersionsDialog({
       );
     });
 
+  const onDelete = (numbers: number[]) =>
+    run(async () => {
+      await deleteVersions(ctx, numbers);
+      const gone = new Set(numbers);
+      setVersions((list) => list?.filter((v) => !gone.has(v.number)));
+      setSaid(`Deleted ${versionsLabel(numbers)}.`);
+    });
+
+  const older = versions ? olderVersions(versions) : [];
+
   const onCopy = (v: VersionSummary) =>
     run(async () => {
       const copy = await openVersionCopy(ctx, v.number);
@@ -136,9 +157,12 @@ export function VersionsDialog({
           <Save size={14} /> Save version
         </Button>
       </form>
-      <h3 className="mt-5 mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-        Saved versions
-      </h3>
+      <div className="mt-5 mb-1.5 flex items-baseline justify-between gap-3">
+        <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">Saved versions</h3>
+        <p role="status" aria-label="Versions status" className="text-xs text-muted">
+          {said}
+        </p>
+      </div>
       {versions === undefined ? (
         <p className="text-sm text-muted">Loading…</p>
       ) : versions.length === 0 ? (
@@ -188,10 +212,45 @@ export function VersionsDialog({
                   <History size={14} /> Restore
                 </Button>
               </Tooltip>
+              <IconButton
+                label={`Delete ${versionLabel(v)}`}
+                disabled={busy}
+                onClick={() => setDeleting([v.number])}
+              >
+                <Trash2 size={14} strokeWidth={1.75} />
+              </IconButton>
             </li>
           ))}
         </ol>
       )}
+      {older.length > 0 && (
+        <div className="mt-3 flex items-center justify-between gap-3 text-sm text-muted">
+          <span>
+            {versions?.length} versions. Keep the newest {PRUNE_KEEP} and delete the {older.length}{' '}
+            older?
+          </span>
+          <Button disabled={busy} onClick={() => setDeleting(older.map((v) => v.number))}>
+            <Trash2 size={14} /> Delete older versions
+          </Button>
+        </div>
+      )}
+      <ConfirmDialog
+        open={!!deleting}
+        onOpenChange={(isOpen) => !isOpen && setDeleting(undefined)}
+        title={`Delete ${versionsLabel(deleting ?? [])}?`}
+        description={
+          (deleting?.length ?? 0) > 1
+            ? `The ${deleting?.length} versions are removed from this design for good. The others keep their numbers. This can't be undone.`
+            : "The version is removed from this design for good. The others keep their numbers. This can't be undone."
+        }
+        confirm="Delete"
+        destructive
+        onConfirm={() => {
+          const numbers = deleting ?? [];
+          setDeleting(undefined);
+          void onDelete(numbers);
+        }}
+      />
     </Dialog>
   );
 }

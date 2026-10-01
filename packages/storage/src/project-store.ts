@@ -10,6 +10,7 @@ import {
   type DocumentId,
   type ExtrudoDocument,
   loadDocument,
+  loadNotice,
 } from '@extrudo/core';
 import { gunzipSync, gzipSync } from 'fflate';
 import { readArchive, writeArchive } from './archive';
@@ -17,6 +18,7 @@ import { type FileStore, memoryFiles } from './files';
 import { memoryIndex, type ProjectIndex } from './idb';
 import {
   ArchiveError,
+  type LoadOptions,
   type ProjectId,
   ProjectNotFoundError,
   type ProjectStore,
@@ -25,6 +27,7 @@ import {
 } from './types';
 import {
   nextVersionNumber,
+  readNextVersion,
   readVersionIndex,
   type StoredVersion,
   writeVersionIndex,
@@ -39,6 +42,26 @@ export interface ProjectStoreOptions {
   now?: () => string;
   /** ID generator, for tests. */
   newId?: () => DocumentId;
+  /**
+   * Runs `task` holding the lock `name`, one holder at a time (P3-13). The
+   * browser store passes the Web Locks API, which holds across tabs; the
+   * default holds within this store only.
+   */
+  lock?: <T>(name: string, task: () => Promise<T>) => Promise<T>;
+}
+
+/** A lock per name within one page: tasks run one after another, failures don't block the next. */
+export function localLock(): <T>(name: string, task: () => Promise<T>) => Promise<T> {
+  const tails = new Map<string, Promise<unknown>>();
+  return (name, task) => {
+    const run = (tails.get(name) ?? Promise.resolve()).then(task, task);
+    const tail = run.catch(() => undefined);
+    tails.set(name, tail);
+    void tail.then(() => {
+      if (tails.get(name) === tail) tails.delete(name);
+    });
+    return run;
+  };
 }
 
 const documentPath = (id: ProjectId) => `projects/${id}/document.json`;
@@ -52,6 +75,10 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
   const { index, files } = options;
   const now = options.now ?? (() => new Date().toISOString());
   const makeId = options.newId ?? (() => coreNewId<DocumentId>());
+  const lock = options.lock ?? localLock();
+  /** The version index of a project is read and rewritten only under this lock. */
+  const withVersions = <T>(id: ProjectId, task: () => Promise<T>) =>
+    lock(`extrudo:versions:${id}`, task);
 
   const summaryOf = async (id: ProjectId) => {
     const summary = await index.get(id);
@@ -59,7 +86,7 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     return summary;
   };
 
-  const load = async (id: ProjectId): Promise<ExtrudoDocument> => {
+  const load = async (id: ProjectId, options?: LoadOptions): Promise<ExtrudoDocument> => {
     await summaryOf(id);
     const bytes = await files.read(documentPath(id));
     if (!bytes) throw new ArchiveError('damaged', "This project's document is missing.");
@@ -69,7 +96,10 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     } catch {
       throw new ArchiveError('damaged', "This project's document is damaged.");
     }
-    return loadDocument(raw).doc;
+    const result = loadDocument(raw);
+    const notice = loadNotice(result, 'drops');
+    if (notice) options?.onNotice?.(notice);
+    return result.doc;
   };
 
   const save = async (doc: ExtrudoDocument): Promise<ProjectSummary> => {
@@ -94,10 +124,12 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
 
   const readThumbnail = (id: ProjectId) => files.read(thumbnailPath(id));
 
-  /** The version index, oldest first (none if there is no index yet). */
-  const readVersions = async (id: ProjectId): Promise<VersionSummary[]> => {
+  /** The version index, oldest first, and the next number (none if there is no index yet). */
+  const readIndex = async (
+    id: ProjectId,
+  ): Promise<{ versions: VersionSummary[]; next: number }> => {
     const bytes = await files.read(versionIndexPath(id));
-    if (!bytes) return [];
+    if (!bytes) return { versions: [], next: 1 };
     let raw: unknown;
     try {
       raw = JSON.parse(decoder.decode(bytes));
@@ -106,23 +138,31 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     }
     const versions = readVersionIndex(raw);
     if (!versions) throw new ArchiveError('damaged', "This project's version list is damaged.");
-    return versions;
+    return { versions, next: nextVersionNumber(versions, readNextVersion(raw)) };
   };
+  const readVersions = async (id: ProjectId) => (await readIndex(id)).versions;
+  const writeIndex = (id: ProjectId, versions: readonly VersionSummary[], next: number) =>
+    files.write(
+      versionIndexPath(id),
+      encoder.encode(JSON.stringify(writeVersionIndex(versions, next))),
+    );
 
   /** Writes versions (their files, then the index) into a project that has none. */
-  const writeVersions = async (id: ProjectId, versions: readonly StoredVersion[]) => {
-    if (versions.length === 0) return;
-    for (const { summary, doc } of versions) {
-      await files.write(
-        versionPath(id, summary.number),
-        gzipSync(encoder.encode(JSON.stringify({ ...doc, id }))),
+  const writeVersions = (id: ProjectId, versions: readonly StoredVersion[]) =>
+    withVersions(id, async () => {
+      if (versions.length === 0) return;
+      for (const { summary, doc } of versions) {
+        await files.write(
+          versionPath(id, summary.number),
+          gzipSync(encoder.encode(JSON.stringify({ ...doc, id }))),
+        );
+      }
+      await writeIndex(
+        id,
+        versions.map((v) => v.summary),
+        nextVersionNumber(versions.map((v) => v.summary)),
       );
-    }
-    await files.write(
-      versionIndexPath(id),
-      encoder.encode(JSON.stringify(writeVersionIndex(versions.map((v) => v.summary)))),
-    );
-  };
+    });
 
   const loadVersion = async (id: ProjectId, number: number): Promise<ExtrudoDocument> => {
     await summaryOf(id);
@@ -173,28 +213,38 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     get: (id) => index.get(id),
     load,
     save,
-    async saveVersion(doc, description) {
-      await summaryOf(doc.id);
-      const versions = await readVersions(doc.id);
-      const summary = await save(doc);
-      const version: VersionSummary = {
-        number: nextVersionNumber(versions),
-        description: description.trim(),
-        created: summary.modified,
-        name: doc.name,
-      };
-      // The same document `save` stored, with its stamps.
-      const stored = await load(doc.id);
-      await files.write(
-        versionPath(doc.id, version.number),
-        gzipSync(encoder.encode(JSON.stringify(stored))),
-      );
-      await files.write(
-        versionIndexPath(doc.id),
-        encoder.encode(JSON.stringify(writeVersionIndex([...versions, version]))),
-      );
-      return version;
-    },
+    saveVersion: (doc, description) =>
+      withVersions(doc.id, async () => {
+        await summaryOf(doc.id);
+        const { versions, next } = await readIndex(doc.id);
+        const summary = await save(doc);
+        const version: VersionSummary = {
+          number: next,
+          description: description.trim(),
+          created: summary.modified,
+          name: doc.name,
+        };
+        // The same document `save` stored, with its stamps.
+        const stored = await load(doc.id);
+        await files.write(
+          versionPath(doc.id, version.number),
+          gzipSync(encoder.encode(JSON.stringify(stored))),
+        );
+        await writeIndex(doc.id, [...versions, version], version.number + 1);
+        return version;
+      }),
+    deleteVersions: (id, numbers) =>
+      withVersions(id, async () => {
+        await summaryOf(id);
+        const { versions, next } = await readIndex(id);
+        const gone = new Set(numbers);
+        const kept = versions.filter((v) => !gone.has(v.number));
+        if (kept.length === versions.length) return;
+        // The index first: a crash then leaves an unlisted file, never a listed version without one.
+        await writeIndex(id, kept, next);
+        for (const v of versions)
+          if (gone.has(v.number)) await files.remove(versionPath(id, v.number));
+      }),
     async versions(id) {
       await summaryOf(id);
       return (await readVersions(id)).reverse();
@@ -232,8 +282,10 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
       const bytes = writeArchive(await load(id), await readThumbnail(id), await allVersions(id));
       return new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/zip' });
     },
-    async importFile(file) {
+    async importFile(file, options) {
       const archive = readArchive(new Uint8Array(await file.arrayBuffer()));
+      const notice = loadNotice(archive, 'copy');
+      if (notice) options?.onNotice?.(notice);
       const { doc, thumbnail, versions } = archive;
       if (await index.get(doc.id)) {
         const copy = await saveCopy(doc, doc.name, thumbnail);

@@ -2,13 +2,19 @@
  * Version history on disk (FR-PRJ-03, P2-14, ADR-0036). A project's
  * versions sit next to its document:
  *
- *   projects/<id>/versions/index.json   { versions: VersionSummary[] }, oldest first
+ *   projects/<id>/versions/index.json   { versions: VersionSummary[], next }, oldest first
  *   projects/<id>/versions/<n>.json.gz  the document as it was (gzipped JSON)
  *
  * A version is written before the index, so the index never lists a
  * version whose file wasn't written. In a `.extrudo` file the same index
  * sits at `versions/index.json` and each document at `versions/<n>.json`
- * (the zip compresses it).
+ * (the zip compresses it). `next` is the number the next version gets:
+ * numbers are never reused, even after the newest version was deleted
+ * (P3-13); an index without it (older files) counts from the highest.
+ *
+ * Reading and rewriting the index happens under a lock per project
+ * (`ProjectStoreOptions.lock`; the Web Locks API in the browser), so two
+ * tabs saving versions at once can't drop each other's entry.
  */
 import type { ExtrudoDocument } from '@extrudo/core';
 import type { VersionSummary } from './types';
@@ -19,9 +25,15 @@ export interface StoredVersion {
   doc: ExtrudoDocument;
 }
 
-/** The index file's content. */
-export function writeVersionIndex(versions: readonly VersionSummary[]): unknown {
-  return { versions };
+/** The index file's content. `next` defaults to one past the highest number. */
+export function writeVersionIndex(versions: readonly VersionSummary[], next?: number): unknown {
+  return { versions, next: Math.max(next ?? 0, nextVersionNumber(versions)) };
+}
+
+/** The `next` an index file's parsed JSON records, if it is a usable one. */
+export function readNextVersion(raw: unknown): number | undefined {
+  const next = (raw as { next?: unknown } | undefined)?.next;
+  return typeof next === 'number' && Number.isInteger(next) && next > 0 ? next : undefined;
 }
 
 /**
@@ -50,7 +62,7 @@ export function readVersionIndex(raw: unknown): VersionSummary[] | undefined {
   return out.sort((a, b) => a.number - b.number);
 }
 
-/** The number the next version gets. */
-export function nextVersionNumber(versions: readonly VersionSummary[]): number {
-  return versions.reduce((n, v) => Math.max(n, v.number), 0) + 1;
+/** The number the next version gets: past every listed one and at least `next`. */
+export function nextVersionNumber(versions: readonly VersionSummary[], next = 1): number {
+  return Math.max(next, versions.reduce((n, v) => Math.max(n, v.number), 0) + 1);
 }

@@ -1,7 +1,15 @@
 import { addParameter, createDocument, createDocumentStore, type ParameterId } from '@extrudo/core';
 import { memoryProjectStore } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
-import { openVersionCopy, restoreVersion, saveVersion, type VersionContext } from './versions';
+import {
+  deleteVersions,
+  olderVersions,
+  openVersionCopy,
+  restoreVersion,
+  saveVersion,
+  type VersionContext,
+  versionsLabel,
+} from './versions';
 
 async function setup() {
   const doc = createDocument({ name: 'Bracket', now: '2026-09-01T00:00:00.000Z' });
@@ -96,5 +104,20 @@ describe('versions', () => {
     expect(doc.parameters.map((p) => p.name)).toEqual(['a']);
     expect(doc.meta.created).toBe('2026-09-29T08:00:00.000Z');
     expect(names()).toEqual(['a', 'b']);
+  });
+
+  it('deletes versions, and names them for the confirmation (P3-13)', async () => {
+    const { ctx, projects } = await setup();
+    for (const note of ['a', 'b', 'c']) await saveVersion(ctx, note);
+    const id = ctx.store.getState().doc.id;
+    await deleteVersions(ctx, [1, 3]);
+    expect((await projects.versions(id)).map((v) => v.number)).toEqual([2]);
+    expect(versionsLabel([3])).toBe('V3');
+    expect(versionsLabel([4, 2])).toBe('V2 and V4');
+    expect(versionsLabel([3, 1, 2])).toBe('V1–V3');
+    expect(versionsLabel([1, 5, 9])).toBe('3 versions');
+    const list = await projects.versions(id);
+    expect(olderVersions(list, 1)).toEqual([]);
+    expect(olderVersions([...list, ...list], 1)).toHaveLength(1);
   });
 });

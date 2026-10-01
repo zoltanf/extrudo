@@ -2,6 +2,20 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-09-30 · **P3-13** Hardening (ADR-0050): a seeded fuzzer makes random
+  parameter, dimension and expression edits on the benchmark fixtures and
+  recomputes them headless (no crash, leak or cache mismatch in 4500 edits);
+  it found that shrinking B2 flipped its inner wall across the edge it is
+  measured from, so big sketch changes are now solved in small steps. Files
+  from a newer Extrudo open with what this version doesn't know left out, and
+  a notice says so; feature inputs it doesn't know are a warning, not an
+  error. Versions can be deleted (one, or all but the newest 10), and the
+  version list is locked across tabs. A recompute's first new error goes
+  into the notification history, with Edit. Mesh export works body by body
+  with a progress bar, and Cancel stops it. Silhouettes cost a third
+  (6 ms per frame at a million curved triangles); the rest of NFR-01 was
+  measured and written down. An axe audit covers the main screens in both
+  themes; four contrast and ARIA problems were fixed.
 - 2026-09-30 · **P3-08 (first half)** Press Pull and Offset Face (ADR-0051):
   Q (Solid › Modify, the marking menu's wedge) pushes or pulls what is
   selected: a face opens the new Offset Face, an edge Fillet, a sketch profile

@@ -69,6 +69,74 @@ beforeAll(async () => {
   kernel = new Kernel(oc);
 });
 
+/** ADR-0029's revolve document at a groove/ring angle: a block, a groove cut, a ring, a turned face. */
+function revolveDocument() {
+  const rectangle = (b: SketchBuilder, x: number, y: number, w: number, h: number) => {
+    const bottom = b.line(x, y, x + w, y).id;
+    b.line(x + w, y, x + w, y + h);
+    b.line(x + w, y + h, x, y + h);
+    b.line(x, y + h, x, y);
+    return bottom;
+  };
+  const block = new SketchBuilder();
+  const front = rectangle(block, 0, 0, 40, 30);
+  const regions = (data: SketchData) => detectProfiles(data).map((p) => p.id);
+  const profileOf = (sketch: string, data: SketchData): GeomRef => ({
+    kind: 'profile',
+    id: `${sketch}/${regions(data)[0]}`,
+  });
+  const sketchOn = (id: string, data: SketchData, plane: 'origin:xy' | 'origin:xz'): Feature => ({
+    ...testFeature(id, 'sketch'),
+    inputs: sketchInputs(originPlaneRef(plane), data),
+  });
+  const revolve = (
+    id: string,
+    refs: GeomRef[],
+    axis: GeomRef,
+    options: RevolveInputOptions,
+  ): Feature => ({ ...testFeature(id, 'revolve'), inputs: revolveInputs(refs, axis, options) });
+  const groove = new SketchBuilder();
+  rectangle(groove, 10, 5, 8, 10);
+  const ring = new SketchBuilder();
+  rectangle(ring, 45, 0, 3, 4);
+  const axis = ring.line(50, -5, 50, 20, true).id;
+  const doc = (a: number) =>
+    testDocument([
+      sketchOn('SB', block.sketch, 'origin:xy'),
+      {
+        ...testFeature('B', 'extrude'),
+        inputs: extrudeInputs([profileOf('SB', block.sketch)], {
+          distance: '20 mm',
+          direction: 'symmetric',
+        }),
+      },
+      sketchOn('SG', groove.sketch, 'origin:xz'),
+      revolve('G', [profileOf('SG', groove.sketch)], originAxisRef('origin:z'), {
+        angle: `${a} deg`,
+        direction: 'symmetric',
+        operation: 'cut',
+      }),
+      sketchOn('SR', ring.sketch, 'origin:xy'),
+      revolve(
+        'R',
+        [profileOf('SR', ring.sketch)],
+        { kind: 'sketchEntity', id: `SR/${axis}` },
+        {
+          direction: 'two-sides',
+          angle: `${a} deg`,
+          angle2: '20 deg',
+        },
+      ),
+      revolve(
+        'F',
+        [{ kind: 'face', id: 'extrude:B:cap:end' }],
+        { kind: 'edge', id: `e[extrude:B:cap:end|extrude:B:side:${front}]` },
+        { angle: '30 deg', operation: 'join' },
+      ),
+    ]);
+  return doc;
+}
+
 describe('memory', () => {
   it(`rebuilding the test part ${REBUILDS} times does not grow the heap`, {
     timeout: 180_000,
@@ -392,69 +460,7 @@ describe('memory', () => {
       strictLeaks: true,
       maxEntries: 8,
     });
-    const rectangle = (b: SketchBuilder, x: number, y: number, w: number, h: number) => {
-      const bottom = b.line(x, y, x + w, y).id;
-      b.line(x + w, y, x + w, y + h);
-      b.line(x + w, y + h, x, y + h);
-      b.line(x, y + h, x, y);
-      return bottom;
-    };
-    const block = new SketchBuilder();
-    const front = rectangle(block, 0, 0, 40, 30);
-    const regions = (data: SketchData) => detectProfiles(data).map((p) => p.id);
-    const profileOf = (sketch: string, data: SketchData): GeomRef => ({
-      kind: 'profile',
-      id: `${sketch}/${regions(data)[0]}`,
-    });
-    const sketchOn = (id: string, data: SketchData, plane: 'origin:xy' | 'origin:xz'): Feature => ({
-      ...testFeature(id, 'sketch'),
-      inputs: sketchInputs(originPlaneRef(plane), data),
-    });
-    const revolve = (
-      id: string,
-      refs: GeomRef[],
-      axis: GeomRef,
-      options: RevolveInputOptions,
-    ): Feature => ({ ...testFeature(id, 'revolve'), inputs: revolveInputs(refs, axis, options) });
-    const groove = new SketchBuilder();
-    rectangle(groove, 10, 5, 8, 10);
-    const ring = new SketchBuilder();
-    rectangle(ring, 45, 0, 3, 4);
-    const axis = ring.line(50, -5, 50, 20, true).id;
-    const doc = (a: number) =>
-      testDocument([
-        sketchOn('SB', block.sketch, 'origin:xy'),
-        {
-          ...testFeature('B', 'extrude'),
-          inputs: extrudeInputs([profileOf('SB', block.sketch)], {
-            distance: '20 mm',
-            direction: 'symmetric',
-          }),
-        },
-        sketchOn('SG', groove.sketch, 'origin:xz'),
-        revolve('G', [profileOf('SG', groove.sketch)], originAxisRef('origin:z'), {
-          angle: `${a} deg`,
-          direction: 'symmetric',
-          operation: 'cut',
-        }),
-        sketchOn('SR', ring.sketch, 'origin:xy'),
-        revolve(
-          'R',
-          [profileOf('SR', ring.sketch)],
-          { kind: 'sketchEntity', id: `SR/${axis}` },
-          {
-            direction: 'two-sides',
-            angle: `${a} deg`,
-            angle2: '20 deg',
-          },
-        ),
-        revolve(
-          'F',
-          [{ kind: 'face', id: 'extrude:B:cap:end' }],
-          { kind: 'edge', id: `e[extrude:B:cap:end|extrude:B:side:${front}]` },
-          { angle: '30 deg', operation: 'join' },
-        ),
-      ]);
+    const doc = revolveDocument();
     const run = async (i: number) => {
       const result = await engine.recompute({ doc: doc(60 + (i % 100) * 0.3) });
       if (result.status !== 'done' || result.bodies.length !== 2) throw new Error('no bodies');
@@ -876,5 +882,48 @@ describe('memory', () => {
     } finally {
       for (const handle of kept) kernel.release(handle);
     }
+  });
+});
+
+// P3-13 (ADR-0029's open item): the same revolve document with the cache kept
+// between runs, as in the app, for a long session. Measurement only:
+// `HEAP_RUNS=700 pnpm vitest run packages/kernel/src/memory.test.ts -t "warm cache"`
+// (about 0.3 s a run). `HEAP_MAX_ENTRIES=24` sets the cache size; `HEAP_ONLY=G`
+// (R, F, GF, RF, GR) keeps only those revolves and what they need. ADR-0050 §6
+// has the numbers: all three together grow, no subset does.
+const ENV =
+  (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {};
+const HEAP_RUNS = Number(ENV.HEAP_RUNS ?? 0);
+describe.runIf(HEAP_RUNS > 0)('heap with a warm cache', () => {
+  it('warm cache: heap top of revolve recomputes', { timeout: 3_600_000 }, async () => {
+    const maxEntries = Number(ENV.HEAP_MAX_ENTRIES ?? 256);
+    const engine = new RecomputeEngine(kernel, testFeatures().registry, { maxEntries });
+    const doc = revolveDocument();
+    const samples: string[] = [];
+    for (let i = 0; i < HEAP_RUNS; i++) {
+      const full = doc(60 + (i % 100) * 0.3);
+      // `HEAP_ONLY=G` (or R, F) keeps one revolve and what it needs, to find the one that grows.
+      const drop: Record<string, string[]> = {
+        G: ['SR', 'R', 'F'],
+        R: ['SG', 'G', 'F'],
+        F: ['SG', 'G', 'SR', 'R'],
+        GF: ['SR', 'R'],
+        RF: ['SG', 'G'],
+        GR: ['F'],
+      };
+      const gone = drop[ENV.HEAP_ONLY ?? ''] ?? [];
+      const features = full.features.filter((f) => !gone.includes(f.id));
+      const result = await engine.recompute({
+        doc: { ...full, features, timelineMarker: features.length },
+      });
+      if (result.status !== 'done') throw new Error('not done');
+      if ((i + 1) % 100 === 0) {
+        const { heapTop, heapBytes, liveShapes } = kernel.stats();
+        const mb = (bytes: number) => Math.round(bytes / 2 ** 17) / 8;
+        samples.push(`top ${mb(heapTop)} MB, memory ${mb(heapBytes)} MB, ${liveShapes} shapes`);
+      }
+    }
+    engine.clear();
+    expect.soft({ maxEntries, 'every 100 runs': samples }).toBeUndefined();
   });
 });

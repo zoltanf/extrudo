@@ -1,6 +1,6 @@
 import { type FileStore, opfsFiles } from './files';
 import { idbFiles, idbIndex, openDatabase } from './idb';
-import { createProjectStore } from './project-store';
+import { createProjectStore, localLock } from './project-store';
 import type { ProjectStore } from './types';
 
 export interface BrowserProjectStore extends ProjectStore {
@@ -28,6 +28,18 @@ export async function createBrowserProjectStore(
   } catch {
     // No OPFS (or it's blocked, as in some private windows): keep IndexedDB.
   }
-  const store = createProjectStore({ index: idbIndex(db), files, ...options });
+  const store = createProjectStore({ index: idbIndex(db), files, lock: webLock(), ...options });
   return Object.assign(store, { backend });
+}
+
+/**
+ * The Web Locks API as the store's lock (P3-13): held across every tab of
+ * this origin, so two tabs can't rewrite one version index at once. Where
+ * the API is missing (old Safari, some embedded views) the lock holds within
+ * this tab only.
+ */
+export function webLock(): <T>(name: string, task: () => Promise<T>) => Promise<T> {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  if (!locks) return localLock();
+  return (name, task) => locks.request(name, task);
 }

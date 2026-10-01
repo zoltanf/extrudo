@@ -426,6 +426,8 @@ export function Viewport({
           dpr={[1, 2]}
           // The stencil buffer caps a section analysis' cut (P3-09).
           gl={{ antialias: true, alpha: true, stencil: true }}
+          // A label needs a role (axe, P3-13): the canvas is a picture of the model.
+          role="img"
           aria-label="3D view"
         >
           <Scene

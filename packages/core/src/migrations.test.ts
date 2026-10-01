@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import v0Bracket from '../fixtures/v0-bracket.json' with { type: 'json' };
 import { FORMAT_VERSION } from './format';
-import { DocumentLoadError, loadDocument, MIGRATIONS } from './migrations';
+import { DocumentLoadError, loadDocument, loadNotice, MIGRATIONS } from './migrations';
 import { sampleDocument } from './testing';
 
 /** Deterministic IDs for migrations: id-1, id-2, … */
@@ -118,7 +118,71 @@ describe('migrations', () => {
       doc,
       loadedVersion: FORMAT_VERSION,
       migrated: false,
+      dropped: [],
     });
+  });
+});
+
+describe('reading what a newer Extrudo wrote (P3-13)', () => {
+  /** A sample document with keys this version doesn't know, as a newer one might add. */
+  function withUnknownKeys(formatVersion = FORMAT_VERSION) {
+    const raw = JSON.parse(JSON.stringify(sampleDocument()));
+    raw.formatVersion = formatVersion;
+    raw.newTop = { anything: 1 };
+    raw.settings.snapAngle = 15;
+    raw.parameters[0].locked = true;
+    raw.features[0].color = '#ff0000';
+    raw.features[0].inputs.distance.tolerance = 0.1;
+    return raw;
+  }
+
+  it('leaves out unknown keys of the same format version and lists them', () => {
+    const result = loadDocument(withUnknownKeys());
+    expect(result.doc).toEqual(sampleDocument());
+    expect(result.dropped.sort()).toEqual([
+      'features.0.color',
+      'features.0.inputs.distance.tolerance',
+      'newTop',
+      'parameters.0.locked',
+      'settings.snapAngle',
+    ]);
+    expect(loadNotice(result, 'drops')).toBe(
+      "This design was saved by a newer Extrudo. 5 settings this version doesn't know were left out. Saving here loses them; reload to update Extrudo first if you need them.",
+    );
+  });
+
+  it('does not change the input', () => {
+    const raw = withUnknownKeys();
+    const before = JSON.stringify(raw);
+    loadDocument(raw);
+    expect(JSON.stringify(raw)).toBe(before);
+  });
+
+  it('reads a newer format version as far as it understands it, and says so', () => {
+    const result = loadDocument(withUnknownKeys(FORMAT_VERSION + 1));
+    expect(result.doc).toEqual(sampleDocument());
+    expect(result.loadedVersion).toBe(FORMAT_VERSION + 1);
+    expect(result.migrated).toBe(false);
+    expect(loadNotice(result, 'copy')).toBe(
+      `This design was saved by a newer Extrudo (file format ${FORMAT_VERSION + 1}; this version reads ${FORMAT_VERSION}). 5 settings this version doesn't know were left out. The file itself is unchanged.`,
+    );
+    const plain = loadDocument({ ...sampleDocument(), formatVersion: FORMAT_VERSION + 1 });
+    expect(plain.doc).toEqual(sampleDocument());
+    expect(loadNotice(plain, 'drops')).toMatch(
+      /newer Extrudo \(file format 2; this version reads 1\)\. Everything in it is known here\. Saving here writes it in this version’s format\.$/,
+    );
+  });
+
+  it('says nothing for an ordinary document', () => {
+    expect(loadNotice(loadDocument(sampleDocument()), 'drops')).toBeUndefined();
+  });
+
+  it('still refuses a damaged document that also has unknown keys', () => {
+    const raw = withUnknownKeys();
+    raw.timelineMarker = -1;
+    const error = loadError(raw);
+    expect(error.code).toBe('invalid');
+    expect(error.issues.map((i) => i.path.join('.'))).toEqual(['timelineMarker']);
   });
 });
 
@@ -135,10 +199,16 @@ describe('loadDocument errors', () => {
     }
   });
 
-  it('refuse documents from a newer version with a readable message', () => {
-    const error = loadError({ ...sampleDocument(), formatVersion: FORMAT_VERSION + 1 });
+  it('refuse documents from a newer version that changed more than keys, with a readable message', () => {
+    // A newer format that reshaped something: here the parameters became an object.
+    const error = loadError({
+      ...sampleDocument(),
+      formatVersion: FORMAT_VERSION + 1,
+      parameters: {},
+    });
     expect(error.code).toBe('too-new');
     expect(error.message).toMatch(/newer Extrudo.*Update Extrudo/);
+    expect(error.issues.map((i) => i.path.join('.'))).toEqual(['parameters']);
   });
 
   it('report where a damaged document is invalid', () => {

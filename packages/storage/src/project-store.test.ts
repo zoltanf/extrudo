@@ -6,10 +6,11 @@ import {
   type ExtrudoDocument,
   type ParameterId,
 } from '@extrudo/core';
+import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { memoryFiles } from './files';
 import { memoryIndex } from './idb';
-import { createProjectStore } from './project-store';
+import { createProjectStore, localLock } from './project-store';
 import { ProjectNotFoundError } from './types';
 
 function setup() {
@@ -45,6 +46,43 @@ const doc = (name: string): ExtrudoDocument =>
 const png = (...bytes: number[]) => new Blob([new Uint8Array([137, 80, 78, 71, ...bytes])]);
 
 describe('ProjectStore', () => {
+  it('opens a document a newer Extrudo saved, and says what it left out (P3-13)', async () => {
+    const { store, files } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    const path = `projects/${d.id}/document.json`;
+    const stored = JSON.parse(new TextDecoder().decode(await files.read(path)));
+    await files.write(
+      path,
+      new TextEncoder().encode(JSON.stringify({ ...stored, formatVersion: 2, grid: { step: 5 } })),
+    );
+    const notices: string[] = [];
+    const loaded = await store.load(d.id, { onNotice: (m) => notices.push(m) });
+    expect(loaded.name).toBe('Bracket');
+    expect(notices).toEqual([
+      "This design was saved by a newer Extrudo (file format 2; this version reads 1). 1 setting this version doesn't know was left out. Saving here loses them; reload to update Extrudo first if you need them.",
+    ]);
+    // An ordinary load says nothing.
+    await store.save(loaded);
+    await store.load(d.id, { onNotice: (m) => notices.push(m) });
+    expect(notices).toHaveLength(1);
+  });
+
+  it('imports a newer file, and says the file itself is unchanged', async () => {
+    const { store } = setup();
+    const d = { ...doc('Bracket'), formatVersion: 2, grid: { step: 5 } };
+    const file = new Blob([
+      zipSync({
+        'manifest.json': strToU8('{"format":"extrudo","formatVersion":2}'),
+        'document.json': strToU8(JSON.stringify(d)),
+      }) as Uint8Array<ArrayBuffer>,
+    ]);
+    const notices: string[] = [];
+    const summary = await store.importFile(file, { onNotice: (m) => notices.push(m) });
+    expect(summary.name).toBe('Bracket');
+    expect(notices[0]).toMatch(/left out\. The file itself is unchanged\.$/);
+  });
+
   it('saves and loads a document, stamping modified and the app version', async () => {
     const { store } = setup();
     const d = doc('Bracket');
@@ -239,5 +277,76 @@ describe('ProjectStore versions (P2-14)', () => {
     const early = await other.loadVersion(copy.id, 1);
     expect(early.id).toBe(copy.id);
     expect(early.name).toBe('Early');
+  });
+
+  it('deletes versions, and never gives a deleted number out again (P3-13)', async () => {
+    const { store, files } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    for (const note of ['one', 'two', 'three']) await store.saveVersion(d, note);
+    await store.deleteVersions(d.id, [3, 1, 99]);
+    expect((await store.versions(d.id)).map((v) => [v.number, v.description])).toEqual([
+      [2, 'two'],
+    ]);
+    expect(files.paths()).toEqual([
+      `projects/${d.id}/document.json`,
+      `projects/${d.id}/versions/2.json.gz`,
+      `projects/${d.id}/versions/index.json`,
+    ]);
+    await expect(store.loadVersion(d.id, 3)).rejects.toThrow(
+      'Version 3 of this project is missing',
+    );
+    // The newest was deleted, and still the next one is V4.
+    expect((await store.saveVersion(d, 'four')).number).toBe(4);
+    await store.deleteVersions(d.id, [2, 4]);
+    expect(await store.versions(d.id)).toEqual([]);
+    expect((await store.saveVersion(d, 'five')).number).toBe(5);
+    await expect(store.deleteVersions(doc('Other').id, [1])).rejects.toBeInstanceOf(
+      ProjectNotFoundError,
+    );
+  });
+
+  it('reads an index without `next` (written before P3-13) by its highest number', async () => {
+    const { store, files } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    await store.saveVersion(d, 'one');
+    await store.saveVersion(d, 'two');
+    const path = `projects/${d.id}/versions/index.json`;
+    const { versions } = JSON.parse(new TextDecoder().decode(await files.read(path)));
+    await files.write(path, new TextEncoder().encode(JSON.stringify({ versions })));
+    expect((await store.saveVersion(d, 'three')).number).toBe(3);
+  });
+
+  /** Two stores over the same files and index: two tabs of one browser. */
+  function twoTabs(lock?: ReturnType<typeof localLock>) {
+    const files = memoryFiles();
+    const index = memoryIndex();
+    const tab = () => createProjectStore({ index, files, ...(lock ? { lock } : {}) });
+    return [tab(), tab()] as const;
+  }
+
+  it('keeps every version when two tabs save at the same moment, holding a shared lock', async () => {
+    const [a, b] = twoTabs(localLock());
+    const d = doc('Bracket');
+    await a.save(d);
+    await Promise.all([
+      a.saveVersion(d, 'a1'),
+      b.saveVersion(d, 'b1'),
+      a.saveVersion(d, 'a2'),
+      b.saveVersion(d, 'b2'),
+      b.deleteVersions(d.id, [1]),
+    ]);
+    const versions = await a.versions(d.id);
+    expect(versions.map((v) => v.number)).toEqual([4, 3, 2]);
+    expect(new Set(versions.map((v) => v.description)).size).toBe(3);
+  });
+
+  it('loses an entry without a shared lock (the control)', async () => {
+    const [a, b] = twoTabs();
+    const d = doc('Bracket');
+    await a.save(d);
+    await Promise.all([a.saveVersion(d, 'a1'), b.saveVersion(d, 'b1')]);
+    expect((await a.versions(d.id)).length).toBeLessThan(2);
   });
 });

@@ -38,6 +38,7 @@ export {
   type JsonObject,
   type LoadResult,
   loadDocument,
+  loadNotice,
   MIGRATIONS,
   type Migration,
   type MigrationContext,

@@ -122,7 +122,7 @@ export function MeasurePanel({
           Clear
         </Button>
         <Button variant="primary" onClick={onClose}>
-          Close <kbd className="font-mono text-xs opacity-70">Esc</kbd>
+          Close <kbd className="font-mono text-xs opacity-85">Esc</kbd>
         </Button>
       </footer>
     </section>

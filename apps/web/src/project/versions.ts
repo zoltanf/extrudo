@@ -1,8 +1,8 @@
 /**
  * Version history (FR-PRJ-03, P2-14, ADR-0036): save the design as a
  * numbered version with a description, bring an old version back into the
- * design (one undo step, after keeping what is there now as a version), or
- * open one as a separate design.
+ * design (one undo step, after keeping what is there now as a version),
+ * open one as a separate design, or delete versions (P3-13).
  */
 import {
   type DocumentId,
@@ -92,4 +92,35 @@ export async function openVersionCopy(ctx: VersionContext, number: number): Prom
   };
   await ctx.projects.save(copy);
   return copy.id;
+}
+
+/** How many versions "Delete older versions" keeps. */
+export const PRUNE_KEEP = 10;
+
+/** The versions beyond the newest `keep` (a newest-first list, as `ProjectStore.versions` gives). */
+export function olderVersions(
+  versions: readonly VersionSummary[],
+  keep = PRUNE_KEEP,
+): VersionSummary[] {
+  return versions.slice(keep);
+}
+
+/** "V3", "V1 and V2", "V1–V5" (numbers in any order). */
+export function versionsLabel(numbers: readonly number[]): string {
+  const sorted = [...numbers].sort((a, b) => a - b);
+  const [first] = sorted;
+  const last = sorted[sorted.length - 1];
+  if (first === undefined || last === undefined) return '';
+  if (sorted.length === 1) return versionLabel({ number: first });
+  if (sorted.length === 2)
+    return `${versionLabel({ number: first })} and ${versionLabel({ number: last })}`;
+  const runs = last - first + 1 === sorted.length;
+  return runs
+    ? `${versionLabel({ number: first })}–${versionLabel({ number: last })}`
+    : `${sorted.length} versions`;
+}
+
+/** Deletes versions of the open design for good (not undoable: the dialog asks first). */
+export function deleteVersions(ctx: VersionContext, numbers: readonly number[]): Promise<void> {
+  return ctx.projects.deleteVersions(ctx.store.getState().doc.id, numbers);
 }

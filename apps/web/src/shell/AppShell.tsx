@@ -94,6 +94,7 @@ import { CommandSearch, type SearchOpen } from './CommandSearch';
 import { type AppCommand, buildCommands, commandShortcuts } from './commands';
 import { createFeatureActions } from './featureActions';
 import { Splitter, usePanel } from './panels';
+import { watchRecomputeErrors } from './recomputeErrors';
 import { Timeline } from './Timeline';
 import { Toolbar } from './Toolbar';
 import { TOOLS, type ToolId } from './tools';
@@ -827,6 +828,25 @@ export function AppShell({
         redefinePlane: (id) => startRedefineRef.current(id),
       }),
     [stores, notify, session, dialog, dialogs, picking],
+  );
+  // A recompute's first new error goes into the notification history (P3-13).
+  const featureActionsRef = useRef(featureActions);
+  featureActionsRef.current = featureActions;
+  useEffect(
+    () =>
+      watchRecomputeErrors({
+        store,
+        model,
+        notify,
+        edit: (id) => featureActionsRef.current.edit(id),
+        canEdit: (id) => {
+          const { features, timelineMarker } = store.getState().doc;
+          const index = features.findIndex((f) => f.id === id);
+          const feature = features[index];
+          return !!feature && featureActionsRef.current.canEdit(feature, index, timelineMarker);
+        },
+      }),
+    [store, model, notify],
   );
 
   // Every active, unsuppressed, shown sketch on a known plane is drawn (the open one even if

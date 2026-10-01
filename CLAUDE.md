@@ -22,9 +22,9 @@ size and startup, offline precache), P2-16 (file-format spec,
 fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-03
 (shell), P3-05 (construction geometry), P3-06 (combine, move/copy, mirror),
 P3-04 (hole), P3-07 (patterns, mirrored features), P3-09 (section
-analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus) and
-P3-16 (notification history) are done; P3-08 is half done (Press/Pull and
-Offset face; Split body, Scale and Draft remain).
+analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus),
+P3-13 (hardening) and P3-16 (notification history) are done; P3-08 is
+half done (Press/Pull and Offset face; Split body, Scale and Draft remain).
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -513,6 +513,27 @@ match). **Sketch points** are `sketchEntity` refs to points
 on the hidden selection-filter key `sketchPoints`, the view then draws and
 picks the points of the shown sketches. A hole is a patternable feature
 (`repeatableFeatures` counts it as a cut).
+ADR-0050 (P3-13) hardened things: `packages/kernel/src/fuzz.test.ts` makes
+seeded random edits on `fixtures/benchmarks/*.extrudo` as the app would
+(solve, recompute warm with `strictLeaks`, sync projections) and fails on a
+crash, an "Internal error", a leak or a warm/cold difference (add new
+fixtures to its list). **Big sketch changes are solved in steps**
+(`solveGradually` in `@extrudo/sketch/inference`, used by the host's
+`settle` and `settleProjections`): planegcs takes the nearest solution and
+dimensions are unsigned, so one solve put B2's inner wall on the far side of
+an edge that moved further than the wall. `loadDocument` **leaves out
+unknown keys** (`LoadResult.dropped`) and reads a newer format version when
+only keys are new; `loadNotice` words it, `ProjectStore.load`/`importFile`
+take `{ onNotice }`, the app shows it when the project opens; the engine
+ignores unknown feature input names with a warning. Versions: the index is
+rewritten under `ProjectStoreOptions.lock` (Web Locks in the browser),
+records `next`, and `deleteVersions` exists (Delete, "Delete older
+versions"). A recompute's first new error is a **quiet** notification
+(`ToastOptions.quiet`: history only) with Edit (`shell/recomputeErrors.ts`).
+`exportMeshes(…, onProgress)` meshes body by body; `false` cancels;
+**`RecomputeEngine.hold(bodies)` keeps shapes alive across yields**.
+Silhouettes use `silhouettePlan` (facing per node). `e2e/a11y.spec.ts` is an
+axe audit of the main screens in both themes (`KNOWN` lists what's left).
 ADR-0051 (P3-08, first half) added **Offset Face** and **Press Pull**:
 `packages/core/src/offset-face.ts` (feature `offsetFace`: `faces`, `distance`,
 **positive moves along the outward normal**, so a pad grows and a hole's wall
@@ -543,7 +564,7 @@ ways, cut into it, for faces and for profiles of a sketch on a face. Patterns
 of faces did not fall out of Offset Face and stay open.
 Next, one task at a time (not parallel tracks, since 2026-09-30): the
 second half of **P3-08** (split body, scale, draft), **P3-17** (polish:
-open items from the ADRs), P3-12, P3-13, P3-14, then P3-15 after the owner's
+open items from the ADRs), P3-12, P3-14, then P3-15 after the owner's
 decisions. Carried-over items are listed under those tasks in
 `docs/03-roadmap.md`; deeper ones are the P4-12 backlog.
 
@@ -575,7 +596,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0051: press/pull, offset face (0006 and 0050 are reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face (0006 is reserved) |
 
 ## Stack summary
 
@@ -1366,3 +1387,29 @@ them. Notes further down that name a machine apply to that machine only.
   rewrites the golden table; the facade's native harness lives in the
   scratchpad (`#define private public` over `extrudo_facade.cpp`, sweeps of
   every face at eight distances found no heap trap, unlike the shell's).
+- **Fuzzing** (`packages/kernel/src/fuzz.test.ts`, P3-13): 200 seeded steps
+  per fixture in CI; `FUZZ_STEPS=1500 FUZZ_REPORT=1` for a long run with a
+  report (counts of every feature message, warm recompute times; the report
+  shows as a soft failure), `FUZZ_SEED` for another sequence, `FUZZ_HEAP=n`
+  for heap samples. Warm-cache heap of the revolve document: `HEAP_RUNS=n
+  … memory.test.ts -t "warm cache"` (about 0.3 s a run; `HEAP_MAX_ENTRIES`,
+  `HEAP_ONLY=G|R|F|GF|RF|GR`): it grows about 11 MB per 100 recomputes with
+  all three revolves, not with any subset (ADR-0050 §6, open). **Our OCCT
+  build already links mimalloc** (the toolchain default); `MALLOC:
+  'dlmalloc'` in `libcascade.config.ts` builds (grows smoothly, 30 % slower). Silhouette
+  cost: `BENCH=1 … viewport/silhouette.test.ts`; booleans of many tools:
+  `BENCH=1 … kernel/src/boolean-bench.test.ts`. A native OCCT harness for
+  such experiments builds in the image by its digest (the tag shows as
+  `<none>` on the Arch workstation): `docker run --rm --user 0 -v
+  <dir>:/w -w /w --entrypoint sh <image id> -c 'em++ … && node h.js'`.
+- **Accessibility e2e** (`e2e/a11y.spec.ts`): axe per screen, both themes;
+  a new violation fails with its node HTML. Add an entry to `KNOWN` only with
+  a reason. Toasts behind a modal dialog are inert for assistive tech (and
+  for `getByRole`): say results inside the dialog (the Versions dialog's
+  status line "Versions status").
+- **Versions e2e** (P3-13): per-row "Delete V3" buttons and "Delete older
+  versions" (shown past 10) open an `alertdialog` "Delete V3?" / "Delete
+  V1?" with Cancel/Delete.
+- **Newer files in e2e**: write `projects/<id>/document.json` in OPFS from
+  `page.evaluate` (see `storage.spec.ts`) to simulate a newer Extrudo.
+

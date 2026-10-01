@@ -2,10 +2,11 @@
  * The document schema, format version 1 (architecture §4.1).
  *
  * The document is plain JSON and the only source of truth; geometry is derived
- * from it (ADR-0003). Objects are strict: an unknown key in a version-1 file is
- * a bug, not a newer format, because newer formats have a higher
- * `formatVersion` and go through `migrations.ts`. Adding an optional field is
- * backward compatible and needs no version bump; everything else does.
+ * from it (ADR-0003). Objects are strict, so validation names every key it
+ * doesn't know. Adding an optional field is backward compatible and needs no
+ * version bump; everything else does. `loadDocument` reads unknown keys
+ * leniently (P3-13): an older Extrudo leaves out what a newer one added and
+ * says so, instead of refusing the file.
  */
 import { z } from 'zod';
 import { FORMAT_NAME, FORMAT_VERSION } from './format';

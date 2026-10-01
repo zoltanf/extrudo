@@ -599,9 +599,16 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   menus.
 - [ ] **P3-12 Onboarding:** first-run tutorial, template gallery (B2, B4, B5 as
   starters), tool tooltips with animated demos. FR-UX-04, -05.
-- [ ] **P3-13 Hardening pass:** robustness fuzzing (random parameter changes on
+- [x] **P3-13 Hardening pass:** robustness fuzzing (random parameter changes on
   fixtures must not crash), perf profiling against NFR-01, accessibility audit.
-  Also, carried over (2026-09-30):
+  Done 2026-09-30 (ADR-0050): every item below, with the numbers in the ADR.
+  The silhouette pass is 3× faster and stays on the frame path; a facade
+  list-fuse was measured and rejected (slower than cutting per colour class of
+  the interference graph, which needs no facade change and is left for P3-17,
+  since it lives in `features/pattern.ts`). The warm-cache heap levels off for
+  the fixtures but keeps growing (about 11 MB per 100 recomputes) for
+  ADR-0029's revolve document; no shape leaks, the allocator and cache size
+  don't cure it, and it is left open (P3-17). Also carried over (2026-09-30):
   - WASM heap growth with a warm engine cache (ADR-0029): measure a long
     scripted editing session in the browser; if it keeps growing, trim the
     cache or cap OCCT's allocator blocks.
@@ -665,6 +672,14 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
     (ADR-0045).
   - A checked-in screenshot of the overhang shading, taken in CI's
     Playwright image (ADR-0048).
+  - Patterns: cut or join interfering instances one colour class of the
+    interference graph at a time instead of tree-fusing them (1.9 s vs
+    3.8 s for 10 × 10 overlapping holes; ADR-0050 §6).
+  - WASM heap growth with a warm cache on ADR-0029's revolve document (about
+    11 MB per 100 recomputes, only when all three revolves run): attribute it
+    per `Kernel` call in a dlmalloc build (ADR-0050 §6, `HEAP_ONLY`).
+  - The feature dialog's OK button key hint: 3.9:1 contrast in the light
+    theme (axe, `KNOWN` in `e2e/a11y.spec.ts`; ADR-0050 §7).
   - Strike open items the ADRs still list that later tasks did: construction
     axes and planes as revolve axes and primitive planes, sketches on
     construction planes (P3-05); Redefine Plane (P2-11); revolve's

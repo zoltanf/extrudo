@@ -25,11 +25,37 @@ export async function createProject(
   return doc.id;
 }
 
+/**
+ * Messages for a project that is about to open (P3-13): what reading its
+ * file needed to leave out. Opening a project navigates, so they wait here
+ * until the project's page shows them (`takeOpenNotices`).
+ */
+const openNotices = new Map<string, string[]>();
+
+export function noteOnOpen(id: ProjectId, message: string): void {
+  openNotices.set(id, [...(openNotices.get(id) ?? []), message]);
+}
+
+/** The messages waiting for a project, once. */
+export function takeOpenNotices(id: ProjectId): string[] {
+  const notices = openNotices.get(id) ?? [];
+  openNotices.delete(id);
+  return notices;
+}
+
+/** Loads a project, keeping what reading it had to leave out for its page. */
+export function loadProject(platform: Platform, id: ProjectId): Promise<ExtrudoDocument> {
+  return platform.projects.load(id, { onNotice: (m) => noteOnOpen(id, m) });
+}
+
 /** Lets the user pick an `.extrudo` file and imports it; `undefined` if they cancel. */
 export async function importProject(platform: Platform): Promise<ProjectSummary | undefined> {
   const file = await platform.files.pick(`${FILE_EXTENSION},application/zip`);
   if (!file) return undefined;
-  return platform.projects.importFile(file);
+  const notices: string[] = [];
+  const summary = await platform.projects.importFile(file, { onNotice: (m) => notices.push(m) });
+  for (const notice of notices) noteOnOpen(summary.id, notice);
+  return summary;
 }
 
 /** Downloads a project as `<name>.extrudo` and returns the file name. */

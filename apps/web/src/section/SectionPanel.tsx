@@ -161,7 +161,7 @@ export function SectionPanel({
           Remove
         </Button>
         <Button variant="primary" onClick={onClose}>
-          Done <kbd className="font-mono text-xs opacity-70">Esc</kbd>
+          Done <kbd className="font-mono text-xs opacity-85">Esc</kbd>
         </Button>
       </footer>
     </section>
