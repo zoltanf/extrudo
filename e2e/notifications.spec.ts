@@ -115,6 +115,13 @@ test('lists earlier notifications, errors first, with actions that still apply',
   await expect(rows.nth(2).getByRole('button', { name: /^Show/ })).toHaveAccessibleName(
     'Show (no longer applies)',
   );
+  // Undone while the panel is open: the panel asks again, and Show applies again (P3-17).
+  await page.keyboard.press('Control+z');
+  await expect(browser(page).getByRole('button', { name: 'Show Sketch1' })).toBeVisible();
+  await expect(panel).toBeVisible();
+  await expect(rows.nth(2).getByRole('button', { name: 'Show' })).toBeEnabled();
+  await page.keyboard.press('Control+y');
+  await expect(rows.nth(2).getByRole('button', { name: /^Show/ })).toBeDisabled();
 
   // Esc closes the panel and gives the focus back to its button.
   await page.keyboard.press('Escape');

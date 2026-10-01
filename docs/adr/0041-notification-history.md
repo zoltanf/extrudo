@@ -102,10 +102,10 @@ with their actions where they still apply.
 
 ## Consequences and open items
 
-- The panel reads `available()` when it draws, not on every document change.
+- ~~The panel reads `available()` when it draws, not on every document change.
   Any pointer click outside closes it, so a stale button can only show if the
   document changes by keyboard while it is open (Ctrl+Z); the next action
-  or reopening redraws.
+  or reopening redraws.~~ Done in P3-17 (amendment below).
 - Other places that show a message on their own (inline field messages,
   the status bar) are not part of the history.
 - ~~Recompute errors are shown on timeline chips and the status bar, not as
@@ -115,3 +115,14 @@ with their actions where they still apply.
 - Unit tests read the store directly; the panel is covered end to end
   (`e2e/notifications.spec.ts`), because `renderToStaticMarkup` draws
   Zustand hooks from the initial state and cannot see later pushes.
+
+## Amendment (P3-17)
+
+The store has `recheck()` and a `checks` counter; the panel subscribes to
+`checks`, so bumping it redraws the panel, which asks every action's
+`available()` again. The design system still knows nothing of documents:
+the shell subscribes to the document store and calls `recheck()` whenever
+`doc` changes (an undo by keyboard while the panel is open, say). `recheck`
+does nothing while the panel is closed (opening it reads the predicates
+anyway) or when no action has a predicate, so ordinary edits cost nothing.
+

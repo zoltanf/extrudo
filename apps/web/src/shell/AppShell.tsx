@@ -427,6 +427,16 @@ export function AppShell({
     if (mode === 'sketch') dialog?.cancel();
   }, [mode, dialog]);
 
+  // A document change can make a notification's action stale (or valid again): an open
+  // history panel asks again (P3-17, ADR-0041).
+  const history = toasts?.history;
+  useEffect(() => {
+    if (!history) return;
+    return store.subscribe((s, prev) => {
+      if (s.doc !== prev.doc) history.getState().recheck();
+    });
+  }, [store, history]);
+
   // Deleting a dimension another expression uses is refused; say why.
   const remove = useMemo(
     () => () => {
