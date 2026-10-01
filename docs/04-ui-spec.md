@@ -436,6 +436,24 @@ a right-click without movement, as Onshape's context menu does.
   normal (on a point of the surface for a curved face); the preview replaces
   the body. A distance that is too far says how far it may go ("Face 6 can't
   move in by 25 mm: that is too far for this body (max ≈ 19 mm)").
+- **Split Body, Scale and Draft (P3-08, ADR-0053):** in the menu of Solid ›
+  Modify (no default keys; Ctrl+K finds them). **Split Body**: Bodies, Plane
+  (picked like Create Sketch's plane: an origin or construction plane, or a
+  flat face, which cuts along its whole plane) and Keep (Both sides, Above the
+  plane, Below the plane; above is where the plane's normal points). Each side
+  becomes a body; the larger keeps the body's name. **Scale**: Bodies, Point
+  (optional: a vertex or construction point that stays put; empty means the
+  middle of the bodies' box), Scale type (Uniform, Non-uniform), Scale factor
+  or X, Y and Z factor (plain numbers, 1 by default, which previews as a
+  warning that nothing changes), Create copy. **Draft**: Faces (flat,
+  cylindrical or conical; picking one picks the faces that run smoothly into
+  it), Plane (the neutral plane, picked like Create Sketch's; the faces turn
+  about where they meet it and its normal is the pull direction), Angle (3° by
+  default; positive narrows the body along the pull) and Flip. In the view an
+  angle arc stands where the first face meets the plane, starting along the
+  pull. A draft too steep for the body says the largest angle that works
+  ("The faces can't tilt by 45°: that is too steep for this body (max ≈
+  36°)"); faces next to rounded edges say to draft before rounding.
 - **Bodies in the browser (P2-06, P2-08, ADR-0030):** the Bodies folder
   lists the model's bodies in timeline order, with a count badge. A new
   body is named "Body1", "Body2"… (the lowest free number) as soon as it
