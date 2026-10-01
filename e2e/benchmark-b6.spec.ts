@@ -1,22 +1,27 @@
-import { expect, type Locator, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
   addParameter,
   chip,
+  clickAt,
+  clickEdge,
+  clickWhere,
   closeParameters,
   expectNoProblems,
   exportModel,
   exportProject,
-  homeView,
   objectsOf3mf,
+  ok,
   openParameters,
+  primitive,
   renameProject,
   setParameters,
-  settled,
   solidFacts,
+  solidTab,
+  turnView,
   viewportOf,
   zoomOutTo,
 } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool, projector } from './helpers';
+import { kernelReady, openProject } from './helpers';
 
 // P3-08: benchmark B6 (requirements §7) built through the UI: a wall hook. A
 // back plate (`wall` thick, `width` × `height`), an arm (`reach` long, `arm`
@@ -40,42 +45,6 @@ test.afterEach(() => {
   expect(errors).toEqual([]);
 });
 
-type At = Awaited<ReturnType<typeof projector>>;
-
-/** A box from the Create menu with the given fields, joined to the body unless it is the first. */
-async function box(page: Page, fields: Record<string, string>, join: boolean) {
-  await pickTool(page, 'Box');
-  const dialog = page.getByRole('region', { name: 'Box dialog' });
-  await expect(dialog).toBeVisible();
-  for (const [label, value] of Object.entries(fields)) {
-    await dialog.getByRole('textbox', { name: label, exact: true }).fill(value);
-  }
-  if (join) await dialog.getByRole('combobox', { name: 'Operation' }).selectOption('join');
-  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-  await dialog.getByRole('button', { name: 'OK' }).click();
-  await expect(dialog).toBeHidden();
-  await kernelReady(page);
-}
-
-/** Hovers a world point (a couple of pixels off for an edge) until the view hovers `kind`, then clicks. */
-async function pick(page: Page, at: At, p: [number, number, number], kind: 'face' | 'edge') {
-  const { x, y } = at(p);
-  const dy = kind === 'edge' ? 2 : 0;
-  await page.mouse.move(x, y + dy);
-  await expect
-    .poll(() => viewportOf(page).getAttribute('data-model-hover'))
-    .toMatch(new RegExp(`^${kind}:`));
-  await page.mouse.click(x, y + dy);
-}
-
-/** The view from `key` (Shift+1…7), settled, as a world → page mapping. */
-async function view(page: Page, viewport: Locator, key: string): Promise<At> {
-  await page.keyboard.press(key);
-  await page.waitForTimeout(300);
-  await settled(viewport);
-  return projector(viewport);
-}
-
 test('B6: a wall hook with a draft and fillets on intersecting edges', async ({ page }) => {
   // Three boxes, a draft and a fillet picked in the view, a parameter edit and
   // an export, each waiting for the kernel.
@@ -97,9 +66,19 @@ test('B6: a wall hook with a draft and fillets on intersecting edges', async ({ 
   await kernelReady(page);
 
   // The plate against the wall (the YZ plane), the arm out along X, the lip up at its tip.
-  await box(page, { Length: 'wall', Width: 'width', Height: 'height', X: 'wall / 2' }, false);
-  await box(page, { Length: 'reach', Width: 'arm', Height: 'wall', X: 'reach / 2' }, true);
-  await box(page, { Length: 'wall', Width: 'arm', Height: 'lip', X: 'reach - wall / 2' }, true);
+  await primitive(page, 'Box', { Length: 'wall', Width: 'width', Height: 'height', X: 'wall / 2' });
+  await primitive(
+    page,
+    'Box',
+    { Length: 'reach', Width: 'arm', Height: 'wall', X: 'reach / 2' },
+    'join',
+  );
+  await primitive(
+    page,
+    'Box',
+    { Length: 'wall', Width: 'arm', Height: 'lip', X: 'reach - wall / 2' },
+    'join',
+  );
   await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:40,30,60$/);
   await expectNoProblems(page);
 
@@ -107,7 +86,7 @@ test('B6: a wall hook with a draft and fillets on intersecting edges', async ({ 
   const box0 = await viewport.boundingBox();
   if (!box0) throw new Error('no viewport');
   await zoomOutTo(page, { x: box0.x + box0.width / 2, y: box0.y + box0.height / 2 }, 160);
-  let at = await view(page, viewport, 'Shift+1');
+  let at = await turnView(page, 'Shift+1');
 
   // Draft1: the arm's top and its two sides (each one face with the lip's side), about
   // the plate's front face, whose normal (+X) pulls out of the wall.
@@ -116,26 +95,21 @@ test('B6: a wall hook with a draft and fillets on intersecting edges', async ({ 
   const draft = page.getByRole('region', { name: 'Draft dialog' });
   await expect(draft).toBeVisible();
   const faces = draft.getByRole('button', { name: 'Faces', exact: true });
-  await pick(page, at, [20, 0, 5], 'face');
+  await clickWhere(page, at, [20, 0, 5], /^face:/);
   await expect(faces).toHaveText('1 face');
-  await pick(page, at, [20, -8, 2.5], 'face');
+  await clickWhere(page, at, [20, -8, 2.5], /^face:/);
   await expect(faces).toHaveText('2 faces');
   // The other side faces away from the home view: pick it from the back (+Y).
-  at = await view(page, viewport, 'Shift+5');
-  await pick(page, at, [20, 8, 2.5], 'face');
+  at = await turnView(page, 'Shift+5');
+  await clickWhere(page, at, [20, 8, 2.5], /^face:/);
   await expect(faces).toHaveText('3 faces');
-  at = await view(page, viewport, 'Shift+1');
+  at = await turnView(page, 'Shift+1');
   await draft.getByRole('button', { name: 'Plane', exact: true }).click();
   // A plane field picks like Create Sketch (no model hover): the plate's front, above the arm.
-  const front = at([5, -10, 45]);
-  await page.mouse.move(front.x, front.y);
-  await page.mouse.click(front.x, front.y);
+  await clickAt(page, at, [5, -10, 45]);
   await expect(draft.getByRole('button', { name: 'Plane', exact: true })).toHaveText('1 face');
   await draft.getByRole('textbox', { name: 'Angle', exact: true }).fill('taper');
-  await expect(draft).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-  await draft.getByRole('button', { name: 'OK' }).click();
-  await expect(draft).toBeHidden();
-  await kernelReady(page);
+  await ok(page, draft);
   await expect(chip(page, 'Draft1')).toBeVisible();
   await expectNoProblems(page);
 
@@ -153,14 +127,11 @@ test('B6: a wall hook with a draft and fillets on intersecting edges', async ({ 
     [5, 0, 5],
   ];
   for (const [i, p] of picks.entries()) {
-    await pick(page, at, p, 'edge');
+    await clickEdge(page, at, p);
     await expect(edges).toHaveText(i === 0 ? '1 edge' : `${i + 1} edges`);
   }
   await fillet.getByRole('textbox', { name: 'Radius', exact: true }).fill('radius');
-  await expect(fillet).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-  await fillet.getByRole('button', { name: 'OK' }).click();
-  await expect(fillet).toBeHidden();
-  await kernelReady(page);
+  await ok(page, fillet);
   await expect(chip(page, 'Fillet1')).toBeVisible();
   await expectNoProblems(page);
   await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:40,30,60$/);
@@ -170,10 +141,7 @@ test('B6: a wall hook with a draft and fillets on intersecting edges', async ({ 
   expect(hook).toHaveLength(1);
   const facts = solidFacts((hook[0] as (typeof hook)[number]).mesh);
   expect(facts.size.map((v) => Math.round(v * 10) / 10)).toEqual([40, 30, 60]);
-  await page
-    .getByRole('tablist', { name: 'Toolbar tabs' })
-    .getByRole('tab', { name: 'Solid' })
-    .click();
+  await solidTab(page);
 
   // Parameters change the hook: a longer arm, a steeper draft, smaller rounds.
   // (The plate is 5 mm thick: its front and back top fillets meet above 2.5 mm.)
