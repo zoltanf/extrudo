@@ -6,12 +6,15 @@ cannot reach. Tick them off in order; each box says who and where.
 
 ## Before going public
 
-- [ ] **Read the audit.** The public-readiness audit (ADR-0054, "The audit") found
+- [x] **Read the audit.** The public-readiness audit (ADR-0054, "The audit") found
   one thing for you: every commit's author address is a personal one
   (see below). Decide whether to rewrite history before the repository is public.
   Nothing else was found: no credentials, tokens, private addresses, home
   paths or machine names, in the tree or in history.
-- [ ] **Commit author address.** All commits carry the owner's own email address as
+- [x] **Commit author address.** **Decided 2026-10-02: keep it, no rewrite.** The
+  same address is already public in the owner's other repositories, so a
+  rewrite here would hide nothing. For the record, the option that was not
+  taken: all commits carry the owner's own email address as
   author and committer. If you do not want it public: rewrite history once,
   before making the repository public, for example with
   `git filter-repo --mailmap` mapping it to your GitHub noreply address
