@@ -119,6 +119,22 @@ test.describe('an update is waiting', () => {
     await page.evaluate(`navigator.serviceWorker.getRegistration().then((r) => r.update())`);
   }
 
+  // The host redirects /index.html to / like Cloudflare Pages: a precached redirected
+  // response used to fail every visit after the first with ERR_FAILED (2026-10-02).
+  test('a repeat visit through the worker opens on a host that redirects index.html', async ({
+    page,
+  }) => {
+    expect((await fetch(`${host.url}/index.html`, { redirect: 'manual' })).status).toBe(308);
+    await page.goto(`${host.url}/`);
+    await page.evaluate('navigator.serviceWorker.ready.then(() => true)');
+    await expect.poll(() => page.evaluate('!!navigator.serviceWorker.controller')).toBe(true);
+
+    await page.reload();
+    await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+    await page.goto(`${host.url}/#/`);
+    await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+  });
+
   test('a toast offers the reload and the reload activates the new version', async ({ page }) => {
     await page.goto(`${host.url}/`);
     await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();

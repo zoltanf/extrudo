@@ -23,13 +23,30 @@ const PREVIOUS = './.previous-precache';
 
 const url = (path) => new URL(path, self.location.href).href;
 
+// A host may answer a path through a redirect: Cloudflare Pages sends
+// `/index.html` to `/` with a 308. The response fetch() returns then says
+// `redirected`, and a browser refuses such a response for a navigation
+// (ERR_FAILED on every visit after the first). Store and serve a plain copy.
+const plain = async (response) =>
+  response.redirected
+    ? new Response(await response.blob(), {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      })
+    : response;
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE);
       const have = new Set((await cache.keys()).map((request) => request.url));
       // 'reload' skips the HTTP cache: precached files must be this build's.
-      const add = (path) => cache.add(new Request(url(path), { cache: 'reload' }));
+      const add = async (path) => {
+        const response = await fetch(new Request(url(path), { cache: 'reload' }));
+        if (!response.ok) throw new Error(`${path}: ${response.status}`);
+        await cache.put(url(path), await plain(response));
+      };
       await Promise.all([
         ...HASHED.filter((path) => !have.has(url(path))).map(add),
         ...FIXED.map(add),
@@ -85,7 +102,7 @@ self.addEventListener('fetch', (event) => {
       const hit = await cache.match(request.mode === 'navigate' ? url(INDEX) : request.url, {
         ignoreVary: true,
       });
-      return hit ?? fetch(request);
+      return hit ? plain(hit) : fetch(request);
     })(),
   );
 });
