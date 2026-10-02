@@ -23,6 +23,7 @@
 //   and knots, fillet radii) with clearNumbers() / pushNumber().
 
 #include <BOPAlgo_Builder.hxx>
+#include <BOPAlgo_ArgumentAnalyzer.hxx>
 #include <BOPAlgo_BuilderFace.hxx>
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
@@ -41,9 +42,20 @@
 #include <BRepFilletAPI_MakeChamfer.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepOffsetAPI_DraftAngle.hxx>
+#include <BRepOffsetAPI_MakePipeShell.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
+#include <BRepOffsetAPI_ThruSections.hxx>
 #include <BRepOffset_MakeOffset.hxx>
 #include <BRepBuilderAPI_MakeSolid.hxx>
+#include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepBuilderAPI_Sewing.hxx>
+#include <BRepBuilderAPI_TransitionMode.hxx>
+#include <BRepAdaptor_CompCurve.hxx>
+#include <GC_MakeArcOfCircle.hxx>
+#include <GeomAPI_PointsToBSpline.hxx>
+#include <Geom_ConicalSurface.hxx>
+#include <Geom_CylindricalSurface.hxx>
+#include <Geom2d_Line.hxx>
 #include <BRepGProp.hxx>
 #include <BRepLProp_SLProps.hxx>
 #include <BRepLib_ToolTriangulatedShape.hxx>
@@ -92,7 +104,9 @@
 #include <TopExp_Explorer.hxx>
 #include <TopLoc_Location.hxx>
 #include <TopTools_ShapeMapHasher.hxx>
+#include <BRepTools_WireExplorer.hxx>
 #include <TopoDS.hxx>
+#include <TopoDS_Iterator.hxx>
 #include <TopoDS_Compound.hxx>
 #include <TopoDS_Edge.hxx>
 #include <TopoDS_Face.hxx>
@@ -138,6 +152,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
+#include <functional>
+#include <map>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -1811,6 +1827,594 @@ public:
     }
   }
 
+  // ------------------------------------------- paths, sweeps and lofts (P4-01) --
+  //
+  // A path is staged piece by piece with pathClear(), then pathLine(),
+  // pathArc(), pathCircle(), pathSpline() (points staged with
+  // clearNumbers()/pushNumber() as x y z triples) or pathEdge() (an edge of a
+  // shape), each returning the number of pieces staged (0 and lastError() on
+  // failure), then made into one wire by pathWire(). The pieces may come in
+  // any order and direction: the wire chains them end to end.
+
+  void pathClear() { pathEdges_.clear(); }
+
+  int pathLine(double x0, double y0, double z0, double x1, double y1, double z1) {
+    beginOp();
+    try {
+      const gp_Pnt a(x0, y0, z0);
+      const gp_Pnt b(x1, y1, z1);
+      if (a.Distance(b) <= Precision::Confusion()) return fail("The path has a line with no length.");
+      BRepBuilderAPI_MakeEdge builder(a, b);
+      if (!builder.IsDone()) return fail("Couldn't make an edge from a line of the path.");
+      pathEdges_.push_back(builder.Edge());
+      return static_cast<int>(pathEdges_.size());
+    } catch (...) {
+      return failFromException("Path line failed");
+    }
+  }
+
+  /** The arc from (sx, sy, sz) through (mx, my, mz) to (ex, ey, ez). */
+  int pathArc(double sx, double sy, double sz, double mx, double my, double mz, double ex, double ey,
+              double ez) {
+    beginOp();
+    try {
+      GC_MakeArcOfCircle arc(gp_Pnt(sx, sy, sz), gp_Pnt(mx, my, mz), gp_Pnt(ex, ey, ez));
+      if (!arc.IsDone()) return fail("Couldn't make an arc of the path: its three points are in a line.");
+      BRepBuilderAPI_MakeEdge builder(arc.Value());
+      if (!builder.IsDone()) return fail("Couldn't make an edge from an arc of the path.");
+      pathEdges_.push_back(builder.Edge());
+      return static_cast<int>(pathEdges_.size());
+    } catch (...) {
+      return failFromException("Path arc failed");
+    }
+  }
+
+  /** A whole circle about (cx, cy, cz) with the normal (nx, ny, nz), starting where the normal's frame has its X. */
+  int pathCircle(double cx, double cy, double cz, double nx, double ny, double nz, double radius) {
+    beginOp();
+    try {
+      if (radius <= Precision::Confusion()) return fail("The path has a circle with no radius.");
+      if (gp_Vec(nx, ny, nz).Magnitude() <= 1e-12) return fail("The path's circle has no normal.");
+      BRepBuilderAPI_MakeEdge builder(gp_Circ(gp_Ax2(gp_Pnt(cx, cy, cz), gp_Dir(nx, ny, nz)), radius));
+      if (!builder.IsDone()) return fail("Couldn't make an edge from a circle of the path.");
+      pathEdges_.push_back(builder.Edge());
+      return static_cast<int>(pathEdges_.size());
+    } catch (...) {
+      return failFromException("Path circle failed");
+    }
+  }
+
+  /** A smooth curve through the staged points (at least 3), as a cubic B-spline within 0.1 µm. */
+  int pathSpline() {
+    beginOp();
+    try {
+      const int count = static_cast<int>(numbers_.size() / 3);
+      if (count < 2 || numbers_.size() != static_cast<size_t>(3 * count)) {
+        return fail("A spline of the path needs at least two points.");
+      }
+      if (count == 2) {
+        return pathLine(numbers_[0], numbers_[1], numbers_[2], numbers_[3], numbers_[4], numbers_[5]);
+      }
+      NCollection_Array1<gp_Pnt> points(1, count);
+      for (int i = 0; i < count; ++i) {
+        points(i + 1) = gp_Pnt(numbers_[3 * i], numbers_[3 * i + 1], numbers_[3 * i + 2]);
+      }
+      GeomAPI_PointsToBSpline fit(points, 3, 8, GeomAbs_C2, 1e-4);
+      if (!fit.IsDone()) return fail("Couldn't fit a curve through a spline of the path.");
+      BRepBuilderAPI_MakeEdge builder(fit.Curve());
+      if (!builder.IsDone()) return fail("Couldn't make an edge from a spline of the path.");
+      pathEdges_.push_back(builder.Edge());
+      return static_cast<int>(pathEdges_.size());
+    } catch (...) {
+      return failFromException("Path spline failed");
+    }
+  }
+
+  /** An edge (0-based index) of `shape`, as it is. */
+  int pathEdge(int shape, int edge) {
+    beginOp();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Path failed: unknown input shape.");
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+    TopExp::MapShapes(*input, TopAbs_EDGE, edges);
+    if (edge < 0 || edge >= edges.Extent()) return fail("Path failed: edge index out of range.");
+    pathEdges_.push_back(TopoDS::Edge(edges(edge + 1)));
+    return static_cast<int>(pathEdges_.size());
+  }
+
+  /**
+   * The staged pieces chained end to end into one wire; ends within
+   * `tolerance` (mm) are one point. Fails when the pieces don't make one
+   * chain (a gap, or a branch): geometryNumbers is then [3, n], n the number
+   * of pieces that couldn't be joined to the first. The wire runs from the
+   * first piece's own start, unless an earlier piece had to come first.
+   */
+  int pathWire(double tolerance) {
+    beginOp();
+    geometry_.clear();
+    if (pathEdges_.empty()) return fail("The path has no pieces.");
+    try {
+      const size_t n = pathEdges_.size();
+      std::vector<gp_Pnt> starts(n);
+      std::vector<gp_Pnt> ends(n);
+      for (size_t i = 0; i < n; ++i) {
+        TopoDS_Vertex a;
+        TopoDS_Vertex b;
+        TopExp::Vertices(pathEdges_[i], a, b, true);
+        starts[i] = BRep_Tool::Pnt(a);
+        ends[i] = BRep_Tool::Pnt(b);
+      }
+      std::vector<bool> used(n, false);
+      std::vector<std::pair<size_t, bool>> chain;  // piece, reversed
+      chain.emplace_back(0, false);
+      used[0] = true;
+      gp_Pnt head = starts[0];
+      gp_Pnt tail = ends[0];
+      bool grew = true;
+      while (grew) {
+        grew = false;
+        for (size_t i = 0; i < n && !grew; ++i) {
+          if (used[i]) continue;
+          if (starts[i].Distance(tail) <= tolerance) {
+            chain.emplace_back(i, false);
+            tail = ends[i];
+          } else if (ends[i].Distance(tail) <= tolerance) {
+            chain.emplace_back(i, true);
+            tail = starts[i];
+          } else if (ends[i].Distance(head) <= tolerance) {
+            chain.insert(chain.begin(), {i, false});
+            head = starts[i];
+          } else if (starts[i].Distance(head) <= tolerance) {
+            chain.insert(chain.begin(), {i, true});
+            head = ends[i];
+          } else {
+            continue;
+          }
+          used[i] = true;
+          grew = true;
+        }
+      }
+      if (chain.size() != n) {
+        geometry_.push_back(3);
+        geometry_.push_back(static_cast<double>(n - chain.size()));
+        return fail("The pieces of the path don't make one chain: some don't meet the others.");
+      }
+      BRepBuilderAPI_MakeWire maker;
+      for (const auto& [piece, reversed] : chain) {
+        maker.Add(reversed ? TopoDS::Edge(pathEdges_[piece].Reversed()) : pathEdges_[piece]);
+        if (!maker.IsDone() && maker.Error() == BRepBuilderAPI_DisconnectedWire) break;
+      }
+      TopoDS_Wire wire;
+      if (maker.IsDone()) wire = maker.Wire();
+      if (wire.IsNull() || !pathWireIsGood(wire, n)) {
+        // Ends that meet only within the tolerance: copies whose vertices are loose enough to join.
+        BRepBuilderAPI_MakeWire loose;
+        BRep_Builder vertices;
+        for (const auto& [piece, reversed] : chain) {
+          const TopoDS_Shape copy = BRepBuilderAPI_Copy(pathEdges_[piece], true, false).Shape();
+          for (TopExp_Explorer e(copy, TopAbs_VERTEX); e.More(); e.Next()) {
+            vertices.UpdateVertex(TopoDS::Vertex(e.Current()), tolerance);
+          }
+          loose.Add(reversed ? TopoDS::Edge(copy.Reversed()) : TopoDS::Edge(copy));
+        }
+        if (!loose.IsDone()) return fail("Couldn't join the pieces of the path into a wire.");
+        wire = loose.Wire();
+        if (!pathWireIsGood(wire, n)) return fail("Couldn't join the pieces of the path into a wire.");
+      }
+      return store(wire);
+    } catch (...) {
+      return failFromException("Path failed");
+    }
+  }
+
+  /**
+   * A helix on a cylinder (or a cone) as a one-edge wire, the path of a coil
+   * (P4-01, which P4-02's threads reuse). It starts at `origin + radius·x`,
+   * turns about the axis through `origin` along `z` for `turns` turns
+   * (fractions allowed), rising `pitch` mm each (along z, whatever the
+   * taper), counter-clockwise seen from the axis's tip, or clockwise with
+   * `left`. A non-zero `taper` (radians, |taper| < π/2) is the cone's half
+   * angle: the radius grows with height by tan(taper) per mm (negative
+   * shrinks). `x` need not be perpendicular to `z`: it is made so.
+   */
+  int helix(double ox, double oy, double oz, double zx, double zy, double zz, double xx, double xy,
+            double xz, double radius, double pitch, double turns, double taper, bool left) {
+    beginOp();
+    try {
+      if (!(radius > Precision::Confusion())) return fail("The coil's radius must be greater than 0.");
+      if (!(pitch > Precision::Confusion())) return fail("The coil's pitch must be greater than 0.");
+      if (!(turns > 1e-9)) return fail("The coil needs more than 0 turns.");
+      if (std::abs(taper) >= M_PI / 2 - 1e-3) return fail("The coil's taper angle must be between -90° and 90°.");
+      const gp_Dir axis(zx, zy, zz);
+      const gp_Dir toward(xx, xy, xz);
+      if (axis.IsParallel(toward, 1e-9)) return fail("The coil's start direction runs along its axis.");
+      const gp_Ax3 frame(gp_Pnt(ox, oy, oz), axis, toward);
+      Handle(Geom_Surface) surface;
+      double rise = pitch;
+      if (std::abs(taper) > 1e-12) {
+        // Along a cone's generator, so a pitch along the axis is `pitch / cos(taper)` of it.
+        surface = new Geom_ConicalSurface(frame, taper, radius);
+        rise = pitch / std::cos(taper);
+      } else {
+        surface = new Geom_CylindricalSurface(frame, radius);
+      }
+      const double turnSign = left ? -1.0 : 1.0;
+      const gp_Dir2d direction(turnSign * 2 * M_PI, rise);
+      Handle(Geom2d_Line) line = new Geom2d_Line(gp_Pnt2d(0, 0), direction);
+      const double length = turns * std::sqrt(4 * M_PI * M_PI + rise * rise);
+      BRepBuilderAPI_MakeEdge edge(line, surface, 0, length);
+      if (!edge.IsDone()) return fail("Couldn't make the coil's helix.");
+      TopoDS_Edge helixEdge = edge.Edge();
+      if (!BRepLib::BuildCurves3d(helixEdge, 1e-7, GeomAbs_C1, 14, 1000)) {
+        return fail("Couldn't build the coil's helix as a 3D curve.");
+      }
+      BRepBuilderAPI_MakeWire wire(helixEdge);
+      if (!wire.IsDone()) return fail("Couldn't make a wire of the coil's helix.");
+      return store(wire.Wire());
+    } catch (...) {
+      return failFromException("Coil failed");
+    }
+  }
+
+  /**
+   * Sweeps a profile (a face, or a compound of faces) along `spine` (a wire):
+   * the solid the profile fills as it moves along, holes and all. The
+   * profile stays where it is and moves by what the path's frame does from
+   * the path's end that lies nearer to it (the other end if that is the
+   * path's far one: the path is turned round for it).
+   *
+   * `mode` is how the profile turns with the path: 0 keeps its angle to the
+   * path (a corrected Frenet frame), 1 follows the Frenet frame, 2 not at
+   * all (it stays parallel to itself), 3 keeps a fixed angle to the
+   * direction (dx, dy, dz) (the binormal: a coil's axis). `corner` is how a
+   * path with a sharp corner is turned: 0 mitred, 1 rounded. `scale` (> 0)
+   * changes the profile on the way: at the path's end it is the profile
+   * scaled by `scale` about the path's end point, the one blending into the
+   * other (1 sweeps it as it is; not for a closed path). With `verify`, a
+   * sweep that might cross itself (a tight bend for the profile's size, a
+   * path that comes back close to itself, a corner) is checked for that
+   * before it is returned: the check is slow on long curved paths (a coil's
+   * turns), so a caller that knows better leaves it off.
+   *
+   * History for input 0 (the profile, indices of the shape as passed in):
+   * first (4) and last (5) for faces: the caps; generated (1) for edges: the
+   * side faces; none for vertices. On failure it returns 0 and geometryNumbers
+   * hold [status]: 1 OCCT couldn't sweep it (a section too large for a
+   * tight turn, a corner), 2 it swept to a shape that isn't sound (it
+   * crosses itself), 4 the profile is not planar.
+   */
+  int sweep(int profile, int spine, int mode, int corner, double scale, bool verify, double dx, double dy,
+            double dz) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* base = find(profile);
+    const TopoDS_Shape* path = find(spine);
+    if (base == nullptr || path == nullptr) return fail("Sweep failed: unknown input shape.");
+    if (path->ShapeType() != TopAbs_WIRE) return fail("Sweep failed: the path isn't a wire.");
+    if (!(scale > 1e-6)) return fail("Sweep failed: the end scale must be greater than 0.");
+    if (mode < 0 || mode > 3) return fail("Sweep failed: unknown orientation mode.");
+    if (mode == 3 && gp_Vec(dx, dy, dz).Magnitude() <= 1e-12) return fail("Sweep failed: the fixed direction has no length.");
+    try {
+      std::vector<TopoDS_Face> faces;
+      for (TopExp_Explorer e(*base, TopAbs_FACE); e.More(); e.Next()) faces.push_back(TopoDS::Face(e.Current()));
+      if (faces.empty()) return fail("Sweep failed: nothing to sweep.");
+      const bool blends = std::abs(scale - 1) > 1e-9;
+
+      // The path runs from the end nearer the profile.
+      TopoDS_Wire wire = TopoDS::Wire(*path);
+      BRepAdaptor_CompCurve curve(wire);
+      gp_Pnt first = curve.Value(curve.FirstParameter());
+      gp_Pnt last = curve.Value(curve.LastParameter());
+      const bool closed = first.Distance(last) <= 1e-6;
+      if (closed && blends) return fail("Sweep failed: a closed path can't scale.");
+      GProp_GProps props;
+      BRepGProp::SurfaceProperties(*base, props);
+      const gp_Pnt centre = props.CentreOfMass();
+      if (!closed && centre.Distance(last) < centre.Distance(first)) {
+        wire = TopoDS::Wire(wire.Reversed());
+        curve.Initialize(wire, false);
+        first = curve.Value(curve.FirstParameter());
+        last = curve.Value(curve.LastParameter());
+      }
+      gp_Pnt endPoint;
+      gp_Vec endTangent;
+      curve.D1(curve.LastParameter(), endPoint, endTangent);
+      TopoDS_Vertex firstVertex;
+      TopoDS_Vertex lastVertex;
+      if (blends) {
+        double nearFirst = 1e300;
+        double nearLast = 1e300;
+        for (TopExp_Explorer e(wire, TopAbs_VERTEX); e.More(); e.Next()) {
+          const TopoDS_Vertex v = TopoDS::Vertex(e.Current());
+          const gp_Pnt p = BRep_Tool::Pnt(v);
+          if (p.Distance(first) < nearFirst) { nearFirst = p.Distance(first); firstVertex = v; }
+          if (p.Distance(last) < nearLast) { nearLast = p.Distance(last); lastVertex = v; }
+        }
+      }
+      const gp_Dir fixed(mode == 3 ? gp_Dir(dx, dy, dz) : gp_Dir(0, 0, 1));
+      gp_Ax2 parallel(first, gp_Dir(0, 0, 1));
+      if (mode == 2) {
+        // Parallel to itself: a frame whose axis is the first face's normal.
+        const BRepAdaptor_Surface surface(faces[0]);
+        if (surface.GetType() != GeomAbs_Plane) return fail("Sweep failed: the profile isn't flat.");
+        parallel = gp_Ax2(first, surface.Plane().Axis().Direction());
+      }
+      gp_Trsf atEnd;
+      if (blends) atEnd.SetScale(endPoint, scale);
+
+      BRep_Builder builder;
+      TopoDS_Compound solids;
+      builder.MakeCompound(solids);
+      std::vector<std::pair<TopoDS_Shape, std::vector<TopoDS_Shape>>> sides;  // profile edge -> its side faces
+      std::vector<TopoDS_Shape> firsts;
+      std::vector<TopoDS_Shape> lasts;
+      // The sub-shape images through each face's cut of its holes, kept for the history.
+      std::vector<std::function<std::vector<TopoDS_Shape>(const TopoDS_Shape&)>> imagesOf;
+      imagesOf.reserve(faces.size());
+      std::vector<TopoDS_Shape> resultOfFace;
+      for (const TopoDS_Face& face : faces) {
+        const TopoDS_Wire outer = BRepTools::OuterWire(face);
+        std::vector<TopoDS_Wire> inner;
+        for (TopExp_Explorer w(face, TopAbs_WIRE); w.More(); w.Next()) {
+          if (!w.Current().IsSame(outer)) inner.push_back(TopoDS::Wire(w.Current()));
+        }
+        TopoDS_Shape wholeSolid;
+        TopoDS_Shape firstCap;
+        TopoDS_Shape lastCap;
+        std::vector<std::pair<TopoDS_Shape, std::vector<TopoDS_Shape>>> faceSides;
+        std::vector<TopoDS_Shape> holeSolids;
+        auto one = [&](const TopoDS_Wire& section, bool isHole) -> int {
+          TopoDS_Shape solid;
+          TopoDS_Shape cap0;
+          TopoDS_Shape cap1;
+          std::vector<std::pair<TopoDS_Shape, std::vector<TopoDS_Shape>>> made;
+          const int status = pipeOne(wire, section, mode, corner, fixed, parallel, blends, atEnd,
+                                     firstVertex, lastVertex, solid, cap0, cap1, made);
+          if (status != 0) return status;
+          for (auto& m : made) faceSides.push_back(std::move(m));
+          if (isHole) {
+            holeSolids.push_back(solid);
+          } else {
+            wholeSolid = solid;
+            firstCap = cap0;
+            lastCap = cap1;
+          }
+          return 0;
+        };
+        int status = one(outer, false);
+        for (size_t i = 0; status == 0 && i < inner.size(); ++i) status = one(inner[i], true);
+        if (status != 0) {
+          geometry_.push_back(status);
+          return fail(status == 2 ? "Sweep failed: the sweep crosses itself or isn't a sound solid."
+                                  : "Sweep failed: OCCT couldn't sweep this profile along the path.");
+        }
+        TopoDS_Shape solid = wholeSolid;
+        std::function<std::vector<TopoDS_Shape>(const TopoDS_Shape&)> images =
+            [](const TopoDS_Shape& s) { return std::vector<TopoDS_Shape>{s}; };
+        if (!holeSolids.empty()) {
+          BRepAlgoAPI_Cut cut;
+          NCollection_List<TopoDS_Shape> targets;
+          NCollection_List<TopoDS_Shape> tools;
+          targets.Append(wholeSolid);
+          for (const TopoDS_Shape& h : holeSolids) tools.Append(h);
+          cut.SetArguments(targets);
+          cut.SetTools(tools);
+          cut.SetRunParallel(false);
+          cut.Build();
+          if (!cut.IsDone() || cut.HasErrors()) {
+            geometry_.push_back(1);
+            return fail("Sweep failed: OCCT couldn't cut the profile's holes out of the sweep.");
+          }
+          solid = cut.Shape();
+          // The cut's history is gone with the builder: keep each sub-shape's images now.
+          std::map<const TopoDS_TShape*, std::vector<TopoDS_Shape>> kept;
+          auto remember = [&](const TopoDS_Shape& whole) {
+            for (TopExp_Explorer e(whole, TopAbs_FACE); e.More(); e.Next()) {
+              const TopoDS_Shape& sub = e.Current();
+              std::vector<TopoDS_Shape> list;
+              if (!cut.IsDeleted(sub)) {
+                for (const TopoDS_Shape& m : cut.Modified(sub)) list.push_back(m);
+                if (list.empty()) list.push_back(sub);
+              }
+              kept[sub.TShape().get()] = list;
+            }
+          };
+          remember(wholeSolid);
+          for (const TopoDS_Shape& h : holeSolids) remember(h);
+          images = [kept](const TopoDS_Shape& s) {
+            const auto it = kept.find(s.TShape().get());
+            return it == kept.end() ? std::vector<TopoDS_Shape>{s} : it->second;
+          };
+        }
+        builder.Add(solids, solid);
+        imagesOf.push_back(images);
+        // The history of this face: caps and sides, through the cut.
+        const size_t at = imagesOf.size() - 1;
+        for (TopExp_Explorer e(firstCap, TopAbs_FACE); e.More(); e.Next()) {
+          for (const TopoDS_Shape& s : imagesOf[at](e.Current())) firsts.push_back(s);
+        }
+        for (TopExp_Explorer e(lastCap, TopAbs_FACE); e.More(); e.Next()) {
+          for (const TopoDS_Shape& s : imagesOf[at](e.Current())) lasts.push_back(s);
+        }
+        for (auto& [edge, made] : faceSides) {
+          std::vector<TopoDS_Shape> mapped;
+          for (const TopoDS_Shape& m : made) {
+            for (const TopoDS_Shape& s : imagesOf[at](m)) mapped.push_back(s);
+          }
+          sides.emplace_back(edge, std::move(mapped));
+        }
+        resultOfFace.push_back(face);
+      }
+
+      // One solid is the result itself, several a compound.
+      TopoDS_Shape result = solids;
+      int count = 0;
+      TopoDS_Shape only;
+      for (TopoDS_Iterator it(solids); it.More(); it.Next()) { ++count; only = it.Value(); }
+      if (count == 1) result = only;
+      if (!BRepCheck_Analyzer(result).IsValid() ||
+          (verify && sweepMayCross(wire, faces, first) && crossesItself(result))) {
+        geometry_.push_back(2);
+        return fail("Sweep failed: the sweep crosses itself or isn't a sound solid.");
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultFaces;
+      TopExp::MapShapes(result, TopAbs_FACE, resultFaces);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> baseFaces;
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> baseEdges;
+      TopExp::MapShapes(*base, TopAbs_FACE, baseFaces);
+      TopExp::MapShapes(*base, TopAbs_EDGE, baseEdges);
+      auto faceRecord = [&](const std::vector<TopoDS_Shape>& shapes, int from, int relation) {
+        std::vector<int32_t> pairs;
+        for (const TopoDS_Shape& s : shapes) {
+          const int found = resultFaces.FindIndex(s);
+          if (found <= 0) continue;
+          pairs.push_back(0);
+          pairs.push_back(found - 1);
+        }
+        if (pairs.empty()) return;
+        pushRecord(0, 0, from, relation);
+        history_.push_back(static_cast<int32_t>(pairs.size() / 2));
+        history_.insert(history_.end(), pairs.begin(), pairs.end());
+      };
+      // Caps: every face of the profile maps to the caps it made.
+      faceRecord(firsts, 0, 4);
+      faceRecord(lasts, 0, 5);
+      for (const auto& [edge, made] : sides) {
+        const int index = baseEdges.FindIndex(edge);
+        if (index <= 0) continue;
+        std::vector<int32_t> pairs;
+        for (const TopoDS_Shape& s : made) {
+          const int found = resultFaces.FindIndex(s);
+          if (found <= 0) continue;
+          pairs.push_back(0);
+          pairs.push_back(found - 1);
+        }
+        if (pairs.empty()) continue;
+        pushRecord(0, 1, index - 1, 1);
+        history_.push_back(static_cast<int32_t>(pairs.size() / 2));
+        history_.insert(history_.end(), pairs.begin(), pairs.end());
+      }
+      return store(result);
+    } catch (...) {
+      geometry_.push_back(1);
+      return failFromException("Sweep failed");
+    }
+  }
+
+  /**
+   * Lofts through the staged profiles (clearArgs/pushArg, handles of shapes
+   * each holding one face without holes) in order: a smooth solid through
+   * them all, or with `ruled` straight between neighbours. With `closed` the
+   * last profile joins the first again: no caps. History for input 0, the
+   * first profile: caps first (4) and last (5) from its face, the sides
+   * generated (1) from its edges (a ruled loft: every segment's face of the
+   * edge). On failure geometryNumbers are [status, index]: 1 OCCT couldn't
+   * loft them, 2 the loft isn't a sound solid, 3 a profile has holes (its
+   * index), 5 a profile isn't one face (index).
+   */
+  int loft(bool ruled, bool closed) {
+    beginOp();
+    geometry_.clear();
+    try {
+      std::vector<TopoDS_Face> sections;
+      for (size_t i = 0; i < args_.size(); ++i) {
+        const TopoDS_Shape* shape = find(args_[i]);
+        if (shape == nullptr) return fail("Loft failed: unknown input shape.");
+        int faces = 0;
+        TopoDS_Face face;
+        for (TopExp_Explorer e(*shape, TopAbs_FACE); e.More(); e.Next()) { face = TopoDS::Face(e.Current()); ++faces; }
+        if (faces != 1) {
+          pushLoftStatus(5, static_cast<int>(i));
+          return fail("Loft failed: a profile isn't a single face.");
+        }
+        int wires = 0;
+        for (TopExp_Explorer w(face, TopAbs_WIRE); w.More(); w.Next()) ++wires;
+        if (wires != 1) {
+          pushLoftStatus(3, static_cast<int>(i));
+          return fail("Loft failed: a profile has holes.");
+        }
+        sections.push_back(face);
+      }
+      if (sections.size() < 2) return fail("Loft failed: it needs at least two profiles.");
+      if (closed && sections.size() < 3) return fail("Loft failed: a closed loft needs at least three profiles.");
+      TopoDS_Shape result;
+      TopoDS_Shape firstCap;
+      TopoDS_Shape lastCap;
+      std::vector<std::pair<TopoDS_Shape, std::vector<TopoDS_Shape>>> made;
+      const TopoDS_Wire startWire = BRepTools::OuterWire(sections[0]);
+      {
+        BRepOffsetAPI_ThruSections builder(!closed, ruled, 1e-6);
+        for (const TopoDS_Face& section : sections) builder.AddWire(BRepTools::OuterWire(section));
+        if (closed) builder.AddWire(startWire);
+        builder.SetMutableInput(false);
+        builder.Build();
+        if (!builder.IsDone()) {
+          pushLoftStatus(1, 0);
+          return fail("Loft failed: OCCT couldn't loft through these profiles.");
+        }
+        result = builder.Shape();
+        if (!closed) {
+          firstCap = builder.FirstShape();
+          lastCap = builder.LastShape();
+        }
+        for (TopExp_Explorer e(startWire, TopAbs_EDGE); e.More(); e.Next()) {
+          std::vector<TopoDS_Shape> list;
+          for (const TopoDS_Shape& s : builder.Generated(e.Current())) list.push_back(s);
+          const TopoDS_Shape single = builder.GeneratedFace(e.Current());
+          if (!single.IsNull()) {
+            bool known = false;
+            for (const TopoDS_Shape& s : list) known = known || s.IsSame(single);
+            if (!known) list.push_back(single);
+          }
+          made.emplace_back(e.Current(), list);
+        }
+      }
+      if (closed) result = closedSolid(result);
+      if (result.IsNull()) {
+        pushLoftStatus(1, 0);
+        return fail("Loft failed: OCCT couldn't close the loft.");
+      }
+      if (volumeOf(result) < 0) result.Reverse();
+      if (!BRepCheck_Analyzer(result).IsValid() || !(volumeOf(result) > 0) || crossesItself(result)) {
+        pushLoftStatus(2, 0);
+        return fail("Loft failed: the loft crosses itself or isn't a sound solid.");
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultFaces;
+      TopExp::MapShapes(result, TopAbs_FACE, resultFaces);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> baseEdges;
+      TopExp::MapShapes(sections[0], TopAbs_EDGE, baseEdges);
+      auto record = [&](const std::vector<TopoDS_Shape>& shapes, int kind, int from, int relation) {
+        std::vector<int32_t> pairs;
+        for (const TopoDS_Shape& s : shapes) {
+          const int found = resultFaces.FindIndex(s);
+          if (found <= 0) continue;
+          pairs.push_back(0);
+          pairs.push_back(found - 1);
+        }
+        if (pairs.empty()) return;
+        pushRecord(0, kind, from, relation);
+        history_.push_back(static_cast<int32_t>(pairs.size() / 2));
+        history_.insert(history_.end(), pairs.begin(), pairs.end());
+      };
+      if (!closed) {
+        std::vector<TopoDS_Shape> cap;
+        for (TopExp_Explorer e(firstCap, TopAbs_FACE); e.More(); e.Next()) cap.push_back(e.Current());
+        record(cap, 0, 0, 4);
+        cap.clear();
+        for (TopExp_Explorer e(lastCap, TopAbs_FACE); e.More(); e.Next()) cap.push_back(e.Current());
+        record(cap, 0, 0, 5);
+      }
+      for (const auto& [edge, list] : made) {
+        const int index = baseEdges.FindIndex(edge);
+        if (index > 0) record(list, 1, index - 1, 1);
+      }
+      return store(result);
+    } catch (...) {
+      pushLoftStatus(1, 0);
+      return failFromException("Loft failed");
+    }
+  }
+
   // ------------------------------------------------------ errors, memory --
 
   const char* lastError() const { return lastError_.c_str(); }
@@ -1857,6 +2461,8 @@ private:
   std::vector<int32_t> describeInts_;
   std::vector<double> describeNumbers_;
   std::vector<double> geometry_;
+  /** Staged path pieces (pathLine and friends). */
+  std::vector<TopoDS_Edge> pathEdges_;
   /** Where each face's record starts in profileRecords_, while sketchProfiles runs. */
   std::unordered_map<const TopoDS_TShape*, size_t> recordStarts_;
 
@@ -3786,5 +4392,182 @@ private:
     pushShellStatus(largest > 0 ? 1 : 6, largest);
     return fail(largest > 0 ? "Draft failed: the angle is too steep for this body."
                             : "Draft failed: OCCT can't draft these faces.");
+  }
+
+  // ------------------------------------------- paths, sweeps and lofts (P4-01) --
+
+  /** Whether a path wire has all `edges` pieces in one chain. */
+  static bool pathWireIsGood(const TopoDS_Wire& wire, size_t edges) {
+    size_t count = 0;
+    for (BRepTools_WireExplorer e(wire); e.More(); e.Next()) ++count;
+    return count == edges;
+  }
+
+  void pushLoftStatus(int status, int index) {
+    geometry_.clear();
+    geometry_.push_back(status);
+    geometry_.push_back(static_cast<double>(index));
+  }
+
+  /** The orientation of a sweep along the path, on a fresh builder. */
+  static void configurePipe(BRepOffsetAPI_MakePipeShell& pipe, int mode, int corner, const gp_Dir& fixed,
+                            const gp_Ax2& parallel) {
+    switch (mode) {
+      case 1:
+        pipe.SetMode(true);
+        break;
+      case 2:
+        pipe.SetMode(parallel);
+        break;
+      case 3:
+        pipe.SetMode(fixed);
+        break;
+      default:
+        pipe.SetMode(false);
+        break;
+    }
+    pipe.SetTransitionMode(corner == 1 ? BRepBuilderAPI_RoundCorner : BRepBuilderAPI_RightCorner);
+  }
+
+  /**
+   * One closed section swept along `spine` into a solid: 0 on success, else a
+   * sweep() status. With `blends` the section turns and scales to its image
+   * under `atEnd` by the path's end: a first sweep finds the end section
+   * (the section carried along), the second blends the two.
+   */
+  static int pipeOne(const TopoDS_Wire& spine, const TopoDS_Wire& section, int mode, int corner,
+                     const gp_Dir& fixed, const gp_Ax2& parallel, bool blends, const gp_Trsf& atEnd,
+                     const TopoDS_Vertex& firstVertex, const TopoDS_Vertex& lastVertex,
+                     TopoDS_Shape& solid, TopoDS_Shape& firstCap, TopoDS_Shape& lastCap,
+                     std::vector<std::pair<TopoDS_Shape, std::vector<TopoDS_Shape>>>& made) {
+    TopoDS_Wire endSection;
+    for (int pass = 0; pass < (blends ? 2 : 1); ++pass) {
+      BRepOffsetAPI_MakePipeShell pipe(spine);
+      configurePipe(pipe, mode, corner, fixed, parallel);
+      if (pass == 0) {
+        pipe.Add(section);
+      } else {
+        pipe.Add(section, firstVertex);
+        pipe.Add(endSection, lastVertex);
+      }
+      if (!pipe.IsReady()) return 1;
+      pipe.Build();
+      if (!pipe.IsDone()) return 1;
+      if (blends && pass == 0) {
+        const TopoDS_Shape end = pipe.LastShape();
+        TopoDS_Wire carried;
+        if (end.ShapeType() == TopAbs_WIRE) carried = TopoDS::Wire(end);
+        else if (end.ShapeType() == TopAbs_FACE) carried = BRepTools::OuterWire(TopoDS::Face(end));
+        if (carried.IsNull()) return 1;
+        endSection = TopoDS::Wire(BRepBuilderAPI_Transform(carried, atEnd, true).Shape());
+        continue;
+      }
+      if (!pipe.MakeSolid()) return 1;
+      solid = pipe.Shape();
+      if (volumeOf(solid) < 0) solid.Reverse();
+      if (!(volumeOf(solid) > 0)) return 2;
+      firstCap = pipe.FirstShape();
+      lastCap = pipe.LastShape();
+      for (TopExp_Explorer e(section, TopAbs_EDGE); e.More(); e.Next()) {
+        std::vector<TopoDS_Shape> list;
+        for (const TopoDS_Shape& s : pipe.Generated(e.Current())) list.push_back(s);
+        made.emplace_back(e.Current(), std::move(list));
+      }
+    }
+    return 0;
+  }
+
+
+  /**
+   * Whether a sweep along `wire` of `faces` could cross itself: a bend tighter
+   * than the profile's reach from the path's start, the path coming back
+   * within twice that reach of itself, or a corner. Cheap, and conservative:
+   * only a "yes" is worth the slow `crossesItself`.
+   */
+  static bool sweepMayCross(const TopoDS_Wire& wire, const std::vector<TopoDS_Face>& faces,
+                            const gp_Pnt& origin) {
+    double reach = 0;
+    for (const TopoDS_Face& face : faces) {
+      for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
+        BRepAdaptor_Curve curve(TopoDS::Edge(e.Current()));
+        for (int i = 0; i <= 24; ++i) {
+          const double u = curve.FirstParameter() + (curve.LastParameter() - curve.FirstParameter()) * i / 24;
+          reach = std::max(reach, curve.Value(u).Distance(origin));
+        }
+      }
+    }
+    BRepAdaptor_CompCurve curve(wire, false);
+    const int steps = 120;
+    const double a = curve.FirstParameter();
+    const double b = curve.LastParameter();
+    std::vector<gp_Pnt> points;
+    gp_Vec before;
+    double total = 0;
+    for (int i = 0; i <= steps; ++i) {
+      gp_Pnt p;
+      gp_Vec d1;
+      gp_Vec d2;
+      curve.D2(a + (b - a) * i / steps, p, d1, d2);
+      const double speed = d1.Magnitude();
+      if (speed > 1e-12) {
+        const double curvature = d1.Crossed(d2).Magnitude() / (speed * speed * speed);
+        if (curvature * reach > 0.5) return true;
+        if (i > 0 && before.Magnitude() > 1e-12 && before.Angle(d1) > M_PI / 36) return true;
+        before = d1;
+      }
+      if (!points.empty()) total += p.Distance(points.back());
+      points.push_back(p);
+    }
+    const double step = total / steps;
+    if (!(step > 0)) return false;
+    // Parts of the path far apart along it (more than 3 reaches) and close in space.
+    const size_t apart = static_cast<size_t>(std::ceil(3 * reach / step)) + 1;
+    for (size_t i = 0; i < points.size(); ++i) {
+      for (size_t j = i + apart; j < points.size(); ++j) {
+        if (points[i].Distance(points[j]) < 2.1 * reach) return true;
+      }
+    }
+    return false;
+  }
+
+  /** Whether a shape meets itself where it shouldn't (the argument analyser's self-intersection check). */
+  static bool crossesItself(const TopoDS_Shape& shape) {
+    size_t faces = 0;
+    for (TopExp_Explorer e(shape, TopAbs_FACE); e.More(); e.Next()) ++faces;
+    if (faces > 96) return false;
+    BOPAlgo_ArgumentAnalyzer analyzer;
+    analyzer.SetShape1(shape);
+    analyzer.SelfInterMode() = true;
+    analyzer.ArgumentTypeMode() = false;
+    analyzer.SmallEdgeMode() = false;
+    analyzer.RebuildFaceMode() = false;
+    analyzer.TangentMode() = false;
+    analyzer.MergeVertexMode() = false;
+    analyzer.MergeEdgeMode() = false;
+    analyzer.ContinuityMode() = false;
+    analyzer.CurveOnSurfaceMode() = false;
+    analyzer.SetRunParallel(false);
+    analyzer.Perform();
+    return analyzer.HasFaulty();
+  }
+
+  /** A closed shell (or the shell of a shape, sewn) as a solid, or null. */
+  static TopoDS_Shape closedSolid(const TopoDS_Shape& shape) {
+    BRepBuilderAPI_Sewing sewing(1e-6);
+    sewing.Add(shape);
+    sewing.Perform();
+    const TopoDS_Shape sewn = sewing.SewedShape();
+    TopoDS_Shell shell;
+    if (sewn.ShapeType() == TopAbs_SHELL) {
+      shell = TopoDS::Shell(sewn);
+    } else {
+      for (TopExp_Explorer e(sewn, TopAbs_SHELL); e.More(); e.Next()) shell = TopoDS::Shell(e.Current());
+    }
+    if (shell.IsNull() || !BRep_Tool::IsClosed(shell)) return TopoDS_Shape();
+    BRepBuilderAPI_MakeSolid maker(shell);
+    if (!maker.IsDone()) return TopoDS_Shape();
+    TopoDS_Solid solid = maker.Solid();
+    BRepLib::OrientClosedSolid(solid);
+    return solid;
   }
 };
