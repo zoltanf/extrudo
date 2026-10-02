@@ -22,11 +22,10 @@ cannot reach. Tick them off in order; each box says who and where.
   the releases that carry the WASM must be kept or recreated (CI republishes a
   release for a hash that is missing). After this, set
   `git config user.email` to the noreply address for new commits.
-- [ ] **Code of Conduct contact.** `CODE_OF_CONDUCT.md` points reporters to GitHub's
-  "Report content" and to an issue asking for a private channel; there is no
-  email address on purpose. If you want a project address (not a personal
-  one), put it in the "Enforcement" section; the spot is marked with an HTML
-  comment.
+- [x] **Code of Conduct contact.** Done 2026-10-02: `CODE_OF_CONDUCT.md` names the
+  project address `conduct@extrudo.org` (Cloudflare Email Routing forwards it
+  to the owner; `docs/deploy.md`) beside GitHub's "Report content". No
+  personal address is in the repository.
 - [ ] **Slicer check of the exports** (ADR-0034), on the Arch workstation with
   the real GUIs: export the Wall bracket and the PCB enclosure from the app
   as 3MF, STL and STEP, and open each in OrcaSlicer and PrusaSlicer (and

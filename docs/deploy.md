@@ -87,6 +87,19 @@ make it serve the app:
    (PWA) are tied to the address they were installed from, so the very first
    testers who installed from `pages.dev` keep using that until they reinstall.
 
+### Mail for extrudo.org (owner)
+
+Cloudflare **Email Routing** (the extrudo.org domain > Email > Email Routing)
+forwards project addresses to the owner's own inbox; the inbox's address is
+only in Cloudflare, never in this repository. Set up 2026-10-02:
+
+- `conduct@extrudo.org`: the Code of Conduct's enforcement contact.
+- DNS: three MX records (`route1`–`route3.mx.cloudflare.net`) and the SPF record
+  `v=spf1 include:_spf.mx.cloudflare.net ~all`, added by "Add records and
+  enable". Check with `dig +short MX extrudo.org`.
+- It only receives: a reply goes out from the owner's own address. Add more
+  addresses (`hello@`…) the same way; leave the catch-all off.
+
 ## How the workflow behaves
 
 `.github/workflows/deploy.yml`:

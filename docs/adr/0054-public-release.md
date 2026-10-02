@@ -136,10 +136,11 @@ project, which until then answers at `extrudo.pages.dev`).
    rename made just before survives.
 
 6. **Community files.** `CODE_OF_CONDUCT.md` is the Contributor Covenant 2.1
-   verbatim except the enforcement contact: **no email**; reporters use GitHub's
-   "Report content" or open an issue asking for a private channel without
-   details, and an HTML comment marks the spot for the owner to add a project
-   address. `SECURITY.md` points at GitHub's "Report a vulnerability" (the owner
+   verbatim except the enforcement contact: the project address
+   `conduct@extrudo.org` (Cloudflare Email Routing forwards it to the owner;
+   added 2026-10-02 once the domain existed; at first it had no email and
+   pointed to an issue asking for a private channel) or GitHub's "Report
+   content". No personal address is in the repository. `SECURITY.md` points at GitHub's "Report a vulnerability" (the owner
    enables private vulnerability reporting), with modest response goals.
    `CONTRIBUTING.md` documents setup, the roadmap/ADR/CHANGELOG workflow, the
    hard rules in contributor language, style, tests, screenshot baselines in the

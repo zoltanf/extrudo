@@ -653,7 +653,8 @@ live autosaver) before activating and reloading, and refuses when a save
 failed. `scripts/check-licenses.mjs` (in `pnpm lint`) allow-lists the
 production dependencies' licenses; **a new dependency with a new license needs
 the allow-list and `NOTICE`**. The repo has README, CONTRIBUTING,
-CODE_OF_CONDUCT (no email contact), SECURITY (GitHub private reporting), issue
+CODE_OF_CONDUCT (contact `conduct@extrudo.org`, forwarded by Cloudflare
+Email Routing: `docs/deploy.md`), SECURITY (GitHub private reporting), issue
 forms and a PR template; `docs/file-format.md` is MIT.
 Next, one task at a time (not parallel tracks, since 2026-09-30): Phase 4,
 starting with **P4-01** (sweep, loft, coil; FR-FT-14), then P4-02 onward in
