@@ -645,7 +645,9 @@ embind glue of both WASM builds, a P4-12 item). Cloudflare **joins** the
 headers of every matching rule, so Cache-Control rules must not overlap (tested).
 **The public address is `SITE_URL`** (`pwa/site.ts`, default
 `https://extrudo.org`, registered 2026-10-02; `__SITE_URL__` in `index.html`):
-never hard-code a domain (`extrudo.app` was taken). **The service worker waits** instead of
+never hard-code a domain (`extrudo.app` was taken). **The service worker never serves a redirected response** (Pages
+redirects `/index.html` to `/`; Chrome fails such a navigation with
+`ERR_FAILED`: `plain` in `sw.js`, ADR-0054 amendment). **The service worker waits** instead of
 `skipWaiting()` on update: `platform/updates.ts` watches the registration,
 `useUpdateNotice` (home and project pages) shows "A new version of Extrudo is
 ready." with Reload, which runs `saveEverything()` (`project/autosave.ts`, every
@@ -1302,8 +1304,8 @@ them. Notes further down that name a machine apply to that machine only.
   `biome.json`.
 - **Hosting e2e** (`e2e/hosting.spec.ts`, P3-15): `e2e/static-host.ts`
   (`startStaticHost(dir)`) serves `apps/web/dist` the way Cloudflare Pages does
-  (the build's own `_headers` with path rules, `index.html` fallback, `.wasm`
-  as `application/wasm`) on a random port, with `override(path, body)` to serve a
+  (the build's own `_headers` with path rules, **`.html` paths 308-redirected**
+  (`/index.html` → `/`), `index.html` fallback, `.wasm` as `application/wasm`) on a random port, with `override(path, body)` to serve a
   changed file; `watchPolicy(page)` collects `securitypolicyviolation` events and
   console errors. `vite preview` (the webServer) applies only the `/*` block, which
   already includes COOP/COEP and the CSP: if a spec fails with "kernel stopped"

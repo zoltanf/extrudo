@@ -27,7 +27,8 @@ export interface StaticHost {
 
 /**
  * A static host for a build folder that behaves like Cloudflare Pages
- * (ADR-0054): it applies the build's own `_headers` file and falls back to
+ * (ADR-0054): it applies the build's own `_headers` file, redirects `.html`
+ * paths as Pages does (`/index.html` → `/`, 308) and falls back to
  * `index.html` for unknown paths. The e2e tests use it where `vite preview`
  * isn't enough: path-specific headers (`/sw.js` revalidates) and serving a
  * changed service worker to test the update toast.
@@ -38,6 +39,13 @@ export async function startStaticHost(dir: string): Promise<StaticHost> {
   const server: Server = createServer((req, res) => {
     const path = decodeURIComponent((req.url ?? '/').split('?')[0] ?? '/');
     const headers = headersFor(rules, path);
+    // Pages drops `.html` and `index.html` from paths with a 308 (ADR-0054 amendment).
+    if (path.endsWith('.html')) {
+      const location = path.replace(/(index)?\.html$/, '');
+      res.writeHead(308, { ...headers, location: location || '/' });
+      res.end();
+      return;
+    }
     const override = overrides.get(path);
     if (override !== undefined) {
       res.writeHead(200, { ...headers, 'content-type': TYPES[extname(path)] ?? 'text/plain' });

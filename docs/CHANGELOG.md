@@ -4,6 +4,10 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.3.0 (Phase 3, "real CAD")
 
+- 2026-10-02 · **Fix** Repeat visits to extrudo.org failed with `ERR_FAILED`: the
+  service worker served a redirected copy of `index.html` (Pages redirects it to `/`)
+  for navigations; it now stores and serves a plain copy, and the e2e static host
+  redirects like Pages (ADR-0054 amendment).
 - 2026-10-02 · **P3-15** Public release prep (ADR-0054; the owner's release
   steps are in `docs/release-checklist.md`): README with screenshots, CONTRIBUTING,
   CODE_OF_CONDUCT (Contributor Covenant 2.1, enforcement through GitHub, no email),

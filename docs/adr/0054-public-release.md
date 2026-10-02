@@ -189,3 +189,22 @@ project, which until then answers at `extrudo.pages.dev`).
   HTTPS redirects; HSTS is a setting there); a `security.txt` once there is a
   project address; Dependabot or Renovate for the dependency list the license
   check watches.
+
+## Amendment (2026-10-02): the service worker and Pages' redirects
+
+The first live deploy broke every visit after the first with `ERR_FAILED`.
+Cloudflare Pages answers `/index.html` with a 308 to `/` (and drops `.html` from
+any path). The worker precached `./index.html` with `cache.add`, which stores
+the response `fetch` returned after following the redirect, flagged
+`redirected`; it served that copy for every navigation, and Chrome refuses a
+redirected response for a navigation request. A first visit worked because no
+worker controlled it yet. The worker now stores and serves a plain copy of any
+redirected response (`plain` in `pwa/sw.js`). Precaching `./` instead was
+rejected: it would only fix this one path, and the stored copy would still be
+marked redirected wherever a host redirects. `e2e/static-host.ts` now redirects
+`.html` paths the way Pages does, and `e2e/pwa.spec.ts` reloads a page that
+the worker controls (the test failed with `net::ERR_FAILED` before the fix).
+A browser that kept the broken worker picks up the new one on its next
+navigation, and the new worker activates once no open tab still uses the old
+one: a reload, or two.
+
