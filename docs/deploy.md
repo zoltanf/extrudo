@@ -73,9 +73,17 @@ make it serve the app:
    record itself.
 2. If you want `www.extrudo.org` too: add it the same way (or a redirect rule
    from `www` to the apex), so there is one address people end up on.
-3. Wait for the certificate (a few minutes), then open `https://extrudo.org` and
+3. **Set the zone's Browser Cache TTL to "Respect Existing Headers"** (the
+   extrudo.org domain > Caching > Configuration, or
+   `https://dash.cloudflare.com/?to=/:account/extrudo.org/caching/configuration`),
+   then Purge Everything once. Its default of 4 hours overrides `_headers` for
+   `.js` files on the custom domain (not on `pages.dev`), so `sw.js` arrived
+   with `max-age=14400` and updates reached users up to 4 hours late. Done
+   2026-10-02. Check: `curl -sI https://extrudo.org/sw.js` shows
+   `cache-control: no-cache`.
+4. Wait for the certificate (a few minutes), then open `https://extrudo.org` and
    run the checks in step 7 above.
-4. Keep `extrudo.pages.dev` working, or redirect it: installed copies of the app
+5. Keep `extrudo.pages.dev` working, or redirect it: installed copies of the app
    (PWA) are tied to the address they were installed from, so the very first
    testers who installed from `pages.dev` keep using that until they reinstall.
 

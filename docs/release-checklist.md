@@ -57,21 +57,27 @@ cannot reach. Tick them off in order; each box says who and where.
 
 ## Hosting (docs/deploy.md has the steps)
 
-- [ ] Cloudflare: create the Pages project `extrudo` (Direct Upload).
-- [ ] Create the API token (Cloudflare Pages: Edit) and add the secrets
+- [x] Cloudflare: create the Pages project `extrudo` (Direct Upload). Done
+  2026-10-02 (`wrangler pages project create extrudo --production-branch main`).
+- [x] Create the API token (Cloudflare Pages: Edit) and add the secrets
   `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-- [ ] Run the Deploy workflow; open <https://extrudo.pages.dev> and check the
+- [x] Run the Deploy workflow; open <https://extrudo.pages.dev> and check the
   site (isolated, `sw.js` not cached, no red console lines, offline works
   after the first load, installable).
-- [ ] **Attach `extrudo.org`** (registered 2026-10-02) to the Pages project:
+- [x] **Attach `extrudo.org`** (registered 2026-10-02) to the Pages project:
   Custom domains > Set up a custom domain, and a `www` redirect if you want one
   (`docs/deploy.md`). The build already uses `https://extrudo.org` for the
   canonical link and the link previews; no variable is needed. Then check
-  <https://extrudo.org> the same way.
+  <https://extrudo.org> the same way. Done 2026-10-02 (apex and `www`), with the
+  zone's Browser Cache TTL set to "Respect Existing Headers" so `sw.js` stays
+  `no-cache`; the first deploy is live and the kernel starts there.
 
 ## Release
 
-- [ ] Merge the P3-15 branch to `main` and let CI and the first deploy go green.
+- [x] Merge the P3-15 branch to `main` and let CI and the first deploy go green.
+  Done 2026-10-02 (`8810502`; first deploy after `ffe159a` replaced
+  wrangler-action with `npx wrangler`). Paste secrets through the GitHub web
+  page: `gh secret set`'s hidden prompt saved empty values once.
 - [ ] Tag it: `git tag -a v0.3.0 -m "v0.3.0" && git push origin v0.3.0`. (All
   package versions are already 0.3.0.)
 - [ ] GitHub > Releases > **Draft a new release** for `v0.3.0`. Use the
