@@ -91,8 +91,10 @@ make it serve the app:
   is green. Forks never have the secrets, so they skip too.
 - **Build:** `pnpm install --frozen-lockfile`, then `pnpm build`, which first
   downloads the WASM builds CI published for this commit's inputs.
-- **Deploy:** `cloudflare/wrangler-action` runs `wrangler pages deploy
+- **Deploy:** a pinned wrangler through `npx` runs `wrangler pages deploy
   apps/web/dist --project-name=extrudo --branch=main`. One deploy at a time.
+  (Not `cloudflare/wrangler-action`: in a pnpm workspace it tries `pnpm add
+  wrangler` in the root, which pnpm refuses.)
 - It never creates the project, the secrets or the token.
 
 ## Rolling back

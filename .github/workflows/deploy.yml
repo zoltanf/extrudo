@@ -75,10 +75,12 @@ jobs:
         if: steps.gate.outputs.enabled == 'true'
         run: pnpm build
 
+      # A pinned wrangler through npx, outside the workspace: wrangler-action
+      # sees pnpm and runs `pnpm add wrangler` in the workspace root, which pnpm
+      # refuses (ERR_PNPM_ADDING_TO_ROOT). Wrangler reads CLOUDFLARE_API_TOKEN
+      # and CLOUDFLARE_ACCOUNT_ID from the job's env.
       - name: Deploy apps/web/dist to the Cloudflare Pages project "extrudo"
         if: steps.gate.outputs.enabled == 'true'
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy apps/web/dist --project-name=extrudo --branch=main --commit-hash=${{ env.SHA }}
+        run: >-
+          npx --yes wrangler@4.146.0 pages deploy apps/web/dist
+          --project-name=extrudo --branch=main --commit-hash="$SHA"

@@ -102,8 +102,9 @@ project, which until then answers at `extrudo.pages.dev`).
    `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` exist; without them it
    prints a notice and skips the rest (a green run), so a fork or an unconfigured
    repository never fails. It builds with `pnpm build` (the WASM comes from the
-   releases CI publishes) and deploys `apps/web/dist` with `wrangler-action` to the
-   project `extrudo`. It never creates secrets, projects or tokens; the owner's
+   releases CI publishes) and deploys `apps/web/dist` with a pinned `npx wrangler` to the
+   project `extrudo` (`wrangler-action` was dropped after the first deploy: in a
+   pnpm workspace it runs `pnpm add wrangler` in the root, which pnpm refuses). It never creates secrets, projects or tokens; the owner's
    one-time steps are in `docs/deploy.md`. Rejected: deploying from the CI
    workflow itself (a failing deploy would fail CI, and a manual redeploy would
    need all of CI); Cloudflare's git integration (no gate).
