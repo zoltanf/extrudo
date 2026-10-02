@@ -2,12 +2,14 @@ import { FeatureRegistry } from '@extrudo/core';
 import type { KernelFeatureDefinition } from '../recompute/types';
 import { kernelRemove } from './bodies';
 import { kernelChamfer } from './chamfer';
+import { kernelCoil } from './coil';
 import { kernelCombine } from './combine';
 import { KERNEL_CONSTRUCTION } from './construction';
 import { kernelDraft } from './draft';
 import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
 import { kernelHole } from './hole';
+import { kernelLoft } from './loft';
 import { kernelOffsetFace } from './offset-face';
 import { kernelCircularPattern, kernelPathPattern, kernelRectangularPattern } from './pattern';
 import { kernelPlaceOnBed } from './place-on-bed';
@@ -17,6 +19,7 @@ import { kernelScale } from './scale';
 import { kernelShell } from './shell';
 import { kernelSketch } from './sketch';
 import { kernelSplitBody } from './split-body';
+import { kernelSweep } from './sweep';
 import { kernelMirror, kernelMove } from './transform';
 
 /** Every feature type the kernel can compute (architecture §4.2). */
@@ -58,5 +61,10 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
     .register(kernelSplitBody as unknown as KernelFeatureDefinition)
     .register(kernelScale as unknown as KernelFeatureDefinition)
     .register(kernelDraft as unknown as KernelFeatureDefinition);
+  // Sweep, loft and coil (P4-01, ADR-0055).
+  registry
+    .register(kernelSweep as unknown as KernelFeatureDefinition)
+    .register(kernelLoft as unknown as KernelFeatureDefinition)
+    .register(kernelCoil as unknown as KernelFeatureDefinition);
   return registry;
 }

@@ -4,6 +4,7 @@
  */
 
 export * from './chamfer';
+export * from './coil';
 export * from './combine';
 export {
   applyCommand,
@@ -33,6 +34,7 @@ export { FILE_EXTENSION, FORMAT_NAME, FORMAT_VERSION } from './format';
 export { type HistoryEntry, type HistoryOptions, UndoHistory } from './history';
 export * from './hole';
 export * from './ids';
+export * from './loft';
 export {
   DocumentLoadError,
   type DocumentLoadErrorCode,
@@ -63,6 +65,7 @@ export * from './sketch/planes';
 export * from './sketch/projection';
 export * from './sketch/schema';
 export * from './split-body';
+export * from './sweep';
 export {
   createDocumentStore,
   createModelStore,

@@ -7,8 +7,23 @@
  * `ShapeScope`, `keep` what goes into the output).
  */
 import type { SubShapeKind } from '../history';
-import type { Axis, BooleanOptions, Kernel, OperationResult, ShapeHandle, Vec3 } from '../kernel';
-import { nameSweep, namesOf, propagateNames, type SweepRoles, type TopoNames } from './names';
+import type {
+  Axis,
+  BooleanOptions,
+  Kernel,
+  OperationResult,
+  ShapeHandle,
+  SweepOptions,
+  Vec3,
+} from '../kernel';
+import {
+  nameLoft,
+  nameSweep,
+  namesOf,
+  propagateNames,
+  type SweepRoles,
+  type TopoNames,
+} from './names';
 
 /** A shape and its naming table. */
 export interface NamedShape {
@@ -71,6 +86,60 @@ export interface RevolveOptions extends SweepSource {
 export function namedRevolve(kernel: Kernel, options: RevolveOptions): NamedShape {
   const result = kernel.revolve(options.shape, options.axis, options.angle);
   return nameSwept(kernel, result, options.op ?? 'revolve', options.feature, options.edgeSources);
+}
+
+export interface SweepAlongOptions extends SweepSource {
+  feature: string;
+  /** Default `sweep`. */
+  op?: string;
+  /** The path wire (`Kernel.path`, `Kernel.helix`). */
+  path: ShapeHandle;
+  sweep?: SweepOptions;
+}
+
+/**
+ * Sweeps a profile along a path (P4-01): faces `sweep:<feature>:cap:start`
+ * (the profile's own place), `…:cap:end`, and `…:side:<source>` for each
+ * profile edge; `#n` where names repeat.
+ */
+export function namedSweep(kernel: Kernel, options: SweepAlongOptions): NamedShape {
+  const result = kernel.sweep(options.shape, options.path, options.sweep);
+  return nameSwept(kernel, result, options.op ?? 'sweep', options.feature, options.edgeSources);
+}
+
+export interface LoftOptions {
+  feature: string;
+  /** Default `loft`. */
+  op?: string;
+  /** In order: profiles and faces with their edge sources, or points (first or last). */
+  sections: readonly (SweepSource | { point: Vec3 })[];
+  ruled?: boolean;
+  closed?: boolean;
+}
+
+/**
+ * Lofts through sections (P4-01): faces `loft:<feature>:cap:start` (the
+ * first section), `…:cap:end` (the last), `…:side:<source>` after the edge
+ * of the earliest section that bounds the face (`nameLoft`).
+ */
+export function namedLoft(kernel: Kernel, options: LoftOptions): NamedShape {
+  const result = kernel.loft(
+    options.sections.map((s) => ('point' in s ? { point: s.point } : s.shape)),
+    { ruled: options.ruled ?? false, closed: options.closed ?? false },
+  );
+  try {
+    const names = nameLoft({
+      op: options.op ?? 'loft',
+      feature: options.feature,
+      history: result.history,
+      sources: options.sections.map((s) => ('point' in s ? [] : s.edgeSources)),
+      result: kernel.describe(result.shape),
+    });
+    return { shape: result.shape, names };
+  } catch (error) {
+    kernel.release(result.shape);
+    throw error;
+  }
 }
 
 function nameSwept(

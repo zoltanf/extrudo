@@ -172,6 +172,107 @@ export class DraftError extends KernelError {
   }
 }
 
+/** Why a sweep failed (P4-01): the facade's status. */
+export type SweepProblem =
+  /** OCCT couldn't sweep it: a section too large for a tight turn, a corner it can't mitre. */
+  | { kind: 'failed' }
+  /** The result crosses itself or isn't a sound solid. */
+  | { kind: 'crosses' }
+  /** A twist along a path with a sharp corner. */
+  | { kind: 'twist-corner' }
+  /** A scale along a closed path. */
+  | { kind: 'closed-scale' };
+
+/** A sweep OCCT couldn't build, with its reason. */
+export class SweepError extends KernelError {
+  override name = 'SweepError';
+  constructor(
+    message: string,
+    readonly problem: SweepProblem,
+  ) {
+    super(message);
+  }
+}
+
+/** Why a loft failed (P4-01): the facade's status and the section it concerns. */
+export type LoftProblem =
+  | { kind: 'failed' }
+  | { kind: 'crosses' }
+  | { kind: 'holes'; section: number }
+  | { kind: 'not-one-face'; section: number }
+  | { kind: 'point-inside'; section: number };
+
+/** A loft OCCT couldn't build, with its reason. */
+export class LoftError extends KernelError {
+  override name = 'LoftError';
+  constructor(
+    message: string,
+    readonly problem: LoftProblem,
+  ) {
+    super(message);
+  }
+}
+
+/** The pieces of a path (P4-01): exact sketch curves placed in their plane, and edges of shapes. */
+export type PathPiece =
+  | { kind: 'curve'; curve: PlanarCurve; frame: PlanarFrame }
+  | { kind: 'edge'; shape: ShapeHandle; edge: number };
+
+/** A path pieces couldn't be chained into: `apart` of them don't meet the rest. */
+export class PathError extends KernelError {
+  override name = 'PathError';
+  constructor(
+    message: string,
+    readonly apart: number,
+  ) {
+    super(message);
+  }
+}
+
+/** A helix (a coil's path, P4-01; P4-02's threads reuse it). */
+export interface HelixOptions {
+  /** On the axis, at the helix's start height. */
+  origin: Vec3;
+  /** The axis direction: the helix rises along it. */
+  axis: Vec3;
+  /** Towards the start point from the axis (made square to the axis). */
+  start: Vec3;
+  /** At the start, mm. */
+  radius: number;
+  /** Rise per turn along the axis, mm. */
+  pitch: number;
+  /** Fractions allowed. */
+  turns: number;
+  /** Half-angle of the cone it winds on, radians: positive widens with height. Default 0. */
+  taper?: number;
+  /** Clockwise seen from the axis's tip (a left-handed helix). Default false. */
+  left?: boolean;
+}
+
+/**
+ * How a swept profile turns with its path: `follow` keeps its angle to the
+ * path, `fixed` keeps it parallel to itself, `binormal` keeps its angle to a
+ * fixed direction (a coil's axis).
+ */
+export type SweepOrientation = 'follow' | 'fixed' | { binormal: Vec3 };
+
+export interface SweepOptions {
+  /** Default `follow`. */
+  orientation?: SweepOrientation;
+  /** Radians the profile turns about the path from start to end (`follow` only, smooth paths). */
+  twist?: number;
+  /** The profile's scale at the end (1 at the start), > 0. Not on a closed path. */
+  scale?: number;
+  /**
+   * Check a result that might cross itself (a tight bend, a path coming back
+   * near itself). Default true; a coil checks its own sizes and turns it off.
+   */
+  verify?: boolean;
+}
+
+/** A loft section: a shape holding one face, or a point (first or last only). */
+export type LoftSection = ShapeHandle | { point: Vec3 };
+
 export interface OperationResult {
   shape: ShapeHandle;
   history: HistoryRecord[];
@@ -515,6 +616,130 @@ export class Kernel {
   revolve(shape: ShapeHandle, axis: Axis, angle: number): OperationResult {
     const { origin: o, direction: d } = axis;
     return this.#withHistory(this.#facade.revolve(shape, ...o, ...d, angle));
+  }
+
+  /**
+   * A path (P4-01): the pieces chained end to end into one wire, starting
+   * with the first piece in its own direction; ends within `tolerance` mm are
+   * one point. Sketch curves stay exact. Pieces that don't make one chain (a
+   * gap, a branch) fail with a `PathError`.
+   */
+  path(pieces: readonly PathPiece[], tolerance = 1e-3): ShapeHandle {
+    const f = this.#facade;
+    f.pathClear();
+    for (const piece of pieces) {
+      if (piece.kind === 'edge') {
+        this.#check(f.pathEdge(piece.shape, piece.edge));
+        continue;
+      }
+      f.sketchClear();
+      if (this.#stageCurve(piece.curve) < 0) {
+        throw new KernelError(f.lastError() || "A curve of the path couldn't be made.");
+      }
+      const { origin: o, x, normal: n } = piece.frame;
+      this.#check(f.pathSketch(...o, ...x, ...n));
+    }
+    const handle = f.pathWire(tolerance);
+    if (handle === 0) {
+      const v = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+      throw new PathError(f.lastError() || "The path couldn't be made.", v[0] ?? 0);
+    }
+    return handle as ShapeHandle;
+  }
+
+  /** A helix as a one-edge wire (P4-01): a coil's path. */
+  helix(options: HelixOptions): ShapeHandle {
+    const { origin, axis, start, radius, pitch, turns } = options;
+    return this.#check(
+      this.#facade.helix(
+        ...origin,
+        ...axis,
+        ...start,
+        radius,
+        pitch,
+        turns,
+        options.taper ?? 0,
+        options.left ?? false,
+      ),
+    );
+  }
+
+  /**
+   * Sweeps a profile (a face or a compound of faces, holes and all) along a
+   * path wire (P4-01, `path`, `helix`). The profile stays where it is and
+   * travels with the path's frame from the path's end nearer to it. A failure
+   * is a `SweepError`. History (input 0, the profile): `first` and `last`
+   * (each face's caps), `generated` (each edge's side faces).
+   */
+  sweep(profile: ShapeHandle, path: ShapeHandle, options: SweepOptions = {}): OperationResult {
+    const f = this.#facade;
+    const orientation = options.orientation ?? 'follow';
+    const mode = orientation === 'follow' ? 0 : orientation === 'fixed' ? 1 : 2;
+    const direction: Vec3 = typeof orientation === 'object' ? orientation.binormal : [0, 0, 1];
+    const handle = f.sweep(
+      profile,
+      path,
+      mode,
+      options.twist ?? 0,
+      options.scale ?? 1,
+      options.verify ?? true,
+      ...direction,
+    );
+    if (handle === 0) {
+      const status = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize())[0];
+      const problem: SweepProblem =
+        status === 2
+          ? { kind: 'crosses' }
+          : status === 3
+            ? { kind: 'twist-corner' }
+            : status === 4
+              ? { kind: 'closed-scale' }
+              : { kind: 'failed' };
+      throw new SweepError(f.lastError() || 'The sweep failed.', problem);
+    }
+    return this.#withHistory(handle);
+  }
+
+  /**
+   * Lofts through sections in order (P4-01): shapes holding one face without
+   * holes, or points (first or last only). `ruled` joins neighbours straight;
+   * `closed` joins the last back to the first (a ring, at least three
+   * sections, no points). A failure is a `LoftError`. History: input i is
+   * section i; `first` (the first section's face → the start cap), `last`
+   * (the last's → the end cap), `generated` (every section edge's side faces).
+   */
+  loft(
+    sections: readonly LoftSection[],
+    options: { ruled?: boolean; closed?: boolean } = {},
+  ): OperationResult {
+    const f = this.#facade;
+    f.clearArgs();
+    f.clearNumbers();
+    for (const section of sections) {
+      if (typeof section === 'number') {
+        f.pushArg(section);
+        continue;
+      }
+      f.pushArg(0);
+      for (const value of section.point) f.pushNumber(value);
+    }
+    const handle = f.loft(options.ruled ?? false, options.closed ?? false);
+    if (handle === 0) {
+      const v = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+      const section = v[1] ?? 0;
+      const problem: LoftProblem =
+        v[0] === 2
+          ? { kind: 'crosses' }
+          : v[0] === 3
+            ? { kind: 'holes', section }
+            : v[0] === 5
+              ? { kind: 'not-one-face', section }
+              : v[0] === 6
+                ? { kind: 'point-inside', section }
+                : { kind: 'failed' };
+      throw new LoftError(f.lastError() || 'The loft failed.', problem);
+    }
+    return this.#withHistory(handle);
   }
 
   /** A compound holding the shapes (which stay valid; release them separately). */
