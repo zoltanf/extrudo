@@ -1,13 +1,16 @@
 import { createDocument, createDocumentStore, renameDocument } from '@extrudo/core';
 import { memoryProjectStore, type ProjectStore } from '@extrudo/storage';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createAutosaver } from './autosave';
+import { type Autosaver, createAutosaver, saveEverything } from './autosave';
 
 beforeEach(() => {
   vi.useFakeTimers();
 });
+const created: Autosaver[] = [];
 afterEach(() => {
   vi.useRealTimers();
+  // Each test's autosavers leave the registry `saveEverything` reads.
+  for (const autosaver of created.splice(0)) autosaver.dispose();
 });
 
 async function setup(projects: ProjectStore = memoryProjectStore()) {
@@ -16,6 +19,7 @@ async function setup(projects: ProjectStore = memoryProjectStore()) {
   const store = createDocumentStore(doc);
   const thumbnail = vi.fn(async () => new Blob([new Uint8Array([137, 80, 78, 71])]));
   const autosaver = createAutosaver({ store, projects, delay: 500, thumbnail });
+  created.push(autosaver);
   const rename = (name: string) => store.getState().dispatch(renameDocument({ name }));
   const saved = async () => (await projects.load(doc.id)).name;
   return { doc, store, projects, autosaver, rename, saved, thumbnail };
@@ -138,9 +142,36 @@ describe('autosave', () => {
       projects,
       thumbnail: () => Promise.reject(new Error('no WebGL')),
     });
+    created.push(autosaver);
     store.getState().dispatch(renameDocument({ name: 'Still saved' }));
     await autosaver.flush();
     expect(autosaver.getState().status).toBe('saved');
     expect((await projects.get(doc.id))?.hasThumbnail).toBe(false);
+  });
+
+  describe('saveEverything (before a reload the person asked for)', () => {
+    it('saves every open design and says everything is stored', async () => {
+      const a = await setup();
+      const b = await setup();
+      a.rename('First');
+      b.rename('Second');
+      expect(await saveEverything()).toBe(true);
+      expect(await a.saved()).toBe('First');
+      expect(await b.saved()).toBe('Second');
+      a.autosaver.dispose();
+      b.autosaver.dispose();
+    });
+
+    it('says no while a save fails, so nothing reloads over unsaved work', async () => {
+      const projects = memoryProjectStore();
+      const a = await setup(projects);
+      vi.spyOn(projects, 'save').mockRejectedValue(new Error('disk full'));
+      a.rename('Unsaved');
+      expect(await saveEverything()).toBe(false);
+      expect(a.autosaver.getState().status).toBe('error');
+      a.autosaver.dispose();
+      // A disposed autosaver no longer counts.
+      expect(await saveEverything()).toBe(true);
+    });
   });
 });

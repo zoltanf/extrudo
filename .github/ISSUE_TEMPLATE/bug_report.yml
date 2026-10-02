@@ -1,0 +1,60 @@
+name: Bug report
+description: Something does not work, looks wrong, or gives a wrong shape.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A design that shows the problem helps more than anything: use **File > Export** to save a `.extrudo` file and attach it below (drag it into the box, or zip it first if GitHub does not take the extension).
+        Security problem? Please do not post it here: see the Security tab, "Report a vulnerability".
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: And what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps from a new design, or from the attached file.
+      placeholder: |
+        1. New design, Create Sketch on the XY plane
+        2. Draw a rectangle and dimension it
+        3. Extrude 10 mm
+        4. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Extrudo version
+      description: The release or commit, or "hosted demo" with the date you used it.
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Firefox 150, Chrome 153, Safari 27 ...
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Linux, Windows 11, macOS 16, Android ...
+    validations:
+      required: true
+  - type: textarea
+    id: console
+    attributes:
+      label: Console errors
+      description: Open the browser's developer tools (F12), look at the Console tab, and paste any red lines. Also paste a message the app itself showed, such as a feature's error text.
+      render: text
+  - type: textarea
+    id: file
+    attributes:
+      label: Design file or screenshot
+      description: Attach the `.extrudo` file here, and a screenshot or screen recording if it is about how something looks.

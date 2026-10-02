@@ -1,5 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { resolve } from 'node:path';
+import { expect, type Page, test } from '@playwright/test';
 import { kernelReady } from './helpers';
+import { type StaticHost, startStaticHost } from './static-host';
 
 // The rest of the suite blocks service workers (playwright.config.ts); this
 // file runs against the production preview build with the worker allowed.
@@ -84,4 +86,76 @@ test("an update keeps the previous version's files for one more round, then drop
   await reinstall();
   await expect.poll(() => cachedUrls(page)).not.toContain('/assets/old-abc.js');
   expect(await cachedUrls(page)).toEqual(expect.arrayContaining(current));
+});
+
+// ADR-0054: an update installs in the background and waits; the person decides when to reload.
+// A static host with the build's own _headers (e2e/static-host.ts) can swap its sw.js at will.
+test.describe('an update is waiting', () => {
+  let host: StaticHost;
+  test.beforeEach(async () => {
+    host = await startStaticHost(resolve('apps/web/dist'));
+  });
+  test.afterEach(async () => {
+    await host.close();
+  });
+
+  /** The version the active worker stamped into the cache when it activated. */
+  const activeVersion = (page: Page) =>
+    (
+      page.evaluate(
+        `caches.open('extrudo-precache').then((c) => c.match('./.previous-precache')).then((r) => r && r.headers.get('x-extrudo-version'))`,
+      ) as Promise<string | null>
+    )
+      // Polled while the page reloads: a context that is being replaced answers "not yet".
+      .catch(() => null);
+
+  /** Serves a changed sw.js and asks the browser to look for it, as it does on its own at times. */
+  async function publishUpdate(page: Page, version: string) {
+    const current = await (await fetch(`${host.url}/sw.js`)).text();
+    host.override(
+      '/sw.js',
+      current.replace(/const VERSION = '[^']*'/, `const VERSION = '${version}'`),
+    );
+    await page.evaluate(`navigator.serviceWorker.getRegistration().then((r) => r.update())`);
+  }
+
+  test('a toast offers the reload and the reload activates the new version', async ({ page }) => {
+    await page.goto(`${host.url}/`);
+    await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+    await page.evaluate('navigator.serviceWorker.ready.then(() => true)');
+    await expect.poll(() => activeVersion(page)).toBeTruthy();
+    const before = await activeVersion(page);
+    expect(before).not.toBe('test-v2');
+    await expect(page.getByText('A new version of Extrudo is ready.')).toHaveCount(0);
+
+    await publishUpdate(page, 'test-v2');
+    await expect(page.getByText('A new version of Extrudo is ready.')).toBeVisible();
+    // Nothing swapped yet: the old worker is still the active one.
+    expect(await activeVersion(page)).toBe(before);
+
+    await page.getByRole('button', { name: 'Reload', exact: true }).click();
+    await expect.poll(() => activeVersion(page), { timeout: 15_000 }).toBe('test-v2');
+    // The reloaded page runs and has no second toast for the same update.
+    await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+    await expect(page.getByText('A new version of Extrudo is ready.')).toHaveCount(0);
+  });
+
+  test('the reload keeps what you were doing: the open design is saved first', async ({ page }) => {
+    await page.goto(`${host.url}/`);
+    await page.getByRole('button', { name: 'New design' }).click();
+    await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+    await page.evaluate('navigator.serviceWorker.ready.then(() => true)');
+
+    await page.getByRole('button', { name: /^Project name: / }).click();
+    await page.getByRole('textbox', { name: 'Project name' }).fill('Edited before the update');
+    await page.getByRole('textbox', { name: 'Project name' }).press('Enter');
+    await publishUpdate(page, 'test-v3');
+    await expect(page.getByText('A new version of Extrudo is ready.')).toBeVisible();
+    await page.getByRole('button', { name: 'Reload', exact: true }).click();
+
+    await expect.poll(() => activeVersion(page), { timeout: 15_000 }).toBe('test-v3');
+    await expect(
+      page.getByRole('button', { name: 'Project name: Edited before the update. Rename' }),
+    ).toBeVisible();
+  });
 });

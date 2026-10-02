@@ -1,6 +1,6 @@
 {
   "name": "@extrudo/kernel",
-  "version": "0.0.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Geometry kernel worker: OCCT loader, feature evaluators, recompute engine, topological naming, tessellation, exporters. Runs in a Web Worker and in Node.",
   "license": "GPL-3.0-or-later",

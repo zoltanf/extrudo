@@ -1,0 +1,35 @@
+name: Feature request
+description: An idea for a tool, a workflow or an improvement.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you write: much of what is planned is already in [`docs/01-requirements.md`](https://github.com/zoltanf/extrudo/blob/main/docs/01-requirements.md) (requirement IDs like `FR-SK-07`) and [`docs/03-roadmap.md`](https://github.com/zoltanf/extrudo/blob/main/docs/03-roadmap.md) (tasks like `P4-01`). If your idea is there, say which one; you can still add what you need from it.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to make or do?
+      description: The part you want to design, and where you got stuck. A real example beats a general wish.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: How you imagine it working. Other tools you know that do it well are useful to mention (their ideas, not their code or artwork).
+  - type: input
+    id: ids
+    attributes:
+      label: Requirement or roadmap ID, if there is one
+      placeholder: FR-FT-14, P4-01 ...
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What do you do today instead?
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I would like to try building this myself (I will say so in the issue first).

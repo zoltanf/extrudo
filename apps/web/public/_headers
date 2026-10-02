@@ -1,0 +1,36 @@
+# Response headers for the hosted app (Cloudflare Pages reads this file; ADR-0054).
+# `pnpm preview` and the e2e suite serve the `/*` block too (pwa/headers.ts), so
+# the tests run under the same isolation and content policy as the live site.
+#
+# Rules are additive: a request gets the headers of every rule it matches, and
+# two rules that set the same header are joined into one value. So only `/*` sets
+# these security headers, and Cache-Control sits in rules that never overlap.
+#
+# The policy: scripts and workers only from this origin, no inline script, no
+# other origin for anything, no framing. 'unsafe-eval' stays in script-src
+# because both WASM builds' embind glue (the OCCT kernel in its worker, the
+# planegcs solver in the page) creates functions with `new Function`; it goes
+# once they are rebuilt with -sDYNAMIC_EXECUTION=0 (ADR-0054, open item).
+# 'wasm-unsafe-eval' lets the WASM compile.
+
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' blob: data:; worker-src 'self' blob:; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+# The shell and the service worker: always revalidate, or an update arrives late.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+# Hashed build output (names change with the content): cache for a year.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

@@ -2,6 +2,24 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+## v0.3.0 (Phase 3, "real CAD")
+
+- 2026-10-02 · **P3-15** Public release prep (ADR-0054; the owner's release
+  steps are in `docs/release-checklist.md`): README with screenshots, CONTRIBUTING,
+  CODE_OF_CONDUCT (Contributor Covenant 2.1, enforcement through GitHub, no email),
+  SECURITY (GitHub private vulnerability reporting), issue forms and a pull request
+  template, NOTICE (third-party components and licenses, upstream
+  taucad/opencascade.js#40) and `scripts/check-licenses.mjs` in `pnpm lint`;
+  `docs/file-format.md` states the MIT license; Cloudflare Pages hosting: `_headers`
+  (COOP same-origin, COEP require-corp, CSP, `no-cache` for the shell and `sw.js`,
+  immutable hashed assets), a `deploy.yml` workflow that runs after CI succeeds on main and
+  skips cleanly without the Cloudflare secrets, `SITE_URL` (default
+  `https://extrudo.org`, registered 2026-10-02) in the canonical and Open Graph tags, `docs/deploy.md`;
+  the service worker now waits and the app shows "A new version of Extrudo is ready."
+  with a Reload button that saves open designs first; `e2e/hosting.spec.ts` runs the build under
+  the full header file and `vite preview` (so every e2e spec) under COOP/COEP and the CSP.
+  Public-readiness audit of the tree and history: nothing to remove (one note for the
+  owner: the commit author address). Versions 0.3.0.
 - 2026-10-02 · **P3-12** Onboarding (ADR-0052): the home screen offers a "Take
   the tour" card (once) and a row of four templates with pictures (Wall bracket,
   Storage box, Box with a lid, PCB enclosure: B2, B4 and B5 come from the
@@ -178,6 +196,9 @@ One line per completed roadmap task, newest first. Dates are absolute.
   repeats counted, an unread badge, Clear all; a notification's action
   stays clickable while it still applies (Show for a hidden sketch) and
   shows disabled once it doesn't.
+
+## Phases 0 to 2 (v0.0 to v0.2)
+
 - 2026-09-29 · **P2-17** Benchmarks B2 and B3 (ADR-0039): the parametric
   storage box (cut from a solid, sketch on its top face, exported as 3MF
   and STL) and the phone stand (two bodies joined into one, parametric

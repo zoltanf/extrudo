@@ -1,12 +1,25 @@
 import { describe, expect, it, vi } from 'vitest';
 import { offlineSupported, registerServiceWorker, type ServiceWorkerHost } from './serviceWorker';
+import type { RegistrationLike } from './updates';
+
+const registration = {
+  waiting: null,
+  installing: null,
+  addEventListener: () => {},
+  update: () => Promise.resolve(),
+} satisfies RegistrationLike;
 
 function host(overrides: Partial<ServiceWorkerHost> = {}): ServiceWorkerHost {
   return {
     production: true,
     protocol: 'https:',
-    container: { register: vi.fn().mockResolvedValue({}) },
+    container: {
+      register: vi.fn().mockResolvedValue(registration),
+      controller: null,
+      addEventListener: () => {},
+    },
     onLoad: (run) => run(),
+    updates: { watch: vi.fn() },
     ...overrides,
   };
 }
@@ -38,13 +51,25 @@ describe('offline support', () => {
     expect(h.container?.register).toHaveBeenCalled();
   });
 
+  it('watches the registration for updates once it exists', async () => {
+    const h = host();
+    registerServiceWorker(h);
+    await vi.waitFor(() => expect(h.updates?.watch).toHaveBeenCalledTimes(1));
+    expect(h.updates?.watch).toHaveBeenCalledWith(registration, h.container);
+  });
+
   it('survives a registration that fails', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const h = host({ container: { register: vi.fn().mockRejectedValue(new Error('no')) } });
+    const h = host({
+      container: {
+        register: vi.fn().mockRejectedValue(new Error('no')),
+        controller: null,
+        addEventListener: () => {},
+      },
+    });
     registerServiceWorker(h);
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(warn).toHaveBeenCalled();
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled());
+    expect(h.updates?.watch).not.toHaveBeenCalled();
     warn.mockRestore();
   });
 });

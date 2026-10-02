@@ -1,0 +1,100 @@
+<!doctype html>
+<!--
+  Source of the link-preview picture (apps/web/public/og-image.png, 1200 x 630):
+  open this file in Chromium at that viewport size and take a screenshot. The font
+  comes from the installed @fontsource package (run `pnpm install` first).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Extrudo link preview</title>
+    <style>
+      @font-face {
+        font-family: 'Instrument Sans';
+        font-weight: 600;
+        src: url('../../apps/web/node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-600-normal.woff2')
+          format('woff2');
+      }
+      @font-face {
+        font-family: 'Instrument Sans';
+        font-weight: 400;
+        src: url('../../apps/web/node_modules/@fontsource/instrument-sans/files/instrument-sans-latin-400-normal.woff2')
+          format('woff2');
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: radial-gradient(90% 110% at 30% 40%, #46557a 0%, #29313f 50%, #15181f 100%);
+        font-family: 'Instrument Sans', sans-serif;
+        color: #e9edf3;
+      }
+      main {
+        display: flex;
+        align-items: center;
+        gap: 72px;
+        height: 100%;
+        padding: 0 100px;
+        box-sizing: border-box;
+      }
+      svg {
+        width: 340px;
+        height: 340px;
+        flex: none;
+      }
+      h1 {
+        margin: 0;
+        font-size: 128px;
+        font-weight: 600;
+        letter-spacing: -0.04em;
+        line-height: 1;
+        display: flex;
+        align-items: flex-end;
+      }
+      h1 i {
+        display: block;
+        width: 0.15em;
+        height: 0.15em;
+        margin: 0 0 0.12em 0.04em;
+        border-radius: 0.03em;
+        background: #ffb23e;
+      }
+      p {
+        margin: 28px 0 0;
+        font-size: 40px;
+        line-height: 1.3;
+        color: #939cad;
+        max-width: 560px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+        <path d="M10 24 24 10H52L38 24Z" fill="#FFC76A" />
+        <path d="M38 24 52 10V38L38 52Z" fill="#E0922A" />
+        <rect
+          x="10"
+          y="24"
+          width="28"
+          height="28"
+          rx="1"
+          fill="rgba(90,169,255,0.16)"
+          stroke="#5AA9FF"
+          stroke-width="2"
+          stroke-dasharray="3.2 2.6"
+        />
+        <circle cx="10" cy="24" r="2.2" fill="#5AA9FF" />
+        <circle cx="38" cy="24" r="2.2" fill="#5AA9FF" />
+        <circle cx="10" cy="52" r="2.2" fill="#5AA9FF" />
+        <circle cx="38" cy="52" r="2.2" fill="#5AA9FF" />
+      </svg>
+      <div>
+        <h1>extrudo<i></i></h1>
+        <p>Parametric CAD for 3D printing, in your browser.</p>
+      </div>
+    </main>
+  </body>
+</html>

@@ -665,14 +665,26 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   corners) and the inside corner under the arm filleted; `e2e/benchmark-b6.spec.ts`,
   fixture `b6-wall-hook.extrudo`, recomputed headless with the drafted volume
   exact, and in the fuzzer's list.
-- [ ] **P3-15 Public release prep:** license, README, contribution guide, code
-  of conduct, hosted demo, issue templates. **Needs the owner's decisions
-  first** (license, hosting). Also, carried over (2026-09-30): the service
-  worker's "update available" toast; the host serves `sw.js` and
-  `index.html` with `no-cache` and sets COOP/COEP (ADR-0037); the manual
-  slicer check of the exported 3MF, STL and STEP in the OrcaSlicer and
-  PrusaSlicer GUIs, by the owner, on the Arch workstation (ADR-0034); check
-  upstream taucad/opencascade.js#40 and name it in the NOTICE file.
+- [x] **P3-15 Public release prep:** license, README, contribution guide, code
+  of conduct, hosted demo, issue templates. Done 2026-10-02 (ADR-0054) except
+  the owner's own steps, which are in `docs/release-checklist.md` (**the owner
+  does these**: the slicer check of the exported 3MF, STL and STEP in the
+  OrcaSlicer and PrusaSlicer GUIs on the Arch workstation (ADR-0034), the
+  decision about the commit author address, making the repository public,
+  enabling private vulnerability reporting and Discussions, the Cloudflare
+  project and secrets (`docs/deploy.md`), attaching `extrudo.org` to it,
+  tagging v0.3.0 and the GitHub release). Decisions of 2026-10-02: GPL-3.0-or-later
+  with MIT for `packages/io` and the file-format spec; Cloudflare Pages deployed
+  from GitHub Actions; Contributor Covenant 2.1 with GitHub-based reporting;
+  GitHub private vulnerability reporting. Delivered: README with screenshots,
+  CONTRIBUTING, CODE_OF_CONDUCT, SECURITY, issue forms and a pull request
+  template, NOTICE (taucad/opencascade.js#40 named) with a license check in
+  `pnpm lint`, `_headers` (COOP/COEP, CSP, caching), `deploy.yml` (after CI on
+  main, skips without secrets), `SITE_URL` for the canonical and Open Graph
+  tags (default `https://extrudo.org`), the service worker's "update
+  available" toast, `e2e/hosting.spec.ts`, the public-readiness audit, version
+  0.3.0. Open: drop `'unsafe-eval'` from the CSP by rebuilding both WASM with
+  `-sDYNAMIC_EXECUTION=0` (P4-12).
 - [x] **P3-16 Notification history.** A button beside the toasts (the view's
   bottom-right corner) opens the session's earlier notifications, errors
   first-class, with their actions where they still apply (e.g. Show a
@@ -799,6 +811,13 @@ end to end, faster than in Fusion 360.
   - Patterns: colour classes made joins slower than fusing the instances
     (3.9 s against 2.1 s for overlapping bosses); a cheaper join of many
     interfering copies (ADR-0047).
+  - Content policy: drop `'unsafe-eval'` from `script-src` in
+    `apps/web/public/_headers` (ADR-0054). Both WASM builds' embind glue calls
+    `new Function` (the OCCT kernel in its worker, planegcs in the page): rebuild
+    them with `-sDYNAMIC_EXECUTION=0` (each rebuild changes its input hash; try
+    planegcs first, it takes minutes), check that embind still works, and set
+    `z.config({ jitless: true })` in `packages/core` first (zod probes `new
+    Function` and the probe alone is a violation; parsing is as fast without it).
 
 ---
 
@@ -863,22 +882,26 @@ don't let Phase 3 features be built without it.
 | Scope creep toward "full Fusion" | Never ships | Phases with exit criteria and benchmark models; out-of-scope list in requirements. |
 | Solver instability (flipping solutions) | Sketches jump on edit | Start from stored solved positions; small-step drag solving; tests. |
 | Large coupled sketch components solve slowly (planegcs uses dense matrices; ADR-0002) | Dragging a 200-entity single component runs at ~12 fps; edits take 0.1–1 s. **Measured in P1-03 (ADR-0011): a closed gear outline drags far worse than its size suggests, about 120 ms per step at 52 curves and 1–5 s at 104, because planegcs's drag solve (SQP) needs ~30 iterations per step on a coupled loop of arcs** | Per-component solving covers the usual sketch. For loops like gears: solve drags of large components in a worker at the latest pointer position; keep the SQP's BFGS matrix between drag steps or patch it to sparse matrices in our build; or drag with a lighter formulation. P1-09 (ADR-0018) drags on the UI thread, one solve per pointer move, which is fine for ordinary sketches; the gear case is still open. |
-| LGPL obligations misunderstood | Legal trouble when public | Separate WASM files; NOTICE file; decide license before P3-15. |
+| LGPL obligations misunderstood | Legal trouble when public | Separate WASM files; NOTICE file (done in P3-15). |
 | Mimicking Fusion too closely (trade dress) | Legal risk | Own icons, names and branding; copy concepts and workflow only. |
 
 ## Open decisions (for the project owner)
 
 1. ~~Name~~ **Decided 2026-09-25: Extrudo.** Files use `.extrudo`; packages
    use `@extrudo/*`. Checked on 2026-09-25: `extrudo.app`, `.dev`, `.io` and
-   `.org` were unregistered (`.com` taken), the npm name `extrudo` was free, and
+   `.org` were unregistered on that day (`.com` taken; `extrudo.app` was taken
+   by 2026-10-02, `extrudo.org` was registered then), the npm name `extrudo` was free, and
    the GitHub name `extrudo` was free. None of these are registered yet.
 2. ~~License~~ **Decided 2026-09-25:** **GPL-3.0-or-later** for the app, so
    forks stay open (as with PrusaSlicer and OrcaSlicer). The file-format spec
    and the `io`/`api` packages are **MIT**, so anyone can read and write the
    format. OCCT and planegcs stay separate LGPL WASM files. Apply in P0-01.
-3. **Hosting target** for the public demo: deferred. Leaning toward a Hetzner
-   web host. Whatever host is chosen must let us set COOP/COEP response
-   headers, which multi-threaded WASM needs later.
+3. ~~Hosting target~~ **Decided 2026-10-02: Cloudflare Pages**, deployed from
+   GitHub Actions (ADR-0054; steps in `docs/deploy.md`). Custom headers (COOP and
+   COEP) come from `_headers`. **Domain: `extrudo.org`**, registered 2026-10-02 in
+   Cloudflare (`extrudo.app` was taken). The owner still has to attach it to the
+   Pages project (until then the demo is at `https://extrudo.pages.dev`); the
+   build already uses `https://extrudo.org` as `SITE_URL`.
 4. ~~Brand look~~ **Decided 2026-09-25**, see `docs/05-brand.md`.
    Base is direction **E "Sketch to Solid"**: the logo (dashed blue sketch
    square becoming an amber solid), amber accent, grey tones and Instrument

@@ -4,15 +4,21 @@
  * production build only: in `pnpm dev` a worker would fight Vite's HMR, and
  * the Electron build loads from file:// where there is none (and doesn't need
  * one). Registration waits for the page to finish loading so it never
- * competes with the first visit's own downloads.
+ * competes with the first visit's own downloads. Once registered, the
+ * registration is watched for updates (`updates.ts`, ADR-0054).
  */
+import { appUpdates, type ContainerLike, type RegistrationLike, type Updates } from './updates';
 
 export interface ServiceWorkerHost {
   readonly production: boolean;
   readonly protocol: string;
   /** Present where the browser has service workers. */
-  readonly container: Pick<ServiceWorkerContainer, 'register'> | undefined;
+  readonly container:
+    | (ContainerLike & { register(url: string): Promise<RegistrationLike> })
+    | undefined;
   onLoad(run: () => void): void;
+  /** Where "an update is waiting" goes; the page's own by default. */
+  readonly updates?: Pick<Updates, 'watch'>;
 }
 
 /** Whether a service worker can and should run here. */
@@ -24,11 +30,15 @@ export function offlineSupported(host: ServiceWorkerHost): boolean {
 
 /** Registers `sw.js` (next to the page). Returns whether it tried; failures are only logged. */
 export function registerServiceWorker(host: ServiceWorkerHost = browserHost()): boolean {
-  if (!offlineSupported(host)) return false;
+  const container = host.container;
+  if (!offlineSupported(host) || !container) return false;
   host.onLoad(() => {
-    host.container?.register('./sw.js').catch((error: unknown) => {
-      console.warn('Offline support is off: the service worker did not register.', error);
-    });
+    container
+      .register('./sw.js')
+      .then((registration) => (host.updates ?? appUpdates).watch(registration, container))
+      .catch((error: unknown) => {
+        console.warn('Offline support is off: the service worker did not register.', error);
+      });
   });
   return true;
 }

@@ -26,7 +26,7 @@
 | Tests | **Vitest** (unit, kernel-in-Node), **Playwright** (E2E and screenshot tests) | Kernel and solver run in Node, so geometry is testable headless. |
 | Lint / format | **Biome** | One fast tool. |
 | Desktop (Phase 6) | **Electron** (+ electron-builder) | Same Chromium on Linux, Windows and macOS, so WebGL, WASM and OPFS behave the same everywhere. Tauri was rejected: it uses WebKitGTK on Linux, which has weaker WebGL/WASM performance and consistency. |
-| Hosting | Static site as a **PWA**; host to be decided (leaning Hetzner) | No backend needed. The host must allow COOP/COEP headers. |
+| Hosting | Static site as a **PWA** on **Cloudflare Pages** (ADR-0054) | No backend needed. The host must allow COOP/COEP headers. |
 
 ### Licensing note
 

@@ -1,0 +1,126 @@
+Extrudo
+Copyright (c) 2026 The Extrudo contributors
+
+Extrudo is free software: you can redistribute it and modify it under the terms
+of the GNU General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version. See
+LICENSE. Two parts are under other licenses so that other tools can use them:
+
+  packages/io                      MIT (packages/io/LICENSE)
+  docs/file-format.md              MIT (the .extrudo file-format specification)
+
+This file lists the third-party components that Extrudo contains or is built
+from, with their licenses. All of them are compatible with distributing Extrudo
+under the GPL-3.0-or-later. `node scripts/check-licenses.mjs` (part of
+`pnpm lint`) fails when a production dependency has a license that is not on
+the list below, so a new one is reviewed before it ships.
+
+
+1. WebAssembly components (separate files, built from source we publish)
+------------------------------------------------------------------------
+
+The two WASM files are separate artifacts that the app loads at run time. Their
+sources, build recipes and the pinned toolchains are in this repository, and CI
+publishes each build as a GitHub release (`occt-<hash>`, `planegcs-<hash>`) so
+that anyone can rebuild or replace them.
+
+  OpenCascade Technology (OCCT) 8.0.1 (commit b8f597c677811d1f9f4d8a97f5ae2825c0353a42)
+    The geometry kernel, in extrudo_occt_single.wasm.
+    License: GNU LGPL 2.1 with the Open CASCADE exception.
+    https://dev.opencascade.org/ and https://github.com/Open-Cascade-SAS/OCCT
+    Built with the libcascade toolchain (below) and Emscripten 6.0.5. The
+    toolchain's pinned inputs (including FreeType and RapidJSON, which OCCT can
+    use) are recorded in the build's provenance file.
+
+  Extrudo's C++ facade over OCCT (packages/kernel/occt/facade/)
+    Compiled into the same WASM file. License: LGPL-2.1-or-later
+    (packages/kernel/occt/facade/LICENSE).
+
+  libcascade / @libcascade/toolchain 3.0.2 (the build toolchain, taucad/opencascade.js)
+    https://github.com/taucad/opencascade.js
+    Toolchain: MIT. The OCCT it builds: see above.
+    Known issue we work around: taucad/opencascade.js#40 (open as of 2026-10-02):
+    calling delete() on a JavaScript handle often does not free the memory the
+    C++ object owns (NCollection_Array1, BRepAlgoAPI_Cut without Clear(),
+    BRepFilletAPI_MakeFillet). It is why our C++ facade owns every OCCT object and
+    JavaScript only holds integer handles. https://github.com/taucad/opencascade.js/issues/40
+
+  planegcs (the sketch constraint solver), in planegcs.wasm
+    FreeCAD's PlaneGCS, via https://github.com/Salusoft89/planegcs
+    License: LGPL-2.1-or-later. We build it ourselves with a small patch
+    (packages/sketch/planegcs/planegcs.patch, LGPL-2.1-or-later). The
+    JavaScript wrapper comes from the @salusoft89/planegcs npm package 1.2.0
+    (LGPL-2.0-or-later). The WASM contains code from Eigen (MPL-2.0,
+    https://eigen.tuxfamily.org/) and Boost (Boost Software License 1.0,
+    https://www.boost.org/), both used header-only at build time.
+
+How to get the sources of the LGPL parts
+  - OCCT: https://github.com/Open-Cascade-SAS/OCCT at the commit above, or the
+    build inputs in packages/kernel/occt/ (libcascade.config.ts, facade/) with
+    `pnpm occt build` (Docker, about 15 minutes), documented in
+    packages/kernel/occt/README.md.
+  - planegcs: packages/sketch/planegcs/ (build.sh pins the upstream commit,
+    planegcs.patch is our change) with `pnpm planegcs build`, documented in
+    packages/sketch/planegcs/README.md.
+  - The released builds: the GitHub releases named occt-<hash> and
+    planegcs-<hash> of this repository. The hash in use is written to
+    dist/.inputs-hash next to the files.
+  You may replace either WASM file with your own build of the same inputs.
+
+
+2. Bundled fonts
+----------------
+
+  Instrument Sans   Copyright 2022 The Instrument Sans Project Authors
+                    https://github.com/Instrument/instrument-sans
+  JetBrains Mono    Copyright 2020 The JetBrains Mono Project Authors
+                    https://github.com/JetBrains/JetBrainsMono
+  Both: SIL Open Font License 1.1 (https://openfontlicense.org), through the
+  @fontsource packages (the license text ships in each package).
+
+
+3. JavaScript libraries in the app (production dependencies)
+-----------------------------------------------------------
+
+Versions are those in pnpm-lock.yaml when this file was written (version 0.3.0).
+Regenerate the list with `pnpm licenses list --prod`.
+
+  MIT
+    react, react-dom, scheduler (Meta Platforms, Inc. and affiliates)
+    three (three.js authors), three-mesh-bvh
+    @react-three/fiber, its-fine, react-use-measure, suspend-react (Poimandres)
+    zustand, use-sync-external-store
+    immer
+    zod
+    fflate
+    radix-ui and the @radix-ui/* primitives it re-exports (WorkOS), with
+      @floating-ui/* (Floating UI contributors), aria-hidden,
+      react-remove-scroll and its helpers, get-nonce, detect-node-es,
+      use-callback-ref, use-sidecar
+    @babel/runtime, csstype, @types/react, @types/react-reconciler, @types/webxr,
+      buffer, base64-js
+  ISC
+    lucide-react (icons: Lucide Icons and Contributors; the app's own icons are
+    Extrudo's)
+  Apache-2.0
+    comlink (Google LLC)
+  BSD-3-Clause
+    ieee754
+  0BSD
+    tslib
+  OFL-1.1
+    @fontsource/instrument-sans, @fontsource/jetbrains-mono (see section 2)
+  LGPL-2.0-or-later
+    @salusoft89/planegcs (the JavaScript wrapper, see section 1)
+
+The full license text of each package is in its own folder under node_modules
+and in the published package.
+
+
+4. Not third-party
+------------------
+
+The Extrudo name, logo, icons, the tool demo clips and the template pictures are
+the project's own work and are under the project's license. Extrudo borrows
+ideas and workflow from other CAD programs and contains none of their code,
+icons, text or artwork.

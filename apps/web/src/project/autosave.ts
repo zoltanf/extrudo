@@ -36,6 +36,9 @@ export interface AutosaveOptions {
 
 export const AUTOSAVE_DELAY = 800;
 
+/** Every autosaver that hasn't been disposed of: what `saveEverything` flushes. */
+const live = new Set<Autosaver>();
+
 export function createAutosaver(options: AutosaveOptions): Autosaver {
   const { store, projects, thumbnail } = options;
   const delay = options.delay ?? AUTOSAVE_DELAY;
@@ -94,7 +97,7 @@ export function createAutosaver(options: AutosaveOptions): Autosaver {
     schedule();
   });
 
-  return Object.assign(state, {
+  const autosaver: Autosaver = Object.assign(state, {
     async flush() {
       await running;
       await save();
@@ -104,8 +107,11 @@ export function createAutosaver(options: AutosaveOptions): Autosaver {
       disposed = true;
       clearTimeout(timer);
       unsubscribe();
+      live.delete(autosaver);
     },
   });
+  live.add(autosaver);
+  return autosaver;
 }
 
 function messageOf(error: unknown): string {
@@ -130,6 +136,16 @@ export function closeAutosaver(autosaver: Autosaver): void {
       pending.delete(done);
     });
   pending.add(done);
+}
+
+/**
+ * Saves every open design now (for a reload the person asked for, ADR-0054) and says whether
+ * everything is stored: false while a save failed, so the caller must not reload.
+ */
+export async function saveEverything(): Promise<boolean> {
+  await allSaved();
+  await Promise.all([...live].map((autosaver) => autosaver.flush().catch(() => {})));
+  return [...live].every((autosaver) => autosaver.getState().status === 'saved');
 }
 
 /** Resolves once every closing autosaver has finished its last save. */

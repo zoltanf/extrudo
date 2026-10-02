@@ -5,9 +5,9 @@ Fusion 360-style workflow (sketch → features → timeline, parameters everywhe
 and a playful modern UI. Web first (PWA). An Electron desktop build comes later
 from the same codebase.
 
-**Repo:** <https://github.com/zoltanf/extrudo>. **Private** until the project
-is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
-every push and pull request.
+**Repo:** <https://github.com/zoltanf/extrudo>. **Private** until the owner
+makes it public (P3-15 prepared everything: `docs/release-checklist.md` lists the
+owner's steps). CI runs on every push and pull request.
 
 **Status (2026-10-02):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
@@ -24,8 +24,10 @@ fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-03
 move/copy, mirror), P3-07 (patterns, mirrored features), P3-08 (press/pull,
 offset face, then split body, scale, draft: both halves), P3-09 (section
 analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus),
-P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-16
-(notification history) and P3-17 (polish, both parts) are done; P3-15 is left.
+P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-15
+(public release prep, ADR-0054: done except the owner's release steps),
+P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 is
+complete** (version 0.3.0).
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -630,17 +632,42 @@ without `RECORD_ASSETS=1`) records the clips and the template pictures through
 the real app: a screenshot loop (`e2e/demo-recorder.ts`) piped into Playwright's
 own ffmpeg (`playwright install ffmpeg`: MJPEG in, VP8 out, `crop`/`scale`
 filters), a drawn cursor in the page.
-Next, one task at a time (not parallel tracks, since 2026-09-30):
-**P3-15** after the owner's decisions. Carried-over
-items are listed under those tasks in `docs/03-roadmap.md`; deeper ones are
-the P4-12 backlog.
+ADR-0054 (P3-15) prepared the public release: **hosting is Cloudflare Pages**,
+deployed by `.github/workflows/deploy.yml` (after CI succeeds on main; skips
+cleanly without the secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`;
+the owner's steps are in `docs/deploy.md`). **`apps/web/public/_headers` is
+the host's header file and is also applied by `vite preview`** (the global
+`/*` block, read by `pwa/headers.ts`), so every e2e spec runs under COOP
+`same-origin`, COEP `require-corp` (the app loads nothing from other origins:
+fonts are bundled) and a CSP; **a new feature must not load a cross-origin
+resource or evaluate strings** (script-src still has `'unsafe-eval'` for the
+embind glue of both WASM builds, a P4-12 item). Cloudflare **joins** the
+headers of every matching rule, so Cache-Control rules must not overlap (tested).
+**The public address is `SITE_URL`** (`pwa/site.ts`, default
+`https://extrudo.org`, registered 2026-10-02; `__SITE_URL__` in `index.html`):
+never hard-code a domain (`extrudo.app` was taken). **The service worker waits** instead of
+`skipWaiting()` on update: `platform/updates.ts` watches the registration,
+`useUpdateNotice` (home and project pages) shows "A new version of Extrudo is
+ready." with Reload, which runs `saveEverything()` (`project/autosave.ts`, every
+live autosaver) before activating and reloading, and refuses when a save
+failed. `scripts/check-licenses.mjs` (in `pnpm lint`) allow-lists the
+production dependencies' licenses; **a new dependency with a new license needs
+the allow-list and `NOTICE`**. The repo has README, CONTRIBUTING,
+CODE_OF_CONDUCT (no email contact), SECURITY (GitHub private reporting), issue
+forms and a PR template; `docs/file-format.md` is MIT.
+Next, one task at a time (not parallel tracks, since 2026-09-30): Phase 4,
+starting with **P4-01** (sweep, loft, coil; FR-FT-14), then P4-02 onward in
+`docs/03-roadmap.md`. The owner's own release steps (slicer check, making the
+repository public, Cloudflare, domain, tag v0.3.0) are in
+`docs/release-checklist.md`; don't do them. Deeper carried-over items are the
+P4-12 backlog.
 
 ## Commands
 
 ```sh
 pnpm install      # after pulling
 pnpm dev          # app at http://localhost:5173
-pnpm check        # typecheck + Biome + package boundaries + Vitest. Must pass.
+pnpm check        # typecheck + Biome + package boundaries + license allow-list + Vitest. Must pass.
 pnpm e2e          # build + Playwright (run `pnpm e2e:install` once)
 pnpm format       # Biome auto-fix
 pnpm wasm         # download the OCCT and planegcs WASM for the current inputs (check/dev/build do this)
@@ -662,8 +689,9 @@ must never depend on the GPL packages.
 | `docs/04-ui-spec.md` | Layout, interactions, sketch mode, shortcuts, error-message style |
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
+| `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6 (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit) (0006 is reserved) |
 
 ## Stack summary
 
@@ -1271,6 +1299,26 @@ them. Notes further down that name a machine apply to that machine only.
   (`dist/sw.js`), never in dev. Agent worktrees in `.claude/worktrees/`
   are gitignored, so Biome (which reads `.gitignore`) skips their nested
   `biome.json`.
+- **Hosting e2e** (`e2e/hosting.spec.ts`, P3-15): `e2e/static-host.ts`
+  (`startStaticHost(dir)`) serves `apps/web/dist` the way Cloudflare Pages does
+  (the build's own `_headers` with path rules, `index.html` fallback, `.wasm`
+  as `application/wasm`) on a random port, with `override(path, body)` to serve a
+  changed file; `watchPolicy(page)` collects `securitypolicyviolation` events and
+  console errors. `vite preview` (the webServer) applies only the `/*` block, which
+  already includes COOP/COEP and the CSP: if a spec fails with "kernel stopped"
+  after a change, look for an `EvalError` or a blocked cross-origin load first
+  (the debug route `#/debug/kernel` prints why the kernel didn't start). A CSP
+  violation in the page is also a console error. The build must be fresh
+  (`pnpm build`): the specs read `apps/web/dist`.
+- **Update toast e2e** (`e2e/pwa.spec.ts`, "an update is waiting"): the host
+  swaps `/sw.js` for a copy with another `VERSION`, `registration.update()` makes
+  the browser install it, and it **waits** (the old version stays active:
+  `activeVersion` reads the `x-extrudo-version` header the worker stamps on
+  `.previous-precache` when it activates); the toast "A new version of Extrudo is
+  ready." has the button "Reload" (`exact: true`). After it the new version is
+  active and the page reloaded; a project rename made just before survives.
+  Unit tests: `platform/updates.test.ts`, `updateNotice.test.ts`,
+  `project/autosave.test.ts` (`saveEverything`).
 - **OCCT builds through CI** (the preferred way on the 4-core Ubuntu
   machine; works from either machine): push a branch (only `main` and pull requests trigger CI by
   themselves) and run `gh workflow run ci.yml --ref <branch>`; the `occt`

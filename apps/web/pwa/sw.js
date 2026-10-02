@@ -5,10 +5,11 @@
 // repeat visit, offline or not, never waits for the network, and answers every
 // request from that cache. Hashed files (assets/…) are fetched once and kept
 // across versions; the few files with fixed names are fetched again at every
-// install. An update installs, activates at once (no waiting for every tab to
-// close) and keeps the previous version's files too, so a tab that is still
-// running the old bundle finds its lazy chunks. The new version's index.html
-// shows on the next navigation.
+// install. An update installs and then waits (ADR-0054: the page shows "A new
+// version is ready" and sends SKIP_WAITING when the person agrees, so it never
+// swaps under an open design); on activation it keeps the previous version's
+// files too, so a tab that is still running the old bundle finds its lazy
+// chunks. The new version's index.html shows on the next navigation.
 
 /* global self, caches */
 const VERSION = '__VERSION__';
@@ -33,9 +34,14 @@ self.addEventListener('install', (event) => {
         ...HASHED.filter((path) => !have.has(url(path))).map(add),
         ...FIXED.map(add),
       ]);
-      self.skipWaiting();
+      // No skipWaiting() here: a first install activates by itself (nothing to wait
+      // for), an update waits for the page's SKIP_WAITING message.
     })(),
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {

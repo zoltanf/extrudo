@@ -1,0 +1,84 @@
+name: Deploy
+
+# Publishes the web app to Cloudflare Pages (ADR-0054, docs/deploy.md).
+#
+# - Runs only after the CI workflow succeeded for a push to main (`workflow_run`),
+#   so a commit that fails its checks or end-to-end tests is never deployed.
+#   "Run workflow" on main redeploys the current head by hand.
+# - Does nothing, and says so, until the owner has added the repository secrets
+#   CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (docs/deploy.md). A fork or an
+#   unconfigured repository therefore skips cleanly instead of failing.
+# - The public address is the optional repository variable SITE_URL; without it
+#   the build uses https://extrudo.org (apps/web/pwa/site.ts).
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+# One deployment at a time; a newer one waits for the running one.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and deploy to Cloudflare Pages
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      SITE_URL: ${{ vars.SITE_URL }}
+      # The commit CI just passed (workflow_run), or the head of main (manual run).
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Check that deployment is set up
+        id: gate
+        run: |
+          if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Deploy skipped::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are not set as repository secrets, so nothing was deployed. See docs/deploy.md."
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          ref: ${{ env.SHA }}
+
+      - uses: pnpm/action-setup@v6 # version comes from "packageManager" in package.json
+        if: steps.gate.outputs.enabled == 'true'
+
+      - uses: actions/setup-node@v5
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+        if: steps.gate.outputs.enabled == 'true'
+
+      - name: Build (downloads the published WASM first)
+        if: steps.gate.outputs.enabled == 'true'
+        run: pnpm build
+
+      - name: Deploy apps/web/dist to the Cloudflare Pages project "extrudo"
+        if: steps.gate.outputs.enabled == 'true'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy apps/web/dist --project-name=extrudo --branch=main --commit-hash=${{ env.SHA }}

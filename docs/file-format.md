@@ -10,6 +10,11 @@ the example in section 9 against the real schema and fails when a document
 key, feature type, feature input, sketch entity, constraint or dimension type,
 reference kind or unit is missing from this text.
 
+**License:** this specification is under the **MIT license** (the text is in
+[`file-format.LICENSE`](file-format.LICENSE), the same as for `packages/io`),
+so anyone may implement readers and writers of Extrudo files, in any license.
+The rest of Extrudo is GPL-3.0-or-later.
+
 Conventions: "must" and "may" are meant in the RFC sense. Numbers are JSON
 numbers (IEEE doubles). Lengths are millimetres and angles degrees wherever a
 plain number is stored (only sketch coordinates and radii; every other number

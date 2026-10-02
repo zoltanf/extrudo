@@ -1,42 +1,137 @@
-# Extrudo
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/extrudo-mark-dark.svg">
+    <img src="docs/brand/extrudo-mark-light.svg" alt="The Extrudo logo: a dashed blue sketch square turning into an amber solid" width="96">
+  </picture>
+</p>
 
-Open-source parametric CAD for the 3D-printing community, running in your
-browser. Sketch a profile, extrude it into a solid, round the edges, and
-change one number to update the whole part. The workflow follows Fusion 360
-(sketch → features → timeline, parameters everywhere) with a friendlier,
-faster interface.
+<h1 align="center">Extrudo</h1>
 
-> **Status:** early development (Phase 0). Nothing is usable yet. See
-> [`docs/03-roadmap.md`](docs/03-roadmap.md).
+<p align="center">
+  Parametric CAD for 3D printing, in your browser. Free and open source.
+</p>
 
-## Development
+Sketch a profile, pull it into a solid, round the edges, and change one number
+to watch the whole part follow. Extrudo is built for people who print:
+brackets, boxes, clips, enclosures and the replacement part you need by
+tonight. It runs in a browser tab, works offline once it has loaded, keeps your
+designs on your own machine and needs no account. Under the friendly interface
+sits exact geometry (real circles and fillets, not a mesh of triangles), so
+what you design is what comes out of the printer.
 
-Requires Node 24+ and pnpm 12 (`mise use -g pnpm@12`, or see pnpm.io).
+It follows the workflow people know from desktop CAD (sketch, features,
+timeline, parameters everywhere) with a faster, friendlier interface. It is
+inspired by that workflow and shares no code or artwork with any such product.
+
+![The home screen, with templates and the tour](docs/images/home.png)
+
+![A wall bracket in the 3D view, with its timeline and parameters](docs/images/bracket.png)
+
+> **Status:** version 0.3, "real CAD": the first complete release. The core
+> modeling workflow is there and tested, but expect rough edges. Things not
+> built yet are listed in [`docs/03-roadmap.md`](docs/03-roadmap.md). Please
+> [report what breaks](https://github.com/zoltanf/extrudo/issues/new/choose).
+
+## Try it
+
+**<https://extrudo.org>**: nothing to install; add it to your home screen or
+desktop from the browser's menu if you want it as an app. The site is being
+set up, so until the first deployment is up (it is also served at
+<https://extrudo.pages.dev>), build it from source (below).
+
+## What it does
+
+**Sketching.** Lines, rectangles, circles, arcs, polygons, slots, ellipses and
+splines, with automatic constraints, 13 constraint types and driving
+dimensions. A sketch shows how much freedom is left in it, and refuses
+contradictions with a plain explanation. Trim, extend, fillet, offset, mirror,
+pattern and project from other geometry; export a sketch as SVG or DXF.
+
+**Solids.** Extrude (with taper, symmetric, to an object, join, cut), revolve,
+box, cylinder, sphere and torus, fillet and chamfer with a diagnosis when a
+size does not fit, shell, holes (counterbore, countersink, M2 to M8 presets,
+heat-set inserts), combine, move and copy, mirror, rectangular, circular and
+path patterns, split body, scale, draft, press/pull and offset face.
+
+**Construction geometry.** Offset, angled, mid and three-point planes, tangent
+planes, axes through points, cylinders or edges, and points.
+
+**Parameters and the timeline.** Every number takes an expression with units
+(`wall * 1.5 + 2 mm`) and named parameters. The design is an ordered timeline:
+roll back, edit, reorder, suppress, and fix references when something it
+pointed at is gone. Faces and edges keep their names through edits (topological
+naming), so changing an early feature rarely breaks a later one.
+
+**For printing.** Export STL, 3MF (with colours) and STEP; checked for
+watertightness. Place on Bed, overhang analysis, weight and filament length
+for your material, and section analysis. Measure distances, angles, areas and
+volumes exactly.
+
+**Everywhere else.** Version history with restore, a command palette (`Ctrl+K`),
+a right-click marking menu, light and dark themes, a built-in tutorial and
+templates, undo that covers everything, offline use, and an open
+[file format](docs/file-format.md).
+
+## Build from source
+
+You need Node 24 or newer and pnpm 12 (see [pnpm.io](https://pnpm.io/installation)).
+The two WASM builds (the OpenCascade geometry kernel and the sketch solver) are
+not in git: `pnpm dev`, `pnpm build` and `pnpm check` download the build that
+matches your checkout from this repository's releases, using the
+[GitHub CLI](https://cli.github.com/) (`gh auth login` once) or a plain
+download when the repository is public.
 
 ```sh
+git clone https://github.com/zoltanf/extrudo.git
+cd extrudo
 pnpm install
-pnpm dev          # start the app at http://localhost:5173
-pnpm check        # typecheck + lint + package boundaries + unit tests
+pnpm dev          # the app at http://localhost:5173
+pnpm check        # typecheck, lint, package boundaries and unit tests
 pnpm e2e:install  # once: download Playwright's Chromium
-pnpm e2e          # build and run end-to-end tests
-pnpm format       # auto-format and fix lint issues
+pnpm e2e          # build, then the end-to-end tests
 ```
 
-## Repository layout
+`pnpm wasm` fetches the WASM on its own. Building it yourself (Docker, about
+15 minutes for OpenCascade) is described in
+[`packages/kernel/occt/README.md`](packages/kernel/occt/README.md) and
+[`packages/sketch/planegcs/README.md`](packages/sketch/planegcs/README.md).
+
+## How it is built
+
+TypeScript, React 19, Vite, three.js, Radix and Tailwind. The geometry kernel
+is OpenCascade compiled to WebAssembly and runs in a Web Worker, behind a small
+C++ facade of our own; sketches are solved by planegcs (FreeCAD's solver) in
+WASM. The design is plain JSON; geometry is always derived from it, never
+stored.
 
 | Path | What |
 |---|---|
-| `apps/web` | The web app (React + Vite). The desktop build will wrap it. |
+| `apps/web` | The web app (React, Vite, service worker). A desktop build will wrap it later. |
 | `packages/core` | Document model, parameters, expressions, undo. No DOM, no WASM. |
-| `packages/sketch` | Sketch model, constraint solver adapter, profiles, SVG/DXF export |
-| `packages/kernel` | Geometry kernel (OpenCascade WASM) in a Web Worker |
-| `packages/io` | File-format readers and writers (MIT-licensed) |
-| `packages/storage` | Local project storage (OPFS + IndexedDB) |
+| `packages/sketch` | Sketch model, constraint solver adapter, profiles, SVG and DXF export |
+| `packages/kernel` | Geometry kernel (OpenCascade WASM) in a Web Worker, recompute engine |
+| `packages/io` | STL, 3MF, SVG and DXF readers and writers (MIT) |
+| `packages/storage` | Local project storage (OPFS and IndexedDB) |
 | `e2e/` | Playwright end-to-end tests |
-| `docs/` | Requirements, architecture, roadmap, UI spec, brand |
+| `docs/` | Requirements, architecture, roadmap, UI spec, brand, file format, decision records |
+
+Start with [`docs/02-architecture.md`](docs/02-architecture.md), then the
+[roadmap](docs/03-roadmap.md) and the [decision records](docs/adr/).
+
+## Contributing
+
+Bug reports, ideas, models that break the kernel and pull requests are all
+welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) first, and please follow the
+[Code of Conduct](CODE_OF_CONDUCT.md). Security problems go through GitHub's
+private reporting, see [`SECURITY.md`](SECURITY.md).
 
 ## License
 
-Extrudo is licensed under the [GNU GPL v3.0 or later](LICENSE).
-`packages/io` and the file-format specification are MIT-licensed, so other
-tools can read and write Extrudo files.
+Extrudo is free software under the [GNU GPL v3.0 or later](LICENSE).
+
+- `packages/io` and the [file-format specification](docs/file-format.md) are
+  under the [MIT license](packages/io/LICENSE), so any tool can read and write
+  Extrudo files.
+- The OpenCascade and planegcs WASM files are LGPL-2.1 components built from
+  their own sources; [`NOTICE`](NOTICE) lists every third-party component, its
+  license, and where the corresponding source is.

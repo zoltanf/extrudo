@@ -14,6 +14,7 @@ import type { Platform } from '../platform';
 import { HOME_HREF, navigate, projectHref } from '../routes';
 import type { FileActions } from '../shell/AppBar';
 import { AppShell } from '../shell/AppShell';
+import { useUpdateNotice } from '../shell/useUpdateNotice';
 import { createViewportStore, type ViewportStore } from '../viewport/store';
 import {
   createProject,
@@ -107,6 +108,7 @@ function ProjectEditor({
   );
   const autosave = useAutosave(store, viewport, platform);
   const { toasts, push, dismiss, notifications } = useToasts();
+  useUpdateNotice(push);
   useFirstThumbnail(doc.id, hasThumbnail, viewport, platform);
   // What opening needed to leave out (a file from a newer Extrudo, P3-13): long, so it stays a while.
   useEffect(() => {

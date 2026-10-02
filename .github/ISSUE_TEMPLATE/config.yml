@@ -1,0 +1,9 @@
+# Blank issues are off: the two forms ask for what we need to act on a report.
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem (private)
+    url: https://github.com/zoltanf/extrudo/security/advisories/new
+    about: Please do not open a public issue for a vulnerability. This form is private.
+  - name: Read the roadmap
+    url: https://github.com/zoltanf/extrudo/blob/main/docs/03-roadmap.md
+    about: See what is planned and what is done before asking for a feature.

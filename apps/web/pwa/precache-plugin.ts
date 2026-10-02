@@ -6,9 +6,19 @@ import type { Plugin } from 'vite';
 /**
  * Files the app never needs offline: the debug pages, the legacy font formats and
  * the tools' demo clips (`demos/`, P3-12: a nicety fetched when a tooltip opens,
- * which the service worker leaves to the network).
+ * which the service worker leaves to the network), the host's `_headers` file and
+ * the link-preview picture.
  */
-const SKIPPED = [/(^|\/)debug-worker-/, /Debug-[^/]*\.js$/, /\.woff$/, /\.map$/, /^demos\//];
+const SKIPPED = [
+  /(^|\/)debug-worker-/,
+  /Debug-[^/]*\.js$/,
+  /\.woff$/,
+  /\.map$/,
+  /^demos\//,
+  // For the host and for link previews (ADR-0054), never for the app itself.
+  /^_headers$/,
+  /^og-image\.png$/,
+];
 
 /**
  * Writes `sw.js` into the build output (ADR-0037): the service worker from
