@@ -54,6 +54,25 @@ for (const theme of ['dark', 'light'] as const) {
       await audit(page, `${theme} home`);
     });
 
+    test('onboarding: the empty design hint, the tutorial card and a tooltip with a demo', async ({
+      page,
+    }) => {
+      await openProject(page);
+      await kernelReady(page);
+      await expect(page.locator('[data-viewport-hint]')).toBeVisible();
+      await audit(page, `${theme} empty design hint`);
+
+      await page.getByRole('button', { name: 'Help' }).click();
+      await page.getByRole('menuitem', { name: 'Tutorial' }).click();
+      await expect(page.getByRole('region', { name: 'Tutorial' })).toBeVisible();
+      await audit(page, `${theme} tutorial card`);
+      await page.getByRole('button', { name: 'Close tutorial' }).click();
+
+      await page.getByRole('button', { name: 'Extrude' }).hover();
+      await expect(page.getByRole('tooltip').locator('video')).toBeVisible();
+      await audit(page, `${theme} tooltip demo`);
+    });
+
     test('project shell, sketch mode and dialogs', async ({ page }) => {
       await openProject(page, 'wall-bracket');
       await kernelReady(page);

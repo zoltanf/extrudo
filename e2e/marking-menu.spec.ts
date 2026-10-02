@@ -476,9 +476,9 @@ test('a design card on the home screen has a right-click menu', async ({ page })
   await openProject(page, 'wall-bracket');
   await page.goto('./');
   const card = page
+    .getByRole('list', { name: 'Designs' })
     .getByRole('listitem')
-    .filter({ hasText: /Wall bracket/ })
-    .first();
+    .filter({ hasText: /Wall bracket/ });
   await card.click({ button: 'right' });
   for (const name of ['Open', 'Rename', 'Duplicate', 'Export .extrudo', 'Move to trash']) {
     await expect(page.getByRole('menuitem', { name })).toBeVisible();

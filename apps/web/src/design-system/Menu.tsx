@@ -11,15 +11,27 @@ export interface MenuProps {
   children: ReactNode;
   align?: 'start' | 'center' | 'end';
   label?: string;
+  /**
+   * Runs when the menu has closed and is about to give focus back to its trigger;
+   * `preventDefault()` keeps focus where it is, for an action that moves it
+   * somewhere else (a rename field).
+   */
+  onCloseAutoFocus?(event: Event): void;
 }
 
 /** A dropdown menu (Radix): keyboard navigation, typeahead, focus return. */
-export function Menu({ trigger, children, align = 'start', label }: MenuProps) {
+export function Menu({ trigger, children, align = 'start', label, onCloseAutoFocus }: MenuProps) {
   return (
     <Radix.Root>
       <Radix.Trigger asChild>{trigger}</Radix.Trigger>
       <Radix.Portal>
-        <Radix.Content align={align} sideOffset={4} className={content} aria-label={label}>
+        <Radix.Content
+          align={align}
+          sideOffset={4}
+          className={content}
+          aria-label={label}
+          {...(onCloseAutoFocus && { onCloseAutoFocus })}
+        >
           {children}
         </Radix.Content>
       </Radix.Portal>
@@ -38,6 +50,8 @@ export interface ContextMenuProps {
   /** Leave the trigger's own right-click alone. */
   disabled?: boolean;
   onOpenChange?(open: boolean): void;
+  /** As `Menu`'s: runs as the menu closes, before focus goes back to where it was. */
+  onCloseAutoFocus?(event: Event): void;
 }
 
 /** A right-click menu (Radix): the same items as `Menu`. */
@@ -47,6 +61,7 @@ export function ContextMenu({
   label,
   disabled,
   onOpenChange,
+  onCloseAutoFocus,
 }: ContextMenuProps) {
   return (
     <RadixContext.Root onOpenChange={onOpenChange} modal={false}>
@@ -54,7 +69,12 @@ export function ContextMenu({
         {trigger}
       </RadixContext.Trigger>
       <RadixContext.Portal>
-        <RadixContext.Content className={content} aria-label={label} collisionPadding={8}>
+        <RadixContext.Content
+          className={content}
+          aria-label={label}
+          collisionPadding={8}
+          {...(onCloseAutoFocus && { onCloseAutoFocus })}
+        >
           <InContextMenu.Provider value={true}>{children}</InContextMenu.Provider>
         </RadixContext.Content>
       </RadixContext.Portal>

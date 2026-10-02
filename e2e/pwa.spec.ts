@@ -25,8 +25,12 @@ test('the service worker precaches the app, WASM included, and the app opens off
   expect(cached.some((p) => /\/assets\/worker-.*\.js$/.test(p))).toBe(true);
   expect(cached.some((p) => p.endsWith('/index.html'))).toBe(true);
   expect(cached.some((p) => p.endsWith('/manifest.webmanifest'))).toBe(true);
-  // Debug pages and legacy font formats stay out.
+  // Debug pages and legacy font formats stay out, and so do the tools' demo clips (P3-12:
+  // fetched when a tooltip opens); the templates' files and pictures are in (hashed assets).
   expect(cached.some((p) => /debug-worker|\.woff$/.test(p))).toBe(false);
+  expect(cached.some((p) => /\/demos\//.test(p))).toBe(false);
+  expect(cached.some((p) => /\/assets\/b2-storage-box-.*\.extrudo$/.test(p))).toBe(true);
+  expect(cached.some((p) => /\/assets\/storage-box-.*\.png$/.test(p))).toBe(true);
 
   const manifest = await page.evaluate(
     `fetch(document.querySelector('link[rel=manifest]').href).then((r) => r.json())`,
@@ -44,6 +48,15 @@ test('the service worker precaches the app, WASM included, and the app opens off
     'data-ready',
     'true',
   );
+
+  // A template that comes from a file works offline too.
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Start from the Storage box template' }).click();
+  await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+  await kernelReady(page);
+  await expect(
+    page.getByRole('button', { name: 'Project name: Storage box. Rename' }),
+  ).toBeVisible();
 });
 
 test("an update keeps the previous version's files for one more round, then drops them", async ({

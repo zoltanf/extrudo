@@ -9,7 +9,7 @@ from the same codebase.
 is ready to go public (planned around the v0.3 MVP, task P3-15). CI runs on
 every push and pull request.
 
-**Status (2026-10-01):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
+**Status (2026-10-02):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
@@ -24,8 +24,8 @@ fixtures) are done. Phase 3: P3-01 (fillet), P3-02 (chamfer), P3-03
 move/copy, mirror), P3-07 (patterns, mirrored features), P3-08 (press/pull,
 offset face, then split body, scale, draft: both halves), P3-09 (section
 analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus),
-P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-16 (notification history)
-and P3-17 (polish, both parts) are done; P3-12 and P3-15 are left.
+P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-16
+(notification history) and P3-17 (polish, both parts) are done; P3-15 is left.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -600,8 +600,38 @@ Draft dialog's angle arc starts along the pull. B6 (wall hook) is three joined
 boxes, Draft1 on the arm about the plate's front face, Fillet1 on the plate's
 top edges and the inside corner (`e2e/benchmark-b6.spec.ts`, fixture
 `b6-wall-hook.extrudo`, in the fuzzer's list).
+ADR-0052 (P3-12) added onboarding (`apps/web/src/onboarding/`, no kernel,
+facade or schema change). **The tutorial reads the design, never clicks**:
+`tutorial.ts` has five steps (sketch, a sketch with four lines, a dimension, an
+extrude, a fillet/chamfer/shell) as pure `done({doc, mode, activeTool})`
+functions, the current step is the first undone one at or after the "Skip step"
+floor, so undo steps it back and any route works; **a new step needs a
+`done` over document facts, not a flag**. The card (`TutorialCard`) is not
+modal, takes no focus, is an `aria-live` region and hangs under the toolbar
+tile `[data-tool="<id>"]` (every tile has `data-tool`; `useTargetBox` polls
+it), Esc closes it while focus is in it. It runs on an empty design: the home
+card, Help › Tutorial and the Ctrl+K command `tutorial` start it (a design
+with features gets a new one: `FileActions.startTutorial`, `requestTutorial`
+taken once by `useTutorial`); the `onboarding.tour` preference (`new` shows
+the home card, `started`, `dismissed`, `done`) is all it remembers.
+`ViewportHint` points at Create Sketch while `doc.features` is empty. **The
+home screen's gallery is `home/gallery.ts`** (the Wall bracket from code, B2,
+B4, B5 from `fixtures/benchmarks/*.extrudo` as hashed assets through
+`readArchive`, so migrations apply and they are precached; each opens as a copy
+under a new ID with its checked-in `home/templates/*.png` as thumbnail).
+**Tooltips take a `demo` slot** (`ToolDemo`, a muted looping `<video>` of
+`public/demos/<toolId>.webm`, rendered only while the tooltip is open, a still
+under reduced motion, removed on a load error); **demos are not precached**
+(`SKIPPED` in `precache-plugin.ts`, and `sw.js` leaves `/demos/` to the
+network); `DEMO_TOOLS` in `demos.ts` lists the twelve that have one and
+`demos.test.ts` checks it against the files (150 kB each). **`pnpm demos`**
+(`scripts/record-demos.mjs` → `e2e/record-assets.spec.ts`, which skips itself
+without `RECORD_ASSETS=1`) records the clips and the template pictures through
+the real app: a screenshot loop (`e2e/demo-recorder.ts`) piped into Playwright's
+own ffmpeg (`playwright install ffmpeg`: MJPEG in, VP8 out, `crop`/`scale`
+filters), a drawn cursor in the page.
 Next, one task at a time (not parallel tracks, since 2026-09-30):
-**P3-12** (onboarding), then P3-15 after the owner's decisions. Carried-over
+**P3-15** after the owner's decisions. Carried-over
 items are listed under those tasks in `docs/03-roadmap.md`; deeper ones are
 the P4-12 backlog.
 
@@ -633,7 +663,7 @@ must never depend on the GPL packages.
 | `docs/05-brand.md` | Logo, colour tokens (Slate dark default + light), type, icon brief, voice. Logo SVGs in `docs/brand/` |
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0053: split body, scale, draft, benchmark B6 (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6 (0006 is reserved) |
 
 ## Stack summary
 
@@ -1521,3 +1551,22 @@ them. Notes further down that name a machine apply to that machine only.
   plane picked on the plate's front face, five fillet edges picked in the home
   view. Radius 3 mm is refused on the 5 mm plate (its front and back top
   fillets meet), which the spec avoids. About 18 s alone.
+- **Onboarding e2e** (`e2e/tutorial.spec.ts`, `e2e/onboarding.spec.ts`, P3-12):
+  the home screen now has the button "Take the tour" (and "Dismiss the tour"; it
+  shows until the `onboarding.tour` preference isn't `new`, so a fresh context
+  always has it; it doesn't match "New design") and the list "Templates" with
+  the buttons "Start from the Wall bracket | Storage box | Box with a lid | PCB
+  enclosure template" (their description is the one line). The tutorial card is
+  the region "Tutorial" (`data-tutorial-step` `sketch`, `rectangle`, `dimension`,
+  `extrude`, `round`, `finished`; text "Step 2 of 5"; buttons "Skip step", "Close
+  tutorial", "Keep designing"), the ring round the control it points at is
+  `[data-tutorial-ring="<tool id>"]`, the empty-design hint `[data-viewport-hint]`.
+  Toolbar tiles carry `data-tool`. A tooltip is `getByRole('tooltip')` with a
+  `kbd` and, for the twelve tools with a clip, `video[data-tool-demo="<id>"]`
+  (`data-playing` false under reduced motion). **Radix keeps a tooltip open
+  when the pointer jumps away in one move** (its grace area): move with
+  `mouse.move(x, y, { steps: 5 })` before expecting it gone. The tour walks
+  the real flow in about 11 s: rectangle corners at (−20, −10) and (20, 10), a
+  dimension on the bottom side labelled at (0, −16), the profile picked at the
+  world origin in the home view, an edge picked at (0, −10, 15) for the fillet.
+  `e2e/record-assets.spec.ts` (RECORD_ASSETS=1 only) is the demo recorder.

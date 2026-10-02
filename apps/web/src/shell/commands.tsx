@@ -10,6 +10,7 @@ import {
   Box,
   Circle,
   FilePlus2,
+  GraduationCap,
   History,
   House,
   Import,
@@ -70,6 +71,8 @@ export interface CommandContext {
   file: FileActions;
   /** The notification history (P3-16): absent where there are no toasts to open it from. */
   notifications?: { open(): void };
+  /** The first-run tutorial (P3-12). */
+  tutorial?: { start(): void };
   /**
    * The last tool run through the commands (P3-11, see `isRepeatable`): "Repeat last" runs
    * it again. Absent until one has run, or when it isn't offered in this mode.
@@ -209,6 +212,13 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     plain('notificationHistory', 'Notification History', 'Panels', ctx.notifications.open, {
       icon: icon(Bell),
       keywords: 'Panels notifications messages toasts errors log earlier',
+    });
+  }
+
+  if (ctx.tutorial) {
+    plain('tutorial', 'Tutorial', 'Help', ctx.tutorial.start, {
+      icon: icon(GraduationCap),
+      keywords: 'Help tutorial tour guide learn first box getting started onboarding',
     });
   }
 

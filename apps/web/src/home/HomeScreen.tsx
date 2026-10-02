@@ -1,9 +1,20 @@
 import type { ProjectSummary } from '@extrudo/storage';
-import { ArrowLeft, HardDrive, Import, Plus, Search, ShieldAlert, Trash2 } from 'lucide-react';
+import {
+  ArrowLeft,
+  GraduationCap,
+  HardDrive,
+  Import,
+  Plus,
+  Search,
+  ShieldAlert,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   Button,
   ConfirmDialog,
+  IconButton,
   LogoMark,
   Select,
   TextInput,
@@ -13,11 +24,18 @@ import {
   useToasts,
   Wordmark,
 } from '../design-system';
+import { requestTutorial, tourOffered, writeTour } from '../onboarding/state';
 import type { Persistence, Platform } from '../platform';
-import { createProject, describeError, exportProject, importProject } from '../project/actions';
-import { TEMPLATES } from '../project/templates';
+import {
+  createProject,
+  createTutorialProject,
+  describeError,
+  exportProject,
+  importProject,
+} from '../project/actions';
 import { navigate, projectHref } from '../routes';
 import { ThemeMenu } from '../shell/ThemeMenu';
+import { TEMPLATES, type Template } from './gallery';
 import { usePersistence, useProjects } from './hooks';
 import { type CardActions, ProjectCard } from './ProjectCard';
 
@@ -44,10 +62,39 @@ export function HomeScreen({ platform }: { platform: Platform }) {
       .finally(() => void refresh());
 
   const open = (id: string) => navigate(projectHref(id));
-  const start = (make?: () => Parameters<typeof createProject>[1]) =>
-    createProject(platform, make?.())
+  const start = () =>
+    createProject(platform)
       .then(open)
       .catch((e: unknown) => push('error', `Couldn't create the design: ${describeError(e)}`));
+  // A template is a copy under a new ID, with its picture for the card (P3-12).
+  const [starting, setStarting] = useState<string>();
+  const startTemplate = (t: Template) => {
+    setStarting(t.id);
+    Promise.all([
+      t.create(),
+      fetch(t.thumbnail)
+        .then((r) => r.blob())
+        .catch(() => undefined),
+    ])
+      .then(([doc, thumbnail]) => createProject(platform, doc, thumbnail))
+      .then(open)
+      .catch((e: unknown) => push('error', `Couldn't start from the template: ${describeError(e)}`))
+      .finally(() => setStarting(undefined));
+  };
+  // The tutorial is offered once (P3-12): started, dismissed or finished, the card is gone.
+  const [tourCard, setTourCard] = useState(() => tourOffered(platform.preferences));
+  const startTour = () =>
+    createTutorialProject(platform)
+      .then((id) => {
+        requestTutorial(id);
+        writeTour(platform.preferences, 'started');
+        open(id);
+      })
+      .catch((e: unknown) => push('error', `Couldn't create the design: ${describeError(e)}`));
+  const dismissTour = () => {
+    writeTour(platform.preferences, 'dismissed');
+    setTourCard(false);
+  };
   const importFile = () =>
     importProject(platform)
       .then((summary) => summary && open(summary.id))
@@ -113,22 +160,77 @@ export function HomeScreen({ platform }: { platform: Platform }) {
                   {/* Muted grey falls below 4.5:1 on the accent tint (P3-13 axe audit). */}
                   <span className="text-sm text-ink/75">An empty design in millimetres.</span>
                 </button>
-                {TEMPLATES.map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => void start(t.create)}
-                    aria-label={`Start from the ${t.name} template`}
-                    className="flex min-h-32 flex-col items-start justify-end gap-1 rounded-card border border-line bg-raised p-4 text-left transition-colors duration-(--x-fast) hover:border-accent"
-                  >
-                    <span className="mb-auto text-xs font-semibold tracking-[0.08em] text-muted uppercase">
-                      Template
-                    </span>
-                    <span className="text-lg font-semibold">{t.name}</span>
-                    <span className="text-sm text-muted">{t.summary}</span>
-                  </button>
-                ))}
+                {tourCard && (
+                  <div className="relative flex min-h-32 rounded-card border border-line bg-raised transition-colors duration-(--x-fast) hover:border-accent">
+                    <button
+                      type="button"
+                      onClick={() => void startTour()}
+                      className="flex flex-1 flex-col items-start justify-end gap-1 rounded-card p-4 text-left"
+                    >
+                      <span className="mb-auto grid size-10 place-items-center rounded-control bg-accent-soft text-ink">
+                        <GraduationCap size={22} strokeWidth={1.75} />
+                      </span>
+                      <span className="text-lg font-semibold">Take the tour</span>
+                      <span className="text-sm text-muted">
+                        Build your first box in five short steps.
+                      </span>
+                    </button>
+                    <IconButton
+                      label="Dismiss the tour"
+                      className="absolute top-2 right-2 size-7"
+                      onClick={dismissTour}
+                    >
+                      <X size={14} />
+                    </IconButton>
+                  </div>
+                )}
               </div>
+            </section>
+          )}
+
+          {!showTrash && (
+            <section aria-labelledby="templates-heading" className="flex flex-col gap-3">
+              <h2
+                id="templates-heading"
+                className="text-xs font-semibold tracking-[0.08em] text-muted uppercase"
+              >
+                Start from a template
+              </h2>
+              <ul
+                aria-label="Templates"
+                className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4"
+              >
+                {TEMPLATES.map((t) => (
+                  <li key={t.id} className="flex">
+                    <button
+                      type="button"
+                      disabled={starting !== undefined}
+                      onClick={() => startTemplate(t)}
+                      aria-label={`Start from the ${t.name} template`}
+                      aria-describedby={`template-${t.id}`}
+                      className="group flex w-full flex-col rounded-card border border-line bg-raised text-left transition-colors duration-(--x-fast) hover:border-accent focus-visible:border-accent disabled:opacity-60"
+                    >
+                      <span
+                        className="block aspect-[4/3] overflow-hidden rounded-t-card"
+                        style={{ background: 'var(--x-viewport-glow)' }}
+                      >
+                        <img
+                          src={t.thumbnail}
+                          alt=""
+                          className="size-full object-contain transition-transform duration-(--x-normal) ease-ui group-hover:scale-[1.03]"
+                          draggable={false}
+                        />
+                      </span>
+                      <span className="flex flex-col gap-0.5 px-3 py-2">
+                        <span className="font-semibold">{t.name}</span>
+                        <span id={`template-${t.id}`} className="text-sm text-muted">
+                          {t.summary}
+                        </span>
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
 

@@ -9,6 +9,7 @@ import type { BodyMesh } from '@extrudo/kernel';
 import type { ProjectId } from '@extrudo/storage';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, LogoMark, useToasts } from '../design-system';
+import { requestTutorial } from '../onboarding/state';
 import type { Platform } from '../platform';
 import { HOME_HREF, navigate, projectHref } from '../routes';
 import type { FileActions } from '../shell/AppBar';
@@ -16,6 +17,7 @@ import { AppShell } from '../shell/AppShell';
 import { createViewportStore, type ViewportStore } from '../viewport/store';
 import {
   createProject,
+  createTutorialProject,
   describeError,
   exportProject,
   importProject,
@@ -118,6 +120,15 @@ function ProjectEditor({
       newDesign: () => {
         createProject(platform)
           .then((id) => navigate(projectHref(id)))
+          .catch((error: unknown) => push('error', describeError(error)));
+      },
+      // The tutorial builds a box from nothing: a design with something in it gets a new one.
+      startTutorial: () => {
+        createTutorialProject(platform)
+          .then((id) => {
+            requestTutorial(id);
+            navigate(projectHref(id));
+          })
           .catch((error: unknown) => push('error', describeError(error)));
       },
       exportFile: () => {

@@ -25,26 +25,6 @@ import { createdName, edgeName } from '@extrudo/kernel';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { APP_VERSION } from '../version';
 
-export interface Template {
-  id: string;
-  name: string;
-  summary: string;
-  create(): ExtrudoDocument;
-}
-
-/**
- * Templates on the home screen's "Start from template" row (UI spec §6). The
- * gallery grows with P3-12; for now there is the wall bracket.
- */
-export const TEMPLATES: readonly Template[] = [
-  {
-    id: 'wall-bracket',
-    name: 'Wall bracket',
-    summary: 'Parameters, a timeline and a body to explore.',
-    create: () => wallBracket(),
-  },
-];
-
 /**
  * A small wall bracket with parameters, a timeline and one body (P2-06):
  * Sketch1 is its side view, an L on the XZ plane (40 mm deep, 60 mm tall,

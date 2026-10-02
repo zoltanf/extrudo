@@ -67,6 +67,9 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const target = new URL(request.url);
   if (target.origin !== self.location.origin) return;
+  // The tools' demo clips (P3-12) aren't precached and are range-requested by
+  // <video>: the browser fetches them itself.
+  if (/\/demos\/[^/]+$/.test(target.pathname)) return;
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);

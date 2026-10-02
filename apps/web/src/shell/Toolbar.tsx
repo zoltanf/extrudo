@@ -3,6 +3,7 @@ import { type ButtonHTMLAttributes, forwardRef, useEffect, useState } from 'reac
 import { keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
 import { Menu, MenuItem, MenuLabel, ToolIcon, Tooltip } from '../design-system';
+import { ToolDemo } from '../onboarding/ToolDemo';
 import { isToolReady } from './commands';
 import { type TabId, TOOLS, type Tool, type ToolId, visibleTabs } from './tools';
 
@@ -128,8 +129,16 @@ export function Toolbar({ mode = 'model', activeTool, onRun, ready }: ToolbarPro
           <div className="flex items-stretch">
             <div className="mx-1.5 my-1.5 w-px bg-line" aria-hidden="true" />
             <fieldset aria-label="Finish" className="m-0 flex flex-col items-center border-0 p-0">
-              <Tooltip label={TOOLS.finishSketch.label} hint={TOOLS.finishSketch.hint}>
-                <ToolTile className="text-ink" onClick={() => onRun('finishSketch')}>
+              <Tooltip
+                label={TOOLS.finishSketch.label}
+                hint={TOOLS.finishSketch.hint}
+                demo={<ToolDemo tool="finishSketch" />}
+              >
+                <ToolTile
+                  data-tool="finishSketch"
+                  className="text-ink"
+                  onClick={() => onRun('finishSketch')}
+                >
                   <ToolIcon
                     name={TOOLS.finishSketch.icon}
                     category="sketch"
@@ -176,12 +185,14 @@ function ToolButton({
     label: tool.label,
     shortcut,
     hint: unavailable ? `${tool.hint} Arrives with ${tool.comesWith}.` : tool.hint,
+    demo: <ToolDemo tool={tool.id} />,
   };
   if (compact) {
     return (
       <Tooltip {...tooltip}>
         <button
           type="button"
+          data-tool={tool.id}
           aria-label={tool.label}
           aria-disabled={unavailable || undefined}
           aria-pressed={pressed || undefined}
@@ -196,6 +207,7 @@ function ToolButton({
   return (
     <Tooltip {...tooltip}>
       <ToolTile
+        data-tool={tool.id}
         aria-disabled={unavailable || undefined}
         aria-pressed={pressed || undefined}
         onClick={unavailable ? undefined : onRun}

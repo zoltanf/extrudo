@@ -14,12 +14,18 @@ export interface TooltipProps {
   label: ReactNode;
   shortcut?: string;
   hint?: ReactNode;
+  /**
+   * A short looping demo below the hint (FR-UX-04). It is only rendered while
+   * the tooltip is open, so whatever it loads (a video) loads on first use.
+   */
+  demo?: ReactNode;
   side?: 'top' | 'right' | 'bottom' | 'left';
   children: ReactElement;
 }
 
 /**
- * Tool tooltip (UI spec §7): name, shortcut, one sentence. Other props (and
+ * Tool tooltip (UI spec §7): name, shortcut, one sentence, and an optional
+ * looping demo (P3-12). Other props (and
  * the ref) go to the child, so an outer Radix trigger (a context menu) can
  * wrap the tooltip.
  */
@@ -27,6 +33,7 @@ export function Tooltip({
   label,
   shortcut,
   hint,
+  demo,
   side = 'bottom',
   children,
   ...rest
@@ -48,6 +55,7 @@ export function Tooltip({
             {shortcut && <kbd className="font-mono text-xs text-muted">{shortcut}</kbd>}
           </div>
           {hint && <div className="mt-0.5 text-muted">{hint}</div>}
+          {demo}
         </Radix.Content>
       </Radix.Portal>
     </Radix.Root>

@@ -159,4 +159,16 @@ describe('buildCommands', () => {
     }
     expect(open).toHaveBeenCalledTimes(2);
   });
+
+  it('offers the Tutorial in Ctrl+K in both modes, found by its keywords (P3-12)', () => {
+    const start = vi.fn();
+    for (const mode of ['model', 'sketch'] as const) {
+      expect(byId(context(mode)).has('tutorial')).toBe(false);
+      const command = byId(context(mode, { tutorial: { start } })).get('tutorial');
+      expect(command).toMatchObject({ label: 'Tutorial', group: 'Help', keys: [] });
+      expect(command?.keywords).toContain('tour');
+      command?.run();
+    }
+    expect(start).toHaveBeenCalledTimes(2);
+  });
 });

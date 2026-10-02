@@ -1,6 +1,6 @@
 import type { ProjectSummary } from '@extrudo/storage';
 import { Copy, Ellipsis, FolderOpen, Pencil, RotateCcw, Trash2, Upload } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   Button,
   ContextMenu,
@@ -46,6 +46,16 @@ export function ProjectCard({
   const trashed = !!project.trashed;
   const href = projectHref(project.id);
 
+  // Rename starts once the menu has closed: the menu would otherwise hand focus back to its
+  // trigger after the field took it, and the field's blur ends the rename.
+  const renameRequested = useRef(false);
+  const afterMenu = (event: Event) => {
+    if (!renameRequested.current) return;
+    renameRequested.current = false;
+    event.preventDefault();
+    setRenaming(true);
+  };
+
   const finishRename = (commit: boolean) => {
     setRenaming(false);
     if (commit && draft.trim() && draft.trim() !== project.name) actions.rename(project, draft);
@@ -66,8 +76,7 @@ export function ProjectCard({
         icon={<Pencil size={14} />}
         onSelect={() => {
           setDraft(project.name);
-          // After the menu has closed and returned focus.
-          setTimeout(() => setRenaming(true));
+          renameRequested.current = true;
         }}
       >
         Rename
@@ -157,6 +166,7 @@ export function ProjectCard({
           <Menu
             label={`${project.name} actions`}
             align="end"
+            onCloseAutoFocus={afterMenu}
             trigger={
               <IconButton
                 label={`More actions for ${project.name}`}
@@ -174,7 +184,12 @@ export function ProjectCard({
   );
   // The same menu on a right-click anywhere on the card (P3-11); a trashed one has buttons.
   return (
-    <ContextMenu label={`${project.name} actions`} disabled={trashed || renaming} trigger={card}>
+    <ContextMenu
+      label={`${project.name} actions`}
+      disabled={trashed || renaming}
+      trigger={card}
+      onCloseAutoFocus={afterMenu}
+    >
       {menuItems}
     </ContextMenu>
   );

@@ -55,7 +55,7 @@ brief, voice) is in **`05-brand.md`**. In short:
 - **App bar:** file menu (New, Open, Save version, Export, Import, Project
   settings), undo/redo, command search (opens the Ctrl+K palette), project
   name (click to rename, dropdown for version history), save status,
-  settings, help (menu: Search commands, Toolbox; the tutorial later), theme
+  settings, help (menu: Search commands, Toolbox, Tutorial, P3-12), theme
   toggle.
 - **Versions** (P2-14, ADR-0036): Ctrl+S, File › Save version… or
   Version history…, the clock icon beside the project name, or the
@@ -578,18 +578,41 @@ Analysis (P3-09); Q and J wait for their tools.
 
 - A grid of project cards with thumbnail, name, modified time, and a hover
   menu (rename, duplicate, export `.extrudo`, delete).
-- A big playful "New design" card; a "Start from template" row; "Import"
-  (`.extrudo`, STEP, STL, SVG).
+- A big playful "New design" card and, until it is started, dismissed or
+  finished, a "Take the tour" card beside it (P3-12, §7); then "Start from a
+  template": a row of four cards with a picture, a name and one line each (Wall
+  bracket, Storage box, Box with a lid, PCB enclosure), the last three from the
+  benchmark fixtures B2, B4 and B5. A template opens as a new design under its
+  own name (a copy, never the template's file) with its picture on the card;
+  "Import" (`.extrudo`, STEP, STL, SVG).
 - Search and sort. A trash view with restore.
 - The storage indicator warns if persistent storage is not granted.
 
-## 7. Empty states and onboarding
+## 7. Empty states and onboarding (P3-12, ADR-0052)
 
-- New project viewport hint: "Start with a sketch: press **Create Sketch**
-  and pick a plane", with an arrow toward the button.
-- First run: an optional 5-step guided tour building B2 (box).
-- Every tool tooltip: name, shortcut, one sentence, and an optional looping
-  2-second demo (WebM, lazy-loaded).
+- **New design hint:** while a design has no features, "Start with a sketch:
+  press **Create Sketch** and pick a plane" sits in the view with a dashed
+  arrow up at the Create Sketch tile. It takes no clicks, steps aside while
+  Create Sketch waits for a plane, a dialog is open or the tutorial runs, and
+  is gone with the first feature (undo brings it back).
+- **First run:** an optional tutorial of five steps that build a box: sketch
+  on the XY plane, a rectangle, a dimension, extrude, fillet (or shell). It is
+  offered by the home screen's "Take the tour" card (once), and started later
+  from Help › Tutorial or Ctrl+K "Tutorial". It runs on an empty design (a design
+  with features gets a new one). A small card hangs under the toolbar control
+  to use, which has an accent ring: "Step 2 of 5", a title, one or two
+  sentences, Skip step and a close button; Esc closes it while focus is in it.
+  It is not modal and takes no focus. **Steps are read from the design**, not
+  from clicks: a sketch exists, a sketch has four lines, a dimension, an
+  extrude, a fillet, chamfer or shell; so it follows any route, undo steps it
+  back, and at the end the card says "You made a box".
+- **Every tool tooltip** (toolbar tiles and the constraint icons): name,
+  shortcut, one sentence and, for the most used tools, a looping demo of 3 to 4
+  seconds (WebM, 480 × 300, 20 to 60 kB) that loads only when the tooltip
+  opens. Create Sketch, Line, Rectangle, Circle, Dimension, Extrude, Revolve,
+  Fillet, Shell, Hole, Press Pull and Rectangular Pattern have one. With
+  reduced motion the clip doesn't play (its first frame is a still); offline,
+  or if the file is missing, the tooltip has its words alone.
 
 ## 8. Error messages
 

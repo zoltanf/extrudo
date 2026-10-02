@@ -3,6 +3,7 @@ import {
   CircleHelp,
   FileDown,
   FilePlus2,
+  GraduationCap,
   History,
   House,
   Import,
@@ -50,6 +51,8 @@ export interface FileActions {
   saveVersion?(): void;
   /** Opens the Versions dialog (P2-14). */
   versionHistory?(): void;
+  /** Opens a new design with the tutorial running (P3-12), for a design that isn't empty. */
+  startTutorial?(): void;
 }
 
 export interface AppBarProps {
@@ -60,6 +63,8 @@ export interface AppBarProps {
   onThemeChange(theme: ThemeChoice): void;
   /** Opens command search: the Ctrl+K palette, or the S toolbox at the pointer (P1-14). */
   onSearch(kind: 'palette' | 'toolbox'): void;
+  /** Starts the tutorial (P3-12). */
+  onTutorial(): void;
 }
 
 /** A command's first key as it reads here ("Ctrl+K"). */
@@ -72,7 +77,15 @@ const keyLabel = (id: string) => {
  * App bar (UI spec §2): file menu, undo/redo, command search, project name
  * and save state, settings, help, theme.
  */
-export function AppBar({ store, autosave, file, theme, onThemeChange, onSearch }: AppBarProps) {
+export function AppBar({
+  store,
+  autosave,
+  file,
+  theme,
+  onThemeChange,
+  onSearch,
+  onTutorial,
+}: AppBarProps) {
   const name = useStore(store, (s) => s.doc.name);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
 
@@ -206,9 +219,9 @@ export function AppBar({ store, autosave, file, theme, onThemeChange, onSearch }
           Toolbox…
         </MenuItem>
         <MenuSeparator />
-        {/* The tutorial and tool demos arrive with P3-12 and FR-UX-04. */}
-        <MenuItem disabled icon={<CircleHelp size={14} />}>
-          Getting started
+        {/* Five steps that build a box (P3-12). */}
+        <MenuItem icon={<GraduationCap size={14} />} onSelect={onTutorial}>
+          Tutorial
         </MenuItem>
       </Menu>
       <ThemeMenu theme={theme} onThemeChange={onThemeChange} />

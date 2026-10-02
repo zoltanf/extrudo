@@ -612,8 +612,16 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   plain list. Repeat last repeats the last tool started through commands.
   Folders, origin rows, parameter rows and design cards got context
   menus.
-- [ ] **P3-12 Onboarding:** first-run tutorial, template gallery (B2, B4, B5 as
-  starters), tool tooltips with animated demos. FR-UX-04, -05.
+- [x] **P3-12 Onboarding:** first-run tutorial, template gallery (B2, B4, B5 as
+  starters), tool tooltips with animated demos. FR-UX-04, -05. Done 2026-10-02
+  (ADR-0052): the home screen has a "Take the tour" card (once) and a row of
+  four templates (Wall bracket and B2, B4, B5 from the benchmark fixtures, each
+  with a picture, a copy under a new ID); a five-step tutorial (sketch,
+  rectangle, dimension, extrude, fillet) whose steps are read from the design
+  (Help, Ctrl+K "Tutorial"); a hint over an empty design; tooltips carry a
+  looping WebM demo for twelve tools, fetched when the tooltip opens and not
+  precached, recorded from the app by `pnpm demos`. Open: demos for the tools
+  that sit only in menus, a menu-item tooltip, i18n of the new strings.
 - [x] **P3-13 Hardening pass:** robustness fuzzing (random parameter changes on
   fixtures must not crash), perf profiling against NFR-01, accessibility audit.
   Done 2026-09-30 (ADR-0050): every item below, with the numbers in the ADR.

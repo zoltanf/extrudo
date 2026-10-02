@@ -2,6 +2,23 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+- 2026-10-02 · **P3-12** Onboarding (ADR-0052): the home screen offers a "Take
+  the tour" card (once) and a row of four templates with pictures (Wall bracket,
+  Storage box, Box with a lid, PCB enclosure: B2, B4 and B5 come from the
+  benchmark fixtures through `readArchive`, are precached and open as copies
+  under a new ID); a five-step tutorial that builds a box (sketch, rectangle,
+  dimension, extrude, fillet) and reads its progress from the design, so undo
+  steps it back (Help, Ctrl+K "Tutorial"; a card with a ring round the toolbar
+  control, not modal, Esc closes it, `aria-live`); a hint over an empty design
+  that points at Create Sketch; toolbar tooltips carry a looping WebM demo for
+  twelve tools (Create Sketch, Line, Rectangle, Circle, Dimension, Extrude,
+  Revolve, Fillet, Shell, Hole, Press Pull, Rectangular Pattern: 480 × 300, 3 to
+  4 s, 19 to 60 kB each), fetched when the tooltip opens, not precached, a still
+  under reduced motion, recorded from the app by `pnpm demos` with Playwright's
+  own ffmpeg. No kernel, facade or schema change; the axe audit covers the new
+  screens and `KNOWN` stays empty. Startup (50 Mbit): first visit home 0.74 to 0.86 s, kernel
+  1.16 to 1.33 s; repeat visit home 0.19 to 0.22 s; precache 21.51 to 21.69 MB
+  raw (5.30 to 5.47 MB brotli), main chunk +12 kB, demos 0.44 MB outside it.
 - 2026-10-01 · **P3-17** (part 2) Polish, done: Place on Bed takes one face
   per body and a Spin angle about the vertical; Overhang Analysis can take a
   picked flat face as "down"; Offset follows a projected face outline (B2

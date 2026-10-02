@@ -14,15 +14,25 @@ import {
 import { type Platform, safeFileName } from '../platform';
 import { APP_VERSION } from '../version';
 
-/** Saves a new project (blank, or the given document) and returns its ID. */
+/**
+ * Saves a new project (blank, or the given document, with a picture for its card
+ * if there is one) and returns its ID.
+ */
 export async function createProject(
   platform: Platform,
   doc: ExtrudoDocument = createDocument({ appVersion: APP_VERSION }),
+  thumbnail?: Blob,
 ): Promise<ProjectId> {
   await platform.projects.save(doc);
+  if (thumbnail) await platform.projects.setThumbnail(doc.id, thumbnail).catch(() => {});
   // Ask for persistent storage once there is something worth keeping (FR-PRJ-05).
   void platform.storage.requestPersistence();
   return doc.id;
+}
+
+/** A new empty design for the tutorial (P3-12), named for what it builds. */
+export function createTutorialProject(platform: Platform): Promise<ProjectId> {
+  return createProject(platform, createDocument({ name: 'My first box', appVersion: APP_VERSION }));
 }
 
 /**

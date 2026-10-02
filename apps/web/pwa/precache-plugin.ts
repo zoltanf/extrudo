@@ -3,8 +3,12 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type { Plugin } from 'vite';
 
-/** Files the app never needs offline: the debug pages and the legacy font formats. */
-const SKIPPED = [/(^|\/)debug-worker-/, /Debug-[^/]*\.js$/, /\.woff$/, /\.map$/];
+/**
+ * Files the app never needs offline: the debug pages, the legacy font formats and
+ * the tools' demo clips (`demos/`, P3-12: a nicety fetched when a tooltip opens,
+ * which the service worker leaves to the network).
+ */
+const SKIPPED = [/(^|\/)debug-worker-/, /Debug-[^/]*\.js$/, /\.woff$/, /\.map$/, /^demos\//];
 
 /**
  * Writes `sw.js` into the build output (ADR-0037): the service worker from

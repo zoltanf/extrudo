@@ -2,11 +2,11 @@ import { DocumentSchema, FeatureRegistry, readSketch, sketchFeature } from '@ext
 import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { describe, expect, it } from 'vitest';
-import { circles, outline, TEMPLATES, wallBracket } from './templates';
+import { circles, outline, wallBracket } from './templates';
 
-describe('templates', () => {
-  it.each(TEMPLATES.map((t) => [t.id, t] as const))('%s is a valid document', (_, template) => {
-    const doc = template.create();
+describe('wall bracket template', () => {
+  it('makes the wall bracket a valid document', () => {
+    const doc = wallBracket();
     expect(DocumentSchema.safeParse(doc).error?.issues ?? []).toEqual([]);
     const sketches = new FeatureRegistry().register(sketchFeature);
     const issues = sketches.check({
@@ -17,8 +17,8 @@ describe('templates', () => {
   });
 
   it('draws the wall bracket’s profile on XZ and its holes on XY', () => {
-    const doc = TEMPLATES[0]?.create();
-    const [profile, holes] = (doc?.features ?? []).map(readSketch).filter((s) => s !== undefined);
+    const doc = wallBracket();
+    const [profile, holes] = doc.features.map(readSketch).filter((s) => s !== undefined);
     expect(profile?.plane).toEqual({ kind: 'plane', id: 'origin:xz' });
     expect(holes?.plane).toEqual({ kind: 'plane', id: 'origin:xy' });
   });

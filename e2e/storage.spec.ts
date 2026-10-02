@@ -258,6 +258,10 @@ for (const theme of ['dark', 'light'] as const) {
     await page.goto('./');
     await expect(page.getByText('No designs yet.', { exact: false })).toBeVisible();
     await page.evaluate('document.fonts.ready.then(() => true)');
+    // The template cards' pictures (P3-12) are in the shot.
+    await page.evaluate(
+      'Promise.all([...document.images].map((i) => i.decode().catch(() => undefined))).then(() => true)',
+    );
     await expect(page).toHaveScreenshot(`home-${theme}.png`, {
       animations: 'disabled',
       caret: 'hide',

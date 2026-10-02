@@ -47,6 +47,9 @@ import {
 } from '../measure/inspection';
 import { MeasureOverlay } from '../measure/MeasureOverlay';
 import { MeasurePanel } from '../measure/MeasurePanel';
+import { TutorialCard } from '../onboarding/TutorialCard';
+import { useTutorial } from '../onboarding/useTutorial';
+import { ViewportHint } from '../onboarding/ViewportHint';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import { OverhangPanel } from '../print/OverhangPanel';
@@ -219,6 +222,13 @@ export function AppShell({
   const sectioning = mode === 'model' && activeTool === SECTION_TOOL;
   const printing = mode === 'model' && activeTool === PRINT_INFO_TOOL;
   const overhanging = mode === 'model' && activeTool === OVERHANG_TOOL;
+  // The first-run tutorial (P3-12): it reads the design, so it needs no hooks into the tools.
+  const tutorial = useTutorial({ store, session, preferences: platform.preferences });
+  // A design with nothing in it starts the tour in place; any other opens a new design for it.
+  const startTutorial = () => {
+    if (doc.features.length === 0 || !file.startTutorial) tutorial.start();
+    else file.startTutorial();
+  };
   const showConstraints = useStore(viewport, (s) => s.sketchConstraints);
   const showDimensions = useStore(viewport, (s) => s.sketchDimensions);
   const showProfiles = useStore(viewport, (s) => s.sketchProfiles);
@@ -289,6 +299,7 @@ export function AppShell({
 
   // `run` changes every render; commands reach the latest one through a ref.
   const runRef = useRef<(tool: ToolId) => void>(() => {});
+  const startTutorialRef = useRef<() => void>(() => {});
   // Feature dialogs (P2-05): one controller; while a dialog is open, picks go to its fields.
   const { controller: dialog, open: dialogOpen } = useFeatureDialogs({
     store,
@@ -561,6 +572,7 @@ export function AppShell({
         ...(toasts?.history && {
           notifications: { open: () => toasts.history?.getState().setOpen(true) },
         }),
+        tutorial: { start: () => startTutorialRef.current() },
       }),
     [
       mode,
@@ -782,6 +794,7 @@ export function AppShell({
     }
   };
   runRef.current = run;
+  startTutorialRef.current = startTutorial;
   // The browser's own right-click menu stays out of the app while a project is open.
   useEffect(() => {
     window.addEventListener('contextmenu', keepNativeMenuOut);
@@ -1108,6 +1121,17 @@ export function AppShell({
         theme={choice}
         onThemeChange={setChoice}
         onSearch={openSearch}
+        onTutorial={startTutorial}
+      />
+      <TutorialCard tutorial={tutorial} />
+      <ViewportHint
+        show={
+          doc.features.length === 0 &&
+          mode === 'model' &&
+          activeTool === undefined &&
+          !tutorial.open &&
+          !dialogOpen
+        }
       />
       <Toolbar
         mode={mode}
