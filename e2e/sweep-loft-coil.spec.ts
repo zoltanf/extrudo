@@ -52,7 +52,7 @@ test('sweeps a circle along an edge of a box, then undoes it', async ({ page }) 
   const dialog = page.getByRole('region', { name: 'Sweep dialog' });
   await expect(dialog).toBeVisible();
   // The profile first (the pick field), then the path: the box's front right vertical edge.
-  await clickWhere(page, at, [40, 0, 0], /^profile:/);
+  await clickWhere(page, at, [40, 5, 0], /^profile:/);
   await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText(
     /^Profile · Sketch1$/,
   );
@@ -72,7 +72,8 @@ test('sweeps a circle along an edge of a box, then undoes it', async ({ page }) 
   const edit = page.getByRole('region', { name: 'Edit Sweep1 dialog' });
   await edit.getByRole('textbox', { name: 'End scale', exact: true }).fill('0.5');
   await ok(page, edit);
-  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:20,20,20 Body2:3:20,20,20');
+  // It shrinks about the path (the edge at x = 10): the top circle, radius 5, is drawn in to x 20…30.
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:20,20,20 Body2:3:30,20,20');
   await expect(chip(page, 'Sweep1')).toHaveAccessibleName('Sweep1');
 
   await page.keyboard.press('Control+z');
@@ -86,16 +87,20 @@ test('lofts from a circle to the top face of a box', async ({ page }) => {
   await pickTool(page, 'Loft');
   const dialog = page.getByRole('region', { name: 'Loft dialog' });
   await expect(dialog).toBeVisible();
-  await clickWhere(page, at, [40, 0, 0], /^profile:/);
+  await clickWhere(page, at, [40, 5, 0], /^profile:/);
   await clickWhere(page, at, [0, 0, 20], /^face:/);
   await expect(dialog.getByRole('button', { name: 'Sections', exact: true })).toHaveText(
     /2 sections/,
   );
+  // A body's face proposes a join; a new body here.
+  const operation = dialog.getByRole('combobox', { name: 'Operation' });
+  await expect(operation).toHaveValue('join');
+  await operation.selectOption('new-body');
   await expect(viewport).toHaveAttribute('data-preview', 'new', { timeout: 15_000 });
   await ok(page, dialog);
   await expect(chip(page, 'Loft1')).toHaveAccessibleName('Loft1');
-  // Square to circle: four sides and two caps, from x = −10 to 50.
-  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:20,20,20 Body2:6:60,20,20');
+  // Circle to square, smooth: five sides (OCCT lines the circle up in pieces) and two caps.
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:20,20,20 Body2:7:60,20,20');
 });
 
 test('makes a coil with its defaults, then edits its type and section', async ({ page }) => {
@@ -126,7 +131,7 @@ test('makes a coil with its defaults, then edits its type and section', async ({
   await chip(page, 'Coil1').dblclick();
   const again = page.getByRole('region', { name: 'Edit Coil1 dialog' });
   await again.getByRole('textbox', { name: 'Pitch', exact: true }).fill('1 mm');
-  await expect(again.getByRole('region', { name: 'Feature status' })).toContainText(
+  await expect(again.getByRole('status', { name: 'Feature status' })).toContainText(
     'as tall as the pitch',
     { timeout: 15_000 },
   );
