@@ -34,10 +34,10 @@ inspired by that workflow and shares no code or artwork with any such product.
 
 ## Try it
 
-**<https://extrudo.org>**: nothing to install; add it to your home screen or
-desktop from the browser's menu if you want it as an app. The site is being
-set up, so until the first deployment is up (it is also served at
-<https://extrudo.pages.dev>), build it from source (below).
+**<https://app.extrudo.org>**: nothing to install; add it to your home screen or
+desktop from the browser's menu if you want it as an app. The newest features
+arrive first at **<https://edge.extrudo.org>**, the latest build of `main` (it can
+break). <https://extrudo.org> has an introduction and a short video.
 
 ## What it does
 

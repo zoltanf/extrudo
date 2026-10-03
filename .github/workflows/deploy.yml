@@ -1,22 +1,36 @@
 name: Deploy
 
-# Publishes the web app to Cloudflare Pages (ADR-0054, docs/deploy.md).
+# Publishes Extrudo to Cloudflare Pages (ADR-0054, ADR-0057, docs/deploy.md):
 #
-# - Runs only after the CI workflow succeeded for a push to main (`workflow_run`),
-#   so a commit that fails its checks or end-to-end tests is never deployed.
-#   "Run workflow" on main redeploys the current head by hand.
-# - Does nothing, and says so, until the owner has added the repository secrets
-#   CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID (docs/deploy.md). A fork or an
-#   unconfigured repository therefore skips cleanly instead of failing.
-# - The public address is the optional repository variable SITE_URL; without it
-#   the build uses https://extrudo.org (apps/web/pwa/site.ts).
+# - The landing page (apps/site) → Pages project "extrudo-site", production:
+#   https://extrudo.org. After every green CI run on main.
+# - The latest build of the app (apps/web) → Pages project "extrudo", branch
+#   "edge": https://edge.extrudo.org. After every green CI run on main.
+# - The stable app → Pages project "extrudo", production branch "main":
+#   https://app.extrudo.org. Only for a release tag (v*), and only if CI passed
+#   for that commit on main; or by hand ("Run workflow", target "stable"), which
+#   promotes the head of main.
+#
+# A commit that fails its checks or end-to-end tests is never deployed. Nothing
+# runs, and it says so, until the owner has added the repository secrets
+# CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID, so a fork skips cleanly.
+# Addresses come from the optional repository variables SITE_URL, APP_URL and
+# EDGE_URL (defaults: extrudo.org, app.extrudo.org, edge.extrudo.org).
 
 on:
   workflow_run:
     workflows: [CI]
     types: [completed]
     branches: [main]
+  push:
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      target:
+        description: What to deploy from the head of main
+        type: choice
+        options: [edge-and-site, stable]
+        default: edge-and-site
 
 # One deployment at a time; a newer one waits for the running one.
 concurrency:
@@ -25,62 +39,145 @@ concurrency:
 
 permissions:
   contents: read
+  actions: read
+
+env:
+  CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+  CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  SITE_URL: ${{ vars.SITE_URL || 'https://extrudo.org' }}
+  APP_URL: ${{ vars.APP_URL || 'https://app.extrudo.org' }}
+  EDGE_URL: ${{ vars.EDGE_URL || 'https://edge.extrudo.org' }}
+  # A pinned wrangler through npx, outside the workspace: wrangler-action sees
+  # pnpm and runs `pnpm add wrangler` in the workspace root, which pnpm refuses.
+  WRANGLER: npx --yes wrangler@4.146.0
 
 jobs:
-  deploy:
-    name: Build and deploy to Cloudflare Pages
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
-      (github.event_name == 'workflow_run' &&
-       github.event.workflow_run.conclusion == 'success' &&
-       github.event.workflow_run.event == 'push')
+  plan:
+    name: Decide what to deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    outputs:
+      enabled: ${{ steps.plan.outputs.enabled }}
+      sha: ${{ steps.plan.outputs.sha }}
+      edge: ${{ steps.plan.outputs.edge }}
+      stable: ${{ steps.plan.outputs.stable }}
     env:
       GH_TOKEN: ${{ github.token }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      SITE_URL: ${{ vars.SITE_URL }}
-      # The commit CI just passed (workflow_run), or the head of main (manual run).
-      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      EVENT: ${{ github.event_name }}
+      RUN_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+      RUN_EVENT: ${{ github.event.workflow_run.event }}
+      RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+      TARGET: ${{ inputs.target }}
+      REF: ${{ github.ref }}
     steps:
-      - name: Check that deployment is set up
-        id: gate
+      - id: plan
         run: |
+          edge=false; stable=false; sha=""
+          case "$EVENT" in
+            workflow_run)
+              if [ "$RUN_CONCLUSION" = success ] && [ "$RUN_EVENT" = push ]; then
+                edge=true; sha="$RUN_SHA"
+              fi ;;
+            push)
+              # A release tag: deploy it as stable only if CI passed for this commit on main.
+              sha="$GITHUB_SHA"
+              ok=$(gh run list -R "$GITHUB_REPOSITORY" -w CI -b main -c "$sha" -s success --json databaseId --jq length)
+              if [ "$ok" -gt 0 ]; then
+                stable=true
+              else
+                echo "::error title=Not deployed::CI has not passed for $sha on main. Tag a commit of main after its CI run succeeded, or re-run this workflow once it has."
+                exit 1
+              fi ;;
+            workflow_dispatch)
+              if [ "$REF" != refs/heads/main ]; then
+                echo "::error::Run this workflow on main."; exit 1
+              fi
+              sha="$GITHUB_SHA"
+              if [ "$TARGET" = stable ]; then stable=true; else edge=true; fi ;;
+          esac
           if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            enabled=true
           else
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            enabled=false
             echo "::notice title=Deploy skipped::CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are not set as repository secrets, so nothing was deployed. See docs/deploy.md."
           fi
+          { echo "enabled=$enabled"; echo "sha=$sha"; echo "edge=$edge"; echo "stable=$stable"; } >> "$GITHUB_OUTPUT"
+          echo "sha=$sha edge=$edge stable=$stable enabled=$enabled"
+
+  app:
+    name: App (${{ matrix.channel }})
+    needs: plan
+    if: needs.plan.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        channel: [edge, stable]
+    env:
+      SHA: ${{ needs.plan.outputs.sha }}
+      WANTED: ${{ matrix.channel == 'edge' && needs.plan.outputs.edge || needs.plan.outputs.stable }}
+      # Pages: the production branch "main" is app.extrudo.org, the branch "edge" is
+      # edge.<project>.pages.dev, which edge.extrudo.org points at.
+      PAGES_BRANCH: ${{ matrix.channel == 'edge' && 'edge' || 'main' }}
+    steps:
+      - name: Skip what this run doesn't deploy
+        id: gate
+        run: echo "run=$WANTED" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v5
-        if: steps.gate.outputs.enabled == 'true'
+        if: steps.gate.outputs.run == 'true'
         with:
           ref: ${{ env.SHA }}
 
       - uses: pnpm/action-setup@v6 # version comes from "packageManager" in package.json
-        if: steps.gate.outputs.enabled == 'true'
+        if: steps.gate.outputs.run == 'true'
 
       - uses: actions/setup-node@v5
-        if: steps.gate.outputs.enabled == 'true'
+        if: steps.gate.outputs.run == 'true'
         with:
           node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-        if: steps.gate.outputs.enabled == 'true'
+        if: steps.gate.outputs.run == 'true'
 
+      # Both channels name the stable app as the canonical address (the edge build is
+      # a preview of it); the build reads SITE_URL (apps/web/pwa/site.ts).
       - name: Build (downloads the published WASM first)
-        if: steps.gate.outputs.enabled == 'true'
-        run: pnpm build
+        if: steps.gate.outputs.run == 'true'
+        run: SITE_URL="$APP_URL" pnpm build
 
-      # A pinned wrangler through npx, outside the workspace: wrangler-action
-      # sees pnpm and runs `pnpm add wrangler` in the workspace root, which pnpm
-      # refuses (ERR_PNPM_ADDING_TO_ROOT). Wrangler reads CLOUDFLARE_API_TOKEN
-      # and CLOUDFLARE_ACCOUNT_ID from the job's env.
-      - name: Deploy apps/web/dist to the Cloudflare Pages project "extrudo"
-        if: steps.gate.outputs.enabled == 'true'
+      - name: Deploy apps/web/dist to the Pages project "extrudo" (${{ env.PAGES_BRANCH }})
+        if: steps.gate.outputs.run == 'true'
         run: >-
-          npx --yes wrangler@4.146.0 pages deploy apps/web/dist
-          --project-name=extrudo --branch=main --commit-hash="$SHA"
+          $WRANGLER pages deploy apps/web/dist
+          --project-name=extrudo --branch="$PAGES_BRANCH" --commit-hash="$SHA"
+
+  site:
+    name: Landing page
+    needs: plan
+    if: needs.plan.outputs.enabled == 'true' && needs.plan.outputs.edge == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SHA: ${{ needs.plan.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SHA }}
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @extrudo/site build
+      # The project is created on the first run (direct upload, production branch main).
+      - name: Make sure the Pages project "extrudo-site" exists
+        run: |
+          if ! $WRANGLER pages project list | grep -q 'extrudo-site'; then
+            $WRANGLER pages project create extrudo-site --production-branch=main
+          fi
+      - name: Deploy apps/site/dist to the Pages project "extrudo-site"
+        run: >-
+          $WRANGLER pages deploy apps/site/dist
+          --project-name=extrudo-site --branch=main --commit-hash="$SHA"

@@ -6,7 +6,7 @@ describe('site URL', () => {
   it('defaults to the project domain', () => {
     expect(siteUrl(undefined)).toBe(DEFAULT_SITE_URL);
     expect(siteUrl('')).toBe(DEFAULT_SITE_URL);
-    expect(DEFAULT_SITE_URL).toBe('https://extrudo.org');
+    expect(DEFAULT_SITE_URL).toBe('https://app.extrudo.org');
   });
 
   it('takes a custom domain and drops a trailing slash', () => {

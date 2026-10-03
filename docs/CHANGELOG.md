@@ -4,6 +4,12 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.3.0 (Phase 3, "real CAD")
 
+- 2026-10-03 · **Landing page and channels** (ADR-0057): `apps/site`, a static landing
+  page for extrudo.org with an intro video recorded from the real app (`pnpm demos -g
+  intro`); the stable app moves to app.extrudo.org (deployed by a `v*` tag) and the
+  latest build to edge.extrudo.org (every green main); the site's `sw.js` retires the
+  app's old service worker at extrudo.org and old `#/p/…` links go on to the app;
+  `e2e/site.spec.ts`.
 - 2026-10-02 · **Fix** Repeat visits to extrudo.org failed with `ERR_FAILED`: the
   service worker served a redirected copy of `index.html` (Pages redirects it to `/`)
   for navigations; it now stores and serves a plain copy, and the e2e static host

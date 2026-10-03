@@ -1,0 +1,21 @@
+# Response headers for the landing page (Cloudflare Pages project "extrudo-site",
+# ADR-0057). Stricter than the app's: no WASM, so no 'unsafe-eval' or
+# 'wasm-unsafe-eval', and no cross-origin isolation needed. Rules are additive
+# (see apps/web/public/_headers), so Cache-Control sits in rules that never overlap.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Cross-Origin-Opener-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; font-src 'self'; connect-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

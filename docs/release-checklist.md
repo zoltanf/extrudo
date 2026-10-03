@@ -48,7 +48,7 @@ cannot reach. Tick them off in order; each box says who and where.
   for questions (CONTRIBUTING.md mentions it only "if enabled"). Issues stay on.
 - [ ] Settings > General: add a description ("Parametric CAD for 3D printing, in
   your browser") and topics (`cad`, `3d-printing`, `parametric`, `webassembly`,
-  `opencascade`, `pwa`). Set the website to <https://extrudo.org> once it is up.
+  `opencascade`, `pwa`). Set the website to <https://extrudo.org> (the landing page).
 - [ ] Settings > Branches: protect `main` (require CI to pass, no force pushes)
   if you want; the deploy workflow only runs for commits whose CI passed.
 - [ ] Actions: nothing to enable. The first public push runs CI; the OCCT and
@@ -74,6 +74,16 @@ cannot reach. Tick them off in order; each box says who and where.
   zone's Browser Cache TTL set to "Respect Existing Headers" so `sw.js` stays
   `no-cache`; the first deploy is live and the kernel starts there.
 
+## Three addresses (ADR-0057; docs/deploy.md, "Three addresses")
+
+- [ ] Export any design made at `https://extrudo.org` (File > Export `.extrudo`).
+- [ ] Cloudflare: move `extrudo.org` and `www` from the `extrudo` project to
+  `extrudo-site`; add `app.extrudo.org` to `extrudo`; add `edge.extrudo.org` and
+  point its CNAME at `edge.extrudo.pages.dev`.
+- [ ] Turn off Web Analytics automatic setup (it injects a blocked script).
+- [ ] Check the landing page, its video and button, edge, and that an old
+  `extrudo.org` visitor gets the landing page after a reload or two.
+
 ## Release
 
 - [x] Merge the P3-15 branch to `main` and let CI and the first deploy go green.
@@ -81,11 +91,13 @@ cannot reach. Tick them off in order; each box says who and where.
   wrangler-action with `npx wrangler`). Paste secrets through the GitHub web
   page: `gh secret set`'s hidden prompt saved empty values once.
 - [ ] Tag it: `git tag -a v0.3.0 -m "v0.3.0" && git push origin v0.3.0`. (All
-  package versions are already 0.3.0.)
+  package versions are already 0.3.0.) Since ADR-0057 the tag also **deploys the
+  stable app** to `https://app.extrudo.org` (the Deploy workflow; it refuses a
+  commit whose CI didn't pass on main). Later releases: bump the versions, tag.
 - [ ] GitHub > Releases > **Draft a new release** for `v0.3.0`. Use the
   `## v0.3.0` section of `docs/CHANGELOG.md` for the notes (grouped by task;
   trim it to a readable summary of what is new: sketching, solids, patterns,
-  print aids, onboarding), link the hosted demo and `docs/file-format.md`, and
+  print aids, onboarding), link <https://extrudo.org> and `docs/file-format.md`, and
   say that it is the first public release and rough in places.
 - [ ] Announce it where you like (a print-community forum, a short demo video).
   Have the demo ready: the tutorial's box, the Wall bracket with a parameter

@@ -16,6 +16,8 @@ const ALLOWED = {
   // MIT-licensed: must stay independent of the GPL packages.
   '@extrudo/io': [],
   '@extrudo/storage': ['@extrudo/core'],
+  // The landing page: no internal packages (ADR-0057).
+  '@extrudo/site': [],
   '@extrudo/web': [
     '@extrudo/core',
     '@extrudo/sketch',

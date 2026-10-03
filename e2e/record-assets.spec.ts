@@ -21,7 +21,10 @@ import { kernelReady, mapping, newSketchOnXY, openProject, pickTool, projector }
 //   - the template gallery's thumbnails (`apps/web/src/home/templates/*.png`),
 //     rendered by the app itself in the home view;
 //   - the tools' demo clips (`apps/web/public/demos/<tool>.webm`), recorded
-//     from the app by driving it: see `demo-recorder.ts`.
+//     from the app by driving it: see `demo-recorder.ts`;
+//   - the landing page's intro video (`apps/site/public/media/intro.webm`,
+//     ADR-0057): the whole window, from the home screen to a part that follows
+//     a changed number.
 //
 // It writes into the repository, so it only runs with RECORD_ASSETS=1:
 // `pnpm demos` (scripts/record-demos.mjs) does that after making sure
@@ -496,4 +499,134 @@ test('demo: rectangularPattern', async ({ page }) => {
     await expect(dialog).toBeHidden();
     await kernelReady(page);
   });
+});
+
+// ---- The landing page's intro (ADR-0057) ------------------------------------
+
+const INTRO = join(process.cwd(), 'apps', 'site', 'public', 'media', 'intro.webm');
+
+test('intro: the landing page video', async ({ page }) => {
+  test.setTimeout(300_000);
+  await page.addInitScript(CURSOR_SCRIPT);
+  await page.addInitScript(
+    `document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(DEMO_STYLE)}; document.head.append(s); });`,
+  );
+  // Info toasts ("Sketch1 is hidden…") and their bell would clutter a still frame.
+  const quiet =
+    '[role="status"]:has(button[aria-label="Dismiss"]), button[aria-label^="Notification history"] { display: none !important; }';
+  await page.addInitScript(
+    `document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(quiet)}; document.head.append(s); });`,
+  );
+  await page.goto('./');
+  await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
+  // Keep the tour's card off the home screen: the video shows the plain flow.
+  await page.getByRole('button', { name: 'Dismiss the tour' }).click();
+  const p = pointer(page);
+  await p.jump({ x: 900, y: 600 });
+  const press = async (target: ReturnType<Page['getByRole']>, ms = 500) => {
+    const box = await target.boundingBox();
+    if (!box) throw new Error('nothing to press');
+    await p.click({ x: box.x + box.width / 2, y: box.y + box.height / 2 }, ms);
+  };
+
+  const recorder = new Recorder(page, { x: 0, y: 0, width: 1440, height: 900 });
+  recorder.start();
+  try {
+    await page.waitForTimeout(900);
+    await press(page.getByRole('button', { name: 'New design' }), 700);
+    await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+    const viewport = viewportOf(page);
+    await expect(viewport).toHaveAttribute('data-ready', 'true');
+    await kernelReady(page);
+    await page.waitForTimeout(500);
+
+    // A sketch on XY: a rectangle and one dimension.
+    await press(page.getByRole('button', { name: 'Create Sketch' }));
+    await page.waitForTimeout(300);
+    const world = await projector(viewport);
+    const s = Number(await attr(viewport, 'data-camera-size')) * 0.16;
+    await p.click(world([s * 0.45, -s * 0.45, 0]), 600);
+    await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
+    await settled(viewport);
+    const at = await mapping(viewport);
+    await press(page.getByRole('button', { name: /^Rectangle/ }));
+    await p.click(at(-20, -10), 600);
+    await p.moveTo(at(10, 0), 300);
+    await p.click(at(20, 10), 500);
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(300);
+    await press(page.getByRole('button', { name: /^Dimension/ }));
+    await p.click(at(0, -10), 600);
+    await p.click(at(0, -17), 400);
+    await page.waitForTimeout(250);
+    await page.keyboard.type('40', { delay: 200 });
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+    await press(page.getByRole('button', { name: 'Finish Sketch' }).last());
+    await kernelReady(page);
+
+    // Into 3D: extrude the profile, then round an edge.
+    const home = await turnView(page, 'Shift+1');
+    await p.click(home([0, 0, 0]), 600);
+    await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+    await press(page.getByRole('button', { name: /^Extrude/ }));
+    const extrude = page.getByRole('region', { name: 'Extrude dialog' });
+    await expect(extrude).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+    await typeInto(page, extrude.getByRole('textbox', { name: 'Distance', exact: true }), '15');
+    await expect(extrude).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+    await page.waitForTimeout(600);
+    await press(extrude.getByRole('button', { name: 'OK' }), 400);
+    await expect(extrude).toBeHidden();
+    await kernelReady(page);
+    await page.waitForTimeout(400);
+
+    const solid = await turnView(page, 'Shift+1');
+    await pickModel(page, p, solid, [0, -10, 15], 'edge');
+    await press(page.getByRole('button', { name: /^Fillet/ }));
+    const fillet = page.getByRole('region', { name: 'Fillet dialog' });
+    await expect(fillet).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+    await typeInto(page, fillet.getByRole('textbox', { name: 'Radius', exact: true }), '4');
+    await expect(fillet).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+    await page.waitForTimeout(600);
+    await press(fillet.getByRole('button', { name: 'OK' }), 400);
+    await expect(fillet).toBeHidden();
+    await kernelReady(page);
+    await page.waitForTimeout(700);
+
+    // Change one number, and the whole part follows: Extrude1's distance, edited in its
+    // dialog (not modal, so the preview shows the part grow), keeps its rounded edge.
+    // Zoom out first so the taller part stays in the frame.
+    const middle = solid([0, 0, 7]);
+    await p.moveTo(middle, 500);
+    await zoomOutTo(page, middle, 90);
+    await settled(viewport);
+    const extrudeChip = chip(page, 'Extrude1');
+    const chipBox = await extrudeChip.boundingBox();
+    if (!chipBox) throw new Error('no Extrude1 chip');
+    const chipAt = { x: chipBox.x + chipBox.width / 2, y: chipBox.y + chipBox.height / 2 };
+    await p.moveTo(chipAt, 700);
+    await page.waitForTimeout(200);
+    await page.mouse.dblclick(chipAt.x, chipAt.y);
+    const edit = page.getByRole('region', { name: 'Edit Extrude1 dialog' });
+    await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+    await page.waitForTimeout(500);
+    await typeInto(page, edit.getByRole('textbox', { name: 'Distance', exact: true }), '35');
+    await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+    await page.waitForTimeout(1200);
+    await press(edit.getByRole('button', { name: 'OK' }), 400);
+    await expect(edit).toBeHidden();
+    await kernelReady(page);
+    await p.moveTo({ x: 1250, y: 700 }, 600);
+    await page.waitForTimeout(1800);
+  } finally {
+    await recorder.stop();
+  }
+  const seconds = await recorder.encode(INTRO, {
+    size: { width: 1280, height: 800 },
+    bitrate: '1200k',
+    crf: 26,
+    holdMs: 1500,
+  });
+  console.log(`intro: ${recorder.frames.length} screenshots, ${seconds.toFixed(1)} s`);
 });

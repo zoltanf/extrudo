@@ -1,0 +1,20 @@
+{
+  "name": "@extrudo/site",
+  "version": "0.3.0",
+  "private": true,
+  "description": "The landing page at extrudo.org. The app itself is apps/web (app.extrudo.org, edge.extrudo.org).",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@fontsource/instrument-sans": "^5.3.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.0"
+  }
+}

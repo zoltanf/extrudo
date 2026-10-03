@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "pnpm wasm && pnpm --filter @extrudo/web dev",
-    "build": "pnpm wasm && pnpm --filter @extrudo/web build",
+    "build": "pnpm wasm && pnpm --filter @extrudo/web build && pnpm --filter @extrudo/site build",
     "preview": "pnpm --filter @extrudo/web preview",
     "typecheck": "tsc -p tsconfig.json && pnpm -r --parallel typecheck",
     "lint": "biome check . && node scripts/check-boundaries.mjs && node scripts/check-licenses.mjs",

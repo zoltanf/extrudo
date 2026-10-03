@@ -10,6 +10,16 @@
       ],
       "port": 5173,
       "autoPort": true
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "exec node apps/site/node_modules/vite/bin/vite.js apps/site --host 127.0.0.1 --port \"${PORT:-5180}\" --strictPort"
+      ],
+      "port": 5180,
+      "autoPort": true
     }
   ]
 }

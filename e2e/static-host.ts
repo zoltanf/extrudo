@@ -22,6 +22,8 @@ export interface StaticHost {
   url: string;
   /** Serves `body` at `path` from now on instead of the file (a new service worker, say). */
   override(path: string, body: string): void;
+  /** Serves another build folder from now on, with its own `_headers` (a site replacing the app). */
+  serve(dir: string): void;
   close(): Promise<void>;
 }
 
@@ -33,8 +35,9 @@ export interface StaticHost {
  * isn't enough: path-specific headers (`/sw.js` revalidates) and serving a
  * changed service worker to test the update toast.
  */
-export async function startStaticHost(dir: string): Promise<StaticHost> {
-  const rules = parseHeaders(readFileSync(join(dir, '_headers'), 'utf8'));
+export async function startStaticHost(initial: string): Promise<StaticHost> {
+  let dir = initial;
+  let rules = parseHeaders(readFileSync(join(dir, '_headers'), 'utf8'));
   const overrides = new Map<string, string>();
   const server: Server = createServer((req, res) => {
     const path = decodeURIComponent((req.url ?? '/').split('?')[0] ?? '/');
@@ -76,6 +79,11 @@ export async function startStaticHost(dir: string): Promise<StaticHost> {
   return {
     url: `http://127.0.0.1:${port}`,
     override: (path, body) => void overrides.set(path, body),
+    serve: (next) => {
+      dir = next;
+      rules = parseHeaders(readFileSync(join(dir, '_headers'), 'utf8'));
+      overrides.clear();
+    },
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }

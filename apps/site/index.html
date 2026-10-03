@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <title>Extrudo: parametric CAD for 3D printing, in your browser</title>
+    <meta
+      name="description"
+      content="Extrudo is free, open-source parametric CAD for 3D printing. Sketch, extrude, fillet and print, right in your browser, offline too. No install, no account."
+    />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href="__SITE_URL__/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Extrudo" />
+    <meta property="og:title" content="Extrudo: parametric CAD for 3D printing, in your browser" />
+    <meta
+      property="og:description"
+      content="Sketch, extrude, fillet and print. Open-source parametric CAD that runs in your browser, offline too. Change one number and the whole part follows."
+    />
+    <meta property="og:url" content="__SITE_URL__/" />
+    <meta property="og:image" content="__SITE_URL__/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta
+      property="og:image:alt"
+      content="The Extrudo logo: a dashed blue sketch square turning into an amber solid."
+    />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="top">
+      <a class="brand" href="/" aria-label="Extrudo home">
+        <svg class="mark" width="32" height="32" viewBox="0 0 64 64" aria-hidden="true">
+          <path class="mark-top" d="M10 24 24 10H52L38 24Z" />
+          <path class="mark-side" d="M38 24 52 10V38L38 52Z" />
+          <rect class="mark-sketch" x="10" y="24" width="28" height="28" rx="1" />
+          <circle class="mark-dot" cx="10" cy="24" r="2.2" />
+          <circle class="mark-dot" cx="38" cy="24" r="2.2" />
+          <circle class="mark-dot" cx="10" cy="52" r="2.2" />
+          <circle class="mark-dot" cx="38" cy="52" r="2.2" />
+        </svg>
+        <span class="wordmark">extrudo</span>
+      </a>
+      <nav aria-label="Site">
+        <a href="#features">Features</a>
+        <a href="https://github.com/zoltanf/extrudo">GitHub</a>
+        <a class="button small" href="__APP_URL__/">Open Extrudo</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="hero-title">
+        <h1 id="hero-title">Parametric CAD for 3D printing, in your browser.</h1>
+        <p class="lead">
+          Sketch a profile, pull it into a solid, round the edges, and change one number to watch
+          the whole part follow. Free and open source. Nothing to install, no account.
+        </p>
+        <p class="actions">
+          <a class="button big" href="__APP_URL__/" data-open-app>Open Extrudo <span aria-hidden="true">→</span></a>
+        </p>
+        <p class="edge-note">
+          Want the newest features before they're released?
+          <a href="__EDGE_URL__/">Try the latest build</a>. It changes daily and can break.
+        </p>
+      </section>
+
+      <section class="intro" aria-label="Extrudo in action">
+        <figure>
+          <video
+            class="shot"
+            data-intro
+            poster="./src/images/bracket.webp"
+            aria-label="A short tour: a sketch becomes a solid, gets rounded edges, and follows a changed dimension."
+            controls
+            muted
+            loop
+            playsinline
+            preload="metadata"
+            width="1440"
+            height="900"
+          >
+            <source src="/media/intro.webm" type="video/webm" />
+          </video>
+        </figure>
+      </section>
+
+      <section id="features" class="features" aria-labelledby="features-title">
+        <h2 id="features-title">What it does</h2>
+        <ul class="cards">
+          <li>
+            <h3>Sketch with constraints</h3>
+            <p>
+              Lines, arcs, circles, slots and splines snap into place with automatic constraints and
+              driving dimensions. A sketch shows how much freedom is left, and says plainly when
+              something contradicts.
+            </p>
+          </li>
+          <li>
+            <h3>Real solids</h3>
+            <p>
+              Extrude, revolve, fillet, chamfer, shell, holes and patterns on exact geometry: real
+              circles and fillets, not a mesh of triangles. What you design is what comes out of
+              the printer.
+            </p>
+          </li>
+          <li>
+            <h3>Parameters everywhere</h3>
+            <p>
+              Every number takes an expression with units, like <code>wall * 1.5 + 2 mm</code>.
+              The design is a timeline you can roll back, reorder and edit, and it rebuilds as you
+              go.
+            </p>
+          </li>
+          <li>
+            <h3>Made for printing</h3>
+            <p>
+              Lay a face flat on the bed, see overhangs, get the weight and filament length, and
+              export 3MF, STL or STEP. Templates for brackets, boxes, lids and enclosures get you
+              started.
+            </p>
+          </li>
+          <li>
+            <h3>Yours, offline too</h3>
+            <p>
+              Designs stay on your own machine. It works offline once it has loaded, and you can
+              install it from the browser's menu like an app.
+            </p>
+          </li>
+          <li>
+            <h3>Free and open source</h3>
+            <p>
+              GPL-3.0, built in the open. The <code>.extrudo</code> file format is documented and
+              MIT-licensed, so other tools can read your designs.
+            </p>
+          </li>
+        </ul>
+      </section>
+
+      <section class="templates" aria-labelledby="templates-title">
+        <div class="templates-text">
+          <h2 id="templates-title">Start from a template, or take the tour</h2>
+          <p>
+            A five-step tour walks you through your first part: a sketch, a dimension, an extrude
+            and a fillet. Or open one of the templates and change its parameters.
+          </p>
+          <p><a class="button" href="__APP_URL__/">Open Extrudo</a></p>
+        </div>
+        <img
+          class="shot"
+          src="./src/images/home.webp"
+          width="1440"
+          height="900"
+          loading="lazy"
+          alt="Extrudo's home screen, with a New design card, the tour and four templates."
+        />
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p>
+        <a href="https://github.com/zoltanf/extrudo">Source code</a> ·
+        <a href="https://github.com/zoltanf/extrudo/issues/new/choose">Report a problem</a> ·
+        <a href="https://github.com/zoltanf/extrudo/blob/main/CODE_OF_CONDUCT.md">Code of conduct</a> ·
+        <a href="https://github.com/zoltanf/extrudo/blob/main/docs/file-format.md">File format</a>
+      </p>
+      <p class="muted">Extrudo is free software under the GPL-3.0. It shares no code or artwork with any commercial CAD product.</p>
+    </footer>
+  </body>
+</html>

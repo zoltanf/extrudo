@@ -142,15 +142,25 @@ export class Recorder {
   }
 
   /** Encodes the clip to `out` (a `.webm`) and returns its length in seconds. */
-  async encode(out: string, options: { crf?: number; holdMs?: number } = {}): Promise<number> {
+  async encode(
+    out: string,
+    options: {
+      crf?: number;
+      holdMs?: number;
+      /** Output size; a tool demo's 480 × 300 unless given (the landing page's intro is bigger). */
+      size?: { width: number; height: number };
+      bitrate?: string;
+    } = {},
+  ): Promise<number> {
+    const size = options.size ?? DEMO_SIZE;
     const frames = this.resample(options.holdMs);
     await mkdir(dirname(out), { recursive: true });
     const args = [
       ['-y', '-loglevel', 'error'],
       ['-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', 'pipe:0'],
-      ['-vf', `scale=${DEMO_SIZE.width}:${DEMO_SIZE.height}:flags=lanczos`],
+      ['-vf', `scale=${size.width}:${size.height}:flags=lanczos`],
       // Constrained quality: the UI is flat colour, so a high CRF still looks clean.
-      ['-c:v', 'libvpx', '-b:v', '600k', '-crf', String(options.crf ?? 30)],
+      ['-c:v', 'libvpx', '-b:v', options.bitrate ?? '600k', '-crf', String(options.crf ?? 30)],
       ['-pix_fmt', 'yuv420p', '-auto-alt-ref', '0', '-an', out],
     ].flat();
     const child = spawn(findFfmpeg(), args, { stdio: ['pipe', 'inherit', 'inherit'] });
