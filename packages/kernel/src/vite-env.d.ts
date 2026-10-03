@@ -9,3 +9,9 @@ declare module '*.extrudo?url&inline' {
   const dataUrl: string;
   export default dataUrl;
 }
+
+// A bundled font read in a test (P4-03): Vite inlines it as a `data:` URL.
+declare module '*.ttf?url&inline' {
+  const dataUrl: string;
+  export default dataUrl;
+}

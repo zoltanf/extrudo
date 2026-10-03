@@ -15,6 +15,7 @@ import { HOME_HREF, navigate, projectHref } from '../routes';
 import type { FileActions } from '../shell/AppBar';
 import { AppShell } from '../shell/AppShell';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
+import { useDocumentFonts } from '../sketch/fonts';
 import { createViewportStore, type ViewportStore } from '../viewport/store';
 import {
   createProject,
@@ -102,6 +103,8 @@ function ProjectEditor({
   const session = useMemo(() => createSessionStore(), []);
   const model = useMemo(() => createModelStore<BodyMesh>(), []);
   const recomputer = useRecompute(store, model);
+  // Sketch text draws with the fonts the document uses (P4-03, ADR-0058 §4).
+  useDocumentFonts(store);
   const viewport = useMemo(
     () => createViewportStore({ preferences: platform.preferences }),
     [platform],

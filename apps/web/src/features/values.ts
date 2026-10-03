@@ -214,7 +214,8 @@ export function draftExpressions(
   return evaluateParameters(withDraft(doc, draft, index)).inputs.get(draft.id) ?? new Map();
 }
 
-const NOUNS: Record<GeomRefKind, [string, string]> = {
+/** What each reference kind is called; `text` is a whole text (P4-03), not a kind. */
+const NOUNS: Record<GeomRefKind | 'text', [string, string]> = {
   plane: ['plane', 'planes'],
   axis: ['axis', 'axes'],
   point: ['point', 'points'],
@@ -224,8 +225,31 @@ const NOUNS: Record<GeomRefKind, [string, string]> = {
   profile: ['profile', 'profiles'],
   body: ['body', 'bodies'],
   sketchEntity: ['sketch curve', 'sketch curves'],
+  // A whole text (P4-03): what a profile field calls a `sketchEntity` pick.
+  text: ['text', 'texts'],
   feature: ['feature', 'features'],
 };
+
+/**
+ * What a selection field's picks are called (P4-03 counts whole texts as
+ * "texts"): "1 face", "2 edges", "1 text", and mixed picks one noun each,
+ * "1 profile, 1 text". `noun` is the field's own wording, when it has one.
+ */
+export function countLabel(
+  refs: readonly GeomRef[],
+  options: { noun?: readonly [string, string]; wholeTexts?: boolean } = {},
+): string {
+  if (options.noun) return `${refs.length} ${options.noun[refs.length === 1 ? 0 : 1]}`;
+  // Picks keep the order they were made in.
+  const groups = new Map<string, number>();
+  for (const ref of refs) {
+    const key = ref.kind === 'sketchEntity' && options.wholeTexts ? 'text' : (ref.kind as string);
+    groups.set(key, (groups.get(key) ?? 0) + 1);
+  }
+  return [...groups]
+    .map(([key, n]) => `${n} ${NOUNS[key as GeomRefKind]?.[n === 1 ? 0 : 1] ?? `${key}s`}`)
+    .join(', ');
+}
 
 /** "face", "profile or face": what a field takes, for its messages. */
 export function acceptsNoun(kinds: readonly GeomRefKind[], plural = false): string {

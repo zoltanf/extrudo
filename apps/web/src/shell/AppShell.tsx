@@ -66,6 +66,7 @@ import { readTopology, sketchEntityIdsIn } from '../selection/items';
 import { useModelSelection } from '../selection/useModelSelection';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
+import { fontsStore } from '../sketch/fonts';
 import { sketchFrame } from '../sketch/frame';
 import { useHostState } from '../sketch/hostState';
 import {
@@ -83,10 +84,12 @@ import {
   PlanePrompt,
   SelectionPanel,
   SketchPalette,
+  TextPanel,
 } from '../sketch/panels';
 import { profileIdsIn, sketchProfiles } from '../sketch/profiles';
 import { PROJECT_TOOL, useProjectTool } from '../sketch/project';
 import { deleteSelection } from '../sketch/selection';
+import { textDraftStore } from '../sketch/textDraft';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
 import type { ConstructionDrawing } from '../viewport/constructionGeometry';
@@ -206,6 +209,12 @@ export function AppShell({
     }),
     [file],
   );
+  // Text needs its font before it has curves or ink (P4-03): a font that arrives
+  // late brings the sketch drawing and its profiles back with it.
+  const fontsVersion = useStore(fontsStore, (s) => s.version);
+  // The Text tool's panel opens from the tool's own click (P4-03), which
+  // touches no store this component reads: subscribe, so it appears.
+  const textOpen = useStore(textDraftStore, (s) => s.open);
   const bodies = useStore(model, (s) => s.bodies);
   const sketchReports = useStore(model, (s) => s.sketches);
   const constructionReports = useStore(model, (s) => s.construction);
@@ -714,7 +723,7 @@ export function AppShell({
     // Press Pull (P3-08) runs the tool that fits the selection; Repeat last repeats Press Pull.
     if (tool === PRESS_PULL) {
       if (mode !== 'model') return;
-      const target = pressPullTarget(session.getState().selection);
+      const target = pressPullTarget(session.getState().selection, doc);
       if (!target) {
         notify('info', PRESS_PULL_PROMPT);
         return;
@@ -950,7 +959,7 @@ export function AppShell({
             selectedEntities: sketchEntityIdsIn(shownSelection, feature.id),
           }),
           ...(showProfiles && {
-            profiles: sketchProfiles(sketch.data),
+            profiles: sketchProfiles(sketch.data, fontsVersion),
             hoverProfile: profileIdsIn([hover], feature.id)[0],
             selectedProfiles: profileIdsIn(shownSelection, feature.id),
           }),
@@ -969,6 +978,7 @@ export function AppShell({
     pickingSketchPoints,
     sketchReports,
     constructionReports,
+    fontsVersion,
   ]);
   // Shown construction planes, axes and points the kernel has reported (P3-05); the one a dialog
   // edits is drawn as its preview instead.
@@ -1308,6 +1318,10 @@ export function AppShell({
                 onDelete={remove}
                 notify={notify}
               />
+            )}
+            {/* The Text tool's panel (P4-03): it takes the selection panel's place. */}
+            {mode === 'sketch' && activeTool === 'text' && textOpen && (
+              <TextPanel store={store} host={host} />
             )}
             {drawing && tools && activeSketchId && sketchPlane && (
               <tools.Overlay

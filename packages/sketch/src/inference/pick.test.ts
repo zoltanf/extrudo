@@ -1,6 +1,29 @@
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import type { SketchEntityId } from '@extrudo/core';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { SketchBuilder } from '../fixtures';
+import { loadFont } from '../text/index.js';
 import { boxSelect, insideConvex, pickEntity, polylineDistance } from './pick';
+
+const FONTS_DIR = new URL('../../../fonts/fonts/', import.meta.url);
+beforeAll(() => loadFont('inter-regular@1', readFileSync(new URL('inter-regular.ttf', FONTS_DIR))));
+
+/** A text entity (P4-03) from (x, y) up to (x, y + 10): upright, left-aligned. */
+function addText(b: SketchBuilder, text = 'A', x = 0, y = 0): SketchEntityId {
+  const anchor = b.point(x, y);
+  const top = b.point(x, y + 10);
+  const id = b.id('x');
+  b.entities[id] = {
+    type: 'text',
+    anchor: anchor as never,
+    top: top as never,
+    text,
+    font: 'inter-regular@1',
+    align: 'left',
+    construction: false,
+  } as never;
+  return id as SketchEntityId;
+}
 
 describe('pickEntity', () => {
   const b = new SketchBuilder();
@@ -43,6 +66,54 @@ describe('pickEntity', () => {
     const high = c.line(0, 1, 10, 1);
     expect(pickEntity(c.sketch, [5, 0.4], 1)).toBe(low.id);
     expect(pickEntity(c.sketch, [5, 0.6], 1)).toBe(high.id);
+  });
+});
+
+describe('picking text (P4-03)', () => {
+  const b = new SketchBuilder();
+  const text = addText(b, 'A', 0, 0);
+
+  it('picks a text by any of its glyph curves', () => {
+    // The left stem of the A runs up from the anchor; the crossbar is at half the height.
+    expect(pickEntity(b.sketch, [2.9, 5], 1)).toBe(text);
+    expect(pickEntity(b.sketch, [2.9, 0.4], 1)).toBe(text);
+    // Its two points stay pickable as points.
+    expect(pickEntity(b.sketch, [0, 10.4], 1)).not.toBe(text);
+    // Empty space beside the letter isn't it: only its curves are.
+    expect(pickEntity(b.sketch, [25, 5], 1)).toBeUndefined();
+  });
+
+  it('boxes a text as one entity', () => {
+    const corners: [number, number][] = [
+      [-5, -5],
+      [20, -5],
+      [20, 20],
+      [-5, 20],
+    ];
+    expect(boxSelect(b.sketch, corners, 'window')).toContain(text);
+    // A box over empty space next to it takes nothing of it.
+    const beside: [number, number][] = [
+      [30, -5],
+      [50, -5],
+      [50, 20],
+      [30, 20],
+    ];
+    expect(boxSelect(b.sketch, beside, 'window')).not.toContain(text);
+  });
+
+  it('shapes nothing without a font, and says so', () => {
+    const bare = new SketchBuilder();
+    const missing = bare.id('x');
+    bare.entities[missing] = {
+      type: 'text',
+      anchor: bare.point(0, 0) as never,
+      top: bare.point(0, 10) as never,
+      text: 'A',
+      font: 'nothing-has-this@1',
+      align: 'left',
+      construction: false,
+    } as never;
+    expect(pickEntity(bare.sketch, [3, 5], 1)).toBeUndefined();
   });
 });
 

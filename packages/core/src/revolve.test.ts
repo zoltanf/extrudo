@@ -75,6 +75,14 @@ describe('revolve inputs', () => {
     expect(bad({ extent: { kind: 'enum', value: 'full' } })).toBe(false);
   });
 
+  it('accepts a whole-text reference in profiles (P4-03, ADR-0058 §5)', () => {
+    const ok = (refs: unknown) =>
+      RevolveInputsSchema.safeParse({ profiles: { kind: 'ref', refs } }).success;
+    expect(ok([{ kind: 'sketchEntity', id: 'S1/t9' }])).toBe(true);
+    expect(ok([{ kind: 'profile', id: 'S1/r1' }])).toBe(true);
+    expect(ok([{ kind: 'edge', id: 'e' }])).toBe(false);
+  });
+
   it('is the revolve feature type', () => {
     expect(revolveFeature).toMatchObject({ type: REVOLVE_TYPE, label: 'Revolve', icon: 'revolve' });
   });

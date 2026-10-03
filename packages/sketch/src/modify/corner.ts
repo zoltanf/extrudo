@@ -168,6 +168,11 @@ export function filletPolyline(shape: FilletShape, segments = 24): Vec2[] {
   return out;
 }
 
+/** Whether either line of the corner is a text entity (which no tool may round or cut). */
+function isText(data: SketchData, corner: Corner): boolean {
+  return data.entities[corner.a]?.type === 'text' || data.entities[corner.b]?.type === 'text';
+}
+
 /**
  * Rounds a corner with an arc of `radius` (`expr`, its dimension's
  * expression), tangent to both lines. Throws a `ModifyError` if it doesn't fit.
@@ -179,6 +184,7 @@ export function fillet(
   expr: string,
   newId: () => string,
 ): ModifyResult {
+  if (isText(data, corner)) throw new ModifyError("Text can't be filleted.");
   if (!(radius > 0)) throw new ModifyError('The radius must be more than zero.');
   if (radius >= maxFilletRadius(corner) * (1 - 1e-9)) {
     throw new ModifyError("That radius doesn't fit this corner.");
@@ -233,6 +239,7 @@ export function chamfer(
   expr: string,
   newId: () => string,
 ): ModifyResult {
+  if (isText(data, corner)) throw new ModifyError("Text can't be chamfered.");
   if (!(distance > 0)) throw new ModifyError('The distance must be more than zero.');
   if (distance >= maxChamfer(corner) * (1 - 1e-9)) {
     throw new ModifyError("That distance doesn't fit this corner.");

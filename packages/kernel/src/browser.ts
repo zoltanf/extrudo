@@ -28,6 +28,7 @@ function connect(worker: Worker): KernelConnection {
   // (A Comlink proxy has no own keys to spread, so every method is listed.)
   const proxied: KernelApi = {
     init: () => api.init(),
+    addFont: (id, bytes) => api.addFont(id, bytes),
     recompute: (request, onFeature) =>
       api.recompute(request, onFeature && Comlink.proxy(onFeature)),
     preview: (request, onFeature) => api.preview(request, onFeature && Comlink.proxy(onFeature)),

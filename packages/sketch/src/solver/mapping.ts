@@ -130,6 +130,8 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
         return [e.center, e.major, e.minor];
       case 'spline':
         return e.points;
+      case 'text':
+        return [e.anchor, e.top];
     }
   };
   const endpoints = (id: string): string[] => {
@@ -147,8 +149,10 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
     if (e.type === 'point') fixedPoints.add(c.entity);
     else {
       for (const p of pointsOf(e)) fixedPoints.add(p);
-      // Lines and splines are their points; the others have parameters of their own.
-      if (e.type !== 'line' && e.type !== 'spline') fixedCurves.add(c.entity);
+      // Lines, splines and texts are their points; the others have parameters of their own.
+      if (e.type !== 'line' && e.type !== 'spline' && e.type !== 'text') {
+        fixedCurves.add(c.entity);
+      }
     }
   }
   // Projected geometry (P2-09) follows the model, not the sketch: fixed as if by `fix`.
@@ -255,6 +259,8 @@ export function mapSketch(sketch: SketchData, values: DimensionValues = {}): Map
         add(id, 'curve', ellipsePrims(id, e), [e]);
         break;
       // A spline adds no unknowns and no equations: its shape follows its points.
+      // A text likewise: it maps to nothing, and its two placement points are
+      // ordinary point entities mapped above.
     }
   }
 

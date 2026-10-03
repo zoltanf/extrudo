@@ -2,7 +2,8 @@
  * A sketch's profiles (P1-11), detected once per version of its content.
  * The document is immutable, so the content object is the cache key: the
  * viewport's fills, the tool host's picking and the properties panel share
- * one detection.
+ * one detection. Text (P4-03) needs its font before it has ink, so the loaded
+ * fonts' version is part of the key: fonts that arrive later redraw it.
  */
 import {
   type FeatureId,
@@ -11,15 +12,24 @@ import {
   type SketchData,
 } from '@extrudo/core';
 import { detectProfiles, type Profile } from '@extrudo/sketch/profiles';
+import { fontsStore } from './fonts';
 
-const cache = new WeakMap<SketchData, readonly Profile[]>();
+interface Entry {
+  profiles: readonly Profile[];
+  /** The fonts' version the profiles were detected with. */
+  version: number;
+}
 
-export function sketchProfiles(data: SketchData): readonly Profile[] {
-  let profiles = cache.get(data);
-  if (!profiles) {
-    profiles = detectProfiles(data);
-    cache.set(data, profiles);
-  }
+const cache = new WeakMap<SketchData, Entry>();
+
+export function sketchProfiles(
+  data: SketchData,
+  version: number = fontsStore.getState().version,
+): readonly Profile[] {
+  const entry = cache.get(data);
+  if (entry && entry.version === version) return entry.profiles;
+  const profiles = detectProfiles(data);
+  cache.set(data, { profiles, version });
   return profiles;
 }
 

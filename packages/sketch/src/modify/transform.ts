@@ -182,6 +182,8 @@ function copyEntity(e: SketchEntity, id: (old: SketchEntityId) => SketchEntityId
       return { ...e, center: id(e.center), major: id(e.major), minor: id(e.minor) };
     case 'spline':
       return { ...e, points: e.points.map(id) };
+    case 'text':
+      return { ...e, anchor: id(e.anchor), top: id(e.top) };
   }
 }
 
@@ -400,6 +402,11 @@ export function mirror(
         break;
       case 'spline':
         for (const p of e.points) pair(p);
+        break;
+      case 'text':
+        // The copy is placed from its own two points, so it stays readable.
+        pair(e.anchor);
+        pair(e.top);
         break;
     }
   }

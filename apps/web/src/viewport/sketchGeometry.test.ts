@@ -1,12 +1,14 @@
-import { planeFrame, type SketchData, type SketchFrame } from '@extrudo/core';
+import { planeFrame, type SketchData, type SketchFrame, textPolylines } from '@extrudo/core';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
+import { textSketch } from '../sketch/textTesting';
 import {
   boundsOfPositions,
   CIRCLE_SEGMENTS,
   curveSegments,
   profileTriangles,
   sketchSegments,
+  textBoundsSummary,
   unionBounds,
 } from './sketchGeometry';
 
@@ -47,6 +49,31 @@ describe('sketchSegments', () => {
       radius: 2.5,
       box: { min: [1, 0, 2], max: [4, 0, 6] },
     });
+  });
+
+  it('draws a text as its glyph curves, all of them free', () => {
+    const data = textSketch({ text: 'A', height: 10 });
+    const s = sketchSegments(data, frame('origin:xy'));
+    const polylines = [...textPolylines(data, 'word' as never).values()];
+    // One segment per polyline edge, and nothing else than those curves.
+    const edges = polylines.reduce((n, line) => n + (line.length - 1), 0);
+    expect(polylines.length).toBeGreaterThan(4);
+    expect(s.curves.free).toHaveLength(edges * 6);
+    expect(s.construction).toHaveLength(0);
+    // The ink sits on the baseline at the anchor and rises to the cap height.
+    const box = s.bounds?.box;
+    expect(box?.min[0]).toBeCloseTo(0, 3);
+    expect(box?.max[1]).toBeCloseTo(10, 3);
+  });
+
+  it('draws construction text dashed, and a picked text whole', () => {
+    const data = textSketch({ text: 'A', height: 10, construction: true });
+    const s = sketchSegments(data, frame('origin:xy'));
+    expect(s.curves.free).toHaveLength(0);
+    expect(s.construction.length).toBeGreaterThan(0);
+    // The highlight of a picked text is all of its ink (model mode, P4-03).
+    const highlight = curveSegments(data, frame('origin:xy'), ['word']);
+    expect(highlight).toHaveLength(s.construction.length);
   });
 
   it('draws construction curves separately', () => {
@@ -296,5 +323,38 @@ describe('projected curves (P2-09)', () => {
       [0, 5, 0],
     ]);
     expect(s.bounds?.box?.max[0]).toBe(40);
+  });
+});
+
+describe('textBoundsSummary (P4-03)', () => {
+  const drawing = (data: SketchData) => [
+    { id: 's1', frame: frame('origin:xy'), data, active: true },
+  ];
+
+  it('reads each text ink in sketch mm, and leaves out the empty', () => {
+    const data = textSketch({ text: 'A', at: [0, 0], height: 10 });
+    const summary = textBoundsSummary(drawing(data));
+    const [, x, y] = (summary ?? '').split(':');
+    const [min, max] = (x?.slice(2) ?? '').split('..').map(Number);
+    // Inter's "A" starts at its anchor (left alignment, the side bearing
+    // apart) and rises to the cap height.
+    expect(min).toBeLessThan(1);
+    expect(min).toBeGreaterThanOrEqual(0);
+    expect(max).toBeGreaterThan(4);
+    expect((y?.slice(2) ?? '').split('..').map(Number)[0]).toBeCloseTo(0, 1);
+    expect(Number((y?.slice(2) ?? '').split('..').map(Number)[1])).toBeGreaterThan(9);
+    // A sketch with no text says nothing.
+    expect(textBoundsSummary(drawing(sketch({})))).toBeUndefined();
+  });
+
+  it('centres the ink on the anchor when the text is centred', () => {
+    const left = textBoundsSummary(drawing(textSketch({ text: 'A' }))) ?? '';
+    const centre = textBoundsSummary(drawing(textSketch({ text: 'A', align: 'center' }))) ?? '';
+    const mid = (s: string) => {
+      const [min, max] = (s.split(':')[1] ?? '').slice(2).split('..').map(Number);
+      return ((min ?? 0) + (max ?? 0)) / 2;
+    };
+    expect(Math.abs(mid(centre))).toBeLessThan(1);
+    expect(mid(left)).toBeGreaterThan(1);
   });
 });

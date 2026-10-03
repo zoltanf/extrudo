@@ -12,6 +12,7 @@ import {
   renameFeature,
 } from '@extrudo/core';
 import { afterEach, describe, expect, it } from 'vitest';
+import interRegular from '../fonts/fonts/inter-regular.ttf?url&inline';
 import type { KernelConnection } from './client';
 import type { BodyMesh } from './mesh';
 import { loadOcct } from './occt/load';
@@ -23,7 +24,7 @@ import {
   withExpr,
 } from './recompute/testing';
 import type { RecomputeRequest } from './recompute/types';
-import { Recomputer } from './recomputer';
+import { type FontSource, Recomputer } from './recomputer';
 import { KernelService } from './service';
 
 const until = async (condition: () => boolean, ms = 20_000) => {
@@ -37,8 +38,10 @@ const until = async (condition: () => boolean, ms = 20_000) => {
 let recomputer: Recomputer | undefined;
 afterEach(() => recomputer?.dispose());
 
-function setup(doc: ExtrudoDocument) {
+function setup(doc: ExtrudoDocument, options: { fonts?: FontSource } = {}) {
   const requests: RecomputeRequest[] = [];
+  /** What went to each kernel, in order: `font:<id>` then `recompute`. */
+  const events: string[] = [];
   let spawned = 0;
   const spawn = (): KernelConnection => {
     spawned++;
@@ -46,8 +49,13 @@ function setup(doc: ExtrudoDocument) {
     return {
       api: {
         ...bind(service),
+        addFont: (id: string, bytes: ArrayBuffer) => {
+          events.push(`font:${id}:${bytes.byteLength}`);
+          return service.addFont(id, bytes);
+        },
         recompute: (request, onFeature) => {
           requests.push(request);
+          events.push('recompute');
           return service.recompute(request, onFeature);
         },
       },
@@ -57,14 +65,22 @@ function setup(doc: ExtrudoDocument) {
   };
   const document = createDocumentStore(doc);
   const model = createModelStore<BodyMesh>();
-  recomputer = new Recomputer({ spawn, document, model, delayMs: 5, previewDelayMs: 5 });
+  recomputer = new Recomputer({
+    spawn,
+    document,
+    model,
+    delayMs: 5,
+    previewDelayMs: 5,
+    ...(options.fonts && { fonts: options.fonts }),
+  });
   recomputer.start();
-  return { document, model, requests, spawned: () => spawned };
+  return { document, model, requests, events, spawned: () => spawned };
 }
 
 function bind(service: KernelService) {
   return {
     init: () => service.init(),
+    addFont: service.addFont.bind(service),
     recompute: service.recompute.bind(service),
     preview: service.preview.bind(service),
     endPreview: () => service.endPreview(),
@@ -178,6 +194,38 @@ describe('Recomputer', () => {
     document.getState().dispatch(renameFeature({ id: 'boom' as FeatureId, name: 'Boom' }));
     await until(() => spawned() === 3 && ready(model));
     expect(requests.at(-1)?.crashed).toEqual(['boom']);
+  });
+
+  it('sends a font once, before the recompute that needs it, and again after a restart', {
+    timeout: 60_000,
+  }, async () => {
+    const doc = testDocument([
+      testFeature('a', 'test-box', { size: '10 mm' }),
+      testFeature('boom', 'test-crash'),
+    ]);
+    // Real font bytes: the kernel parses them (ADR-0058 §3: bytes never change under an ID).
+    const binary = atob(interRegular.slice(interRegular.indexOf(',') + 1));
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0)).buffer as ArrayBuffer;
+    const fonts: FontSource = {
+      used: () => ['inter-regular@1', 'nobody-has@1'],
+      bytes: async (id) => (id === 'nobody-has@1' ? undefined : bytes),
+    };
+    const { document, model, events, spawned } = setup(doc, { fonts });
+    await until(() => ready(model) && spawned() >= 2);
+    // Once per kernel, before its first recompute; a font no source knows is left out.
+    expect(events.filter((e) => e.startsWith('font:'))).toEqual([
+      `font:inter-regular@1:${bytes.byteLength}`,
+      `font:inter-regular@1:${bytes.byteLength}`,
+    ]);
+    expect(events[0]?.startsWith('font:')).toBe(true);
+    const firstRecompute = events.indexOf('recompute');
+    expect(events.slice(0, firstRecompute)).toContain(`font:inter-regular@1:${bytes.byteLength}`);
+
+    // A later edit doesn't send it again: the kernel has it.
+    const before = events.length;
+    edit(document, (d) => withExpr(d, 'a', 'size', '12 mm'));
+    await until(() => events.length > before);
+    expect(events.slice(before).filter((e) => e.startsWith('font:'))).toEqual([]);
   });
 
   it('previews a draft after it settles; a newer draft supersedes the older', {

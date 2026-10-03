@@ -12,6 +12,7 @@ import {
   entityRemoval,
   removeFromSketch,
   setSketchConstruction,
+  setText,
 } from './commands';
 import {
   emptySketchData,
@@ -31,7 +32,7 @@ import {
   type Vec3,
   worldToSketch,
 } from './planes';
-import { constraintRefs, SketchDataSchema, sketchIssues } from './schema';
+import { constraintRefs, type FontId, SketchDataSchema, sketchIssues } from './schema';
 
 const fid = (id: string) => id as FeatureId;
 
@@ -274,6 +275,82 @@ describe('sketch schema', () => {
     const r = rectangle();
     expect(issues({ ...r, dimensions: { ...r.dimensions, k1: r.dimensions.d1 } })).toEqual([
       'dimensions.k1: ID is also used in constraints',
+    ]);
+  });
+
+  it('takes a text entity and keeps constraints and projections off it (P4-03)', () => {
+    const r = rectangle();
+    const entities = {
+      ...r.entities,
+      ta: { type: 'point', x: 40, y: 0 },
+      tt: { type: 'point', x: 40, y: 10 },
+      label: {
+        type: 'text',
+        anchor: 'ta',
+        top: 'tt',
+        text: 'Hi',
+        font: 'inter-regular@1',
+        align: 'left',
+        construction: false,
+      },
+    };
+    expect(issues({ ...r, entities })).toEqual([]);
+
+    const problems = (changes: object) => issues({ ...r, entities, ...changes });
+    expect(
+      problems({ constraints: { ...r.constraints, fixText: { type: 'fix', entity: 'label' } } }),
+    ).toEqual([
+      'constraints.fixText.entity: must be a point, line, circle, arc, ellipse or spline, not a text',
+    ]);
+    const other = (patch: object) => ({
+      entities: {
+        ...entities,
+        ta2: { type: 'point', x: 60, y: 0 },
+        tt2: { type: 'point', x: 60, y: 10 },
+        ...patch,
+      },
+    });
+    expect(
+      problems({
+        ...other({
+          empty: {
+            type: 'text',
+            anchor: 'ta2',
+            top: 'tt2',
+            text: '',
+            font: 'inter-regular@1',
+            align: 'left',
+            construction: false,
+          },
+        }),
+      }),
+    ).toEqual(['entities.empty.text: Too small: expected string to have >=1 characters']);
+    expect(
+      problems({
+        ...other({
+          bad: {
+            type: 'text',
+            anchor: 'ta2',
+            top: 'tt2',
+            text: 'Hi',
+            font: 'Inter Regular',
+            align: 'left',
+            construction: false,
+          },
+        }),
+      }),
+    ).toEqual(['entities.bad.font: Invalid string: must match pattern /^[a-z0-9-]+@[0-9]+$/']);
+    expect(
+      problems({
+        entities: {
+          ...entities,
+          flat: { ...entities.label, anchor: 'tt' },
+        },
+      }),
+    ).toEqual([
+      'entities.flat.anchor: point "tt" already belongs to "label"; join them with a constraint',
+      'entities.flat.top: point "tt" already belongs to "label"; join them with a constraint',
+      'entities.flat: refers to the same entity twice',
     ]);
   });
 });
@@ -695,6 +772,117 @@ describe('removing entities', () => {
     expect(d.entities[eid('sp')]).toMatchObject({ construction: true });
     expect(d.entities[eid('lb')]).toMatchObject({ construction: false });
     expect(d.entities[eid('p')]).toEqual({ type: 'point', x: 5, y: 0 });
+  });
+});
+
+describe('sketch text', () => {
+  const eid = (id: string) => id as SketchEntityId;
+  const pt = (x: number, y: number) => ({ type: 'point' as const, x, y });
+  /** A text with its two points, the vertical constraint between them and its height dimension. */
+  const doc = () => {
+    const created = applyCommand(
+      createDocument(),
+      createSketch({ id: fid('s1'), plane: originPlaneRef('origin:xy') }),
+    ).doc;
+    return applyCommand(
+      created,
+      addToSketch({
+        feature: fid('s1'),
+        entities: {
+          [eid('a')]: pt(0, 0),
+          [eid('t')]: pt(0, 10),
+          [eid('label')]: {
+            type: 'text',
+            anchor: eid('a'),
+            top: eid('t'),
+            text: 'Hi',
+            font: 'inter-regular@1',
+            align: 'left',
+            construction: false,
+          },
+        },
+        constraints: {
+          ['up' as ConstraintId]: { type: 'vertical', a: eid('a'), b: eid('t') },
+        },
+        dimensions: {
+          ['dh' as DimensionId]: {
+            type: 'distance',
+            orientation: 'vertical',
+            a: eid('a'),
+            b: eid('t'),
+            expr: '10 mm',
+            paramName: 'd1',
+            driven: false,
+          },
+        },
+      }),
+    ).doc;
+  };
+  const data = (d: ReturnType<typeof doc>) => {
+    const f = d.features[0];
+    const view = f && readSketch(f);
+    if (!view) throw new Error('no sketch');
+    return view.data;
+  };
+
+  it('removing the text takes its two points, the vertical constraint and the height dimension', () => {
+    const r = entityRemoval(data(doc()), [eid('label')]);
+    expect(r.entities.sort()).toEqual(['a', 'label', 't']);
+    expect(r.constraints).toEqual(['up']);
+    expect(r.dimensions).toEqual(['dh']);
+    const result = applyCommand(
+      doc(),
+      removeFromSketch({ feature: fid('s1'), entities: [eid('label')] }),
+    );
+    const d = data(result.doc);
+    expect(Object.keys(d.entities)).toEqual([]);
+    expect(d.constraints).toEqual({});
+    expect(d.dimensions).toEqual({});
+    expect(sketchIssues(d)).toEqual([]);
+  });
+
+  it('removing one of the text\u2019s points removes the text', () => {
+    const r = entityRemoval(data(doc()), [eid('a')]);
+    expect(r.entities.sort()).toEqual(['a', 'label', 't']);
+    expect(r.constraints).toEqual(['up']);
+    expect(r.dimensions).toEqual(['dh']);
+  });
+
+  it('edits the string, font, alignment and construction flag as one command', () => {
+    const result = applyCommand(
+      doc(),
+      setText({
+        feature: fid('s1'),
+        id: eid('label'),
+        patch: { text: 'Extrudo', font: 'inter-bold@1', align: 'center', construction: true },
+      }),
+    );
+    expect(data(result.doc)?.entities[eid('label')]).toEqual({
+      type: 'text',
+      anchor: eid('a'),
+      top: eid('t'),
+      text: 'Extrudo',
+      font: 'inter-bold@1',
+      align: 'center',
+      construction: true,
+    });
+    // Fields left out stay as they are.
+    const partial = applyCommand(
+      doc(),
+      setText({ feature: fid('s1'), id: eid('label'), patch: { align: 'right' } }),
+    );
+    const e = data(partial.doc)?.entities[eid('label')];
+    expect(e).toMatchObject({ text: 'Hi', font: 'inter-regular@1', align: 'right' });
+  });
+
+  it('refuses an invalid patch and a non-text ID, changing nothing', () => {
+    const edit =
+      (patch: Parameters<typeof setText>[0]['patch'], id = eid('label')) =>
+      () =>
+        applyCommand(doc(), setText({ feature: fid('s1'), id, patch }));
+    expect(edit({ text: '' })).toThrow(CommandError);
+    expect(edit({ font: 'Inter Regular' as FontId })).toThrow(CommandError);
+    expect(edit({}, eid('a'))).toThrow('"a" isn\'t a text of this sketch.');
   });
 });
 

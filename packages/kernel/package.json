@@ -18,6 +18,7 @@
     "comlink": "^4.4.2"
   },
   "devDependencies": {
+    "@extrudo/fonts": "workspace:*",
     "@extrudo/io": "workspace:*",
     "@libcascade/toolchain": "3.0.2",
     "fflate": "^0.8.3",

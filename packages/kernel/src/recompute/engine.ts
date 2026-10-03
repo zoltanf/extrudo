@@ -320,6 +320,8 @@ export class RecomputeEngine {
       }
       const upstream = dependencies.map((id) => (passed.get(id) as { entry: Entry }).entry);
       const access = definition.bodyAccess?.(parsed.data) ?? 'write';
+      // No font in the key: a font's bytes never change under its ID, and the
+      // worker has every font before the first recompute (ADR-0058 §4).
       const key = hashOf(
         feature.type,
         feature.id,

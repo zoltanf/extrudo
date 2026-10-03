@@ -10,6 +10,7 @@
     "./inference": "./src/inference/index.ts",
     "./modify": "./src/modify/index.ts",
     "./profiles": "./src/profiles/index.ts",
+    "./text": "./src/text/index.ts",
     "./export": "./src/export/index.ts",
     "./browser": "./src/browser.ts",
     "./fixtures": "./src/fixtures.ts"
@@ -19,7 +20,12 @@
   },
   "dependencies": {
     "@extrudo/core": "workspace:*",
+    "@extrudo/fonts": "workspace:*",
     "@extrudo/io": "workspace:*",
-    "@salusoft89/planegcs": "1.2.0"
+    "@salusoft89/planegcs": "1.2.0",
+    "opentype.js": "^1.3.4"
+  },
+  "devDependencies": {
+    "@types/opentype.js": "^1.3.10"
   }
 }

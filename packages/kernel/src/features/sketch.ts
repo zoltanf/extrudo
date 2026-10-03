@@ -8,6 +8,7 @@ import {
   type ProjectedCurve,
   type ProjectionId,
   type ProjectionReport,
+  placeText,
   type SketchData,
   type SketchEntity,
   type SketchEntityId,
@@ -40,6 +41,13 @@ export interface SketchProfileInfo {
   holes: number;
   /** The sketch curve of each of the face's edges, in sub-shape order (`null` if unknown). */
   edges: (SketchEntityId | null)[];
+  /**
+   * The text entity this region is ink of (P4-03, ADR-0058 §5), copied from
+   * the `detectProfiles` profile with the same region ID. A whole-text
+   * reference (a `sketchEntity` ref to the text) takes every face whose
+   * `text` is it.
+   */
+  text?: SketchEntityId;
 }
 
 /**
@@ -81,6 +89,13 @@ export interface SketchOutputData {
    * `frame`.
    */
   points?: Record<SketchEntityId, Vec2>;
+  /**
+   * Every text entity of the sketch (construction ones too), P4-03: what a
+   * whole-text reference (`<sketch>/<text>`, ADR-0058 §5) names. A ref to
+   * an ID not in here is a lost reference; one in here without ink faces
+   * means the text draws nothing (no font, empty, construction).
+   */
+  texts?: SketchEntityId[];
 }
 
 /** A sketch curve as a path pattern walks it: exact arcs, polylines for the rest. */
@@ -113,7 +128,7 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
     using scope = kernel.scope();
     const { faces } = kernel.planarFaces(curves, frame, PROFILE_TOLERANCE);
     for (const face of faces) scope.track(face.shape);
-    const regionIds = profileFaceIds(faces, ids, data).ids;
+    const { ids: regionIds, textOf } = profileFaceIds(faces, ids, data);
 
     const order = faces
       .map((_, i) => i)
@@ -130,13 +145,17 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
       let id = regionIds[i] as string;
       while (id in shapes) id = `${id}~`;
       shapes[id] = scope.keep(face.shape);
+      const text = textOf.get(id);
       profiles.push({
         id,
         area: face.area,
         holes: face.holes,
         edges: face.edges.map((c) => ids[c] ?? null),
+        ...(text && { text }),
       });
     }
+    const warnings = textWarnings(data);
+    const texts = textsOf(data);
     const output: SketchOutputData = {
       frame,
       profiles,
@@ -144,12 +163,13 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
       curves: sketchCurves(data),
       exact: exactCurves(data),
       points: sketchPoints(data),
+      ...(texts.length > 0 && { texts }),
     };
     const report: SketchReport = {
       frame,
       ...(Object.keys(projections).length > 0 && { projections }),
     };
-    return { shapes, data: output, report };
+    return { shapes, data: output, report, ...(warnings.length > 0 && { warnings }) };
   },
 };
 
@@ -309,7 +329,7 @@ function exactCurves(data: SketchData): Record<SketchEntityId, PlanarCurve> {
     return p?.type === 'point' ? [p.x, p.y] : undefined;
   };
   for (const [id, e] of Object.entries(data.entities) as [SketchEntityId, SketchEntity][]) {
-    if (e.type === 'point') continue;
+    if (e.type === 'point' || e.type === 'text') continue;
     const curve = planarCurve(e, point);
     if (curve) out[id] = curve;
   }
@@ -318,10 +338,50 @@ function exactCurves(data: SketchData): Record<SketchEntityId, PlanarCurve> {
 
 const faceArea = (faces: readonly PlanarFace[], i: number) => (faces[i] as PlanarFace).area;
 
+/** The text entities of a sketch, entity ID order, construction ones too (P4-03). */
+function textsOf(data: SketchData): SketchEntityId[] {
+  const out: SketchEntityId[] = [];
+  for (const [id, e] of Object.entries(data.entities) as [SketchEntityId, SketchEntity][]) {
+    if (e.type === 'text') out.push(id);
+  }
+  return out;
+}
+
+/** How much of a text's string a message shows before it shortens it. */
+const SHORT_TEXT = 20;
+
+/** A text's string for a message: the first 20 characters, with an ellipsis when it cuts. */
+const shortText = (text: string) =>
+  text.length > SHORT_TEXT ? `${text.slice(0, SHORT_TEXT)}…` : text;
+
+/**
+ * Warnings about a sketch's texts (P4-03, ADR-0058 §5): a font the worker
+ * doesn't have, glyphs it lacks, and texts that draw nothing.
+ */
+function textWarnings(data: SketchData): string[] {
+  const warnings: string[] = [];
+  for (const [id, e] of Object.entries(data.entities) as [SketchEntityId, SketchEntity][]) {
+    if (e.type !== 'text') continue;
+    const placed = placeText(data, id);
+    if (placed.status === 'no-font') {
+      warnings.push(`Text "${shortText(e.text)}" uses font ${e.font}, which isn't available.`);
+    } else if (placed.status === 'missing-glyphs') {
+      warnings.push(
+        `Font ${e.font} has no letters for "${placed.missing.join(', ')}"; they show as boxes.`,
+      );
+    } else if (placed.status === 'empty') {
+      warnings.push(`Text "${shortText(e.text)}" has no letters to draw.`);
+    }
+  }
+  return warnings;
+}
+
 /**
  * The sketch's curves for the kernel, in entity ID order (as
  * `detectProfiles` walks them), without points and construction geometry.
- * `ids[i]` is the entity of `curves[i]`.
+ * A text entity contributes its placed sub-curves in order, named by their
+ * sub-IDs (`<text>.<k>`, ADR-0058 §2). `ids[i]` is the entity of
+ * `curves[i]`.
  */
 export function planarCurves(data: SketchData): { curves: PlanarCurve[]; ids: SketchEntityId[] } {
   const curves: PlanarCurve[] = [];
@@ -333,6 +393,17 @@ export function planarCurves(data: SketchData): { curves: PlanarCurve[]; ids: Sk
   for (const id of Object.keys(data.entities).sort() as SketchEntityId[]) {
     const e = data.entities[id] as SketchEntity;
     if (e.type === 'point' || e.construction) continue;
+    if (e.type === 'text') {
+      for (const curve of placeText(data, id).curves) {
+        curves.push(
+          curve.kind === 'line'
+            ? { kind: 'line', a: curve.a, b: curve.b }
+            : { kind: 'spline', degree: curve.degree, poles: curve.poles, knots: curve.knots },
+        );
+        ids.push(curve.id as SketchEntityId);
+      }
+      continue;
+    }
     const curve = planarCurve(e, point);
     if (!curve) continue;
     curves.push(curve);
@@ -342,7 +413,7 @@ export function planarCurves(data: SketchData): { curves: PlanarCurve[]; ids: Sk
 }
 
 function planarCurve(
-  e: Exclude<SketchEntity, { type: 'point' }>,
+  e: Exclude<SketchEntity, { type: 'point' | 'text' }>,
   point: (ref: SketchEntityId) => Vec2 | undefined,
 ): PlanarCurve | undefined {
   switch (e.type) {
@@ -390,7 +461,8 @@ function planarCurve(
  * Region IDs for the kernel's faces of a sketch. Each face is keyed by the
  * curves around its outer loop and their directions, exactly as
  * `detectProfiles` keys its regions (ADR-0020), so the IDs agree with the
- * profiles the sketch shows and a user selects.
+ * profiles the sketch shows and a user selects. `textOf` maps a region ID
+ * to the text entity whose ink it is (P4-03, ADR-0058 §5).
  *
  * The two can still differ where exact curves and the arrangement's
  * polylines part ways (an ellipse or spline grazing another curve). As a
@@ -402,7 +474,7 @@ export function profileFaceIds(
   faces: readonly PlanarFace[],
   curveIds: readonly SketchEntityId[],
   data: SketchData,
-): { ids: string[]; reassigned: number } {
+): { ids: string[]; reassigned: number; textOf: Map<string, SketchEntityId> } {
   const own = profileIds(
     faces.map((face) => ({
       key: profileKey(
@@ -418,6 +490,7 @@ export function profileFaceIds(
     id: p.id,
     area: p.area,
     centroid: profileCentroid(p),
+    ...(p.text && { text: p.text }),
   }));
   const byId = new Map(detected.map((p) => [p.id, p]));
   const claimed = new Set<string>();
@@ -448,7 +521,10 @@ export function profileFaceIds(
     }
     ids[i] = best?.id ?? (own[i] as string);
   });
-  return { ids: ids as string[], reassigned };
+  const textOf = new Map<string, SketchEntityId>(
+    detected.flatMap((p) => (p.text ? [[p.id, p.text as SketchEntityId] as const] : [])),
+  );
+  return { ids: ids as string[], reassigned, textOf };
 }
 
 const distance = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]);

@@ -28,7 +28,7 @@
  * (`profileKey`, `profileIds`; P2-02).
  */
 import type { SketchData, SketchEntity, SketchEntityId, Vec2 } from '@extrudo/core';
-import { curvePolyline } from '@extrudo/core';
+import { curvePolyline, placeText, textPolylines } from '@extrudo/core';
 import {
   type Curve,
   dist,
@@ -40,6 +40,7 @@ import {
   sub,
   TAU,
 } from '../inference/geometry';
+import { interiorPoint, windingNumber } from './ink';
 
 /** Positions closer than this (mm) are the same vertex. */
 export const PROFILE_TOLERANCE = 1e-4;
@@ -80,6 +81,12 @@ export interface Profile {
   holes: ProfileLoop[];
   /** Area inside the outer loop and outside the holes, mm². */
   area: number;
+  /**
+   * Set when the region is ink of one text entity (ADR-0058 §5): every edge
+   * of the outer boundary and of all holes belongs to a sub-curve of that
+   * text, and the winding number at the region's interior point is non-zero.
+   */
+  text?: SketchEntityId;
 }
 
 // Segments ---------------------------------------------------------------------
@@ -226,6 +233,18 @@ function segmentsOf(data: SketchData, id: SketchEntityId, e: SketchEntity): Segm
       for (let i = 1; i < line.length; i++) {
         const s = lineSegment(id, line[i - 1] as Vec2, line[i] as Vec2);
         if (s) out.push(s);
+      }
+      return out;
+    }
+    case 'text': {
+      // One chain of line segments per placed sub-curve; the sub-curve ID
+      // (`<text>.<k>`) is the segment's curve, so region IDs hash sub-IDs.
+      const out: Segment[] = [];
+      for (const [cid, poly] of textPolylines(data, id)) {
+        for (let i = 1; i < poly.length; i++) {
+          const s = lineSegment(cid as SketchEntityId, poly[i - 1] as Vec2, poly[i] as Vec2);
+          if (s) out.push(s);
+        }
       }
       return out;
     }
@@ -570,6 +589,49 @@ export function profileCentroid(profile: Pick<Profile, 'outer' | 'holes'>): Vec2
   return area === 0 ? (profile.outer.polygon[0] ?? [0, 0]) : [x / (3 * area), y / (3 * area)];
 }
 
+// Text ink ---------------------------------------------------------------------
+
+/**
+ * The contours of a text entity as closed polylines (one point list per
+ * contour, closing edge implied), for the ink test; `undefined` when the
+ * text has no curves (no font loaded, degenerate placement or empty string).
+ */
+export function textInkOf(
+  data: SketchData,
+  id: SketchEntityId,
+): readonly (readonly Vec2[])[] | undefined {
+  const placed = placeText(data, id);
+  if (placed.curves.length === 0) return undefined;
+  const polys = textPolylines(data, id);
+  const out: Vec2[][] = [];
+  for (const contour of placed.contours) {
+    const pts: Vec2[] = [];
+    for (const cid of contour) {
+      for (const p of polys.get(cid) ?? []) {
+        const last = pts[pts.length - 1];
+        if (last && dist(last, p) < 1e-9) continue;
+        pts.push(p);
+      }
+    }
+    if (pts.length > 2) out.push(pts);
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+/** The single text entity owning every curve ID, if there is one (all IDs are `<text>.<k>` of it). */
+function soleTextOf(curveIds: Iterable<string>, data: SketchData): SketchEntityId | undefined {
+  let owner: SketchEntityId | undefined;
+  for (const curve of curveIds) {
+    const dot = curve.lastIndexOf('.');
+    if (dot <= 0 || !/^\d+$/.test(curve.slice(dot + 1))) return undefined;
+    const id = curve.slice(0, dot) as SketchEntityId;
+    if (data.entities[id]?.type !== 'text') return undefined;
+    if (owner && owner !== id) return undefined;
+    owner = id;
+  }
+  return owner;
+}
+
 // Detection ------------------------------------------------------------------------
 
 /**
@@ -655,6 +717,26 @@ export function detectProfiles(data: SketchData): Profile[] {
     holes: p.holes,
     area: p.area,
   }));
+
+  // Mark a region as ink of one text (ADR-0058 §5): its whole boundary
+  // (outer loop and holes) belongs to sub-curves of that text and the
+  // winding number at the region's interior point is non-zero (counters
+  // wind to 0 and stay ordinary islands; overlapping contours are all ink).
+  for (const profile of out) {
+    const curveIds = [
+      ...profile.outer.edges.map((e) => e.curve),
+      ...profile.holes.flatMap((h) => h.edges.map((e) => e.curve)),
+    ];
+    const text = soleTextOf(curveIds, data);
+    if (!text) continue;
+    const ink = textInkOf(data, text);
+    const inner = interiorPoint(
+      profile.outer.polygon,
+      profile.holes.map((h) => h.polygon),
+    );
+    if (ink && inner && windingNumber(inner, ink) !== 0) profile.text = text;
+  }
+
   return out.sort((a, b) => b.area - a.area || (a.id < b.id ? -1 : 1));
 }
 

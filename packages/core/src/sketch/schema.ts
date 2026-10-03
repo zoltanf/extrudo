@@ -85,6 +85,34 @@ export const SketchSplineSchema = z.strictObject({
   construction: z.boolean(),
 });
 
+/** A font ID carries its version: `family-style@n`, e.g. `inter-regular@1` (ADR-0058 §3). */
+export const FontIdSchema = z.string().regex(/^[a-z0-9-]+@[0-9]+$/);
+export type FontId = z.infer<typeof FontIdSchema>;
+
+/**
+ * A text entity (P4-03, FR-SK-13, ADR-0058 §1): the string `text` laid out
+ * with font `font`, placed by two points — `anchor` sits on the first line's
+ * baseline, `top` one text height above it ("up" for the text). The height is
+ * `|top − anchor|` and means the font's cap height; the baseline runs 90°
+ * clockwise from `top − anchor`, and `align` aligns each line about the
+ * anchor. No number is stored: the two points carry size and rotation, so the
+ * solver, dragging and dimensions work on them. The curves are derived
+ * (`placeText` in `sketch/text.ts`), so the solver sees only the two points,
+ * and constraints and dimensions may not refer to the entity itself.
+ */
+export const SketchTextSchema = z.strictObject({
+  type: z.literal('text'),
+  /** A point on the first line's baseline. */
+  anchor: ref,
+  /** A point one text height above `anchor`: the text's "up". */
+  top: ref,
+  /** The string, `\n` separating lines. */
+  text: z.string().min(1).max(1000),
+  font: FontIdSchema,
+  align: z.enum(['left', 'center', 'right']),
+  construction: z.boolean(),
+});
+
 export const SketchEntitySchema = z.discriminatedUnion('type', [
   SketchPointSchema,
   SketchLineSchema,
@@ -92,6 +120,7 @@ export const SketchEntitySchema = z.discriminatedUnion('type', [
   SketchArcSchema,
   SketchEllipseSchema,
   SketchSplineSchema,
+  SketchTextSchema,
 ]);
 
 export type SketchPoint = z.infer<typeof SketchPointSchema>;
@@ -100,6 +129,7 @@ export type SketchCircle = z.infer<typeof SketchCircleSchema>;
 export type SketchArc = z.infer<typeof SketchArcSchema>;
 export type SketchEllipse = z.infer<typeof SketchEllipseSchema>;
 export type SketchSpline = z.infer<typeof SketchSplineSchema>;
+export type SketchText = z.infer<typeof SketchTextSchema>;
 export type SketchEntity = z.infer<typeof SketchEntitySchema>;
 export type SketchEntityType = SketchEntity['type'];
 
@@ -286,6 +316,7 @@ const KIND_NAMES: Record<string, string> = {
   'line,circle,arc': 'a line, circle or arc',
   'line,circle,arc,ellipse': 'a line, circle, arc or ellipse',
   'point,line,circle,arc': 'a point, line, circle or arc',
+  'point,line,circle,arc,ellipse,spline': 'a point, line, circle, arc, ellipse or spline',
   'line,arc': 'a line or an arc',
   'point,line': 'a point or a line',
   'line,point': 'a line or a point',
@@ -382,6 +413,11 @@ export function sketchIssues(sketch: {
           e(`points.${i}`, p);
         });
         distinct('entities', id, entity.points);
+        break;
+      case 'text':
+        e('anchor', entity.anchor);
+        e('top', entity.top);
+        distinct('entities', id, [entity.anchor, entity.top]);
         break;
     }
   }
@@ -498,7 +534,12 @@ export function sketchIssues(sketch: {
       const path = ['projections', id, 'curves', key];
       const kind = kindOf(curve);
       if (!kind) issues.push({ path, message: `refers to missing entity "${curve}"` });
-      else if (kind === 'point') issues.push({ path, message: 'must be a curve, not a point' });
+      else if (kind === 'point' || kind === 'text') {
+        issues.push({
+          path,
+          message: kind === 'point' ? 'must be a curve, not a point' : 'must be a curve, not text',
+        });
+      }
       const other = projectedBy.get(curve);
       if (other) issues.push({ path, message: `"${curve}" is also projected by "${other}"` });
       else projectedBy.set(curve, id);

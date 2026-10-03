@@ -1,11 +1,14 @@
 import {
   createModelStore,
   type DocumentStore,
+  type ExtrudoDocument,
   type Feature,
   type FeatureId,
   type ModelState,
   type ModelStore,
+  readSketch,
   type SessionStore,
+  type SketchData,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import {
@@ -279,7 +282,7 @@ export function Timeline({
         </>
       )}
       <span className="flex-1" />
-      {session && <SelectionState session={session} size={selectionSize} />}
+      {session && <SelectionState session={session} store={store} size={selectionSize} />}
       <output className="font-mono text-[11px] whitespace-nowrap text-muted" aria-label="Status">
         {activeSketch ? `Editing ${activeSketch} · ` : ''}
         {count} {count === 1 ? 'feature' : 'features'} · {doc.settings.units}
@@ -508,13 +511,35 @@ function Chip({
 
 const NO_MODEL = createModelStore<BodyMesh>();
 
+/** The sketches of a document, for naming what the selection holds (P4-03). */
+function sketchLookup(
+  doc: ExtrudoDocument,
+): (id: FeatureId) => { name?: string; data: SketchData } | undefined {
+  return (id) => {
+    const feature = doc.features.find((f) => f.id === id);
+    const sketch = feature && readSketch(feature);
+    return sketch && { name: feature?.name, data: sketch.data };
+  };
+}
+
 /**
  * The selection summary (UI spec §2): "2 faces", "1 edge"; nothing while
  * nothing is selected. Then the size of the box around it (P2-13), once
  * the kernel has measured it.
  */
-function SelectionState({ session, size }: { session: SessionStore; size?: string | undefined }) {
-  const summary = useStore(session, (s) => selectionSummary(s.selection));
+function SelectionState({
+  session,
+  store,
+  size,
+}: {
+  session: SessionStore;
+  store: DocumentStore;
+  size?: string | undefined;
+}) {
+  // The document tells a whole text from a sketch curve (P4-03).
+  const doc = useStore(store, (s) => s.doc);
+  const lookup = sketchLookup(doc);
+  const summary = useStore(session, (s) => selectionSummary(s.selection, { sketch: lookup }));
   if (!summary) return null;
   return (
     <>

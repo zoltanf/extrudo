@@ -11,6 +11,7 @@ import type { KernelApi, KernelService } from './service';
 export function workerApi(service: KernelService): KernelApi {
   return {
     init: () => service.init(),
+    addFont: (id, bytes) => service.addFont(id, bytes),
     recompute: async (request, onFeature) => transfer(await service.recompute(request, onFeature)),
     preview: async (request, onFeature) => transfer(await service.preview(request, onFeature)),
     endPreview: () => service.endPreview(),

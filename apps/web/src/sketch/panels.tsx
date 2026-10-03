@@ -1,7 +1,9 @@
 import {
   ANGLE,
+  type Command,
   CommandError,
   type Dim,
+  type DimensionId,
   type DocumentStore,
   type ExtrudoDocument,
   evaluateParameters,
@@ -15,20 +17,32 @@ import {
   type SelectionItem,
   type SessionStore,
   type SketchData,
+  type SketchDimension,
   type SketchEntity,
   type SketchEntityId,
   setSketchConstruction,
   UNITS,
+  updateSketchDimension,
 } from '@extrudo/core';
+import { BUNDLED_FONTS } from '@extrudo/fonts';
 import { Crosshair, Trash2 } from 'lucide-react';
-import { type ReactNode, useMemo } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { Button, ConfirmDialog, ToolIcon, Tooltip } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
 import type { ViewportStore } from '../viewport/store';
+import { ensureUiFonts } from './fonts';
 import { useHostState } from './hostState';
 import { profileIdsIn, sketchProfiles } from './profiles';
+import {
+  DEFAULT_TEXT_DRAFT,
+  setTextDraft,
+  takeTextFocus,
+  textDraftStore,
+  textFocusStore,
+} from './textDraft';
+import { type TextPatch, textHeight, textHeightDimension, textPatch } from './textEditing';
 import type { ToolHost } from './tools/host';
 
 /**
@@ -285,6 +299,7 @@ const TYPE_NAMES: Record<SketchEntity['type'], [string, string]> = {
   arc: ['Arc', 'arcs'],
   ellipse: ['Ellipse', 'ellipses'],
   spline: ['Spline', 'splines'],
+  text: ['Text', 'texts'],
 };
 
 const STATUS_TEXT = {
@@ -406,6 +421,20 @@ export function SelectionPanel({ store, session, host, onDelete, notify }: Selec
     }
   } else if (entity?.type === 'spline') {
     rows.push(readout('Fit points', String(entity.points.length)));
+  } else if (entity?.type === 'text' && single) {
+    rows.push(
+      <TextFields
+        key="text"
+        store={store}
+        data={data}
+        id={single}
+        text={entity}
+        sketchId={sketchId}
+        doc={doc}
+        host={host}
+        notify={notify}
+      />,
+    );
   }
 
   return (
@@ -443,6 +472,323 @@ export function SelectionPanel({ store, session, host, onDelete, notify }: Selec
           Delete <kbd className="font-mono text-xs text-muted">Del</kbd>
         </Button>
       </FloatingPanel>
+    </div>
+  );
+}
+
+export interface TextPanelProps {
+  store: DocumentStore;
+  host: ToolHost | undefined;
+}
+
+/**
+ * The Text tool's panel (P4-03, ADR-0058 §6): the string, the font, the
+ * alignment and the height of the text being placed. It floats beside the
+ * view like the selection panel, is not modal (the text previews live while it
+ * is open), and OK or Ctrl+Enter commits the text as one undo step.
+ */
+export function TextPanel({ store, host }: TextPanelProps) {
+  const draft = useStore(textDraftStore);
+  const doc = useStore(store, (s) => s.doc);
+  const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
+  // The chosen font may not be in yet (P4-03): the text can't be drawn or laid
+  // out until its bytes are, and nothing else asks for a font that is only in
+  // the draft so far.
+  useEffect(() => {
+    void ensureUiFonts([draft.font]);
+  }, [draft.font]);
+  const height =
+    draft.expr.trim().length > 0 ? evaluation.evaluate(draft.expr, 'length') : undefined;
+  const ok = draft.open && draft.text.length > 0 && height?.ok === true;
+  const commit = () => {
+    if (ok) host?.enter();
+  };
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: forwards Ctrl+Enter from the fields inside.
+    <div
+      className="absolute bottom-3 z-10 w-60 transition-[left] duration-(--x-normal) ease-ui"
+      style={BESIDE_BROWSER}
+      onKeyDown={(event) => {
+        // Enter makes a new line in the text; Ctrl+Enter (or its Enter) commits.
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          commit();
+        }
+        // Esc cancels, as the button says: the Text field would otherwise keep
+        // the key (shortcuts skip fields), so the panel takes it itself.
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          host?.escape();
+        }
+      }}
+    >
+      <FloatingPanel label="Text">
+        <h2 className="text-base font-semibold">Text</h2>
+        <div className="flex flex-col gap-1">
+          <label className="flex flex-col gap-1 text-sm text-muted">
+            Text
+            <textarea
+              aria-label="Text"
+              className="min-h-16 rounded-input border border-line bg-(--x-raised) px-2 py-1 text-ink"
+              rows={3}
+              // biome-ignore lint/a11y/noAutofocus: the panel opens for typing the text
+              autoFocus
+              spellCheck={false}
+              value={draft.text}
+              onChange={(event) => setTextDraft({ text: event.target.value })}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            Font
+            <select
+              aria-label="Font"
+              className="min-w-0 flex-1 rounded-input border border-line bg-(--x-raised) px-1 py-1 text-ink"
+              value={draft.font}
+              onChange={(event) => setTextDraft({ font: event.target.value })}
+            >
+              {BUNDLED_FONTS.map((font) => (
+                <option key={font.id} value={font.id} style={{ fontFamily: font.family }}>
+                  {font.family} {font.style}
+                </option>
+              ))}
+            </select>
+          </label>
+          <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
+            <legend className="text-sm text-muted">Alignment</legend>
+            <div className="flex gap-1">
+              {ALIGNMENTS.map((align) => (
+                <Button
+                  key={align}
+                  className={`flex-1 px-0 ${draft.align === align ? 'border-accent bg-accent-soft' : ''}`}
+                  aria-pressed={draft.align === align}
+                  onClick={() => setTextDraft({ align })}
+                >
+                  {ALIGN_LABELS[align]}
+                </Button>
+              ))}
+            </div>
+          </fieldset>
+          <div className="grid grid-cols-[52px_minmax(0,1fr)] items-start gap-2">
+            <span className="pt-1 text-sm text-muted">Height</span>
+            <ExpressionInput
+              label="Height"
+              value={draft.expr}
+              evaluate={(expr) => evaluation.evaluate(expr, 'length')}
+              format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
+              onDraftChange={(expr, valid) => {
+                const result = evaluation.evaluate(expr, 'length');
+                if (valid && result.ok) setTextDraft({ expr, mm: result.value });
+                else if (!valid) setTextDraft({ expr });
+              }}
+              onCommit={(expr) => {
+                const result = evaluation.evaluate(expr, 'length');
+                if (result.ok) setTextDraft({ expr, mm: result.value });
+              }}
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-1">
+          <Button variant="ghost" onClick={() => host?.escape()}>
+            Cancel <kbd className="font-mono text-xs text-muted">Esc</kbd>
+          </Button>
+          <Button disabled={!ok} onClick={commit}>
+            OK <kbd className="font-mono text-xs text-muted">Ctrl+↵</kbd>
+          </Button>
+        </div>
+      </FloatingPanel>
+    </div>
+  );
+}
+
+const ALIGNMENTS = ['left', 'center', 'right'] as const;
+const ALIGN_LABELS: Record<(typeof ALIGNMENTS)[number], string> = {
+  left: 'Left',
+  center: 'Center',
+  right: 'Right',
+};
+
+/**
+ * The string, font, alignment and height of the selected text (P4-03,
+ * ADR-0058 §6): each change is one undo step through the core commands
+ * (`setText`, and the height dimension's expression through `ToolHost.apply`,
+ * ADR-0016). The height is the distance dimension between the text's own two
+ * points; without one it is shown as measured and can't be typed.
+ *
+ * Exported so the panel's fields can be rendered in a test: the panel itself
+ * reads the session from a store, which `renderToStaticMarkup` doesn't see.
+ */
+export function TextFields({
+  store,
+  data,
+  id,
+  text,
+  sketchId,
+  doc,
+  host,
+  notify,
+}: {
+  store: DocumentStore;
+  data: SketchData;
+  id: SketchEntityId;
+  text: SketchEntity;
+  sketchId: FeatureId;
+  doc: ExtrudoDocument;
+  host: ToolHost | undefined;
+  notify(tone: 'info' | 'error', text: string): void;
+}) {
+  const stored = text.type === 'text' ? text.text : '';
+  const [draft, setDraft] = useState(stored);
+  const area = useRef<HTMLTextAreaElement>(null);
+  // The same for the selection panel: a font the document hasn't used yet is
+  // fetched as soon as it is chosen (P4-03).
+  const font = text.type === 'text' ? text.font : undefined;
+  useEffect(() => {
+    if (font) void ensureUiFonts([font]);
+  }, [font]);
+  const request = useStore(textFocusStore, (s) => s.request);
+  // Follow an edit made elsewhere (undo, another tool) while the field is idle.
+  useEffect(() => setDraft(stored), [stored]);
+  // A double-click on the text puts the cursor in this field (P4-03).
+  useEffect(() => {
+    if (request > 0 && takeTextFocus() === id) area.current?.focus();
+  }, [request, id]);
+
+  /** One undo step per change, with the sketch solved again (ADR-0016). */
+  const apply = (command: Command<unknown>) => {
+    try {
+      if (host) host.apply(command);
+      else store.getState().dispatch(command);
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      notify('error', error.message);
+      setDraft(stored);
+    }
+  };
+  const patch = (change: TextPatch) => apply(textPatch(sketchId, id, change));
+  const entity = text.type === 'text' ? text : undefined;
+  const height = textHeightDimension(data, entity);
+  const heightId = height?.id;
+
+  return (
+    <>
+      <label className="flex flex-col gap-1 text-sm text-muted">
+        Text
+        <textarea
+          ref={area}
+          aria-label="Text"
+          className="min-h-16 rounded-input border border-line bg-(--x-raised) px-2 py-1 text-ink"
+          rows={3}
+          spellCheck={false}
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => {
+            if (draft !== stored && draft.length > 0) patch({ text: draft });
+          }}
+          onKeyDown={(event) => {
+            // Enter makes a new line; Ctrl+Enter (or its Enter) commits.
+            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      </label>
+      <label className="flex items-center gap-2 text-sm text-muted">
+        Font
+        <select
+          aria-label="Font"
+          className="min-w-0 flex-1 rounded-input border border-line bg-(--x-raised) px-1 py-1 text-ink"
+          value={entity?.font ?? DEFAULT_TEXT_DRAFT.font}
+          onChange={(event) => patch({ font: event.target.value })}
+        >
+          {BUNDLED_FONTS.map((font) => (
+            <option key={font.id} value={font.id} style={{ fontFamily: font.family }}>
+              {font.family} {font.style}
+            </option>
+          ))}
+        </select>
+      </label>
+      <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
+        <legend className="text-sm text-muted">Alignment</legend>
+        <div className="flex gap-1">
+          {ALIGNMENTS.map((align) => (
+            <Button
+              key={align}
+              className={`flex-1 px-0 ${entity?.align === align ? 'border-accent bg-accent-soft' : ''}`}
+              aria-pressed={entity?.align === align}
+              onClick={() => entity && patch({ align })}
+            >
+              {ALIGN_LABELS[align]}
+            </Button>
+          ))}
+        </div>
+      </fieldset>
+      {height && heightId ? (
+        <HeightField
+          id={heightId}
+          dimension={height.dimension}
+          sketchId={sketchId}
+          doc={doc}
+          host={host}
+          notify={notify}
+        />
+      ) : (
+        <div className="flex justify-between gap-2 text-sm">
+          <span className="text-muted">Height</span>
+          <span className="font-mono tabular-nums">
+            {formatQuantity(textHeight(data, id) ?? 0, LENGTH, doc.settings)}
+          </span>
+        </div>
+      )}
+    </>
+  );
+}
+
+/**
+ * The height of the selected text, edited as the expression of the dimension
+ * that gives it (P4-03, ADR-0058 §6): it goes through `ToolHost.apply`, like
+ * the label editor (ADR-0016), so the sketch solves with it.
+ */
+function HeightField({
+  id,
+  dimension,
+  sketchId,
+  doc,
+  host,
+  notify,
+}: {
+  id: DimensionId;
+  dimension: SketchDimension;
+  sketchId: FeatureId;
+  doc: ExtrudoDocument;
+  host: ToolHost | undefined;
+  notify(tone: 'info' | 'error', text: string): void;
+}) {
+  const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
+  const expr = dimension.expr;
+  const set = (next: string) => {
+    if (!host) return;
+    try {
+      // The dimension's value moves the text: it goes through apply (ADR-0016).
+      host.apply(updateSketchDimension({ feature: sketchId, id, changes: { expr: next } }));
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      notify('error', error.message);
+    }
+  };
+  return (
+    <div className="grid grid-cols-[52px_minmax(0,1fr)] items-start gap-2">
+      <span className="pt-1 text-sm text-muted">Height</span>
+      <ExpressionInput
+        label="Height"
+        value={expr}
+        evaluate={(next) => evaluation.evaluate(next, 'length')}
+        format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
+        onDraftChange={(next, valid) => {
+          if (valid) set(next);
+        }}
+        onCommit={set}
+      />
     </div>
   );
 }

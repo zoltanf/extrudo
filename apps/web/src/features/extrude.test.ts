@@ -10,12 +10,14 @@ import {
   insertFeature,
   originPlaneRef,
   type SketchData,
+  type SketchEntityId,
   setFeatureVisibility,
   sketchInputs,
   type Vec3,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { outline, profilesOf } from '../project/templates';
+import { textSketch } from '../sketch/textTesting';
 import { HIDDEN_TOAST_MS, hiddenMessage, type OpenDialog } from './dialog';
 import { extrudeDialog, extrudeManipulators, proposeOperation } from './extrude';
 import { featureDialogs, specForCommand } from './registry';
@@ -128,6 +130,34 @@ describe('the extrude dialog', () => {
   it('is the app’s dialog for the Extrude tool', () => {
     expect(specForCommand(featureDialogs(), 'extrude')).toBe(extrudeDialog);
     expect(extrudeDialog.type).toBe('extrude');
+  });
+
+  it('fills its profiles field from a selected text (P4-03)', () => {
+    const t = setupDialogs([extrudeDialog]);
+    const id = 'T' as FeatureId;
+    const data = textSketch({ text: 'Ag', height: 10 });
+    t.store.getState().dispatch(
+      insertFeature({
+        feature: {
+          id,
+          type: 'sketch',
+          name: 'Sketch1',
+          suppressed: false,
+          inputs: sketchInputs(originPlaneRef('origin:xy'), data),
+        },
+        index: t.store.getState().doc.features.length,
+      }),
+    );
+    // The text a whole-text pick names (its own ID within the sketch).
+    const word = 'word' as SketchEntityId;
+    t.session.getState().select([{ kind: 'sketchEntity', id: `${id}/${word}` }]);
+    t.controller.start('extrude');
+    expect(t.open()?.values.refs.profiles).toEqual([{ kind: 'sketchEntity', id: `${id}/${word}` }]);
+    // A sketch curve is not a profile the sweep takes: it fills no field.
+    t.controller.cancel();
+    t.session.getState().select([{ kind: 'sketchEntity', id: `${id}/l0` }]);
+    t.controller.start('extrude');
+    expect(t.open()?.values.refs.profiles).toEqual([]);
   });
 
   it('turns every combination of options into valid inputs and back', () => {

@@ -200,6 +200,9 @@ importers:
       '@extrudo/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@extrudo/fonts':
+        specifier: workspace:*
+        version: link:../../packages/fonts
       '@extrudo/io':
         specifier: workspace:*
         version: link:../../packages/io
@@ -277,6 +280,8 @@ importers:
         specifier: ^5.0.15
         version: 5.0.15(@types/react@19.3.0)(immer@11.1.18)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
 
+  packages/fonts: {}
+
   packages/io:
     dependencies:
       fflate:
@@ -295,6 +300,9 @@ importers:
         specifier: ^4.4.2
         version: 4.4.2
     devDependencies:
+      '@extrudo/fonts':
+        specifier: workspace:*
+        version: link:../fonts
       '@extrudo/io':
         specifier: workspace:*
         version: link:../io
@@ -313,12 +321,22 @@ importers:
       '@extrudo/core':
         specifier: workspace:*
         version: link:../core
+      '@extrudo/fonts':
+        specifier: workspace:*
+        version: link:../fonts
       '@extrudo/io':
         specifier: workspace:*
         version: link:../io
       '@salusoft89/planegcs':
         specifier: 1.2.0
         version: 1.2.0
+      opentype.js:
+        specifier: ^1.3.4
+        version: 1.3.4
+    devDependencies:
+      '@types/opentype.js':
+        specifier: ^1.3.10
+        version: 1.3.10
 
   packages/storage:
     dependencies:
@@ -1380,6 +1398,9 @@ packages:
   '@types/node@26.6.2':
     resolution: {integrity: sha512-X1P21scMv4zGKLYqjdGjaKa7COa0RKVYYZZN/NfvLQ1JegxFhdhpZG/Lyn8AXx6CDUavKAd11v6BvfpkDByK8g==}
 
+  '@types/opentype.js@1.3.10':
+    resolution: {integrity: sha512-F67EFyk6j02okHz5JCgata3ZRAcZi9GLnzmkHw/rzJq3OCc8/ZVdoKrxMTYjcQP6IYHGBz2cav1cpzkOkPiPCQ==}
+
   '@types/react-dom@19.3.0':
     resolution: {integrity: sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==}
     peerDependencies:
@@ -1815,6 +1836,11 @@ packages:
     resolution: {integrity: sha512-XrsrhT5sybtKI6wakr2SPOlGZWWYbUXZ7a0jT8/QOeAPau+1X/bSegNe5YR75oJmEZQbKningirmGOEJCIk61Q==}
     engines: {node: '>=12.20.0'}
 
+  opentype.js@1.3.4:
+    resolution: {integrity: sha512-d2JE9RP/6uagpQAVtJoF0pJJA/fgai89Cc50Yp0EJHk+eLp6QQ7gBoblsnubRULNY132I0J1QKMJ+JTbMqz4sw==}
+    engines: {node: '>= 8.0.0'}
+    hasBin: true
+
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -1918,6 +1944,9 @@ packages:
   std-env@4.2.0:
     resolution: {integrity: sha512-oCUKSupKTHX53EyjDtuZQ64pjLJ6yYCtpmEw0goYxtjG9KpbRe8KAsl2tBUGU9DyMcJ0RwJ8GqJAFzMXcXW1Rw==}
 
+  string.prototype.codepointat@0.2.1:
+    resolution: {integrity: sha512-2cBVCj6I4IOvEnjgO/hWqXjqBGsY+zwPmHl12Srk9IXSZ56Jwwmy+66XO5Iut/oQVR7t5ihYdLB0GMa4alEUcg==}
+
   suspend-react@0.1.3:
     resolution: {integrity: sha512-aqldKgX9aZqpoDp3e8/BZ8Dm7x1pJl+qI3ZKxDN0i/IQTWUwBx/ManmlVJ3wowqbno6c2bmiIfs+Um6LbsjJyQ==}
     peerDependencies:
@@ -1937,6 +1966,9 @@ packages:
 
   three@0.186.0:
     resolution: {integrity: sha512-cr/fIM2ddMSVbYVgkfD4jLJv7Fh/8ZTjvo+7gQeSVGUZHxpx9FDwoL5iC7hUz/LiRA8wMbqfnb90xKfm1/HHkQ==}
+
+  tiny-inflate@1.0.3:
+    resolution: {integrity: sha512-pkY1fj1cKHb2seWDy0B16HeWyczlJA9/WW3u3c4z/NiWDsO3DOU5D7nhTLE9CF0yXv/QZFY7sEJmj24dK+Rrqw==}
 
   tinybench@6.1.4:
     resolution: {integrity: sha512-9APumHG7r4yOk4X4WlkmE71aZcv1gvin1czO3OQ1U9iJcFA5Ja/ygyb0vPOVHTthFozUYs8CLoLUlM8grb2lTQ==}
@@ -3097,6 +3129,8 @@ snapshots:
     dependencies:
       undici-types: 8.9.0
 
+  '@types/opentype.js@1.3.10': {}
+
   '@types/react-dom@19.3.0(@types/react@19.3.0)':
     dependencies:
       '@types/react': 19.3.0
@@ -3380,6 +3414,11 @@ snapshots:
 
   obug@2.2.1: {}
 
+  opentype.js@1.3.4:
+    dependencies:
+      string.prototype.codepointat: 0.2.1
+      tiny-inflate: 1.0.3
+
   picocolors@1.1.1: {}
 
   picomatch@4.0.7: {}
@@ -3530,6 +3569,8 @@ snapshots:
 
   std-env@4.2.0: {}
 
+  string.prototype.codepointat@0.2.1: {}
+
   suspend-react@0.1.3(react@19.3.0):
     dependencies:
       react: 19.3.0
@@ -3543,6 +3584,8 @@ snapshots:
       three: 0.186.0
 
   three@0.186.0: {}
+
+  tiny-inflate@1.0.3: {}
 
   tinybench@6.1.4: {}
 

@@ -68,6 +68,8 @@ const pointsOf = (e: SketchEntity): string[] => {
       return [e.center, e.major, e.minor];
     case 'spline':
       return e.points;
+    case 'text':
+      return [e.anchor, e.top];
   }
 };
 

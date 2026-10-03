@@ -190,6 +190,9 @@ export function curvePolyline(data: SketchData, entity: SketchEntity): Vec2[] | 
       const fit = entity.points.map(at);
       return fit.every((p) => p !== undefined) ? splinePolyline(fitSpline(fit)) : undefined;
     }
+    case 'text':
+      // A text is many curves: its callers that must see text use `textPolylines`.
+      return undefined;
   }
 }
 

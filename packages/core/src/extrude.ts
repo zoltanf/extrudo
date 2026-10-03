@@ -46,8 +46,12 @@ export type ExtrudeExtent = (typeof EXTRUDE_EXTENTS)[number];
 export const EXTRUDE_OPERATIONS = BODY_OPERATIONS;
 export type ExtrudeOperation = BodyOperation;
 
-/** What can be extruded: sketch profiles (`<sketch>/<region>`) and flat faces of bodies. */
-export const EXTRUDE_PROFILE_KINDS: readonly GeomRefKind[] = ['profile', 'face'];
+/**
+ * What can be extruded: sketch profiles (`<sketch>/<region>`), flat faces
+ * of bodies, and whole texts (`<sketch>/<text>`, P4-03, ADR-0058 §5: every
+ * ink region of the text, so it survives editing the string).
+ */
+export const EXTRUDE_PROFILE_KINDS: readonly GeomRefKind[] = ['profile', 'face', 'sketchEntity'];
 /** What an extrude can go up to: a flat face, a vertex, an origin or construction plane. */
 export const EXTRUDE_OBJECT_KINDS: readonly GeomRefKind[] = ['face', 'vertex', 'plane'];
 

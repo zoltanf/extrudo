@@ -4,7 +4,7 @@
  * (P1-09). Pure, sketch mm.
  */
 import {
-  curvePolyline,
+  entityPolylines,
   type SketchData,
   type SketchEntity,
   type SketchEntityId,
@@ -18,7 +18,8 @@ export type PickFilter = (entity: SketchEntity, id: SketchEntityId) => boolean;
 /**
  * The entity under `cursor`: the nearest accepted point within `tolerance`
  * (mm), or else the nearest accepted curve within it. Points come first, as
- * they sit on the curves they end. Undefined if nothing is close enough.
+ * they sit on the curves they end. A text (P4-03) is as near as its nearest
+ * glyph curve. Undefined if nothing is close enough.
  */
 export function pickEntity(
   sketch: SketchData,
@@ -36,9 +37,9 @@ export function pickEntity(
       if (d <= tolerance && (!point || d < point.d)) point = { id, d };
       continue;
     }
-    const line = curvePolyline(sketch, entity);
-    if (!line) continue;
-    const d = polylineDistance(line, cursor);
+    const lines = entityPolylines(sketch, entity, id);
+    if (lines.length === 0) continue;
+    const d = Math.min(...lines.map((line) => polylineDistance(line, cursor)));
     if (d <= tolerance && (!curve || d < curve.d)) curve = { id, d };
   }
   return (point ?? curve)?.id;
@@ -75,14 +76,15 @@ export function boxSelect(
   for (const [key, entity] of Object.entries(sketch.entities)) {
     const id = key as SketchEntityId;
     if (!accept(entity, id)) continue;
-    const line =
-      entity.type === 'point' ? [[entity.x, entity.y] as Vec2] : curvePolyline(sketch, entity);
-    if (!line || line.length === 0) continue;
-    const inside = line.map((p) => insideConvex(corners, p));
+    const lines: Vec2[][] =
+      entity.type === 'point' ? [[[entity.x, entity.y]]] : entityPolylines(sketch, entity, id);
+    const points = lines.flat();
+    if (points.length === 0) continue;
+    const inside = points.map((p) => insideConvex(corners, p));
     const hit =
       mode === 'window'
         ? inside.every(Boolean)
-        : inside.some(Boolean) || crossesPolygon(line, corners);
+        : inside.some(Boolean) || lines.some((line) => crossesPolygon(line, corners));
     if (hit) out.push(id);
   }
   return out;

@@ -21,6 +21,8 @@ export interface ScreenPointer {
   infer: boolean;
   /** Shift, Ctrl or ⌘ held: add to or toggle the selection. */
   toggle: boolean;
+  /** The second of two clicks close together (a double-click, P4-03). */
+  double?: boolean;
 }
 
 export interface PointerHandlers {
@@ -54,6 +56,8 @@ export interface ScreenBox {
 
 /** A left press that moves less than this (px) before release is a click. */
 export const CLICK_SLOP = 5;
+/** Two clicks within this many ms of each other, this close, are a double-click. */
+export const DOUBLE_CLICK_MS = 400;
 /** A left press held this long (ms) without moving opens the menu. */
 export const LONG_PRESS_MS = 500;
 
@@ -84,6 +88,18 @@ export function usePointerInput(
     const at = (x: number, y: number, infer: boolean, toggle: boolean): ScreenPointer => {
       const r = el.getBoundingClientRect();
       return { x: x - r.left, y: y - r.top, width: r.width, height: r.height, infer, toggle };
+    };
+    /** Whether this click follows another one closely enough to be a double-click. */
+    let previousClick: { x: number; y: number; at: number } | undefined;
+    const isDouble = (x: number, y: number): boolean => {
+      const now = Date.now();
+      const was = previousClick;
+      previousClick = { x, y, at: now };
+      return (
+        was !== undefined &&
+        now - was.at <= DOUBLE_CLICK_MS &&
+        Math.hypot(x - was.x, y - was.y) <= CLICK_SLOP
+      );
     };
     const report = () => {
       if (last) handlers.onMove(at(last.x, last.y, last.infer, last.toggle));
@@ -183,7 +199,7 @@ export function usePointerInput(
         if (startDrag(current.x, current.y, infer, toggle)) {
           finishBox(current, e.clientX, e.clientY, toggle);
         } else handlers.onDragEnd?.(p);
-      } else handlers.onClick(p);
+      } else handlers.onClick({ ...p, double: isDouble(e.clientX, e.clientY) || undefined });
     };
     const onPointerCancel = (e: PointerEvent) => {
       if (press?.box && e.pointerId === press.id) onBoxChange(undefined);
@@ -219,6 +235,7 @@ export function usePointerInput(
       }
     };
     const onPointerLeave = () => {
+      previousClick = undefined;
       last = undefined;
       handlers.onLeave();
     };

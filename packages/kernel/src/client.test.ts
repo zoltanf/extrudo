@@ -47,6 +47,7 @@ describe('KernelClient', () => {
     let spawned = 0;
     const hanging: KernelApi = {
       init: async () => ({ initMs: 0, heapBytes: 0 }),
+      addFont: async () => {},
       debugTestPart: () => new Promise(() => {}),
       debugCrash: async () => {},
       stats: async () => ({ liveShapes: 0, heapTop: 0, heapBytes: 0 }),
@@ -75,6 +76,7 @@ describe('KernelClient', () => {
   it('gives up after too many crashes in a row', async () => {
     const crashing: KernelApi = {
       init: async () => ({ initMs: 0, heapBytes: 0 }),
+      addFont: async () => {},
       debugTestPart: async () => {
         throw new KernelCrashError('boom');
       },

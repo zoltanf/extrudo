@@ -64,6 +64,14 @@ export class KernelClient {
     return this.#ready;
   }
 
+  /**
+   * Sends a font for sketch text (ADR-0058 §4). A font may arrive before
+   * the first recompute; a repeated ID is a no-op in the worker.
+   */
+  addFont(id: string, bytes: ArrayBuffer): Promise<void> {
+    return this.call((api) => api.addFont(id, bytes));
+  }
+
   /** Runs `task` against the kernel. Rejects with KernelCrashError if the kernel dies meanwhile. */
   async call<T>(task: (api: KernelApi) => Promise<T>): Promise<T> {
     await this.start();

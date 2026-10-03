@@ -193,6 +193,8 @@ const NOUNS: Record<string, [string, string]> = {
   profile: ['profile', 'profiles'],
   sketchEntity: ['sketch entity', 'sketch entities'],
   sketchCurve: ['sketch curve', 'sketch curves'],
+  // A whole text (P4-03), as a profile field picks it.
+  text: ['text', 'texts'],
   plane: ['plane', 'planes'],
   axis: ['axis', 'axes'],
   point: ['point', 'points'],
@@ -207,11 +209,19 @@ const NOUNS: Record<string, [string, string]> = {
  * "2 faces, 1 edge"; empty when nothing is selected. Kinds keep the order
  * in which they were first selected.
  */
-export function selectionSummary(selection: readonly SelectionItem[]): string {
+export function selectionSummary(
+  selection: readonly SelectionItem[],
+  context?: Pick<LabelContext, 'sketch'>,
+): string {
   const counts = new Map<string, number>();
   for (const item of selection) {
     // Model mode picks curves only, by `<sketch>/<entity>` (P2-03); sketch mode, points too.
-    const kind = item.kind === 'sketchEntity' && item.id.includes('/') ? 'sketchCurve' : item.kind;
+    const kind =
+      item.kind === 'sketchEntity' && item.id.includes('/')
+        ? isTextRef(item.id, context)
+          ? 'text'
+          : 'sketchCurve'
+        : item.kind;
     counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
   return [...counts]
@@ -220,6 +230,14 @@ export function selectionSummary(selection: readonly SelectionItem[]): string {
       return `${n} ${n === 1 ? one : many}`;
     })
     .join(', ');
+}
+
+/** Whether a `<sketch>/<entity>` reference names a text (P4-03), which the summary counts apart. */
+function isTextRef(id: string, context: Pick<LabelContext, 'sketch'> | undefined): boolean {
+  const ref = parseSketchEntityRefId(id);
+  return (
+    ref !== undefined && context?.sketch(ref.feature)?.data.entities[ref.entity]?.type === 'text'
+  );
 }
 
 /** "kind:id" per item, space-separated: the viewport's test attributes. */
@@ -258,6 +276,7 @@ const ENTITY_NAMES: Record<string, string> = {
   arc: 'Arc',
   ellipse: 'Ellipse',
   spline: 'Spline',
+  text: 'Text',
 };
 
 /**

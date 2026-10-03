@@ -17,7 +17,7 @@
  */
 import {
   type BodyId,
-  curvePolyline,
+  entityPolylines,
   type FeatureId,
   profileRefId,
   type SelectionItem,
@@ -464,6 +464,9 @@ function acceptsEntity(filter: SelectionFilter) {
 function sketchHits(e: Eye, scene: PickScene, filter: SelectionFilter) {
   const curves: Near[] = [];
   const profiles: Near[] = [];
+  /** The whole texts under the pointer, one pick each however many letters (P4-03). */
+  const texts: Near[] = [];
+  const taken = new Set<string>();
   for (const sketch of scene.sketches) {
     const hit = rayPlane(
       { origin: e.ray.origin, direction: e.ray.direction },
@@ -497,27 +500,42 @@ function sketchHits(e: Eye, scene: PickScene, filter: SelectionFilter) {
           depth,
           at,
         });
+        // Ink belongs to a text (P4-03, ADR-0058 §5): a click takes the whole
+        // text, and "Select other…" still offers the single letter.
+        if (profile.text && !taken.has(profile.text)) {
+          taken.add(profile.text);
+          texts.push({
+            item: { kind: 'sketchEntity', id: sketchEntityRefId(sketch.id, profile.text) },
+            px: 0,
+            depth,
+            at,
+          });
+        }
       }
     }
   }
-  return { curves, profiles };
+  return { curves, profiles, texts };
 }
 
+/** How far `p` is from a sketch entity: the nearest of its polylines (P4-03 gives a text many). */
 function curveDistance(data: SketchData, id: SketchEntityId, p: Vec2): number {
   const entity = data.entities[id];
-  if (entity?.type === 'point') return Math.hypot(p[0] - entity.x, p[1] - entity.y);
-  const line = entity && curvePolyline(data, entity);
-  if (!line) return 0;
+  if (!entity) return 0;
+  if (entity.type === 'point') return Math.hypot(p[0] - entity.x, p[1] - entity.y);
+  const lines = entityPolylines(data, entity, id);
+  if (lines.length === 0) return 0;
   let best = Infinity;
-  for (let i = 1; i < line.length; i++) {
-    const [ax, ay] = line[i - 1] as Vec2;
-    const [bx, by] = line[i] as Vec2;
-    const vx = bx - ax;
-    const vy = by - ay;
-    const len2 = vx * vx + vy * vy;
-    const t =
-      len2 === 0 ? 0 : Math.min(1, Math.max(0, ((p[0] - ax) * vx + (p[1] - ay) * vy) / len2));
-    best = Math.min(best, Math.hypot(p[0] - ax - t * vx, p[1] - ay - t * vy));
+  for (const line of lines) {
+    for (let i = 1; i < line.length; i++) {
+      const [ax, ay] = line[i - 1] as Vec2;
+      const [bx, by] = line[i] as Vec2;
+      const vx = bx - ax;
+      const vy = by - ay;
+      const len2 = vx * vx + vy * vy;
+      const t =
+        len2 === 0 ? 0 : Math.min(1, Math.max(0, ((p[0] - ax) * vx + (p[1] - ay) * vy) / len2));
+      best = Math.min(best, Math.hypot(p[0] - ax - t * vx, p[1] - ay - t * vy));
+    }
   }
   return best;
 }
@@ -579,6 +597,11 @@ export function pickStack(
     : [];
 
   const areas: (PickHit & { rank: number })[] = [];
+  // A whole text comes before the letter under the pointer (P4-03): it is what a
+  // click takes, the letter region is what "Select other…" offers.
+  for (const p of sketches.texts) {
+    areas.push({ item: p.item, depth: p.depth, px: 0, occluded: behind(p.depth), rank: -1 });
+  }
   for (const p of sketches.profiles) {
     areas.push({ item: p.item, depth: p.depth, px: 0, occluded: behind(p.depth), rank: 0 });
   }
@@ -918,32 +941,41 @@ export function pickBox(
         }
         return out;
       }),
-    profiles: () =>
-      scene.sketches.flatMap((sketch) =>
-        (sketch.profiles ?? [])
-          .filter((profile) => {
-            const outline = profile.outer.polygon.map((q) =>
-              project(...sketchToWorld(sketch.frame, q)),
-            );
-            return polylineIn([...outline, outline[0]], r, mode);
-          })
-          .map((profile) => ({ kind: 'profile', id: profileRefId(sketch.id, profile.id) })),
-      ),
+    profiles: () => {
+      const out: SelectionItem[] = [];
+      const texts = new Set<string>();
+      for (const sketch of scene.sketches) {
+        for (const profile of sketch.profiles ?? []) {
+          const outline = profile.outer.polygon.map((q) =>
+            project(...sketchToWorld(sketch.frame, q)),
+          );
+          if (!polylineIn([...outline, outline[0]], r, mode)) continue;
+          // Ink of a text (P4-03): the box takes the whole text, once.
+          if (profile.text && !texts.has(profile.text)) {
+            texts.add(profile.text);
+            out.push({ kind: 'sketchEntity', id: sketchEntityRefId(sketch.id, profile.text) });
+          }
+          out.push({ kind: 'profile', id: profileRefId(sketch.id, profile.id) });
+        }
+      }
+      return out;
+    },
     sketches: () =>
       scene.sketches.flatMap((sketch) => {
         const accept = acceptsEntity(filter);
         const out: SelectionItem[] = [];
         for (const [key, entity] of Object.entries(sketch.data.entities)) {
           if (!accept(entity)) continue;
-          const line = curvePolyline(sketch.data, entity);
-          if (!line) continue;
-          const points = line.map((q) => project(...sketchToWorld(sketch.frame, q)));
-          if (polylineIn(points, r, mode)) {
-            out.push({
-              kind: 'sketchEntity',
-              id: sketchEntityRefId(sketch.id, key as SketchEntityId),
-            });
-          }
+          const entityId = key as SketchEntityId;
+          // A text (P4-03) is taken whole: any of its glyph curves in the box takes it.
+          const hit = entityPolylines(sketch.data, entity, entityId).some((line) =>
+            polylineIn(
+              line.map((q) => project(...sketchToWorld(sketch.frame, q))),
+              r,
+              mode,
+            ),
+          );
+          if (hit) out.push({ kind: 'sketchEntity', id: sketchEntityRefId(sketch.id, entityId) });
         }
         return out;
       }),

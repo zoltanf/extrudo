@@ -1,11 +1,13 @@
 import {
   CIRCLE_SEGMENTS,
-  curvePolyline,
   dimensionAnchor,
+  entityPolylines,
   projectedEntities,
   type SketchData,
+  type SketchEntityId,
   type SketchFrame,
   sketchToWorld,
+  textPolylines,
 } from '@extrudo/core';
 import type { EntityStatus } from '@extrudo/sketch/inference';
 import type { Profile } from '@extrudo/sketch/profiles';
@@ -108,7 +110,9 @@ export { CIRCLE_SEGMENTS };
  * A sketch as world-space line segments and points (P1-01). Circles, arcs,
  * ellipses and splines become polylines (`curvePolyline`); an arc runs
  * counter-clockwise from its start to its end point, with the radius of its
- * start point. Curves and points are grouped by `status` (P1-08); without
+ * start point. A text (P4-03) draws one polyline per glyph curve, all of them
+ * under the entity's own ID, so hovering, selecting and colouring it work like
+ * any other curve. Curves and points are grouped by `status` (P1-08); without
  * one, everything is `free`.
  */
 export function sketchSegments(
@@ -127,18 +131,19 @@ export function sketchSegments(
       points[group].push(...sketchToWorld(frame, [entity.x, entity.y]));
       continue;
     }
-    const line = curvePolyline(data, entity);
-    if (!line) continue;
     const out = entity.construction
       ? construction
       : isProjected.has(id as keyof SketchData['entities'])
         ? projected
         : solid[group];
-    let prev = sketchToWorld(frame, line[0] as [number, number]);
-    for (let i = 1; i < line.length; i++) {
-      const next = sketchToWorld(frame, line[i] as [number, number]);
-      out.push(...prev, ...next);
-      prev = next;
+    for (const line of entityPolylines(data, entity, id as SketchEntityId)) {
+      if (line.length === 0) continue;
+      let prev = sketchToWorld(frame, line[0] as [number, number]);
+      for (let i = 1; i < line.length; i++) {
+        const next = sketchToWorld(frame, line[i] as [number, number]);
+        out.push(...prev, ...next);
+        prev = next;
+      }
     }
   }
 
@@ -232,6 +237,32 @@ function unionSpheres(a: Bounds, b: Bounds): Bounds {
 
 export type ProfileShade = 'normal' | 'hover' | 'selected';
 export const PROFILE_SHADES: readonly ProfileShade[] = ['normal', 'hover', 'selected'];
+
+/**
+ * Where each drawn text's ink lies, for tests (P4-03): "<id>:x=-3.2..4.1:y=0..10"
+ * per text, in sketch mm to 0.001 — its anchor's alignment and its height are
+ * read from it. A text whose font isn't in has no curves and is left out.
+ */
+export function textBoundsSummary(sketches: readonly SketchDrawing[]): string | undefined {
+  const r = (v: number) => Math.round(v * 1000) / 1000 + 0;
+  const span = (v: number[]) => `${r(Math.min(...v))}..${r(Math.max(...v))}`;
+  const out: string[] = [];
+  for (const { id, data } of sketches) {
+    for (const [entity, text] of Object.entries(data.entities)) {
+      if (text?.type !== 'text') continue;
+      const xs: number[] = [];
+      const ys: number[] = [];
+      for (const polyline of textPolylines(data, entity as SketchEntityId).values()) {
+        for (const [x, y] of polyline) {
+          xs.push(x);
+          ys.push(y);
+        }
+      }
+      if (xs.length > 0) out.push(`${id}.${entity}:x=${span(xs)}:y=${span(ys)}`);
+    }
+  }
+  return out.length > 0 ? out.join(' ') : undefined;
+}
 
 /**
  * Profiles as world-space triangles (P1-11): xyz per vertex, three

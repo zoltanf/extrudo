@@ -166,6 +166,9 @@ export function sketchEntityMeasure(
         start: poly[0] as Vec3,
         end: poly.at(-1) as Vec3,
       };
+    case 'text':
+      // P4-03 slice 2b/3: text is measured as its sub-curves there.
+      return undefined;
   }
 }
 

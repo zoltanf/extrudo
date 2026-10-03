@@ -173,6 +173,13 @@ export const TOOLS = {
     category: 'sketch',
     hint: 'A smooth curve through the points you click. Enter to finish.',
   },
+  text: {
+    id: 'text',
+    label: 'Text',
+    icon: 'text',
+    category: 'sketch',
+    hint: 'Type text on the sketch. Its letters are closed regions like any other profile.',
+  },
   dimension: {
     id: 'dimension',
     label: 'Sketch Dimension',
@@ -773,6 +780,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
           'slotOverall',
           'ellipse',
           'spline',
+          'text',
           'project',
           'sketchMirror',
           'sketchRectangularPattern',

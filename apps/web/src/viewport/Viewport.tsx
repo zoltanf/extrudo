@@ -66,7 +66,12 @@ import {
 } from './pointer';
 import { createRenderMeter } from './renderMeter';
 import { Sketches } from './Sketches';
-import { type SketchDrawing, sketchSegments, unionBounds } from './sketchGeometry';
+import {
+  type SketchDrawing,
+  sketchSegments,
+  textBoundsSummary,
+  unionBounds,
+} from './sketchGeometry';
 import {
   type Bounds,
   type OriginItem,
@@ -406,6 +411,7 @@ export function Viewport({
       data-sketches={sketches.map((s) => s.id).join(' ')}
       data-sketch-frames={sketchFramesSummary(sketches)}
       data-sketch-projected={sketchProjectedSummary(sketches)}
+      data-text-bounds={textBoundsSummary(sketches)}
       data-highlight={sketches.find((s) => s.highlight)?.id}
       data-model-selection={modelSelect ? selectionKey(selection) : undefined}
       data-model-hover={modelSelect ? selectionKey([hover]) : undefined}
@@ -852,6 +858,7 @@ function useSketchInput(
         screen: [p.x, p.y],
         infer: p.infer,
         toggle: p.toggle,
+        ...(p.double !== undefined && { double: p.double }),
       };
     };
     const onPlane = (f: ((p: PlanePointer) => void) | undefined) => (p: ScreenPointer) => {

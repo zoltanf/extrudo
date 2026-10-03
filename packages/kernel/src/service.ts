@@ -28,6 +28,14 @@ export interface KernelInfo {
 export interface KernelApi {
   init(): Promise<KernelInfo>;
   /**
+   * Registers a font for sketch text under its versioned ID (P4-03,
+   * ADR-0058 §4): the sketch evaluator shapes text with the fonts sent here.
+   * The first call imports the shaper; a repeated ID is a no-op. The app
+   * sends every font a document uses before it recomputes, so no font is
+   * part of a cache key.
+   */
+  addFont(id: string, bytes: ArrayBuffer): Promise<void>;
+  /**
    * Recomputes the document (ADR-0024). A newer call cancels a running one
    * between features. `onFeature` hears of each feature before it is
    * evaluated, so the caller knows which one crashed the kernel.
@@ -155,6 +163,19 @@ export class KernelService implements KernelApi {
   async init(): Promise<KernelInfo> {
     const kernel = await this.#ready();
     return { initMs: this.#initMs, heapBytes: kernel.stats().heapBytes };
+  }
+
+  /**
+   * Font bytes for sketch text (ADR-0058 §4). The shaper (`@extrudo/sketch/
+   * text`, opentype.js) loads lazily on the first font, so a worker without
+   * text never parses fonts. Doesn't touch the kernel: parsing can't crash
+   * the WASM, and a font may arrive before `init`.
+   */
+  async addFont(id: string, bytes: ArrayBuffer): Promise<void> {
+    const text = await import('@extrudo/sketch/text');
+    // A second call with the same ID is a no-op: the bytes never change
+    // under an ID (ADR-0058 §3).
+    if (!text.hasFont(id)) text.loadFont(id, new Uint8Array(bytes));
   }
 
   recompute(request: RecomputeRequest, onFeature?: ProgressListener): Promise<RecomputeResult> {

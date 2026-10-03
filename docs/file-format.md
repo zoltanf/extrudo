@@ -382,7 +382,7 @@ Every input is optional in the schema; a useful extrude has `profiles` and
 
 | Input | Kind | Rule | Default and meaning |
 |---|---|---|---|
-| `profiles` | `ref` | Refs of kind `profile` or `face`, any number, all in one plane | none: the feature fails until some are picked |
+| `profiles` | `ref` | Refs of kind `profile`, `face` or `sketchEntity`, any number, all in one plane. A `sketchEntity` ref names a text (`<sketch>/<textId>`) and means all of that text's letters (section 8, ADR-0058 §5) | none: the feature fails until some are picked |
 | `direction` | `enum` | `one-side`, `symmetric`, `two-sides` | `one-side`. Symmetric is centred on the plane and `distance` is the whole length; two-sides uses side 2 inputs too |
 | `extent` | `enum` | `distance`, `to-object`, `through-all` | `distance` (side 1) |
 | `distance` | `expr` length | | Side 1's length; negative goes the other way |
@@ -403,7 +403,7 @@ for extrude; a useful revolve has `profiles` and `axis`.
 
 | Input | Kind | Rule | Default and meaning |
 |---|---|---|---|
-| `profiles` | `ref` | refs of kind `profile` or `face` | none: fails until picked |
+| `profiles` | `ref` | refs of kind `profile`, `face` or `sketchEntity`. A `sketchEntity` ref names a text (`<sketch>/<textId>`) and means all of that text's letters (section 8, ADR-0058 §5) | none: fails until picked |
 | `axis` | `ref` | At most one ref of kind `axis` (`origin:x`, `origin:y`, `origin:z`), `sketchEntity` (`<sketch>/<line>`) or `edge` (a straight edge) | none: fails until picked. Must lie in the profiles' plane |
 | `direction` | `enum` | `one-side`, `symmetric`, `two-sides` | `one-side` |
 | `angle` | `expr` angle | | Side 1 (the whole angle when symmetric); default a full turn, `360 deg` (no end faces). Right-handed about the axis. Negative turns the other way |
@@ -979,6 +979,7 @@ geometry (dashed, helps constrain, never forms profiles).
 | `arc` | `center`, `start`, `end` (point IDs, all distinct); `construction` | Counter-clockwise from `start` to `end` about `center`; the radius is the distance from `center` to `start`. |
 | `ellipse` | `center`, `major`, `minor` (point IDs, distinct); `construction` | From three points: the centre, the end of the major axis, the end of the minor axis. The minor point is on the ellipse square to the major axis (the solver keeps it so); radii and rotation are the points' distances and angle, nothing else is stored. |
 | `spline` | `points` (array of at least 2 point IDs, distinct); `construction` | A fit-point spline through the points in order. The B-spline is derived from the points. |
+| `text` | `anchor`, `top` (point IDs, distinct); `text` (string of 1 to 1000 characters, `\n` separating lines); `font` (font ID `family-style@n`); `align` (`left`, `center` or `right`); `construction` | A text entity (P4-03, ADR-0058): `anchor` sits on the first line's baseline, `top` one text height above it ("up" for the text), so height is `|top − anchor|` (the font's cap height) and the baseline runs 90° clockwise from `top − anchor`. `align` aligns each line about the anchor. The curves are derived (placed from a shaper), so the solver sees only the two points; constraints and dimensions may not refer to the entity itself. |
 
 ### 7.2 Constraints (`type`)
 
@@ -991,7 +992,7 @@ Field values are entity IDs. "Kind" says what entity types are allowed.
 | `collinear` | `a`, `b` | Two distinct lines. |
 | `concentric` | `a`, `b` | Two distinct circles or arcs. |
 | `midpoint` | `point`, `of` | `point` a point; `of` a line or an arc. |
-| `fix` | `entity` | Any entity (point, line, circle, arc, ellipse, spline). Splines take only `fix`. |
+| `fix` | `entity` | Any entity (point, line, circle, arc, ellipse, spline — not `text`). Splines take only `fix`. |
 | `parallel` | `a`, `b` | Two distinct lines. |
 | `perpendicular` | `a`, `b` | Two distinct lines. |
 | `horizontal` | `a`; `b` (optional) | Either `a` a line and no `b`, or `a` and `b` two distinct points. |
@@ -1059,7 +1060,7 @@ A `GeomRef` points at geometry made by earlier features. It is stored in
 | `plane` | `origin:xy`, `origin:xz`, `origin:yz`; or a construction plane feature's ID (`<featureId>`, 6.10) | fixed, or a construction feature |
 | `axis` | `origin:x`, `origin:y`, `origin:z`; or a construction axis feature's ID | fixed, or a construction feature |
 | `profile` | `<sketchFeatureId>/<regionId>`: the sketch feature and the region within it. A region's ID is a hash of the curves around its outer loop and the direction each runs in, so it survives moving and resizing | derived from the sketch |
-| `sketchEntity` | `<sketchFeatureId>/<entityId>` (a curve or point picked outside its sketch) | sketch |
+| `sketchEntity` | `<sketchFeatureId>/<entityId>` (a curve or point picked outside its sketch). In a profile field (`extrude`, `revolve`), an entityId of a **text** means all of that text's letters — every ink region of the text, so the reference survives editing the string, the font or the size (ADR-0058 §5) | sketch |
 | `body` | a body ID, `<featureId>:<n>`: the first body a feature makes is `<featureId>:0` | kernel |
 | `face` | a face name, `op:feature:role[:source]` with optional `#n` split suffixes | kernel |
 | `edge` | `e[face|face…]` with optional `@n` | kernel |

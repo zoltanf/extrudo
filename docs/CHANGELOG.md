@@ -4,6 +4,14 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-03 · **P4-03** Sketch text (ADR-0058): the Text tool (Shift+T) puts
+  text on a sketch — string, font, alignment and height in a non-modal panel,
+  the height a driving dimension — and the letters come out as closed ink
+  regions: an extrude of a whole text sweeps every letter (a plate round a
+  text has it cut out as holes), and the selection panel edits the string, the
+  font, the alignment and the height. Six bundled OFL fonts (Inter, Noto Serif,
+  JetBrains Mono, Allerta Stencil, Fredoka) with versioned IDs; opentype.js
+  only in `@extrudo/sketch/text`, behind core's shaper registry.
 - 2026-10-03 · **P4-02** Modeled threads (ADR-0056): the Thread feature cuts a
   real ISO 68-1 thread into a shaft's or a hole's round face (Solid › Modify ›
   Thread): ISO metric coarse and fine, UNC and UNF presets or a size that fits

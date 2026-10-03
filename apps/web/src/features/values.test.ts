@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { fakeSpec } from './testing';
 import {
   countIssue,
+  countLabel,
   defaultInputs,
   defaultValues,
   mergeValues,
@@ -10,6 +11,36 @@ import {
   storedParameterNames,
   withParameterNames,
 } from './values';
+
+describe('what a selection field calls its picks', () => {
+  it('counts one kind of pick', () => {
+    expect(countLabel([{ kind: 'face', id: 'B:0:1' }])).toBe('1 face');
+    expect(
+      countLabel([
+        { kind: 'edge', id: 'B:0:1' },
+        { kind: 'edge', id: 'B:0:2' },
+        { kind: 'edge', id: 'B:0:3' },
+      ]),
+    ).toBe('3 edges');
+  });
+
+  it('counts a whole text as a text, and mixes kinds one noun each (P4-03)', () => {
+    const text = { kind: 'sketchEntity', id: 'S/word' } as const;
+    expect(countLabel([text], { wholeTexts: true })).toBe('1 text');
+    expect(countLabel([text, { ...text, id: 'S/other' }], { wholeTexts: true })).toBe('2 texts');
+    expect(countLabel([text, { kind: 'profile', id: 'S/r1' }], { wholeTexts: true })).toBe(
+      '1 text, 1 profile',
+    );
+    // The same reference in a field of sketch curves is a curve.
+    expect(countLabel([text])).toBe('1 sketch curve');
+  });
+
+  it('says what the field calls its own', () => {
+    expect(countLabel([{ kind: 'point', id: 'S/p1' }], { noun: ['point', 'points'] })).toBe(
+      '1 point',
+    );
+  });
+});
 
 describe('values and inputs', () => {
   it('defaults every field and maps shown fields to inputs of their names', () => {

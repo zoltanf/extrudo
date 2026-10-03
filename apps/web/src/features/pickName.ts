@@ -21,6 +21,7 @@ const ENTITY_NAMES: Record<string, string> = {
   arc: 'Arc',
   ellipse: 'Ellipse',
   spline: 'Spline',
+  text: 'Text',
 };
 
 /**
@@ -46,6 +47,9 @@ export function pickName(ref: GeomRef, ctx: PickNameContext | undefined): string
       const parsed = parseSketchEntityRefId(ref.id);
       const sketch = parsed && doc.features.find((f) => f.id === parsed.feature);
       const entity = sketch && readSketch(sketch)?.data.entities[parsed.entity];
+      // A whole text (P4-03) counts like a profile ("1 text"); naming it after
+      // its sketch says less than the count does.
+      if (entity?.type === 'text') return undefined;
       if (!sketch || !entity) return undefined;
       return `${ENTITY_NAMES[entity.type] ?? 'Curve'} · ${sketch.name}`;
     }

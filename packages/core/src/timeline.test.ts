@@ -83,6 +83,26 @@ describe('feature dependencies', () => {
     expect(storedRefs(s).map((r) => r.projection ?? r.input)).toEqual(['plane', 'p1']);
     expect(referencedFeatures(s, new Set(['E1', 'S4', 'l1']))).toEqual(['E1', 'l1']);
   });
+
+  it('treat a whole-text reference like a profile reference (P4-03, ADR-0058 §5)', () => {
+    const text: GeomRef = { kind: 'sketchEntity', id: 'S1/t9' };
+    const e = {
+      id: fid('E3'),
+      type: 'extrude',
+      name: 'Extrude3',
+      suppressed: false,
+      inputs: extrudeInputs([text]),
+    } as Feature;
+    expect(referencedFeatures(e, new Set(['S1', 'E3']))).toEqual(['S1']);
+    const doc = {
+      ...createDocument({ name: 'Timeline' }),
+      features: [sketch('S1', 'Sketch1', originPlaneRef('origin:xy')), e],
+      timelineMarker: 2,
+    };
+    expect(timelineDependencies(doc).get(fid('E3'))).toEqual([fid('S1')]);
+    // Moving the extrude before its sketch is refused, like a profile's.
+    expect(moveProblem(doc, fid('E3'), 0)).toContain('uses Sketch1');
+  });
 });
 
 describe('moveFeature', () => {

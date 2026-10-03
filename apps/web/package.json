@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@extrudo/core": "workspace:*",
+    "@extrudo/fonts": "workspace:*",
     "@extrudo/io": "workspace:*",
     "@extrudo/kernel": "workspace:*",
     "@extrudo/sketch": "workspace:*",

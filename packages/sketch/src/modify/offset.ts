@@ -81,10 +81,12 @@ type Open = Extract<SketchEntity, { type: 'line' } | { type: 'arc' }>;
 /**
  * The chain through curve `id`: lines and arcs joined end to end by
  * coincident constraints, stopping where more than two curves meet. A
- * circle is a chain on its own. Undefined for other entities.
+ * circle is a chain on its own. Undefined for other entities; a text is
+ * refused (`ModifyError`).
  */
 export function chainOf(data: SketchData, id: SketchEntityId): Chain | undefined {
   const start = data.entities[id];
+  if (start?.type === 'text') throw new ModifyError("Text can't be offset.");
   if (start?.type === 'circle') return { links: [{ id, reversed: false }], closed: true };
   if (start?.type !== 'line' && start?.type !== 'arc') return undefined;
 

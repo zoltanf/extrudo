@@ -70,17 +70,24 @@ const FILTER_OF: Record<GeomRefKind, FilterKind[]> = {
 /**
  * The selection filter of a field: only what it accepts. A field for
  * sketch points (`sketchPoints`, a hole's Points) takes those and no
- * curves: sketch entity picks become points.
+ * curves: sketch entity picks become points. A field that takes whole texts
+ * (`wholeTexts`, P4-03) leaves the sketch curves out: an extrude sweeps a
+ * text's ink, not a line.
  */
 export function fieldFilter(
   accepts: readonly GeomRefKind[],
-  options: { sketchPoints?: boolean } = {},
+  options: { sketchPoints?: boolean; wholeTexts?: boolean } = {},
 ): SelectionFilter {
   const allowed = new Set<FilterKind>(accepts.flatMap((kind) => FILTER_OF[kind]));
   if (options.sketchPoints) {
     allowed.delete('sketches');
     allowed.delete('construction');
     allowed.add('sketchPoints');
+  }
+  if (options.wholeTexts) {
+    allowed.delete('sketches');
+    // Ink regions come with the profiles, and each of them is a whole text.
+    allowed.add('profiles');
   }
   return Object.fromEntries(
     (Object.keys(DEFAULT_FILTER) as FilterKind[]).map((kind) => [kind, allowed.has(kind)]),

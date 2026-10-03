@@ -25,6 +25,8 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   arc: ['A'],
   dimension: ['D'],
   trim: ['T'],
+  // Text (P4-03): Fusion's key is T, which is Trim here.
+  text: ['Shift+T'],
   sketchOffset: ['O'],
   sketchFillet: ['F'],
   sketchMove: ['M'],

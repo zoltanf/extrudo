@@ -17,12 +17,15 @@ import { SKETCH_TYPE, sketchFeature, sketchInputs } from './feature';
 import { originPlane } from './planes';
 import {
   constraintRefs,
+  type FontId,
   type SketchConstraint,
   type SketchData,
   type SketchDimension,
   type SketchEntity,
+  SketchTextSchema,
   sketchIssues,
 } from './schema';
+import type { TextAlign } from './text-layout';
 
 /**
  * Adds an empty sketch on `plane` at the timeline marker. Without a `name`
@@ -361,7 +364,7 @@ export function entityRemoval(data: SketchData, ids: readonly SketchEntityId[]):
   };
 }
 
-/** The points a curve is made of (none for a point). */
+/** The points a curve is made of (none for a point; a text's two placement points). */
 export function entityPoints(e: SketchEntity): SketchEntityId[] {
   switch (e.type) {
     case 'point':
@@ -376,6 +379,8 @@ export function entityPoints(e: SketchEntity): SketchEntityId[] {
       return [e.center, e.major, e.minor];
     case 'spline':
       return [...e.points];
+    case 'text':
+      return [e.anchor, e.top];
   }
 }
 
@@ -394,6 +399,28 @@ export const setSketchConstruction = defineCommand<{
     if (!e) throw new CommandError(`The sketch has no entity "${id}".`);
     if (e.type !== 'point') e.construction = construction;
   }
+});
+
+/**
+ * Edits a text entity (P4-03, ADR-0058 §6): its string, font, alignment or
+ * construction flag, in one undo step. Fields left out stay as they are; the
+ * result must be a valid text entity.
+ */
+export const setText = defineCommand<{
+  feature: FeatureId;
+  id: SketchEntityId;
+  patch: { text?: string; font?: FontId; align?: TextAlign; construction?: boolean };
+}>('sketch.text', 'Edit text', (draft, { feature, id, patch }) => {
+  const data = sketchDraft(draft, feature);
+  const e = data.entities[id];
+  if (e?.type !== 'text') throw new CommandError(`"${id}" isn't a text of this sketch.`);
+  const parsed = SketchTextSchema.safeParse({ ...e, ...patch });
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    if (!issue) throw new CommandError('That is not a valid text.');
+    throw new CommandError(`${issue.path.join('.')}: ${issue.message}.`);
+  }
+  data.entities[id] = parsed.data;
 });
 
 /** Solved geometry for existing entities, as `addToSketch` takes it. */

@@ -71,12 +71,29 @@ How to get the sources of the LGPL parts
 2. Bundled fonts
 ----------------
 
+The UI's own font files (through the @fontsource packages, the license text
+ships in each package):
+
   Instrument Sans   Copyright 2022 The Instrument Sans Project Authors
                     https://github.com/Instrument/instrument-sans
   JetBrains Mono    Copyright 2020 The JetBrains Mono Project Authors
                     https://github.com/JetBrains/JetBrainsMono
-  Both: SIL Open Font License 1.1 (https://openfontlicense.org), through the
-  @fontsource packages (the license text ships in each package).
+
+The fonts bundled for sketch text, in packages/fonts/fonts/ (each family's
+OFL-<family>.txt names its authors; subsets of the files at
+https://github.com/google/fonts, see packages/fonts/README.md):
+
+  Inter             Copyright 2020 The Inter Project Authors
+                    https://github.com/rsms/inter
+  Noto Serif        Copyright 2022 The Noto Project Authors
+                    https://github.com/notofonts/latin-greek-cyrillic
+  JetBrains Mono    Copyright 2020 The JetBrains Mono Project Authors
+                    https://github.com/JetBrains/JetBrainsMono
+  Allerta Stencil   Copyright (c) 2010, Matt McInerney (matt@pixelspread.com),
+                    with Reserved Font Name Allerta.
+  Fredoka           Copyright 2016 The Fredoka Project Authors
+                    https://github.com/hafontia/Fredoka-One
+  All: SIL Open Font License 1.1 (https://openfontlicense.org).
 
 
 3. JavaScript libraries in the app (production dependencies)

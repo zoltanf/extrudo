@@ -38,8 +38,11 @@ export type RevolveDirection = (typeof REVOLVE_DIRECTIONS)[number];
 export const REVOLVE_OPERATIONS = BODY_OPERATIONS;
 export type RevolveOperation = BodyOperation;
 
-/** What can be revolved: sketch profiles (`<sketch>/<region>`) and flat faces of bodies. */
-export const REVOLVE_PROFILE_KINDS: readonly GeomRefKind[] = ['profile', 'face'];
+/**
+ * What can be revolved: sketch profiles (`<sketch>/<region>`), flat faces
+ * of bodies, and whole texts (`<sketch>/<text>`, P4-03, ADR-0058 §5).
+ */
+export const REVOLVE_PROFILE_KINDS: readonly GeomRefKind[] = ['profile', 'face', 'sketchEntity'];
 /**
  * What a revolve can turn about: an origin axis (`origin:x`…, later
  * construction axes), a sketch line (`sketchEntity`, `<sketch>/<entity>`,

@@ -67,7 +67,9 @@ export const revolveDialog = defineFeatureDialog({
       label: 'Profiles',
       accepts: REVOLVE_PROFILE_KINDS,
       prompt: 'Pick profiles or flat faces',
-      hint: 'Sketch profiles or flat faces of bodies, all in one plane, on one side of the axis.',
+      hint: 'Sketch profiles, a whole text or flat faces of bodies, all in one plane, on one side of the axis.',
+      // A text is swept whole (P4-03); a bare sketch curve can't be revolved.
+      wholeTexts: true,
     },
     {
       kind: 'selection',

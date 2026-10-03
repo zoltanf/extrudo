@@ -33,6 +33,7 @@ export const ICON_NAMES = [
   'slot-overall',
   'ellipse',
   'spline',
+  'text',
   'project',
   'sketch-dimension',
   'trim',

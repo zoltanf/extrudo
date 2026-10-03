@@ -778,8 +778,15 @@ end to end, faster than in Fusion 360.
   Done 2026-10-03 (ADR-0056): Thread in Solid › Modify, ISO metric, UNC/UNF,
   fit-the-face sizing, tolerance (the `tolerance` parameter when it exists),
   lead-ins.
-- [ ] **P4-03 Text tool** (opentype.js, bundled OFL fonts, user fonts as
-  attachments). FR-SK-13.
+- [x] **P4-03 Text tool** (opentype.js, bundled OFL fonts, user fonts as
+  attachments). FR-SK-13. Done 2026-10-03 (ADR-0058): a `text` sketch entity
+  sized by two points and shaped with opentype.js through a registry in core;
+  six bundled fonts (Inter, Noto Serif, JetBrains Mono, Allerta Stencil,
+  Fredoka) as versioned IDs; the letters are closed ink regions, so an extrude
+  of a whole text sweeps every letter and a plate round a text has it as
+  holes; the Text tool (Shift+T) with a non-modal panel, and the selection
+  panel edits the string, font, alignment and the height dimension.
+- [ ] **P4-03b User fonts** as document attachments (ADR-0058 Deferred).
 - [ ] **P4-04 Emboss/deboss.** FR-FT-16.
 - [ ] **P4-05 Control-point splines, conics, sketch polish.** FR-SK-03.
 - [ ] **P4-06 Import:** SVG/DXF → sketch; STEP → base body; STL/3MF/OBJ → mesh

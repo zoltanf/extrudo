@@ -16,9 +16,11 @@ import {
   type BSpline,
   ellipseShape,
   fitSpline,
+  placeText,
   type SketchData,
   type SketchEntity,
   type SketchEntityId,
+  type TextCurve,
   type Vec2,
 } from '@extrudo/core';
 import type { Contour, Drawing, Layer, Point, Segment } from '@extrudo/io';
@@ -46,9 +48,17 @@ export interface SketchDrawingOptions {
 /** Every curve of a sketch, as a drawing. */
 export function sketchDrawing(data: SketchData, options: SketchDrawingOptions = {}): Drawing {
   const shapes: Drawing['shapes'] = [];
-  for (const entity of Object.values(data.entities)) {
+  for (const [key, entity] of Object.entries(data.entities)) {
     if (entity.type === 'point') continue;
     if (entity.construction && !options.construction) continue;
+    if (entity.type === 'text') {
+      const layer = entity.construction ? CONSTRUCTION_LAYER.name : SKETCH_LAYER.name;
+      for (const curve of placeText(data, key as SketchEntityId).curves) {
+        const contour = textCurveContour(curve);
+        if (contour) shapes.push({ layer, contours: [contour] });
+      }
+      continue;
+    }
     const contour = curveContour(data, entity);
     if (contour) {
       shapes.push({
@@ -149,7 +159,25 @@ function curveContour(data: SketchData, entity: SketchEntity): Contour | undefin
       const start = beziers[0]?.[0];
       return start && { start, segments: beziers.map(bezierSegment), closed: false };
     }
+    case 'text':
+      // A text is many curves: `sketchDrawing` expands it with `placeText`.
+      return undefined;
   }
+}
+
+/** One placed curve of a text as an open contour: a line, or its Bézier. */
+function textCurveContour(curve: TextCurve): Contour | undefined {
+  if (curve.kind === 'line') {
+    return { start: curve.a, segments: [{ type: 'line', to: curve.b }], closed: false };
+  }
+  // A single-span clamped B-spline's poles are the Bézier's control points.
+  const [first, second, third, fourth] = curve.poles;
+  if (!first || !second || !third) return undefined;
+  const segment: Segment =
+    curve.degree === 3 && fourth
+      ? { type: 'cubic', c1: second, c2: third, to: fourth }
+      : { type: 'quadratic', control: second, to: third };
+  return { start: first, segments: [segment], closed: false };
 }
 
 /** One Bézier piece (its first point is the current point) as a segment. */
@@ -190,6 +218,8 @@ function sweepAround(points: readonly Vec2[], angle: (p: Vec2) => number): numbe
 function edgeSegments(data: SketchData, edge: ProfileEdge): Segment[] {
   const points = edge.points;
   const end = points[points.length - 1] as Vec2;
+  const sub = textCurveOf(data, edge.curve);
+  if (sub) return textCurveSegments(data, sub, points, end);
   const entity = data.entities[edge.curve];
   const polyline = (): Segment[] => points.slice(1).map((to) => ({ type: 'line', to }));
   switch (entity?.type) {
@@ -242,6 +272,43 @@ function edgeSegments(data: SketchData, edge: ProfileEdge): Segment[] {
     default:
       return polyline();
   }
+}
+
+/**
+ * The curve ID of a text's sub-curve: `<text entity ID>.<k>` (ADR-0058 §2).
+ * Ordinary entity IDs have no `.digits` tail whose owner is a text.
+ */
+function textCurveOf(
+  data: SketchData,
+  curve: string,
+): { id: SketchEntityId; index: number } | undefined {
+  const dot = curve.lastIndexOf('.');
+  if (dot <= 0 || !/^\d+$/.test(curve.slice(dot + 1))) return undefined;
+  const id = curve.slice(0, dot) as SketchEntityId;
+  return data.entities[id]?.type === 'text'
+    ? { id, index: Number(curve.slice(dot + 1)) }
+    : undefined;
+}
+
+/** A text sub-curve between an edge's first and last points: exact lines and Béziers. */
+function textCurveSegments(
+  data: SketchData,
+  curve: { id: SketchEntityId; index: number },
+  points: readonly Vec2[],
+  end: Vec2,
+): Segment[] {
+  const polyline = (): Segment[] => points.slice(1).map((to) => ({ type: 'line', to }));
+  if (points.length < 2) return polyline();
+  const sub = placeText(data, curve.id).curves[curve.index];
+  if (!sub) return polyline();
+  if (sub.kind === 'line') return [{ type: 'line', to: end }];
+  // A single-span clamped B-spline's poles are the Bézier's control points.
+  const spline: BSpline = { degree: sub.degree, poles: sub.poles, knots: sub.knots };
+  const [from, to] = splineRange(spline, points);
+  const segments = bezierRange(bezierPieces(spline), from, to).map(bezierSegment);
+  const last = segments[segments.length - 1];
+  if (last) last.to = end;
+  return segments;
 }
 
 /**

@@ -77,6 +77,12 @@ export interface SelectionField extends FieldBase {
    * shown sketches and picks them.
    */
   sketchPoints?: boolean;
+  /**
+   * The field takes a whole text (P4-03, ADR-0058 §5): a `sketchEntity`
+   * reference to a sketch's text entity stands for every letter's ink, which
+   * survives editing the string. The view offers the text, not its curves.
+   */
+  wholeTexts?: boolean;
   /** What a pick is called, singular and plural, where the kinds don't say ("point", "points"). */
   noun?: readonly [string, string];
 }

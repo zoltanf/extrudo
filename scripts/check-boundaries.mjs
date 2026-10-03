@@ -3,18 +3,21 @@
 // which workspace packages may depend on which. Checks both package.json
 // dependencies and `@extrudo/*` imports in source files.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { join, relative, sep } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 
 /** Allowed internal dependencies per package. Anything not listed is forbidden. */
 const ALLOWED = {
   '@extrudo/core': [],
-  '@extrudo/sketch': ['@extrudo/core', '@extrudo/io'],
+  '@extrudo/sketch': ['@extrudo/core', '@extrudo/io', '@extrudo/fonts'],
   // io only in tests (a devDependency): the export tests check meshes with it.
-  '@extrudo/kernel': ['@extrudo/core', '@extrudo/sketch', '@extrudo/io'],
+  '@extrudo/kernel': ['@extrudo/core', '@extrudo/sketch', '@extrudo/io', '@extrudo/fonts'],
   // MIT-licensed: must stay independent of the GPL packages.
   '@extrudo/io': [],
+  // The bundled fonts: a data package, nothing internal may depend the other
+  // way; @extrudo/sketch (the shaper), @extrudo/kernel and the app use it.
+  '@extrudo/fonts': [],
   '@extrudo/storage': ['@extrudo/core'],
   // The landing page: no internal packages (ADR-0057).
   '@extrudo/site': [],
@@ -24,6 +27,7 @@ const ALLOWED = {
     '@extrudo/kernel',
     '@extrudo/io',
     '@extrudo/storage',
+    '@extrudo/fonts',
   ],
 };
 
@@ -62,6 +66,22 @@ for (const dir of workspaceDirs) {
         problems.push(`${relative(ROOT, file)}: must not import ${target}`);
       }
     }
+  }
+}
+
+if (problems.length > 0) {
+  console.error(`Package boundary violations:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
+  process.exit(1);
+}
+
+// opentype.js (~170 kB) must stay inside the @extrudo/sketch/text entry
+// (ADR-0058 §4): core, the app and the other sketch modules go through core's
+// text registry instead, so the parser is only ever loaded with text.
+for (const file of sourceFiles(join(ROOT, 'packages/sketch/src'))) {
+  if (file.includes(`${join('src', 'text')}${sep}`)) continue;
+  const source = readFileSync(file, 'utf8');
+  if (/['"]opentype\.js['"]/.test(source) || /['"]@extrudo\/sketch\/text['"]/.test(source)) {
+    problems.push(`${relative(ROOT, file)}: only packages/sketch/src/text may import opentype.js`);
   }
 }
 

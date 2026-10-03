@@ -7,8 +7,9 @@ import {
   type SketchData,
   type SketchFrame,
 } from '@extrudo/core';
-import { detectProfiles } from '@extrudo/sketch/profiles';
+import { detectProfiles, profileAt } from '@extrudo/sketch/profiles';
 import { describe, expect, it } from 'vitest';
+import { textProfiles, textSketch } from '../sketch/textTesting';
 import { DEFAULT_FILTER, type SelectionFilter } from './filter';
 import {
   type PickScene,
@@ -178,6 +179,75 @@ describe('sketches in model mode', () => {
       id: 's/l4',
     });
     expect(pickTop(sketchScene, top, diagonal, without('construction'))?.kind).toBe('profile');
+  });
+});
+
+describe('a text in model mode (P4-03)', () => {
+  const frame = planeFrame(originPlaneRef('origin:xy')) as SketchFrame;
+  const T = 't' as FeatureId;
+  const data = textSketch({ text: 'Ag', height: 10 });
+  const ink = textProfiles(data).filter((p) => p.text);
+  const textScene: PickScene = {
+    bodies: [],
+    sketches: [{ id: T, frame, data, profiles: textProfiles(data) }],
+    occluding: false,
+  };
+  const top = cameraFrom([0, 0, 1], { target: [5, 5, 0], size: 60 });
+  // The camera looks down the Z axis, so its pixels are 60 / 600 = 0.1 mm.
+
+  it('has ink regions, each of one text', () => {
+    expect(ink.length).toBeGreaterThan(1);
+    expect(ink.every((p) => p.text === 'word')).toBe(true);
+  });
+
+  /** A point well inside the ink: the neighbours a tenth of a mm about must be in it too. */
+  const insideInk = (): [number, number] => {
+    const at = (p: [number, number]) => profileAt(textProfiles(data), p);
+    for (let y = 0.2; y <= 10; y += 0.2) {
+      for (let x = 0.2; x <= 15; x += 0.2) {
+        const hit = at([x, y]);
+        if (hit?.text !== 'word') continue;
+        const near = [
+          [x + 0.1, y],
+          [x - 0.1, y],
+          [x, y + 0.1],
+          [x, y - 0.1],
+        ].map((p) => at(p as [number, number])?.id);
+        if (near.every((id) => id === hit.id)) return [x, y];
+      }
+    }
+    throw new Error('no ink found');
+  };
+
+  it('takes the whole text where a letter is, and offers the letter too', () => {
+    const [x, y] = insideInk();
+    const letter = profileAt(textProfiles(data), [x, y]);
+    const stack = pickStack(textScene, top, topViewPx(top, x, y), only('profiles'));
+    expect(stack[0]?.item).toEqual({ kind: 'sketchEntity', id: 't/word' });
+    expect(stack[1]?.item).toEqual({ kind: 'profile', id: `t/${letter?.id}` });
+    expect(pickTop(textScene, top, topViewPx(top, x, y), only('profiles'))).toEqual({
+      kind: 'sketchEntity',
+      id: 't/word',
+    });
+  });
+
+  it('boxes a text once, whole', () => {
+    const px = topViewPx(top, -2, -2);
+    const box = pickBox(textScene, top, px, topViewPx(top, 25, 15), only('profiles'));
+    const texts = box.filter((item) => item.kind === 'sketchEntity');
+    expect(texts).toEqual([{ kind: 'sketchEntity', id: 't/word' }]);
+  });
+
+  it('picks the text as a sketch curve where a dialog asks for sketches', () => {
+    // A point on a glyph outline (a vertex of an ink region) is near the curve.
+    const vertex = ink[0]?.outer.polygon[0] as [number, number] | undefined;
+    const [x, y] = vertex ?? [0, 0];
+    expect(pickTop(textScene, top, topViewPx(top, x, y), only('sketches', 'construction'))).toEqual(
+      {
+        kind: 'sketchEntity',
+        id: 't/word',
+      },
+    );
   });
 });
 

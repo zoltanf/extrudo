@@ -64,6 +64,8 @@ export * from './sketch/feature';
 export * from './sketch/planes';
 export * from './sketch/projection';
 export * from './sketch/schema';
+export * from './sketch/text';
+export * from './sketch/text-layout';
 export * from './split-body';
 export {
   createDocumentStore,

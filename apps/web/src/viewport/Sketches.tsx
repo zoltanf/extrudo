@@ -11,6 +11,8 @@ import {
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
+import { useStore } from 'zustand';
+import { fontsStore } from '../sketch/fonts';
 import type { Rgba } from './colors';
 import { createDotMaterial } from './dots';
 import {
@@ -74,9 +76,12 @@ export function Sketches({
   projected,
   clip = null,
 }: SketchesProps) {
+  // A text draws its glyph curves only once its font is loaded (P4-03), so the
+  // version is in the key: a font that arrives later redraws every sketch.
+  const fontsVersion = useStore(fontsStore, (s) => s.version);
   return sketches.map((s) => (
     <Sketch
-      key={s.id}
+      key={`${s.id}:${fontsVersion}`}
       store={store}
       drawing={s}
       colors={s.highlight ? { free: highlight, fixed: highlight, conflict: highlight } : colors}

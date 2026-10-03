@@ -27,8 +27,8 @@ analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus),
 P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-15
 (public release prep, ADR-0054: done except the owner's release steps),
 P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 is
-complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil) and P4-02
-(modeled threads) are done. ADR-0001 chose
+complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil), P4-02
+(modeled threads) and P4-03 (sketch text, bundled fonts) are done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -706,8 +706,26 @@ end is open; it always cuts, so it is patternable. Faces
 `thread:<id>:side:f<k>.crest|flank0|flank1|root|end0|end1|lead0|lead1`. About
 0.1 s per turn (booleans); **the facade's booleans used to build twice** (fixed
 in `finishBoolean`). Native harness: `spikes/p4-02-harness/`.
-Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-03**
-(text tool; FR-SK-13), then P4-04 onward in `docs/03-roadmap.md`. The owner's own release steps (slicer check, making the
+ADR-0058 (P4-03) added **sketch text**: the `text` sketch entity (`core/src/sketch/schema.ts`,
+sized and placed by two points, so its height is the cap height and its
+direction the rotation), shaped by opentype.js **only in `@extrudo/sketch/text`**
+behind core's shaper registry (`registerTextShaper`, `placeText`,
+`textPolylines`; the curves are `<text>.<n>` sub-IDs of lines and exact
+B-splines, so no facade change). Rules a change must keep: **a font ID never
+changes its file** (`family-style@n` in `packages/fonts`), **the whole-text
+reference is `{kind:'sketchEntity', id:'<sketch>/<text>'}`** (`partsOf` in
+`kernel/src/features/sources.ts`: every ink region of that text, and it survives
+editing the string, the font and the size — per-letter profile IDs don't),
+**ink regions are marked** (`Profile.text`: a region whose whole boundary is one
+text's sub-curves and whose interior has a non-zero winding number; counters
+have winding 0 and stay open), and **`KernelApi.addFont` sends a font before the
+recompute that needs it** (`Recomputer`, and `fonts.ts` on the UI thread, which
+bumps a version every text-geometry cache keys on). The tool is `text`
+(Shift+T) in the Create group with its panel in `panels.tsx`; the draft lives in
+`textDraft.ts` so the panel doesn't pull the tools' chunk in with it.
+Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-04**
+(emboss/deboss) then P4-05 onward in `docs/03-roadmap.md`; **P4-07 in progress
+on its own branch** (and P4-03b, user fonts, is ADR-0058's Deferred). The owner's own release steps (slicer check, making the
 repository public, Cloudflare, domain, tag v0.3.0) are in
 `docs/release-checklist.md`; don't do them. Deeper carried-over items are the
 P4-12 backlog.
@@ -741,7 +759,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest) (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text (0006 is reserved) |
 
 ## Stack summary
 
@@ -1703,3 +1721,22 @@ them. Notes further down that name a machine apply to that machine only.
   touch the path. Kernel-side, the golden tables are `pnpm vitest run -u
   packages/kernel/src/features/sweep-loft-coil`; the facade's native harness is
   `bash spikes/p4-01-harness/run.sh` (and `run.sh leaks 600`, about 15 min).
+- **Text e2e** (`e2e/text.spec.ts`, P4-03): the tool is `text` (Shift+T) in the
+  Create menu (`menuitem` `/^Text/`, "Text Shift+T"); its panel is the region
+  "Text" with the textarea "Text", the `Font` select (values like
+  `inter-regular@1`), the three `aria-pressed` alignment buttons and the
+  `Height` textbox (`10 mm`), plus "OK Ctrl+↵" and "Cancel Esc". It appears
+  only **after** the click places the anchor (the first Esc closes the panel,
+  the second ends the tool), and a font other than Inter is fetched when it is
+  picked, so the ink (and `data-text-bounds`) arrives a moment after OK. A text
+  in the model is one pick whatever letter was hit: `data-model-selection` is
+  `sketchEntity:<sketch>/<text>`, and the extrude's `Profiles` field reads
+  **"1 text"**. "Extrudo" at 10 mm is `profiles=9 holes=2` and extrudes 2 mm
+  into 7 bodies, all `…:…,2` in `data-bodies`; the `o` is the four-face one
+  (two caps plus its counter, so the counter is a hole, not a body). The
+  selection panel's `Text` textarea and `Height` textbox edit a placed text
+  (commit on blur); reopening a sketch by double-clicking its chip rolls the
+  extrude back, and Finish Sketch rolls it forward. The Viewport region's
+  **`data-text-bounds`** is `<sketchId>.<textId>:x=min..max:y=min..max` in
+  sketch mm per drawn text — the alignment and height assertions read it, and
+  a text without its font has none (the attribute is absent).

@@ -43,6 +43,19 @@ export interface RecomputerOptions {
   previewDelayMs?: number;
   client?: Omit<KernelClientOptions, 'onRestart'>;
   onKernelStatus?(status: KernelStatus, detail?: string): void;
+  /**
+   * The fonts sketch text needs (P4-03, ADR-0058 §4): which font IDs the
+   * document uses and where their bytes are. Each one the kernel doesn't have
+   * yet is sent before the recompute that needs it. Without this the kernel
+   * warns about a font it hasn't got and draws no ink for it.
+   */
+  fonts?: FontSource;
+}
+
+export interface FontSource {
+  used(doc: ExtrudoDocument): Iterable<string>;
+  /** A font's bytes, or undefined for an ID no source knows. */
+  bytes(id: string): Promise<ArrayBuffer | undefined>;
 }
 
 export interface Preview {
@@ -61,6 +74,7 @@ export class Recomputer {
   readonly client: KernelClient;
   readonly #document: DocumentStore;
   readonly #model: ModelStore<BodyMesh>;
+  readonly #fontSource: FontSource | undefined;
   readonly #delayMs: number;
   readonly #previewDelayMs: number;
   #timer: ReturnType<typeof setTimeout> | undefined;
@@ -83,10 +97,13 @@ export class Recomputer {
     | undefined;
   #previewSequence = 0;
   #disposed = false;
+  /** The fonts this kernel has: a restart forgets them (ADR-0058 §4). */
+  readonly #fonts = new Set<string>();
 
   constructor(options: RecomputerOptions) {
     this.#document = options.document;
     this.#model = options.model;
+    this.#fontSource = options.fonts;
     this.#delayMs = options.delayMs ?? 30;
     this.#previewDelayMs = options.previewDelayMs ?? 60;
     this.client = new KernelClient(options.spawn, {
@@ -270,7 +287,28 @@ export class Recomputer {
   /** After a kernel restart: the new kernel has an empty cache and needs the document again. */
   #resend(): void {
     this.#sent = undefined;
+    // The new kernel has no fonts either (ADR-0058 §4).
+    this.#fonts.clear();
     this.#schedule();
+  }
+
+  /**
+   * Sends the document's fonts this kernel doesn't have (P4-03): the sketch
+   * evaluator shapes text with them, and a font ID that never changes under
+   * its ID, so once is enough. An ID no source knows is left out, and the
+   * sketch warns about it.
+   */
+  async #sendFonts(doc: ExtrudoDocument): Promise<void> {
+    const source = this.#fontSource;
+    if (!source) return;
+    for (const id of source.used(doc)) {
+      if (this.#fonts.has(id) || this.#disposed) continue;
+      const data = await source.bytes(id);
+      if (this.#disposed) return;
+      if (!data) continue;
+      await this.client.call((api) => api.addFont(id, data));
+      this.#fonts.add(id);
+    }
   }
 
   async #send(): Promise<void> {
@@ -282,6 +320,8 @@ export class Recomputer {
     const crashed = this.#stillCrashed(doc);
     let result: RecomputeResult;
     try {
+      await this.#sendFonts(doc);
+      if (sequence !== this.#sequence || this.#disposed) return;
       result = await this.client.call((api) =>
         api.recompute({ doc, have: this.#have(), crashed }, (id) => {
           if (sequence === this.#sequence) this.#current = id;

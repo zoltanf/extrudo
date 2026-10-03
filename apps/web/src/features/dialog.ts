@@ -21,6 +21,7 @@ import {
   CommandError,
   type DocumentStore,
   type EvaluateResult,
+  type ExtrudoDocument,
   evaluateParameters,
   type Feature,
   type FeatureId,
@@ -30,7 +31,9 @@ import {
   type ModelStore,
   newId,
   nextFeatureName,
+  parseSketchEntityRefId,
   type ReferenceIssue,
+  readSketch,
   type SelectionItem,
   type SessionStore,
   setFeatureVisibility,
@@ -589,7 +592,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         const refs: GeomRef[] = [];
         for (const item of selection) {
           if (refs.length >= (target.max ?? Number.POSITIVE_INFINITY)) break;
-          if (used.includes(item) || !accepts(target.accepts, item)) continue;
+          if (used.includes(item) || !takesPreSelected(target, item, doc)) continue;
           const ref = itemRef(item, bodies);
           if (ref && !refs.some((r) => r.kind === ref.kind && r.id === ref.id)) {
             refs.push(ref);
@@ -820,6 +823,24 @@ export function fixReferences(
   }
   const fields = [...lostIn, ...guessedIn.filter((f) => !lostIn.includes(f))];
   return { values: { ...values, refs: { ...values.refs, ...refs } }, fields, lost, guessed };
+}
+
+/**
+ * Whether a field takes this item of the selection (pre-selection, UI spec
+ * §3.3). A field that takes whole texts (P4-03) wants a text, not a sketch
+ * curve: it sweeps ink, not a line.
+ */
+function takesPreSelected(
+  field: SelectionField,
+  item: SelectionItem,
+  doc: ExtrudoDocument,
+): boolean {
+  if (!accepts(field.accepts, item)) return false;
+  if (!field.wholeTexts || item.kind !== 'sketchEntity') return true;
+  const parsed = parseSketchEntityRefId(item.id);
+  if (!parsed) return false;
+  const feature = doc.features.find((f) => f.id === parsed.feature);
+  return (feature && readSketch(feature)?.data.entities[parsed.entity]?.type) === 'text';
 }
 
 /** "Extrude2 lost 1 reference: pick it again in Profiles." */

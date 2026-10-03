@@ -289,6 +289,7 @@ export function trim(
   const b = new ChangeBuilder(data, newId);
   const e = data.entities[id];
   if (!e || e.type === 'point') throw new ModifyError('Pick a curve to trim.');
+  if (e.type === 'text') throw new ModifyError("Text can't be trimmed.");
   const span = spanOf(data, id);
   if (!span) {
     if (hasCrossings(data, id)) {
@@ -358,6 +359,7 @@ export function breakCurve(
   newId: () => string,
 ): ModifyResult {
   const b = new ChangeBuilder(data, newId);
+  if (data.entities[id]?.type === 'text') throw new ModifyError("Text can't be broken.");
   const span = spanOf(data, id);
   if (!span) throw new ModifyError('Only lines, circles and arcs can be broken.');
   const cuts = spanCuts(data, span);
@@ -457,6 +459,7 @@ export function extend(
   newId: () => string,
 ): ModifyResult {
   const e = data.entities[id];
+  if (e?.type === 'text') throw new ModifyError("Text can't be extended.");
   if (e?.type !== 'line' && e?.type !== 'arc') {
     throw new ModifyError('Only lines and arcs can be extended.');
   }

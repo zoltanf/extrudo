@@ -92,6 +92,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { gridStep } from '../../viewport/grid';
 import type { ViewportStore } from '../../viewport/store';
 import { sketchProfiles } from '../profiles';
+import { focusTextField, resetTextDraft } from '../textDraft';
 import { dimensionValues } from '../values';
 import { ARC_CENTER_TOOL, ARC_TANGENT_TOOL, ARC_TOOL, ArcTool } from './arc';
 import { CIRCLE_2POINT_TOOL, CIRCLE_3POINT_TOOL, CIRCLE_TOOL, CircleTool } from './circle';
@@ -118,6 +119,7 @@ import {
 import { SLOT_OVERALL_TOOL, SLOT_TOOL, SlotTool } from './slot';
 import { SPLINE_TOOL, SplineTool } from './spline';
 import { BREAK_TOOL, EXTEND_TOOL, SplitTool, TRIM_TOOL } from './split';
+import { TEXT_TOOL, TextTool } from './text';
 import type { SketchEdit, SketchTool, ToolContext, Typed } from './tool';
 import {
   CIRCULAR_PATTERN_TOOL,
@@ -155,6 +157,7 @@ const FACTORIES: Record<string, (context: ToolContext) => SketchTool> = {
   [SLOT_OVERALL_TOOL]: (context) => new SlotTool(context, 'overall'),
   [ELLIPSE_TOOL]: (context) => new EllipseTool(context),
   [SPLINE_TOOL]: (context) => new SplineTool(context),
+  [TEXT_TOOL]: (context) => new TextTool(context),
   [DIMENSION_TOOL]: (context) => new DimensionTool(context),
   [TRIM_TOOL]: (context) => new SplitTool(context, 'trim'),
   [EXTEND_TOOL]: (context) => new SplitTool(context, 'extend'),
@@ -216,6 +219,8 @@ export interface PlanePointer {
   infer: boolean;
   /** Shift, Ctrl or ⌘ is held: a click toggles the selection, a box adds to it (P1-09). */
   toggle?: boolean;
+  /** The second of two clicks close together: double-clicking a text opens its panel (P4-03). */
+  double?: boolean;
 }
 
 /** A box drawn over the view (P1-09), as it lies on the sketch plane. */
@@ -893,6 +898,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       if (s.mode !== 'sketch' || !FACTORIES[id]) return;
       endMove(true);
       clearHover();
+      // A Text tool's panel is closed when the tool starts (P4-03): a click opens it.
+      if (id === TEXT_TOOL) resetTextDraft();
       s.setTool(id);
       committed = store.getState().doc;
       state.setState((prev) => ({
@@ -946,6 +953,13 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         const s = session.getState();
         if (item) s.select([item], pointer.toggle ? 'toggle' : 'replace');
         else if (!pointer.toggle) s.clearSelection();
+        // A double-click on a text puts the cursor in the selection panel's
+        // Text field, so the string can be typed right away (P4-03).
+        if (pointer.double && item?.kind === 'sketchEntity') {
+          const sketch = activeSketch();
+          const entity = sketch?.data.entities[item.id as SketchEntityId];
+          if (entity?.type === 'text') focusTextField(item.id);
+        }
         return;
       }
       run((tool) => {

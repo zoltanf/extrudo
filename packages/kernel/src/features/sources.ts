@@ -2,9 +2,15 @@
  * What a sweep sweeps (ADR-0028 §2, shared with revolve, ADR-0029):
  * sketch profiles and flat faces of bodies, united into one source, and
  * the plane they lie in. Moved from `extrude.ts` unchanged, but for the
- * feature's word in messages.
+ * feature's word in messages. A `sketchEntity` ref to a sketch's text
+ * (P4-03, ADR-0058 §5) means every ink face of that text.
  */
-import { type FeatureId, type GeomRef, parseProfileRefId } from '@extrudo/core';
+import {
+  type FeatureId,
+  type GeomRef,
+  parseProfileRefId,
+  parseSketchEntityRefId,
+} from '@extrudo/core';
 import { KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
 import { faceEdgeSources, type SweepSource } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
@@ -48,6 +54,10 @@ export function partsOf(
     const key = `${ref.kind}:${ref.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    if (ref.kind === 'sketchEntity') {
+      parts.push(...textParts(ctx, ref, noun));
+      continue;
+    }
     parts.push(
       ref.kind === 'profile' ? profilePart(ctx, ref, noun) : facePart(ctx, scope, ref, noun),
     );
@@ -85,6 +95,48 @@ function profilePart(ctx: EvalContext, ref: GeomRef, noun: FeatureNoun): Base {
     source: { shape: face, edgeSources: info.edges },
     plane: { point: data.frame.origin, normal: data.frame.normal },
   };
+}
+
+/**
+ * A whole text (P4-03, ADR-0058 §5): a `sketchEntity` ref to a sketch's
+ * text entity stands for every ink face of that text, each a part like a
+ * profile's. It survives editing the string, the font or the size, where
+ * per-letter profile IDs don't.
+ */
+function textParts(ctx: EvalContext, ref: GeomRef, noun: FeatureNoun): Base[] {
+  const lost = new LostReferenceError(
+    `Can't find the text any more: an earlier change removed it. Edit the ${noun} and pick it again.`,
+    ref,
+  );
+  const parsed = parseSketchEntityRefId(ref.id);
+  if (!parsed) throw lost;
+  let data: Partial<SketchOutputData> | undefined;
+  let shapes: Record<string, ShapeHandle> | undefined;
+  try {
+    const output = ctx.output(parsed.feature);
+    data = output.data as Partial<SketchOutputData> | undefined;
+    shapes = output.shapes;
+  } catch {
+    data = undefined;
+  }
+  // Not a text of that sketch any more (deleted, or never was one).
+  if (!data?.texts?.includes(parsed.entity)) throw lost;
+  const parts: Base[] = [];
+  for (const info of data.profiles ?? []) {
+    if (info.text !== parsed.entity) continue;
+    const face = shapes?.[info.id];
+    if (!face || !data.frame) continue;
+    parts.push({
+      source: { shape: face, edgeSources: info.edges },
+      plane: { point: data.frame.origin, normal: data.frame.normal },
+    });
+  }
+  if (parts.length === 0) {
+    // A text of the sketch that draws nothing: no font, nothing to draw,
+    // or construction geometry.
+    throw new KernelError(`The text has no letters to ${noun}.`);
+  }
+  return parts;
 }
 
 /** A flat face of a body (press-pull): the face itself, its edges' names as sources. */

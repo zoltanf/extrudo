@@ -70,7 +70,9 @@ export const extrudeDialog = defineFeatureDialog({
       label: 'Profiles',
       accepts: EXTRUDE_PROFILE_KINDS,
       prompt: 'Pick profiles or flat faces',
-      hint: 'Sketch profiles or flat faces of bodies, all in one plane.',
+      hint: 'Sketch profiles, a whole text or flat faces of bodies, all in one plane.',
+      // A text is swept whole (P4-03); a bare sketch curve can't be extruded.
+      wholeTexts: true,
     },
     {
       kind: 'choice',
