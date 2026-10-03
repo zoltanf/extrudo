@@ -17,7 +17,9 @@ jobs:
     # Docker, so it is built once per input hash and published as a release
     # asset (`occt-<hash>`). This job is a quick no-op when that release exists.
     name: OCCT WASM
-    runs-on: ubuntu-latest
+    # The runner: GitHub-hosted ubuntu-latest, or the JSON label list in the
+    # repository variable RUNS_ON (e.g. ["self-hosted", "home-pc"]) while the repo is private (docs/deploy.md, "Self-hosted runner").
+    runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 90
     permissions:
       contents: write
@@ -66,7 +68,7 @@ jobs:
     # a few minutes, so like OCCT it is built once per input hash and published
     # as a release asset (`planegcs-<hash>`). A quick no-op when that exists.
     name: planegcs WASM
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 30
     permissions:
       contents: write
@@ -96,7 +98,7 @@ jobs:
   check:
     name: Typecheck, lint, unit and memory tests
     needs: [occt, planegcs]
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
@@ -124,7 +126,7 @@ jobs:
     # took 27-33). Two shards run beside the check job, each on its own runner.
     name: E2E tests (${{ matrix.shard }}/2)
     needs: [occt, planegcs]
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 40
     strategy:
       fail-fast: false

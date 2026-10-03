@@ -60,7 +60,9 @@ env:
 jobs:
   plan:
     name: Decide what to deploy
-    runs-on: ubuntu-latest
+    # The runner: GitHub-hosted ubuntu-latest, or the JSON label list in the
+    # repository variable RUNS_ON (e.g. ["self-hosted", "home-pc"]) while the repo is private (docs/deploy.md, "Self-hosted runner").
+    runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     outputs:
       enabled: ${{ steps.plan.outputs.enabled }}
       sha: ${{ steps.plan.outputs.sha }}
@@ -126,7 +128,7 @@ jobs:
     name: App (${{ matrix.channel }})
     needs: plan
     if: needs.plan.outputs.enabled == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 20
     strategy:
       matrix:
@@ -176,7 +178,7 @@ jobs:
     name: Landing page
     needs: plan
     if: needs.plan.outputs.enabled == 'true' && needs.plan.outputs.edge == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 10
     env:
       SHA: ${{ needs.plan.outputs.sha }}

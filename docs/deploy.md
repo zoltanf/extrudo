@@ -170,6 +170,26 @@ only in Cloudflare, never in this repository. Set up 2026-10-02:
 - It creates the project `extrudo-site` if it is missing, and never the secrets,
   the token or the custom domains.
 
+## Self-hosted runner (while the repository is private)
+
+GitHub Actions minutes are billed on a private repository, so until the
+repository is public, CI and the deploys run on the owner's own machine: two
+runner containers (labels `self-hosted`, `home-pc`). Every job picks them up
+through the repository variable `RUNS_ON = ["self-hosted","home-pc"]`; delete
+the variable and every job is back on GitHub-hosted `ubuntu-latest`.
+
+The containers are built from the Playwright Ubuntu image, so the e2e
+screenshots render like the checked-in baselines. They have no Docker socket and
+no host mounts, so they cannot build OCCT or planegcs: when the facade or the
+solver's build inputs change, build and publish the release locally
+(`pnpm occt build`, `pnpm planegcs build`, then `pnpm occt publish` and
+`pnpm planegcs publish`) before pushing, so CI finds it instead of building it.
+
+**When the repository goes public:** delete the `RUNS_ON` variable and remove the
+runners in Settings > Actions > Runners. A self-hosted runner must never serve a
+public repository: a pull request from a fork would run its code on the owner's
+machine.
+
 ## Rolling back
 
 Cloudflare keeps every deployment: Workers & Pages > `extrudo` (or
