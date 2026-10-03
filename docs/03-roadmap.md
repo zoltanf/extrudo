@@ -768,12 +768,16 @@ end to end, faster than in Fusion 360.
   order, following the path or fixed, with a twist and an end scale; Loft goes
   through profiles, faces and an end point, smooth or ruled, open or closed;
   Coil is a primitive-placed spring of three types, a taper, either hand and
-  four sections in three positions, whose `helixSweep` P4-02's threads reuse.
+  four sections in three positions, whose `helix` builds one edge per turn
+  (P4-02's threads sweep their own `threadSweep`).
   New facade methods `pathSketch`, `pathEdge`, `pathWire`, `helix`, `sweep`,
   `loft`, checked natively first (`spikes/p4-01-harness`). Patterns and
   mirrors repeat all three. Deferred: loft rails and centre line, twist on
   sharp paths, loft sections with holes.
-- [ ] **P4-02 Modeled threads** with presets and print tolerance. FR-FT-15.
+- [x] **P4-02 Modeled threads** with presets and print tolerance. FR-FT-15.
+  Done 2026-10-03 (ADR-0056): Thread in Solid › Modify, ISO metric, UNC/UNF,
+  fit-the-face sizing, tolerance (the `tolerance` parameter when it exists),
+  lead-ins.
 - [ ] **P4-03 Text tool** (opentype.js, bundled OFL fonts, user fonts as
   attachments). FR-SK-13.
 - [ ] **P4-04 Emboss/deboss.** FR-FT-16.

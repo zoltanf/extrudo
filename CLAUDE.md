@@ -27,8 +27,8 @@ analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus),
 P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-15
 (public release prep, ADR-0054: done except the owner's release steps),
 P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 is
-complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil) is done.
-ADR-0001 chose
+complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil) and P4-02
+(modeled threads) are done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -685,16 +685,29 @@ sections lined up by `BRepFill_CompatibleWires` first**, or OCCT caps it; rings
 skip the self-intersection check, which flags their seams). **The profile
 travels from the path's end nearer to it**, so it need not touch the path.
 Names: `sweep|loft|coil:<id>:cap:start|end`, `side:<source>` (`#n` per path
-piece; a loft side after its earliest section's edge, `nameLoft`). **P4-02's
-threads reuse `helixSweep`** (`features/coil.ts`: frame, radius, pitch, turns,
-taper, hand, any section curves). Native harness: `spikes/p4-01-harness`
+piece; a loft side after its earliest section's edge, `nameLoft`). `helixSweep`
+(`features/coil.ts`: frame, radius, pitch, turns, taper, hand, any section
+curves) could later serve P4-02's threads, which use their own `threadSweep`. Native harness: `spikes/p4-01-harness`
 (`run.sh`, `run.sh leaks [n]`, `syntax.sh`, `occt-src.sh`). **Feature patterns
 skip repeats that lie on the original** (`distinctPlacements`: a coil cut
 repeated at distance 0 took OCCT 44 s). The fuzzer also edits
 `fixtures/benchmarks/p4-01-sweep-loft-coil.extrudo` (written by
 `features/sweep-loft-coil-fixture.test.ts` with `WRITE_FIXTURES=1`).
-Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-02**
-(modeled threads; FR-FT-15), then P4-03 onward in `docs/03-roadmap.md`. The owner's own release steps (slicer check, making the
+ADR-0056 (P4-02) added **modeled threads**: feature `thread` (`core/src/thread.ts`:
+`faces`, `diameter`/`pitch` (**both absent: the kernel fits the ISO coarse thread
+to each face**, `autoThread`), `extent` full/length, `length`, `offset`, `flip`,
+`hand`, `tolerance` (radial, into the part's material; default 0.1 mm, the dialog
+proposes the parameter `tolerance` when the document has one), `chamfer`;
+`THREAD_PRESETS` ISO coarse/fine, UNC, UNF; `threadRadii` the ISO 68-1 basic
+profile). The evaluator (`kernel/src/features/thread.ts`) cuts ring − tooth per
+face: the tooth swept by the facade's `threadSweep` (one helix edge per turn: one
+long edge broke the boolean), lead-ins where the facade's `threadFace` says an
+end is open; it always cuts, so it is patternable. Faces
+`thread:<id>:side:f<k>.crest|flank0|flank1|root|end0|end1|lead0|lead1`. About
+0.1 s per turn (booleans); **the facade's booleans used to build twice** (fixed
+in `finishBoolean`). Native harness: `spikes/p4-02-harness/`.
+Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-03**
+(text tool; FR-SK-13), then P4-04 onward in `docs/03-roadmap.md`. The owner's own release steps (slicer check, making the
 repository public, Cloudflare, domain, tag v0.3.0) are in
 `docs/release-checklist.md`; don't do them. Deeper carried-over items are the
 P4-12 backlog.
@@ -728,7 +741,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest) (0006 is reserved; 0056 is P4-02's) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest) (0006 is reserved) |
 
 ## Stack summary
 
@@ -1645,6 +1658,16 @@ them. Notes further down that name a machine apply to that machine only.
   plane picked on the plate's front face, five fillet edges picked in the home
   view. Radius 3 mm is refused on the 5 mm plate (its front and back top
   fillets meet), which the spec avoids. About 18 s alone.
+- **Thread e2e** (`e2e/thread.spec.ts`, P4-02): Solid › Modify (`button`
+  "Modify", `exact`) › `menuitem` `/^Thread/`; the dialog is the region "Thread
+  dialog" / "Edit Thread1 dialog": button "Faces" (`exact`, "1 face"), combobox
+  "Size" (values `auto`, `m8`, `m16x1.5`, `unc-1q4-20`…, `custom`; Diameter and
+  Pitch exist only off `auto`), "Extent", "Hand", textboxes "Length", "Offset",
+  "Tolerance" (`exact`), checkboxes "From the other end", "Lead-in chamfer". A
+  thread takes seconds to preview (wait up to 60 s). The default Ø20 cylinder
+  threaded to fit is `Body1:<n>:19.8,19.8,20` (M20 less twice the tolerance).
+  Kernel: `pnpm vitest run -u packages/kernel/src/features/thread` rewrites the
+  golden table; `BENCH=1` times threads.
 - **Onboarding e2e** (`e2e/tutorial.spec.ts`, `e2e/onboarding.spec.ts`, P3-12):
   the home screen now has the button "Take the tour" (and "Dismiss the tour"; it
   shows until the `onboarding.tour` preference isn't `new`, so a fresh context

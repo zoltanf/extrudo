@@ -508,6 +508,13 @@ export const TOOLS = {
     category: 'modify',
     hint: 'Tilt faces by a few degrees about a plane, so the part comes off the bed or out of a mould.',
   },
+  thread: {
+    id: 'thread',
+    label: 'Thread',
+    icon: 'thread',
+    category: 'modify',
+    hint: 'A real, printable screw thread on a shaft or in a hole: ISO metric or inch, with a print clearance.',
+  },
   remove: {
     id: 'remove',
     label: 'Remove',
@@ -726,7 +733,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
       {
         label: 'Modify',
         tools: ['pressPull', 'fillet', 'chamfer', 'shell', 'offsetFace', 'parameters'],
-        more: ['draft', 'splitBody', 'scale'],
+        more: ['thread', 'draft', 'splitBody', 'scale'],
       },
       { label: 'Transform', tools: ['move', 'mirror', 'combine'] },
       {

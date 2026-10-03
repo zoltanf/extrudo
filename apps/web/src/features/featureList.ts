@@ -4,7 +4,13 @@
  * and join or cut (a feature that makes a new body has no tool to repeat:
  * pattern or mirror its body instead).
  */
-import { type ExtrudoDocument, type Feature, type FeatureId, HOLE_TYPE } from '@extrudo/core';
+import {
+  type ExtrudoDocument,
+  type Feature,
+  type FeatureId,
+  HOLE_TYPE,
+  THREAD_TYPE,
+} from '@extrudo/core';
 
 export interface ListedFeature {
   id: FeatureId;
@@ -33,8 +39,8 @@ export function repeatableFeatures(
 }
 
 function operationOf(feature: Feature): 'join' | 'cut' | undefined {
-  // A hole has no operation input: it always cuts.
-  if (feature.type === HOLE_TYPE) return 'cut';
+  // A hole and a thread have no operation input: they always cut.
+  if (feature.type === HOLE_TYPE || feature.type === THREAD_TYPE) return 'cut';
   const input = feature.inputs.operation;
   const value = input?.kind === 'enum' ? input.value : undefined;
   return value === 'join' || value === 'cut' ? value : undefined;

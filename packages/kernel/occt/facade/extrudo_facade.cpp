@@ -660,15 +660,15 @@ public:
     try {
       switch (op) {
         case 0: {
-          BRepAlgoAPI_Fuse builder(*shapeA, *shapeB);
+          BRepAlgoAPI_Fuse builder;
           return finishBoolean(builder, *shapeA, *shapeB, simplify);
         }
         case 1: {
-          BRepAlgoAPI_Cut builder(*shapeA, *shapeB);
+          BRepAlgoAPI_Cut builder;
           return finishBoolean(builder, *shapeA, *shapeB, simplify);
         }
         case 2: {
-          BRepAlgoAPI_Common builder(*shapeA, *shapeB);
+          BRepAlgoAPI_Common builder;
           return finishBoolean(builder, *shapeA, *shapeB, simplify);
         }
         default:
@@ -2400,6 +2400,238 @@ public:
   /** Aborts the WASM instance on purpose, for the crash-recovery test (NFR-03). */
   void debugAbort() { std::abort(); }
 
+  // --------------------------------------------------------------- threads --
+
+  /**
+   * The helical sweep of a modeled thread (P4-02, ADR-0056): the planar face
+   * `profile`, which lies in a plane through the axis (through (ox, oy, oz)
+   * along (dx, dy, dz)) on one side of it, carried round the axis as a screw
+   * moves: rising `pitch` mm per turn, for `turns` turns (fractions allowed),
+   * counter-clockwise seen from the axis's tip (right-handed) or clockwise
+   * with `left`. The path is a helix through the profile's centre on a
+   * cylinder about the axis, one edge per turn (one long edge needs a
+   * B-spline of thousands of poles), and the profile keeps a fixed angle to
+   * the axis (MakePipeShell's fixed binormal), so every point of it runs on
+   * its own helix of the same pitch.
+   *
+   * Refused before OCCT runs: a profile that isn't a planar face through the
+   * axis, touches the axis or is as long along the axis as the pitch (the
+   * turns would touch), and more than 2000 turns. The result must pass
+   * BRepCheck_Analyzer. History for input 0 as for prism: generated (1) side
+   * faces per profile edge (one per turn), first (4) and last (5) for the
+   * profile face.
+   */
+  int threadSweep(int profile, double ox, double oy, double oz, double dx, double dy, double dz,
+                  double pitch, double turns, bool left) {
+    beginOp();
+    const TopoDS_Shape* input = find(profile);
+    if (input == nullptr) return fail("Thread failed: unknown profile shape.");
+    if (!(pitch > Precision::Confusion())) return fail("Thread failed: the pitch must be greater than 0.");
+    if (!(turns > 1e-6) || turns > 2000) return fail("Thread failed: the number of turns is out of range.");
+    if (gp_Vec(dx, dy, dz).Magnitude() <= Precision::Confusion()) return fail("Thread failed: the axis has no direction.");
+    try {
+      TopExp_Explorer faceAt(*input, TopAbs_FACE);
+      if (!faceAt.More()) return fail("Thread failed: the profile has no face.");
+      const TopoDS_Face face = TopoDS::Face(faceAt.Current());
+      const gp_Pnt origin(ox, oy, oz);
+      const gp_Dir axis(dx, dy, dz);
+      // The profile's extent along the axis and from it, from its vertices.
+      double hMin = 1e300, hMax = -1e300, rMin = 1e300;
+      for (TopExp_Explorer v(face, TopAbs_VERTEX); v.More(); v.Next()) {
+        const gp_Vec to(origin, BRep_Tool::Pnt(TopoDS::Vertex(v.Current())));
+        const double h = to.Dot(gp_Vec(axis));
+        const double r = (to - gp_Vec(axis) * h).Magnitude();
+        hMin = std::min(hMin, h);
+        hMax = std::max(hMax, h);
+        rMin = std::min(rMin, r);
+      }
+      if (!(rMin > 1e-4)) return fail("Thread failed: the profile touches the axis.");
+      if (!(hMax - hMin < pitch - 1e-6)) return fail("Thread failed: the profile is as long as the pitch.");
+      BRepAdaptor_Surface surface(face);
+      if (surface.GetType() != GeomAbs_Plane) return fail("Thread failed: the profile isn't flat.");
+      const gp_Pln plane = surface.Plane();
+      if (std::abs(plane.Axis().Direction().Dot(axis)) > 1e-7 || plane.Distance(origin) > 1e-6) {
+        return fail("Thread failed: the profile's plane doesn't contain the axis.");
+      }
+
+      GProp_GProps props;
+      BRepGProp::SurfaceProperties(face, props);
+      const gp_Vec toCentre(origin, props.CentreOfMass());
+      const double hc = toCentre.Dot(gp_Vec(axis));
+      const gp_Vec radial = toCentre - gp_Vec(axis) * hc;
+      const double rc = radial.Magnitude();
+      const gp_Ax3 frame(origin.Translated(gp_Vec(axis) * hc), axis, gp_Dir(radial));
+      Handle(Geom_Surface) cylinder = new Geom_CylindricalSurface(frame, rc);
+      const double sign = left ? -1.0 : 1.0;
+      const gp_Dir2d along(sign * 2 * M_PI, pitch);
+      const double perTurn = std::sqrt(4 * M_PI * M_PI + pitch * pitch);
+      BRepBuilderAPI_MakeWire spine;
+      const int whole = static_cast<int>(std::floor(turns + 1e-9));
+      const int pieces = whole + (turns - whole > 1e-6 ? 1 : 0);
+      for (int k = 0; k < pieces; ++k) {
+        const double span = std::min(1.0, turns - k);
+        Handle(Geom2d_Line) line = new Geom2d_Line(gp_Pnt2d(sign * 2 * M_PI * k, pitch * k), along);
+        BRepBuilderAPI_MakeEdge edge(line, cylinder, 0, span * perTurn);
+        if (!edge.IsDone()) return fail("Thread failed: couldn't make the helix.");
+        TopoDS_Edge helix = edge.Edge();
+        if (!BRepLib::BuildCurves3d(helix, 1e-5, GeomAbs_C2, 14, 200)) {
+          return fail("Thread failed: couldn't build the helix.");
+        }
+        spine.Add(helix);
+        if (!spine.IsDone()) return fail("Thread failed: couldn't join the helix's turns.");
+      }
+
+      BRepOffsetAPI_MakePipeShell pipe(spine.Wire());
+      pipe.SetMode(axis);
+      const TopoDS_Wire outline = BRepTools::OuterWire(face);
+      pipe.Add(outline, false, false);
+      pipe.Build();
+      if (!pipe.IsDone()) return fail("Thread failed: OCCT couldn't sweep the profile.");
+      if (!pipe.MakeSolid()) return fail("Thread failed: the sweep isn't closed.");
+      const TopoDS_Shape result = pipe.Shape();
+      BRepCheck_Analyzer check(result);
+      if (!check.IsValid()) return fail("Thread failed: the swept thread isn't a sound solid.");
+      GProp_GProps volume;
+      BRepGProp::VolumeProperties(result, volume);
+      if (!(volume.Mass() > 0)) return fail("Thread failed: the swept thread is inside out.");
+
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultMaps[3];
+      for (int kind = 0; kind < 3; ++kind) TopExp::MapShapes(result, kindToEnum(kind), resultMaps[kind]);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+      TopExp::MapShapes(*input, TopAbs_EDGE, edges);
+      NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> sides;
+      for (int i = 1; i <= edges.Extent(); ++i) {
+        const NCollection_List<TopoDS_Shape>& made = pipe.Generated(edges(i));
+        appendRelation(made, resultMaps, 0, 1, i - 1, 1);
+        for (NCollection_List<TopoDS_Shape>::Iterator it(made); it.More(); it.Next()) sides.Add(it.Value());
+      }
+      // The caps: the two faces no edge generated, told apart by how far they lie from the profile.
+      std::vector<TopoDS_Shape> caps;
+      for (int i = 1; i <= resultMaps[0].Extent(); ++i) {
+        if (!sides.Contains(resultMaps[0](i))) caps.push_back(resultMaps[0](i));
+      }
+      if (caps.size() == 2) {
+        GProp_GProps a, b;
+        BRepGProp::SurfaceProperties(caps[0], a);
+        BRepGProp::SurfaceProperties(caps[1], b);
+        const gp_Pnt centre = props.CentreOfMass();
+        const bool firstIsA = a.CentreOfMass().Distance(centre) <= b.CentreOfMass().Distance(centre);
+        NCollection_List<TopoDS_Shape> one;
+        one.Append(firstIsA ? caps[0] : caps[1]);
+        appendRelation(one, resultMaps, 0, 0, 0, 4);
+        one.Clear();
+        one.Append(firstIsA ? caps[1] : caps[0]);
+        appendRelation(one, resultMaps, 0, 0, 0, 5);
+      }
+      return store(result);
+    } catch (...) {
+      return failFromException("Thread failed");
+    }
+  }
+
+  /**
+   * What a thread needs to know of a cylindrical face `face` of `shape`
+   * (P4-02, ADR-0056), in geometryNumbers: [ox, oy, oz, dx, dy, dz, radius,
+   * inside, h0, h1, whole, open0, open1]. The axis runs through (ox, oy, oz)
+   * along (dx, dy, dz) (canonical sign); the face spans h0 to h1 along it
+   * from that point. `inside` is 1 when the face's material lies outside the
+   * cylinder (a hole's wall: an internal thread), 0 for a shaft. `whole` is 1
+   * when the face goes all the way round. `open0` / `open1` say whether the
+   * face's edge at h0 / h1 is an outward corner (1: the shaft's end, a hole's
+   * mouth, where a thread gets its lead-in chamfer) or not (0: a shoulder,
+   * a hole's floor, a smooth join, or no edge right round). Returns 13, or -1
+   * (not a cylinder, unknown shape).
+   */
+  int threadFace(int shape, int face) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return failCurve("Unknown shape.");
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      if (face < 0 || face >= faces.Extent()) return failCurve("Face index out of range.");
+      const TopoDS_Face f = TopoDS::Face(faces(face + 1));
+      BRepAdaptor_Surface surface(f);
+      if (surface.GetType() != GeomAbs_Cylinder) return failCurve("The face isn't cylindrical.");
+      const gp_Cylinder cylinder = surface.Cylinder();
+      const gp_Pnt origin = cylinder.Location();
+      const gp_Dir axis = cylinder.Axis().Direction();
+      const gp_Dir out = canonical(axis);
+      const double flip = out.Dot(axis) < 0 ? -1.0 : 1.0;
+      double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+      BRepTools::UVBounds(f, u0, u1, v0, v1);
+      // The material side, from the face's normal in the middle.
+      const double um = (u0 + u1) / 2, vm = (v0 + v1) / 2;
+      BRepLProp_SLProps props(surface, um, vm, 1, Precision::Confusion());
+      if (!props.IsNormalDefined()) return failCurve("The face has no normal.");
+      gp_Dir normal = props.Normal();
+      if (f.Orientation() == TopAbs_REVERSED) normal.Reverse();
+      const gp_Pnt mid = props.Value();
+      const gp_Vec toMid(origin, mid);
+      const gp_Vec radial = toMid - gp_Vec(axis) * toMid.Dot(gp_Vec(axis));
+      const bool inside = gp_Vec(normal).Dot(radial) < 0;
+      const bool whole = u1 - u0 >= 2 * M_PI - 1e-6;
+
+      // Each end: the faces across the edges that lie on it, and whether they turn away.
+      NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeFaces;
+      TopExp::MapShapesAndUniqueAncestors(*s, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+      const double tol = 1e-6 * std::max(1.0, v1 - v0);
+      double open[2] = {1, 1};
+      double around[2] = {0, 0};
+      for (TopExp_Explorer e(f, TopAbs_EDGE); e.More(); e.Next()) {
+        const TopoDS_Edge edge = TopoDS::Edge(e.Current());
+        double first = 0, last = 0;
+        Handle(Geom2d_Curve) onFace = BRep_Tool::CurveOnSurface(edge, f, first, last);
+        if (onFace.IsNull()) continue;
+        const gp_Pnt2d a = onFace->Value(first), b = onFace->Value(last), m = onFace->Value((first + last) / 2);
+        int end = -1;
+        if (std::abs(a.Y() - v0) < tol && std::abs(b.Y() - v0) < tol && std::abs(m.Y() - v0) < tol) end = 0;
+        if (std::abs(a.Y() - v1) < tol && std::abs(b.Y() - v1) < tol && std::abs(m.Y() - v1) < tol) end = 1;
+        if (end < 0) continue;
+        around[end] += std::abs(b.X() - a.X());
+        const int at = edgeFaces.FindIndex(edge);
+        if (at == 0) continue;
+        // Into the face from this end, along the axis.
+        const gp_Vec into = gp_Vec(axis) * (end == 0 ? 1.0 : -1.0);
+        for (NCollection_List<TopoDS_Shape>::Iterator it(edgeFaces(at)); it.More(); it.Next()) {
+          if (it.Value().IsSame(f)) continue;
+          const TopoDS_Face other = TopoDS::Face(it.Value());
+          double f2 = 0, l2 = 0;
+          Handle(Geom2d_Curve) onOther = BRep_Tool::CurveOnSurface(edge, other, f2, l2);
+          if (onOther.IsNull()) {
+            open[end] = 0;
+            continue;
+          }
+          const gp_Pnt2d uv = onOther->Value((f2 + l2) / 2);
+          BRepAdaptor_Surface otherSurface(other);
+          BRepLProp_SLProps otherProps(otherSurface, uv.X(), uv.Y(), 1, Precision::Confusion());
+          if (!otherProps.IsNormalDefined()) {
+            open[end] = 0;
+            continue;
+          }
+          gp_Dir n2 = otherProps.Normal();
+          if (other.Orientation() == TopAbs_REVERSED) n2.Reverse();
+          // An outward corner: the face across turns its back on this one.
+          if (!(gp_Vec(n2).Dot(into) < -0.5)) open[end] = 0;
+        }
+      }
+      for (int end = 0; end < 2; ++end) {
+        if (around[end] < (u1 - u0) - 1e-6) open[end] = 0;
+      }
+      pushPoint(origin);
+      pushDir(out);
+      const double h0 = flip > 0 ? v0 : -v1;
+      const double h1 = flip > 0 ? v1 : -v0;
+      geometry_.insert(geometry_.end(), {cylinder.Radius(), inside ? 1.0 : 0.0, h0, h1, whole ? 1.0 : 0.0,
+                                         flip > 0 ? open[0] : open[1], flip > 0 ? open[1] : open[0]});
+      return static_cast<int>(geometry_.size());
+    } catch (...) {
+      failFromException("Thread face failed");
+      return -1;
+    }
+  }
+
 private:
   std::unordered_map<int, TopoDS_Shape> shapes_;
   int nextHandle_;
@@ -3600,6 +3832,14 @@ private:
 
   template <typename Builder>
   int finishBoolean(Builder& builder, const TopoDS_Shape& a, const TopoDS_Shape& b, bool simplify) {
+    // Set the arguments here, not in the builder's constructor: the
+    // constructor that takes two shapes already builds, and Build() would
+    // run the whole boolean again (P4-02 found every boolean ran twice).
+    NCollection_List<TopoDS_Shape> arguments, tools;
+    arguments.Append(a);
+    tools.Append(b);
+    builder.SetArguments(arguments);
+    builder.SetTools(tools);
     builder.SetRunParallel(false);
     builder.Build();
     if (!builder.IsDone() || builder.HasErrors()) {

@@ -4,6 +4,13 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-03 · **P4-02** Modeled threads (ADR-0056): the Thread feature cuts a
+  real ISO 68-1 thread into a shaft's or a hole's round face (Solid › Modify ›
+  Thread): ISO metric coarse and fine, UNC and UNF presets or a size that fits
+  the face, length/offset from either end, right or left hand, a print
+  tolerance (0.1 mm, or the `tolerance` parameter) and 45° lead-ins at open
+  ends. Facade `threadSweep`/`threadFace`; every boolean now builds once
+  (it ran twice).
 - 2026-10-03 · **Landing page and channels** (ADR-0057): `apps/site`, a static landing
   page for extrudo.org with an intro video recorded from the real app (`pnpm demos -g
   intro`); the stable app moves to app.extrudo.org (deployed by a `v*` tag) and the
