@@ -64,6 +64,48 @@ export interface FacadeBinding {
     dz: number,
     angle: number,
   ): number;
+  pathClear(): void;
+  pathSketch(
+    ox: number,
+    oy: number,
+    oz: number,
+    xx: number,
+    xy: number,
+    xz: number,
+    nx: number,
+    ny: number,
+    nz: number,
+  ): number;
+  pathEdge(shape: number, edge: number): number;
+  pathWire(tolerance: number): number;
+  helix(
+    ox: number,
+    oy: number,
+    oz: number,
+    zx: number,
+    zy: number,
+    zz: number,
+    xx: number,
+    xy: number,
+    xz: number,
+    radius: number,
+    pitch: number,
+    turns: number,
+    taper: number,
+    left: boolean,
+  ): number;
+  sweep(
+    profile: number,
+    spine: number,
+    mode: number,
+    twist: number,
+    scale: number,
+    verify: boolean,
+    dx: number,
+    dy: number,
+    dz: number,
+  ): number;
+  loft(ruled: boolean, closed: boolean): number;
   compound(): number;
   subShape(shape: number, kind: number, index: number): number;
   locate(part: number, whole: number, kind: number): number;

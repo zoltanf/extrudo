@@ -90,10 +90,12 @@ cannot reach. Tick them off in order; each box says who and where.
   Done 2026-10-02 (`8810502`; first deploy after `ffe159a` replaced
   wrangler-action with `npx wrangler`). Paste secrets through the GitHub web
   page: `gh secret set`'s hidden prompt saved empty values once.
-- [ ] Tag it: `git tag -a v0.3.0 -m "v0.3.0" && git push origin v0.3.0`. (All
-  package versions are already 0.3.0.) Since ADR-0057 the tag also **deploys the
-  stable app** to `https://app.extrudo.org` (the Deploy workflow; it refuses a
-  commit whose CI didn't pass on main). Later releases: bump the versions, tag.
+- [ ] Tag it on the v0.3.0 commit (main has Phase 4 work after it): `git tag -a
+  v0.3.0 -m "v0.3.0" 20a10bb && git push origin v0.3.0`. (All package versions
+  are 0.3.0 there.) Then **deploy it as the stable app**: Actions > Deploy > Run
+  workflow on main, target `stable`, ref `v0.3.0` (ADR-0057; that commit predates
+  the tag trigger). Later releases: bump the versions, tag; the tag deploys
+  itself.
 - [ ] GitHub > Releases > **Draft a new release** for `v0.3.0`. Use the
   `## v0.3.0` section of `docs/CHANGELOG.md` for the notes (grouped by task;
   trim it to a readable summary of what is new: sketching, solids, patterns,

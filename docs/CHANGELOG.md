@@ -2,7 +2,7 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
-## v0.3.0 (Phase 3, "real CAD")
+## v0.4 (Phase 4, in progress)
 
 - 2026-10-03 · **Landing page and channels** (ADR-0057): `apps/site`, a static landing
   page for extrudo.org with an intro video recorded from the real app (`pnpm demos -g
@@ -10,6 +10,16 @@ One line per completed roadmap task, newest first. Dates are absolute.
   latest build to edge.extrudo.org (every green main); the site's `sw.js` retires the
   app's old service worker at extrudo.org and old `#/p/…` links go on to the app;
   `e2e/site.spec.ts`.
+- 2026-10-03 · **P4-01** Sweep, loft and coil (ADR-0055): sweep along exact
+  sketch curves or edges (follow or fixed, twist, end scale, holes kept), loft
+  through profiles, faces and an end point (smooth or ruled, open or closed),
+  coil placed like a primitive (three types, taper, hand, circle, square or
+  triangle sections inside, on or outside the diameter); seven facade methods
+  checked in a native harness first; patterns repeat all three; file format
+  6.22 to 6.24; OCCT input hash `9a6136154e2f`; feature patterns skip repeats on the original.
+
+## v0.3.0 (Phase 3, "real CAD")
+
 - 2026-10-02 · **Fix** Repeat visits to extrudo.org failed with `ERR_FAILED`: the
   service worker served a redirected copy of `index.html` (Pages redirects it to `/`)
   for navigations; it now stores and serves a plain copy, and the e2e static host

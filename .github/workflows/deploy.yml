@@ -9,7 +9,9 @@ name: Deploy
 # - The stable app → Pages project "extrudo", production branch "main":
 #   https://app.extrudo.org. Only for a release tag (v*), and only if CI passed
 #   for that commit on main; or by hand ("Run workflow", target "stable"), which
-#   promotes the head of main.
+#   deploys the commit named by "ref" (a tag such as v0.3.0, or main). By hand is
+#   how v0.3.0 itself goes out: it predates this workflow, and a tag runs the
+#   workflow file of the tagged commit.
 #
 # A commit that fails its checks or end-to-end tests is never deployed. Nothing
 # runs, and it says so, until the owner has added the repository secrets
@@ -27,10 +29,14 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: What to deploy from the head of main
+        description: What to deploy
         type: choice
         options: [edge-and-site, stable]
         default: edge-and-site
+      ref:
+        description: Commit to deploy as stable (a tag like v0.3.0, a SHA, or main); edge and site always use main
+        type: string
+        default: main
 
 # One deployment at a time; a newer one waits for the running one.
 concurrency:
@@ -67,6 +73,7 @@ jobs:
       RUN_EVENT: ${{ github.event.workflow_run.event }}
       RUN_SHA: ${{ github.event.workflow_run.head_sha }}
       TARGET: ${{ inputs.target }}
+      STABLE_REF: ${{ inputs.ref }}
       REF: ${{ github.ref }}
     steps:
       - id: plan
@@ -92,7 +99,19 @@ jobs:
                 echo "::error::Run this workflow on main."; exit 1
               fi
               sha="$GITHUB_SHA"
-              if [ "$TARGET" = stable ]; then stable=true; else edge=true; fi ;;
+              if [ "$TARGET" = stable ]; then
+                # The named commit, and only if CI passed for it on main.
+                sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/${STABLE_REF:-main}" --jq .sha)
+                ok=$(gh run list -R "$GITHUB_REPOSITORY" -w CI -b main -c "$sha" -s success --json databaseId --jq length)
+                if [ "$ok" -gt 0 ]; then
+                  stable=true
+                else
+                  echo "::error title=Not deployed::CI has not passed for $sha (${STABLE_REF}) on main."
+                  exit 1
+                fi
+              else
+                edge=true
+              fi ;;
           esac
           if [ -n "$CLOUDFLARE_API_TOKEN" ] && [ -n "$CLOUDFLARE_ACCOUNT_ID" ]; then
             enabled=true

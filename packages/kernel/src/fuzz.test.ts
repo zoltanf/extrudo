@@ -48,6 +48,7 @@ import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline'
 import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
 import b6 from '../../../fixtures/benchmarks/b6-wall-hook.extrudo?url&inline';
 import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
+import p401 from '../../../fixtures/benchmarks/p4-01-sweep-loft-coil.extrudo?url&inline';
 import { kernelFeatures } from './features';
 import { Kernel } from './kernel';
 import { loadOcct } from './occt/load';
@@ -442,6 +443,8 @@ describe('fuzzing the benchmark fixtures', () => {
     ['B5', b5],
     ['B6', b6],
     ['B7', b7],
+    // Sweep, loft and coil (P4-01, ADR-0055): `features/sweep-loft-coil-fixture.test.ts` writes it.
+    ['P4-01', p401],
   ];
   for (const [name, dataUrl] of cases) {
     it(`${name}: random edits never crash, leak or disagree with a cold recompute`, {

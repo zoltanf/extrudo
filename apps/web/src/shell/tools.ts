@@ -401,6 +401,27 @@ export const TOOLS = {
     category: 'create',
     hint: 'A ring centred on a plane or a flat face, from its diameter and tube diameter.',
   },
+  sweep: {
+    id: 'sweep',
+    label: 'Sweep',
+    icon: 'sweep',
+    category: 'create',
+    hint: 'Move profiles along a path of sketch curves or edges, with an optional twist and end scale.',
+  },
+  loft: {
+    id: 'loft',
+    label: 'Loft',
+    icon: 'loft',
+    category: 'create',
+    hint: 'A solid through profiles on different planes, in order; a point can start or end it.',
+  },
+  coil: {
+    id: 'coil',
+    label: 'Coil',
+    icon: 'coil',
+    category: 'create',
+    hint: 'A spring: a circle, square or triangle wound along a helix, from its turns, height and pitch.',
+  },
   hole: {
     id: 'hole',
     label: 'Hole',
@@ -689,6 +710,9 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
         label: 'Create',
         tools: ['sketch', 'extrude', 'revolve'],
         more: [
+          'sweep',
+          'loft',
+          'coil',
           'box',
           'cylinder',
           'sphere',

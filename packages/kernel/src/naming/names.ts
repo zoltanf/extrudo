@@ -171,6 +171,48 @@ export function nameSweep(naming: SweepNaming): TopoNames {
   );
 }
 
+export interface LoftNaming {
+  /** Operation name in the IDs: `loft`. */
+  op: string;
+  feature: string;
+  /** The loft's history (`Kernel.loft`): input i is section i. */
+  history: readonly HistoryRecord[];
+  /** What each edge of each section comes from, by section, then by edge index (a point has none). */
+  sources: readonly (readonly (string | null | undefined)[])[];
+  result: ShapeDescription;
+}
+
+/**
+ * Names a loft's result (P4-01): the first section's cap `op:feature:cap:start`,
+ * the last's `…:cap:end`, and a side face after the edge of the earliest
+ * section that bounds it, `…:side:<source>` (the faces between sections 2
+ * and 3 of a ruled loft take section 2's edges); `#n` where names repeat.
+ */
+export function nameLoft(naming: LoftNaming): TopoNames {
+  const { op, feature, history, sources, result } = naming;
+  const raw: (string | undefined)[] = result.faces.map(() => undefined);
+  const rank: number[] = result.faces.map(() => Number.POSITIVE_INFINITY);
+  for (const record of history) {
+    const { from, relation, input } = record;
+    let name: string;
+    if (from.kind === 'face' && relation === 'first') name = createdName(op, feature, 'cap:start');
+    else if (from.kind === 'face' && relation === 'last')
+      name = createdName(op, feature, 'cap:end');
+    else if (from.kind === 'edge' && relation === 'generated') {
+      name = createdName(op, feature, 'side', sources[input]?.[from.index] ?? '_');
+    } else continue;
+    for (const t of record.to) {
+      if (t.kind !== 'face' || (rank[t.index] as number) <= input) continue;
+      raw[t.index] = name;
+      rank[t.index] = input;
+    }
+  }
+  return deriveNames(
+    raw.map((name) => name ?? createdName(op, feature, 'new')),
+    result,
+  );
+}
+
 export interface HistoryNaming {
   /** Operation name for faces the operation makes: `fillet`, `boolean`. */
   op: string;

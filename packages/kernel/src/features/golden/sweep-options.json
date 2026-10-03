@@ -1,0 +1,542 @@
+{
+ "follow twist=0 deg scale=1 new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 8000,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 0
+   },
+   "W:0": {
+    "volume": 4570.8,
+    "bbox": [
+     -5,
+     -5,
+     0,
+     9.4,
+     5,
+     47.7
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 10
+   }
+  }
+ },
+ "follow twist=0 deg scale=1 join": {
+  "bodies": {
+   "B:0": {
+    "volume": 10570.8,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     47.7
+    ],
+    "faces": 13,
+    "valid": true,
+    "sweepFaces": 7
+   }
+  }
+ },
+ "follow twist=0 deg scale=1 cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 6000,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "follow twist=0 deg scale=1 intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 2000,
+    "bbox": [
+     -5,
+     -5,
+     0,
+     5,
+     5,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "follow twist=0 deg scale=0.5 new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 8000,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 0
+   },
+   "W:0": {
+    "volume": 2666.3,
+    "bbox": [
+     -5,
+     -5,
+     0,
+     7.6,
+     5,
+     45.9
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 10
+   }
+  }
+ },
+ "follow twist=0 deg scale=0.5 join": {
+  "bodies": {
+   "B:0": {
+    "volume": 9072,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     45.9
+    ],
+    "faces": 15,
+    "valid": true,
+    "sweepFaces": 9
+   }
+  }
+ },
+ "follow twist=0 deg scale=0.5 cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 6405.7,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "follow twist=0 deg scale=0.5 intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 1594.3,
+    "bbox": [
+     -5,
+     -5,
+     0,
+     5,
+     5,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "follow twist=90 deg scale=1 new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 8000,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 0
+   },
+   "W:0": {
+    "volume": 4570.8,
+    "bbox": [
+     -7.1,
+     -7.1,
+     0,
+     9.4,
+     7.1,
+     47.7
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 10
+   }
+  }
+ },
+ "follow twist=90 deg scale=1 join": {
+  "bodies": {
+   "B:0": {
+    "volume": 10570.8,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     47.7
+    ],
+    "faces": 15,
+    "valid": true,
+    "sweepFaces": 9
+   }
+  }
+ },
+ "follow twist=90 deg scale=1 cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 6000,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "follow twist=90 deg scale=1 intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 2000,
+    "bbox": [
+     -7,
+     -7,
+     0,
+     7,
+     7,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "follow twist=90 deg scale=0.5 new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 8000,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 0
+   },
+   "W:0": {
+    "volume": 2666.3,
+    "bbox": [
+     -5.7,
+     -5.7,
+     0,
+     7.6,
+     5.7,
+     45.9
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 10
+   }
+  }
+ },
+ "follow twist=90 deg scale=0.5 join": {
+  "bodies": {
+   "B:0": {
+    "volume": 9071.9,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     45.9
+    ],
+    "faces": 15,
+    "valid": true,
+    "sweepFaces": 9
+   }
+  }
+ },
+ "follow twist=90 deg scale=0.5 cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 6405.7,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "follow twist=90 deg scale=0.5 intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 1594.3,
+    "bbox": [
+     -5.7,
+     -5.7,
+     0,
+     5.7,
+     5.7,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "fixed twist=0 deg scale=1 new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 8000,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 0
+   },
+   "W:0": {
+    "volume": 4414.2,
+    "bbox": [
+     -5,
+     -5,
+     0,
+     10.9,
+     5,
+     44.1
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 10
+   }
+  }
+ },
+ "fixed twist=0 deg scale=1 join": {
+  "bodies": {
+   "B:0": {
+    "volume": 10414.2,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10.9,
+     10,
+     44.1
+    ],
+    "faces": 13,
+    "valid": true,
+    "sweepFaces": 7
+   }
+  }
+ },
+ "fixed twist=0 deg scale=1 cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 6000,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "fixed twist=0 deg scale=1 intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 2000,
+    "bbox": [
+     -5,
+     -5,
+     0,
+     5,
+     5,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "fixed twist=0 deg scale=0.5 new-body": {
+  "bodies": {
+   "B:0": {
+    "volume": 8000,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 0
+   },
+   "W:0": {
+    "volume": 2619.9,
+    "bbox": [
+     -5,
+     -5,
+     0,
+     8.4,
+     5,
+     44.1
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 10
+   }
+  }
+ },
+ "fixed twist=0 deg scale=0.5 join": {
+  "bodies": {
+   "B:0": {
+    "volume": 9025.5,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     44.1
+    ],
+    "faces": 15,
+    "valid": true,
+    "sweepFaces": 9
+   }
+  }
+ },
+ "fixed twist=0 deg scale=0.5 cut": {
+  "bodies": {
+   "B:0": {
+    "volume": 6405.7,
+    "bbox": [
+     -10,
+     -10,
+     0,
+     10,
+     10,
+     20
+    ],
+    "faces": 10,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "fixed twist=0 deg scale=0.5 intersect": {
+  "bodies": {
+   "B:0": {
+    "volume": 1594.3,
+    "bbox": [
+     -5,
+     -5,
+     0,
+     5,
+     5,
+     20
+    ],
+    "faces": 6,
+    "valid": true,
+    "sweepFaces": 4
+   }
+  }
+ },
+ "fixed twist=90 deg scale=1 new-body": {
+  "error": "A profile that stays fixed can't twist. Set the twist to 0, or let the profile follow the path."
+ },
+ "fixed twist=90 deg scale=1 join": {
+  "error": "A profile that stays fixed can't twist. Set the twist to 0, or let the profile follow the path."
+ },
+ "fixed twist=90 deg scale=1 cut": {
+  "error": "A profile that stays fixed can't twist. Set the twist to 0, or let the profile follow the path."
+ },
+ "fixed twist=90 deg scale=1 intersect": {
+  "error": "A profile that stays fixed can't twist. Set the twist to 0, or let the profile follow the path."
+ },
+ "fixed twist=90 deg scale=0.5 new-body": {
+  "error": "A profile that stays fixed can't twist. Set the twist to 0, or let the profile follow the path."
+ },
+ "fixed twist=90 deg scale=0.5 join": {
+  "error": "A profile that stays fixed can't twist. Set the twist to 0, or let the profile follow the path."
+ },
+ "fixed twist=90 deg scale=0.5 cut": {
+  "error": "A profile that stays fixed can't twist. Set the twist to 0, or let the profile follow the path."
+ },
+ "fixed twist=90 deg scale=0.5 intersect": {
+  "error": "A profile that stays fixed can't twist. Set the twist to 0, or let the profile follow the path."
+ }
+}

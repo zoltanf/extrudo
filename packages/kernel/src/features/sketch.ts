@@ -69,6 +69,12 @@ export interface SketchOutputData {
    */
   curves?: Record<SketchEntityId, SketchPathCurve>;
   /**
+   * Every curve of the sketch, construction ones too, as the kernel stages
+   * it (exact lines, arcs, circles, ellipses and splines), in sketch
+   * coordinates: what a sweep's path is made of (P4-01). Placed with `frame`.
+   */
+  exact?: Record<SketchEntityId, PlanarCurve>;
+  /**
    * Every point of the sketch (loose points, curve ends and centres, and
    * construction points), in sketch coordinates: what a hole's sketch
    * points refer to (`<sketch>/<point>`, P3-04). Placed in the world with
@@ -136,6 +142,7 @@ export const kernelSketch: KernelFeatureDefinition<SketchInputs> = {
       profiles,
       lines: sketchLines(data),
       curves: sketchCurves(data),
+      exact: exactCurves(data),
       points: sketchPoints(data),
     };
     const report: SketchReport = {
@@ -290,6 +297,21 @@ function sketchCurves(data: SketchData): Record<SketchEntityId, SketchPathCurve>
       const points = curvePolyline(data, e);
       if (points) out[id] = { type: 'polyline', points };
     }
+  }
+  return out;
+}
+
+/** Every curve of a sketch, construction ones too, exact (see `SketchOutputData.exact`). */
+function exactCurves(data: SketchData): Record<SketchEntityId, PlanarCurve> {
+  const out: Record<SketchEntityId, PlanarCurve> = {};
+  const point = (ref: SketchEntityId): Vec2 | undefined => {
+    const p = data.entities[ref];
+    return p?.type === 'point' ? [p.x, p.y] : undefined;
+  };
+  for (const [id, e] of Object.entries(data.entities) as [SketchEntityId, SketchEntity][]) {
+    if (e.type === 'point') continue;
+    const curve = planarCurve(e, point);
+    if (curve) out[id] = curve;
   }
   return out;
 }

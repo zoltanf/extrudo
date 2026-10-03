@@ -22,10 +22,12 @@
  * web app dialogs, each in its own registry keyed by the type (ADR-0003).
  */
 import { z } from 'zod';
+import { COIL_TYPE } from './coil';
 import { EXTRUDE_TYPE } from './extrude';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { HOLE_TYPE } from './hole';
+import { LOFT_TYPE } from './loft';
 import { BOX_TYPE, CYLINDER_TYPE, SPHERE_TYPE, TORUS_TYPE } from './primitives';
 import { REVOLVE_AXIS_KINDS, REVOLVE_TYPE } from './revolve';
 import {
@@ -35,6 +37,7 @@ import {
   type GeomRef,
   type GeomRefKind,
 } from './schema';
+import { SWEEP_TYPE } from './sweep';
 
 export const RECTANGULAR_PATTERN_TYPE = 'rectangularPattern';
 export const CIRCULAR_PATTERN_TYPE = 'circularPattern';
@@ -52,8 +55,8 @@ export type PatternObjects = (typeof PATTERN_OBJECTS)[number];
 
 /**
  * The feature types whose tool a pattern (or a mirror) can replay: the ones
- * that make a solid and join or cut it (extrude, revolve, the primitives)
- * or always cut (a hole, P3-04).
+ * that make a solid and join or cut it (extrude, revolve, the primitives,
+ * sweep, loft and coil since P4-01) or always cut (a hole, P3-04).
  */
 export const PATTERNABLE_FEATURE_TYPES: readonly string[] = [
   EXTRUDE_TYPE,
@@ -63,6 +66,9 @@ export const PATTERNABLE_FEATURE_TYPES: readonly string[] = [
   SPHERE_TYPE,
   TORUS_TYPE,
   HOLE_TYPE,
+  SWEEP_TYPE,
+  LOFT_TYPE,
+  COIL_TYPE,
 ];
 
 /** What a rectangular pattern goes along and a circular one turns about. */

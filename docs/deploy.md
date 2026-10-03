@@ -95,9 +95,12 @@ Pages project `extrudo-site` and the `edge` deployment of `extrudo`):
 5. Turn off **Web Analytics** automatic setup for both projects (or for the zone):
    it injects a script from `static.cloudflareinsights.com`, which the content
    policy blocks (a console error on every page).
-6. Release: tag the commit to make stable, `git tag v0.3.0 && git push origin
-   v0.3.0` (`docs/release-checklist.md`). Until a tag, `app.extrudo.org` serves the
-   last production deployment of `extrudo`.
+6. Release v0.3.0: tag its commit, `git tag -a v0.3.0 -m "v0.3.0" 20a10bb && git
+   push origin v0.3.0`, then GitHub > Actions > Deploy > **Run workflow** on main
+   with target `stable` and ref `v0.3.0` (that commit predates the tag trigger:
+   a tag runs the workflow file of the commit it names). Later releases deploy
+   when their tag is pushed. Until then, `app.extrudo.org` serves the last
+   production deployment of `extrudo`.
 7. Check: `https://extrudo.org` shows the landing page and its video, its button
    opens `https://app.extrudo.org`; `https://edge.extrudo.org` is the app; a
    browser that used the app at `extrudo.org` shows the landing page after a
@@ -151,7 +154,8 @@ only in Cloudflare, never in this repository. Set up 2026-10-02:
   only when it **succeeded**: deploys edge and the landing page from the exact
   commit CI tested. A pushed tag `v*`: deploys the stable app, and fails (deploys
   nothing) unless CI succeeded for that commit on main. "Run workflow" on `main`:
-  target `edge-and-site` or `stable`, from the head of main.
+  target `edge-and-site` (the head of main) or `stable` (the commit named by
+  `ref`, default main; refused unless its CI passed on main).
 - **Gate:** the `plan` job checks that both secrets exist. Without them it prints
   a notice ("Deploy skipped") and the deploy jobs don't run; the run is green.
   Forks never have the secrets, so they skip too.

@@ -762,7 +762,17 @@ end to end, faster than in Fusion 360.
 
 ## Phase 4 — Advanced modeling and print workflow (→ v0.4–v0.5)
 
-- [ ] **P4-01 Sweep, loft, coil.** FR-FT-14.
+- [x] **P4-01 Sweep, loft, coil.** FR-FT-14. Done 2026-10-03 (ADR-0055):
+  three feature types with dialogs in Solid › Create. Sweep moves profiles or
+  flat faces (holes kept) along exact sketch curves or edges chained in any
+  order, following the path or fixed, with a twist and an end scale; Loft goes
+  through profiles, faces and an end point, smooth or ruled, open or closed;
+  Coil is a primitive-placed spring of three types, a taper, either hand and
+  four sections in three positions, whose `helixSweep` P4-02's threads reuse.
+  New facade methods `pathSketch`, `pathEdge`, `pathWire`, `helix`, `sweep`,
+  `loft`, checked natively first (`spikes/p4-01-harness`). Patterns and
+  mirrors repeat all three. Deferred: loft rails and centre line, twist on
+  sharp paths, loft sections with holes.
 - [ ] **P4-02 Modeled threads** with presets and print tolerance. FR-FT-15.
 - [ ] **P4-03 Text tool** (opentype.js, bundled OFL fonts, user fonts as
   attachments). FR-SK-13.

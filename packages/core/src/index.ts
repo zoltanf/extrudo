@@ -4,6 +4,7 @@
  */
 
 export * from './chamfer';
+export * from './coil';
 export * from './combine';
 export {
   applyCommand,
@@ -33,6 +34,7 @@ export { FILE_EXTENSION, FORMAT_NAME, FORMAT_VERSION } from './format';
 export { type HistoryEntry, type HistoryOptions, UndoHistory } from './history';
 export * from './hole';
 export * from './ids';
+export * from './loft';
 export {
   DocumentLoadError,
   type DocumentLoadErrorCode,
@@ -79,4 +81,5 @@ export {
   type SessionState,
   type SessionStore,
 } from './stores';
+export * from './sweep';
 export * from './timeline';

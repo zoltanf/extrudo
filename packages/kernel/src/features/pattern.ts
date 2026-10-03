@@ -466,10 +466,36 @@ function run(
     );
     return { bodies: ctx.bodies };
   }
+  if (settings.objects === 'features') {
+    // A repeat on top of the original (a distance or angle of 0) changes nothing, and OCCT
+    // can take most of a minute to cut a tool into faces it already cut (a coil's, P4-01).
+    const apart = distinctPlacements(placements);
+    if (apart.length === 0) {
+      ctx.warn(
+        'Every instance lies on the original, so the pattern repeats nothing. Change the distance or the angle.',
+      );
+      return { bodies: ctx.bodies };
+    }
+    using scope = ctx.kernel.scope();
+    return replayFeatures(ctx, scope, settings.features, apart, 'pattern');
+  }
   using scope = ctx.kernel.scope();
-  return settings.objects === 'features'
-    ? replayFeatures(ctx, scope, settings.features, placements, 'pattern')
-    : patternBodies(ctx, scope, settings, placements, 'pattern');
+  return patternBodies(ctx, scope, settings, placements, 'pattern');
+}
+
+const IDENTITY: readonly number[] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+
+/** The placements that neither stay on the original nor repeat an earlier one (within 1 µm). */
+export function distinctPlacements(placements: readonly Placement[]): Placement[] {
+  const same = (a: readonly number[], b: readonly number[]) =>
+    a.every((v, i) => Math.abs(v - (b[i] as number)) <= 1e-6);
+  const out: Placement[] = [];
+  for (const placement of placements) {
+    const m = placement.matrix as readonly number[];
+    if (same(m, IDENTITY) || out.some((p) => same(p.matrix as readonly number[], m))) continue;
+    out.push(placement);
+  }
+  return out;
 }
 
 /** An expression input's value, or `fallback` when the input isn't there. */

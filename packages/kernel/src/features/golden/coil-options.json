@@ -1,0 +1,608 @@
+{
+ "circle inside counter-clockwise": {
+  "volume": 444.13,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
+  ]
+ },
+ "circle inside clockwise": {
+  "volume": 444.13,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
+  ]
+ },
+ "circle on counter-clockwise": {
+  "volume": 493.48,
+  "bbox": [
+   -11,
+   -11,
+   -1,
+   11,
+   11,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
+  ]
+ },
+ "circle on clockwise": {
+  "volume": 493.48,
+  "bbox": [
+   -11,
+   -11,
+   -1,
+   11,
+   11,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
+  ]
+ },
+ "circle outside counter-clockwise": {
+  "volume": 542.83,
+  "bbox": [
+   -12,
+   -12,
+   -1,
+   12,
+   12,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
+  ]
+ },
+ "circle outside clockwise": {
+  "volume": 542.83,
+  "bbox": [
+   -12,
+   -12,
+   -1,
+   12,
+   12,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
+  ]
+ },
+ "square inside counter-clockwise": {
+  "volume": 565.49,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 14,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "square inside clockwise": {
+  "volume": 565.49,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 14,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "square on counter-clockwise": {
+  "volume": 628.32,
+  "bbox": [
+   -11,
+   -11,
+   -1,
+   11,
+   11,
+   11
+  ],
+  "faces": 14,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "square on clockwise": {
+  "volume": 628.32,
+  "bbox": [
+   -11,
+   -11,
+   -1,
+   11,
+   11,
+   11
+  ],
+  "faces": 14,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "square outside counter-clockwise": {
+  "volume": 691.15,
+  "bbox": [
+   -12,
+   -12,
+   -1,
+   12,
+   12,
+   11
+  ],
+  "faces": 14,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "square outside clockwise": {
+  "volume": 691.15,
+  "bbox": [
+   -12,
+   -12,
+   -1,
+   12,
+   12,
+   11
+  ],
+  "faces": 14,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-out inside counter-clockwise": {
+  "volume": 240.65,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-out inside clockwise": {
+  "volume": 240.65,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-out on counter-clockwise": {
+  "volume": 264.22,
+  "bbox": [
+   -10.9,
+   -10.9,
+   -1,
+   10.9,
+   10.9,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-out on clockwise": {
+  "volume": 264.22,
+  "bbox": [
+   -10.9,
+   -10.9,
+   -1,
+   10.9,
+   10.9,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-out outside counter-clockwise": {
+  "volume": 287.78,
+  "bbox": [
+   -11.7,
+   -11.7,
+   -1,
+   11.7,
+   11.7,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-out outside clockwise": {
+  "volume": 287.78,
+  "bbox": [
+   -11.7,
+   -11.7,
+   -1,
+   11.7,
+   11.7,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-in inside counter-clockwise": {
+  "volume": 256.36,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-in inside clockwise": {
+  "volume": 256.36,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-in on counter-clockwise": {
+  "volume": 279.92,
+  "bbox": [
+   -10.9,
+   -10.9,
+   -1,
+   10.9,
+   10.9,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-in on clockwise": {
+  "volume": 279.92,
+  "bbox": [
+   -10.9,
+   -10.9,
+   -1,
+   10.9,
+   10.9,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-in outside counter-clockwise": {
+  "volume": 303.49,
+  "bbox": [
+   -11.7,
+   -11.7,
+   -1,
+   11.7,
+   11.7,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ },
+ "triangle-in outside clockwise": {
+  "volume": 303.49,
+  "bbox": [
+   -11.7,
+   -11.7,
+   -1,
+   11.7,
+   11.7,
+   11
+  ],
+  "faces": 11,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
+  ]
+ }
+}
