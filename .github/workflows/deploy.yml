@@ -132,6 +132,7 @@ jobs:
       matrix:
         channel: [edge, stable]
     env:
+      GH_TOKEN: ${{ github.token }}
       SHA: ${{ needs.plan.outputs.sha }}
       WANTED: ${{ matrix.channel == 'edge' && needs.plan.outputs.edge || needs.plan.outputs.stable }}
       # Pages: the production branch "main" is app.extrudo.org, the branch "edge" is
