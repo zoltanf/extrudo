@@ -82,4 +82,5 @@ export {
   type SessionStore,
 } from './stores';
 export * from './sweep';
+export * from './thread';
 export * from './timeline';

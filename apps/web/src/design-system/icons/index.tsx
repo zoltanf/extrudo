@@ -76,6 +76,7 @@ export const ICON_NAMES = [
   'sphere',
   'torus',
   'hole',
+  'thread',
   'rectangular-pattern',
   'path-pattern',
   'parameters',

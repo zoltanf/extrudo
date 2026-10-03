@@ -14,6 +14,22 @@ export type ShapeHandle = number & { readonly __brand: 'ShapeHandle' };
 
 export type Vec3 = readonly [number, number, number];
 
+/** A cylindrical face as a thread sees it (`Kernel.threadFace`). */
+export interface ThreadFace {
+  /** The cylinder's axis (canonical sign: first non-zero component positive). */
+  axis: Axis;
+  radius: number;
+  /** The face is a hole's wall (material outside it): an internal thread. */
+  inside: boolean;
+  /** Where the face starts and ends along the axis, from `axis.origin` (mm). */
+  from: number;
+  to: number;
+  /** The face goes all the way round. */
+  whole: boolean;
+  /** Whether the face's edge at `from` / `to` is an outward corner: a shaft's end, a hole's mouth. */
+  open: [boolean, boolean];
+}
+
 /** A kernel operation failed in a way the user can act on (bad radius, …). */
 export class KernelError extends Error {
   override name = 'KernelError';
@@ -740,6 +756,45 @@ export class Kernel {
       throw new LoftError(f.lastError() || 'The loft failed.', problem);
     }
     return this.#withHistory(handle);
+  }
+
+  /**
+   * The helical sweep of a modeled thread (P4-02, ADR-0056): a flat
+   * `profile` face in a plane through `axis`, on one side of it and shorter
+   * along it than `pitch`, carried round the axis as a screw moves: `pitch`
+   * mm per turn for `turns` turns, right-handed (counter-clockwise seen
+   * from the axis's tip as it rises) unless `left`. History as for `prism`
+   * (one side face per profile edge and turn).
+   */
+  threadSweep(
+    profile: ShapeHandle,
+    axis: Axis,
+    pitch: number,
+    turns: number,
+    left: boolean,
+  ): OperationResult {
+    const { origin: o, direction: d } = axis;
+    return this.#withHistory(this.#facade.threadSweep(profile, ...o, ...d, pitch, turns, left));
+  }
+
+  /**
+   * What a thread needs of cylindrical face `face` of `shape` (P4-02), or
+   * undefined when it isn't a cylinder: see `ThreadFace`.
+   */
+  threadFace(shape: ShapeHandle, face: number): ThreadFace | undefined {
+    const f = this.#facade;
+    if (f.threadFace(shape, face) < 0) return undefined;
+    const v = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+    const at = (k: number) => v[k] as number;
+    return {
+      axis: { origin: [at(0), at(1), at(2)], direction: [at(3), at(4), at(5)] },
+      radius: at(6),
+      inside: at(7) === 1,
+      from: at(8),
+      to: at(9),
+      whole: at(10) === 1,
+      open: [at(11) === 1, at(12) === 1],
+    };
   }
 
   /** A compound holding the shapes (which stay valid; release them separately). */

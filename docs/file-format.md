@@ -900,6 +900,42 @@ would reach the axis, or turns that would touch, are errors. Faces are named
 `bottom` (square), and for triangles the base (`inner` or `outer`) and the
 `top` and `bottom` sides; each has a face per turn, numbered `#1`, `#2` … up the coil.
 
+### 6.25 `thread`
+
+A modeled screw thread cut into round faces (P4-02, ADR-0056): real geometry
+that prints, external on a shaft's face, internal on a hole's wall (the kernel
+tells which from the face). Sections 6.22 to 6.24 are P4-01's (sweep, loft,
+coil). It makes no body of its own: it always cuts, and a pattern or mirror can
+repeat it as a feature (6.16). No new keys.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `faces` | `ref` | yes | 1 to 16 refs of kind `face`: whole cylindrical faces (all the way round), one thread on each. A flat or curved face of another kind, or part of a cylinder, is an error |
+| `diameter` | `expr` | no | Length: the nominal (major) diameter of the ISO 68-1 basic profile (60°, which the Unified inch threads share) |
+| `pitch` | `expr` | no | Length: crest to crest along the axis. **With neither `diameter` nor `pitch` the kernel picks the ISO metric coarse thread that fits each face** (M2 to M30: on a shaft the largest whose diameter isn't more than 0.1 mm over the shaft's; in a hole the largest whose minor diameter is at most the hole's + 0.1 mm and whose diameter is larger, so a tap-drill hole finds its thread). With one of them, the other takes its default (6 mm, 1 mm) |
+| `extent` | `enum` | no | `full` (default: from `offset` to the face's far end) or `length` |
+| `length` | `expr` | no | Length, default 10 mm; with `extent: length`. At least one pitch |
+| `offset` | `expr` | no | Length, default 0: from the face's end to where the thread starts |
+| `flip` | `bool` | no | Default `false`: `offset` and `length` run from the face's lower end along its axis (the axis taken with its first non-zero component positive: a vertical shaft's bottom end); `true` from the other end |
+| `hand` | `enum` | no | `right` (default) or `left` |
+| `tolerance` | `expr` | no | Length, default 0.1 mm, not negative: the print clearance. The whole profile moves this far radially into the part's material, so an external thread's diameters shrink by twice it and an internal one's grow by twice it |
+| `chamfer` | `bool` | no | Default `true`: a 45° lead-in where the thread runs out of an open end of the face (a shaft's end, a hole's mouth; not a shoulder or a hole's floor) |
+
+The profile is the basic one: on a shaft a crest flat P/8 wide at the major
+diameter and a root flat P/4 wide at the minor (D − 1.0825 P), in a hole the
+reverse; both moved by `tolerance`. A shaft thicker than the thread is turned
+down to it (a warning when much thicker); a shaft at or under the thread's root,
+a hole as wide as the thread, a thread longer than the face, an offset as long
+as the face and more than 400 turns are errors. A shaft's thread and a hole's
+that start at the same plane mesh (the hole's tooth sits half a pitch on).
+
+Names: `thread:<feature id>:side:f<k>.<part>`, where k is the face's place in
+`faces` (0, 1 …) and the part is `crest`, `flank0`, `flank1` (one face per turn,
+`#n` along the helix), `root`, `end0` / `end1` (the flat steps where a thread
+stops inside a face) or `lead0` / `lead1` (the lead-in cones). The dialog's
+sizes (ISO metric coarse and fine, UNC, UNF) only fill `diameter` and `pitch`;
+nothing about a preset is stored.
+
 ---
 
 ## 7. Sketch data (`sketchData`)

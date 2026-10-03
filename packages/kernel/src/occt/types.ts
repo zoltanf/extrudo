@@ -183,6 +183,19 @@ export interface FacadeBinding {
   lastError(): string;
   heapTop(): number;
   debugAbort(): void;
+  threadSweep(
+    profile: number,
+    ox: number,
+    oy: number,
+    oz: number,
+    dx: number,
+    dy: number,
+    dz: number,
+    pitch: number,
+    turns: number,
+    left: boolean,
+  ): number;
+  threadFace(shape: number, face: number): number;
   delete(): void;
 }
 

@@ -142,6 +142,30 @@ export function namedLoft(kernel: Kernel, options: LoftOptions): NamedShape {
   }
 }
 
+export interface ThreadSweepOptions extends SweepSource {
+  feature: string;
+  axis: Axis;
+  pitch: number;
+  turns: number;
+  left: boolean;
+}
+
+/**
+ * The helical sweep of a thread's profile (`Kernel.threadSweep`, P4-02):
+ * names as for `namedPrism` with op `thread`; each side repeats once per
+ * turn, so they are numbered `#n` along the helix.
+ */
+export function namedThreadSweep(kernel: Kernel, options: ThreadSweepOptions): NamedShape {
+  const result = kernel.threadSweep(
+    options.shape,
+    options.axis,
+    options.pitch,
+    options.turns,
+    options.left,
+  );
+  return nameSwept(kernel, result, 'thread', options.feature, options.edgeSources);
+}
+
 function nameSwept(
   kernel: Kernel,
   result: OperationResult,

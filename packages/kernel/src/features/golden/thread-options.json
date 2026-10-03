@@ -1,0 +1,92 @@
+{
+  "M6 full": {
+    "valid": true,
+    "volume": 104.1,
+    "faces": 27,
+    "bbox": [
+      -2.9,
+      -2.9,
+      0,
+      2.9,
+      2.9,
+      5
+    ],
+    "designation": "M6",
+    "turns": 5,
+    "names": [
+      "thread:T:side:f0.crest",
+      "thread:T:side:f0.flank0",
+      "thread:T:side:f0.flank1",
+      "thread:T:side:f0.lead0",
+      "thread:T:side:f0.lead1",
+      "thread:T:side:f0.root"
+    ]
+  },
+  "M6 left, no lead-in": {
+    "valid": true,
+    "volume": 106.5,
+    "faces": 27,
+    "bbox": [
+      -2.9,
+      -2.9,
+      0,
+      2.9,
+      2.9,
+      5
+    ],
+    "designation": "M6",
+    "turns": 5,
+    "names": [
+      "thread:T:side:f0.crest",
+      "thread:T:side:f0.flank0",
+      "thread:T:side:f0.flank1",
+      "thread:T:side:f0.root"
+    ]
+  },
+  "Ø6 × 0.75 custom, 3 mm": {
+    "valid": true,
+    "volume": 123.3,
+    "faces": 25,
+    "bbox": [
+      -3,
+      -3,
+      0,
+      3,
+      3,
+      5
+    ],
+    "designation": "Ø6 × 0.75",
+    "turns": 4,
+    "names": [
+      "thread:T:side:f0.crest",
+      "thread:T:side:f0.end1",
+      "thread:T:side:f0.flank0",
+      "thread:T:side:f0.flank1",
+      "thread:T:side:f0.lead0",
+      "thread:T:side:f0.root"
+    ]
+  },
+  "1/4-20 UNC on a 6.35 mm shaft": {
+    "valid": true,
+    "volume": 102.4,
+    "faces": 23,
+    "bbox": [
+      -2.98,
+      -2.97,
+      0,
+      2.98,
+      2.98,
+      5
+    ],
+    "designation": "1/4-20 UNC",
+    "turns": 3.937,
+    "names": [
+      "thread:T:side:f0.crest",
+      "thread:T:side:f0.flank0",
+      "thread:T:side:f0.flank1",
+      "thread:T:side:f0.lead0",
+      "thread:T:side:f0.lead1",
+      "thread:T:side:f0.root"
+    ]
+  }
+}

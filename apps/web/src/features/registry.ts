@@ -28,6 +28,7 @@ import { shellDialog } from './shell';
 import { commandId, type FeatureDialogSpec } from './spec';
 import { splitBodyDialog } from './split-body';
 import { sweepDialog } from './sweep';
+import { threadDialog } from './thread';
 
 export type FeatureDialogs = FeatureRegistry<FeatureDialogSpec>;
 
@@ -56,6 +57,8 @@ export function featureDialogs(): FeatureDialogs {
   dialogs.register(splitBodyDialog).register(scaleDialog).register(draftDialog);
   // Sweep, loft and coil (P4-01, ADR-0055).
   dialogs.register(sweepDialog).register(loftDialog).register(coilDialog);
+  // Thread (P4-02, ADR-0056).
+  dialogs.register(threadDialog);
   // Remove: edit which bodies a Remove takes out (P3-17).
   dialogs.register(removeDialog);
   return dialogs;

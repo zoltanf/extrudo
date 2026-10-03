@@ -20,6 +20,7 @@ import { kernelShell } from './shell';
 import { kernelSketch } from './sketch';
 import { kernelSplitBody } from './split-body';
 import { kernelSweep } from './sweep';
+import { kernelThread } from './thread';
 import { kernelMirror, kernelMove } from './transform';
 
 /** Every feature type the kernel can compute (architecture §4.2). */
@@ -66,5 +67,7 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
     .register(kernelSweep as unknown as KernelFeatureDefinition)
     .register(kernelLoft as unknown as KernelFeatureDefinition)
     .register(kernelCoil as unknown as KernelFeatureDefinition);
+  // Thread (P4-02, ADR-0056).
+  registry.register(kernelThread as unknown as KernelFeatureDefinition);
   return registry;
 }

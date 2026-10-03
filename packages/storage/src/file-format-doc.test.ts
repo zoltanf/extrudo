@@ -67,6 +67,9 @@ import {
   sphereFeature,
   splitBodyFeature,
   sweepFeature,
+  THREAD_EXTENTS,
+  THREAD_HANDS,
+  threadFeature,
   torusFeature,
   UnitKindSchema,
 } from '@extrudo/core';
@@ -119,6 +122,7 @@ const FEATURES = [
   scaleFeature,
   draftFeature,
   holeFeature,
+  threadFeature,
   placeOnBedFeature,
   rectangularPatternFeature,
   circularPatternFeature,
@@ -205,6 +209,8 @@ describe('docs/file-format.md', () => {
       ...COIL_DIRECTIONS,
       ...COIL_SECTIONS,
       ...COIL_POSITIONS,
+      ...THREAD_EXTENTS,
+      ...THREAD_HANDS,
     ];
     const origin = [...ORIGIN_PLANES.map((p) => p.id), ...ORIGIN_AXES.map((a) => a.id)];
     expect(missing([...inputs, ...choices, ...origin])).toEqual([]);
