@@ -7,9 +7,9 @@
 import {
   coilInputs,
   constructionRef,
+  type Feature,
   FORMAT_NAME,
   FORMAT_VERSION,
-  type Feature,
   type GeomRef,
   loftInputs,
   originAxisRef,
@@ -137,7 +137,9 @@ it('the P4-01 fixture recomputes cleanly', { timeout: 120_000 }, async () => {
   engine.clear();
   expect(kernel.stats().liveShapes).toBe(0);
   if (env.WRITE_FIXTURES === '1') {
-    const fs = (await import('node:fs')) as {
+    // The kernel's tsconfig has no Node types: a module name in a variable keeps tsc out of it.
+    const nodeFs = 'node:fs';
+    const fs = (await import(/* @vite-ignore */ nodeFs)) as {
       writeFileSync(path: URL, data: Uint8Array): void;
     };
     const json = (value: unknown) => strToU8(`${JSON.stringify(value, null, 2)}\n`);
