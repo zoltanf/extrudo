@@ -58,7 +58,11 @@ describe('sweep inputs', () => {
 
 describe('loft inputs', () => {
   it('takes profiles, faces and points, smooth and open by default', () => {
-    const sections = [profile, { kind: 'face' as const, id: 'f' }, { kind: 'point' as const, id: 'Q' }];
+    const sections = [
+      profile,
+      { kind: 'face' as const, id: 'f' },
+      { kind: 'point' as const, id: 'Q' },
+    ];
     const inputs = loftInputs(sections);
     expect(LoftInputsSchema.safeParse(inputs).success).toBe(true);
     expect(loftSettings(inputs)).toEqual({
@@ -100,7 +104,12 @@ describe('coil inputs', () => {
     expect(CoilInputsSchema.safeParse(inputs).success).toBe(true);
     expect(inputs.taper).toEqual({ kind: 'expr', expr: '5 deg', unit: 'angle' });
     expect(inputs.revolutions).toEqual({ kind: 'expr', expr: '2', unit: 'unitless' });
-    expect([...coilSettings(inputs).exprs].sort()).toEqual(['height', 'pitch', 'revolutions', 'taper']);
+    expect([...coilSettings(inputs).exprs].sort()).toEqual([
+      'height',
+      'pitch',
+      'revolutions',
+      'taper',
+    ]);
     expect(() => coilInputs({ numbers: { width: '3 mm' } })).toThrow(/no number "width"/);
   });
 

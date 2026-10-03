@@ -16,7 +16,7 @@ import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
 import { pointOf } from './references';
 import type { SketchOutputData } from './sketch';
-import { coplanar, partsOf, type Plane } from './sources';
+import { coplanar, type Plane, partsOf } from './sources';
 
 /** How a loft speaks of itself (the shared operation code, `operation.ts`). */
 const WORDS: OperationWords = { noun: 'loft', check: 'Check its sections.' };

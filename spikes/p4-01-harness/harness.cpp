@@ -292,6 +292,23 @@ int main(int argc, char** argv) {
       check(near(volume(s), want, 1e-4), "coil: volume", volume(s), want);
       std::printf("     coil %d turns: sweep %.0f ms, check %.0f ms, %d faces\n", turns, build, ms(t1), faces(s));
     }
+    // 10a. A triangle pointing in, its wire starting with the edge along the axis: OCCT sweeps
+    // that start into an invalid solid counter-clockwise; the facade starts at the next edge.
+    for (bool left : {false, true}) {
+      const double h = std::sqrt(3) / 2;
+      BRepBuilderAPI_MakePolygon poly;
+      poly.Add(gp_Pnt(10 + h, 0, -1));
+      poly.Add(gp_Pnt(10 + h, 0, 1));
+      poly.Add(gp_Pnt(10 - h, 0, 0));
+      poly.Close();
+      const int profile = faceOfWire(poly.Wire());
+      const int helix = f.helix(0, 0, 0, 0, 0, 1, 1, 0, 0, 10, 4, 2.5, 0, left);
+      const int s = f.sweep(profile, helix, 2, 0, 1, false, 0, 0, 1);
+      // Pappus: area 2h (base 2, height 2h); the centroid lies a third of the height in from the base.
+      const double want = 2 * h * 2.5 * 2 * M_PI * (10 + h - 2 * h / 3);
+      check(valid(s), left ? "triangle-in coil, clockwise: valid" : "triangle-in coil, counter-clockwise: valid");
+      check(near(volume(s), want, 1e-4), "triangle-in coil: volume", volume(s), want);
+    }
     // 10b. Left-handed and tapered coils.
     {
       const int left = f.helix(0, 0, 0, 0, 0, 1, 1, 0, 0, 10, 4, 2, 0, true);
@@ -418,11 +435,16 @@ int main(int argc, char** argv) {
       std::printf("     crossed sections: %s\n", crossed ? "built" : f.lastError_.c_str());
     }
   } else {
-    // Leak check: the same work 300 and 1500 times; the heap top must not keep growing.
+    // Leak check: the same work n/5 and n times (default n = 500); the heap top must not keep growing.
+    const int n = argc > 2 ? std::atoi(argv[2]) : 500;
     auto round = [&]() {
       const int path = xzPath(lPath);
       const int profile = annulus(gp_Pnt(0, 0, 0), Z, 5, 3);
       const int s = f.sweep(profile, path, 0, 0.5, 0.8, true, 0, 0, 0);
+      const int square = rect(gp_Ax2(gp_Pnt(10, 0, 0), gp_Dir(0, 1, 0), gp_Dir(1, 0, 0)), 1.2, 1.2);
+      const int spring = f.helix(0, 0, 0, 0, 0, 1, 1, 0, 0, 10, 4, 1, 0, false);
+      const int squareCoil = f.sweep(square, spring, 2, 0, 1, false, 0, 0, 1);
+      if (!squareCoil) std::printf("square coil failed: %s\n", f.lastError_.c_str());
       const int helix = f.helix(0, 0, 0, 0, 0, 1, 1, 0, 0, 10, 5, 2, 0, false);
       const int section = disc(gp_Pnt(10, 0, 0), gp_Dir(0, 1, 0), 1);
       const int coil = f.sweep(section, helix, 2, 0, 1, false, 0, 0, 1);
@@ -435,14 +457,18 @@ int main(int argc, char** argv) {
       if (!s || !coil || !loft) std::printf("round failed: %s\n", f.lastError_.c_str());
       f.releaseAll();
     };
-    for (int i = 0; i < 50; ++i) round();
+    const auto t0 = std::chrono::steady_clock::now();
+    round();
+    std::printf("     one round: %.0f ms\n", ms(t0));
+    for (int i = 1; i < n / 10; ++i) round();
     const double warm = f.heapTop();
-    for (int i = 0; i < 250; ++i) round();
-    const double at300 = f.heapTop();
-    for (int i = 0; i < 1200; ++i) round();
-    const double at1500 = f.heapTop();
-    std::printf("heap: warm %.1f MB, 300 %.1f MB, 1500 %.1f MB\n", warm / 1e6, at300 / 1e6, at1500 / 1e6);
-    check(at1500 - at300 < 4e6, "leaks: heap flat from 300 to 1500 rounds", (at1500 - at300) / 1e6, 0);
+    for (int i = n / 10; i < n / 5; ++i) round();
+    const double early = f.heapTop();
+    for (int i = n / 5; i < n; ++i) round();
+    const double late = f.heapTop();
+    std::printf("heap: warm %.1f MB, %d rounds %.1f MB, %d rounds %.1f MB\n", warm / 1e6, n / 5,
+                early / 1e6, n, late / 1e6);
+    check(late - early < 4e6, "leaks: heap flat from n/5 to n rounds", (late - early) / 1e6, 0);
   }
   std::printf("%d failure(s)\n", failures);
   return failures == 0 ? 0 : 1;

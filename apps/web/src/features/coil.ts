@@ -79,8 +79,7 @@ const HINTS: Record<string, string> = {
   offset: 'Lifts the start off the plane (negative: below).',
 };
 
-const typeOf = (v: DialogValues): CoilType =>
-  (v.choices.type ?? 'revolutions-height') as CoilType;
+const typeOf = (v: DialogValues): CoilType => (v.choices.type ?? 'revolutions-height') as CoilType;
 
 /** Whether the coil's type uses a number (revolutions, height, pitch; the rest always). */
 const usesNumber = (name: string) => (v: DialogValues) =>
@@ -154,7 +153,7 @@ export const coilDialog: FeatureDialogSpec = defineFeatureDialog({
 });
 
 /** The value of a number field, or its default while its expression doesn't evaluate. */
-function valueOf(ctx: Pick<ManipulatorContext, 'value'>, name: string): number {
+function numberOf(ctx: Pick<ManipulatorContext, 'value'>, name: string): number {
   return ctx.value(name) ?? COIL_NUMBERS.find((n) => n.name === name)?.value ?? 0;
 }
 
@@ -165,8 +164,8 @@ export function coilFrame(
 ): SketchFrame | undefined {
   const plane = placementFrame(values.refs.plane?.[0] ?? DEFAULT_PLACEMENT, ctx);
   if (!plane) return undefined;
-  const at = sketchToWorld(plane, [valueOf(ctx, 'x'), valueOf(ctx, 'y')]);
-  const lift = valueOf(ctx, 'offset');
+  const at = sketchToWorld(plane, [numberOf(ctx, 'x'), numberOf(ctx, 'y')]);
+  const lift = numberOf(ctx, 'offset');
   const origin: Vec3 = [
     at[0] + plane.normal[0] * lift,
     at[1] + plane.normal[1] * lift,

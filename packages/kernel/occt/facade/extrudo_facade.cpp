@@ -4481,8 +4481,38 @@ private:
   /**
    * One closed section swept along `spine` into a solid: 0, or a sweep()
    * status. `sides` gets each section edge's side faces.
+   *
+   * MakePipeShell's result depends on which edge the section's wire starts
+   * with: a triangle starting with its edge parallel to a coil's axis sweeps
+   * into an invalid solid counter-clockwise and a sound one clockwise, and
+   * starting at the next edge sweeps soundly both ways. So a failed sweep is
+   * tried again from each other edge of the section (the same edges, so the
+   * history is unchanged).
    */
   static int pipeOne(const TopoDS_Wire& spine, const TopoDS_Wire& section, int mode, const gp_Dir& fixed,
+                     const gp_Ax2& parallel, const TopoDS_Wire& auxiliary, double scale, TopoDS_Shape& solid,
+                     TopoDS_Shape& firstCap, TopoDS_Shape& lastCap, SideList& sides) {
+    const std::vector<TopoDS_Edge> edges = wireEdges(section);
+    int status = 1;
+    for (size_t start = 0; start < std::min<size_t>(edges.size(), 4); ++start) {
+      TopoDS_Wire wire = section;
+      if (start > 0) {
+        BRepBuilderAPI_MakeWire maker;
+        for (size_t k = 0; k < edges.size(); ++k) maker.Add(edges[(start + k) % edges.size()]);
+        if (!maker.IsDone()) break;
+        wire = maker.Wire();
+      }
+      SideList made;
+      status = pipeTry(spine, wire, mode, fixed, parallel, auxiliary, scale, solid, firstCap, lastCap, made);
+      if (status == 0) {
+        for (auto& side : made) sides.push_back(std::move(side));
+        return 0;
+      }
+    }
+    return status;
+  }
+
+  static int pipeTry(const TopoDS_Wire& spine, const TopoDS_Wire& section, int mode, const gp_Dir& fixed,
                      const gp_Ax2& parallel, const TopoDS_Wire& auxiliary, double scale, TopoDS_Shape& solid,
                      TopoDS_Shape& firstCap, TopoDS_Shape& lastCap, SideList& sides) {
     BRepOffsetAPI_MakePipeShell pipe(spine);

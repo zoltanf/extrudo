@@ -178,7 +178,8 @@ function numbersOf(ctx: EvalContext, settings: CoilSettings): Record<string, num
   const used = new Set<string>(COIL_TYPE_NUMBERS[settings.type]);
   for (const number of COIL_NUMBERS) {
     const value = settings.exprs.has(number.name) ? ctx.value(number.name) : number.value;
-    const relevant = !['revolutions', 'height', 'pitch'].includes(number.name) || used.has(number.name);
+    const relevant =
+      !['revolutions', 'height', 'pitch'].includes(number.name) || used.has(number.name);
     if (relevant && number.positive && !(value > LENGTH_EPS)) {
       throw new KernelError(`The ${number.label.toLowerCase()} must be greater than 0.`);
     }

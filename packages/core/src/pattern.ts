@@ -30,7 +30,6 @@ import { HOLE_TYPE } from './hole';
 import { LOFT_TYPE } from './loft';
 import { BOX_TYPE, CYLINDER_TYPE, SPHERE_TYPE, TORUS_TYPE } from './primitives';
 import { REVOLVE_AXIS_KINDS, REVOLVE_TYPE } from './revolve';
-import { SWEEP_TYPE } from './sweep';
 import {
   BoolInputSchema,
   type ExprInput,
@@ -38,6 +37,7 @@ import {
   type GeomRef,
   type GeomRefKind,
 } from './schema';
+import { SWEEP_TYPE } from './sweep';
 
 export const RECTANGULAR_PATTERN_TYPE = 'rectangularPattern';
 export const CIRCULAR_PATTERN_TYPE = 'circularPattern';

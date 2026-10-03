@@ -13,6 +13,7 @@ import {
   type ExtrudoDocument,
   type Feature,
   type FeatureId,
+  FeatureRegistry,
   type FeatureStatus,
   type GeomRef,
   type LoftInputOptions,
@@ -34,7 +35,6 @@ import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature, testFeatures } from '../recompute/testing';
 import type { FeatureOutput, KernelFeatureDefinition, RecomputeResult } from '../recompute/types';
-import { FeatureRegistry } from '@extrudo/core';
 import type { CoilOutputData } from './coil';
 
 let kernel: Kernel;
@@ -167,8 +167,10 @@ async function runWithShapes(features: Feature[]): Promise<Done> {
     engine.clear();
     seen.clear();
     const result = await run(testDocument(features));
+    // The bodies are meshed last, in order (a pattern meshes the tools it replays before them).
+    const last = shapes.slice(-result.bodies.length);
     result.bodies.forEach((b, i) => {
-      const shape = shapes[i];
+      const shape = last[i];
       if (shape !== undefined) bodyShapes.set(b.id, shape);
     });
     return result;
@@ -256,8 +258,11 @@ describe('sweep', { timeout: 120_000 }, () => {
       const m = measure(result, 'W:0');
       expect(m.valid).toBe(true);
       close(m.volume, Math.PI * 9 * length);
+      // One side face per piece of the path, numbered along it (`#n`) when there are several.
+      const side = `sweep:W:side:${d.circle}`;
+      const sides = path.length === 1 ? [side] : path.map((_, i) => `${side}#${i + 1}`);
       expect([...m.names].sort()).toEqual(
-        ['sweep:W:cap:end', 'sweep:W:cap:start', `sweep:W:side:${d.circle}`].sort(),
+        ['sweep:W:cap:end', 'sweep:W:cap:start', ...sides].sort(),
       );
     }
   });
@@ -334,14 +339,8 @@ describe('sweep', { timeout: 120_000 }, () => {
     );
     const m = measure(result, 'W:0');
     close(m.volume, Math.PI * 5 * ELL);
-    expect([...m.names].sort()).toEqual(
-      [
-        'sweep:W:cap:end',
-        'sweep:W:cap:start',
-        `sweep:W:side:${inner}`,
-        `sweep:W:side:${outer}`,
-      ].sort(),
-    );
+    const sides = [inner, outer].flatMap((c) => [1, 2, 3].map((n) => `sweep:W:side:${c}#${n}`));
+    expect([...m.names].sort()).toEqual(['sweep:W:cap:end', 'sweep:W:cap:start', ...sides].sort());
   });
 
   it('a body face along a sketch line joins, its sides named after its edges', async () => {
@@ -363,7 +362,9 @@ describe('sweep', { timeout: 120_000 }, () => {
     const m = measure(result, 'B:0');
     close(m.volume, 20 * 20 * 40);
     expect(boxOf(m.bbox)).toEqual([-10, -10, 0, 10, 10, 40]);
-    expect(m.names.filter((n) => n.startsWith('sweep:W:side:('))).toHaveLength(4);
+    // The sides run flush with the box's and merge into them (the box's names win); the top is the sweep's.
+    expect(m.names).toContain('sweep:W:cap:end');
+    expect(m.faces).toBe(6);
   });
 
   it('a path of body edges', async () => {
@@ -386,7 +387,11 @@ describe('sweep', { timeout: 120_000 }, () => {
     const b = new SketchBuilder();
     b.circle(-10, 20, 2);
     const result = ok(
-      await runWithShapes([box('B'), sketch('S', b.sketch, YZ), sweep('W', [profile('S', b.sketch)], [edge])]),
+      await runWithShapes([
+        box('B'),
+        sketch('S', b.sketch, YZ),
+        sweep('W', [profile('S', b.sketch)], [edge]),
+      ]),
     );
     const m = measure(result, 'W:0');
     close(m.volume, Math.PI * 4 * 20);
@@ -427,7 +432,7 @@ describe('sweep', { timeout: 120_000 }, () => {
             features: ['W'],
             direction1: originAxisRef('origin:x'),
             count1: '3',
-            distance1: '15 mm',
+            distance1: '10 mm',
           }),
         },
       ]),
@@ -440,14 +445,16 @@ describe('sweep', { timeout: 120_000 }, () => {
     const p = paths();
     const prof = [profile('S', d.data)];
     const base = [d.feature, p.feature];
-    expect(await errorOf([...base, sweep('W', [], p.straight)], 'W')).toMatch(/Pick at least one profile/);
+    expect(await errorOf([...base, sweep('W', [], p.straight)], 'W')).toMatch(
+      /Pick at least one profile/,
+    );
     expect(await errorOf([...base, sweep('W', prof, [])], 'W')).toMatch(/Pick the path/);
     // A line and the far end of the arc only: a gap.
     const gap = [p.straight[0] as GeomRef, p.ell[0] as GeomRef];
     expect(await errorOf([...base, sweep('W', prof, gap)], 'W')).toMatch(/don't join end to end/);
-    expect(
-      await errorOf([...base, sweep('W', prof, p.straight, { scale: '0' })], 'W'),
-    ).toMatch(/scale must be greater than 0/);
+    expect(await errorOf([...base, sweep('W', prof, p.straight, { scale: '0' })], 'W')).toMatch(
+      /scale must be greater than 0/,
+    );
     expect(
       await errorOf(
         [...base, sweep('W', prof, p.straight, { orientation: 'fixed', twist: '10 deg' })],
@@ -475,7 +482,11 @@ describe('sweep', { timeout: 120_000 }, () => {
     const loop = ring.circle(20, 0, 20).id;
     expect(
       await errorOf(
-        [d.feature, sketch('C', ring.sketch, XZ), sweep('W', prof, [entity('C', loop)], { scale: '2' })],
+        [
+          d.feature,
+          sketch('C', ring.sketch, XZ),
+          sweep('W', prof, [entity('C', loop)], { scale: '2' }),
+        ],
         'W',
       ),
     ).toMatch(/closed path can't change/);
@@ -483,7 +494,10 @@ describe('sweep', { timeout: 120_000 }, () => {
     const pts = new SketchBuilder();
     const dot = pts.point(5, 5);
     expect(
-      await errorOf([d.feature, sketch('C', pts.sketch, XZ), sweep('W', prof, [entity('C', dot)])], 'W'),
+      await errorOf(
+        [d.feature, sketch('C', pts.sketch, XZ), sweep('W', prof, [entity('C', dot)])],
+        'W',
+      ),
     ).toMatch(/curves, not points/);
   });
 
@@ -501,7 +515,12 @@ describe('sweep', { timeout: 120_000 }, () => {
               box('B'),
               sketch('S', b.sketch),
               p.feature,
-              sweep('W', [profile('S', b.sketch)], p.bend, { orientation, twist, scale, operation }),
+              sweep('W', [profile('S', b.sketch)], p.bend, {
+                orientation,
+                twist,
+                scale,
+                operation,
+              }),
             ]);
             const st = status(result, 'W');
             if (st.status === 'error') {
@@ -542,13 +561,23 @@ describe('sweep', { timeout: 120_000 }, () => {
 function square(id: string, s: number, plane: GeomRef = XY) {
   const b = new SketchBuilder();
   const lines = rect(b, -s / 2, -s / 2, s, s);
-  return { data: b.sketch, lines, feature: sketch(id, b.sketch, plane), ref: () => profile(id, b.sketch) };
+  return {
+    data: b.sketch,
+    lines,
+    feature: sketch(id, b.sketch, plane),
+    ref: () => profile(id, b.sketch),
+  };
 }
 
 function circleSketch(id: string, r: number, plane: GeomRef, at: [number, number] = [0, 0]) {
   const b = new SketchBuilder();
   const c = b.circle(at[0], at[1], r).id;
-  return { data: b.sketch, circle: c, feature: sketch(id, b.sketch, plane), ref: () => profile(id, b.sketch) };
+  return {
+    data: b.sketch,
+    circle: c,
+    feature: sketch(id, b.sketch, plane),
+    ref: () => profile(id, b.sketch),
+  };
 }
 
 describe('loft', { timeout: 120_000 }, () => {
@@ -559,7 +588,12 @@ describe('loft', { timeout: 120_000 }, () => {
     const s1 = square('S1', 20);
     const s2 = square('S2', 10, planeOf(A));
     const result = ok(
-      await runWithShapes([s1.feature, A, s2.feature, loft('L', [s1.ref(), s2.ref()], { ruled: true })]),
+      await runWithShapes([
+        s1.feature,
+        A,
+        s2.feature,
+        loft('L', [s1.ref(), s2.ref()], { ruled: true }),
+      ]),
     );
     const m = measure(result, 'L:0');
     close(m.volume, (20 / 3) * (400 + 100 + 200));
@@ -575,7 +609,14 @@ describe('loft', { timeout: 120_000 }, () => {
     const c = circleSketch('S2', 6, planeOf(B));
     const s3 = square('S3', 10, planeOf(A));
     const three = ok(
-      await runWithShapes([s1.feature, A, B, c.feature, s3.feature, loft('L', [s1.ref(), c.ref(), s3.ref()])]),
+      await runWithShapes([
+        s1.feature,
+        A,
+        B,
+        c.feature,
+        s3.feature,
+        loft('L', [s1.ref(), c.ref(), s3.ref()]),
+      ]),
     );
     const m = measure(three, 'L:0');
     expect(m.valid).toBe(true);
@@ -585,7 +626,11 @@ describe('loft', { timeout: 120_000 }, () => {
 
     const apex = point('Q', 0, 0, 30);
     const pyramid = ok(
-      await runWithShapes([s1.feature, apex, loft('L', [s1.ref(), planeOf(apex)], { ruled: true })]),
+      await runWithShapes([
+        s1.feature,
+        apex,
+        loft('L', [s1.ref(), planeOf(apex)], { ruled: true }),
+      ]),
     );
     const n = measure(pyramid, 'L:0');
     close(n.volume, 4000);
@@ -596,8 +641,8 @@ describe('loft', { timeout: 120_000 }, () => {
     const tip = top.point(0, 0);
     const cone = ok(
       await runWithShapes([
-        sketch('T', top.sketch, planeOf(C)),
         C,
+        sketch('T', top.sketch, planeOf(C)),
         circleSketch('S2', 5, XY).feature,
         loft('L', [entity('T', tip), circleSketch('S2', 5, XY).ref()]),
       ]),
@@ -615,7 +660,11 @@ describe('loft', { timeout: 120_000 }, () => {
     const result = ok(
       await runWithShapes([
         ...sections.map((s) => s.feature),
-        loft('L', sections.map((s) => s.ref()), { closed: true }),
+        loft(
+          'L',
+          sections.map((s) => s.ref()),
+          { closed: true },
+        ),
       ]),
     );
     const m = measure(result, 'L:0');
@@ -646,9 +695,14 @@ describe('loft', { timeout: 120_000 }, () => {
     const s1 = square('S1', 20);
     const s2 = square('S2', 10, planeOf(A));
     const apex = point('Q', 0, 0, 30);
-    expect(await errorOf([s1.feature, loft('L', [s1.ref()])], 'L')).toMatch(/at least two sections/);
+    expect(await errorOf([s1.feature, loft('L', [s1.ref()])], 'L')).toMatch(
+      /at least two sections/,
+    );
     expect(
-      await errorOf([s1.feature, A, s2.feature, loft('L', [s1.ref(), s2.ref()], { closed: true })], 'L'),
+      await errorOf(
+        [s1.feature, A, s2.feature, loft('L', [s1.ref(), s2.ref()], { closed: true })],
+        'L',
+      ),
     ).toMatch(/closed loft needs at least three/);
     expect(
       await errorOf(
@@ -657,15 +711,20 @@ describe('loft', { timeout: 120_000 }, () => {
       ),
     ).toMatch(/can only start or end/);
     const same = square('S3', 8);
-    expect(await errorOf([s1.feature, same.feature, loft('L', [s1.ref(), same.ref()])], 'L')).toMatch(
-      /lie in one plane/,
-    );
+    expect(
+      await errorOf([s1.feature, same.feature, loft('L', [s1.ref(), same.ref()])], 'L'),
+    ).toMatch(/lie in one plane/);
     const holed = new SketchBuilder();
     rect(holed, -10, -10, 20, 20);
     holed.circle(0, 0, 3);
     expect(
       await errorOf(
-        [sketch('H', holed.sketch), A, s2.feature, loft('L', [profile('H', holed.sketch), s2.ref()])],
+        [
+          sketch('H', holed.sketch),
+          A,
+          s2.feature,
+          loft('L', [profile('H', holed.sketch), s2.ref()]),
+        ],
         'L',
       ),
     ).toMatch(/has a hole/);
@@ -694,7 +753,12 @@ describe('loft', { timeout: 120_000 }, () => {
                   const m = measure(result, body.id);
                   return [
                     body.id,
-                    { volume: round(m.volume, 1), bbox: boxOf(m.bbox), faces: m.faces, valid: m.valid },
+                    {
+                      volume: round(m.volume, 1),
+                      bbox: boxOf(m.bbox),
+                      faces: m.faces,
+                      valid: m.valid,
+                    },
                   ];
                 }),
               );
@@ -715,7 +779,11 @@ describe('coil', { timeout: 120_000 }, () => {
     expect(m.valid).toBe(true);
     close(m.volume, Math.PI * 1 * 5 * 2 * Math.PI * 10);
     expect(boxOf(m.bbox)).toEqual([-11, -11, -1, 11, 11, 21]);
-    expect([...m.names].sort()).toEqual(['coil:K:cap:end', 'coil:K:cap:start', 'coil:K:side:surface']);
+    expect([...m.names].sort()).toEqual([
+      'coil:K:cap:end',
+      'coil:K:cap:start',
+      'coil:K:side:surface',
+    ]);
     const data = seen.get('K')?.data as CoilOutputData;
     expect(data).toMatchObject({ radius: 10, turns: 5, pitch: 4, height: 20 });
   });
@@ -749,7 +817,9 @@ describe('coil', { timeout: 120_000 }, () => {
     );
     const h = Math.sqrt(3);
     const out = ok(
-      await runWithShapes([coil('K', { section: 'triangle-out', position: 'outside', numbers: base })]),
+      await runWithShapes([
+        coil('K', { section: 'triangle-out', position: 'outside', numbers: base }),
+      ]),
     );
     // The centroid of a triangle lies a third of its height from its base.
     close(measure(out, 'K:0').volume, h * ring(10 + h / 3));
@@ -792,7 +862,13 @@ describe('coil', { timeout: 120_000 }, () => {
         coil('K', {
           section: 'triangle-in',
           position: 'inside',
-          numbers: { diameter: '20 mm', revolutions: '2', height: '6 mm', size: '2 mm', offset: '5 mm' },
+          numbers: {
+            diameter: '20 mm',
+            revolutions: '2',
+            height: '6 mm',
+            size: '2 mm',
+            offset: '5 mm',
+          },
           operation: 'cut',
         }),
         {
@@ -806,13 +882,21 @@ describe('coil', { timeout: 120_000 }, () => {
         },
       ]),
     );
+    // Measured now: the next run releases its shapes.
+    const patterned = measure(cut, 'Y:0').volume;
     const single = ok(
       await runWithShapes([
         cylinder('Y', { diameter: '20 mm', height: '40 mm' }),
         coil('K', {
           section: 'triangle-in',
           position: 'inside',
-          numbers: { diameter: '20 mm', revolutions: '2', height: '6 mm', size: '2 mm', offset: '5 mm' },
+          numbers: {
+            diameter: '20 mm',
+            revolutions: '2',
+            height: '6 mm',
+            size: '2 mm',
+            offset: '5 mm',
+          },
           operation: 'cut',
         }),
       ]),
@@ -820,20 +904,22 @@ describe('coil', { timeout: 120_000 }, () => {
     const whole = Math.PI * 100 * 40;
     const once = whole - measure(single, 'Y:0').volume;
     expect(once).toBeGreaterThan(1);
-    close(whole - measure(cut, 'Y:0').volume, 2 * once, 2e-3);
+    close(whole - patterned, 2 * once, 2e-3);
   });
 
   it('refuses sizes that would make the turns or the axis meet', async () => {
-    expect(await errorOf([coil('K', { numbers: { pitch: '2 mm' }, type: 'revolutions-pitch' })], 'K')).toMatch(
-      /as tall as the pitch/,
+    expect(
+      await errorOf([coil('K', { numbers: { pitch: '2 mm' }, type: 'revolutions-pitch' })], 'K'),
+    ).toMatch(/as tall as the pitch/);
+    expect(await errorOf([coil('K', { numbers: { diameter: '2 mm' } })], 'K')).toMatch(
+      /reaches the coil/,
     );
-    expect(await errorOf([coil('K', { numbers: { diameter: '2 mm' } })], 'K')).toMatch(/reaches the coil/);
     expect(await errorOf([coil('K', { numbers: { taper: '-60 deg' } })], 'K')).toMatch(
       /taper narrows/,
     );
-    expect(await errorOf([coil('K', { numbers: { revolutions: '2000', height: '20000 mm' } })], 'K')).toMatch(
-      /at most 1000/,
-    );
+    expect(
+      await errorOf([coil('K', { numbers: { revolutions: '2000', height: '20000 mm' } })], 'K'),
+    ).toMatch(/at most 1000/);
     expect(await errorOf([coil('K', { numbers: { size: '0 mm' } })], 'K')).toMatch(
       /section size must be greater than 0/,
     );
@@ -846,7 +932,12 @@ describe('coil', { timeout: 120_000 }, () => {
         for (const direction of ['counter-clockwise', 'clockwise'] as const) {
           const key = `${section} ${position} ${direction}`;
           const result = await runWithShapes([
-            coil('K', { section, position, direction, numbers: { revolutions: '2.5', height: '10 mm' } }),
+            coil('K', {
+              section,
+              position,
+              direction,
+              numbers: { revolutions: '2.5', height: '10 mm' },
+            }),
           ]);
           const st = status(result, 'K');
           if (st.status === 'error') {

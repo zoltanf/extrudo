@@ -196,7 +196,8 @@ export function nameLoft(naming: LoftNaming): TopoNames {
     const { from, relation, input } = record;
     let name: string;
     if (from.kind === 'face' && relation === 'first') name = createdName(op, feature, 'cap:start');
-    else if (from.kind === 'face' && relation === 'last') name = createdName(op, feature, 'cap:end');
+    else if (from.kind === 'face' && relation === 'last')
+      name = createdName(op, feature, 'cap:end');
     else if (from.kind === 'edge' && relation === 'generated') {
       name = createdName(op, feature, 'side', sources[input]?.[from.index] ?? '_');
     } else continue;

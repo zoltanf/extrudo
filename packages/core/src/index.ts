@@ -65,7 +65,6 @@ export * from './sketch/planes';
 export * from './sketch/projection';
 export * from './sketch/schema';
 export * from './split-body';
-export * from './sweep';
 export {
   createDocumentStore,
   createModelStore,
@@ -82,4 +81,5 @@ export {
   type SessionState,
   type SessionStore,
 } from './stores';
+export * from './sweep';
 export * from './timeline';
