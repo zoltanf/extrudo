@@ -7,12 +7,14 @@
  */
 import { FeatureRegistry } from '@extrudo/core';
 import { chamferDialog } from './chamfer';
+import { coilDialog } from './coil';
 import { combineDialog } from './combine';
 import { CONSTRUCTION_DIALOGS } from './construction';
 import { draftDialog } from './draft';
 import { extrudeDialog } from './extrude';
 import { filletDialog } from './fillet';
 import { holeDialog } from './hole';
+import { loftDialog } from './loft';
 import { mirrorDialog } from './mirror';
 import { moveDialog } from './move';
 import { offsetFaceDialog } from './offset-face';
@@ -25,6 +27,7 @@ import { scaleDialog } from './scale';
 import { shellDialog } from './shell';
 import { commandId, type FeatureDialogSpec } from './spec';
 import { splitBodyDialog } from './split-body';
+import { sweepDialog } from './sweep';
 
 export type FeatureDialogs = FeatureRegistry<FeatureDialogSpec>;
 
@@ -51,6 +54,8 @@ export function featureDialogs(): FeatureDialogs {
   for (const spec of PATTERN_DIALOGS) dialogs.register(spec);
   // Split Body, Scale and Draft (P3-08, second half).
   dialogs.register(splitBodyDialog).register(scaleDialog).register(draftDialog);
+  // Sweep, loft and coil (P4-01, ADR-0055).
+  dialogs.register(sweepDialog).register(loftDialog).register(coilDialog);
   // Remove: edit which bodies a Remove takes out (P3-17).
   dialogs.register(removeDialog);
   return dialogs;

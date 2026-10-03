@@ -1,0 +1,148 @@
+{
+ "smooth new-body": {
+  "B:0": {
+   "volume": 8000,
+   "bbox": [
+    -10,
+    -10,
+    0,
+    10,
+    10,
+    20
+   ],
+   "faces": 6,
+   "valid": true
+  },
+  "L:0": {
+   "volume": 2222.9,
+   "bbox": [
+    -5,
+    -5,
+    0,
+    5,
+    5,
+    30
+   ],
+   "faces": 7,
+   "valid": true
+  }
+ },
+ "smooth join": {
+  "B:0": {
+   "volume": 8577.5,
+   "bbox": [
+    -10,
+    -10,
+    0,
+    10,
+    10,
+    30
+   ],
+   "faces": 12,
+   "valid": true
+  }
+ },
+ "smooth cut": {
+  "B:0": {
+   "volume": 6354.6,
+   "bbox": [
+    -10,
+    -10,
+    0,
+    10,
+    10,
+    20
+   ],
+   "faces": 11,
+   "valid": true
+  }
+ },
+ "smooth intersect": {
+  "B:0": {
+   "volume": 1645.4,
+   "bbox": [
+    -5,
+    -5,
+    0,
+    5,
+    5,
+    20
+   ],
+   "faces": 7,
+   "valid": true
+  }
+ },
+ "ruled new-body": {
+  "B:0": {
+   "volume": 8000,
+   "bbox": [
+    -10,
+    -10,
+    0,
+    10,
+    10,
+    20
+   ],
+   "faces": 6,
+   "valid": true
+  },
+  "L:0": {
+   "volume": 2222.9,
+   "bbox": [
+    -5,
+    -5,
+    0,
+    5,
+    5,
+    30
+   ],
+   "faces": 7,
+   "valid": true
+  }
+ },
+ "ruled join": {
+  "B:0": {
+   "volume": 8577.5,
+   "bbox": [
+    -10,
+    -10,
+    0,
+    10,
+    10,
+    30
+   ],
+   "faces": 12,
+   "valid": true
+  }
+ },
+ "ruled cut": {
+  "B:0": {
+   "volume": 6354.6,
+   "bbox": [
+    -10,
+    -10,
+    0,
+    10,
+    10,
+    20
+   ],
+   "faces": 11,
+   "valid": true
+  }
+ },
+ "ruled intersect": {
+  "B:0": {
+   "volume": 1645.4,
+   "bbox": [
+    -5,
+    -5,
+    0,
+    5,
+    5,
+    20
+   ],
+   "faces": 7,
+   "valid": true
+  }
+ }
+}

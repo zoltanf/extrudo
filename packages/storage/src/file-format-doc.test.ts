@@ -8,6 +8,11 @@ import { readFileSync } from 'node:fs';
 import {
   BODY_OPERATIONS,
   BodyMetaSchema,
+  COIL_DIRECTIONS,
+  COIL_POSITIONS,
+  COIL_SECTIONS,
+  COIL_TYPES,
+  coilFeature,
   boxFeature,
   COMBINE_OPERATIONS,
   CONSTRUCTION_FEATURES,
@@ -30,6 +35,7 @@ import {
   holeFeature,
   InputSchema,
   LengthUnitSchema,
+  loftFeature,
   loadDocument,
   MOVE_MODES,
   mirrorFeature,
@@ -59,6 +65,8 @@ import {
   sketchFeature,
   sphereFeature,
   splitBodyFeature,
+  SWEEP_ORIENTATIONS,
+  sweepFeature,
   torusFeature,
   UnitKindSchema,
 } from '@extrudo/core';
@@ -105,6 +113,9 @@ const FEATURES = [
   shellFeature,
   offsetFaceFeature,
   splitBodyFeature,
+  sweepFeature,
+  loftFeature,
+  coilFeature,
   scaleFeature,
   draftFeature,
   holeFeature,
@@ -189,6 +200,11 @@ describe('docs/file-format.md', () => {
       ...PATTERN_ANGLES,
       ...HOLE_KINDS,
       ...HOLE_EXTENTS,
+      ...SWEEP_ORIENTATIONS,
+      ...COIL_TYPES,
+      ...COIL_DIRECTIONS,
+      ...COIL_SECTIONS,
+      ...COIL_POSITIONS,
     ];
     const origin = [...ORIGIN_PLANES.map((p) => p.id), ...ORIGIN_AXES.map((a) => a.id)];
     expect(missing([...inputs, ...choices, ...origin])).toEqual([]);

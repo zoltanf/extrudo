@@ -1,0 +1,425 @@
+{
+ "circle inside counter-clockwise": {
+  "volume": 444.13,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 3,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface"
+  ]
+ },
+ "circle inside clockwise": {
+  "volume": 444.13,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 3,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface"
+  ]
+ },
+ "circle on counter-clockwise": {
+  "volume": 493.48,
+  "bbox": [
+   -11,
+   -11,
+   -1,
+   11,
+   11,
+   11
+  ],
+  "faces": 3,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface"
+  ]
+ },
+ "circle on clockwise": {
+  "volume": 493.48,
+  "bbox": [
+   -11,
+   -11,
+   -1,
+   11,
+   11,
+   11
+  ],
+  "faces": 3,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface"
+  ]
+ },
+ "circle outside counter-clockwise": {
+  "volume": 542.83,
+  "bbox": [
+   -12,
+   -12,
+   -1,
+   12,
+   12,
+   11
+  ],
+  "faces": 3,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface"
+  ]
+ },
+ "circle outside clockwise": {
+  "volume": 542.83,
+  "bbox": [
+   -12,
+   -12,
+   -1,
+   12,
+   12,
+   11
+  ],
+  "faces": 3,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:surface"
+  ]
+ },
+ "square inside counter-clockwise": {
+  "volume": 565.49,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:outer",
+   "coil:K:side:top"
+  ]
+ },
+ "square inside clockwise": {
+  "volume": 565.49,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:outer",
+   "coil:K:side:top"
+  ]
+ },
+ "square on counter-clockwise": {
+  "volume": 628.32,
+  "bbox": [
+   -11,
+   -11,
+   -1,
+   11,
+   11,
+   11
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:outer",
+   "coil:K:side:top"
+  ]
+ },
+ "square on clockwise": {
+  "volume": 628.32,
+  "bbox": [
+   -11,
+   -11,
+   -1,
+   11,
+   11,
+   11
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:outer",
+   "coil:K:side:top"
+  ]
+ },
+ "square outside counter-clockwise": {
+  "volume": 691.15,
+  "bbox": [
+   -12,
+   -12,
+   -1,
+   12,
+   12,
+   11
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:outer",
+   "coil:K:side:top"
+  ]
+ },
+ "square outside clockwise": {
+  "volume": 691.15,
+  "bbox": [
+   -12,
+   -12,
+   -1,
+   12,
+   12,
+   11
+  ],
+  "faces": 6,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:outer",
+   "coil:K:side:top"
+  ]
+ },
+ "triangle-out inside counter-clockwise": {
+  "volume": 240.65,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:top"
+  ]
+ },
+ "triangle-out inside clockwise": {
+  "volume": 240.65,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:top"
+  ]
+ },
+ "triangle-out on counter-clockwise": {
+  "volume": 264.22,
+  "bbox": [
+   -10.9,
+   -10.9,
+   -1,
+   10.9,
+   10.9,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:top"
+  ]
+ },
+ "triangle-out on clockwise": {
+  "volume": 264.22,
+  "bbox": [
+   -10.9,
+   -10.9,
+   -1,
+   10.9,
+   10.9,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:top"
+  ]
+ },
+ "triangle-out outside counter-clockwise": {
+  "volume": 287.78,
+  "bbox": [
+   -11.7,
+   -11.7,
+   -1,
+   11.7,
+   11.7,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:top"
+  ]
+ },
+ "triangle-out outside clockwise": {
+  "volume": 287.78,
+  "bbox": [
+   -11.7,
+   -11.7,
+   -1,
+   11.7,
+   11.7,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:inner",
+   "coil:K:side:top"
+  ]
+ },
+ "triangle-in inside counter-clockwise": {
+  "error": "The sweep runs into itself: the profile is too big for a bend of the path, or the path comes back too close. Make the profile smaller or the bends wider."
+ },
+ "triangle-in inside clockwise": {
+  "volume": 256.36,
+  "bbox": [
+   -10,
+   -10,
+   -1,
+   10,
+   10,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:outer",
+   "coil:K:side:top"
+  ]
+ },
+ "triangle-in on counter-clockwise": {
+  "error": "The sweep runs into itself: the profile is too big for a bend of the path, or the path comes back too close. Make the profile smaller or the bends wider."
+ },
+ "triangle-in on clockwise": {
+  "volume": 279.92,
+  "bbox": [
+   -10.9,
+   -10.9,
+   -1,
+   10.9,
+   10.9,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:outer",
+   "coil:K:side:top"
+  ]
+ },
+ "triangle-in outside counter-clockwise": {
+  "error": "The sweep runs into itself: the profile is too big for a bend of the path, or the path comes back too close. Make the profile smaller or the bends wider."
+ },
+ "triangle-in outside clockwise": {
+  "volume": 303.49,
+  "bbox": [
+   -11.7,
+   -11.7,
+   -1,
+   11.7,
+   11.7,
+   11
+  ],
+  "faces": 5,
+  "valid": true,
+  "names": [
+   "coil:K:cap:end",
+   "coil:K:cap:start",
+   "coil:K:side:bottom",
+   "coil:K:side:outer",
+   "coil:K:side:top"
+  ]
+ }
+}

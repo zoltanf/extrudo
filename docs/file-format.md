@@ -821,6 +821,85 @@ whose rounded or chamfered neighbours can't follow, and an angle that makes
 faces cross are reported as errors, with the largest angle that works where
 one does.
 
+### 6.22 `sweep`
+
+Moves sketch profiles or flat faces along a path (P4-01, ADR-0055), then makes
+new bodies or joins, cuts or intersects (section 6.3). No new keys. A useful
+sweep has `profiles` and `path`.
+
+| Input | Kind | Rule | Default and meaning |
+|---|---|---|---|
+| `profiles` | `ref` | Refs of kind `profile` or `face` (flat), all in one plane; a profile may have holes | none: fails until picked |
+| `path` | `ref` | Refs of kind `sketchEntity` (`<sketch>/<curve>`: a line, arc, circle, ellipse or spline, construction ones too) or `edge`, in any order and direction, that join end to end (within 1 µm) into one chain without branches | none: fails until picked |
+| `orientation` | `enum` | `follow`, `fixed` | `follow`: the profile keeps its angle to the path. `fixed`: it doesn't turn, staying parallel to where it starts |
+| `twist` | `expr` angle | `follow` only, along a path without sharp corners | 0. The profile turns about the path by this much from start to end, evenly by length |
+| `scale` | `expr` unitless | greater than 0; not on a closed path | 1. The profile's size at the end as a factor of its size at the start, changing evenly along the path |
+| `operation` | `enum` | section 6.3 | `new-body` |
+| `bodies` | `ref` | body refs | section 6.3 |
+
+The profile stays where it is: it need not touch the path, and travels with
+the path's frame **from the path's end nearer to the profile's centre** (the
+chain is walked the other way when its far end is nearer). Sharp corners of the
+path are mitred. Faces are named `sweep:<feature>:cap:start` (the profile's
+own place), `sweep:<feature>:cap:end` and `sweep:<feature>:side:<source>` per
+profile edge (a sketch curve's ID, or `(<edge name>)` for a body's face), as
+for extrude. A sweep that would run into itself (a profile too large for a
+bend, a path coming back near itself) is an error.
+
+### 6.23 `loft`
+
+A solid through sections in order (P4-01, ADR-0055), then new bodies or a
+join, cut or intersection (section 6.3). No new keys.
+
+| Input | Kind | Rule | Default and meaning |
+|---|---|---|---|
+| `sections` | `ref` | In loft order, at least two (three when `closed`): refs of kind `profile` or `face` (flat, one outline without holes), or as the first or last section a point: `point` (a construction point), `vertex` or `sketchEntity` (`<sketch>/<point>`) | none: fails until picked |
+| `ruled` | `bool` | | false: smooth through all sections. true: straight (ruled) between neighbours |
+| `closed` | `bool` | no points | false. true joins the last section back to the first: a ring with no end faces |
+| `operation` | `enum` | section 6.3 | `new-body` |
+| `bodies` | `ref` | body refs | section 6.3 |
+
+Sections may have different numbers of edges (a square to a circle); the
+kernel lines their starts up so the loft doesn't twist. Neighbouring sections
+in one plane, a section with a hole, a point in the middle and a loft that runs
+into itself are errors. Faces are named `loft:<feature>:cap:start` (the first
+section), `loft:<feature>:cap:end` (the last) and `loft:<feature>:side:<source>`
+after the edge of the earliest section that bounds the face. Rails and a centre
+line are not part of the format yet.
+
+### 6.24 `coil`
+
+A spring (P4-01, ADR-0055): a section swept along a helix, placed like a
+primitive (section 6.6), then new bodies or a join, cut or intersection. No
+new keys. Every input is optional; `"inputs": {}` is 5 turns, 20 mm high, of a
+2 mm round wire on a 20 mm diameter, standing on the XY plane at the origin.
+
+| Input | Kind | Rule | Default and meaning |
+|---|---|---|---|
+| `plane` | `ref` | At most one ref of kind `plane` or `face` | The XY plane. The coil's axis is the plane's normal through (`x`, `y`) |
+| `x`, `y` | `expr` length | | 0. The axis's place in the plane's frame |
+| `offset` | `expr` length | | 0. Lifts the start off the plane |
+| `type` | `enum` | `revolutions-height`, `revolutions-pitch`, `height-pitch` | `revolutions-height`: which two of `revolutions`, `height` and `pitch` set the length; the third follows, and its input is ignored |
+| `diameter` | `expr` length | greater than 0 | 20 mm. The helix's diameter at the start, measured through the section's centre when `position` is `on` |
+| `revolutions` | `expr` unitless | greater than 0, at most 1000 turns in all | 5. Fractions allowed |
+| `height` | `expr` length | greater than 0 | 20 mm. Along the axis from start to end |
+| `pitch` | `expr` length | greater than 0 and than the section's height along the axis | 4 mm. Rise per turn |
+| `taper` | `expr` angle | between -89° and 89° | 0. Half-angle of the cone the helix winds on; positive widens with height |
+| `direction` | `enum` | `counter-clockwise`, `clockwise` | `counter-clockwise` seen from above (along the normal): a right-hand spring |
+| `section` | `enum` | `circle`, `square`, `triangle-out`, `triangle-in` | `circle`. A triangle is equilateral, pointing away from the axis (`triangle-out`) or towards it (`triangle-in`) |
+| `size` | `expr` length | greater than 0 | 2 mm. The circle's diameter, the square's side, the triangle's side along the axis |
+| `position` | `enum` | `inside`, `on`, `outside` | `on`: the section is centred on the diameter; `inside` and `outside` put its outer or inner side on it |
+| `operation` | `enum` | section 6.3 | `new-body` |
+| `bodies` | `ref` | body refs | section 6.3 |
+
+The helix starts on the plane frame's X side of the axis, and the section is
+centred on that start height (half of it lies below the start). A section that
+would reach the axis, or turns that would touch, are errors. Faces are named
+`coil:<feature>:cap:start`, `coil:<feature>:cap:end` and
+`coil:<feature>:side:<role>`: `surface` (circle), `inner`, `outer`, `top`,
+`bottom` (square), and for triangles the base (`inner` or `outer`) and the
+`top` and `bottom` sides.
+
 ---
 
 ## 7. Sketch data (`sketchData`)
