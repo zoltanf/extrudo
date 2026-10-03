@@ -65,9 +65,18 @@ runs it under node; 64 checks of volumes, caps, history and refusals):
   section in the axial plane stays in it: the volume is the section's area times
   `turns · 2π · r` of its centroid (Pappus), checked to 1e-5. 20 turns sweep in
   about 0.8 s in the harness (-O1).
-- The harness's leak check (300 against 1,500 rounds of a twisted, scaled tube,
-  a coil and a loft) keeps the heap top flat (numbers in the harness log of the
-  task).
+- **MakePipeShell's result depends on which edge the section's wire starts
+  with.** An equilateral triangle pointing at a coil's axis, its wire starting
+  with the edge parallel to the axis, sweeps counter-clockwise into a solid
+  `BRepCheck_Analyzer` refuses, and clockwise into a sound one; started at
+  either other edge it is sound both ways. The facade tries a failed sweep
+  again from each of the section's next edges (up to four; the same edges, so
+  the history is unchanged).
+- A sweep along a path of several edges has one side face per profile edge
+  per path edge: they are named `side:<source>#1`, `#2` … along the path
+  (`deriveNames` numbering).
+- The leak check (`run.sh leaks 600`: 120 against 600 rounds of a twisted,
+  scaled tube, a round and a square coil and a loft) keeps the heap top flat.
 
 ## Decision
 

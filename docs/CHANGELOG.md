@@ -2,6 +2,16 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+## v0.4 (Phase 4, in progress)
+
+- 2026-10-03 · **P4-01** Sweep, loft and coil (ADR-0055): sweep along exact
+  sketch curves or edges (follow or fixed, twist, end scale, holes kept), loft
+  through profiles, faces and an end point (smooth or ruled, open or closed),
+  coil placed like a primitive (three types, taper, hand, circle, square or
+  triangle sections inside, on or outside the diameter); seven facade methods
+  checked in a native harness first; patterns repeat all three; file format
+  6.22 to 6.24.
+
 ## v0.3.0 (Phase 3, "real CAD")
 
 - 2026-10-02 · **Fix** Repeat visits to extrudo.org failed with `ERR_FAILED`: the

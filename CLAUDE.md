@@ -9,7 +9,7 @@ from the same codebase.
 makes it public (P3-15 prepared everything: `docs/release-checklist.md` lists the
 owner's steps). CI runs on every push and pull request.
 
-**Status (2026-10-02):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
+**Status (2026-10-03):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
@@ -27,7 +27,7 @@ analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus),
 P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-15
 (public release prep, ADR-0054: done except the owner's release steps),
 P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 is
-complete** (version 0.3.0).
+complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil) is done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -658,9 +658,27 @@ the allow-list and `NOTICE`**. The repo has README, CONTRIBUTING,
 CODE_OF_CONDUCT (contact `conduct@extrudo.org`, forwarded by Cloudflare
 Email Routing: `docs/deploy.md`), SECURITY (GitHub private reporting), issue
 forms and a PR template; `docs/file-format.md` is MIT.
-Next, one task at a time (not parallel tracks, since 2026-09-30): Phase 4,
-starting with **P4-01** (sweep, loft, coil; FR-FT-14), then P4-02 onward in
-`docs/03-roadmap.md`. The owner's own release steps (slicer check, making the
+ADR-0055 (P4-01) added **Sweep, Loft and Coil** (core `sweep.ts`, `loft.ts`,
+`coil.ts`; kernel `features/sweep.ts`, `loft.ts`, `coil.ts`; dialogs of the
+same names in Solid › Create's menu, no keys; all three patternable). The
+facade's `pathSketch` (curves staged with `sketch*`, placed in a frame: paths
+stay exact; the sketch output's `exact` curves feed it), `pathEdge`,
+`pathWire` (chains pieces in any order), `helix`, `sweep` (MakePipeShell per
+wire, holes cut out with history; follow = corrected Frenet, fixed, binormal
+for coils; **twist through an auxiliary spine** on a rotation-minimising
+frame, refused on sharp paths; **scale through a `Law_Linear`**; a failed pipe
+is retried from another section edge, since OCCT's result depends on the
+wire's first edge) and `loft` (ThruSections; **a closed ring needs the
+sections lined up by `BRepFill_CompatibleWires` first**, or OCCT caps it; rings
+skip the self-intersection check, which flags their seams). **The profile
+travels from the path's end nearer to it**, so it need not touch the path.
+Names: `sweep|loft|coil:<id>:cap:start|end`, `side:<source>` (`#n` per path
+piece; a loft side after its earliest section's edge, `nameLoft`). **P4-02's
+threads reuse `helixSweep`** (`features/coil.ts`: frame, radius, pitch, turns,
+taper, hand, any section curves). Native harness: `spikes/p4-01-harness`
+(`run.sh`, `run.sh leaks [n]`, `syntax.sh`, `occt-src.sh`).
+Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-02**
+(modeled threads; FR-FT-15), then P4-03 onward in `docs/03-roadmap.md`. The owner's own release steps (slicer check, making the
 repository public, Cloudflare, domain, tag v0.3.0) are in
 `docs/release-checklist.md`; don't do them. Deeper carried-over items are the
 P4-12 backlog.
@@ -694,7 +712,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit) (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil (0006 is reserved) |
 
 ## Stack summary
 
@@ -1621,3 +1639,19 @@ them. Notes further down that name a machine apply to that machine only.
   dimension on the bottom side labelled at (0, −16), the profile picked at the
   world origin in the home view, an edge picked at (0, −10, 15) for the fillet.
   `e2e/record-assets.spec.ts` (RECORD_ASSETS=1 only) is the demo recorder.
+- **Sweep, loft and coil e2e** (`e2e/sweep-loft-coil.spec.ts`, P4-01): the tools
+  are in Create's menu (`pickTool(page, 'Sweep' | 'Loft')`, `startPrimitive(page,
+  'Coil')`); dialogs are the regions "Sweep dialog", "Loft dialog", "Coil dialog"
+  ("Edit Sweep1 dialog"…). Sweep: buttons "Profiles" and "Path" (`exact: true`;
+  "1 edge"), combobox "Orientation" (`follow`/`fixed`), textboxes "Twist" and
+  "End scale". Loft: button "Sections" ("2 sections"), checkboxes "Ruled" and
+  "Closed". Coil: button "Plane" ("XY plane"), comboboxes "Type", "Direction",
+  "Section", "Section position", textboxes "Diameter", "Revolutions", "Height",
+  "Pitch" (the one the type doesn't use is absent), "Taper angle", "Section
+  size", `data-manipulators="distance:diameter distance:height"`. The default
+  coil is `Body1:3:22,22,22` (the wire is centred on the start height, half of
+  it below the plane). The spec's profile is a circle at (40, 0) beside a Box
+  cube, swept along the cube's edge at (10, −10, 10): the profile need not
+  touch the path. Kernel-side, the golden tables are `pnpm vitest run -u
+  packages/kernel/src/features/sweep-loft-coil`; the facade's native harness is
+  `bash spikes/p4-01-harness/run.sh` (and `run.sh leaks 600`, about 15 min).
