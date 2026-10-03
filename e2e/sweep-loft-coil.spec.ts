@@ -114,8 +114,8 @@ test('makes a coil with its defaults, then edits its type and section', async ({
     'distance:diameter distance:height',
   );
   await ok(page, dialog);
-  // 5 turns of a 2 mm wire on 20 mm, 20 mm high: the wire's half below the plane.
-  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:3:22,22,22');
+  // 5 turns of a 2 mm wire on 20 mm, 20 mm high (a face per turn): the wire's half below the plane.
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:7:22,22,22');
 
   await chip(page, 'Coil1').dblclick();
   const edit = page.getByRole('region', { name: 'Edit Coil1 dialog' });
@@ -125,7 +125,7 @@ test('makes a coil with its defaults, then edits its type and section', async ({
   await edit.getByRole('combobox', { name: 'Section', exact: true }).selectOption('square');
   await ok(page, edit);
   await kernelReady(page);
-  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:22,22,22');
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:18:22,22,22');
 
   // A pitch the wire doesn't fit in is refused in words.
   await chip(page, 'Coil1').dblclick();

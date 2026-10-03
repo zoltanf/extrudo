@@ -9,12 +9,14 @@
    10,
    11
   ],
-  "faces": 3,
+  "faces": 5,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:surface"
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
   ]
  },
  "circle inside clockwise": {
@@ -27,12 +29,14 @@
    10,
    11
   ],
-  "faces": 3,
+  "faces": 5,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:surface"
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
   ]
  },
  "circle on counter-clockwise": {
@@ -45,12 +49,14 @@
    11,
    11
   ],
-  "faces": 3,
+  "faces": 5,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:surface"
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
   ]
  },
  "circle on clockwise": {
@@ -63,12 +69,14 @@
    11,
    11
   ],
-  "faces": 3,
+  "faces": 5,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:surface"
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
   ]
  },
  "circle outside counter-clockwise": {
@@ -81,12 +89,14 @@
    12,
    11
   ],
-  "faces": 3,
+  "faces": 5,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:surface"
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
   ]
  },
  "circle outside clockwise": {
@@ -99,12 +109,14 @@
    12,
    11
   ],
-  "faces": 3,
+  "faces": 5,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:surface"
+   "coil:K:side:surface#1",
+   "coil:K:side:surface#2",
+   "coil:K:side:surface#3"
   ]
  },
  "square inside counter-clockwise": {
@@ -117,15 +129,23 @@
    10,
    11
   ],
-  "faces": 6,
+  "faces": 14,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "square inside clockwise": {
@@ -138,15 +158,23 @@
    10,
    11
   ],
-  "faces": 6,
+  "faces": 14,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "square on counter-clockwise": {
@@ -159,15 +187,23 @@
    11,
    11
   ],
-  "faces": 6,
+  "faces": 14,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "square on clockwise": {
@@ -180,15 +216,23 @@
    11,
    11
   ],
-  "faces": 6,
+  "faces": 14,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "square outside counter-clockwise": {
@@ -201,15 +245,23 @@
    12,
    11
   ],
-  "faces": 6,
+  "faces": 14,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "square outside clockwise": {
@@ -222,15 +274,23 @@
    12,
    11
   ],
-  "faces": 6,
+  "faces": 14,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-out inside counter-clockwise": {
@@ -243,14 +303,20 @@
    10,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-out inside clockwise": {
@@ -263,14 +329,20 @@
    10,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-out on counter-clockwise": {
@@ -283,14 +355,20 @@
    10.9,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-out on clockwise": {
@@ -303,14 +381,20 @@
    10.9,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-out outside counter-clockwise": {
@@ -323,14 +407,20 @@
    11.7,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-out outside clockwise": {
@@ -343,14 +433,20 @@
    11.7,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:inner",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:inner#1",
+   "coil:K:side:inner#2",
+   "coil:K:side:inner#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-in inside counter-clockwise": {
@@ -363,14 +459,20 @@
    10,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-in inside clockwise": {
@@ -383,14 +485,20 @@
    10,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-in on counter-clockwise": {
@@ -403,14 +511,20 @@
    10.9,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-in on clockwise": {
@@ -423,14 +537,20 @@
    10.9,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-in outside counter-clockwise": {
@@ -443,14 +563,20 @@
    11.7,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  },
  "triangle-in outside clockwise": {
@@ -463,14 +589,20 @@
    11.7,
    11
   ],
-  "faces": 5,
+  "faces": 11,
   "valid": true,
   "names": [
    "coil:K:cap:end",
    "coil:K:cap:start",
-   "coil:K:side:bottom",
-   "coil:K:side:outer",
-   "coil:K:side:top"
+   "coil:K:side:bottom#1",
+   "coil:K:side:bottom#2",
+   "coil:K:side:bottom#3",
+   "coil:K:side:outer#1",
+   "coil:K:side:outer#2",
+   "coil:K:side:outer#3",
+   "coil:K:side:top#1",
+   "coil:K:side:top#2",
+   "coil:K:side:top#3"
   ]
  }
 }

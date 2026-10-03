@@ -438,6 +438,25 @@ describe('sweep', { timeout: 120_000 }, () => {
       ]),
     );
     close(measure(result, 'B:0').volume, 60 * 20 * 20 - 3 * Math.PI * 4 * 20);
+    // At a distance of 0 every repeat lies on the original: skipped with a warning, not cut again.
+    const still = await runWithShapes([
+      box('B', { length: '60 mm' }),
+      d.feature,
+      p.feature,
+      sweep('W', [profile('S', d.data)], p.straight, { operation: 'cut' }),
+      {
+        ...testFeature('R', 'rectangularPattern'),
+        inputs: rectangularPatternInputs({
+          features: ['W'],
+          direction1: originAxisRef('origin:x'),
+          count1: '3',
+          distance1: '0 mm',
+        }),
+      },
+    ]);
+    expect(status(still, 'R')).toMatchObject({ status: 'warning' });
+    expect(status(still, 'R').message).toMatch(/Every instance lies on the original/);
+    close(measure(still, 'B:0').volume, 60 * 20 * 20 - Math.PI * 4 * 20);
   });
 
   it('refuses what it cannot build, in words', async () => {
@@ -779,11 +798,12 @@ describe('coil', { timeout: 120_000 }, () => {
     expect(m.valid).toBe(true);
     close(m.volume, Math.PI * 1 * 5 * 2 * Math.PI * 10);
     expect(boxOf(m.bbox)).toEqual([-11, -11, -1, 11, 11, 21]);
-    expect([...m.names].sort()).toEqual([
-      'coil:K:cap:end',
-      'coil:K:cap:start',
-      'coil:K:side:surface',
-    ]);
+    // The helix has an edge per turn, so the wire's surface is a face per turn, numbered up the coil.
+    expect([...m.names].sort()).toEqual(
+      ['cap:end', 'cap:start', ...[1, 2, 3, 4, 5].map((n) => `side:surface#${n}`)].map(
+        (r) => `coil:K:${r}`,
+      ),
+    );
     const data = seen.get('K')?.data as CoilOutputData;
     expect(data).toMatchObject({ radius: 10, turns: 5, pitch: 4, height: 20 });
   });
@@ -810,10 +830,11 @@ describe('coil', { timeout: 120_000 }, () => {
     );
     const m = measure(square, 'K:0');
     close(m.volume, 4 * ring(9));
+    const sides = ['bottom', 'inner', 'outer', 'top'].flatMap((s) =>
+      [1, 2, 3].map((n) => `side:${s}#${n}`),
+    );
     expect([...m.names].sort()).toEqual(
-      ['cap:end', 'cap:start', 'side:bottom', 'side:inner', 'side:outer', 'side:top'].map(
-        (r) => `coil:K:${r}`,
-      ),
+      ['cap:end', 'cap:start', ...sides].map((r) => `coil:K:${r}`).sort(),
     );
     const h = Math.sqrt(3);
     const out = ok(

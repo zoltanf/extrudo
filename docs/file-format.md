@@ -843,7 +843,7 @@ chain is walked the other way when its far end is nearer). Sharp corners of the
 path are mitred. Faces are named `sweep:<feature>:cap:start` (the profile's
 own place), `sweep:<feature>:cap:end` and `sweep:<feature>:side:<source>` per
 profile edge (a sketch curve's ID, or `(<edge name>)` for a body's face), as
-for extrude. A sweep that would run into itself (a profile too large for a
+for extrude, numbered `#1`, `#2` … along a path of several pieces (a face per piece). A sweep that would run into itself (a profile too large for a
 bend, a path coming back near itself) is an error.
 
 ### 6.23 `loft`
@@ -898,7 +898,7 @@ would reach the axis, or turns that would touch, are errors. Faces are named
 `coil:<feature>:cap:start`, `coil:<feature>:cap:end` and
 `coil:<feature>:side:<role>`: `surface` (circle), `inner`, `outer`, `top`,
 `bottom` (square), and for triangles the base (`inner` or `outer`) and the
-`top` and `bottom` sides.
+`top` and `bottom` sides; each has a face per turn, numbered `#1`, `#2` … up the coil.
 
 ---
 

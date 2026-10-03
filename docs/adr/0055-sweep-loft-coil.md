@@ -12,7 +12,7 @@
   `apps/web/src/features/sweep.ts`, `loft.ts`, `coil.ts`; the native harness
   `spikes/p4-01-harness/`; `e2e/sweep-loft-coil.spec.ts`; the file format,
   `docs/file-format.md` 6.22 to 6.24. **The facade changed** (additive: seven
-  methods and their helpers; OCCT input hash in the CHANGELOG line), no
+  methods and their helpers; OCCT input hash `0bdee0285892`), no
   schema-version change, no migration; three new feature types.
 - **Builds on:** ADR-0028/0029 (extrude, revolve: sources, `operate`,
   `splitSolids`, the proposal rule), ADR-0032 (primitives' placement), ADR-0047
@@ -63,8 +63,7 @@ runs it under node; 64 checks of volumes, caps, history and refusals):
 - A helix is a 2D line on a cylindrical or conical surface; `BRepLib::BuildCurves3d`
   makes its 3D curve (within 0.1 µm). Swept with a fixed binormal (the axis), a
   section in the axial plane stays in it: the volume is the section's area times
-  `turns · 2π · r` of its centroid (Pappus), checked to 1e-5. 20 turns sweep in
-  about 0.8 s in the harness (-O1).
+  `turns · 2π · r` of its centroid (Pappus), checked to 1e-5. Its timing is in the one-edge-per-turn point below.
 - **MakePipeShell's result depends on which edge the section's wire starts
   with.** An equilateral triangle pointing at a coil's axis, its wire starting
   with the edge parallel to the axis, sweeps counter-clockwise into a solid
@@ -72,6 +71,13 @@ runs it under node; 64 checks of volumes, caps, history and refusals):
   either other edge it is sound both ways. The facade tries a failed sweep
   again from each of the section's next edges (up to four; the same edges, so
   the history is unchanged).
+- **A helix of one edge for all its turns makes slow and wrong booleans**: a
+  20-turn groove cut round a post took 10.5 s and removed 73 mm³ instead of
+  about 460 (the P4-02 thread work saw such a cut return its input uncut),
+  and a 200-turn coil (from the fuzzer) took 165 s. Built as **one edge per
+  turn** the sweep is 12 times quicker (0.11 s for 20 turns), has a side
+  face per turn that the boolean prunes by box, and the same groove cuts
+  correctly in 3.7 s whether the coil has 20 or 100 turns.
 - A sweep along a path of several edges has one side face per profile edge
   per path edge: they are named `side:<source>#1`, `#2` … along the path
   (`deriveNames` numbering).
@@ -143,7 +149,7 @@ section as `PlanarCurve`s in the (distance from the axis, height) plane, with
 a role per curve for the names. A modeled thread passes its thread profile (a
 trapezoid of the preset's pitch, with the print tolerance) and the hole's or
 shaft's frame and cuts or joins with `operate` like any solid feature. The
-facade's `helix` (a wire) and `sweep` with a binormal are the kernel API.
+facade's `helix` (a wire of one edge per turn, so the side faces are one per turn, `side:<role>#n`) and `sweep` with a binormal are the kernel API; P4-02 found the same need for its own thread helix.
 
 ### 5. Dialogs, toolbar, patterns
 
@@ -156,6 +162,31 @@ Loft propose join for a body's face (`proposeSweep`, travel `both`), Coil a
 join on a face. All three are in `PATTERNABLE_FEATURE_TYPES`: their join or cut
 tool is a `previewTools` entry from `operate`, so patterns and mirrors repeat
 them (tested: a pattern of a cutting sweep and of a coil cut).
+
+**Patterns skip repeats that lie on the original** (`distinctPlacements` in
+`kernel/src/features/pattern.ts`, an amendment to ADR-0047): the fuzzer set a
+pattern of a 20-turn coil cut to a distance of 0, and OCCT took 44 s to cut the
+coil into the faces it had already cut. A feature pattern now drops placements
+equal to the original's or to an earlier one (within 1 µm) and warns when none
+is left; a body pattern still makes its (coincident) copies.
+
+### 6. Tests and the fuzzer
+
+Core schema tests (`core/src/sweep-loft-coil.test.ts`), kernel tests through
+the engine with `strictLeaks` and three golden tables
+(`kernel/src/features/sweep-loft-coil.test.ts`, `golden/{sweep,loft,coil}-options.json`),
+dialog tests (`apps/web/src/features/sweep-loft-coil.test.ts`), the e2e spec,
+and a fixture for the fuzzer, `fixtures/benchmarks/p4-01-sweep-loft-coil.extrudo`
+(a twisted, scaling sweep, a loft to an offset plane, a parameter-sized coil
+cut into a post and a pattern of it), which `features/sweep-loft-coil-fixture.test.ts`
+writes with `WRITE_FIXTURES=1` and checks otherwise.
+
+### 7. Size
+
+The OCCT WASM grows from 17.66 MB to 18.67 MB raw (4.03 to 4.23 MB brotli):
+MakePipeShell, ThruSections, the compatible-wires pass, the argument analyser
+and the laws it pulls in. The precache is 6.03 MB brotli, about 1 s at 50 Mbit
+(NFR-02 holds).
 
 ## Alternatives rejected
 

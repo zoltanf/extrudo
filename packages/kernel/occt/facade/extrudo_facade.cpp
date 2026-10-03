@@ -2006,15 +2006,33 @@ public:
       const double turnSign = left ? -1.0 : 1.0;
       const gp_Dir2d direction(turnSign * 2 * M_PI, rise);
       Handle(Geom2d_Line) line = new Geom2d_Line(gp_Pnt2d(0, 0), direction);
-      const double length = turns * std::sqrt(4 * M_PI * M_PI + rise * rise);
-      BRepBuilderAPI_MakeEdge edge(line, surface, 0, length);
-      if (!edge.IsDone()) return fail("Couldn't make the coil's helix.");
-      TopoDS_Edge helixEdge = edge.Edge();
-      if (!BRepLib::BuildCurves3d(helixEdge, 1e-7, GeomAbs_C2, 14, 2000)) {
-        return fail("Couldn't build the coil's helix as a 3D curve.");
+      // One edge per turn (the last one the fraction left): a sweep then has a face per turn,
+      // which booleans prune by their boxes; one face for all the turns made a 200-turn cut
+      // take minutes.
+      const double perTurn = std::sqrt(4 * M_PI * M_PI + rise * rise);
+      const double length = turns * perTurn;
+      const int pieces = std::max(1, static_cast<int>(std::ceil(turns - 1e-6)));
+      BRepBuilderAPI_MakeWire wire;
+      TopoDS_Vertex joint;
+      for (int k = 0; k < pieces; ++k) {
+        const double from = k * perTurn;
+        const double to = k + 1 == pieces ? length : (k + 1) * perTurn;
+        const gp_Pnt2d uv = line->Value(to);
+        const TopoDS_Vertex end = BRepBuilderAPI_MakeVertex(surface->Value(uv.X(), uv.Y())).Vertex();
+        if (k == 0) {
+          const gp_Pnt2d start = line->Value(from);
+          joint = BRepBuilderAPI_MakeVertex(surface->Value(start.X(), start.Y())).Vertex();
+        }
+        BRepBuilderAPI_MakeEdge edge(line, surface, joint, end, from, to);
+        if (!edge.IsDone()) return fail("Couldn't make the coil's helix.");
+        TopoDS_Edge piece = edge.Edge();
+        if (!BRepLib::BuildCurves3d(piece, 1e-7, GeomAbs_C2, 14, 200)) {
+          return fail("Couldn't build the coil's helix as a 3D curve.");
+        }
+        wire.Add(piece);
+        if (!wire.IsDone()) return fail("Couldn't make a wire of the coil's helix.");
+        joint = end;
       }
-      BRepBuilderAPI_MakeWire wire(helixEdge);
-      if (!wire.IsDone()) return fail("Couldn't make a wire of the coil's helix.");
       return store(wire.Wire());
     } catch (...) {
       return failFromException("Coil failed");

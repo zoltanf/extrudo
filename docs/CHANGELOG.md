@@ -10,7 +10,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
   coil placed like a primitive (three types, taper, hand, circle, square or
   triangle sections inside, on or outside the diameter); seven facade methods
   checked in a native harness first; patterns repeat all three; file format
-  6.22 to 6.24.
+  6.22 to 6.24; OCCT input hash `0bdee0285892`; feature patterns skip repeats on the original.
 
 ## v0.3.0 (Phase 3, "real CAD")
 

@@ -663,7 +663,7 @@ ADR-0055 (P4-01) added **Sweep, Loft and Coil** (core `sweep.ts`, `loft.ts`,
 same names in Solid › Create's menu, no keys; all three patternable). The
 facade's `pathSketch` (curves staged with `sketch*`, placed in a frame: paths
 stay exact; the sketch output's `exact` curves feed it), `pathEdge`,
-`pathWire` (chains pieces in any order), `helix`, `sweep` (MakePipeShell per
+`pathWire` (chains pieces in any order), `helix` (**one edge per turn**: one edge for all turns made booleans slow and wrong), `sweep` (MakePipeShell per
 wire, holes cut out with history; follow = corrected Frenet, fixed, binormal
 for coils; **twist through an auxiliary spine** on a rotation-minimising
 frame, refused on sharp paths; **scale through a `Law_Linear`**; a failed pipe
@@ -676,7 +676,11 @@ Names: `sweep|loft|coil:<id>:cap:start|end`, `side:<source>` (`#n` per path
 piece; a loft side after its earliest section's edge, `nameLoft`). **P4-02's
 threads reuse `helixSweep`** (`features/coil.ts`: frame, radius, pitch, turns,
 taper, hand, any section curves). Native harness: `spikes/p4-01-harness`
-(`run.sh`, `run.sh leaks [n]`, `syntax.sh`, `occt-src.sh`).
+(`run.sh`, `run.sh leaks [n]`, `syntax.sh`, `occt-src.sh`). **Feature patterns
+skip repeats that lie on the original** (`distinctPlacements`: a coil cut
+repeated at distance 0 took OCCT 44 s). The fuzzer also edits
+`fixtures/benchmarks/p4-01-sweep-loft-coil.extrudo` (written by
+`features/sweep-loft-coil-fixture.test.ts` with `WRITE_FIXTURES=1`).
 Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-02**
 (modeled threads; FR-FT-15), then P4-03 onward in `docs/03-roadmap.md`. The owner's own release steps (slicer check, making the
 repository public, Cloudflare, domain, tag v0.3.0) are in
@@ -1649,7 +1653,7 @@ them. Notes further down that name a machine apply to that machine only.
   "Section", "Section position", textboxes "Diameter", "Revolutions", "Height",
   "Pitch" (the one the type doesn't use is absent), "Taper angle", "Section
   size", `data-manipulators="distance:diameter distance:height"`. The default
-  coil is `Body1:3:22,22,22` (the wire is centred on the start height, half of
+  coil is `Body1:7:22,22,22` (a face per turn; the wire is centred on the start height, half of
   it below the plane). The spec's profile is a circle at (40, 0) beside a Box
   cube, swept along the cube's edge at (10, −10, 10): the profile need not
   touch the path. Kernel-side, the golden tables are `pnpm vitest run -u

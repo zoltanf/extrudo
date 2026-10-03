@@ -309,6 +309,43 @@ int main(int argc, char** argv) {
       check(valid(s), left ? "triangle-in coil, clockwise: valid" : "triangle-in coil, counter-clockwise: valid");
       check(near(volume(s), want, 1e-4), "triangle-in coil: volume", volume(s), want);
     }
+    // 10c. A groove cut round a post by long coils: the helix has an edge per turn, so the
+    // sweep has a face per turn and the boolean stays quick.
+    for (int turns : {20, 100}) {
+      const int post = f.makeCylinder(0, 0, 0, 0, 0, 1, 10, 40);
+      const int helix = f.helix(0, 0, 2, 0, 0, 1, 1, 0, 0, 10.4, 2, turns, 0, false);
+      const int section = disc(gp_Pnt(10.4, 0, 2), gp_Dir(0, 1, 0), 0.8);
+      auto t0 = std::chrono::steady_clock::now();
+      const int coil = f.sweep(section, helix, 2, 0, 1, false, 0, 0, 1);
+      const double swept = ms(t0);
+      check(valid(coil), "groove coil: valid");
+      check(faces(coil) == turns + 2, "groove coil: a face per turn and two caps", faces(coil), turns + 2);
+      t0 = std::chrono::steady_clock::now();
+      const int cut = f.boolean(1, post, coil, false);
+      const double cutting = ms(t0);
+      check(valid(cut), cut ? "groove cut: valid" : f.lastError_.c_str());
+      if (cut) std::printf("     groove volume %.1f (post %.1f)\n", volume(cut), volume(post));
+      std::printf("     groove of %d turns: sweep %.0f ms, cut %.0f ms\n", turns, swept, cutting);
+    }
+    // 10d. The same with the old one-edge helix, for comparison (ADR-0055).
+    for (int turns : {20}) {
+      const gp_Ax3 frame(gp_Pnt(0, 0, 2), gp_Dir(0, 0, 1), gp_Dir(1, 0, 0));
+      Handle(Geom_Surface) surface = new Geom_CylindricalSurface(frame, 10);
+      Handle(Geom2d_Line) line = new Geom2d_Line(gp_Pnt2d(0, 0), gp_Dir2d(2 * M_PI, 2));
+      BRepBuilderAPI_MakeEdge edge(line, surface, 0, turns * std::sqrt(4 * M_PI * M_PI + 4));
+      TopoDS_Edge e = edge.Edge();
+      BRepLib::BuildCurves3d(e, 1e-7, GeomAbs_C2, 14, 2000);
+      const int helix = f.store(BRepBuilderAPI_MakeWire(e).Wire());
+      const int post = f.makeCylinder(0, 0, 0, 0, 0, 1, 10, 40);
+      const int section = disc(gp_Pnt(10, 0, 2), gp_Dir(0, 1, 0), 0.8);
+      auto t0 = std::chrono::steady_clock::now();
+      const int coil = f.sweep(section, helix, 2, 0, 1, false, 0, 0, 1);
+      const double swept = ms(t0);
+      t0 = std::chrono::steady_clock::now();
+      const int cut = f.boolean(1, post, coil, false);
+      std::printf("     one-edge groove of %d turns: sweep %.0f ms, cut %.0f ms, valid %d, volume %.1f\n", turns,
+                  swept, ms(t0), (int)valid(cut), volume(cut));
+    }
     // 10b. Left-handed and tapered coils.
     {
       const int left = f.helix(0, 0, 0, 0, 0, 1, 1, 0, 0, 10, 4, 2, 0, true);
