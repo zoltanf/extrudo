@@ -791,7 +791,8 @@ end to end, faster than in Fusion 360.
 - [ ] **P4-05 Control-point splines, conics, sketch polish.** FR-SK-03.
 - [ ] **P4-06 Import:** SVG/DXF → sketch; STEP → base body; STL/3MF/OBJ → mesh
   body with Manifold booleans; canvas images. FR-SK-14, FR-IO-05..07.
-- [ ] **P4-07 Customizer panel and configurations.** FR-PAR-05, -06.
+- [x] **P4-07 Customizer panel and configurations.** FR-PAR-05, -06. Done
+  2026-10-03 (ADR-0059).
 - [ ] **P4-08 Tolerance helpers and slicer hand-off.** FR-3DP-05, -06.
 - [ ] **P4-09 Timeline groups; linked folder storage.** FR-TL-06, FR-PRJ-06.
 - [ ] **P4-10 Rib/web; variable-radius fillet.** FR-FT-17.

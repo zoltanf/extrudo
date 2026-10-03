@@ -80,6 +80,18 @@ describe('buildCommands', () => {
     expect(sketch.get('delete')?.keys).toEqual(['Delete', 'Backspace']);
   });
 
+  it('offers the Customizer beside Parameters, with no key (P4-07)', () => {
+    const model = byId(context('model'));
+    expect(model.get('customizer')).toMatchObject({
+      label: 'Customizer',
+      group: 'Solid › Modify',
+      keys: [],
+    });
+    expect(model.get('customizer')?.unavailable).toBeUndefined();
+    // It works on the model only, so it isn't in the Sketch tab.
+    expect(byId(context('sketch')).has('customizer')).toBe(false);
+  });
+
   it('starts tools through the context', () => {
     const ctx = context('sketch');
     byId(ctx).get('line')?.run();

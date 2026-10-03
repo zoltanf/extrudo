@@ -189,14 +189,18 @@ schema names unknown keys, and a reader leaves them out (section 3).
 | `timelineMarker` | integer | yes | At least 0 and at most `features.length`. The number of *active* features: the feature at index `i >= timelineMarker` is rolled back (not evaluated). `features.length` means everything is active. |
 | `bodies` | object | yes | Record from body ID to `BodyMeta` (section 4.2). May be empty. Keys are IDs the kernel makes (section 10). |
 | `views` | array of NamedView | yes | Saved camera views (section 4.3). May be empty. |
+| `configurations` | array of Configuration | no | Named value sets for the customizer (section 5.4). Absent means the design has none. |
 | `meta` | object | yes | Section 4.4. |
 
 Whole-document rules (checked after the per-field rules):
 
 - `timelineMarker` must not exceed `features.length`.
 - Feature `id`s are unique; parameter `id`s are unique; parameter `name`s are
-  unique; view `id`s are unique. (Names are compared exactly, case
-  sensitively.)
+  unique; view `id`s are unique; configuration `id`s are unique and
+  configuration `name`s are unique **trimmed and case-insensitively** ("Small
+  box" and " small box " are the same name). Every other name is compared
+  exactly, case sensitively.
+- A parameter's customizer `min` must not be above its `max` (section 5.1).
 - Each feature's `inputs` is additionally checked per feature `type`
   (section 6); the document schema alone only knows the generic input shapes.
 
@@ -258,6 +262,7 @@ User parameters, the named values of the parameters table.
 | `expression` | string | yes | An expression (section 5.2), for example `2 mm` or `width / 2`. |
 | `unit` | `"length"`, `"angle"` or `"unitless"` | yes | The *kind* the expression must evaluate to. |
 | `comment` | string | no | Free text. |
+| `customizer` | object | no | The parameter is shown in the customizer panel. Section 5.1.1. |
 
 Rules that the *evaluator* enforces but the schema does not: a name must not be
 a **reserved word** (a unit `mm cm m in ft deg rad`, a function name, or
@@ -266,6 +271,25 @@ a **reserved word** (a unit `mm cm m in ft deg rad`, a function name, or
 list order is not evaluation order); a **cycle** is an error reported on
 every parameter in it. All parameters and model parameters share **one
 namespace**.
+
+#### 5.1.1 `customizer`
+
+Present = the parameter is exposed for changing in the customizer panel
+(ADR-0059 §1). Only user parameters can be; model parameters (section 5.3) are
+not exposed.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `min` | number | no | The slider's range, low end, in the parameter's **base unit** (mm, degrees, or plain). Absent means no slider. |
+| `max` | number | no | The slider's range, high end, in the base unit. Must not be below `min`. |
+| `step` | number | no | The slider's step in the base unit. Positive. Absent means the panel's own step. |
+| `group` | string | no | 1 to 40 characters: a heading in the panel. Parameters without a `group` come first, then the groups in order of first appearance. |
+
+The range is a **slider range, not a constraint**: an expression may evaluate
+outside `[min, max]` (the panel shows that with a warning). A parameter whose
+expression is a plain value (one number with an optional unit) gets a slider
+when it has both ends; a formula shows its computed value read-only with the
+formula as a hint.
 
 ### 5.2 Expression language (summary of ADR-0004)
 
@@ -301,6 +325,30 @@ parameter**: its `paramName` (`d1`, `d2`, ...). It then takes part in the
 same namespace as user parameters, so other expressions can use it. The
 schema requires only that a `paramName` match the name regex; uniqueness and
 non-collision with user parameters and reserved words are the evaluator's job.
+
+### 5.4 `configurations[]` (Configuration)
+
+Named value sets to switch between (ADR-0059 §2): the presets of a
+customizer. Optional; a design without any may leave the key out.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `id` | ID | yes | Unique among configurations, permanent (section 10). |
+| `name` | string | yes | 1 to 60 characters. Unique trimmed and case-insensitively (section 4). |
+| `values` | object | yes | Record from parameter ID to the expression this configuration sets for that parameter. Keys are parameter IDs; a value is an expression string (section 5.2). |
+
+- **Applying** a configuration sets the `expression` of every parameter it
+  lists. Parameters it doesn't list keep their values. A value for a parameter
+  that **no longer exists** is ignored (the panel shows it as missing);
+  `removeParameter` takes such an entry out with the parameter, so a document
+  written by the app has none.
+- **No "active" configuration is stored.** One would go stale after any edit,
+  undo or slider drag. A tool shows a configuration as current when every
+  value it lists that still exists equals the parameter's expression, compared
+  **after trimming** (whitespace is insignificant in an expression); undo or a
+  manual edit then simply leaves no configuration current.
+- Writing a configuration (saving a new one, or updating one with the current
+  expressions) captures the expressions **verbatim**, formatting included.
 
 ---
 
@@ -1107,12 +1155,13 @@ geometry only if `id` does not resolve (the app then warns that it guessed).
 
 ## 9. Example
 
-A complete valid `document.json`: two parameters, a 40 by 20 mm rectangle
-sketch on the XY plane (four lines, each with its own two points; joined by
-`coincident` constraints; two dimensions, one of them a model parameter), an
-extrude of its profile that is `wall * 5` long, a box on the extrude's end
-face that joins the body, the body's record, and one saved view. The sketch has no `projections`. (A test parses this
-block against the real schema, so it stays valid.)
+A complete valid `document.json`: two parameters (one of them exposed in the
+customizer), a 40 by 20 mm rectangle sketch on the XY plane (four lines, each
+with its own two points; joined by `coincident` constraints; two dimensions,
+one of them a model parameter), an extrude of its profile that is `wall * 5`
+long, a box on the extrude's end face that joins the body, the body's record,
+two configurations and one saved view. The sketch has no `projections`. (A
+test parses this block against the real schema, so it stays valid.)
 
 ```json example
 {
@@ -1122,7 +1171,14 @@ block against the real schema, so it stays valid.)
   "name": "Example bracket",
   "settings": { "units": "mm", "precision": 2 },
   "parameters": [
-    { "id": "param-width", "name": "width", "expression": "40 mm", "unit": "length", "comment": "Overall width" },
+    {
+      "id": "param-width",
+      "name": "width",
+      "expression": "40 mm",
+      "unit": "length",
+      "comment": "Overall width",
+      "customizer": { "min": 20, "max": 80, "step": 5, "group": "Size" }
+    },
     { "id": "param-wall", "name": "wall", "expression": "2 mm", "unit": "length" }
   ],
   "features": [
@@ -1210,6 +1266,10 @@ block against the real schema, so it stays valid.)
   "bodies": {
     "extrude-1:0": { "name": "Body1", "color": "#3b82f6", "opacity": 1, "visible": true }
   },
+  "configurations": [
+    { "id": "configuration-1", "name": "Narrow", "values": { "param-width": "25 mm" } },
+    { "id": "configuration-2", "name": "Wide", "values": { "param-width": "60 mm" } }
+  ],
   "views": [
     {
       "id": "view-1",
@@ -1241,12 +1301,13 @@ and `versions/1.json` (a document of the same shape).
 ## 10. IDs, determinism and what is derived
 
 **IDs.** Every entity that has an ID (document, feature, parameter, view,
-sketch entity, constraint, dimension, projection) gets a random UUID (v4, from
-`crypto.randomUUID()`) when it is created and keeps it for life; IDs are never
-reused. The schema only requires a non-empty string, and readers must accept
-any. IDs of features are used as tokens inside references and persistent
-names, so a hand-written feature ID should use only `[A-Za-z0-9_.~-]` and no
-`/` or `:`. Sketch entity, constraint, dimension and projection IDs share one
+configuration, sketch entity, constraint, dimension, projection) gets a random
+UUID (v4, from `crypto.randomUUID()`) when it is created and keeps it for life;
+IDs are never reused. The schema only requires a non-empty string, and readers
+must accept any. IDs of features are used as tokens inside references and
+persistent names, so a hand-written feature ID should use only
+`[A-Za-z0-9_.~-]` and no `/` or `:`. Sketch entity, constraint, dimension and
+projection IDs share one
 space per sketch (section 7). Body IDs are made by the kernel (`<feature>:<n>`)
 and profile region IDs by the sketch profile detector; a third-party writer
 that creates them must follow the rules in section 8.

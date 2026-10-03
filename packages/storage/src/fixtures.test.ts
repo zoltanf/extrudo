@@ -8,7 +8,7 @@ import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline'
 import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
 import b6 from '../../../fixtures/benchmarks/b6-wall-hook.extrudo?url&inline';
 import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
-import { readArchive } from './archive';
+import { readArchive, writeArchive } from './archive';
 
 const bytesOf = (dataUrl: string) =>
   Uint8Array.from(atob(dataUrl.slice(dataUrl.indexOf(',') + 1)), (c) => c.charCodeAt(0));
@@ -52,5 +52,20 @@ describe('benchmark fixtures', () => {
     expect(archive.doc.timelineMarker).toBe(features.length);
     expect(archive.doc.parameters.length).toBeGreaterThan(3);
     expect(archive.thumbnail?.length).toBeGreaterThan(0);
+  });
+
+  // P4-07 added `parameters[].customizer` and `configurations[]` as optional
+  // keys: a design saved before them (formatVersion stays 1) must load
+  // unchanged and survive a save.
+  it('opens a design saved before the customizer and round-trips it', () => {
+    const archive = readArchive(bytesOf(b1));
+    expect(archive.doc).not.toHaveProperty('configurations');
+    expect(archive.doc.parameters.every((p) => !('customizer' in p))).toBe(true);
+
+    const saved = readArchive(writeArchive(archive.doc));
+    expect(saved.migrated).toBe(false);
+    expect(saved.dropped).toEqual([]);
+    expect(saved.doc).toEqual(archive.doc);
+    expect(saved.doc.formatVersion).toBe(1);
   });
 });

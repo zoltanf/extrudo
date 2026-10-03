@@ -558,6 +558,13 @@ export const TOOLS = {
     category: 'modify',
     hint: 'Named values and expressions that drive the model.',
   },
+  customizer: {
+    id: 'customizer',
+    label: 'Customizer',
+    icon: 'customizer',
+    category: 'modify',
+    hint: 'The few parameters this design exposes, with sliders, and named configurations.',
+  },
   offsetPlane: {
     id: 'offsetPlane',
     label: 'Offset Plane',
@@ -739,7 +746,17 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
       },
       {
         label: 'Modify',
-        tools: ['pressPull', 'fillet', 'chamfer', 'shell', 'offsetFace', 'parameters'],
+        // Parameters and the Customizer panel (P4-07) sit together: what a
+        // design exposes is a few of its parameters.
+        tools: [
+          'pressPull',
+          'fillet',
+          'chamfer',
+          'shell',
+          'offsetFace',
+          'parameters',
+          'customizer',
+        ],
         more: ['thread', 'draft', 'splitBody', 'scale'],
       },
       { label: 'Transform', tools: ['move', 'mirror', 'combine'] },

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { applyCommand, type Command, CommandError, defineCommand } from './commands';
 import {
+  addConfiguration,
+  removeConfiguration,
+  setParameterCustomizer,
+  updateConfiguration,
+} from './customizer';
+import {
   addParameter,
   insertFeature,
   isFeatureVisible,
@@ -20,13 +26,14 @@ import {
   updateSettings,
 } from './document-commands';
 import { UndoHistory } from './history';
-import type { DimensionId, SketchEntityId } from './ids';
+import type { ConfigurationId, DimensionId, SketchEntityId } from './ids';
 import { removeBodiesFeatureOf } from './remove';
 import { DocumentSchema, type ExtrudoDocument, type Feature } from './schema';
 import { emptySketchData } from './sketch/feature';
 import { bid, feature, fid, parameter, pid, sampleDocument } from './testing';
 
 const apply = (doc: ExtrudoDocument, command: Command<unknown>) => applyCommand(doc, command).doc;
+const cid = (id: string) => id as ConfigurationId;
 
 describe('applyCommand', () => {
   it('returns the new document with forward and inverse patches', () => {
@@ -280,6 +287,10 @@ const EACH_COMMAND: Command<unknown>[] = [
   moveTimelineMarker({ index: 1 }),
   updateBody({ id: bid('b1'), changes: { name: 'Body1' } }),
   nameBodies({ bodies: { [bid('b1')]: { name: 'Body1', visible: true } } }),
+  setParameterCustomizer({ id: pid('p1'), customizer: { min: 10, max: 80, group: 'Size' } }),
+  addConfiguration({
+    configuration: { id: cid('c1'), name: 'Big', values: { [pid('p1')]: '60 mm' } },
+  }),
 ];
 
 describe('undo/redo round trips', () => {
@@ -355,7 +366,7 @@ function randomCommand(
   const aFeature = pick(doc.features);
   const aParameter = pick(doc.parameters);
   const n = Math.floor(random() * 1000);
-  switch (Math.floor(random() * 11)) {
+  switch (Math.floor(random() * 13)) {
     case 0:
       return renameDocument({ name: `Doc ${n}` });
     case 1:
@@ -389,11 +400,44 @@ function randomCommand(
       return aFeature && random() < 0.5
         ? removeFeature({ id: aFeature.id })
         : moveTimelineMarker({ index: Math.floor(random() * (doc.features.length + 1)) });
-    default:
+    case 11:
+      return (
+        aParameter &&
+        (aParameter.customizer
+          ? setParameterCustomizer({ id: aParameter.id })
+          : setParameterCustomizer({
+              id: aParameter.id,
+              customizer: { min: 0, max: 100, group: `Group ${n % 3}` },
+            }))
+      );
+    default: {
+      // Configurations (P4-07): a fresh name every time, so nothing is refused.
+      const configuration = pick(doc.configurations ?? []);
+      const again = random();
+      if (configuration && again < 0.4) {
+        return random() < 0.5
+          ? removeConfiguration({ id: configuration.id })
+          : updateConfiguration({
+              id: configuration.id,
+              changes: aParameter
+                ? { values: { [aParameter.id]: `${n} mm` } }
+                : { name: `Config ${newId()}` },
+            });
+      }
+      if (again < 0.7) {
+        return addConfiguration({
+          configuration: {
+            id: cid(`c${newId()}`),
+            name: `Config ${newId()}`,
+            values: aParameter ? { [aParameter.id]: `${n} mm` } : {},
+          },
+        });
+      }
       return updateBody({
         id: bid(`b${n % 3}`),
         changes: { name: `Body ${n}`, visible: n % 2 === 0 },
       });
+    }
   }
 }
 

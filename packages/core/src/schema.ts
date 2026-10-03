@@ -19,6 +19,7 @@ export * from './refs';
 
 import {
   BodyIdSchema,
+  ConfigurationIdSchema,
   DocumentIdSchema,
   FeatureIdSchema,
   ParameterIdSchema,
@@ -32,14 +33,66 @@ export type LengthUnit = z.infer<typeof LengthUnitSchema>;
 export const UnitKindSchema = z.enum(['length', 'angle', 'unitless']);
 export type UnitKind = z.infer<typeof UnitKindSchema>;
 
+/**
+ * How an exposed parameter shows in the customizer panel (P4-07, ADR-0059 §1):
+ * the object being present is what exposes it. `min`, `max` and `step` are the
+ * slider's range in the parameter's **base unit** (mm, degrees, or plain), not
+ * a constraint: a value outside `[min, max]` is allowed and the panel warns
+ * about it. `group` is a heading in the panel; without one the parameter sits
+ * at the top, and ungrouped parameters come before the groups (which are in
+ * order of first appearance).
+ */
+export const CustomizerSchema = z.strictObject({
+  min: z.number().optional(),
+  max: z.number().optional(),
+  /** Slider step in the base unit; must be positive. */
+  step: z.number().positive().optional(),
+  group: z.string().min(1).max(40).optional(),
+});
+export type Customizer = z.infer<typeof CustomizerSchema>;
+
 export const ParameterSchema = z.strictObject({
   id: ParameterIdSchema,
   name: z.string().regex(PARAMETER_NAME, 'must be a letter or _ followed by letters, digits or _'),
   expression: z.string(),
   unit: UnitKindSchema,
   comment: z.string().optional(),
+  /** Present = the parameter is shown in the customizer panel (P4-07). */
+  customizer: CustomizerSchema.optional(),
 });
 export type Parameter = z.infer<typeof ParameterSchema>;
+
+/**
+ * A saved set of parameter values (P4-07, ADR-0059 §2): a named row of the
+ * customizer's configuration list. Applying one sets the expression of every
+ * parameter it lists; there is **no** stored "active" configuration, because
+ * one goes stale after any edit or undo (`currentConfigurations` matches the
+ * values instead). A value may name a parameter that no longer exists: it is
+ * ignored when applying (`configurationChanges`).
+ */
+/** A configuration's values: a parameter ID → the expression it sets for it. */
+export const ConfigurationValuesSchema = z.record(ParameterIdSchema, z.string());
+export type ConfigurationValues = z.infer<typeof ConfigurationValuesSchema>;
+
+export const ConfigurationSchema = z.strictObject({
+  id: ConfigurationIdSchema,
+  name: z.string().min(1).max(60),
+  /** Parameter ID → the expression this configuration sets for it. */
+  values: ConfigurationValuesSchema,
+});
+export type Configuration = z.infer<typeof ConfigurationSchema>;
+
+/** How configuration names are compared: trimmed and folded to lower case. */
+const configurationKey = (name: string) => name.trim().toLowerCase();
+
+/**
+ * Whether two configuration names are the same to a reader: "Small box" and
+ * " small box " are (ADR-0059 §2). Commands refuse a second one with a name
+ * like this; the schema reports it for a document that has one anyway.
+ */
+export function sameConfigurationName(a: string, b: string): boolean {
+  return configurationKey(a) === configurationKey(b);
+}
 
 export const ExprInputSchema = z.strictObject({
   kind: z.literal('expr'),
@@ -147,6 +200,8 @@ export const DocumentSchema = z
     timelineMarker: z.int().min(0),
     bodies: z.record(BodyIdSchema, BodyMetaSchema),
     views: z.array(NamedViewSchema),
+    /** Named value sets for the customizer (P4-07); absent when there are none. */
+    configurations: z.array(ConfigurationSchema).optional(),
     meta: z.strictObject({
       created: z.iso.datetime(),
       /** Set by storage when it saves, not by commands (so undo doesn't touch it). */
@@ -162,13 +217,27 @@ export const DocumentSchema = z
         message: `is ${doc.timelineMarker}, past the end of the timeline (${doc.features.length} features)`,
       });
     }
-    const unique: [list: string, key: string, values: string[]][] = [
+    const unique: [list: string, key: string, values: string[], fold?: (v: string) => string][] = [
       ['features', 'id', doc.features.map((f) => f.id)],
       ['parameters', 'id', doc.parameters.map((p) => p.id)],
       ['parameters', 'name', doc.parameters.map((p) => p.name)],
       ['views', 'id', doc.views.map((v) => v.id)],
+      ['configurations', 'id', (doc.configurations ?? []).map((c) => c.id)],
+      // "Small" and "small" are the same configuration to a reader (P4-07).
+      ['configurations', 'name', (doc.configurations ?? []).map((c) => c.name), configurationKey],
     ];
-    for (const [list, key, values] of unique) reportDuplicates(ctx, list, key, values);
+    for (const [list, key, values, fold] of unique) reportDuplicates(ctx, list, key, values, fold);
+    // A slider range isn't a constraint (ADR-0059 §1), but min above max is a
+    // mistake rather than a choice, so the document says so.
+    doc.parameters.forEach((p, index) => {
+      const { min, max } = p.customizer ?? {};
+      if (min === undefined || max === undefined || min <= max) return;
+      ctx.addIssue({
+        code: 'custom',
+        path: ['parameters', index, 'customizer'],
+        message: `min is ${min}, above max ${max}`,
+      });
+    });
   });
 export type ExtrudoDocument = z.infer<typeof DocumentSchema>;
 
@@ -177,16 +246,19 @@ function reportDuplicates(
   list: string,
   key: string,
   values: readonly string[],
+  /** Compares two values for sameness; defaults to exact equality. */
+  fold: (value: string) => string = (value) => value,
 ): void {
   const seen = new Set<string>();
   values.forEach((value, index) => {
-    if (seen.has(value)) {
+    const keyOf = fold(value);
+    if (seen.has(keyOf)) {
       ctx.addIssue({
         code: 'custom',
         path: [list, index, key],
         message: `duplicate ${key} "${value}"`,
       });
     }
-    seen.add(value);
+    seen.add(keyOf);
   });
 }

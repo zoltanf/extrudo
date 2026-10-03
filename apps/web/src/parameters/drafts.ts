@@ -1,4 +1,4 @@
-import type { DimensionId, ExtrudoDocument, FeatureId } from '@extrudo/core';
+import type { DimensionId, ExtrudoDocument, FeatureId, ParameterId } from '@extrudo/core';
 
 /**
  * The document with one sketch dimension's expression replaced, for
@@ -25,4 +25,21 @@ export function withDimensionExpr(
     };
   });
   return changed ? { ...doc, features } : doc;
+}
+
+/**
+ * The document with one user parameter's expression replaced, for evaluating a
+ * draft before it is committed (the Customizer panel's and the dialog's fields,
+ * ADR-0059 §1). Returns `doc` itself if there is no such parameter.
+ */
+export function withParameterExpr(
+  doc: ExtrudoDocument,
+  id: ParameterId,
+  expr: string,
+): ExtrudoDocument {
+  if (!doc.parameters.some((p) => p.id === id)) return doc;
+  return {
+    ...doc,
+    parameters: doc.parameters.map((p) => (p.id === id ? { ...p, expression: expr } : p)),
+  };
 }

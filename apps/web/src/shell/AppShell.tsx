@@ -18,6 +18,8 @@ import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { isRepeatable } from '../commands/marking';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
+import { CustomizerPanel } from '../customizer/CustomizerPanel';
+import { CUSTOMIZER_TOOL, useCustomizer } from '../customizer/useCustomizer';
 import {
   type NotificationStore,
   type Toast,
@@ -231,6 +233,7 @@ export function AppShell({
   const sectioning = mode === 'model' && activeTool === SECTION_TOOL;
   const printing = mode === 'model' && activeTool === PRINT_INFO_TOOL;
   const overhanging = mode === 'model' && activeTool === OVERHANG_TOOL;
+  const customizing = mode === 'model' && activeTool === CUSTOMIZER_TOOL;
   // The first-run tutorial (P3-12): it reads the design, so it needs no hooks into the tools.
   const tutorial = useTutorial({ store, session, preferences: platform.preferences });
   // A design with nothing in it starts the tour in place; any other opens a new design for it.
@@ -513,6 +516,10 @@ export function AppShell({
     if (host) host.apply(command);
     else store.getState().dispatch(command);
   };
+  // The Customizer panel (P4-07): the exposed parameters and the configurations.
+  // Every write goes through the same `apply`, so a slider or a configuration
+  // re-solves the sketches that use the parameter in its own undo step.
+  const customizer = useCustomizer({ store, apply });
 
   // Commands (P1-14): the shortcuts, the Ctrl+K palette and the S toolbox run the same list.
   const construction = useHostState(host, (s) => s.construction);
@@ -656,7 +663,7 @@ export function AppShell({
             { keys: 'Enter', run: () => host.enter() },
           ]
         : []),
-      ...(measuring || sectioning || printing || overhanging
+      ...(measuring || sectioning || printing || overhanging || customizing
         ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }]
         : []),
       // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
@@ -695,6 +702,7 @@ export function AppShell({
       sectioning,
       printing,
       overhanging,
+      customizing,
       mode,
       drawing,
       host,
@@ -738,7 +746,7 @@ export function AppShell({
     if (spec) {
       if (mode === 'model') {
         if (picking) cancelCreateSketch(stores);
-        if (measuring || sectioning || printing || overhanging)
+        if (measuring || sectioning || printing || overhanging || customizing)
           session.getState().setTool(undefined);
         dialog?.start(spec.type);
       }
@@ -786,6 +794,10 @@ export function AppShell({
       if (mode !== 'model') return;
       if (picking) cancelCreateSketch(stores);
       session.getState().setTool(printing ? undefined : PRINT_INFO_TOOL);
+    } else if (tool === CUSTOMIZER_TOOL) {
+      if (mode !== 'model') return;
+      if (picking) cancelCreateSketch(stores);
+      session.getState().setTool(customizing ? undefined : CUSTOMIZER_TOOL);
     } else if (tool === OVERHANG_TOOL) {
       if (mode !== 'model') return;
       if (overhanging) session.getState().setTool(undefined);
@@ -818,7 +830,7 @@ export function AppShell({
   const stopCommand = () => {
     if (picking) cancelCreateSketch(stores);
     else if (drawing) host?.stop();
-    else if (projecting || measuring || sectioning || printing || overhanging)
+    else if (projecting || measuring || sectioning || printing || overhanging || customizing)
       session.getState().setTool(undefined);
   };
 
@@ -1148,7 +1160,13 @@ export function AppShell({
         activeTool={
           picking
             ? 'sketch'
-            : drawing || projecting || measuring || sectioning || printing || overhanging
+            : drawing ||
+                projecting ||
+                measuring ||
+                sectioning ||
+                printing ||
+                overhanging ||
+                customizing
               ? (activeTool as ToolId)
               : dialogOpen && typeof dialogOpen.spec.command === 'string'
                 ? dialogOpen.spec.command
@@ -1368,6 +1386,13 @@ export function AppShell({
           <OverhangPanel
             tool={overhang}
             settings={doc.settings}
+            onClose={() => session.getState().setTool(undefined)}
+          />
+        )}
+        {customizing && (
+          <CustomizerPanel
+            tool={customizer}
+            onOpenParameters={() => setParametersOpen(true)}
             onClose={() => session.getState().setTool(undefined)}
           />
         )}

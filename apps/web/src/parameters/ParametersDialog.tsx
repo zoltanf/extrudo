@@ -2,6 +2,7 @@ import {
   addParameter,
   type Command,
   CommandError,
+  type Customizer,
   type DocumentStore,
   type EvaluateResult,
   type ExtrudoDocument,
@@ -11,13 +12,14 @@ import {
   newId,
   type ParameterId,
   removeParameter,
+  setParameterCustomizer,
   type UnitKind,
   updateFeatureInputs,
   updateParameter,
   updateSketchDimension,
 } from '@extrudo/core';
-import { Redo2, Trash2, Undo2, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Eraser, Redo2, Star, Trash2, Undo2, X } from 'lucide-react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import { isEditable, shortcutLabel } from '../commands/shortcuts';
 import {
@@ -31,6 +33,13 @@ import {
   Select,
   TextInput,
 } from '../design-system';
+import {
+  CUSTOMIZER_FIELDS,
+  type CustomizerField,
+  rangeText,
+  withoutRangeField,
+  withRangeField,
+} from './customizer';
 import { withDimensionExpr } from './drafts';
 import { ExpressionInput } from './ExpressionInput';
 import { Message } from './Message';
@@ -40,6 +49,16 @@ const UNIT_LABELS: Record<UnitKind, string> = {
   angle: 'Angle',
   unitless: 'Number',
 };
+
+/**
+ * What a row's star writes (P4-07, ADR-0059 §1): an empty `customizer` object
+ * exposes the parameter, taking the star off leaves it out again (one command,
+ * one undo step). Exposed and unexposed are different settings, so starring a
+ * parameter that was in the panel before starts its range afresh.
+ */
+export function starCommand(id: ParameterId, starred: boolean): Command<unknown> {
+  return setParameterCustomizer({ id, customizer: starred ? undefined : {} });
+}
 
 export interface ParametersDialogProps {
   store: DocumentStore;
@@ -59,6 +78,11 @@ const td = 'px-1.5 py-1 align-top';
  * The Parameters dialog (P0-07, FR-PAR-01): user parameters (add, edit,
  * delete, comment) and the model parameters of features, each with its live
  * value and inline errors. Every change is one command, so undoable.
+ *
+ * A user parameter can be starred for the Customizer panel (P4-07, ADR-0059 §1):
+ * the star is one command, and the row then shows the slider's range, its step
+ * and the heading the row gets there. The range is in the parameter's base unit;
+ * the fields speak its unit.
  */
 export function ParametersDialog({ store, apply, open, onOpenChange }: ParametersDialogProps) {
   const doc = useStore(store, (s) => s.doc);
@@ -153,7 +177,9 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
           </thead>
           <tbody>
             {user.map(({ p, id }) => {
-              const comment = doc.parameters.find((q) => q.id === id)?.comment ?? '';
+              const parameter = doc.parameters.find((q) => q.id === id);
+              const comment = parameter?.comment ?? '';
+              const customizer = parameter?.customizer;
               const row = (
                 <tr
                   key={id}
@@ -209,7 +235,23 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
                       }
                     />
                   </td>
-                  <td className={td}>
+                  <td className={`${td} whitespace-nowrap`}>
+                    <IconButton
+                      label={`Show ${p.name} in customizer`}
+                      hint={
+                        customizer
+                          ? 'In the Customizer panel. The star takes it out again.'
+                          : 'Show this parameter in the Customizer panel.'
+                      }
+                      pressed={customizer !== undefined}
+                      onClick={() => run(starCommand(id, customizer !== undefined))}
+                    >
+                      <Star
+                        size={16}
+                        strokeWidth={1.75}
+                        className={customizer ? 'fill-current text-warning' : undefined}
+                      />
+                    </IconButton>
                     <IconButton
                       label={`Delete ${p.name}`}
                       onClick={() => run(removeParameter({ id }))}
@@ -220,26 +262,42 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
                 </tr>
               );
               return (
-                <ContextMenu
-                  key={id}
-                  label={`${p.name} menu`}
-                  disabled={nativeRow === id}
-                  trigger={row}
-                >
-                  <MenuItem
-                    icon={<Trash2 size={14} />}
-                    onSelect={() => run(removeParameter({ id }))}
-                  >
-                    Delete {p.name}
-                  </MenuItem>
-                  <MenuSeparator />
-                  <MenuItem icon={<Undo2 size={14} />} disabled={!canUndo} onSelect={undo}>
-                    {undoLabel ? `Undo ${undoLabel}` : 'Undo'}
-                  </MenuItem>
-                  <MenuItem icon={<Redo2 size={14} />} disabled={!canRedo} onSelect={redo}>
-                    {redoLabel ? `Redo ${redoLabel}` : 'Redo'}
-                  </MenuItem>
-                </ContextMenu>
+                <Fragment key={id}>
+                  <ContextMenu label={`${p.name} menu`} disabled={nativeRow === id} trigger={row}>
+                    <MenuItem
+                      icon={<Star size={14} />}
+                      onSelect={() => run(starCommand(id, customizer !== undefined))}
+                    >
+                      {customizer
+                        ? `Hide ${p.name} from customizer`
+                        : `Show ${p.name} in customizer`}
+                    </MenuItem>
+                    <MenuItem
+                      icon={<Trash2 size={14} />}
+                      onSelect={() => run(removeParameter({ id }))}
+                    >
+                      Delete {p.name}
+                    </MenuItem>
+                    <MenuSeparator />
+                    <MenuItem icon={<Undo2 size={14} />} disabled={!canUndo} onSelect={undo}>
+                      {undoLabel ? `Undo ${undoLabel}` : 'Undo'}
+                    </MenuItem>
+                    <MenuItem icon={<Redo2 size={14} />} disabled={!canRedo} onSelect={redo}>
+                      {redoLabel ? `Redo ${redoLabel}` : 'Redo'}
+                    </MenuItem>
+                  </ContextMenu>
+                  {customizer && (
+                    <CustomizerFields
+                      name={p.name}
+                      unit={p.unit}
+                      customizer={customizer}
+                      settings={doc.settings}
+                      evaluate={(text) => evaluation.evaluate(text, p.unit)}
+                      format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
+                      onChange={(next) => run(setParameterCustomizer({ id, customizer: next }))}
+                    />
+                  )}
+                </Fragment>
               );
             })}
           </tbody>
@@ -332,6 +390,82 @@ export function ParametersDialog({ store, apply, open, onOpenChange }: Parameter
         )}
       </div>
     </Dialog>
+  );
+}
+
+const RANGE_LABELS: Record<CustomizerField, string> = { min: 'Min', max: 'Max', step: 'Step' };
+
+/**
+ * The customizer settings of a starred parameter, under its row (P4-07,
+ * ADR-0059 §1): the slider's range and step (expressions in the parameter's
+ * unit, stored in its base unit) and the panel heading the row sits under. A
+ * range that runs backwards is refused by the command, and the dialog's message
+ * line says so.
+ */
+function CustomizerFields({
+  name,
+  unit,
+  customizer,
+  settings,
+  evaluate,
+  format,
+  onChange,
+}: {
+  name: string;
+  unit: UnitKind;
+  customizer: Customizer;
+  settings: ExtrudoDocument['settings'];
+  evaluate(expression: string): EvaluateResult;
+  format(result: Extract<EvaluateResult, { ok: true }>): string;
+  onChange(customizer: Customizer): void;
+}) {
+  return (
+    <tr data-customizer-fields={name}>
+      <td colSpan={5} className="pb-3">
+        <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-x-2 gap-y-1 rounded-control bg-raised p-2">
+          <span className="text-sm font-semibold">Customizer</span>
+          <p className="text-sm text-muted">
+            The slider this parameter gets in the Customizer panel. A value outside the range is
+            allowed; the panel warns about it.
+          </p>
+          {CUSTOMIZER_FIELDS.map((field) => (
+            <Fragment key={field}>
+              <span className="text-sm text-muted">{RANGE_LABELS[field]}</span>
+              <div className="flex min-w-0 items-start gap-1">
+                <ExpressionInput
+                  className="min-w-0 flex-1"
+                  label={`${RANGE_LABELS[field]} of ${name}`}
+                  placeholder="not set"
+                  value={rangeText(unit, customizer[field], settings)}
+                  evaluate={evaluate}
+                  format={format}
+                  onCommit={(text) => onChange(withRangeField(customizer, field, text, evaluate))}
+                />
+                {customizer[field] !== undefined && (
+                  <IconButton
+                    label={`Clear ${RANGE_LABELS[field]} of ${name}`}
+                    hint={`Take the ${RANGE_LABELS[field].toLowerCase()} away.`}
+                    onClick={() => onChange(withoutRangeField(customizer, field))}
+                  >
+                    <Eraser size={14} strokeWidth={1.75} />
+                  </IconButton>
+                )}
+              </div>
+            </Fragment>
+          ))}
+          <span className="text-sm text-muted">Group</span>
+          <TextField
+            label={`Group of ${name}`}
+            value={customizer.group ?? ''}
+            placeholder="no group"
+            onCommit={(text) => {
+              onChange({ ...customizer, group: text.trim() || undefined });
+              return true;
+            }}
+          />
+        </div>
+      </td>
+    </tr>
   );
 }
 
@@ -445,11 +579,13 @@ function AddParameterRow({
 function TextField({
   label,
   value,
+  placeholder,
   className,
   onCommit,
 }: {
   label: string;
   value: string;
+  placeholder?: string;
   className?: string;
   onCommit(value: string): boolean;
 }) {
@@ -462,6 +598,7 @@ function TextField({
     <TextInput
       aria-label={label}
       className={className}
+      placeholder={placeholder}
       value={draft}
       data-keep-escape={draft !== value || undefined}
       onChange={(e) => setDraft(e.target.value)}

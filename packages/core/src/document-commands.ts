@@ -27,8 +27,8 @@ export const renameDocument = defineCommand<{ name: string }>(
 
 /**
  * Brings back a saved version's content (FR-PRJ-03, P2-14): its settings,
- * parameters, timeline, bodies and views. The document's ID, name and
- * dates stay, so the project stays the same project. One undo step.
+ * parameters, timeline, bodies, views and configurations. The document's ID,
+ * name and dates stay, so the project stays the same project. One undo step.
  */
 export const restoreVersion = defineCommand<{ doc: ExtrudoDocument }>(
   'document.restoreVersion',
@@ -40,6 +40,7 @@ export const restoreVersion = defineCommand<{ doc: ExtrudoDocument }>(
     draft.timelineMarker = doc.timelineMarker;
     draft.bodies = doc.bodies;
     draft.views = doc.views;
+    draft.configurations = doc.configurations;
   },
 );
 
@@ -89,6 +90,11 @@ export const updateParameter = defineCommand<{
   }
 });
 
+/**
+ * Deletes a parameter and every value a configuration stored for it, so no
+ * configuration is left naming something that isn't there (ADR-0059 §2). One
+ * undo step.
+ */
 export const removeParameter = defineCommand<{ id: ParameterId }>(
   'parameter.remove',
   'Delete parameter',
@@ -96,6 +102,9 @@ export const removeParameter = defineCommand<{ id: ParameterId }>(
     const { name } = findParameter(draft, id);
     refuseIfUsed(draft, name);
     draft.parameters = draft.parameters.filter((p) => p.id !== id);
+    for (const configuration of draft.configurations ?? []) {
+      if (id in configuration.values) delete configuration.values[id];
+    }
   },
 );
 

@@ -12,6 +12,22 @@ One line per completed roadmap task, newest first. Dates are absolute.
   font, the alignment and the height. Six bundled OFL fonts (Inter, Noto Serif,
   JetBrains Mono, Allerta Stencil, Fredoka) with versioned IDs; opentype.js
   only in `@extrudo/sketch/text`, behind core's shaper registry.
+- 2026-10-03 · **P4-07** Customizer and configurations (ADR-0059): a user
+  parameter can be exposed for changing (`parameters[].customizer`: `min`,
+  `max`, `step`, `group`), and a design can hold named value sets
+  (`configurations[]`) to switch between. The Customizer panel (Solid › Modify,
+  or Ctrl+K) lists the exposed parameters with expression fields and sliders,
+  warns about a value outside its range, and switches configurations by name —
+  one undo step for a whole drag, one for applying a configuration. No "active
+  configuration" is stored: one goes stale after any edit or undo, so the panel
+  matches the values. The Parameters dialog gets a star per row, the slider's
+  range and a Clear button per number; the templates open with their main
+  dimensions exposed and a Small and a Large configuration. Commands, the pure
+  helpers the panel needs (`customizerRows`, `configurationChanges`,
+  `currentConfigurations`, `capturedValues`, `isPlainValue`) and core's
+  `setParameterExpressions` (applying a configuration re-solves the sketches that
+  use a parameter in the same step). File format 5.1.1 and 5.4; `formatVersion`
+  stays 1 (optional keys).
 - 2026-10-03 · **P4-02** Modeled threads (ADR-0056): the Thread feature cuts a
   real ISO 68-1 thread into a shaft's or a hole's round face (Solid › Modify ›
   Thread): ISO metric coarse and fine, UNC and UNF presets or a size that fits

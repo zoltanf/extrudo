@@ -81,6 +81,7 @@ export const ICON_NAMES = [
   'rectangular-pattern',
   'path-pattern',
   'parameters',
+  'customizer',
   'offset-plane',
   'plane-angle',
   'midplane',
