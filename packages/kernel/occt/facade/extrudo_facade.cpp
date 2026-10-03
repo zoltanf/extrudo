@@ -1897,16 +1897,15 @@ public:
       const gp_Dir2d along(sign * 2 * M_PI, pitch);
       const double perTurn = std::sqrt(4 * M_PI * M_PI + pitch * pitch);
       BRepBuilderAPI_MakeWire spine;
-      const double per = getenv("PER") ? atof(getenv("PER")) : 1.0;
-      const int whole = static_cast<int>(std::floor(turns / per + 1e-9));
-      const int pieces = whole + (turns / per - whole > 1e-6 ? 1 : 0);
+      const int whole = static_cast<int>(std::floor(turns + 1e-9));
+      const int pieces = whole + (turns - whole > 1e-6 ? 1 : 0);
       for (int k = 0; k < pieces; ++k) {
-        const double span = std::min(per, turns - k * per);
-        Handle(Geom2d_Line) line = new Geom2d_Line(gp_Pnt2d(sign * 2 * M_PI * k * per, pitch * k * per), along);
+        const double span = std::min(1.0, turns - k);
+        Handle(Geom2d_Line) line = new Geom2d_Line(gp_Pnt2d(sign * 2 * M_PI * k, pitch * k), along);
         BRepBuilderAPI_MakeEdge edge(line, cylinder, 0, span * perTurn);
         if (!edge.IsDone()) return fail("Thread failed: couldn't make the helix.");
         TopoDS_Edge helix = edge.Edge();
-        if (!BRepLib::BuildCurves3d(helix, getenv("HTOL") ? atof(getenv("HTOL")) : 1e-5, GeomAbs_C2, getenv("HDEG") ? atoi(getenv("HDEG")) : 14, 200)) {
+        if (!BRepLib::BuildCurves3d(helix, 1e-5, GeomAbs_C2, 14, 200)) {
           return fail("Thread failed: couldn't build the helix.");
         }
         spine.Add(helix);
@@ -1915,9 +1914,6 @@ public:
 
       BRepOffsetAPI_MakePipeShell pipe(spine.Wire());
       pipe.SetMode(axis);
-      if (getenv("PDEG")) pipe.SetMaxDegree(atoi(getenv("PDEG")));
-      if (getenv("PSEG")) pipe.SetMaxSegments(atoi(getenv("PSEG")));
-      if (getenv("PTOL")) pipe.SetTolerance(atof(getenv("PTOL")), atof(getenv("PTOL")), 1e-2);
       const TopoDS_Wire outline = BRepTools::OuterWire(face);
       pipe.Add(outline, false, false);
       pipe.Build();

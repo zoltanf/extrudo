@@ -159,6 +159,29 @@ static void experiments(int which) {
     b.Build();
     int r = f.store(b.Shape());
     report(f, "E4 tooth - root core fuzzy", r, t0);
+  } else if (which == 7) {
+    // threadFace on a shaft, a through hole, a shaft on a flange, a blind hole.
+    auto show = [&](const char* what, int shape) {
+      const int n = f.count(shape, 0);
+      for (int i = 0; i < n; ++i) {
+        if (f.threadFace(shape, i) < 0) continue;
+        std::printf("%s face %d:", what, i);
+        for (double v : f.geometry_) std::printf(" %.3f", v);
+        int sub = f.subShape(shape, 0, i);
+        f.properties(sub);
+        std::printf("  z %.3f..%.3f\n", f.measured(4), f.measured(7));
+      }
+    };
+    show("shaft", f.makeCylinder(0, 0, 0, 0, 0, 1, 4, 10));
+    int block = f.makeBox(-10, -10, 0, 20, 20, 10);
+    show("through hole", f.boolean(1, block, f.makeCylinder(0, 0, -1, 0, 0, 1, 3, 12), true));
+    show("blind hole", f.boolean(1, block, f.makeCylinder(0, 0, 4, 0, 0, 1, 3, 12), true));
+    show("flange", f.boolean(0, f.makeCylinder(0, 0, 0, 0, 0, -1, 4, 10), f.makeCylinder(0, 0, 0, 0, 0, 1, 8, 3), true));
+    int profile = polygon(f, tooth(s, 0));
+    int th = f.threadSweep(profile, 0, 0, 0, 0, 0, 1, s.P, 2.5, false);
+    std::printf("sweep history ints %zu:", f.history_.size());
+    for (size_t i = 0; i < f.history_.size() && i < 60; ++i) std::printf(" %d", f.history_[i]);
+    std::printf("\nfaces %d\n", f.count(th, 0));
   } else if (which == 5 || which == 6) {
     // Where the facade boolean's time goes: build, simplify, history.
     int th = f.threadSweep(polygon(f, tooth(s, which == 5 ? 0 : -s.P)), 0, 0, 0, 0, 0, 1, s.P, 12 / s.P + (which == 5 ? 0 : 2), false);
