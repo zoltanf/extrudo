@@ -799,7 +799,7 @@ them. Notes further down that name a machine apply to that machine only.
 | Facade checks | `em++ -fsyntax-only` and the native harness in the image | Same, through `sg docker -c`: the pinned image `ghcr.io/taucad/opencascade.js:3.0.2-single-threaded` is pulled; the syntax check takes about 8 s |
 | Playwright browser | Playwright's own Chromium (`pnpm e2e:install`) | System Chrome: `PLAYWRIGHT_CHROMIUM_PATH=/usr/bin/google-chrome-stable` |
 | Screenshot baselines | Regenerate, then check in the Playwright Ubuntu docker image | 5 shots fail locally (Chrome renders differently; they pass in CI): `shell.spec.ts:35` dark/light, `sketch.spec.ts:140`, `storage.spec.ts:223` dark/light. New baselines: take them from CI's `playwright-report-1`/`-2` artifacts (one per e2e shard; `gh run download <id>`) |
-| E2E load | Full parallel run fine | Only one full e2e at a time, `--workers=2`; under load timeouts give false failures. Prefer single specs locally and the full suite through CI on the branch |
+| E2E load | Full parallel run fine | Only one full e2e at a time, `--workers=2`; under load timeouts give false failures. Prefer single specs locally and the full suite through CI on the branch. With its NVIDIA GPU, `E2E_GPU=1` makes viewport-heavy specs 17-39 % faster (screenshot specs excluded: they need SwiftShader) |
 | Inkscape, rsvg-convert | Installed | Not installed |
 | Slicers, FreeCAD | `prusa-slicer`, `orca-slicer`, `freecadcmd` | Not installed |
 | `brotli` CLI | – | Not installed (`scripts/measure-startup.mjs` uses Node's zlib) |
@@ -915,8 +915,8 @@ them. Notes further down that name a machine apply to that machine only.
 - **Viewport tests read the camera from data attributes** on the Viewport
   region (`data-camera-direction`, `-up`, `-target`, `-size`) and wait for
   `data-ready` (first frame drawn; the viewport is a lazy chunk). WebGL runs
-  on SwiftShader in headless Chromium and renders the same in the Arch and
-  Ubuntu images.
+  on SwiftShader in headless Chromium (unless `E2E_GPU=1`) and renders the
+  same in the Arch and Ubuntu images.
 - Biome needs `css.parser.tailwindDirectives` for Tailwind's `@theme` and
   `@custom-variant`, and the icon sources are exempt from
   `noSvgWithoutTitle` (they are decorative; controls carry the label).

@@ -6,7 +6,7 @@ const PORT = Number(process.env.E2E_PORT ?? 4173);
 
 // Set PLAYWRIGHT_CHROMIUM_PATH to use an installed Chromium instead of the
 // browser that `pnpm e2e:install` downloads (useful on distros Playwright
-// does not officially support).
+// does not officially support); E2E_GPU=1 turns on real GPU rendering (below).
 const executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH;
 
 export default defineConfig({
@@ -34,7 +34,18 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        launchOptions: executablePath ? { executablePath } : {},
+        // Opt-in GPU rendering for local runs on a machine with a GPU
+        // (measured on an NVIDIA GTX 1050 Ti: WebGL about 150x faster than
+        // SwiftShader, e2e specs 17-39 % faster). Never in CI: the
+        // screenshot baselines are made with SwiftShader and GPU pixels
+        // differ. '--use-gl=egl' alone silently stays on SwiftShader, so the
+        // angle backend has to be named too.
+        launchOptions: {
+          ...(executablePath ? { executablePath } : {}),
+          ...(process.env.E2E_GPU
+            ? { args: ['--use-angle=gl-egl', '--ignore-gpu-blocklist', '--enable-gpu'] }
+            : {}),
+        },
       },
     },
   ],
