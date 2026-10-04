@@ -4,6 +4,18 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-04 · **P4-06 (1 of 5) Drawings into a sketch** (ADR-0066 §1,
+  FR-SK-14): `readSvg` and `readDxf` in `@extrudo/io` (an XML tokenizer of our
+  own, a path-data parser with the SVG arc conversion, transforms composed down
+  the tree, `$INSUNITS`, blocks and `INSERT`, bulges, B-splines by knot
+  insertion, everything left out counted) give a `Drawing` in millimetres with
+  y up; `@extrudo/sketch/import`'s `drawingToSketch` turns it into a
+  `SketchChange` (lines, circles and arcs, ellipses, and control-point splines
+  for elliptical arcs and Béziers, so nothing is flattened), fixed by default,
+  the 5,000-curve limit and the user's own IDs; and the tool `importDrawing`
+  with its panel "Import drawing" (unit, scale, position, fixed, what the file
+  brings in), which commits the drawing as one undo step. The e2e extrudes the
+  imported plate and reads its size.
 - 2026-10-04 · **P4-11 (parts 2 and 3) Benchmarks B8 and B10**, which
   finishes the task (ADR-0039's second amendment). **B8, a name tag**
   (`e2e/benchmark-b8.spec.ts`): a Box with `length`/`width`/`thick`, its four

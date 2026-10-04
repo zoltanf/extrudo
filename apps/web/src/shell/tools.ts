@@ -195,6 +195,14 @@ export const TOOLS = {
     category: 'sketch',
     hint: 'Type text on the sketch. Its letters are closed regions like any other profile.',
   },
+  importDrawing: {
+    id: 'importDrawing',
+    label: 'Import Drawing…',
+    short: 'Import…',
+    icon: 'insert-svg',
+    category: 'sketch',
+    hint: 'Bring an SVG or DXF drawing into the sketch as ordinary curves.',
+  },
   dimension: {
     id: 'dimension',
     label: 'Sketch Dimension',
@@ -840,6 +848,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
           'splineControl',
           'conic',
           'text',
+          'importDrawing',
           'project',
           'sketchMirror',
           'sketchRectangularPattern',

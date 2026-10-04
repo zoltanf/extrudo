@@ -74,6 +74,7 @@ import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDi
 import { fontsStore } from '../sketch/fonts';
 import { sketchFrame } from '../sketch/frame';
 import { useHostState } from '../sketch/hostState';
+import { importDrawingStore } from '../sketch/importDraft';
 import {
   CREATE_SKETCH,
   cancelCreateSketch,
@@ -84,6 +85,7 @@ import {
   startCreateSketch,
 } from '../sketch/mode';
 import {
+  ImportDrawingPanel,
   OverConstrainedDialog,
   PanelColumn,
   PlanePrompt,
@@ -91,12 +93,14 @@ import {
   SketchPalette,
   TextPanel,
 } from '../sketch/panels';
+import { pickDrawing } from '../sketch/pickDrawing';
 import { profileIdsIn, sketchProfiles } from '../sketch/profiles';
 import { PROJECT_TOOL, useProjectTool } from '../sketch/project';
 import { deleteSelection } from '../sketch/selection';
 import { textDraftStore } from '../sketch/textDraft';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
+import { IMPORT_DRAWING_TOOL } from '../sketch/tools/importDrawing';
 import type { ConstructionDrawing } from '../viewport/constructionGeometry';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
@@ -225,6 +229,8 @@ export function AppShell({
   // The Text tool's panel opens from the tool's own click (P4-03), which
   // touches no store this component reads: subscribe, so it appears.
   const textOpen = useStore(textDraftStore, (s) => s.open);
+  // The Import Drawing tool's panel opens from the file it picked (P4-06).
+  const importOpen = useStore(importDrawingStore, (s) => s.open);
   const bodies = useStore(model, (s) => s.bodies);
   const sketchReports = useStore(model, (s) => s.sketches);
   const constructionReports = useStore(model, (s) => s.construction);
@@ -822,6 +828,11 @@ export function AppShell({
         overhang.start();
         session.getState().setTool(OVERHANG_TOOL);
       }
+    } else if (tool === IMPORT_DRAWING_TOOL) {
+      // P4-06: the tool opens the file dialog, then its panel (ADR-0066 §1).
+      if (mode !== 'sketch' || !host) return;
+      if (activeTool === tool) host.stop();
+      else void pickDrawing({ files: platform.files, host, notify });
     } else if (tool === 'exportSketch' && activeSketchId) {
       // Profiles selected in the open sketch are offered first (P1-13).
       featureActions.exportSketch(activeSketchId);
@@ -1357,6 +1368,10 @@ export function AppShell({
             {/* The Text tool's panel (P4-03): it takes the selection panel's place. */}
             {mode === 'sketch' && activeTool === 'text' && textOpen && (
               <TextPanel store={store} host={host} fonts={fontPicker} notify={notify} />
+            )}
+            {/* The Import Drawing tool's panel (P4-06), likewise. */}
+            {mode === 'sketch' && activeTool === IMPORT_DRAWING_TOOL && importOpen && (
+              <ImportDrawingPanel store={store} host={host} />
             )}
             {drawing && tools && activeSketchId && sketchPlane && (
               <tools.Overlay

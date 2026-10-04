@@ -4,12 +4,14 @@
  *
  * P1-13: a 2D `Drawing` (contours of exact segments on layers) and its SVG
  * and DXF R12 writers. P2-12: triangle meshes, binary STL, 3MF and a
- * manifold check.
+ * manifold check. P4-06: the SVG and DXF readers drawings are imported from.
  */
 export {
   type Bounds,
   type Contour,
   type Drawing,
+  type DrawingImport,
+  type DrawingUnit,
   drawingBounds,
   flattenContour,
   flattenSegment,
@@ -17,8 +19,10 @@ export {
   type Point,
   type Segment,
   type Shape,
+  UNIT_MM,
 } from './drawing';
 export { type DxfOptions, writeDxf } from './dxf';
+export { type DxfCode, type DxfEntity, DxfError, type DxfReadOptions, readDxf } from './dxf-read';
 export { num } from './format';
 export {
   checkManifold,
@@ -31,6 +35,7 @@ export {
 } from './mesh';
 export { readStl, type StlFile, type StlOptions, writeStl } from './stl';
 export { type SvgOptions, writeSvg } from './svg';
+export { readSvg, SvgError, type SvgReadOptions } from './svg-read';
 export {
   MODEL_PATH,
   modelXml,

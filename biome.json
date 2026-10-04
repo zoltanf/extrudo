@@ -14,7 +14,8 @@
       "!LICENSE",
       "!**/LICENSE",
       "!spikes",
-      "!**/golden"
+      "!**/golden",
+      "!packages/io/src/fixtures"
     ]
   },
   "formatter": {

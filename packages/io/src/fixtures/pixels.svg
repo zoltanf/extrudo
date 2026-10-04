@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Pixel units without a suffix: 200 × 100 px over a viewBox of the same size,
+     so one user unit is one pixel, or 25.4 / 96 mm. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">
+  <rect x="0" y="0" width="96" height="96"/>
+  <circle cx="150" cy="50" r="25"/>
+</svg>

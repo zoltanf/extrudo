@@ -27,6 +27,7 @@ import {
   updateSketchDimension,
 } from '@extrudo/core';
 import { BUNDLED_FONTS } from '@extrudo/fonts';
+import type { DrawingUnit } from '@extrudo/io';
 import { Crosshair, Trash2 } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
@@ -37,6 +38,15 @@ import type { ViewportStore } from '../viewport/store';
 import { ADD_FONT_VALUE, addFontFile, FONT_HINT, type FontPicker } from './addFont';
 import { ensureUiFonts } from './fonts';
 import { useHostState } from './hostState';
+import {
+  DRAWING_UNITS,
+  type ImportDrawingDraft,
+  type ImportPosition,
+  importDrawingStore,
+  importReady,
+  importSummary,
+  setImportDrawingDraft,
+} from './importDraft';
 import { profileIdsIn, sketchProfiles } from './profiles';
 import {
   DEFAULT_TEXT_DRAFT,
@@ -757,6 +767,148 @@ export function SplineFields({
     </div>
   );
 }
+
+export interface ImportDrawingPanelProps {
+  store: DocumentStore;
+  host: ToolHost | undefined;
+}
+
+/**
+ * The Import Drawing tool's panel (P4-06, ADR-0066 §1): the file's name, the
+ * unit its numbers are in, the scale, where its origin goes, whether its curves
+ * are fixed, and what the drawing brings in. The drawing previews live while the
+ * panel is open; OK or Ctrl+Enter commits it as one undo step ("Import
+ * <file>"), and Esc cancels.
+ *
+ * A file the reader refused, or one with more curves than the limit, says so
+ * here and leaves OK disabled.
+ */
+export function ImportDrawingPanel({ store, host }: ImportDrawingPanelProps) {
+  const draft = useStore(importDrawingStore);
+  const doc = useStore(store, (s) => s.doc);
+  const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
+  const scale = draft.expr.trim().length > 0 ? evaluation.evaluate(draft.expr) : undefined;
+  const ok = importReady(draft) && scale?.ok === true && scale.value !== 0;
+  const commit = () => {
+    if (ok) host?.enter();
+  };
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: forwards Ctrl+Enter from the fields inside.
+    <div
+      className="absolute bottom-3 z-10 w-60 transition-[left] duration-(--x-normal) ease-ui"
+      style={BESIDE_BROWSER}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+          event.preventDefault();
+          commit();
+        }
+        // Esc cancels, as the button says: the Scale field would otherwise keep
+        // the key (shortcuts skip fields), so the panel takes it itself.
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          host?.escape();
+        }
+      }}
+    >
+      <FloatingPanel label="Import drawing">
+        <h2 className="text-base font-semibold">Import drawing</h2>
+        <p className="truncate text-sm text-muted" title={draft.fileName}>
+          {draft.fileName || 'No file'}
+        </p>
+        <div className="flex flex-col gap-1">
+          <label className="flex items-center gap-2 text-sm text-muted">
+            Units
+            <select
+              aria-label="Units"
+              className="min-w-0 flex-1 rounded-input border border-line bg-(--x-raised) px-1 py-1 text-ink"
+              value={draft.units}
+              onChange={(event) =>
+                setImportDrawingDraft({ units: event.target.value as ImportDrawingDraft['units'] })
+              }
+            >
+              {DRAWING_UNITS.includes(draft.units) ? null : (
+                <option value={draft.units}>Unitless</option>
+              )}
+              {DRAWING_UNITS.map((unit) => (
+                <option key={unit} value={unit}>
+                  {UNIT_NAMES[unit]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            Position
+            <select
+              aria-label="Position"
+              className="min-w-0 flex-1 rounded-input border border-line bg-(--x-raised) px-1 py-1 text-ink"
+              value={draft.position}
+              onChange={(event) =>
+                setImportDrawingDraft({ position: event.target.value as ImportPosition })
+              }
+            >
+              <option value="origin">Drawing origin at sketch origin</option>
+              <option value="centre">Centred on sketch origin</option>
+            </select>
+          </label>
+          <div className="grid grid-cols-[52px_minmax(0,1fr)] items-start gap-2">
+            <span className="pt-1 text-sm text-muted">Scale</span>
+            <ExpressionInput
+              label="Scale"
+              value={draft.expr}
+              // A scale is a plain number (a unitless quantity), like a rho.
+              evaluate={(expr) => evaluation.evaluate(expr)}
+              format={(result) => String(Number(result.value.toFixed(4)))}
+              onDraftChange={(expr, valid) => {
+                const result = evaluation.evaluate(expr);
+                if (valid && result.ok) setImportDrawingDraft({ expr, scale: result.value });
+                else if (!valid) setImportDrawingDraft({ expr });
+              }}
+              onCommit={(expr) => {
+                const result = evaluation.evaluate(expr);
+                if (result.ok) setImportDrawingDraft({ expr, scale: result.value });
+              }}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input
+              type="checkbox"
+              aria-label="Fixed"
+              checked={draft.fixed}
+              onChange={(event) => setImportDrawingDraft({ fixed: event.target.checked })}
+            />
+            Fixed
+          </label>
+        </div>
+        <p
+          className="text-xs text-muted"
+          role="status"
+          data-import-summary={draft.error ? 'error' : 'ok'}
+        >
+          {importSummary(draft)}
+        </p>
+        <div className="flex justify-end gap-1">
+          <Button variant="ghost" onClick={() => host?.escape()}>
+            Cancel <kbd className="font-mono text-xs text-muted">Esc</kbd>
+          </Button>
+          <Button disabled={!ok} onClick={commit}>
+            OK <kbd className="font-mono text-xs text-muted">Ctrl+↵</kbd>
+          </Button>
+        </div>
+      </FloatingPanel>
+    </div>
+  );
+}
+
+/** What the Units select calls each unit. */
+const UNIT_NAMES: Record<DrawingUnit, string> = {
+  mm: 'Millimetres',
+  cm: 'Centimetres',
+  m: 'Metres',
+  in: 'Inches',
+  ft: 'Feet',
+  px: 'Pixels (96 to the inch)',
+  unitless: 'Unitless',
+};
 
 const ALIGNMENTS = ['left', 'center', 'right'] as const;
 const ALIGN_LABELS: Record<(typeof ALIGNMENTS)[number], string> = {

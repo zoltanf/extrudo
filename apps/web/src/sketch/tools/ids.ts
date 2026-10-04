@@ -70,6 +70,7 @@ export const SKETCH_TOOL_IDS: readonly string[] = [
   'splineControl',
   'conic',
   'text',
+  'importDrawing',
   'dimension',
   ...MODIFY_TOOL_IDS,
   ...CONSTRAINT_TOOL_IDS,

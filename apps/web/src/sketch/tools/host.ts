@@ -102,6 +102,7 @@ import { CHAMFER_TOOL, CornerTool, FILLET_TOOL } from './corner';
 import { DIMENSION_TOOL, DimensionTool } from './dimension';
 import { ELLIPSE_TOOL, EllipseTool } from './ellipse';
 import { isSketchTool } from './ids';
+import { IMPORT_DRAWING_TOOL, ImportDrawingTool } from './importDrawing';
 import { LINE_TOOL, LineTool } from './line';
 import { OFFSET_TOOL, OffsetTool } from './offset';
 import { POINT_TOOL, PointTool } from './point';
@@ -161,6 +162,7 @@ const FACTORIES: Record<string, (context: ToolContext) => SketchTool> = {
   [SPLINE_CONTROL_TOOL]: (context) => new SplineControlTool(context),
   [CONIC_TOOL]: (context) => new ConicTool(context),
   [TEXT_TOOL]: (context) => new TextTool(context),
+  [IMPORT_DRAWING_TOOL]: (context) => new ImportDrawingTool(context),
   [DIMENSION_TOOL]: (context) => new DimensionTool(context),
   [TRIM_TOOL]: (context) => new SplitTool(context, 'trim'),
   [EXTEND_TOOL]: (context) => new SplitTool(context, 'extend'),

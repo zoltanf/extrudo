@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The drawing the import e2e uses: a 40 × 20 mm rectangle with a Ø10 mm circle
+     in millimetres, written by hand in the units and shape the SVG writer uses. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="40mm" height="20mm" viewBox="-20 -10 40 20">
+  <g id="Sketch" fill="none" stroke="#000000" stroke-width="0.1" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-20 -10 L20 -10 L20 10 L-20 10 Z"/>
+    <circle cx="0" cy="0" r="5"/>
+  </g>
+</svg>

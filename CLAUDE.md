@@ -871,7 +871,47 @@ constant document takes `fillet` and computes exactly as before. `fillet` and
 runs in. Names and the two ends' messages are unchanged. The dialog's per-set
 **Variable** toggle is not an input: a set is variable exactly when it has an
 end radius, so the toggle off drops `radiusEnd`/`swap` again.
-Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-06**
+ADR-0066 (P4-06, slice 1) added **drawings into a sketch**: `@extrudo/io`
+gained `readSvg` / `readDxf` (`xml.ts` is our own small tokenizer, no
+dependency), which give a `DrawingImport` — the same `Drawing` the writers
+take, in **millimetres with y up**, plus the unit the file declared and what
+was left out (`{ text: 4, image: 1 }`). **Units:** the root's `width` (or
+`height`) with its `viewBox` give mm per user unit, without a unit a user unit
+is a pixel (96 to the inch), a DXF's `$INSUNITS` gives its own (unitless as
+mm), and SVG's y is mirrored on the way out. The SVG reader takes `path` (every
+command, `A` through the endpoint-to-centre conversion with the radii grown
+when they are too small), `rect` (with `rx`/`ry`), `circle`, `ellipse`, `line`,
+`polyline` and `polygon` at any depth, with `transform` composed down the tree;
+under a transform that doesn't keep circles a circle becomes an elliptical arc
+(`transform.ts` takes an ellipse's image from the singular values of
+`L·R(θ)·diag(rx,ry)`), and a `display:none` subtree is skipped. The DXF reader
+takes LINE, ARC, CIRCLE, LWPOLYLINE and POLYLINE (bulges as arcs, the closed
+flag), ELLIPSE, SPLINE (knot insertion, exactly, for a non-rational spline of
+degree ≤ 3; sampled into cubics for a rational one), POINT and INSERT
+(position, scale, rotation and row and column counts, eight levels deep); a −z
+extrusion mirrors in x and any other extrusion is skipped and counted.
+`@extrudo/sketch/import` (entry `"./import"`) has `drawingToSketch(drawing,
+sketch, { scale, offset, fixed, ids })`: a line is a line, a whole turn a
+circle, a whole ellipse an ellipse entity, and an elliptical arc or Bézier a
+`mode: 'control'` spline of four poles (ADR-0063), one cubic per ≤ 45° of an
+ellipse, so nothing is flattened. **Fixed by default** (one `fix` per curve
+and no coincident constraints: profile detection joins ends by geometry); with
+`fixed` off the ends within 1e-6 mm get coincident constraints. Exact
+duplicates and zero-length lines are left out, **5,000 curves is refused**
+("This drawing has 12,400 curves; Extrudo imports up to 5,000."), and the IDs
+come from the caller, so the change is a deterministic recipe (ADR-0003). The
+tool is `importDrawing` (no key) in the Sketch tab's Create menu; it picks the
+file (`platform.files.pick('.svg,.dxf')`) and shows the panel "Import drawing"
+(`importDraft.ts` holds the draft, `pickDrawing.ts` reads the file): the file
+name, **Units** (the detected one preselected), **Scale** (an
+`<ExpressionInput>`), **Position** (the drawing's origin or centred on the
+sketch origin), **Fixed**, and `[data-import-summary]` ("312 curves · skipped 4
+texts"); OK commits the change through `ToolHost` as one undo step ("Import
+<file name>"), and a reader error or the limit shows in the panel with OK
+disabled. A nested region is a hole of its parent **and** a region of its own
+(ADR-0020), so a plate with a Ø10 circle reads `profiles=2 holes=1`.
+Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-06**'s
+slices 2 to 5 (attachments and STEP, mesh bodies, mesh booleans, the canvas)
 then onward in `docs/03-roadmap.md`; ADR-0063's Deferred (exact rational conics
 in the kernel, closed splines, trimming and offsetting splines) is P4-12
 backlog. The owner's own release steps (slicer check, making the
@@ -908,7 +948,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet (0006 is reserved). ADR-0066: import (drawings, STEP, meshes) and canvas images |
 
 ## Stack summary
 
@@ -2066,6 +2106,23 @@ them. Notes further down that name a machine apply to that machine only.
   is `error`, `data-dialog-valid` is **absent** (it is there only while the
   dialog can commit) and OK is disabled; the bodies drawn are the ones from
   before the draft.
+- **Import drawing e2e** (`e2e/import-drawing.spec.ts`, P4-06 slice 1): the tool
+  is `importDrawing` in the Sketch tab's Create menu ("Import Drawing…", no
+  key); it opens the file dialog at once, so the spec waits for the
+  `filechooser` **beside** the click (`chooser.setFiles('packages/io/src/
+  fixtures/rect-circle.svg')`, the fixtures `@extrudo/io`'s own tests read). The
+  panel is the region "Import drawing": the file's name, the comboboxes "Units"
+  (the file's own preselected: `mm`, `in`) and "Position" (`origin`/`centre`),
+  the "Scale" textbox (an `ExpressionInput`, so `fill('2')`), the "Fixed"
+  checkbox, `[data-import-summary]` ("5 curves", or the reason it can't be
+  imported, with `data-import-summary="error"` and OK disabled), and OK/Cancel.
+  After OK: `data-sketch-summary` reads `lines=4 circles=1 points=9
+  constraints=5` (one `fix` per curve), `data-sketch-profiles` reads
+  `profiles=2 holes=1` (ADR-0020: the hole is a region of its own), and one
+  Ctrl+Z takes the whole import out (the step is named "Import <file>"). A
+  profile is picked in the model **outside** the circle (at sketch (−10, 0)),
+  pressed with E, and `data-bodies` gives `40,20,5`; with Scale 2, `80,40,5`;
+  and `square-inches.dxf` ($INSUNITS 1) gives 25.4 × 25.4 mm.
 - **Emboss e2e** (`e2e/emboss.spec.ts`, P4-04): the tool is `emboss` in Create's
   menu (`menuitem` "Emboss", no key); its dialog is the region "Emboss dialog" /
   "Edit Emboss1 dialog" with the buttons "Profiles" and "Face" (`exact: true`:

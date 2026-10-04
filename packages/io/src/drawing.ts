@@ -69,6 +69,32 @@ export interface Bounds {
   maxY: number;
 }
 
+// Reading (P4-06, ADR-0066 §1) -----------------------------------------------
+
+/** The unit a drawing's coordinates were written in. */
+export type DrawingUnit = 'mm' | 'cm' | 'm' | 'in' | 'ft' | 'px' | 'unitless';
+
+/** What a drawing reader gives back: its geometry in mm, and what it left out. */
+export interface DrawingImport {
+  /** The drawing, in millimetres with y up, whatever unit the file was in. */
+  drawing: Drawing;
+  /** The unit the file's numbers were in, so a panel can offer it (ADR-0066 §1). */
+  units: DrawingUnit;
+  /** What was left out and why, by kind: `{ text: 4, image: 1 }` (empty when nothing was). */
+  skipped: Record<string, number>;
+}
+
+/** Millimetres per unit, as the readers find them (96 px to an inch). */
+export const UNIT_MM: Record<DrawingUnit, number> = {
+  mm: 1,
+  cm: 10,
+  m: 1000,
+  in: 25.4,
+  ft: 304.8,
+  px: 25.4 / 96,
+  unitless: 1,
+};
+
 // Evaluating segments ----------------------------------------------------------
 
 /** Radians of parameter per step so a chord stays within `tolerance` of a radius-`r` arc. */
