@@ -245,79 +245,37 @@ public:
    * - 4 every chain works alone but not all together: all staged edges and
    *   the largest factor (0..1) the radii can be scaled by, 0 if none;
    * - 5 anything else (an OCCT exception or an invalid result): n = 0.
+   *
+   * A radius that changes along a chain is filletVariable()'s, and a constant
+   * one is this method's.
    */
-  int fillet(int shape) {
-    beginOp();
-    geometry_.clear();
-    const TopoDS_Shape* input = find(shape);
-    if (input == nullptr) return fail("Fillet failed: unknown input shape.");
-    if (args_.empty() || numbers_.size() != args_.size()) {
-      return fail("Fillet failed: pick edges and give each a radius.");
-    }
-    try {
-      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
-      TopExp::MapShapes(*input, TopAbs_EDGE, edges);
-      for (size_t i = 0; i < args_.size(); ++i) {
-        if (args_[i] < 0 || args_[i] >= edges.Extent()) return fail("Fillet failed: edge index out of range.");
-        if (!(numbers_[i] > 0)) return fail("Fillet failed: the radius must be greater than 0.");
-      }
-      const std::vector<int> staged = args_;
-      const std::vector<double> radii = numbers_;
-      EdgeFaceMap edgeFaces;
-      TopExp::MapShapesAndUniqueAncestors(*input, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
-      BRepFilletAPI_MakeFillet builder(*input);
-      std::vector<int> contourOf;
-      std::vector<int> bad;
-      const int added = addFillets(builder, edges, edgeFaces, staged, radii, contourOf, bad);
-      if (added == 1) {
-        geometry_.push_back(2);
-        geometry_.push_back(static_cast<double>(bad.size()));
-        for (int position : bad) {
-          geometry_.push_back(1);
-          geometry_.push_back(staged[position]);
-          geometry_.push_back(0);
-        }
-        return fail("Fillet failed: an edge can't be filleted.");
-      }
-      if (added == 2) {
-        geometry_.push_back(3);
-        geometry_.push_back(1);
-        geometry_.push_back(static_cast<double>(bad.size()));
-        for (int position : bad) geometry_.push_back(staged[position]);
-        geometry_.push_back(0);
-        return fail("Fillet failed: one chain of tangent edges got two radii.");
-      }
-      // The chains, before Build: a failed Build can leave the builder unfit to ask.
-      std::vector<std::vector<int>> chains(static_cast<size_t>(builder.NbContours()) + 1);
-      for (int contour = 1; contour <= builder.NbContours(); ++contour) {
-        for (int j = 1; j <= builder.NbEdges(contour); ++j) {
-          const int at = edges.FindIndex(builder.Edge(contour, j)) - 1;
-          if (at >= 0) chains[contour].push_back(at);
-        }
-      }
-      // A radius that rolls off a flat face goes straight to the diagnosis: OCCT can trap there.
-      if (added == 3) {
-        return explainFillet(*input, edges, edgeFaces, staged, radii, contourOf, chains);
-      }
-      TopoDS_Shape result;
-      try {
-        builder.Build();
-        if (builder.IsDone()) result = builder.Shape();
-      } catch (...) {
-        result.Nullify();
-      }
-      if (!result.IsNull() && BRepCheck_Analyzer(result).IsValid()) {
-        recordHistory(builder, *input, 0, result);
-        return store(result);
-      }
-      return explainFillet(*input, edges, edgeFaces, staged, radii, contourOf, chains);
-    } catch (...) {
-      geometry_.clear();
-      geometry_.push_back(5);
-      geometry_.push_back(0);
-      return failFromException("Fillet failed");
-    }
-  }
+  int fillet(int shape) { return filletBuild(shape, 1); }
+
+  /**
+   * Fillets edges of `shape` with a radius that changes along each chain of
+   * tangent-continuous edges (P4-10, ADR-0064 §2): the staged edges
+   * (clearArgs/pushArg, 0-based edge indices) with **two** staged numbers per
+   * edge (clearNumbers/pushNumber), the radius at the chain's start and the
+   * radius at its end; the radius in between moves from one to the other.
+   * Two equal radii are a constant fillet, which fillet() asks for.
+   *
+   * As in fillet(), OCCT rounds a whole chain of tangent-continuous edges at
+   * once, so one pair per chain decides it: the first staged edge of the chain
+   * gives its start and end radius. Records fillet()'s history for input 0.
+   *
+   * On failure it returns 0 with a message in lastError() and, in
+   * geometryNumbers, the diagnosis in fillet()'s layout
+   * [status, n, n × [m, edge × m, value]]:
+   * - 2 an edge can't be filleted (it isn't between two faces): [1, edge, 0];
+   * - 3 one chain got two radius pairs: its staged edges, value 0;
+   * - 4 the fillets can't be built: all staged edges and the largest factor
+   *   (0..1) every radius can be scaled by, 0 if none;
+   * - 5 anything else: n = 0.
+   * There is no status 1: with a taper, which chain is too large depends on
+   * the direction the radius runs in, so the one number a person can act on
+   * is the factor all of them scale by.
+   */
+  int filletVariable(int shape) { return filletBuild(shape, 2); }
 
   /**
    * The edge indices of the chain of tangent-continuous edges around one
@@ -3670,19 +3628,104 @@ private:
   }
 
   /**
-   * Adds the edges of a fillet to `builder`, one radius per chain of tangent
-   * edges (the radius of its first staged edge; `staged` are edge indices,
-   * `radii` one per staged edge). Fills `contourOf` with each staged edge's
-   * contour (a chain's number in the builder, 0 if OCCT can't fillet the
-   * edge). Returns 0, 1 (some edge can't be filleted: `bad` lists their
-   * positions in `staged`), 2 (a chain got two radii: `bad` lists its) or
-   * 3 (a radius rolls off a flat face: see filletRollsOff; don't build).
+   * The body of fillet() and filletVariable(): `perEdge` is how many radii each
+   * staged edge carries (1, or 2 for a start and an end radius), so both round
+   * the same edges, record the same history and report the same diagnosis.
+   */
+  int filletBuild(int shape, int perEdge) {
+    beginOp();
+    geometry_.clear();
+    const bool variable = perEdge == 2;
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Fillet failed: unknown input shape.");
+    if (args_.empty() || numbers_.size() != args_.size() * perEdge) {
+      return fail(variable ? "Fillet failed: pick edges and give each its radius at its start and at its end."
+                           : "Fillet failed: pick edges and give each a radius.");
+    }
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+      TopExp::MapShapes(*input, TopAbs_EDGE, edges);
+      for (size_t i = 0; i < args_.size(); ++i) {
+        if (args_[i] < 0 || args_[i] >= edges.Extent()) return fail("Fillet failed: edge index out of range.");
+        for (int k = 0; k < perEdge; ++k) {
+          if (!(numbers_[perEdge * i + k] > 0)) return fail("Fillet failed: the radius must be greater than 0.");
+        }
+      }
+      const std::vector<int> staged = args_;
+      const std::vector<double> radii = numbers_;
+      EdgeFaceMap edgeFaces;
+      TopExp::MapShapesAndUniqueAncestors(*input, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+      BRepFilletAPI_MakeFillet builder(*input);
+      std::vector<int> contourOf;
+      std::vector<int> bad;
+      const int added = addFillets(builder, edges, edgeFaces, staged, radii, perEdge, contourOf, bad);
+      if (added == 1) {
+        geometry_.push_back(2);
+        geometry_.push_back(static_cast<double>(bad.size()));
+        for (int position : bad) {
+          geometry_.push_back(1);
+          geometry_.push_back(staged[position]);
+          geometry_.push_back(0);
+        }
+        return fail("Fillet failed: an edge can't be filleted.");
+      }
+      if (added == 2) {
+        geometry_.push_back(3);
+        geometry_.push_back(1);
+        geometry_.push_back(static_cast<double>(bad.size()));
+        for (int position : bad) geometry_.push_back(staged[position]);
+        geometry_.push_back(0);
+        return fail(variable ? "Fillet failed: one chain of tangent edges got two pairs of radii."
+                             : "Fillet failed: one chain of tangent edges got two radii.");
+      }
+      // The chains, before Build: a failed Build can leave the builder unfit to ask.
+      std::vector<std::vector<int>> chains(static_cast<size_t>(builder.NbContours()) + 1);
+      for (int contour = 1; contour <= builder.NbContours(); ++contour) {
+        for (int j = 1; j <= builder.NbEdges(contour); ++j) {
+          const int at = edges.FindIndex(builder.Edge(contour, j)) - 1;
+          if (at >= 0) chains[contour].push_back(at);
+        }
+      }
+      // A radius that rolls off a flat face goes straight to the diagnosis: OCCT can trap there.
+      if (added == 3) {
+        return explainFillet(*input, edges, edgeFaces, staged, radii, perEdge, contourOf, chains);
+      }
+      TopoDS_Shape result;
+      try {
+        builder.Build();
+        if (builder.IsDone()) result = builder.Shape();
+      } catch (...) {
+        result.Nullify();
+      }
+      if (!result.IsNull() && BRepCheck_Analyzer(result).IsValid()) {
+        recordHistory(builder, *input, 0, result);
+        return store(result);
+      }
+      return explainFillet(*input, edges, edgeFaces, staged, radii, perEdge, contourOf, chains);
+    } catch (...) {
+      geometry_.clear();
+      geometry_.push_back(5);
+      geometry_.push_back(0);
+      return failFromException("Fillet failed");
+    }
+  }
+
+  /**
+   * Adds the edges of a fillet to `builder`: one radius per staged edge
+   * (`perEdge` 1, the radius of the chain) or a pair (2: the radius at the
+   * chain's start and at its end, see filletVariable); `radii` holds `perEdge`
+   * numbers per staged edge, in `staged`'s order. Fills `contourOf` with each
+   * staged edge's contour (a chain's number in the builder, 0 if OCCT can't
+   * fillet the edge). Returns 0, 1 (some edge can't be filleted: `bad` lists
+   * their positions in `staged`), 2 (a chain got two radii or two pairs:
+   * `bad` lists its) or 3 (a radius rolls off a flat face: see filletRollsOff;
+   * don't build).
    */
   static int addFillets(BRepFilletAPI_MakeFillet& builder,
                         const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& edges,
                         const EdgeFaceMap& edgeFaces,
                         const std::vector<int>& staged, const std::vector<double>& radii,
-                        std::vector<int>& contourOf, std::vector<int>& bad) {
+                        int perEdge, std::vector<int>& contourOf, std::vector<int>& bad) {
     contourOf.assign(staged.size(), 0);
     for (size_t i = 0; i < staged.size(); ++i) builder.Add(TopoDS::Edge(edges(staged[i] + 1)));
     for (size_t i = 0; i < staged.size(); ++i) {
@@ -3696,21 +3739,34 @@ private:
         if (contourOf[i] == contour) members.push_back(static_cast<int>(i));
       }
       if (members.empty()) continue;
-      const double radius = radii[members[0]];
+      const size_t first = static_cast<size_t>(perEdge * members[0]);
       for (int position : members) {
-        if (std::abs(radii[position] - radius) > 1e-9) {
-          bad = members;
-          return 2;
+        for (int k = 0; k < perEdge; ++k) {
+          if (std::abs(radii[static_cast<size_t>(perEdge * position) + static_cast<size_t>(k)] -
+                       radii[first + static_cast<size_t>(k)]) > 1e-9) {
+            bad = members;
+            return 2;
+          }
         }
       }
-      for (int j = 1; j <= builder.NbEdges(contour); ++j) builder.SetRadius(radius, contour, j);
+      if (perEdge == 1) {
+        for (int j = 1; j <= builder.NbEdges(contour); ++j) builder.SetRadius(radii[first], contour, j);
+        continue;
+      }
+      // A start and an end radius: OCCT adds the chain's spine and puts the
+      // law along it, so one Add per chain is enough.
+      builder.Add(radii[first], radii[first + 1], TopoDS::Edge(edges(staged[members[0]] + 1)));
     }
     // Last, so that a chain with two radii or an edge that can't be filleted is reported first.
     for (int contour = 1; contour <= builder.NbContours(); ++contour) {
       for (size_t i = 0; i < staged.size(); ++i) {
         if (contourOf[i] != contour) continue;
+        double widest = 0;
+        for (int k = 0; k < perEdge; ++k) {
+          widest = std::max(widest, radii[perEdge * i + static_cast<size_t>(k)]);
+        }
         for (int j = 1; j <= builder.NbEdges(contour); ++j) {
-          if (filletRollsOff(edgeFaces, builder.Edge(contour, j), radii[i])) return 3;
+          if (filletRollsOff(edgeFaces, builder.Edge(contour, j), widest)) return 3;
         }
         break;
       }
@@ -3721,12 +3777,13 @@ private:
   /** Whether these fillets build a valid solid (a probe: nothing is kept). */
   bool filletWorks(const TopoDS_Shape& input,
                    const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& edges,
-                   const EdgeFaceMap& edgeFaces, const std::vector<int>& staged, const std::vector<double>& radii) {
+                   const EdgeFaceMap& edgeFaces, const std::vector<int>& staged,
+                   const std::vector<double>& radii, int perEdge) {
     try {
       BRepFilletAPI_MakeFillet builder(input);
       std::vector<int> contourOf;
       std::vector<int> bad;
-      if (addFillets(builder, edges, edgeFaces, staged, radii, contourOf, bad) != 0) return false;
+      if (addFillets(builder, edges, edgeFaces, staged, radii, perEdge, contourOf, bad) != 0) return false;
       builder.Build();
       if (!builder.IsDone()) return false;
       const TopoDS_Shape result = builder.Shape();
@@ -3755,19 +3812,21 @@ private:
   }
 
   /**
-   * Fills geometry_ after a fillet failed (see fillet()): finds the chains
-   * that fail alone and the largest radius each takes; if none does, the
-   * largest factor all radii can be scaled by. Returns 0 with lastError set.
+   * Fills geometry_ after a fillet failed (see fillet() and filletVariable()):
+   * finds the chains that fail alone and the largest radius each takes; if none
+   * does (or a radius tapers, where which chain is too large depends on the
+   * direction it runs in), the largest factor all radii can be scaled by.
+   * Returns 0 with lastError set.
    */
   int explainFillet(const TopoDS_Shape& input,
                     const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& edges,
                     const EdgeFaceMap& edgeFaces, const std::vector<int>& staged, const std::vector<double>& radii,
-                    const std::vector<int>& contourOf, const std::vector<std::vector<int>>& chains) {
+                    int perEdge, const std::vector<int>& contourOf, const std::vector<std::vector<int>>& chains) {
     geometry_.clear();
     geometry_.push_back(1);
     geometry_.push_back(0);
     int records = 0;
-    for (size_t contour = 1; contour < chains.size(); ++contour) {
+    for (size_t contour = 1; contour < chains.size() && perEdge == 1; ++contour) {
       std::vector<int> subset;
       std::vector<double> subsetRadii;
       for (size_t i = 0; i < staged.size(); ++i) {
@@ -3775,11 +3834,11 @@ private:
         subset.push_back(staged[i]);
         subsetRadii.push_back(radii[i]);
       }
-      if (subset.empty() || filletWorks(input, edges, edgeFaces, subset, subsetRadii)) continue;
+      if (subset.empty() || filletWorks(input, edges, edgeFaces, subset, subsetRadii, perEdge)) continue;
       const double failing = subsetRadii[0];
       const double largest = largestThatWorks(
           [&](double radius) {
-            return filletWorks(input, edges, edgeFaces, subset, std::vector<double>(subset.size(), radius));
+            return filletWorks(input, edges, edgeFaces, subset, std::vector<double>(subset.size(), radius), perEdge);
           },
           failing);
       geometry_.push_back(static_cast<double>(chains[contour].size()));
@@ -3788,13 +3847,14 @@ private:
       ++records;
     }
     if (records == 0) {
-      // Each chain builds alone, so they get in each other's way.
+      // Each chain builds alone, so they get in each other's way (the only
+      // diagnosis a tapered fillet gets: its radii are one set of numbers).
       geometry_[0] = 4;
       const double factor = largestThatWorks(
           [&](double f) {
             std::vector<double> scaled(radii);
             for (double& r : scaled) r *= f;
-            return filletWorks(input, edges, edgeFaces, staged, scaled);
+            return filletWorks(input, edges, edgeFaces, staged, scaled, perEdge);
           },
           1.0);
       geometry_.push_back(static_cast<double>(staged.size()));

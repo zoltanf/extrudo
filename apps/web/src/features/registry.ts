@@ -24,6 +24,7 @@ import { placeOnBedDialog } from './place-on-bed';
 import { PRIMITIVE_DIALOGS } from './primitives';
 import { removeDialog } from './remove';
 import { revolveDialog } from './revolve';
+import { ribDialog } from './rib';
 import { scaleDialog } from './scale';
 import { shellDialog } from './shell';
 import { commandId, type FeatureDialogSpec } from './spec';
@@ -62,6 +63,8 @@ export function featureDialogs(): FeatureDialogs {
   dialogs.register(threadDialog);
   // Emboss and deboss (P4-04, ADR-0060).
   dialogs.register(embossDialog);
+  // Rib (P4-10, ADR-0064 §1).
+  dialogs.register(ribDialog);
   // Remove: edit which bodies a Remove takes out (P3-17).
   dialogs.register(removeDialog);
   return dialogs;

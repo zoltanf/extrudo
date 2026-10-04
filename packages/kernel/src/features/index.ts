@@ -16,6 +16,7 @@ import { kernelCircularPattern, kernelPathPattern, kernelRectangularPattern } fr
 import { kernelPlaceOnBed } from './place-on-bed';
 import { KERNEL_PRIMITIVES } from './primitives';
 import { kernelRevolve } from './revolve';
+import { kernelRib } from './rib';
 import { kernelScale } from './scale';
 import { kernelShell } from './shell';
 import { kernelSketch } from './sketch';
@@ -72,5 +73,7 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
   registry.register(kernelThread as unknown as KernelFeatureDefinition);
   // Emboss and deboss (P4-04, ADR-0060; flat faces for now).
   registry.register(kernelEmboss as unknown as KernelFeatureDefinition);
+  // Rib (P4-10, ADR-0064 §1).
+  registry.register(kernelRib as unknown as KernelFeatureDefinition);
   return registry;
 }

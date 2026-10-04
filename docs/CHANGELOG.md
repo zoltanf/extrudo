@@ -4,6 +4,41 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-04 · **P4-10 (2 of 2) Variable-radius fillet** (ADR-0064 §2,
+  FR-FT-04): each edge set of a fillet takes an optional **end radius**
+  (`radiusEnd<n>`) and a **swap** (`swap<n>`), so the round tapers along its
+  tangent chain from `radius` at one end to the end radius at the other. The
+  facade's new `filletVariable` (staged edges with two radii each, one pair
+  per chain, the same build, check, `filletRollsOff` guard and history as
+  `fillet`, whose diagnosis it shares — except that a taper only reports the
+  factor every radius scales by, since which chain is too large depends on the
+  direction the radius runs in); `Kernel.filletVariable` with the same
+  `FilletError`. The evaluator calls it **only** when some set has an end
+  radius, so a constant document still takes the constant `fillet` and
+  computes exactly as before. The dialog gets a per-set Variable toggle with
+  an End radius and Swap ends. `spikes/p4-10-harness/` (native) checks a box's
+  top edge 2 → 5 mm, a chain of three tangent edges 1 → 3 mm, a taper too
+  large → a factor that works, and leaks; `fillet-variable.test.ts` measures
+  the volumes through the evaluator (a taper takes more off than a 2 mm
+  fillet and less than a 5 mm one; `swap` keeps the volume and moves the big
+  end); `e2e/fillet.spec.ts` reads them out of three 3MF exports.
+- 2026-10-04 · **P4-10 (1 of 2) Rib** (ADR-0064 §1, FR-FT-17): the `rib`
+  feature — a thin wall from one sketch **line** to the body beside it, the
+  stiffening triangle in a bracket's corner. Core's definition (`curve`,
+  `thickness`, `side`, `flip`) and the patternable types; the kernel's
+  evaluator, which builds a slab around the line (it extended by the bodies'
+  box diagonal at both ends, swept that far to the side the material is on,
+  prisms it along the plane normal by the thickness), cuts every body out of
+  it and joins the piece that holds the line's midpoint — named as a prism
+  under `rib:<id>`, so the wall's faces keep their names through a pattern.
+  The dialog: Line (one sketch line), Thickness with an arrow across the
+  plane, Thickness side, Flip with a direction arrow (a new manipulator kind,
+  `kind: 'arrow'`, whose head a click turns). `e2e/rib.spec.ts` measures the
+  Wall bracket's volume through a 3MF: the rib adds 2 915.1 mm³ against the
+  exact 2 916.0 mm³ of the triangle, and flipped it says the rib doesn't close
+  against the body. §1's "`d` is signed by the middle of the bodies' box" is
+  answered by their centre of mass instead: an L's legs are on the corner side
+  of its diagonal, which the box's middle is not.
 - 2026-10-04 · **P4-11 (part 1) Benchmark B9** (ADR-0039's amendment): a
   threaded bottle cap and its thread adapter, built through the UI in
   `e2e/benchmark-b9.spec.ts` — a revolved rectangle, a Shell that opens it at

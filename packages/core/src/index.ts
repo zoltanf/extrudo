@@ -57,6 +57,7 @@ export * from './place-on-bed';
 export * from './primitives';
 export * from './remove';
 export * from './revolve';
+export * from './rib';
 export * from './scale';
 export * from './schema';
 export * from './shell';

@@ -1,12 +1,16 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { exportModel, objectsOf3mf, solidTab } from './benchmark-helpers';
 import { kernelReady, openProject, pickTool, projector } from './helpers';
 
 // P3-01: Fillet (ADR-0038, FR-FT-04, FR-UX-06). Edges are picked in the
 // view (a picked edge brings its tangent chain), each set has its own
 // radius, the preview is live, and a radius that is too large says which
-// edge and how large it may be. One undo step.
+// edge and how large it may be. One undo step. P4-10: a set with an end
+// radius tapers along its edges (ADR-0064 §2).
 
 test.use({ viewport: { width: 1440, height: 900 } });
+// Four exports (one per volume) plus the previews: a few minutes.
+test.describe.configure({ timeout: 300_000 });
 
 let errors: string[] = [];
 
@@ -63,6 +67,32 @@ async function clickEdge(
   await page.mouse.move(x, y + 2);
   await expect.poll(() => viewportOf(page).getAttribute('data-model-hover')).toMatch(/^edge:/);
   await page.mouse.click(x, y + 2);
+}
+
+/** The model's volume in mm³, from a 3MF export (a tessellation, so a little under). */
+async function volume(page: Page) {
+  const file = await exportModel(page, '3MF');
+  await solidTab(page);
+  const objects = objectsOf3mf(file);
+  expect(objects).toHaveLength(1);
+  const mesh = objects[0]?.mesh;
+  if (!mesh) throw new Error('no mesh');
+  let total = 0;
+  const p = mesh.positions;
+  const i = mesh.indices;
+  // The signed volume of each triangle's tetrahedron with the origin.
+  for (let t = 0; t + 2 < i.length; t += 3) {
+    const at = (node: number, k: number) => p[3 * node + k] ?? 0;
+    const a = i[t] ?? 0;
+    const b = i[t + 1] ?? 0;
+    const c = i[t + 2] ?? 0;
+    total +=
+      (at(a, 0) * (at(b, 1) * at(c, 2) - at(b, 2) * at(c, 1)) -
+        at(a, 1) * (at(b, 0) * at(c, 2) - at(b, 2) * at(c, 0)) +
+        at(a, 2) * (at(b, 0) * at(c, 1) - at(b, 1) * at(c, 0))) /
+      6;
+  }
+  return total;
 }
 
 test('rounds edges in two sets; a radius that is too large says how large it may be', async ({
@@ -180,4 +210,76 @@ test('the wall bracket’s Fillet1 rounds its bend, and its dialog opens on the 
   await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
   await dialog.getByRole('button', { name: 'Cancel Esc' }).click();
   await expect(dialog).toBeHidden();
+});
+
+test('a variable radius tapers along the edge between its two ends', async ({ page }) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await cube(page);
+  const at = await settledProjector(viewport);
+
+  // The top front edge: 20 mm long, between the top face and the front one.
+  await clickEdge(page, at, [0, -10, 20]);
+  await page.keyboard.press('f');
+  const dialog = page.getByRole('region', { name: 'Fillet dialog' });
+  await expect(dialog).toBeVisible();
+  // Variable is off, so there is no end radius yet.
+  await expect(dialog.getByRole('checkbox', { name: 'Variable' })).not.toBeChecked();
+  await expect(dialog.getByRole('textbox', { name: 'End radius' })).toHaveCount(0);
+  await dialog.getByRole('textbox', { name: 'Radius', exact: true }).fill('2 mm');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+  const flat2 = await volume(page);
+
+  // The same fillet at 5 mm, for the volume the taper has to stay above.
+  await chip(page, 'Fillet1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Fillet1 dialog' });
+  await expect(edit).toBeVisible();
+  await edit.getByRole('textbox', { name: 'Radius', exact: true }).fill('5 mm');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page);
+  const flat5 = await volume(page);
+  expect(flat2).toBeGreaterThan(flat5 + 50);
+
+  // Now the taper: 2 mm at one end of the edge, 5 mm at the other.
+  await chip(page, 'Fillet1').dblclick();
+  await expect(edit).toBeVisible();
+  await edit.getByRole('textbox', { name: 'Radius', exact: true }).fill('2 mm');
+  await edit.getByRole('checkbox', { name: 'Variable' }).check();
+  await edit.getByRole('textbox', { name: 'End radius' }).fill('5 mm');
+  await edit.getByRole('checkbox', { name: 'Swap ends' }).waitFor();
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 20_000 });
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:7:20,20,20');
+  const tapered = await volume(page);
+  // Between the two constant fillets: more gone than at 2 mm, less than at 5 mm.
+  expect(tapered).toBeLessThan(flat2);
+  expect(tapered).toBeGreaterThan(flat5);
+
+  // Swapping the ends moves the round along the edge, not the material.
+  await chip(page, 'Fillet1').dblclick();
+  await expect(edit).toBeVisible();
+  await edit.getByRole('checkbox', { name: 'Variable' }).check();
+  await edit.getByRole('textbox', { name: 'End radius' }).fill('5 mm');
+  await edit.getByRole('checkbox', { name: 'Swap ends' }).check();
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 20_000 });
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page);
+  expect(await volume(page)).toBeCloseTo(tapered, -1);
+
+  // The chip's dialog opens on the stored taper: Variable is on with its ends.
+  await chip(page, 'Fillet1').dblclick();
+  await expect(edit).toBeVisible();
+  await expect(edit.getByRole('checkbox', { name: 'Variable' })).toBeChecked();
+  await expect(edit.getByRole('textbox', { name: 'End radius' })).toHaveValue('5 mm');
+  await edit.getByRole('checkbox', { name: 'Variable' }).uncheck();
+  await expect(edit.getByRole('textbox', { name: 'End radius' })).toHaveCount(0);
 });

@@ -322,8 +322,10 @@ files into `dist/sw.js` and versions it; registration in
 manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
 also found that the kernel uses no raw OCCT bindings, so the build's
-binding list is now just `ExtrudoFacade` (built by CI: WASM 15.76 MB raw,
-3.69 MB brotli, was 20.19/4.52; OCCT input hash `3df02e42e490`; **don't
+binding list is now just `ExtrudoFacade` (built by CI: WASM 17.87 MB raw,
+5.81 MB gzip, after P4-04/P4-05/P4-10's facade methods; the 15.76 MB / 3.69 MB
+brotli of ADR-0037 was P2-15's; OCCT input hash `8ca58198579d` (release
+`occt-8ca58198579d`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
@@ -832,6 +834,43 @@ refuse every spline mode as they refuse fit splines; projections stay fit.
 The tools are `splineControl` and `conic` (`sketch/tools/conics.ts`), the
 control polygon is `sketchSegments(…, controlPolygons)` and the panel's Rho
 field writes core's `setSplineRho` through `ToolHost.apply`.
+ADR-0064 (P4-10, slice 1) added the **rib**: a thin wall from one sketch
+**line** to the body beside it (a gusset, a web; the stiffening triangle in a
+bracket's corner). Core holds the definition (`curve`, `thickness`, `side`,
+`flip`) and lists the type as patternable; the kernel builds a **slab** around
+the line — the line extended by the bodies' box diagonal at both ends, swept
+that far to one side of it, prisms the rectangle along the plane normal by the
+thickness with `namedPrism` — **cuts every body out of the slab** and keeps
+**the piece at the line's midpoint** moved `1e-4 · L` into the material side at
+mid-thickness (the exact distance of a 1 µm probe box is 0 inside or on), then
+`operate` joins it into the bodies it touches. Two errors, worded for the
+user: a line inside a body ("The rib's line lies inside the body.") and a
+piece that would run past the body instead of closing on it ("The rib doesn't
+close against the body: make the line's ends reach it, or flip the rib."). The
+slab-minus-bodies rule means nothing is placed by hand: the wall stops where
+it meets the body, and the ribs of a bracket are the triangles its diagonals
+cut. `d` (which side of the line the wall grows on) is `n × u` signed by the
+bodies' **centre of mass**, not the middle of their box as the ADR's first
+draft said: an L's legs are on the corner side of its diagonal, which the box's
+middle is not. The dialog's Flip carries a **direction arrow** — the new
+manipulator kind `kind: 'arrow'` (`spec.ts`, drawn by `DialogOverlay`), whose
+head a click turns. **Straight lines only** (chains of lines and arcs are
+ADR-0064's Deferred), and the rib's faces are named as the prism's under
+`rib:<id>`: `…:side:<sketch line>`, `…:cap:start`, `…:cap:end`.
+ADR-0064 (P4-10, slice 2) added the **variable-radius fillet**: each edge set
+takes an optional end radius (`radiusEnd<n>`, expr length) and `swap<n>`
+(bool), so the round tapers along its tangent chain from `radius<n>` to the end
+radius (core: `filletEndKey` / `filletSwapKey`; `filletSets` reports them, a
+set with an end radius is **variable**). The evaluator calls the facade's new
+`filletVariable` **only** when some set is variable (staging every edge with a
+pair, the constant sets as `(r, r)` and a swapped one as `(end, start)`), so a
+constant document takes `fillet` and computes exactly as before. `fillet` and
+`filletVariable` share `filletBuild`/`addFillets`/`filletWorks`/`explainFillet`
+(per-edge radius count 1 or 2); a taper's diagnosis is only the scale factor
+(status 4), since which chain is too large depends on the direction the radius
+runs in. Names and the two ends' messages are unchanged. The dialog's per-set
+**Variable** toggle is not an input: a set is variable exactly when it has an
+end radius, so the toggle off drops `radiusEnd`/`swap` again.
 Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-06**
 then onward in `docs/03-roadmap.md`; ADR-0063's Deferred (exact rational conics
 in the kernel, closed splines, trimming and offsetting splines) is P4-12
@@ -869,7 +908,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet (0006 is reserved) |
 
 ## Stack summary
 
@@ -1422,7 +1461,12 @@ them. Notes further down that name a machine apply to that machine only.
   fillet golden table is `pnpm vitest run -u packages/kernel/src/features/fillet`.
   A failing fillet is diagnosed by rebuilding it (about a second per
   failing build when 12 edges collide): keep such cases out of previews
-  and tests that run many times.
+  and tests that run many times. P4-10 adds the checkbox **"Variable"** and,
+  while it is on, the textbox "End radius" and the checkbox "Swap ends" (set
+  n's carry the number, "End radius 2"); the toggle is no input, so opening a
+  stored taper shows it on and unchecking it hides the other two. The
+  variable test's volumes come from four `exportModel(page, '3MF')` calls
+  (each leaves the 3D Print tab open, so `solidTab(page)` before a dialog).
 - **Chamfer e2e** (`e2e/chamfer.spec.ts`, P3-02): the tool has no key: click
   the toolbar's Chamfer tile (`getByRole('button', { name: /^Chamfer/ })`,
   after picking an edge for pre-selection). The dialog is the region
@@ -1956,6 +2000,27 @@ them. Notes further down that name a machine apply to that machine only.
   40 mm wide whose height is the rho's share of the shoulder's (0.3 × 15 mm).
   A filled-in conic takes a moment to preview: `data-preview-status` polls up
   to 30 s.
+- **Rib e2e** (`e2e/rib.spec.ts`, P4-10): the tool is `rib` in Create's menu
+  after Emboss (`menuitem` "Rib", no key); its dialog is the region "Rib
+  dialog" / "Edit Rib1 dialog" with the button "Line" (`exact: true`: a sketch
+  line reads **"Line · Sketch3"**, the sketch it is in), the `Thickness`
+  textbox (`exact`), the `Thickness side` combobox (`both`/`one`/`other`) and
+  the `Flip` checkbox; `data-manipulators` reads `distance:thickness
+  arrow:flip`. The Line field takes a sketch line **selected in the view**
+  (pre-selection) or one picked while the dialog is open; the hover reads
+  `sketchEntity:`. Two things to know: the Line tool's key is `l` (`r` is the
+  Rectangle, and a rectangle's profile takes the pick in front of a line on the
+  same plane), and it needs **two Escapes** (the first ends the chain). The
+  Wall bracket's own sketch lies in the same plane as a new sketch on XZ and its
+  profile face takes every pick along a diagonal, so the spec hides it and
+  Sketch2 with their eyes for the pick. The volume is read from a 3MF export
+  (`exportModel` + `objectsOf3mf`, the signed volume of each triangle's
+  tetrahedron); the bracket is `Bracket:12:40,80,60` and the rib takes it to 16
+  faces. Flipped, the preview errors: the region "Feature status" inside the
+  dialog says "The rib doesn't close against the body", `data-preview-status`
+  is `error`, `data-dialog-valid` is **absent** (it is there only while the
+  dialog can commit) and OK is disabled; the bodies drawn are the ones from
+  before the draft.
 - **Emboss e2e** (`e2e/emboss.spec.ts`, P4-04): the tool is `emboss` in Create's
   menu (`menuitem` "Emboss", no key); its dialog is the region "Emboss dialog" /
   "Edit Emboss1 dialog" with the buttons "Profiles" and "Face" (`exact: true`:

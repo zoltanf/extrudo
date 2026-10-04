@@ -34,6 +34,8 @@ export interface DialogOverlayProps {
 
 /** Screen radius of an angle arc, px. */
 const ARC_PX = 64;
+/** How long a direction arrow is drawn, mm. */
+const ARROW_MM = 12;
 const BOX_WIDTH = 168;
 /** The feature dialog's column on the right of the view, which the box keeps out of. */
 const DIALOG_COLUMN = 280;
@@ -51,8 +53,9 @@ type Screen = readonly [number, number];
 /**
  * The open dialog's in-canvas manipulators (UI spec §3.4, ADR-0027): a
  * distance arrow and an angle arc per the spec, drawn over the view, with a
- * heads-up box next to the active one. Dragging a handle writes the field;
- * typing a number while nothing else has the keyboard goes into the box.
+ * heads-up box next to the active one, and a direction arrow for a toggle
+ * (a rib's Flip), which a click turns the other way. Dragging a handle writes
+ * the field; typing a number while nothing else has the keyboard goes into the box.
  * Rendered directly from the shell, never through `React.lazy` (keys typed
  * while a lazy boundary suspends are lost).
  *
@@ -106,7 +109,10 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
   };
   const perPixel = (p: Vec3) => worldPerPixel(view, projection, height, p);
 
-  const current = manipulators.find((m) => m.field === open?.activeField) ?? manipulators[0];
+  // A direction arrow writes a toggle: it has no heads-up box and no value.
+  const current =
+    manipulators.find((m) => m.kind !== 'arrow' && m.field === open?.activeField) ??
+    manipulators.find((m) => m.kind !== 'arrow');
 
   // Typing a number goes straight into the heads-up box (UI spec §3.4); Tab moves into it.
   const box = useRef<HTMLFieldSetElement>(null);
@@ -142,7 +148,7 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
       return at === undefined ? undefined : at / (m.scale ?? 1);
     }
     const at = distanceAlong(m.origin, m.direction, ray);
-    return at === undefined ? undefined : at / (m.scale ?? 1);
+    return at === undefined ? undefined : at / (m.kind === 'arrow' ? 1 : (m.scale ?? 1));
   };
   const local = (event: ReactPointerEvent) => {
     const r = layer.current?.getBoundingClientRect();
@@ -152,6 +158,10 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     if (event.button !== 0) return;
     event.stopPropagation();
     event.preventDefault();
+    if (m.kind === 'arrow') {
+      controller.setToggle(m.field, open?.values.toggles[m.field] !== true);
+      return;
+    }
     const [x, y] = local(event);
     const at = measure(m, x, y);
     if (at === undefined) return;
@@ -232,7 +242,7 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
                   stroke={color}
                   strokeWidth={2}
                 />
-                {m.kind === 'distance' && handle && base && (
+                {(m.kind === 'distance' || m.kind === 'arrow') && handle && base && (
                   <ArrowHead from={line.at(-2) ?? base} to={handle} color={color} />
                 )}
                 {handle && (
@@ -245,13 +255,20 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
                     fill="var(--x-raised)"
                     stroke={color}
                     strokeWidth={2}
-                    style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                    style={{
+                      pointerEvents: 'auto',
+                      cursor: m.kind === 'arrow' ? 'pointer' : 'grab',
+                    }}
                     onPointerDown={onDown(m)}
                     onPointerMove={onMove}
                     onPointerUp={onUp}
                     onPointerCancel={onUp}
                   >
-                    <title>{`Drag to set ${fieldLabel(open, m.field)?.toLowerCase()}`}</title>
+                    <title>
+                      {m.kind === 'arrow'
+                        ? `Click to turn ${fieldLabel(open, m.field)?.toLowerCase()} the other way`
+                        : `Drag to set ${fieldLabel(open, m.field)?.toLowerCase()}`}
+                    </title>
                   </circle>
                 )}
               </g>
@@ -305,9 +322,12 @@ function fieldUnit(open: OpenDialog | undefined, name: string) {
 
 /** A manipulator's handle and line (an arrow's shaft) at a value; arcs of radius `r` (mm). */
 function shapeOf(m: Manipulator, value: number, r: number) {
-  if (m.kind === 'distance') {
-    const handle = along(m.origin, m.direction, value * (m.scale ?? 1));
-    return { handle, line: [m.origin, handle], angle: 0 };
+  if (m.kind === 'distance' || m.kind === 'arrow') {
+    const head =
+      m.kind === 'arrow'
+        ? along(m.origin, m.direction, m.length ?? ARROW_MM)
+        : along(m.origin, m.direction, value * (m.scale ?? 1));
+    return { handle: head, line: [m.origin, head], angle: 0 };
   }
   const angle = value * (m.scale ?? 1);
   return { handle: arcPoint(m, angle, r), line: [], angle };

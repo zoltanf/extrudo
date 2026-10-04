@@ -401,6 +401,42 @@ export class Kernel {
   }
 
   /**
+   * Fillets edges (indices into the shape's edge list) with a radius that
+   * changes along each chain of tangent-continuous edges: one [start, end]
+   * pair per edge, or one pair for all of them. The radius runs from the start
+   * radius at the chain's start (whichever end OCCT calls that) to the end
+   * radius at its other end. As in a constant fillet, edges of one chain must
+   * all give the same pair. A failure is a `FilletError` with the facade's
+   * diagnosis; with a taper only the factor every radius scales by is reported,
+   * since which chain is too large depends on the direction the radius runs in.
+   * History: input 0; a filleted edge is deleted and generates its face.
+   */
+  filletVariable(
+    shape: ShapeHandle,
+    edges: readonly number[],
+    radii: readonly (readonly [number, number])[],
+  ): OperationResult {
+    const f = this.#facade;
+    f.clearArgs();
+    f.clearNumbers();
+    edges.forEach((edge, i) => {
+      const pair = radii[i];
+      if (!pair) throw new KernelError(`No radii given for edge ${i + 1}.`);
+      f.pushArg(edge);
+      f.pushNumber(pair[0]);
+      f.pushNumber(pair[1]);
+    });
+    const handle = f.filletVariable(shape);
+    if (handle === 0) {
+      throw new FilletError(
+        f.lastError() || 'The fillet failed.',
+        decodeFilletProblems(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize())),
+      );
+    }
+    return this.#withHistory(handle);
+  }
+
+  /**
    * The edges (indices) of the tangent-continuous chain around `edge`, the
    * edge included: what `fillet` rounds together.
    */

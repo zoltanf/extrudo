@@ -214,7 +214,23 @@ export interface AngleManipulator {
   fullTurn?: boolean;
 }
 
-export type Manipulator = DistanceManipulator | AngleManipulator;
+/**
+ * A direction arrow for a **toggle** field (a rib's Flip): from `origin`
+ * along `direction` (world, unit length) for `length` mm. Clicking its head
+ * flips the field; nothing is dragged, so no heads-up box opens on it.
+ */
+export interface ToggleManipulator {
+  kind: 'arrow';
+  /** A toggle field of the dialog (a `bool` input). */
+  field: string;
+  origin: Vec3;
+  /** The direction the field turns on, unit length. */
+  direction: Vec3;
+  /** How long the arrow is drawn, mm. Default 12. */
+  length?: number;
+}
+
+export type Manipulator = DistanceManipulator | AngleManipulator | ToggleManipulator;
 
 /** A command of its own, for a spec without a toolbar tool (a debug page's). */
 export interface DialogCommand {

@@ -59,9 +59,11 @@ import {
   pathPatternFeature,
   placeOnBedFeature,
   REVOLVE_DIRECTIONS,
+  RIB_SIDES,
   rectangularPatternFeature,
   removeBodiesFeature,
   revolveFeature,
+  ribFeature,
   SettingsSchema,
   SketchConstraintSchema,
   SketchDataSchema,
@@ -146,6 +148,7 @@ const FEATURES = [
   cylinderFeature,
   sphereFeature,
   torusFeature,
+  ribFeature,
   ...Object.values(CONSTRUCTION_FEATURES),
 ];
 
@@ -261,6 +264,7 @@ describe('docs/file-format.md', () => {
       ...THREAD_EXTENTS,
       ...THREAD_HANDS,
       ...EMBOSS_MODES,
+      ...RIB_SIDES,
     ];
     const origin = [...ORIGIN_PLANES.map((p) => p.id), ...ORIGIN_AXES.map((a) => a.id)];
     expect(missing([...inputs, ...choices, ...origin])).toEqual([]);

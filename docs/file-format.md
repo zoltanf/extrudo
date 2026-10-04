@@ -549,22 +549,27 @@ bodies back.
 
 ### 6.8 `fillet`
 
-Rounds edges of a body with a constant radius (P3-01). A fillet has up to
-8 **edge sets**, each with its own radius: set 1 is `edges` + `radius`,
-set `n` is `edges<n>` + `radius<n>` (`edges2`, `radius2`, ..., `edges8`,
-`radius8`). Every input is optional.
+Rounds edges of a body, with a constant radius per edge set (P3-01) or one
+that tapers along the set's chain (P4-10). A fillet has up to 8 **edge
+sets**: set 1 is `edges` + `radius`, set `n` is `edges<n>` + `radius<n>`
+(`edges2`, `radius2`, ..., `edges8`, `radius8`), and a set with an **end
+radius** also takes `radiusEnd<n>` + `swap<n>` (`radiusEnd`, `radiusEnd2`,
+... and `swap`, `swap2`, ...). Every input is optional.
 
 | Input | Kind | Rule |
 |---|---|---|
 | `edges`, `edges2` ... `edges8` | `ref` | Refs of kind `edge` (persistent edge names, section 8); a set with no edges is ignored |
 | `radius`, `radius2` ... `radius8` | `expr` | Length; greater than 0 when the kernel evaluates it (not checked by the schema); a set with edges needs its radius |
+| `radiusEnd`, `radiusEnd2` ... `radiusEnd8` | `expr` | Length, greater than 0; the radius at the chain's other end. **A set with one is variable** |
+| `swap`, `swap2` ... `swap8` | `bool` | Puts the end radius at the other end of the chain (which end that is depends on the topology) |
 
 The kernel rounds the whole chain of tangent-continuous edges around each
-edge you name, with one radius, so edges of one chain must share a radius
-(two sets that reach one chain with different radii fail). Edges of
-different bodies are rounded body by body. The faces it makes are named
+edge you name, so edges of one chain must share their radii (two sets that
+reach one chain with different radii fail). A variable set's radius runs from
+`radius` to `radiusEnd` along its chain. Edges of different bodies are
+rounded body by body. The faces it makes are named
 `fillet:<feature id>:from:(<edge name>)`. No new keys: a fillet is a
-feature with `ref` and `expr` inputs like the others.
+feature with `ref`, `expr` and `bool` inputs like the others.
 
 ### 6.9 `chamfer`
 
@@ -1057,6 +1062,38 @@ parallel to the face are errors.
 Names: the prism's own names under `emboss:<feature id>` — `…:cap:start` (on
 the face's plane) and `…:cap:end`, and `…:side:<source>` for each sketch curve
 the profile is bounded by, `#n` where names repeat — like an extrude's.
+
+### 6.27 `rib`
+
+A thin wall (a gusset, a web) that fills the space between one sketch **line**
+and the bodies beside it (P4-10, ADR-0064 §1): in an L-bracket a diagonal on
+the bracket's middle plane becomes a stiffening triangle that meets both legs.
+It makes no body of its own: the piece is joined to the bodies it reaches, and
+a pattern or mirror can repeat it as a feature (6.16). Only straight lines, in
+any sketch plane; no new keys.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `curve` | `ref` | yes | One ref of kind `sketchEntity` naming a sketch **line** (`<sketch>/<line>`; construction lines too). Missing: an error until one is picked |
+| `thickness` | `expr` | no | Length, greater than 0; default 2 mm. How thick the wall is |
+| `side` | `enum` | no | `both` (default: centred on the sketch plane), `one` (from it along its normal) or `other` (against it) |
+| `flip` | `bool` | no | Default false: grow to the other side of the line |
+
+The line is extended by the bodies' box diagonal at both ends and swept that
+far to one side of it — the side the material is on, read from where the
+bodies' mass is, which `flip` reverses — and prisms that along the sketch
+plane's normal by the thickness. Every body is then cut out of the slab, and
+the piece that holds the line's midpoint (moved a hair into the material side,
+at mid-thickness) is the rib; it is joined to the bodies it touches. The
+material stops where it meets the body, so the line's ends should reach it: a
+line that lies inside a body says so, and a piece that would run past the body
+instead of closing on it is an error, as is a thickness of 0 or less.
+
+Names: the prism's own names under `rib:<feature id>` — `…:cap:start` and
+`…:cap:end` (the wall's two faces across the sketch plane), and
+`…:side:<sketch line>` for the face the wall stands on, `…:side:(<sketch
+line>:end0)` and `…:side:(<sketch line>:end1)` for the extension's ends,
+`#n` where names repeat — like an extrude's.
 
 ---
 

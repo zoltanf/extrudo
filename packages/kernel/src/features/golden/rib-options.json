@@ -1,0 +1,230 @@
+{
+ "both  2 mm": {
+  "volume": 21875,
+  "bbox": [
+   0,
+   -20,
+   0,
+   60,
+   20,
+   50
+  ],
+  "faces": 11,
+  "solids": 1,
+  "valid": true,
+  "ribFaces": [
+   "rib:R:cap:end",
+   "rib:R:cap:start",
+   "rib:R:side:l2"
+  ],
+  "data": {
+   "origin": [
+    17.5,
+    0,
+    22.5
+   ],
+   "towards": [
+    -0.814,
+    0,
+    -0.581
+   ],
+   "band": [
+    -1,
+    1
+   ]
+  }
+ },
+ "both  5 mm": {
+  "volume": 23187.5,
+  "bbox": [
+   0,
+   -20,
+   0,
+   60,
+   20,
+   50
+  ],
+  "faces": 11,
+  "solids": 1,
+  "valid": true,
+  "ribFaces": [
+   "rib:R:cap:end",
+   "rib:R:cap:start",
+   "rib:R:side:l2"
+  ],
+  "data": {
+   "origin": [
+    17.5,
+    0,
+    22.5
+   ],
+   "towards": [
+    -0.814,
+    0,
+    -0.581
+   ],
+   "band": [
+    -2.5,
+    2.5
+   ]
+  }
+ },
+ "both flipped 2 mm": {
+  "error": "The rib doesn't close against the body: make the line's ends reach it, or flip the rib."
+ },
+ "both flipped 5 mm": {
+  "error": "The rib doesn't close against the body: make the line's ends reach it, or flip the rib."
+ },
+ "one  2 mm": {
+  "volume": 21875,
+  "bbox": [
+   0,
+   -20,
+   0,
+   60,
+   20,
+   50
+  ],
+  "faces": 11,
+  "solids": 1,
+  "valid": true,
+  "ribFaces": [
+   "rib:R:cap:end",
+   "rib:R:cap:start",
+   "rib:R:side:l2"
+  ],
+  "data": {
+   "origin": [
+    17.5,
+    0,
+    22.5
+   ],
+   "towards": [
+    -0.814,
+    0,
+    -0.581
+   ],
+   "band": [
+    0,
+    2
+   ]
+  }
+ },
+ "one  5 mm": {
+  "volume": 23187.5,
+  "bbox": [
+   0,
+   -20,
+   0,
+   60,
+   20,
+   50
+  ],
+  "faces": 11,
+  "solids": 1,
+  "valid": true,
+  "ribFaces": [
+   "rib:R:cap:end",
+   "rib:R:cap:start",
+   "rib:R:side:l2"
+  ],
+  "data": {
+   "origin": [
+    17.5,
+    0,
+    22.5
+   ],
+   "towards": [
+    -0.814,
+    0,
+    -0.581
+   ],
+   "band": [
+    0,
+    5
+   ]
+  }
+ },
+ "one flipped 2 mm": {
+  "error": "The rib doesn't close against the body: make the line's ends reach it, or flip the rib."
+ },
+ "one flipped 5 mm": {
+  "error": "The rib doesn't close against the body: make the line's ends reach it, or flip the rib."
+ },
+ "other  2 mm": {
+  "volume": 21875,
+  "bbox": [
+   0,
+   -20,
+   0,
+   60,
+   20,
+   50
+  ],
+  "faces": 11,
+  "solids": 1,
+  "valid": true,
+  "ribFaces": [
+   "rib:R:cap:end",
+   "rib:R:cap:start",
+   "rib:R:side:l2"
+  ],
+  "data": {
+   "origin": [
+    17.5,
+    0,
+    22.5
+   ],
+   "towards": [
+    -0.814,
+    0,
+    -0.581
+   ],
+   "band": [
+    -2,
+    0
+   ]
+  }
+ },
+ "other  5 mm": {
+  "volume": 23187.5,
+  "bbox": [
+   0,
+   -20,
+   0,
+   60,
+   20,
+   50
+  ],
+  "faces": 11,
+  "solids": 1,
+  "valid": true,
+  "ribFaces": [
+   "rib:R:cap:end",
+   "rib:R:cap:start",
+   "rib:R:side:l2"
+  ],
+  "data": {
+   "origin": [
+    17.5,
+    0,
+    22.5
+   ],
+   "towards": [
+    -0.814,
+    0,
+    -0.581
+   ],
+   "band": [
+    -5,
+    0
+   ]
+  }
+ },
+ "other flipped 2 mm": {
+  "error": "The rib doesn't close against the body: make the line's ends reach it, or flip the rib."
+ },
+ "other flipped 5 mm": {
+  "error": "The rib doesn't close against the body: make the line's ends reach it, or flip the rib."
+ }
+}

@@ -816,7 +816,11 @@ end to end, faster than in Fusion 360.
   exists — **the launch itself is P6-02**, since the browser build can't hand a
   local design to another program.
 - [ ] **P4-09 Timeline groups; linked folder storage.** FR-TL-06, FR-PRJ-06.
-- [ ] **P4-10 Rib/web; variable-radius fillet.** FR-FT-17.
+- [x] **P4-10 Rib/web; variable-radius fillet.** FR-FT-17, FR-FT-04's variable
+  radius. Done 2026-10-04 (ADR-0064): a **rib** from one sketch **line** (a
+  slab cut by the bodies, so nothing is placed by hand) and a **variable
+  fillet**: an end radius per edge set (`radiusEnd<n>`, `swap<n>`) through the
+  facade's new `filletVariable`, used only when some set has an end radius.
 - [ ] **P4-11 Benchmarks B8–B10 E2E.** B9 (threaded bottle cap and thread
   adapter) done 2026-10-04 (`e2e/benchmark-b9.spec.ts`, ADR-0039's amendment:
   it took the ISO coarse thread series to M64 and the thread turn limit to 150

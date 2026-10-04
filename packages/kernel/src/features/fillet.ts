@@ -1,4 +1,10 @@
-import { type BodyId, type FilletInputs, filletFeature, filletSets } from '@extrudo/core';
+import {
+  type BodyId,
+  type FilletInputs,
+  type FilletSet,
+  filletFeature,
+  filletSets,
+} from '@extrudo/core';
 import { FilletError, type FilletProblem, KernelError, type ShapeHandle } from '../kernel';
 import type { TopoNames } from '../naming/names';
 import { type NamedShape, withHistory } from '../naming/ops';
@@ -12,6 +18,12 @@ import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../rec
  * bodies fillet each body on its own. The fillet faces are named
  * `fillet:<id>:from:(<edge name>)`, so later features can refer to them and
  * they keep their names when a radius changes.
+ *
+ * A set with an end radius (P4-10, ADR-0064) is **variable**: the radius runs
+ * from the set's `radius` to its `radiusEnd` along the tangent chain, and
+ * `swap` exchanges the two ends. Then every edge is staged with a pair and the
+ * facade's `filletVariable` builds it; without one the constant `fillet` runs
+ * exactly as before, so existing documents compute the same shapes.
  *
  * A failure is turned into a message a person can act on (FR-UX-06): which
  * edge, and the largest radius that works ("radius too large for edge 12,
@@ -27,6 +39,8 @@ export const kernelFillet: KernelFeatureDefinition<FilletInputs> = {
 interface EdgePick {
   index: number;
   radius: number;
+  /** The radius at the chain's other end; the same as `radius` for a constant set. */
+  radiusEnd: number;
   /** The set it came from (1-based), for messages. */
   set: number;
 }
@@ -36,34 +50,27 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
   const sets = filletSets(ctx.inputs);
   if (sets.length === 0) throw new KernelError('Pick at least one edge to fillet.');
 
-  // Edges by body, each with its set's radius.
+  // Edges by body, each with its set's radii.
   const byBody = new Map<BodyId, EdgePick[]>();
   for (const set of sets) {
-    if (set.radius === undefined) {
-      throw new KernelError(`Enter a radius for edge set ${set.n}.`);
-    }
-    const radius = ctx.value(set.radius);
-    if (!(radius > 0)) {
-      throw new KernelError(
-        `The radius of edge set ${set.n} is ${formatLength(radius)}. Enter a radius greater than 0.`,
-      );
-    }
+    const radii = setRadii(ctx, set);
     for (const ref of set.edges) {
       const hit = ctx.resolve(ref, { label: 'an edge to fillet' });
       const picks = byBody.get(hit.body) ?? [];
       const same = picks.find((p) => p.index === hit.index);
       if (same) {
-        if (Math.abs(same.radius - radius) > 1e-9) {
+        if (!sameRadii(same, radii)) {
           throw new KernelError(
             `Edge ${hit.index + 1} is in edge sets ${same.set} and ${set.n} with different radii. Keep it in one set.`,
           );
         }
         continue;
       }
-      picks.push({ index: hit.index, radius, set: set.n });
+      picks.push({ index: hit.index, radius: radii[0], radiusEnd: radii[1], set: set.n });
       byBody.set(hit.body, picks);
     }
   }
+  const variable = sets.some((set) => set.radiusEnd !== undefined);
 
   using scope = kernel.scope();
   const bodies = new Map(ctx.bodies);
@@ -73,11 +80,17 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
     const shape = ctx.bodies.get(body) as ShapeHandle;
     let result: ReturnType<typeof kernel.fillet>;
     try {
-      result = kernel.fillet(
-        shape,
-        picks.map((p) => p.index),
-        picks.map((p) => p.radius),
-      );
+      result = variable
+        ? kernel.filletVariable(
+            shape,
+            picks.map((p) => p.index),
+            picks.map((p) => [p.radius, p.radiusEnd] as [number, number]),
+          )
+        : kernel.fillet(
+            shape,
+            picks.map((p) => p.index),
+            picks.map((p) => p.radius),
+          );
     } catch (error) {
       if (error instanceof FilletError) throw new KernelError(filletMessage(error, picks));
       throw error;
@@ -95,6 +108,36 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
     names.set(body, named.names);
   }
   return { bodies, names };
+}
+
+/**
+ * The set's two radii: its own `radius`, and the same one twice while it has no
+ * end radius. An end radius of zero or less is refused with the set's number,
+ * as a missing radius is.
+ */
+function setRadii(ctx: EvalContext<FilletInputs>, set: FilletSet): [number, number] {
+  if (set.radius === undefined) {
+    throw new KernelError(`Enter a radius for edge set ${set.n}.`);
+  }
+  const radius = ctx.value(set.radius);
+  if (!(radius > 0)) {
+    throw new KernelError(
+      `The radius of edge set ${set.n} is ${formatLength(radius)}. Enter a radius greater than 0.`,
+    );
+  }
+  if (set.radiusEnd === undefined) return [radius, radius];
+  const radiusEnd = ctx.value(set.radiusEnd);
+  if (!(radiusEnd > 0)) {
+    throw new KernelError(
+      `The end radius of edge set ${set.n} is ${formatLength(radiusEnd)}. Enter a radius greater than 0.`,
+    );
+  }
+  return set.swap ? [radiusEnd, radius] : [radius, radiusEnd];
+}
+
+/** Whether two picks of the same edge would round it the same way. */
+function sameRadii(pick: EdgePick, radii: readonly [number, number]): boolean {
+  return Math.abs(pick.radius - radii[0]) < 1e-9 && Math.abs(pick.radiusEnd - radii[1]) < 1e-9;
 }
 
 // ----------------------------------------------------------------- messages
@@ -137,7 +180,8 @@ function problemMessage(
       return `Edges ${listOf(list)} are one chain of tangent edges, so they take one radius. Give them the same radius, or keep them in one set.`;
     }
     case 'together': {
-      const largest = Math.max(...picks.map((p) => p.radius));
+      // The factor scales every radius, an end radius of a variable set included.
+      const largest = Math.max(...picks.map((p) => Math.max(p.radius, p.radiusEnd)));
       return `These fillets can't all be built where they meet. ${
         problem.factor > 0
           ? `Try radii up to about ${formatLength(floorTo2(problem.factor * largest))}, or `

@@ -1,4 +1,11 @@
-import { FILLET_MAX_SETS, FilletInputsSchema, filletSets } from '@extrudo/core';
+import {
+  type FeatureId,
+  FILLET_MAX_SETS,
+  FilletInputsSchema,
+  filletInputs,
+  filletSets,
+  insertFeature,
+} from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { filletDialog } from './fillet';
 import { featureDialogs, specForCommand } from './registry';
@@ -31,19 +38,26 @@ describe('the fillet dialog', () => {
 
   it('starts with one set; the next set shows once this one has edges', () => {
     const empty = defaultValues(filletDialog);
-    expect(shownFields(filletDialog, empty).map((f) => f.name)).toEqual(['edges', 'radius']);
+    expect(shownFields(filletDialog, empty).map((f) => f.name)).toEqual([
+      'edges',
+      'radius',
+      'variable',
+    ]);
     const some: DialogValues = mergeValues(empty, { refs: { edges: [edgeRef(3)] } });
     expect(shownFields(filletDialog, some).map((f) => f.name)).toEqual([
       'edges',
       'radius',
+      'variable',
       'edges2',
     ]);
     const two: DialogValues = mergeValues(some, { refs: { edges2: [edgeRef(4)] } });
     expect(shownFields(filletDialog, two).map((f) => f.name)).toEqual([
       'edges',
       'radius',
+      'variable',
       'edges2',
       'radius2',
+      'variable2',
       'edges3',
     ]);
     // Emptying the first set doesn't drop the second one's fields.
@@ -119,5 +133,119 @@ describe('the fillet dialog', () => {
     t.controller.start('fillet');
     expect(t.open()?.checked.fields).toEqual({ edges: 'Pick edges.' });
     expect(t.controller.ok()).toBe(false);
+  });
+});
+
+describe('the fillet dialog’s variable radius', () => {
+  it('shows the end radius and the swap while Variable is on, and hides them again', () => {
+    const picked: DialogValues = mergeValues(defaultValues(filletDialog), {
+      refs: { edges: [edgeRef(3)] },
+    });
+    expect(shownFields(filletDialog, picked).map((f) => f.name)).not.toContain('radiusEnd');
+    const variable: DialogValues = mergeValues(picked, { toggles: { variable: true } });
+    expect(shownFields(filletDialog, variable).map((f) => f.name)).toEqual([
+      'edges',
+      'radius',
+      'variable',
+      'radiusEnd',
+      'swap',
+      'edges2',
+    ]);
+    const back = mergeValues(variable, { toggles: { variable: false } });
+    expect(shownFields(filletDialog, back).map((f) => f.name)).not.toContain('radiusEnd');
+    // The labels of a later set carry its number, as the others do.
+    expect(filletDialog.fields.filter((f) => f.name.endsWith('2')).map((f) => f.label)).toEqual([
+      'Edges 2',
+      'Radius 2',
+      'Variable 2',
+      'End radius 2',
+      'Swap ends 2',
+    ]);
+  });
+
+  it('makes an end radius and a swap input, and no variable one', async () => {
+    const t = setup();
+    t.controller.start('fillet');
+    t.controller.select.onClick(edgeItem(5), false);
+    await settle();
+    t.controller.setExpr('radius', '2 mm');
+    t.controller.setToggle('variable', true);
+    t.controller.setExpr('radiusEnd', '5 mm');
+    t.controller.setToggle('swap', true);
+    const inputs = t.open()?.draft.inputs ?? {};
+    // `edges2` is the next set's empty field, which shows once this one has edges.
+    expect(Object.keys(inputs).sort()).toEqual(['edges', 'edges2', 'radius', 'radiusEnd', 'swap']);
+    expect(FilletInputsSchema.safeParse(inputs).success).toBe(true);
+    expect(filletSets(inputs as never).map((s) => [s.n, s.radius, s.radiusEnd, s.swap])).toEqual([
+      [1, 'radius', 'radiusEnd', true],
+    ]);
+    expect(t.controller.ok()).toBe(true);
+    const fillet = t.store.getState().doc.features.at(-1);
+    expect(fillet?.inputs.radiusEnd).toMatchObject({ kind: 'expr', expr: '5 mm', unit: 'length' });
+    expect(fillet?.inputs.swap).toEqual({ kind: 'bool', value: true });
+  });
+
+  it('turning Variable off drops the end radius and the swap again', async () => {
+    const t = setup();
+    t.controller.start('fillet');
+    t.controller.select.onClick(edgeItem(5), false);
+    await settle();
+    t.controller.setExpr('radius', '2 mm');
+    t.controller.setToggle('variable', true);
+    t.controller.setExpr('radiusEnd', '5 mm');
+    t.controller.setToggle('swap', true);
+    expect(Object.keys(t.open()?.draft.inputs ?? {}).sort()).toContain('radiusEnd');
+    t.controller.setToggle('variable', false);
+    const inputs = t.open()?.draft.inputs ?? {};
+    expect(Object.keys(inputs).sort()).toEqual(['edges', 'edges2', 'radius']);
+    expect(filletSets(inputs as never)[0]?.radiusEnd).toBeUndefined();
+  });
+
+  it('opens a stored variable fillet with Variable on', () => {
+    const t = setup();
+    t.store.getState().dispatch(
+      insertFeature({
+        feature: {
+          id: 'F1' as FeatureId,
+          type: 'fillet',
+          name: 'Fillet1',
+          suppressed: false,
+          inputs: filletInputs([{ edges: [edgeRef(3)], radius: '2 mm', radiusEnd: '5 mm' }]),
+        },
+      }),
+    );
+    t.controller.start('fillet');
+    t.controller.edit('F1' as FeatureId);
+    const values = t.open()?.values;
+    expect(values?.toggles.variable).toBe(true);
+    expect(values?.exprs.radiusEnd).toBe('5 mm');
+    const shown = shownFields(filletDialog, values as DialogValues).map((f) => f.name);
+    expect(shown).toContain('radiusEnd');
+    // The stored radius and end radius come back; the swap shows now, off, so it
+    // joins the inputs.
+    const inputs = t.open()?.draft.inputs ?? {};
+    expect(Object.keys(inputs).sort()).toEqual(['edges', 'edges2', 'radius', 'radiusEnd', 'swap']);
+    expect(inputs.radius).toMatchObject({ expr: '2 mm' });
+    expect(inputs.radiusEnd).toMatchObject({ expr: '5 mm' });
+    expect(inputs.swap).toEqual({ kind: 'bool', value: false });
+  });
+
+  it('opens a stored constant fillet with Variable off', () => {
+    const t = setup();
+    t.store.getState().dispatch(
+      insertFeature({
+        feature: {
+          id: 'F1' as FeatureId,
+          type: 'fillet',
+          name: 'Fillet1',
+          suppressed: false,
+          inputs: filletInputs([{ edges: [edgeRef(3)], radius: '2 mm' }]),
+        },
+      }),
+    );
+    t.controller.start('fillet');
+    t.controller.edit('F1' as FeatureId);
+    expect(t.open()?.values.toggles.variable).toBe(false);
+    expect(Object.keys(t.open()?.draft.inputs ?? {}).sort()).toEqual(['edges', 'edges2', 'radius']);
   });
 });

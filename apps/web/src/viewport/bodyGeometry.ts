@@ -3,6 +3,7 @@
  * out of `Bodies.tsx` so unit tests and other modules can use it without
  * loading React Three Fiber.
  */
+import type { Vec3 } from '@extrudo/core';
 import { type BodyMesh, EDGE_SEAM } from '@extrudo/kernel';
 import { Box3, Sphere } from 'three';
 import type { Bounds } from './store';
@@ -47,4 +48,39 @@ export function edgeSegments(mesh: BodyMesh): Float32Array {
     }
   }
   return out;
+}
+
+/**
+ * The volume a closed triangle mesh has and where its mass is (the
+ * divergence theorem: the signed volume of the tetrahedron each triangle
+ * makes with the origin, and its centroid). Undefined for a mesh with no
+ * volume. Exact for the mesh, so a coarse one puts the middle a little off
+ * the solid's — enough to tell which side of a line the material is on.
+ */
+export function volumeCentroid(mesh: BodyMesh): { volume: number; centroid: Vec3 } | undefined {
+  const { positions: p, indices } = mesh;
+  let volume = 0;
+  const sum: [number, number, number] = [0, 0, 0];
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    const at = (node: number, k: number) => p[3 * node + k] ?? 0;
+    const a = indices[t] ?? 0;
+    const b = indices[t + 1] ?? 0;
+    const c = indices[t + 2] ?? 0;
+    // Six times the signed volume of the tetrahedron (origin, a, b, c).
+    const six =
+      at(a, 0) * (at(b, 1) * at(c, 2) - at(b, 2) * at(c, 1)) -
+      at(a, 1) * (at(b, 0) * at(c, 2) - at(b, 2) * at(c, 0)) +
+      at(a, 2) * (at(b, 0) * at(c, 1) - at(b, 1) * at(c, 0));
+    volume += six / 6;
+    const share = six / 24;
+    for (let k = 0; k < 3; k++) {
+      sum[k] = (sum[k] as number) + share * (at(a, k) + at(b, k) + at(c, k));
+    }
+  }
+  if (volume <= 0) return undefined;
+  const [x, y, z] = sum;
+  return {
+    volume,
+    centroid: [(x as number) / volume, (y as number) / volume, (z as number) / volume],
+  };
 }

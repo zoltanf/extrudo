@@ -31,6 +31,7 @@ import { HOLE_TYPE } from './hole';
 import { LOFT_TYPE } from './loft';
 import { BOX_TYPE, CYLINDER_TYPE, SPHERE_TYPE, TORUS_TYPE } from './primitives';
 import { REVOLVE_AXIS_KINDS, REVOLVE_TYPE } from './revolve';
+import { RIB_TYPE } from './rib';
 import {
   BoolInputSchema,
   type ExprInput,
@@ -57,8 +58,8 @@ export type PatternObjects = (typeof PATTERN_OBJECTS)[number];
 /**
  * The feature types whose tool a pattern (or a mirror) can replay: the ones
  * that make a solid and join or cut it (extrude, revolve, the primitives,
- * sweep, loft and coil since P4-01, an emboss since P4-04) or always cut
- * (a hole, P3-04).
+ * sweep, loft and coil since P4-01, an emboss since P4-04, a rib since
+ * P4-10) or always cut (a hole, P3-04).
  */
 export const PATTERNABLE_FEATURE_TYPES: readonly string[] = [
   EXTRUDE_TYPE,
@@ -72,6 +73,7 @@ export const PATTERNABLE_FEATURE_TYPES: readonly string[] = [
   LOFT_TYPE,
   COIL_TYPE,
   EMBOSS_TYPE,
+  RIB_TYPE,
 ];
 
 /** What a rectangular pattern goes along and a circular one turns about. */

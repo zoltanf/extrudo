@@ -10,6 +10,7 @@ import {
   type Feature,
   type FeatureId,
   HOLE_TYPE,
+  RIB_TYPE,
   THREAD_TYPE,
 } from '@extrudo/core';
 
@@ -42,6 +43,8 @@ export function repeatableFeatures(
 function operationOf(feature: Feature): 'join' | 'cut' | undefined {
   // A hole and a thread have no operation input: they always cut.
   if (feature.type === HOLE_TYPE || feature.type === THREAD_TYPE) return 'cut';
+  // A rib has none either: it always joins the bodies it reaches.
+  if (feature.type === RIB_TYPE) return 'join';
   // An emboss has a `mode` instead of an `operation`: it joins or cuts.
   if (feature.type === EMBOSS_TYPE) {
     const mode = feature.inputs.mode;
