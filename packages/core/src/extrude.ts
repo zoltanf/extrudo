@@ -9,7 +9,6 @@
  * a direction doesn't use are ignored (side 2 unless it is `two-sides`), so
  * a dialog can keep them while the user switches back and forth.
  */
-import { z } from 'zod';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
@@ -20,6 +19,7 @@ import {
   type RefInput,
   type UnitKind,
 } from './schema';
+import { z } from './zod';
 
 export const EXTRUDE_TYPE = 'extrude';
 

@@ -11,11 +11,11 @@
  * factor is 1. The kernel adds its evaluator and the web app its dialog,
  * each in its own registry keyed by `SCALE_TYPE` (ADR-0003).
  */
-import { z } from 'zod';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { MOVE_POINT_KINDS } from './move';
 import { BoolInputSchema, type ExprInput, type GeomRef } from './schema';
+import { z } from './zod';
 
 export const SCALE_TYPE = 'scale';
 

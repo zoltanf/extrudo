@@ -17,11 +17,11 @@
  * the web app its dialog, each in its own registry keyed by `MOVE_TYPE`
  * (ADR-0003).
  */
-import { z } from 'zod';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { REVOLVE_AXIS_KINDS } from './revolve';
 import { BoolInputSchema, type ExprInput, type GeomRef, type RefInput } from './schema';
+import { z } from './zod';
 
 export const MOVE_TYPE = 'move';
 

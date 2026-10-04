@@ -4,6 +4,20 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-04 · **P4-12 (H1) No `'unsafe-eval'` in the content policy**
+  (ADR-0067 §H1): both WASM builds are made with `DYNAMIC_EXECUTION: 0` — the
+  OCCT build beside its other emcc settings, planegcs beside
+  `ALLOW_MEMORY_GROWTH` in its link flags (CI built and published both, new
+  input hashes) — so their embind glue builds its invokers as closures and
+  evaluates nothing; zod's JIT is off too (`z.config({ jitless: true })` in the
+  new `packages/core/src/zod.ts`, our one zod import, with `zod.test.ts`
+  proving no `new Function` is ever attempted). `'unsafe-eval'` is out of
+  `apps/web/public/_headers`, which keeps `'wasm-unsafe-eval'` for the WASM,
+  and `e2e/hosting.spec.ts` asserts the served `script-src` and walks a whole
+  session (template, sketch, extrude, command palette, 3MF) under the real
+  headers, failing on any violation or console error. Measured: parsing a
+  document and dragging and recomputing the benchmarks are within noise
+  (ADR-0067 §Results).
 - 2026-10-04 · **Landing page: Cloudflare Web Analytics (cookieless) on extrudo.org
   only** — enabled through the `extrudo-site` Pages project's own setting (the tag
   is injected at deploy time, so no token is in the repo), its two hosts in the

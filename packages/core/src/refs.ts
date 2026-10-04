@@ -3,7 +3,7 @@
  * own so the sketch schema can use them (a sketch's projections, P2-09)
  * without importing the document schema, which imports the sketch schema.
  */
-import { z } from 'zod';
+import { z } from './zod';
 
 /**
  * A reference to geometry: an origin plane, a face, an edge, a sketch profile…

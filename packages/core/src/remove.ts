@@ -5,10 +5,10 @@
  * the timeline back past it, suppressing or deleting it brings the body
  * back. The kernel adds its evaluator, keyed by `REMOVE_TYPE` (ADR-0003).
  */
-import { z } from 'zod';
 import type { FeatureDefinition } from './features';
 import type { BodyId, FeatureId } from './ids';
 import { type Feature, type GeomRef, RefInputSchema } from './schema';
+import { z } from './zod';
 
 export const REMOVE_TYPE = 'remove';
 

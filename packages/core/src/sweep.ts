@@ -11,10 +11,10 @@
  * minimal sweep is `{ profiles, path }`: following the path, no twist, no
  * scale, a new body.
  */
-import { z } from 'zod';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { ExprInput, GeomRef, GeomRefKind, RefInput } from './schema';
+import { z } from './zod';
 
 export const SWEEP_TYPE = 'sweep';
 

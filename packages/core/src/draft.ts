@@ -14,11 +14,11 @@
  * registry keyed by `DRAFT_TYPE` (ADR-0003). Inputs are plain `ref`, `expr`
  * and `bool` inputs, so the document schema doesn't change.
  */
-import { z } from 'zod';
 import { exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { PLACEMENT_KINDS } from './primitives';
 import { BoolInputSchema, type ExprInput, type GeomRef, type RefInput } from './schema';
+import { z } from './zod';
 
 export const DRAFT_TYPE = 'draft';
 

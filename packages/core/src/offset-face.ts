@@ -12,10 +12,10 @@
  * registry keyed by `OFFSET_FACE_TYPE` (ADR-0003). Inputs are plain `ref`
  * and `expr` inputs, so the document schema doesn't change.
  */
-import { z } from 'zod';
 import { exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { ExprInput, GeomRef, RefInput } from './schema';
+import { z } from './zod';
 
 export const OFFSET_FACE_TYPE = 'offsetFace';
 

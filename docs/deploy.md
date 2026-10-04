@@ -29,9 +29,10 @@ applies to every response:
   fonts are bundled), so `require-corp` costs nothing. If a future feature
   embeds a third-party resource that sends no CORP header, switch to
   `credentialless`.
-- `Content-Security-Policy`: own origin only, no inline script, no framing. It
-  still allows `'unsafe-eval'` for scripts because both WASM builds' embind glue
-  creates functions with `new Function` (ADR-0054, open item).
+- `Content-Security-Policy`: own origin only, no inline script, no framing, and
+  nothing that evaluates a string: `script-src` keeps `'wasm-unsafe-eval'` (the
+  WASM must compile) but no `'unsafe-eval'` any more, since both WASM builds are
+  made with dynamic execution off and zod's JIT off (ADR-0067 H1).
 - `Cache-Control: no-cache` for `/`, `/index.html`, `/sw.js` and
   `/manifest.webmanifest`, so an update is found at once; a year, `immutable`,
   for the hashed files in `/assets/`.

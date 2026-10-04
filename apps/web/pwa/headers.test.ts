@@ -80,7 +80,7 @@ describe('the hosted app headers (public/_headers, ADR-0054)', () => {
     }
   });
 
-  it('has a content policy: own origin only, no inline script, eval only for the embind glue', () => {
+  it('has a content policy: own origin only, no inline script, no eval at all', () => {
     const csp = headersFor(file, '/')['content-security-policy'] ?? '';
     // One policy for every path (two joined policies would both apply: the stricter wins).
     for (const path of ['/index.html', '/assets/worker-abc.js', '/sw.js']) {
@@ -92,9 +92,10 @@ describe('the hosted app headers (public/_headers, ADR-0054)', () => {
         .map((d) => d.trim())
         .find((d) => d.startsWith(`${name} `));
     expect(directive('default-src')).toBe("default-src 'self'");
-    // Scripts: this origin, WASM, and eval (embind's `new Function`: ADR-0054's open item),
-    // never inline.
-    expect(directive('script-src')).toBe("script-src 'self' 'wasm-unsafe-eval' 'unsafe-eval'");
+    // Scripts: this origin and WASM, never inline and never eval (both WASM builds
+    // are made with dynamic execution off, ADR-0067 H1: nothing evaluates a string).
+    expect(directive('script-src')).toBe("script-src 'self' 'wasm-unsafe-eval'");
+    expect(csp).not.toContain("'unsafe-eval'");
     expect(directive('worker-src')).toContain("'self'");
     expect(directive('object-src')).toBe("object-src 'none'");
     expect(directive('frame-ancestors')).toBe("frame-ancestors 'none'");

@@ -683,8 +683,7 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   main, skips without secrets), `SITE_URL` for the canonical and Open Graph
   tags (default `https://extrudo.org`), the service worker's "update
   available" toast, `e2e/hosting.spec.ts`, the public-readiness audit, version
-  0.3.0. Open: drop `'unsafe-eval'` from the CSP by rebuilding both WASM with
-  `-sDYNAMIC_EXECUTION=0` (P4-12).
+  0.3.0. `'unsafe-eval'` is out of the CSP since P4-12 (ADR-0067 §H1).
 - [x] **P3-16 Notification history.** A button beside the toasts (the view's
   bottom-right corner) opens the session's earlier notifications, errors
   first-class, with their actions where they still apply (e.g. Show a
@@ -891,13 +890,16 @@ end to end, faster than in Fusion 360.
   - Patterns: colour classes made joins slower than fusing the instances
     (3.9 s against 2.1 s for overlapping bosses); a cheaper join of many
     interfering copies (ADR-0047).
-  - Content policy: drop `'unsafe-eval'` from `script-src` in
-    `apps/web/public/_headers` (ADR-0054). Both WASM builds' embind glue calls
-    `new Function` (the OCCT kernel in its worker, planegcs in the page): rebuild
-    them with `-sDYNAMIC_EXECUTION=0` (each rebuild changes its input hash; try
-    planegcs first, it takes minutes), check that embind still works, and set
-    `z.config({ jitless: true })` in `packages/core` first (zod probes `new
-    Function` and the probe alone is a violation; parsing is as fast without it).
+  - Content policy: `'unsafe-eval'` dropped from `script-src` in
+    `apps/web/public/_headers`. **Done 2026-10-04** (ADR-0067 §H1): both WASM
+    builds are made with dynamic execution off (`DYNAMIC_EXECUTION: 0`, beside
+    `ALLOW_MEMORY_GROWTH` in planegcs's link flags, in the emcc settings for
+    OCCT; CI built both, new input hashes), and `packages/core/src/zod.ts` is the
+    one place zod is imported from, calling `z.config({ jitless: true })` before
+    any schema exists. Embind then builds its invokers as closures; the solver
+    drag and the B1-B5 recomputes measured within noise (ADR-0067 §Results).
+    `e2e/hosting.spec.ts` asserts the served `script-src` and walks a whole
+    session under it with no violation. No further work here.
 
 ---
 

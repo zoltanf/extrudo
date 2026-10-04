@@ -63,6 +63,11 @@ Things the builds ran into:
   `src/` uses no raw symbol.
 - The build needs `MODULARIZE` + `EXPORT_ES6` and the three exception helpers
   in `EXPORTED_RUNTIME_METHODS`.
+- `DYNAMIC_EXECUTION: 0` in the settings (ADR-0067 H1): the glue must not call
+  `eval` or `new Function`, or the app's content policy would need
+  `'unsafe-eval'`. Embind then builds its invokers as closures instead of
+  evaluating them; ADR-0067 §H1 has the measured cost, and
+  `e2e/hosting.spec.ts` proves the glue needs no eval.
 - Builds without Docker: on a machine with none, push a branch and run
   `gh workflow run ci.yml --ref <branch>`; the `occt` job builds the branch's
   inputs (about 14 minutes) and publishes `occt-<hash>`, which

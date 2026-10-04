@@ -68,10 +68,12 @@ project, which until then answers at `extrudo.pages.dev`).
      strict-origin-when-cross-origin`, a `Permissions-Policy` that turns off
      camera, microphone, geolocation, payment and USB.
    - **`Content-Security-Policy`**: `default-src 'self'`, `script-src 'self'
-     'wasm-unsafe-eval' 'unsafe-eval'`, `style-src 'self' 'unsafe-inline'`
+     'wasm-unsafe-eval'` (**no `'unsafe-eval'`, since ADR-0067 §H1**),
+     `style-src 'self' 'unsafe-inline'`
      (React and Radix set style attributes), images and media from self, data and
      blob, workers from self and blob, `object-src 'none'`, `frame-ancestors
-     'none'`, no other origin anywhere. **`'unsafe-eval'` had to stay**: building a
+     'none'`, no other origin anywhere. **`'unsafe-eval'` had to stay when this was
+     written**: building a
      CSP-checking e2e run showed that the kernel does not start without it (the
      OCCT build's embind creates functions with `new Function`, in the worker) and
      the planegcs glue does the same in the page. We kept the policy (no inline
@@ -88,6 +90,11 @@ project, which until then answers at `extrudo.pages.dev`).
      eval allowed it is silent. Once `'unsafe-eval'` goes, set
      `z.config({ jitless: true })` before any schema is defined (measured: a
      document parses in 0.6 ms with or without the fast path).
+   - **Amended by ADR-0067 §H1** (2026-10-04): both rebuilds are done
+     (`DYNAMIC_EXECUTION: 0` beside the other emcc settings, zod's JIT off in
+     `packages/core/src/zod.ts`), `'unsafe-eval'` is out of `_headers`, and
+     `e2e/hosting.spec.ts` walks a whole session under the served policy and
+     hears no violation. The zod note above is what that change did.
    - `vite preview` serves the global block (`preview.headers` reads `/*` from
      the file), and the e2e suite runs on it: **every spec runs under COOP/COEP
      and the CSP**. `e2e/hosting.spec.ts` serves `dist` through
@@ -183,7 +190,7 @@ project, which until then answers at `extrudo.pages.dev`).
   nothing runs.
 - Every e2e spec now runs under COOP/COEP and the CSP, so a new feature that
   loads a cross-origin resource or evaluates a string fails CI at once.
-- Open items: drop `'unsafe-eval'` (both WASM rebuilds, P4-12); a measurement on
+- Open items: a measurement on
   the real host with real latency (ADR-0037); attaching `extrudo.org` (owner); consider
   `Cross-Origin-Resource-Policy` and `Strict-Transport-Security` (Cloudflare adds
   HTTPS redirects; HSTS is a setting there); a `security.txt` once there is a

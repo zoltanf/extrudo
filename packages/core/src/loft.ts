@@ -11,10 +11,10 @@
  * kernel lines them up. Sections with holes are refused. Rails and a centre
  * line are not part of this loft (ADR-0055: deferred).
  */
-import { z } from 'zod';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { BoolInputSchema, type GeomRef, type GeomRefKind, type RefInput } from './schema';
+import { z } from './zod';
 
 export const LOFT_TYPE = 'loft';
 

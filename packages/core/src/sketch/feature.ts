@@ -3,7 +3,6 @@
  * content. The kernel adds its evaluator and the web app its sketch mode,
  * each in its own registry keyed by `SKETCH_TYPE` (ADR-0003).
  */
-import { z } from 'zod';
 import type { FeatureDefinition } from '../features';
 import type { FeatureId, SketchEntityId } from '../ids';
 import {
@@ -13,6 +12,7 @@ import {
   RefInputSchema,
   SketchDataInputSchema,
 } from '../schema';
+import { z } from '../zod';
 import type { SketchData } from './schema';
 
 export const SKETCH_TYPE = 'sketch';

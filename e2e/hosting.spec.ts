@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { headersFor, parseHeaders } from '../apps/web/pwa/headers';
-import { exportModel, objectsOf3mf, primitive } from './benchmark-helpers';
-import { clicker, counts, kernelReady, newSketchOnXY } from './helpers';
+import { attr, chip, exportModel, objectsOf3mf, primitive, zoomOutTo } from './benchmark-helpers';
+import { clicker, counts, kernelReady, mapping, newSketchOnXY } from './helpers';
 import { type StaticHost, startStaticHost } from './static-host';
 
 // The hosted site's headers (apps/web/public/_headers, ADR-0054). `vite preview`, which
@@ -127,6 +127,68 @@ test('a sketch solves under the content policy (the solver WASM, too)', async ({
   // Four corners joined, horizontal and vertical edges: the solver ran.
   await expect.poll(() => counts(page)).toMatchObject({ points: 8, lines: 4 });
   expect((await counts(page)).constraints).toBeGreaterThanOrEqual(8);
+
+  expect(await policy.violations()).toEqual([]);
+  expect(policy.errors).toEqual([]);
+});
+
+// ADR-0067 H1: the policy allows nothing to evaluate a string. Both WASM builds
+// are made with dynamic execution off and zod's JIT off, so 'unsafe-eval' is
+// gone from script-src; this walks a whole session under the served headers and
+// listens for the violation any remaining `eval` would raise.
+test('nothing in a whole session evaluates a string', async ({ page, request }) => {
+  const headers = (await request.get(`${host.url}/`)).headers();
+  const scriptSrc = /script-src ([^;]*)/.exec(headers['content-security-policy'] ?? '')?.[1] ?? '';
+  expect(scriptSrc).toContain("'wasm-unsafe-eval'");
+  expect(scriptSrc).not.toContain("'unsafe-eval'");
+
+  const policy = await watchPolicy(page);
+  await page.goto(`${host.url}/`);
+  await page.getByRole('button', { name: 'Start from the Wall bracket template' }).click();
+  await kernelReady(page);
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  await expect(viewport).toHaveAttribute('data-ready', 'true');
+  await expect(viewport).toHaveAttribute('data-bodies', /^Bracket:12:/);
+
+  // A sketch beside the bracket: a line with the Line tool (the solver's WASM in
+  // this page) and a rectangle to have a profile, drawn clear of the body.
+  await newSketchOnXY(page);
+  await zoomOutTo(page, { x: 900, y: 500 }, 300);
+  const at = await mapping(viewport);
+  const click = clicker(page, at);
+  await page.keyboard.press('l');
+  await click(60, 40);
+  await click(100, 40);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('r');
+  await click(60, -40);
+  await click(100, -20);
+  await page.keyboard.press('Escape');
+  await expect.poll(() => counts(page)).toMatchObject({ lines: 5, circles: 0 });
+  await expect(viewport).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+
+  // A profile picked in the model, extruded: the kernel's WASM in its worker.
+  const inside = at(80, -30);
+  await page.mouse.move(inside.x, inside.y);
+  await page.mouse.click(inside.x, inside.y);
+  await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+  await page.keyboard.press('e');
+  const extrude = page.getByRole('region', { name: 'Extrude dialog' });
+  await expect(extrude).toBeVisible();
+  await expect(extrude).toHaveAttribute('data-preview-status', 'ok', { timeout: 20_000 });
+  await extrude.getByRole('button', { name: 'OK' }).click();
+  await expect(extrude).toBeHidden();
+  await kernelReady(page);
+  await expect(chip(page, 'Extrude3')).toBeVisible();
+  await expect(viewport).toHaveAttribute('data-bodies', /Bracket:12:[\d,]+ Body1:6:/);
+
+  // The command palette, and a file out through a blob URL and a worker-free zip.
+  await page.keyboard.press('Control+k');
+  await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  const exported = await exportModel(page, '3MF');
+  expect(objectsOf3mf(exported)).toHaveLength(2);
 
   expect(await policy.violations()).toEqual([]);
   expect(policy.errors).toEqual([]);

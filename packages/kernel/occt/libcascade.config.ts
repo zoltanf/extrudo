@@ -29,6 +29,10 @@ export default defineBuild({
       'decrementExceptionRefcount',
     ],
     ENVIRONMENT: ['web', 'worker', 'node'],
+    // No `eval`/`new Function` in the glue, so the app's content policy needs no
+    // 'unsafe-eval' (ADR-0067 H1, ADR-0054). Embind then builds its invokers as
+    // closures instead of evaluating them; the cost is measured in ADR-0067.
+    DYNAMIC_EXECUTION: 0,
   },
   compilerFlags: { exceptions: 'wasm', noEntry: true, simd: true, optimize: 'O3' },
   variants: [{ name: 'single' }],

@@ -24,6 +24,10 @@ WASM never ends up in a bundle.
 - `ALLOW_MEMORY_GROWTH`: the published build has a fixed 16 MB heap and aborts
   at about 100 entities in one system.
 - `-msimd128` with the current emsdk: 10–17% faster on coupled systems.
+- `-s DYNAMIC_EXECUTION=0` (ADR-0067 H1): the glue must not call `eval` or
+  `new Function`, so the app's content policy can drop `'unsafe-eval'`. Embind
+  builds its invokers as closures rather than evaluating them; ADR-0067 §H1 has
+  the measured cost.
 - DogLeg's Gauss step uses `LeastNormLdlt` (a FreeCAD option) instead of
   `FullPivLU`, and the SQP step's QR (`qp_eq`) pivots columns instead of fully:
   another 1.4–1.6× on large components. Both still solve the test sketches to

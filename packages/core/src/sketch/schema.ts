@@ -15,7 +15,6 @@
  * arrays, so deleting one gives one small undo patch instead of shifting
  * every later element.
  */
-import { z } from 'zod';
 import {
   type AttachmentId,
   AttachmentIdSchema,
@@ -27,6 +26,7 @@ import {
 } from '../ids';
 import { PARAMETER_NAME } from '../names';
 import { type GeomRef, GeomRefSchema } from '../refs';
+import { z } from '../zod';
 
 const ref = SketchEntityIdSchema;
 

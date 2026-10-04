@@ -8,11 +8,11 @@
  * leniently (P3-13): an older Extrudo leaves out what a newer one added and
  * says so, instead of refusing the file.
  */
-import { z } from 'zod';
 import { FORMAT_NAME, FORMAT_VERSION } from './format';
 import { PARAMETER_NAME } from './names';
 import { GeomRefSchema, Vec3Schema } from './refs';
 import { attachmentFontId, SketchDataSchema } from './sketch/schema';
+import { z } from './zod';
 
 export { PARAMETER_NAME } from './names';
 export * from './refs';

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { z } from 'zod';
 import { type FeatureDefinition, FeatureRegistry, nextFeatureName } from './features';
 import { BoolInputSchema, ExprInputSchema, RefInputSchema } from './schema';
 import { feature, sampleDocument } from './testing';
+import { z } from './zod';
 
 const extrude = {
   type: 'extrude',

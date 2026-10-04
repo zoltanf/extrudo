@@ -10,7 +10,6 @@
  * `two-sides`), as for extrude (ADR-0028), so a dialog can keep them while
  * the user switches back and forth.
  */
-import { z } from 'zod';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
@@ -20,6 +19,7 @@ import {
   type GeomRefKind,
   type RefInput,
 } from './schema';
+import { z } from './zod';
 
 export const REVOLVE_TYPE = 'revolve';
 
