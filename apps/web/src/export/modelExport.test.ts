@@ -1,8 +1,10 @@
 import type { BodyId, BodyMeta } from '@extrudo/core';
 import { checkManifold, read3mf, readStl, type TriangleMesh } from '@extrudo/io';
 import { describe, expect, it } from 'vitest';
+import type { SlicerFile, SlicerId } from '../platform/slicer';
 import {
   formatBytes,
+  handToSlicer,
   initialBodies,
   type ModelExporter,
   meshBodies,
@@ -164,5 +166,51 @@ describe('model files', () => {
     expect(formatBytes(845)).toBe('845 B');
     expect(formatBytes(12_345)).toBe('12.3 kB');
     expect(formatBytes(4_100_000)).toBe('4.1 MB');
+  });
+});
+
+describe('the slicer hand-off (P4-08, ADR-0062)', () => {
+  const bracket = body('Bracket');
+  /** The file the dialog would hand over: the one Export saves. */
+  async function exported() {
+    const { kernel } = fakeKernel({ [bracket.id]: tetra(0) });
+    const meshed = await meshBodies(kernel, [bracket], RESOLUTIONS.coarse);
+    return meshFile(meshed, '3mf', 'Shelf');
+  }
+
+  it('hands the slicer the same bytes Export saves, with the format', async () => {
+    const seen: { file: SlicerFile; slicer: SlicerId }[] = [];
+    const message = await handToSlicer(
+      async (f, slicer) => {
+        seen.push({ file: f, slicer });
+        return true;
+      },
+      await exported(),
+      '3mf',
+      'orcaslicer',
+    );
+    expect(message).toBeUndefined();
+    expect(seen[0]?.slicer).toBe('orcaslicer');
+    expect(seen[0]?.file.name).toBe('Shelf - Bracket.3mf');
+    expect(seen[0]?.file.format).toBe('3mf');
+    // The bytes are the file's own, so a slicer gets the very same 3MF.
+    const model = read3mf(seen[0]?.file.bytes as Uint8Array);
+    expect(model.objects.map((o) => o.name)).toEqual(['Bracket']);
+  });
+
+  it('says so when the slicer refused the file or failed', async () => {
+    expect(await handToSlicer(async () => false, await exported(), '3mf', 'cura')).toBe(
+      "Cura didn't take the file. Is it installed?",
+    );
+    expect(
+      await handToSlicer(
+        async () => {
+          throw new Error('no such program');
+        },
+        await exported(),
+        'step',
+        'prusaslicer',
+      ),
+    ).toBe("Couldn't open the file in PrusaSlicer: no such program");
   });
 });

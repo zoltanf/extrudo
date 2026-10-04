@@ -96,6 +96,7 @@ export const ICON_NAMES = [
   'export',
   'place-on-bed',
   'print-info',
+  'tolerance',
   'overhang',
   'send-to-slicer',
 ] as const;

@@ -8,6 +8,7 @@ import type { BodyId, BodyMeta, SelectionItem } from '@extrudo/core';
 import { checkManifold, type ManifoldReport, write3mf, writeStl } from '@extrudo/io';
 import type { BodyExportMesh, ExportProgress, MeshOptions } from '@extrudo/kernel';
 import { safeFileName } from '../platform/files';
+import { SLICERS, type SlicerFile, type SlicerId } from '../platform/slicer';
 import { readTopology } from '../selection/items';
 import { APP_VERSION } from '../version';
 
@@ -176,4 +177,28 @@ export function formatBytes(bytes: number): string {
 /** The size of a binary STL of `triangles` triangles. */
 export function stlBytes(triangles: number): number {
   return 84 + 50 * triangles;
+}
+
+/**
+ * Hands the exported file to a slicer (P4-08, ADR-0062 §3): the same bytes
+ * Export saves, read back out of the blob the platform downloads from. What
+ * a refused hand-off says, for the dialog's usual error line.
+ */
+export async function handToSlicer(
+  open: (file: SlicerFile, slicer: SlicerId) => Promise<boolean>,
+  file: ModelFile,
+  format: ModelFormat,
+  slicer: SlicerId,
+): Promise<string | undefined> {
+  const bytes = new Uint8Array(await file.blob.arrayBuffer());
+  const label = SLICERS.find((s) => s.id === slicer)?.label ?? slicer;
+  try {
+    const opened = await open({ name: file.name, bytes, format }, slicer);
+    if (opened) return undefined;
+    return `${label} didn't take the file. Is it installed?`;
+  } catch (error) {
+    return `Couldn't open the file in ${label}: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+  }
 }

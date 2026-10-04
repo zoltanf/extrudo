@@ -255,9 +255,15 @@ export interface FeatureDialogSpec<I extends FeatureInputs = FeatureInputs>
    * Called after the user changed a field (`field`), with the new values:
    * values to set on top of them, which count as the user's (a hole's
    * Preset fills the size fields, and any edit that leaves a preset goes
-   * back to Custom). Pure; not called for what `propose` changes.
+   * back to Custom). Pure; not called for what `propose` changes. The
+   * context is what reads the document (a hole's Preset asks whether it
+   * has a `tolerance` parameter).
    */
-  onChange?(field: string, values: DialogValues): Partial<DialogValues> | undefined;
+  onChange?(
+    field: string,
+    values: DialogValues,
+    ctx: Pick<DialogContext, 'doc'>,
+  ): Partial<DialogValues> | undefined;
   /**
    * The user clicked the point `world` (mm) on the plane or face they just
    * picked into the pick field: the values that place the feature there (a

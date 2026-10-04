@@ -98,13 +98,25 @@ describe('buildCommands', () => {
     expect(ctx.runTool).toHaveBeenCalledWith('line');
   });
 
+  it('offers the Tolerance panel from the 3D Print tab, with no key (P4-08)', () => {
+    const ctx = context('model');
+    expect(byId(ctx).get('tolerance')).toMatchObject({
+      label: 'Tolerance',
+      group: '3D Print › Prepare',
+      keys: [],
+    });
+    expect(byId(ctx).get('tolerance')?.unavailable).toBeUndefined();
+    byId(ctx).get('tolerance')?.run();
+    expect(ctx.runTool).toHaveBeenCalledWith('tolerance');
+  });
+
   it('says when a tool arrives instead of running it', () => {
     const ctx = context('model');
     const slicer = byId(ctx).get('slicer');
-    expect(slicer?.unavailable).toBe('Arrives with P4-08.');
+    expect(slicer?.unavailable).toBe('Arrives with the desktop app.');
     slicer?.run();
     expect(ctx.runTool).not.toHaveBeenCalled();
-    expect(ctx.notify).toHaveBeenCalledWith('info', 'Send to Slicer arrives with P4-08.');
+    expect(ctx.notify).toHaveBeenCalledWith('info', 'Send to Slicer arrives with the desktop app.');
   });
 
   it('runs a tool a registered feature dialog makes ready (P2-05)', () => {

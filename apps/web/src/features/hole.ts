@@ -10,7 +10,10 @@
  * Fields are named like the feature's inputs, so the framework's default
  * mapping turns them into inputs and back; **Preset is the one field that
  * isn't an input**: choosing it fills the size fields (`onChange`), and the
- * dropdown always shows the preset the sizes match, else Custom.
+ * dropdown always shows the preset the sizes match, else Custom. In a
+ * document with a `tolerance` parameter the sizes a preset fills are
+ * `<nominal> mm + 2 * tolerance`, and the dropdown recognises them (P4-08,
+ * ADR-0062).
  *
  * `propose` fills in what the user hasn't set: the XY plane when none is
  * picked (the plane of the first sketch point, when there are points), and
@@ -31,8 +34,11 @@ import {
   holeFeature,
   holePreset,
   parseSketchEntityRefId,
+  presetMatches,
+  presetSizes,
   readSketch,
   sketchToWorld,
+  toleranceParameter,
   type Vec3,
   worldToSketch,
 } from '@extrudo/core';
@@ -120,14 +126,20 @@ function numberField(name: string): DialogField {
 
 /**
  * The preset the values match: every number it sets that applies to this
- * hole, and the dropdowns it sets. `custom` when none does.
+ * hole (in either form, with or without the tolerance), and the dropdowns
+ * it sets. `custom` when none does.
  */
 export function presetOf(values: DialogValues): string {
   for (const preset of HOLE_PRESETS) {
+    // Only the sizes this hole has can match: a simple hole has no counterbore.
+    const sizes: Record<string, string> = {};
+    for (const name of Object.keys(preset.exprs)) {
+      if (relevant(name, values) && values.exprs[name] !== undefined) {
+        sizes[name] = values.exprs[name] as string;
+      }
+    }
     const same =
-      Object.entries(preset.exprs).every(
-        ([name, expr]) => !relevant(name, values) || values.exprs[name] === expr,
-      ) &&
+      presetMatches(preset, sizes) &&
       Object.entries(preset.choices ?? {}).every(([name, value]) => values.choices[name] === value);
     if (same) return preset.id;
   }
@@ -138,15 +150,21 @@ export function presetOf(values: DialogValues): string {
  * What changing `field` does to the rest (`FeatureDialogSpec.onChange`):
  * choosing a preset fills its sizes and dropdowns; any other change leaves
  * the Preset dropdown showing the preset the values now match.
+ *
+ * In a document with a `tolerance` parameter a preset writes its diameters as
+ * `3.4 mm + 2 * tolerance`, so the printed hole really is a clearance hole
+ * (P4-08, ADR-0062).
  */
 export function holeOnChange(
   field: string,
   values: DialogValues,
+  ctx: Pick<DialogContext, 'doc'>,
 ): Partial<DialogValues> | undefined {
   if (field === 'preset') {
     const preset = holePreset(values.choices.preset ?? CUSTOM);
     if (!preset) return undefined;
-    return { exprs: preset.exprs, choices: { ...preset.choices, preset: preset.id } };
+    const exprs = presetSizes(preset, Boolean(toleranceParameter(ctx.doc)));
+    return { exprs, choices: { ...preset.choices, preset: preset.id } };
   }
   const now = presetOf(values);
   return now === (values.choices.preset ?? CUSTOM) ? undefined : { choices: { preset: now } };

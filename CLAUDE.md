@@ -29,7 +29,8 @@ P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-15
 P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 is
 complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil), P4-02
 (modeled threads), P4-03 (sketch text, bundled fonts), P4-03b (user fonts
-as attachments) and P4-07 (customizer, configurations) are done. ADR-0001 chose
+as attachments), P4-07 (customizer, configurations) and P4-08 (print
+tolerance, slicer hand-off) are done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -766,6 +767,19 @@ selects list the design's fonts and offer "Add font…"
 anything). The Text tool's anchor click lives in `textDraft.ts`
 (`TextDraft.placedAt`), because adding a font changes the document and the host
 starts a tool afresh on any document change.
+ADR-0062 (P4-08) added **print tolerance**: the document parameter named
+`tolerance` (`TOLERANCE_PARAMETER`, thread's constant, re-exported from core's
+`tolerance.ts`), set from the 3D Print tab's Tolerance panel (a field, the
+Tight 0.1 / Normal 0.2 / Loose 0.3 mm buttons and a usage count from
+`toleranceUsage`); **every parameter write goes through the shell's `apply`**, so
+each change is one command and one undo step. **Hole presets add the tolerance
+to every diameter they write** (`presetSizes(preset, hasTolerance)` →
+`"3.4 mm + 2 * tolerance"`, depths plain; `presetMatches` recognises both forms,
+whitespace apart), and the dialog's `onChange` takes a `Pick<DialogContext,
+'doc'>` for it. The slicer hand-off is **desktop-only**: `Platform.openInSlicer`
+is optional, the web platform leaves it out and the Export dialog's Slicer
+select and "Open in slicer" button appear only where it exists (the launch is
+Phase 6, P6-02).
 Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-04**
 (emboss/deboss) then P4-05 onward in `docs/03-roadmap.md`. The owner's own
 release steps (slicer check, making the
@@ -802,7 +816,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0061: user fonts as attachments (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off (0006 is reserved) |
 
 ## Stack summary
 
@@ -1820,3 +1834,18 @@ them. Notes further down that name a machine apply to that machine only.
   letters"). A file that isn't a font is refused with a toast
   ("This file isn't a font Extrudo can read: it doesn't look like a font
   file.") and the select keeps the font it had.
+- **Tolerance e2e** (`e2e/tolerance.spec.ts`, P4-08): the panel is the region
+  "Print tolerance" (`data-tolerance` `unset`/`set`, `data-tolerance-usage` for
+  the count line) with the textbox "Print tolerance" and the `aria-pressed`
+  buttons "Tight 0.1 mm", "Normal 0.2 mm", "Loose 0.3 mm"; the tile is
+  "Tolerance" (`exact`) in the 3D Print tab's Prepare group and **toggles** the
+  panel, so close it (Done) before another dialog covers it. The Parameters
+  dialog is on the **Solid** tab, so `solidTab(page)` first (as in the print
+  aids spec); there the row's field is "Expression of tolerance" and its value
+  shows as "= 0.20 mm" under it. One Ctrl+Z per change (the panel's write is one
+  command): the edit, then the parameter. A hole's M3 clearance preset then reads
+  `3.4 mm + 2 * tolerance` (counterbore diameter `6 mm + 2 * tolerance`, depth
+  plain `3.3 mm`) with the combobox still on `m3-clearance`, and without the
+  parameter `3.4 mm`. Picking the hole's face follows `e2e/hole.spec.ts`: the
+  home view (**Shift+1**, not Shift+2) and `projector` — the projected surface
+  point is the click in any view.

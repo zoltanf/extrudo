@@ -828,6 +828,9 @@ or `cone` (the countersink). With `points`, each part is prefixed with the
 point's ID (`<point id>.wall`), so a face keeps its name when other points
 are added or removed. The hole dialog's presets (M2 to M8 clearance, heat-set
 inserts) only fill these inputs in the app; nothing about a preset is stored.
+In a document with a print-tolerance parameter (a user parameter named
+`tolerance`, P4-08, ADR-0062) a preset writes each diameter as
+`<nominal> mm + 2 * tolerance`, which is an ordinary expression like any other.
 
 ### 6.18 `offsetFace`
 
@@ -1018,13 +1021,14 @@ down to it (a warning when much thicker); a shaft at or under the thread's root,
 a hole as wide as the thread, a thread longer than the face, an offset as long
 as the face and more than 400 turns are errors. A shaft's thread and a hole's
 that start at the same plane mesh (the hole's tooth sits half a pitch on).
-
 Names: `thread:<feature id>:side:f<k>.<part>`, where k is the face's place in
 `faces` (0, 1 …) and the part is `crest`, `flank0`, `flank1` (one face per turn,
 `#n` along the helix), `root`, `end0` / `end1` (the flat steps where a thread
 stops inside a face) or `lead0` / `lead1` (the lead-in cones). The dialog's
 sizes (ISO metric coarse and fine, UNC, UNF) only fill `diameter` and `pitch`;
-nothing about a preset is stored.
+nothing about a preset is stored. For a new thread the dialog writes the
+document's print-tolerance parameter (`tolerance`, P4-08, ADR-0062) here when
+it has one, which is an ordinary expression like any other.
 
 ---
 

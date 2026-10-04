@@ -67,7 +67,7 @@ test('the palette finds commands by fuzzy search and runs them', async ({ page }
   await palette(page).getByRole('combobox').fill('send to slicer');
   const later = palette(page).getByRole('option', { name: /^Send to Slicer/ });
   await expect(later).toHaveAttribute('aria-disabled', 'true');
-  await expect(later).toContainText('Arrives with P4-08.');
+  await expect(later).toContainText('Arrives with the desktop app.');
   await page.keyboard.press('Escape');
   await expect(palette(page)).toBeHidden();
 });
@@ -124,7 +124,7 @@ test('shortcuts: tools that come later say so, Shift+digits turn the view', asyn
   // No tool that is still to come has a key now (Hole's H runs since P3-04), so its tile says so.
   await page.getByRole('tab', { name: '3D Print' }).click();
   await page.getByRole('button', { name: 'Send to Slicer', exact: true }).hover();
-  await expect(page.getByRole('tooltip')).toContainText('Arrives with P4-08.');
+  await expect(page.getByRole('tooltip')).toContainText('Arrives with the desktop app.');
   await page.getByRole('tab', { name: 'Solid' }).click();
 
   await page.keyboard.press('Shift+2');

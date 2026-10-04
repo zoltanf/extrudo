@@ -88,3 +88,4 @@ export {
 export * from './sweep';
 export * from './thread';
 export * from './timeline';
+export * from './tolerance';

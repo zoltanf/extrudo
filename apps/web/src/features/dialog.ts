@@ -389,7 +389,9 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     let values = changed.values ?? open.values;
     let next = choose(open, field);
     // The spec's follow-ups to a change (a preset's sizes) are the user's too.
-    const more = changed.values ? open.spec.onChange?.(field, values) : undefined;
+    const more = changed.values
+      ? open.spec.onChange?.(field, values, { doc: store.getState().doc })
+      : undefined;
     if (more) {
       for (const name of changedFields(values, more)) next = choose(next, name);
       values = mergeValues(values, more);

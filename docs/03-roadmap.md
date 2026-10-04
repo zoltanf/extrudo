@@ -798,7 +798,16 @@ end to end, faster than in Fusion 360.
   body with Manifold booleans; canvas images. FR-SK-14, FR-IO-05..07.
 - [x] **P4-07 Customizer panel and configurations.** FR-PAR-05, -06. Done
   2026-10-03 (ADR-0059).
-- [ ] **P4-08 Tolerance helpers and slicer hand-off.** FR-3DP-05, -06.
+- [x] **P4-08 Tolerance helpers and slicer hand-off.** FR-3DP-05, -06. Done
+  2026-10-03 (ADR-0062): the print tolerance is the user parameter
+  `tolerance`, set from the 3D Print tab's Tolerance panel (a field, the Tight
+  0.1 / Normal 0.2 / Loose 0.3 mm buttons and a usage count, one undo step
+  each through the shell's parameter `apply`); hole presets add it to every
+  diameter they write ("3.4 mm + 2 * tolerance") and the Preset dropdown
+  recognises both forms. The platform interface has the optional `openInSlicer`
+  and the Export dialog a Slicer select and "Open in slicer" button where it
+  exists — **the launch itself is P6-02**, since the browser build can't hand a
+  local design to another program.
 - [ ] **P4-09 Timeline groups; linked folder storage.** FR-TL-06, FR-PRJ-06.
 - [ ] **P4-10 Rib/web; variable-radius fillet.** FR-FT-17.
 - [ ] **P4-11 Benchmarks B8–B10 E2E.**
@@ -868,7 +877,11 @@ end to end, faster than in Fusion 360.
 - [ ] **P6-01 Electron app:** electron-vite; the Node-fs `ProjectStore`; native
   menus from the command registry; `.extrudo` file association; recent files;
   auto-update; builds for AppImage/deb, Windows and macOS (signing).
-- [ ] **P6-02 Slicer launch** on desktop (detect installed slicers).
+- [ ] **P6-02 Slicer launch** on desktop (detect installed slicers): implement the
+  platform's `openInSlicer` (ADR-0062), which the Export dialog already offers
+  when it exists — write the exported bytes to a temporary file and launch
+  PrusaSlicer, OrcaSlicer, Bambu Studio or Cura with it. The browser build
+  leaves it out (a slicer can't fetch a `blob:` URL). FR-3DP-06.
 - [ ] **P6-03 Plugin API** (custom features and commands; sandboxed).
 - [ ] **P6-04 i18n** (community translations).
 - [ ] **P6-05 Components and simple assemblies** (multiple components, as-built

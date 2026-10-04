@@ -26,6 +26,12 @@
  * Every number is optional and has a default (`HOLE_DEFAULTS`), so a minimal
  * hole is `{}`: a 5 mm blind hole, 10 mm deep, in the XY plane at the origin.
  * The hole always cuts: it makes no body of its own.
+ *
+ * **Printing.** The presets hold the published ISO sizes (ADR-0049). In a
+ * document with a `tolerance` parameter a preset adds it to every diameter it
+ * writes (`presetSizes`: `3.4 mm + 2 * tolerance`), since a printed hole comes
+ * out smaller than modelled; `presetMatches` recognises both forms, so the
+ * dialog's dropdown still shows the preset. P4-08, ADR-0062, FR-3DP-05.
  */
 import { z } from 'zod';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
@@ -38,6 +44,7 @@ import {
   type RefInput,
 } from './schema';
 import { originPlaneRef } from './sketch/planes';
+import { TOLERANCE_PARAMETER } from './thread';
 
 export const HOLE_TYPE = 'hole';
 
@@ -279,4 +286,53 @@ export const HOLE_PRESETS: readonly HolePreset[] = [
 /** The preset with this ID. */
 export function holePreset(id: string): HolePreset | undefined {
   return HOLE_PRESETS.find((p) => p.id === id);
+}
+
+/**
+ * The sizes choosing a preset writes when the document has a `tolerance`
+ * parameter (P4-08, ADR-0062): every diameter it sets grows by twice the
+ * tolerance, so a printed hole really is a clearance hole, while depths and
+ * angles stay plain. Without the parameter they are the preset's own values.
+ */
+export function presetSizes(
+  preset: HolePreset,
+  hasTolerance: boolean,
+): Readonly<Record<string, string>> {
+  const exprs: Record<string, string> = {};
+  for (const [name, expr] of Object.entries(preset.exprs)) {
+    exprs[name] =
+      hasTolerance && TOLERANT_DIAMETERS.includes(name)
+        ? `${expr} + 2 * ${TOLERANCE_PARAMETER}`
+        : expr;
+  }
+  return exprs;
+}
+
+/** The number inputs whose value a diameter is: the ones the tolerance widens. */
+const TOLERANT_DIAMETERS = ['diameter', 'cbDiameter', 'csDiameter'];
+
+/** Expressions apart, spaces say nothing: "3.4 mm+2*tolerance" is the same size. */
+function sameSize(expression: string, written: string): boolean {
+  const strip = (text: string) => text.replace(/\s+/g, '');
+  const tolerant = strip(`${written} + 2 * ${TOLERANCE_PARAMETER}`);
+  const value = strip(expression);
+  return value === strip(written) || value === tolerant;
+}
+
+/**
+ * Whether `exprs` are the sizes of `preset`, in either form: the plain sizes
+ * or the ones a document with a `tolerance` parameter stores. Only the names
+ * both hold are compared — the caller passes the sizes that apply to its hole
+ * (a simple hole has no counterbore), and a size the preset doesn't set says
+ * nothing about it. So what the hole dialog's Preset dropdown shows the
+ * preset the sizes match (ADR-0062).
+ */
+export function presetMatches(
+  preset: HolePreset,
+  exprs: Readonly<Record<string, string>>,
+): boolean {
+  return Object.entries(exprs).every(([name, expression]) => {
+    const written = preset.exprs[name];
+    return written === undefined || sameSize(expression, written);
+  });
 }

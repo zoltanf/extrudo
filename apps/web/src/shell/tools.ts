@@ -685,6 +685,13 @@ export const TOOLS = {
     category: 'export',
     hint: 'Volume, weight and filament length for PLA, PETG, ABS, TPU or your own density.',
   },
+  tolerance: {
+    id: 'tolerance',
+    label: 'Tolerance',
+    icon: 'tolerance',
+    category: 'export',
+    hint: 'How much room a printed fit gets: hole presets and threads add it to their sizes.',
+  },
   overhang: {
     id: 'overhang',
     label: 'Overhang Analysis',
@@ -699,7 +706,9 @@ export const TOOLS = {
     icon: 'send-to-slicer',
     category: 'export',
     hint: 'Open the model in your slicer.',
-    comesWith: 'P4-08',
+    // P4-08 gave the platform its `openInSlicer`; the launch itself is P6-02
+    // with the desktop app (ADR-0062).
+    comesWith: 'the desktop app',
   },
 } satisfies Record<string, Tool>;
 
@@ -842,7 +851,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
     id: 'print',
     label: '3D Print',
     groups: [
-      { label: 'Prepare', tools: ['placeOnBed', 'measure', 'printInfo', 'overhang'] },
+      { label: 'Prepare', tools: ['placeOnBed', 'measure', 'printInfo', 'tolerance', 'overhang'] },
       { label: 'Output', tools: ['export', 'slicer'] },
     ],
   },

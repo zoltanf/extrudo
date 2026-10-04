@@ -4,6 +4,15 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-03 · **P4-08** Print tolerance and slicer hand-off (ADR-0062): the
+  print tolerance is the user parameter `tolerance`, set from the 3D Print tab's
+  Tolerance panel (a field and the Tight 0.1 / Normal 0.2 / Loose 0.3 mm
+  buttons, one undo step each, through the shell's parameter `apply`), and it
+  says how many holes and threads use it. Hole presets add it to every diameter
+  they write ("3.4 mm + 2 * tolerance", depths stay plain) and the Preset
+  dropdown recognises both forms; the platform interface gained the optional
+  `openInSlicer` the Export dialog offers (Slicer select + "Open in slicer")
+  where it exists — the browser build leaves it out, the launch is Phase 6.
 - 2026-10-03 · **P4-03b** User fonts as attachments (ADR-0061): `doc.attachments`
   records the files a design carries (name, file name, media type, SHA-256,
   size) while their bytes live beside the document —

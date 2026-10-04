@@ -1,4 +1,7 @@
 import {
+  addParameter,
+  createDocument,
+  type DocumentStore,
   type Feature,
   type FeatureId,
   type GeomRef,
@@ -7,9 +10,12 @@ import {
   HoleInputsSchema,
   holeInputs,
   insertFeature,
+  newId,
   originPlaneRef,
+  type ParameterId,
   type SketchData,
   sketchInputs,
+  TOLERANCE_PARAMETER,
   type Vec3,
 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
@@ -36,6 +42,17 @@ const TOP: GeomRef = { kind: 'face', id: 'box:top' };
 const XY = originPlaneRef('origin:xy');
 
 const bodies = { [BOX]: namedBoxMesh() };
+
+/** Round-trips a 0.2 mm print tolerance into the document (P4-08). */
+const toleranceParameter = () => ({
+  id: newId<ParameterId>(),
+  name: TOLERANCE_PARAMETER,
+  expression: '0.2 mm',
+  unit: 'length' as const,
+});
+
+const addTolerance = (store: DocumentStore) =>
+  store.getState().dispatch(addParameter({ parameter: toleranceParameter() }));
 
 const values = (over: Partial<DialogValues> = {}): DialogValues =>
   mergeValues(defaultValues(holeDialog), over);
@@ -251,6 +268,7 @@ describe('presets', () => {
   });
 
   it('every preset is recognised by its own values, and only by them', () => {
+    const ctx = { doc: createDocument() };
     for (const preset of HOLE_PRESETS) {
       const v = mergeValues(values(), {
         exprs: preset.exprs,
@@ -258,14 +276,52 @@ describe('presets', () => {
       });
       expect(presetOf(v), preset.id).toBe(preset.id);
       expect(
-        holeOnChange('preset', { ...v, choices: { ...v.choices, preset: preset.id } }),
+        holeOnChange('preset', { ...v, choices: { ...v.choices, preset: preset.id } }, ctx),
       ).toEqual({
         exprs: preset.exprs,
         choices: { ...preset.choices, preset: preset.id },
       });
     }
     expect(presetOf(values())).toBe('custom');
-    expect(holeOnChange('preset', values())).toBeUndefined();
+    expect(holeOnChange('preset', values(), ctx)).toBeUndefined();
+  });
+
+  it('in a document with a tolerance a preset adds it to every diameter (P4-08)', () => {
+    const t = setupDialogs([holeDialog]);
+    addTolerance(t.store);
+    t.controller.start('hole');
+    t.controller.setChoice('preset', 'm4-clearance');
+    expect(t.open()?.values.exprs).toMatchObject({
+      diameter: '4.5 mm + 2 * tolerance',
+      cbDiameter: '7.5 mm + 2 * tolerance',
+      csDiameter: '9 mm + 2 * tolerance',
+      // Depths and angles are the sizes themselves.
+      cbDepth: '4.3 mm',
+      csAngle: '90 deg',
+    });
+    // The sizes are the preset's, so the dropdown still shows it.
+    expect(t.open()?.values.choices.preset).toBe('m4-clearance');
+    // Both forms are the preset's sizes, whatever the spacing; anything else leaves it.
+    t.controller.setExpr('diameter', '4.5 mm+2*tolerance');
+    expect(t.open()?.values.choices.preset).toBe('m4-clearance');
+    t.controller.setExpr('diameter', '4.5 mm');
+    expect(t.open()?.values.choices.preset).toBe('m4-clearance');
+    t.controller.setExpr('diameter', '5 mm');
+    expect(t.open()?.values.choices.preset).toBe('custom');
+  });
+
+  it('a stored hole whose sizes carry the tolerance shows its preset', () => {
+    const ctx = {
+      doc: { ...setupDialogs().store.getState().doc, parameters: [toleranceParameter()] },
+      bodies,
+    };
+    const feature = {
+      id: 'H',
+      type: 'hole',
+      name: 'Hole1',
+      inputs: holeInputs({ numbers: { diameter: '3.4 mm + 2 * tolerance' } }),
+    } as Feature;
+    expect(valuesFor(holeDialog, feature, ctx).choices.preset).toBe('m3-clearance');
   });
 
   it('shows the preset of a stored hole when the dialog edits it', () => {

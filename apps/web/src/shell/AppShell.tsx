@@ -56,7 +56,9 @@ import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import { OverhangPanel } from '../print/OverhangPanel';
 import { PrintInfoPanel } from '../print/PrintInfoPanel';
+import { TolerancePanel } from '../print/TolerancePanel';
 import { OVERHANG_TOOL, PRINT_INFO_TOOL, useOverhang, usePrintInfo } from '../print/usePrintAids';
+import { TOLERANCE_TOOL, useTolerance } from '../print/useTolerance';
 import type { Autosaver } from '../project/autosave';
 import { VersionsDialog } from '../project/VersionsDialog';
 import type { VersionContext } from '../project/versions';
@@ -238,6 +240,7 @@ export function AppShell({
   const measuring = mode === 'model' && activeTool === MEASURE_TOOL;
   const sectioning = mode === 'model' && activeTool === SECTION_TOOL;
   const printing = mode === 'model' && activeTool === PRINT_INFO_TOOL;
+  const tolerancing = mode === 'model' && activeTool === TOLERANCE_TOOL;
   const overhanging = mode === 'model' && activeTool === OVERHANG_TOOL;
   const customizing = mode === 'model' && activeTool === CUSTOMIZER_TOOL;
   // The first-run tutorial (P3-12): it reads the design, so it needs no hooks into the tools.
@@ -526,6 +529,9 @@ export function AppShell({
   // Every write goes through the same `apply`, so a slider or a configuration
   // re-solves the sketches that use the parameter in its own undo step.
   const customizer = useCustomizer({ store, apply });
+  // The Tolerance panel (P4-08): its writes are parameter writes, so they go through the same
+  // `apply` (ADR-0059).
+  const tolerance = useTolerance({ doc, apply });
 
   // Commands (P1-14): the shortcuts, the Ctrl+K palette and the S toolbox run the same list.
   const construction = useHostState(host, (s) => s.construction);
@@ -804,6 +810,10 @@ export function AppShell({
       if (mode !== 'model') return;
       if (picking) cancelCreateSketch(stores);
       session.getState().setTool(customizing ? undefined : CUSTOMIZER_TOOL);
+    } else if (tool === TOLERANCE_TOOL) {
+      if (mode !== 'model') return;
+      if (picking) cancelCreateSketch(stores);
+      session.getState().setTool(tolerancing ? undefined : TOLERANCE_TOOL);
     } else if (tool === OVERHANG_TOOL) {
       if (mode !== 'model') return;
       if (overhanging) session.getState().setTool(undefined);
@@ -1389,6 +1399,12 @@ export function AppShell({
         {printing && (
           <PrintInfoPanel info={printInfo} onClose={() => session.getState().setTool(undefined)} />
         )}
+        {tolerancing && (
+          <TolerancePanel
+            tolerance={tolerance}
+            onClose={() => session.getState().setTool(undefined)}
+          />
+        )}
         {overhanging && (
           <OverhangPanel
             tool={overhang}
@@ -1465,6 +1481,7 @@ export function AppShell({
         request={modelExport}
         files={platform.files}
         preferences={platform.preferences}
+        openInSlicer={platform.openInSlicer}
         notify={notify}
         onClose={() => setModelExport(undefined)}
       />

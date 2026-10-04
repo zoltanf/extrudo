@@ -13,10 +13,12 @@ import { isExportCancelled, type MeshOptions } from '@extrudo/kernel';
 import { X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
-import { Button, Dialog, DialogClose, IconButton } from '../design-system';
+import { Button, Dialog, DialogClose, IconButton, Select } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
 import type { FileAccess } from '../platform/files';
 import type { Preferences } from '../platform/preferences';
+import type { OpenInSlicer, SlicerId } from '../platform/slicer';
+import { SLICERS } from '../platform/slicer';
 import type { BodyEntry } from '../shell/bodies';
 import { Choice, Hint, Radio } from '../sketch/ExportSketchDialog';
 import {
@@ -24,6 +26,7 @@ import {
   DEFLECTION_RANGE,
   type ExportBody,
   formatBytes,
+  handToSlicer,
   initialBodies,
   type MeshedBodies,
   type ModelExporter,
@@ -53,6 +56,12 @@ export interface ExportModelDialogProps {
   request: ModelExportRequest | undefined;
   files: FileAccess;
   preferences: Preferences;
+  /**
+   * Opens the exported file in a slicer (P4-08, ADR-0062). Absent in the web
+   * app, where a slicer can't reach a local design: the dialog then shows no
+   * slicer controls at all.
+   */
+  openInSlicer?: OpenInSlicer;
   onClose(): void;
   notify?(tone: 'info' | 'error', text: string): void;
 }
@@ -86,8 +95,36 @@ const DEGREE = Math.PI / 180;
  * in the kernel at a preset or custom deviation; the summary shows the
  * triangle count and whether every mesh is closed and manifold before the
  * file is saved.
+ *
+ * On a platform with `openInSlicer` (the desktop build, P4-08, ADR-0062) the
+ * same bytes can go straight to a slicer; in the browser there is nothing to
+ * show there.
  */
-export function ExportModelDialog({
+export function ExportModelDialog(props: ExportModelDialogProps) {
+  return (
+    <Dialog
+      open={props.request !== undefined}
+      onOpenChange={(value) => {
+        if (!value) props.onClose();
+      }}
+      size="small"
+      title="Export model"
+      description="Bodies as 3MF, STL or STEP, in millimetres."
+      actions={
+        <DialogClose asChild>
+          <IconButton label="Close">
+            <X size={18} strokeWidth={1.75} />
+          </IconButton>
+        </DialogClose>
+      }
+    >
+      <ExportModelForm {...props} />
+    </Dialog>
+  );
+}
+
+/** The dialog's body, without the dialog around it (the unit test renders this). */
+export function ExportModelForm({
   store,
   session,
   model,
@@ -96,6 +133,7 @@ export function ExportModelDialog({
   request,
   files,
   preferences,
+  openInSlicer,
   onClose,
   notify = () => {},
 }: ExportModelDialogProps) {
@@ -163,6 +201,8 @@ export function ExportModelDialog({
   const [meshed, setMeshed] = useState<{ key: string; result: MeshedBodies }>();
   const [problem, setProblem] = useState<string>();
   const [busy, setBusy] = useState(false);
+  /** Which slicer the hand-off names (the desktop build only, ADR-0062). */
+  const [slicer, setSlicer] = useState<SlicerId>('prusaslicer');
   /** Bodies meshed so far of the run for `key` (P3-13). */
   const [progress, setProgress] = useState<{ key: string; done: number; total: number }>();
   const key = JSON.stringify([selected.map((b) => b.id), tessellation]);
@@ -239,19 +279,37 @@ export function ExportModelDialog({
     !problem &&
     (meshFormat ? ready !== undefined : true);
 
+  /** The file the choices describe, as Export writes it. */
+  const build = async () =>
+    settings.format === 'step'
+      ? await stepFile(kernel as ModelExporter, selected, doc.name)
+      : meshFile(ready as MeshedBodies, settings.format, doc.name);
+
   const save = async () => {
     if (!canExport || !kernel) return;
     setBusy(true);
     try {
-      const file =
-        settings.format === 'step'
-          ? await stepFile(kernel, selected, doc.name)
-          : meshFile(ready as MeshedBodies, settings.format, doc.name);
+      const file = await build();
       files.download(file.blob, file.name);
       if (meshFormat && ready && openBodies(ready).length > 0) {
         notify('info', "Some meshes aren't closed; your slicer will try to repair them.");
       }
       onClose();
+    } catch (error) {
+      setProblem(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // The slicer hand-off (P4-08, ADR-0062): the same bytes, no download. The dialog stays open
+  // so another slicer can be tried.
+  const launch = async () => {
+    if (!canExport || !kernel || !openInSlicer) return;
+    setBusy(true);
+    try {
+      const message = await handToSlicer(openInSlicer, await build(), settings.format, slicer);
+      setProblem(message);
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error));
     } finally {
@@ -270,167 +328,175 @@ export function ExportModelDialog({
   const lengthSettings = { ...doc.settings, precision: Math.max(doc.settings.precision, 3) };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(value) => {
-        if (!value) onClose();
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        void save();
       }}
-      size="small"
-      title="Export model"
-      description="Bodies as 3MF, STL or STEP, in millimetres."
-      actions={
-        <DialogClose asChild>
-          <IconButton label="Close">
-            <X size={18} strokeWidth={1.75} />
-          </IconButton>
-        </DialogClose>
-      }
     >
-      <form
-        className="flex flex-col gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void save();
-        }}
-      >
-        <fieldset className="flex flex-col gap-1">
-          <legend className="mb-1 flex w-full items-center justify-between font-semibold">
-            Bodies
-          </legend>
-          <div className="flex max-h-40 flex-col overflow-y-auto" data-export-bodies>
-            {bodies.map((body) => (
-              <label
-                key={body.id}
-                className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-input px-1 hover:bg-accent-soft"
-              >
-                <input
-                  type="checkbox"
-                  checked={chosen.has(body.id)}
-                  onChange={() => toggle(body.id)}
-                  className="accent-(--x-accent)"
-                />
-                <span
-                  aria-hidden
-                  className="size-2.5 shrink-0 rounded-full border border-line"
-                  style={{ background: body.meta.color ?? 'var(--x-body-default)' }}
-                />
-                <span className={`truncate ${body.meta.visible ? '' : 'text-muted'}`}>
-                  {body.meta.name}
-                </span>
-                {!body.meta.visible && <Hint>hidden</Hint>}
-              </label>
-            ))}
-          </div>
-          {bodies.length > 1 && (
-            <label className="flex h-7 cursor-pointer items-center gap-2 px-1 text-sm text-muted">
+      <fieldset className="flex flex-col gap-1">
+        <legend className="mb-1 flex w-full items-center justify-between font-semibold">
+          Bodies
+        </legend>
+        <div className="flex max-h-40 flex-col overflow-y-auto" data-export-bodies>
+          {bodies.map((body) => (
+            <label
+              key={body.id}
+              className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-input px-1 hover:bg-accent-soft"
+            >
               <input
                 type="checkbox"
-                checked={all}
-                onChange={() => setChosen(all ? new Set() : new Set(bodies.map((b) => b.id)))}
+                checked={chosen.has(body.id)}
+                onChange={() => toggle(body.id)}
                 className="accent-(--x-accent)"
               />
-              All bodies
+              <span
+                aria-hidden
+                className="size-2.5 shrink-0 rounded-full border border-line"
+                style={{ background: body.meta.color ?? 'var(--x-body-default)' }}
+              />
+              <span className={`truncate ${body.meta.visible ? '' : 'text-muted'}`}>
+                {body.meta.name}
+              </span>
+              {!body.meta.visible && <Hint>hidden</Hint>}
             </label>
-          )}
-        </fieldset>
+          ))}
+        </div>
+        {bodies.length > 1 && (
+          <label className="flex h-7 cursor-pointer items-center gap-2 px-1 text-sm text-muted">
+            <input
+              type="checkbox"
+              checked={all}
+              onChange={() => setChosen(all ? new Set() : new Set(bodies.map((b) => b.id)))}
+              className="accent-(--x-accent)"
+            />
+            All bodies
+          </label>
+        )}
+      </fieldset>
 
-        <Choice legend="Format">
-          <Radio
-            name="model-format"
-            checked={settings.format === '3mf'}
-            onChange={() => update({ format: '3mf' })}
-          >
-            3MF <Hint>for slicers: names, colours, units</Hint>
-          </Radio>
-          <Radio
-            name="model-format"
-            checked={settings.format === 'stl'}
-            onChange={() => update({ format: 'stl' })}
-          >
-            STL <Hint>binary, opens anywhere</Hint>
-          </Radio>
-          <Radio
-            name="model-format"
-            checked={settings.format === 'step'}
-            onChange={() => update({ format: 'step' })}
-          >
-            STEP <Hint>exact geometry for CAD</Hint>
-          </Radio>
-        </Choice>
+      <Choice legend="Format">
+        <Radio
+          name="model-format"
+          checked={settings.format === '3mf'}
+          onChange={() => update({ format: '3mf' })}
+        >
+          3MF <Hint>for slicers: names, colours, units</Hint>
+        </Radio>
+        <Radio
+          name="model-format"
+          checked={settings.format === 'stl'}
+          onChange={() => update({ format: 'stl' })}
+        >
+          STL <Hint>binary, opens anywhere</Hint>
+        </Radio>
+        <Radio
+          name="model-format"
+          checked={settings.format === 'step'}
+          onChange={() => update({ format: 'step' })}
+        >
+          STEP <Hint>exact geometry for CAD</Hint>
+        </Radio>
+      </Choice>
 
-        {meshFormat && (
-          <Choice legend="Resolution">
-            {(Object.keys(RESOLUTION_LABELS) as (keyof typeof RESOLUTION_LABELS)[]).map((r) => (
-              <Radio
-                key={r}
-                name="model-resolution"
-                checked={settings.resolution === r}
-                onChange={() => update({ resolution: r })}
-              >
-                {RESOLUTION_LABELS[r]}{' '}
-                <Hint>
-                  {formatQuantity(RESOLUTIONS[r].linearDeflection, LENGTH, lengthSettings)},{' '}
-                  {Math.round(RESOLUTIONS[r].angularDeflection / DEGREE)}°
-                </Hint>
-              </Radio>
-            ))}
+      {meshFormat && (
+        <Choice legend="Resolution">
+          {(Object.keys(RESOLUTION_LABELS) as (keyof typeof RESOLUTION_LABELS)[]).map((r) => (
             <Radio
+              key={r}
               name="model-resolution"
-              checked={settings.resolution === 'custom'}
-              onChange={() => update({ resolution: 'custom' })}
+              checked={settings.resolution === r}
+              onChange={() => update({ resolution: r })}
             >
-              Custom
+              {RESOLUTION_LABELS[r]}{' '}
+              <Hint>
+                {formatQuantity(RESOLUTIONS[r].linearDeflection, LENGTH, lengthSettings)},{' '}
+                {Math.round(RESOLUTIONS[r].angularDeflection / DEGREE)}°
+              </Hint>
             </Radio>
-            {settings.resolution === 'custom' && (
-              <div className="ml-7 grid grid-cols-[72px_minmax(0,1fr)] items-start gap-2">
-                <span className="pt-1 text-sm text-muted">Deviation</span>
-                <ExpressionInput
-                  label="Deviation"
-                  value={settings.deviation}
-                  evaluate={(expr) => evaluate(expr, 'length')}
-                  format={(r) => formatQuantity(r.value, r.dim, lengthSettings)}
-                  onCommit={(deviation) => update({ deviation })}
-                />
-                <span className="pt-1 text-sm text-muted">Angle</span>
-                <ExpressionInput
-                  label="Angle"
-                  value={settings.angle}
-                  evaluate={(expr) => evaluate(expr, 'angle')}
-                  format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
-                  onCommit={(angle) => update({ angle })}
-                />
-              </div>
-            )}
-          </Choice>
-        )}
-
-        {meshFormat && !ready && !problem && current && tessellation && selected.length > 0 && (
-          <MeshingBar progress={progress?.key === key ? progress : undefined} />
-        )}
-        <p className="min-h-5 text-sm" aria-live="polite" data-export-summary={summary.text}>
-          <span
-            className={
-              summary.tone === 'error'
-                ? 'text-error'
-                : summary.tone === 'warning'
-                  ? 'text-warning'
-                  : 'text-muted'
-            }
+          ))}
+          <Radio
+            name="model-resolution"
+            checked={settings.resolution === 'custom'}
+            onChange={() => update({ resolution: 'custom' })}
           >
-            {summary.text}
-          </span>
-        </p>
+            Custom
+          </Radio>
+          {settings.resolution === 'custom' && (
+            <div className="ml-7 grid grid-cols-[72px_minmax(0,1fr)] items-start gap-2">
+              <span className="pt-1 text-sm text-muted">Deviation</span>
+              <ExpressionInput
+                label="Deviation"
+                value={settings.deviation}
+                evaluate={(expr) => evaluate(expr, 'length')}
+                format={(r) => formatQuantity(r.value, r.dim, lengthSettings)}
+                onCommit={(deviation) => update({ deviation })}
+              />
+              <span className="pt-1 text-sm text-muted">Angle</span>
+              <ExpressionInput
+                label="Angle"
+                value={settings.angle}
+                evaluate={(expr) => evaluate(expr, 'angle')}
+                format={(r) => formatQuantity(r.value, r.dim, doc.settings)}
+                onCommit={(angle) => update({ angle })}
+              />
+            </div>
+          )}
+        </Choice>
+      )}
 
-        <div className="flex justify-end gap-2">
-          <DialogClose asChild>
-            <Button>Cancel</Button>
-          </DialogClose>
-          <Button type="submit" variant="primary" disabled={!canExport}>
-            Export {settings.format === '3mf' ? '3MF' : settings.format.toUpperCase()}
+      {meshFormat && !ready && !problem && current && tessellation && selected.length > 0 && (
+        <MeshingBar progress={progress?.key === key ? progress : undefined} />
+      )}
+      <p className="min-h-5 text-sm" aria-live="polite" data-export-summary={summary.text}>
+        <span
+          className={
+            summary.tone === 'error'
+              ? 'text-error'
+              : summary.tone === 'warning'
+                ? 'text-warning'
+                : 'text-muted'
+          }
+        >
+          {summary.text}
+        </span>
+      </p>
+
+      {openInSlicer && (
+        <div className="flex items-end gap-2">
+          <span className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+            <span className="text-muted">Slicer</span>
+            <Select
+              aria-label="Slicer"
+              value={slicer}
+              onChange={(event) => setSlicer(event.target.value as SlicerId)}
+            >
+              {SLICERS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </Select>
+          </span>
+          <Button
+            type="button"
+            disabled={!canExport || busy}
+            title="Hand this file to the slicer without saving it first."
+            onClick={() => void launch()}
+          >
+            Open in slicer
           </Button>
         </div>
-      </form>
-    </Dialog>
+      )}
+
+      <div className="flex justify-end gap-2">
+        <Button onClick={onClose}>Cancel</Button>
+        <Button type="submit" variant="primary" disabled={!canExport}>
+          Export {settings.format === '3mf' ? '3MF' : settings.format.toUpperCase()}
+        </Button>
+      </div>
+    </form>
   );
 }
 
