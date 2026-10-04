@@ -41,21 +41,25 @@ cannot reach. Tick them off in order; each box says who and where.
 ## Make the repository public
 
 - [x] GitHub > Settings > General > Danger Zone > **Change visibility** > Public.
-  Done 2026-10-04 (after a history audit: nothing found).
-- [ ] Settings > Code security: enable **Private vulnerability reporting**
+  Done 2026-10-04 (after a history audit: nothing found). The settings below
+  were done the same day: private vulnerability reporting, Discussions,
+  description/topics/website, a ruleset on `main` (no deletion, no force
+  pushes), the social preview; fork PR workflows need approval for all
+  external contributors.
+- [x] Settings > Code security: enable **Private vulnerability reporting**
   (SECURITY.md sends reporters there), and the dependency graph and Dependabot
   alerts if you want them.
-- [ ] Settings > General > Features: enable **Discussions** if you want a place
+- [x] Settings > General > Features: enable **Discussions** if you want a place
   for questions (CONTRIBUTING.md mentions it only "if enabled"). Issues stay on.
-- [ ] Settings > General: add a description ("Parametric CAD for 3D printing, in
+- [x] Settings > General: add a description ("Parametric CAD for 3D printing, in
   your browser") and topics (`cad`, `3d-printing`, `parametric`, `webassembly`,
   `opencascade`, `pwa`). Set the website to <https://extrudo.org> (the landing page).
-- [ ] Settings > Branches: protect `main` (require CI to pass, no force pushes)
+- [x] Settings > Branches: protect `main` (require CI to pass, no force pushes)
   if you want; the deploy workflow only runs for commits whose CI passed.
-- [ ] Actions: nothing to enable. The first public push runs CI; the OCCT and
+- [x] Actions: nothing to enable. The first public push runs CI; the OCCT and
   planegcs WASM releases already exist and are published as releases of this
   repository, which becomes downloadable without `gh` once it is public.
-- [ ] Social preview: Settings > General > Social preview > upload
+- [x] Social preview: Settings > General > Social preview > upload
   `apps/web/public/og-image.png`.
 
 ## Hosting (docs/deploy.md has the steps)

@@ -186,5 +186,7 @@ lists projects we looked at and what may be borrowed from each.
 
 ## Questions
 
-Open an issue, or start a discussion if the repository has them enabled.
+Ask in [Discussions](https://github.com/zoltanf/extrudo/discussions) (Q&A for
+questions, Ideas for suggestions, Show and tell for what you made), or open an
+issue for a bug or a concrete request.
 Security problems are different: see [`SECURITY.md`](SECURITY.md).
