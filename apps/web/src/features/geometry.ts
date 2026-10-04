@@ -55,11 +55,34 @@ export function surfaceFrame(
 
 /** `surfaceFrame` of face `face` (index in `faceRanges`) of a mesh. */
 export function meshSurfaceFrame(mesh: BodyMesh, face: number): Frame | undefined {
+  return meshSurfaceFrameAt(mesh, face);
+}
+
+/**
+ * `surfaceFrame` of a picked face, taken at the point of its surface nearest
+ * `at` instead of at the face's own middle: on a round face the middle is on
+ * the axis, which is nowhere near the letters an emboss puts there (P4-04).
+ */
+export function surfaceFrameNear(
+  bodies: Readonly<Record<BodyId, BodyMesh>>,
+  ref: GeomRef,
+  at: Vec3,
+): Frame | undefined {
+  if (ref.kind !== 'face') return undefined;
+  for (const mesh of Object.values(bodies)) {
+    const face = mesh.faceIds?.indexOf(ref.id) ?? -1;
+    if (face >= 0) return meshSurfaceFrameAt(mesh, face, at);
+  }
+  return undefined;
+}
+
+/** `meshSurfaceFrame` with the query point the node is chosen by. */
+export function meshSurfaceFrameAt(mesh: BodyMesh, face: number, at?: Vec3): Frame | undefined {
   const mean = meshFaceFrame(mesh, face);
   if (mean && (mean.flatness ?? 1) >= 0.98) return mean;
   const first = mesh.faceRanges[2 * face] ?? 0;
   const count = mesh.faceRanges[2 * face + 1] ?? 0;
-  const centre = mean?.origin;
+  const centre = at ?? mean?.origin;
   let best: number | undefined;
   let bestDistance = Number.POSITIVE_INFINITY;
   for (let t = first; t < first + count; t++) {
@@ -80,15 +103,15 @@ export function meshSurfaceFrame(mesh: BodyMesh, face: number): Frame | undefine
     }
   }
   if (best === undefined) return mean;
-  const at = (a: Float32Array): Vec3 => [
+  const node = (a: Float32Array): Vec3 => [
     a[3 * best] ?? 0,
     a[3 * best + 1] ?? 0,
     a[3 * best + 2] ?? 0,
   ];
-  const n = at(mesh.normals);
+  const n = node(mesh.normals);
   const length = Math.hypot(n[0], n[1], n[2]);
   if (length <= 0) return mean;
-  return { origin: at(mesh.positions), normal: [n[0] / length, n[1] / length, n[2] / length] };
+  return { origin: node(mesh.positions), normal: [n[0] / length, n[1] / length, n[2] / length] };
 }
 
 /**

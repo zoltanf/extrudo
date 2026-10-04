@@ -1,0 +1,438 @@
+{
+ "top 1 mm emboss": {
+  "volume": 16050,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   11
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "top 1 mm deboss": {
+  "volume": 15950,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   10
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "top 2 mm emboss": {
+  "volume": 16100,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   12
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "top 2 mm deboss": {
+  "volume": 15900,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   10
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "bottom 1 mm emboss": {
+  "volume": 16050,
+  "bbox": [
+   -20,
+   -20,
+   -1,
+   20,
+   20,
+   10
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "bottom 1 mm deboss": {
+  "volume": 15950,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   10
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "bottom 2 mm emboss": {
+  "volume": 16100,
+  "bbox": [
+   -20,
+   -20,
+   -2,
+   20,
+   20,
+   10
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "bottom 2 mm deboss": {
+  "volume": 15900,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   10
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "side 1 mm emboss": {
+  "volume": 16050,
+  "bbox": [
+   -20,
+   -20,
+   -2.5,
+   21,
+   20,
+   10
+  ],
+  "faces": 12,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:cap:start",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "side 1 mm deboss": {
+  "volume": 15975,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   10
+  ],
+  "faces": 10,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "side 2 mm emboss": {
+  "volume": 16100,
+  "bbox": [
+   -20,
+   -20,
+   -2.5,
+   22,
+   20,
+   10
+  ],
+  "faces": 12,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:cap:start",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "side 2 mm deboss": {
+  "volume": 15950,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   10
+  ],
+  "faces": 10,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "above 1 mm emboss": {
+  "volume": 16050,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   11
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "above 1 mm deboss": {
+  "volume": 15950,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   10
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "above 2 mm emboss": {
+  "volume": 16100,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   12
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "above 2 mm deboss": {
+  "volume": 15900,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   10
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "sketched on the face 1 mm emboss": {
+  "volume": 16050,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   11
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "sketched on the face 1 mm deboss": {
+  "volume": 15950,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   10
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "sketched on the face 2 mm emboss": {
+  "volume": 16100,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   12
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "sketched on the face 2 mm deboss": {
+  "volume": 15900,
+  "bbox": [
+   -20,
+   -20,
+   0,
+   20,
+   20,
+   10
+  ],
+  "faces": 11,
+  "solids": 1,
+  "embossFaces": [
+   "emboss:EM:cap:end",
+   "emboss:EM:side:l11",
+   "emboss:EM:side:l2",
+   "emboss:EM:side:l5",
+   "emboss:EM:side:l8"
+  ]
+ },
+ "cross 1 mm emboss": {
+  "error": "Sketch on a plane parallel to the face to emboss on a flat face."
+ },
+ "cross 1 mm deboss": {
+  "error": "Sketch on a plane parallel to the face to emboss on a flat face."
+ },
+ "cross 2 mm emboss": {
+  "error": "Sketch on a plane parallel to the face to emboss on a flat face."
+ },
+ "cross 2 mm deboss": {
+  "error": "Sketch on a plane parallel to the face to emboss on a flat face."
+ },
+ "far off the face 1 mm emboss": {
+  "error": "The profiles don't touch the face."
+ },
+ "far off the face 1 mm deboss": {
+  "error": "The profiles don't touch the face."
+ },
+ "far off the face 2 mm emboss": {
+  "error": "The profiles don't touch the face."
+ },
+ "far off the face 2 mm deboss": {
+  "error": "The profiles don't touch the face."
+ },
+ "no profiles": {
+  "error": "Pick at least one profile or text to emboss."
+ },
+ "no face": {
+  "error": "Pick the face to emboss on."
+ },
+ "zero depth": {
+  "error": "The depth must be greater than 0."
+ },
+ "lost profile": {
+  "error": "Can't find one of its profiles any more: an earlier change to the sketch removed it. Edit the emboss and pick it again."
+ }
+}

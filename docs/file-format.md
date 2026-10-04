@@ -1030,6 +1030,34 @@ nothing about a preset is stored. For a new thread the dialog writes the
 document's print-tolerance parameter (`tolerance`, P4-08, ADR-0062) here when
 it has one, which is an ordinary expression like any other.
 
+### 6.26 `emboss`
+
+Puts sketch profiles or text **onto** a face of a body and joins them on
+(emboss) or cuts them in (deboss) (P4-04, ADR-0060): the same thing as
+sketching on the face and extruding out or in, done in one step from a sketch
+anywhere in a parallel plane. It makes no body of its own: the body that owns
+`face` is the only body it touches, and a pattern or mirror can repeat it as a
+feature (6.16). No new keys.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `profiles` | `ref` | yes | Refs of kind `profile` (`<sketch>/<region>`) and `sketchEntity` (a whole text, `<sketch>/<text>`: every ink region of it, so editing the string keeps the feature). All in one plane, parallel to the face's. Missing or empty: an error until some are picked |
+| `face` | `ref` | yes | One ref of kind `face`: the face to emboss on (a flat face; a cylinder needs the same feature with a sketch parallel to its axis). Missing: an error until picked |
+| `depth` | `expr` | no | Length, greater than 0; default 1 mm. How far the letters stand out (`emboss`) or go in (`deboss`) |
+| `mode` | `enum` | no | `emboss` (default: joins material outwards) or `deboss` (cuts inwards) |
+
+The profiles are moved onto the face's plane (a translation along the face's
+outward normal) and swept `depth` along it (emboss) or against it (deboss),
+then joined to or cut from the face's body. So a sketch below the face or above
+it, at any offset, works the same; the profiles must lie in a **parallel**
+plane, or the feature says so. Profiles that miss the face entirely, a depth
+of 0 or less, a face that isn't flat or cylindrical, and a sketch that isn't
+parallel to the face are errors.
+
+Names: the prism's own names under `emboss:<feature id>` — `…:cap:start` (on
+the face's plane) and `…:cap:end`, and `…:side:<source>` for each sketch curve
+the profile is bounded by, `#n` where names repeat — like an extrude's.
+
 ---
 
 ## 7. Sketch data (`sketchData`)

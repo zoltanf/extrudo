@@ -46,9 +46,12 @@
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
 #include <BRepOffset_MakeOffset.hxx>
+#include <BRepOffset_MakeSimpleOffset.hxx>
+#include <ShapeFix_Solid.hxx>
 #include <BRepBuilderAPI_MakeSolid.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
+#include <BRepBuilderAPI_Sewing.hxx>
 #include <BRepBuilderAPI_TransitionMode.hxx>
 #include <BRepFill_CompatibleWires.hxx>
 #include <BRepFill_TypeOfContact.hxx>
@@ -59,6 +62,11 @@
 #include <Geom_ConicalSurface.hxx>
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom2d_Line.hxx>
+#include <Geom2d_Circle.hxx>
+#include <Geom2d_Ellipse.hxx>
+#include <Geom_Line.hxx>
+#include <Geom_Ellipse.hxx>
+#include <GeomConvert.hxx>
 #include <BRepGProp.hxx>
 #include <BRepLProp_SLProps.hxx>
 #include <BRepLib_ToolTriangulatedShape.hxx>
@@ -66,6 +74,7 @@
 #include <BRepTools.hxx>
 #include <BRepTools_ReShape.hxx>
 #include <BRepLib.hxx>
+#include <BRepLib_MakeEdge.hxx>
 #include <BRepTopAdaptor_FClass2d.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
@@ -86,6 +95,7 @@
 #include <Message_Messenger.hxx>
 #include <Message_PrinterOStream.hxx>
 #include <Geom_BSplineCurve.hxx>
+#include <Geom_BSplineSurface.hxx>
 #include <Geom_Circle.hxx>
 #include <Geom_Curve.hxx>
 #include <Geom_Plane.hxx>
@@ -134,6 +144,9 @@
 #include <gp_Cone.hxx>
 #include <gp_Cylinder.hxx>
 #include <gp_Elips.hxx>
+#include <gp_Elips2d.hxx>
+#include <gp_Ax22d.hxx>
+#include <gp_Lin2d.hxx>
 #include <gp_Pln.hxx>
 #include <gp_Pnt2d.hxx>
 #include <gp_Dir.hxx>
@@ -2632,7 +2645,481 @@ public:
     }
   }
 
+  /**
+   * Wraps the planar face `face` around a cylinder (P4-04, ADR-0060 §3) and
+   * returns a handle to the solid between radius R and R + depth (outward)
+   * or R − depth (inward), or 0 with lastError().
+   *
+   * The unrolling frame: o = a point on the cylinder axis, a = the axis
+   * direction (unit), r = the reference direction (unit, square to a): the
+   * direction from the axis towards the sketch, so a sketch point (s, z) --
+   * measured in the sketch plane from p along sx (unit) and along a --
+   * lands at angle s / R from r, height z. The surface's height parameter is
+   * z + (p − o)·a, which is z when p is the projection of o onto the plane.
+   *
+   * Every curve is mapped exactly: a line to a line, a B-spline by its poles
+   * (an affine map keeps B-splines, rational ones too), a circle or an
+   * unrotated ellipse to an ellipse with its s semi-axis divided by R. A
+   * rotated ellipse is turned into a B-spline first, so that the map has
+   * perpendicular axes to work with.
+   *
+   * The solid is the two mapped faces -- on cylinders of radius R and of
+   * R ± depth, the same gp_Ax3 -- plus one ruled face per edge of `face`
+   * (BRepFill between the two), sewn into a shell.
+   *
+   * History for input 0 (the face as passed in): generated (1) from every
+   * edge (its side face) and first (4) and last (5) for the face (the cap on
+   * R, the cap on R ± depth).
+   */
+  int wrapOnCylinder(int face, double ox, double oy, double oz, double ax, double ay, double az, double rx,
+                     double ry, double rz, double radius, double px, double py, double pz, double sx, double sy,
+                     double sz, double depth, bool outward) {
+    beginOp();
+    const TopoDS_Shape* input = find(face);
+    if (input == nullptr) return fail("Emboss failed: unknown face.");
+    TopoDS_Face profile;
+    int faces = 0;
+    for (TopExp_Explorer e(*input, TopAbs_FACE); e.More(); e.Next()) {
+      profile = TopoDS::Face(e.Current());
+      ++faces;
+    }
+    if (faces != 1) return fail("Emboss failed: the profile isn't a single face.");
+    // A loop that doesn't close up is not a region: the thickening below would spin on
+    // it, so it is refused here.
+    if (!BRep_Tool::IsClosed(BRepTools::OuterWire(profile))) {
+      return fail("Emboss failed: the profile's outline doesn't close up.");
+    }
+    for (TopExp_Explorer w(profile, TopAbs_WIRE); w.More(); w.Next()) {
+      if (!BRep_Tool::IsClosed(TopoDS::Wire(w.Current()))) {
+        return fail("Emboss failed: a hole of the profile doesn't close up.");
+      }
+    }
+    if (!(radius > Precision::Confusion())) return fail("Emboss failed: the cylinder's radius must be greater than 0.");
+    if (!(depth > Precision::Confusion())) return fail("Emboss failed: the depth must be greater than 0.");
+    const double far = outward ? radius + depth : radius - depth;
+    if (!(far > Precision::Confusion())) return fail("Emboss failed: the depth is bigger than the radius.");
+    if (gp_Vec(ax, ay, az).Magnitude() <= Precision::Confusion() ||
+        gp_Vec(rx, ry, rz).Magnitude() <= Precision::Confusion() ||
+        gp_Vec(sx, sy, sz).Magnitude() <= Precision::Confusion()) {
+      return fail("Emboss failed: the cylinder's frame has no direction.");
+    }
+    try {
+      BRepAdaptor_Surface carried(profile);
+      if (carried.GetType() != GeomAbs_Plane) return fail("Emboss failed: the profile isn't flat.");
+      const gp_Dir axis(ax, ay, az);
+      const gp_Dir rdir(rx, ry, rz);
+      // The sketch plane runs along the axis: its normal is square to it.
+      if (std::abs(carried.Plane().Axis().Direction().Dot(axis)) > 1e-6) {
+        return fail("Emboss failed: the sketch isn't on a plane parallel to the cylinder's axis.");
+      }
+      const gp_Pnt origin(ox, oy, oz);
+      const gp_Pnt corner(px, py, pz);
+      const gp_Dir across(sx, sy, sz);
+      if (std::abs(axis.Dot(across)) > 1e-6) {
+        return fail("Emboss failed: the sketch's frame doesn't run along the cylinder's axis.");
+      }
+      const double lift = gp_Vec(origin, corner).Dot(gp_Vec(axis));
+      WrapFrame frame(axis, across, corner, lift, radius);
+
+      // The profile's loops: the outer one first, then its holes, each in wire order.
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> profileEdges;
+      TopExp::MapShapes(profile, TopAbs_EDGE, profileEdges);
+      const TopoDS_Wire outline = BRepTools::OuterWire(profile);
+      std::vector<TopoDS_Wire> loops{outline};
+      for (TopExp_Explorer w(profile, TopAbs_WIRE); w.More(); w.Next()) {
+        if (!w.Current().IsSame(outline)) loops.push_back(TopoDS::Wire(w.Current()));
+      }
+      std::vector<std::vector<int>> loopEdges;  // into sourceEdges, per loop
+      std::vector<TopoDS_Edge> sourceEdges;
+      std::vector<int> edgeAt;  // an edge's index in profileEdges, for the history
+      std::vector<Wrapped> wrapped;
+      for (const TopoDS_Wire& wire : loops) {
+        std::vector<int> mine;
+        for (BRepTools_WireExplorer edge(wire); edge.More(); edge.Next()) {
+          const int index = profileEdges.FindIndex(edge.Current()) - 1;
+          if (index < 0) return fail("Emboss failed: an edge of the profile isn't one of its own.");
+          const Wrapped on = frame.wrap(edge.Current(), profile);
+          if (on.curve.IsNull()) return fail("Emboss failed: couldn't map a curve of the profile onto the cylinder.");
+          if (on.round > M_PI + 1e-9) {
+            return fail("Emboss failed: the profiles are longer than half way round the cylinder.");
+          }
+          mine.push_back(static_cast<int>(sourceEdges.size()));
+          sourceEdges.push_back(edge.Current());
+          edgeAt.push_back(index);
+          wrapped.push_back(on);
+        }
+        if (mine.empty()) return fail("Emboss failed: a loop of the profile has no edges.");
+        loopEdges.push_back(std::move(mine));
+      }
+
+      // How far apart two points may lie and still be one corner: a millionth of the
+      // profile's size, never under OCCT's own confusion.
+      Bnd_Box box;
+      BRepBndLib::Add(profile, box);
+      double x0, y0, z0, x1, y1, z1;
+      box.Get(x0, y0, z0, x1, y1, z1);
+      const double tolerance = 1e-6 * std::max(1.0, std::sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0) +
+                                                                (z1 - z0) * (z1 - z0)));
+
+      // Every edge of every loop, wrapped onto the near cylinder.
+      Handle(Geom_Surface) inner = new Geom_CylindricalSurface(gp_Ax3(origin, axis, rdir), radius);
+      std::vector<TopoDS_Edge> innerEdges(sourceEdges.size());
+      for (size_t i = 0; i < sourceEdges.size(); ++i) {
+        BRepBuilderAPI_MakeEdge made(wrapped[i].curve, inner, wrapped[i].from, wrapped[i].to);
+        if (!made.IsDone()) return fail("Emboss failed: couldn't make an edge on the cylinder.");
+        innerEdges[i] = made.Edge();
+        if (!BRepLib::BuildCurves3d(innerEdges[i], 1e-7, GeomAbs_C2, 14, 200)) {
+          return fail("Emboss failed: couldn't build a wrapped edge as a 3D curve.");
+        }
+      }
+
+      // The loops as the wires of one face on that cylinder. A wire builder gives the
+      // loop one vertex at every corner, so the face holds copies of the edges; a copy
+      // keeps the edge's curve on the cylinder, which is what pairs the two here.
+      std::vector<TopoDS_Wire> onCylinder;
+      for (const std::vector<int>& mine : loopEdges) {
+        BRepBuilderAPI_MakeWire wire;
+        for (int i : mine) wire.Add(innerEdges[static_cast<size_t>(i)]);
+        if (!wire.IsDone()) return fail("Emboss failed: couldn't join the wrapped edges into a loop.");
+        onCylinder.push_back(wire.Wire());
+      }
+      BRepBuilderAPI_MakeFace cap(inner, onCylinder.front(), true);
+      if (!cap.IsDone()) return fail("Emboss failed: couldn't make the face on the cylinder.");
+      // A hole's loop the other way round, which is what an inner wire is.
+      for (size_t w = 1; w < onCylinder.size() && cap.IsDone(); ++w) {
+        cap.Add(TopoDS::Wire(onCylinder[w].Reversed()));
+      }
+      if (!cap.IsDone()) return fail("Emboss failed: couldn't add a hole to the face on the cylinder.");
+      const TopoDS_Face near = cap.Face();
+
+      std::vector<TopoDS_Edge> capEdges(sourceEdges.size());
+      double from = 0;
+      double to = 0;
+      for (size_t i = 0; i < sourceEdges.size(); ++i) {
+        const Handle(Geom2d_Curve) uv = BRep_Tool::CurveOnSurface(innerEdges[i], near, from, to);
+        for (TopExp_Explorer e(near, TopAbs_EDGE); e.More(); e.Next()) {
+          const TopoDS_Edge& candidate = TopoDS::Edge(e.Current());
+          if (BRep_Tool::CurveOnSurface(candidate, near, from, to) == uv) {
+            capEdges[i] = candidate;
+            break;
+          }
+        }
+        if (capEdges[i].IsNull()) return fail("Emboss failed: couldn't pair the wrapped edges with the cap's.");
+      }
+
+      // Which way the face looks: its surface's own normal, turned when the face came
+      // out reversed. An offset runs that way, so this says which of the two signs grows
+      // the radius (a cylinder's normal is radial, whichever way it is drawn).
+      double uMin = 0;
+      double uMax = 0;
+      double vMin = 0;
+      double vMax = 0;
+      BRepTools::UVBounds(near, uMin, uMax, vMin, vMax);
+      gp_Pnt at;
+      gp_Vec du, dv;
+      BRep_Tool::Surface(near)->D1(0.5 * (uMin + uMax), 0.5 * (vMin + vMax), at, du, dv);
+      gp_Vec looks = du.Crossed(dv);
+      if (near.Orientation() == TopAbs_REVERSED) looks.Reverse();
+      gp_Vec radial(at.XYZ());
+      radial.Subtract(origin.XYZ());
+      const gp_Vec along(axis);
+      radial.Subtract(along * radial.Dot(along));
+      if (radial.Magnitude() <= Precision::Confusion() || looks.Magnitude() <= Precision::Confusion()) {
+        return fail("Emboss failed: the profile has no area on the cylinder.");
+      }
+      const double grow = looks.Dot(radial) > 0 ? depth : -depth;
+
+      // The solid: OCCT's simple offset of that one face. It maps the face onto the
+      // coaxial cylinder of radius R ± depth -- the same curves, so both caps come out
+      // exact -- and then makes the wall of each of its boundary edges between the two,
+      // sharing the radial edge at a corner between the two walls that meet there. One
+      // call, and every loop comes out right: a hole in it, a corner, a whole closed
+      // curve such as a letter's O.
+      BRepOffset_MakeSimpleOffset builder(near, outward ? grow : -grow);
+      builder.SetBuildSolidFlag(true);
+      builder.Perform();
+      if (!builder.IsDone()) {
+        const std::string why = builder.GetErrorMessage().ToCString();
+        return fail(("Emboss failed: couldn't thicken the wrapped profile" + (why.empty() ? "" : ": " + why) + ".").c_str());
+      }
+      TopoDS_Solid body;
+      for (TopExp_Explorer solid(builder.GetResultShape(), TopAbs_SOLID); solid.More(); solid.Next()) {
+        body = TopoDS::Solid(solid.Current());
+      }
+      if (body.IsNull()) return fail("Emboss failed: the wrapped profile didn't make a solid.");
+      // The sign of the offset decides which way round the shell comes out; a solid
+      // built inside out has a negative volume, so turn it over.
+      BRepLib::OrientClosedSolid(body);
+      GProp_GProps volume;
+      BRepGProp::VolumeProperties(body, volume);
+      if (!(volume.Mass() > 0)) {
+        ShapeFix_Solid fixer(body);
+        fixer.Perform();
+        body = TopoDS::Solid(fixer.Solid());
+        BRepGProp::VolumeProperties(body, volume);
+      }
+      if (!(volume.Mass() > 0)) return fail("Emboss failed: the wrapped solid is inside out.");
+      const TopoDS_Shape result = body;
+      if (!BRepCheck_Analyzer(result).IsValid()) {
+        return fail("Emboss failed: the wrapped solid isn't sound.");
+      }
+
+      // History for input 0 (the face as passed in): first (4) and last (5) for the face
+      // itself (the cap on R and the one on R ± depth), generated (1) from every edge of
+      // it: the wall between that edge and its image is the only face of the result that
+      // carries the image and is neither cap.
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultFaces;
+      TopExp::MapShapes(result, TopAbs_FACE, resultFaces);
+      const TopoDS_Shape grown = builder.Generated(near);
+      if (grown.IsNull()) return fail("Emboss failed: the thickening lost the profile's face.");
+      recordFaces(0, 0, 0, 4, {near}, resultFaces);
+      recordFaces(0, 0, 0, 5, {grown}, resultFaces);
+      for (size_t i = 0; i < sourceEdges.size(); ++i) {
+        const TopoDS_Shape image = builder.Generated(capEdges[i]);
+        std::vector<TopoDS_Shape> walls;
+        if (!image.IsNull()) {
+          for (int f = 1; f <= resultFaces.Extent(); ++f) {
+            const TopoDS_Shape& face = resultFaces.FindKey(f);
+            if (face.IsSame(near) || face.IsSame(grown)) continue;
+            for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next()) {
+              if (e.Current().IsSame(image)) {
+                walls.push_back(face);
+                break;
+              }
+            }
+          }
+        }
+        recordFaces(0, 1, edgeAt[i], 1, walls, resultFaces);
+      }
+      return store(result);
+    } catch (...) {
+      return failFromException("Emboss failed");
+    }
+  }
+
 private:
+  /** One edge of a sketch plane in a cylinder's parameters (P4-04). */
+  struct Wrapped {
+    Handle(Geom2d_Curve) curve;
+    double from = 0;
+    double to = 0;
+    /** How far round the cylinder the edge runs, in radians: its largest |u|. */
+    double round = 0;
+  };
+
+  /**
+   * The unrolled sketch frame of wrapOnCylinder(): s along `across` from
+   * `corner`, z along `axis` from it, so the cylinder's parameters are
+   * (u, v) = (s / radius, z + lift). Every curve of a face in a plane maps
+   * into them exactly -- a line to a line, a B-spline by its poles (an
+   * affine map keeps B-splines, rational ones too), a circle or an
+   * unrotated ellipse to an ellipse with its s semi-axis divided by the
+   * radius -- and the conic made is checked against the source's own ends,
+   * so a case the shortcut doesn't cover falls back to the B-spline.
+   */
+  struct WrapFrame {
+    gp_Vec across;
+    gp_Vec axis;
+    gp_Pnt corner;
+    double lift;
+    double radius;
+
+    WrapFrame(const gp_Dir& anAxis, const gp_Dir& anAcross, const gp_Pnt& aCorner, double aLift, double aRadius)
+        : across(anAcross), axis(anAxis), corner(aCorner), lift(aLift), radius(aRadius) {}
+
+        /** A point of the sketch plane as its (s, z) coordinates. */
+    gp_Pnt2d flat(const gp_Pnt& p) const {
+      gp_Vec v(p.XYZ());
+      v.Subtract(corner.XYZ());
+      return gp_Pnt2d(v.Dot(across), v.Dot(axis));
+    }
+
+    /** The same point in the cylinder's parameters. */
+    gp_Pnt2d wrapped(const gp_Pnt& p) const {
+      const gp_Pnt2d sz = flat(p);
+      return gp_Pnt2d(sz.X() / radius, sz.Y() + lift);
+    }
+
+    /** How far a millimetre along a direction of the plane moves in (u, v). */
+    gp_Pnt2d step(const gp_Dir& d) const {
+      const gp_Vec v(d.XYZ());
+      return gp_Pnt2d(v.Dot(across) / radius, v.Dot(axis));
+    }
+
+    /** Whether a direction runs along s (across) or along z (axis). */
+    bool isAcross(const gp_Dir& d) const {
+      return std::abs(v(d).Dot(across)) > 1 - 1e-9 && std::abs(v(d).Dot(axis)) < 1e-9;
+    }
+    bool isAlong(const gp_Dir& d) const {
+      return std::abs(v(d).Dot(axis)) > 1 - 1e-9 && std::abs(v(d).Dot(across)) < 1e-9;
+    }
+    static gp_Vec v(const gp_Dir& d) { return gp_Vec(d.XYZ()); }
+
+    /** A point of the plane's own parameter space as a point in space. */
+    static gp_Pnt inPlane(const gp_Ax3& place, const gp_Pnt2d& uv) {
+      return place.Location().Translated(
+          gp_Vec(place.XDirection()) * uv.X() + gp_Vec(place.YDirection()) * uv.Y());
+    }
+    /** A direction of the plane's own parameter space as one in space. */
+    static gp_Dir inPlane(const gp_Ax3& place, const gp_Dir2d& uv) {
+      return gp_Dir(gp_Vec(place.XDirection()) * uv.X() + gp_Vec(place.YDirection()) * uv.Y());
+    }
+
+    /** An ellipse of semi-axes `ua` along u and `va` along v, at `centre`. */
+    static Handle(Geom2d_Ellipse) ellipse(const gp_Pnt2d& centre, double ua, double va) {
+      const double a = std::max(std::abs(ua), std::abs(va));
+      const double b = std::min(std::abs(ua), std::abs(va));
+      const gp_Dir2d major = a >= b ? gp_Dir2d(1, 0) : gp_Dir2d(0, 1);
+      return new Geom2d_Ellipse(gp_Elips2d(gp_Ax2d(centre, major), a, b));
+    }
+
+    /** A B-spline whose poles are `pole(1..count)`, mapped into (u, v). */
+    template <typename PoleAt>
+    static Handle(Geom2d_BSplineCurve) mapSpline(int degree, int count, PoleAt pole,
+                                                 const NCollection_Array1<double>& knots,
+                                                 const NCollection_Array1<int>& mults, bool periodic, bool rational,
+                                                 const NCollection_Array1<double>& weights) {
+      NCollection_Array1<gp_Pnt2d> poles(1, count);
+      for (int i = 1; i <= count; ++i) poles(i) = pole(i);
+      if (!rational) return new Geom2d_BSplineCurve(poles, knots, mults, degree, periodic);
+      return new Geom2d_BSplineCurve(poles, weights, knots, mults, degree, periodic);
+    }
+
+    /** The largest |u| a curve runs to (the poles bound a B-spline). */
+    static double reach(const Handle(Geom2d_Curve)& curve, double from, double to) {
+      if (Handle(Geom2d_Ellipse) conic = Handle(Geom2d_Ellipse)::DownCast(curve)) {
+        return std::abs(conic->Location().X()) + std::max(conic->MajorRadius(), conic->MinorRadius());
+      }
+      if (Handle(Geom2d_Line) straight = Handle(Geom2d_Line)::DownCast(curve)) {
+        return std::max(std::abs(straight->Value(from).X()), std::abs(straight->Value(to).X()));
+      }
+      double most = 0;
+      if (Handle(Geom2d_BSplineCurve) spline = Handle(Geom2d_BSplineCurve)::DownCast(curve)) {
+        for (int i = 1; i <= spline->NbPoles(); ++i) most = std::max(most, std::abs(spline->Pole(i).X()));
+      }
+      return most;
+    }
+
+    /** Whether a mapped curve starts where the source does. */
+    bool agrees(const Handle(Geom2d_Curve)& made, double from, const Handle(Geom2d_Curve)& source, double at,
+                const gp_Ax3& place) const {
+      const gp_Pnt2d want = wrapped(inPlane(place, source->Value(at)));
+      const gp_Pnt2d got = made->Value(from);
+      return std::abs(want.X() - got.X()) < 1e-9 && std::abs(want.Y() - got.Y()) < 1e-9;
+    }
+
+    /** The edge `edge` of the plane face `onPlane`, in the cylinder's parameters. */
+    Wrapped wrap(const TopoDS_Edge& edge, const TopoDS_Face& onPlane) {
+      Wrapped out;
+      // The curve in its own direction, and the range the edge really uses on the
+      // plane: CurveOnSurface gives the range of the whole curve it finds, which
+      // for an arc projected onto the plane is a whole circle.
+      double whole = 0;
+      double wholeLast = 0;
+      const TopoDS_Edge forward = TopoDS::Edge(edge.Oriented(TopAbs_FORWARD));
+      const Handle(Geom2d_Curve) curve = BRep_Tool::CurveOnSurface(forward, onPlane, whole, wholeLast);
+      double first = 0;
+      double last = 0;
+      BRep_Tool::Range(forward, onPlane, first, last);
+      if (curve.IsNull() || !(last > first)) return out;
+      const gp_Ax3 place = BRepAdaptor_Surface(onPlane).Plane().Position();
+
+      // A line: both ends and its direction, with the parameter scaled by how far
+      // a millimetre along it moves in (u, v).
+      if (Handle(Geom2d_Line) asLine = Handle(Geom2d_Line)::DownCast(curve)) {
+        const gp_Pnt2d mapped = wrapped(inPlane(place, asLine->Value(first)));
+        const gp_Pnt2d along = step(inPlane(place, asLine->Direction()));
+        const double length = std::hypot(along.X(), along.Y());
+        if (!(length > 1e-12)) return out;
+        out.curve = new Geom2d_Line(mapped, gp_Dir2d(along.X(), along.Y()));
+        out.from = first * length;
+        out.to = last * length;
+        out.round = reach(out.curve, out.from, out.to);
+        return out;
+      }
+
+      // A circle, or an ellipse with its axes along the frame: an ellipse whose
+      // s semi-axis is divided by the radius.
+      gp_Pnt2d centre;
+      double ua = 0;
+      double va = 0;
+      const Handle(Geom2d_Circle) asCircle = Handle(Geom2d_Circle)::DownCast(curve);
+      const Handle(Geom2d_Ellipse) asEllipse = Handle(Geom2d_Ellipse)::DownCast(curve);
+      if (!asCircle.IsNull()) {
+        centre = wrapped(inPlane(place, asCircle->Location()));
+        const gp_Dir x = inPlane(place, asCircle->Position().XDirection());
+        if (isAcross(x)) {
+          ua = asCircle->Radius() / radius;
+          va = asCircle->Radius();
+        } else if (isAlong(x)) {
+          ua = asCircle->Radius();
+          va = asCircle->Radius() / radius;
+        }
+      } else if (!asEllipse.IsNull()) {
+        centre = wrapped(inPlane(place, asEllipse->Location()));
+        const gp_Dir x = inPlane(place, asEllipse->Position().XDirection());
+        const gp_Dir y = inPlane(place, asEllipse->Position().YDirection());
+        if (isAcross(x) && isAlong(y)) {
+          ua = asEllipse->MajorRadius() / radius;
+          va = asEllipse->MinorRadius();
+        } else if (isAlong(x) && isAcross(y)) {
+          ua = asEllipse->MajorRadius();
+          va = asEllipse->MinorRadius() / radius;
+        }
+      }
+      if (ua > 0 && va > 0) {
+        const Handle(Geom2d_Ellipse) conic = ellipse(centre, ua, va);
+        // The sense of the source's ellipse carries over or turns with the
+        // frame; where it doesn't, the B-spline below is the exact answer.
+        if (agrees(conic, first, curve, first, place) && agrees(conic, last, curve, last, place)) {
+          out.curve = conic;
+          out.from = first;
+          out.to = last;
+          out.round = reach(conic, first, last);
+          return out;
+        }
+      }
+
+      // Everything else as a B-spline, poles and all.
+      if (Handle(Geom2d_BSplineCurve) spline = Handle(Geom2d_BSplineCurve)::DownCast(curve)) {
+        out.curve = mapSpline(spline->Degree(), spline->NbPoles(),
+                              [&](int i) { return wrapped(inPlane(place, spline->Pole(i))); }, spline->Knots(),
+                              spline->Multiplicities(), spline->IsPeriodic(), spline->IsRational(),
+                              spline->WeightsArray());
+        out.from = first;
+        out.to = last;
+        out.round = reach(out.curve, first, last);
+        return out;
+      }
+      // A circle or an ellipse the frame didn't line up with, or whose parameter the
+      // ellipse above measures from another axis: a B-spline is the exact answer, and it
+      // has to be the piece the edge really runs along. An arc's curve in space is the
+      // whole circle it sits on, so converting that untrimmed would run the cap's edge
+      // the whole way round and no shell could close.
+      const TopoDS_Edge ahead = TopoDS::Edge(edge.Oriented(TopAbs_FORWARD));
+      double f3 = 0;
+      double l3 = 0;
+      const Handle(Geom_Curve) solid = BRep_Tool::Curve(ahead, f3, l3);
+      if (solid.IsNull()) return out;
+      TopoDS_Vertex head, tail;
+      TopExp::Vertices(ahead, head, tail);
+      // A closed edge (a whole circle or ellipse) takes the curve as it is.
+      const bool closed = !head.IsNull() && head.IsSame(tail);
+      const Handle(Geom_Curve) piece =
+          closed ? solid : Handle(Geom_Curve)(new Geom_TrimmedCurve(solid, f3, l3));
+      const Handle(Geom_BSplineCurve) three = GeomConvert::CurveToBSplineCurve(piece);
+      if (three.IsNull()) return out;
+      out.curve = mapSpline(three->Degree(), three->NbPoles(), [&](int i) { return wrapped(three->Pole(i)); },
+                            three->Knots(), three->Multiplicities(), three->IsPeriodic(), three->IsRational(),
+                            three->WeightsArray());
+      out.from = three->FirstParameter();
+      out.to = three->LastParameter();
+      out.round = reach(out.curve, out.from, out.to);
+      return out;
+    }
+
+  };
+
   std::unordered_map<int, TopoDS_Shape> shapes_;
   int nextHandle_;
   std::vector<int> args_;

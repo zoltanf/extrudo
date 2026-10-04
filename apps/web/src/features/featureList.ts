@@ -5,6 +5,7 @@
  * pattern or mirror its body instead).
  */
 import {
+  EMBOSS_TYPE,
   type ExtrudoDocument,
   type Feature,
   type FeatureId,
@@ -41,6 +42,11 @@ export function repeatableFeatures(
 function operationOf(feature: Feature): 'join' | 'cut' | undefined {
   // A hole and a thread have no operation input: they always cut.
   if (feature.type === HOLE_TYPE || feature.type === THREAD_TYPE) return 'cut';
+  // An emboss has a `mode` instead of an `operation`: it joins or cuts.
+  if (feature.type === EMBOSS_TYPE) {
+    const mode = feature.inputs.mode;
+    return mode?.kind === 'enum' && mode.value === 'deboss' ? 'cut' : 'join';
+  }
   const input = feature.inputs.operation;
   const value = input?.kind === 'enum' ? input.value : undefined;
   return value === 'join' || value === 'cut' ? value : undefined;

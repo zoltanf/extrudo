@@ -27,9 +27,11 @@ import {
   cylinderFeature,
   DocumentSchema,
   draftFeature,
+  EMBOSS_MODES,
   EXTRUDE_DIRECTIONS,
   EXTRUDE_EXTENTS,
   ExprInputSchema,
+  embossFeature,
   extrudeFeature,
   FeatureRegistry,
   FeatureSchema,
@@ -135,6 +137,7 @@ const FEATURES = [
   draftFeature,
   holeFeature,
   threadFeature,
+  embossFeature,
   placeOnBedFeature,
   rectangularPatternFeature,
   circularPatternFeature,
@@ -257,6 +260,7 @@ describe('docs/file-format.md', () => {
       ...COIL_POSITIONS,
       ...THREAD_EXTENTS,
       ...THREAD_HANDS,
+      ...EMBOSS_MODES,
     ];
     const origin = [...ORIGIN_PLANES.map((p) => p.id), ...ORIGIN_AXES.map((a) => a.id)];
     expect(missing([...inputs, ...choices, ...origin])).toEqual([]);

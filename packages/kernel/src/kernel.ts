@@ -309,6 +309,28 @@ export interface Axis {
   direction: Vec3;
 }
 
+/**
+ * The unrolled sketch frame of `wrapOnCylinder` (P4-04, ADR-0060 §3): the
+ * cylinder and where the sketch plane sits on it. A sketch point measured in
+ * that plane as `s` along `across` from `corner` and `z` along the axis lands
+ * on the cylinder at angle `s / radius` from `reference` and height `z`, so
+ * the letters keep their width measured along the surface.
+ */
+export interface WrapFrame {
+  /** A point on the cylinder's axis. */
+  origin: Vec3;
+  /** The axis's direction. */
+  axis: Vec3;
+  /** The direction from the axis towards the sketch, square to the axis: angle zero. */
+  reference: Vec3;
+  /** The cylinder's radius in mm. */
+  radius: number;
+  /** Where `across` meets the sketch plane: the sketch's `s = 0`. */
+  corner: Vec3;
+  /** The in-plane direction the sketch's `s` runs along, square to the axis. */
+  across: Vec3;
+}
+
 export interface KernelStats {
   /** Shapes held in the arena. */
   liveShapes: number;
@@ -795,6 +817,45 @@ export class Kernel {
       whole: at(10) === 1,
       open: [at(11) === 1, at(12) === 1],
     };
+  }
+
+  /**
+   * Wraps the planar profile `face` around a cylinder and returns the solid
+   * between radius `frame.radius` and `frame.radius` + `depth` (outward) or
+   * `frame.radius` - `depth` (inward) (P4-04, ADR-0060 §3): the letters of an
+   * emboss stand out of a round face instead of being projected on it.
+   *
+   * `face` has to be a single flat face, and its plane has to run along the
+   * cylinder's axis, with `frame.corner` in it. Every curve is mapped exactly
+   * into the cylinder's parameters (a line to a line, a circle to an ellipse,
+   * a B-spline pole by pole), so both caps are exact surfaces and the walls
+   * between them are exactly radial. A failure is a `KernelError` with the
+   * facade's message (a depth at or past the radius, an outline that doesn't
+   * close up, profiles more than half way round).
+   *
+   * History (input 0, the profile face): `first` and `last` (the two caps, on
+   * `radius` and on `radius` ± depth) and `generated` (each edge's wall).
+   */
+  wrapOnCylinder(
+    face: ShapeHandle,
+    frame: WrapFrame,
+    depth: number,
+    outward = true,
+  ): OperationResult {
+    const f = this.#facade;
+    const handle = f.wrapOnCylinder(
+      face,
+      ...frame.origin,
+      ...frame.axis,
+      ...frame.reference,
+      frame.radius,
+      ...frame.corner,
+      ...frame.across,
+      depth,
+      outward,
+    );
+    if (handle === 0) throw new KernelError(f.lastError() || 'The wrap failed.');
+    return this.#withHistory(handle);
   }
 
   /** A compound holding the shapes (which stay valid; release them separately). */

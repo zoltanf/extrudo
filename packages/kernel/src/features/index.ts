@@ -6,6 +6,7 @@ import { kernelCoil } from './coil';
 import { kernelCombine } from './combine';
 import { KERNEL_CONSTRUCTION } from './construction';
 import { kernelDraft } from './draft';
+import { kernelEmboss } from './emboss';
 import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
 import { kernelHole } from './hole';
@@ -69,5 +70,7 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
     .register(kernelCoil as unknown as KernelFeatureDefinition);
   // Thread (P4-02, ADR-0056).
   registry.register(kernelThread as unknown as KernelFeatureDefinition);
+  // Emboss and deboss (P4-04, ADR-0060; flat faces for now).
+  registry.register(kernelEmboss as unknown as KernelFeatureDefinition);
   return registry;
 }

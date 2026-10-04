@@ -29,9 +29,9 @@ P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-15
 P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 is
 complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil), P4-02
 (modeled threads), P4-03 (sketch text, bundled fonts), P4-03b (user fonts
-as attachments), P4-05 (control-point splines, conics), P4-07 (customizer,
-configurations) and P4-08 (print tolerance, slicer hand-off) are done.
-ADR-0001 chose
+as attachments), P4-04 (emboss, deboss), P4-05 (control-point splines,
+conics), P4-07 (customizer, configurations) and P4-08 (print tolerance,
+slicer hand-off) are done. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -746,6 +746,27 @@ is one undo step** (a transaction, which is why `useShortcuts` asks
 `ownsKeys`, so Ctrl+Z after a focused slider still undoes the drag);
 **the templates' exposure lives in `home/gallery.ts`**, not in the fixtures (the
 benchmark e2e specs rewrite those), applied to the copy through core's commands.
+ADR-0060 (P4-04) added **emboss and deboss**: one `emboss` feature
+(`core/src/emboss.ts`) with a `mode`, which puts the profiles or a whole text of
+a sketch in any plane **parallel** to a face **onto** that face in one step —
+Emboss joins material outwards, Deboss cuts inwards, and only the body that owns
+the face is touched. A **flat** face's profiles are moved onto its plane (a
+translation along its outward normal) and swept with `namedPrism`; a
+**cylindrical** face's are **wrapped round it** through `Kernel.wrapOnCylinder`
+(the evaluator `kernel/src/features/emboss.ts`), where the map `(s, z) →
+(s / R, z)` is exact: a line to a line, a circle to an ellipse, a B-spline pole
+by pole, both caps exact surfaces on R and R ± depth and the walls between them
+exactly radial. **The frame rule**: the sketch plane's normal must be square to
+the axis (within 1e-6), `r` points from the axis towards the sketch plane,
+`across = a × r` and `corner` is the foot of the axis on the plane (the plane's
+distance from the axis doesn't matter); which way round the wall the letters
+grow is the face itself, read with `Kernel.threadFace` — a boss's wall is convex,
+a hole's concave — so an emboss on a hole fills its free space in and a deboss
+cuts into the material round it. Names are the prism's: `emboss:<id>:cap:end` and
+`…:side:<sketch curve>` per wall (`namedWrap`, whose history is a prism's).
+Cones, spheres and free-form faces are refused. The tool is `emboss` in Solid ›
+Create's menu after Coil, no key; `e2e/emboss.spec.ts` covers both kinds of face
+in both modes. Native harness: `spikes/p4-04-harness/`.
 ADR-0061 (P4-03b) added **user fonts as attachments**: `doc.attachments` holds
 only what each file *is* (name, file name, media type, SHA-256, size) and the
 bytes live beside the document — `projects/<id>/attachments/<sha256>` in the
@@ -809,11 +830,10 @@ refuse every spline mode as they refuse fit splines; projections stay fit.
 The tools are `splineControl` and `conic` (`sketch/tools/conics.ts`), the
 control polygon is `sketchSegments(…, controlPolygons)` and the panel's Rho
 field writes core's `setSplineRho` through `ToolHost.apply`.
-Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-04**
-(emboss/deboss) then P4-06 onward in `docs/03-roadmap.md`; ADR-0063's Deferred
-(exact rational conics in the kernel, closed splines, trimming and offsetting
-splines) is P4-12 backlog. The owner's own release steps (slicer check, making
-the
+Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-06**
+then onward in `docs/03-roadmap.md`; ADR-0063's Deferred (exact rational conics
+in the kernel, closed splines, trimming and offsetting splines) is P4-12
+backlog. The owner's own release steps (slicer check, making the
 repository public, Cloudflare, domain, tag v0.3.0) are in
 `docs/release-checklist.md`; don't do them. Deeper carried-over items are the
 P4-12 backlog.
@@ -847,7 +867,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics (0006 is reserved) |
 
 ## Stack summary
 
@@ -1894,3 +1914,22 @@ them. Notes further down that name a machine apply to that machine only.
   40 mm wide whose height is the rho's share of the shoulder's (0.3 × 15 mm).
   A filled-in conic takes a moment to preview: `data-preview-status` polls up
   to 30 s.
+- **Emboss e2e** (`e2e/emboss.spec.ts`, P4-04): the tool is `emboss` in Create's
+  menu (`menuitem` "Emboss", no key); its dialog is the region "Emboss dialog" /
+  "Edit Emboss1 dialog" with the buttons "Profiles" and "Face" (`exact: true`:
+  **"1 text"**, **"1 face"**), the `Depth` textbox (`exact`) and the `Mode`
+  combobox (`emboss`/`deboss`). **Sketch on a construction plane clear of the
+  body**: the letters have to be clickable in the model, and a sketch through
+  the body (an XZ sketch inside a cylinder) puts them behind its faces, where a
+  click is refused as occluded (the text spec's `inkPoints` scan over
+  `data-text-bounds` finds a letter; the `Create Sketch` dialog's
+  "Construction planes" group takes the plane). A 10 × 4 mm pad of straight
+  edges and a letter "O" are exact to 1e-7 (`toBeCloseTo(x, 6)`), a B-spline
+  wall (a curved profile, a letter's outline) only to 1-2 % (`within`, or 2 % as
+  `wrap.test.ts` does): **`Kernel.measure` integrates a B-spline surface with a
+  gap**, so a wrap's "exact" volume is only as exact as the integrator (a P4-12
+  item). The names are the prism's: `emboss:EM:cap:end` and
+  `emboss:EM:side:<sketch curve>`; `cap:start` merges into the face it stands
+  on. A wrap of one profile is one tool (`mergeTools` hands it back as it is,
+  already tracked by the scope — **don't track it again**, that releases it
+  twice).

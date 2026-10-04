@@ -444,6 +444,13 @@ export const TOOLS = {
     category: 'create',
     hint: 'A spring: a circle, square or triangle wound along a helix, from its turns, height and pitch.',
   },
+  emboss: {
+    id: 'emboss',
+    label: 'Emboss',
+    icon: 'emboss',
+    category: 'create',
+    hint: 'Raise the letters of a sketch, or a whole text, off a flat or round face, or press them into it; on a round one they keep their width.',
+  },
   hole: {
     id: 'hole',
     label: 'Hole',
@@ -758,6 +765,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
           'sweep',
           'loft',
           'coil',
+          'emboss',
           'box',
           'cylinder',
           'sphere',

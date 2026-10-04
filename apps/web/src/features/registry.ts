@@ -11,6 +11,7 @@ import { coilDialog } from './coil';
 import { combineDialog } from './combine';
 import { CONSTRUCTION_DIALOGS } from './construction';
 import { draftDialog } from './draft';
+import { embossDialog } from './emboss';
 import { extrudeDialog } from './extrude';
 import { filletDialog } from './fillet';
 import { holeDialog } from './hole';
@@ -59,6 +60,8 @@ export function featureDialogs(): FeatureDialogs {
   dialogs.register(sweepDialog).register(loftDialog).register(coilDialog);
   // Thread (P4-02, ADR-0056).
   dialogs.register(threadDialog);
+  // Emboss and deboss (P4-04, ADR-0060).
+  dialogs.register(embossDialog);
   // Remove: edit which bodies a Remove takes out (P3-17).
   dialogs.register(removeDialog);
   return dialogs;

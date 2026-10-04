@@ -183,6 +183,27 @@ export interface FacadeBinding {
   lastError(): string;
   heapTop(): number;
   debugAbort(): void;
+  wrapOnCylinder(
+    face: number,
+    ox: number,
+    oy: number,
+    oz: number,
+    ax: number,
+    ay: number,
+    az: number,
+    rx: number,
+    ry: number,
+    rz: number,
+    radius: number,
+    px: number,
+    py: number,
+    pz: number,
+    sx: number,
+    sy: number,
+    sz: number,
+    depth: number,
+    outward: boolean,
+  ): number;
   threadSweep(
     profile: number,
     ox: number,

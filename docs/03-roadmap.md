@@ -792,7 +792,12 @@ end to end, faster than in Fusion 360.
   shared with the `.extrudo` file and with saved versions), a text's font may
   be `attachment:<id>`, and "Add font…" in both Font selects brings in a
   TTF, OTF or WOFF file (WOFF2 refused).
-- [ ] **P4-04 Emboss/deboss.** FR-FT-16.
+- [x] **P4-04 Emboss/deboss.** FR-FT-16. Done 2026-10-04 (ADR-0060): one
+  `emboss` feature with a `mode` (Emboss joins material outwards, Deboss cuts
+  inwards); the profiles or a whole text of a sketch in any plane parallel to
+  the face are put **onto** it in one step — moved onto it on a flat face,
+  **wrapped round it** on a cylindrical one (letters keep their width, exact
+  caps, radial walls), cones and free-form faces refused.
 - [x] **P4-05 Control-point splines, conics, sketch polish.** FR-SK-03. Done
   2026-10-04 (ADR-0063). Sketch polish beyond the two curve types is deferred:
   what P4-05 added is the modes, the tools and the control polygon.
@@ -837,6 +842,11 @@ end to end, faster than in Fusion 360.
   - Patterns: a skip list, count and path handles (ADR-0047).
   - A ghost of lost geometry in the view (ADR-0005, -0033); remappable
     marking-menu wedges (ADR-0042).
+  - Emboss: cones, spheres and free-form faces; more than half way round a
+    cylinder; "tangent to the face" for a flat sketch far from it; several
+    faces at once (ADR-0060). `Kernel.measure`'s volume is 1-2 % off on the
+    B-spline walls of a wrap (its own gap, like the lofter's), so the wrap's
+    exactness is only as good as the integrator.
   - WASM heap growth with a warm cache (ADR-0029, ADR-0050 §6): about 11 MB
     per 100 recomputes of the revolve document with all three revolves.
     Attributed in P3-17 to `mesh` alone (`HEAP_ATTRIBUTE=1`, 4 jumps of

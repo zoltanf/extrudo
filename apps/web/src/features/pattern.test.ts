@@ -153,6 +153,15 @@ describe('patterns of features', () => {
       inputs: operation ? { operation: { kind: 'enum', value: operation } } : {},
       ...more,
     }) as Feature;
+  // An emboss has a `mode` where a solid feature has an `operation` (P4-04).
+  const emboss = (id: string, mode: 'emboss' | 'deboss') =>
+    ({
+      id: id as FeatureId,
+      type: 'emboss',
+      name: `Emboss-${id}`,
+      suppressed: false,
+      inputs: { mode: { kind: 'enum', value: mode } },
+    }) as Feature;
 
   it('lists the features before the pattern that join or cut', () => {
     const doc = {
@@ -174,6 +183,15 @@ describe('patterns of features', () => {
     // The draft's own position limits the list: nothing after it.
     expect(repeatableFeatures(doc, 3, types).map((f) => f.id)).toEqual(['e2']);
     expect(repeatableFeatures(doc, 7, types).map((f) => f.id)).toEqual(['e2', 'b1', 'e4']);
+
+    // An emboss joins or cuts by its mode.
+    const withEmboss = {
+      features: [feature('sk', 'sketch'), emboss('m1', 'emboss'), emboss('m2', 'deboss')],
+    };
+    expect(repeatableFeatures(withEmboss, 3, ['emboss']).map((f) => [f.id, f.operation])).toEqual([
+      ['m1', 'join'],
+      ['m2', 'cut'],
+    ]);
   });
 
   it('OK inserts a features pattern once a feature is ticked', () => {

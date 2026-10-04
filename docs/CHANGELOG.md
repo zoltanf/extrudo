@@ -4,6 +4,18 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-04 · **P4-04 (4 of 4)** Emboss and deboss on cylindrical faces
+  (ADR-0060 §3, §4): the profiles or a whole text are **wrapped** round a
+  cylinder's wall instead of projected on it, so the letters keep their width
+  measured along the surface. A new facade method `wrapOnCylinder` (OCCT's
+  simple offset of the wrapped cap: both caps exact surfaces on radius R and
+  R ± depth, the walls between them exactly radial), the kernel's cylindrical
+  branch with the frame rule (the sketch plane must run along the axis; `r` from
+  the axis towards the sketch, `across = a × r`, the foot of the axis on the
+  plane as the corner), `namedWrap` in the naming operations, the dialog's
+  depth arrow standing on the wall at the letters (radially, out of a boss's
+  wall and into a hole's), and `e2e/emboss.spec.ts`: a text round a Cylinder's
+  wall, embossed and debossed, and the same on a box's top face.
 - 2026-10-04 · **P4-05** Control-point splines and conics (ADR-0063): a sketch
   `spline` entity gains a mode — `fit` (through its points, as before),
   `control` (its points are the B-spline's poles, so the curve is guided by
@@ -34,6 +46,13 @@ One line per completed roadmap task, newest first. Dates are absolute.
   design's fonts and offer "Add font…" (TTF, OTF, WOFF; WOFF2 refused, a file
   that isn't a readable font stores nothing), with a hint that the font travels
   inside the design; 10 MB per file and 50 MB per design.
+- 2026-10-03 · **P4-04 (1 of 4)** Emboss and deboss on flat faces (ADR-0060
+  §1, §2): the `emboss` feature in core and its evaluator in the kernel. The
+  profiles or a whole text from a sketch in any plane parallel to the face are
+  moved onto the face's plane and swept `depth` along its outward normal
+  (`emboss`, joined) or against it (`deboss`, cut); only the face's own body is
+  touched. The app dialog, e2e and round faces come in the later slices (the
+  dialog in slice 2, the facade's `wrapOnCylinder` in slice 3).
 - 2026-10-03 · **P4-07** Customizer and configurations (ADR-0059): a user
   parameter can be exposed for changing (`parameters[].customizer`: `min`,
   `max`, `step`, `group`), and a design can hold named value sets

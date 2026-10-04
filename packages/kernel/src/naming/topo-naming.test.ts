@@ -5,7 +5,9 @@
 // the same face, edge or vertex, or fail the way they should.
 import {
   type BodyId,
+  EMBOSS_TYPE,
   type ExtrudoDocument,
+  embossInputs,
   type Feature,
   type FeatureId,
   type FeatureStatus,
@@ -704,7 +706,53 @@ describe('topological naming', { timeout: 60_000 }, () => {
     expect(features.probes.every((q) => q.resolved?.via === 'name')).toBe(true);
   });
 
-  it('19. bodies without naming tables are named by position; a table that does not fit fails without leaking', async () => {
+  it('19. a wrap on a cylinder names its walls after the sketch curves, and they keep their names', async () => {
+    const b = new SketchBuilder();
+    const lines = rect(b, -5, 8, 10, 4);
+    const data = b.sketch;
+    const cylinder = (height: string): Feature => ({
+      ...testFeature('C', 'cylinder'),
+      inputs: {
+        diameter: { kind: 'expr', expr: '40 mm', unit: 'length' },
+        height: { kind: 'expr', expr: height, unit: 'length' },
+      },
+    });
+    const doc = (height: string, targets?: GeomRef[]) =>
+      testDocument([
+        cylinder(height),
+        sketch('S', data, 'origin:xz'),
+        {
+          ...testFeature('M', EMBOSS_TYPE),
+          inputs: embossInputs(
+            [profile('S', data)],
+            { kind: 'face', id: 'cylinder:C:side:wall' },
+            { depth: '1 mm' },
+          ),
+        },
+        ...(targets ? [probe('P', ...targets)] : []),
+      ]);
+
+    const first = names(ok(await run(doc('20 mm'))));
+    const walls = lines.map((line) => `emboss:M:side:${line}`);
+    // The letters stand 1 mm proud of the wall; their own cap on the wall merges
+    // into it, and the four side faces are named after the sketch's lines.
+    expect(first.faces).toContain('emboss:M:cap:end');
+    for (const wall of walls) expect(first.faces).toContain(wall);
+    expect(new Set(first.faces).size).toBe(first.faces.length);
+    const again = ok(await run(doc('20 mm')));
+    const letters = [...walls, 'emboss:M:cap:end'].map((id) => refTo(again, 'face', id));
+    // Every one of them resolves by its own name, and still does when the
+    // cylinder gets taller (the wrap moves with the letters).
+    ok(await run(doc('20 mm', letters)));
+    expect(features.probes.filter((q) => q.feature === 'P').at(-1)?.resolved?.via).toBe('name');
+    const taller = ok(await run(doc('30 mm', letters)));
+    expect(names(taller).faces).toEqual(first.faces);
+    expect(
+      features.probes.filter((q) => q.feature === 'P').every((q) => q.resolved?.via === 'name'),
+    ).toBe(true);
+  });
+
+  it('20. bodies without naming tables are named by position; a table that does not fit fails without leaking', async () => {
     const result = ok(await run(testDocument([testFeature('B', 'test-box', { size: '10 mm' })])));
     expect([...names(result).faces].sort()).toEqual(
       Array.from({ length: 6 }, (_, i) => `test-box:B:face#${i + 1}`).sort(),

@@ -62,6 +62,7 @@ export {
   type SurfaceGeometry,
   stepString,
   type Vec3,
+  type WrapFrame,
 } from './kernel';
 export {
   type BodyMesh,

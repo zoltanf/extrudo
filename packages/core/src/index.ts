@@ -21,6 +21,7 @@ export * from './customizer';
 export { createDocument, type NewDocumentOptions } from './document';
 export * from './document-commands';
 export * from './draft';
+export * from './emboss';
 export * from './expr/index';
 export * from './extrude';
 export * from './feature-inputs';

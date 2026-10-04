@@ -15,6 +15,7 @@ import type {
   ShapeHandle,
   SweepOptions,
   Vec3,
+  WrapFrame,
 } from '../kernel';
 import {
   nameLoft,
@@ -71,6 +72,33 @@ export function namedPrism(kernel: Kernel, options: PrismOptions): NamedShape {
     options.edgeSources,
     options.roles,
   );
+}
+
+export interface WrapOptions extends SweepSource {
+  feature: string;
+  /** Default `emboss`. */
+  op?: string;
+  /** The unrolled sketch frame on the cylinder (`Kernel.wrapOnCylinder`). */
+  frame: WrapFrame;
+  depth: number;
+  /** Whether the letters stand out of the cylinder (true) or go into it. */
+  outward?: boolean;
+}
+
+/**
+ * Wraps a profile face around a cylinder (P4-04, ADR-0060 §3): the cap on the
+ * cylinder's own radius is `op:feature:cap:start`, the one `depth` further out
+ * (or in) is `…:cap:end`, and each edge's wall between the two is
+ * `…:side:<source>`, exactly as `namedPrism` names a prism.
+ */
+export function namedWrap(kernel: Kernel, options: WrapOptions): NamedShape {
+  const result = kernel.wrapOnCylinder(
+    options.shape,
+    options.frame,
+    options.depth,
+    options.outward ?? true,
+  );
+  return nameSwept(kernel, result, options.op ?? 'emboss', options.feature, options.edgeSources);
 }
 
 export interface RevolveOptions extends SweepSource {

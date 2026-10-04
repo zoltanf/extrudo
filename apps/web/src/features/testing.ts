@@ -39,6 +39,48 @@ export function namedBoxMesh(): BodyMesh {
   };
 }
 
+export const CYLINDER = 'cylinder:0' as BodyId;
+
+/**
+ * A cylinder's wall as one curved face of `segments` quads around the Z axis
+ * (radius 10, z 0…20 by default), each quad with its own four nodes and wound
+ * so the normals come out of the solid. `inside` gives it the normals of a
+ * hole's wall instead of a boss's.
+ */
+export function cylinderMesh(radius = 10, height = 20, segments = 12, inside = false): BodyMesh {
+  const sign = inside ? -1 : 1;
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  /** One node of the quad at `s`: its bottom or top point, and its normal. */
+  const node = (s: number, top: boolean) => {
+    const angle = (2 * Math.PI * s) / segments;
+    const nx = sign * Math.cos(angle);
+    const ny = sign * Math.sin(angle);
+    positions.push(radius * Math.cos(angle), radius * Math.sin(angle), top ? height : 0);
+    normals.push(nx, ny, 0);
+  };
+  for (let s = 0; s < segments; s++) {
+    node(s, false);
+    node(s, true);
+    node(s + 1, false);
+    node(s + 1, true);
+    const base = 4 * s;
+    indices.push(base, base + 2, base + 3, base, base + 3, base + 1);
+  }
+  return {
+    positions: new Float32Array(positions),
+    normals: new Float32Array(normals),
+    indices: new Uint32Array(indices),
+    faceRanges: new Uint32Array([0, segments * 2]),
+    edgePoints: new Float32Array(0),
+    edgeRanges: new Uint32Array(0),
+    edgeFlags: new Uint8Array(0),
+    vertices: new Float32Array(0),
+    faceIds: ['cylinder:side:wall'],
+  };
+}
+
 /**
  * `fake-press`: faces (one or two), a distance, an operation, and a toggle
  * that shows an angle (and isn't an input itself).
