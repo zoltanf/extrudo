@@ -183,19 +183,76 @@ public:
   /**
    * The relative error bound of the BRepGProp integrators (P4-12 H3,
    * ADR-0067 §H3). Without it OCCT integrates with a fixed Gauss order, which
-   * is 1-3 % out on a body with B-spline faces (a wrap's walls, ADR-0060 §3);
-   * with it the integrator subdivides until the bound is met, and 1e-7 gives
-   * the same answer as 1e-12 on every case in `spikes/p4-12-mass` at about
-   * half the time. Only for numbers that leave the facade (measure, properties)
-   * and for its own checks where a 1 % error could flip the decision: a check
-   * that only asks whether a volume is positive keeps the cheap form.
+   * is 1-3 % out on a body with B-spline faces (a wrap's walls, ADR-0060 §3).
+   * 1e-7 gives the same answer as 1e-12 on every case in `spikes/p4-12-mass`
+   * at about half the time.
    */
   static constexpr double MASS_EPS = 1e-7;
 
-  /** A solid's volume within MASS_EPS, for a number the facade decides on. */
+  /**
+   * Whether `shape` needs the adaptive integral at all, which is whether one
+   * of its faces is a surface OCCT cannot integrate exactly with a fixed
+   * order: a B-spline, Bezier or offset surface, which is the geometry our own
+   * maps make (a wrap's wall, a sweep's, a scale's, a loft's side).
+   *
+   * The alternative, a surface of linear extrusion or of revolution, is where
+   * the adaptive integral is the worse of the two: the terms of the volume
+   * integral cancel there (a prism wall's exact contribution is zero, whatever
+   * the prism's other faces say), and subdividing to a bound on each term
+   * leaves more of the cancellation behind. Measured on the prism of an
+   * extruded letter (ADR-0058's shaper output, eleven B-spline walls), against
+   * the same profile's area times the distance: 0.3 % out with the fixed order
+   * and 3.9 % with the bound, while the same letter's wall as a wrap (where
+   * the terms add) goes from 1.08 % to exact. So the choice is per shape, not
+   * per call site.
+   */
+  static bool needsTolerance(const TopoDS_Shape& shape) {
+    for (TopExp_Explorer face(shape, TopAbs_FACE); face.More(); face.Next()) {
+      BRepAdaptor_Surface surface(TopoDS::Face(face.Current()), false);
+      const GeomAbs_SurfaceType type = surface.GetType();
+      if (type == GeomAbs_BSplineSurface || type == GeomAbs_BezierSurface ||
+          type == GeomAbs_OffsetSurface) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** A solid's volume, integrated to MASS_EPS where that is the better form. */
+  static void integrateVolume(const TopoDS_Shape& shape, GProp_GProps& props) {
+    if (needsTolerance(shape)) {
+      BRepGProp::VolumeProperties(shape, props, MASS_EPS, false);
+    } else {
+      BRepGProp::VolumeProperties(shape, props);
+    }
+  }
+
+  /** The area of a face or shape, on the same rule as `integrateVolume`. */
+  static void integrateArea(const TopoDS_Shape& shape, GProp_GProps& props) {
+    if (needsTolerance(shape)) {
+      BRepGProp::SurfaceProperties(shape, props, MASS_EPS, false);
+    } else {
+      BRepGProp::SurfaceProperties(shape, props);
+    }
+  }
+
+  /** The length of edges, on the same rule as `integrateVolume`. */
+  static void integrateLength(const TopoDS_Shape& shape, GProp_GProps& props) {
+    if (needsTolerance(shape)) {
+      BRepGProp::LinearProperties(shape, props, MASS_EPS, false);
+    } else {
+      BRepGProp::LinearProperties(shape, props);
+    }
+  }
+
+  /**
+   * A volume for a decision, as `integrateVolume` gives it: the checks that a
+   * percent could flip (shellIsGood, offsetIsGood, draftIsGood) want it, a
+   * check that only asks whether a volume is positive (volumeOf) does not care.
+   */
   static double exactVolume(const TopoDS_Shape& shape) {
     GProp_GProps props;
-    BRepGProp::VolumeProperties(shape, props, MASS_EPS, false);
+    integrateVolume(shape, props);
     return props.Mass();
   }
 
@@ -1321,8 +1378,9 @@ public:
   /**
    * Computes volume, area and bounding box. Read them with measured(i):
    * 0 = volume, 1 = area, 2..4 = bbox min xyz, 5..7 = bbox max xyz. The
-   * volume and the area are integrated to MASS_EPS, so they are right on a
-   * body with B-spline faces (P4-12 H3).
+   * volume and the area are integrated to MASS_EPS where a B-spline face makes
+   * that necessary, so they are right on the bodies OCCT's fixed order cannot
+   * integrate (P4-12 H3; see needsTolerance).
    */
   bool measure(int shape) {
     beginOp();
@@ -1330,9 +1388,9 @@ public:
     if (s == nullptr) return fail("Measure failed: unknown shape.") != 0;
     try {
       GProp_GProps volume;
-      BRepGProp::VolumeProperties(*s, volume, MASS_EPS, false);
+      integrateVolume(*s, volume);
       GProp_GProps area;
-      BRepGProp::SurfaceProperties(*s, area, MASS_EPS, false);
+      integrateArea(*s, area);
       Bnd_Box box;
       BRepBndLib::Add(*s, box);
       measured_[0] = volume.Mass();
@@ -1356,7 +1414,7 @@ public:
    * 9..11 = centre of mass of the volume, else the area, else the length,
    * else the vertex. Unlike measure(), the box is tight: it comes from the
    * exact geometry, not the triangulation or tolerances. The three integrals
-   * are to MASS_EPS (P4-12 H3).
+   * follow needsTolerance (P4-12 H3).
    */
   bool properties(int shape) {
     beginOp();
@@ -1369,17 +1427,17 @@ public:
       const bool edges = TopExp_Explorer(*s, TopAbs_EDGE).More();
       GProp_GProps props;
       if (solids) {
-        BRepGProp::VolumeProperties(*s, props, MASS_EPS, false);
+        integrateVolume(*s, props);
         measured_[0] = props.Mass();
       }
       if (faces) {
         GProp_GProps area;
-        BRepGProp::SurfaceProperties(*s, area, MASS_EPS, false);
+        integrateArea(*s, area);
         measured_[1] = area.Mass();
         if (!solids) props = area;
       }
       if (edges && !faces) {
-        BRepGProp::LinearProperties(*s, props, MASS_EPS, false);
+        integrateLength(*s, props);
         measured_[8] = props.Mass();
       }
       gp_Pnt centre;

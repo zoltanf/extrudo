@@ -1,6 +1,8 @@
 // Native harness for P4-12 H3 (ADR-0067 §H3): how far off the mass
 // properties of a body whose faces are B-splines are with the facade's plain
-// two-argument BRepGProp calls, and what the eps forms cost.
+// two-argument BRepGProp calls, and what the eps forms cost -- and, for a
+// prism wall, which of the two is better (the facade's `needsTolerance` picks
+// per shape, on what this prints).
 //
 // The bodies are the kinds that were off (ADR-0060 §3: a wrap's B-spline
 // walls, a loft) and the two the ADR asks a test for (a loft and a conic
@@ -97,6 +99,9 @@ static double timeOf(int h, double eps, int runs) {
 
 static double rel(double got, double want) { return std::abs(got / want - 1); }
 
+/** Which form the facade would pick for this shape (see `needsTolerance`). */
+static bool facadeAdaptive(int h) { return ExtrudoFacade::needsTolerance(*f.find(h)); }
+
 /** One row per integrator, against the fine tessellation and the exact value. */
 static void report(const char* what, int h, double exact, double deflection) {
   if (h <= 0) {
@@ -113,6 +118,11 @@ static void report(const char* what, int h, double exact, double deflection) {
     std::printf("%-28s   eps %-5.0e %.6f (%+.2e)  %7.3f ms/call\n", "", eps, got, rel(got, mesh),
                 timeOf(h, eps, 10));
   }
+  // What the facade returns: the form `needsTolerance` picks for this shape.
+  const bool adaptive = facadeAdaptive(h);
+  const double picked = adaptive ? epsVolume(h, ExtrudoFacade::MASS_EPS) : plainVolume(h);
+  std::printf("%-28s   the facade picks the %s form: %.6f (%+.2e)\n", "", adaptive ? "eps" : "fixed",
+              picked, rel(picked, mesh));
 }
 
 // The sketch plane of the wrap cases: x = 20, tangent to a cylinder of radius 20,
@@ -182,6 +192,20 @@ static int conicExtrude(double a, double height) {
   BRepBuilderAPI_MakeFace face(wire.Wire(), true);
   if (!face.IsDone()) return 0;
   BRepPrimAPI_MakePrism prism(face.Face(), gp_Vec(0, 0, height));
+  if (!prism.IsDone()) return 0;
+  return f.store(prism.Shape());
+}
+
+/**
+ * A prism of a B-spline-bounded region standing away from the origin: the
+ * case the text test found (its walls' volume contributions cancel, and the
+ * integrator's own origin is the shape's barycentre).
+ */
+static int offsetPrism(double s, double depth, double* exact) {
+  const int face = glyphFace(s, 0.8);
+  *exact = epsArea(*f.find(face), 1e-9) * depth;
+  // The sketch plane is x = 20, so a sketch's extrude runs along +x.
+  BRepPrimAPI_MakePrism prism(*f.find(face), gp_Vec(depth, 0, 0));
   if (!prism.IsDone()) return 0;
   return f.store(prism.Shape());
 }
@@ -275,6 +299,34 @@ static void conicCase() {
   f.releaseAll();
 }
 
+static void offsetCase() {
+  for (double s : {0.0, 9.0, 40.0}) {
+    double exact = 0;
+    const int shape = offsetPrism(s, 2, &exact);
+    if (shape <= 0) {
+      std::printf("\nprism at s=%.0f: nothing was built\n", s);
+      continue;
+    }
+    // Two references: the profile's area times the distance, and a fine mesh.
+    const double mesh = meshVolume(shape, 0.0005);
+    std::printf("\nprism of a B-spline region at s=%.0f: %d faces, area x depth %.6f, mesh %.6f\n", s,
+                f.count(shape, 0), exact, mesh);
+    std::printf("  no eps  %12.6f  (%+.2e vs mesh, %+.2e vs area)\n", plainVolume(shape),
+                std::abs(plainVolume(shape) / mesh - 1), std::abs(plainVolume(shape) / exact - 1));
+    for (double eps : {1e-5, 1e-7, 1e-9, 1e-11, 1e-13}) {
+      const double got = epsVolume(shape, eps);
+      std::printf("  eps %-5.0e%12.6f  (%+.2e vs mesh, %+.2e vs area)\n", eps, got,
+                  std::abs(got / mesh - 1), std::abs(got / exact - 1));
+    }
+    const bool adaptive = facadeAdaptive(shape);
+    std::printf("  the facade picks the %s form: %12.6f  (%+.2e vs area)\n", adaptive ? "eps" : "fixed",
+                adaptive ? epsVolume(shape, ExtrudoFacade::MASS_EPS) : plainVolume(shape),
+                std::abs((adaptive ? epsVolume(shape, ExtrudoFacade::MASS_EPS) : plainVolume(shape)) /
+                             exact - 1));
+    f.releaseAll();
+  }
+}
+
 static void enclosureCase() {
   const int shape = enclosure();
   if (shape <= 0) {
@@ -300,6 +352,7 @@ int main() {
   caseOf("wrap glyph", wrapGlyph);
   caseOf("loft", loftCase);
   caseOf("conic", conicCase);
+  caseOf("offset prisms", offsetCase);
   caseOf("enclosure", enclosureCase);
   return 0;
 }
