@@ -119,7 +119,11 @@ function Sketch({
   clip: Plane[] | null;
 }) {
   const { data, frame, active, status, profiles, hoverProfile, selectedProfiles } = drawing;
-  const segments = useMemo(() => sketchSegments(data, frame, status), [data, frame, status]);
+  // Control polygons show while the sketch is open (P4-05, ADR-0063 §4).
+  const segments = useMemo(
+    () => sketchSegments(data, frame, status, active),
+    [data, frame, status, active],
+  );
 
   const fills = useMemo(() => {
     const triangles = profileTriangles(profiles ?? [], frame, hoverProfile, selectedProfiles);
@@ -172,9 +176,12 @@ function Sketch({
     };
     const dashed = new LineSegmentsGeometry();
     if (segments.construction.length > 0) dashed.setPositions(segments.construction);
+    const polygonLines = new LineSegmentsGeometry();
+    if (segments.controlPolygons.length > 0) polygonLines.setPositions(segments.controlPolygons);
     const projectedLines = new LineSegmentsGeometry();
     if (segments.projected.length > 0) projectedLines.setPositions(segments.projected);
     return {
+      polygons: polygonLines,
       projected: projectedLines,
       status: Object.fromEntries(STATUSES.map((s) => [s, byStatus(s)])) as Record<
         EntityStatus,
@@ -199,6 +206,8 @@ function Sketch({
         { lines: LineMaterial; dots: ReturnType<typeof createDotMaterial> }
       >,
       dashed: new LineMaterial({ linewidth: 1.25, transparent: true, dashed: true }),
+      // A control polygon (P4-05) draws thinner than construction geometry.
+      polygons: new LineMaterial({ linewidth: 1, transparent: true, dashed: true }),
       projected: new LineMaterial({ linewidth: 1.75, transparent: true }),
     }),
     [],
@@ -207,6 +216,8 @@ function Sketch({
     const dashed = new LineSegments2(geometries.dashed, materials.dashed);
     // Needs positions: an empty geometry has no instanceStart attribute.
     if (segments.construction.length > 0) dashed.computeLineDistances();
+    const polygons = new LineSegments2(geometries.polygons, materials.polygons);
+    if (segments.controlPolygons.length > 0) polygons.computeLineDistances();
     const solid = Object.fromEntries(
       STATUSES.map((s) => [
         s,
@@ -214,16 +225,17 @@ function Sketch({
       ]),
     ) as Record<EntityStatus, LineSegments2>;
     const projectedLines = new LineSegments2(geometries.projected, materials.projected);
-    for (const l of [dashed, projectedLines, ...Object.values(solid)]) {
+    for (const l of [dashed, polygons, projectedLines, ...Object.values(solid)]) {
       l.renderOrder = 4;
       l.frustumCulled = false;
     }
-    return { solid, dashed, projected: projectedLines };
+    return { solid, dashed, polygons, projected: projectedLines };
   }, [geometries, materials, segments]);
 
   useEffect(
     () => () => {
       geometries.dashed.dispose();
+      geometries.polygons.dispose();
       geometries.projected.dispose();
       for (const g of Object.values(geometries.status)) {
         g.lines.dispose();
@@ -235,6 +247,7 @@ function Sketch({
   useEffect(
     () => () => {
       materials.dashed.dispose();
+      materials.polygons.dispose();
       materials.projected.dispose();
       for (const m of Object.values(materials.status)) {
         m.lines.dispose();
@@ -261,6 +274,8 @@ function Sketch({
   }
   materials.dashed.color = color(construction);
   materials.dashed.opacity = construction.a * alpha;
+  materials.polygons.color = color(construction);
+  materials.polygons.opacity = construction.a * alpha * 0.8;
   materials.projected.color = color(projected);
   materials.projected.opacity = projected.a * alpha;
   materials.projected.clippingPlanes = clip;
@@ -271,6 +286,8 @@ function Sketch({
     const perPixel = store.getState().view.size / Math.max(1, height);
     materials.dashed.dashSize = DASH * perPixel;
     materials.dashed.gapSize = GAP * perPixel;
+    materials.polygons.dashSize = DASH * perPixel;
+    materials.polygons.gapSize = GAP * perPixel;
   });
 
   return (
@@ -293,6 +310,7 @@ function Sketch({
         (s) => segments.curves[s].length > 0 && <primitive key={s} object={lines.solid[s]} />,
       )}
       {segments.construction.length > 0 && <primitive object={lines.dashed} />}
+      {segments.controlPolygons.length > 0 && <primitive object={lines.polygons} />}
       {segments.projected.length > 0 && <primitive object={lines.projected} />}
       <CurveMarks
         data={data}

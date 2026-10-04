@@ -22,6 +22,7 @@ import {
   type SketchEntity,
   type SketchEntityId,
   setSketchConstruction,
+  setSplineRho,
   UNITS,
   updateSketchDimension,
 } from '@extrudo/core';
@@ -45,6 +46,7 @@ import {
   textFocusStore,
 } from './textDraft';
 import { type TextPatch, textHeight, textHeightDimension, textPatch } from './textEditing';
+import { DEFAULT_RHO, inRhoRange, MAX_RHO, MIN_RHO } from './tools/conics';
 import type { ToolHost } from './tools/host';
 
 /**
@@ -496,8 +498,28 @@ export function SelectionPanel({
       rows.push(readout('Length', length(Math.hypot(b[0] - a[0], b[1] - a[1]))));
       rows.push(readout('Angle', formatQuantity(angle, ANGLE, settings)));
     }
-  } else if (entity?.type === 'spline') {
-    rows.push(readout('Fit points', String(entity.points.length)));
+  } else if (entity?.type === 'spline' && single) {
+    if (entity.mode === 'conic') {
+      rows.push(
+        <SplineFields
+          key="spline"
+          store={store}
+          id={single}
+          spline={entity}
+          sketchId={sketchId}
+          doc={doc}
+          host={host}
+          notify={notify}
+        />,
+      );
+    } else {
+      rows.push(
+        readout(
+          entity.mode === 'control' ? 'Control points' : 'Fit points',
+          String(entity.points.length),
+        ),
+      );
+    }
   } else if (entity?.type === 'text' && single) {
     rows.push(
       <TextFields
@@ -670,6 +692,68 @@ export function TextPanel({ store, host, fonts, notify }: TextPanelProps) {
           </Button>
         </div>
       </FloatingPanel>
+    </div>
+  );
+}
+
+/**
+ * A conic's fullness (P4-05, ADR-0063 §4): a unitless Rho field, 0.05 to 0.95,
+ * that edits the spline through core's `setSplineRho` in one undo step
+ * (`ToolHost.apply`, as every numeric field here does). A rho is a shape ratio
+ * and not a dimension, so it has no unit to be an expression in.
+ *
+ * Exported so the panel's fields can be rendered in a test: the panel itself
+ * reads the session from a store, which `renderToStaticMarkup` doesn't see.
+ */
+export function SplineFields({
+  store,
+  id,
+  spline,
+  sketchId,
+  doc,
+  host,
+  notify,
+}: {
+  store: DocumentStore;
+  id: SketchEntityId;
+  spline: SketchEntity;
+  sketchId: FeatureId;
+  doc: ExtrudoDocument;
+  host: ToolHost | undefined;
+  notify(tone: 'info' | 'error', text: string): void;
+}) {
+  const stored = spline.type === 'spline' ? (spline.rho ?? DEFAULT_RHO) : DEFAULT_RHO;
+  const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
+  /** One undo step per change; nothing moves but the curve. */
+  const apply = (rho: number) => {
+    try {
+      const command = setSplineRho({ feature: sketchId, id, rho });
+      if (host) host.apply(command);
+      else store.getState().dispatch(command);
+    } catch (error) {
+      if (!(error instanceof CommandError)) throw error;
+      notify('error', error.message);
+    }
+  };
+  return (
+    <div className="grid grid-cols-[52px_minmax(0,1fr)] items-start gap-2">
+      <span className="pt-1 text-sm text-muted">Rho</span>
+      <ExpressionInput
+        label="Rho"
+        value={String(stored)}
+        // A plain number is a unitless quantity, which is what a rho is.
+        evaluate={(expr) => evaluation.evaluate(expr)}
+        format={(result) => String(Number(result.value.toFixed(4)))}
+        onCommit={(expr) => {
+          const result = evaluation.evaluate(expr);
+          if (!result.ok) return;
+          if (!inRhoRange(result.value)) {
+            notify('error', `Rho has to be between ${MIN_RHO} and ${MAX_RHO}.`);
+            return;
+          }
+          apply(result.value);
+        }}
+      />
     </div>
   );
 }

@@ -4,6 +4,17 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-04 · **P4-05** Control-point splines and conics (ADR-0063): a sketch
+  `spline` entity gains a mode — `fit` (through its points, as before),
+  `control` (its points are the B-spline's poles, so the curve is guided by
+  them) or `conic` (three points — start, shoulder, end — and a `rho` that says
+  how full it is). Two tools in the Create menu: Control Point Spline and
+  Conic, with the poles drawn as a thin dashed control polygon while the sketch
+  is open, and a Rho field in the selection panel. A conic's own curve is
+  rational, which the kernel cannot take, so the conic is stored exactly (three
+  points and rho) and drawn as a cubic within 1e-5 mm — everything downstream
+  (profiles, export, extrude, the sketch's faces) reads one `splineCurve`. No
+  facade change, no new schema version.
 - 2026-10-03 · **P4-08** Print tolerance and slicer hand-off (ADR-0062): the
   print tolerance is the user parameter `tolerance`, set from the 3D Print tab's
   Tolerance panel (a field and the Tight 0.1 / Normal 0.2 / Loose 0.3 mm

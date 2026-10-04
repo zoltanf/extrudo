@@ -29,8 +29,9 @@ P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-15
 P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 is
 complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil), P4-02
 (modeled threads), P4-03 (sketch text, bundled fonts), P4-03b (user fonts
-as attachments), P4-07 (customizer, configurations) and P4-08 (print
-tolerance, slicer hand-off) are done. ADR-0001 chose
+as attachments), P4-05 (control-point splines, conics), P4-07 (customizer,
+configurations) and P4-08 (print tolerance, slicer hand-off) are done.
+ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -780,9 +781,39 @@ whitespace apart), and the dialog's `onChange` takes a `Pick<DialogContext,
 is optional, the web platform leaves it out and the Export dialog's Slicer
 select and "Open in slicer" button appear only where it exists (the launch is
 Phase 6, P6-02).
+ADR-0063 (P4-05) added **control-point splines and conics**: still one
+`spline` entity, with `mode` (`fit`, absent in P1-05 files, `control` or
+`conic`) and, for a conic, `rho` (0 < rho < 1, and then exactly three points:
+start, shoulder, end). **Every entity spline's curve comes from `splineCurve`**
+(`sketch/curves.ts`), which dispatches on the mode: `controlSpline` for poles,
+`fitSpline` for fit, `conicSpline` for a conic. A conic's own curve is a
+*rational* quadratic, which the facade's `sketchSpline` cannot take (no facade
+change, so no OCCT build), so the conic is **stored exactly** (three points and
+rho) and drawn as a **non-rational cubic within 1e-5 mm**
+(`CONIC_TOLERANCE`, a tenth of the profile detection's vertex tolerance):
+cubic Hermite pieces of the exact curve over parameter intervals that are
+**subdivided adaptively** (over the tolerance → split at the middle, breadth
+first, `CONIC_MAX_PIECES` = 160), joined as one cubic B-spline with **double
+interior knots at the pieces' parameters** — so `splinePoint(spline, t)` is
+the exact conic at every join — whose poles are the pieces' control points
+with each join's shared point dropped. Every rho the UI offers reaches the
+tolerance: 4 poles for the one-span parabola (rho 0.5), 66 for rho 0.3 and 290
+for the fullest (rho 0.95, whose speed swings 19:1 between its ends). Because
+the pieces are short, `curvePolyline` gives a conic **four segments per span**
+(at least 96 in all), so a full conic is drawn, picked and profiled in under
+600 points; fit-point and control-point splines keep sixteen.
+Transforms (mirror, scale, copy, patterns) carry `mode` and `rho` over
+unchanged (B-splines and conics are affine-invariant in their control points,
+and rho doesn't change under an affine map); trim, break, extend and offset
+refuse every spline mode as they refuse fit splines; projections stay fit.
+The tools are `splineControl` and `conic` (`sketch/tools/conics.ts`), the
+control polygon is `sketchSegments(…, controlPolygons)` and the panel's Rho
+field writes core's `setSplineRho` through `ToolHost.apply`.
 Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-04**
-(emboss/deboss) then P4-05 onward in `docs/03-roadmap.md`. The owner's own
-release steps (slicer check, making the
+(emboss/deboss) then P4-06 onward in `docs/03-roadmap.md`; ADR-0063's Deferred
+(exact rational conics in the kernel, closed splines, trimming and offsetting
+splines) is P4-12 backlog. The owner's own release steps (slicer check, making
+the
 repository public, Cloudflare, domain, tag v0.3.0) are in
 `docs/release-checklist.md`; don't do them. Deeper carried-over items are the
 P4-12 backlog.
@@ -816,7 +847,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics (0006 is reserved) |
 
 ## Stack summary
 
@@ -1849,3 +1880,17 @@ them. Notes further down that name a machine apply to that machine only.
   parameter `3.4 mm`. Picking the hole's face follows `e2e/hole.spec.ts`: the
   home view (**Shift+1**, not Shift+2) and `projector` — the projected surface
   point is the click in any view.
+- **Spline and conic e2e** (`e2e/spline-conic.spec.ts`, P4-05): both tools come
+  from the Create menu (`pickTool(page, 'Control Point Spline')` and `'Conic'`;
+  neither has a key). A control-point spline is four clicks on grid points and
+  Enter (`counts` then reads `splines: 1 points: 4`), a line from its last
+  control point back to the first closes the region
+  (`data-sketch-profiles` is `profiles=1 holes=0`), and a click on the dome's
+  apex selects the curve, so the panel says "Control points: 4". A conic is
+  three clicks (the heads-up box shows Rho from the first), the panel's Rho
+  field takes 0.3 (`getByRole('textbox', { name: 'Rho' })`, `0.5` to `0.3`),
+  a line closes it, and Finish Sketch then a profile pre-selection
+  (`data-model-selection` starting `profile:`) and E extrudes 5 mm into one body
+  40 mm wide whose height is the rho's share of the shoulder's (0.3 × 15 mm).
+  A filled-in conic takes a moment to preview: `data-preview-status` polls up
+  to 30 s.

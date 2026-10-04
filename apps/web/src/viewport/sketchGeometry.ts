@@ -97,6 +97,8 @@ export interface SketchSegments {
   curves: Record<EntityStatus, Float32Array>;
   /** Line-segment pairs of construction curves (drawn dashed, whatever their status). */
   construction: Float32Array;
+  /** Line-segment pairs of control polygons (drawn thin and dashed, ADR-0063 §4). */
+  controlPolygons: Float32Array;
   /** Line-segment pairs of projected curves (P2-09, drawn in the construct colour). */
   projected: Float32Array;
   /** One xyz per sketch point, by constraint status. */
@@ -108,20 +110,27 @@ export { CIRCLE_SEGMENTS };
 
 /**
  * A sketch as world-space line segments and points (P1-01). Circles, arcs,
- * ellipses and splines become polylines (`curvePolyline`); an arc runs
+ * ellipses and splines become polylines (`curvePolyline`, which reads each
+ * spline's own mode); an arc runs
  * counter-clockwise from its start to its end point, with the radius of its
  * start point. A text (P4-03) draws one polyline per glyph curve, all of them
  * under the entity's own ID, so hovering, selecting and colouring it work like
  * any other curve. Curves and points are grouped by `status` (P1-08); without
  * one, everything is `free`.
+ *
+ * With `controlPolygons` (P4-05, ADR-0063 §4) a control-point spline's or a
+ * conic's poles are joined by thin dashed lines, as construction geometry:
+ * the sketch being open is what shows them.
  */
 export function sketchSegments(
   data: SketchData,
   frame: SketchFrame,
   status?: Readonly<Record<string, EntityStatus>>,
+  controlPolygons = false,
 ): SketchSegments {
   const solid: Record<EntityStatus, number[]> = { free: [], fixed: [], conflict: [] };
   const construction: number[] = [];
+  const polygons: number[] = [];
   const projected: number[] = [];
   const isProjected = projectedEntities(data);
   const points: Record<EntityStatus, number[]> = { free: [], fixed: [], conflict: [] };
@@ -145,6 +154,19 @@ export function sketchSegments(
         prev = next;
       }
     }
+    if (controlPolygons && entity.type === 'spline' && entity.mode && entity.mode !== 'fit') {
+      const at = (ref: SketchEntityId): [number, number] | undefined => {
+        const point = data.entities[ref];
+        return point?.type === 'point' ? [point.x, point.y] : undefined;
+      };
+      let prev: [number, number] | undefined;
+      for (const ref of entity.points) {
+        const next = at(ref);
+        if (!next) continue;
+        if (prev) polygons.push(...sketchToWorld(frame, prev), ...sketchToWorld(frame, next));
+        prev = next;
+      }
+    }
   }
 
   // Placed dimension labels count for "Fit" too, so a dimension set off from its
@@ -165,6 +187,7 @@ export function sketchSegments(
   return {
     curves: floats(solid),
     construction: new Float32Array(construction),
+    controlPolygons: new Float32Array(polygons),
     projected: new Float32Array(projected),
     points: floats(points),
     bounds: boundsOfPositions([

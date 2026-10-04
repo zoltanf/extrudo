@@ -12,6 +12,7 @@ import {
   entityRemoval,
   removeFromSketch,
   setSketchConstruction,
+  setSplineRho,
   setText,
 } from './commands';
 import {
@@ -217,6 +218,130 @@ describe('sketch schema', () => {
     expect(issues(shared)).toEqual([
       'entities.right.start: point "p2" already belongs to "bottom"; join them with a constraint',
     ]);
+  });
+
+  it("takes a spline's modes and rho (P4-05)", () => {
+    const r = rectangle();
+    // Every spline has its own points: a point belongs to one curve.
+    const conic = (id: string, extra: Record<string, unknown> = {}) =>
+      ({
+        type: 'spline',
+        points: [`${id}a`, `${id}b`, `${id}c`],
+        mode: 'conic',
+        rho: 0.4,
+        construction: false,
+        ...extra,
+      }) as const;
+    const spline = (id: string, extra: Record<string, unknown> = {}) =>
+      ({
+        type: 'spline',
+        points: [`${id}a`, `${id}b`, `${id}c`],
+        construction: false,
+        ...extra,
+      }) as const;
+    const points = (ids: string[]) =>
+      Object.fromEntries(
+        ids.map((id) => [
+          id,
+          { type: 'point', x: 10 * ids.indexOf(id), y: 20 + 2 * ids.indexOf(id) },
+        ]),
+      );
+    const names = [
+      'fita',
+      'fitb',
+      'fitc',
+      'pola',
+      'polb',
+      'polc',
+      'ca',
+      'cb',
+      'cc',
+      'aka',
+      'akb',
+      'akc',
+      'twoa',
+      'twob',
+      'foura',
+      'fourb',
+      'fourc',
+      'fourd',
+      'noa',
+      'nob',
+      'noc',
+      'bada',
+      'badb',
+      'badc',
+      'ona',
+      'onb',
+      'onc',
+    ];
+    const entities = {
+      ...r.entities,
+      ...points(names),
+      fit: spline('fit'),
+      poles: spline('pol', { mode: 'control' }),
+      conic3: conic('c'),
+      asFit: spline('ak', { mode: 'fit' }),
+    };
+    // Without a mode it is a fit-point spline, and 'fit' says so too.
+    expect(issues({ ...r, entities })).toEqual([]);
+    const parsed: Record<string, unknown> = SketchDataSchema.parse({ ...r, entities }).entities;
+    expect(parsed.poles).toMatchObject({ mode: 'control' });
+    expect(parsed.fit).not.toHaveProperty('mode');
+    // A conic is three points and a rho.
+    expect(
+      issues({
+        ...r,
+        entities: {
+          ...entities,
+          ...points(['twoa', 'twob']),
+          two: conic('two', { points: ['twoa', 'twob'] }),
+          ...points(['foura', 'fourb', 'fourc', 'fourd']),
+          four: conic('four', { points: ['foura', 'fourb', 'fourc', 'fourd'] }),
+        },
+      }),
+    ).toEqual([
+      'entities.two.points: a conic has 3 points (start, shoulder, end), not 2',
+      'entities.four.points: a conic has 3 points (start, shoulder, end), not 4',
+    ]);
+    // A rho is only for a conic, and only between 0 and 1.
+    expect(
+      issues({
+        ...r,
+        entities: {
+          ...entities,
+          ...points(['noa', 'nob', 'noc']),
+          noRho: conic('no', { rho: undefined }),
+        },
+      }),
+    ).toEqual(['entities.noRho.rho: a conic needs a rho']);
+    for (const [rho, message] of [
+      [0, 'Too small: expected number to be >0'],
+      [-0.2, 'Too small: expected number to be >0'],
+      [1, 'Too big: expected number to be <1'],
+      [1.5, 'Too big: expected number to be <1'],
+    ] as const) {
+      expect(
+        issues({
+          ...r,
+          entities: {
+            ...entities,
+            ...points(['bada', 'badb', 'badc']),
+            bad: conic('bad', { rho }),
+          },
+        }),
+      ).toEqual([`entities.bad.rho: ${message}`]);
+    }
+    expect(
+      issues({
+        ...r,
+        entities: {
+          ...entities,
+          ...points(['ona', 'onb', 'onc']),
+          onFit: conic('on', { mode: 'control' }),
+        },
+      }),
+    ).toEqual(['entities.onFit.rho: only a conic has a rho']);
   });
 
   it('takes ellipses and fit-point splines (P1-05)', () => {
@@ -545,6 +670,79 @@ describe('createSketch', () => {
     expect(() =>
       applyCommand(doc, createSketch({ id: fid('f1'), plane: originPlaneRef('origin:xy') })),
     ).toThrow('Feature f1 already exists.');
+  });
+});
+
+describe('setSplineRho', () => {
+  const eid = (id: string) => id as SketchEntityId;
+  /** A sketch with a fit-point spline and a conic, each with its own points. */
+  const withSketch = () => {
+    const doc = applyCommand(
+      createDocument(),
+      createSketch({ id: fid('s1'), plane: originPlaneRef('origin:xy') }),
+    ).doc;
+    const points = (y: number) =>
+      [
+        { type: 'point', x: 0, y },
+        { type: 'point', x: 10, y: y + 5 },
+        { type: 'point', x: 20, y },
+      ] as const;
+    return applyCommand(
+      doc,
+      addToSketch({
+        feature: fid('s1'),
+        entities: {
+          [eid('a')]: points(0)[0],
+          [eid('b')]: points(0)[1],
+          [eid('c')]: points(0)[2],
+          [eid('fit')]: {
+            type: 'spline',
+            points: [eid('a'), eid('b'), eid('c')],
+            construction: false,
+          },
+          [eid('p')]: points(20)[0],
+          [eid('q')]: points(20)[1],
+          [eid('r')]: points(20)[2],
+          [eid('conic')]: {
+            type: 'spline',
+            points: [eid('p'), eid('q'), eid('r')],
+            mode: 'conic',
+            rho: 0.5,
+            construction: false,
+          },
+        },
+      }),
+    ).doc;
+  };
+  const rho = (doc: ReturnType<typeof withSketch>): number | undefined => {
+    const entity = readSketch(doc.features[0] as never)?.data.entities[eid('conic')];
+    return entity?.type === 'spline' ? entity.rho : undefined;
+  };
+
+  it("sets a conic's rho, as one undo step", () => {
+    const store = createDocumentStore(withSketch());
+    store.getState().dispatch(setSplineRho({ feature: fid('s1'), id: eid('conic'), rho: 0.3 }));
+    expect(rho(store.getState().doc)).toBe(0.3);
+    expect(store.getState().undoLabel).toBe('Conic rho');
+    store.getState().undo();
+    expect(rho(store.getState().doc)).toBe(0.5);
+    store.getState().redo();
+    expect(rho(store.getState().doc)).toBe(0.3);
+  });
+
+  it('refuses a spline that is not a conic, and a rho outside 0 to 1', () => {
+    const doc = withSketch();
+    expect(() =>
+      applyCommand(doc, setSplineRho({ feature: fid('s1'), id: eid('fit'), rho: 0.3 })),
+    ).toThrow(new CommandError('Only a conic has a rho.'));
+    expect(() =>
+      applyCommand(doc, setSplineRho({ feature: fid('s1'), id: eid('line'), rho: 0.3 })),
+    ).toThrow(new CommandError('"line" isn\'t a spline of this sketch.'));
+    for (const rho of [0, 1, -0.5, 2]) {
+      expect(() =>
+        applyCommand(doc, setSplineRho({ feature: fid('s1'), id: eid('conic'), rho })),
+      ).toThrow(CommandError);
+    }
   });
 });
 

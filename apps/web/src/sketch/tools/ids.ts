@@ -67,6 +67,8 @@ export const SKETCH_TOOL_IDS: readonly string[] = [
   'slotOverall',
   'ellipse',
   'spline',
+  'splineControl',
+  'conic',
   'text',
   'dimension',
   ...MODIFY_TOOL_IDS,

@@ -125,6 +125,53 @@ describe('sketchSegments', () => {
     expect(wave.some(([x, y]) => x === 25 && y === 5)).toBe(true);
   });
 
+  it("draws a control polygon's poles, while the sketch is open (P4-05)", () => {
+    const data = sketch({
+      c0: { type: 'point', x: 0, y: 0 },
+      c1: { type: 'point', x: 10, y: 20 },
+      c2: { type: 'point', x: 25, y: 12 },
+      c3: { type: 'point', x: 30, y: 0 },
+      f0: { type: 'point', x: 0, y: 30 },
+      f1: { type: 'point', x: 10, y: 44 },
+      f2: { type: 'point', x: 25, y: 40 },
+      poles: {
+        type: 'spline',
+        points: ['c0', 'c1', 'c2', 'c3'],
+        mode: 'control',
+        construction: false,
+      },
+      conic: {
+        type: 'spline',
+        points: ['f0', 'f1', 'f2'],
+        mode: 'conic',
+        rho: 0.4,
+        construction: false,
+      },
+      fit: { type: 'spline', points: ['c0', 'c1', 'c2'], construction: false },
+    });
+    // Closed: no polygons, and no change to the curves themselves.
+    const closed = sketchSegments(data, frame('origin:xy'));
+    expect(closed.controlPolygons).toHaveLength(0);
+    const open = sketchSegments(data, frame('origin:xy'), undefined, true);
+    // One line per neighbouring pair of poles: three for the control spline,
+    // two for the conic, none for the fit-point spline.
+    expect(pairs(open.controlPolygons)).toEqual([
+      [0, 0, 0],
+      [10, 20, 0],
+      [10, 20, 0],
+      [25, 12, 0],
+      [25, 12, 0],
+      [30, 0, 0],
+      [0, 30, 0],
+      [10, 44, 0],
+      [10, 44, 0],
+      [25, 40, 0],
+    ]);
+    // The curves are drawn either way, and polygons are their own group.
+    expect(open.curves.free).toEqual(closed.curves.free);
+    expect(open.construction).toEqual(closed.construction);
+  });
+
   it('groups curves and points by constraint status (P1-08), construction aside', () => {
     const data = sketch({
       a: { type: 'point', x: 0, y: 0 },

@@ -96,6 +96,7 @@ import { focusTextField, resetTextDraft } from '../textDraft';
 import { dimensionValues } from '../values';
 import { ARC_CENTER_TOOL, ARC_TANGENT_TOOL, ARC_TOOL, ArcTool } from './arc';
 import { CIRCLE_2POINT_TOOL, CIRCLE_3POINT_TOOL, CIRCLE_TOOL, CircleTool } from './circle';
+import { CONIC_TOOL, ConicTool, SPLINE_CONTROL_TOOL, SplineControlTool } from './conics';
 import { CONSTRAINT_TOOLS, ConstraintTool } from './constrain';
 import { CHAMFER_TOOL, CornerTool, FILLET_TOOL } from './corner';
 import { DIMENSION_TOOL, DimensionTool } from './dimension';
@@ -157,6 +158,8 @@ const FACTORIES: Record<string, (context: ToolContext) => SketchTool> = {
   [SLOT_OVERALL_TOOL]: (context) => new SlotTool(context, 'overall'),
   [ELLIPSE_TOOL]: (context) => new EllipseTool(context),
   [SPLINE_TOOL]: (context) => new SplineTool(context),
+  [SPLINE_CONTROL_TOOL]: (context) => new SplineControlTool(context),
+  [CONIC_TOOL]: (context) => new ConicTool(context),
   [TEXT_TOOL]: (context) => new TextTool(context),
   [DIMENSION_TOOL]: (context) => new DimensionTool(context),
   [TRIM_TOOL]: (context) => new SplitTool(context, 'trim'),

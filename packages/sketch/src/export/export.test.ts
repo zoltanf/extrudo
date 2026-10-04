@@ -57,6 +57,11 @@ function curves() {
   return b.sketch;
 }
 
+/** How many points the SVG paths name: one `M` for each drawn curve. */
+function pointsOf(svg: string): number {
+  return (svg.match(/ d="M/g) ?? []).length;
+}
+
 describe('sketchDrawing', () => {
   it('matches the golden SVG and DXF of the plate, with and without construction', () => {
     const data = plate();
@@ -84,6 +89,54 @@ describe('sketchDrawing', () => {
     const data = curves();
     golden('curves.svg', writeSvg(sketchDrawing(data, { title: 'Curves' })));
     golden('curves.dxf', writeDxf(sketchDrawing(data)));
+  });
+
+  it('writes a control-point spline and a conic as their own curves (P4-05)', () => {
+    const poles: [number, number][] = [
+      [0, 0],
+      [10, 20],
+      [25, 12],
+      [30, 0],
+    ];
+    const b = new SketchBuilder();
+    b.spline(poles, { mode: 'control' });
+    b.spline(
+      [
+        [0, 30],
+        [15, 50],
+        [30, 30],
+      ],
+      { mode: 'conic', rho: 0.5 },
+    );
+    const shapes = sketchDrawing(b.sketch).shapes;
+    expect(shapes).toHaveLength(2);
+    // The control spline is written as the Bézier of its own poles: its first
+    // segment runs from the first pole, out towards the second.
+    const first = shapes[0]?.contours[0];
+    expect(first?.start).toEqual([0, 0]);
+    expect(first?.segments).toHaveLength(1);
+    expect(first?.segments[0]).toEqual({
+      type: 'cubic',
+      c1: [10, 20],
+      c2: [25, 12],
+      to: [30, 0],
+    });
+    // The conic of rho 0.5 is one cubic Bézier: the quadratic of its three
+    // points raised to degree 3.
+    const second = shapes[1]?.contours[0];
+    expect(second?.start).toEqual([0, 30]);
+    expect(second?.segments).toEqual([
+      {
+        type: 'cubic',
+        c1: [10, 30 + (2 / 3) * 20],
+        c2: [30 - (2 / 3) * 15, 30 + (2 / 3) * 20],
+        to: [30, 30],
+      },
+    ]);
+    // Both reach the SVG, in mm with y up.
+    const svg = writeSvg(sketchDrawing(b.sketch));
+    expect(svg).toContain('width="30mm"');
+    expect(pointsOf(svg)).toBe(2);
   });
 
   it('bounds a rotated ellipse and a spline by their curves', () => {

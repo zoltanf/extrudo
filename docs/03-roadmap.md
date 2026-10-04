@@ -793,7 +793,9 @@ end to end, faster than in Fusion 360.
   be `attachment:<id>`, and "Add font…" in both Font selects brings in a
   TTF, OTF or WOFF file (WOFF2 refused).
 - [ ] **P4-04 Emboss/deboss.** FR-FT-16.
-- [ ] **P4-05 Control-point splines, conics, sketch polish.** FR-SK-03.
+- [x] **P4-05 Control-point splines, conics, sketch polish.** FR-SK-03. Done
+  2026-10-04 (ADR-0063). Sketch polish beyond the two curve types is deferred:
+  what P4-05 added is the modes, the tools and the control polygon.
 - [ ] **P4-06 Import:** SVG/DXF → sketch; STEP → base body; STL/3MF/OBJ → mesh
   body with Manifold booleans; canvas images. FR-SK-14, FR-IO-05..07.
 - [x] **P4-07 Customizer panel and configurations.** FR-PAR-05, -06. Done

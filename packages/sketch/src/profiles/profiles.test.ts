@@ -1,4 +1,11 @@
-import type { SketchData, SketchEntityId } from '@extrudo/core';
+import {
+  conicPoint,
+  curvePolyline,
+  type SketchData,
+  type SketchEntityId,
+  type SketchSpline,
+  type Vec2,
+} from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { gear, SketchBuilder } from '../fixtures';
 import { detectProfiles, type Profile, profileAt } from './profiles';
@@ -94,6 +101,65 @@ describe('detectProfiles', () => {
     const profiles = detectProfiles(b.sketch);
     expect(profiles).toHaveLength(1);
     expect((profiles[0] as Profile).area).toBeGreaterThan(100);
+  });
+
+  it('closes a loop with a control-point spline or a conic (P4-05)', () => {
+    // The area the polyline a curve draws and the line closing it enclose.
+    // (Profile detection works on polylines, so this is the area it can see.)
+    const areaUnder = (curve: Vec2[]): number => {
+      const out = [...curve, [0, 0] as Vec2];
+      let area = 0;
+      for (let i = 1; i < out.length; i++) {
+        const a = out[i - 1] as Vec2;
+        const b = out[i] as Vec2;
+        area += (a[0] + b[0]) * (b[1] - a[1]);
+      }
+      return Math.abs(area / 2);
+    };
+    const poles: [number, number][] = [
+      [0, 0],
+      [10, 20],
+      [25, 12],
+      [30, 0],
+    ];
+    for (const [mode, rho] of [
+      ['control', undefined],
+      ['conic', 0.4],
+    ] as const) {
+      const b = new SketchBuilder();
+      const curve = b.spline(
+        mode === 'control'
+          ? poles
+          : ([
+              [0, 0],
+              [15, 20],
+              [30, 0],
+            ] as [number, number][]),
+        { mode: mode as 'control' | 'conic', rho },
+      );
+      // A line from the curve's end back to its start closes the loop.
+      b.line(30, 0, 0, 0);
+      const profiles = detectProfiles(b.sketch);
+      expect(profiles).toHaveLength(1);
+      const profile = profiles[0] as Profile;
+      expect(profile.area).toBeGreaterThan(100);
+      // The polyline the detector walks is the one the curve draws, chords and
+      // all, so the area is the area of that polyline.
+      const entity = b.sketch.entities[curve.id as SketchEntityId] as SketchSpline;
+      const drawn = curvePolyline(b.sketch, entity) as Vec2[];
+      expect(profile.area).toBeCloseTo(areaUnder(drawn), 6);
+      expect(curve.points).toHaveLength(mode === 'control' ? 4 : 3);
+      // A conic's profile follows the exact conic, to within the polyline the
+      // detector samples it with.
+      if (mode === 'conic') {
+        const dense: Vec2[] = [];
+        for (let i = 0; i <= 4000; i++)
+          dense.push(conicPoint([0, 0], [15, 20], [30, 0], 0.4, i / 4000));
+        const exact = areaUnder(dense);
+        expect(profile.area).toBeGreaterThan(exact * 0.99);
+        expect(profile.area).toBeLessThan(exact * 1.01);
+      }
+    }
   });
 
   it('leaves out construction geometry and points', () => {

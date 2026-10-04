@@ -2,7 +2,15 @@ import { DropdownMenu as Radix, ContextMenu as RadixContext } from 'radix-ui';
 import { createContext, type ReactElement, type ReactNode, useContext } from 'react';
 
 const content =
-  'z-50 min-w-48 rounded-dialog border border-line bg-raised p-1 text-base text-ink shadow-raised';
+  'z-50 min-w-48 overflow-y-auto rounded-dialog border border-line bg-raised p-1 text-base text-ink shadow-raised';
+/**
+ * A menu that is taller than the space it opens in scrolls instead of reaching
+ * past the window (P4-05: two more Create items made the Sketch tab's menu
+ * taller than a 900 px viewport, and its last items could not be clicked).
+ * Radix measures the room and sets the variable per menu kind.
+ */
+const dropContent = `${content} max-h-[var(--radix-dropdown-menu-content-available-height)]`;
+const contextContent = `${content} max-h-[var(--radix-context-menu-content-available-height)]`;
 const item =
   'flex h-8 cursor-default select-none items-center gap-2 rounded-input px-2 outline-none data-highlighted:bg-accent-soft data-disabled:text-muted data-disabled:opacity-60';
 
@@ -28,7 +36,7 @@ export function Menu({ trigger, children, align = 'start', label, onCloseAutoFoc
         <Radix.Content
           align={align}
           sideOffset={4}
-          className={content}
+          className={dropContent}
           aria-label={label}
           {...(onCloseAutoFocus && { onCloseAutoFocus })}
         >
@@ -70,7 +78,7 @@ export function ContextMenu({
       </RadixContext.Trigger>
       <RadixContext.Portal>
         <RadixContext.Content
-          className={content}
+          className={contextContent}
           aria-label={label}
           collisionPadding={8}
           {...(onCloseAutoFocus && { onCloseAutoFocus })}
@@ -118,7 +126,7 @@ export function PointMenu({ at, onClose, label, children }: PointMenuProps) {
           // Clear of the pointer: Radix takes a release over an item for a pick.
           sideOffset={10}
           collisionPadding={8}
-          className={`${content} max-h-80 overflow-y-auto`}
+          className={`${dropContent} max-h-80`}
           aria-label={label}
           onCloseAutoFocus={(event) => event.preventDefault()}
         >

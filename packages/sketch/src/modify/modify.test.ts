@@ -725,6 +725,51 @@ describe('mirror, copy, patterns and scale', () => {
     expect(r.dof).toBe(before2 - 1);
   });
 
+  it("carries a spline's mode and rho over to its copy (P4-05)", () => {
+    const b = new SketchBuilder();
+    const axis = b.line(0, -20, 0, 20, true);
+    b.constrain({ type: 'fix', entity: axis.start });
+    b.constrain({ type: 'fix', entity: axis.end });
+    const conic = b.spline(
+      [
+        [0, 10],
+        [10, 16],
+        [20, 10],
+      ],
+      { mode: 'conic', rho: 0.3 },
+    );
+    const poles = b.spline(
+      [
+        [0, 4],
+        [8, 8],
+        [16, 2],
+        [20, 5],
+      ],
+      { mode: 'control' },
+    );
+    const before = data(b);
+    for (const objects of [[id(conic.id)], [id(poles.id)]]) {
+      const after = apply(before, copy(before, [...objects, id(axis.id)], [40, 0], newId));
+      const copies = Object.entries(after.entities).filter(
+        ([key, e]) => e.type === 'spline' && !(key in before.entities),
+      );
+      expect(copies).toHaveLength(1);
+      const [copyEntity] = copies.map(([, e]) => e);
+      expect(copyEntity).toMatchObject(
+        conic.id === objects[0] ? { mode: 'conic', rho: 0.3 } : { mode: 'control' },
+      );
+      expect((copyEntity as { points: string[] }).points).toHaveLength(
+        conic.id === objects[0] ? 3 : 4,
+      );
+    }
+    // Mirroring copies the entity the same way (a conic is affine-invariant).
+    const mirrored = apply(before, mirror(before, [id(conic.id), id(axis.id)], id(axis.id), newId));
+    const [mirroredConic] = Object.entries(mirrored.entities)
+      .filter(([key, e]) => e.type === 'spline' && !(key in before.entities))
+      .map(([, e]) => e);
+    expect(mirroredConic).toMatchObject({ mode: 'conic', rho: 0.3 });
+  });
+
   it('copies geometry with its constraints and dimensions', () => {
     const { b, bottom, right, top, left } = rectangle();
     const before = data(b);

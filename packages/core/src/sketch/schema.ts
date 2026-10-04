@@ -77,13 +77,30 @@ export const SketchEllipseSchema = z.strictObject({
 });
 
 /**
- * A fit-point spline (P1-05, FR-SK-03): a smooth curve through its points in
- * order. The curve is derived from the points (`fitSpline` in
+ * A spline (P1-05, P4-05, FR-SK-03): a smooth curve through or guided by its
+ * points in order. The curve is derived from the points (`splineCurve` in
  * `sketch/curves.ts`), so the solver sees only the points.
+ *
+ * - `fit` (no `mode`, what P1-05 wrote): a smooth curve through every point.
+ * - `control`: the points are the B-spline's poles; the curve starts at the
+ *   first and ends at the last, tangent to the control polygon there, and does
+ *   not pass through the ones between.
+ * - `conic`: exactly three points — start, shoulder (where the end tangents
+ *   meet) and end — and a `rho` (0 < rho < 1) that says how full the conic is:
+ *   below 0.5 an ellipse arc, 0.5 a parabola, above a hyperbola arc.
+ *
+ * A conic's own curve is a rational quadratic, which the kernel can't take, so
+ * it is stored exactly (three points and rho) and drawn as a cubic
+ * approximation within 1e-5 mm (`conicSpline`), itself built from adaptively
+ * subdivided cubic pieces.
  */
 export const SketchSplineSchema = z.strictObject({
   type: z.literal('spline'),
   points: z.array(ref).min(2),
+  /** How the points shape the curve; absent means 'fit', so P1-05 files stay as they are. */
+  mode: z.enum(['fit', 'control', 'conic']).optional(),
+  /** A conic's fullness; only for `mode: 'conic'`, and then required. */
+  rho: z.number().gt(0).lt(1).optional(),
   construction: z.boolean(),
 });
 
@@ -437,6 +454,23 @@ export function sketchIssues(sketch: {
           e(`points.${i}`, p);
         });
         distinct('entities', id, entity.points);
+        // P4-05: a conic is three points and a rho; the other modes have no rho.
+        if (entity.mode === 'conic') {
+          if (entity.points.length !== 3) {
+            issues.push({
+              path: ['entities', id, 'points'],
+              message: `a conic has 3 points (start, shoulder, end), not ${entity.points.length}`,
+            });
+          }
+          if (entity.rho === undefined) {
+            issues.push({ path: ['entities', id, 'rho'], message: 'a conic needs a rho' });
+          }
+        } else if (entity.rho !== undefined) {
+          issues.push({
+            path: ['entities', id, 'rho'],
+            message: 'only a conic has a rho',
+          });
+        }
         break;
       case 'text':
         e('anchor', entity.anchor);

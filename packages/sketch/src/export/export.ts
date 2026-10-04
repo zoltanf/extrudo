@@ -15,11 +15,11 @@
 import {
   type BSpline,
   ellipseShape,
-  fitSpline,
   placeText,
   type SketchData,
   type SketchEntity,
   type SketchEntityId,
+  splineCurve,
   type TextCurve,
   type Vec2,
 } from '@extrudo/core';
@@ -152,9 +152,11 @@ function curveContour(data: SketchData, entity: SketchEntity): Contour | undefin
       };
     }
     case 'spline': {
-      const fit = entity.points.map(at);
-      if (!fit.every((p) => p !== undefined)) return undefined;
-      const spline = fitSpline(fit);
+      const points = entity.points.map(at);
+      if (!points.every((p) => p !== undefined)) return undefined;
+      // The entity's own mode (P4-05, ADR-0063): a conic exports as the cubic
+      // that stays within a micron of it.
+      const spline = splineCurve(entity, points as Vec2[]);
       const beziers = bezierRange(bezierPieces(spline), 0, 1);
       const start = beziers[0]?.[0];
       return start && { start, segments: beziers.map(bezierSegment), closed: false };
@@ -259,9 +261,9 @@ function edgeSegments(data: SketchData, edge: ProfileEdge): Segment[] {
       ];
     }
     case 'spline': {
-      const fit = entity.points.map((id) => pointOf(data, id));
-      if (!fit.every((p) => p !== undefined) || points.length < 2) return polyline();
-      const spline = fitSpline(fit);
+      const poles = entity.points.map((id) => pointOf(data, id));
+      if (!poles.every((p) => p !== undefined) || points.length < 2) return polyline();
+      const spline = splineCurve(entity, poles as Vec2[]);
       const [from, to] = splineRange(spline, points);
       const beziers = bezierRange(bezierPieces(spline), from, to);
       const segments = beziers.map(bezierSegment);

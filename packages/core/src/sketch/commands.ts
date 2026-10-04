@@ -22,6 +22,7 @@ import {
   type SketchData,
   type SketchDimension,
   type SketchEntity,
+  SketchSplineSchema,
   SketchTextSchema,
   sketchIssues,
 } from './schema';
@@ -418,6 +419,30 @@ export const setText = defineCommand<{
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     if (!issue) throw new CommandError('That is not a valid text.');
+    throw new CommandError(`${issue.path.join('.')}: ${issue.message}.`);
+  }
+  data.entities[id] = parsed.data;
+});
+
+/**
+ * Sets a conic's fullness (P4-05, ADR-0063 §4): the selection panel's Rho
+ * field, one undo step. The curve is derived from it, so nothing else moves and
+ * the solver has nothing to do. Refused for anything but a conic, and for a rho
+ * outside 0 to 1.
+ */
+export const setSplineRho = defineCommand<{
+  feature: FeatureId;
+  id: SketchEntityId;
+  rho: number;
+}>('sketch.splineRho', 'Conic rho', (draft, { feature, id, rho }) => {
+  const data = sketchDraft(draft, feature);
+  const e = data.entities[id];
+  if (e?.type !== 'spline') throw new CommandError(`"${id}" isn't a spline of this sketch.`);
+  if (e.mode !== 'conic') throw new CommandError('Only a conic has a rho.');
+  const parsed = SketchSplineSchema.safeParse({ ...e, rho });
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    if (!issue) throw new CommandError('That is not a valid rho.');
     throw new CommandError(`${issue.path.join('.')}: ${issue.message}.`);
   }
   data.entities[id] = parsed.data;

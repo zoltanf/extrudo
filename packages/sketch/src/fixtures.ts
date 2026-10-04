@@ -92,11 +92,23 @@ export class SketchBuilder {
     return { id, center, major, minor };
   }
 
-  /** A fit-point spline through `points` ([x, y] pairs). */
-  spline(points: [number, number][]) {
+  /**
+   * A spline through `points` ([x, y] pairs): a fit-point one (P1-05) or, with
+   * `mode`, a control-point one or a conic (P4-05, which then needs `rho`).
+   */
+  spline(
+    points: [number, number][],
+    options: { mode?: 'fit' | 'control' | 'conic'; rho?: number } = {},
+  ) {
     const ids = points.map(([x, y]) => this.point(x, y));
     const id = this.id('s');
-    this.entities[id] = { type: 'spline', points: ids as never, construction: false };
+    this.entities[id] = {
+      type: 'spline',
+      points: ids as never,
+      ...(options.mode ? { mode: options.mode } : {}),
+      ...(options.rho === undefined ? {} : { rho: options.rho }),
+      construction: false,
+    };
     return { id, points: ids };
   }
 

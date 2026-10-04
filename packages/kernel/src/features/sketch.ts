@@ -2,7 +2,6 @@ import {
   curvePolyline,
   ellipseShape,
   faceSketchFrame,
-  fitSpline,
   type GeomRef,
   originPlane,
   type ProjectedCurve,
@@ -16,6 +15,7 @@ import {
   type SketchInputs,
   type SketchReport,
   sketchFeature,
+  splineCurve,
   type Vec2,
 } from '@extrudo/core';
 import {
@@ -449,9 +449,11 @@ function planarCurve(
       return { kind: 'ellipse', center, a, b, rotation };
     }
     case 'spline': {
-      const fit = e.points.map(point);
-      if (!fit.every((p) => p !== undefined)) return undefined;
-      const { degree, poles, knots } = fitSpline(fit);
+      // The entity's own mode (P4-05, ADR-0063): a conic reaches the kernel as
+      // the cubic that stays within a micron of it.
+      const points = e.points.map(point);
+      if (!points.every((p) => p !== undefined)) return undefined;
+      const { degree, poles, knots } = splineCurve(e, points as Vec2[]);
       return { kind: 'spline', degree, poles, knots };
     }
   }

@@ -1,13 +1,13 @@
 /**
- * The shapes of ellipses and fit-point splines (P1-05, ADR-0014), read from
- * their points. The viewport, the drawing tools and (later) the kernel all
+ * The shapes of ellipses and splines (P1-05, P4-05, ADR-0014, ADR-0063),
+ * read from their points. The viewport, the drawing tools and the kernel all
  * draw them from here, so a spline is the same curve on screen and in the
  * model: the kernel gets these poles and knots, not the fit points.
  */
 
 import type { SketchEntityId } from '../ids';
 import type { Vec2 } from './planes';
-import type { SketchData, SketchEntity } from './schema';
+import type { SketchData, SketchEntity, SketchSpline } from './schema';
 
 // Ellipses ---------------------------------------------------------------------
 
@@ -121,8 +121,25 @@ export function splinePoint(spline: BSpline, u: number): Vec2 {
   return [x, y];
 }
 
+/** Segments a spline's polyline draws per knot span (ADR-0063). */
+export const SPLINE_SEGMENTS_PER_SPAN = 16;
+/**
+ * A conic's pieces are short (ADR-0063: its subdivision has up to 144 spans),
+ * so its polyline draws fewer segments in each: four, which keeps a full conic
+ * at under 600 drawn and picked points instead of over 2,000.
+ * Fit-point and control-point splines keep the full sixteen.
+ */
+export const CONIC_SEGMENTS_PER_SPAN = 4;
+/**
+ * …but a conic with few spans still wants enough of them to draw smooth: the
+ * segments are `max(4, ceil(96 / spans))` per span, so a one-span parabola
+ * (rho 0.5) is drawn with 96 chords and its chords stay two orders of
+ * magnitude inside the profile detection's vertex tolerance.
+ */
+export const CONIC_MIN_SEGMENTS = 96;
+
 /** Points along a B-spline, `perSpan` segments between neighbouring distinct knots. */
-export function splinePolyline(spline: BSpline, perSpan = 16): Vec2[] {
+export function splinePolyline(spline: BSpline, perSpan = SPLINE_SEGMENTS_PER_SPAN): Vec2[] {
   const distinct = [...new Set(spline.knots)];
   const out: Vec2[] = [splinePoint(spline, 0)];
   for (let i = 1; i < distinct.length; i++) {
@@ -132,6 +149,242 @@ export function splinePolyline(spline: BSpline, perSpan = 16): Vec2[] {
       out.push(splinePoint(spline, u0 + ((u1 - u0) * k) / perSpan));
   }
   return out;
+}
+
+// Spline modes (P4-05, ADR-0063 §1, §2) ------------------------------------------
+
+/** How a spline's points shape its curve; 'fit' is what an old spline without a mode is. */
+export type SplineMode = 'fit' | 'control' | 'conic';
+
+/**
+ * The clamped cubic B-spline through `poles` as control points (P4-05,
+ * `mode: 'control'`): degree `min(3, n − 1)` with uniform interior knots, so
+ * the curve starts at the first pole, ends at the last and is tangent to the
+ * control polygon at both. Two poles give a line, three a quadratic Bézier.
+ */
+export function controlSpline(poles: readonly Vec2[]): BSpline {
+  if (poles.length < 2) throw new Error('controlSpline: needs at least two points');
+  const degree = Math.min(3, poles.length - 1);
+  // Uniform interior knots, one per knot span after the first.
+  const spans = poles.length - degree;
+  const knots: number[] = [];
+  for (let i = 0; i <= degree; i++) knots.push(0);
+  for (let j = 1; j < spans; j++) knots.push(j / spans);
+  for (let i = 0; i <= degree; i++) knots.push(1);
+  return { degree, poles: poles.map((p) => [p[0], p[1]] as Vec2), knots };
+}
+
+/** The middle weight of a conic: the ratio a rational Bézier needs for its rho. */
+const conicWeight = (rho: number): number => rho / (1 - rho);
+
+/**
+ * The exact rational quadratic Bézier of a conic (P4-05, `mode: 'conic'`):
+ * the poles `start`, `shoulder`, `end` with weights 1, `rho / (1 − rho)`, 1.
+ * Below rho 0.5 an ellipse arc, 0.5 a parabola, above a hyperbola arc; the end
+ * tangents point at the shoulder. This is the curve a conic *means* — the
+ * sketch stores these three points and rho, and `conicSpline` approximates it.
+ */
+export function conicPoint(start: Vec2, shoulder: Vec2, end: Vec2, rho: number, t: number): Vec2 {
+  const w = conicWeight(rho);
+  const a = (1 - t) * (1 - t);
+  const b = 2 * t * (1 - t) * w;
+  const c = t * t;
+  const d = a + b + c;
+  return [
+    (a * start[0] + b * shoulder[0] + c * end[0]) / d,
+    (a * start[1] + b * shoulder[1] + c * end[1]) / d,
+  ];
+}
+
+/** The tangent of the exact conic at `t`, as a vector per unit of `t`. */
+function conicTangent(start: Vec2, shoulder: Vec2, end: Vec2, rho: number, t: number): Vec2 {
+  const w = conicWeight(rho);
+  const a = (1 - t) * (1 - t);
+  const b = 2 * t * (1 - t) * w;
+  const c = t * t;
+  const da = -2 * (1 - t);
+  const db = 2 * w * (1 - 2 * t);
+  const dc = 2 * t;
+  const d = a + b + c;
+  const dd = da + db + dc;
+  const n0 = a * start[0] + b * shoulder[0] + c * end[0];
+  const n1 = a * start[1] + b * shoulder[1] + c * end[1];
+  const dn0 = da * start[0] + db * shoulder[0] + dc * end[0];
+  const dn1 = da * start[1] + db * shoulder[1] + dc * end[1];
+  return [(dn0 * d - n0 * dd) / (d * d), (dn1 * d - n1 * dd) / (d * d)];
+}
+
+/**
+ * How close a conic's cubic approximation stays to the exact curve, mm
+ * (ADR-0063 §2): a hundredth of a micron, and a tenth of the profile
+ * detection's own vertex tolerance.
+ */
+export const CONIC_TOLERANCE = 1e-5;
+/**
+ * The most Hermite pieces a conic is cut into (ADR-0063 §2). Adaptive
+ * subdivision gives an ordinary conic a few dozen and the fullest one (rho
+ * 0.95, whose speed swings 19:1 between its ends) 144, so this cap only
+ * stops a degenerate one.
+ */
+export const CONIC_MAX_PIECES = 160;
+/** Parameters checked inside each piece while looking for the tolerance. */
+const CONIC_SAMPLES_PER_PIECE = 8;
+
+/** One cubic Hermite piece of the exact conic over the parameters [t0, t1]. */
+function conicPiece(
+  start: Vec2,
+  shoulder: Vec2,
+  end: Vec2,
+  rho: number,
+  t0: number,
+  t1: number,
+): Vec2[] {
+  const from = conicPoint(start, shoulder, end, rho, t0);
+  const to = conicPoint(start, shoulder, end, rho, t1);
+  // The exact tangents, each a third of its piece's parameter span: the join
+  // point's tangent vector is then the same from both sides, which is what
+  // makes the joined B-spline C1.
+  const span = t1 - t0;
+  const at = conicTangent(start, shoulder, end, rho, t0);
+  const leave = conicTangent(start, shoulder, end, rho, t1);
+  return [
+    from,
+    [from[0] + (span / 3) * at[0], from[1] + (span / 3) * at[1]],
+    [to[0] - (span / 3) * leave[0], to[1] - (span / 3) * leave[1]],
+    to,
+  ];
+}
+
+/** The point of a cubic Bézier at `s` in [0, 1] (de Casteljau). */
+function bezierAt(points: readonly Vec2[], s: number): Vec2 {
+  let row = points;
+  while (row.length > 1) {
+    const next: Vec2[] = [];
+    for (let i = 1; i < row.length; i++) {
+      const a = row[i - 1] as Vec2;
+      const b = row[i] as Vec2;
+      next.push([a[0] + (b[0] - a[0]) * s, a[1] + (b[1] - a[1]) * s]);
+    }
+    row = next;
+  }
+  return row[0] as Vec2;
+}
+
+/** How far a piece runs from the exact conic inside it, mm. */
+function pieceError(
+  points: readonly Vec2[],
+  start: Vec2,
+  shoulder: Vec2,
+  end: Vec2,
+  rho: number,
+  t0: number,
+  t1: number,
+): number {
+  const span = t1 - t0;
+  let worst = 0;
+  // The piece's ends are the exact curve's points, so the inside is what to see.
+  for (let i = 1; i < CONIC_SAMPLES_PER_PIECE; i++) {
+    const s = i / CONIC_SAMPLES_PER_PIECE;
+    const at = bezierAt(points, s);
+    const [ex, ey] = conicPoint(start, shoulder, end, rho, t0 + s * span);
+    worst = Math.max(worst, Math.hypot(at[0] - ex, at[1] - ey));
+  }
+  return worst;
+}
+
+/**
+ * The non-rational cubic B-spline within `CONIC_TOLERANCE` of the exact conic
+ * (P4-05, ADR-0063 §2). Its own curve is rational, which the kernel cannot
+ * take (ADR-0001), so this is what everything downstream draws, measures,
+ * extrudes and exports; the stored conic stays exact.
+ *
+ * The pieces are cubic Hermite pieces of the exact conic, subdivided
+ * adaptively: an interval over the tolerance is split at its middle and
+ * looked at again. Splitting halves the parameter span, which brings the
+ * rational weight of the piece towards 1, so a piece becomes polynomial
+ * (fourth order) quickly and the ones where the curve swings — the ends of a
+ * full conic — get the spans they need while the flat middle keeps two.
+ *
+ * They are joined into one cubic B-spline with **double interior knots at the
+ * pieces' parameters**, so `splinePoint(spline, t)` is the exact conic's point
+ * at every join, and the poles are the pieces' control points with each join's
+ * shared point dropped. rho = 0.5 is exact: one quadratic Bézier raised to
+ * degree 3.
+ */
+export function conicSpline(start: Vec2, shoulder: Vec2, end: Vec2, rho: number): BSpline {
+  // The quadratic Bézier of rho = 0.5 is already a cubic.
+  if (rho === 0.5) {
+    return {
+      degree: 3,
+      poles: [
+        start,
+        [
+          start[0] + (2 / 3) * (shoulder[0] - start[0]),
+          start[1] + (2 / 3) * (shoulder[1] - start[1]),
+        ],
+        [end[0] + (2 / 3) * (shoulder[0] - end[0]), end[1] + (2 / 3) * (shoulder[1] - end[1])],
+        end,
+      ],
+      knots: [0, 0, 0, 0, 1, 1, 1, 1],
+    };
+  }
+  const pending: [number, number][] = [
+    [0, 0.5],
+    [0.5, 1],
+  ];
+  const kept: { t0: number; points: Vec2[] }[] = [];
+  while (pending.length > 0) {
+    const [t0, t1] = pending.shift() as [number, number];
+    const points = conicPiece(start, shoulder, end, rho, t0, t1);
+    const over =
+      pieceError(points, start, shoulder, end, rho, t0, t1) > CONIC_TOLERANCE &&
+      // Every interval still waiting ends up a piece, and this one has just
+      // come off the queue, so they are the budget.
+      kept.length + pending.length + 1 < CONIC_MAX_PIECES;
+    if (over) {
+      // Splitting at the middle puts the halves at the back of the queue, so
+      // the subdivision spreads evenly (breadth first) instead of deepening
+      // the first interval until the pieces are wasted.
+      const mid = (t0 + t1) / 2;
+      pending.push([t0, mid], [mid, t1]);
+    } else kept.push({ t0, points });
+  }
+  kept.sort((a, b) => a.t0 - b.t0);
+  return joinConicPieces(kept);
+}
+
+/**
+ * The kept pieces as one cubic B-spline: double interior knots at their
+ * parameters, and the poles a C1 chain has — the first piece's first three
+ * control points, then each piece's middle two, then the last point. The
+ * pieces' shared ends are the curve's join points, which such a chain implies
+ * from the two poles around them (the test proves it for unequal spans).
+ */
+function joinConicPieces(pieces: readonly { t0: number; points: Vec2[] }[]): BSpline {
+  const first = pieces[0]?.points as Vec2[];
+  const last = pieces[pieces.length - 1]?.points as Vec2[];
+  const poles: Vec2[] = [first[0] as Vec2, first[1] as Vec2, first[2] as Vec2];
+  for (const piece of pieces.slice(1)) poles.push(piece.points[1] as Vec2, piece.points[2] as Vec2);
+  poles.push(last[3] as Vec2);
+  const knots: number[] = [0, 0, 0, 0];
+  for (const piece of pieces.slice(1)) knots.push(piece.t0, piece.t0);
+  knots.push(1, 1, 1, 1);
+  return { degree: 3, poles, knots };
+}
+
+/**
+ * The curve of a spline entity from the positions of its points (P4-05,
+ * ADR-0063 §2): the one place a spline's shape comes from, so the viewport,
+ * the profiles, the export and the kernel all draw the same curve. `mode`
+ * picks how the points shape it; a spline without one is a fit-point spline.
+ */
+export function splineCurve(entity: SketchSpline, points: Vec2[]): BSpline {
+  if (entity.mode === 'control') return controlSpline(points);
+  if (entity.mode === 'conic' && entity.rho !== undefined && points.length === 3) {
+    const [start, shoulder, end] = points as [Vec2, Vec2, Vec2];
+    return conicSpline(start, shoulder, end, entity.rho);
+  }
+  return fitSpline(points);
 }
 
 // Polylines --------------------------------------------------------------------
@@ -187,8 +440,15 @@ export function curvePolyline(data: SketchData, entity: SketchEntity): Vec2[] | 
       return out;
     }
     case 'spline': {
-      const fit = entity.points.map(at);
-      return fit.every((p) => p !== undefined) ? splinePolyline(fitSpline(fit)) : undefined;
+      const points = entity.points.map(at);
+      if (!points.every((p) => p !== undefined)) return undefined;
+      const spline = splineCurve(entity, points as Vec2[]);
+      if (entity.mode !== 'conic') return splinePolyline(spline);
+      const spans = new Set(spline.knots).size - 1;
+      return splinePolyline(
+        spline,
+        Math.max(CONIC_SEGMENTS_PER_SPAN, Math.ceil(CONIC_MIN_SEGMENTS / spans)),
+      );
     }
     case 'text':
       // A text is many curves: its callers that must see text use `textPolylines`.
