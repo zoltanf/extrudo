@@ -33,7 +33,6 @@
  * out smaller than modelled; `presetMatches` recognises both forms, so the
  * dialog's dropdown still shows the preset. P4-08, ADR-0062, FR-3DP-05.
  */
-import { z } from 'zod';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
@@ -45,6 +44,7 @@ import {
 } from './schema';
 import { originPlaneRef } from './sketch/planes';
 import { TOLERANCE_PARAMETER } from './thread';
+import { z } from './zod';
 
 export const HOLE_TYPE = 'hole';
 

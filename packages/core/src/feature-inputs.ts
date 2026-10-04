@@ -3,8 +3,8 @@
  * features after them): enums, expressions of one unit, references of some
  * kinds, and the four body operations.
  */
-import { z } from 'zod';
 import { ExprInputSchema, type GeomRefKind, RefInputSchema, type UnitKind } from './schema';
+import { z } from './zod';
 
 /**
  * What a solid feature does with the solid it makes (FR-FT-01):

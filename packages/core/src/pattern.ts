@@ -21,7 +21,6 @@
  * the kernel and the web app agree on it. The kernel adds evaluators and the
  * web app dialogs, each in its own registry keyed by the type (ADR-0003).
  */
-import { z } from 'zod';
 import { COIL_TYPE } from './coil';
 import { EMBOSS_TYPE } from './emboss';
 import { EXTRUDE_TYPE } from './extrude';
@@ -40,6 +39,7 @@ import {
   type GeomRefKind,
 } from './schema';
 import { SWEEP_TYPE } from './sweep';
+import { z } from './zod';
 
 export const RECTANGULAR_PATTERN_TYPE = 'rectangularPattern';
 export const CIRCULAR_PATTERN_TYPE = 'circularPattern';

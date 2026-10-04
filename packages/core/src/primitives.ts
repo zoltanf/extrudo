@@ -23,11 +23,11 @@
  * face). Every input is optional and has a default, so a minimal box is
  * `{}`: a 20 mm cube on the XY plane at the origin, a new body.
  */
-import { z } from 'zod';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { ExprInput, GeomRef, GeomRefKind, RefInput, UnitKind } from './schema';
 import { originPlaneRef } from './sketch/planes';
+import { z } from './zod';
 
 export const BOX_TYPE = 'box';
 export const CYLINDER_TYPE = 'cylinder';

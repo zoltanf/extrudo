@@ -21,11 +21,11 @@
  * Every input is optional, so a minimal coil is `{}`: 5 turns 20 mm high of
  * a 2 mm wire on a 20 mm diameter on the XY plane, a new body.
  */
-import { z } from 'zod';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { DEFAULT_PLACEMENT, PLACEMENT_KINDS, type PrimitiveNumber } from './primitives';
 import type { ExprInput, GeomRef, RefInput } from './schema';
+import { z } from './zod';
 
 export const COIL_TYPE = 'coil';
 

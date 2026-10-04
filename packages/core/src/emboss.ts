@@ -12,10 +12,10 @@
  * Every input except `profiles` and `face` is optional and has a default, so
  * a minimal emboss is `{ profiles, face }`: 1 mm, embossed.
  */
-import { z } from 'zod';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { ExprInput, GeomRef, GeomRefKind, RefInput, UnitKind } from './schema';
+import { z } from './zod';
 
 export const EMBOSS_TYPE = 'emboss';
 

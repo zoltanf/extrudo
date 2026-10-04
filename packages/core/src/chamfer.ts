@@ -25,10 +25,10 @@
  * tangent-continuous edges once one of them is given, with one setting. A
  * dialog therefore adds the chain of an edge you pick.
  */
-import { z } from 'zod';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { type BoolInput, BoolInputSchema, type GeomRef, type Input } from './schema';
+import { z } from './zod';
 
 export const CHAMFER_TYPE = 'chamfer';
 

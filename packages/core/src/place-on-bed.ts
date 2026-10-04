@@ -10,10 +10,10 @@
  * The kernel adds its evaluator and the web app its dialog, each in its own
  * registry keyed by `PLACE_ON_BED_TYPE` (ADR-0003).
  */
-import { z } from 'zod';
 import { exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { ExprInput, GeomRef, RefInput } from './schema';
+import { z } from './zod';
 
 export const PLACE_ON_BED_TYPE = 'placeOnBed';
 

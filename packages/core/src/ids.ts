@@ -5,7 +5,7 @@
  * IDs are branded strings so a feature ID can't be passed where a parameter ID
  * is expected. The brands come from the zod schemas in `schema.ts`.
  */
-import { z } from 'zod';
+import { z } from './zod';
 
 // `crypto` is global in browsers, workers and Node ≥ 19. Core compiles without
 // the DOM and Node type libraries, so declare the one method we use.

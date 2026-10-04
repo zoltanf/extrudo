@@ -20,10 +20,10 @@
  * the chain of an edge you pick, and two sets that reach one chain with
  * different radii fail with a message (`mixed-radii`).
  */
-import { z } from 'zod';
 import { exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { type BoolInput, BoolInputSchema, type GeomRef, type Input } from './schema';
+import { z } from './zod';
 
 export const FILLET_TYPE = 'fillet';
 

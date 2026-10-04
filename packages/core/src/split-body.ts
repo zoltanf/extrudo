@@ -12,11 +12,11 @@
  * registry keyed by `SPLIT_BODY_TYPE` (ADR-0003). Inputs are plain `ref` and
  * `enum` inputs, so the document schema doesn't change.
  */
-import { z } from 'zod';
 import { enumInput, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { PLACEMENT_KINDS } from './primitives';
 import type { GeomRef, RefInput } from './schema';
+import { z } from './zod';
 
 export const SPLIT_BODY_TYPE = 'splitBody';
 

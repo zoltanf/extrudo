@@ -25,7 +25,6 @@
  * so its first turn starts whole and prints. `hand` is `right` (default) or
  * `left`.
  */
-import { z } from 'zod';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
@@ -35,6 +34,7 @@ import {
   type GeomRefKind,
   type RefInput,
 } from './schema';
+import { z } from './zod';
 
 export const THREAD_TYPE = 'thread';
 

@@ -18,10 +18,10 @@
  * At least one face or body is needed. The inputs are plain `ref`, `expr`
  * and `enum` inputs, so the document schema doesn't change.
  */
-import { z } from 'zod';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { ExprInput, GeomRef, RefInput } from './schema';
+import { z } from './zod';
 
 export const SHELL_TYPE = 'shell';
 

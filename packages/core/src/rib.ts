@@ -12,7 +12,6 @@
  * centred on the sketch plane, growing to the side of the line where the body
  * is. The rest are optional with defaults, like extrude's (ADR-0028).
  */
-import { z } from 'zod';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
@@ -22,6 +21,7 @@ import {
   type GeomRefKind,
   type RefInput,
 } from './schema';
+import { z } from './zod';
 
 export const RIB_TYPE = 'rib';
 

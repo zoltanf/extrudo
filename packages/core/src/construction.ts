@@ -30,12 +30,12 @@
  * face (`faceSketchFrame`, ADR-0031), so it depends on the plane alone. The
  * kernel reports each construction feature as a `ConstructionReport`.
  */
-import { z } from 'zod';
 import { exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { FeatureId } from './ids';
 import type { Feature, GeomRef, GeomRefKind } from './schema';
 import type { SketchFrame, Vec3 } from './sketch/planes';
+import { z } from './zod';
 
 export const OFFSET_PLANE_TYPE = 'offsetPlane';
 export const PLANE_AT_ANGLE_TYPE = 'planeAtAngle';

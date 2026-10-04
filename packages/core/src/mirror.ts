@@ -13,12 +13,12 @@
  * ignored then, and `copy` and `join` don't apply. The kernel adds its evaluator and the web app its dialog, each in its own
  * registry keyed by `MIRROR_TYPE` (ADR-0003).
  */
-import { z } from 'zod';
 import { enumInput, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { PATTERN_OBJECTS, type PatternObjects } from './pattern';
 import { PLACEMENT_KINDS } from './primitives';
 import { BoolInputSchema, type GeomRef } from './schema';
+import { z } from './zod';
 
 export const MIRROR_TYPE = 'mirror';
 

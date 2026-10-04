@@ -13,10 +13,10 @@
  * The kernel adds its evaluator and the web app its dialog, each in its own
  * registry keyed by `COMBINE_TYPE` (ADR-0003).
  */
-import { z } from 'zod';
 import { enumInput, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { BoolInputSchema, type GeomRef } from './schema';
+import { z } from './zod';
 
 export const COMBINE_TYPE = 'combine';
 
