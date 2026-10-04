@@ -81,7 +81,9 @@ cannot reach. Tick them off in order; each box says who and where.
 - [ ] Cloudflare: move `extrudo.org` and `www` from the `extrudo` project to
   `extrudo-site`; add `app.extrudo.org` to `extrudo`; add `edge.extrudo.org` and
   point its CNAME at `edge.extrudo.pages.dev`.
-- [ ] Turn off Web Analytics automatic setup (it injects a blocked script).
+- [x] Web Analytics **on** for `extrudo-site` (the landing page), **off** for
+  `extrudo` (app. and edge.): Workers & Pages › project › Metrics › Web
+  Analytics (ADR-0057 amendment). Done 2026-10-04.
 - [ ] Check the landing page, its video and button, edge, and that an old
   `extrudo.org` visitor gets the landing page after a reload or two.
 

@@ -3,6 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { headersFor, matches, parseHeaders } from './headers';
 
 const file = parseHeaders(readFileSync(new URL('../public/_headers', import.meta.url), 'utf8'));
+const siteFile = parseHeaders(
+  readFileSync(new URL('../../site/public/_headers', import.meta.url), 'utf8'),
+);
+
+/** The value of one directive of a `Content-Security-Policy` header. */
+const directiveOf = (csp: string, name: string) =>
+  csp
+    .split(';')
+    .map((d) => d.trim())
+    .find((d) => d.startsWith(`${name} `));
 
 describe('_headers parser', () => {
   it('reads patterns, comments and indented headers', () => {
@@ -90,5 +100,32 @@ describe('the hosted app headers (public/_headers, ADR-0054)', () => {
     expect(directive('frame-ancestors')).toBe("frame-ancestors 'none'");
     // No third-party origin anywhere: the app loads nothing from other hosts.
     expect(csp).not.toMatch(/https?:\/\//);
+  });
+
+  it('has no analytics: the app never loads Cloudflare’s beacon (ADR-0057 amendment)', () => {
+    // The landing page counts its visits; the app has no analytics at all, so the
+    // Pages project behind app. and edge. must stay without Web Analytics.
+    const csp = headersFor(file, '/')['content-security-policy'] ?? '';
+    expect(directiveOf(csp, 'script-src')).not.toContain('cloudflareinsights');
+    expect(directiveOf(csp, 'connect-src')).not.toContain('cloudflareinsights');
+  });
+});
+
+describe('the landing page headers (apps/site/public/_headers, ADR-0057)', () => {
+  it('allows Cloudflare Web Analytics’ two hosts and nothing else', () => {
+    for (const path of ['/', '/index.html']) {
+      const csp = headersFor(siteFile, path)['content-security-policy'] ?? '';
+      // The beacon Pages injects: a script from the first host, and a request to the RUM
+      // endpoint on the second.
+      expect(directiveOf(csp, 'script-src')).toBe(
+        "script-src 'self' https://static.cloudflareinsights.com",
+      );
+      expect(directiveOf(csp, 'connect-src')).toBe(
+        "connect-src 'self' https://cloudflareinsights.com",
+      );
+      // Still this origin for everything else, and no eval of any kind (no WASM here).
+      expect(directiveOf(csp, 'default-src')).toBe("default-src 'self'");
+      expect(csp).not.toMatch(/unsafe-inline|unsafe-eval|wasm-unsafe-eval/);
+    }
   });
 });

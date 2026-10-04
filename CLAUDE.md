@@ -668,7 +668,9 @@ Email Routing: `docs/deploy.md`), SECURITY (GitHub private reporting), issue
 forms and a PR template; `docs/file-format.md` is MIT.
 ADR-0057 (2026-10-03) split the addresses: **`extrudo.org` is a landing page**
 (`apps/site`: static Vite page, brand tokens, no internal packages, its own
-stricter `_headers`, addresses from `apps/site/addresses.ts`), **the stable app is
+stricter `_headers` (which allows Cloudflare Web Analytics' two hosts, the
+amendment; the app has no analytics), addresses (and the contact email) from
+`apps/site/addresses.ts`), **the stable app is
 `app.extrudo.org`** (Pages project `extrudo`, production, deployed only by a `v*`
 tag whose commit passed CI on main, or "Run workflow" target `stable`) and **the
 latest build is `edge.extrudo.org`** (branch `edge` of `extrudo`, every green main
@@ -1581,7 +1583,12 @@ them. Notes further down that name a machine apply to that machine only.
   (the app first, its worker installed, then the site): the retiring `sw.js`
   sometimes waits behind the open tab, and the old app's update toast (Reload)
   sends `SKIP_WAITING`; the spec takes that path when the page didn't switch by
-  itself. Routes to the app are fulfilled with `page.route`.
+  itself. Routes to the app are fulfilled with `page.route`. "Cloudflare Web
+  Analytics runs under the landing page's content policy" serves the built
+  `index.html` with the beacon tag injected before `</body>` through
+  `host.override` (which takes a content type, as `/` has no extension) and stubs
+  both Cloudflare hosts with `page.route`: the script (which then posts to the RUM
+  endpoint) must load, or the site's policy has stopped allowing analytics.
 - **Update toast e2e** (`e2e/pwa.spec.ts`, "an update is waiting"): the host
   swaps `/sw.js` for a copy with another `VERSION`, `registration.update()` makes
   the browser install it, and it **waits** (the old version stays active:

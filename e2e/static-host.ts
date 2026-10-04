@@ -20,8 +20,12 @@ const TYPES: Record<string, string> = {
 export interface StaticHost {
   /** `http://127.0.0.1:<port>`, no trailing slash. */
   url: string;
-  /** Serves `body` at `path` from now on instead of the file (a new service worker, say). */
-  override(path: string, body: string): void;
+  /**
+   * Serves `body` at `path` from now on instead of the file (a new service worker,
+   * a page with a tag injected into it). The content type comes from the path's
+   * extension, so pass it for a path like `/` that has none.
+   */
+  override(path: string, body: string, contentType?: string): void;
   /** Serves another build folder from now on, with its own `_headers` (a site replacing the app). */
   serve(dir: string): void;
   close(): Promise<void>;
@@ -38,7 +42,7 @@ export interface StaticHost {
 export async function startStaticHost(initial: string): Promise<StaticHost> {
   let dir = initial;
   let rules = parseHeaders(readFileSync(join(dir, '_headers'), 'utf8'));
-  const overrides = new Map<string, string>();
+  const overrides = new Map<string, { body: string; contentType?: string }>();
   const server: Server = createServer((req, res) => {
     const path = decodeURIComponent((req.url ?? '/').split('?')[0] ?? '/');
     const headers = headersFor(rules, path);
@@ -51,8 +55,11 @@ export async function startStaticHost(initial: string): Promise<StaticHost> {
     }
     const override = overrides.get(path);
     if (override !== undefined) {
-      res.writeHead(200, { ...headers, 'content-type': TYPES[extname(path)] ?? 'text/plain' });
-      res.end(override);
+      res.writeHead(200, {
+        ...headers,
+        'content-type': override.contentType ?? TYPES[extname(path)] ?? 'text/plain',
+      });
+      res.end(override.body);
       return;
     }
     // Never leave `dir`.
@@ -78,7 +85,7 @@ export async function startStaticHost(initial: string): Promise<StaticHost> {
   const { port } = server.address() as AddressInfo;
   return {
     url: `http://127.0.0.1:${port}`,
-    override: (path, body) => void overrides.set(path, body),
+    override: (path, body, contentType) => void overrides.set(path, { body, contentType }),
     serve: (next) => {
       dir = next;
       rules = parseHeaders(readFileSync(join(dir, '_headers'), 'utf8'));

@@ -92,9 +92,18 @@ Pages project `extrudo-site` and the `edge` deployment of `extrudo`):
    `edge` CNAME so its target is **`edge.extrudo.pages.dev`** (proxied). This is
    Cloudflare's way to give a branch deployment its own domain; without the edit
    it would show the production (stable) app.
-5. Turn off **Web Analytics** automatic setup for both projects (or for the zone):
-   it injects a script from `static.cloudflareinsights.com`, which the content
-   policy blocks (a console error on every page).
+5. **Web Analytics: on for `extrudo-site`, off for `extrudo`** (ADR-0057
+   amendment). Workers & Pages › `extrudo-site` › Metrics › Web Analytics ›
+   **Enable**: extrudo.org counts its visits with Cloudflare's cookieless
+   beacon, which its content policy allows. The same page in the `extrudo`
+   project › **Disable** — that project serves app.extrudo.org *and*
+   edge.extrudo.org, and the app has no analytics (its policy allows no other
+   host, so a beacon there would only be a console error). Then check
+   Analytics & Logs › Web Analytics that no zone-wide automatic setup covers the
+   app's hostnames. Pages injects the tag at each project's next deployment.
+   Done 2026-10-04; the zone's older automatic-setup site for extrudo.org (set to
+   exclude EU visitors) was disabled at the same time, so the project setting is
+   the only one.
 6. Release v0.3.0: tag its commit, `git tag -a v0.3.0 -m "v0.3.0" 20a10bb && git
    push origin v0.3.0`, then GitHub > Actions > Deploy > **Run workflow** on main
    with target `stable` and ref `v0.3.0` (that commit predates the tag trigger:
@@ -140,11 +149,13 @@ forwards project addresses to the owner's own inbox; the inbox's address is
 only in Cloudflare, never in this repository. Set up 2026-10-02:
 
 - `conduct@extrudo.org`: the Code of Conduct's enforcement contact.
+- `hello@extrudo.org`: the landing page's contact address (the footer's mailto;
+  `CONTACT_EMAIL` in `apps/site/addresses.ts`), added 2026-10-04.
 - DNS: three MX records (`route1`–`route3.mx.cloudflare.net`) and the SPF record
   `v=spf1 include:_spf.mx.cloudflare.net ~all`, added by "Add records and
   enable". Check with `dig +short MX extrudo.org`.
 - It only receives: a reply goes out from the owner's own address. Add more
-  addresses (`hello@`…) the same way; leave the catch-all off.
+  addresses the same way; leave the catch-all off.
 
 ## How the workflow behaves
 

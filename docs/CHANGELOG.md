@@ -4,6 +4,14 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-04 · **Landing page: Cloudflare Web Analytics (cookieless) on extrudo.org
+  only** — enabled through the `extrudo-site` Pages project's own setting (the tag
+  is injected at deploy time, so no token is in the repo), its two hosts in the
+  site's content policy (the app's stays `'self'`, so app. and edge. keep no
+  analytics), a privacy note in the footer, the contact address
+  hello@extrudo.org and link colours that meet WCAG AA in the light theme
+  (a `--x-link` token); `e2e/site.spec.ts` checks that the injected beacon runs
+  under the policy and audits the page in both themes (ADR-0057 amendment).
 - 2026-10-04 · **P4-06 (1 of 5) Drawings into a sketch** (ADR-0066 §1,
   FR-SK-14): `readSvg` and `readDxf` in `@extrudo/io` (an XML tokenizer of our
   own, a path-data parser with the SVG arc conversion, transforms composed down

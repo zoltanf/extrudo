@@ -14,6 +14,9 @@
   --x-on-accent: #15171c;
   --x-accent-soft: rgb(255 178 62 / 16%);
   --x-sketch: #5aa9ff;
+  /* Text links: the sketch blue in dark, a darker one in light (the sketch blue is
+     3.6:1 on white, under WCAG AA's 4.5:1 for text). Non-text uses keep --x-sketch. */
+  --x-link: var(--x-sketch);
   --x-glow: radial-gradient(90% 80% at 50% 0%, #46557a 0%, #29313f 45%, #1b1f27 80%);
   --x-logo-top: #ffc76a;
   --x-logo-side: #e0922a;
@@ -35,6 +38,7 @@
     --x-on-accent: #15171c;
     --x-accent-soft: rgb(224 138 30 / 14%);
     --x-sketch: #2f86f0;
+    --x-link: #1a6ad0;
     --x-glow: radial-gradient(90% 80% at 50% 0%, #ffffff 0%, #eef1f5 50%, #ffffff 85%);
     --x-logo-top: #f2a93b;
     --x-logo-side: #c97a16;
@@ -73,7 +77,7 @@ body {
 }
 
 a {
-  color: var(--x-sketch);
+  color: var(--x-link);
 }
 
 code {

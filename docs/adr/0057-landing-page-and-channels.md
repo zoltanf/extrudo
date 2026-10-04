@@ -52,8 +52,8 @@ screen, New design, a sketch with a rectangle and one dimension, an extrude, a
 fillet, then Extrude1 edited from its chip so the part grows and keeps its
 rounded edge ("change one number and the whole part follows"). Info toasts are
 hidden for the recording. Its poster is the bracket screenshot; if the video
-can't load, the page shows the picture instead. Self-hosted: no video platform,
-no tracking, and the content policy stays `'self'`.
+can't load, the page shows the picture instead. Self-hosted: no video platform and
+no tracking by a video platform, and the video stays on this origin.
 
 ### 3. Two Pages projects, three addresses
 
@@ -132,3 +132,78 @@ The app's default `SITE_URL` is now `https://app.extrudo.org`.
 - Open: `X-Robots-Tag: noindex` for edge (the canonical link already points
   search engines at the stable app); a short notice on the landing page for
   people who saved designs at `extrudo.org` on its first day, if any turn up.
+
+## Amendment (2026-10-04): Web Analytics on the landing page only
+
+### Decision
+
+The landing page at `extrudo.org` is counted with **Cloudflare Web Analytics**,
+turned on through the Pages project's own setting (`extrudo-site` › Metrics ›
+Web Analytics › Enable), and **off** for the `extrudo` project, so neither
+`app.extrudo.org` nor `edge.extrudo.org` (a branch of that project) gets it.
+
+Pages injects the tag itself, before `</body>`:
+
+```html
+<!-- Cloudflare Pages Analytics --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "…"}'></script><!-- Cloudflare Pages Analytics -->
+```
+
+so the repository holds neither the tag nor the token, and every local build
+stays free of it. Two directives of the site's policy make room for it
+(`apps/site/public/_headers`):
+`script-src 'self' https://static.cloudflareinsights.com` and
+`connect-src 'self' https://cloudflareinsights.com` (the beacon posts its data to
+`https://cloudflareinsights.com/cdn-cgi/rum`). Everything else in that policy is
+unchanged, and **the app's policy is untouched**: it names no host but this
+origin, which is what keeps a beacon from ever running on `app.` or `edge.`
+(`apps/web/pwa/headers.test.ts` checks both files).
+
+The footer says what is counted: this page counts visits, the app has no
+analytics, designs stay in the browser, and Cloudflare — the host of both — sees
+every visitor's IP address like any web host. **No cookie banner**: the beacon
+sets no cookies and uses no storage. The note tells visitors what is processed
+and by whom, which the GDPR's transparency rules ask for anyway.
+
+**Contact address.** The footer names **`hello@extrudo.org`** as a plain
+`mailto:` link, with the address as visible text too, so it can be copied without
+a mail program. Cloudflare Email Routing forwards it to the owner, like
+`conduct@`, so no inbox address is in the repository. It is a build-time setting
+like the three URLs (`CONTACT_EMAIL` in `apps/site/addresses.ts`, `email()`
+beside `baseUrl()` validates it).
+
+### Why Cloudflare's
+
+- Cloudflare already serves the site and sees every request, so the beacon adds
+  no new third party to the page. It is free and cookieless.
+- It gives what the free plan's server-side traffic analytics don't: **referrers,
+  device type, browser and OS**, and counts of real browsers with bots
+  filterable. The server-side numbers (requests, bandwidth, unique visitors,
+  countries) are for the zone, count crawlers, and are kept 30 days.
+- The project's own setting is a checkbox, not a snippet to keep current.
+
+### Rejected
+
+- **Server-side analytics only.** No referrers and no devices on the free plan,
+  and crawlers mixed into the counts.
+- **Plausible, Umami or GoatCounter.** The same data from another company in the
+  page's requests, and a script of ours to maintain.
+- **Pasting the snippet into `index.html`.** The token would live in the
+  repository, and every local build, preview and e2e run would load a
+  cross-origin script (and fail under the very policy that has to allow it).
+- **A contact form** instead of the address. It would need a Pages Function to
+  send mail, Turnstile against spam (another script host, and a frame host, in
+  the content policy) and personal data handled by our own code — for a problem a
+  forwarded address in an inbox with a spam filter already handles. Revisit if
+  the spam gets bad.
+
+### Consequences
+
+- Ad blockers hide some visitors, so the server-side numbers are the upper bound
+  and the two don't have to agree.
+- The Pages setting injects the tag at a deployment: turning it on or off takes
+  effect when that project is next deployed (`docs/deploy.md`).
+- `e2e/site.spec.ts` checks that the injected tag runs under the site's policy:
+  it serves the built `index.html` with the tag added and stubs both Cloudflare
+  hosts, so a future tightening of the policy can't silently block the beacon.
+- The owner flipped both switches on 2026-10-04 and disabled the zone's older
+  automatic setup for extrudo.org (`docs/deploy.md` step 5).
