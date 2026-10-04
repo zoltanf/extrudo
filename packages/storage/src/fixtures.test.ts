@@ -8,6 +8,7 @@ import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline'
 import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
 import b6 from '../../../fixtures/benchmarks/b6-wall-hook.extrudo?url&inline';
 import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
+import b9 from '../../../fixtures/benchmarks/b9-bottle-cap.extrudo?url&inline';
 import { readArchive, writeArchive } from './archive';
 
 const bytesOf = (dataUrl: string) =>
@@ -43,6 +44,11 @@ describe('benchmark fixtures', () => {
       'B7 Knurled knob',
       b7,
       ['Sketch1', 'Revolve1', 'Chamfer1', 'Cylinder1', 'Circular Pattern1', 'Hole1'],
+    ],
+    [
+      'B9 Bottle cap',
+      b9,
+      ['Sketch1', 'Revolve1', 'Shell1', 'Thread1', 'Sketch2', 'Revolve2', 'Thread2'],
     ],
   ])('%s opens as it was saved', (name, file, features) => {
     const archive = readArchive(bytesOf(file));

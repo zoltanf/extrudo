@@ -817,7 +817,10 @@ end to end, faster than in Fusion 360.
   local design to another program.
 - [ ] **P4-09 Timeline groups; linked folder storage.** FR-TL-06, FR-PRJ-06.
 - [ ] **P4-10 Rib/web; variable-radius fillet.** FR-FT-17.
-- [ ] **P4-11 Benchmarks B8–B10 E2E.**
+- [ ] **P4-11 Benchmarks B8–B10 E2E.** B9 (threaded bottle cap and thread
+  adapter) done 2026-10-04 (`e2e/benchmark-b9.spec.ts`, ADR-0039's amendment:
+  it took the ISO coarse thread series to M64 and the thread turn limit to 150
+  with it); B8 (emboss/deboss) waits for P4-04, B10 (tolerance) for P4-08.
 - [ ] **P4-12 Modeling depth backlog (from the Phase 3 ADRs).** Added
   2026-09-30; split into tasks as needed:
   - Fillet and chamfer: on-canvas radius/distance handles, more than 8 sets,
@@ -838,6 +841,14 @@ end to end, faster than in Fusion 360.
   - STEP colours (XDE) (ADR-0034; the readers are P4-06).
   - Section analysis on several planes, a section box, sections saved with
     named views, a hatch per material (ADR-0045).
+  - Threads: a thread of about 400 turns traps the WASM heap
+    (`RuntimeError: table index is out of bounds`, then freed memory read back
+    as a mesh error), found by B9's fuzzing and refused above 150 turns since
+    P4-11 — bisect it in a native harness (ADR-0039's B9 amendment);
+    `mergeTools`' exact distance between two thread tools takes 26 s on a Ø60
+    collar (why B9 gets 6 fuzz steps, not 200), so an interference test that
+    doesn't ask OCCT for a distance. A bottle-cap profile of its own is still
+    open (ADR-0056 Deferred).
   - Print Info: support volume, infill, cost per kg (ADR-0048).
   - Patterns: a skip list, count and path handles (ADR-0047).
   - A ghost of lost geometry in the view (ADR-0005, -0033); remappable

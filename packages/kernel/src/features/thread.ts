@@ -45,8 +45,13 @@ import { mergeTools } from './pattern';
 import { planarFace } from './primitives';
 import { cross, dot, scale } from './vec';
 
-/** Most turns one thread may have: beyond it a recompute takes minutes. */
-export const MAX_TURNS = 400;
+/**
+ * Most turns one thread may have. 150 is about 15 s of booleans (ADR-0056's
+ * 0.1 s a turn); above ~400 turns OCCT's ring − tooth boolean corrupts the
+ * WASM heap instead of failing, found by benchmark B9's fuzzing (ADR-0039's
+ * B9 amendment), so a long thread is refused rather than trapped.
+ */
+export const MAX_TURNS = 150;
 
 const EPS = 1e-6;
 

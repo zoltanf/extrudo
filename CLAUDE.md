@@ -31,7 +31,9 @@ complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil), P4-02
 (modeled threads), P4-03 (sketch text, bundled fonts), P4-03b (user fonts
 as attachments), P4-04 (emboss, deboss), P4-05 (control-point splines,
 conics), P4-07 (customizer, configurations) and P4-08 (print tolerance,
-slicer hand-off) are done. ADR-0001 chose
+slicer hand-off) are done; P4-11 (benchmarks B8–B10) is half done — B9, the
+threaded bottle cap and thread adapter, on 2026-10-04; B8 waits for P4-04, B10
+for P4-08. ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -1735,7 +1737,15 @@ them. Notes further down that name a machine apply to that machine only.
   such experiments builds in the image by its digest (the tag shows as
   `<none>` on the Arch workstation): `docker run --rm --user 0 -v
   <dir>:/w -w /w --entrypoint sh <image id> -c 'em++ … && node h.js'`.
-- **The fuzzer covers B1-B5 and B7** (P3-17, ADR-0038/0047 amendments);
+- **The fuzzer covers B1-B5, B7 and B9** (P3-17, ADR-0038/0047 amendments;
+  B9 since P4-11 with 6 steps and a 45 s step limit, in its `B9_BUDGET`): a
+  thread-heavy document is expensive — `capDia` × 2 has `mergeTools` ask OCCT
+  for the exact distance between two thread tools (26 s of a 30 s recompute) —
+  and a thread of about 400 turns used to corrupt the WASM heap
+  (`RuntimeError: table index is out of bounds` at step 8, seed 20260987,
+  `capHeight` × 100; later features read freed memory, "Mesh failed:
+  <garbage>"), which is why a thread is refused above 150 turns; both are
+  ADR-0039's B9 amendment and P4-12 items;
   B5's `FUZZ_SEED=7` and `FUZZ_SEED=2026` at `FUZZ_STEPS=1000` reached a
   pattern of 2 × 20 instances that took 55 s; it takes 2.4 s since `operate`
   finds targets solid by solid (`pattern-bench.test.ts`: `BENCH=1`, prints the
@@ -1784,6 +1794,31 @@ them. Notes further down that name a machine apply to that machine only.
   plane picked on the plate's front face, five fillet edges picked in the home
   view. Radius 3 mm is refused on the 5 mm plate (its front and back top
   fillets meet), which the spec avoids. About 18 s alone.
+- **Benchmark B9 e2e** (`e2e/benchmark-b9.spec.ts`, P4-11): a threaded bottle
+  cap and its thread adapter, 240 s timeout, about 60 s alone. Facts a later
+  agent needs: **a Shell that removes the bottom face leaves the cup open
+  below and closed at the top**, so the inside wall is only pickable from the
+  bottom view (Shift+3, still the current one after the shell) and only *on the
+  wall itself* — a point inside the hollow picks the flat lid above it and the
+  Thread dialog answers "Pick round faces: a shaft's side or a hole's wall"
+  (the message is the Faces field's hint, not the region "Feature status").
+  Sketch2 is drawn on 10 mm grid points (0,−30) (10,−30) (10,−20) (20,−20)
+  (20,−10) (0,−10) (0,−30) after `zoomOutTo` around the **middle of the view**
+  (a point of the model can be under the palette, and a `wheel` at a panel
+  doesn't zoom), and its five dimensions are picked with the label placement
+  deciding the orientation (above/below a slanted pair = x, beside it = y);
+  the label's click must be on screen and on empty space — z = −40 mm is off
+  the screen at the fitted zoom. **Five dimensions fix the section, a sixth is
+  over-constraining.** Bodies are named `Body1`, `Cap`, `Adapter`: the free
+  `Body1` is the adapter's once the cap's row is renamed. Sizes after the
+  threads: `Cap:<n>:32,32,14` (an internal thread leaves the outside alone)
+  and `Adapter:<n>:23.8,23.8,20` — each thread turns its step down to its
+  crests (M20 → Ø19.8, M24 → Ø23.8, so the Ø28 collar as drawn ends at
+  Ø23.8). The parameter change is `capDia = 40 mm`, `adapterLow = 24 mm`: the
+  cap becomes `Cap:<n>:40,40,14` and the adapter `Adapter:<n>:35.8,35.8,20`
+  (M39 in the cap's Ø36 bore, M24 on the spigot, M36 on the Ø36 collar — the
+  coarse series goes to M64 since P4-11, so `autoThread` has a fit for every
+  bore a bottle cap has).
 - **Thread e2e** (`e2e/thread.spec.ts`, P4-02): Solid › Modify (`button`
   "Modify", `exact`) › `menuitem` `/^Thread/`; the dialog is the region "Thread
   dialog" / "Edit Thread1 dialog": button "Faces" (`exact`, "1 face"), combobox
@@ -1791,7 +1826,12 @@ them. Notes further down that name a machine apply to that machine only.
   Pitch exist only off `auto`), "Extent", "Hand", textboxes "Length", "Offset",
   "Tolerance" (`exact`), checkboxes "From the other end", "Lead-in chamfer". A
   thread takes seconds to preview (wait up to 60 s). The default Ø20 cylinder
-  threaded to fit is `Body1:<n>:19.8,19.8,20` (M20 less twice the tolerance).
+  threaded to fit is `Body1:<n>:19.8,19.8,20` (M20 less twice the tolerance);
+  Size `auto` fits ISO 261 coarse from M2 to M64 (`METRIC_COARSE` in
+  `packages/core/src/thread.ts`: a bore takes the thread just above it, a shaft
+  the largest thread inside it), and a thread of more than `MAX_TURNS` (150,
+  `packages/kernel/src/features/thread.ts`) turns is refused before anything is
+  built — above about 400 turns it corrupted the WASM heap.
   Kernel: `pnpm vitest run -u packages/kernel/src/features/thread` rewrites the
   golden table; `BENCH=1` times threads.
 - **Customizer e2e** (`e2e/customizer.spec.ts`, P4-07): the panel is the region

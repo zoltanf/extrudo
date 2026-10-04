@@ -27,17 +27,18 @@ import {
   type ThreadInputOptions,
   threadInputs,
   threadRadii,
+  threadSettings,
 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { Kernel, type ShapeHandle } from '../kernel';
+import { Kernel, type ShapeHandle, type ThreadFace } from '../kernel';
 import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature, testFeatures } from '../recompute/testing';
 import type { FeatureOutput, KernelFeatureDefinition, RecomputeResult } from '../recompute/types';
 import type { ThreadOutputData } from './thread';
-import { leadSection, ringSection, toothSection } from './thread';
+import { leadSection, MAX_TURNS, planThread, ringSection, toothSection } from './thread';
 
 let kernel: Kernel;
 let engine: RecomputeEngine;
@@ -448,7 +449,7 @@ describe('thread', { timeout: 300_000 }, () => {
         /face is only 10 mm long/,
       ],
       [{ faces: [wall('C')], numbers: { offset: '10 mm' } }, /offset \(10 mm\) is as long/],
-      [{ faces: [wall('C')], numbers: { diameter: '6 mm', pitch: '0.01 mm' } }, /up to 400/],
+      [{ faces: [wall('C')], numbers: { diameter: '6 mm', pitch: '0.01 mm' } }, /up to 150/],
     ];
     for (const [options, message] of cases) {
       engine.clear();
@@ -462,6 +463,73 @@ describe('thread', { timeout: 300_000 }, () => {
       testDocument([cylinder('C', 100, 3), thread('T', { faces: [wall('C')] })]),
     );
     expect(status(big, 'T').message).toMatch(/No standard metric thread fits/);
+  });
+
+  // B9's fuzzing found that a thread of the ~400 turns the evaluator used to
+  // allow corrupts the WASM heap (ADR-0039's B9 amendment), so `MAX_TURNS` is
+  // 150 now: more turns is refused before anything is built.
+  it('refuses a thread of more than MAX_TURNS before the facade runs', async () => {
+    expect(MAX_TURNS).toBe(150);
+    const sweep = kernel.threadSweep.bind(kernel);
+    const boolean = kernel.boolean.bind(kernel);
+    let swept = 0;
+    let cut = 0;
+    kernel.threadSweep = ((...args: Parameters<typeof sweep>) => {
+      swept++;
+      return sweep(...args);
+    }) as typeof kernel.threadSweep;
+    kernel.boolean = ((...args: Parameters<typeof boolean>) => {
+      cut++;
+      return boolean(...args);
+    }) as typeof kernel.boolean;
+    try {
+      // An M8 on a 200 mm shaft: 160 turns.
+      const result = await runWithShapes(
+        testDocument([
+          cylinder('C', 8, 200),
+          thread('T', { faces: [wall('C')], numbers: { diameter: '8 mm', pitch: '1.25 mm' } }),
+        ]),
+      );
+      const s = status(result, 'T');
+      expect(s.status).toBe('error');
+      expect(s.message).toBe(
+        'The thread would have 160 turns; up to 150 can be modeled. Make it shorter or the pitch larger.',
+      );
+      expect(swept, 'nothing was swept').toBe(0);
+      expect(cut, 'nothing was cut').toBe(0);
+      // The body the thread would have cut is still there, whole.
+      expect(measure(result, 'C:0').valid).toBe(true);
+    } finally {
+      kernel.threadSweep = sweep;
+      kernel.boolean = boolean;
+    }
+  });
+
+  it('models MAX_TURNS turns and refuses one more', () => {
+    // The boundary itself, without building anything: 150 turns is allowed.
+    const settings = threadSettings(
+      threadInputs({ faces: [{ kind: 'face', id: 'x' }], numbers: { diameter: '8 mm' } }),
+    );
+    const numbers = {
+      diameter: 8,
+      pitch: 1.25,
+      length: 10,
+      offset: 0,
+      tolerance: 0.1,
+    };
+    const face = (turns: number): ThreadFace => ({
+      axis: { origin: [0, 0, 0], direction: [0, 0, 1] },
+      radius: 4,
+      inside: false,
+      from: 0,
+      to: turns * 1.25,
+      whole: true,
+      open: [false, false],
+    });
+    expect(planThread(face(MAX_TURNS), settings, numbers, []).report.turns).toBe(MAX_TURNS);
+    expect(() => planThread(face(MAX_TURNS + 1), settings, numbers, [])).toThrow(
+      `The thread would have ${MAX_TURNS + 1} turns; up to ${MAX_TURNS} can be modeled`,
+    );
   });
 
   it('keeps a golden table of options', async () => {

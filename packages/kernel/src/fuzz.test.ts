@@ -48,6 +48,7 @@ import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline'
 import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
 import b6 from '../../../fixtures/benchmarks/b6-wall-hook.extrudo?url&inline';
 import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
+import b9 from '../../../fixtures/benchmarks/b9-bottle-cap.extrudo?url&inline';
 import p401 from '../../../fixtures/benchmarks/p4-01-sweep-loft-coil.extrudo?url&inline';
 import { kernelFeatures } from './features';
 import { Kernel } from './kernel';
@@ -62,6 +63,22 @@ const STEPS = Number(env.FUZZ_STEPS ?? 200);
 const SEED = Number(env.FUZZ_SEED ?? 20260930);
 /** Longest a single recompute may take before it counts as a hang. */
 const STEP_LIMIT_MS = 20_000;
+/**
+ * What a fixture needs besides the default 200 steps: B9's three threads make
+ * a cold comparison of a big document slow, and one edit of its parameters
+ * (`capDia` × 2) has `mergeTools` ask for the exact distance between two
+ * thread tools — 26 s of a 30 s recompute, an open P4-12 item — so it runs 10
+ * steps and is allowed a longer step than the rest.
+ */
+interface FuzzBudget {
+  /** How many random edits (the default `STEPS`). */
+  steps?: number;
+  /** The longest one of them may take (`STEP_LIMIT_MS`). */
+  limitMs?: number;
+  /** The whole case's timeout (the default `60_000 + steps * 2_000`). */
+  timeoutMs?: number;
+}
+const B9_BUDGET: FuzzBudget = { steps: 6, limitMs: 45_000, timeoutMs: 180_000 };
 /** Every so many steps the warm result is compared with a cold recompute. */
 const COMPARE_EVERY = 10;
 
@@ -326,11 +343,15 @@ function internalErrors(result: Done, doc: ExtrudoDocument): string[] {
     .map(([id, s]) => `${doc.features.find((f) => f.id === id)?.name}: ${s.message}`);
 }
 
-async function recompute(engine: RecomputeEngine, doc: ExtrudoDocument): Promise<Done> {
+async function recompute(
+  engine: RecomputeEngine,
+  doc: ExtrudoDocument,
+  limitMs = STEP_LIMIT_MS,
+): Promise<Done> {
   const started = performance.now();
   const result = await engine.recompute({ doc });
   const took = performance.now() - started;
-  expect(took, 'a recompute that long is a hang').toBeLessThan(STEP_LIMIT_MS);
+  expect(took, 'a recompute that long is a hang').toBeLessThan(limitMs);
   if (result.status !== 'done') throw new Error(`recompute ${result.status}`);
   return result;
 }
@@ -357,13 +378,14 @@ async function recomputeAndSync(
   engine: RecomputeEngine,
   doc: ExtrudoDocument,
   newId: () => string,
+  limitMs = STEP_LIMIT_MS,
 ): Promise<{ doc: ExtrudoDocument; result: Done }> {
-  let result = await recompute(engine, doc);
+  let result = await recompute(engine, doc, limitMs);
   for (let round = 0; round < 3; round++) {
     const synced = syncSketches(doc, result.reports, newId);
     if (!synced) break;
     doc = synced;
-    result = await recompute(engine, doc);
+    result = await recompute(engine, doc, limitMs);
   }
   return { doc, result };
 }
@@ -374,7 +396,13 @@ function idSource() {
   return () => `00000000-0000-4000-8000-${String(++ids).padStart(12, '0')}`;
 }
 
-async function fuzz(name: string, dataUrl: string, seed: number, steps = STEPS) {
+async function fuzz(
+  name: string,
+  dataUrl: string,
+  seed: number,
+  steps = STEPS,
+  limitMs = STEP_LIMIT_MS,
+) {
   const random = prng(seed);
   const newId = idSource();
   const original = load(dataUrl);
@@ -388,7 +416,7 @@ async function fuzz(name: string, dataUrl: string, seed: number, steps = STEPS) 
   const times: number[] = [];
   let doc = original;
   try {
-    await recompute(engine, doc);
+    await recompute(engine, doc, limitMs);
     for (let step = 1; step <= steps; step++) {
       // Now and then start again from the fixture, so edits don't pile up forever.
       if (random() < 0.08) doc = original;
@@ -403,7 +431,7 @@ async function fuzz(name: string, dataUrl: string, seed: number, steps = STEPS) 
       let result: Done;
       try {
         const started = performance.now();
-        ({ doc, result } = await recomputeAndSync(engine, next, newId));
+        ({ doc, result } = await recomputeAndSync(engine, next, newId, limitMs));
         times.push(performance.now() - started);
       } catch (error) {
         throw new Error(`${at} crashed: ${error}`);
@@ -418,7 +446,7 @@ async function fuzz(name: string, dataUrl: string, seed: number, steps = STEPS) 
       if (step % COMPARE_EVERY === 0) {
         const cold = new RecomputeEngine(kernel, kernelFeatures(), { strictLeaks: true });
         try {
-          const fresh = await recompute(cold, doc);
+          const fresh = await recompute(cold, doc, limitMs);
           expect(summary(engine, result), `${at}: warm vs cold`).toEqual(summary(cold, fresh));
         } finally {
           cold.clear();
@@ -435,7 +463,7 @@ async function fuzz(name: string, dataUrl: string, seed: number, steps = STEPS) 
 }
 
 describe('fuzzing the benchmark fixtures', () => {
-  const cases: [string, string][] = [
+  const cases: [string, string, FuzzBudget?][] = [
     ['B1', b1],
     ['B2', b2],
     ['B3', b3],
@@ -443,17 +471,19 @@ describe('fuzzing the benchmark fixtures', () => {
     ['B5', b5],
     ['B6', b6],
     ['B7', b7],
+    ['B9', b9, B9_BUDGET],
     // Sweep, loft and coil (P4-01, ADR-0055): `features/sweep-loft-coil-fixture.test.ts` writes it.
     ['P4-01', p401],
   ];
-  for (const [name, dataUrl] of cases) {
+  for (const [name, dataUrl, budget] of cases) {
+    const steps = budget?.steps ?? STEPS;
     it(`${name}: random edits never crash, leak or disagree with a cold recompute`, {
-      timeout: 60_000 + STEPS * 2_000,
+      timeout: budget?.timeoutMs ?? 60_000 + steps * 2_000,
     }, async () => {
-      const stats = await fuzz(name, dataUrl, SEED + name.charCodeAt(1));
+      const stats = await fuzz(name, dataUrl, SEED + name.charCodeAt(1), steps, budget?.limitMs);
       if (env.FUZZ_REPORT) expect.soft(stats, `${name} (report)`).toBeUndefined();
       // Most edits must go through, or the fuzzer tests nothing.
-      expect(stats.applied).toBeGreaterThan(STEPS / 3);
+      expect(stats.applied).toBeGreaterThan(steps / 3);
     });
   }
 });

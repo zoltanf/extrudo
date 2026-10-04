@@ -4,6 +4,21 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-04 · **P4-11 (part 1) Benchmark B9** (ADR-0039's amendment): a
+  threaded bottle cap and its thread adapter, built through the UI in
+  `e2e/benchmark-b9.spec.ts` — a revolved rectangle, a Shell that opens it at
+  the bottom, a Thread on its inside wall, a second revolved sketch (a stepped
+  section dimensioned from a fixed point at the origin) as a body of its own
+  with a Thread on each of its two outside walls, all sized to fit, a parameter
+  change, and the 3MF read back through `@extrudo/io` (two closed solids, their
+  volumes within the bounds the threads leave). The fixture
+  `fixtures/benchmarks/b9-bottle-cap.extrudo` is recomputed headless in
+  `packages/kernel/src/benchmarks.test.ts` and fuzzed (6 steps, for the reasons
+  in ADR-0039). The benchmark found two limits of modeled threads and both are
+  answered here: the ISO coarse thread series now goes to M64 (a bore wider
+  than M30 had no `autoThread` fit at all, so the cap couldn't grow), and a
+  thread is refused above 150 turns (about 400 corrupted the WASM heap; the
+  corruption itself is a P4-12 item).
 - 2026-10-04 · **P4-04 (4 of 4)** Emboss and deboss on cylindrical faces
   (ADR-0060 §3, §4): the profiles or a whole text are **wrapped** round a
   cylinder's wall instead of projected on it, so the letters keep their width

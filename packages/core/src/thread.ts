@@ -240,7 +240,13 @@ export interface ThreadPreset {
   exprs: Readonly<Record<string, string>>;
 }
 
-/** ISO 261 coarse pitch series, `[size, pitch]` in mm. */
+/**
+ * ISO 261 coarse pitch series, `[size, pitch]` in mm. It goes to M64 (P4-11:
+ * B9's fuzzing, below): `autoThread` fits a hole only with a thread *larger*
+ * than it, so a bore wider than M30 — the largest size before then — had no
+ * fit at all and the cap of benchmark B9 could not be made bigger. ISO 261's
+ * M55 is left out: M56 is the size in use.
+ */
 const METRIC_COARSE: readonly (readonly [number, number])[] = [
   [2, 0.4],
   [2.5, 0.45],
@@ -256,6 +262,16 @@ const METRIC_COARSE: readonly (readonly [number, number])[] = [
   [20, 2.5],
   [24, 3],
   [30, 3.5],
+  [33, 3.5],
+  [36, 4],
+  [39, 4],
+  [42, 4.5],
+  [45, 4.5],
+  [48, 5],
+  [52, 5],
+  [56, 5.5],
+  [60, 5.5],
+  [64, 6],
 ];
 
 /** The common ISO 261 fine pitches, `[size, pitch]` in mm. */

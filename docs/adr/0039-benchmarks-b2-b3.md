@@ -145,3 +145,90 @@ three follow it) instead of a rectangle with four dimensions, now that Offset
 follows a projected outline (ADR-0031 amendment). Same faces, sizes and
 volumes; the fixture `fixtures/benchmarks/b2-storage-box.extrudo` was written
 again (`WRITE_FIXTURES=1`), and the fuzzer (200 steps) is still clean on it.
+
+## Amendment 2026-10-04: B9 (P4-11)
+
+Code: `e2e/benchmark-b9.spec.ts`, the fixture
+`fixtures/benchmarks/b9-bottle-cap.extrudo` and its headless recompute in
+`packages/kernel/src/benchmarks.test.ts`. B8 (emboss/deboss) waits for P4-04,
+B10 (tolerance) for P4-08.
+
+1. **The model.** Parameters `capDia` 32 mm, `capHeight` 14 mm, `wall` 2 mm,
+   `adapterLow` 20 mm, `stepHeight` 10 mm. The cap is Sketch1 on XZ — a
+   rectangle from the origin, `capDia / 2` by `capHeight` — revolved a whole
+   turn about Z, shelled open at its bottom face `wall` thick inside (5 faces:
+   the cup is open below and **closed at the top**, so it is a cap, not a
+   cup), and Thread1 cuts an M30 into the Ø28 bore. The adapter is Sketch2 on
+   XZ below it — six lines drawn on 10 mm grid points and dimensioned with the
+   parameters from a fixed point at the sketch origin, 5 dimensions, "Fully
+   constrained" — revolved as a body of its own, and Thread2 threads both
+   outside walls (M20 on the Ø20 spigot, M24 on the Ø28 collar). Both threads
+   are `auto`: the kernel fits each face.
+2. **The section is dimensioned from the origin point, like B3's.** Two
+   two-point dimensions from the fixed point at (0, 0) (one vertical, one
+   horizontal, chosen by where the label is placed) put the profile's lowest
+   corner, then the two steps' lengths and the top edge's width fix it: **five
+   dimensions are exactly enough** — a sixth (the top edge as a distance from
+   the origin's axis as well) is refused as over-constraining.
+3. **What was hard through the UI** (each cost a run):
+   - **The shell's inside is only visible from below.** The cup is closed at
+     the top, so from the home view every pick inside it hits the flat top
+     face and the Thread dialog answers "Pick round faces: a shaft's side or a
+     hole's wall". Turn to the bottom view and pick the wall itself — a point
+     inside the hollow picks the lid above it.
+   - **The bottom face needs the bottom view too** (it is the one face the cap
+     hides from every oblique view).
+   - **A dimension's orientation comes from where its label is placed**: above
+     or below a slanted pair measures x, beside it measures y. The label's
+     click must land on empty space *and on screen* — the sketch's own fit is
+     32 mm tall and the profile reaches 30 mm below the cap, so the spec zooms
+     out around the middle of the view (a point of the model can be under the
+     floating palette) before drawing.
+   - **The body's names are not Body1, Body2**: after the cap's row is renamed
+     the free name `Body1` is the adapter's.
+   - The adapter's two walls are picked in the front view (in the home view
+     the spigot's far side is hidden behind the collar).
+4. **What the benchmark found**, and what came of it (all of it in
+   modeled threads, ADR-0056):
+   - **`autoThread` had no ISO coarse thread for a bore wider than M30.** It
+     fits a hole only when the thread's major diameter is *larger* than the hole
+     (that is what makes a tap-drill hole find its thread), and the coarse
+     series stopped at M30, so the cap at `capDia` 40 mm — a Ø36 bore — had no
+     fit: "Thread1 (error)" and an error in the status bar. **`METRIC_COARSE`
+     now goes to M64** (ISO 261: M33 × 3.5, M36 × 4, M39 × 4, M42 × 4.5,
+     M45 × 4.5, M48 × 5, M52 × 5, M56 × 5.5, M60 × 5.5, M64 × 6; ISO 261's
+     M55 is left out, M56 is the size in use), so the parameter change is the
+     one the benchmark was designed for: `capDia` 40 mm and `adapterLow` 24 mm
+     refit every thread (M39 in the cap's Ø36 bore, M24 on the spigot, M36 on
+     the Ø36 collar) and the two parts' threads mesh. A Ø36 bore and a Ø40
+     shaft fit, and `autoThread` still refuses a hole or a shaft far off the
+     series.
+   - **A thread of the ~400 turns `MAX_TURNS` allowed corrupted the WASM
+     heap.** The fuzz run found it (B9 step 8 at seed 20260987: `capHeight` ×
+     100, a 1.4 m cap, ~400 turns of M30): `RuntimeError: table index is out
+     of bounds`, and later features in the same process read freed memory
+     ("Mesh failed: <garbage>"). **~200 turns is fine** (40 s), 400 fails the
+     boolean or traps the heap. `MAX_TURNS` is **150** now (about 15 s of
+     booleans, ADR-0056's 0.1 s a turn) and a thread that long is refused with
+     the wording it always had ("The thread would have 400 turns; up to 150 can
+     be modeled. Make it shorter or the pitch larger."), before anything is
+     built. Replaying that exact fuzz document now ends in the refusal. The
+     corruption itself is a P4-12 item (bisect it in a native harness).
+   - **`mergeTools` asks for the exact distance between two thread tools, and
+     that is slow**: `capDia` × 2 puts the adapter's collar at Ø60, and the
+     `BRepExtrema_DistShapeShape` between the M20 and the M60 tool took 26 s of
+     the 30 s recompute. It is why B9 gets 6 fuzz steps instead of 200 (and a
+     45 s step limit): a thread-heavy document is expensive to fuzz, and the
+     exact-distance test is the reason. Another P4-12 item, of the same family
+     as P3-17's `touchingBodies`.
+5. **Threads take a third of a body's matter.** The cap's internal thread
+   leaves 89 % of the unthreaded cup; the adapter's two threads turn it down to
+   their crests (M20 → Ø19.8, M24 → Ø23.8, so the Ø28 collar as drawn is
+   Ø23.8 in the model) and leave 68 %. The spec checks the cap between 80 % and
+   100 % of the exact cup and the adapter between the cylinders its roots and
+   crests make, which is what the ISO profile bounds exactly. After the
+   parameter change the cap's bore is Ø36 with an M39 thread in it and the
+   adapter's collar Ø36 with M36 (crests Ø38.8 and Ø35.8 across).
+
+The spec takes about 50 s alone on the Arch workstation (four thread builds and
+two 3MF exports); the headless recompute is 7 s, and B9's 6 fuzz steps 91 s.

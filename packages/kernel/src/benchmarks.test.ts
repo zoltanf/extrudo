@@ -22,6 +22,7 @@ import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline'
 import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
 import b6 from '../../../fixtures/benchmarks/b6-wall-hook.extrudo?url&inline';
 import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
+import b9 from '../../../fixtures/benchmarks/b9-bottle-cap.extrudo?url&inline';
 import { kernelFeatures } from './features';
 import { translation } from './features/matrix';
 import { Kernel } from './kernel';
@@ -89,6 +90,7 @@ function bodies(result: Done) {
       min: min.map((v) => Number(v.toFixed(3)) + 0),
       volume,
       faces: mesh.faceRanges.length / 2,
+      valid: kernel.isValid(shape),
     };
   });
 }
@@ -358,6 +360,82 @@ describe('B7 knurled knob', () => {
     const volume = knob?.volume ?? 0;
     expect(volume).toBeGreaterThan(knobVolume(18, 1.8));
     expect(volume).toBeLessThan(knobVolume(18, 1.8) + 18);
+  });
+});
+
+describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
+  /** A cylinder's volume, mm³. */
+  const volumeOf = (r: number, height: number) => Math.PI * r * r * height;
+  /** The unthreaded cap: a cylinder less the cup a wall of `wall` hollows out. */
+  const cupVolume = (wall = 2) => volumeOf(16, 14) - volumeOf(16 - wall, 14 - wall);
+  /** The unthreaded adapter: two stacked cylinders. */
+  const adapterVolume = () => volumeOf(10, 10) + volumeOf(14, 10);
+  /**
+   * A threaded shaft's crest and root radii (the ISO 68-1 basic profile with the
+   * dialog's default 0.1 mm tolerance): a fitted thread turns a thicker shaft
+   * down to its crests, so the two cylinders bound what is left of it.
+   */
+  const threadRadii = (diameter: number, pitch: number) => ({
+    crest: diameter / 2 - 0.1,
+    root: diameter / 2 - (5 / 8) * (Math.sqrt(3) / 2) * pitch - 0.1,
+  });
+  const m20 = threadRadii(20, 2.5);
+  const m24 = threadRadii(24, 3);
+
+  it('is two bodies: a shelled cap with a thread inside it, a stepped adapter with two', async () => {
+    const doc = load(b9);
+    expect(doc.name).toBe('B9 Bottle cap');
+    expect(featureNames(doc)).toEqual([
+      'Sketch1',
+      'Revolve1',
+      'Shell1',
+      'Thread1',
+      'Sketch2',
+      'Revolve2',
+      'Thread2',
+    ]);
+    const result = await recompute(doc);
+    expect(bodyNames(doc, result)).toEqual(['Cap', 'Adapter']);
+    const [cap, adapter] = bodies(result);
+    // The shell's cup is open at the bottom and closed at the top, so the
+    // thread's faces are inside: the outside is where it was drawn. The mesh
+    // of a cylinder is a touch inside it, hence the tenths.
+    expect(cap?.valid).toBe(true);
+    expect(cap?.size[0]).toBeCloseTo(32, 1);
+    expect(cap?.size[2]).toBeCloseTo(14, 3);
+    expect(cap?.min[2]).toBeCloseTo(0, 3);
+    expect(cap?.faces).toBeGreaterThan(10);
+    // The internal thread takes a little more off the roots than it puts on
+    // the crests.
+    expect(cap?.volume).toBeLessThan(cupVolume());
+    expect(cap?.volume).toBeGreaterThan(cupVolume() * 0.8);
+    // Both of the adapter's walls are threaded: the lower one is Ø20 (M20),
+    // the upper Ø28 as drawn but M24's Ø23.8 once the thread turned it down.
+    expect(adapter?.valid).toBe(true);
+    expect(adapter?.min[2]).toBeCloseTo(-30, 3);
+    expect(adapter?.size[0]).toBeCloseTo(2 * m24.crest, 1);
+    expect(adapter?.size[2]).toBeCloseTo(20, 3);
+    expect(adapter?.volume).toBeLessThan(adapterVolume());
+    expect(adapter?.volume).toBeGreaterThan(volumeOf(m20.root, 10) + volumeOf(m24.root, 10));
+    expect(adapter?.volume).toBeLessThan(volumeOf(m20.crest, 10) + volumeOf(m24.crest, 10));
+  });
+
+  it('follows the one parameter the kernel reads: the wall', async () => {
+    // The sketches' dimensions are re-solved by the app, not here (ADR-0039),
+    // and the cap's diameter can't change at all: its bore takes the ISO coarse
+    // thread whose major diameter is just above the hole, so a Ø36 bore has no
+    // fit (M30 is the largest coarse size). A thinner wall leaves a Ø29 bore,
+    // which M30 fits.
+    const doc = withParameters(load(b9), { wall: '1.5 mm' });
+    const [cap, adapter] = bodies(await recompute(doc));
+    expect(cap?.valid).toBe(true);
+    expect(cap?.size[0]).toBeCloseTo(32, 1);
+    expect(cap?.size[2]).toBeCloseTo(14, 3);
+    // A thinner wall leaves more matter: the same bounds on a smaller cup.
+    expect(cap?.volume).toBeLessThan(cupVolume(1.5));
+    expect(cap?.volume).toBeGreaterThan(cupVolume(1.5) * 0.8);
+    expect(adapter?.size[2]).toBeCloseTo(20, 3);
+    expect(adapter?.valid).toBe(true);
   });
 });
 
