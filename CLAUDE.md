@@ -1737,8 +1737,10 @@ them. Notes further down that name a machine apply to that machine only.
   such experiments builds in the image by its digest (the tag shows as
   `<none>` on the Arch workstation): `docker run --rm --user 0 -v
   <dir>:/w -w /w --entrypoint sh <image id> -c 'em++ … && node h.js'`.
-- **The fuzzer covers B1-B5, B7 and B9** (P3-17, ADR-0038/0047 amendments;
-  B9 since P4-11 with 6 steps and a 45 s step limit, in its `B9_BUDGET`): a
+- **The fuzzer covers B1-B5 and B7, and B9 only with `FUZZ_B9=1`** (P3-17,
+  ADR-0038/0047 amendments; B9 since P4-11 with 6 steps and a 45 s step limit,
+  in its `B9_BUDGET`, out of the default run because one step took 72 s on the
+  CI runner): a
   thread-heavy document is expensive — `capDia` × 2 has `mergeTools` ask OCCT
   for the exact distance between two thread tools (26 s of a 30 s recompute) —
   and a thread of about 400 turns used to corrupt the WASM heap

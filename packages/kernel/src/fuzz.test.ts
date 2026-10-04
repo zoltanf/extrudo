@@ -471,7 +471,9 @@ describe('fuzzing the benchmark fixtures', () => {
     ['B5', b5],
     ['B6', b6],
     ['B7', b7],
-    ['B9', b9, B9_BUDGET],
+    // B9 only on request (FUZZ_B9=1): one `capDia` x 2 step took 30 s here and 72 s on
+    // the CI runner, past any step limit that still catches a hang (P4-12 item).
+    ...(env.FUZZ_B9 ? [['B9', b9, B9_BUDGET] as [string, string, FuzzBudget]] : []),
     // Sweep, loft and coil (P4-01, ADR-0055): `features/sweep-loft-coil-fixture.test.ts` writes it.
     ['P4-01', p401],
   ];
