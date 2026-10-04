@@ -44,21 +44,32 @@ const PLACES: Record<ToastPlace, string> = {
  * (docs/05-brand.md §5). In a project it sits in the view's bottom-right
  * corner (`view`, inside the shell's positioned work area), or at the foot of
  * the sketch palette's column (`column`) so it never covers the palette.
+ *
+ * `clearRight` keeps that many px of the container's right edge free, for a
+ * surface the stack must not cover — the open feature dialog's actions, whose
+ * OK button the corner would otherwise sit on (12 seconds of "Sketch1 is
+ * hidden…", and a click that goes nowhere).
  */
 export function Toasts({
   toasts,
   onDismiss,
   place = 'screen',
   history,
+  clearRight,
 }: {
   toasts: Toast[];
   onDismiss(id: number): void;
   place?: ToastPlace;
   /** The notification store: a button below the toasts opens its history. */
   history?: NotificationStore;
+  /** Px of the container's right edge the stack keeps clear. */
+  clearRight?: number;
 }) {
   return (
-    <div className={`pointer-events-none flex flex-col items-end gap-2 ${PLACES[place]}`}>
+    <div
+      className={`pointer-events-none flex flex-col items-end gap-2 ${PLACES[place]}`}
+      style={clearRight ? { right: clearRight } : undefined}
+    >
       {toasts.map((t) => (
         <div
           key={t.id}

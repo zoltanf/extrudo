@@ -7,18 +7,30 @@
  * The silhouette is where the surface turns from facing the camera to
  * facing away: the zero line of `f = n · (eye − p)` (perspective) or
  * `f = −n · d` (orthographic, `d` the view direction), with `n` the mesh's
- * smooth node normals. Each triangle whose nodes change sign contributes
- * one segment between the two points where `f` crosses zero along its
- * edges, interpolated linearly: a contour line, so the outline is smooth
- * and needs no adjacency. Flat faces have a constant `f` sign and are
- * skipped up front (`curvedFaces`), and `f` is evaluated once per node
- * (`silhouettePlan`, P3-13). Pure and allocation-free per call, so the view
- * can run it whenever the camera moves.
+ * smooth node normals. Each triangle whose nodes change side contributes one
+ * segment between the two points where `f` crosses zero along its edges,
+ * interpolated linearly: a contour line, so the outline is smooth and needs
+ * no adjacency. Flat faces have a constant `f` sign and are skipped up front
+ * (`curvedFaces`), and `f` is evaluated once per node (`silhouettePlan`,
+ * P3-13). Pure and allocation-free per call, so the view can run it whenever
+ * the camera moves.
  */
 import type { BodyMesh } from '@extrudo/kernel';
 
 /** Node normals closer than this (1 − cos) count as one direction: the face is flat. */
 const FLAT = 1e-6;
+
+/**
+ * How close to edge-on a node's facing may be and still count as facing:
+ * `f` is a cosine (orthographic) or a distance times one (perspective), so
+ * this is an angle — 1e-4 is 0.006°. A fillet's tangent line against a wall, a
+ * plain wall seen exactly from the side, or a cylinder's outline in a named
+ * view all leave nodes whose `f` is zero to within float noise. Counting each
+ * of them as facing whatever the sign of that noise is keeps the outline the
+ * same whatever the camera's last float was: the line of nodes along a
+ * cylinder seen exactly side-on is an outline, not a hairline that blinks.
+ */
+const EDGE_ON = 1e-4;
 
 export type Vec3 = readonly [number, number, number];
 
@@ -65,6 +77,8 @@ export interface SilhouettePlan {
   nodes: Uint32Array;
   /** `f` per node of the mesh (only `nodes` are written). */
   facing: Float32Array;
+  /** Which side of the contour each of those nodes is on: 1, -1 or 0 (edge-on). */
+  sides: Int8Array;
 }
 
 export function silhouettePlan(mesh: BodyMesh, curved = curvedFaces(mesh)): SilhouettePlan {
@@ -86,7 +100,7 @@ export function silhouettePlan(mesh: BodyMesh, curved = curvedFaces(mesh)): Silh
   const nodes = new Uint32Array(n);
   let o = 0;
   for (let node = 0; node < count; node++) if (used[node] === 1) nodes[o++] = node;
-  return { curved, nodes, facing: new Float32Array(count) };
+  return { curved, nodes, facing: new Float32Array(count), sides: new Int8Array(count) };
 }
 
 /**
@@ -101,26 +115,48 @@ export function silhouetteSegments(
   out: Float32Array,
 ): number {
   const { positions: p, normals: n, indices } = mesh;
-  const { curved, nodes, facing: f } = plan;
+  const { curved, nodes, facing: f, sides } = plan;
+  // `f` per node and what scales it: `f` is the cosine of the angle between the
+  // node's normal and the view, times how far the node is from the eye (nothing
+  // orthographic). A node whose cosine is within EDGE_ON of zero is edge-on,
+  // and counts as facing whatever the sign of the noise inside that band is, so
+  // the same mesh gives the same outline whatever the camera's last float was.
   if ('eye' in view) {
     const [ex, ey, ez] = view.eye;
     for (let k = 0; k < nodes.length; k++) {
-      const i = (nodes[k] as number) * 3;
-      f[i / 3] =
-        (n[i] as number) * (ex - (p[i] as number)) +
-        (n[i + 1] as number) * (ey - (p[i + 1] as number)) +
-        (n[i + 2] as number) * (ez - (p[i + 2] as number));
+      const node = nodes[k] as number;
+      const i = node * 3;
+      const dx = ex - (p[i] as number);
+      const dy = ey - (p[i + 1] as number);
+      const dz = ez - (p[i + 2] as number);
+      const value = (n[i] as number) * dx + (n[i + 1] as number) * dy + (n[i + 2] as number) * dz;
+      const edge = EDGE_ON * Math.sqrt(dx * dx + dy * dy + dz * dz);
+      f[node] = value;
+      sides[node] = value < -edge ? -1 : 1;
     }
   } else {
+    // A unit direction, so `f` is that cosine itself.
     const [dx, dy, dz] = view.direction;
+    const length = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+    const [ux, uy, uz] = [dx / length, dy / length, dz / length];
     for (let k = 0; k < nodes.length; k++) {
-      const i = (nodes[k] as number) * 3;
-      f[i / 3] = -((n[i] as number) * dx + (n[i + 1] as number) * dy + (n[i + 2] as number) * dz);
+      const node = nodes[k] as number;
+      const i = node * 3;
+      const value = -(
+        (n[i] as number) * ux +
+        (n[i + 1] as number) * uy +
+        (n[i + 2] as number) * uz
+      );
+      f[node] = value;
+      sides[node] = value < -EDGE_ON ? -1 : 1;
     }
   }
   let o = 0;
   const crossing = (a: number, b: number, fa: number, fb: number) => {
-    const t = fa / (fa - fb);
+    // A node in the band counts as facing while its `f` may be the other sign,
+    // so the crossing can fall a hair outside the edge: keep it on it.
+    const at = fa / (fa - fb);
+    const t = at < 0 ? 0 : at > 1 ? 1 : at;
     const i = a * 3;
     const j = b * 3;
     for (let k = 0; k < 3; k++) {
@@ -135,17 +171,15 @@ export function silhouetteSegments(
       const a = indices[t * 3] as number;
       const b = indices[t * 3 + 1] as number;
       const c = indices[t * 3 + 2] as number;
-      const fa = f[a] as number;
-      const fb = f[b] as number;
-      const fc = f[c] as number;
-      // Zero counts as facing: a node exactly on the silhouette belongs to one side.
-      const sa = fa >= 0;
-      const sb = fb >= 0;
-      const sc = fc >= 0;
+      const sa = sides[a] as number;
+      const sb = sides[b] as number;
+      const sc = sides[c] as number;
+      // Two sides per node, so a triangle that isn't all one side crosses on
+      // exactly two of its edges: a whole number of segments out of `out`.
       if (sa === sb && sb === sc) continue;
-      if (sa !== sb) crossing(a, b, fa, fb);
-      if (sb !== sc) crossing(b, c, fb, fc);
-      if (sc !== sa) crossing(c, a, fc, fa);
+      if (sa !== sb) crossing(a, b, f[a] as number, f[b] as number);
+      if (sb !== sc) crossing(b, c, f[b] as number, f[c] as number);
+      if (sc !== sa) crossing(c, a, f[c] as number, f[a] as number);
     }
   }
   return o;

@@ -32,7 +32,7 @@ import { ExportModelDialog, type ModelExportRequest } from '../export/ExportMode
 import type { ModelExporter } from '../export/modelExport';
 import { DialogOverlay } from '../features/DialogOverlay';
 import { type DialogKernel, dialogBodies, viewPreview } from '../features/dialog';
-import { FeatureDialog } from '../features/FeatureDialog';
+import { DIALOG_COLUMN, FeatureDialog } from '../features/FeatureDialog';
 import { pickName } from '../features/pickName';
 import { dialogPlanePick, dialogPlanePicker } from '../features/planePicker';
 import { PRESS_PULL, PRESS_PULL_PROMPT, pressPullTarget } from '../features/pressPull';
@@ -1455,7 +1455,11 @@ export function AppShell({
             {toasts && <Toasts place="column" {...toasts} />}
           </PanelColumn>
         )}
-        {toasts && !(mode === 'sketch' && activeSketch) && <Toasts place="view" {...toasts} />}
+        {/* Clear of the open dialog's column: a toast over its OK button swallows the
+            click (the "Sketch1 is hidden…" notice lives 12 seconds). */}
+        {toasts && !(mode === 'sketch' && activeSketch) && (
+          <Toasts place="view" clearRight={dialogOpen ? DIALOG_COLUMN : undefined} {...toasts} />
+        )}
       </main>
       <Timeline
         store={store}

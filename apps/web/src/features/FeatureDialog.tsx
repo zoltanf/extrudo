@@ -21,6 +21,14 @@ export interface FeatureDialogProps {
 const HOME = { right: 12, top: 148 };
 
 /**
+ * The column the dialog takes on the right of the view: its 256 px width and
+ * a 12 px margin each side. What else floats over the view keeps out of it —
+ * the heads-up box (`DialogOverlay`) and the toast stack, whose 12-second
+ * "Sketch1 is hidden…" notice would otherwise sit on the OK button.
+ */
+export const DIALOG_COLUMN = 280;
+
+/**
  * The command dialog (UI spec §2, §3.4; ADR-0027): floating on the right of
  * the view, draggable by its title, with the spec's fields, the draft's
  * problem or error, and OK (Enter) / Cancel (Esc). Non-modal: the view

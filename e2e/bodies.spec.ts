@@ -29,6 +29,24 @@ const chip = (page: Page, name: string) =>
     .getByRole('list', { name: 'Features' })
     .getByRole('button', { name: new RegExp(`^${name}`) });
 
+/**
+ * The text of a toast lying over the open dialog's OK button, if any. The
+ * toasts sit in the view's bottom-right corner and live 12 seconds, so one
+ * covering the button swallows the click on it (P4-11).
+ */
+const toastOnOk = (page: Page) =>
+  page.evaluate(`(() => {
+    const ok = [...document.querySelectorAll('[data-feature-dialog] button')]
+      .find((b) => b.textContent.startsWith('OK'));
+    const box = ok?.getBoundingClientRect();
+    if (!box) return 'no OK button';
+    const over = [...document.querySelectorAll('[role="status"],[role="alert"]')].find((t) => {
+      const r = t.getBoundingClientRect();
+      return r.left < box.right && r.right > box.left && r.top < box.bottom && r.bottom > box.top;
+    });
+    return over?.textContent ?? null;
+  })()`) as Promise<string | null>;
+
 /** Waits until the camera has stopped moving, then maps sketch mm (on XY) to page px. */
 async function still(viewport: Locator) {
   let last = '';
@@ -139,10 +157,15 @@ test('the bracket shows the silhouettes of its tapered holes in wireframe', asyn
     .toBeGreaterThan(0);
   await page.screenshot({ path: test.info().outputPath('wireframe.png') });
   // They follow the camera: looking straight down the holes' axes (orthographic), the
-  // tapered walls all face up, so there is no outline; back in the home view there is.
+  // tapered walls all face up, so their outlines are gone. What is left is the outside
+  // fillet's tangent line, edge-on from here: such a node counts as facing whatever the
+  // sign of the noise in its normal is (EDGE_ON, viewport/silhouette.ts), so it is the
+  // same pair of segments whatever the camera's last float was — 0 or 2 or 4 before.
   await page.getByRole('button', { name: 'Orthographic' }).click();
   await page.keyboard.press('Shift+2');
-  await expect(viewport).not.toHaveAttribute('data-silhouettes');
+  await expect
+    .poll(async () => Number((await attr(viewport, 'data-silhouettes')) || 0))
+    .toBeLessThanOrEqual(2);
   await page.keyboard.press('Shift+1');
   await expect
     .poll(async () => Number(await attr(viewport, 'data-silhouettes')))
@@ -156,8 +179,12 @@ test('the bracket shows the silhouettes of its tapered holes in wireframe', asyn
 });
 
 test('a cut through a plate makes two bodies, named without shifting', async ({ page }) => {
+  // The longest flow in this file (two sketches, two extrudes, a remove, two undos): about
+  // 8 s on an idle machine and 25 s on one three times oversubscribed, so the default 30 s
+  // is too tight for a loaded CI runner.
+  test.setTimeout(90_000);
   // Both sketches first: a 40 × 20 plate around the origin (on the 10 mm snap grid), then a
-  // strip across it, x from −10 to 0 (left piece 10 mm wide, right 20 mm). The second
+  // strip across it, x from −10 to 0 (left piece 10 mm wide, right 20). The second
   // sketch opens fitted to the first (about ±13 mm up and down, a finer grid), so the strip
   // ends at ±12.
   await sketchOnXY(page);
@@ -208,6 +235,10 @@ test('a cut through a plate makes two bodies, named without shifting', async ({ 
   await dialog.getByRole('textbox', { name: 'Distance' }).fill('10 mm');
   await expect(viewport).toHaveAttribute('data-preview', 'cut', { timeout: 15_000 });
   await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  // The "Sketch1 is hidden" toast from the extrude above is still up (12 s) in the same
+  // corner this dialog's OK is in: it must have moved clear of it, or the click below
+  // waits for the toast to go (P4-11).
+  expect(await toastOnOk(page)).toBeNull();
   await dialog.getByRole('button', { name: 'OK' }).click();
   await expect(dialog).toBeHidden();
   await kernelReady(page);

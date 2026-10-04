@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { TooltipProvider } from '../design-system';
 import type { OpenDialog } from './dialog';
-import { FeatureDialogPanel } from './FeatureDialog';
+import { DIALOG_COLUMN, FeatureDialogPanel } from './FeatureDialog';
 import { faceItem, setupDialogs } from './testing';
 
 const settings = { units: 'mm', precision: 2 } as const;
@@ -22,6 +22,15 @@ function render(open: OpenDialog, t: ReturnType<typeof setupDialogs>) {
 }
 
 describe('the dialog panel', () => {
+  it('covers the panel and its margins in the column other floating UI keeps clear', () => {
+    // The heads-up box and the toast stack are placed against `DIALOG_COLUMN`,
+    // so the strip has to cover the panel (w-64) and its 12 px margin each side.
+    const t = setupDialogs();
+    t.controller.start('fake-press');
+    expect(render(t.open() as OpenDialog, t)).toContain('w-64');
+    expect(DIALOG_COLUMN).toBe(256 + 2 * 12);
+  });
+
   it('shows each shown field, the pick prompt and a disabled OK while a face is missing', () => {
     const t = setupDialogs();
     t.controller.start('fake-press');

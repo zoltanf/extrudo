@@ -1302,7 +1302,11 @@ them. Notes further down that name a machine apply to that machine only.
   Sketch1/Sketch2 can't be deleted while the extrudes use them. Error
   toasts have role `alert` and sit in the view's bottom-right corner (at
   the foot of the sketch palette in a sketch): dismiss them ("Dismiss")
-  before clicking there. Under the full parallel run B1 takes
+  before clicking there. An **open feature dialog moves that corner's
+  toast stack clear of its own column** (`DIALOG_COLUMN`), so a click on
+  the dialog's OK is never swallowed by the 12-second "Sketch1 is hidden…"
+  notice (P4-11; before that, a second extrude's OK click waited out the
+  toast and cost the flow ~11 s). Under the full parallel run B1 takes
   about 27 s (60 s timeout).
 - **Pointer modes** (ADR-0008 amendment): the nav bar's "Select" button
   is `aria-pressed` when no nav tool or command runs. The viewport's
@@ -1376,6 +1380,14 @@ them. Notes further down that name a machine apply to that machine only.
   direction) before `mapping()`. Pick a sketch profile next to a body
   in Orthographic, or the body's edge takes the click. `Bodies.tsx`
   uses `useFrame`: pure helpers go in `viewport/bodyGeometry.ts`.
+  `data-silhouettes` sums the hairline-free outlines per body; a node
+  within `EDGE_ON` (0.006°) of edge-on counts as **facing** whatever
+  the sign of the float noise in its normal is
+  (`viewport/silhouette.ts`), so a fillet's tangent line, a wall seen
+  exactly from the side or a cylinder's outline in a named view are the
+  same every run. The Top view of the bracket is that case: the tapered
+  walls of its holes face up, so what is left is the outside fillet's
+  tangent line (2 segments), where a run once reported 0, 2 or 4.
 - **Body names and projection syncs are amended into the latest undo
   step** (`DocumentState.amend`): a test that dispatches a feature and
   then calls `model.computed({…, doc})` sees the names join that step,

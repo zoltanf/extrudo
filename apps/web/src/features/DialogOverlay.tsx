@@ -12,7 +12,7 @@ import { useStore } from 'zustand';
 import { viewProject, viewRay, worldPerPixel } from '../viewport/camera';
 import type { ViewportStore } from '../viewport/store';
 import type { DialogController, OpenDialog } from './dialog';
-import { FieldExpression } from './FeatureDialog';
+import { DIALOG_COLUMN, FieldExpression } from './FeatureDialog';
 import {
   along,
   angleAround,
@@ -37,8 +37,6 @@ const ARC_PX = 64;
 /** How long a direction arrow is drawn, mm. */
 const ARROW_MM = 12;
 const BOX_WIDTH = 168;
-/** The feature dialog's column on the right of the view, which the box keeps out of. */
-const DIALOG_COLUMN = 280;
 
 /** The heads-up box goes right of the handle, or left of it where the dialog is. */
 function boxLeft(x: number, width: number): number {
