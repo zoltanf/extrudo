@@ -205,6 +205,61 @@ describe('ProjectStore', () => {
   });
 });
 
+describe('ProjectStore linked folder (P4-09, ADR-0065 §3)', () => {
+  it('records the linked file in the index, and a save keeps it', async () => {
+    const { store } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    expect((await store.get(d.id))?.linked).toBeUndefined();
+
+    await store.link(d.id, { file: 'Bracket.extrudo', modified: 1_700_000_000_000 });
+    expect((await store.get(d.id))?.linked).toEqual({
+      file: 'Bracket.extrudo',
+      modified: 1_700_000_000_000,
+    });
+    // Autosave rewrites the index entry every few seconds; the link stays.
+    await store.save({ ...d, name: 'Bracket renamed' });
+    expect((await store.get(d.id))?.linked?.file).toBe('Bracket.extrudo');
+    expect((await store.list())[0]?.linked?.file).toBe('Bracket.extrudo');
+
+    const cleared = await store.link(d.id, undefined);
+    expect(cleared.linked).toBeUndefined();
+    expect((await store.get(d.id))?.linked).toBeUndefined();
+    // Everything else about the entry is still there.
+    expect(cleared).toMatchObject({ id: d.id, name: 'Bracket renamed', hasThumbnail: false });
+  });
+
+  it('refuses to link a project that is not there', async () => {
+    const { store } = setup();
+    await expect(
+      store.link('00000000-0000-4000-8000-000000000000' as never, {
+        file: 'a.extrudo',
+        modified: 1,
+      }),
+    ).rejects.toThrow(ProjectNotFoundError);
+  });
+
+  it('builds the same bytes for a download and for a linked file', async () => {
+    const { store } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    await store.setThumbnail(d.id, png(9));
+    await store.saveVersion(d, 'before the change');
+    const bytes = await store.archiveBytes(d.id);
+    // The archive the File menu's export writes is the one a linked file gets.
+    expect(Object.keys(unzipSync(bytes as Uint8Array<ArrayBuffer>)).sort()).toEqual([
+      'document.json',
+      'manifest.json',
+      'thumbnail.png',
+      'versions/1.json',
+      'versions/index.json',
+    ]);
+    expect(new Uint8Array(await (await store.exportFile(d.id)).arrayBuffer())).toEqual(
+      bytes as Uint8Array<ArrayBuffer>,
+    );
+  });
+});
+
 describe('ProjectStore versions (P2-14)', () => {
   it('saves versions, lists them newest first and loads each as it was', async () => {
     const { store, files } = setup();

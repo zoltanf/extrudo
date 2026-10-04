@@ -38,6 +38,7 @@ import { ThemeMenu } from '../shell/ThemeMenu';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
 import { TEMPLATES, type Template } from './gallery';
 import { usePersistence, useProjects } from './hooks';
+import { LinkedFolderSection } from './LinkedFolderSection';
 import { type CardActions, ProjectCard } from './ProjectCard';
 
 type Sort = 'modified' | 'name';
@@ -321,6 +322,8 @@ export function HomeScreen({ platform }: { platform: Platform }) {
               </ul>
             )}
           </section>
+
+          {!showTrash && <LinkedFolderSection platform={platform} push={push} />}
         </div>
       </main>
 

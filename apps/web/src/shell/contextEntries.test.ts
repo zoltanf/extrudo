@@ -5,6 +5,7 @@ import { createViewportStore } from '../viewport/store';
 import type { BodyActions, BodyEntry } from './bodies';
 import type { AppCommand } from './commands';
 import { type ContextInput, contextEntries } from './contextEntries';
+import type { GroupActions } from './groupActions';
 
 const cmd = (id: string, over: Partial<AppCommand> = {}): AppCommand => ({
   id,
@@ -34,6 +35,17 @@ function bodyActions(): BodyActions {
   };
 }
 
+function groupActions(): GroupActions {
+  return {
+    group: vi.fn(() => true),
+    rename: vi.fn(() => true),
+    ungroup: vi.fn(),
+    setCollapsed: vi.fn(),
+    setSuppressed: vi.fn(),
+    setVisible: vi.fn(),
+  };
+}
+
 function input(over: Partial<ContextInput> = {}): ContextInput {
   return {
     mode: 'model',
@@ -52,6 +64,8 @@ function input(over: Partial<ContextInput> = {}): ContextInput {
     bodyActions: bodyActions(),
     features: [],
     featureActions: { edit: vi.fn(() => true), setVisible: vi.fn(), remove: vi.fn() },
+    groupActions: groupActions(),
+    pickedChips: [],
     viewport: createViewportStore({ preferences: memoryPreferences(), reducedMotion: () => true }),
     clearSelection: vi.fn(),
     appearance: vi.fn(),
@@ -75,6 +89,17 @@ const sketchFeature = (visible = true): Feature =>
 describe('the overflow list in the model', () => {
   it('offers only the view commands over empty space', () => {
     expect(ids(input())).toEqual(['fit', 'home', 'projection', 'redo']);
+  });
+
+  it('offers to group two or more chips picked in the timeline (P4-09)', () => {
+    // Nothing picked in the timeline: no entry.
+    expect(ids(input())).not.toContain('group');
+    // One chip: nothing to group yet.
+    expect(ids(input({ pickedChips: ['S1' as FeatureId] }))).not.toContain('group');
+    const i = input({ pickedChips: ['S1' as FeatureId, 'S2' as FeatureId] });
+    expect(find(i, 'group')?.label).toBe('Group 2 features');
+    find(i, 'group')?.onSelect();
+    expect(i.groupActions.group).toHaveBeenCalledWith(['S1', 'S2']);
   });
 
   it('switches the projection entry to the other projection', () => {

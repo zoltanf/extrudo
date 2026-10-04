@@ -3,6 +3,7 @@ import {
   CircleHelp,
   FileDown,
   FilePlus2,
+  FolderSync,
   GraduationCap,
   History,
   House,
@@ -51,6 +52,12 @@ export interface FileActions {
   saveVersion?(): void;
   /** Opens the Versions dialog (P2-14). */
   versionHistory?(): void;
+  /**
+   * Writes this design into the linked folder as `<name>.extrudo` and links
+   * the two (P4-09, ADR-0065 §3). Present only where a folder is linked and
+   * this project isn't linked yet.
+   */
+  saveToLinkedFolder?(): void;
   /** Opens a new design with the tutorial running (P3-12), for a design that isn't empty. */
   startTutorial?(): void;
 }
@@ -133,6 +140,12 @@ export function AppBar({
         <MenuItem icon={<Import size={14} />} onSelect={file.importFile}>
           Import .extrudo…
         </MenuItem>
+        {/* The folder on disk this design is kept in, when one is linked (P4-09). */}
+        {file.saveToLinkedFolder && (
+          <MenuItem icon={<FolderSync size={14} />} onSelect={file.saveToLinkedFolder}>
+            Save to Linked Folder
+          </MenuItem>
+        )}
         <MenuSeparator />
         <MenuItem disabled icon={<SlidersHorizontal size={14} />}>
           Project settings…

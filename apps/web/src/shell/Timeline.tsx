@@ -4,6 +4,8 @@ import {
   type ExtrudoDocument,
   type Feature,
   type FeatureId,
+  type FeatureStatus,
+  type GroupId,
   type ModelState,
   type ModelStore,
   readSketch,
@@ -18,6 +20,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Folder,
+  FolderOpen,
 } from 'lucide-react';
 import {
   Fragment,
@@ -25,6 +29,7 @@ import {
   type PointerEvent,
   type RefObject,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -33,10 +38,18 @@ import { ContextMenu, IconButton, Popover, ToolIcon, Tooltip } from '../design-s
 import { selectionSummary } from '../selection/items';
 import { formatRenderStats } from '../viewport/renderMeter';
 import type { ViewportStore } from '../viewport/store';
-import { FeatureMenuItems, RenameField } from './FeatureMenu';
+import { FeatureMenuItems, GroupMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
 import { type FeatureProblem, featureProblem, StatusGlyph } from './featureStatus';
+import type { GroupActions } from './groupActions';
 import { chipSelection, edgeScrollStep } from './timelineDrag';
+import {
+  dropAt,
+  type GroupRun,
+  planTimeline,
+  stepMarker,
+  type TimelineSelectionStore,
+} from './timelineGroups';
 import { toolForFeature } from './tools';
 
 export interface TimelineProps {
@@ -47,6 +60,10 @@ export interface TimelineProps {
   activeSketch?: string;
   /** Edit, rename, suppress, delete and hover (P1-12). */
   actions: FeatureActions;
+  /** Group, ungroup, fold and open the timeline's groups (P4-09, ADR-0065 §2). */
+  groups: GroupActions;
+  /** The picked chips (P3-17) and the picked group (P4-09), shared with the marking menu. */
+  selection: TimelineSelectionStore;
   /** The viewport, whose frame rate and frame time the status bar shows. */
   viewport?: ViewportStore;
   /** The kernel's results: a status per feature (chips) and the recompute state (status bar). */
@@ -65,10 +82,9 @@ export interface TimelineProps {
 
 /** A chip being dragged to a new place (FR-TL-04). */
 interface ChipDrag {
-  id: FeatureId;
-  /** Every feature that moves: the dragged one, or the selected chips it is one of (P3-17). */
+  /** What it holds: one feature, the picked chips, or every member of a group (P4-09). */
   ids: FeatureId[];
-  /** Where it would go: its index afterwards, and whether it lands active (left of the marker). */
+  /** Where it would go: the index its first feature lands at, and whether it lands active (left of the marker). */
   index: number;
   active: boolean;
   /** The drop indicator's x in the list's scroll coordinates, px. */
@@ -126,6 +142,12 @@ function useEdgeScroll(
  * refused with a message when it would break a reference). An active
  * feature the kernel couldn't compute shows ✕ (or ⚠ for a warning) and says
  * why in its tooltip (P2-01); its menu offers to fix lost references.
+ *
+ * Groups (P4-09, ADR-0065 §2): a run of neighbouring chips picks with Shift and
+ * groups from the chip menu or the marking menu; a folded group is one chip
+ * with its name, how many features are in it and the worst of their statuses,
+ * and an open one a band around its members' chips. The marker passes a folded
+ * group whole, and dragging its chip moves every member together.
  */
 export function Timeline({
   store,
@@ -133,6 +155,8 @@ export function Timeline({
   onToggle,
   activeSketch,
   actions,
+  groups,
+  selection,
   viewport,
   model,
   session,
@@ -148,6 +172,7 @@ export function Timeline({
   const count = doc.features.length;
   const editIndex = editing ? doc.features.findIndex((f) => f.id === editing) : -1;
   const locked = activeSketch !== undefined || editIndex >= 0;
+  const plan = useMemo(() => planTimeline(doc, statuses), [doc, statuses]);
   const move = (index: number) => actions.rollTo(index);
   const list = useRef<HTMLOListElement>(null);
   // Where the marker is drawn while it is dragged, and a chip being dragged.
@@ -157,18 +182,47 @@ export function Timeline({
   const shown = editIndex >= 0 ? editIndex + 1 : marker;
   // The marker is drawn between other chips after a key moves it: focus follows it there.
   const refocus = useRef(false);
-  // Chips picked with a click (Ctrl/⌘ adds, Shift a run): dragging one of them moves them all
-  // (P3-17). Timeline state only; features that went away drop out.
-  const [picked, setPicked] = useState<FeatureId[]>([]);
+  // Chips picked with a click (Ctrl/⌘ adds, Shift a run) and the group chip picked with one
+  // (P3-17, P4-09). Timeline state, shared with the marking menu; features that went away drop out.
+  const picked = useStore(selection, (s) => s.chips);
+  const pickedGroup = useStore(selection, (s) => s.group);
   const anchor = useRef<FeatureId>(undefined);
-  const order = doc.features.map((f) => f.id);
-  const selected = picked.filter((id) => order.includes(id));
+  const order = useMemo(() => doc.features.map((f) => f.id), [doc.features]);
+  const live = picked.filter((id) => order.includes(id));
+  const pick = (chips: FeatureId[], group?: GroupId) => {
+    selection.getState().pick(chips, group);
+  };
   const select = (id: FeatureId, mode: 'replace' | 'toggle' | 'range') => {
-    setPicked(chipSelection(order, selected, id, mode, anchor.current));
+    pick(chipSelection(order, live, id, mode, anchor.current));
     if (mode !== 'range') anchor.current = id;
   };
-  const movingWith = (id: FeatureId) =>
-    selected.length > 1 && selected.includes(id) ? selected : [id];
+  const movingWith = (id: FeatureId) => (live.length > 1 && live.includes(id) ? live : [id]);
+  /** A click on a group's chip: it picks the group, or (with Shift) the run over its members. */
+  const pickGroup = (run: GroupRun, shift: boolean) => {
+    const last = run.members.at(-1)?.id;
+    if (shift && last) {
+      pick(chipSelection(order, live, last, 'range', anchor.current ?? run.members[0]?.id));
+      return;
+    }
+    pick([], run.group.id);
+    anchor.current = run.members[0]?.id;
+  };
+  // The marker one step on, over a folded group whole.
+  const stepBack = stepMarker(plan.gaps, marker, -1);
+  const stepForward = stepMarker(plan.gaps, marker, 1);
+  const markerAt = (index: number) => (
+    <Marker
+      list={list}
+      features={doc.features}
+      gaps={plan.gaps}
+      index={index}
+      editing={editIndex >= 0 ? doc.features[editIndex]?.name : undefined}
+      locked={locked}
+      onDrag={setMarkerDrag}
+      onMove={move}
+      refocus={refocus}
+    />
+  );
 
   return (
     <section
@@ -187,15 +241,15 @@ export function Timeline({
             </IconButton>
             <IconButton
               label="Step back"
-              disabled={locked || marker === 0}
-              onClick={() => move(marker - 1)}
+              disabled={locked || stepBack === marker}
+              onClick={() => move(stepBack)}
             >
               <ChevronLeft size={16} />
             </IconButton>
             <IconButton
               label="Step forward"
-              disabled={locked || marker === count}
-              onClick={() => move(marker + 1)}
+              disabled={locked || stepForward === marker}
+              onClick={() => move(stepForward)}
             >
               <ChevronRight size={16} />
             </IconButton>
@@ -213,62 +267,124 @@ export function Timeline({
             ref={list}
             aria-label="Features"
             data-dragging={chipDrag ? 'chip' : markerDrag !== undefined ? 'marker' : undefined}
-            data-selected-features={selected.join(' ') || undefined}
+            data-selected-features={live.join(' ') || undefined}
+            data-selected-group={pickedGroup || undefined}
             className="relative flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 py-1"
             onClick={(event) => {
-              // A click between chips clears the chip selection, and so does Esc on a chip.
-              if (event.target === event.currentTarget) setPicked([]);
+              // A click between chips clears what was picked, and so does Esc on a chip.
+              if (event.target === event.currentTarget) selection.getState().clear();
             }}
             onKeyDown={(event) => {
-              if (event.key === 'Escape' && selected.length > 0) setPicked([]);
+              if (event.key === 'Escape' && (live.length > 0 || pickedGroup))
+                selection.getState().clear();
             }}
           >
-            {doc.features.map((feature, index) => (
-              <Fragment key={feature.id}>
-                {index === shown && (
-                  <Marker
-                    list={list}
-                    features={doc.features}
-                    index={shown}
-                    editing={editIndex >= 0 ? doc.features[editIndex]?.name : undefined}
-                    locked={locked}
-                    onDrag={setMarkerDrag}
-                    onMove={move}
-                    refocus={refocus}
-                  />
-                )}
-                <Chip
-                  feature={feature}
-                  index={index}
-                  marker={marker}
-                  count={count}
-                  problem={featureProblem(feature, index, marker, statuses)}
-                  rolledBack={index >= (markerDrag?.index ?? marker)}
-                  dimmed={editIndex >= 0 && index > editIndex}
-                  editable={actions.canEdit(feature, index, marker)}
-                  actions={actions}
-                  list={list}
-                  locked={locked}
-                  dragging={chipDrag?.ids.includes(feature.id) ?? false}
-                  onDrag={setChipDrag}
-                  selected={selected.includes(feature.id)}
-                  moving={movingWith(feature.id)}
-                  onSelect={select}
-                />
-              </Fragment>
-            ))}
-            {shown === count && count > 0 && (
-              <Marker
-                list={list}
-                features={doc.features}
-                index={shown}
-                editing={editIndex >= 0 ? doc.features[editIndex]?.name : undefined}
-                locked={locked}
-                onDrag={setMarkerDrag}
-                onMove={move}
-                refocus={refocus}
-              />
-            )}
+            {plan.bands.map((band) => {
+              // A folded group is one chip of its own; an open one a band around its members.
+              if (!band.group) {
+                return (
+                  <Fragment key={band.chips[0]?.id ?? `gap-${band.from}`}>
+                    {band.chips.map((feature, i) => {
+                      const index = band.from + i;
+                      return (
+                        <Fragment key={feature.id}>
+                          {index === shown && markerAt(index)}
+                          <Chip
+                            feature={feature}
+                            index={index}
+                            count={count}
+                            marker={marker}
+                            problem={featureProblem(feature, index, marker, statuses)}
+                            rolledBack={index >= (markerDrag?.index ?? marker)}
+                            dimmed={editIndex >= 0 && index > editIndex}
+                            editable={actions.canEdit(feature, index, marker)}
+                            actions={actions}
+                            groups={groups}
+                            list={list}
+                            locked={locked}
+                            dragging={chipDrag?.ids.includes(feature.id) ?? false}
+                            onDrag={setChipDrag}
+                            selected={live.includes(feature.id)}
+                            moving={movingWith(feature.id)}
+                            onSelect={select}
+                            // Two chips or more picked: the menu can group them (P4-09).
+                            range={live.length > 1 ? live : undefined}
+                          />
+                        </Fragment>
+                      );
+                    })}
+                  </Fragment>
+                );
+              }
+              const run = band.group;
+              if (run.group.collapsed) {
+                return (
+                  <Fragment key={run.group.id}>
+                    {band.from === shown && markerAt(band.from)}
+                    <GroupChip
+                      run={run}
+                      actions={actions}
+                      groups={groups}
+                      list={list}
+                      locked={locked}
+                      dragging={chipDrag?.ids.includes(run.members[0]?.id as FeatureId) ?? false}
+                      onDrag={setChipDrag}
+                      selected={pickedGroup === run.group.id}
+                      marker={marker}
+                      statuses={statuses}
+                      onPick={(shift) => pickGroup(run, shift)}
+                    />
+                  </Fragment>
+                );
+              }
+              return (
+                <Fragment key={run.group.id}>
+                  {band.from === shown && markerAt(band.from)}
+                  {/* An open group is a band around its members' chips: the marker that
+                      belongs in front of it is a chip of the timeline again, and the members
+                      are a list of their own. */}
+                  <li
+                    data-group-band={run.group.id}
+                    className="flex shrink-0 items-center gap-1 rounded-control border border-dashed px-1 py-0.5"
+                    style={{ background: 'color-mix(in srgb, var(--x-accent) 7%, transparent)' }}
+                  >
+                    <GroupLabel run={run} groups={groups} />
+                    <ul className="flex items-center gap-1">
+                      {run.members.map((feature, i) => {
+                        const index = band.from + i;
+                        return (
+                          <Fragment key={feature.id}>
+                            {/* The band's own marker, before the label, is the first member's. */}
+                            {i > 0 && index === shown && markerAt(index)}
+                            <Chip
+                              feature={feature}
+                              index={index}
+                              count={count}
+                              marker={marker}
+                              problem={featureProblem(feature, index, marker, statuses)}
+                              rolledBack={index >= (markerDrag?.index ?? marker)}
+                              dimmed={editIndex >= 0 && index > editIndex}
+                              editable={actions.canEdit(feature, index, marker)}
+                              actions={actions}
+                              groups={groups}
+                              list={list}
+                              locked={locked}
+                              dragging={chipDrag?.ids.includes(feature.id) ?? false}
+                              onDrag={setChipDrag}
+                              selected={live.includes(feature.id) || pickedGroup === run.group.id}
+                              moving={movingWith(feature.id)}
+                              onSelect={select}
+                              range={live.length > 1 ? live : undefined}
+                            />
+                          </Fragment>
+                        );
+                      })}
+                    </ul>
+                  </li>
+                </Fragment>
+              );
+            })}
+            {shown === count && count > 0 && markerAt(count)}
             {chipDrag && <DropIndicator drag={chipDrag} />}
             {markerDrag && markerDrag.index !== marker && (
               <li
@@ -297,16 +413,138 @@ export function Timeline({
   );
 }
 
+/** What a chip holds and where it starts: a feature's own index, or its group's range. */
+interface ChipContents {
+  ids: readonly FeatureId[];
+  from: number;
+  to: number;
+}
+
+/**
+ * The press-then-drag of a chip (FR-TL-04, P3-17, P4-09): what it holds moves to the gap under
+ * the pointer, refused with a message when it would break a reference. Gaps are counted in
+ * features, not in drawn chips, so a folded group (one chip, several features) is stepped over
+ * whole and its members move together.
+ */
+function useChipDrag(options: {
+  contents: ChipContents;
+  marker: number;
+  list: RefObject<HTMLOListElement | null>;
+  locked: boolean;
+  actions: FeatureActions;
+  onDrag(drag: ChipDrag | undefined): void;
+  dragging: boolean;
+}) {
+  const { contents, marker, list, locked, actions, onDrag, dragging } = options;
+  // The press that may become a drag, then the drag's latest drop.
+  const press = useRef<{ x: number; y: number; drag?: ChipDrag }>(undefined);
+  // The pointer during a drag (client px), for scrolling at the ends; a drag isn't a click.
+  const pointerX = useRef<number>(undefined);
+  const dragged = useRef(false);
+  const dropAt = (x: number): ChipDrag | undefined => {
+    const el = list.current;
+    if (!el) return undefined;
+    const ids = [...contents.ids];
+    const items = timelineItems(el).filter(
+      (item) =>
+        !(
+          item.dataset.timelineItem === 'chip' && ids.includes(item.dataset.featureId as FeatureId)
+        ),
+    );
+    const before = items.filter((item) => centreOf(item) < x);
+    // What is before the gap: chips count as the features they stand for, the marker as none.
+    const target = dropIndex(before.filter((item) => item.dataset.timelineItem === 'chip'));
+    const active = !before.some((item) => item.dataset.timelineItem === 'marker');
+    const unchanged = target === contents.from && active === contents.from < marker;
+    const edge = before.at(-1)?.getBoundingClientRect().right;
+    const next = items[before.length]?.getBoundingClientRect().left;
+    const at = edge !== undefined ? edge + 3 : (next ?? 0) - 3;
+    return {
+      ids,
+      index: target,
+      active,
+      x: at - el.getBoundingClientRect().left + el.scrollLeft,
+      problem: unchanged
+        ? undefined
+        : actions.moveProblem(ids.length === 1 ? (ids[0] as FeatureId) : ids, target),
+    };
+  };
+  useEdgeScroll(list, dragging && press.current?.drag !== undefined, pointerX, () => {
+    const p = press.current;
+    if (!p?.drag || pointerX.current === undefined) return;
+    p.drag = dropAt(pointerX.current);
+    onDrag(p.drag);
+  });
+  const endDrag = (drop: boolean) => {
+    const drag = press.current?.drag;
+    press.current = undefined;
+    pointerX.current = undefined;
+    if (!drag) return;
+    dragged.current = true;
+    onDrag(undefined);
+    if (!drop) return;
+    if (drag.index === contents.from && drag.active === contents.from < marker) return;
+    actions.move(
+      drag.ids.length === 1 ? (drag.ids[0] as FeatureId) : drag.ids,
+      drag.index,
+      drag.active,
+    );
+  };
+  // Esc puts a dragged chip back.
+  useEffect(() => {
+    if (!dragging) return;
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') endDrag(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  });
+  return {
+    /** Whether the click that ends a drag must not change the selection. */
+    dragged,
+    handlers: {
+      onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
+        if (event.button !== 0 || locked) return;
+        press.current = { x: event.clientX, y: event.clientY };
+        dragged.current = false;
+      },
+      onPointerMove: (event: PointerEvent<HTMLButtonElement>) => {
+        const p = press.current;
+        if (!p) return;
+        if (!p.drag && Math.hypot(event.clientX - p.x, event.clientY - p.y) < DRAG_THRESHOLD)
+          return;
+        if (!p.drag) event.currentTarget.setPointerCapture(event.pointerId);
+        pointerX.current = event.clientX;
+        p.drag = dropAt(event.clientX);
+        onDrag(p.drag);
+      },
+      onPointerUp: () => endDrag(true),
+      onPointerCancel: () => endDrag(false),
+    },
+  };
+}
+
+/** The feature index a gap after these drawn chips is at (P4-09, `timelineGroups.ts`). */
+function dropIndex(chips: readonly HTMLElement[]): number {
+  return dropAt(
+    chips.map((item) => ({
+      from: Number(item.dataset.featureFrom ?? 0),
+      to: Number(item.dataset.featureTo ?? 1),
+    })),
+  );
+}
+
 function Chip({
   feature,
   index,
-  marker,
   count,
+  marker,
   problem,
   rolledBack,
   dimmed,
   editable,
   actions,
+  groups,
   list,
   locked,
   dragging,
@@ -314,11 +552,13 @@ function Chip({
   selected,
   moving,
   onSelect,
+  range,
 }: {
   feature: Feature;
   index: number;
-  marker: number;
+  /** How many features the timeline has (for "Move to End"). */
   count: number;
+  marker: number;
   /** The kernel's verdict; only for active features (`featureProblem`). */
   problem: FeatureProblem | undefined;
   rolledBack: boolean;
@@ -326,6 +566,7 @@ function Chip({
   dimmed: boolean;
   editable: boolean;
   actions: FeatureActions;
+  groups: GroupActions;
   list: RefObject<HTMLOListElement | null>;
   /** A sketch or a feature's dialog is open: chips don't move. */
   locked: boolean;
@@ -336,77 +577,19 @@ function Chip({
   /** What a drag of this chip moves: it, or the selected chips when it is one of them. */
   moving: readonly FeatureId[];
   onSelect(id: FeatureId, mode: 'replace' | 'toggle' | 'range'): void;
+  /** Two chips or more are picked: the menu groups them (P4-09). */
+  range: readonly FeatureId[] | undefined;
 }) {
   const [renaming, setRenaming] = useState(false);
-  // The press that may become a drag, then the drag's latest drop.
-  const press = useRef<{ x: number; y: number; drag?: ChipDrag }>(undefined);
-  // The pointer during a drag (client px), for scrolling at the ends; a drag isn't a click.
-  const pointerX = useRef<number>(undefined);
-  const dragged = useRef(false);
-  const dropAt = (x: number): ChipDrag | undefined => {
-    const el = list.current;
-    if (!el) return undefined;
-    const ids = [...moving];
-    const items = timelineItems(el).filter(
-      (item) => !ids.includes(item.dataset.featureId as FeatureId),
-    );
-    const before = items.filter((item) => centreOf(item) < x);
-    const target = before.filter((item) => item.dataset.timelineItem === 'chip').length;
-    const active = !before.some((item) => item.dataset.timelineItem === 'marker');
-    const unchanged = ids.length === 1 && target === index && active === index < marker;
-    const edge = before.at(-1)?.getBoundingClientRect().right;
-    const next = items[before.length]?.getBoundingClientRect().left;
-    const at = edge !== undefined ? edge + 3 : (next ?? 0) - 3;
-    return {
-      id: feature.id,
-      ids,
-      index: target,
-      active,
-      x: at - el.getBoundingClientRect().left + el.scrollLeft,
-      problem: unchanged
-        ? undefined
-        : actions.moveProblem(ids.length === 1 ? feature.id : ids, target),
-    };
-  };
-  useEdgeScroll(list, dragging && press.current?.drag !== undefined, pointerX, () => {
-    const p = press.current;
-    if (!p?.drag || pointerX.current === undefined) return;
-    p.drag = dropAt(pointerX.current);
-    onDrag(p.drag);
-  });
-  const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0 || locked || renaming) return;
-    press.current = { x: event.clientX, y: event.clientY };
-    dragged.current = false;
-  };
-  const onPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
-    const p = press.current;
-    if (!p) return;
-    if (!p.drag && Math.hypot(event.clientX - p.x, event.clientY - p.y) < DRAG_THRESHOLD) return;
-    if (!p.drag) event.currentTarget.setPointerCapture(event.pointerId);
-    pointerX.current = event.clientX;
-    p.drag = dropAt(event.clientX);
-    onDrag(p.drag);
-  };
-  const endDrag = (drop: boolean) => {
-    const drag = press.current?.drag;
-    press.current = undefined;
-    pointerX.current = undefined;
-    if (!drag) return;
-    dragged.current = true;
-    onDrag(undefined);
-    if (!drop) return;
-    if (drag.ids.length === 1 && drag.index === index && drag.active === index < marker) return;
-    actions.move(drag.ids.length === 1 ? drag.id : drag.ids, drag.index, drag.active);
-  };
-  // Esc puts a dragged chip back.
-  useEffect(() => {
-    if (!dragging) return;
-    const onKey = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') endDrag(false);
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
+  const ids = [...moving];
+  const drag = useChipDrag({
+    contents: { ids, from: index, to: index + 1 },
+    marker,
+    list,
+    locked: locked || renaming,
+    actions,
+    onDrag,
+    dragging,
   });
   const tool = toolForFeature(feature.type);
   const states = [
@@ -422,19 +605,18 @@ function Chip({
       onDoubleClick={editable ? () => actions.edit(feature.id) : undefined}
       onPointerEnter={() => actions.hover(feature.id)}
       onPointerLeave={() => actions.hover(undefined)}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={() => endDrag(true)}
-      onPointerCancel={() => endDrag(false)}
+      {...drag.handlers}
       data-timeline-item="chip"
       data-feature-id={feature.id}
+      data-feature-from={index}
+      data-feature-to={index + 1}
       data-feature-status={problem?.status}
       data-selected={selected || undefined}
       aria-pressed={selected}
       onClick={(event) => {
         // The click that ends a drag doesn't change the selection.
-        if (dragged.current) {
-          dragged.current = false;
+        if (drag.dragged.current) {
+          drag.dragged.current = false;
           return;
         }
         onSelect(
@@ -492,6 +674,7 @@ function Chip({
                 actions={actions}
                 onRename={() => setRenaming(true)}
                 position={{ index, marker, count }}
+                {...(range && { group: { features: range, actions: groups } })}
               />
             </ContextMenu>
           </span>
@@ -506,6 +689,209 @@ function Chip({
         />
       </Popover>
     </li>
+  );
+}
+
+/**
+ * A folded group as one chip (P4-09, ADR-0065 §2): a folder glyph, its name, how
+ * many features are in it and the worst of their statuses. Its arrow opens the
+ * group, a double-click does the same, and a drag moves every member together
+ * (one command, refused as a whole).
+ */
+function GroupChip({
+  run,
+  actions,
+  groups,
+  list,
+  locked,
+  dragging,
+  onDrag,
+  selected,
+  marker,
+  statuses,
+  onPick,
+}: {
+  run: GroupRun;
+  actions: FeatureActions;
+  groups: GroupActions;
+  list: RefObject<HTMLOListElement | null>;
+  locked: boolean;
+  dragging: boolean;
+  onDrag(drag: ChipDrag | undefined): void;
+  selected: boolean;
+  marker: number;
+  statuses: Readonly<Record<string, FeatureStatus | undefined>>;
+  onPick(shift: boolean): void;
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const members = run.members.map((f) => f.id);
+  const ids = [...members];
+  const drag = useChipDrag({
+    contents: { ids, from: run.from, to: run.to + 1 },
+    marker,
+    list,
+    locked: locked || renaming,
+    actions,
+    onDrag,
+    dragging,
+  });
+  const states = [
+    run.rolledBack && 'rolled back',
+    run.split && 'partly rolled back',
+    run.suppressed && 'suppressed',
+    run.status,
+  ].filter(Boolean);
+  const count = run.members.length;
+  const first = run.members[0];
+  const group = run.group;
+  const chip = (
+    <button
+      type="button"
+      aria-label={`${group.name}, ${count} ${count === 1 ? 'feature' : 'features'}${states.length > 0 ? ` (${states.join(', ')})` : ''}`}
+      onDoubleClick={() => groups.setCollapsed(group.id, false)}
+      onPointerEnter={() => actions.hover(first?.id)}
+      onPointerLeave={() => actions.hover(undefined)}
+      {...drag.handlers}
+      data-timeline-item="chip"
+      data-group={group.id}
+      data-group-collapsed
+      data-feature-id={first?.id}
+      data-feature-from={run.from}
+      data-feature-to={run.to + 1}
+      data-feature-status={run.status}
+      data-selected={selected || undefined}
+      aria-pressed={selected}
+      onClick={(event) => {
+        if (drag.dragged.current) {
+          drag.dragged.current = false;
+          return;
+        }
+        onPick(event.shiftKey);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'F2') {
+          event.preventDefault();
+          setRenaming(true);
+        }
+      }}
+      className={`relative flex h-8 max-w-52 shrink-0 touch-none items-center gap-1.5 rounded-control border px-1.5 ${dragging ? 'cursor-grabbing ring-2 ring-accent' : selected ? 'ring-2 ring-accent/60 ring-offset-1 ring-offset-panel' : ''}`}
+      style={{
+        background: 'color-mix(in srgb, var(--x-accent) 10%, var(--x-bg))',
+        borderColor: run.status
+          ? `var(--x-${run.status})`
+          : 'color-mix(in srgb, var(--x-accent) 38%, transparent)',
+        opacity: run.rolledBack ? 0.38 : run.suppressed ? 0.6 : 1,
+      }}
+    >
+      <Folder size={14} className="shrink-0" />
+      <span className="truncate text-[11px]">{group.name}</span>
+      <span className="font-mono text-[10px] text-muted">{count}</span>
+      {run.errors > 0 && (
+        <span className="font-mono text-[10px] text-error" aria-hidden="true">
+          ✕{run.errors > 1 ? run.errors : ''}
+        </span>
+      )}
+      {!run.status && run.members.some((f) => statuses[f.id]?.status === 'warning') && (
+        <StatusGlyph status="warning" />
+      )}
+    </button>
+  );
+  return (
+    <li className="flex shrink-0 items-center">
+      <Popover
+        anchorOnly
+        open={renaming}
+        onOpenChange={setRenaming}
+        side="top"
+        label={`Rename ${group.name}`}
+        trigger={
+          <span className="block">
+            <ContextMenu
+              label={`${group.name} group menu`}
+              trigger={
+                <Tooltip
+                  label={group.name}
+                  side="top"
+                  hint={`${count} ${count === 1 ? 'feature' : 'features'}${run.message ? `: ${run.message}` : ''}`}
+                >
+                  {chip}
+                </Tooltip>
+              }
+            >
+              <GroupMenuItems run={run} actions={groups} onRename={() => setRenaming(true)} />
+            </ContextMenu>
+          </span>
+        }
+      >
+        <RenameField
+          name={group.name}
+          label="Name"
+          className="w-48"
+          onCommit={(name) => groups.rename(group.id, name)}
+          onDone={() => setRenaming(false)}
+        />
+      </Popover>
+      {/* The arrow beside the chip opens the group, like a double-click does. */}
+      <IconButton
+        label={`Expand ${group.name}`}
+        onClick={() => groups.setCollapsed(group.id, false)}
+        className="-ml-2 !size-6"
+      >
+        <ChevronRight size={12} />
+      </IconButton>
+    </li>
+  );
+}
+
+/**
+ * The label of an open group's band (P4-09, ADR-0065 §2): its name, which
+ * collapses the group when clicked, a rename field (F2) and the group's menu.
+ */
+function GroupLabel({ run, groups }: { run: GroupRun; groups: GroupActions }) {
+  const [renaming, setRenaming] = useState(false);
+  const group = run.group;
+  const label = (
+    <button
+      type="button"
+      aria-label={`Collapse ${group.name}`}
+      data-group-label={group.id}
+      onClick={() => groups.setCollapsed(group.id, true)}
+      onDoubleClick={() => groups.setCollapsed(group.id, true)}
+      onKeyDown={(event) => {
+        if (event.key === 'F2') {
+          event.preventDefault();
+          setRenaming(true);
+        }
+      }}
+      className="flex shrink-0 items-center gap-1 rounded px-1 text-[10px] text-muted hover:text-ink"
+    >
+      <FolderOpen size={12} />
+      <span className="max-w-24 truncate">{group.name}</span>
+    </button>
+  );
+  return (
+    <Popover
+      anchorOnly
+      open={renaming}
+      onOpenChange={setRenaming}
+      side="top"
+      label={`Rename ${group.name}`}
+      trigger={
+        <span className="block">
+          <ContextMenu label={`${group.name} group menu`} trigger={label}>
+            <GroupMenuItems run={run} actions={groups} onRename={() => setRenaming(true)} />
+          </ContextMenu>
+        </span>
+      }
+    >
+      <RenameField
+        name={group.name}
+        label="Name"
+        className="w-48"
+        onCommit={(name) => groups.rename(group.id, name)}
+        onDone={() => setRenaming(false)}
+      />
+    </Popover>
   );
 }
 
@@ -599,7 +985,7 @@ function kernelHint(status: ModelState<unknown>['status'], error: string | undef
   return 'The geometry kernel recomputes the timeline after each change, reusing what the change left alone.';
 }
 
-/** The timeline's items (chips and the marker) in order. */
+/** The timeline's items (chips, group chips and the marker) in order. */
 function timelineItems(list: HTMLElement): HTMLElement[] {
   return [...list.querySelectorAll<HTMLElement>('[data-timeline-item]')];
 }
@@ -613,11 +999,14 @@ function centreOf(el: HTMLElement): number {
  * The rollback marker (FR-TL-02, UI spec §2): a slider over the gaps
  * between chips. Drag it (it follows the pointer; the model rolls when it
  * is let go, one undo step), or focus it and use the arrow keys, Home and
- * End. While a dialog edits a feature it sits after that feature, dashed.
+ * End. The arrow keys step between the gaps the timeline draws, so a folded
+ * group is passed whole (P4-09). While a dialog edits a feature it sits
+ * after that feature, dashed.
  */
 function Marker({
   list,
   features,
+  gaps,
   index,
   editing,
   locked,
@@ -627,6 +1016,8 @@ function Marker({
 }: {
   list: RefObject<HTMLOListElement | null>;
   features: readonly Feature[];
+  /** The gaps the marker may stop in (never inside a folded group). */
+  gaps: readonly number[];
   /** The gap it is drawn in. */
   index: number;
   /** The name of the feature a dialog edits, if any. */
@@ -652,9 +1043,12 @@ function Marker({
     const el = list.current;
     if (!el) return { index, x: 0 };
     const chips = timelineItems(el).filter((item) => item.dataset.timelineItem === 'chip');
-    const at = chips.filter((item) => centreOf(item) < x).length;
-    const left = chips[at - 1]?.getBoundingClientRect().right;
-    const right = chips[at]?.getBoundingClientRect().left;
+    const before = chips.filter((item) => centreOf(item) < x);
+    // The gap after the last chip before the pointer, counted in features (P4-09).
+    const at = dropIndex(before);
+    const left = before.at(-1)?.getBoundingClientRect().right;
+    const right =
+      chips[chips.indexOf(before.at(-1) as HTMLElement) + 1]?.getBoundingClientRect().left;
     const px =
       left !== undefined && right !== undefined
         ? (left + right) / 2
@@ -700,9 +1094,9 @@ function Marker({
     if (locked) return;
     const to =
       event.key === 'ArrowLeft' || event.key === 'ArrowDown'
-        ? index - 1
+        ? stepMarker(gaps, index, -1)
         : event.key === 'ArrowRight' || event.key === 'ArrowUp'
-          ? index + 1
+          ? stepMarker(gaps, index, 1)
           : event.key === 'Home'
             ? 0
             : event.key === 'End'

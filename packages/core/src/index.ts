@@ -34,6 +34,7 @@ export {
 } from './features';
 export * from './fillet';
 export { FILE_EXTENSION, FORMAT_NAME, FORMAT_VERSION } from './format';
+export * from './groups';
 export { type HistoryEntry, type HistoryOptions, UndoHistory } from './history';
 export * from './hole';
 export * from './ids';

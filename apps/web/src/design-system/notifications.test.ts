@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  actionsOf,
   applies,
   createNotifications,
   grouped,
@@ -181,6 +182,29 @@ describe('notifications', () => {
     t.state().recheck();
     expect(t.state().checks).toBe(1);
     expect(applies(t.state().history[0]?.action ?? { label: '', run: () => {} })).toBe(false);
+  });
+
+  it('carries several buttons on one message (P4-09, ADR-0065 §3)', () => {
+    const t = setup();
+    let resolves = false;
+    const load = { label: 'Load from disk', run: vi.fn(), available: () => resolves };
+    const overwrite = { label: 'Overwrite', run: vi.fn(), available: () => resolves };
+    t.state().push('error', 'Bracket.extrudo changed on disk.', { actions: [load, overwrite] });
+    const toast = t.state().toasts[0];
+    // `action` is the first button, so everything that knows one still works.
+    expect(toast?.action?.label).toBe('Load from disk');
+    expect(actionsOf(toast ?? {}).map((a) => a.label)).toEqual(['Load from disk', 'Overwrite']);
+    expect(actionsOf(t.state().history[0] ?? {}).map((a) => a.label)).toEqual([
+      'Load from disk',
+      'Overwrite',
+    ]);
+    // Both still apply, so an open history asks about them.
+    t.state().setOpen(true);
+    t.state().recheck();
+    expect(t.state().checks).toBe(1);
+    resolves = false;
+    actionsOf(t.state().history[0] ?? {})[0]?.run();
+    expect(load.run).toHaveBeenCalledOnce();
   });
 
   it('skips the recheck when no action has a predicate', () => {

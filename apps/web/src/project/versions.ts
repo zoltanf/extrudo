@@ -51,6 +51,29 @@ export interface Restored {
 }
 
 /**
+ * Puts `doc` back into the open design as one undo step, keeping what the
+ * design holds now as a version first ("Before restoring …"), unless the
+ * newest version already is that state. `restoreVersion` is this with a
+ * version's document in hand; the linked folder's "Load from disk" is it with
+ * a file's (P4-09, ADR-0065 §3).
+ */
+async function restoreInto(
+  ctx: VersionContext,
+  doc: ExtrudoDocument,
+  label: string,
+): Promise<VersionSummary | undefined> {
+  const id = ctx.store.getState().doc.id;
+  const [newest] = await ctx.projects.versions(id);
+  const current = ctx.store.getState().doc;
+  const same =
+    newest !== undefined &&
+    content(await ctx.projects.loadVersion(id, newest.number)) === content(current);
+  const kept = same ? undefined : await saveVersion(ctx, `Before restoring ${label}`);
+  ctx.store.getState().dispatch(restoreVersionCommand({ doc }));
+  return kept;
+}
+
+/**
  * Brings version `number` back into the open design as one undo step
  * ("Restore version"). What the design held before is kept as a version
  * first ("Before restoring V2"), unless the newest version holds it already,
@@ -64,16 +87,30 @@ export async function restoreVersion(ctx: VersionContext, number: number): Promi
   const restored = versions.find((v) => v.number === number);
   if (!restored) throw new Error(`There is no version ${number} of this design.`);
   const doc = await ctx.projects.loadVersion(id, number);
-  const [newest] = versions;
-  const current = ctx.store.getState().doc;
-  const same =
-    newest !== undefined &&
-    content(await ctx.projects.loadVersion(id, newest.number)) === content(current);
-  const kept = same
-    ? undefined
-    : await saveVersion(ctx, `Before restoring ${versionLabel(restored)}`);
-  ctx.store.getState().dispatch(restoreVersionCommand({ doc }));
+  const kept = await restoreInto(ctx, doc, versionLabel(restored));
   return { restored, ...(kept && { kept }) };
+}
+
+export interface DocumentRestored {
+  /** What was brought back, as the dialog and the toasts name it ("V2", the file's name). */
+  label: string;
+  /** The version that now keeps what was there before, unless one already did. */
+  kept?: VersionSummary;
+}
+
+/**
+ * Brings a document from somewhere else into the open design as one undo
+ * step: a linked folder's file ("Load from disk", P4-09) or anything else
+ * with a document in hand. What the design held before is kept as a version
+ * first, as `restoreVersion` does.
+ */
+export async function restoreDocument(
+  ctx: VersionContext,
+  doc: ExtrudoDocument,
+  label: string,
+): Promise<DocumentRestored> {
+  const kept = await restoreInto(ctx, doc, label);
+  return { label, ...(kept && { kept }) };
 }
 
 /**

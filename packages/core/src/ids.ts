@@ -18,6 +18,8 @@ export const FeatureIdSchema = id.brand<'FeatureId'>();
 export const ParameterIdSchema = id.brand<'ParameterId'>();
 export const BodyIdSchema = id.brand<'BodyId'>();
 export const ViewIdSchema = id.brand<'ViewId'>();
+/** A group of neighbouring timeline features (P4-09, ADR-0065 §1). */
+export const GroupIdSchema = id.brand<'GroupId'>();
 /** A saved set of parameter values (P4-07, ADR-0059 §2). */
 export const ConfigurationIdSchema = id.brand<'ConfigurationId'>();
 /** Sketch geometry: points, lines, circles, arcs. Unique within the sketch. */
@@ -34,6 +36,7 @@ export type FeatureId = z.infer<typeof FeatureIdSchema>;
 export type ParameterId = z.infer<typeof ParameterIdSchema>;
 export type BodyId = z.infer<typeof BodyIdSchema>;
 export type ViewId = z.infer<typeof ViewIdSchema>;
+export type GroupId = z.infer<typeof GroupIdSchema>;
 export type ConfigurationId = z.infer<typeof ConfigurationIdSchema>;
 export type SketchEntityId = z.infer<typeof SketchEntityIdSchema>;
 export type ConstraintId = z.infer<typeof ConstraintIdSchema>;
@@ -47,6 +50,7 @@ type AnyId =
   | ParameterId
   | BodyId
   | ViewId
+  | GroupId
   | ConfigurationId
   | SketchEntityId
   | ConstraintId

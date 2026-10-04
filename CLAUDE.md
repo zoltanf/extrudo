@@ -32,7 +32,8 @@ complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil), P4-02
 (modeled threads), P4-03 (sketch text, bundled fonts), P4-03b (user fonts
 as attachments), P4-04 (emboss, deboss), P4-05 (control-point splines,
 conics), P4-07 (customizer, configurations), P4-08 (print tolerance,
-slicer hand-off) and P4-10 (rib/web, variable-radius fillet) are done; P4-11
+slicer hand-off), P4-09 (timeline groups, linked folders) and P4-10 (rib/web,
+variable-radius fillet) are done; P4-11
 (benchmarks B8–B10) is **done** on 2026-10-04 — B9 (the threaded bottle cap and
 thread adapter), B8 (the name tag) and B10 (the cable chain link). ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
@@ -874,6 +875,59 @@ constant document takes `fillet` and computes exactly as before. `fillet` and
 runs in. Names and the two ends' messages are unchanged. The dialog's per-set
 **Variable** toggle is not an input: a set is variable exactly when it has an
 end radius, so the toggle off drops `radiusEnd`/`swap` again.
+ADR-0065 (P4-09, slice 1) added **timeline groups**: a run of neighbouring
+features under one name, folded into one chip or open on a band. A group is
+stored as its **two ends** (`doc.groups[]`: `id`, `name`, `first`, `last`,
+`collapsed` — `docs/file-format.md` §4.6), never as a list of members, so it
+stays contiguous: its members are what is between its ends, a feature that
+lands between them joins it, an end that moves or is deleted shifts to the next
+member inside, an end whose ends swap makes the group run from the earlier to
+the later one, a group with no members is dropped (key and all) and a group
+that would share a feature with an earlier one is too. **`normalizeGroups`
+(`packages/core/src/groups.ts`) is the one place those rules live**, and every
+command that reorders or removes features ends with it (`moveFeature`,
+`moveFeatures`, `removeFeature`, `restoreVersion`; `removeFeature` also calls
+`dropFeatureFromGroups` first, while it still knows the deleted feature's
+index). The engine, the naming and the recompute ignore groups. The commands
+are `groupFeatures`, `ungroup`, `renameGroup`, `setGroupCollapsed`,
+`groupSuppressed` and `groupVisibility`, one undo step each; the app's are
+`groupActions.ts`. **Chips count features, not chips**: every drawn chip
+carries `data-feature-from`/`data-feature-to`, so the marker skips a folded
+group whole, a drop can never land inside one, and dragging a group's chip
+moves all of it in one `moveFeatures`. **The marker never rests inside a folded
+group**: `openGroupAtMarker` (`timelineGroups.ts`) gives the command that opens
+the one the marker landed in, and `AppShell` amends it into the step that moved
+the marker, so undo takes the opening with it. The picked chips and the picked
+group are a small store (`createTimelineSelectionStore`) the timeline and the
+marking menu's list share; Group is in the chip menu and in that list.
+ADR-0065 §3 (P4-09, slice 2) added **linked folders**: a folder of `.extrudo`
+files on disk, beside the browser's own copy, which stays primary (permission
+lapses, other browsers lack the API). **`Platform.folders` is optional** and
+only where `window.showDirectoryPicker` exists, so the app behaves as it did in
+Firefox and Safari (`platform/folders.ts`: `link()`, `current()`, `unlink()`,
+and `permission`/`request`/`list`/`read`/`write` on a link; the handle is in
+its own IndexedDB store, `packages/storage/src/handles.ts`, because a
+`FileSystemHandle` survives a reload). **The link lives in the project index**
+(`ProjectSummary.linked` = `{ file, modified }`, `ProjectStore.link`), never in
+the document: it is about this browser, not the design, so nothing in
+`docs/file-format.md` changes. **A linked project writes its file after every
+successful autosave**, throttled to once every 10 s with the throttle trailing
+(the newest state goes) and once more when it closes; the bytes are
+`ProjectStore.archiveBytes`, the same builder the File menu's export uses. The
+decisions are pure (`project/linkedSync.ts`: `createLinkSync`), and a save
+inside the throttle only *schedules* the write — which is why the context
+carries `report(outcome)`: a trailing write the caller didn't await still has to
+be able to say that the file changed on disk. **The conflict rule**: before
+writing, the file's own `lastModified` is compared with the recorded one, and a
+difference means nothing is written and a toast says `<file> changed on disk.`
+with "Load from disk" (one undo step through `restoreDocument`, ADR-0036's
+path, keeping what you had as a version) and "Overwrite" — a toast can carry
+several buttons (`ToastOptions.actions`, with `action` the first of them), both
+with `available()`. Errors (permission lost, file removed) are toasts. The home
+screen's "Linked folder" section opens a file as a project **linked** to it;
+"Save to Linked Folder" (File menu, Ctrl+K) links an unlinked one, refusing a
+name that is already in the folder.
+
 ADR-0066 (P4-06, slice 1) added **drawings into a sketch**: `@extrudo/io`
 gained `readSvg` / `readDxf` (`xml.ts` is our own small tokenizer, no
 dependency), which give a `DrawingImport` — the same `Drawing` the writers
@@ -951,7 +1005,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet (0006 is reserved). ADR-0066: import (drawings, STEP, meshes) and canvas images |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved) |
 
 ## Stack summary
 
@@ -1876,6 +1930,24 @@ them. Notes further down that name a machine apply to that machine only.
 - **Versions e2e** (P3-13): per-row "Delete V3" buttons and "Delete older
   versions" (shown past 10) open an `alertdialog` "Delete V3?" / "Delete
   V1?" with Cancel/Delete.
+- **IndexedDB and the second tab** (P4-09's follow-up): the database is at
+  version 2 (the linked folder's handle store), and an upgrade is held up by
+  **every other tab of this origin** — silently, or the app never finishes
+  opening. `openDatabase(factory?, name?, { onBlocked, onVersionChange })` is
+  how storage says both (the `blocked` request keeps waiting and succeeds when
+  the others let go; a connection gets `onversionchange` → the callback, then
+  closes), and `webPlatform()` words them through `platform/databaseNotice.ts`:
+  "Close Extrudo's other tabs to finish updating." while the open waits, and in
+  the tab that lets go "Extrudo was updated in another tab. Reload this tab to
+  keep working." with a Reload button that saves first. Its store is wrapped in
+  `closedStorage`, which replaces **only** the browser's closed-connection
+  `InvalidStateError`. The toasts need a page before the app is mounted: the
+  notification store is one per page (`appNotifications`) and `main.tsx` draws
+  `ToastsOnly` while `webPlatform()` runs. `e2e/storage.spec.ts` covers it with
+  two pages of one context: the second tab's init script makes
+  `indexedDB.open` throw (so it holds no connection of its own) and keeps the
+  real one as `window.__idbOpen`, which then upgrades the database by one
+  version.
 - **Newer files in e2e**: write `projects/<id>/document.json` in OPFS from
   `page.evaluate` (see `storage.spec.ts`) to simulate a newer Extrudo.
 - **Split Body, Scale and Draft e2e** (`e2e/split-body.spec.ts`,
@@ -2126,6 +2198,52 @@ them. Notes further down that name a machine apply to that machine only.
   is `error`, `data-dialog-valid` is **absent** (it is there only while the
   dialog can commit) and OK is disabled; the bodies drawn are the ones from
   before the draft.
+- **Timeline groups e2e** (`e2e/timeline-groups.spec.ts`, P4-09): the Wall
+  bracket template (Sketch1 Extrude1 Sketch2 Extrude2 Fillet1 | Plane1). A run
+  is picked with `chip.click()` then `click({ modifiers: ['Shift'] })` and
+  grouped from the chip's right-click menu, whose first item reads **"Group 2
+  features"**; an open group is `[data-group-band]` with `[data-group-label]`
+  holding its name, a folded one `[data-group][data-group-collapsed]` with the
+  accessible name **"Group1, 2 features"** (folder glyph, count, worst status)
+  and an `IconButton` "Expand Group1" beside it. F2 renames a chip (focus it,
+  then the textbox "Rename Group1"); the group's own menu (`click({ button:
+  'right' })`) has Rename, Expand/Collapse, Hide/Show, Suppress/Unsuppress and
+  "Ungroup 2 features". The marker slider skips a folded group's gaps: Step
+  back from 6 goes 5, 4, 3, 1 (never 2), and folding a group the marker is
+  inside opens it again. The marking menu's list carries
+  `[data-marking-entry="group"]` after two chips are picked. The bracket's
+  members grouped are Extrude1 + Sketch2 (adjacent, so the group may straddle
+  the marker), and suppressing them leaves the view with no bodies: the features
+  after them lose the references they had.
+- **Linked folder e2e** (`e2e/linked-folder.spec.ts`, P4-09): the File System
+  Access API doesn't exist for a person in headless Chromium, so the spec
+  stubs `showDirectoryPicker` with an init script over an OPFS directory
+  (`navigator.storage.getDirectory()` then `getDirectoryHandle('linked', {create:
+  true})`) — **OPFS handles have no `queryPermission`/`requestPermission`, so
+  the stub adds both on `FileSystemDirectoryHandle.prototype`**, answering
+  `window.__linkedFolder.permission` ('granted' by default; a second init
+  script sets 'prompt' to see Reconnect). **Two traps in that stub, both found
+  in the Playwright Ubuntu image CI uses**: an OPFS handle cannot be
+  *deserialised* out of IndexedDB there (it crashes the renderer — `put` works,
+  the `get` kills the tab), so the stub keeps the folder's **name** in the
+  `handles` store and answers the read with a live handle rebuilt from that
+  name (it patches `IDBObjectStore.prototype.put`/`get` and hands back a
+  stand-in request); and a file being written through `createWritable` is
+  briefly *not there*, so the spec's polls read it through `nameIn()`, which
+  answers `undefined` instead of failing. Reading and writing those files from
+  the test goes through `readArchive`/`writeArchive` imported from
+  `../packages/storage/src/archive`, with the bytes base64'd across
+  `page.evaluate` (**a `page.evaluate` string must end in `()` or Playwright
+  evaluates it as a bare function**). The section is the region "Linked folder"
+  with `data-linked-folder` (`none`/`needs-permission`/`ready`/`loading`) and
+  file cards `[data-linked-file="<name>"]`; "Link a folder…", "Reconnect",
+  "Unlink the folder" and "Refresh the linked folder" are its buttons; the
+  project's own command is the File menu's "Save to Linked Folder" (it leaves
+  the menu once the project is linked) and says "Saved <file> to the linked
+  folder.". **The write-back is throttled**, so a test that edits and waits
+  must wait 12 s for the trailing write; the file's bytes are read out of OPFS
+  and `readArchive`d (check `doc.name`). A conflict is a `role="alert"` toast
+  with "Load from disk" and "Overwrite".
 - **Import drawing e2e** (`e2e/import-drawing.spec.ts`, P4-06 slice 1): the tool
   is `importDrawing` in the Sketch tab's Create menu ("Import Drawing…", no
   key); it opens the file dialog at once, so the spec waits for the

@@ -11,6 +11,7 @@
  * timeline (ADR-0004), whatever the marker or the order.
  */
 import { CommandError, type DocumentDraft, defineCommand } from './commands';
+import { normalizeGroupsInPlace } from './groups';
 import type { FeatureId } from './ids';
 import type { ExtrudoDocument, Feature, GeomRef, GeomRefKind } from './schema';
 
@@ -112,7 +113,9 @@ export function moveProblem(
  * reference. The rollback marker stays between the same other features;
  * the moved feature is active if it lands among active features, rolled
  * back among rolled-back ones, and, landing right at the marker, keeps its
- * state unless `active` says otherwise.
+ * state unless `active` says otherwise. The timeline's groups follow the
+ * move (ADR-0065 §1): a feature that lands inside one joins it, an end that
+ * moved shifts to the next member inside.
  */
 export const moveFeature = defineCommand<{ id: FeatureId; index: number; active?: boolean }>(
   'feature.move',
@@ -130,6 +133,7 @@ export const moveFeature = defineCommand<{ id: FeatureId; index: number; active?
     if (!feature) return;
     draft.features.splice(index, 0, feature);
     draft.timelineMarker = before + (isActive ? 1 : 0);
+    normalizeGroupsInPlace(draft);
   },
 );
 
@@ -186,7 +190,8 @@ export function moveFeaturesProblem(
  * order and end up next to each other, one undo step, refused with `moveFeaturesProblem`'s
  * message. The marker stays between the same other features; the moved ones become active if
  * they land among active features, rolled back among rolled-back ones, and at the marker take
- * `active` (default: whether all of them were active).
+ * `active` (default: whether all of them were active). The timeline's groups follow, as in
+ * `moveFeature` (ADR-0065 §1).
  */
 export const moveFeatures = defineCommand<{
   ids: readonly FeatureId[];
@@ -209,6 +214,7 @@ export const moveFeatures = defineCommand<{
   const byId = new Map(draft.features.map((f) => [f.id, f]));
   draft.features = order.map((f) => byId.get(f.id) as Feature);
   draft.timelineMarker = nextMarker;
+  normalizeGroupsInPlace(draft);
 });
 
 /** A reference to replace, named as stored (kind and ID), and what replaces it. */

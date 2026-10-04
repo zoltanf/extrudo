@@ -23,6 +23,7 @@ import {
   ConfigurationIdSchema,
   DocumentIdSchema,
   FeatureIdSchema,
+  GroupIdSchema,
   ParameterIdSchema,
   ViewIdSchema,
 } from './ids';
@@ -206,6 +207,27 @@ export const AttachmentSchema = z.strictObject({
 });
 export type Attachment = z.infer<typeof AttachmentSchema>;
 
+/**
+ * A group of neighbouring timeline features (P4-09, ADR-0065 §1, FR-TL-06):
+ * the range from `first` to `last` inclusive, in timeline order. Storing the
+ * range's two ends rather than its members is what keeps a group contiguous
+ * through moves: a feature that lands between them joins it, and an end that
+ * moves or goes away shifts to the next member inside. `normalizeGroups`
+ * (`groups.ts`) applies those rules, and every command that reorders or
+ * removes features ends with it; groups don't nest and don't overlap.
+ */
+export const GroupSchema = z.strictObject({
+  id: GroupIdSchema,
+  name: z.string().min(1).max(100),
+  /** The feature the group starts at; both ends must exist in `features`. */
+  first: FeatureIdSchema,
+  /** The feature the group ends at, at or after `first` in the timeline. */
+  last: FeatureIdSchema,
+  /** Whether the timeline draws the group as one chip (folded). */
+  collapsed: z.boolean(),
+});
+export type Group = z.infer<typeof GroupSchema>;
+
 export const DocumentSchema = z
   .strictObject({
     format: z.literal(FORMAT_NAME),
@@ -221,6 +243,8 @@ export const DocumentSchema = z
      * rolled back. `features.length` means the whole timeline is active.
      */
     timelineMarker: z.int().min(0),
+    /** Folds of the timeline (P4-09, ADR-0065 §1); absent when there are none. */
+    groups: z.array(GroupSchema).optional(),
     bodies: z.record(BodyIdSchema, BodyMetaSchema),
     views: z.array(NamedViewSchema),
     /** Named value sets for the customizer (P4-07); absent when there are none. */
@@ -247,11 +271,13 @@ export const DocumentSchema = z
       ['parameters', 'id', doc.parameters.map((p) => p.id)],
       ['parameters', 'name', doc.parameters.map((p) => p.name)],
       ['views', 'id', doc.views.map((v) => v.id)],
+      ['groups', 'id', (doc.groups ?? []).map((g) => g.id)],
       ['configurations', 'id', (doc.configurations ?? []).map((c) => c.id)],
       // "Small" and "small" are the same configuration to a reader (P4-07).
       ['configurations', 'name', (doc.configurations ?? []).map((c) => c.name), configurationKey],
     ];
     for (const [list, key, values, fold] of unique) reportDuplicates(ctx, list, key, values, fold);
+    reportGroups(ctx, doc);
     // A slider range isn't a constraint (ADR-0059 §1), but min above max is a
     // mistake rather than a choice, so the document says so.
     doc.parameters.forEach((p, index) => {
@@ -266,6 +292,52 @@ export const DocumentSchema = z
     reportFonts(ctx, doc);
   });
 export type ExtrudoDocument = z.infer<typeof DocumentSchema>;
+
+/**
+ * A group's two ends must name features that exist, run forwards along the
+ * timeline, and not share a feature with another group (P4-09, ADR-0065 §1:
+ * groups don't nest and don't overlap). The issue names the group, so a file's
+ * error points at the group to fix.
+ */
+function reportGroups(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>): void {
+  const at = new Map(doc.features.map((f, i) => [f.id as string, i]));
+  const taken: { index: number; name: string; from: number; to: number }[] = [];
+  (doc.groups ?? []).forEach((group, index) => {
+    const from = at.get(group.first);
+    const to = at.get(group.last);
+    for (const [end, where] of [
+      ['first', from],
+      ['last', to],
+    ] as const) {
+      if (where === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['groups', index, end],
+          message: `is ${group[end]}, which is not a feature of this timeline`,
+        });
+      }
+    }
+    if (from === undefined || to === undefined) return;
+    if (from > to) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['groups', index, 'last'],
+        message: `comes before ${group.first}, the group "${group.name}" starts at`,
+      });
+      return;
+    }
+    const other = taken.find((g) => from <= g.to && g.from <= to);
+    if (other) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['groups', index],
+        message: `overlaps the group "${other.name}"`,
+      });
+      return;
+    }
+    taken.push({ index, name: group.name, from, to });
+  });
+}
 
 /**
  * A text shaped with `attachment:<id>` needs that attachment in the document

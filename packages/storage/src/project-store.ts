@@ -21,6 +21,7 @@ import { memoryIndex, type ProjectIndex } from './idb';
 import { SHA256_PATTERN, sha256Hex } from './sha256';
 import {
   ArchiveError,
+  type LinkedFile,
   type LoadOptions,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS_BYTES,
@@ -80,6 +81,9 @@ const decoder = new TextDecoder();
 const MB = 1024 * 1024;
 const megabytes = (bytes: number) => `${Math.ceil((bytes / MB) * 10) / 10} MB`;
 
+/** An index entry without its link (clearing one leaves every other key). */
+const omitLink = ({ linked: _linked, ...summary }: ProjectSummary): ProjectSummary => summary;
+
 export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
   const { index, files } = options;
   const now = options.now ?? (() => new Date().toISOString());
@@ -126,6 +130,9 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
       modified,
       hasThumbnail: previous?.hasThumbnail ?? false,
       ...(previous?.trashed ? { trashed: previous.trashed } : {}),
+      // A save is not an unlink: the file in the linked folder stays the one
+      // this project is written back to (P4-09, ADR-0065 §3).
+      ...(previous?.linked ? { linked: previous.linked } : {}),
     };
     await index.put(summary);
     return summary;
@@ -336,6 +343,27 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     return { ...summary, hasThumbnail: !!extra.thumbnail };
   };
 
+  /**
+   * The project as `.extrudo` bytes: the document as stored, its thumbnail, its
+   * versions and the attachment bytes they name. One builder for the download
+   * and for a linked folder's file (P4-09, ADR-0065 §3), so the two are the
+   * same file by construction.
+   */
+  const archiveBytes = async (id: ProjectId): Promise<Uint8Array> => {
+    const doc = await load(id);
+    const versions = await allVersions(id);
+    const attachments = await attachmentBytes(id, doc, versions);
+    return writeArchive(doc, await readThumbnail(id), versions, attachments);
+  };
+
+  /** Records the linked file in the index entry, or takes the link off. */
+  const link = async (id: ProjectId, file: LinkedFile | undefined): Promise<ProjectSummary> => {
+    const summary = await summaryOf(id);
+    const next = file ? { ...summary, linked: file } : omitLink(summary);
+    await index.put(next);
+    return next;
+  };
+
   return {
     async list() {
       const all = await index.all();
@@ -344,6 +372,8 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     get: (id) => index.get(id),
     load,
     save,
+    link,
+    archiveBytes,
     writeAttachment,
     readAttachment,
     collectAttachments,
@@ -425,10 +455,7 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
       await writeThumbnail(id, new Uint8Array(await png.arrayBuffer()));
     },
     async exportFile(id) {
-      const doc = await load(id);
-      const versions = await allVersions(id);
-      const attachments = await attachmentBytes(id, doc, versions);
-      const bytes = writeArchive(doc, await readThumbnail(id), versions, attachments);
+      const bytes = await archiveBytes(id);
       return new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/zip' });
     },
     async importFile(file, options) {

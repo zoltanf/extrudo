@@ -26,6 +26,27 @@ describe('Toasts', () => {
     expect(html.match(/>Show</g)).toHaveLength(1);
   });
 
+  it('draws every button of a message with two answers (P4-09)', () => {
+    const html = renderToStaticMarkup(
+      <Toasts
+        toasts={[
+          {
+            id: 1,
+            tone: 'error',
+            text: 'Bracket.extrudo changed on disk.',
+            actions: [
+              { label: 'Load from disk', run: () => {} },
+              { label: 'Overwrite', run: () => {} },
+            ],
+          },
+        ]}
+        onDismiss={() => {}}
+      />,
+    );
+    expect(html).toContain('>Load from disk</button>');
+    expect(html).toContain('>Overwrite</button>');
+  });
+
   it('keeps the requested strip of the corner clear, for a surface it must not cover', () => {
     const toasts = [{ id: 1, tone: 'info' as const, text: 'Sketch1 is hidden.' }];
     // The view's corner by default, so nothing overlaps the dialog until it opens.

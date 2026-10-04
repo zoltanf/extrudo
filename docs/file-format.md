@@ -199,6 +199,7 @@ schema names unknown keys, and a reader leaves them out (section 3).
 | `parameters` | array of Parameter | yes | User parameters (section 5.1). May be empty. |
 | `features` | array of Feature | yes | **The timeline**, in order (section 6). May be empty. |
 | `timelineMarker` | integer | yes | At least 0 and at most `features.length`. The number of *active* features: the feature at index `i >= timelineMarker` is rolled back (not evaluated). `features.length` means everything is active. |
+| `groups` | array of Group | no | Folds of the timeline (section 4.6). Absent means the design has none. |
 | `bodies` | object | yes | Record from body ID to `BodyMeta` (section 4.2). May be empty. Keys are IDs the kernel makes (section 10). |
 | `views` | array of NamedView | yes | Saved camera views (section 4.3). May be empty. |
 | `configurations` | array of Configuration | no | Named value sets for the customizer (section 5.4). Absent means the design has none. |
@@ -209,10 +210,12 @@ Whole-document rules (checked after the per-field rules):
 
 - `timelineMarker` must not exceed `features.length`.
 - Feature `id`s are unique; parameter `id`s are unique; parameter `name`s are
-  unique; view `id`s are unique; configuration `id`s are unique and
-  configuration `name`s are unique **trimmed and case-insensitively** ("Small
-  box" and " small box " are the same name). Every other name is compared
-  exactly, case sensitively.
+  unique; view `id`s are unique; group `id`s are unique; configuration `id`s are
+  unique and configuration `name`s are unique **trimmed and
+  case-insensitively** ("Small box" and " small box " are the same name). Every
+  other name is compared exactly, case sensitively.
+- Each group (section 4.6) must name features that exist, run forwards along
+  the timeline, and not share a feature with another group.
 - A parameter's customizer `min` must not be above its `max` (section 5.1).
 - A `text` entity whose `font` is `attachment:<id>` needs that `id` in
   `attachments` (section 7.1): the file is written before the document that
@@ -284,6 +287,38 @@ design opens and the texts that need it show without letters. An attachment
 record nothing refers to any more is dropped by the writer of the document
 (the app's commands refuse to drop one a text uses); the bytes are collected
 when the project saves a version.
+
+### 4.6 `groups[]` (Group)
+
+A fold of the timeline (P4-09, ADR-0065 §1, FR-TL-06): a run of neighbouring
+features the app draws under one name, folded into one chip or open with its
+members on a band. **The group is a range, not a list of members**, which is
+what keeps it contiguous: its members are exactly the features between `first`
+and `last`, inclusive, in timeline order. Nothing else in the file depends on
+groups: the engine, the naming and the recompute ignore them, so folding a
+timeline never changes the geometry it computes.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `id` | ID | yes | Unique among groups, permanent (section 10). |
+| `name` | string | yes | 1 to 100 characters. Defaults are `Group1`, `Group2`, ...; the app numbers them above every group the design still has. |
+| `first` | ID | yes | A feature ID: the feature the group starts at. Must be in `features`. |
+| `last` | ID | yes | A feature ID: the feature the group ends at. Must be in `features`, at or after `first` in the timeline. |
+| `collapsed` | boolean | yes | Whether the timeline draws the group folded into one chip. Stored, so reopening a design shows it as it was folded. |
+
+A group is a range, so what it holds follows from the timeline around it: a
+feature that ends up between `first` and `last` is in the group, an end that is
+moved away moves that end to the next member inside (an end whose ends swap
+places makes the group run from the earlier to the later one), and a group
+whose members are all gone is dropped, `groups` key and all. Groups never
+nest and never overlap; a group that would share a feature with a group before
+it in `groups` is dropped. The app's commands apply these rules after every
+change that reorders or removes features, so a document written by the app is
+always in this state. A document that is not (hand-edited, or written by
+something else) is read as it is and the app repairs it with the next change.
+
+Two groups may sit next to each other (`first` of the second is the feature
+after `last` of the first); a group of a single feature is legal.
 
 ---
 

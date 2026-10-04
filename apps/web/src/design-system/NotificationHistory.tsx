@@ -3,10 +3,12 @@ import { useMemo, useState } from 'react';
 import { useStore } from 'zustand';
 import { Button, IconButton } from './Button';
 import {
+  actionsOf,
   applies,
   grouped,
   type Notification,
   type NotificationStore,
+  type ToastAction,
   type ToastTone,
   unread,
 } from './notifications';
@@ -93,8 +95,8 @@ function HistoryPanel({
   const [, redraw] = useState(0);
   useStore(store, (s) => s.checks);
   const { errors, others } = grouped(history);
-  const run = (n: Notification) => {
-    n.action?.run();
+  const run = (action: ToastAction) => {
+    action.run();
     redraw((v) => v + 1);
   };
   return (
@@ -129,7 +131,7 @@ function Group({
 }: {
   title: string | undefined;
   items: readonly Notification[];
-  onRun(n: Notification): void;
+  onRun(action: ToastAction): void;
 }) {
   if (items.length === 0) return null;
   return (
@@ -140,48 +142,49 @@ function Group({
         </h3>
       )}
       <ul className="flex flex-col gap-1">
-        {items.map((n) => {
-          const ok = n.action ? applies(n.action) : false;
-          return (
-            <li
-              key={n.id}
-              data-notification={n.tone}
-              className={`flex items-start gap-2.5 rounded-control py-1.5 pr-1.5 pl-2 ${n.tone === 'error' ? 'border border-error/40 bg-error/10' : ''}`}
-            >
-              <span
-                className={`mt-1.5 size-2 shrink-0 rounded-full ${DOT[n.tone]}`}
-                aria-hidden="true"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="break-words">
-                  <span className="sr-only">{TONE_WORD[n.tone]}: </span>
-                  {n.text}
-                  {n.count > 1 && (
-                    <span className="ml-1.5 text-muted tabular-nums" data-count={n.count}>
-                      <span aria-hidden="true">×{n.count}</span>
-                      <span className="sr-only">, {n.count} times</span>
-                    </span>
-                  )}
-                </p>
-                <time className="text-muted text-xs" dateTime={new Date(n.at).toISOString()}>
-                  {timeOf(n.at)}
-                </time>
-              </div>
-              {n.action && (
+        {items.map((n) => (
+          <li
+            key={n.id}
+            data-notification={n.tone}
+            className={`flex items-start gap-2.5 rounded-control py-1.5 pr-1.5 pl-2 ${n.tone === 'error' ? 'border border-error/40 bg-error/10' : ''}`}
+          >
+            <span
+              className={`mt-1.5 size-2 shrink-0 rounded-full ${DOT[n.tone]}`}
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="break-words">
+                <span className="sr-only">{TONE_WORD[n.tone]}: </span>
+                {n.text}
+                {n.count > 1 && (
+                  <span className="ml-1.5 text-muted tabular-nums" data-count={n.count}>
+                    <span aria-hidden="true">×{n.count}</span>
+                    <span className="sr-only">, {n.count} times</span>
+                  </span>
+                )}
+              </p>
+              <time className="text-muted text-xs" dateTime={new Date(n.at).toISOString()}>
+                {timeOf(n.at)}
+              </time>
+            </div>
+            {actionsOf(n).map((action) => {
+              const ok = applies(action);
+              return (
                 <button
+                  key={action.label}
                   type="button"
                   disabled={!ok}
                   title={ok ? undefined : 'No longer applies'}
-                  onClick={() => onRun(n)}
+                  onClick={() => onRun(action)}
                   className="h-7 shrink-0 rounded-control px-2 font-medium text-accent hover:bg-accent-soft disabled:pointer-events-none disabled:text-muted disabled:opacity-60"
                 >
-                  {n.action.label}
+                  {action.label}
                   {!ok && <span className="sr-only"> (no longer applies)</span>}
                 </button>
-              )}
-            </li>
-          );
-        })}
+              );
+            })}
+          </li>
+        ))}
       </ul>
     </section>
   );

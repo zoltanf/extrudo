@@ -29,6 +29,7 @@ import {
   Eye,
   EyeOff,
   FileDown,
+  Folder,
   House,
   Maximize,
   Palette,
@@ -49,6 +50,7 @@ import { readTopology } from '../selection/items';
 import type { ViewportStore } from '../viewport/store';
 import type { BodyActions, BodyEntry } from './bodies';
 import type { AppCommand } from './commands';
+import type { GroupActions } from './groupActions';
 
 export interface ContextInput {
   mode: 'model' | 'sketch';
@@ -64,6 +66,10 @@ export interface ContextInput {
     setVisible(ids: readonly FeatureId[], visible: boolean): void;
     remove(id: FeatureId): void;
   };
+  /** Grouping the timeline's picked chips, which the list offers as "Group" (P4-09). */
+  groupActions: GroupActions;
+  /** The feature chips picked in the timeline (P3-17): two or more can be grouped. */
+  pickedChips: readonly FeatureId[];
   viewport: ViewportStore;
   clearSelection(): void;
   /** Opens the appearance popover of a body at the menu. */
@@ -185,6 +191,18 @@ function modelGroups(input: ContextInput): MarkingEntry[][] {
   const topology = selection.map(readTopology).filter((t) => t !== undefined);
   const bodyIds = bodiesIn(selection);
   const entries = bodies.filter((b) => bodyIds.includes(b.id));
+
+  // Two or more chips picked in the timeline: they can be grouped (P4-09, ADR-0065 §2).
+  if (input.pickedChips.length > 1) {
+    groups.push([
+      {
+        id: 'group',
+        label: `Group ${input.pickedChips.length} features`,
+        icon: icon(<Folder {...small} />),
+        onSelect: () => input.groupActions.group(input.pickedChips),
+      },
+    ]);
+  }
 
   const geometry: MarkingEntry[] = [];
   const faces = topology.filter((t) => t.kind === 'face');

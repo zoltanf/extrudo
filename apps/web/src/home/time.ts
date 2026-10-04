@@ -1,6 +1,10 @@
-/** "Just now", "5 minutes ago", "Yesterday", "12 Sep 2026": when a design was last edited. */
-export function formatModified(iso: string, now: Date = new Date()): string {
-  const then = new Date(iso);
+/**
+ * "Just now", "5 minutes ago", "Yesterday", "12 Sep 2026": when a design was
+ * last edited, or when a file in the linked folder was last written (a number
+ * of milliseconds, as the File System Access API gives it).
+ */
+export function formatModified(when: string | number | Date, now: Date = new Date()): string {
+  const then = when instanceof Date ? when : new Date(when);
   const seconds = (now.getTime() - then.getTime()) / 1000;
   if (!Number.isFinite(seconds)) return '';
   if (seconds < 45) return 'Just now';

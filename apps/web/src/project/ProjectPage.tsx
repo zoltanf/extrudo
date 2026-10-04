@@ -27,6 +27,7 @@ import {
   takeOpenNotices,
 } from './actions';
 import { type Autosaver, allSaved, closeAutosaver, createAutosaver } from './autosave';
+import { useLinkedFolder } from './useLinkedFolder';
 import { useRecompute } from './useRecompute';
 
 /** How long a notice about the opened file stays (it is long, and it is in the history after). */
@@ -115,6 +116,16 @@ function ProjectEditor({
   const autosave = useAutosave(store, viewport, platform);
   const { toasts, push, dismiss, notifications } = useToasts();
   useUpdateNotice(push);
+  // The linked folder (P4-09, ADR-0065 §3): a file on disk this project is
+  // written back to, and the command that links one for the first time.
+  const linked = useLinkedFolder({
+    id: doc.id,
+    store,
+    autosave,
+    platform,
+    notify: push,
+  });
+  const linkNow = linked.linkNow;
   useFirstThumbnail(doc.id, hasThumbnail, viewport, platform);
   // What opening needed to leave out (a file from a newer Extrudo, P3-13): long, so it stays a while.
   useEffect(() => {
@@ -151,8 +162,10 @@ function ProjectEditor({
           .then((summary) => summary && navigate(projectHref(summary.id)))
           .catch((error: unknown) => push('error', `Import failed: ${describeError(error)}`));
       },
+      // Only where a folder is linked and this project isn't linked yet (P4-09).
+      ...(linkNow && { saveToLinkedFolder: linkNow }),
     }),
-    [platform, autosave, doc.id, store, push],
+    [platform, autosave, doc.id, store, push, linkNow],
   );
 
   if (!autosave) return null;

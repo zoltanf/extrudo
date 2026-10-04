@@ -25,6 +25,13 @@ export interface ToastAction {
 /** What a toast can carry besides its text. */
 export interface ToastOptions {
   action?: ToastAction;
+  /**
+   * Several buttons on one toast, for a message with more than one answer
+   * (ADR-0065 §3's "Bracket.extrudo changed on disk." with "Load from disk"
+   * and "Overwrite"). `action` is the first of them, so everything that reads
+   * one button still works.
+   */
+  actions?: readonly ToastAction[];
   /** How long it stays, ms; errors stay until dismissed whatever this says. */
   lifetime?: number;
   /**
@@ -33,6 +40,14 @@ export interface ToastOptions {
    * bell's badge still counts it.
    */
   quiet?: boolean;
+}
+
+/** The buttons a toast or a notification offers, however they were given. */
+export function actionsOf(
+  options: Pick<ToastOptions, 'action' | 'actions'>,
+): readonly ToastAction[] {
+  if (options.actions) return options.actions;
+  return options.action ? [options.action] : [];
 }
 
 export interface Toast extends ToastOptions {
@@ -53,8 +68,9 @@ export interface Notification {
   at: number;
   /** Order of the last occurrence, across the whole history (for unread). */
   seq: number;
-  /** The action of the last occurrence. */
+  /** The first button of the last occurrence, and all of them. */
   action?: ToastAction;
+  actions?: readonly ToastAction[];
 }
 
 export interface NotificationState {
@@ -70,7 +86,8 @@ export interface NotificationState {
   seq: number;
   /** Bumped by `recheck` while the panel is open: the panel asks `available()` again. */
   checks: number;
-  push(tone: ToastTone, text: string, options?: ToastOptions): void;
+  /** Shows a toast (and records it); answers its ID, so it can be taken back. */
+  push(tone: ToastTone, text: string, options?: ToastOptions): number;
   dismiss(id: number): void;
   setOpen(open: boolean): void;
   /** Forgets the history (the toasts on screen stay). */
@@ -111,22 +128,25 @@ export function createNotifications(env: NotificationEnv = {}): NotificationStor
     push(tone, text, options = {}) {
       const id = nextToast++;
       const seq = get().seq + 1;
+      const buttons = actionsOf(options);
+      // `action` is the first button, so a reader that knows about one still works.
+      const action = buttons.length > 0 ? { action: buttons[0], actions: buttons } : {};
+      const toast: Toast = { id, tone, text, ...options, ...action };
       set((s) => ({
         seq,
         // Looking at the history counts as seeing what arrives while it's open.
         seen: s.open ? seq : s.seen,
-        toasts: options.quiet
-          ? s.toasts
-          : [...s.toasts.slice(1 - TOAST_LIMIT), { id, tone, text, ...options }],
+        toasts: options.quiet ? s.toasts : [...s.toasts.slice(1 - TOAST_LIMIT), toast],
         history: record(
           s.history,
-          { tone, text, at: now(), seq, action: options.action },
+          { tone, text, at: now(), seq, actions: buttons },
           () => nextEntry++,
         ),
       }));
       if (tone !== 'error' && !options.quiet) {
         later(() => get().dismiss(id), options.lifetime ?? TOAST_LIFETIME_MS);
       }
+      return id;
     },
     dismiss(id) {
       if (get().toasts.some((t) => t.id === id)) {
@@ -140,12 +160,22 @@ export function createNotifications(env: NotificationEnv = {}): NotificationStor
       set({ history: [], seen: get().seq });
     },
     recheck() {
-      if (get().open && get().history.some((n) => n.action?.available)) {
+      if (
+        get().open &&
+        get().history.some((n) => actionsOf(n).some((action) => action.available))
+      ) {
         set((s) => ({ checks: s.checks + 1 }));
       }
     },
   }));
 }
+
+/**
+ * The page's one store (ADR-0041: one per page, session only): what
+ * `useToasts` draws, and what the app pushes to from outside React too — the
+ * storage upgrade notices, which arrive before anything is mounted.
+ */
+export const appNotifications: NotificationStore = createNotifications();
 
 /**
  * The history with one more notification: the same message again (tone and
@@ -159,11 +189,12 @@ export function record(
     text: string;
     at: number;
     seq: number;
-    action?: ToastAction | undefined;
+    actions?: readonly ToastAction[] | undefined;
   },
   newId: () => number,
 ): Notification[] {
   const same = history.find((n) => n.tone === next.tone && n.text === next.text);
+  const buttons = next.actions ?? [];
   const entry: Notification = {
     id: same?.id ?? newId(),
     tone: next.tone,
@@ -171,7 +202,7 @@ export function record(
     at: next.at,
     seq: next.seq,
     count: (same?.count ?? 0) + 1,
-    ...(next.action && { action: next.action }),
+    ...(buttons.length > 0 && { action: buttons[0], actions: buttons }),
   };
   return [entry, ...history.filter((n) => n !== same)].slice(0, HISTORY_LIMIT);
 }

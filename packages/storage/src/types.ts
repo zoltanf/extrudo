@@ -12,6 +12,19 @@ export type ProjectId = DocumentId;
 export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_ATTACHMENTS_BYTES = 50 * 1024 * 1024;
 
+/**
+ * A file in the linked folder that a project is written back to (FR-PRJ-06,
+ * P4-09, ADR-0065 §3). The link is in the index rather than the document: it
+ * is about this browser and this folder, not about the design, and it travels
+ * nowhere in an `.extrudo` file.
+ */
+export interface LinkedFile {
+  /** The file's name in the folder, `<project name>.extrudo`. */
+  file: string;
+  /** When we last wrote (or read) it, ms since the epoch; the conflict check (ADR-0065 §3). */
+  modified: number;
+}
+
 /** What the home screen shows about a project, without loading it. */
 export interface ProjectSummary {
   id: ProjectId;
@@ -22,6 +35,8 @@ export interface ProjectSummary {
   /** When the project was moved to the trash; absent if it isn't there. */
   trashed?: string;
   hasThumbnail: boolean;
+  /** The file it is linked to in the linked folder, when it is (P4-09). */
+  linked?: LinkedFile;
 }
 
 /**
@@ -97,6 +112,17 @@ export interface ProjectStore {
    * and new ones never reuse a deleted number. Throws `ProjectNotFoundError`.
    */
   deleteVersions(id: ProjectId, numbers: readonly number[]): Promise<void>;
+  /**
+   * Links the project to a file in the linked folder, or clears the link with
+   * `undefined` (P4-09, ADR-0065 §3). `modified` is what we last wrote or read,
+   * which is what the next write compares the file's own time against.
+   */
+  link(id: ProjectId, file: LinkedFile | undefined): Promise<ProjectSummary>;
+  /**
+   * The whole project as `.extrudo` bytes, versions and attachments included:
+   * what `exportFile` downloads and what a linked file is written with.
+   */
+  archiveBytes(id: ProjectId): Promise<Uint8Array>;
   rename(id: ProjectId, name: string): Promise<ProjectSummary>;
   /** A copy with a new ID, named "<name> copy". */
   duplicate(id: ProjectId): Promise<ProjectSummary>;

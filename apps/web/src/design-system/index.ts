@@ -42,6 +42,7 @@ export {
   type ToastOptions,
   type ToastPlace,
   Toasts,
+  ToastsOnly,
   type ToastTone,
   useToasts,
 } from './Toasts';

@@ -24,6 +24,52 @@ One line per completed roadmap task, newest first. Dates are absolute.
   with its panel "Import drawing" (unit, scale, position, fixed, what the file
   brings in), which commits the drawing as one undo step. The e2e extrudes the
   imported plate and reads its size.
+
+- 2026-10-04 · **P4-09 (slice 2 of 2) Linked folders** (ADR-0065 §3,
+  FR-PRJ-06): a real folder of `.extrudo` files on disk, beside the browser's
+  own copy — the browser copy stays primary, as the ADR requires. Where the
+  browser has the File System Access API (Chromium), `Platform.folders` offers
+  `link()` (the picker), `current()` (the handle, kept in its own IndexedDB
+  store, since a `FileSystemHandle` survives a reload), `unlink()`, and on a
+  link its `permission()`/`request()`, `list()`, `read()` and `write()`; where
+  it doesn't, the platform has no `folders` and the app behaves as it did. The
+  home screen grows a "Linked folder" section (link, reconnect, unlink, and the
+  folder's `.extrudo` files as cards; opening one imports it **linked** to that
+  file). A linked project writes its file after every autosave, at most once
+  every 10 s with the throttle trailing and the newest state, and once more
+  when the project closes; if the file changed on disk, nothing is written and
+  a toast offers "Load from disk" (one undo step through ADR-0036's restore
+  path, after keeping what you had as a version) or "Overwrite" — which is why
+  a toast can carry two buttons now (`ToastOptions.actions`). A project that
+  isn't linked gets "Save to Linked Folder" (File menu, Ctrl+K), which refuses
+  a name that is already in the folder. The link itself lives in the project
+  index (`linked: { file, modified }`), not in the document: it is about this
+  browser, not the design. `e2e/linked-folder.spec.ts` over a stubbed
+  `showDirectoryPicker` (an OPFS directory), which caught two bugs: the folder
+  listing read `values()` (entries alone) instead of `entries()`, and a trailing
+  write's outcome was dropped, so a conflict noticed ten seconds after a save
+  never reached the user. CI's Chromium needed two more shims in that stub (an
+  OPFS handle cannot be read back out of IndexedDB there, and a file being
+  written is briefly not there).
+
+- 2026-10-04 · **P4-09 (slice 1 of 2) Timeline groups** (ADR-0065 §1 and §2,
+  FR-TL-06): neighbouring features fold into one chip. `doc.groups` holds each
+  group as the **range** from `first` to `last`, so a group stays contiguous
+  whatever moves — `normalizeGroups` (core's `groups.ts`) applies the rules and
+  every command that reorders or removes features ends with it
+  (`moveFeature`, `moveFeatures`, `removeFeature`, `restoreVersion`); a group
+  whose members are all gone is dropped and a group that would overlap one
+  before it is too, so groups never nest and never overlap (the schema says so
+  too, on the path of the group). The timeline picks a run with Shift (the
+  chip selection of P3-17) and groups it from the chip menu or the marking
+  menu's list; a folded group is one chip with a folder glyph, its name, the
+  member count and the worst of its members' statuses, an open one a band with
+  its name as a label; the marker never rests inside a folded group (stepping,
+  dragging and dropping count features, not chips, so it passes one whole, and
+  rolling into one opens it), and dragging a folded group's chip moves every
+  member together in one command. `e2e/timeline-groups.spec.ts`. (Linked
+  folders, ADR-0065 §3, is slice 2.)
+
 - 2026-10-04 · **P4-11 (parts 2 and 3) Benchmarks B8 and B10**, which
   finishes the task (ADR-0039's second amendment). **B8, a name tag**
   (`e2e/benchmark-b8.spec.ts`): a Box with `length`/`width`/`thick`, its four

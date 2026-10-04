@@ -1,12 +1,24 @@
 import { type FileStore, opfsFiles } from './files';
-import { idbFiles, idbIndex, openDatabase } from './idb';
+import { type HandleStore, idbHandles } from './handles';
+import { idbFiles, idbIndex, type OpenOptions, openDatabase } from './idb';
 import { createProjectStore, localLock } from './project-store';
 import type { ProjectStore } from './types';
 
 export interface BrowserProjectStore extends ProjectStore {
   /** Where documents are kept: OPFS, or IndexedDB where OPFS is missing. */
   readonly backend: 'opfs' | 'indexeddb';
+  /**
+   * Values the app keeps in IndexedDB: the linked folder's handle (P4-09,
+   * ADR-0065 §3). From the same connection, so the database is opened once.
+   */
+  readonly handles: HandleStore;
 }
+
+/** `createBrowserProjectStore` takes the database upgrade callbacks (`OpenOptions`). */
+export type BrowserProjectStoreOptions = OpenOptions & {
+  /** Written into `meta.appVersion` on save. */
+  appVersion?: string;
+};
 
 /**
  * The web app's project store (FR-PRJ-02): the index in IndexedDB,
@@ -14,9 +26,12 @@ export interface BrowserProjectStore extends ProjectStore {
  * when the browser has no OPFS with writable files.
  */
 export async function createBrowserProjectStore(
-  options: { appVersion?: string } = {},
+  options: BrowserProjectStoreOptions = {},
 ): Promise<BrowserProjectStore> {
-  const db = await openDatabase();
+  const db = await openDatabase(globalThis.indexedDB, undefined, {
+    onBlocked: options.onBlocked,
+    onVersionChange: options.onVersionChange,
+  });
   let files: FileStore = idbFiles(db);
   let backend: BrowserProjectStore['backend'] = 'indexeddb';
   try {
@@ -28,8 +43,13 @@ export async function createBrowserProjectStore(
   } catch {
     // No OPFS (or it's blocked, as in some private windows): keep IndexedDB.
   }
-  const store = createProjectStore({ index: idbIndex(db), files, lock: webLock(), ...options });
-  return Object.assign(store, { backend });
+  const store = createProjectStore({
+    index: idbIndex(db),
+    files,
+    lock: webLock(),
+    appVersion: options.appVersion,
+  });
+  return Object.assign(store, { backend, handles: idbHandles(db) });
 }
 
 /**

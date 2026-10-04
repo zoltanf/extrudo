@@ -13,7 +13,16 @@ import {
   type SessionStore,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
-import { type CSSProperties, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { isRepeatable } from '../commands/marking';
@@ -60,6 +69,7 @@ import { TolerancePanel } from '../print/TolerancePanel';
 import { OVERHANG_TOOL, PRINT_INFO_TOOL, useOverhang, usePrintInfo } from '../print/usePrintAids';
 import { TOLERANCE_TOOL, useTolerance } from '../print/useTolerance';
 import type { Autosaver } from '../project/autosave';
+import { setRestoreGuard } from '../project/restoreGuard';
 import { VersionsDialog } from '../project/VersionsDialog';
 import type { VersionContext } from '../project/versions';
 import { navigate, projectHref } from '../routes';
@@ -111,10 +121,17 @@ import { bodyEntries, bodyMetaOf, createBodyActions, followBodyNames } from './b
 import { CommandSearch, type SearchOpen } from './CommandSearch';
 import { type AppCommand, buildCommands, commandShortcuts } from './commands';
 import { createFeatureActions } from './featureActions';
+import { createGroupActions } from './groupActions';
 import { Splitter, usePanel } from './panels';
 import { watchRecomputeErrors } from './recomputeErrors';
 import { Timeline } from './Timeline';
 import { Toolbar } from './Toolbar';
+import {
+  createTimelineSelectionStore,
+  hoveredFeatureIds,
+  openGroupAtMarker,
+  type TimelineSelectionStore,
+} from './timelineGroups';
 import { TOOLS, type ToolId } from './tools';
 import { useMarkingStyle, useViewMenu } from './viewMenu';
 
@@ -564,6 +581,16 @@ export function AppShell({
     window.addEventListener('pointermove', onMove);
     return () => window.removeEventListener('pointermove', onMove);
   }, []);
+  // Replacing the whole document is one undo step of its own (ADR-0036, and a
+  // linked folder's "Load from disk", P4-09), so whatever holds a transaction
+  // open ends first. The linked folder's toast button is clicked from the
+  // notification store, outside this tree, so the step is registered there too.
+  const endTransaction = useCallback(() => {
+    dialog?.cancel();
+    if (session.getState().activeTool === CREATE_SKETCH) cancelCreateSketch(stores);
+    if (session.getState().mode === 'sketch') finishSketch(stores);
+  }, [dialog, session, stores]);
+  useEffect(() => setRestoreGuard(endTransaction), [endTransaction]);
   const commands = useMemo(
     () =>
       buildCommands({
@@ -940,6 +967,19 @@ export function AppShell({
       }),
     [stores, notify, session, dialog, dialogs, picking],
   );
+  // The timeline's groups (P4-09, ADR-0065 §2) and the picked chips it shares with the
+  // marking menu. Both are session state: nothing here is saved or undoable.
+  const groups = useMemo(() => createGroupActions(store, notify), [store, notify]);
+  const timelineSelection = useMemo<TimelineSelectionStore>(
+    () => createTimelineSelectionStore(),
+    [],
+  );
+  // The marker never rests inside a folded group (ADR-0065 §2): landing in one opens it,
+  // amended into the step that moved the marker, so undo takes the opening with it.
+  useEffect(() => {
+    const command = openGroupAtMarker(doc);
+    if (command) store.getState().amend(command);
+  }, [doc, store]);
   // A recompute's first new error goes into the notification history (P3-13).
   const featureActionsRef = useRef(featureActions);
   featureActionsRef.current = featureActions;
@@ -972,6 +1012,9 @@ export function AppShell({
     const field = dialogOpen?.spec.fields.find((f) => f.name === dialogOpen.pickField);
     return field?.kind === 'selection' && field.sketchPoints === true;
   }, [dialogOpen]);
+  // The pointer on a group chip's row highlights every member (P4-09, ADR-0065 §2); the session
+  // holds one hover, so a hovered member highlights its whole group.
+  const hoveredFeatures = useMemo(() => hoveredFeatureIds(doc, hover), [doc, hover]);
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
     doc.features.forEach((feature, index) => {
@@ -989,7 +1032,7 @@ export function AppShell({
           frame,
           data: sketch.data,
           active,
-          highlight: hover?.kind === 'feature' && hover.id === feature.id,
+          highlight: hoveredFeatures.has(feature.id),
           status: active ? status?.entities : undefined,
           // Curves picked in model mode (P2-03).
           ...(!active && pickingSketchPoints && { showPoints: true }),
@@ -1013,6 +1056,7 @@ export function AppShell({
     status,
     showProfiles,
     hover,
+    hoveredFeatures,
     shownSelection,
     pickingSketchPoints,
     sketchReports,
@@ -1051,6 +1095,8 @@ export function AppShell({
     bodyActions,
     features: doc.features,
     featureActions,
+    groupActions: groups,
+    pickedChips: useStore(timelineSelection, (s) => s.chips),
     enabled:
       mode === 'model'
         ? !picking && !dialogOpen && !projecting && !measuring && !section.choosing
@@ -1467,6 +1513,8 @@ export function AppShell({
         onToggle={timeline.toggle}
         activeSketch={activeSketch?.name}
         actions={featureActions}
+        groups={groups}
+        selection={timelineSelection}
         viewport={viewport}
         model={model}
         session={session}
@@ -1515,12 +1563,7 @@ export function AppShell({
         onOpenChange={setVersionsOpen}
         ctx={versionContext}
         notify={notify}
-        beforeRestore={() => {
-          // The restore is one undo step of its own: end what holds a transaction open.
-          dialog?.cancel();
-          if (session.getState().activeTool === CREATE_SKETCH) cancelCreateSketch(stores);
-          if (session.getState().mode === 'sketch') finishSketch(stores);
-        }}
+        beforeRestore={endTransaction}
         onOpenCopy={(id) => navigate(projectHref(id))}
       />
     </div>

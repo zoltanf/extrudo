@@ -195,4 +195,18 @@ describe('buildCommands', () => {
     }
     expect(start).toHaveBeenCalledTimes(2);
   });
+
+  it('offers Save to Linked Folder only where a folder is linked and the project is not (P4-09)', () => {
+    // No folder linked (Firefox, Safari), or this project already is: no command.
+    expect(byId(context('model')).has('saveToLinkedFolder')).toBe(false);
+    const saveToLinkedFolder = vi.fn();
+    const ctx = context('model', {
+      file: { ...context('model').file, saveToLinkedFolder },
+    });
+    const command = byId(ctx).get('saveToLinkedFolder');
+    expect(command).toMatchObject({ label: 'Save to Linked Folder', group: 'File', keys: [] });
+    expect(command?.keywords).toContain('folder');
+    command?.run();
+    expect(saveToLinkedFolder).toHaveBeenCalledOnce();
+  });
 });

@@ -10,6 +10,7 @@ import {
   Box,
   Circle,
   FilePlus2,
+  FolderSync,
   GraduationCap,
   History,
   House,
@@ -247,6 +248,14 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     icon: icon(Import),
     keywords: 'File open upload project',
   });
+  // A folder on disk this design is kept in, where one is linked and this
+  // project isn't linked yet (P4-09, ADR-0065 §3).
+  if (ctx.file.saveToLinkedFolder) {
+    plain('saveToLinkedFolder', 'Save to Linked Folder', 'File', ctx.file.saveToLinkedFolder, {
+      icon: icon(FolderSync),
+      keywords: 'File folder disk sync save project extrudo linked external',
+    });
+  }
 
   const themes: [ThemeChoice, string, typeof Box][] = [
     ['dark', 'Dark Theme', Moon],

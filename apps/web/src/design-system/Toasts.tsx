@@ -1,9 +1,9 @@
 import { X } from 'lucide-react';
-import { useMemo } from 'react';
 import { useStore } from 'zustand';
 import { NotificationHistory } from './NotificationHistory';
 import {
-  createNotifications,
+  actionsOf,
+  appNotifications,
   type NotificationStore,
   type Toast,
   type ToastTone,
@@ -16,12 +16,26 @@ export type { Toast, ToastAction, ToastOptions, ToastTone } from './notification
  * button ("Sketch2 is hidden… Show"). Errors stay until dismissed. Every
  * message also goes into the session's history (`notifications`, P3-16), which
  * the button beside the toasts opens.
+ *
+ * One store for the page (`appNotifications`): the two screens that call this
+ * are the same session, and so is a message the platform pushed before the app
+ * was mounted (the storage upgrade notices).
  */
 export function useToasts() {
-  const notifications = useMemo(() => createNotifications(), []);
-  const toasts = useStore(notifications, (s) => s.toasts);
-  const { push, dismiss } = notifications.getState();
-  return { toasts, push, dismiss, notifications };
+  const toasts = useStore(appNotifications, (s) => s.toasts);
+  const { push, dismiss } = appNotifications.getState();
+  return { toasts, push, dismiss, notifications: appNotifications };
+}
+
+/**
+ * Just the toast stack, for the window between the page loading and the app
+ * opening (where a slow IndexedDB upgrade is explained). It has no history
+ * button: there is no app to open one in yet.
+ */
+export function ToastsOnly() {
+  const toasts = useStore(appNotifications, (s) => s.toasts);
+  const { dismiss } = appNotifications.getState();
+  return <Toasts toasts={toasts} onDismiss={dismiss} />;
 }
 
 const DOT: Record<ToastTone, string> = {
@@ -81,18 +95,19 @@ export function Toasts({
             aria-hidden="true"
           />
           <span className="flex-1">{t.text}</span>
-          {t.action && (
+          {actionsOf(t).map((action) => (
             <button
+              key={action.label}
               type="button"
               onClick={() => {
                 onDismiss(t.id);
-                t.action?.run();
+                action.run();
               }}
               className="-my-0.5 h-7 shrink-0 rounded-control px-2 font-medium text-accent hover:bg-accent-soft"
             >
-              {t.action.label}
+              {action.label}
             </button>
-          )}
+          ))}
           <button
             type="button"
             aria-label="Dismiss"

@@ -9,9 +9,21 @@ export {
   readArchive,
   writeArchive,
 } from './archive';
-export { type BrowserProjectStore, createBrowserProjectStore } from './browser';
+export {
+  type BrowserProjectStore,
+  type BrowserProjectStoreOptions,
+  createBrowserProjectStore,
+} from './browser';
 export { type FileStore, memoryFiles, opfsFiles } from './files';
-export { idbFiles, idbIndex, memoryIndex, openDatabase, type ProjectIndex } from './idb';
+export { FOLDER_HANDLE_KEY, type HandleStore, idbHandles, memoryHandles } from './handles';
+export {
+  idbFiles,
+  idbIndex,
+  memoryIndex,
+  type OpenOptions,
+  openDatabase,
+  type ProjectIndex,
+} from './idb';
 export {
   createProjectStore,
   memoryProjectStore,
@@ -21,6 +33,7 @@ export { SHA256_PATTERN, sha256Hex } from './sha256';
 export {
   ArchiveError,
   type ArchiveErrorCode,
+  type LinkedFile,
   type LoadOptions,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS_BYTES,

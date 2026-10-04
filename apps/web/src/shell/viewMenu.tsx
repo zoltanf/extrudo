@@ -17,6 +17,7 @@ import { AppearancePanel } from './BrowserPanel';
 import type { BodyActions, BodyEntry } from './bodies';
 import type { AppCommand } from './commands';
 import { contextEntries } from './contextEntries';
+import type { GroupActions } from './groupActions';
 
 /** The preference: `true` (the default) draws the ring, `false` one plain list. */
 export const MARKING_RADIAL_KEY = 'marking.radial';
@@ -57,6 +58,10 @@ export interface ViewMenuInput {
     setVisible(ids: readonly FeatureId[], visible: boolean): void;
     remove(id: FeatureId): void;
   };
+  /** Grouping the timeline's picked chips, which the list offers as "Group…" (P4-09). */
+  groupActions: GroupActions;
+  /** The feature chips picked in the timeline (P3-17, P4-09). */
+  pickedChips: readonly FeatureId[];
   /** The menu is offered: nothing else (a dialog, Measure, Create Sketch) owns the pointer. */
   enabled: boolean;
   radial: boolean;
@@ -74,7 +79,7 @@ export function useViewMenu(input: ViewMenuInput): {
 } {
   const [appearance, setAppearance] = useState<{ id: BodyId; at: { x: number; y: number } }>();
   const { enabled, mode, session, radial, commands, bodies, bodyActions } = input;
-  const { viewport, features, featureActions, runningTool } = input;
+  const { viewport, features, featureActions, groupActions, pickedChips, runningTool } = input;
 
   const menu = useMemo<ViewMenu | undefined>(() => {
     if (!enabled) return undefined;
@@ -115,6 +120,8 @@ export function useViewMenu(input: ViewMenuInput): {
           bodyActions,
           features,
           featureActions,
+          groupActions,
+          pickedChips,
           viewport,
           clearSelection: () => session.getState().clearSelection(),
           appearance: (id) => setAppearance({ id, at }),
@@ -133,6 +140,8 @@ export function useViewMenu(input: ViewMenuInput): {
     bodyActions,
     features,
     featureActions,
+    groupActions,
+    pickedChips,
     viewport,
     runningTool,
   ]);

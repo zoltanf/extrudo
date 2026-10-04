@@ -249,6 +249,58 @@ for (const granted of [true, false]) {
   });
 }
 
+test('another tab upgrading the database tells this one to reload', async ({ page, context }) => {
+  await openProject(page);
+  await expect(saveStatus(page)).toHaveText('Saved');
+
+  // A second tab of this context, standing in for a newer build: it can't open
+  // the database at all (so it holds no connection to block its own upgrade).
+  const other = await context.newPage();
+  await other.addInitScript(`(() => {
+    window.__idbOpen = indexedDB.open.bind(indexedDB);
+    indexedDB.open = () => {
+      throw new DOMException('This tab opens no database (a test wants the upgrade).', 'InvalidStateError');
+    };
+  })();`);
+  await other.goto('./');
+  await expect(
+    other.getByRole('heading', { name: "Extrudo can't store designs in this window" }),
+  ).toBeVisible();
+
+  // It upgrades the database, which this tab's connection has to let go of.
+  const upgraded = await other.evaluate(`(async () => {
+    const db = await new Promise((resolve, reject) => {
+      const request = window.__idbOpen('extrudo');
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const next = db.version + 1;
+    db.close();
+    return new Promise((resolve, reject) => {
+      const request = window.__idbOpen('extrudo', next);
+      request.onsuccess = () => {
+        request.result.close();
+        resolve(true);
+      };
+      request.onerror = () => reject(request.error);
+      request.onblocked = () => reject(new Error('the upgrade is blocked'));
+    });
+  })()`);
+  expect(upgraded).toBe(true);
+
+  const notice = page
+    .getByRole('status')
+    .filter({ hasText: 'Extrudo was updated in another tab. Reload this tab to keep working.' });
+  await expect(notice).toBeVisible();
+  await expect(notice.getByRole('button', { name: 'Reload', exact: true })).toBeEnabled();
+  // Its storage is gone now, so the next save says so instead of working.
+  await page.getByRole('button', { name: /^Project name: / }).click();
+  await page.getByRole('textbox', { name: 'Project name' }).fill('After the upgrade');
+  await page.getByRole('textbox', { name: 'Project name' }).press('Enter');
+  await expect(saveStatus(page)).toHaveText("Couldn't save");
+  await other.close();
+});
+
 for (const theme of ['dark', 'light'] as const) {
   test(`the home screen looks right in the ${theme} theme`, async ({ page }) => {
     await page.addInitScript(

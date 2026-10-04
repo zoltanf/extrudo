@@ -815,7 +815,11 @@ end to end, faster than in Fusion 360.
   and the Export dialog a Slicer select and "Open in slicer" button where it
   exists — **the launch itself is P6-02**, since the browser build can't hand a
   local design to another program.
-- [ ] **P4-09 Timeline groups; linked folder storage.** FR-TL-06, FR-PRJ-06.
+- [x] **P4-09 Timeline groups; linked folder storage.** FR-TL-06, FR-PRJ-06.
+  Done 2026-10-04 (ADR-0065): timeline groups as ranges of the timeline (slice
+  1) and a folder of `.extrudo` files on disk, linked through the File System
+  Access API, read and written beside the browser's own copy (slice 2,
+  Chromium only).
 - [x] **P4-10 Rib/web; variable-radius fillet.** FR-FT-17, FR-FT-04's variable
   radius. Done 2026-10-04 (ADR-0064): a **rib** from one sketch **line** (a
   slab cut by the bodies, so nothing is placed by hand) and a **variable
