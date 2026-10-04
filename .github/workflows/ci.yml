@@ -18,7 +18,7 @@ jobs:
     # asset (`occt-<hash>`). This job is a quick no-op when that release exists.
     name: OCCT WASM
     # The runner: GitHub-hosted ubuntu-latest, or the JSON label list in the
-    # repository variable RUNS_ON (e.g. ["self-hosted", "home-pc"]) while the repo is private (docs/deploy.md, "Self-hosted runner").
+    # repository variable RUNS_ON when the self-hosted backup is switched on (docs/deploy.md, "Self-hosted runner (backup)").
     runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 90
     permissions:

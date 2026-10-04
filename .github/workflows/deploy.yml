@@ -61,7 +61,7 @@ jobs:
   plan:
     name: Decide what to deploy
     # The runner: GitHub-hosted ubuntu-latest, or the JSON label list in the
-    # repository variable RUNS_ON (e.g. ["self-hosted", "home-pc"]) while the repo is private (docs/deploy.md, "Self-hosted runner").
+    # repository variable RUNS_ON when the self-hosted backup is switched on (docs/deploy.md, "Self-hosted runner (backup)").
     runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     outputs:
       enabled: ${{ steps.plan.outputs.enabled }}

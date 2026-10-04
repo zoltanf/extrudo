@@ -5,9 +5,10 @@ Fusion 360-style workflow (sketch → features → timeline, parameters everywhe
 and a playful modern UI. Web first (PWA). An Electron desktop build comes later
 from the same codebase.
 
-**Repo:** <https://github.com/zoltanf/extrudo>. **Private** until the owner
-makes it public (P3-15 prepared everything: `docs/release-checklist.md` lists the
-owner's steps). CI runs on every push and pull request.
+**Repo:** <https://github.com/zoltanf/extrudo>. **Public** since 2026-10-04
+(P3-15 prepared it; `docs/release-checklist.md` lists the owner's remaining
+steps). CI runs on every push and pull request, on GitHub-hosted runners (a
+self-hosted backup exists, off by default: `docs/deploy.md`).
 
 **Status (2026-10-03):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in

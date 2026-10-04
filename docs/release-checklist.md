@@ -40,7 +40,8 @@ cannot reach. Tick them off in order; each box says who and where.
 
 ## Make the repository public
 
-- [ ] GitHub > Settings > General > Danger Zone > **Change visibility** > Public.
+- [x] GitHub > Settings > General > Danger Zone > **Change visibility** > Public.
+  Done 2026-10-04 (after a history audit: nothing found).
 - [ ] Settings > Code security: enable **Private vulnerability reporting**
   (SECURITY.md sends reporters there), and the dependency graph and Dependabot
   alerts if you want them.
