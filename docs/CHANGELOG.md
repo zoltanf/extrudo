@@ -4,6 +4,25 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-04 · **P4-11 (parts 2 and 3) Benchmarks B8 and B10**, which
+  finishes the task (ADR-0039's second amendment). **B8, a name tag**
+  (`e2e/benchmark-b8.spec.ts`): a Box with `length`/`width`/`thick`, its four
+  vertical edges rounded `corner`, a Ø4 mm hole through the top face at
+  `-length / 2 + 6`, a text `EXTRUDO` (8 mm, centred) sketched **on that face**
+  and embossed `letters` out of it, a parameter change that makes the plate
+  longer and thicker and carries the letters up with it, and the 3MF read back
+  through `@extrudo/io` (one closed solid, its volume between the plate's and
+  the plate's plus its letters'). **B10, a cable chain link**
+  (`e2e/benchmark-b10.spec.ts`): a rounded centreline path sketched on XZ swept
+  with a `depth` x `wall` section into a ring, a cylinder pin on its outside
+  face, a blind hole `pin + 2 * tolerance` across at the other end (the
+  tolerance comes from the 3D Print tab's panel), a rectangular pattern of
+  three links along Y, and the 3MF read back (three closed solids). Both
+  fixtures recompute headless in `packages/kernel/src/benchmarks.test.ts` and
+  fuzz clean at the full 200 steps. B10 found that **a sweep carries its
+  profile exactly where its sketch drew it** (OCCT's no-contact placement), so
+  a swept section has to be *centred on the path*: centred on the sketch's
+  origin instead, the link came out with 6 mm walls.
 - 2026-10-04 · **P4-10 (2 of 2) Variable-radius fillet** (ADR-0064 §2,
   FR-FT-04): each edge set of a fillet takes an optional **end radius**
   (`radiusEnd<n>`) and a **swap** (`swap<n>`), so the round tapers along its

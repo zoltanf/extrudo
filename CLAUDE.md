@@ -30,10 +30,10 @@ P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 
 complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil), P4-02
 (modeled threads), P4-03 (sketch text, bundled fonts), P4-03b (user fonts
 as attachments), P4-04 (emboss, deboss), P4-05 (control-point splines,
-conics), P4-07 (customizer, configurations) and P4-08 (print tolerance,
-slicer hand-off) are done; P4-11 (benchmarks B8–B10) is half done — B9, the
-threaded bottle cap and thread adapter, on 2026-10-04; B8 waits for P4-04, B10
-for P4-08. ADR-0001 chose
+conics), P4-07 (customizer, configurations), P4-08 (print tolerance,
+slicer hand-off) and P4-10 (rib/web, variable-radius fillet) are done; P4-11
+(benchmarks B8–B10) is **done** on 2026-10-04 — B9 (the threaded bottle cap and
+thread adapter), B8 (the name tag) and B10 (the cable chain link). ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -908,7 +908,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet (0006 is reserved) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet (0006 is reserved) |
 
 ## Stack summary
 
@@ -1781,10 +1781,12 @@ them. Notes further down that name a machine apply to that machine only.
   such experiments builds in the image by its digest (the tag shows as
   `<none>` on the Arch workstation): `docker run --rm --user 0 -v
   <dir>:/w -w /w --entrypoint sh <image id> -c 'em++ … && node h.js'`.
-- **The fuzzer covers B1-B5 and B7, and B9 only with `FUZZ_B9=1`** (P3-17,
-  ADR-0038/0047 amendments; B9 since P4-11 with 6 steps and a 45 s step limit,
-  in its `B9_BUDGET`, out of the default run because one step took 72 s on the
-  CI runner): a
+- **The fuzzer covers B1-B5, B7, B8 and B10, and B9 only with `FUZZ_B9=1`**
+  (P3-17, ADR-0038/0047 amendments; B8 and B10 since P4-11 at the full 200
+  steps — 70 s and 14 s — and both load the bundled font first, as the worker
+  does, so B8's emboss has ink to stand on while it is edited; B9 with 6 steps
+  and a 45 s step limit, in its `B9_BUDGET`, out of the default run because one
+  step took 72 s on the CI runner): a
   thread-heavy document is expensive — `capDia` × 2 has `mergeTools` ask OCCT
   for the exact distance between two thread tools (26 s of a 30 s recompute) —
   and a thread of about 400 turns used to corrupt the WASM heap
@@ -1865,6 +1867,49 @@ them. Notes further down that name a machine apply to that machine only.
   (M39 in the cap's Ø36 bore, M24 on the spigot, M36 on the Ø36 collar — the
   coarse series goes to M64 since P4-11, so `autoThread` has a fit for every
   bore a bottle cap has).
+- **Benchmark B8 e2e** (`e2e/benchmark-b8.spec.ts`, P4-11): a name tag, 19 s
+  alone, 180 s timeout. Facts a later agent needs: **a plate thin enough to
+  snap hides one corner's vertical edge from any one view**, so Fillet1 takes
+  three picks in the home view (Shift+1) and the fourth in the back view
+  (Shift+5, whose far corner is the home view's hidden one); zoom out only
+  *after* the dialog is open, because with no dialog the pick takes vertices and
+  a zoomed-out 3 mm edge has the display mesh's own vertices inside the 8 px
+  tolerance (`clickEdge` on a midpoint then fails). **A text sketched on the face
+  it is embossed onto is pickable in the model** (`pickStack` ranks a whole text
+  before a face for coplanar hits), so the Emboss tool's pre-selection fills
+  "1 text" with no construction plane — unlike `e2e/emboss.spec.ts`, whose
+  letters have to be clickable in the clear. The text's anchor needs "Snap to
+  grid" off (the grid would snap it to the origin) and its ink is read from
+  `data-text-bounds`: `EXTRUDO` at an 8 mm cap height is 50.8 mm wide, so it is
+  centred on x = 4 to fit between the hole's edge and the plate's end (on x = 5
+  the last letter overhangs the plate by 0.3 mm). The 3MF's volume sits between
+  the plate's (exact: four fillets, one hole) and the plate's plus the letters'
+  ink area × `letters` (about 32 % of its bounding box in Inter).
+- **Benchmark B10 e2e** (`e2e/benchmark-b10.spec.ts`, P4-11): a cable chain
+  link, 31 s alone, 240 s timeout. Facts a later agent needs: **a sweep carries
+  its profile exactly where its sketch drew it** (the facade's no-contact
+  `pipe.Add` leaves OCCT's placement cancelled), so the section has to be
+  *centred on the path* — drawn centred on the sketch's origin instead, the
+  link's walls came out 6 mm thick (`Link:<n>:29,10,26` and a volume 11.7 % over
+  the centreline's perimeter × the section); centred on the path's own line it is
+  `Link:<n>:26,10,23` and 2425.5 mm³, exact. **The first curve picked is where
+  the sweep starts** (the facade's `pathWire` starts the wire with the first
+  piece), every path pick must be ≥ 5 mm off the section's own curves (both are
+  sketch curves, nearest first), and the *profile* has to be clicked in the half
+  of the section the path is not in front of (from the home view the ray meets
+  the YZ plane before the XZ one for a point at negative y). **A side face is
+  picked in the view that looks square at it** (the front view, Shift+4): the
+  plane picker takes an origin plane unless the face is at least as near, and an
+  origin plane lies in front of a vertical face in an oblique view — the hole's
+  plane comes out "YZ plane" however exactly you click. A hole on a picked face
+  defaults to `through`, so set Extent to blind before its Depth field exists.
+  The Ø(`pin` + 2 x `tolerance`) hole is wider than the 3 mm wall it is drilled
+  into and severs it (the link stays one solid, 32 → 26 faces as the hole grows):
+  a printable link needs `wall` ≥ `pin`. The pattern's copies are named from
+  their instance: `Link`, `Body1`, `Body2` (P3-07), and their y positions step
+  `pitch` in one direction (−5, 25, 55 at 30 mm). Reading the hole's diameter
+  after the parameter change: open its chip (double-click) and read the
+  expression input's value line, "= 5.60 mm".
 - **Thread e2e** (`e2e/thread.spec.ts`, P4-02): Solid › Modify (`button`
   "Modify", `exact`) › `menuitem` `/^Thread/`; the dialog is the region "Thread
   dialog" / "Edit Thread1 dialog": button "Faces" (`exact`, "1 face"), combobox

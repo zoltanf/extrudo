@@ -37,8 +37,10 @@ import {
   updateParameter,
   updateSketchDimension,
 } from '@extrudo/core';
+import { DEFAULT_FONT } from '@extrudo/fonts';
 import { loadPlanegcs, type SketchSolution, SketchSolver } from '@extrudo/sketch';
 import { solveGradually } from '@extrudo/sketch/inference';
+import { loadFont } from '@extrudo/sketch/text';
 import { strFromU8, unzipSync } from 'fflate';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import b1 from '../../../fixtures/benchmarks/b1-plate.extrudo?url&inline';
@@ -48,8 +50,11 @@ import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline'
 import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
 import b6 from '../../../fixtures/benchmarks/b6-wall-hook.extrudo?url&inline';
 import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
+import b8 from '../../../fixtures/benchmarks/b8-name-tag.extrudo?url&inline';
 import b9 from '../../../fixtures/benchmarks/b9-bottle-cap.extrudo?url&inline';
+import b10 from '../../../fixtures/benchmarks/b10-chain-link.extrudo?url&inline';
 import p401 from '../../../fixtures/benchmarks/p4-01-sweep-loft-coil.extrudo?url&inline';
+import interRegular from '../../fonts/fonts/inter-regular.ttf?url&inline';
 import { kernelFeatures } from './features';
 import { Kernel } from './kernel';
 import { loadOcct } from './occt/load';
@@ -200,6 +205,9 @@ let solver: SketchSolver;
 beforeAll(async () => {
   kernel = new Kernel(await loadOcct());
   solver = new SketchSolver(await loadPlanegcs());
+  // B8's letters are shaped here as the worker does (P4-03), so its emboss has
+  // ink to stand on while the fuzzer edits it.
+  loadFont(DEFAULT_FONT, bytesOf(interRegular));
 });
 
 afterAll(() => {
@@ -473,6 +481,8 @@ describe('fuzzing the benchmark fixtures', () => {
     ['B7', b7],
     // B9 only on request (FUZZ_B9=1): one `capDia` x 2 step took 30 s here and 72 s on
     // the CI runner, past any step limit that still catches a hang (P4-12 item).
+    ['B8', b8],
+    ['B10', b10],
     ...(env.FUZZ_B9 ? [['B9', b9, B9_BUDGET] as [string, string, FuzzBudget]] : []),
     // Sweep, loft and coil (P4-01, ADR-0055): `features/sweep-loft-coil-fixture.test.ts` writes it.
     ['P4-01', p401],

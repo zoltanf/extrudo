@@ -232,3 +232,109 @@ B10 (tolerance) for P4-08.
 
 The spec takes about 50 s alone on the Arch workstation (four thread builds and
 two 3MF exports); the headless recompute is 7 s, and B9's 6 fuzz steps 91 s.
+
+## Amendment 2026-10-04: B8 and B10 (P4-11, part 2)
+
+Code: `e2e/benchmark-b8.spec.ts`, `e2e/benchmark-b10.spec.ts`, the fixtures
+`fixtures/benchmarks/b8-name-tag.extrudo` and `b10-chain-link.extrudo`, and
+their headless recompute in `packages/kernel/src/benchmarks.test.ts`. With
+these two, P4-11 (B8 to B10) is done.
+
+### B8, the name tag
+
+1. **The model.** Parameters `length` 60 mm, `width` 20 mm, `thick` 3 mm,
+   `corner` 5 mm, `letters` 1 mm. Box1 on XY; Fillet1 on its four **vertical**
+   edges; Hole1 through the top face, Ø4 mm, its X the expression
+   `-length / 2 + 6 mm`; Sketch1 **on the top face** with a text `EXTRUDO`,
+   8 mm of cap height, centred, at an anchor of (4, -4) sketch mm; Emboss1 of
+   the whole text onto that same face, `letters` out. The letters stand 1 mm
+   proud of the plate, so the body is `length` x `width` x (`thick` +
+   `letters`).
+2. **The text is centred on x = 4, not x = 5.** `EXTRUDO` at an 8 mm cap height
+   is 50.8 mm wide in Inter, so centred on x = 5 it reaches x = 30.3 and the
+   last letter overhangs the plate's far end by 0.3 mm (one body, but a letter
+   hanging over nothing). Centred on x = 4 it fits between the hole's edge
+   (-`length` / 2 + 8 = -22) and the plate's end (30), which is what
+   "centred on the plate's right half" has to mean at this size. The spec
+   asserts both edges and reads the ink's bounds.
+3. **A plate this thin hides one corner from any one view.** The four vertical
+   edges are 3 mm long: the home view reaches three of them (the far left one
+   is behind the slab) and the back view (Shift+5) the fourth, so Fillet1 takes
+   three picks from one view and one from the other. **The first pick has to be
+   made at the fitted zoom**: after zooming out far enough to clear the dialog
+   on the right, the display mesh's *own* vertices along a 3 mm edge are inside
+   the 8 px vertex tolerance and take the click, and the dialog's edge filter
+   only excludes them once it is open. The pattern the other specs use
+   (`clickEdge` on a midpoint) works on B4's 60 mm edges and on these only at
+   the fitted zoom.
+4. **A text sketched on the face it lands on is pickable**, which is what makes
+   this benchmark the easy one: `pickStack` ranks a whole text (-1) before a
+   face (1) for coplanar hits, so a click on a letter takes `sketchEntity:
+   <sketch>/<text>` and the Emboss tool's pre-selection fills `Profiles` with
+   "1 text". P4-04's emboss spec sketches its text on a construction plane
+   clear of the body because it has to *click* the letters; a name tag has them
+   in the right place already.
+5. **What the benchmark found:** nothing to change. The ink's own proportion
+   (32 % of its bounding box) is what bounds the 3MF volume check; the hole
+   expression moving with `length` is what makes the parameter change move it.
+
+### B10, the cable chain link
+
+1. **The model.** Parameters `pitch` 30 mm, `inner` 20 mm, `wall` 3 mm,
+   `depth` 10 mm, `pin` 5 mm, and a print tolerance of 0.2 mm from the 3D Print
+   tab's panel (which creates the parameter `tolerance`). Sketch1 on XZ: the
+   walls' centreline, a rectangle from (-(inner + wall) / 2, wall / 2) to
+   ((inner + wall) / 2, inner + wall / 2), its four corners rounded 3 mm with
+   the sketch fillet (a radius typed in the heads-up box first, so all four come
+   out the same). Sketch2 on YZ: the section, `depth` by `wall`, centred on
+   the path's own centreline. Sweep1 along all eight curves of the path
+   (follow), a new body. Cylinder1 on the link's outside face at the top of its
+   frame: `pin` across, 3 mm out, join. Hole1 on the opposite side face at the
+   other end: blind, `wall` deep, `pin + 2 * tolerance` across. Rectangular
+   Pattern1 of the Link body: three links along Y, `pitch` apart.
+2. **A sweep carries the profile exactly where its sketch drew it.** ADR-0055
+   says the profile "need not touch the path", and that is true — but *where
+   it is drawn is where it is swept*: `pipe.Add(section, /*WithContact*/ false)`
+   leaves OCCT's `GeomFill_SectionPlacement::Transformation` on its
+   `P.SetCoord(0., 0., 0.)` branch, which cancels the law's own placement
+   exactly. So a section has to be **centred on the path**, not merely near it.
+   B10 drew it first centred on the YZ sketch's origin (1.5 mm off the
+   centreline) and got a link with **6 mm walls**: a box of 29 x 10 x 26 mm
+   and a volume 11.7 % over the centreline's perimeter times the section, while
+   the straight walls' inner faces sat exactly on the path. Centred on the
+   path's own line the ring is exact — 26 x 10 x 23 mm and 2425.5 mm³ against a
+   perimeter of 80.85 mm times the 30 mm² section. (The headless test checks
+   that number to 0.01 mm³.) **ADR-0055's Deferred should say this: a swept
+   section's position is its own, and the dialog or the field hint should say
+   "centred on the path".**
+3. **The path is picked curve by curve, and the order matters.** The facade's
+   `pathWire` builds the wire "with the first piece in its own direction", so
+   the first curve picked is where the sweep starts: the spec picks the bottom
+   line first (its tangent is along X, which the section's plane is square to).
+   Every pick has to be at least 5 mm off Sketch2's own curves, which come
+   first in the pick (both are sketch curves, nearest first), and the *profile*
+   is picked in the half of Sketch2 that the path is not in front of: from the
+   home view (camera at +X, -Y, +Z) the ray meets the YZ plane before the XZ one
+   for a point at negative y, so a click at y > 0 takes the path's own region.
+4. **A side face is picked in the view that looks square at it.** The plane
+   picker (`sketchTargetAt`) takes an origin plane unless the face is *at least
+   as near*, and in an oblique view an origin plane lies in front of a vertical
+   face — so the hole's plane came out "YZ plane" however exactly the spec
+   clicked. The front view (Shift+4) looks along the face's normal, with the
+   XZ plane behind it. The pin's +Y face is picked in the back view for the
+   same reason.
+5. **A hole on a picked face defaults to `through`**, so the blind hole has to
+   set Extent before its Depth field exists.
+6. **What the benchmark found, and what came of it:** the model as specified is
+   a chain link whose pin does not fit its own hole: Ø(`pin` + 2 x tolerance) =
+   5.4 mm is wider than the 3 mm wall it is drilled into, so the hole severs the
+   end wall where it is made (the link stays one solid, through its left and
+   right walls, and its face count drops from 32 to 26 as the hole grows). A
+   printable link needs `wall` >= `pin`; nothing was changed for it, since the
+   benchmark is the model as requirements §7 describes it. The pattern's copy
+   bodies are named from their instance (`Body1`, `Body2`, P3-07), not
+   `Body2`, `Body3`.
+
+Both specs take 19 s (B8) and 31 s (B10) alone on the Arch workstation; the
+headless recompute is under a second each, and the fuzzer's 200 steps take 70 s
+(B8) and 14 s (B10) — neither needed B9's reduced budget.

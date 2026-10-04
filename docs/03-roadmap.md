@@ -821,10 +821,17 @@ end to end, faster than in Fusion 360.
   slab cut by the bodies, so nothing is placed by hand) and a **variable
   fillet**: an end radius per edge set (`radiusEnd<n>`, `swap<n>`) through the
   facade's new `filletVariable`, used only when some set has an end radius.
-- [ ] **P4-11 Benchmarks B8–B10 E2E.** B9 (threaded bottle cap and thread
-  adapter) done 2026-10-04 (`e2e/benchmark-b9.spec.ts`, ADR-0039's amendment:
-  it took the ISO coarse thread series to M64 and the thread turn limit to 150
-  with it); B8 (emboss/deboss) waits for P4-04, B10 (tolerance) for P4-08.
+- [x] **P4-11 Benchmarks B8–B10 E2E.** Done 2026-10-04 (ADR-0039's amendments):
+  B9 (threaded bottle cap and thread adapter, `e2e/benchmark-b9.spec.ts`, which
+  took the ISO coarse thread series to M64 and the thread turn limit to 150 with
+  it), B8 (name tag: a plate, rounded corners, a hanging hole, a text
+  sketched on its top face and embossed out of it,
+  `e2e/benchmark-b8.spec.ts`) and B10 (cable chain link: a rounded centreline
+  path swept with a section, a pin, a clearance hole
+  `pin + 2 * tolerance` and a pattern of three links,
+  `e2e/benchmark-b10.spec.ts`). Both fixtures recompute headless and fuzz
+  clean; B10 found that a sweep carries its profile exactly where the sketch
+  drew it, so a swept section has to be *centred on the path*.
 - [ ] **P4-12 Modeling depth backlog (from the Phase 3 ADRs).** Added
   2026-09-30; split into tasks as needed:
   - Fillet and chamfer: on-canvas radius/distance handles, more than 8 sets,
@@ -853,6 +860,12 @@ end to end, faster than in Fusion 360.
     collar (why B9 gets 6 fuzz steps, not 200), so an interference test that
     doesn't ask OCCT for a distance. A bottle-cap profile of its own is still
     open (ADR-0056 Deferred).
+  - Sweep: say where a profile lands. OCCT sweeps it exactly where its sketch
+    drew it (the facade's no-contact placement cancels OCCT's own), so a
+    section has to be *centred on the path* and nothing says so — B10 drew its
+    section on the sketch's origin and got 6 mm walls instead of 3
+    (ADR-0039's B10 amendment, ADR-0055 Deferred); also an edit dialog that
+    reads where the profile will sit.
   - Print Info: support volume, infill, cost per kg (ADR-0048).
   - Patterns: a skip list, count and path handles (ADR-0047).
   - A ghost of lost geometry in the view (ADR-0005, -0033); remappable

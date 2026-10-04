@@ -11,8 +11,12 @@ import {
   type ExtrudoDocument,
   loadDocument,
   type Parameter,
+  readSketch,
   updateParameter,
 } from '@extrudo/core';
+import { DEFAULT_FONT } from '@extrudo/fonts';
+import { detectProfiles } from '@extrudo/sketch/profiles';
+import { loadFont } from '@extrudo/sketch/text';
 import { strFromU8, unzipSync } from 'fflate';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import b1 from '../../../fixtures/benchmarks/b1-plate.extrudo?url&inline';
@@ -22,7 +26,10 @@ import b4 from '../../../fixtures/benchmarks/b4-box-with-lid.extrudo?url&inline'
 import b5 from '../../../fixtures/benchmarks/b5-pcb-enclosure.extrudo?url&inline';
 import b6 from '../../../fixtures/benchmarks/b6-wall-hook.extrudo?url&inline';
 import b7 from '../../../fixtures/benchmarks/b7-knurled-knob.extrudo?url&inline';
+import b8 from '../../../fixtures/benchmarks/b8-name-tag.extrudo?url&inline';
 import b9 from '../../../fixtures/benchmarks/b9-bottle-cap.extrudo?url&inline';
+import b10 from '../../../fixtures/benchmarks/b10-chain-link.extrudo?url&inline';
+import interRegular from '../../fonts/fonts/inter-regular.ttf?url&inline';
 import { kernelFeatures } from './features';
 import { translation } from './features/matrix';
 import { Kernel } from './kernel';
@@ -49,6 +56,8 @@ let engine: RecomputeEngine;
 
 beforeAll(async () => {
   kernel = new Kernel(await loadOcct());
+  // B8's letters: the embossed text is shaped here, as the worker does (P4-03).
+  loadFont(DEFAULT_FONT, bytesOf(interRegular));
 });
 
 afterAll(() => {
@@ -107,6 +116,19 @@ function withParameters(doc: ExtrudoDocument, values: Record<string, string>): E
 }
 
 const featureNames = (doc: ExtrudoDocument) => doc.features.map((f) => f.name);
+
+/**
+ * The area (mm²) every profile of every sketch of `doc` covers: B8's is its
+ * letters' ink, which is what the embossed depth is measured against.
+ */
+function inkArea(doc: ExtrudoDocument): number {
+  let area = 0;
+  for (const feature of doc.features) {
+    const sketch = readSketch(feature);
+    if (sketch) area += detectProfiles(sketch.data).reduce((sum, p) => sum + p.area, 0);
+  }
+  return area;
+}
 /** The stored names of the computed bodies, in creation order. */
 const bodyNames = (doc: ExtrudoDocument, result: Done) =>
   result.bodies.map(({ id }) => doc.bodies[id]?.name);
@@ -436,6 +458,123 @@ describe('B9 bottle cap and thread adapter', { timeout: 120_000 }, () => {
     expect(cap?.volume).toBeGreaterThan(cupVolume(1.5) * 0.8);
     expect(adapter?.size[2]).toBeCloseTo(20, 3);
     expect(adapter?.valid).toBe(true);
+  });
+});
+
+describe('B8 name tag', () => {
+  /** The plate less its hole: what the letters stand on. */
+  const plate = (length: number, width: number, thick: number, corner: number) =>
+    length * width * thick - 4 * corner ** 2 * (1 - Math.PI / 4) * thick - Math.PI * 2 * 2 * thick;
+
+  it('is one body: a plate with rounded corners, a hanging hole and letters on top', async () => {
+    const doc = load(b8);
+    expect(doc.name).toBe('B8 Name tag');
+    expect(featureNames(doc)).toEqual(['Box1', 'Fillet1', 'Hole1', 'Sketch1', 'Emboss1']);
+    expect(doc.parameters.map((p) => [p.name, p.expression])).toEqual(
+      expect.arrayContaining([
+        ['length', '60 mm'],
+        ['width', '20 mm'],
+        ['thick', '3 mm'],
+        ['corner', '5 mm'],
+        ['letters', '1 mm'],
+      ]),
+    );
+    const result = await recompute(doc);
+    expect(bodyNames(doc, result)).toEqual(['Body1']);
+    const [tag] = bodies(result);
+    // The letters stand `letters` out of the top face, and each brings a cap and
+    // its walls.
+    expect(tag?.valid).toBe(true);
+    expect(tag?.size).toEqual([60, 20, 4]);
+    expect(tag?.min).toEqual([-30, -10, 0]);
+    expect(tag?.faces).toBeGreaterThan(40);
+    // The plate's volume is exact (four fillets, one hole); the letters add
+    // their ink's area times `letters`, within their own bounding box.
+    const ink = inkArea(doc);
+    expect(tag?.volume).toBeGreaterThan(plate(60, 20, 3, 5) + ink * 0.2);
+    expect(tag?.volume).toBeLessThan(plate(60, 20, 3, 5) + ink);
+  });
+
+  it('follows every parameter, the sketch on the top face rides up with it', async () => {
+    const doc = withParameters(load(b8), { length: '70 mm', thick: '4 mm', letters: '2 mm' });
+    const [tag] = bodies(await recompute(doc));
+    expect(tag?.valid).toBe(true);
+    expect(tag?.size).toEqual([70, 20, 6]);
+    const ink = inkArea(doc);
+    expect(tag?.volume).toBeGreaterThan(plate(70, 20, 4, 5) + ink * 0.3);
+    expect(tag?.volume).toBeLessThan(plate(70, 20, 4, 5) + ink * 2);
+  });
+});
+
+describe('B10 chain link', { timeout: 120_000 }, () => {
+  /** The centreline's perimeter times the section: what the sweep makes. */
+  const ring = (inner: number, wall: number, depth: number, corner = 3) =>
+    (2 * (inner + wall - 2 * corner) + 2 * (inner - 2 * corner) + 2 * Math.PI * corner) *
+    depth *
+    wall;
+  /** A cylinder's volume, mm³. */
+  const volumeOf = (r: number, height: number) => Math.PI * r * r * height;
+
+  it("is three bodies: a swept ring with a pin, and its pin's clearance", async () => {
+    const doc = load(b10);
+    expect(doc.name).toBe('B10 Chain link');
+    expect(featureNames(doc)).toEqual([
+      'Sketch1',
+      'Sketch2',
+      'Sweep1',
+      'Cylinder1',
+      'Hole1',
+      'Rectangular Pattern1',
+    ]);
+    // The sweep alone: the ring's volume is the centreline's perimeter times the
+    // section, exact to a hundredth of a mm³.
+    const swept = bodies(await recompute({ ...doc, timelineMarker: 3 }));
+    expect(swept).toHaveLength(1);
+    expect(swept[0]?.valid).toBe(true);
+    expect(swept[0]?.size).toEqual([26, 10, 23]);
+    expect(swept[0]?.volume).toBeCloseTo(ring(20, 3, 10), 2);
+
+    const result = await recompute(doc);
+    expect(bodyNames(doc, result)).toEqual(['Link', 'Body1', 'Body2']);
+    for (const body of bodies(result)) {
+      expect(body.valid).toBe(true);
+      // The pin stands 3 mm off the link's outside face and is 2.5 mm across the
+      // top wall, so the link is 13 deep and 24 tall (the display mesh of the
+      // pin's disc is a hair under it).
+      expect(body.size[0]).toBeCloseTo(26, 3);
+      expect(body.size[1]).toBeCloseTo(13, 3);
+      expect(body.size[2]).toBeCloseTo(24, 1);
+      // The pin adds a cylinder and the hole (`pin + 2 * tolerance` across, `wall`
+      // deep, with its drill point) takes about as much off again.
+      expect(body.volume).toBeGreaterThan(ring(20, 3, 10) * 0.99);
+      expect(body.volume).toBeLessThan(ring(20, 3, 10) + volumeOf(2.5, 3));
+    }
+    // The copies step `pitch` along Y, whichever way the pattern runs.
+    const alongY = bodies(result)
+      .map((body) => body.min[1] as number)
+      .sort((a, b) => a - b);
+    expect((alongY[1] as number) - (alongY[0] as number)).toBeCloseTo(30, 3);
+    expect((alongY[2] as number) - (alongY[1] as number)).toBeCloseTo(30, 3);
+  });
+
+  it('follows the parameters the hole and the pattern read', async () => {
+    const before = bodies(await recompute(load(b10)))[0];
+    const doc = withParameters(load(b10), { tolerance: '0.3 mm', pitch: '34 mm' });
+    const result = await recompute(doc);
+    expect(bodyNames(doc, result)).toEqual(['Link', 'Body1', 'Body2']);
+    const links = bodies(result);
+    for (const body of links) {
+      expect(body.valid).toBe(true);
+      expect(body.size[0]).toBeCloseTo(26, 3);
+      expect(body.size[1]).toBeCloseTo(13, 3);
+      expect(body.size[2]).toBeCloseTo(24, 1);
+    }
+    // The hole grew by 0.2 mm, so every link lost a little matter.
+    expect(links[0]?.volume).toBeLessThan(before?.volume as number);
+    // The copies step `pitch` along Y.
+    const alongY = links.map((body) => body.min[1] as number).sort((a, b) => a - b);
+    expect((alongY[1] as number) - (alongY[0] as number)).toBeCloseTo(34, 3);
+    expect((alongY[2] as number) - (alongY[1] as number)).toBeCloseTo(34, 3);
   });
 });
 
