@@ -6,6 +6,10 @@
  */
 import { readFileSync } from 'node:fs';
 import {
+  type AttachmentId,
+  AttachmentSchema,
+  addAttachment,
+  applyCommand,
   BODY_OPERATIONS,
   BodyMetaSchema,
   boxFeature,
@@ -78,6 +82,7 @@ import {
 import { strFromU8, unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { readArchive, writeArchive } from './archive';
+import { sha256Hex } from './sha256';
 
 const text = readFileSync(new URL('../../../docs/file-format.md', import.meta.url), 'utf8');
 
@@ -105,6 +110,11 @@ function variants(union: unknown, tag = 'type'): { name: string; keys: string[] 
 }
 
 const mentioned = (word: string) => text.includes(`\`${word}\``);
+/** What the schema says about a document, one line per issue. */
+const issuesOf = (doc: unknown): string[] => {
+  const result = DocumentSchema.safeParse(doc);
+  return result.success ? [] : result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+};
 const missing = (words: Iterable<string>) => [...new Set(words)].filter((w) => !mentioned(w));
 
 const FEATURES = [
@@ -171,6 +181,38 @@ describe('docs/file-format.md', () => {
     const manifest = JSON.parse(strFromU8(entries['manifest.json'] as Uint8Array));
     expect(Object.keys(manifest).filter((k) => !mentioned(k))).toEqual([]);
     expect(readArchive(bytes).versions).toHaveLength(1);
+  });
+
+  it('describes attachments as content-addressed entries beside the document (P4-03b)', () => {
+    const font = new Uint8Array([1, 2, 3, 4]);
+    const hash = sha256Hex(font);
+    const withFont = applyCommand(
+      loadDocument(example()).doc,
+      addAttachment({
+        id: 'font-1' as AttachmentId,
+        attachment: {
+          name: 'Comic Neue Bold',
+          fileName: 'ComicNeue-Bold.ttf',
+          mediaType: 'font/ttf',
+          sha256: hash,
+          size: font.length,
+        },
+      }),
+    ).doc;
+    const bytes = writeArchive(withFont, undefined, [], new Map([[hash, font]]));
+    expect(Object.keys(unzipSync(bytes)).sort()).toEqual([
+      `attachments/${hash}`,
+      'document.json',
+      'manifest.json',
+    ]);
+    expect(mentioned(`attachments/${hash}`)).toBe(false);
+    expect(text).toContain('`attachments/<sha256>`');
+    // Every field and media type of the record is in the text.
+    expect(Object.keys(AttachmentSchema.shape).filter((k) => !mentioned(k))).toEqual([]);
+    expect(AttachmentSchema.shape.mediaType.options.filter((m) => !mentioned(m))).toEqual([]);
+    // A design that names the font in a text loads, and its bytes travel with it.
+    expect(issuesOf(withFont)).toEqual([]);
+    expect(readArchive(bytes).attachments.get(hash)).toEqual(font);
   });
 
   it('mentions every document key, input kind and feature type', () => {

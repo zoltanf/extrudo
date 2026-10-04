@@ -110,5 +110,14 @@ export function idbFiles(db: IDBDatabase): FileStore {
       s.delete(IDBKeyRange.bound(`${path}/`, `${path}/￿`));
       await committed(s.transaction);
     },
+    async list(prefix) {
+      const start = `${prefix}/`;
+      const keys = await done(
+        store('readonly').getAllKeys(IDBKeyRange.bound(start, `${start}￿`)) as IDBRequest<
+          IDBValidKey[]
+        >,
+      );
+      return keys.map(String).sort();
+    },
   };
 }

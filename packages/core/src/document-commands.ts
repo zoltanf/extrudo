@@ -27,8 +27,10 @@ export const renameDocument = defineCommand<{ name: string }>(
 
 /**
  * Brings back a saved version's content (FR-PRJ-03, P2-14): its settings,
- * parameters, timeline, bodies, views and configurations. The document's ID,
- * name and dates stay, so the project stays the same project. One undo step.
+ * parameters, timeline, bodies, views, configurations and attachments. The
+ * document's ID, name and dates stay, so the project stays the same project.
+ * One undo step. Attachments come back with the rest: a version's texts need
+ * the fonts it carried (P4-03b).
  */
 export const restoreVersion = defineCommand<{ doc: ExtrudoDocument }>(
   'document.restoreVersion',
@@ -41,6 +43,7 @@ export const restoreVersion = defineCommand<{ doc: ExtrudoDocument }>(
     draft.bodies = doc.bodies;
     draft.views = doc.views;
     draft.configurations = doc.configurations;
+    draft.attachments = doc.attachments;
   },
 );
 

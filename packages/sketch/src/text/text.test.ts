@@ -3,7 +3,7 @@ import type { TextAlign, UnitLayout, UnitSegment } from '@extrudo/core';
 import { BUNDLED_FONTS } from '@extrudo/fonts';
 import opentype from 'opentype.js';
 import { describe, expect, it } from 'vitest';
-import { hasFont, loadFont, shapeText } from './index.js';
+import { fontName, hasFont, loadFont, shapeText } from './index.js';
 
 const FONTS_DIR = new URL('../../../fonts/fonts/', import.meta.url);
 
@@ -207,6 +207,44 @@ describe('shapeText', () => {
     expect(hasFont('bad@1')).toBe(false);
     expect(hasFont(INTER)).toBe(true);
     expect(shapeText('not-loaded@1', 'A', 'left')).toBeUndefined();
+  });
+
+  it('names a font by its own family and subfamily (P4-03b)', () => {
+    // A subfamily that says nothing is left out, so the name stays short. The
+    // bundled subsets record "Regular" for every style, so a bold one shows its
+    // family only too; a font with a real subfamily joins the two.
+    expect(fontName(readFileSync(new URL('inter-regular.ttf', FONTS_DIR)))).toBe('Inter');
+    expect(fontName(readFileSync(new URL('jetbrains-mono-regular.ttf', FONTS_DIR)))).toBe(
+      'JetBrains Mono',
+    );
+    // A font with a subfamily of its own shows both, as "Comic Neue Bold" does.
+    const built = (style: string) => {
+      const glyph = new opentype.Glyph({
+        name: 'A',
+        unicode: 65,
+        advanceWidth: 100,
+        path: new opentype.Path(),
+      });
+      return new opentype.Font({
+        familyName: 'Comic Neue',
+        styleName: style,
+        unitsPerEm: 100,
+        ascender: 80,
+        descender: -20,
+        glyphs: [glyph],
+      }).toArrayBuffer();
+    };
+    expect(fontName(built('Bold'))).toBe('Comic Neue Bold');
+    expect(fontName(built('Regular'))).toBe('Comic Neue');
+  });
+
+  it('says what is wrong with bytes that are not a font', () => {
+    // Too short to read, and long enough to be read and refused: both are "not
+    // a font" as far as a person is concerned.
+    expect(() => fontName(new Uint8Array([104, 105]))).toThrow(/doesn't look like a font file/);
+    expect(() => fontName(new TextEncoder().encode('hello world'))).toThrow(
+      /doesn't look like a font file/,
+    );
   });
 
   it('memoises a layout and shapes 1000 fresh characters quickly', () => {

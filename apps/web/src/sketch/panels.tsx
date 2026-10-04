@@ -1,5 +1,6 @@
 import {
   ANGLE,
+  attachmentFontId,
   type Command,
   CommandError,
   type Dim,
@@ -32,6 +33,7 @@ import { keysFor } from '../commands/keymap';
 import { Button, ConfirmDialog, ToolIcon, Tooltip } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
 import type { ViewportStore } from '../viewport/store';
+import { ADD_FONT_VALUE, addFontFile, FONT_HINT, type FontPicker } from './addFont';
 import { ensureUiFonts } from './fonts';
 import { useHostState } from './hostState';
 import { profileIdsIn, sketchProfiles } from './profiles';
@@ -292,6 +294,72 @@ function DofCounter({ host }: { host: ToolHost | undefined }) {
 /** A panel at the view's bottom-left, clear of the browser that floats over the view. */
 const BESIDE_BROWSER = { left: 'calc(var(--x-browser-inset, 0px) + 12px)' };
 
+/**
+ * The font a text is shaped with (P4-03, ADR-0058 §6; user fonts from P4-03b,
+ * ADR-0061 §3): the bundled fonts, then the design's own under "This design",
+ * then "Add font…", which brings a font file into the design and selects it.
+ * Picking one of the design's says plainly that it travels with the design.
+ */
+function FontSelect({
+  doc,
+  value,
+  fonts,
+  store,
+  notify,
+  onChange,
+}: {
+  doc: ExtrudoDocument;
+  value: string;
+  fonts: FontPicker;
+  store: DocumentStore;
+  notify(tone: 'info' | 'error', message: string): void;
+  onChange(font: string): void;
+}) {
+  const design = Object.entries(doc.attachments ?? {}).sort(([, a], [, b]) =>
+    a.name.localeCompare(b.name),
+  );
+  return (
+    <>
+      <label className="flex items-center gap-2 text-sm text-muted">
+        Font
+        <select
+          aria-label="Font"
+          className="min-w-0 flex-1 rounded-input border border-line bg-(--x-raised) px-1 py-1 text-ink"
+          value={value}
+          onChange={(event) => {
+            const chosen = event.target.value;
+            // "Add font…" isn't a font: it opens the picker and selects what
+            // the user brings back, or leaves the choice as it was.
+            if (chosen !== ADD_FONT_VALUE) return onChange(chosen);
+            void addFontFile({ ...fonts, store, notify }).then((font) => font && onChange(font));
+          }}
+        >
+          {BUNDLED_FONTS.map((font) => (
+            <option key={font.id} value={font.id} style={{ fontFamily: font.family }}>
+              {font.family} {font.style}
+            </option>
+          ))}
+          {design.length > 0 && (
+            <optgroup label="This design">
+              {design.map(([id, attachment]) => (
+                <option key={id} value={`attachment:${id}`}>
+                  {attachment.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          <option value={ADD_FONT_VALUE}>Add font…</option>
+        </select>
+      </label>
+      {attachmentFontId(value) && (
+        <p className="text-xs text-muted" data-font-hint>
+          {FONT_HINT}
+        </p>
+      )}
+    </>
+  );
+}
+
 const TYPE_NAMES: Record<SketchEntity['type'], [string, string]> = {
   point: ['Point', 'points'],
   line: ['Line', 'lines'],
@@ -313,6 +381,8 @@ export interface SelectionPanelProps {
   session: SessionStore;
   host: ToolHost | undefined;
   onDelete(): void;
+  /** Adding a font to the design from a text's Font select (P4-03b, ADR-0061 §3). */
+  fonts: FontPicker;
   /** Shows a short message: an edit that was refused or didn't reach its value. */
   notify(tone: 'info' | 'error', text: string): void;
 }
@@ -324,7 +394,14 @@ export interface SelectionPanelProps {
  * angle, the construction flag and Delete. Shows nothing without a selection.
  * It floats in the view's bottom-left corner, clear of the palette.
  */
-export function SelectionPanel({ store, session, host, onDelete, notify }: SelectionPanelProps) {
+export function SelectionPanel({
+  store,
+  session,
+  host,
+  onDelete,
+  fonts,
+  notify,
+}: SelectionPanelProps) {
   const selection = useStore(session, (s) => s.selection);
   const sketchId = useStore(session, (s) => s.activeSketchId);
   const doc = useStore(store, (s) => s.doc);
@@ -432,6 +509,7 @@ export function SelectionPanel({ store, session, host, onDelete, notify }: Selec
         sketchId={sketchId}
         doc={doc}
         host={host}
+        fonts={fonts}
         notify={notify}
       />,
     );
@@ -479,6 +557,9 @@ export function SelectionPanel({ store, session, host, onDelete, notify }: Selec
 export interface TextPanelProps {
   store: DocumentStore;
   host: ToolHost | undefined;
+  /** Picking a font file to add to the design (P4-03b, ADR-0061 §3). */
+  fonts: FontPicker;
+  notify(tone: 'info' | 'error', text: string): void;
 }
 
 /**
@@ -487,7 +568,7 @@ export interface TextPanelProps {
  * view like the selection panel, is not modal (the text previews live while it
  * is open), and OK or Ctrl+Enter commits the text as one undo step.
  */
-export function TextPanel({ store, host }: TextPanelProps) {
+export function TextPanel({ store, host, fonts, notify }: TextPanelProps) {
   const draft = useStore(textDraftStore);
   const doc = useStore(store, (s) => s.doc);
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
@@ -538,21 +619,14 @@ export function TextPanel({ store, host }: TextPanelProps) {
               onChange={(event) => setTextDraft({ text: event.target.value })}
             />
           </label>
-          <label className="flex items-center gap-2 text-sm text-muted">
-            Font
-            <select
-              aria-label="Font"
-              className="min-w-0 flex-1 rounded-input border border-line bg-(--x-raised) px-1 py-1 text-ink"
-              value={draft.font}
-              onChange={(event) => setTextDraft({ font: event.target.value })}
-            >
-              {BUNDLED_FONTS.map((font) => (
-                <option key={font.id} value={font.id} style={{ fontFamily: font.family }}>
-                  {font.family} {font.style}
-                </option>
-              ))}
-            </select>
-          </label>
+          <FontSelect
+            doc={doc}
+            value={draft.font}
+            fonts={fonts}
+            store={store}
+            notify={notify}
+            onChange={(font) => setTextDraft({ font })}
+          />
           <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
             <legend className="text-sm text-muted">Alignment</legend>
             <div className="flex gap-1">
@@ -625,6 +699,7 @@ export function TextFields({
   sketchId,
   doc,
   host,
+  fonts,
   notify,
 }: {
   store: DocumentStore;
@@ -634,6 +709,7 @@ export function TextFields({
   sketchId: FeatureId;
   doc: ExtrudoDocument;
   host: ToolHost | undefined;
+  fonts: FontPicker;
   notify(tone: 'info' | 'error', text: string): void;
 }) {
   const stored = text.type === 'text' ? text.text : '';
@@ -693,21 +769,14 @@ export function TextFields({
           }}
         />
       </label>
-      <label className="flex items-center gap-2 text-sm text-muted">
-        Font
-        <select
-          aria-label="Font"
-          className="min-w-0 flex-1 rounded-input border border-line bg-(--x-raised) px-1 py-1 text-ink"
-          value={entity?.font ?? DEFAULT_TEXT_DRAFT.font}
-          onChange={(event) => patch({ font: event.target.value })}
-        >
-          {BUNDLED_FONTS.map((font) => (
-            <option key={font.id} value={font.id} style={{ fontFamily: font.family }}>
-              {font.family} {font.style}
-            </option>
-          ))}
-        </select>
-      </label>
+      <FontSelect
+        doc={doc}
+        value={entity?.font ?? DEFAULT_TEXT_DRAFT.font}
+        fonts={fonts}
+        store={store}
+        notify={notify}
+        onChange={(font) => entity && patch({ font })}
+      />
       <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
         <legend className="text-sm text-muted">Alignment</legend>
         <div className="flex gap-1">

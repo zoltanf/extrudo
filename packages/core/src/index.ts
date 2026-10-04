@@ -3,6 +3,7 @@
  * See docs/02-architecture.md §4 and ADR-0003. Must not use the DOM or WASM.
  */
 
+export * from './attachments';
 export * from './chamfer';
 export * from './coil';
 export * from './combine';

@@ -3,6 +3,15 @@ import type { DocumentId, ExtrudoDocument } from '@extrudo/core';
 /** A project is identified by its document's ID. */
 export type ProjectId = DocumentId;
 
+/**
+ * How much of a design's attachments storage takes (ADR-0061 §2): one file at
+ * most 10 MB, all of them together 50 MB. Both are refused with a message for
+ * the user, checked in `writeAttachment`, so every way in is covered (adding a
+ * font, importing a file, duplicating a project).
+ */
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+export const MAX_ATTACHMENTS_BYTES = 50 * 1024 * 1024;
+
 /** What the home screen shows about a project, without loading it. */
 export interface ProjectSummary {
   id: ProjectId;
@@ -35,6 +44,8 @@ export interface VersionSummary {
  * uses OPFS + IndexedDB; the desktop app (Phase 6) will implement the same
  * interface over the file system. Version history (P2-14, ADR-0036):
  * `saveVersion`, `versions`, `loadVersion`; `deleteVersions` (P3-13).
+ * Attachments (P4-03b, ADR-0061): `writeAttachment`, `readAttachment`,
+ * `collectAttachments`.
  */
 export interface ProjectStore {
   /** Every project, trashed ones included, most recently modified first. */
@@ -48,6 +59,25 @@ export interface ProjectStore {
   load(id: ProjectId, options?: LoadOptions): Promise<ExtrudoDocument>;
   /** Creates or overwrites a project. Sets `meta.modified` on the stored copy. */
   save(doc: ExtrudoDocument): Promise<ProjectSummary>;
+  /**
+   * Stores a file's bytes under its SHA-256 (`projects/<id>/attachments/<sha>`),
+   * which is what they must hash to (ADR-0061 §2). Call it before saving the
+   * document that names the file: a design must never name bytes that aren't
+   * there. Refuses a file over `MAX_ATTACHMENT_BYTES`, a design over
+   * `MAX_ATTACHMENTS_BYTES` in total, and bytes that don't match the hash.
+   */
+  writeAttachment(id: ProjectId, sha256: string, bytes: Uint8Array): Promise<void>;
+  /**
+   * A file's bytes, or `undefined` when the project has none under that hash
+   * (a name that isn't a hash never has).
+   */
+  readAttachment(id: ProjectId, sha256: string): Promise<Uint8Array | undefined>;
+  /**
+   * Deletes the files of attachments that neither the document nor any saved
+   * version names: what an undone add left behind. Storage runs this when a
+   * version is saved or deleted, not on autosave (ADR-0061 §2).
+   */
+  collectAttachments(id: ProjectId): Promise<void>;
   /**
    * Saves `doc` like `save`, and keeps a copy of it as the project's next
    * version with `description`. Throws `ProjectNotFoundError` for a project

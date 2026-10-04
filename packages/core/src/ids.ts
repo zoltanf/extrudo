@@ -26,6 +26,8 @@ export const ConstraintIdSchema = id.brand<'ConstraintId'>();
 export const DimensionIdSchema = id.brand<'DimensionId'>();
 /** A sketch's projection of model geometry (P2-09). Unique within the sketch, like the others. */
 export const ProjectionIdSchema = id.brand<'ProjectionId'>();
+/** A file that travels with the design, named in `doc.attachments` (ADR-0061). */
+export const AttachmentIdSchema = id.brand<'AttachmentId'>();
 
 export type DocumentId = z.infer<typeof DocumentIdSchema>;
 export type FeatureId = z.infer<typeof FeatureIdSchema>;
@@ -37,6 +39,7 @@ export type SketchEntityId = z.infer<typeof SketchEntityIdSchema>;
 export type ConstraintId = z.infer<typeof ConstraintIdSchema>;
 export type DimensionId = z.infer<typeof DimensionIdSchema>;
 export type ProjectionId = z.infer<typeof ProjectionIdSchema>;
+export type AttachmentId = z.infer<typeof AttachmentIdSchema>;
 
 type AnyId =
   | DocumentId
@@ -48,7 +51,8 @@ type AnyId =
   | SketchEntityId
   | ConstraintId
   | DimensionId
-  | ProjectionId;
+  | ProjectionId
+  | AttachmentId;
 
 /**
  * A new random ID. Call it where an entity is created (a command's caller),

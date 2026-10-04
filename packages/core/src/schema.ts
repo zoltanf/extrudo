@@ -12,12 +12,13 @@ import { z } from 'zod';
 import { FORMAT_NAME, FORMAT_VERSION } from './format';
 import { PARAMETER_NAME } from './names';
 import { GeomRefSchema, Vec3Schema } from './refs';
-import { SketchDataSchema } from './sketch/schema';
+import { attachmentFontId, SketchDataSchema } from './sketch/schema';
 
 export { PARAMETER_NAME } from './names';
 export * from './refs';
 
 import {
+  AttachmentIdSchema,
   BodyIdSchema,
   ConfigurationIdSchema,
   DocumentIdSchema,
@@ -183,6 +184,28 @@ export const SettingsSchema = z.strictObject({
 });
 export type Settings = z.infer<typeof SettingsSchema>;
 
+/**
+ * A file that travels with the design (P4-03b, ADR-0061 §1): the bytes live
+ * beside the document (storage's `writeAttachment`, the `.extrudo` file's
+ * `attachments/` folder), never in it, and are content-addressed by
+ * `sha256`: one file is stored once however many attachments or versions
+ * name it. Only fonts exist so far; a text entity names its font as
+ * `attachment:<AttachmentId>`.
+ */
+export const AttachmentSchema = z.strictObject({
+  /** What the user sees, e.g. "Comic Neue Bold". */
+  name: z.string().min(1).max(200),
+  /** The name of the file it came from, so an export can offer it back. */
+  fileName: z.string().min(1).max(255),
+  /** WOFF2 is not accepted: the font shaper can't read it (ADR-0061 §1). */
+  mediaType: z.enum(['font/ttf', 'font/otf', 'font/woff']),
+  /** Lower case hex, the file's name in storage and in the archive. */
+  sha256: z.string().regex(/^[0-9a-f]{64}$/, 'must be 64 lower case hex digits'),
+  /** The file's size in bytes, for the design's attachment limit. */
+  size: z.int().positive(),
+});
+export type Attachment = z.infer<typeof AttachmentSchema>;
+
 export const DocumentSchema = z
   .strictObject({
     format: z.literal(FORMAT_NAME),
@@ -202,6 +225,8 @@ export const DocumentSchema = z
     views: z.array(NamedViewSchema),
     /** Named value sets for the customizer (P4-07); absent when there are none. */
     configurations: z.array(ConfigurationSchema).optional(),
+    /** Files that travel with the design (ADR-0061); the bytes live beside the document. */
+    attachments: z.record(AttachmentIdSchema, AttachmentSchema).optional(),
     meta: z.strictObject({
       created: z.iso.datetime(),
       /** Set by storage when it saves, not by commands (so undo doesn't touch it). */
@@ -238,8 +263,31 @@ export const DocumentSchema = z
         message: `min is ${min}, above max ${max}`,
       });
     });
+    reportFonts(ctx, doc);
   });
 export type ExtrudoDocument = z.infer<typeof DocumentSchema>;
+
+/**
+ * A text shaped with `attachment:<id>` needs that attachment in the document
+ * (ADR-0061 §1): a font nothing carries would draw as nothing at all. The
+ * issue names the entity, so the file's error points at the text to fix.
+ */
+function reportFonts(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>): void {
+  for (const [index, feature] of doc.features.entries()) {
+    const sketch = feature.inputs.sketch;
+    if (sketch?.kind !== 'sketchData') continue;
+    for (const [id, entity] of Object.entries(sketch.sketch.entities)) {
+      if (entity.type !== 'text') continue;
+      const attachment = attachmentFontId(entity.font);
+      if (!attachment || doc.attachments?.[attachment]) continue;
+      ctx.addIssue({
+        code: 'custom',
+        path: ['features', index, 'inputs', 'sketch', 'sketch', 'entities', id, 'font'],
+        message: `is the font of attachment "${attachment}", which this design doesn't carry`,
+      });
+    }
+  }
+}
 
 function reportDuplicates(
   ctx: z.RefinementCtx,

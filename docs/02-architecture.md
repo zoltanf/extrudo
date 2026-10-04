@@ -571,11 +571,12 @@ interface ProjectStore {
 ```
 
 - **Web:** IndexedDB (`extrudo`) holds the project index. OPFS holds
-  `projects/<id>/document.json`, `thumbnail.png` and `versions/`
-  (`index.json` plus `<n>.json.gz` per version, ADR-0036; later
-  attachments); where OPFS can't write files, an IndexedDB `files` store
-  does. `createWritable` replaces a file atomically on `close()`. The
-  document is written before the index entry.
+  `projects/<id>/document.json`, `thumbnail.png`, `attachments/` and
+  `versions/` (`index.json` plus `<n>.json.gz` per version, ADR-0036;
+  `attachments/<sha256>` holds the files a design carries, ADR-0061); where
+  OPFS can't write files, an IndexedDB `files` store does. `createWritable`
+  replaces a file atomically on `close()`. The document is written before the
+  index entry, and an attachment's bytes before the document that names it.
 - **Desktop (Phase 6):** the same interface over Node `fs` through Electron IPC.
   Projects are plain `.extrudo` files in a user folder, with recent-files and
   file associations.

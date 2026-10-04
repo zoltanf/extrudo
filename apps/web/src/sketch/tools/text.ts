@@ -53,6 +53,14 @@ export class TextTool implements SketchTool {
 
   constructor(private readonly context: ToolContext) {
     void ensureUiFonts([DEFAULT_TEXT_DRAFT.font]);
+    // The host starts a tool afresh whenever the document changes, and adding a
+    // font to the design changes it (P4-03b, ADR-0061 §3): the anchor is the
+    // draft's, so the panel that is open keeps working.
+    const placedAt = textDraftStore.getState().placedAt;
+    if (textDraftStore.getState().open && placedAt) {
+      this.#pointer = placedAt;
+      this.#anchored = true;
+    }
   }
 
   prompt(): string {
@@ -73,7 +81,7 @@ export class TextTool implements SketchTool {
     this.#pointer = pointer;
     this.#anchored = true;
     this.#loadFont();
-    setTextDraft({ open: true });
+    setTextDraft({ open: true, placedAt: pointer });
     return undefined;
   }
 
@@ -110,7 +118,7 @@ export class TextTool implements SketchTool {
   /** The panel's OK: the text, as one undo step. */
   #commit(): SketchEdit | undefined {
     const draft = textDraftStore.getState();
-    const click = this.#pointer;
+    const click = draft.placedAt ?? this.#pointer;
     if (!this.#anchored || !click) return undefined;
     if (draft.text.length === 0) return { ...emptyEdit(), error: 'Type some text first.' };
     const ctx = this.context;

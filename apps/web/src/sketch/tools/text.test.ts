@@ -6,7 +6,13 @@
  * directory as `packages/sketch/src/text/text.test.ts` does.
  */
 import { readFileSync } from 'node:fs';
-import { type SketchEntityId, textPolylines } from '@extrudo/core';
+import {
+  type AttachmentId,
+  addAttachment,
+  newId,
+  type SketchEntityId,
+  textPolylines,
+} from '@extrudo/core';
 import { loadFont } from '@extrudo/sketch/text';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -77,6 +83,31 @@ describe('Text tool', () => {
     expect(top[0]).toBeCloseTo(0, 6);
     expect(top[1]).toBeCloseTo(12, 6);
     expect(Object.values(t.data().dimensions).map((d) => d.expr)).toEqual(['12 mm']);
+  });
+
+  it('keeps the anchor when the document changes while the panel is open', async () => {
+    // Adding a font to the design dispatches a command, and the host starts a
+    // tool afresh on any document change (P4-03b, ADR-0061 §3): the click that
+    // placed the anchor belongs to the draft, so OK still commits the text.
+    const t = await setup({ tool: TEXT_TOOL });
+    t.host.click(at(0, 0));
+    setTextDraft({ text: 'A' });
+    t.store.getState().dispatch(
+      addAttachment({
+        id: newId<AttachmentId>(),
+        attachment: {
+          name: 'Fredoka Light',
+          fileName: 'fredoka-semibold.ttf',
+          mediaType: 'font/ttf',
+          sha256: 'f'.repeat(64),
+          size: 1234,
+        },
+      }),
+    );
+    expect(textDraftStore.getState().open).toBe(true);
+    t.host.enter();
+    expect(t.byType('text')).toHaveLength(1);
+    expect(t.point((t.byType('text')[0] as { anchor: SketchEntityId }).anchor)).toEqual([0, 0]);
   });
 
   it('makes construction text when the X toggle is on', async () => {

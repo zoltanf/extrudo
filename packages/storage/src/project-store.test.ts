@@ -1,17 +1,21 @@
 import {
+  type AttachmentId,
+  addAttachment,
   addParameter,
   applyCommand,
   createDocument,
   type DocumentId,
   type ExtrudoDocument,
   type ParameterId,
+  removeAttachment,
 } from '@extrudo/core';
-import { strToU8, zipSync } from 'fflate';
+import { strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { memoryFiles } from './files';
 import { memoryIndex } from './idb';
 import { createProjectStore, localLock } from './project-store';
-import { ProjectNotFoundError } from './types';
+import { sha256Hex } from './sha256';
+import { MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS_BYTES, ProjectNotFoundError } from './types';
 
 function setup() {
   let clock = Date.parse('2026-09-25T10:00:00.000Z');
@@ -348,5 +352,230 @@ describe('ProjectStore versions (P2-14)', () => {
     await a.save(d);
     await Promise.all([a.saveVersion(d, 'a1'), b.saveVersion(d, 'b1')]);
     expect((await a.versions(d.id)).length).toBeLessThan(2);
+  });
+});
+
+describe('ProjectStore attachments (P4-03b, ADR-0061 §2)', () => {
+  const someBytes = (seed: number, length = 2048) =>
+    new Uint8Array(Array.from({ length }, (_, i) => (i * 31 + seed) % 256));
+  const hash = (bytes: Uint8Array) => sha256Hex(bytes);
+  const aid = (id: string) => id as AttachmentId;
+  /** The attachment record for a font's bytes. */
+  const font = (bytes: Uint8Array, size = bytes.length) => ({
+    name: 'Comic Neue Bold',
+    fileName: 'ComicNeue-Bold.ttf',
+    mediaType: 'font/ttf' as const,
+    sha256: hash(bytes),
+    size,
+  });
+  /** The document with one attachment recorded for `bytes`. */
+  const withFont = (d: ExtrudoDocument, id: string, bytes: Uint8Array) =>
+    applyCommand(d, addAttachment({ id: aid(id), attachment: font(bytes) })).doc;
+
+  it('stores a file under its hash and reads it back', async () => {
+    const { store, files } = setup();
+    const bytes = someBytes(1);
+    const d = doc('Bracket');
+    await store.save(d);
+    await store.writeAttachment(d.id, hash(bytes), bytes);
+    expect(files.paths()).toEqual([
+      `projects/${d.id}/attachments/${hash(bytes)}`,
+      `projects/${d.id}/document.json`,
+    ]);
+    expect(await store.readAttachment(d.id, hash(bytes))).toEqual(bytes);
+    // A hash the project has no file for, and a name that isn't a hash.
+    expect(await store.readAttachment(d.id, 'c'.repeat(64))).toBeUndefined();
+    expect(await store.readAttachment(d.id, 'not-a-hash')).toBeUndefined();
+  });
+
+  it('refuses bytes that are not the file they are named after', async () => {
+    const { store, files } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    await expect(store.writeAttachment(d.id, 'a'.repeat(64), someBytes(2))).rejects.toThrow(
+      'they hash to',
+    );
+    await expect(store.writeAttachment(d.id, 'not-a-hash', someBytes(2))).rejects.toThrow(
+      "isn't a SHA-256 hash",
+    );
+    expect(files.paths()).toEqual([`projects/${d.id}/document.json`]);
+  });
+
+  it('refuses a file over 10 MB and a design over 50 MB of them', async () => {
+    const { store } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    const big = new Uint8Array(MAX_ATTACHMENT_BYTES + 1);
+    await expect(store.writeAttachment(d.id, hash(big), big)).rejects.toThrow(
+      'one file may be at most 10 MB',
+    );
+    // The design's limit comes from the sizes its stored document records:
+    // six 9 MB fonts pass 50 MB before the seventh is written.
+    const heavy = Object.fromEntries(
+      Array.from({ length: 6 }, (_, i) => [aid(`f${i}`), font(someBytes(i, 16), 9 * 1024 * 1024)]),
+    );
+    await store.save({ ...d, attachments: heavy });
+    const bytes = someBytes(9);
+    await expect(store.writeAttachment(d.id, hash(bytes), bytes)).rejects.toThrow(
+      'they may be at most 50 MB',
+    );
+    expect(MAX_ATTACHMENTS_BYTES).toBe(50 * 1024 * 1024);
+  });
+
+  it('takes the attachments folder with the project when it is deleted', async () => {
+    const { store, files } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    const bytes = someBytes(3);
+    await store.writeAttachment(d.id, hash(bytes), bytes);
+    await store.purge(d.id);
+    expect(files.paths()).toEqual([]);
+  });
+
+  it('gathers the files nothing names any more when a version is saved', async () => {
+    const { store, files } = setup();
+    const bytes = someBytes(4);
+    const d = doc('Bracket');
+    await store.save(d);
+    await store.writeAttachment(d.id, hash(bytes), bytes);
+    // Bytes written before any document named them: an add that was undone.
+    const orphan = someBytes(5);
+    await store.writeAttachment(d.id, hash(orphan), orphan);
+    // A plain save gathers nothing: autosave has to stay cheap.
+    await store.save(withFont(d, 'f1', bytes));
+    expect(files.paths()).toContain(`projects/${d.id}/attachments/${hash(orphan)}`);
+
+    await store.saveVersion(withFont(d, 'f1', bytes), 'with the font');
+    // The document and the version both name the font, so only the orphan goes.
+    expect(files.paths()).toEqual([
+      `projects/${d.id}/attachments/${hash(bytes)}`,
+      `projects/${d.id}/document.json`,
+      `projects/${d.id}/versions/1.json.gz`,
+      `projects/${d.id}/versions/index.json`,
+    ]);
+  });
+
+  it('keeps a file a saved version names after the document drops it', async () => {
+    const { store, files } = setup();
+    const bytes = someBytes(6);
+    const withIt = withFont(doc('Bracket'), 'f1', bytes);
+    const withoutIt = applyCommand(withIt, removeAttachment({ id: aid('f1') })).doc;
+    await store.save(withIt);
+    await store.writeAttachment(withIt.id, hash(bytes), bytes);
+    await store.saveVersion(withIt, 'with the font');
+    await store.save(withoutIt);
+    expect(files.paths()).toContain(`projects/${withIt.id}/attachments/${hash(bytes)}`);
+
+    // Deleting the version that names it frees the file.
+    await store.deleteVersions(withIt.id, [1]);
+    expect(files.paths()).not.toContain(`projects/${withIt.id}/attachments/${hash(bytes)}`);
+  });
+
+  it('exports the files a version names and imports them, also into a copy', async () => {
+    const { store } = setup();
+    const old = someBytes(7);
+    const newer = someBytes(8);
+    const withOld = withFont(doc('Bracket'), 'f1', old);
+    await store.save(withOld);
+    await store.writeAttachment(withOld.id, hash(old), old);
+    await store.saveVersion(withOld, 'early');
+    const withBoth = withFont(withOld, 'f2', newer);
+    await store.save(withBoth);
+    await store.writeAttachment(withBoth.id, hash(newer), newer);
+
+    const file = await store.exportFile(withBoth.id);
+    const other = setup().store;
+    const notices: string[] = [];
+    await other.importFile(file, { onNotice: (m) => notices.push(m) });
+    expect(notices).toEqual([]);
+    expect(await other.readAttachment(withBoth.id, hash(old))).toEqual(old);
+    expect(await other.readAttachment(withBoth.id, hash(newer))).toEqual(newer);
+    expect((await other.loadVersion(withBoth.id, 1)).attachments).toEqual(withOld.attachments);
+
+    // The same file again becomes a copy, with the bytes under the new ID.
+    const copy = await other.importFile(file);
+    expect(copy.id).not.toBe(withBoth.id);
+    expect(await other.readAttachment(copy.id, hash(old))).toEqual(old);
+  });
+
+  it('copies a project\u2019s files when it is duplicated', async () => {
+    const { store } = setup();
+    const bytes = someBytes(10);
+    const d = withFont(doc('Bracket'), 'f1', bytes);
+    await store.save(d);
+    await store.writeAttachment(d.id, hash(bytes), bytes);
+    const copy = await store.duplicate(d.id);
+    expect(await store.readAttachment(copy.id, hash(bytes))).toEqual(bytes);
+  });
+
+  it('stores one font once, however many attachments name it', async () => {
+    const { store, files } = setup();
+    const bytes = someBytes(11);
+    const d = doc('Bracket');
+    // Two attachments with the same bytes, one file.
+    const withBoth = withFont(withFont(d, 'f1', bytes), 'f2', bytes);
+    await store.save(withBoth);
+    await store.writeAttachment(d.id, hash(bytes), bytes);
+    await store.writeAttachment(d.id, hash(bytes), bytes);
+    const attachments = () => files.paths().filter((p) => p.includes('/attachments/'));
+    expect(attachments()).toEqual([`projects/${d.id}/attachments/${hash(bytes)}`]);
+    // The archive has one entry for it too.
+    const entries = unzipSync(
+      new Uint8Array(await (await store.exportFile(d.id)).arrayBuffer()) as Uint8Array<ArrayBuffer>,
+    );
+    expect(Object.keys(entries).filter((n) => n.startsWith('attachments/'))).toEqual([
+      `attachments/${hash(bytes)}`,
+    ]);
+    // And a version save keeps it: both records name it.
+    await store.saveVersion(withBoth, 'nothing kept');
+    expect(attachments()).toEqual([`projects/${d.id}/attachments/${hash(bytes)}`]);
+  });
+
+  it('says which fonts a file is missing and loads it anyway', async () => {
+    const { store } = setup();
+    const one = someBytes(12);
+    const two = someBytes(13);
+    const d = withFont(withFont(doc('Bracket'), 'f1', one), 'f2', two);
+    await store.save(d);
+    await store.writeAttachment(d.id, hash(one), one);
+    await store.writeAttachment(d.id, hash(two), two);
+    // Take one file out of the archive, as a hand-edited file would be.
+    const entries = unzipSync(
+      new Uint8Array(await (await store.exportFile(d.id)).arrayBuffer()) as Uint8Array<ArrayBuffer>,
+    );
+    delete entries[`attachments/${hash(two)}`];
+    const notices: string[] = [];
+    const other = setup().store;
+    await other.importFile(new Blob([zipSync(entries) as Uint8Array<ArrayBuffer>]), {
+      onNotice: (m) => notices.push(m),
+    });
+    expect(notices).toEqual(['1 font is missing from the file; its texts show without letters.']);
+    expect((await other.load(d.id)).attachments).toEqual(d.attachments);
+    expect(await other.readAttachment(d.id, hash(one))).toEqual(one);
+    expect(await other.readAttachment(d.id, hash(two))).toBeUndefined();
+  });
+
+  it('leaves out a file whose bytes are not what its name says', async () => {
+    const { store } = setup();
+    const bytes = someBytes(14);
+    const d = withFont(doc('Bracket'), 'f1', bytes);
+    await store.save(d);
+    await store.writeAttachment(d.id, hash(bytes), bytes);
+    const entries = unzipSync(
+      new Uint8Array(await (await store.exportFile(d.id)).arrayBuffer()) as Uint8Array<ArrayBuffer>,
+    );
+    entries[`attachments/${hash(bytes)}`] = strToU8('not a font at all');
+    const notices: string[] = [];
+    const other = setup().store;
+    await other.importFile(new Blob([zipSync(entries) as Uint8Array<ArrayBuffer>]), {
+      onNotice: (m) => notices.push(m),
+    });
+    expect(notices).toEqual([
+      "1 file in this Extrudo file is damaged (its content doesn't match its name) and was left out.",
+      '1 font is missing from the file; its texts show without letters.',
+    ]);
+    expect(await other.readAttachment(d.id, hash(bytes))).toBeUndefined();
+    // The design still opens; the text shows without letters.
+    expect((await other.load(d.id)).attachments).toEqual(d.attachments);
   });
 });

@@ -1,11 +1,13 @@
 /**
  * The ProjectStore over an index and a file store (ADR-0009). Each project
- * is `projects/<id>/document.json` plus an optional `thumbnail.png` and its
- * versions (`versions.ts`, ADR-0036); the index holds the summaries the
+ * is `projects/<id>/document.json` plus an optional `thumbnail.png`, its
+ * versions (`versions.ts`, ADR-0036) and its attachments
+ * (`attachments/<sha256>`, ADR-0061); the index holds the summaries the
  * home screen lists. A save writes the file first and the index second, so
  * the index never points at a document that wasn't written.
  */
 import {
+  attachmentHashes,
   newId as coreNewId,
   type DocumentId,
   type ExtrudoDocument,
@@ -13,12 +15,15 @@ import {
   loadNotice,
 } from '@extrudo/core';
 import { gunzipSync, gzipSync } from 'fflate';
-import { readArchive, writeArchive } from './archive';
+import { attachmentNotices, readArchive, writeArchive } from './archive';
 import { type FileStore, memoryFiles } from './files';
 import { memoryIndex, type ProjectIndex } from './idb';
+import { SHA256_PATTERN, sha256Hex } from './sha256';
 import {
   ArchiveError,
   type LoadOptions,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS_BYTES,
   type ProjectId,
   ProjectNotFoundError,
   type ProjectStore,
@@ -66,10 +71,14 @@ export function localLock(): <T>(name: string, task: () => Promise<T>) => Promis
 
 const documentPath = (id: ProjectId) => `projects/${id}/document.json`;
 const thumbnailPath = (id: ProjectId) => `projects/${id}/thumbnail.png`;
+const attachmentFolder = (id: ProjectId) => `projects/${id}/attachments`;
+const attachmentPath = (id: ProjectId, sha256: string) => `${attachmentFolder(id)}/${sha256}`;
 const versionIndexPath = (id: ProjectId) => `projects/${id}/versions/index.json`;
 const versionPath = (id: ProjectId, n: number) => `projects/${id}/versions/${n}.json.gz`;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const MB = 1024 * 1024;
+const megabytes = (bytes: number) => `${Math.ceil((bytes / MB) * 10) / 10} MB`;
 
 export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
   const { index, files } = options;
@@ -192,17 +201,139 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     await index.put({ ...summary, hasThumbnail: true });
   };
 
-  /** Saves a document under a new ID, keeping the thumbnail if there is one. */
-  const saveCopy = async (doc: ExtrudoDocument, name: string, thumbnail?: Uint8Array) => {
+  /**
+   * Stores a file's bytes under its SHA-256 (ADR-0061 §2), which must be what
+   * they hash to: one file is kept once however many attachments or versions
+   * name it. Refuses a file over `MAX_ATTACHMENT_BYTES` and a design that
+   * would go over `MAX_ATTACHMENTS_BYTES` in total.
+   *
+   * The total is the sum of the sizes the *stored* document records, since the
+   * document naming this file is only saved after it (the app adds a font
+   * and autosaves a moment later), which is exact as soon as the document is
+   * saved and an attachment's own size is never counted twice. The bytes go
+   * before the document on purpose: a design must never name a file that isn't
+   * there. Garbage collection (ADR-0061 §2) takes the ones nothing names any
+   * more, such as the bytes of an undone add.
+   */
+  const writeAttachment = async (id: ProjectId, sha256: string, bytes: Uint8Array) => {
+    if (!SHA256_PATTERN.test(sha256)) {
+      throw new Error(
+        `"${sha256}" isn't a SHA-256 hash, so no file can be stored under that name.`,
+      );
+    }
+    if (bytes.length > MAX_ATTACHMENT_BYTES) {
+      throw new Error(
+        `This file is ${megabytes(bytes.length)}; one file may be at most ${megabytes(MAX_ATTACHMENT_BYTES)}.`,
+      );
+    }
+    const digest = sha256Hex(bytes);
+    if (digest !== sha256) {
+      throw new Error(`These bytes are not the file ${sha256}: they hash to ${digest}.`);
+    }
+    const sizes = await storedAttachmentSizes(id);
+    const total =
+      bytes.length +
+      [...sizes].reduce((sum, [hash, size]) => (hash === sha256 ? sum : sum + size), 0);
+    if (total > MAX_ATTACHMENTS_BYTES) {
+      throw new Error(
+        `This design's files would be ${megabytes(total)} altogether; they may be at most ${megabytes(MAX_ATTACHMENTS_BYTES)}.`,
+      );
+    }
+    await files.write(attachmentPath(id, sha256), bytes);
+  };
+
+  const readAttachment = (id: ProjectId, sha256: string) =>
+    SHA256_PATTERN.test(sha256)
+      ? files.read(attachmentPath(id, sha256))
+      : Promise.resolve(undefined);
+
+  /** The attachment sizes the stored document records, by hash. */
+  const storedAttachmentSizes = async (id: ProjectId): Promise<Map<string, number>> => {
+    const bytes = await files.read(documentPath(id));
+    if (!bytes) return new Map();
+    try {
+      const raw = JSON.parse(decoder.decode(bytes)) as {
+        attachments?: Record<string, { sha256?: unknown; size?: unknown }>;
+      };
+      const sizes = new Map<string, number>();
+      for (const record of Object.values(raw.attachments ?? {})) {
+        if (typeof record?.sha256 === 'string' && typeof record.size === 'number') {
+          sizes.set(record.sha256, record.size);
+        }
+      }
+      return sizes;
+    } catch {
+      // A document that can't be read tells us nothing about the limit; the
+      // file's own size limit still applies.
+      return new Map();
+    }
+  };
+
+  /**
+   * Deletes the files of attachments that neither the document nor any saved
+   * version names (ADR-0061 §2): the bytes of an undone add, or of a font a
+   * version that has been deleted used. Storage runs it where a file stops
+   * being needed by name (saving or deleting a version), never on autosave:
+   * an autosave runs every few seconds while someone types, and this reads
+   * and validates every version document. A project whose document can't be
+   * read keeps all its files rather than guessing what is in use.
+   */
+  const collectAttachments = (id: ProjectId) =>
+    withVersions(id, async () => {
+      const bytes = await files.read(documentPath(id));
+      if (!bytes) return;
+      let keep: Set<string>;
+      try {
+        keep = attachmentHashes(loadDocument(JSON.parse(decoder.decode(bytes))).doc);
+        for (const version of await allVersions(id)) {
+          for (const hash of attachmentHashes(version.doc)) keep.add(hash);
+        }
+      } catch {
+        return;
+      }
+      for (const path of await files.list(attachmentFolder(id))) {
+        if (!keep.has(path.slice(path.lastIndexOf('/') + 1))) await files.remove(path);
+      }
+    });
+
+  /** The bytes of every file the document or a version names, read once each. */
+  const attachmentBytes = async (
+    id: ProjectId,
+    doc: ExtrudoDocument,
+    versions: readonly StoredVersion[],
+  ): Promise<Map<string, Uint8Array>> => {
+    const out = new Map<string, Uint8Array>();
+    const wanted = new Set<string>(attachmentHashes(doc));
+    for (const version of versions)
+      for (const hash of attachmentHashes(version.doc)) wanted.add(hash);
+    for (const hash of wanted) {
+      const bytes = await files.read(attachmentPath(id, hash));
+      if (bytes) out.set(hash, bytes);
+    }
+    return out;
+  };
+
+  /**
+   * Saves a document under a new ID: its attachment bytes first, then the
+   * document that names them, then the thumbnail.
+   */
+  const saveCopy = async (
+    doc: ExtrudoDocument,
+    name: string,
+    extra: { thumbnail?: Uint8Array; attachments?: ReadonlyMap<string, Uint8Array> } = {},
+  ) => {
     const copy: ExtrudoDocument = {
       ...doc,
       id: makeId(),
       name,
       meta: { ...doc.meta, created: now() },
     };
+    for (const [sha256, bytes] of extra.attachments ?? []) {
+      await writeAttachment(copy.id, sha256, bytes);
+    }
     const summary = await save(copy);
-    if (thumbnail) await writeThumbnail(copy.id, thumbnail);
-    return { ...summary, hasThumbnail: !!thumbnail };
+    if (extra.thumbnail) await writeThumbnail(copy.id, extra.thumbnail);
+    return { ...summary, hasThumbnail: !!extra.thumbnail };
   };
 
   return {
@@ -213,8 +344,11 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     get: (id) => index.get(id),
     load,
     save,
-    saveVersion: (doc, description) =>
-      withVersions(doc.id, async () => {
+    writeAttachment,
+    readAttachment,
+    collectAttachments,
+    saveVersion: async (doc, description) => {
+      const version = await withVersions(doc.id, async () => {
         await summaryOf(doc.id);
         const { versions, next } = await readIndex(doc.id);
         const summary = await save(doc);
@@ -232,9 +366,14 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
         );
         await writeIndex(doc.id, [...versions, version], version.number + 1);
         return version;
-      }),
-    deleteVersions: (id, numbers) =>
-      withVersions(id, async () => {
+      });
+      // Outside the versions lock, which `collectAttachments` takes itself:
+      // an explicit version save is where files nobody names any more go.
+      await collectAttachments(doc.id);
+      return version;
+    },
+    deleteVersions: async (id, numbers) => {
+      await withVersions(id, async () => {
         await summaryOf(id);
         const { versions, next } = await readIndex(id);
         const gone = new Set(numbers);
@@ -244,7 +383,10 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
         await writeIndex(id, kept, next);
         for (const v of versions)
           if (gone.has(v.number)) await files.remove(versionPath(id, v.number));
-      }),
+      });
+      // Deleting a version can be what frees the files only it named.
+      await collectAttachments(id);
+    },
     async versions(id) {
       await summaryOf(id);
       return (await readVersions(id)).reverse();
@@ -257,7 +399,10 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     },
     async duplicate(id) {
       const doc = await load(id);
-      return saveCopy(doc, `${doc.name} copy`, await readThumbnail(id));
+      return saveCopy(doc, `${doc.name} copy`, {
+        thumbnail: await readThumbnail(id),
+        attachments: await attachmentBytes(id, doc, []),
+      });
     },
     async trash(id) {
       await index.put({ ...(await summaryOf(id)), trashed: now() });
@@ -268,6 +413,7 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
     },
     async purge(id) {
       // Index first: a crash then leaves an orphan folder, never a listed project without files.
+      // The whole folder goes, `attachments/` with it.
       await index.delete(id);
       await files.remove(`projects/${id}`);
     },
@@ -279,19 +425,26 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
       await writeThumbnail(id, new Uint8Array(await png.arrayBuffer()));
     },
     async exportFile(id) {
-      const bytes = writeArchive(await load(id), await readThumbnail(id), await allVersions(id));
+      const doc = await load(id);
+      const versions = await allVersions(id);
+      const attachments = await attachmentBytes(id, doc, versions);
+      const bytes = writeArchive(doc, await readThumbnail(id), versions, attachments);
       return new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/zip' });
     },
     async importFile(file, options) {
       const archive = readArchive(new Uint8Array(await file.arrayBuffer()));
       const notice = loadNotice(archive, 'copy');
       if (notice) options?.onNotice?.(notice);
-      const { doc, thumbnail, versions } = archive;
+      for (const message of attachmentNotices(archive)) options?.onNotice?.(message);
+      const { doc, thumbnail, versions, attachments } = archive;
       if (await index.get(doc.id)) {
-        const copy = await saveCopy(doc, doc.name, thumbnail);
+        const copy = await saveCopy(doc, doc.name, { thumbnail, attachments });
         await writeVersions(copy.id, versions);
         return copy;
       }
+      // The bytes before the document: a design must never name a file that
+      // isn't stored, and the sizes the limit is checked against come with it.
+      for (const [sha256, bytes] of attachments) await writeAttachment(doc.id, sha256, bytes);
       const summary = await save(doc);
       if (thumbnail) await writeThumbnail(doc.id, thumbnail);
       await writeVersions(doc.id, versions);

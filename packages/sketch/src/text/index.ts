@@ -19,8 +19,19 @@ import opentype from 'opentype.js';
 
 const fonts = new Map<string, Font>();
 
-/** Parses a font file and keeps it under `id` for `shapeText`. Throws on bytes opentype.js can't read. */
-export function loadFont(id: string, bytes: ArrayBuffer | Uint8Array): void {
+/**
+ * opentype.js's ways of saying "these bytes are not a font at all", which is
+ * not something to tell a person who picked the wrong file: they get one
+ * sentence instead. Anything else (a truncated table, an unknown table version)
+ * is a real reason and is passed through.
+ */
+const NOT_A_FONT =
+  /^(Unsupported OpenType signature|Offset is outside the bounds|Unexpected end of)/;
+
+/**
+ * Parses font bytes, or throws with a reason a person can read.
+ */
+function parseFont(bytes: ArrayBuffer | Uint8Array): Font {
   // A Buffer or other view may sit in a larger pool: copy the exact range.
   const buffer =
     bytes instanceof ArrayBuffer
@@ -31,12 +42,52 @@ export function loadFont(id: string, bytes: ArrayBuffer | Uint8Array): void {
     font = opentype.parse(buffer);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Font "${id}" could not be parsed: ${message}`);
+    throw new Error(NOT_A_FONT.test(message) ? "it doesn't look like a font file" : message);
   }
   if (!font.supported || typeof font.stringToGlyphs !== 'function') {
-    throw new Error(`Font "${id}" is not a font format opentype.js supports`);
+    throw new Error('it is not a font format Extrudo can read');
   }
-  fonts.set(id, font);
+  return font;
+}
+
+/** Parses a font file and keeps it under `id` for `shapeText`. Throws on bytes opentype.js can't read. */
+export function loadFont(id: string, bytes: ArrayBuffer | Uint8Array): void {
+  try {
+    fonts.set(id, parseFont(bytes));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Font "${id}" could not be parsed: ${message}`);
+  }
+}
+
+/** Subfamilies that say nothing: a font named for its family alone. */
+const PLAIN_SUBFAMILIES = new Set(['regular', 'book', 'normal']);
+
+/** One name record in the language it is written in, preferring English. */
+function nameOf(names: Record<string, string> | undefined): string | undefined {
+  if (!names) return undefined;
+  const english = names.en;
+  if (english) return english;
+  return Object.values(names)[0];
+}
+
+/**
+ * The name to show a font the user brought to the design (P4-03b, ADR-0061
+ * §3): its family and subfamily, as its own names give them ("Comic Neue
+ * Bold"). A subfamily that adds nothing is left out, and a file that records no
+ * family name gives `undefined`, so the caller can fall back to the file name.
+ * Throws the same way as `loadFont` on bytes that aren't a readable font.
+ */
+export function fontName(bytes: ArrayBuffer | Uint8Array): string | undefined {
+  const names = parseFont(bytes).names as {
+    fontFamily?: Record<string, string>;
+    fontSubfamily?: Record<string, string>;
+  };
+  const family = nameOf(names.fontFamily);
+  const subfamily = nameOf(names.fontSubfamily);
+  if (!family) return subfamily;
+  if (!subfamily || PLAIN_SUBFAMILIES.has(subfamily.toLowerCase())) return family;
+  return `${family} ${subfamily}`;
 }
 
 export function hasFont(id: string): boolean {

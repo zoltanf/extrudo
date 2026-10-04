@@ -15,7 +15,7 @@ import { HOME_HREF, navigate, projectHref } from '../routes';
 import type { FileActions } from '../shell/AppBar';
 import { AppShell } from '../shell/AppShell';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
-import { useDocumentFonts } from '../sketch/fonts';
+import { useDocumentFonts, useFontAttachments } from '../sketch/fonts';
 import { createViewportStore, type ViewportStore } from '../viewport/store';
 import {
   createProject,
@@ -102,6 +102,9 @@ function ProjectEditor({
   const store = useMemo(() => createDocumentStore(doc), [doc]);
   const session = useMemo(() => createSessionStore(), []);
   const model = useMemo(() => createModelStore<BodyMesh>(), []);
+  // A font the user added to this design comes from its attachment (P4-03b,
+  // ADR-0061 §3). Set before the recomputer, which sends fonts to the worker.
+  useFontAttachments(doc.id, store, platform.projects);
   const recomputer = useRecompute(store, model);
   // Sketch text draws with the fonts the document uses (P4-03, ADR-0058 §4).
   useDocumentFonts(store);

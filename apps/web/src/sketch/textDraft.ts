@@ -6,6 +6,7 @@
  */
 import type { FontId, TextAlign } from '@extrudo/core';
 import { DEFAULT_FONT } from '@extrudo/fonts';
+import type { Inference } from '@extrudo/sketch/inference';
 import { createStore } from 'zustand/vanilla';
 
 /** The height a new text gets, as the Height field's expression. */
@@ -23,6 +24,13 @@ export interface TextDraft {
   expr: string;
   /** Its last good value in mm: what the preview draws and the top point is. */
   mm: number;
+  /**
+   * The click that placed the anchor, with what it snapped to. It is part of
+   * the draft rather than of the tool, because the host starts a tool afresh
+   * when the document changes — adding a font to the design does that
+   * (P4-03b, ADR-0061 §3) — and the anchor must survive that.
+   */
+  placedAt?: Inference;
 }
 
 /** The draft a new text starts from; the panel writes over it. */
@@ -33,6 +41,7 @@ export const DEFAULT_TEXT_DRAFT: TextDraft = {
   align: 'left',
   expr: DEFAULT_TEXT_HEIGHT,
   mm: 10,
+  placedAt: undefined,
 };
 
 export const textDraftStore = createStore<TextDraft>()(() => ({ ...DEFAULT_TEXT_DRAFT }));

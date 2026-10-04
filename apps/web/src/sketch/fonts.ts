@@ -9,9 +9,20 @@
  * import) and changes what every `placeText` gives, so `fontsStore`'s version
  * is part of the key of every cache that holds text geometry: the profile
  * cache (`profiles.ts`) and the sketch drawing.
+ *
+ * A font the user added to the design comes from its attachment
+ * (`attachment:<id>`, P4-03b, ADR-0061 §3), which needs the open project, so
+ * the page sets where to read it (`useFontAttachments`) while one is open.
  */
-import { type DocumentStore, type ExtrudoDocument, readSketch } from '@extrudo/core';
+import {
+  type AttachmentId,
+  attachmentFontId,
+  type DocumentStore,
+  type ExtrudoDocument,
+  readSketch,
+} from '@extrudo/core';
 import { BUNDLED_FONTS, type BundledFontId } from '@extrudo/fonts';
+import type { ProjectId, ProjectStore } from '@extrudo/storage';
 import { useEffect } from 'react';
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
@@ -56,11 +67,62 @@ export function usedFonts(doc: ExtrudoDocument): Set<string> {
 const bytes = new Map<string, Promise<ArrayBuffer | undefined>>();
 
 /**
- * A bundled font's bytes, fetched once (the browser caches the asset too).
- * Undefined for a font ID no bundled file names: a user font arrives as an
- * attachment in P4-03b.
+ * Where a design's own fonts come from (P4-03b, ADR-0061 §3): the open
+ * project, its document's attachment record and the stored bytes. Without one
+ * (no project is open) an `attachment:` font has no bytes, like any unknown
+ * font, and the kernel warns about it.
+ */
+export interface AttachmentFonts {
+  /**
+   * The bytes of the attachment `id` in the open project, or `undefined` when
+   * the design has no record of it or the file isn't stored (a name that never
+   * arrived).
+   */
+  read(id: string): Promise<Uint8Array | undefined>;
+}
+
+let attachmentFonts: AttachmentFonts | undefined;
+
+/**
+ * The project whose attachments fonts are read from, or `undefined`. The open
+ * project's page sets it (the cache follows, so one design's fonts are never
+ * served for another's).
+ */
+export function setAttachmentFonts(source: AttachmentFonts | undefined): void {
+  attachmentFonts = source;
+  for (const key of [...bytes.keys()]) if (key.startsWith(ATTACHMENT_CACHE)) bytes.delete(key);
+}
+
+/** The project's page tells this module where its design's fonts live. */
+export function useFontAttachments(
+  projectId: string,
+  store: DocumentStore,
+  projects: ProjectStore,
+): void {
+  useEffect(() => {
+    setAttachmentFonts({
+      read: (id) => {
+        const attachment = store.getState().doc.attachments?.[id as AttachmentId];
+        return attachment
+          ? projects.readAttachment(projectId as ProjectId, attachment.sha256)
+          : Promise.resolve(undefined);
+      },
+    });
+    return () => setAttachmentFonts(undefined);
+  }, [projectId, store, projects]);
+}
+
+const ATTACHMENT_CACHE = 'attachment:';
+
+/**
+ * A font's bytes, once: a bundled font's asset is fetched, a design font's are
+ * read from storage. `undefined` for a font nothing knows (a missing
+ * attachment, a bundled file that didn't load), which is what the kernel and
+ * the view take as "no font" — neither needs to know why.
  */
 export function fontBytes(id: string): Promise<ArrayBuffer | undefined> {
+  const attachmentId = attachmentFontId(id);
+  if (attachmentId) return attachmentBytes(attachmentId);
   const known = bytes.get(id);
   if (known) return known;
   const url = (fontUrls as Readonly<Record<string, string>>)[id];
@@ -70,6 +132,25 @@ export function fontBytes(id: string): Promise<ArrayBuffer | undefined> {
         .catch(() => undefined)
     : Promise.resolve(undefined);
   bytes.set(id, promise);
+  return promise;
+}
+
+/** One attachment's bytes, read once per open project and kept in the cache. */
+function attachmentBytes(id: AttachmentId): Promise<ArrayBuffer | undefined> {
+  const key = `${ATTACHMENT_CACHE}${id}`;
+  const known = bytes.get(key);
+  if (known) return known;
+  const source = attachmentFonts;
+  const promise = (source ? source.read(id) : Promise.resolve(undefined))
+    .then((data) => {
+      if (!data) return undefined;
+      // A copy in its own buffer: the store's view may sit in a bigger one.
+      const copy = new Uint8Array(data.length);
+      copy.set(data);
+      return copy.buffer;
+    })
+    .catch(() => undefined);
+  bytes.set(key, promise);
   return promise;
 }
 
@@ -87,6 +168,11 @@ let shaper: Promise<typeof import('@extrudo/sketch/text')> | undefined;
 function loadText(): Promise<typeof import('@extrudo/sketch/text')> {
   shaper ??= import('@extrudo/sketch/text');
   return shaper;
+}
+
+/** The text module for code outside this file (adding a font, P4-03b). */
+export function textModule(): Promise<typeof import('@extrudo/sketch/text')> {
+  return loadText();
 }
 
 /**

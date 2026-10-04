@@ -17,6 +17,8 @@
  */
 import { z } from 'zod';
 import {
+  type AttachmentId,
+  AttachmentIdSchema,
   ConstraintIdSchema,
   DimensionIdSchema,
   ProjectionIdSchema,
@@ -85,9 +87,31 @@ export const SketchSplineSchema = z.strictObject({
   construction: z.boolean(),
 });
 
-/** A font ID carries its version: `family-style@n`, e.g. `inter-regular@1` (ADR-0058 §3). */
-export const FontIdSchema = z.string().regex(/^[a-z0-9-]+@[0-9]+$/);
+/**
+ * A font ID says which font file a text is shaped with. A bundled one carries
+ * its version: `family-style@n`, e.g. `inter-regular@1` (ADR-0058 §3), and
+ * never changes its file. A user font added to this design is
+ * `attachment:<AttachmentId>` (P4-03b, ADR-0061 §1), naming an entry of
+ * `doc.attachments` whose bytes travel with the design.
+ */
+export const FontIdSchema = z
+  .string()
+  .regex(/^(?:[a-z0-9-]+@[0-9]+|attachment:[A-Za-z0-9][A-Za-z0-9._-]*)$/);
 export type FontId = z.infer<typeof FontIdSchema>;
+
+/** The prefix a user font's ID carries (ADR-0061 §1). */
+export const ATTACHMENT_FONT_PREFIX = 'attachment:';
+
+/**
+ * The attachment a font ID names, or `undefined` for a bundled font. The ID
+ * part is parsed as an ID, so an `attachment:` font with nothing after it is
+ * no attachment at all (the schema's regex refuses it anyway).
+ */
+export function attachmentFontId(font: string): AttachmentId | undefined {
+  if (!font.startsWith(ATTACHMENT_FONT_PREFIX)) return undefined;
+  const parsed = AttachmentIdSchema.safeParse(font.slice(ATTACHMENT_FONT_PREFIX.length));
+  return parsed.success ? parsed.data : undefined;
+}
 
 /**
  * A text entity (P4-03, FR-SK-13, ADR-0058 §1): the string `text` laid out

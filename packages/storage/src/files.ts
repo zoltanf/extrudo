@@ -10,6 +10,12 @@ export interface FileStore {
   write(path: string, data: Uint8Array): Promise<void>;
   /** Removes a file, or a folder and everything in it. Missing paths are fine. */
   remove(path: string): Promise<void>;
+  /**
+   * Every file under `prefix` (a folder), as full paths, sorted; empty when
+   * there is no such folder. Used to list a project's attachments for garbage
+   * collection (ADR-0061 §2).
+   */
+  list(prefix: string): Promise<string[]>;
 }
 
 /** In-memory files, for tests and Node. */
@@ -27,6 +33,9 @@ export function memoryFiles(): FileStore & { paths(): string[] } {
       for (const key of [...files.keys()]) {
         if (key === path || key.startsWith(`${path}/`)) files.delete(key);
       }
+    },
+    async list(prefix) {
+      return [...files.keys()].filter((key) => key.startsWith(`${prefix}/`)).sort();
     },
     paths: () => [...files.keys()].sort(),
   };
@@ -83,6 +92,24 @@ export function opfsFiles(root: FileSystemDirectoryHandle): FileStore {
       } catch (error) {
         if (!isNotFound(error)) throw error;
       }
+    },
+    async list(prefix) {
+      const out: string[] = [];
+      const walk = async (dir: FileSystemDirectoryHandle, path: string): Promise<void> => {
+        for await (const [name, handle] of dir.entries()) {
+          const full = path ? `${path}/${name}` : name;
+          if (handle.kind === 'directory') await walk(handle as FileSystemDirectoryHandle, full);
+          else out.push(full);
+        }
+      };
+      const parts = prefix.split('/').filter(Boolean);
+      try {
+        await walk(await folder(parts, false), parts.join('/'));
+      } catch (error) {
+        if (isNotFound(error)) return [];
+        throw error;
+      }
+      return out.sort();
     },
   };
 }

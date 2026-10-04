@@ -2,7 +2,13 @@
  * @extrudo/storage: the ProjectStore interface, its OPFS + IndexedDB
  * implementation and the `.extrudo` zip format (P0-08, ADR-0009).
  */
-export { type Archive, type Manifest, readArchive, writeArchive } from './archive';
+export {
+  type Archive,
+  attachmentNotices,
+  type Manifest,
+  readArchive,
+  writeArchive,
+} from './archive';
 export { type BrowserProjectStore, createBrowserProjectStore } from './browser';
 export { type FileStore, memoryFiles, opfsFiles } from './files';
 export { idbFiles, idbIndex, memoryIndex, openDatabase, type ProjectIndex } from './idb';
@@ -11,10 +17,13 @@ export {
   memoryProjectStore,
   type ProjectStoreOptions,
 } from './project-store';
+export { SHA256_PATTERN, sha256Hex } from './sha256';
 export {
   ArchiveError,
   type ArchiveErrorCode,
   type LoadOptions,
+  MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENTS_BYTES,
   type ProjectId,
   ProjectNotFoundError,
   type ProjectStore,

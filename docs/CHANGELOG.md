@@ -4,14 +4,16 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
-- 2026-10-03 · **P4-03** Sketch text (ADR-0058): the Text tool (Shift+T) puts
-  text on a sketch — string, font, alignment and height in a non-modal panel,
-  the height a driving dimension — and the letters come out as closed ink
-  regions: an extrude of a whole text sweeps every letter (a plate round a
-  text has it cut out as holes), and the selection panel edits the string, the
-  font, the alignment and the height. Six bundled OFL fonts (Inter, Noto Serif,
-  JetBrains Mono, Allerta Stencil, Fredoka) with versioned IDs; opentype.js
-  only in `@extrudo/sketch/text`, behind core's shaper registry.
+- 2026-10-03 · **P4-03b** User fonts as attachments (ADR-0061): `doc.attachments`
+  records the files a design carries (name, file name, media type, SHA-256,
+  size) while their bytes live beside the document —
+  `projects/<id>/attachments/<sha256>` in the project store and
+  `attachments/<sha256>` in the `.extrudo` file, one copy each, collected when a
+  version is saved; a text's font may be `attachment:<id>`, which the app reads
+  for the UI thread and sends to the kernel worker; both Font selects list the
+  design's fonts and offer "Add font…" (TTF, OTF, WOFF; WOFF2 refused, a file
+  that isn't a readable font stores nothing), with a hint that the font travels
+  inside the design; 10 MB per file and 50 MB per design.
 - 2026-10-03 · **P4-07** Customizer and configurations (ADR-0059): a user
   parameter can be exposed for changing (`parameters[].customizer`: `min`,
   `max`, `step`, `group`), and a design can hold named value sets
@@ -28,6 +30,14 @@ One line per completed roadmap task, newest first. Dates are absolute.
   `setParameterExpressions` (applying a configuration re-solves the sketches that
   use a parameter in the same step). File format 5.1.1 and 5.4; `formatVersion`
   stays 1 (optional keys).
+- 2026-10-03 · **P4-03** Sketch text (ADR-0058): the Text tool (Shift+T) puts
+  text on a sketch — string, font, alignment and height in a non-modal panel,
+  the height a driving dimension — and the letters come out as closed ink
+  regions: an extrude of a whole text sweeps every letter (a plate round a
+  text has it cut out as holes), and the selection panel edits the string, the
+  font, the alignment and the height. Six bundled OFL fonts (Inter, Noto Serif,
+  JetBrains Mono, Allerta Stencil, Fredoka) with versioned IDs; opentype.js
+  only in `@extrudo/sketch/text`, behind core's shaper registry.
 - 2026-10-03 · **P4-02** Modeled threads (ADR-0056): the Thread feature cuts a
   real ISO 68-1 thread into a shaft's or a hole's round face (Solid › Modify ›
   Thread): ISO metric coarse and fine, UNC and UNF presets or a size that fits

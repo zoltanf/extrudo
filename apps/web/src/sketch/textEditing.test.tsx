@@ -20,6 +20,7 @@ import {
   updateSketchDimension,
 } from '@extrudo/core';
 import { loadPlanegcs, SketchSolver } from '@extrudo/sketch';
+import { memoryProjectStore } from '@extrudo/storage';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
 import { memoryPreferences } from '../platform';
@@ -30,6 +31,8 @@ import { textHeight, textHeightDimension, textPatch } from './textEditing';
 import { createToolHost, type ToolHost } from './tools/host';
 
 const eid = (id: string) => id as SketchEntityId;
+/** A Font select that can offer "Add font…" but never has a file to add (P4-03b). */
+const noFonts = { files: { pick: async () => undefined }, projects: memoryProjectStore() };
 const hosts: ToolHost[] = [];
 afterEach(() => {
   for (const host of hosts.splice(0)) host.dispose();
@@ -162,6 +165,7 @@ describe('the selection panel for a text', () => {
         sketchId={t.sketch}
         doc={t.store.getState().doc}
         host={t.host}
+        fonts={noFonts}
         notify={() => {}}
       />,
     );
@@ -186,6 +190,7 @@ describe('the selection panel for a text', () => {
         sketchId={t.sketch}
         doc={t.store.getState().doc}
         host={t.host}
+        fonts={noFonts}
         notify={() => {}}
       />,
     );

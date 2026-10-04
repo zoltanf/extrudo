@@ -34,14 +34,22 @@ describe('IndexedDB', () => {
     const files = idbFiles(await openDatabase(new IDBFactory()));
     await files.write('projects/a/document.json', new Uint8Array([1]));
     await files.write('projects/a/thumbnail.png', new Uint8Array([2]));
-    await files.write('projects/ab/document.json', new Uint8Array([3]));
+    await files.write('projects/a/attachments/aa', new Uint8Array([3]));
+    await files.write('projects/ab/document.json', new Uint8Array([4]));
     expect(await files.read('projects/a/document.json')).toEqual(new Uint8Array([1]));
     expect(await files.read('missing')).toBeUndefined();
+    expect(await files.list('projects/a')).toEqual([
+      'projects/a/attachments/aa',
+      'projects/a/document.json',
+      'projects/a/thumbnail.png',
+    ]);
+    expect(await files.list('projects/zz')).toEqual([]);
     await files.remove('projects/a');
+    expect(await files.list('projects/a')).toEqual([]);
     expect(await files.read('projects/a/document.json')).toBeUndefined();
     expect(await files.read('projects/a/thumbnail.png')).toBeUndefined();
     // A sibling whose name starts the same survives.
-    expect(await files.read('projects/ab/document.json')).toEqual(new Uint8Array([3]));
+    expect(await files.read('projects/ab/document.json')).toEqual(new Uint8Array([4]));
   });
 
   it('repairs a database that exists without its object stores', async () => {

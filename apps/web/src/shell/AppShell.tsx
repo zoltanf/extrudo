@@ -66,6 +66,7 @@ import { SectionPanel } from '../section/SectionPanel';
 import { planeName, SECTION_TOOL, useSection } from '../section/useSection';
 import { readTopology, sketchEntityIdsIn } from '../selection/items';
 import { useModelSelection } from '../selection/useModelSelection';
+import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
 import { fontsStore } from '../sketch/fonts';
@@ -200,6 +201,11 @@ export function AppShell({
   const versionContext = useMemo<VersionContext>(
     () => ({ store, autosave, projects: platform.projects }),
     [store, autosave, platform],
+  );
+  // Adding a font to the design from a text's Font select (P4-03b, ADR-0061 §3).
+  const fontPicker = useMemo<FontPicker>(
+    () => ({ files: platform.files, projects: platform.projects }),
+    [platform],
   );
   // The File menu offers the model's export too (P2-12), and versions (P2-14).
   const fileActions = useMemo(
@@ -1334,12 +1340,13 @@ export function AppShell({
                 session={session}
                 host={host}
                 onDelete={remove}
+                fonts={fontPicker}
                 notify={notify}
               />
             )}
             {/* The Text tool's panel (P4-03): it takes the selection panel's place. */}
             {mode === 'sketch' && activeTool === 'text' && textOpen && (
-              <TextPanel store={store} host={host} />
+              <TextPanel store={store} host={host} fonts={fontPicker} notify={notify} />
             )}
             {drawing && tools && activeSketchId && sketchPlane && (
               <tools.Overlay

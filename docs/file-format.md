@@ -39,7 +39,8 @@ Two layers:
 
 - the **document** (`document.json`, section 4 onwards): the model, as JSON;
 - the **container** (`.extrudo`, section 2): a zip that holds the document
-  plus a manifest, a thumbnail and saved versions.
+  plus a manifest, a thumbnail, saved versions and the files the document
+  names (`attachments/`).
 
 ## 2. The container
 
@@ -58,12 +59,20 @@ that common zip libraries support (stored or deflate).
 | `thumbnail.png` | no | A PNG preview; the app writes 256 x 256. Stored uncompressed (already compressed). |
 | `versions/index.json` | no | `{ "versions": [ VersionSummary… ] }` (section 2.2). Written only when there is at least one version. |
 | `versions/<n>.json` | one per index entry | The complete document as it was when version `n` was saved. Same schema as `document.json`. |
+| `attachments/<sha256>` | one per file the document or a version names | The bytes of an attachment (section 4.5), named by their SHA-256. Stored uncompressed (fonts are already compressed). Written only when the design has attachments. |
 
-Reserved for later, not written or read by format version 1:
-`attachments/` (fonts, canvas images, imported geometry that features refer
-to) and `cache/` (kernel-derived data that a reader may drop). A reader must
-**ignore any entry it does not know**, including these; a writer that copies a
-file it edited should keep unknown entries when it can.
+Reserved for later, not written or read by format version 1: `cache/`
+(kernel-derived data that a reader may drop). A reader must **ignore any entry
+it does not know**, including that one; a writer that copies a file it edited
+should keep unknown entries when it can.
+
+**Attachments** (P4-03b, ADR-0061) are content-addressed: the entry's name is
+the lower case hex SHA-256 of its bytes, and one file is written once however
+many attachments or versions refer to it. A reader must check that name
+against the bytes and leave out an entry that doesn't match (a hand-edited or
+truncated file); a document that names a file the zip lacks still opens, with
+its texts shown without letters. An importer writes the bytes into its own
+store **before** the document that names them.
 
 ### 2.1 `manifest.json`
 
@@ -110,7 +119,10 @@ gives it a new one).
 4. Load `document.json` through the pipeline of section 3 (may fail with
    `not-a-document`, `too-new`, `invalid`). The file counts as newer when the
    manifest's or the document's `formatVersion` is newer than the reader's.
-5. Read the thumbnail and the versions if present.
+5. Read the thumbnail, the versions and the `attachments/` entries if present.
+   An attachment entry whose bytes don't hash to its name is left out, and the
+   project opens with what is there (the app tells the user which fonts are
+   missing). Store the bytes **before** saving the document that names them.
 6. When the project's `id` is already in the reader's store, the app imports
    the file as a **copy** with a new ID rather than overwriting.
 
@@ -190,6 +202,7 @@ schema names unknown keys, and a reader leaves them out (section 3).
 | `bodies` | object | yes | Record from body ID to `BodyMeta` (section 4.2). May be empty. Keys are IDs the kernel makes (section 10). |
 | `views` | array of NamedView | yes | Saved camera views (section 4.3). May be empty. |
 | `configurations` | array of Configuration | no | Named value sets for the customizer (section 5.4). Absent means the design has none. |
+| `attachments` | object | no | Record from attachment ID to Attachment (section 4.5). Absent in designs with no files of their own. |
 | `meta` | object | yes | Section 4.4. |
 
 Whole-document rules (checked after the per-field rules):
@@ -201,6 +214,11 @@ Whole-document rules (checked after the per-field rules):
   box" and " small box " are the same name). Every other name is compared
   exactly, case sensitively.
 - A parameter's customizer `min` must not be above its `max` (section 5.1).
+- A `text` entity whose `font` is `attachment:<id>` needs that `id` in
+  `attachments` (section 7.1): the file is written before the document that
+  names it, so a text never names a font the design doesn't carry. A missing
+  attachment record makes the document *damaged* (section 3); a document whose
+  attachment bytes are missing from the container is not damaged (section 2).
 - Each feature's `inputs` is additionally checked per feature `type`
   (section 6); the document schema alone only knows the generic input shapes.
 
@@ -242,6 +260,30 @@ gets one at the next recompute.
 | `created` | ISO 8601 datetime string | yes | When the project was created. Must satisfy zod's `z.iso.datetime()` (UTC `Z` suffix, e.g. `2026-09-29T10:00:00.000Z`). |
 | `modified` | ISO 8601 datetime string | yes | Set by storage when it saves, not by editing commands (so undo does not touch it). |
 | `appVersion` | string | yes | The writer's version, for diagnostics. |
+
+### 4.5 `attachments[<attachmentId>]` (Attachment)
+
+A file that travels with the design (P4-03b, ADR-0061). The record says what
+the file **is**; its bytes live beside the document, never in it — in the
+container as `attachments/<sha256>` (section 2) and in the app's project store
+as `projects/<id>/attachments/<sha256>`. Only fonts exist so far (a sketch
+`text` entity's font); a canvas image or an imported body is the next kind.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `name` | string | yes | 1 to 200 characters. What the user sees, e.g. `Comic Neue Bold`. |
+| `fileName` | string | yes | 1 to 255 characters. The name of the file it was added from, so an export can offer it back. |
+| `mediaType` | `font/ttf`, `font/otf` or `font/woff` | yes | How the bytes are to be read. WOFF2 is not accepted: the font shaper can't read it, so such a file is refused. |
+| `sha256` | string | yes | Exactly 64 lower case hex digits: the SHA-256 of the bytes, which is the name of the file in the container and in storage. |
+| `size` | integer | yes | At least 1. The file's size in bytes, used for the storage limits (one file at most 10 MB, all of a design at most 50 MB). |
+
+**Content-addressed.** Two attachments (or an attachment and a version) with
+the same `sha256` are the same file and are stored once. A record whose bytes
+are missing, or an entry whose bytes don't match its name, is harmless: the
+design opens and the texts that need it show without letters. An attachment
+record nothing refers to any more is dropped by the writer of the document
+(the app's commands refuse to drop one a text uses); the bytes are collected
+when the project saves a version.
 
 ---
 
@@ -1027,7 +1069,7 @@ geometry (dashed, helps constrain, never forms profiles).
 | `arc` | `center`, `start`, `end` (point IDs, all distinct); `construction` | Counter-clockwise from `start` to `end` about `center`; the radius is the distance from `center` to `start`. |
 | `ellipse` | `center`, `major`, `minor` (point IDs, distinct); `construction` | From three points: the centre, the end of the major axis, the end of the minor axis. The minor point is on the ellipse square to the major axis (the solver keeps it so); radii and rotation are the points' distances and angle, nothing else is stored. |
 | `spline` | `points` (array of at least 2 point IDs, distinct); `construction` | A fit-point spline through the points in order. The B-spline is derived from the points. |
-| `text` | `anchor`, `top` (point IDs, distinct); `text` (string of 1 to 1000 characters, `\n` separating lines); `font` (font ID `family-style@n`); `align` (`left`, `center` or `right`); `construction` | A text entity (P4-03, ADR-0058): `anchor` sits on the first line's baseline, `top` one text height above it ("up" for the text), so height is `|top − anchor|` (the font's cap height) and the baseline runs 90° clockwise from `top − anchor`. `align` aligns each line about the anchor. The curves are derived (placed from a shaper), so the solver sees only the two points; constraints and dimensions may not refer to the entity itself. |
+| `text` | `anchor`, `top` (point IDs, distinct); `text` (string of 1 to 1000 characters, `\n` separating lines); `font` (font ID); `align` (`left`, `center` or `right`); `construction` | A text entity (P4-03, ADR-0058): `anchor` sits on the first line's baseline, `top` one text height above it ("up" for the text), so height is `|top − anchor|` (the font's cap height) and the baseline runs 90° clockwise from `top − anchor`. `align` aligns each line about the anchor. The curves are derived (placed from a shaper), so the solver sees only the two points; constraints and dimensions may not refer to the entity itself. A **font ID** is either a bundled font, `family-style@n` (e.g. `inter-regular@1`, whose file never changes), or `attachment:<attachmentId>` naming an entry of `attachments` (section 4.5) for a font added to this design (P4-03b). Nothing else is a font ID. |
 
 ### 7.2 Constraints (`type`)
 
@@ -1335,7 +1377,7 @@ exports.
 the file.
 
 **Known gaps in format 1** (things a tool author might expect that are not
-there yet): no hole, pattern, move or combine features; no imported bodies or
-`attachments/`; no `cache/`; no extension mechanism for third-party keys.
-Each will arrive as new feature types or optional fields, or as a
-`formatVersion` bump with a migration (section 3).
+there yet): no hole, pattern, move or combine features; no imported bodies and
+no attachment kinds other than fonts; no `cache/`; no extension mechanism for
+third-party keys. Each will arrive as new feature types or optional fields, or
+as a `formatVersion` bump with a migration (section 3).

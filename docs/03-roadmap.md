@@ -786,7 +786,12 @@ end to end, faster than in Fusion 360.
   of a whole text sweeps every letter and a plate round a text has it as
   holes; the Text tool (Shift+T) with a non-modal panel, and the selection
   panel edits the string, font, alignment and the height dimension.
-- [ ] **P4-03b User fonts** as document attachments (ADR-0058 Deferred).
+- [x] **P4-03b User fonts** as document attachments (ADR-0058 Deferred).
+  Done 2026-10-03 (ADR-0061): `doc.attachments` records the files a design
+  carries, their bytes live beside the document (content-addressed by SHA-256,
+  shared with the `.extrudo` file and with saved versions), a text's font may
+  be `attachment:<id>`, and "Add font…" in both Font selects brings in a
+  TTF, OTF or WOFF file (WOFF2 refused).
 - [ ] **P4-04 Emboss/deboss.** FR-FT-16.
 - [ ] **P4-05 Control-point splines, conics, sketch polish.** FR-SK-03.
 - [ ] **P4-06 Import:** SVG/DXF → sketch; STEP → base body; STL/3MF/OBJ → mesh

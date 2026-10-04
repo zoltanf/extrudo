@@ -339,7 +339,29 @@ describe('sketch schema', () => {
           },
         }),
       }),
-    ).toEqual(['entities.bad.font: Invalid string: must match pattern /^[a-z0-9-]+@[0-9]+$/']);
+    ).toEqual([
+      'entities.bad.font: Invalid string: must match pattern /^(?:[a-z0-9-]+@[0-9]+|attachment:[A-Za-z0-9][A-Za-z0-9._-]*)$/',
+    ]);
+    // A bundled font or a design's own attachment (P4-03b), nothing else.
+    expect(
+      issues({
+        ...r,
+        entities: {
+          ...entities,
+          ma: { type: 'point', x: 60, y: 0 },
+          mu: { type: 'point', x: 60, y: 10 },
+          owner: {
+            type: 'text',
+            anchor: 'ma',
+            top: 'mu',
+            text: 'Mine',
+            font: 'attachment:a-1',
+            align: 'left',
+            construction: false,
+          },
+        },
+      }),
+    ).toEqual([]);
     expect(
       problems({
         entities: {
