@@ -61,9 +61,15 @@ test('sweeps a circle along an edge of a box, then undoes it', async ({ page }) 
   await expect(dialog.getByRole('button', { name: 'Path', exact: true })).toHaveText(/1 edge/);
   await expect(dialog.getByRole('combobox', { name: 'Operation' })).toHaveValue('new-body');
   await expect(viewport).toHaveAttribute('data-preview', 'new', { timeout: 15_000 });
+  // The circle is 31.6 mm off the edge it is swept along, which is what the
+  // sweep warns about (P4-12, ADR-0067 §H5).
+  await expect(dialog.getByRole('status', { name: 'Feature status' })).toContainText(
+    "swept where it is drawn, 31.6 mm from the path's start",
+    { timeout: 15_000 },
+  );
   await page.screenshot({ path: test.info().outputPath('sweep-preview.png') });
   await ok(page, dialog);
-  await expect(chip(page, 'Sweep1')).toHaveAccessibleName('Sweep1');
+  await expect(chip(page, 'Sweep1')).toHaveAccessibleName('Sweep1 (warning)');
   // The circle went up the edge's 20 mm: a cylinder beside the box.
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:20,20,20 Body2:3:20,20,20');
 
@@ -74,7 +80,7 @@ test('sweeps a circle along an edge of a box, then undoes it', async ({ page }) 
   await ok(page, edit);
   // It shrinks about the path (the edge at x = 10): the top circle, radius 5, is drawn in to x 20…30.
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:20,20,20 Body2:3:30,20,20');
-  await expect(chip(page, 'Sweep1')).toHaveAccessibleName('Sweep1');
+  await expect(chip(page, 'Sweep1')).toHaveAccessibleName('Sweep1 (warning)');
 
   await page.keyboard.press('Control+z');
   await page.keyboard.press('Control+z');

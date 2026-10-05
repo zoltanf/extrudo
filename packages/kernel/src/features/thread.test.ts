@@ -38,7 +38,15 @@ import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature, testFeatures } from '../recompute/testing';
 import type { FeatureOutput, KernelFeatureDefinition, RecomputeResult } from '../recompute/types';
 import type { ThreadOutputData } from './thread';
-import { leadSection, MAX_TURNS, planThread, ringSection, toothSection } from './thread';
+import {
+  leadSection,
+  MAX_TURNS,
+  planThread,
+  ringSection,
+  THREAD_CHUNK,
+  toothPieces,
+  toothSection,
+} from './thread';
 
 let kernel: Kernel;
 let engine: RecomputeEngine;
@@ -210,6 +218,24 @@ const env = (globalThis as { process?: { env: Record<string, string | undefined>
 
 const dataOf = (id: string) => seen.get(id)?.data as ThreadOutputData;
 
+/** A stepped shaft of two cylinders, both `tall` mm: `C1` Ø20, `C2` Ø24 above it. */
+function steppedShaft(tall: number): Feature[] {
+  return [
+    cylinder('C1', 20, tall),
+    {
+      ...testFeature('C2', CYLINDER_TYPE),
+      inputs: primitiveInputs('cylinder', {
+        numbers: { diameter: '24 mm', height: `${tall} mm`, offset: `${tall} mm` },
+      }),
+    },
+  ];
+}
+
+/** The volumes of both bodies of a stepped shaft, added up. */
+function shaftVolume(result: Done): number {
+  return measure(result, 'C1:0').volume + measure(result, 'C2:0').volume;
+}
+
 // ------------------------------------------------------------------ tests
 
 describe('thread sections', () => {
@@ -256,6 +282,28 @@ describe('thread sections', () => {
     expect(b[0]).toBeLessThan(radii.root);
     const ring = ringSection(plan);
     expect(ring.vertices[0]).toEqual([radii.root, 0]);
+  });
+
+  // P4-12, ADR-0067 §H2: the tooth is cut out of the ring in pieces, so that no
+  // boolean works on a whole thread's faces (OCCT's ring − tooth of a 400-turn
+  // thread wants more memory than the WASM module can grow to and traps).
+  it('cuts the tooth out of the ring in pieces of THREAD_CHUNK turns', () => {
+    // A thread of as many turns as may be modeled is one piece, its cut exactly
+    // as it was: the tooth runs two pitches past the thread.
+    expect(THREAD_CHUNK).toBe(MAX_TURNS + 2);
+    expect(toothPieces(MAX_TURNS + 2)).toEqual([{ from: 0, turns: MAX_TURNS + 2 }]);
+    // A longer one is cut in pieces that tile it, in order.
+    expect(toothPieces(250)).toEqual([
+      { from: 0, turns: 152 },
+      { from: 152, turns: 98 },
+    ]);
+    expect(toothPieces(304, 100)).toEqual([
+      { from: 0, turns: 100 },
+      { from: 100, turns: 100 },
+      { from: 200, turns: 100 },
+      { from: 300, turns: 4 },
+    ]);
+    expect(toothPieces(0)).toEqual([]);
   });
 });
 
@@ -502,6 +550,76 @@ describe('thread', { timeout: 300_000 }, () => {
     } finally {
       kernel.threadSweep = sweep;
       kernel.boolean = boolean;
+    }
+  });
+
+  // P4-12, ADR-0067 §H2: two tools whose boxes overlap are merged without
+  // asking OCCT for the exact distance when either is heavy (over
+  // `HEAVY_TOOL_FACES` faces); on B9 that distance was 26 s of a 30 s
+  // recompute. Fusing tools that only nearly touch is still correct, so the
+  // cut is the same as with a feature per face; light tools keep the exact test.
+  it('merges heavy tools whose boxes overlap, without the exact distance', async () => {
+    const distance = kernel.distance.bind(kernel);
+    let asked = 0;
+    kernel.distance = ((...args: Parameters<typeof distance>) => {
+      asked++;
+      return distance(...args);
+    }) as typeof kernel.distance;
+    // 180 mm of M20 (72 turns) and of M24 (60): a thread's tool has about
+    // four faces a turn, so these are over HEAVY_TOOL_FACES each. Their bands
+    // overlap in the bounding box and never touch, and the exact distance
+    // between tools that size is minutes (measured: 277 s), which is what the
+    // heavy rule exists for.
+    const heavy = 180;
+    try {
+      const both = ok(
+        await runWithShapes(
+          testDocument([...steppedShaft(heavy), thread('T', { faces: [wall('C1'), wall('C2')] })]),
+        ),
+      );
+      expect(asked, 'no exact distance between heavy tools').toBe(0);
+      expect(measure(both, 'C1:0').valid).toBe(true);
+      expect(measure(both, 'C2:0').valid).toBe(true);
+      const merged = shaftVolume(both);
+      // The same two threads as two features: one tool each, nothing to merge,
+      // and nothing else in the way, so the same material comes off.
+      engine.clear();
+      const separate = ok(
+        await runWithShapes(
+          testDocument([
+            ...steppedShaft(heavy),
+            thread('T1', { faces: [wall('C1')] }),
+            thread('T2', { faces: [wall('C2')] }),
+          ]),
+        ),
+      );
+      expect(asked, 'one tool is never compared').toBe(0);
+      const apart = shaftVolume(separate);
+      expect(Math.abs(merged - apart) / apart, 'the same cut').toBeLessThan(1e-6);
+      // Threads of 4 turns have 30-odd faces: light tools still get the exact
+      // test, which finds the bands don't touch and leaves them apart.
+      engine.clear();
+      asked = 0;
+      const light = ok(
+        await runWithShapes(
+          testDocument([...steppedShaft(10), thread('T', { faces: [wall('C1'), wall('C2')] })]),
+        ),
+      );
+      expect(asked, 'light tools are compared').toBe(1);
+      const lightVolume = shaftVolume(light);
+      engine.clear();
+      const lightSeparate = ok(
+        await runWithShapes(
+          testDocument([
+            ...steppedShaft(10),
+            thread('T1', { faces: [wall('C1')] }),
+            thread('T2', { faces: [wall('C2')] }),
+          ]),
+        ),
+      );
+      expect(Math.abs(lightVolume - shaftVolume(lightSeparate)) / lightVolume).toBeLessThan(1e-6);
+    } finally {
+      kernel.distance = distance;
     }
   });
 

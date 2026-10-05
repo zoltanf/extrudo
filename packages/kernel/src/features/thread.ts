@@ -427,7 +427,45 @@ function revolved(
   return solid;
 }
 
-/** The cut tool of one thread: ring − tooth (cut back by the lead-ins). */
+/**
+ * Turns of tooth cut out of the ring in one piece (P4-12, ADR-0067 §H2).
+ *
+ * A thread's boolean needs memory proportional to the faces it works on, and
+ * OCCT's ring − tooth of a ~400-turn thread wants more than the 2 GB a WASM
+ * module can grow to: it runs out of memory and unwinds through a null
+ * virtual call, which traps the heap for every later feature (found natively
+ * in `spikes/p4-12-threads`; bisected there). Cutting the tooth out in
+ * pieces keeps each boolean's share of that memory flat, so a thread of any
+ * length builds in pieces instead of trapping.
+ *
+ * It is `MAX_TURNS` plus the two pitches the tooth runs past the thread, so a
+ * thread of as many turns as may be modeled is one piece and its cut is
+ * exactly what it was; a longer one (a raised cap) would be cut in pieces of
+ * `MAX_TURNS` turns, at about 0.35 s a turn instead of 0.1 s.
+ */
+export const THREAD_CHUNK = MAX_TURNS + 2;
+
+/** The tooth's pieces: `turns` turns from `centre`, in pieces of `chunk`. */
+export function toothPieces(
+  turns: number,
+  chunk = THREAD_CHUNK,
+): { from: number; turns: number }[] {
+  const out: { from: number; turns: number }[] = [];
+  for (let done = 0; done < turns - 1e-9; ) {
+    const count = Math.min(chunk, turns - done);
+    out.push({ from: done, turns: count });
+    done += count;
+  }
+  return out;
+}
+
+/**
+ * The cut tool of one thread: ring − tooth (cut back by the lead-ins).
+ *
+ * The tooth is swept and cut out of the ring in pieces (`toothPieces`), each
+ * released as soon as it has been cut, so that no single boolean works on a
+ * whole thread's worth of faces.
+ */
 export function buildTool(
   ctx: EvalContext,
   scope: ShapeScope,
@@ -441,25 +479,36 @@ export function buildTool(
   // on, so a screw and a nut whose threads start at the same plane mesh.
   const turns = (plan.to - plan.from) / plan.pitch + 2;
   const centre = plan.from - (plan.internal ? 0.5 : 1) * plan.pitch;
-  let tooth = namedThreadSweep(kernel, {
-    feature: ctx.feature.id,
-    ...face(ctx, scope, plan, toothSection(plan, centre), prefix),
-    axis: plan.axis,
-    pitch: plan.pitch,
-    turns,
-    left: plan.left,
-  });
-  scope.track(tooth.shape);
   // Both lead-ins in one cut: they are apart, so they go in as one compound.
   const leads = ([0, 1] as const)
     .filter((end) => plan.lead[end])
     .map((end) => revolved(ctx, scope, plan, leadSection(plan, end), prefix));
-  if (leads.length > 0) {
-    tooth = namedBoolean(kernel, 'cut', tooth, mergeTools(ctx, scope, leads, 'thread'), options);
-    scope.track(tooth.shape);
-  }
-  const ring = revolved(ctx, scope, plan, ringSection(plan), prefix);
-  const tool = namedBoolean(kernel, 'cut', ring, tooth, options);
-  scope.track(tool.shape);
+  const lead = leads.length > 0 ? mergeTools(ctx, scope, leads, 'thread') : undefined;
+  if (lead) scope.track(lead.shape);
+
+  const pieces = toothPieces(turns);
+  let tool = revolved(ctx, scope, plan, ringSection(plan), prefix);
+  pieces.forEach((piece, k) => {
+    // Each piece starts where the last one ended, at `centre + from` pitches,
+    // and is released with its own scope as soon as it has been cut out: the
+    // running tool only ever meets one piece's worth of faces.
+    using gone = ctx.kernel.scope();
+    let tooth = namedThreadSweep(kernel, {
+      feature: ctx.feature.id,
+      ...face(ctx, scope, plan, toothSection(plan, centre + piece.from * plan.pitch), prefix),
+      axis: plan.axis,
+      pitch: plan.pitch,
+      turns: piece.turns,
+      left: plan.left,
+    });
+    gone.track(tooth.shape);
+    // The lead-ins cut the first and the last piece's ends back.
+    if (lead && (k === 0 || k === pieces.length - 1)) {
+      tooth = namedBoolean(kernel, 'cut', tooth, lead, options);
+      gone.track(tooth.shape);
+    }
+    tool = namedBoolean(kernel, 'cut', tool, tooth, options);
+    scope.track(tool.shape);
+  });
   return tool;
 }

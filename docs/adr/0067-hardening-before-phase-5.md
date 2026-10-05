@@ -292,6 +292,157 @@ with 0, the fonts re-sent to the new worker before its recompute) and with the
 real kernel at a limit of 3 MB, where the worker is replaced, the body comes
 back the same, and the next edit recomputes on the new worker.
 
+## Results: H2 and H5
+
+The branch `p4-12-threads` did H2 and H5 (2026-10-05). H1, H3 and H4 are other
+branches.
+
+### H2, first: the 400-turn trap is OCCT running out of memory
+
+`spikes/p4-12-threads/` is the p4-02 harness with B9's thread (the ISO 68-1
+tooth, ring and lead-ins of `features/thread.ts`, an internal M20 × 2.5 in a
+block with a Ø17.3 mm bore), one process per turn count, every step printing
+before it runs and the malloc top (`sbrk(0)`) after it. One cut of the whole
+tooth out of the ring, as the evaluator used to do:
+
+| turns | result | time | faces of the tooth | heap after the cut |
+| --- | --- | --- | --- | --- |
+| 150 | ok | 41 s | 914 | – |
+| 200 | ok | 54 s | 1214 | – |
+| 300 | ok | 80 s | 1814 | – |
+| 350 | ok | 94 s | 2114 | 403 MB → **1903 MB** |
+| 400 | **traps** | 26 s in | 2414 | 403 MB, then nothing |
+| 600 | **traps** | 39 s in | 3614 | 289 MB, then nothing |
+
+"traps" is `RuntimeError: table index is out of bounds`, at the step that
+prints `tool = ring - tooth`, which is what B9's fuzzing reported. With
+`OCCT_DEBUG=1` (`-g2 -sNODERAWFS=1`) the trace has names:
+
+```
+GeomAdaptor_TransformedSurface::~GeomAdaptor_TransformedSurface()
+IntCurvesFace_Intersector::IntCurvesFace_Intersector(const TopoDS_Face&, double, bool, bool)
+BRepClass3d_SolidExplorer::InitShape(const TopoDS_Shape&)
+BRepClass3d_SolidExplorer::BRepClass3d_SolidExplorer(const TopoDS_Shape&)
+BRepClass3d_SolidClassifier::BRepClass3d_SolidClassifier(const TopoDS_Shape&)
+IntTools_Context::SolidClassifier(const TopoDS_Solid&)
+BOPAlgo_BuilderSolid::PerformAreas(const Message_ProgressRange&)
+BOPAlgo_BuilderSolid::Perform(const Message_ProgressRange&)
+BOPAlgo_SplitSolid::Perform()
+OSD_Parallel::For<BOPTools_Parallel::Functor<NCollection_DynamicArray<BOPAlgo_SplitSolid>>>(int, int, …)
+```
+
+`BRepAdaptor_Surface` derives from `GeomAdaptor_TransformedSurface` (one
+`IMPLEMENT_STANDARD_RTTIEXT`), so the top frame is the destructor of the
+`BRepAdaptor_Surface surface;` local at the end of `IntCurvesFace_Intersector`'s
+constructor — a **virtual call through a vtable that is not in the function
+table**, which is what a null or freed object calls through (CLAUDE.md: "a wasm
+trap is a null-pointer call inside OCCT"). It happens while an exception is
+unwinding (the constructor's two `new BRepAdaptor_Surface` and `new
+BRepTopAdaptor_TopolTool` are freed by the unwind), so the facade's `catch
+(...)` never sees it.
+
+**The cause is memory, not a bug in OCCT or in the facade.** A boolean needs
+memory proportional to the faces it works on: 350 turns take the heap from
+403 MB to 1903 MB (about 4 MB a turn), 400 turns need more than the 2 GB a
+32-bit WASM module can grow to, `operator new` returns null, and OCCT calls
+through it. So the trap cannot be guarded against in the facade — only avoided
+by asking for less at once.
+
+**The fix is to cut the tooth out of the ring in pieces** (`THREAD_CHUNK` in
+`features/thread.ts`, `toothPieces`): the tooth is swept and cut in pieces of
+`MAX_TURNS` turns, each released as soon as it has been cut, so a boolean only
+ever meets one piece's worth of faces. A thread of as many turns as may be
+modeled is one piece, so its cut is exactly what it was. Measured the same way:
+
+| turns | piece | result | time | heap |
+| --- | --- | --- | --- | --- |
+| 400 | 20 | ok | 176 s | 1161 MB (all of it in `body − tool`) |
+| 600 | 20 | ok | 315 s | 1739 MB |
+| 600 | 100 | ok | 189 s | 1736 MB (773 MB after the ring − tooth) |
+
+No turn count can trap the heap now: the memory each boolean needs is flat, and
+what still grows with the length is the final `body − tool` (the tool's own
+faces), which is ~1 GB at 600 turns.
+
+**`MAX_TURNS` stays 150.** The cap is no longer about memory, so it can be
+about what a person should wait for: 150 turns is about 25–40 s of booleans on
+this machine, and a piece-wise cut costs about 0.35 s a turn instead of 0.1 s,
+so 300 turns would be minutes and over a gigabyte. Raising it would also make
+B9's fuzzing build such threads (`capHeight` × 100 is 311 turns of M39 in the
+cap's Ø36 bore), which is exactly the expense ADR-0039's B9 amendment kept B9
+out of the default run for. The cap stays a refusal with a message, before
+anything is built — and now the thing it refuses is a slow thread, not a heap
+trap.
+
+### H2, second: heavy tools merge without the exact distance
+
+`mergeTools` puts two tools in one group whose boxes overlap when either has
+more than `HEAVY_TOOL_FACES` (200) faces, without asking OCCT for the exact
+distance (`operation.ts`'s `isHeavyTool`). Fusing tools that only nearly touch
+is still correct — a fuse of disjoint solids is a compound, and the boolean
+after it takes their union — and light tools keep the exact test, so a pattern
+of small holes is as small as it was. `toolSet` (a pattern's cut) keeps the
+exact test deliberately: a colour class has to be a valid boolean argument, so a
+wrong "these two meet" costs a pass there, and enough of them fall back to the
+fuse.
+
+How expensive it was: the exact distance between the tools of two threads of
+36 and 30 turns (150 faces each, **light** by this rule) was **277 s** in one
+`BRepExtrema_DistShapeShape` call — measured by timing every `Kernel` method in
+`thread.test.ts`'s step. B9's own case was 26 s of a 30 s
+recompute. With the rule, two tools of 72 and 60 turns (250 and 210 faces) ask
+nothing: the kernel test asserts zero calls and that the cut is the same
+material off as a feature per face (to 1e-6), and the light pair still asks
+once.
+
+**B9's own `capDia` × 2 no longer needs the rule, and this branch does not make
+it faster.** `BENCH=1 pnpm vitest run packages/kernel/src/features/thread-bench`
+(added with it): warm 14 ms, cold 8.1 s, exact distance asked twice — the same
+twice with the rule reverted (warm 14 ms, cold 7.9 s). B9's threads are a few
+turns each, so their tools have 30-odd faces, are light, and keep the exact
+test; ADR-0039's 26 s was measured when `METRIC_COARSE` stopped at M30 and
+`capDia` × 2 refit the adapter's collar to a much longer thread. What the rule
+buys is the document B9 was a stand-in for: two tools of 36 and 30 turns cost
+277 s in one call, and over `HEAVY_TOOL_FACES` faces nothing is asked.
+
+### H2, third: the fuzz budgets
+
+B9 is back in the default run at **120 steps with a 90 s step limit** and
+`FUZZ_B9` is gone. B8 gets a **40 s step limit**. The ADR asked for the most
+steps that fit in about 60 s a step on a CI runner, so the numbers are
+measured here (`FUZZ_REPORT=1`, 2026-10-05, 4 cores) and the budgets cover
+2.5× them:
+
+| fixture | steps | warm step times (median / p95 / max) | case time here |
+| --- | --- | --- | --- |
+| B1 | 200 | 3 ms / 14 ms / 34 ms | 3.9 s |
+| B2 | 200 | 1 ms / 26 ms / 63 ms | 2.0 s |
+| B3 | 200 | 3 ms / 18 ms / 36 ms | 2.1 s |
+| B4 | 200 | 3 ms / 74 ms / 102 ms | 4.9 s |
+| B5 | 200 | 25 ms / 267 ms / 348 ms | 18.3 s |
+| B6 | 200 | 32 ms / 80 ms / 198 ms | 8.0 s |
+| B7 | 200 | 2 ms / 953 ms / 2.2 s | 27.4 s |
+| B8 | 200 | 124 ms / 336 ms / 11.8 s | 84.6 s |
+| **B9** | 120 (200 measured) | 5 ms / 18.2 s / **39.1 s** | 875 s at 200 |
+| B10 | 200 | 4 ms / 216 ms / 337 ms | 15.2 s |
+| P4-01 | 200 | 1 ms / 1.4 s / 1.9 s | 60.0 s |
+
+B9's slowest step builds a modelled thread (its `capHeight` x 10 and the like),
+so it needs the ADR's per-step allowance; at 120 steps it is about 9 minutes
+here and 23 at 2.5×, which its 23-minute timeout covers. B8's 11.8 s step is a
+`× 10000` dimension. `FUZZ_ONLY=B9` runs one fixture, for a slow case on its
+own.
+
+### H5: the sweep says where the profile lands
+
+The warning is the ADR's wording, with the distance the profile really is from
+the path's start line. `placementOffset` measures the profile's centroid against
+the path's **start point and the line the path runs along there**, so a profile
+drawn anywhere along the path is fine — its place along it shifts the whole
+sweep, and B10's section is 10.6 mm along its path — while its offset across
+the path is what is wrong: B10's original section, drawn centred on the sketch
+origin instead of the path's centreline, is 20 mm off and warned.
+
 ## Rejected
 
 - **Keep `'unsafe-eval'` and rely on the rest of the CSP:** the app is public,

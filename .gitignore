@@ -41,3 +41,5 @@ spikes/p0-03-solver/planegcs-build/.work/
 .claude/settings.local.json
 # Agent worktrees (Claude Code)
 .claude/worktrees/
+# P4-12: the native harness builds (spikes/*/build/)
+spikes/*/build/

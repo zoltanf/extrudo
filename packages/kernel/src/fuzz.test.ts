@@ -12,7 +12,7 @@
 //
 // The seed is fixed, so a failure reproduces. `FUZZ_STEPS=2000 pnpm vitest
 // run packages/kernel/src/fuzz.test.ts` runs longer; `FUZZ_SEED` picks
-// another sequence.
+// another sequence. Every fixture runs unless `FUZZ_ONLY` names some of them.
 import {
   applyCommand,
   type DimensionId,
@@ -69,11 +69,23 @@ const SEED = Number(env.FUZZ_SEED ?? 20260930);
 /** Longest a single recompute may take before it counts as a hang. */
 const STEP_LIMIT_MS = 20_000;
 /**
- * What a fixture needs besides the default 200 steps: B9's three threads make
- * a cold comparison of a big document slow, and one edit of its parameters
- * (`capDia` × 2) has `mergeTools` ask for the exact distance between two
- * thread tools — 26 s of a 30 s recompute, an open P4-12 item — so it runs 10
- * steps and is allowed a longer step than the rest.
+ * What a fixture needs besides the default 200 steps (P4-12, ADR-0067 §H2):
+ * a bigger `limitMs` for a document whose recompute is seconds rather than
+ * milliseconds, and the steps that fit the time a CI runner allows (about
+ * 1.5-2x this machine's, so a budget's timeout covers 2.5x what it takes
+ * here). Measured here with `FUZZ_REPORT=1` on 2026-10-05:
+ *
+ * - **B9**: warm step times 5 ms median, 18.2 s at the 95th percentile, 39.1 s
+ *   the slowest (`capHeight` x 10 and friends build modelled threads), 875 s
+ *   for 200 steps including the cold comparisons. B9's old problem was one
+ *   edit of its parameters (`capDia` x 2), for which `mergeTools` asked OCCT
+ *   for the exact distance between two thread tools: 26 s of a 30 s recompute
+ *   here, 72 s on the CI runner, past any step limit that still catches a
+ *   hang. So it runs 120 steps (about 9 minutes here, 23 at 2.5x) at a 90 s
+ *   step limit: its own budget, in the default run.
+ * - **B8**: 124 ms median, 11.8 s the slowest (a `x 10000` dimension, which
+ *   ADR-0067 measured at 21.6 s under load), 85 s for 200 steps. A 40 s step
+ *   limit leaves the hang detector room for a slower runner.
  */
 interface FuzzBudget {
   /** How many random edits (the default `STEPS`). */
@@ -83,7 +95,8 @@ interface FuzzBudget {
   /** The whole case's timeout (the default `60_000 + steps * 2_000`). */
   timeoutMs?: number;
 }
-const B9_BUDGET: FuzzBudget = { steps: 6, limitMs: 45_000, timeoutMs: 180_000 };
+const B9_BUDGET: FuzzBudget = { steps: 120, limitMs: 90_000, timeoutMs: 1_400_000 };
+const B8_BUDGET: FuzzBudget = { limitMs: 40_000, timeoutMs: 480_000 };
 /** Every so many steps the warm result is compared with a cold recompute. */
 const COMPARE_EVERY = 10;
 
@@ -479,15 +492,15 @@ describe('fuzzing the benchmark fixtures', () => {
     ['B5', b5],
     ['B6', b6],
     ['B7', b7],
-    // B9 only on request (FUZZ_B9=1): one `capDia` x 2 step took 30 s here and 72 s on
-    // the CI runner, past any step limit that still catches a hang (P4-12 item).
-    ['B8', b8],
+    ['B8', b8, B8_BUDGET],
+    ['B9', b9, B9_BUDGET],
     ['B10', b10],
-    ...(env.FUZZ_B9 ? [['B9', b9, B9_BUDGET] as [string, string, FuzzBudget]] : []),
     // Sweep, loft and coil (P4-01, ADR-0055): `features/sweep-loft-coil-fixture.test.ts` writes it.
     ['P4-01', p401],
   ];
   for (const [name, dataUrl, budget] of cases) {
+    // `FUZZ_ONLY=B9,B10` runs some of them (a slow fixture on its own).
+    if (env.FUZZ_ONLY && !env.FUZZ_ONLY.split(',').includes(name)) continue;
     const steps = budget?.steps ?? STEPS;
     it(`${name}: random edits never crash, leak or disagree with a cold recompute`, {
       timeout: budget?.timeoutMs ?? 60_000 + steps * 2_000,

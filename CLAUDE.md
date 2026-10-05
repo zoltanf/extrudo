@@ -696,7 +696,12 @@ is retried from another section edge, since OCCT's result depends on the
 wire's first edge) and `loft` (ThruSections; **a closed ring needs the
 sections lined up by `BRepFill_CompatibleWires` first**, or OCCT caps it; rings
 skip the self-intersection check, which flags their seams). **The profile
-travels from the path's end nearer to it**, so it need not touch the path.
+travels from the path's end nearer to it**, so it need not touch the path — but
+it lands exactly where its sketch drew it, so a sweep **warns** when its
+centroid is more than max(1 % of the path's length, 0.5 mm) from the path's
+start line (`PROFILE_PLACEMENT`, `placementOffset` in `features/sweep.ts`:
+measured across the path, so a section drawn anywhere along it is fine and only
+its offset is wrong — B10 got 6 mm walls instead of 3).
 Names: `sweep|loft|coil:<id>:cap:start|end`, `side:<source>` (`#n` per path
 piece; a loft side after its earliest section's edge, `nameLoft`). `helixSweep`
 (`features/coil.ts`: frame, radius, pitch, turns, taper, hand, any section
@@ -1035,7 +1040,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for v0.3.0 and going public |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval') |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement) |
 
 ## Stack summary
 
@@ -1914,8 +1919,8 @@ them. Notes further down that name a machine apply to that machine only.
 - **Fuzzing** (`packages/kernel/src/fuzz.test.ts`, P3-13): 200 seeded steps
   per fixture in CI; `FUZZ_STEPS=1500 FUZZ_REPORT=1` for a long run with a
   report (counts of every feature message, warm recompute times; the report
-  shows as a soft failure), `FUZZ_SEED` for another sequence, `FUZZ_HEAP=n`
-  for heap samples. Warm-cache heap of the revolve document: `HEAP_RUNS=n
+  shows as a soft failure), `FUZZ_SEED` for another sequence, `FUZZ_ONLY=B9`
+  for one fixture (a slow one on its own), `FUZZ_HEAP=n` for heap samples. Warm-cache heap of the revolve document: `HEAP_RUNS=n
   … memory.test.ts -t "warm cache"` (about 0.3 s a run; `HEAP_MAX_ENTRIES`,
   `HEAP_ONLY=G|R|F|GF|RF|GR`): it grows about 11 MB per 100 recomputes with
   all three revolves, not with any subset (ADR-0050 §6, P4-12 backlog):
@@ -1928,19 +1933,31 @@ them. Notes further down that name a machine apply to that machine only.
   such experiments builds in the image by its digest (the tag shows as
   `<none>` on the Arch workstation): `docker run --rm --user 0 -v
   <dir>:/w -w /w --entrypoint sh <image id> -c 'em++ … && node h.js'`.
-- **The fuzzer covers B1-B5, B7, B8 and B10, and B9 only with `FUZZ_B9=1`**
-  (P3-17, ADR-0038/0047 amendments; B8 and B10 since P4-11 at the full 200
+- **The fuzzer covers B1-B10 (B8 and B10 since P4-11) plus the P4-01 sweep
+  fixture** (P3-17, ADR-0038/0047 amendments; B8 and B10 at the full 200
   steps — 70 s and 14 s — and both load the bundled font first, as the worker
-  does, so B8's emboss has ink to stand on while it is edited; B9 with 6 steps
-  and a 45 s step limit, in its `B9_BUDGET`, out of the default run because one
-  step took 72 s on the CI runner): a
-  thread-heavy document is expensive — `capDia` × 2 has `mergeTools` ask OCCT
-  for the exact distance between two thread tools (26 s of a 30 s recompute) —
-  and a thread of about 400 turns used to corrupt the WASM heap
-  (`RuntimeError: table index is out of bounds` at step 8, seed 20260987,
-  `capHeight` × 100; later features read freed memory, "Mesh failed:
-  <garbage>"), which is why a thread is refused above 150 turns; both are
-  ADR-0039's B9 amendment and P4-12 items;
+  does, so B8's emboss has ink to stand on while it is edited). **B9 is back in
+  the default run since P4-12 (ADR-0067 §H2) at 200 steps with its own 60 s
+  step limit, and B8 has a 30 s one**; `FUZZ_ONLY=B9` runs a single fixture.
+  The old reason B9 was out (`FUZZ_B9=1`, 6 steps) was two things, both fixed
+  or known: `mergeTools` asked OCCT for the exact distance between two thread
+  tools, and a thread of about 400 turns corrupted the WASM heap. B9 runs 120
+  steps at a 90 s step limit (measured on a 4-core machine: 5 ms median, 18 s at
+  the 95th percentile, 39 s the slowest, which builds a thread), B8 gets 40 s
+  (its `× 10000` dimension took 11.8 s).
+  **`mergeTools` now merges two tools whose boxes overlap without that distance
+  when either has more than `HEAVY_TOOL_FACES` (200) faces**
+  (`operation.ts`'s `isHeavyTool`); light tools still get the exact test, which
+  matters: the distance between the tools of two 36- and 30-turn threads is
+  **277 s** in one call (`thread.test.ts` times every `Kernel` method to find
+  it), while B9's own few-turn threads cost seconds. **The 400-turn heap trap is
+  OCCT running out of memory, not a bug** (`spikes/p4-12-threads/` bisected it:
+  `IntCurvesFace_Intersector`'s constructor unwinding into a virtual call on a
+  null object, the heap 403 MB → 1903 MB at 350 turns and over 2 GB at 400),
+  and the tooth is now cut out of the ring in pieces of `THREAD_CHUNK` turns,
+  so a boolean only meets one piece's faces (600 turns build that way);
+  `MAX_TURNS` stays 150 because a piece-wise cut costs 0.35 s a turn, so 150 is
+  already 25-40 s:
   B5's `FUZZ_SEED=7` and `FUZZ_SEED=2026` at `FUZZ_STEPS=1000` reached a
   pattern of 2 × 20 instances that took 55 s; it takes 2.4 s since `operate`
   finds targets solid by solid (`pattern-bench.test.ts`: `BENCH=1`, prints the
@@ -2087,9 +2104,11 @@ them. Notes further down that name a machine apply to that machine only.
   `packages/core/src/thread.ts`: a bore takes the thread just above it, a shaft
   the largest thread inside it), and a thread of more than `MAX_TURNS` (150,
   `packages/kernel/src/features/thread.ts`) turns is refused before anything is
-  built — above about 400 turns it corrupted the WASM heap.
+  built — over `MAX_TURNS` it takes minutes of booleans, and above about 400
+  turns OCCT's boolean runs out of memory and traps (ADR-0067 §H2).
   Kernel: `pnpm vitest run -u packages/kernel/src/features/thread` rewrites the
-  golden table; `BENCH=1` times threads.
+  golden table; `BENCH=1` times threads (`features/thread-bench.test.ts` times
+  B9's `capDia` × 2).
 - **Customizer e2e** (`e2e/customizer.spec.ts`, P4-07): the panel is the region
   "Customizer" with `data-customizer-state` (`empty`, `parameters`), rows
   `[data-customizer-row="<name>"]` (`data-out-of-range`), the sliders

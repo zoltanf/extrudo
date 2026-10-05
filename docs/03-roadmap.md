@@ -855,20 +855,21 @@ end to end, faster than in Fusion 360.
   - STEP colours (XDE) (ADR-0034; the readers are P4-06).
   - Section analysis on several planes, a section box, sections saved with
     named views, a hatch per material (ADR-0045).
-  - Threads: a thread of about 400 turns traps the WASM heap
-    (`RuntimeError: table index is out of bounds`, then freed memory read back
-    as a mesh error), found by B9's fuzzing and refused above 150 turns since
-    P4-11 — bisect it in a native harness (ADR-0039's B9 amendment);
-    `mergeTools`' exact distance between two thread tools takes 26 s on a Ø60
-    collar (why B9 gets 6 fuzz steps, not 200), so an interference test that
-    doesn't ask OCCT for a distance. A bottle-cap profile of its own is still
-    open (ADR-0056 Deferred).
-  - Sweep: say where a profile lands. OCCT sweeps it exactly where its sketch
-    drew it (the facade's no-contact placement cancels OCCT's own), so a
-    section has to be *centred on the path* and nothing says so — B10 drew its
-    section on the sketch's origin and got 6 mm walls instead of 3
-    (ADR-0039's B10 amendment, ADR-0055 Deferred); also an edit dialog that
-    reads where the profile will sit.
+  - ~~Threads: a thread of about 400 turns traps the WASM heap~~ **done in
+    ADR-0067 §H2 (P4-12, 2026-10-05): it is OCCT's boolean running out of
+    memory** (the heap 403 MB → 1903 MB at 350 turns, over 2 GB at 400), found
+    by bisecting it natively in `spikes/p4-12-threads`; the tooth is cut out of
+    the ring in pieces of `THREAD_CHUNK` turns now, so no turn count can trap
+    (`MAX_TURNS` stays 150 for the time it takes). **`mergeTools`' exact
+    distance between two heavy tools is gone** (over `HEAVY_TOOL_FACES`
+    faces they are merged without it; two 36- and 30-turn threads' tools were
+    277 s in one call), and B9 is back in the default fuzz run. Still open: a
+    bottle-cap profile of its own (ADR-0056 Deferred).
+  - ~~Sweep: say where a profile lands~~ **done in ADR-0067 §H5 (P4-12,
+    2026-10-05): the sweep warns** when its profile is drawn more than max(1 %
+    of the path's length, 0.5 mm) from the path's start line, naming the
+    distance. Still open: an edit dialog that reads where the profile will
+    sit.
   - Print Info: support volume, infill, cost per kg (ADR-0048).
   - Patterns: a skip list, count and path handles (ADR-0047).
   - A ghost of lost geometry in the view (ADR-0005, -0033); remappable

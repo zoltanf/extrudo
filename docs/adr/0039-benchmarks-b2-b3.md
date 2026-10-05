@@ -213,14 +213,26 @@ B10 (tolerance) for P4-08.
      the wording it always had ("The thread would have 400 turns; up to 150 can
      be modeled. Make it shorter or the pitch larger."), before anything is
      built. Replaying that exact fuzz document now ends in the refusal. The
-     corruption itself is a P4-12 item (bisect it in a native harness).
+     corruption itself was a P4-12 item; **ADR-0067 §H2 (2026-10-05) bisected
+     it natively**: it is OCCT's ring − tooth boolean running out of memory
+     (403 MB → 1903 MB of malloc at 350 turns, more than the 2 GB a WASM
+     module can grow to at 400), not a bug — the tooth is now cut out of the
+     ring in pieces of `THREAD_CHUNK` turns, so 400 and 600 turns build and no
+     turn count can trap. `MAX_TURNS` stays 150, which is now about the time a
+     thread takes (a piece-wise cut is 0.35 s a turn).
    - **`mergeTools` asks for the exact distance between two thread tools, and
      that is slow**: `capDia` × 2 puts the adapter's collar at Ø60, and the
      `BRepExtrema_DistShapeShape` between the M20 and the M60 tool took 26 s of
-     the 30 s recompute. It is why B9 gets 6 fuzz steps instead of 200 (and a
+     the 30 s recompute. It is why B9 got 6 fuzz steps instead of 200 (and a
      45 s step limit): a thread-heavy document is expensive to fuzz, and the
-     exact-distance test is the reason. Another P4-12 item, of the same family
-     as P3-17's `touchingBodies`.
+     exact-distance test was the reason. **ADR-0067 §H2 (2026-10-05) fixed
+     that**: two tools whose boxes overlap are merged without the distance when
+     either is heavy (over `HEAVY_TOOL_FACES` faces), light tools still get the
+     exact test, and B9 fuzzes in the default run again at 200 steps with a
+     60 s step limit. (B9's own threads are a few turns each, so they are light
+     and cheap: its `capDia` × 2 recompute is 8 s cold and 14 ms warm today,
+     before and after the rule. The 277 s call it stands for is between tools
+     of 36 and 30 turns.)
 5. **Threads take a third of a body's matter.** The cap's internal thread
    leaves 89 % of the unthreaded cup; the adapter's two threads turn it down to
    their crests (M20 → Ø19.8, M24 → Ø23.8, so the Ø28 collar as drawn is

@@ -325,6 +325,53 @@ describe('sweep', { timeout: 120_000 }, () => {
     expect(n.volume).toBeGreaterThan(25 * ELL);
   });
 
+  it('says where a profile that is off the path will land (P4-12, ADR-0067 §H5)', async () => {
+    // A disc on XY swept along a line on XZ: the profile is placed exactly
+    // where its sketch drew it, so how far its centre sits from the path's
+    // start line is what decides the sweep (B10's link came out with 6 mm
+    // walls for a section drawn off the path's centreline).
+    const d = disc(4);
+    const b = new SketchBuilder();
+    // The line the disc sits on, and one 20 mm away from it, both up Z.
+    const under = b.line(0, 0, 0, 40).id;
+    const away = b.line(20, 0, 20, 40).id;
+    const pathSketch = sketch('P', b.sketch, XZ);
+    const on = ok(
+      await runWithShapes([
+        d.feature,
+        pathSketch,
+        sweep('W', [profile('S', d.data)], [entity('P', under)]),
+      ]),
+    );
+    expect(status(on, 'W').status).toBe('ok');
+    // 20 mm away: the same body, and a warning naming the distance.
+    const off = await runWithShapes([
+      d.feature,
+      pathSketch,
+      sweep('W', [profile('S', d.data)], [entity('P', away)]),
+    ]);
+    const s = status(off, 'W');
+    expect(s.status).toBe('warning');
+    expect(s.message).toBe(
+      "The profile is swept where it is drawn, 20 mm from the path's start: draw it centred on the path's start to sweep it around the path.",
+    );
+    const centre = measure(off, 'W:0');
+    expect(centre.valid).toBe(true);
+    close(centre.volume, Math.PI * 16 * 40);
+    expect(boxOf(centre.bbox)).toEqual([-4, -4, 0, 4, 4, 40]);
+    // Half a millimetre is inside the tolerance of a 40 mm path (1 % is), so it
+    // says nothing; two do.
+    const near = new SketchBuilder();
+    const almost = near.line(0.4, 0, 0.4, 40).id;
+    const small = await runWithShapes([
+      d.feature,
+      pathSketch,
+      sketch('P', b.sketch, XZ),
+      sweep('W', [profile('S', d.data)], [entity('P', almost)]),
+    ]);
+    expect(status(small, 'W').status).toBe('ok');
+  });
+
   it('a tube: a profile with a hole keeps its hole, inner and outer walls named', async () => {
     const b = new SketchBuilder();
     const outer = b.circle(0, 0, 3).id;

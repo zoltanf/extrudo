@@ -5,7 +5,7 @@
  * unchanged, but for the feature's words in messages and names.
  */
 import type { BodyId, BodyOperation } from '@extrudo/core';
-import { KernelError, type ShapeHandle, type ShapeScope } from '../kernel';
+import { type Kernel, KernelError, type ShapeHandle, type ShapeScope } from '../kernel';
 import { compareGeometry, deriveNames, type TopoNames } from '../naming/names';
 import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
@@ -14,6 +14,20 @@ import { add, scale } from './vec';
 
 /** Distances (mm) at or below which shapes touch. */
 export const TOUCH = 1e-4;
+
+/**
+ * More faces than this and a tool is **heavy** (P4-12, ADR-0067 §H2). Asking
+ * OCCT for the exact distance between a heavy tool and another shape is slow
+ * (between the tools of two modelled threads of 36 and 30 turns it measured
+ * 277 s in one call), while merging them is cheap and always correct, so heavy
+ * tools don't get the exact test. A thread's tool has about four faces a turn
+ * (`thread.test.ts` counts them), so 50 turns is heavy.
+ */
+export const HEAVY_TOOL_FACES = 200;
+
+/** Whether a tool is heavy (`HEAVY_TOOL_FACES`). */
+export const isHeavyTool = (kernel: Kernel, shape: ShapeHandle): boolean =>
+  kernel.count(shape, 'face') > HEAVY_TOOL_FACES;
 
 /** How a feature speaks of itself in messages and names its boolean faces. */
 export interface OperationWords {

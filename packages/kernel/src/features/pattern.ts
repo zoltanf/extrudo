@@ -26,6 +26,10 @@
  * features does without the fuse (P3-17, `toolSet`): it colours the
  * interference graph and cuts one colour class (a compound of instances that
  * don't meet) at a time.
+ *
+ * Only `mergeTools` guesses for heavy tools (P4-12, ADR-0067 §H2): a colour
+ * class has to be a valid boolean argument, so a wrong "these two meet" costs
+ * a pass, and enough of them fall back to the fuse `mergeTools` does.
  */
 import {
   type BodyId,
@@ -59,6 +63,7 @@ import { splitSolids } from './bodies';
 import {
   type Box,
   boxesTouch,
+  isHeavyTool,
   type OperationWords,
   operate,
   TOUCH,
@@ -124,6 +129,15 @@ function replicate(
  * or overlap are fused (a tree of booleans, so no shape grows more than
  * twice as fast as the tree is deep), and the fused groups, which don't
  * interfere, become one compound. A lone group is returned as it is.
+ *
+ * Two instances whose boxes overlap are put in one group without asking OCCT
+ * for the exact distance when either is heavy (more than
+ * `HEAVY_TOOL_FACES` faces): fusing instances that only nearly touch is still
+ * correct (a fuse of disjoint solids is a compound, so the boolean after it
+ * takes their union), and the exact distance between two big shapes is slow
+ * (P4-12, ADR-0067 §H2: 26 s of a 30 s recompute on B9 at the time, 277 s
+ * between the tools of two 36- and 30-turn threads). Light instances still get
+ * the exact test, which keeps the tool as small as it can be.
  */
 export function mergeTools(
   ctx: EvalContext,
@@ -134,6 +148,7 @@ export function mergeTools(
   const { kernel } = ctx;
   if (parts.length === 1) return parts[0] as NamedShape;
   const boxes = parts.map((p) => kernel.measure(p.shape).bbox);
+  const heavy = parts.map((p) => isHeavyTool(kernel, p.shape));
   // Groups of instances that interfere: boxes that meet, then the exact distance.
   const group = parts.map((_, i) => i);
   const find = (i: number): number => {
@@ -144,6 +159,10 @@ export function mergeTools(
   for (let i = 0; i < parts.length; i++) {
     for (let j = i + 1; j < parts.length; j++) {
       if (find(i) === find(j) || !boxesTouch(boxes[i] as Box, boxes[j] as Box)) continue;
+      if ((heavy[i] as boolean) || (heavy[j] as boolean)) {
+        group[find(j)] = find(i);
+        continue;
+      }
       const a = parts[i] as NamedShape;
       const b = parts[j] as NamedShape;
       if (kernel.distance(a.shape, b.shape) <= TOUCH) group[find(j)] = find(i);

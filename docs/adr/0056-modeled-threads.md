@@ -134,10 +134,28 @@ Faces are found with `ctx.resolve`, which reports a face it can't find as for
 every feature (Fix References offers it). Errors name the problem and the numbers: not cylindrical, not a
 whole turn, a shaft at or under the thread's root, a hole as wide as the
 thread, a thread longer than the face, an offset as long as the face, more
-than 400 turns, no standard size that fits; a shaft much thicker than the
-thread, or a hole much smaller, is a warning.
+than `MAX_TURNS` (150) turns, no standard size that fits; a shaft much thicker
+than the thread, or a hole much smaller, is a warning.
 
-### 7. Booleans were built twice
+### 7. The tooth is cut out of the ring in pieces (ADR-0067 §H2)
+
+`buildTool` sweeps the whole tooth in one `threadSweep` and cuts it out of the
+ring in one boolean, which works up to about 350 turns and above that runs the
+WASM heap out of memory: a boolean's memory grows with the faces it works on
+(4 MB a turn), 350 turns take the heap from 403 MB to 1903 MB, and 400 turns
+need more than a 32-bit WASM module can grow to, so `operator new` returns null
+and OCCT calls through it while unwinding — the `RuntimeError: table index is
+out of bounds` B9's fuzzing found, and later features read freed memory. The
+tooth is now swept and cut in pieces of `THREAD_CHUNK` (`MAX_TURNS` + the two
+pitches it runs past the thread, so a thread of as many turns as may be
+modeled is one piece and its cut is unchanged) and each piece is released as
+soon as it has been cut. The memory each boolean needs is then flat, and the
+cap is about the time a thread takes (0.35 s a turn piece-wise, 0.1 s in one
+cut) rather than about a trap. `spikes/p4-12-threads/` is the harness that
+found it; ADR-0067 §H2 has the bisect, the trace with function names and the
+measurements.
+
+### 8. Booleans were built twice
 
 `finishBoolean` called `Build()` on a `BRepAlgoAPI_Cut/Fuse/Common` made with
 the two-shape constructor, which already builds: **every boolean in the app
