@@ -243,28 +243,20 @@ h1 {
   color: var(--x-glow-muted);
 }
 
-.walkthrough-controls {
-  margin-top: 10px;
-}
-
+/* The step counter: a badge on the picture's bottom-right corner, over the app's
+   status bar, so the stage is just the picture. The pictures are always the dark
+   app, so the badge is dark in both themes. */
 .walkthrough-counter {
-  margin: 0 0 6px;
-  color: var(--x-glow-muted);
-  font-size: 0.9rem;
-}
-
-.walkthrough-controls .progress {
-  height: 3px;
-  border-radius: 2px;
-  background: var(--x-line);
-  overflow: hidden;
-}
-
-.walkthrough-controls .progress span {
-  display: block;
-  width: 0;
-  height: 100%;
-  background: var(--x-accent);
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 3;
+  margin: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgb(15 17 22 / 85%);
+  color: #e9edf3;
+  font-size: 0.85rem;
 }
 
 /* Enhanced: the stage shows one picture at a time. The steps keep their own
@@ -287,10 +279,16 @@ h1 {
   border-radius: 14px;
   border: 1px solid var(--x-line);
   box-shadow: var(--x-shadow);
-  background: var(--x-panel);
+  /* The app's own dark background, in both themes: the pictures are the dark app,
+     so even a frame drawn before a picture would not flash light. */
+  background: #1b1f27;
   overflow: hidden;
 }
 
+/* Every picture stays drawn, stacked: the current one on top, the one it replaces
+   right under it, the rest below. Only the incoming picture is clipped, by its
+   sweep. (Hiding the others with a clip made Chrome stop drawing them, and a fast
+   scroll then uncovered a picture it had not drawn yet: the light stage showed.) */
 .walkthrough[data-enhanced] .stage-pictures img.shot {
   position: absolute;
   inset: 0;
@@ -300,17 +298,50 @@ h1 {
   border: 0;
   border-radius: 0;
   box-shadow: none;
-  opacity: 0;
-  transition: opacity 0.35s ease;
+  z-index: 0;
+}
+
+.walkthrough[data-enhanced] .stage-pictures img.shot[data-leaving] {
+  z-index: 1;
 }
 
 .walkthrough[data-enhanced] .stage-pictures img.shot[data-active] {
-  opacity: 1;
+  z-index: 2;
+}
+
+/* The sweep: up from the bottom edge going forward, down from the top edge going
+   back (walkthrough.ts sets `data-direction`); not on the first paint. */
+.walkthrough[data-enhanced] .stage-pictures[data-ready] img.shot[data-active] {
+  animation: walkthrough-sweep-up 0.6s cubic-bezier(0.65, 0, 0.35, 1) both;
+}
+
+.walkthrough[data-enhanced]
+  .stage-pictures[data-ready][data-direction="back"]
+  img.shot[data-active] {
+  animation-name: walkthrough-sweep-down;
+}
+
+@keyframes walkthrough-sweep-up {
+  from {
+    clip-path: inset(100% 0 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes walkthrough-sweep-down {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .walkthrough[data-enhanced] .stage-pictures img.shot {
-    transition: none;
+  .walkthrough[data-enhanced] .stage-pictures[data-ready] img.shot[data-active] {
+    animation: none;
   }
 }
 
@@ -354,13 +385,12 @@ h1 {
 }
 
 @media (max-width: 899px) {
+  /* Pinned flush to the top, so nothing scrolls into view above the picture and
+     it needs no backdrop of its own. */
   .walkthrough[data-enhanced] .stage {
     position: sticky;
     top: 0;
     z-index: 1;
-    padding-top: 8px;
-    padding-bottom: 8px;
-    background: var(--x-bg);
   }
 
   .walkthrough[data-enhanced] .step {
