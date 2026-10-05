@@ -1,0 +1,27 @@
+{
+  "name": "@extrudo/cli",
+  "version": "0.3.0",
+  "private": true,
+  "description": "The headless CLI (extrudo): open a design, change its parameters, recompute it and export STL, 3MF or STEP in Node (P5-03, ADR-0069).",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "bin": {
+    "extrudo": "./bin/extrudo.mjs"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./headless": "./src/headless.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@extrudo/api": "workspace:*",
+    "@extrudo/core": "workspace:*",
+    "@extrudo/fonts": "workspace:*",
+    "@extrudo/io": "workspace:*",
+    "@extrudo/kernel": "workspace:*",
+    "@extrudo/sketch": "workspace:*",
+    "@extrudo/storage": "workspace:*"
+  }
+}

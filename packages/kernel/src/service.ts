@@ -339,11 +339,19 @@ export class KernelService implements KernelApi {
     return this.#run((kernel) => kernel.heap());
   }
 
-  /** Frees the kernel's shapes. The OCCT instance itself goes with its worker. */
-  async dispose(): Promise<void> {
-    if (this.#crashed || !this.#kernel) return;
+  /**
+   * Frees the kernel's shapes. The OCCT instance itself goes with its worker.
+   * What the engine held as it went is returned, which is 0 when nothing
+   * leaked (the tests' `strictLeaks` asserts the same, and the headless CLI's
+   * `dispose` reports it to a script).
+   */
+  async dispose(): Promise<{ liveShapes: number }> {
+    if (this.#crashed || !this.#kernel) return { liveShapes: 0 };
     this.#engine?.clear();
-    (await this.#kernel).dispose();
+    const kernel = await this.#kernel;
+    const { liveShapes } = kernel.stats();
+    kernel.dispose();
+    return { liveShapes };
   }
 
   /** A body of the last recompute. Only called inside #run. */

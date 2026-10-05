@@ -16,13 +16,7 @@
  * it (`useFontAttachments`) while one is open. The worker gets the same bytes
  * from the `Recomputer` (`files: attachmentBytes`).
  */
-import {
-  type AttachmentId,
-  attachmentFontId,
-  type DocumentStore,
-  type ExtrudoDocument,
-  readSketch,
-} from '@extrudo/core';
+import { type AttachmentId, attachmentFontId, type DocumentStore, usedFonts } from '@extrudo/core';
 import { BUNDLED_FONTS, type BundledFontId } from '@extrudo/fonts';
 import type { ProjectId, ProjectStore } from '@extrudo/storage';
 import { useEffect } from 'react';
@@ -53,18 +47,8 @@ export interface FontsState {
 /** The loaded fonts' version, for the caches that hold text geometry (ADR-0058 §4). */
 export const fontsStore = createStore<FontsState>()(() => ({ version: 0 }));
 
-/** The fonts a document's sketches use: every text entity's font ID. */
-export function usedFonts(doc: ExtrudoDocument): Set<string> {
-  const out = new Set<string>();
-  for (const feature of doc.features) {
-    const sketch = readSketch(feature)?.data;
-    if (!sketch) continue;
-    for (const entity of Object.values(sketch.entities)) {
-      if (entity.type === 'text') out.add(entity.font);
-    }
-  }
-  return out;
-}
+/** The fonts a document's sketches use (core's, ADR-0069). */
+export { usedFonts };
 
 const bytes = new Map<string, Promise<ArrayBuffer | undefined>>();
 

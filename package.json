@@ -23,6 +23,7 @@
     "e2e:install": "playwright install chromium",
     "demos": "node scripts/record-demos.mjs",
     "api:generate": "node --import ./scripts/ts-import.mjs scripts/generate-api.mjs",
+    "extrudo": "node packages/cli/bin/extrudo.mjs",
     "occt": "node packages/kernel/occt/occt.mjs",
     "wasm": "pnpm occt ensure && pnpm planegcs ensure",
     "planegcs": "node packages/sketch/planegcs/planegcs.mjs"

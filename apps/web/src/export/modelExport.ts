@@ -3,34 +3,40 @@
  * kernel worker tessellates at the export's own deflection (welded meshes)
  * or writes STEP; `@extrudo/io` writes the mesh files; the dialog shows
  * what the file will hold and saves it through the platform.
+ *
+ * The export itself — the presets, the meshing, the file names, the bytes —
+ * is `@extrudo/kernel`'s (`modelExport.ts` there), which the headless CLI
+ * shares so an export from a script holds what this dialog holds
+ * (ADR-0069). What stays here is the browser's part: the `Blob`s the
+ * platform downloads, the slicer hand-off and which bodies an export starts
+ * with.
  */
 import type { BodyId, BodyMeta, SelectionItem } from '@extrudo/core';
-import { checkManifold, type ManifoldReport, write3mf, writeStl } from '@extrudo/io';
-import type { BodyExportMesh, ExportProgress, MeshOptions } from '@extrudo/kernel';
-import { safeFileName } from '../platform/files';
+import {
+  type ExportBody,
+  type MeshedBodies,
+  type ModelExporter,
+  type ModelFormat,
+  meshBytes,
+  modelFileName,
+} from '@extrudo/kernel';
 import { SLICERS, type SlicerFile, type SlicerId } from '../platform/slicer';
 import { readTopology } from '../selection/items';
 import { APP_VERSION } from '../version';
 
-export type ModelFormat = 'stl' | '3mf' | 'step';
-export type Resolution = 'coarse' | 'medium' | 'fine' | 'custom';
-
-const DEGREE = Math.PI / 180;
-
-/**
- * Mesh presets: the largest distance between the mesh and the surface
- * (mm) and the largest angle between neighbouring facets. A 3D printer
- * resolves about 0.05 mm, so Medium is finer than any print shows.
- */
-export const RESOLUTIONS: Record<Exclude<Resolution, 'custom'>, MeshOptions> = {
-  coarse: { linearDeflection: 0.1, angularDeflection: 30 * DEGREE },
-  medium: { linearDeflection: 0.02, angularDeflection: 15 * DEGREE },
-  fine: { linearDeflection: 0.005, angularDeflection: 5 * DEGREE },
-};
-
-/** The deflection's bounds: finer makes files no printer can use, coarser nothing useful. */
-export const DEFLECTION_RANGE = { min: 0.001, max: 5 } as const;
-export const ANGLE_RANGE = { min: 1 * DEGREE, max: 90 * DEGREE } as const;
+export {
+  ANGLE_RANGE,
+  DEFLECTION_RANGE,
+  formatBytes,
+  meshBodies,
+  modelFileName,
+  openBodies,
+  RESOLUTIONS,
+  type Resolution,
+  safeFileName,
+  stlBytes,
+} from '@extrudo/kernel';
+export type { ExportBody, MeshedBodies, ModelExporter, ModelFormat };
 
 /** The bodies an export starts with: those selected (a face picks its body), else every shown one. */
 export function initialBodies(
@@ -51,67 +57,6 @@ export function initialBodies(
   return shown.length > 0 ? shown : bodies.map((b) => b.id);
 }
 
-/** What the kernel does for an export: the project's `Recomputer`. */
-export interface ModelExporter {
-  exportMeshes(
-    bodies: readonly BodyId[],
-    tessellation: MeshOptions,
-    onProgress?: ExportProgress,
-  ): Promise<BodyExportMesh[]>;
-  exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string>;
-}
-
-export interface ExportBody {
-  id: BodyId;
-  meta: BodyMeta;
-  /**
-   * The body is a mesh, not a solid (P4-06, ADR-0066 §3): STEP holds exact
-   * B-rep geometry, so the dialog leaves a mesh body out of a STEP file. STL
-   * and 3MF take its triangles as they are.
-   */
-  mesh?: boolean;
-}
-
-/** Meshed bodies with their check, for the summary and the file. */
-export interface MeshedBodies {
-  bodies: readonly ExportBody[];
-  meshes: BodyExportMesh[];
-  /** Per body, in order. */
-  reports: ManifoldReport[];
-  triangles: number;
-}
-
-/**
- * Tessellates the bodies in the kernel and checks each mesh is closed and
- * manifold. The kernel meshes one body at a time (P3-13): `onProgress`
- * hears how many are done, and returning `false` from it stops the kernel
- * before the next body (the promise then rejects; see `isExportCancelled`).
- */
-export async function meshBodies(
-  kernel: ModelExporter,
-  bodies: readonly ExportBody[],
-  tessellation: MeshOptions,
-  onProgress?: ExportProgress,
-): Promise<MeshedBodies> {
-  const meshes = await kernel.exportMeshes(
-    bodies.map((b) => b.id),
-    tessellation,
-    onProgress,
-  );
-  const reports = meshes.map(({ mesh }) => checkManifold(mesh));
-  return {
-    bodies,
-    meshes,
-    reports,
-    triangles: reports.reduce((n, r) => n + r.triangles, 0),
-  };
-}
-
-/** The bodies whose meshes aren't closed and manifold (a slicer would repair them). */
-export function openBodies(meshed: MeshedBodies): string[] {
-  return meshed.bodies.filter((_, i) => !meshed.reports[i]?.ok).map((b) => b.meta.name);
-}
-
 export interface ModelFile {
   blob: Blob;
   name: string;
@@ -123,37 +68,9 @@ const TYPES: Record<ModelFormat, string> = {
   step: 'model/step',
 };
 
-/** The file name: the project's, and the body's when there is only one. */
-export function modelFileName(
-  project: string,
-  bodies: readonly ExportBody[],
-  format: ModelFormat,
-): string {
-  const [only] = bodies;
-  const base = bodies.length === 1 && only ? `${project} - ${only.meta.name}` : project;
-  return safeFileName(base, format === 'step' ? '.step' : `.${format}`);
-}
-
 /** An STL (all bodies' triangles in one list) or a 3MF (an object per body, named and coloured). */
 export function meshFile(meshed: MeshedBodies, format: 'stl' | '3mf', project: string): ModelFile {
-  const application = `Extrudo ${APP_VERSION}`;
-  const bytes =
-    format === 'stl'
-      ? writeStl(
-          meshed.meshes.map((m) => m.mesh),
-          { header: `${application}: ${project} (mm)` },
-        )
-      : write3mf(
-          meshed.meshes.map(({ mesh }, i) => {
-            const meta = meshed.bodies[i]?.meta;
-            return {
-              name: meta?.name ?? `Body${i + 1}`,
-              mesh,
-              ...(meta?.color !== undefined && { color: meta.color }),
-            };
-          }),
-          { title: project, application },
-        );
+  const bytes = meshBytes(meshed, format, { application: `Extrudo ${APP_VERSION}`, project });
   return {
     blob: new Blob([bytes as Uint8Array<ArrayBuffer>], { type: TYPES[format] }),
     name: modelFileName(project, meshed.bodies, format),
@@ -171,18 +88,6 @@ export async function stepFile(
     blob: new Blob([text], { type: TYPES.step }),
     name: modelFileName(project, bodies, 'step'),
   };
-}
-
-/** A byte count for people: "845 B", "12.3 kB", "4.1 MB". */
-export function formatBytes(bytes: number): string {
-  if (bytes < 1000) return `${bytes} B`;
-  if (bytes < 1_000_000) return `${(bytes / 1000).toFixed(1)} kB`;
-  return `${(bytes / 1_000_000).toFixed(1)} MB`;
-}
-
-/** The size of a binary STL of `triangles` triangles. */
-export function stlBytes(triangles: number): number {
-  return 84 + 50 * triangles;
 }
 
 /**

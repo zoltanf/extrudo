@@ -108,7 +108,7 @@ extrudo/
 │  │                       .extrudo zip (de)serializer
 │  ├─ fonts/               bundled fonts for sketch text (data only; ADR-0058)
 │  ├─ api/                 public document API, @extrudo/api (P5-01, ADR-0068)
-│  ├─ cli/                 (P5-03, in progress) headless recompute and export
+│  ├─ cli/                 headless recompute and export, `extrudo` (P5-03, ADR-0069)
 │  └─ script/              (P5-02, in progress) the Script feature's sandboxed runner
 ├─ fixtures/               sample projects, benchmark models (B1–B10), golden values
 ├─ docs/                   these documents + adr/ (architecture decision records)

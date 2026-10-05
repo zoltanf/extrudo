@@ -17,10 +17,10 @@ import {
   type Vec2,
 } from '@extrudo/core';
 import { loadPlanegcs, type PlanegcsModule, SketchSolver } from '@extrudo/sketch';
+import { dimensionValues } from '@extrudo/sketch/inference';
 import { memoryPreferences } from '../../platform';
 import { createViewportStore } from '../../viewport/store';
 import { createSketchOn } from '../mode';
-import { dimensionValues } from '../values';
 import { createToolHost, type PlanePointer, type ToolHost } from './host';
 import { LINE_TOOL } from './line';
 

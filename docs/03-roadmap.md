@@ -962,8 +962,13 @@ end to end, faster than in Fusion 360.
 - [ ] **P5-02 Script feature:** Monaco editor, sandboxed worker (no DOM, no
   network, time and memory limits), reads parameters, outputs bodies and
   sketches; errors shown inline. FR-PRG-02.
-- [ ] **P5-03 Headless CLI:** `extrudo export project.extrudo --param w=40
-  --format 3mf`. FR-PRG-03.
+- [x] **P5-03 Headless CLI:** `extrudo export project.extrudo --param w=40
+  --format 3mf`. FR-PRG-03. Done 2026-10-05 (ADR-0069) in two slices: the
+  library (`@extrudo/cli`: open, parameters and configurations with the
+  re-solve, compute, export, save) and the binary (`info`, `export`, `set`,
+  `check`, `--json`, exit codes 0/1/2/3). The re-solve and the export's own
+  logic moved into `@extrudo/sketch` and `@extrudo/kernel`, so the app and the
+  CLI do the same thing; `docs/cli.md`.
 - [ ] **P5-04 OpenSCAD import** via openscad-wasm → mesh body. FR-IO-08.
 - [ ] **P5-05 Macro recording.** FR-PRG-04.
 - [ ] **P5-06 Wall-thickness check.** FR-3DP-07.

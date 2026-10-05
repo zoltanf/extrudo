@@ -9,16 +9,12 @@ export interface FileAccess {
   pick(accept: string): Promise<File | undefined>;
 }
 
-/** A file name from a project name: no path separators or control characters. */
-export function safeFileName(name: string, extension: string): string {
-  const base = name
-    // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping them is the point
-    .replace(/[\u0000-\u001f<>:"/\\|?*]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^\.+/, '');
-  return `${base || 'Untitled'}${extension}`;
-}
+/**
+ * A file name from a project name: no path separators or control characters.
+ * It is the kernel's (`@extrudo/kernel`), which the export writes names with
+ * (ADR-0069).
+ */
+export { safeFileName } from '@extrudo/kernel';
 
 export function webFiles(): FileAccess {
   return {

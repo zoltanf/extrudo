@@ -1,0 +1,7 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // No DOM (ADR-0069): the CLI is Node only. Node's own types for the file
+  // system and the child processes the tests spawn.
+  "compilerOptions": { "lib": ["es2023", "esnext.disposable"], "types": ["node"] },
+  "include": ["src"]
+}

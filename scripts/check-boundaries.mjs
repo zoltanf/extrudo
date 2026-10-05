@@ -25,6 +25,18 @@ const ALLOWED = {
   // kernel is a devDependency only, for the tests that recompute a design
   // headless (`examples.test.ts`).
   '@extrudo/api': ['@extrudo/core', '@extrudo/sketch', '@extrudo/storage', '@extrudo/kernel'],
+  // The headless CLI (P5-03, ADR-0069): the document API, the kernel's Node
+  // entry (OCCT in this thread), the solver, the archive format, the io
+  // writers and the bundled fonts. Nothing depends on it.
+  '@extrudo/cli': [
+    '@extrudo/api',
+    '@extrudo/core',
+    '@extrudo/fonts',
+    '@extrudo/io',
+    '@extrudo/kernel',
+    '@extrudo/sketch',
+    '@extrudo/storage',
+  ],
   // The landing page: no internal packages (ADR-0057).
   '@extrudo/site': [],
   '@extrudo/web': [

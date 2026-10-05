@@ -59,11 +59,12 @@ interface Candidate {
  * (`FeatureStatus.refs`), so the timeline can offer to fix it.
  */
 export class LostReferenceError extends KernelError {
-  constructor(
-    message: string,
-    readonly ref: GeomRef,
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the kernel through it).
+  readonly ref: GeomRef;
+  constructor(message: string, ref: GeomRef) {
     super(message);
+    this.ref = ref;
   }
 }
 

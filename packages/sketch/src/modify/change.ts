@@ -50,10 +50,14 @@ export class ChangeBuilder {
   readonly removedConstraints = new Set<ConstraintId>();
   readonly removedDimensions = new Set<DimensionId>();
 
-  constructor(
-    readonly data: SketchData,
-    readonly newId: () => string,
-  ) {}
+  // Fields and not constructor parameters, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the sketch package through it).
+  readonly data: SketchData;
+  readonly newId: () => string;
+  constructor(data: SketchData, newId: () => string) {
+    this.data = data;
+    this.newId = newId;
+  }
 
   /** An entity as it will be: new, replaced or as it is; undefined once removed. */
   entity(id: SketchEntityId): SketchEntity | undefined {

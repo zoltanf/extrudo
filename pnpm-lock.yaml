@@ -287,6 +287,30 @@ importers:
         specifier: workspace:*
         version: link:../kernel
 
+  packages/cli:
+    dependencies:
+      '@extrudo/api':
+        specifier: workspace:*
+        version: link:../api
+      '@extrudo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@extrudo/fonts':
+        specifier: workspace:*
+        version: link:../fonts
+      '@extrudo/io':
+        specifier: workspace:*
+        version: link:../io
+      '@extrudo/kernel':
+        specifier: workspace:*
+        version: link:../kernel
+      '@extrudo/sketch':
+        specifier: workspace:*
+        version: link:../sketch
+      '@extrudo/storage':
+        specifier: workspace:*
+        version: link:../storage
+
   packages/core:
     dependencies:
       immer:

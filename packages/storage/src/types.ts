@@ -152,8 +152,12 @@ export interface LoadOptions {
 
 export class ProjectNotFoundError extends Error {
   override readonly name = 'ProjectNotFoundError';
-  constructor(readonly id: string) {
+  // A field and not a constructor parameter, so the package's TypeScript can
+  // be run by Node as it is (P5-03's CLI reads archives with it).
+  readonly id: string;
+  constructor(id: string) {
     super("This project doesn't exist. It may have been deleted.");
+    this.id = id;
   }
 }
 
@@ -162,10 +166,11 @@ export type ArchiveErrorCode = 'not-a-zip' | 'not-extrudo' | 'damaged';
 /** A file that isn't a readable `.extrudo` archive. The message is for people. */
 export class ArchiveError extends Error {
   override readonly name = 'ArchiveError';
-  constructor(
-    readonly code: ArchiveErrorCode,
-    message: string,
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI reads archives with it).
+  readonly code: ArchiveErrorCode;
+  constructor(code: ArchiveErrorCode, message: string) {
     super(message);
+    this.code = code;
   }
 }

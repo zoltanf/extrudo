@@ -82,6 +82,23 @@ export {
 } from './mesh';
 export { CREASE, displayMesh, type MeshTriangles } from './mesh-body';
 export {
+  ANGLE_RANGE,
+  DEFLECTION_RANGE,
+  type ExportBody,
+  formatBytes,
+  type MeshedBodies,
+  type ModelExporter,
+  type ModelFormat,
+  meshBodies,
+  meshBytes,
+  modelFileName,
+  openBodies,
+  RESOLUTIONS,
+  type Resolution,
+  safeFileName,
+  stlBytes,
+} from './model-export';
+export {
   type CurveType,
   compareGeometry,
   compoundSources,

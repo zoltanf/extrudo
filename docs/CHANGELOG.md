@@ -4,6 +4,21 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-05 · **P5-03 The headless CLI, `extrudo`** (ADR-0069): a design is
+  recomputed and exported in Node, with no browser — `info`, `export` (STL, 3MF
+  or STEP, `--param`, `--config`, `--bodies`, `--resolution`), `set` (a new
+  `.extrudo` file with the changes) and `check` (exit 2 when a feature has an
+  error, for CI), each with `--json` and the exit codes 0/1/2/3. A parameter
+  change re-solves the sketches it moves, the app's rule moved to one shared
+  function (`@extrudo/sketch`'s `settleSketches`, whose `scope` is `'changed'`
+  in the app and `'all'` in the CLI, which also repairs a sketch something else
+  moved, so no export holds a stale shape), and the export's presets, names,
+  colours and metadata are the app's own (`@extrudo/kernel`'s `model-export`),
+  so a file written by a script holds what the Export dialog holds. The design's
+  fonts and its imported files reach the kernel as the `Recomputer` sends them.
+  `packages/cli` is the library (`openDesign`, `setParameters`,
+  `applyConfiguration`, `compute`, `export`, `save`, `dispose`); `docs/cli.md`
+  has the details.
 - 2026-10-05 · **Landing page: text contrast on the hero's glow.** In the dark
   theme the nav links, the intro paragraph and the "latest build" line sat at
   3.0-4.0:1 on the glow (WCAG AA asks 4.5:1); two site tokens,

@@ -83,11 +83,12 @@ export interface MeshProblem {
  */
 export class MeshError extends KernelError {
   override name = 'MeshError';
-  constructor(
-    message: string,
-    readonly problem?: MeshProblem,
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the kernel through it).
+  readonly problem: MeshProblem | undefined;
+  constructor(message: string, problem?: MeshProblem) {
     super(message);
+    this.problem = problem;
   }
 }
 
@@ -126,11 +127,12 @@ export type FilletProblem =
 /** A fillet OCCT couldn't build, with its diagnosis. */
 export class FilletError extends KernelError {
   override name = 'FilletError';
-  constructor(
-    message: string,
-    readonly problems: readonly FilletProblem[],
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the kernel through it).
+  readonly problems: readonly FilletProblem[];
+  constructor(message: string, problems: readonly FilletProblem[]) {
     super(message);
+    this.problems = problems;
   }
 }
 
@@ -155,11 +157,12 @@ export type ChamferProblem =
 /** A chamfer OCCT couldn't build, with its diagnosis. */
 export class ChamferError extends KernelError {
   override name = 'ChamferError';
-  constructor(
-    message: string,
-    readonly problems: readonly ChamferProblem[],
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the kernel through it).
+  readonly problems: readonly ChamferProblem[];
+  constructor(message: string, problems: readonly ChamferProblem[]) {
     super(message);
+    this.problems = problems;
   }
 }
 
@@ -195,11 +198,12 @@ export type ShellProblem =
 /** A shell OCCT couldn't build, with its diagnosis. */
 export class ShellError extends KernelError {
   override name = 'ShellError';
-  constructor(
-    message: string,
-    readonly problems: readonly ShellProblem[],
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the kernel through it).
+  readonly problems: readonly ShellProblem[];
+  constructor(message: string, problems: readonly ShellProblem[]) {
     super(message);
+    this.problems = problems;
   }
 }
 
@@ -226,11 +230,12 @@ export type OffsetFaceProblem =
 /** An offset OCCT couldn't build, with its diagnosis. */
 export class OffsetFaceError extends KernelError {
   override name = 'OffsetFaceError';
-  constructor(
-    message: string,
-    readonly problems: readonly OffsetFaceProblem[],
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the kernel through it).
+  readonly problems: readonly OffsetFaceProblem[];
+  constructor(message: string, problems: readonly OffsetFaceProblem[]) {
     super(message);
+    this.problems = problems;
   }
 }
 
@@ -253,11 +258,12 @@ export type DraftProblem =
 /** A draft OCCT couldn't build, with its diagnosis. */
 export class DraftError extends KernelError {
   override name = 'DraftError';
-  constructor(
-    message: string,
-    readonly problems: readonly DraftProblem[],
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the kernel through it).
+  readonly problems: readonly DraftProblem[];
+  constructor(message: string, problems: readonly DraftProblem[]) {
     super(message);
+    this.problems = problems;
   }
 }
 
@@ -275,11 +281,12 @@ export type SweepProblem =
 /** A sweep OCCT couldn't build, with its reason. */
 export class SweepError extends KernelError {
   override name = 'SweepError';
-  constructor(
-    message: string,
-    readonly problem: SweepProblem,
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the kernel through it).
+  readonly problem: SweepProblem;
+  constructor(message: string, problem: SweepProblem) {
     super(message);
+    this.problem = problem;
   }
 }
 
@@ -294,11 +301,12 @@ export type LoftProblem =
 /** A loft OCCT couldn't build, with its reason. */
 export class LoftError extends KernelError {
   override name = 'LoftError';
-  constructor(
-    message: string,
-    readonly problem: LoftProblem,
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the kernel through it).
+  readonly problem: LoftProblem;
+  constructor(message: string, problem: LoftProblem) {
     super(message);
+    this.problem = problem;
   }
 }
 
@@ -310,11 +318,12 @@ export type PathPiece =
 /** A path pieces couldn't be chained into: `apart` of them don't meet the rest. */
 export class PathError extends KernelError {
   override name = 'PathError';
-  constructor(
-    message: string,
-    readonly apart: number,
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the kernel through it).
+  readonly apart: number;
+  constructor(message: string, apart: number) {
     super(message);
+    this.apart = apart;
   }
 }
 

@@ -118,6 +118,23 @@ pnpm e2e          # build, then the end-to-end tests
 [`packages/kernel/occt/README.md`](packages/kernel/occt/README.md) and
 [`packages/sketch/planegcs/README.md`](packages/sketch/planegcs/README.md).
 
+### The command line
+
+The same kernel, the same solver and the same document model run in Node, so a
+design can be recomputed and exported without a browser — for a batch of
+variants, a CI check or a make rule:
+
+```sh
+pnpm extrudo info   bracket.extrudo --json
+pnpm extrudo export bracket.extrudo --format 3mf --param width=160mm
+pnpm extrudo set    bracket.extrudo --config Large --out bracket-large.extrudo
+pnpm extrudo check  bracket.extrudo      # exits 2 when a feature has an error
+```
+
+[`docs/cli.md`](docs/cli.md) has every command, option and exit code, and
+`@extrudo/cli` is the library behind it for anything a script wants to do
+itself.
+
 ## How it is built
 
 TypeScript, React 19, Vite, three.js, Radix and Tailwind. The geometry kernel
@@ -135,6 +152,7 @@ stored.
 | `packages/io` | STL, 3MF, SVG and DXF readers and writers (MIT) |
 | `packages/storage` | Local project storage (OPFS and IndexedDB) |
 | `packages/api` | The public document API, `@extrudo/api`: a design from code, no DOM and no WASM |
+| `packages/cli` | The headless CLI `extrudo`: recompute a design and export it in Node ([docs](docs/cli.md)) |
 | `apps/site` | The landing page and the API docs, static pages built from `docs/` |
 | `e2e/` | Playwright end-to-end tests |
 | `docs/` | Requirements, architecture, roadmap, UI spec, brand, file format, decision records |

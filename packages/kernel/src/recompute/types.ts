@@ -23,11 +23,12 @@ import type { ResolvedRef, ResolveOptions } from '../naming/resolve';
  */
 export class MissingFileError extends KernelError {
   override readonly name = 'MissingFileError';
-  constructor(
-    readonly id: AttachmentId,
-    fileName: string,
-  ) {
+  // A field and not a constructor parameter, so Node can run this package's
+  // TypeScript as it is (P5-03's CLI loads the kernel through it).
+  readonly id: AttachmentId;
+  constructor(id: AttachmentId, fileName: string) {
     super(`The file ${fileName} is missing from this design.`);
+    this.id = id;
   }
 }
 

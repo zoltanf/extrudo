@@ -29,7 +29,8 @@ P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-15
 (public release prep, ADR-0054: done except the owner's release steps),
 P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 is
 complete** (version 0.3.0). Phase 5 has started: P5-01 is **done** (the public document API, `packages/api`,
-its generated reference and the site's `/docs/api/` pages, ADR-0068). Phase 4: P4-01 (sweep, loft, coil), P4-02
+its generated reference and the site's `/docs/api/` pages, ADR-0068) and P5-03 is
+**done** (the headless CLI, `packages/cli` and the `extrudo` command, ADR-0069). Phase 4: P4-01 (sweep, loft, coil), P4-02
 (modeled threads), P4-03 (sketch text, bundled fonts), P4-03b (user fonts
 as attachments), P4-04 (emboss, deboss), P4-05 (control-point splines,
 conics), P4-07 (customizer, configurations), P4-08 (print tolerance,
@@ -1263,11 +1264,49 @@ the fixture the app exported, up to its IDs, and recomputed headless) and a
 parametric box with a customizer and two configurations. The kernel is a
 devDependency of the API package for that one test and nothing else.
 
+**The headless CLI (ADR-0069):** `packages/cli` (`@extrudo/cli`, GPL,
+`"bin": { "extrudo": "./bin/extrudo.mjs" }`) is the library plus the command.
+`src/headless.ts` is `openDesign(bytes | path)` (the archive with its
+attachments, thumbnail and versions), `setParameters` /
+`applyConfiguration` (**re-solve**), `compute()` (every feature's status and
+every body's name, volume, box and face count), `export({ format, bodies,
+resolution })`, `save(path)`, `dispose()` (frees the kernel, reports what it
+held). `src/cli.ts` is the four commands and their exit codes; `bin/extrudo.mjs`
+registers the same resolve hook `scripts/ts-import.mjs` does (Node strips the
+types) and runs it, so the binary needs no build step. Rules a change must
+keep: **the re-solve is `@extrudo/sketch`'s `settleSketches`** (the app's rule
+moved out of `apps/web/src/sketch/tools/host.ts`, with `dimensionValues` and
+`collapses`; the host calls it and turns `SketchSettleError` into a
+`CommandError`) — its `scope` is `'changed'` in the app (only a sketch whose own
+driving dimension values moved is solved, and a movement is stored, so a
+parameter write costs a solve per sketch it moves: every step of a customizer
+slider drag goes through it) and `'all'` in the CLI (`setParameters` and
+`applyConfiguration`), where every sketch is solved so one something else moved
+is repaired rather than exported stale — a sketch whose own values changed is
+*refused* when it can't take the change in either scope.
+`--param` names a user parameter or a driving dimension's own parameter (a
+feature input's own parameter is refused with a message); **the export is the
+app's** (`@extrudo/kernel`'s `model-export.ts`, which the app's
+`modelExport.ts` now re-exports, Blob and slicer hand-off aside), so the
+presets, file names, 3MF metadata and colours are one code path. Kernel
+resources go the way `Recomputer` sends them: bundled fonts from
+`@extrudo/fonts` on disk, the design's own attachments as `addFile`, and
+`enableMeshes()` when a mesh file is among them. **Node runs the workspace's
+TypeScript as it is**, so a constructor parameter property is out (the error
+classes and `SketchChange` use fields) and the packages the CLI loads stay free
+of it. The exit codes are 0/1 usage/2 the design has errors/3 a file
+(`HeadlessError`, `ParameterError`, `FileError`). Tests: `headless.test.ts`
+(every benchmark fixture, B4 with `clearance`, B2's offset sketch, a
+configuration, a user font, a STEP and a mesh import, the errors) and
+`cli.test.ts` (spawns the binary; also prints the export times). Docs:
+`docs/cli.md`.
+
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): **P5-01 is
-done** (all three slices, ADR-0068), so onward in Phase 5 with P5-02 (the Script
-feature, which runs user code against this API in a sandboxed worker and wants the
-same deterministic IDs); **P4-06 is done** (all five slices, ADR-0066) and P4-12's hardening part (ADR-0067 H1 to
+done** (all three slices, ADR-0068) and **P5-03 is done** (both slices,
+ADR-0069: the headless library and the `extrudo` binary), so onward in Phase 5
+with P5-02 (the Script feature, which runs user code against this API in a
+sandboxed worker and wants the same deterministic IDs); **P4-06 is done** (all five slices, ADR-0066) and P4-12's hardening part (ADR-0067 H1 to
 H5) is on main, so **Phase 4 is complete apart from P4-12's backlog** (exact
 rational conics in the kernel, closed splines, trimming and offsetting
 splines — ADR-0063's Deferred; and the modelling depth items P4-12 lists);
@@ -1289,6 +1328,7 @@ pnpm wasm         # download the OCCT and planegcs WASM for the current inputs (
 pnpm occt build   # build OCCT locally with Docker (~11 min; Arch workstation only); see packages/kernel/occt/README.md
 pnpm planegcs build  # build planegcs locally with Docker (~2 min; Arch workstation only); see packages/sketch/planegcs/README.md
 pnpm api:generate   # rewrite @extrudo/api's generated methods and docs/api pages (ADR-0068)
+pnpm extrudo        # the headless CLI: info, export, set, check (ADR-0069); `pnpm extrudo --help`
 ```
 
 Package dependency rules live in `scripts/check-boundaries.mjs` (run by
@@ -1307,7 +1347,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for the v0.4.0 release |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`) |
 
 ## Stack summary
 

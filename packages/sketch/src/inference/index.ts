@@ -41,3 +41,16 @@ export {
   snapToGrid,
 } from './inference';
 export { boxSelect, insideConvex, type PickFilter, pickEntity, polylineDistance } from './pick';
+// Pure too: the app's tool host and the CLI (ADR-0069) re-solve the sketches a
+// parameter change moved with this, so a parameter drives geometry the same way
+// in the app and headless. The scope says whether a sketch the change doesn't
+// move is solved as well: `'changed'` (the default) is the app's, `'all'` the
+// CLI's.
+export {
+  collapses,
+  dimensionValues,
+  type SettleScope,
+  type SketchSettleChange,
+  SketchSettleError,
+  settleSketches,
+} from './settle';

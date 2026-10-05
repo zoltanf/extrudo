@@ -68,7 +68,6 @@ import {
   type SketchConstraint,
   type SketchData,
   type SketchDimension,
-  type SketchEntity,
   type SketchEntityId,
   type SketchReport,
   setSketchGeometry,
@@ -79,13 +78,17 @@ import type { SketchSolution, SketchSolver } from '@extrudo/sketch';
 // The inference entry point only: the solver's WASM glue stays in its own lazy chunk.
 import {
   boxSelect,
+  collapses,
+  dimensionValues,
   type Inference,
   infer,
   pickEntity,
+  type SketchSettleChange,
+  SketchSettleError,
   type SketchStatus,
+  settleSketches,
   sketchStatus,
   solveGradually,
-  unmetDimensions,
 } from '@extrudo/sketch/inference';
 import { profileAt } from '@extrudo/sketch/profiles';
 import { createStore, type StoreApi } from 'zustand/vanilla';
@@ -93,7 +96,6 @@ import { gridStep } from '../../viewport/grid';
 import type { ViewportStore } from '../../viewport/store';
 import { sketchProfiles } from '../profiles';
 import { focusTextField, resetTextDraft } from '../textDraft';
-import { dimensionValues } from '../values';
 import { ARC_CENTER_TOOL, ARC_TANGENT_TOOL, ARC_TOOL, ArcTool } from './arc';
 import { CIRCLE_2POINT_TOOL, CIRCLE_3POINT_TOOL, CIRCLE_TOOL, CircleTool } from './circle';
 import { CONIC_TOOL, ConicTool, SPLINE_CONTROL_TOOL, SplineControlTool } from './conics';
@@ -500,64 +502,31 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
 
   /**
    * Solves every sketch whose driving dimension values differ from `before`
-   * and stores what moved. Throws a `CommandError` if a sketch that solved
-   * before no longer does, or a curve collapses.
+   * and stores what moved. The rule is `@extrudo/sketch`'s (`settleSketches`),
+   * which the headless CLI uses too (ADR-0069), so a parameter drives geometry
+   * the same way in the app and in a script. Throws a `CommandError` if a
+   * sketch can't take the change.
    */
   const settle = (before: ExtrudoDocument, active: SketchSolver) => {
-    const doc = store.getState().doc;
-    const was = evaluateParameters(before);
-    const now = evaluateParameters(doc);
-    for (const feature of doc.features) {
-      const view = readSketch(feature);
-      if (!view) continue;
-      const old = before.features.find((f) => f.id === feature.id);
-      const oldView = old && readSketch(old);
-      const values = dimensionValues(view.data, now, feature.id);
-      const oldValues = oldView ? dimensionValues(oldView.data, was, feature.id) : {};
-      if (oldView && sameValues(values, oldValues)) continue;
-      // In steps from the old values when they change a lot (P3-13), so a
-      // line held at a distance doesn't jump to the other side of its edge.
-      const result = oldView
-        ? solveGradually(active, oldView.data, view.data, oldValues, values)
-        : active.solve(view.data, values);
-      const unsolved = () => !oldView || active.solve(oldView.data, oldValues).ok;
-      const refused = () =>
-        new CommandError(
-          `${feature.name} can't take that: its other constraints and dimensions don't allow it.`,
-        );
-      if ((!result.ok && unsolved()) || collapses(view.data, result.solution)) throw refused();
-      // A dimension that starts driving must not over-constrain the sketch (P1-08).
-      for (const id of Object.keys(values)) {
-        if (id in oldValues || !(oldView?.data.dimensions[id as DimensionId]?.driven ?? false)) {
-          continue;
-        }
-        if (!active.check(view.data, values, id).accepted) {
-          const d = view.data.dimensions[id as DimensionId];
-          throw new CommandError(
-            `${d ? DIMENSION_LABELS[d.type] : 'That dimension'} would over-constrain the sketch, so it stays driven.`,
-          );
-        }
-      }
-      const points: Record<SketchEntityId, { x: number; y: number }> = {};
-      const radii: Record<SketchEntityId, number> = {};
-      for (const [key, p] of Object.entries(result.solution.points)) {
-        const e = view.data.entities[key as SketchEntityId];
-        if (e?.type === 'point' && (e.x !== p.x || e.y !== p.y)) {
-          points[key as SketchEntityId] = { x: p.x, y: p.y };
-        }
-      }
-      for (const [key, radius] of Object.entries(result.solution.radii)) {
-        const e = view.data.entities[key as SketchEntityId];
-        if (e?.type === 'circle' && e.radius !== radius) radii[key as SketchEntityId] = radius;
-      }
-      if (Object.keys(points).length > 0 || Object.keys(radii).length > 0) {
-        store.getState().dispatch(setSketchGeometry({ feature: feature.id, points, radii }));
-      }
-      // planegcs can succeed by leaving a redundant dimension out: the new values must hold.
-      const changed = Object.keys(values).filter((id) => values[id] !== oldValues[id]);
-      const settled = store.getState().doc.features.find((f) => f.id === feature.id);
-      const data = settled && readSketch(settled)?.data;
-      if (data && unmetDimensions(data, values, changed).length > 0) throw refused();
+    let changes: SketchSettleChange[];
+    try {
+      changes = settleSketches({
+        solver: active,
+        before,
+        after: store.getState().doc,
+      });
+    } catch (error) {
+      if (error instanceof SketchSettleError) throw new CommandError(error.message);
+      throw error;
+    }
+    for (const change of changes) {
+      store.getState().dispatch(
+        setSketchGeometry({
+          feature: change.feature,
+          points: change.points,
+          radii: change.radii,
+        }),
+      );
     }
   };
 
@@ -1236,6 +1205,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   return host;
 }
 
+/** Whether two sets of dimension values are the same (nothing to re-solve). */
 function sameValues(a: Record<string, number>, b: Record<string, number>): boolean {
   const keys = Object.keys(a);
   return keys.length === Object.keys(b).length && keys.every((k) => a[k] === b[k]);
@@ -1246,57 +1216,6 @@ const REACHED = 1e-6;
 
 /** The smallest radius (mm) a rim drag asks for: dragging past the centre doesn't flip the circle. */
 const MIN_RADIUS = 0.01;
-
-/** Below this size (mm) a curve has collapsed: a solve that shrinks one this far failed in all but name. */
-const COLLAPSED = 1e-3;
-
-/**
- * Whether solving shrinks a line, circle, arc or ellipse of `before` to
- * almost nothing. planegcs satisfies some contradictions that way (two
- * horizontal lines made perpendicular become two dots) and reports success;
- * a constraint the user asked for that does this is refused as a conflict.
- */
-export function collapses(before: SketchData, solution: SketchSolution): boolean {
-  const after: SketchData = { ...before, entities: { ...before.entities } };
-  const entities = after.entities as Record<string, SketchEntity>;
-  for (const [id, p] of Object.entries(solution.points)) {
-    const e = entities[id];
-    if (e?.type === 'point') entities[id] = { ...e, x: p.x, y: p.y };
-  }
-  for (const [id, radius] of Object.entries(solution.radii)) {
-    const e = entities[id];
-    if (e?.type === 'circle') entities[id] = { ...e, radius };
-  }
-  const size = (data: SketchData, e: SketchEntity): number | undefined => {
-    const at = (ref: SketchEntityId) => {
-      const p = data.entities[ref];
-      return p?.type === 'point' ? p : undefined;
-    };
-    const span = (a: SketchEntityId, b: SketchEntityId) => {
-      const p = at(a);
-      const q = at(b);
-      return p && q ? Math.hypot(q.x - p.x, q.y - p.y) : undefined;
-    };
-    switch (e.type) {
-      case 'line':
-        return span(e.start, e.end);
-      case 'circle':
-        return e.radius;
-      case 'arc':
-        return span(e.center, e.start);
-      case 'ellipse':
-        return span(e.center, e.minor);
-      default:
-        return undefined;
-    }
-  };
-  for (const [id, e] of Object.entries(before.entities)) {
-    const was = size(before, e);
-    const now = size(after, entities[id] ?? e);
-    if (was !== undefined && now !== undefined && was >= COLLAPSED && now < COLLAPSED) return true;
-  }
-  return false;
-}
 
 /**
  * The sketch as an edit leaves what was already there: removals,
