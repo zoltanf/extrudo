@@ -67,24 +67,208 @@
         </p>
       </section>
 
-      <section class="intro" aria-label="Extrudo in action">
-        <figure>
-          <video
-            class="shot"
-            data-intro
-            poster="./src/images/bracket.webp"
-            aria-label="A short tour: a sketch becomes a solid, gets rounded edges, and follows a changed dimension."
-            controls
-            muted
-            loop
-            playsinline
-            preload="metadata"
-            width="1440"
-            height="900"
-          >
-            <source src="/media/intro.webm" type="video/webm" />
-          </video>
-        </figure>
+      <section class="walkthrough" data-walkthrough aria-labelledby="walkthrough-title">
+        <h2 id="walkthrough-title">A box for a circuit board, step by step</h2>
+        <p class="walkthrough-lead">
+          Scroll through a real session: every picture is the app itself.
+        </p>
+        <ol class="steps">
+          <li class="step" data-step="1">
+            <figure>
+              <img
+                class="shot"
+                src="./src/images/walkthrough/01-empty.webp"
+                srcset="./src/images/walkthrough/01-empty-960.webp 960w, ./src/images/walkthrough/01-empty.webp 1440w"
+                sizes="(min-width: 900px) 760px, 100vw"
+                width="1440"
+                height="900"
+                loading="eager"
+                decoding="async"
+                alt="Extrudo's empty design view: the viewport hint, the toolbar, and a browser with no features yet."
+              />
+              <figcaption>
+                <h3>Start with an empty design</h3>
+                <p>
+                  Press New design. There's nothing to install and no account: the design is saved
+                  in your browser.
+                </p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="step" data-step="2">
+            <figure>
+              <img
+                class="shot"
+                src="./src/images/walkthrough/02-sketch.webp"
+                srcset="./src/images/walkthrough/02-sketch-960.webp 960w, ./src/images/walkthrough/02-sketch.webp 1440w"
+                sizes="(min-width: 900px) 760px, 100vw"
+                width="1440"
+                height="900"
+                loading="lazy"
+                decoding="async"
+                alt="A sketch on the XY plane with a rectangle centred on the origin and its width and depth dimensions."
+              />
+              <figcaption>
+                <h3>Sketch the outline</h3>
+                <p>
+                  Draw a rectangle from its centre and dimension it with two parameters,
+                  <code>width</code> and <code>depth</code>, so you can change them later.
+                </p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="step" data-step="3">
+            <figure>
+              <img
+                class="shot"
+                src="./src/images/walkthrough/03-extrude.webp"
+                srcset="./src/images/walkthrough/03-extrude-960.webp 960w, ./src/images/walkthrough/03-extrude.webp 1440w"
+                sizes="(min-width: 900px) 760px, 100vw"
+                width="1440"
+                height="900"
+                loading="lazy"
+                decoding="async"
+                alt="Extrudo's Extrude dialog open beside a preview of the 80 by 60 mm rectangle pulled into a 30 mm block."
+              />
+              <figcaption>
+                <h3>Pull it into a solid</h3>
+                <p>
+                  Extrude the rectangle <code>height</code> up. The preview shows the block before
+                  you press OK.
+                </p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="step" data-step="4">
+            <figure>
+              <img
+                class="shot"
+                src="./src/images/walkthrough/04-shell.webp"
+                srcset="./src/images/walkthrough/04-shell-960.webp 960w, ./src/images/walkthrough/04-shell.webp 1440w"
+                sizes="(min-width: 900px) 760px, 100vw"
+                width="1440"
+                height="900"
+                loading="lazy"
+                decoding="async"
+                alt="Extrudo's Shell dialog open beside the block, previewing 2 mm walls with the top face removed."
+              />
+              <figcaption>
+                <h3>Hollow it out</h3>
+                <p>
+                  Shell the block with 2 mm walls and the top face removed: that's the tray your
+                  board sits in.
+                </p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="step" data-step="5">
+            <figure>
+              <img
+                class="shot"
+                src="./src/images/walkthrough/05-slot-sketch.webp"
+                srcset="./src/images/walkthrough/05-slot-sketch-960.webp 960w, ./src/images/walkthrough/05-slot-sketch.webp 1440w"
+                sizes="(min-width: 900px) 760px, 100vw"
+                width="1440"
+                height="900"
+                loading="lazy"
+                decoding="async"
+                alt="A sketch on the tray's front face with a USB slot and its length and width dimensions."
+              />
+              <figcaption>
+                <h3>Sketch on a wall</h3>
+                <p>
+                  Start a sketch right on the front face and draw a slot where the USB connector
+                  goes.
+                </p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="step" data-step="6">
+            <figure>
+              <img
+                class="shot"
+                src="./src/images/walkthrough/06-slot-cut.webp"
+                srcset="./src/images/walkthrough/06-slot-cut-960.webp 960w, ./src/images/walkthrough/06-slot-cut.webp 1440w"
+                sizes="(min-width: 900px) 760px, 100vw"
+                width="1440"
+                height="900"
+                loading="lazy"
+                decoding="async"
+                alt="Extrudo's Extrude dialog open beside the tray, previewing the slot cut 5 mm into the front wall."
+              />
+              <figcaption>
+                <h3>Cut the opening</h3>
+                <p>Extrude the slot into the wall as a cut, just deep enough to go through it.</p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="step" data-step="7">
+            <figure>
+              <img
+                class="shot"
+                src="./src/images/walkthrough/07-posts.webp"
+                srcset="./src/images/walkthrough/07-posts-960.webp 960w, ./src/images/walkthrough/07-posts.webp 1440w"
+                sizes="(min-width: 900px) 760px, 100vw"
+                width="1440"
+                height="900"
+                loading="lazy"
+                decoding="async"
+                alt="Extrudo's Rectangular Pattern dialog open beside the tray, previewing four screw posts at its corners."
+              />
+              <figcaption>
+                <h3>Add screw posts</h3>
+                <p>
+                  Extrude one post from the floor, then repeat it to the four corners with a pattern
+                  spaced from <code>width</code> and <code>depth</code>.
+                </p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="step" data-step="8">
+            <figure>
+              <img
+                class="shot"
+                src="./src/images/walkthrough/08-fillet.webp"
+                srcset="./src/images/walkthrough/08-fillet-960.webp 960w, ./src/images/walkthrough/08-fillet.webp 1440w"
+                sizes="(min-width: 900px) 760px, 100vw"
+                width="1440"
+                height="900"
+                loading="lazy"
+                decoding="async"
+                alt="Extrudo's Fillet dialog open beside the tray, previewing the four outer vertical edges rounded."
+              />
+              <figcaption>
+                <h3>Round the corners</h3>
+                <p>
+                  Fillet the four outer edges, so the box is nicer to hold and its corners print
+                  cleanly.
+                </p>
+              </figcaption>
+            </figure>
+          </li>
+          <li class="step" data-step="9">
+            <figure>
+              <img
+                class="shot"
+                src="./src/images/walkthrough/09-width.webp"
+                srcset="./src/images/walkthrough/09-width-960.webp 960w, ./src/images/walkthrough/09-width.webp 1440w"
+                sizes="(min-width: 900px) 760px, 100vw"
+                width="1440"
+                height="900"
+                loading="lazy"
+                decoding="async"
+                alt="The Customizer panel showing width at 100 mm beside the wider, see-through box with its slot and four posts."
+              />
+              <figcaption>
+                <h3>Change one number</h3>
+                <p>
+                  Set <code>width</code> to 100 mm. The outline, the walls, the slot and the posts
+                  all follow: that's what parametric means.
+                </p>
+              </figcaption>
+            </figure>
+          </li>
+        </ol>
       </section>
 
       <section id="features" class="features" aria-labelledby="features-title">

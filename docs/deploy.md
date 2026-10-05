@@ -16,7 +16,7 @@ pages; until the secrets exist the deploy workflow skips itself.
 
 The app's build is plain static files: the app, the two WASM files, `sw.js` (the
 offline service worker) and `_headers`. The landing page's is one page, its CSS
-and script, the fonts, the intro video (`media/intro.webm`), its own `_headers`
+and script, the fonts, the walkthrough's pictures, its own `_headers`
 (stricter: no WASM, so no `'unsafe-eval'`) and a `sw.js` that retires the app's
 old service worker at `extrudo.org` (ADR-0057).
 

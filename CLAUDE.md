@@ -754,8 +754,9 @@ run, with the landing page in project `extrudo-site`); `deploy.yml` has `plan`,
 `app` (per channel) and `site` jobs. The site's **`public/sw.js` retires the
 app's old service worker** at extrudo.org (skipWaiting, delete caches,
 unregister, reload; handles the old app's `SKIP_WAITING`), and `#/<route>` links
-go on to the app. The intro video `apps/site/public/media/intro.webm` is recorded
-from the real app (`pnpm demos -g intro`, `e2e/record-assets.spec.ts`).
+go on to the app. The walkthrough's nine pictures
+(`apps/site/src/images/walkthrough/`) are recorded from the real app
+(`pnpm demos -g walkthrough`, `e2e/record-assets.spec.ts`).
 ADR-0055 (P4-01) added **Sweep, Loft and Coil** (core `sweep.ts`, `loft.ts`,
 `coil.ts`; kernel `features/sweep.ts`, `loft.ts`, `coil.ts`; dialogs of the
 same names in Solid › Create's menu, no keys; all three patternable). The
@@ -2006,7 +2007,12 @@ them. Notes further down that name a machine apply to that machine only.
   (fresh `pnpm build` builds it with the app) through `startStaticHost`; the
   heading "Parametric CAD for 3D printing, in your browser.", links "Open Extrudo"
   (`[data-open-app]`, `https://app.extrudo.org/`) and "Try the latest build", the
-  intro `video[data-intro]`. `StaticHost.serve(dir)` switches the host's build
+  walkthrough. `[data-walkthrough]` gains `data-enhanced` when `walkthrough.ts`
+  runs; it builds `[data-walkthrough-stage] img[data-step][data-active]`, a
+  `[data-walkthrough-counter]` ("Step n of 9") and a `.progress span`, from the
+  `li.step[data-step]` list, and sets `data-active-step` (`aria-current="step"`)
+  as each step crosses the viewport's middle; a test drives it with
+  `scrollIntoView({ block: 'center' })`. `StaticHost.serve(dir)` switches the host's build
   (the app first, its worker installed, then the site): the retiring `sw.js`
   sometimes waits behind the open tab, and the old app's update toast (Reload)
   sends `SKIP_WAITING`; the spec takes that path when the page didn't switch by

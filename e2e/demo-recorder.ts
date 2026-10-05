@@ -147,7 +147,7 @@ export class Recorder {
     options: {
       crf?: number;
       holdMs?: number;
-      /** Output size; a tool demo's 480 × 300 unless given (the landing page's intro is bigger). */
+      /** Output size; a tool demo's 480 × 300 unless given. */
       size?: { width: number; height: number };
       bitrate?: string;
     } = {},

@@ -13,6 +13,7 @@ const TYPES: Record<string, string> = {
   '.wasm': 'application/wasm',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.webp': 'image/webp',
   '.webm': 'video/webm',
   '.woff2': 'font/woff2',
 };
@@ -91,6 +92,12 @@ export async function startStaticHost(initial: string): Promise<StaticHost> {
       rules = parseHeaders(readFileSync(join(dir, '_headers'), 'utf8'));
       overrides.clear();
     },
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: () =>
+      new Promise<void>((resolve) => {
+        // A page that navigated away can leave an idle keep-alive socket, and
+        // `server.close` waits for it: drop the connections so teardown is quick.
+        server.closeAllConnections();
+        server.close(() => resolve());
+      }),
   };
 }

@@ -4,6 +4,9 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-05 · **Landing page: a scroll walkthrough (nine pictures of a PCB
+  enclosure built from sketches, recorded from the app) replaces the intro video**
+  (ADR-0057 amendment).
 - 2026-10-05 · **P5-03 The headless CLI, `extrudo`** (ADR-0069): a design is
   recomputed and exported in Node, with no browser — `info`, `export` (STL, 3MF
   or STEP, `--param`, `--config`, `--bodies`, `--resolution`), `set` (a new

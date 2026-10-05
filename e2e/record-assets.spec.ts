@@ -3,12 +3,18 @@ import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { readArchive } from '../packages/storage/src/archive';
 import {
+  addParameter,
   attr,
   chip,
+  clickEdge,
+  clickWhere,
+  closeParameters,
   exportProject,
+  openParameters,
   renameProject,
   selectBodies,
   settled,
+  toolPrompt,
   turnView,
   viewportOf,
   zoomOutTo,
@@ -22,9 +28,9 @@ import { kernelReady, mapping, newSketchOnXY, openProject, pickTool, projector }
 //     rendered by the app itself in the home view;
 //   - the tools' demo clips (`apps/web/public/demos/<tool>.webm`), recorded
 //     from the app by driving it: see `demo-recorder.ts`;
-//   - the landing page's intro video (`apps/site/public/media/intro.webm`,
-//     ADR-0057): the whole window, from the home screen to a part that follows
-//     a changed number.
+//   - the landing page's walkthrough (`apps/site/src/images/walkthrough/`,
+//     ADR-0057 amendment): nine stills of a PCB enclosure built from sketches,
+//     each a WebP pair (1440 and 960 px wide) encoded in Chromium.
 //
 // It writes into the repository, so it only runs with RECORD_ASSETS=1:
 // `pnpm demos` (scripts/record-demos.mjs) does that after making sure
@@ -501,16 +507,191 @@ test('demo: rectangularPattern', async ({ page }) => {
   });
 });
 
-// ---- The landing page's intro (ADR-0057) ------------------------------------
+// ---- The landing page's walkthrough (ADR-0057 amendment) ---------------------
 
-const INTRO = join(process.cwd(), 'apps', 'site', 'public', 'media', 'intro.webm');
+const WALKTHROUGH = join(process.cwd(), 'apps', 'site', 'src', 'images', 'walkthrough');
+/** WebP quality for the walkthrough stills; lower it (not below 0.7) if a file is over target. */
+const WEBP_QUALITY = 0.82;
 
-test('intro: the landing page video', async ({ page }) => {
-  test.setTimeout(300_000);
-  await page.addInitScript(CURSOR_SCRIPT);
-  await page.addInitScript(
-    `document.addEventListener('DOMContentLoaded', () => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(DEMO_STYLE)}; document.head.append(s); });`,
+/** Encodes a full-page PNG to a 1440- and a 960-wide WebP in Chromium and writes both. */
+async function saveWebp(page: Page, stem: string, png: Buffer, quality: number) {
+  const dataUrl = `data:image/png;base64,${png.toString('base64')}`;
+  const blank = await page.context().newPage();
+  let encoded: { wide: string; small: string };
+  try {
+    encoded = (await blank.evaluate(
+      `(async () => {
+        const img = new Image();
+        img.src = ${JSON.stringify(dataUrl)};
+        await img.decode();
+        const make = (w, h) => {
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, w, h);
+          return canvas.toDataURL('image/webp', ${quality});
+        };
+        return { wide: make(1440, 900), small: make(960, 600) };
+      })()`,
+    )) as { wide: string; small: string };
+  } finally {
+    await blank.close();
+  }
+  const decode = (url: string) => Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
+  const wide = decode(encoded.wide);
+  const small = decode(encoded.small);
+  await mkdir(WALKTHROUGH, { recursive: true });
+  await writeFile(join(WALKTHROUGH, `${stem}.webp`), wide);
+  await writeFile(join(WALKTHROUGH, `${stem}-960.webp`), small);
+  console.log(
+    `${stem}: ${(wide.length / 1024).toFixed(1)} kB at 1440, ${(small.length / 1024).toFixed(1)} kB at 960`,
   );
+}
+
+/** Saves the page as one walkthrough still (a WebP pair), the pointer clear of the model. */
+async function shot(page: Page, stem: string) {
+  // A corner of the view with no hover highlight (the status bar's foot).
+  await page.mouse.move(1430, 862);
+  await page.waitForTimeout(200);
+  await saveWebp(page, stem, await page.screenshot(), WEBP_QUALITY);
+}
+
+/** The eight corners of the largest box the walkthrough shows: 100 x 60 x 30 at (0, 0, 15). */
+const LARGEST_BOX: readonly (readonly [number, number, number])[] = [-50, 50].flatMap((x) =>
+  [-30, 30].flatMap(
+    (y) =>
+      [
+        [x, y, 0],
+        [x, y, 30],
+      ] as (readonly [number, number, number])[],
+  ),
+);
+
+/** The page box the eight corners of `LARGEST_BOX` project to. */
+function projectedFrame(at: (p: readonly [number, number, number]) => { x: number; y: number }) {
+  const xs = LARGEST_BOX.map((p) => at(p).x);
+  const ys = LARGEST_BOX.map((p) => at(p).y);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys),
+  };
+}
+
+/**
+ * The part of the view the model may fill, in page px: the browser's right edge
+ * to the feature dialog's (or the Customizer's) left edge, and the toolbar's
+ * bottom to the nav bar's top. Measured from the live page, not from constants.
+ */
+async function openSpace(page: Page) {
+  const box = async (locator: ReturnType<Page['getByRole']>) => {
+    if ((await locator.count()) === 0) return undefined;
+    return (await locator.first().boundingBox()) ?? undefined;
+  };
+  const browser = await box(page.getByRole('complementary', { name: 'Browser' }));
+  const dialog = await box(page.getByRole('region', { name: 'Extrude dialog' }));
+  const toolbar = await box(page.getByRole('tabpanel', { name: 'Solid' }));
+  const nav = await box(page.getByLabel('View navigation'));
+  return {
+    left: browser ? browser.x + browser.width : 250,
+    // The Customizer (picture 9) is the tightest panel on the right; x 1100 is its edge.
+    right: Math.min(dialog ? dialog.x : 1172, 1100),
+    top: toolbar ? toolbar.y + toolbar.height : 150,
+    bottom: nav ? nav.y : 800,
+  };
+}
+
+/** Pans the view so points follow the drag (the Extrudo preset's right-drag pans). */
+async function panBy(page: Page, dx: number, dy: number) {
+  const from = { x: 720, y: 470 };
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(from.x + dx, from.y + dy, { steps: 8 });
+  await page.mouse.up({ button: 'right' });
+}
+
+/**
+ * The home view framed tightly: the largest box's projected corners span
+ * 75-85 % of the open width, stay within 85 % of its height, and are centred in
+ * the open space within 30 px. The rule is asserted, so a UI change that breaks
+ * the framing fails the recorder instead of silently making bad pictures.
+ */
+async function frameTight(page: Page) {
+  const viewport = viewportOf(page);
+  await turnView(page, 'Shift+1');
+  await settled(viewport);
+  const space = await openSpace(page);
+  const openWidth = space.right - space.left;
+  const openHeight = space.bottom - space.top;
+  const mid = { x: (space.left + space.right) / 2, y: (space.top + space.bottom) / 2 };
+  for (let i = 0; i < 40; i++) {
+    const frame = projectedFrame(await projector(viewport));
+    const width = frame.maxX - frame.minX;
+    const cx = (frame.minX + frame.maxX) / 2;
+    const cy = (frame.minY + frame.maxY) / 2;
+    const dx = mid.x - cx;
+    const dy = mid.y - cy;
+    if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
+      await panBy(page, Math.max(-200, Math.min(200, dx)), Math.max(-200, Math.min(200, dy)));
+      continue;
+    }
+    // Zoom to 80 % in one analytic step (wheel factor = exp(deltaY * 0.0015)), then refine.
+    const step = Math.round(Math.log(width / (openWidth * 0.8)) / 0.0015);
+    if (Math.abs(step) < 2) break;
+    const before = await attr(viewport, 'data-camera-size');
+    await page.mouse.move(cx, cy);
+    await page.mouse.wheel(0, Math.max(-150, Math.min(150, step)));
+    await expect.poll(() => attr(viewport, 'data-camera-size')).not.toBe(before);
+  }
+  await settled(viewport);
+  const frame = projectedFrame(await projector(viewport));
+  const width = frame.maxX - frame.minX;
+  const height = frame.maxY - frame.minY;
+  const cx = (frame.minX + frame.maxX) / 2;
+  const cy = (frame.minY + frame.maxY) / 2;
+  console.log(
+    `framing: open ${Math.round(space.left)}..${Math.round(space.right)} x ` +
+      `${Math.round(space.top)}..${Math.round(space.bottom)}; box ${Math.round(width)}x${Math.round(height)} px ` +
+      `(${((width / openWidth) * 100).toFixed(1)} % wide, ${((height / openHeight) * 100).toFixed(1)} % tall), ` +
+      `centre offset ${Math.round(cx - mid.x)},${Math.round(cy - mid.y)}`,
+  );
+  expect(width).toBeGreaterThan(openWidth * 0.75);
+  expect(width).toBeLessThan(openWidth * 0.85);
+  expect(height).toBeLessThan(openHeight * 0.85);
+  expect(Math.abs(cx - mid.x)).toBeLessThan(30);
+  expect(Math.abs(cy - mid.y)).toBeLessThan(30);
+  return projector(viewport);
+}
+
+/** Presses OK, waits for the recompute. */
+async function ok(page: Page, dialog: ReturnType<Page['getByRole']>) {
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+}
+
+/**
+ * Sets a dialog's expression field to exactly `text` (clear, then fill, so
+ * nothing is appended to what the field held) and asserts the input and its
+ * `= value` line.
+ */
+async function setField(field: ReturnType<Page['getByRole']>, text: string, valueLine?: string) {
+  await field.fill('');
+  await field.fill(text);
+  await expect(field).toHaveValue(text);
+  if (valueLine !== undefined) {
+    await expect(field.locator('xpath=../..').locator('.expr-message')).toHaveText(valueLine);
+  }
+}
+
+test("walkthrough: the landing page's steps", async ({ page }) => {
+  test.setTimeout(600_000);
+  // A locator that never appears should fail, not wait forever.
+  page.setDefaultTimeout(30_000);
   // Info toasts ("Sketch1 is hidden…") and their bell would clutter a still frame.
   const quiet =
     '[role="status"]:has(button[aria-label="Dismiss"]), button[aria-label^="Notification history"] { display: none !important; }';
@@ -519,114 +700,350 @@ test('intro: the landing page video', async ({ page }) => {
   );
   await page.goto('./');
   await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
-  // Keep the tour's card off the home screen: the video shows the plain flow.
+  // Keep the tour's card out of the first picture: the walkthrough shows the plain flow.
   await page.getByRole('button', { name: 'Dismiss the tour' }).click();
-  const p = pointer(page);
-  await p.jump({ x: 900, y: 600 });
-  const press = async (target: ReturnType<Page['getByRole']>, ms = 500) => {
-    const box = await target.boundingBox();
-    if (!box) throw new Error('nothing to press');
-    await p.click({ x: box.x + box.width / 2, y: box.y + box.height / 2 }, ms);
+
+  // Step 1: a new, empty design.
+  await page.getByRole('button', { name: 'New design' }).click();
+  await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+  const viewport = viewportOf(page);
+  await expect(viewport).toHaveAttribute('data-ready', 'true');
+  await kernelReady(page);
+  await page.waitForTimeout(400);
+  await shot(page, '01-empty');
+
+  // The user parameters (not pictured): width, depth, height.
+  await openParameters(page);
+  await addParameter(page, 'width', '80 mm');
+  await addParameter(page, 'depth', '60 mm');
+  await addParameter(page, 'height', '30 mm');
+  await closeParameters(page);
+
+  // Step 2: a sketch on XY, a centre rectangle dimensioned `width` × `depth`.
+  const viewport2 = viewportOf(page);
+  await newSketchOnXY(page);
+  await settled(viewport2);
+  // Clicks land where the model needs them: turn the grid snap off.
+  const palette = page.getByRole('region', { name: 'Sketch palette' });
+  const snap = palette.getByRole('checkbox', { name: 'Snap to grid' });
+  await snap.uncheck();
+  await snap.blur();
+  const showConstraints = palette.getByRole('checkbox', { name: 'Show constraints' });
+  await showConstraints.uncheck();
+  await showConstraints.blur();
+  const at2 = await mapping(viewport2);
+  const click2 = async (x: number, y: number) => {
+    const q = at2(x, y);
+    await page.mouse.move(q.x, q.y);
+    await page.mouse.click(q.x, q.y);
   };
+  await pickTool(page, 'Center Rectangle');
+  await expect(toolPrompt(page)).toBeVisible();
+  await click2(0, 0);
+  await click2(40, 30);
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+  const dimension2 = async (picks: readonly (readonly [number, number])[], expr: string) => {
+    await page.keyboard.press('d');
+    for (const [x, y] of picks) await click2(x, y);
+    const value = page.getByRole('textbox', { name: /^Value of d\d+$/ });
+    await expect(value).toBeFocused();
+    await value.fill(expr);
+    await value.press('Enter');
+    await expect(page.locator('[data-dimension-editor]')).toHaveCount(0);
+  };
+  await dimension2(
+    [
+      [0, -30],
+      [0, -44],
+    ],
+    'width',
+  );
+  await dimension2(
+    [
+      [40, 0],
+      [54, 0],
+    ],
+    'depth',
+  );
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+  await expect(page.locator('[data-dimension]')).toHaveText(['fx: 80.00', 'fx: 60.00']);
+  await shot(page, '02-sketch');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
 
-  const recorder = new Recorder(page, { x: 0, y: 0, width: 1440, height: 900 });
-  recorder.start();
-  try {
-    await page.waitForTimeout(900);
-    await press(page.getByRole('button', { name: 'New design' }), 700);
-    await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
-    const viewport = viewportOf(page);
-    await expect(viewport).toHaveAttribute('data-ready', 'true');
-    await kernelReady(page);
-    await page.waitForTimeout(500);
+  // Step 3: extrude the rectangle `height` into a block, the camera framed once here.
+  let home = await frameTight(page);
+  const homeDirection = await attr(viewport, 'data-camera-direction');
+  await clickWhere(page, home, [20, 10, 0], /^profile:/);
+  await page.keyboard.press('e');
+  const extrude = page.getByRole('region', { name: 'Extrude dialog' });
+  await expect(extrude).toBeVisible();
+  await expect(extrude.getByRole('combobox', { name: 'Operation' })).toHaveValue('new-body');
+  await setField(extrude.getByRole('textbox', { name: 'Distance', exact: true }), 'height');
+  await expect(extrude).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await shot(page, '03-extrude');
+  await ok(page, extrude);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:80,60,30');
 
-    // A sketch on XY: a rectangle and one dimension.
-    await press(page.getByRole('button', { name: 'Create Sketch' }));
-    await page.waitForTimeout(300);
-    const world = await projector(viewport);
-    const s = Number(await attr(viewport, 'data-camera-size')) * 0.16;
-    await p.click(world([s * 0.45, -s * 0.45, 0]), 600);
-    await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
-    await settled(viewport);
-    const at = await mapping(viewport);
-    await press(page.getByRole('button', { name: /^Rectangle/ }));
-    await p.click(at(-20, -10), 600);
-    await p.moveTo(at(10, 0), 300);
-    await p.click(at(20, 10), 500);
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(300);
-    await press(page.getByRole('button', { name: /^Dimension/ }));
-    await p.click(at(0, -10), 600);
-    await p.click(at(0, -17), 400);
-    await page.waitForTimeout(250);
-    await page.keyboard.type('40', { delay: 200 });
-    await page.keyboard.press('Enter');
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(500);
-    await press(page.getByRole('button', { name: 'Finish Sketch' }).last());
-    await kernelReady(page);
+  // Step 4: shell it 2 mm inside, the top face removed: the tray.
+  await clickWhere(page, home, [0, 0, 30], /^face:/);
+  await expect(viewport).toHaveAttribute('data-model-selection', /^face:/);
+  await page.getByRole('button', { name: /^Shell/ }).click();
+  const shell = page.getByRole('region', { name: 'Shell dialog' });
+  await expect(shell).toBeVisible();
+  await expect(shell.getByRole('button', { name: 'Faces to remove', exact: true })).toHaveText(
+    '1 face',
+  );
+  await setField(shell.getByRole('textbox', { name: 'Thickness', exact: true }), '2');
+  await expect(shell).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await shot(page, '04-shell');
+  await ok(page, shell);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:11:80,60,30');
 
-    // Into 3D: extrude the profile, then round an edge.
-    const home = await turnView(page, 'Shift+1');
-    await p.click(home([0, 0, 0]), 600);
-    await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
-    await press(page.getByRole('button', { name: /^Extrude/ }));
-    const extrude = page.getByRole('region', { name: 'Extrude dialog' });
-    await expect(extrude).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-    await typeInto(page, extrude.getByRole('textbox', { name: 'Distance', exact: true }), '15');
-    await expect(extrude).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-    await page.waitForTimeout(600);
-    await press(extrude.getByRole('button', { name: 'OK' }), 400);
-    await expect(extrude).toBeHidden();
-    await kernelReady(page);
-    await page.waitForTimeout(400);
+  // Step 5: a sketch on the front wall's outside face (y = -depth/2), a USB slot.
+  const front = await frameTight(page);
+  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await expect(page.getByRole('region', { name: 'Create Sketch' })).toContainText('flat face');
+  const frontPoint = front([20, -30, 15]);
+  await page.mouse.move(frontPoint.x, frontPoint.y);
+  await page.mouse.click(frontPoint.x, frontPoint.y);
+  await expect(chip(page, 'Sketch2')).toBeVisible();
+  await expect(viewport).toHaveAttribute('data-camera-direction', '0,1,0');
+  await settled(viewport);
+  const flatFront = await projector(viewport);
+  const onFront = (x: number, y: number) => flatFront([x, -30, y]);
+  const clickFront = async (x: number, y: number) => {
+    const q = onFront(x, y);
+    await page.mouse.move(q.x, q.y);
+    await page.mouse.click(q.x, q.y);
+  };
+  await pickTool(page, 'Center to Center Slot');
+  await expect(toolPrompt(page)).toBeVisible();
+  await clickFront(-6, 10);
+  await clickFront(6, 10);
+  await clickFront(0, 13);
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+  const dimension5 = async (picks: readonly (readonly [number, number])[], expr: string) => {
+    await page.keyboard.press('d');
+    for (const [x, y] of picks) await clickFront(x, y);
+    const value = page.getByRole('textbox', { name: /^Value of d\d+$/ });
+    await expect(value).toBeFocused();
+    await value.fill(expr);
+    await value.press('Enter');
+    await expect(page.locator('[data-dimension-editor]')).toHaveCount(0);
+  };
+  // The centreline's length, then the distance between the slot's two sides.
+  await dimension5(
+    [
+      [0, 13],
+      [0, 20],
+    ],
+    '12 mm',
+  );
+  await dimension5(
+    [
+      [0, 13],
+      [0, 7],
+      [12, 10],
+    ],
+    '6 mm',
+  );
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+  await shot(page, '05-slot-sketch');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
 
-    const solid = await turnView(page, 'Shift+1');
-    await pickModel(page, p, solid, [0, -10, 15], 'edge');
-    await press(page.getByRole('button', { name: /^Fillet/ }));
-    const fillet = page.getByRole('region', { name: 'Fillet dialog' });
-    await expect(fillet).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-    await typeInto(page, fillet.getByRole('textbox', { name: 'Radius', exact: true }), '4');
-    await expect(fillet).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-    await page.waitForTimeout(600);
-    await press(fillet.getByRole('button', { name: 'OK' }), 400);
-    await expect(fillet).toBeHidden();
-    await kernelReady(page);
-    await page.waitForTimeout(700);
+  // Step 6: extrude the slot as a cut 5 mm into the wall.
+  await page.mouse.move(onFront(0, 11.5).x, onFront(0, 11.5).y);
+  await page.mouse.click(onFront(0, 11.5).x, onFront(0, 11.5).y);
+  await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+  // Home view for the picture, set before the dialog opens so no view key reaches a field.
+  home = await frameTight(page);
+  await page.keyboard.press('e');
+  const cut = page.getByRole('region', { name: 'Extrude dialog' });
+  await expect(cut).toBeVisible();
+  await cut.getByRole('combobox', { name: 'Operation' }).selectOption('cut');
+  await setField(cut.getByRole('textbox', { name: 'Distance', exact: true }), '-5', '= -5.00 mm');
+  await expect(cut).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await expect(viewport).toHaveAttribute('data-camera-direction', homeDirection);
+  await shot(page, '06-slot-cut');
+  await ok(page, cut);
+  // The shell left 11 faces; a cut through the one 2 mm wall adds the slot's four.
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:15:80,60,30');
 
-    // Change one number, and the whole part follows: Extrude1's distance, edited in its
-    // dialog (not modal, so the preview shows the part grow), keeps its rounded edge.
-    // Zoom out first so the taller part stays in the frame.
-    const middle = solid([0, 0, 7]);
-    await p.moveTo(middle, 500);
-    await zoomOutTo(page, middle, 90);
-    await settled(viewport);
-    const extrudeChip = chip(page, 'Extrude1');
-    const chipBox = await extrudeChip.boundingBox();
-    if (!chipBox) throw new Error('no Extrude1 chip');
-    const chipAt = { x: chipBox.x + chipBox.width / 2, y: chipBox.y + chipBox.height / 2 };
-    await p.moveTo(chipAt, 700);
-    await page.waitForTimeout(200);
-    await page.mouse.dblclick(chipAt.x, chipAt.y);
-    const edit = page.getByRole('region', { name: 'Edit Extrude1 dialog' });
-    await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-    await page.waitForTimeout(500);
-    await typeInto(page, edit.getByRole('textbox', { name: 'Distance', exact: true }), '35');
-    await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-    await page.waitForTimeout(1200);
-    await press(edit.getByRole('button', { name: 'OK' }), 400);
-    await expect(edit).toBeHidden();
-    await kernelReady(page);
-    await p.moveTo({ x: 1250, y: 700 }, 600);
-    await page.waitForTimeout(1800);
-  } finally {
-    await recorder.stop();
+  // Step 7: a circle on XY at (-(width/2-7), -(depth/2-7)), joined up, then a 2×2 pattern.
+  await newSketchOnXY(page);
+  await settled(viewport);
+  const floorAt = await projector(viewport);
+  const clickFloor = async (x: number, y: number) => {
+    const q = floorAt([x, y, 0]);
+    await page.mouse.move(q.x, q.y);
+    await page.mouse.click(q.x, q.y);
+  };
+  // A fixed point at the origin first, then the circle, so the inference is the debug's.
+  await pickTool(page, 'Point');
+  await clickFloor(0, 0);
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+  // The circle tool's key, since its menu item carries the shortcut in its name.
+  await page.keyboard.press('c');
+  await expect(toolPrompt(page)).toBeVisible();
+  await clickFloor(-33, -23);
+  await clickFloor(-30, -23);
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+  const dimension7 = async (picks: readonly (readonly [number, number])[], expr: string) => {
+    for (const [x, y] of picks) await clickFloor(x, y);
+    const value = page.getByRole('textbox', { name: /^Value of d\d+$/ });
+    await expect(value).toBeFocused();
+    await value.fill(expr);
+    await value.press('Enter');
+    await expect(page.locator('[data-dimension-editor]')).toHaveCount(0);
+  };
+  await page.keyboard.press('d');
+  await dimension7(
+    [
+      [0, 0],
+      [-33, -23],
+      [6, -11],
+    ],
+    'depth / 2 - 7 mm',
+  );
+  await dimension7(
+    [
+      [0, 0],
+      [-33, -23],
+      [-16, 4],
+    ],
+    'width / 2 - 7 mm',
+  );
+  await dimension7(
+    [
+      [-33, -20],
+      [-25, -20],
+    ],
+    '6 mm',
+  );
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+
+  // Extrude the circle up 8 mm, joined to the tray. The profile lies on the
+  // bottom face: from below, coplanar with it, the profile is what the pointer finds.
+  const bottom = await turnView(page, 'Shift+3');
+  // The circle's own curve and center point come first in the pick: filter them out.
+  const filter = page.getByRole('button', { name: 'Selection filter' });
+  await filter.click();
+  await page.getByRole('menuitemcheckbox', { name: 'Sketches' }).click();
+  await page.keyboard.press('Escape');
+  const onBottom = bottom([-31, -21, 0]);
+  await page.mouse.move(onBottom.x, onBottom.y);
+  await page.mouse.click(onBottom.x, onBottom.y);
+  await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+  await filter.click();
+  await page.getByRole('menuitem', { name: 'Select everything' }).click();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('e');
+  const post = page.getByRole('region', { name: 'Extrude dialog' });
+  await expect(post).toBeVisible();
+  await post.getByRole('combobox', { name: 'Operation' }).selectOption('join');
+  await setField(post.getByRole('textbox', { name: 'Distance', exact: true }), '8');
+  await expect(post).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await ok(page, post);
+
+  // A 2 × 2 rectangular pattern of that extrude: a grid placed from width and depth.
+  home = await frameTight(page);
+  await pickTool(page, 'Rectangular Pattern');
+  const pattern = page.getByRole('region', { name: 'Rectangular Pattern dialog' });
+  await expect(pattern).toBeVisible();
+  await pattern.getByRole('combobox', { name: 'Pattern' }).selectOption('features');
+  await pattern.getByRole('checkbox', { name: /^Extrude3/ }).check();
+  await pattern.getByRole('button', { name: 'Direction', exact: true }).click();
+  await clickEdge(page, home, [0, -30, 30]);
+  await expect(pattern.getByRole('button', { name: 'Direction', exact: true })).toHaveText(
+    '1 edge',
+  );
+  await setField(pattern.getByRole('textbox', { name: 'Count', exact: true }), '2');
+  await setField(pattern.getByRole('textbox', { name: 'Distance', exact: true }), 'width - 14 mm');
+  await pattern.getByRole('button', { name: 'Direction 2', exact: true }).click();
+  await clickEdge(page, home, [40, 0, 30]);
+  await expect(pattern.getByRole('button', { name: 'Direction 2', exact: true })).toHaveText(
+    '1 edge',
+  );
+  await setField(pattern.getByRole('textbox', { name: 'Count 2', exact: true }), '2');
+  await setField(
+    pattern.getByRole('textbox', { name: 'Distance 2', exact: true }),
+    'depth - 14 mm',
+  );
+  await expect(pattern).toHaveAttribute('data-preview-status', 'ok', { timeout: 20_000 });
+  await shot(page, '07-posts');
+  await ok(page, pattern);
+
+  // Step 8: round the four outer vertical edges, radius 3 mm.
+  home = await frameTight(page);
+  await clickEdge(page, home, [40, -30, 15]);
+  await page.keyboard.press('f');
+  const fillet = page.getByRole('region', { name: 'Fillet dialog' });
+  await expect(fillet).toBeVisible();
+  const edgesButton = () => fillet.getByRole('button', { name: 'Edges', exact: true });
+  const edgeCount = async () =>
+    Number((await edgesButton().textContent())?.match(/(\d+)/)?.[1] ?? 0);
+  await clickEdge(page, home, [-40, -30, 15]);
+  await clickEdge(page, home, [40, 30, 15]);
+  // The back-left corner is hidden in the home view: its top shows through the open tray.
+  await clickEdge(page, home, [-40, 30, 30]).catch(() => undefined);
+  if ((await edgeCount()) < 4) {
+    const back = await turnView(page, 'Shift+5');
+    await clickEdge(page, back, [-40, 30, 15]);
   }
-  const seconds = await recorder.encode(INTRO, {
-    size: { width: 1280, height: 800 },
-    bitrate: '1200k',
-    crf: 26,
-    holdMs: 1500,
-  });
-  console.log(`intro: ${recorder.frames.length} screenshots, ${seconds.toFixed(1)} s`);
+  home = await frameTight(page);
+  await expect.poll(edgeCount).toBe(4);
+  await setField(fillet.getByRole('textbox', { name: 'Radius', exact: true }), '3');
+  await expect(fillet).toHaveAttribute('data-preview-status', /^(ok|error)$/, { timeout: 20_000 });
+  if ((await attr(fillet, 'data-preview-status')) === 'error') {
+    // A 2 mm shell wall can't take a 3 mm round: the kernel says how far it can go.
+    console.log(
+      'fillet 3 mm refused:',
+      await fillet.getByRole('status', { name: 'Feature status' }).textContent(),
+    );
+    await setField(fillet.getByRole('textbox', { name: 'Radius', exact: true }), '1.9');
+    await expect(fillet).toHaveAttribute('data-preview-status', 'ok', { timeout: 20_000 });
+  }
+  await shot(page, '08-fillet');
+  await ok(page, fillet);
+
+  // Step 9: change one number, and the whole part follows.
+  await openParameters(page);
+  const params = page.getByRole('dialog', { name: 'Parameters' });
+  await params.getByRole('button', { name: 'Show width in customizer' }).click();
+  await closeParameters(page);
+  await page.getByRole('button', { name: 'Customizer', exact: true }).click();
+  const customizer = page.getByRole('region', { name: 'Customizer' });
+  await expect(customizer).toHaveAttribute('data-customizer-state', 'parameters');
+  const widthValue = customizer.getByRole('textbox', { name: 'Expression of width', exact: true });
+  await widthValue.fill('');
+  await widthValue.fill('100 mm');
+  await expect(widthValue).toHaveValue('100 mm');
+  await widthValue.press('Enter');
+  await expect
+    .poll(() => attr(viewport, 'data-bodies'), { timeout: 20_000 })
+    .toMatch(/:\d+:10[0-9.],60,30/);
+  await expect(page.locator('[data-feature-status]')).toHaveCount(0);
+  // Make the tray see-through so the posts inside it show in the wider box.
+  const browser = page.getByRole('complementary', { name: 'Browser' });
+  await browser.getByRole('button', { name: 'Body1', exact: true }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Appearance…' }).click();
+  const appearance = page.getByRole('dialog', { name: 'Body1 appearance' });
+  await appearance.getByRole('radio', { name: '50 %' }).check();
+  await expect(viewport).toHaveAttribute('data-body-appearance', /Body1:.*:0\.5$/);
+  await appearance.getByRole('radio', { name: '50 %' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(appearance).toBeHidden();
+  await shot(page, '09-width');
+  console.log(`walkthrough done: bodies ${await attr(viewport, 'data-bodies')}`);
 });

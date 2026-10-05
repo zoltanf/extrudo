@@ -29,6 +29,20 @@ test.afterEach(async () => {
 const heading = (page: Page) =>
   page.getByRole('heading', { name: 'Parametric CAD for 3D printing, in your browser.' });
 
+/** Scrolls a walkthrough step to the middle of the viewport (the line the observer watches). */
+function scrollToStep(page: Page, n: number) {
+  return page.evaluate(
+    `document.querySelector('li.step[data-step="${n}"]').scrollIntoView({ block: 'center' })`,
+  );
+}
+
+/** A computed style property of the first element matching `selector`, as a string. */
+function computed(page: Page, selector: string, property: string) {
+  return page.evaluate(
+    `getComputedStyle(document.querySelector(${JSON.stringify(selector)})).getPropertyValue(${JSON.stringify(property)})`,
+  );
+}
+
 /**
  * What the site's content policy refuses and what the console reports while a
  * page loads (ADR-0057). The docs pages carry no script and load nothing from
@@ -54,7 +68,7 @@ async function watchPolicy(
   };
 }
 
-test('the landing page leads to the app, plays the intro and keeps to its content policy', async ({
+test('the landing page leads to the app, shows the walkthrough and keeps to its content policy', async ({
   page,
 }) => {
   const errors: string[] = [];
@@ -75,11 +89,11 @@ test('the landing page leads to the app, plays the intro and keeps to its conten
     'href',
     'https://edge.extrudo.org/',
   );
-  // The intro video loads from this origin (it is in the build, not a placeholder).
-  const video = page.locator('video[data-intro]');
-  await expect(video).toBeVisible();
+  // The walkthrough shows the app itself: its first picture is in the build, not a placeholder.
+  const first = page.locator('[data-walkthrough-stage] img[data-step="1"]');
+  await expect(first).toBeVisible();
   await expect
-    .poll(() => video.evaluate((v) => (v as unknown as { readyState: number }).readyState))
+    .poll(() => first.evaluate((el) => (el as unknown as { naturalWidth: number }).naturalWidth))
     .toBeGreaterThan(0);
   await expect(page.getByRole('heading', { name: 'What it does' })).toBeVisible();
   // The contact address, as a mailto and as text to copy (ADR-0057).
@@ -92,6 +106,120 @@ test('the landing page leads to the app, plays the intro and keeps to its conten
   // amendment).
   await expect(page.locator('[data-privacy]')).toContainText('Cloudflare Web Analytics');
   expect(errors).toEqual([]);
+});
+
+test('the walkthrough follows the scroll', async ({ page }) => {
+  // ADR-0057 amendment: the nine pictures change as the captions cross the viewport's middle.
+  await page.goto(`${host.url}/`);
+  const section = page.locator('[data-walkthrough]');
+  await expect(section).toHaveAttribute('data-enhanced', '');
+  const steps = section.locator('li.step');
+  await expect(steps).toHaveCount(9);
+  for (let n = 1; n <= 9; n++) {
+    const step = steps.nth(n - 1);
+    await expect(step).toHaveAttribute('data-step', String(n));
+    await expect(step.locator('h3')).not.toBeEmpty();
+    await expect(step.locator('img.shot')).toHaveAttribute('alt', /./);
+  }
+  for (const n of [1, 4, 9]) {
+    await scrollToStep(page, n);
+    await expect.poll(() => section.getAttribute('data-active-step')).toBe(String(n));
+    await expect(section.locator('[data-walkthrough-counter]')).toHaveText(`Step ${n} of 9`);
+    await expect(section.locator('li.step[aria-current="step"]')).toHaveCount(1);
+    await expect(steps.nth(n - 1)).toHaveAttribute('aria-current', 'step');
+    await expect
+      .poll(() => computed(page, `[data-walkthrough-stage] img[data-step="${n}"]`, 'opacity'))
+      .toBe('1');
+    for (let other = 1; other <= 9; other++) {
+      if (other === n) continue;
+      await expect
+        .poll(() => computed(page, `[data-walkthrough-stage] img[data-step="${other}"]`, 'opacity'))
+        .toBe('0');
+    }
+  }
+});
+
+test('the walkthrough works on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`${host.url}/`);
+  const section = page.locator('[data-walkthrough]');
+  await expect(section).toHaveAttribute('data-enhanced', '');
+  // The stage sticks at the top and the captions scroll under it.
+  await expect.poll(() => computed(page, '[data-walkthrough-stage]', 'position')).toBe('sticky');
+  for (const n of [1, 5, 9]) {
+    await scrollToStep(page, n);
+    await expect.poll(() => section.getAttribute('data-active-step')).toBe(String(n));
+    await expect(section.locator('[data-walkthrough-counter]')).toHaveText(`Step ${n} of 9`);
+    await expect(section.locator('li.step[aria-current="step"]')).toHaveCount(1);
+    await expect
+      .poll(() => computed(page, `[data-walkthrough-stage] img[data-step="${n}"]`, 'opacity'))
+      .toBe('1');
+  }
+});
+
+test('the walkthrough is a plain list without JavaScript', async ({ browser }) => {
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 1280, height: 860 },
+  });
+  const page = await context.newPage();
+  await page.goto(`${host.url}/`);
+  const section = page.locator('[data-walkthrough]');
+  await expect(section).toBeVisible();
+  await expect(page.locator('[data-walkthrough-stage]')).toHaveCount(0);
+  await expect(page.locator('[data-walkthrough][data-enhanced]')).toHaveCount(0);
+  // Every step's own picture shows, in order, at full size.
+  const shots = section.locator('li.step img.shot');
+  await expect(shots).toHaveCount(9);
+  for (let n = 0; n < 9; n++) {
+    const box = await shots.nth(n).boundingBox();
+    expect(box?.height ?? 0).toBeGreaterThan(100);
+  }
+  await context.close();
+});
+
+test('the walkthrough swaps without a fade under reduced motion', async ({ page }) => {
+  const selector = '[data-walkthrough-stage] img[data-step="1"]';
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(`${host.url}/`);
+  await expect(page.locator('[data-walkthrough]')).toHaveAttribute('data-enhanced', '');
+  await expect.poll(() => computed(page, selector, 'transition-duration')).toBe('0s');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.reload();
+  await expect(page.locator('[data-walkthrough]')).toHaveAttribute('data-enhanced', '');
+  await expect.poll(() => computed(page, selector, 'transition-duration')).toBe('0.35s');
+});
+
+test('every walkthrough picture comes from the build', async ({ page }) => {
+  await page.goto(`${host.url}/`);
+  const section = page.locator('[data-walkthrough]');
+  await expect(section).toHaveAttribute('data-enhanced', '');
+  for (let n = 1; n <= 9; n++) {
+    await scrollToStep(page, n);
+    await expect.poll(() => section.getAttribute('data-active-step')).toBe(String(n));
+  }
+  // Lazy pictures load as their step is reached; give them a moment.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          `Array.from(document.querySelectorAll('[data-walkthrough] img.shot')).every((img) => img.naturalWidth > 0)`,
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  const sources = (await page.evaluate(`(() => {
+    const out = [];
+    for (const img of document.querySelectorAll('[data-walkthrough] img.shot')) {
+      out.push({ src: img.currentSrc, width: img.naturalWidth });
+    }
+    return out;
+  })()`)) as { src: string; width: number }[];
+  expect(sources).toHaveLength(18);
+  for (const { src, width } of sources) {
+    expect(src.startsWith(`${host.url}/assets/`)).toBe(true);
+    expect(width).toBeGreaterThan(0);
+  }
 });
 
 test("Cloudflare Web Analytics runs under the landing page's content policy", async ({ page }) => {
@@ -312,6 +440,8 @@ interface TextBox {
   text: string;
   colour: string;
   large: boolean;
+  /** The element's own and its ancestors' `opacity`, multiplied; below 1 the colour isn't real. */
+  opacity: number;
   rects: { x: number; y: number; w: number; h: number }[];
 }
 
@@ -337,7 +467,16 @@ const TEXT_BOXES = `(() => {
     if (rects.length === 0) continue;
     const size = parseFloat(style.fontSize);
     const bold = Number(style.fontWeight) >= 700;
+    // The real colour of a text node is its inherited colour times every
+    // ancestor's opacity; the measurement below reads pixels, so it can't see it.
+    let opacity = 1;
+    for (let e = element; e; e = e.parentElement) {
+      const o = parseFloat(getComputedStyle(e).opacity);
+      if (Number.isFinite(o)) opacity *= o;
+      if (opacity === 0) break;
+    }
     out.push({ text: text.slice(0, 48), colour: style.color, rects,
+      opacity,
       large: size >= 24 || (bold && size >= 18.66) });
   }
   return out;
@@ -407,8 +546,14 @@ test('every text on the landing page meets WCAG AA contrast against what is pain
   // text's own colour against the lightest and the darkest pixel behind its line boxes.
   // AA is 4.5:1, or 3:1 for large text (24 px, or 18.66 px bold).
   test.setTimeout(90_000);
-  const failures: { scheme: string; width: number; text: string; ratio: number; need: number }[] =
-    [];
+  const failures: {
+    scheme: string;
+    width: number;
+    text: string;
+    ratio: number;
+    need: number;
+    opacity?: number;
+  }[] = [];
   for (const colorScheme of ['dark', 'light'] as const) {
     for (const viewport of [
       { width: 1280, height: 860 },
@@ -430,6 +575,19 @@ test('every text on the landing page meets WCAG AA contrast against what is pain
       }[];
       await blank.close();
       boxes.forEach((box, i) => {
+        // The measurement reads the computed colour, which ignores opacity: a
+        // translucent text node can look fine here and be far under AA on screen.
+        if (box.opacity < 1) {
+          failures.push({
+            scheme: colorScheme,
+            width: viewport.width,
+            text: box.text,
+            ratio: box.opacity,
+            need: 1,
+            opacity: box.opacity,
+          });
+          return;
+        }
         const range = ranges[i];
         if (!range) return;
         const ratio = Math.min(contrast(box.colour, range.light), contrast(box.colour, range.dark));

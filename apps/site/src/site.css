@@ -206,12 +206,176 @@ h1 {
   color: var(--x-glow-link);
 }
 
-.intro {
-  padding: 24px 0 8px;
+/* The scroll walkthrough (ADR-0057 amendment). Without JavaScript it is a plain
+   list: each step's picture above its caption, 48 px apart. */
+.walkthrough {
+  padding: 72px 0 24px;
 }
 
-.intro figure {
+.walkthrough-lead {
+  margin: 0 0 32px;
+  color: var(--x-glow-muted);
+}
+
+.steps {
+  list-style: none;
   margin: 0;
+  padding: 0;
+}
+
+.step {
+  margin: 0 0 48px;
+}
+
+.step figure {
+  margin: 0;
+}
+
+.step h3 {
+  margin: 16px 0 8px;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--x-ink);
+}
+
+.step p {
+  margin: 0;
+  color: var(--x-glow-muted);
+}
+
+.walkthrough-controls {
+  margin-top: 10px;
+}
+
+.walkthrough-counter {
+  margin: 0 0 6px;
+  color: var(--x-glow-muted);
+  font-size: 0.9rem;
+}
+
+.walkthrough-controls .progress {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--x-line);
+  overflow: hidden;
+}
+
+.walkthrough-controls .progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--x-accent);
+}
+
+/* Enhanced: the stage shows one picture at a time. The steps keep their own
+   pictures for screen readers, clipped out of sight rather than removed. */
+.walkthrough[data-enhanced] .step img.shot {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.walkthrough[data-enhanced] .stage-pictures {
+  position: relative;
+  aspect-ratio: 1440 / 900;
+  border-radius: 14px;
+  border: 1px solid var(--x-line);
+  box-shadow: var(--x-shadow);
+  background: var(--x-panel);
+  overflow: hidden;
+}
+
+.walkthrough[data-enhanced] .stage-pictures img.shot {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.walkthrough[data-enhanced] .stage-pictures img.shot[data-active] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .walkthrough[data-enhanced] .stage-pictures img.shot {
+    transition: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .walkthrough[data-enhanced] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 40px;
+  }
+
+  .walkthrough[data-enhanced] h2,
+  .walkthrough[data-enhanced] .walkthrough-lead {
+    grid-column: 1 / -1;
+  }
+
+  .walkthrough[data-enhanced] .stage {
+    position: sticky;
+    top: 12vh;
+    align-self: start;
+    grid-column: 1;
+  }
+
+  .walkthrough[data-enhanced] .steps {
+    grid-column: 2;
+  }
+
+  .walkthrough[data-enhanced] .step {
+    display: flex;
+    align-items: center;
+    min-height: 70vh;
+    margin: 0;
+  }
+
+  .walkthrough[data-enhanced] .step:first-child {
+    padding-top: 12vh;
+  }
+
+  .walkthrough[data-enhanced] .step:last-child {
+    padding-bottom: 12vh;
+  }
+}
+
+@media (max-width: 899px) {
+  .walkthrough[data-enhanced] .stage {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    background: var(--x-bg);
+  }
+
+  .walkthrough[data-enhanced] .step {
+    display: flex;
+    align-items: center;
+    margin: 0 0 45vh;
+    padding: 14px;
+    background: var(--x-panel);
+    border: 1px solid var(--x-line);
+    border-radius: 14px;
+  }
+
+  .walkthrough[data-enhanced] .step:last-child {
+    margin-bottom: 0;
+  }
 }
 
 .shot {

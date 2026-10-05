@@ -1,6 +1,7 @@
 import '@fontsource/instrument-sans/400.css';
 import '@fontsource/instrument-sans/600.css';
 import './site.css';
+import { enhance } from './walkthrough';
 
 // Until 2026-10-03 the app itself lived at extrudo.org (ADR-0057). Its routes are
 // hash routes, so an old link like extrudo.org/#/p/<id> goes on to the app. Its home
@@ -23,17 +24,8 @@ globalThis.caches
   .then((names) => Promise.all(names.map((name) => caches.delete(name))))
   .catch(() => {});
 
-// The intro video is optional: without it (or if it fails) the poster picture stays.
-for (const video of document.querySelectorAll<HTMLVideoElement>('video[data-intro]')) {
-  const fallback = () =>
-    video.replaceWith(
-      Object.assign(new Image(), {
-        src: video.poster,
-        alt: video.getAttribute('aria-label') ?? '',
-        className: video.className,
-      }),
-    );
-  // The source may have failed before this module ran.
-  if (video.networkState === HTMLMediaElement.NETWORK_NO_SOURCE) fallback();
-  else video.querySelector('source')?.addEventListener('error', fallback);
+// The scroll walkthrough: without JavaScript the ordered list stays the whole
+// experience; this adds the sticky stage and follows the scroll.
+for (const section of document.querySelectorAll<HTMLElement>('[data-walkthrough]')) {
+  enhance(section);
 }

@@ -207,3 +207,76 @@ beside `baseUrl()` validates it).
   hosts, so a future tightening of the policy can't silently block the beacon.
 - The owner flipped both switches on 2026-10-04 and disabled the zone's older
   automatic setup for extrudo.org (`docs/deploy.md` step 5).
+
+## Amendment (2026-10-05): a scroll walkthrough replaces the intro video
+
+### Decision
+
+The intro video under the hero (`apps/site/public/media/intro.webm`, with
+`src/images/bracket.webp` as its poster) gives way to a **walkthrough**: nine
+pictures of the real app building a small **PCB enclosure from sketches and
+extrusions**, each with a short caption, which change as the visitor scrolls.
+The video's poster was what most visitors saw (it doesn't play by itself), and
+a still that changes with the scroll shows the workflow at the reader's pace.
+
+The steps (captions in `apps/site/index.html`, pictures recorded by the app):
+
+1. An empty design.
+2. A sketch: a rectangle centred on the origin with two named dimensions,
+   `width` and `depth` (named dimensions are parameters).
+3. Extrude it 30 mm into a block.
+4. Shell it 2 mm, the top face removed: the tray.
+5. A sketch on the front face: a slot for a USB connector.
+6. Extrude the slot as a cut through the wall.
+7. Four screw posts: circles on the floor placed from `width` and `depth`
+   (expressions), extruded up and joined to the tray.
+8. Fillet the outer vertical edges.
+9. Change `width` to 100 mm: everything follows.
+
+**The pictures are recorded from the real app**, by a `walkthrough` test in
+`e2e/record-assets.spec.ts` (`RECORD_ASSETS=1`, `pnpm demos -g walkthrough`)
+that builds the design through the UI as a user would and takes a screenshot
+at each step, so they show the current UI and are re-recorded with one
+command. A feature step is pictured **with its dialog open and the preview
+drawn**, which shows how the app is used, not only the result. The screenshots
+are 1440 × 900 and are encoded to **WebP in Chromium itself** (a canvas's
+`toDataURL('image/webp')` in a blank page), at 1440 and 960 pixels wide for
+`srcset`: no new dependency. They live in `apps/site/src/images/walkthrough/`,
+so Vite hashes them like the other pictures.
+
+**The page is progressive.** The markup is an ordered list of steps, each a
+`figure` with its picture and caption, which is the whole experience without
+JavaScript. `main.ts` enhances it: a **stage** pinned beside the captions
+(`position: sticky`; above them on a phone) holds a copy of every picture
+(`aria-hidden`, empty `alt`, since the list keeps the real ones, visually
+hidden), and an `IntersectionObserver` on the captions' middle band makes the
+step there current: `data-active-step` on the section, `aria-current="step"`
+on its item, and the stage **crossfades** to its picture, with "Step 3 of 9"
+and a progress bar. Under `prefers-reduced-motion` the pictures swap without
+the fade. No library and no inline script, so the site's content policy is
+unchanged.
+
+### Rejected
+
+- **Autoplaying the video.** It runs at its own pace, not the reader's, plays
+  in a loop whether anyone watches or not, and is 4-5 times the bytes of the
+  pictures.
+- **A carousel with arrows.** Another control to find and press, and the
+  pictures would be hidden behind clicks instead of the scroll the reader is
+  already doing.
+- **CSS scroll-driven animations (`animation-timeline: view()`).** Not in every
+  browser the site supports, and a step's state (`aria-current`, the counter)
+  needs script anyway.
+- **The PCB enclosure template's own route** (Box and Cylinder primitives, a
+  hole preset, a pattern). It is shorter, but the owner wanted the sketch and
+  extrude workflow, which is how most parts start.
+
+### Consequences
+
+- `intro.webm`, its poster and its recorder (`intro: the landing page video`)
+  go; the template pictures and tool demos are untouched.
+- The pictures are about 1-1.5 MB together and load only as the section comes
+  near (`loading="lazy"`, the first one eager).
+- `e2e/site.spec.ts` checks the list without JavaScript, the stage following
+  the scroll (desktop and phone width), reduced motion, and that every picture
+  comes from the build; the contrast and axe tests cover the captions.
