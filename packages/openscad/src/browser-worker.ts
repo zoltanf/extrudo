@@ -11,7 +11,9 @@ const ready = (async () => {
   const wasm = await WebAssembly.compileStreaming(
     fetch(new URL('../dist/openscad.wasm', import.meta.url)),
   );
-  const glue = (await import(/* @vite-ignore */ new URL('../dist/openscad.js', import.meta.url).href)) as {
+  const glue = (await import(
+    /* @vite-ignore */ new URL('../dist/openscad.js', import.meta.url).href
+  )) as {
     default: OpenscadFactory;
   };
   return { wasm, factory: glue.default };

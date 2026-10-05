@@ -9,14 +9,28 @@
  *
  * No placement inputs: the body lands at the file's coordinates, and Move (or
  * Place on Bed) puts it elsewhere.
+ *
+ * An OpenSCAD file (P5-04, ADR-0071) is a model the kernel compiles to a mesh
+ * first, and the feature's **overrides** set its top-level variables to the
+ * values of expressions (`scadName`/`scadValue`, `scadName2`/`scadValue2` …,
+ * numbered like a fillet's sets), so a `.scad` part follows the document's
+ * parameters.
  */
-import { z } from 'zod';
-import { enumInput } from './feature-inputs';
+import { type ExprInputMeta, enumInput } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { AttachmentId } from './ids';
 import { MODEL_MEDIA_TYPES } from './media-types';
-import type { Feature, FeatureInputs } from './schema';
-import { FileInputSchema } from './schema';
+import type {
+  EnumInput,
+  ExprInput,
+  Feature,
+  FeatureInputs,
+  FileInput,
+  Input,
+  UnitKind,
+} from './schema';
+import { ExprInputSchema, FileInputSchema } from './schema';
+import { z } from './zod';
 
 export const IMPORT_TYPE = 'import';
 
@@ -29,10 +43,53 @@ export const IMPORT_UNITS = ['auto', 'mm', 'cm', 'm', 'in'] as const;
 /** The `up` choices. */
 export const IMPORT_UP = ['z', 'y'] as const;
 
-export const ImportInputsSchema = z.strictObject({
+/** How many of an OpenSCAD file's variables an import can override (ADR-0071 §5). */
+export const SCAD_MAX_OVERRIDES = 32;
+
+/** Override `n`'s variable name: `scadName`, `scadName2` … */
+export const scadNameKey = (n: number) => (n === 1 ? 'scadName' : `scadName${n}`);
+
+/** Override `n`'s value: `scadValue`, `scadValue2` … */
+export const scadValueKey = (n: number) => (n === 1 ? 'scadValue' : `scadValue${n}`);
+
+/** An OpenSCAD variable's name: an identifier, a special variable (`$fn`) included. */
+export const SCAD_VARIABLE = /^\$?[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * An override's variable: an `enum` input whose values come from the file, so
+ * the schema checks the name's form, not a list.
+ */
+const ScadNameInputSchema = z
+  .strictObject({
+    kind: z.literal('enum'),
+    value: z.string().regex(SCAD_VARIABLE, 'an OpenSCAD variable name like width or $fn'),
+  })
+  .meta({ input: { kind: 'enum' } });
+
+/**
+ * An override's value: an expression of **any** unit, unlike `exprOf`'s one —
+ * a value bound to a length parameter is a length, a tooth count a plain
+ * number, and both reach OpenSCAD as the number they are in mm or degrees. A
+ * plain value given through the API is `unitless`.
+ */
+const ScadValueInputSchema = ExprInputSchema.meta({
+  input: { kind: 'expr', unit: 'unitless' } satisfies ExprInputMeta,
+});
+
+const overrides: Record<string, z.ZodType> = {};
+for (let n = 1; n <= SCAD_MAX_OVERRIDES; n++) {
+  overrides[scadNameKey(n)] = ScadNameInputSchema.optional().describe(
+    `OpenSCAD files only: override ${n}'s variable, the name of a top-level variable of the file (\`width\`, \`$fn\`). Needs its value.`,
+  );
+  overrides[scadValueKey(n)] = ScadValueInputSchema.optional().describe(
+    `OpenSCAD files only: override ${n}'s value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.`,
+  );
+}
+
+const importShape = {
   /** The file: an attachment of the design with a `model/*` media type. */
   file: FileInputSchema.describe(
-    'The file to import: an attachment of this design with a `model/*` media type (a STEP solid or a mesh). Required.',
+    'The file to import: an attachment of this design with a `model/*` media type or an OpenSCAD file (a STEP solid, a mesh, or a `.scad` file compiled to a mesh). Required.',
   ),
   /** Meshes only: what unit the file's numbers are in. STEP converts its own. */
   units: enumInput(IMPORT_UNITS)
@@ -44,8 +101,19 @@ export const ImportInputsSchema = z.strictObject({
   up: enumInput(IMPORT_UP)
     .optional()
     .describe("The file's up axis; `y` turns it +90° about X (Y-up to Z-up). Default z."),
-});
-export type ImportInputs = z.infer<typeof ImportInputsSchema>;
+};
+
+export const ImportInputsSchema = z.strictObject({
+  ...importShape,
+  ...overrides,
+}) as unknown as z.ZodType<ImportInputs>;
+
+/** An `import`'s inputs: the file, `units`, `up`, and an OpenSCAD file's overrides. */
+export type ImportInputs = {
+  file: FileInput;
+  units?: { kind: 'enum'; value: (typeof IMPORT_UNITS)[number] };
+  up?: { kind: 'enum'; value: (typeof IMPORT_UP)[number] };
+} & Record<string, Input>; // and `scadName<n>` (an `enum` of a variable name), `scadValue<n>` (an `expr`)
 
 /** The units a mesh file's numbers are read in, and what each one means in mm. */
 export const UNIT_FACTORS: Readonly<Record<(typeof IMPORT_UNITS)[number], number>> = {
@@ -98,6 +166,33 @@ export function importSettings(inputs: ImportInputs): ImportSettings {
   };
 }
 
+/** One override of an OpenSCAD file's variable (ADR-0071 §5). */
+export interface ScadOverride {
+  /** Its number: `scadName<n>`/`scadValue<n>`. */
+  n: number;
+  /** The variable, or `undefined` when only the value is there. */
+  name: string | undefined;
+  /** The input whose expression is the value, or `undefined` when only the name is there. */
+  value: string | undefined;
+}
+
+/** An import's overrides in order, every pair that has either half. */
+export function scadOverrides(inputs: ImportInputs): ScadOverride[] {
+  const found: ScadOverride[] = [];
+  for (let n = 1; n <= SCAD_MAX_OVERRIDES; n++) {
+    const name = inputs[scadNameKey(n)];
+    const value = scadValueKey(n);
+    const hasValue = inputs[value]?.kind === 'expr';
+    if (name?.kind !== 'enum' && !hasValue) continue;
+    found.push({
+      n,
+      name: name?.kind === 'enum' ? name.value : undefined,
+      value: hasValue ? value : undefined,
+    });
+  }
+  return found;
+}
+
 export interface ImportInputOptions {
   /** The attachment the file is; the caller writes its bytes first (ADR-0061 §2). */
   file: AttachmentId;
@@ -105,6 +200,12 @@ export interface ImportInputOptions {
   units?: (typeof IMPORT_UNITS)[number];
   /** The file's up axis. */
   up?: (typeof IMPORT_UP)[number];
+  /**
+   * An OpenSCAD file's overrides, in order: a variable and an expression, and
+   * the expression's unit (default `unitless`; a value bound to a length
+   * parameter is a `length`).
+   */
+  overrides?: readonly { name: string; value: string; unit?: UnitKind }[];
 }
 
 /**
@@ -113,11 +214,20 @@ export interface ImportInputOptions {
  * nothing.
  */
 export function importInputs(options: ImportInputOptions): ImportInputs {
-  return {
+  const inputs: ImportInputs = {
     file: { kind: 'file', id: options.file },
     ...(options.units && { units: { kind: 'enum', value: options.units } }),
     ...(options.up && { up: { kind: 'enum', value: options.up } }),
-  } as ImportInputs;
+  };
+  (options.overrides ?? []).slice(0, SCAD_MAX_OVERRIDES).forEach((override, i) => {
+    inputs[scadNameKey(i + 1)] = { kind: 'enum', value: override.name } satisfies EnumInput;
+    inputs[scadValueKey(i + 1)] = {
+      kind: 'expr',
+      expr: override.value,
+      unit: override.unit ?? 'unitless',
+    } satisfies ExprInput;
+  });
+  return inputs;
 }
 
 /**

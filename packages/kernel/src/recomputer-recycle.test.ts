@@ -65,6 +65,7 @@ function fakeSpawn(options: FakeOptions) {
       enableMeshes: async () => {
         events.push(`meshes:${worker}`);
       },
+      enableOpenscad: async () => {},
       recompute: async (_request: RecomputeRequest) => {
         requests++;
         events.push(`recompute:${worker}`);

@@ -10,7 +10,12 @@ import { workerApi } from './worker-api';
 
 const service = new KernelService(
   () => loadOcct({ wasmUrl, log: (line) => console.debug('[occt]', line) }),
-  { manifold: { wasmUrl: manifoldWasmUrl } },
+  {
+    manifold: { wasmUrl: manifoldWasmUrl },
+    // OpenSCAD (P5-04, ADR-0071 §3): its compiler and 11 MB of WASM load only
+    // when a design imports a `.scad` file (`enableOpenscad`).
+    openscad: async () => (await import('@extrudo/openscad/browser')).createBrowserCompiler(),
+  },
 );
 
 Comlink.expose(workerApi(service));

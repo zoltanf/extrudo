@@ -27,7 +27,9 @@ function model(result: ScadResult) {
 describe('the OpenSCAD compiler', { timeout: 30_000 }, () => {
   it('compiles a cube less a cylinder into a closed 3MF', { timeout: 30_000 }, async () => {
     const result = await compiler.compile(
-      scad('difference() { cube([20, 20, 10]); translate([10, 10, -1]) cylinder(d = 8, h = 12, $fn = 64); }'),
+      scad(
+        'difference() { cube([20, 20, 10]); translate([10, 10, -1]) cylinder(d = 8, h = 12, $fn = 64); }',
+      ),
     );
     const [check] = model(result);
     expect(check?.ok).toBe(true);
@@ -46,7 +48,8 @@ describe('the OpenSCAD compiler', { timeout: 30_000 }, () => {
   });
 
   it('overrides top-level variables and lists the customizer', async () => {
-    const source = 'width = 20; // [10:100]\nheight = 10; // [5:1:50]\ncube([width, width, height]);\n';
+    const source =
+      'width = 20; // [10:100]\nheight = 10; // [5:1:50]\ncube([width, width, height]);\n';
     const result = await compiler.compile(
       scad(source, {
         defines: [
@@ -115,7 +118,24 @@ describe('the OpenSCAD compiler', { timeout: 30_000 }, () => {
     ]);
   });
 
-  it('stops a compile that runs past its time limit, then compiles again', { timeout: 60_000 }, async () => {
+  it('compiles fifty files in fresh instances without growing', { timeout: 120_000 }, async () => {
+    // The worker is a thread of this process: its WASM memory is in the rss.
+    const rss = () => process.memoryUsage().rss / 2 ** 20;
+    const plate = (size: number) =>
+      scad(
+        `difference() { cube([${size}, 20, 10]); translate([5, 10, -1]) cylinder(d = 6, h = 12, $fn = 64); }`,
+      );
+    for (let i = 0; i < 10; i++) expect((await compiler.compile(plate(20 + i))).ok).toBe(true);
+    const after10 = rss();
+    for (let i = 10; i < 50; i++) expect((await compiler.compile(plate(20 + i))).ok).toBe(true);
+    const grown = rss() - after10;
+    console.info(`40 more compiles: rss ${grown >= 0 ? '+' : ''}${grown.toFixed(0)} MB`);
+    expect(grown).toBeLessThan(64);
+  });
+
+  it('stops a compile that runs past its time limit, then compiles again', {
+    timeout: 60_000,
+  }, async () => {
     const quick = createNodeCompiler({ timeoutMs: 1500 });
     try {
       const looping = await quick.compile(
@@ -137,7 +157,9 @@ describe('the OpenSCAD compiler', { timeout: 30_000 }, () => {
     const small = createNodeCompiler({ heapMaxBytes: 64 * 1024 * 1024 });
     try {
       const result = await small.compile(
-        scad('minkowski() { sphere(20, $fn = 300); rotate([10, 20, 30]) cube(10, center = true); }'),
+        scad(
+          'minkowski() { sphere(20, $fn = 300); rotate([10, 20, 30]) cube(10, center = true); }',
+        ),
       );
       expect(result).toMatchObject({
         ok: false,

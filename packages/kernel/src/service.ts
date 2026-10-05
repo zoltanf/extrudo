@@ -1,4 +1,5 @@
 import type { AttachmentId, BodyId, FeatureRegistry, GeomRef } from '@extrudo/core';
+import type { ScadCompiler } from '@extrudo/openscad';
 import { kernelFeatures } from './features';
 import type { SmoothKind, SubShapeKind } from './history';
 import { type Inspection, type InspectTarget, inspectShapes } from './inspect';
@@ -59,6 +60,12 @@ export interface KernelApi {
    * no-op, so it can be asked for every such request.
    */
   enableMeshes(): Promise<void>;
+  /**
+   * Loads the OpenSCAD compiler (P5-04, ADR-0071 §3) and manifold-3d with it,
+   * since a compiled `.scad` file is a mesh body: only a design that imports
+   * a `.scad` file pays for OpenSCAD's WASM. Calling it again is a no-op.
+   */
+  enableOpenscad(): Promise<void>;
   /**
    * Recomputes the document (ADR-0024). A newer call cancels a running one
    * between features. `onFeature` hears of each feature before it is
@@ -181,6 +188,13 @@ export interface KernelServiceOptions {
    * imports it with `?url`. Node finds it next to the glue by itself.
    */
   manifold?: ManifoldLoadOptions;
+  /**
+   * Makes the OpenSCAD compiler (P5-04, ADR-0071 §3), called by the first
+   * `enableOpenscad()`: the app's worker loads `@extrudo/openscad/browser`
+   * with a dynamic `import()`, Node passes `createNodeCompiler`. Without it,
+   * `enableOpenscad()` refuses and a `.scad` import says it can't compile.
+   */
+  openscad?: () => ScadCompiler | Promise<ScadCompiler>;
 }
 
 export class KernelService implements KernelApi {
@@ -194,6 +208,9 @@ export class KernelService implements KernelApi {
   readonly #files = new Map<AttachmentId, ImportedFile>();
   /** manifold-3d, once a design needs it (ADR-0066 §3). */
   #meshes: Promise<void> | undefined;
+  /** OpenSCAD's compiler, once a design needs it (ADR-0071 §3). */
+  #openscad: Promise<ScadCompiler> | undefined;
+  #compiler: ScadCompiler | undefined;
 
   constructor(load: () => Promise<OcctModule>, options: KernelServiceOptions = {}) {
     this.#load = load;
@@ -250,6 +267,18 @@ export class KernelService implements KernelApi {
       kernel.enableMeshes(manifold);
     })();
     await this.#meshes;
+  }
+
+  async enableOpenscad(): Promise<void> {
+    const make = this.#options.openscad;
+    if (!make) throw new Error('This kernel has no OpenSCAD compiler to load.');
+    await this.enableMeshes();
+    this.#openscad ??= (async () => {
+      const compiler = await make();
+      this.#compiler = compiler;
+      return compiler;
+    })();
+    await this.#openscad;
   }
 
   recompute(request: RecomputeRequest, onFeature?: ProgressListener): Promise<RecomputeResult> {
@@ -346,6 +375,7 @@ export class KernelService implements KernelApi {
    * `dispose` reports it to a script).
    */
   async dispose(): Promise<{ liveShapes: number }> {
+    this.#compiler?.dispose();
     if (this.#crashed || !this.#kernel) return { liveShapes: 0 };
     this.#engine?.clear();
     const kernel = await this.#kernel;
@@ -376,6 +406,7 @@ export class KernelService implements KernelApi {
       this.#engine = new RecomputeEngine(kernel, this.#options.features ?? kernelFeatures(), {
         ...this.#options.engine,
         files: (id) => this.#files.get(id),
+        openscad: () => this.#compiler,
       });
       this.#initMs = performance.now() - start;
       return kernel;

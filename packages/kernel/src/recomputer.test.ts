@@ -67,6 +67,7 @@ function setup(doc: ExtrudoDocument, options: { fonts?: FontSource; files?: File
           events.push('meshes');
           return service.enableMeshes();
         },
+        enableOpenscad: () => service.enableOpenscad(),
         recompute: (request, onFeature) => {
           requests.push(request);
           events.push('recompute');
