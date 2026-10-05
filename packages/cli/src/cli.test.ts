@@ -11,8 +11,9 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { Design } from '@extrudo/api';
-import { checkManifold, readStl } from '@extrudo/io';
-import { writeArchive } from '@extrudo/storage';
+import { type AttachmentId, addAttachment } from '@extrudo/core';
+import { checkManifold, read3mf, readStl } from '@extrudo/io';
+import { sha256Hex, writeArchive } from '@extrudo/storage';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const run = promisify(execFile);
@@ -290,6 +291,58 @@ describe('extrudo check', () => {
     expect(report.ok).toBe(true);
     expect(report.bodies.map((b: { name: string }) => b.name)).toEqual(['Box', 'Lid']);
   });
+});
+
+describe('a design with an OpenSCAD import (P5-04, ADR-0071)', () => {
+  it(
+    'exports it with an override bound to a parameter, set from the command line',
+    SPAWNING,
+    async () => {
+      // plate.scad's `size` follows the design's `width`.
+      const source = new Uint8Array(await readFile(join(ROOT, 'fixtures/imports/plate.scad')));
+      const hash = sha256Hex(source);
+      const design = Design.create({ name: 'Plate' });
+      design.parameter('width', '30 mm');
+      design.state.dispatch(
+        addAttachment({
+          id: 'a1sc' as AttachmentId,
+          attachment: {
+            name: 'Plate',
+            fileName: 'plate.scad',
+            mediaType: 'application/x-openscad',
+            sha256: hash,
+            size: source.length,
+          },
+        }),
+      );
+      design.import({
+        file: 'a1sc' as AttachmentId,
+        scadName: 'size',
+        scadValue: { kind: 'expr', expr: 'width', unit: 'length' },
+      });
+      const path = join(dir, 'plate.extrudo');
+      await writeFile(path, writeArchive(design.doc, undefined, [], new Map([[hash, source]])));
+
+      const out = join(dir, 'plate.3mf');
+      const result = await extrudo([
+        'export',
+        path,
+        '--format',
+        '3mf',
+        '--param',
+        'width=50mm',
+        '--out',
+        out,
+      ]);
+      expect(result.code).toBe(0);
+      const [object] = read3mf(new Uint8Array(await readFile(out))).objects;
+      const check = checkManifold(object?.mesh as Parameters<typeof checkManifold>[0]);
+      expect(check.ok).toBe(true);
+      // 50 × 50 × 10 less the Ø8 hole's 64-gon.
+      const hole = 0.5 * 64 * 16 * Math.sin((2 * Math.PI) / 64) * 10;
+      expect(check.volume).toBeCloseTo(50 * 50 * 10 - hole, 1);
+    },
+  );
 });
 
 describe('the command line itself', () => {

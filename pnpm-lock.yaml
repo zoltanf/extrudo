@@ -304,6 +304,9 @@ importers:
       '@extrudo/kernel':
         specifier: workspace:*
         version: link:../kernel
+      '@extrudo/openscad':
+        specifier: workspace:*
+        version: link:../openscad
       '@extrudo/sketch':
         specifier: workspace:*
         version: link:../sketch
@@ -339,6 +342,9 @@ importers:
       '@extrudo/io':
         specifier: workspace:*
         version: link:../io
+      '@extrudo/openscad':
+        specifier: workspace:*
+        version: link:../openscad
       '@extrudo/sketch':
         specifier: workspace:*
         version: link:../sketch

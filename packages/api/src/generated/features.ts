@@ -1105,9 +1105,73 @@ export interface FeatureMethods {
   /**
    * Import (create): one feature of the timeline.
    *
-   * @param inputs.file The file to import: an attachment of this design with a `model/*` media type (a STEP solid or a mesh). Required.
+   * @param inputs.file The file to import: an attachment of this design with a `model/*` media type or an OpenSCAD file (a STEP solid, a mesh, or a `.scad` file compiled to a mesh). Required.
    * @param inputs.units Meshes only: what unit the file's numbers are in (`auto` takes a 3MF's own). STEP converts its own units. Default auto.
    * @param inputs.up The file's up axis; `y` turns it +90° about X (Y-up to Z-up). Default z.
+   * @param inputs.scadName OpenSCAD files only: override 1's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue OpenSCAD files only: override 1's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName2 OpenSCAD files only: override 2's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue2 OpenSCAD files only: override 2's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName3 OpenSCAD files only: override 3's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue3 OpenSCAD files only: override 3's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName4 OpenSCAD files only: override 4's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue4 OpenSCAD files only: override 4's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName5 OpenSCAD files only: override 5's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue5 OpenSCAD files only: override 5's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName6 OpenSCAD files only: override 6's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue6 OpenSCAD files only: override 6's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName7 OpenSCAD files only: override 7's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue7 OpenSCAD files only: override 7's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName8 OpenSCAD files only: override 8's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue8 OpenSCAD files only: override 8's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName9 OpenSCAD files only: override 9's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue9 OpenSCAD files only: override 9's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName10 OpenSCAD files only: override 10's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue10 OpenSCAD files only: override 10's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName11 OpenSCAD files only: override 11's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue11 OpenSCAD files only: override 11's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName12 OpenSCAD files only: override 12's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue12 OpenSCAD files only: override 12's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName13 OpenSCAD files only: override 13's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue13 OpenSCAD files only: override 13's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName14 OpenSCAD files only: override 14's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue14 OpenSCAD files only: override 14's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName15 OpenSCAD files only: override 15's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue15 OpenSCAD files only: override 15's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName16 OpenSCAD files only: override 16's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue16 OpenSCAD files only: override 16's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName17 OpenSCAD files only: override 17's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue17 OpenSCAD files only: override 17's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName18 OpenSCAD files only: override 18's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue18 OpenSCAD files only: override 18's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName19 OpenSCAD files only: override 19's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue19 OpenSCAD files only: override 19's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName20 OpenSCAD files only: override 20's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue20 OpenSCAD files only: override 20's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName21 OpenSCAD files only: override 21's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue21 OpenSCAD files only: override 21's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName22 OpenSCAD files only: override 22's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue22 OpenSCAD files only: override 22's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName23 OpenSCAD files only: override 23's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue23 OpenSCAD files only: override 23's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName24 OpenSCAD files only: override 24's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue24 OpenSCAD files only: override 24's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName25 OpenSCAD files only: override 25's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue25 OpenSCAD files only: override 25's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName26 OpenSCAD files only: override 26's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue26 OpenSCAD files only: override 26's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName27 OpenSCAD files only: override 27's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue27 OpenSCAD files only: override 27's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName28 OpenSCAD files only: override 28's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue28 OpenSCAD files only: override 28's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName29 OpenSCAD files only: override 29's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue29 OpenSCAD files only: override 29's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName30 OpenSCAD files only: override 30's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue30 OpenSCAD files only: override 30's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName31 OpenSCAD files only: override 31's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue31 OpenSCAD files only: override 31's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
+   * @param inputs.scadName32 OpenSCAD files only: override 32's variable, the name of a top-level variable of the file (`width`, `$fn`). Needs its value.
+   * @param inputs.scadValue32 OpenSCAD files only: override 32's value, an expression (a plain number, or a length or an angle, which reach OpenSCAD in mm and degrees). Needs its variable.
    *
    * The faces it makes, as `handle.face(role)` takes them:
    * - `face:<n>` — A face of the imported solid, in the order the file's B-rep has them.

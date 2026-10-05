@@ -48,6 +48,7 @@ import {
   type FeatureId,
   importFileOf,
   isMeshMediaType,
+  isScadMediaType,
   newBodyNames,
   type ReferenceIssue,
   setSketchGeometry,
@@ -223,6 +224,7 @@ export class DesignJob {
   #service: KernelService | undefined;
   #sketchSolver: SketchSolver | undefined;
   #meshesEnabled = false;
+  #openscadEnabled = false;
   /** What the kernel has already been sent (a font ID, or `file:<id>`). */
   readonly #sent = new Set<string>();
   #disposed = false;
@@ -481,7 +483,10 @@ export class DesignJob {
   /** The kernel, started once per job (ADR-0069 §4: one per process). */
   async #kernel(): Promise<KernelService> {
     if (this.#disposed) throw new HeadlessError('This design job is disposed.');
-    this.#service ??= new KernelService(() => loadOcct());
+    this.#service ??= new KernelService(() => loadOcct(), {
+      // OpenSCAD (P5-04, ADR-0071 §3), loaded only for a design with a `.scad` import.
+      openscad: async () => (await import('@extrudo/openscad/node')).createNodeCompiler(),
+    });
     await this.#service.init();
     return this.#service;
   }
@@ -600,7 +605,8 @@ export class DesignJob {
    * Sends the kernel what the design's texts and imports need, once each
    * (ADR-0058 §4, ADR-0066 §0): the bundled fonts from `@extrudo/fonts` and
    * the design's own attachments from the archive, and manifold-3d when one of
-   * the files is a mesh.
+   * the files is a mesh — with OpenSCAD's compiler when one is a `.scad` file
+   * (ADR-0071 §3).
    */
   async #sendResources(): Promise<void> {
     const service = await this.#kernel();
@@ -612,14 +618,18 @@ export class DesignJob {
       await service.addFont(id, bytes);
       this.#sent.add(id);
     }
-    const files: { id: AttachmentId; mesh: boolean }[] = [];
+    const files: { id: AttachmentId; mesh: boolean; scad: boolean }[] = [];
     for (const feature of doc.features) {
       const id = importFileOf(feature);
       if (!id || this.#sent.has(`file:${id}`)) continue;
       const attachment = doc.attachments?.[id];
       if (!attachment) continue;
       const bytes = this.#attachments.get(attachment.sha256);
-      files.push({ id, mesh: isMeshMediaType(attachment.mediaType) });
+      files.push({
+        id,
+        mesh: isMeshMediaType(attachment.mediaType),
+        scad: isScadMediaType(attachment.mediaType),
+      });
       if (!bytes) continue;
       await service.addFile(id, ownBuffer(bytes), attachment.mediaType, attachment.fileName);
       this.#sent.add(`file:${id}`);
@@ -627,6 +637,10 @@ export class DesignJob {
     if (!this.#meshesEnabled && files.some(({ mesh }) => mesh)) {
       await service.enableMeshes();
       this.#meshesEnabled = true;
+    }
+    if (!this.#openscadEnabled && files.some(({ scad }) => scad)) {
+      await service.enableOpenscad();
+      this.#openscadEnabled = true;
     }
   }
 
