@@ -357,8 +357,8 @@ const compiles = new WeakMap<ScadCompiler, Map<string, Promise<ScadResult>>>();
 const COMPILES_KEPT = 16;
 
 function compileOnce(compiler: ScadCompiler, request: ScadRequest): Promise<ScadResult> {
-  let kept = compiles.get(compiler);
-  if (!kept) compiles.set(compiler, (kept = new Map()));
+  const kept = compiles.get(compiler) ?? new Map<string, Promise<ScadResult>>();
+  compiles.set(compiler, kept);
   const key = `${request.fileName}\n${digest(request.source)}\n${JSON.stringify(request.defines)}`;
   const known = kept.get(key);
   if (known) {

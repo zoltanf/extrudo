@@ -37,3 +37,9 @@ declare module '*.ttf?url&inline' {
   const dataUrl: string;
   export default dataUrl;
 }
+
+// The P5-04 OpenSCAD fixtures (ADR-0071): source text, read as it is.
+declare module '*.scad?raw' {
+  const source: string;
+  export default source;
+}
