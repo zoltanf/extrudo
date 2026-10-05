@@ -1,9 +1,16 @@
-import { CHAMFER_MAX_SETS, ChamferInputsSchema, chamferSets } from '@extrudo/core';
+import {
+  CHAMFER_MAX_SETS,
+  ChamferInputsSchema,
+  chamferInputs,
+  chamferSets,
+  type FeatureId,
+  insertFeature,
+} from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { chamferDialog } from './chamfer';
 import { featureDialogs, specForCommand } from './registry';
 import type { DialogValues } from './spec';
-import { BOX, settle, setupDialogs } from './testing';
+import { BOX, faceItem, settle, setupDialogs } from './testing';
 import { defaultValues, mergeValues, shownFields } from './values';
 
 const edgeItem = (index: number) => ({ kind: 'edge' as const, id: `${BOX}:${index}` });
@@ -37,6 +44,7 @@ describe('the chamfer dialog', () => {
     expect(names(mergeValues(empty, { choices: { mode: 'two-distances' } }))).toEqual([
       'edges',
       'mode',
+      'face',
       'distance',
       'distanceB',
       'flip',
@@ -44,6 +52,7 @@ describe('the chamfer dialog', () => {
     expect(names(mergeValues(empty, { choices: { mode: 'distance-angle' } }))).toEqual([
       'edges',
       'mode',
+      'face',
       'distance',
       'angle',
       'flip',
@@ -64,6 +73,7 @@ describe('the chamfer dialog', () => {
       'distance',
       'edges2',
       'mode2',
+      'face2',
       'distance2',
       'angle2',
       'flip2',
@@ -75,9 +85,14 @@ describe('the chamfer dialog', () => {
   });
 
   it('has room for the feature’s maximum number of sets', () => {
-    expect(chamferDialog.fields.filter((f) => f.kind === 'selection')).toHaveLength(
-      CHAMFER_MAX_SETS,
+    const edgeFields = chamferDialog.fields.filter(
+      (f) => f.kind === 'selection' && /^edges\d*$/.test(f.name),
     );
+    expect(edgeFields).toHaveLength(CHAMFER_MAX_SETS);
+    // A reference face field of its own in every set (P4-12).
+    expect(
+      chamferDialog.fields.filter((f) => f.kind === 'selection' && /^face\d*$/.test(f.name)),
+    ).toHaveLength(CHAMFER_MAX_SETS);
   });
 
   it('picking an edge brings its tangent chain, and unpicking it takes the chain out', async () => {
@@ -112,6 +127,8 @@ describe('the chamfer dialog', () => {
     t.controller.setExpr('distanceB2', '1 mm');
     t.controller.setToggle('flip2', true);
     const inputs = t.open()?.draft.inputs ?? {};
+    // `face` is a shown field of set 2's type, so it is an empty ref input;
+    // set 1 is equal-distance, which has no reference face.
     expect(Object.keys(inputs).sort()).toEqual([
       'distance',
       'distance2',
@@ -119,6 +136,7 @@ describe('the chamfer dialog', () => {
       'edges',
       'edges2',
       'edges3',
+      'face2',
       'flip2',
       'mode',
       'mode2',
@@ -160,5 +178,81 @@ describe('the chamfer dialog', () => {
     t.controller.start('chamfer');
     expect(t.open()?.checked.fields).toEqual({ edges: 'Pick edges.' });
     expect(t.controller.ok()).toBe(false);
+  });
+});
+
+describe('the chamfer dialog’s reference face', () => {
+  it('shows it under the type for the two unequal types, and the flip goes while one is picked', () => {
+    const empty = defaultValues(chamferDialog);
+    const unequal = mergeValues(empty, { choices: { mode: 'two-distances' } });
+    expect(names(unequal)).toEqual(['edges', 'mode', 'face', 'distance', 'distanceB', 'flip']);
+    // A picked face decides, so there is no flip to disagree with it.
+    const withFace = mergeValues(unequal, { refs: { face: [{ kind: 'face', id: 'box:top' }] } });
+    expect(names(withFace)).toEqual(['edges', 'mode', 'face', 'distance', 'distanceB']);
+    expect(withFace.refs.face).toEqual([{ kind: 'face', id: 'box:top' }]);
+    // Back to equal distance: there is no face to name at all.
+    expect(names(mergeValues(withFace, { choices: { mode: 'equal' } }))).toEqual([
+      'edges',
+      'mode',
+      'distance',
+    ]);
+  });
+
+  it('a picked face replaces the flip in the inputs, and the flip comes back without it', async () => {
+    const t = setup();
+    t.controller.start('chamfer');
+    t.controller.select.onClick(edgeItem(5), false);
+    await settle();
+    t.controller.setChoice('mode', 'two-distances');
+    t.controller.setExpr('distance', '2 mm');
+    t.controller.setExpr('distanceB', '5 mm');
+    t.controller.setToggle('flip', true);
+    t.controller.pickInto('face');
+    t.controller.select.onClick(faceItem(1), false);
+    expect(t.open()?.values.refs.face).toEqual([{ kind: 'face', id: 'box:top' }]);
+    const inputs = t.open()?.draft.inputs ?? {};
+    expect(inputs.face).toEqual({ kind: 'ref', refs: [{ kind: 'face', id: 'box:top' }] });
+    // The flip is hidden, so it is no input: the face decides alone.
+    expect(inputs.flip).toBeUndefined();
+    expect(chamferSets(inputs as never)[0]?.face).toEqual({ kind: 'face', id: 'box:top' });
+    t.controller.select.onClick(faceItem(1), false);
+    expect(t.open()?.values.refs.face).toEqual([]);
+    expect(t.open()?.draft.inputs.flip).toEqual({ kind: 'bool', value: true });
+  });
+
+  it('opens a stored chamfer with its reference face, and the flip hidden', async () => {
+    const t = setup();
+    t.store.getState().dispatch(
+      insertFeature({
+        feature: {
+          id: 'C1' as FeatureId,
+          type: 'chamfer',
+          name: 'Chamfer1',
+          suppressed: false,
+          inputs: chamferInputs([
+            {
+              edges: [edgeRef(5)],
+              mode: 'two-distances',
+              distance: '2 mm',
+              distanceB: '5 mm',
+              face: { kind: 'face', id: 'box:top' },
+            },
+          ]),
+        },
+      }),
+    );
+    t.controller.edit('C1' as FeatureId);
+    const values = t.open()?.values as DialogValues;
+    expect(values.refs.face).toEqual([{ kind: 'face', id: 'box:top' }]);
+    expect(names(values)).toEqual(['edges', 'mode', 'face', 'distance', 'distanceB', 'edges2']);
+    // Set 2's empty edges field shows, so it is an empty input; the flip does not.
+    expect(Object.keys(t.open()?.draft.inputs ?? {}).sort()).toEqual([
+      'distance',
+      'distanceB',
+      'edges',
+      'edges2',
+      'face',
+      'mode',
+    ]);
   });
 });

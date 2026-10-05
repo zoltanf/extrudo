@@ -8,7 +8,9 @@
  * own `mode` and values. Set 1 uses the input names `edges`, `mode`,
  * `distance`, `distanceB`, `angle` and `flip`; set `n` appends its number
  * (`edges2`, `mode2`, `distance2`, `distanceB2`, `angle2`, `flip2` …). All
- * inputs are optional; a set without edges is ignored. The modes:
+ * inputs are optional; a set without edges is ignored.
+ * `CHAMFER_MAX_SETS` was 8 until P4-12, which raised it to 32 (as in a
+ * fillet): a document with fewer sets reads unchanged. The modes:
  *
  * - `equal`: the chamfer is `distance` from the edge on both faces.
  * - `two-distances`: `distance` on the set's first face, `distanceB` on the
@@ -17,6 +19,12 @@
  * - `distance-angle`: `distance` on the first face, and the chamfer makes
  *   `angle` with that face (45° is the same as equal distances; 30° gives a
  *   shallow bevel that is longer on that face).
+ *
+ * **Reference face (P4-12).** The two non-equal modes may name which face
+ * takes `distance`, with a per-set `face` input (`face`, `face2` …, a `face`
+ * reference): the evaluator then works out `flip` from the picked face, so
+ * the choice doesn't depend on the kernel's face order. It must touch every
+ * edge of the set. While a set has a face, `flip` is ignored.
  *
  * The inputs are plain `ref`, `enum`, `expr` and `bool` inputs, so the
  * document schema doesn't change.
@@ -32,8 +40,8 @@ import { z } from './zod';
 
 export const CHAMFER_TYPE = 'chamfer';
 
-/** How many edge sets a chamfer can have. */
-export const CHAMFER_MAX_SETS = 8;
+/** How many edge sets a chamfer can have (P4-12: up from 8). */
+export const CHAMFER_MAX_SETS = 32;
 
 /** The three ways to size a chamfer (FR-FT-05). */
 export const CHAMFER_MODES = ['equal', 'two-distances', 'distance-angle'] as const;
@@ -41,6 +49,9 @@ export type ChamferMode = (typeof CHAMFER_MODES)[number];
 
 /** The kinds of reference a chamfer takes: edges of bodies. */
 export const CHAMFER_EDGE_KINDS = ['edge'] as const;
+
+/** The kinds of reference a chamfer set's reference face takes (P4-12). */
+export const CHAMFER_FACE_KINDS = ['face'] as const;
 
 /** The name of a set's input: `base` for set 1, `base<n>` for the others. */
 const keyOf = (base: string, n: number) => (n === 1 ? base : `${base}${n}`);
@@ -54,6 +65,8 @@ export const chamferDistanceKey = (n: number) => keyOf('distance', n);
 export const chamferDistanceBKey = (n: number) => keyOf('distanceB', n);
 export const chamferAngleKey = (n: number) => keyOf('angle', n);
 export const chamferFlipKey = (n: number) => keyOf('flip', n);
+/** The face that takes the first distance (P4-12): `face`, `face2` … */
+export const chamferFaceKey = (n: number) => keyOf('face', n);
 
 const shape: Record<string, z.ZodType> = {};
 for (let n = 1; n <= CHAMFER_MAX_SETS; n++) {
@@ -78,6 +91,9 @@ for (let n = 1; n <= CHAMFER_MAX_SETS; n++) {
   shape[chamferFlipKey(n)] = BoolInputSchema.optional().describe(
     `${set}'s first distance goes on the other face. Default false.`,
   );
+  shape[chamferFaceKey(n)] = refsOf(CHAMFER_FACE_KINDS, 1)
+    .optional()
+    .describe("The face the chamfer's distances are measured from, for this set's edges.");
 }
 
 /** A chamfer's inputs: `edges`/`mode`/`distance`/… and their numbered copies (all optional). */
@@ -108,6 +124,11 @@ export interface ChamferSet {
   mode: ChamferMode;
   /** Swap which face takes the first distance (two distances, distance and angle). */
   flip: boolean;
+  /**
+   * The face that takes the first distance (P4-12), instead of the kernel's
+   * default and `flip`. It must touch every edge of the set.
+   */
+  face: GeomRef | undefined;
   /** The `expr` inputs' names, absent while the set lacks them. */
   distance: string | undefined;
   distanceB: string | undefined;
@@ -129,11 +150,13 @@ export function chamferSets(inputs: ChamferInputs): ChamferSet[] {
     const edges = inputs[chamferEdgesKey(n)];
     if (edges?.kind !== 'ref' || edges.refs.length === 0) continue;
     const flip = inputs[chamferFlipKey(n)] as BoolInput | undefined;
+    const face = inputs[chamferFaceKey(n)];
     sets.push({
       n,
       edges: edges.refs,
       mode: chamferModeOf(inputs, n),
       flip: flip?.kind === 'bool' ? flip.value : false,
+      face: face?.kind === 'ref' ? (face.refs[0] as GeomRef | undefined) : undefined,
       distance: named(chamferDistanceKey(n)),
       distanceB: named(chamferDistanceBKey(n)),
       angle: named(chamferAngleKey(n)),
@@ -153,6 +176,8 @@ export interface ChamferSetSpec {
   /** For `distance-angle`. */
   angle?: string;
   flip?: boolean;
+  /** The face that takes the first distance (P4-12), for the non-equal modes. */
+  face?: GeomRef;
 }
 
 /**
@@ -174,6 +199,7 @@ export function chamferInputs(sets: readonly ChamferSetSpec[]): ChamferInputs {
       inputs[chamferAngleKey(n)] = { kind: 'expr', expr: set.angle, unit: 'angle' };
     }
     if (set.flip !== undefined) inputs[chamferFlipKey(n)] = { kind: 'bool', value: set.flip };
+    if (set.face !== undefined) inputs[chamferFaceKey(n)] = { kind: 'ref', refs: [set.face] };
   });
   return inputs;
 }

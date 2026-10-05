@@ -16,6 +16,10 @@
  * not an input of its own — a set is variable exactly when it has an end
  * radius — so turning the toggle off drops those two inputs again (the
  * default mapping only writes the fields that are shown).
+ *
+ * **The radius handle (P4-12).** Set 1's Radius has an in-view arrow on the
+ * set's first edge, pointing away from the body (`features/edgeHandles.ts`),
+ * so dragging it sets the radius; a variable set's arrow moves Radius only.
  */
 import {
   FILLET_EDGE_KINDS,
@@ -26,7 +30,8 @@ import {
   filletRadiusKey,
   filletSwapKey,
 } from '@extrudo/core';
-import { type DialogField, type DialogValues, defineFeatureDialog } from './spec';
+import { setDistanceManipulator } from './edgeHandles';
+import { type DialogField, type DialogValues, defineFeatureDialog, type Manipulator } from './spec';
 import { defaultFromInputs, defaultInputs } from './values';
 
 const hasEdges = (values: DialogValues, n: number) =>
@@ -119,4 +124,9 @@ export const filletDialog = defineFeatureDialog({
   },
   // The result replaces the body it rounds: drawn as the body itself.
   previewStyle: () => 'new',
+  manipulators: (values, ctx) => [
+    ...[setDistanceManipulator(filletRadiusKey(1), filletEdgesKey(1), values, ctx.bodies)].filter(
+      (m): m is Manipulator => m !== undefined,
+    ),
+  ],
 });

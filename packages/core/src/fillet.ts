@@ -8,6 +8,8 @@
  * `radius<n>` (`edges2`, `radius2` …). Every input is optional; a set
  * without edges is ignored, one with edges needs its radius. The inputs are
  * plain `ref` and `expr` inputs, so the document schema is unchanged.
+ * `FILLET_MAX_SETS` was 8 until P4-12, which raised it to 32: a document
+ * with fewer sets is read exactly as before (the extra inputs are optional).
  *
  * **Variable radius (P4-10, ADR-0064).** A set with a `radiusEnd<n>` is
  * **variable**: the radius runs from `radius<n>` at the start of the set's
@@ -27,8 +29,8 @@ import { z } from './zod';
 
 export const FILLET_TYPE = 'fillet';
 
-/** How many edge sets a fillet can have. */
-export const FILLET_MAX_SETS = 8;
+/** How many edge sets a fillet can have (P4-12: up from 8). */
+export const FILLET_MAX_SETS = 32;
 
 /** The input holding set `n`'s (1-based) edges: `edges`, `edges2`, … */
 export const filletEdgesKey = (n: number) => (n === 1 ? 'edges' : `edges${n}`);

@@ -76,6 +76,23 @@ describe('fillet inputs', () => {
         .success,
     ).toBe(false);
   });
+
+  it('reads a document written with eight sets as it was, and has room for more (P4-12)', () => {
+    // A P3-01 document: eight sets of edges and radii.
+    const inputs: Record<string, unknown> = {};
+    for (let n = 1; n <= 8; n++) {
+      inputs[filletEdgesKey(n)] = { kind: 'ref', refs: [edge(`e${n}`)] };
+      inputs[filletRadiusKey(n)] = { kind: 'expr', expr: `${n} mm`, unit: 'length' };
+    }
+    expect(FilletInputsSchema.safeParse(inputs).success).toBe(true);
+    expect(filletSets(inputs as never).map((s) => s.n)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    // Set 20 fits since P4-12 raised the maximum to 32.
+    inputs[filletEdgesKey(20)] = { kind: 'ref', refs: [edge('e20')] };
+    inputs[filletRadiusKey(20)] = { kind: 'expr', expr: '20 mm', unit: 'length' };
+    expect(FilletInputsSchema.safeParse(inputs).success).toBe(true);
+    expect(filletSets(inputs as never).map((s) => s.n)).toContain(20);
+    expect(FILLET_MAX_SETS).toBe(32);
+  });
 });
 
 describe('fillet variable radius', () => {

@@ -168,3 +168,48 @@ native harness on the pinned image):
   says what it measures.
 - Variable distance (FR-FT-05 doesn't ask for it) would need per-edge laws,
   as for a fillet.
+
+## Amendment 2026-10-05: a reference face, 32 sets and a distance handle (P4-12)
+
+P4-12's backlog asked for a pickable reference face for the two unequal
+modes, more than eight edge sets and an on-canvas distance handle. All three
+are in, without a facade change.
+
+**Reference face.** A set of `two-distances` or `distance-angle` may name the
+face that takes `distance` with a new per-set input `face` (`face`, `face2`
+…: a `face` reference, at most one). The kernel resolves it and turns it
+into the `flip` the facade already understands: the facade's own reference
+face is the lower-numbered of an edge's two faces in the body's face order,
+so `flip` is "the picked face is not that one", worked out per edge from the
+body's description (`Kernel.describe`). A face that is not one of an edge's
+own two faces is an error naming the set and the edge ("The reference face
+of edge set 1 doesn't touch edge 12: pick a face next to every edge in the
+set."), because the chamfer cannot be built as asked.
+
+An equal-distance chamfer ignores the face (it has one distance for both
+faces), so an equal set's `face` input is neither read nor written: the
+dialog's field shows for the two unequal types only, and a stored one is
+dropped when the type goes back to `equal`. While a set has a face the Flip
+toggle is hidden — the face decides, and a flip that disagreed with it would
+be a lie.
+
+The alternative was a facade method taking the reference face by index
+(`chamfer` would stage an index instead of a flag). That needs an OCCT
+rebuild for something the evaluator can already read out of `describe`, and
+would make the flag and the new input two ways of saying the same thing in
+one call. Rejected. Also rejected: the dialog writing `flip` itself, which
+would have to reproduce the kernel's face order (and change when an earlier
+edit renumbered the faces); a per-edge reference face (the input names have
+room, `face2` is per set).
+
+**32 sets** and **the distance handle** as ADR-0038's amendment of the same
+date (`CHAMFER_MAX_SETS` 32; set 1's `distance` a `distance` manipulator on
+the set's first edge, along the outward bisector of its two faces' normals,
+where that can be read).
+
+Tests: `chamfer.test.ts` "a picked reference face is the same chamfer as the
+flip that makes it the reference" (both unequal modes, each face, the volume
+the same either way round), "a reference face that doesn't touch an edge of
+the set says so", "twenty edge sets build the same body as one set with the
+same 20 edges"; `e2e/chamfer.spec.ts` measures the top face's footprint and
+the volume from a 3MF export for each reference face.

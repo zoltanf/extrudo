@@ -4,6 +4,22 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-05 · **P4-12 Fillet and chamfer depth: 32 edge sets, a chamfer's
+  reference face, radius and distance handles** (ADR-0038 and ADR-0043
+  amendments): `FILLET_MAX_SETS` and `CHAMFER_MAX_SETS` go from 8 to 32 (a
+  document written with fewer sets reads unchanged; parsing costs 5 % more),
+  and a chamfer set of the two unequal modes may name the face that takes
+  its distance with a new `face` input, which the kernel turns into the
+  `flip` the facade already understands (a face that doesn't touch one of the
+  set's edges is an error naming the set and the edge; an equal set ignores
+  it, and the dialog hides its Flip while a face is picked). Set 1's Radius
+  and Distance each get an in-view handle on the set's first edge, along the
+  outward bisector of its two faces' normals read from the model meshes --
+  with no handle where that can't be read honestly (a seam, a smooth chain,
+  a face the meshes don't have). The handles also found that a dialog's
+  heads-up box swallowed `Shift+1...7` (the view commands) along with the
+  plain digits it is there for, which is what left B8's fourth fillet edge
+  unpicked; a key with a modifier is a command now. No facade change.
 - 2026-10-05 · **P5-01 (3 of 3) The API reference and the docs site pages**
   (ADR-0068 §6): `pnpm api:generate` writes `docs/api/features/<type>.md` as well
   as the methods -- one page per feature type with its inputs (type, required or

@@ -69,6 +69,56 @@ async function clickEdge(
   await page.mouse.click(x, y + 2);
 }
 
+/**
+ * The cube's top front edge after the vertical edges are rounded: the chain's
+ * straight part, at its middle and a little along it. The pick finds an edge
+ * at one of them but not always at the middle (the round's radius handle
+ * stands there while a fillet or chamfer dialog is open, P4-12).
+ */
+const TOP_FRONT: readonly (readonly [number, number, number])[] = [
+  [0, -10, 20],
+  [-3, -10, 20],
+  [3, -10, 20],
+];
+
+/** Clicks the top front edge at the first of those points the view picks an edge at. */
+async function clickTopFront(
+  page: Page,
+  at: (p: [number, number, number]) => { x: number; y: number },
+) {
+  const viewport = viewportOf(page);
+  for (const p of TOP_FRONT) {
+    const { x, y } = at([...p]);
+    await page.mouse.move(x, y + 2);
+    const edge = await expect
+      .poll(() => viewport.getAttribute('data-model-hover'), { timeout: 1_000 })
+      .toMatch(/^edge:/)
+      .then(() => true)
+      .catch(() => false);
+    if (!edge) continue;
+    await page.mouse.click(x, y + 2);
+    return;
+  }
+  throw new Error('the top front edge was not pickable');
+}
+
+/** A manipulator handle's centre in page px. */
+async function handle(viewport: Locator, field: string) {
+  const circle = viewport.locator(`[data-manipulator-handle="${field}"]`);
+  const box = await viewport.boundingBox();
+  const cx = Number(await circle.getAttribute('cx'));
+  const cy = Number(await circle.getAttribute('cy'));
+  return { x: (box?.x ?? 0) + cx, y: (box?.y ?? 0) + cy };
+}
+
+async function drag(page: Page, from: { x: number; y: number }, dx: number, dy: number) {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + dx / 2, from.y + dy / 2, { steps: 4 });
+  await page.mouse.move(from.x + dx, from.y + dy, { steps: 4 });
+  await page.mouse.up();
+}
+
 /** The model's volume in mm³, from a 3MF export (a tessellation, so a little under). */
 async function volume(page: Page) {
   const file = await exportModel(page, '3MF');
@@ -169,14 +219,14 @@ test('a picked edge brings its tangent chain, which is rounded as one', async ({
 
   // The top front edge now runs between two arcs: it comes with them and the edges beyond,
   // seven up to the sharp corner at the back (left edge, arc, front, arc, right, arc, back).
-  await clickEdge(page, at, [0, -10, 20]);
+  await clickTopFront(page, at);
   await page.keyboard.press('f');
   const second = page.getByRole('region', { name: 'Fillet dialog' });
   await expect(second.getByRole('button', { name: 'Edges', exact: true })).toHaveText('7 edges');
   // Unpicking one edge of a chain takes the whole chain out; picking it brings it back.
-  await clickEdge(page, at, [0, -10, 20]);
+  await clickTopFront(page, at);
   await expect(second.getByRole('button', { name: 'Edges', exact: true })).toHaveText('Pick edges');
-  await clickEdge(page, at, [0, -10, 20]);
+  await clickTopFront(page, at);
   await expect(second.getByRole('button', { name: 'Edges', exact: true })).toHaveText('7 edges');
   await second.getByRole('textbox', { name: 'Radius', exact: true }).fill('1 mm');
   await expect(second).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
@@ -282,4 +332,86 @@ test('a variable radius tapers along the edge between its two ends', async ({ pa
   await expect(edit.getByRole('textbox', { name: 'End radius' })).toHaveValue('5 mm');
   await edit.getByRole('checkbox', { name: 'Variable' }).uncheck();
   await expect(edit.getByRole('textbox', { name: 'End radius' })).toHaveCount(0);
+});
+
+test('the radius handle on the edge sets the radius', async ({ page }) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await cube(page);
+  const at = await settledProjector(viewport);
+
+  // The top front edge, between the top face and the front one.
+  await clickEdge(page, at, [0, -10, 20]);
+  await page.keyboard.press('f');
+  const dialog = page.getByRole('region', { name: 'Fillet dialog' });
+  await expect(dialog).toBeVisible();
+  // One handle: set 1's Radius, out along the edge's two faces.
+  await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
+    'data-manipulators',
+    'distance:radius',
+  );
+  const radiusField = dialog.getByRole('textbox', { name: 'Radius', exact: true });
+  await radiusField.fill('2 mm');
+  // The field keeps what it is given while it has the focus (it is the user's
+  // own text until they leave it), so it shows the drag's value only blurred.
+  await radiusField.blur();
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  // The handle stands at the edge's middle and away from the body.
+  const middle = at([0, -10, 20]);
+  const head = await handle(viewport, 'radius');
+  const out = { x: head.x - middle.x, y: head.y - middle.y };
+  expect(Math.hypot(out.x, out.y)).toBeGreaterThan(4);
+
+  // Drag it further out along the arrow: the radius follows, and the round grows.
+  await drag(page, head, out.x, out.y);
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  const text = await radiusField.inputValue();
+  const radius = Number.parseFloat(text);
+  expect(radius, `radius after the drag: ${text}`).toBeGreaterThan(3);
+  expect(radius).toBeLessThan(8);
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:7:20,20,20');
+  const dragged = await volume(page);
+
+  // The same edge at 2 mm for the volume the dragged round has to be under.
+  await chip(page, 'Fillet1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Fillet1 dialog' });
+  await expect(edit).toBeVisible();
+  // The stored radius is the one the drag wrote (snapped to a step).
+  const stored = Number.parseFloat(
+    await edit.getByRole('textbox', { name: 'Radius', exact: true }).inputValue(),
+  );
+  expect(stored).toBeCloseTo(radius, 1);
+  await edit.getByRole('textbox', { name: 'Radius', exact: true }).fill('2 mm');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page);
+  expect(dragged).toBeLessThan(await volume(page));
+});
+
+test('a shortcut with a digit is the app’s, not the heads-up box’s', async ({ page }) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await cube(page);
+  const at = await settledProjector(viewport);
+  await clickEdge(page, at, [0, -10, 20]);
+  await page.keyboard.press('f');
+  const dialog = page.getByRole('region', { name: 'Fillet dialog' });
+  const radiusField = dialog.getByRole('textbox', { name: 'Radius', exact: true });
+  await radiusField.fill('2 mm');
+  await radiusField.blur();
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  const home = await viewport.getAttribute('data-camera-direction');
+
+  // The front view turns the camera; the 5 belongs to the command, not to the
+  // Radius field, which keeps its own value (P4-12: the handle makes Shift+1…7
+  // worth pressing while a fillet dialog is open).
+  await page.keyboard.press('Shift+4');
+  await expect.poll(() => viewport.getAttribute('data-camera-direction')).not.toBe(home);
+  await expect(radiusField).toHaveValue('2 mm');
 });

@@ -850,9 +850,17 @@ end to end, faster than in Fusion 360.
   drew it, so a swept section has to be *centred on the path*.
 - [ ] **P4-12 Modeling depth backlog (from the Phase 3 ADRs).** Added
   2026-09-30; split into tasks as needed:
-  - Fillet and chamfer: on-canvas radius/distance handles, more than 8 sets,
-    a pickable reference face for chamfer (ADR-0038, -0043; variable radius
-    is P4-10).
+  - ~~Fillet and chamfer: on-canvas radius/distance handles, more than 8
+    sets, a pickable reference face for chamfer~~ **done 2026-10-05**
+    (ADR-0038 and ADR-0043 amendments): 32 sets each
+    (`FILLET_MAX_SETS`, `CHAMFER_MAX_SETS`; a document with fewer reads
+    unchanged), a per-set `face` for a chamfer's unequal modes that decides
+    `flip` in the kernel (an equal set ignores it, and the dialog hides its
+    Flip while a face is picked), and a `distance` handle on set 1's first
+    edge along the outward bisector of its two faces' normals (no handle
+    where that can't be read: a seam, a smooth chain, a face the meshes
+    don't have). Still open: handles for the other sets and for a variable
+    fillet's End radius.
   - Shell: a thickness per face; removing faces next to a fillet (ADR-0046).
   - Primitives: position handles and a click point as the centre, torus
     placement options, a box from two corners (ADR-0032).

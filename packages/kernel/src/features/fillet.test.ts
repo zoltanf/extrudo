@@ -13,6 +13,7 @@ import {
   FeatureRegistry,
   type FeatureStatus,
   filletInputs,
+  filletSets,
   type GeomRef,
   originPlaneRef,
   type SketchData,
@@ -166,6 +167,33 @@ const between = (a: string, b: string) => edgeName([a, b]);
 const cap = 'extrude:B:cap:end';
 const side = (line: string) => `extrude:B:side:${line}`;
 
+/**
+ * A 24-sided prism 10 mm tall on XY (body `P:0`), whose 24 vertical edges
+ * give room for more sets than P4-12 allows. `edges` finds them in a
+ * recompute of its features.
+ */
+function polygonPrism(sides = 24, radius = 20, height = 10) {
+  const b = new SketchBuilder();
+  const at = (k: number) => {
+    const a = (2 * Math.PI * k) / sides;
+    return [radius * Math.cos(a), radius * Math.sin(a)] as const;
+  };
+  const lines = Array.from(
+    { length: sides },
+    (_, k) => b.line(...at(k), ...at((k + 1) % sides)).id,
+  );
+  const features = [sketch('SP', b.sketch), extrude('P', 'SP', b.sketch, `${height} mm`)];
+  const edges = (result: Done) =>
+    lines.map((line, k) =>
+      refTo(
+        result,
+        'edge',
+        between(`extrude:P:side:${line}`, `extrude:P:side:${lines[(k + 1) % sides]}`),
+      ),
+    );
+  return { features, edges };
+}
+
 describe('fillet', { timeout: 120_000 }, () => {
   it('rounds one edge: a fillet face named after it, the body a little smaller', async () => {
     const base = block();
@@ -205,6 +233,34 @@ describe('fillet', { timeout: 120_000 }, () => {
     expect(measure('B:0').volume).toBeCloseTo(BOX_VOLUME - off, 2);
     expect(result.bodies[0]?.mesh?.faceIds).toContain(`fillet:F:from:(${a})`);
     expect(result.bodies[0]?.mesh?.faceIds).toContain(`fillet:F:from:(${b})`);
+  });
+
+  it('twenty edge sets (P4-12): the same body as one set with the same edges', async () => {
+    const prism = polygonPrism();
+    ok(await runWithShapes(testDocument(prism.features)));
+    const prismVolume = measure('P:0').volume;
+    const twentySets = prism
+      .edges(ok(await runWithShapes(testDocument(prism.features))))
+      .slice(0, 20);
+    // One set with the same 20 edges: the reference shape.
+    ok(
+      await runWithShapes(
+        testDocument([...prism.features, fillet('A', [{ edges: twentySets, radius: '0.5 mm' }])]),
+      ),
+    );
+    const oneSet = { faces: measure('P:0').faces, volume: measure('P:0').volume };
+    // The same 20 edges, one per set (set 20 fits: the maximum went from 8 to 32).
+    const many = filletInputs(twentySets.map((edge) => ({ edges: [edge], radius: '0.5 mm' })));
+    expect(filletSets(many)).toHaveLength(20);
+    ok(
+      await runWithShapes(
+        testDocument([...prism.features, { ...testFeature('B', 'fillet'), inputs: many }]),
+      ),
+    );
+    expect(measure('P:0').faces).toBe(oneSet.faces);
+    expect(measure('P:0').volume).toBeCloseTo(oneSet.volume, 6);
+    expect(measure('P:0').valid).toBe(true);
+    expect(measure('P:0').volume).toBeLessThan(prismVolume);
   });
 
   it('keeps its face names when the radius changes', async () => {

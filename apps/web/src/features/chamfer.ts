@@ -11,24 +11,44 @@
  * it rounds one for a fillet); the live preview shows the result and a
  * failure shows its message in the dialog ("Distance 20 mm is too large for
  * edge 12 (max ≈ 9.9 mm)").
+ *
+ * **Reference face (P4-12).** A set of one of the two unequal types has a
+ * Reference face field under its Type: name the face that takes the
+ * distance instead of letting the kernel's face order choose, and Flip
+ * disappears (the face decides). The kernel refuses a face that doesn't
+ * touch every edge of the set.
+ *
+ * **The distance handle (P4-12).** Set 1's Distance has an in-view arrow on
+ * the set's first edge, pointing away from the body (`edgeHandles.ts`), so
+ * dragging it sets the distance.
  */
 import {
   CHAMFER_EDGE_KINDS,
+  CHAMFER_FACE_KINDS,
   CHAMFER_MAX_SETS,
   chamferAngleKey,
   chamferDistanceBKey,
   chamferDistanceKey,
   chamferEdgesKey,
+  chamferFaceKey,
   chamferFeature,
   chamferFlipKey,
   chamferModeKey,
 } from '@extrudo/core';
-import { type DialogField, type DialogValues, defineFeatureDialog } from './spec';
+import { setDistanceManipulator } from './edgeHandles';
+import { type DialogField, type DialogValues, defineFeatureDialog, type Manipulator } from './spec';
 
 const hasEdges = (values: DialogValues, n: number) =>
   (values.refs[chamferEdgesKey(n)]?.length ?? 0) > 0;
 
 const modeOf = (values: DialogValues, n: number) => values.choices[chamferModeKey(n)] ?? 'equal';
+
+/** Whether set `n` takes its distance on one named face (P4-12). */
+const isUnequal = (values: DialogValues, n: number) => modeOf(values, n) !== 'equal';
+
+/** Whether set `n` has a reference face picked (P4-12), which replaces its Flip. */
+const hasFace = (values: DialogValues, n: number) =>
+  (values.refs[chamferFaceKey(n)]?.length ?? 0) > 0;
 
 /** The fields of set `n` (1-based). */
 function setFields(n: number): DialogField[] {
@@ -67,6 +87,17 @@ function setFields(n: number): DialogField[] {
       ...(later && { shown: shownWith() }),
     },
     {
+      kind: 'selection',
+      name: chamferFaceKey(n),
+      label: `Reference face${suffix}`,
+      accepts: CHAMFER_FACE_KINDS,
+      min: 0,
+      max: 1,
+      prompt: 'Automatic',
+      hint: 'The face the distance is measured on, for a type with two faces to choose from. Without one, the kernel takes the first of the edge’s two faces.',
+      shown: shownWith((v) => isUnequal(v, n)),
+    },
+    {
       kind: 'expression',
       name: chamferDistanceKey(n),
       label: `Distance${suffix}`,
@@ -99,7 +130,7 @@ function setFields(n: number): DialogField[] {
       label: `Flip${suffix}`,
       default: false,
       hint: 'Swap which of the two faces takes the distance.',
-      shown: shownWith((v) => modeOf(v, n) !== 'equal'),
+      shown: shownWith((v) => isUnequal(v, n) && !hasFace(v, n)),
     },
   ];
 }
@@ -110,4 +141,9 @@ export const chamferDialog = defineFeatureDialog({
   fields: Array.from({ length: CHAMFER_MAX_SETS }, (_, i) => setFields(i + 1)).flat(),
   // The result replaces the body it bevels: drawn as the body itself.
   previewStyle: () => 'new',
+  manipulators: (values, ctx) => [
+    ...[
+      setDistanceManipulator(chamferDistanceKey(1), chamferEdgesKey(1), values, ctx.bodies),
+    ].filter((m): m is Manipulator => m !== undefined),
+  ],
 });

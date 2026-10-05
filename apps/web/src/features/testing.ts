@@ -17,6 +17,7 @@ import {
   type GeomRef,
 } from '@extrudo/core';
 import type { BodyMesh, Preview, PreviewToolStyle } from '@extrudo/kernel';
+import { edgeName } from '@extrudo/kernel';
 import type { ToastOptions } from '../design-system';
 import { boxMesh } from '../selection/testing';
 import { createDialogController, type DialogKernel } from './dialog';
@@ -37,6 +38,36 @@ export function namedBoxMesh(): BodyMesh {
     edgeIds: Array.from({ length: 12 }, (_, i) => `box:e${i}`),
     vertexIds: Array.from({ length: 8 }, (_, i) => `box:v${i}`),
   };
+}
+
+/**
+ * The faces of `boxMesh`'s 12 edges, as positions in `FACE_IDS`, in its edge
+ * order: each edge joins two of the six faces.
+ */
+const EDGE_FACES: readonly (readonly [number, number])[] = [
+  [0, 2],
+  [0, 3],
+  [1, 2],
+  [1, 3],
+  [0, 4],
+  [0, 5],
+  [1, 4],
+  [1, 5],
+  [2, 4],
+  [2, 5],
+  [3, 4],
+  [3, 5],
+];
+
+/**
+ * The box mesh with its edges named the way the kernel names them, after the
+ * two faces they bound (`e[<face>|<face>]`, ADR-0005) — what a fillet's and a
+ * chamfer's radius handle reads.
+ */
+export function namedBoxEdgesMesh(): BodyMesh {
+  const mesh = namedBoxMesh();
+  const faces = EDGE_FACES.map(([a, b]) => [FACE_IDS[a] ?? '', FACE_IDS[b] ?? '']);
+  return { ...mesh, edgeIds: faces.map((pair) => edgeName(pair)) };
 }
 
 export const CYLINDER = 'cylinder:0' as BodyId;

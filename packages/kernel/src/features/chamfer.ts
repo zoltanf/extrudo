@@ -14,6 +14,7 @@ import {
 } from '../kernel';
 import type { TopoNames } from '../naming/names';
 import { type NamedShape, withHistory } from '../naming/ops';
+import type { ResolvedRef } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 
 /**
@@ -29,6 +30,13 @@ import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../rec
  * A failure is turned into a message a person can act on (FR-UX-06): which
  * edge, and the largest distance that works ("distance too large for edge
  * 12, max ≈ 2.4 mm"). The kernel finds that number (facade `chamfer`).
+ *
+ * **Reference face (P4-12).** A set of the two non-equal modes may name the
+ * face that takes `distance` (`face`, `face2` …). The facade's own choice is
+ * the lower-numbered of an edge's two faces in the body's face order, with
+ * `flip` taking the other, so a picked face is turned into that `flip` here,
+ * edge by edge, from the body's description (`Kernel.describe`). A face that
+ * doesn't touch one of the set's edges is an error.
  */
 export const kernelChamfer: KernelFeatureDefinition<ChamferInputs> = {
   ...chamferFeature,
@@ -52,9 +60,16 @@ function evaluateChamfer(ctx: EvalContext<ChamferInputs>): FeatureOutput {
   // Edges by body, each with its set's spec.
   const byBody = new Map<BodyId, EdgePick[]>();
   for (const set of sets) {
-    const spec = specOf(ctx, set);
+    const plain = specOf(ctx, set);
+    // A set's reference face (P4-12) decides `flip` edge by edge; an equal
+    // distance chamfer has no reference face at all.
+    const face =
+      set.face && plain.mode !== 'equal'
+        ? ctx.resolve(set.face, { label: 'the chamfer’s reference face' })
+        : undefined;
     for (const ref of set.edges) {
       const hit = ctx.resolve(ref, { label: 'an edge to chamfer' });
+      const spec = face ? { ...plain, flip: flipAt(ctx, face, hit, set.n) } : plain;
       const picks = byBody.get(hit.body) ?? [];
       const same = picks.find((p) => p.index === hit.index);
       if (same) {
@@ -139,6 +154,29 @@ function specOf(ctx: EvalContext<ChamferInputs>, set: ChamferSet): ChamferSpec {
 }
 
 const sameSpec = (a: ChamferSpec, b: ChamferSpec) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Whether the set's reference face is the other one of an edge's two faces
+ * (P4-12): the facade's default reference face is the lower-numbered of them
+ * in the body's face order, and `flip` takes the higher-numbered one, so the
+ * picked face decides. The face must be one of the edge's own faces, else the
+ * chamfer can't be built as asked.
+ */
+function flipAt(
+  ctx: EvalContext<ChamferInputs>,
+  face: ResolvedRef,
+  edge: ResolvedRef,
+  set: number,
+): boolean {
+  const around =
+    face.body === edge.body ? (ctx.describe(edge.shape).edges[edge.index]?.faces ?? []) : [];
+  if (!around.includes(face.index)) {
+    throw new KernelError(
+      `The reference face of edge set ${set} doesn't touch edge ${edge.index + 1}: pick a face next to every edge in the set.`,
+    );
+  }
+  return face.index !== Math.min(...around);
+}
 
 // ----------------------------------------------------------------- messages
 

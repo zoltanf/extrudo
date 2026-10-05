@@ -113,12 +113,22 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     manipulators.find((m) => m.kind !== 'arrow');
 
   // Typing a number goes straight into the heads-up box (UI spec §3.4); Tab moves into it.
+  // A key with a modifier is a command, not typing: Shift+1…7 turn the view and
+  // Ctrl+Z undoes, and taking the digit would leave the shortcut's own handler
+  // with a prevented default (this listener is registered before the shell's).
   const box = useRef<HTMLFieldSetElement>(null);
   useEffect(() => {
     if (!current) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+      if (
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.shiftKey ||
+        event.defaultPrevented
+      )
+        return;
       if (
         target &&
         (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))

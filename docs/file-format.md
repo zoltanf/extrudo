@@ -592,18 +592,19 @@ bodies back.
 ### 6.8 `fillet`
 
 Rounds edges of a body, with a constant radius per edge set (P3-01) or one
-that tapers along the set's chain (P4-10). A fillet has up to 8 **edge
-sets**: set 1 is `edges` + `radius`, set `n` is `edges<n>` + `radius<n>`
-(`edges2`, `radius2`, ..., `edges8`, `radius8`), and a set with an **end
-radius** also takes `radiusEnd<n>` + `swap<n>` (`radiusEnd`, `radiusEnd2`,
-... and `swap`, `swap2`, ...). Every input is optional.
+that tapers along the set's chain (P4-10). A fillet has up to 32 **edge
+sets** (8 until P4-12): set 1 is `edges` + `radius`, set `n` is `edges<n>` +
+`radius<n>` (`edges2`, `radius2`, ..., `edges32`, `radius32`), and a set with
+an **end radius** also takes `radiusEnd<n>` + `swap<n>` (`radiusEnd`,
+`radiusEnd2`, ... and `swap`, `swap2`, ...). Every input is optional, so a
+file written with fewer sets reads unchanged.
 
 | Input | Kind | Rule |
 |---|---|---|
-| `edges`, `edges2` ... `edges8` | `ref` | Refs of kind `edge` (persistent edge names, section 8); a set with no edges is ignored |
-| `radius`, `radius2` ... `radius8` | `expr` | Length; greater than 0 when the kernel evaluates it (not checked by the schema); a set with edges needs its radius |
-| `radiusEnd`, `radiusEnd2` ... `radiusEnd8` | `expr` | Length, greater than 0; the radius at the chain's other end. **A set with one is variable** |
-| `swap`, `swap2` ... `swap8` | `bool` | Puts the end radius at the other end of the chain (which end that is depends on the topology) |
+| `edges`, `edges2` ... `edges32` | `ref` | Refs of kind `edge` (persistent edge names, section 8); a set with no edges is ignored |
+| `radius`, `radius2` ... `radius32` | `expr` | Length; greater than 0 when the kernel evaluates it (not checked by the schema); a set with edges needs its radius |
+| `radiusEnd`, `radiusEnd2` ... `radiusEnd32` | `expr` | Length, greater than 0; the radius at the chain's other end. **A set with one is variable** |
+| `swap`, `swap2` ... `swap32` | `bool` | Puts the end radius at the other end of the chain (which end that is depends on the topology) |
 
 The kernel rounds the whole chain of tangent-continuous edges around each
 edge you name, so edges of one chain must share their radii (two sets that
@@ -615,26 +616,29 @@ feature with `ref`, `expr` and `bool` inputs like the others.
 
 ### 6.9 `chamfer`
 
-Bevels edges of a body (P3-02). Like a fillet it has up to 8 **edge sets**,
-and each set has its **own type and values**. The names of set 1 are plain,
-set `n` appends its number: `edges`, `mode`, `distance`, `distanceB`,
-`angle`, `flip`, then `edges2`, `mode2`, `distance2`, `distanceB2`,
-`angle2`, `flip2`, ..., up to `edges8` ... `flip8`. Every input is optional.
+Bevels edges of a body (P3-02). Like a fillet it has up to 32 **edge sets**
+(8 until P4-12), and each set has its **own type and values**. The names of
+set 1 are plain, set `n` appends its number: `edges`, `mode`, `distance`,
+`distanceB`, `angle`, `flip`, `face`, then `edges2`, `mode2`, `distance2`,
+`distanceB2`, `angle2`, `flip2`, `face2`, ..., up to `edges32` ...
+`face32`. Every input is optional.
 
 | Input | Kind | Rule |
 |---|---|---|
-| `edges`, `edges2` ... `edges8` | `ref` | Refs of kind `edge` (persistent edge names, section 8); a set with no edges is ignored |
+| `edges`, `edges2` ... `edges32` | `ref` | Refs of kind `edge` (persistent edge names, section 8); a set with no edges is ignored |
 | `mode`, `mode2` ... | `enum` | `equal` (default), `two-distances` or `distance-angle` |
 | `distance`, `distance2` ... | `expr` | Length, greater than 0 when the kernel evaluates it (not checked by the schema); needed by every type |
 | `distanceB`, `distanceB2` ... | `expr` | Length: the second distance of `two-distances` |
 | `angle`, `angle2` ... | `expr` | Angle, between 0 and 90 deg (exclusive) when evaluated: the angle of `distance-angle` |
 | `flip`, `flip2` ... | `bool` | Swaps which of the edge's two faces takes `distance`, for `two-distances` and `distance-angle` (default false) |
+| `face`, `face2` ... `face32` | `ref` | One ref of kind `face` (a persistent face name, section 8): the face `distance` is measured on, for `two-distances` and `distance-angle` (P4-12). It must touch every edge of the set; while it is there, `flip` is ignored. `equal` sets ignore it |
 
 `equal` puts the chamfer `distance` from the edge on both faces.
 `two-distances` puts `distance` on the set's first face and `distanceB` on
-the other; the first face is the lower-numbered of the two faces around the
-edge in the kernel's face order (the first edge of a chain of tangent edges
-decides for the chain). `distance-angle` puts `distance` on the first face,
+the other; the first face is the one `face` names (P4-12), else the
+lower-numbered of the two faces around the edge in the kernel's face order
+(`flip` taking the other; the first edge of a chain of tangent edges decides
+for the chain). `distance-angle` puts `distance` on the first face,
 with the chamfer at `angle` to that face (45 deg is the equal chamfer). As
 in a fillet, the kernel bevels the whole chain of tangent-continuous edges
 around each edge you name, with one setting, so edges of one chain must

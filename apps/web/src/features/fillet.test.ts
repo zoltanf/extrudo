@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { filletDialog } from './fillet';
 import { featureDialogs, specForCommand } from './registry';
 import type { DialogValues } from './spec';
-import { BOX, settle, setupDialogs } from './testing';
+import { BOX, namedBoxEdgesMesh, settle, setupDialogs } from './testing';
 import { defaultValues, mergeValues, shownFields } from './values';
 
 const edgeItem = (index: number) => ({ kind: 'edge' as const, id: `${BOX}:${index}` });
@@ -154,7 +154,7 @@ describe('the fillet dialog’s variable radius', () => {
     const back = mergeValues(variable, { toggles: { variable: false } });
     expect(shownFields(filletDialog, back).map((f) => f.name)).not.toContain('radiusEnd');
     // The labels of a later set carry its number, as the others do.
-    expect(filletDialog.fields.filter((f) => f.name.endsWith('2')).map((f) => f.label)).toEqual([
+    expect(filletDialog.fields.filter((f) => /[^0-9]2$/.test(f.name)).map((f) => f.label)).toEqual([
       'Edges 2',
       'Radius 2',
       'Variable 2',
@@ -247,5 +247,37 @@ describe('the fillet dialog’s variable radius', () => {
     t.controller.edit('F1' as FeatureId);
     expect(t.open()?.values.toggles.variable).toBe(false);
     expect(Object.keys(t.open()?.draft.inputs ?? {}).sort()).toEqual(['edges', 'edges2', 'radius']);
+  });
+});
+
+describe('the fillet dialog’s radius handle', () => {
+  const edges = namedBoxEdgesMesh();
+  const bodies = { [BOX]: edges };
+  /** Set 1's first edge: the box's top front edge, between the top and front faces. */
+  const topFront = { kind: 'edge' as const, id: edges.edgeIds?.[2] as string };
+  const withEdge = (over: Partial<DialogValues> = {}): DialogValues =>
+    mergeValues(defaultValues(filletDialog), { refs: { edges: [topFront] }, ...over });
+
+  const handles = (values: DialogValues) =>
+    (
+      filletDialog.manipulators?.(values, {
+        doc: setupDialogs().store.getState().doc,
+        bodies,
+        value: () => 2,
+      }) ?? []
+    ).map((m) => (m.kind === 'distance' ? { field: m.field, origin: m.origin } : m));
+
+  it('is one distance handle on the set’s first edge, at its middle', () => {
+    expect(handles(withEdge())).toEqual([{ field: 'radius', origin: [5, 0, 10] }]);
+    expect(filletDialog.manipulators).toBeDefined();
+  });
+
+  it('moves Radius only, even where the set tapers', () => {
+    const variable = withEdge({ toggles: { variable: true }, exprs: { radiusEnd: '5 mm' } });
+    expect(handles(variable)).toEqual([{ field: 'radius', origin: [5, 0, 10] }]);
+  });
+
+  it('is nothing until an edge is picked', () => {
+    expect(handles(defaultValues(filletDialog))).toEqual([]);
   });
 });

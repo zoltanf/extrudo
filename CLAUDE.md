@@ -346,9 +346,10 @@ real Combine since P3-06). Its amendment (P3-14) adds B4, B5 and B7 the
 same way, B4 and B5 from primitives so every parameter changes headless
 too; B4's headless test checks the lid's fit exactly (no shared volume,
 lifted 1 mm it is `clearance` from the box). ADR-0038
-(P3-01) added fillet: `packages/core/src/fillet.ts` (up to 8 edge sets as
-plain inputs `edges`/`radius`, `edges2`/`radius2` …: `filletSets`,
-`filletInputs`), the evaluator `packages/kernel/src/features/fillet.ts`
+(P3-01) added fillet: `packages/core/src/fillet.ts` (`FILLET_MAX_SETS` edge
+sets as plain inputs `edges`/`radius`, `edges2`/`radius2` …: `filletSets`,
+`filletInputs`; **32 sets since P4-12**, a document with fewer reads
+unchanged), the evaluator `packages/kernel/src/features/fillet.ts`
 (edges by `ctx.resolve`, one body at a time, faces `fillet:<id>:from:(<edge>)`
 through `withHistory`), the facade's `fillet(shape)` (staged edge indices
 + one radius per edge, builder on the C++ stack, result checked with
@@ -362,7 +363,22 @@ dialog add or remove a picked edge's chain). Messages are worded in the
 evaluator ("Radius 50 mm is too large for edge 12 (max ≈ 19 mm)", maximum
 rounded down to two digits so it works). The Wall bracket's Fillet1 has two
 sets (inside corner `wall / 2`, outside `wall * 1.5`), its edges named from
-Extrude1's id and Sketch1's lines, and the bracket has 12 faces.
+Extrude1's id and Sketch1's lines, and the bracket has 12 faces. **P4-12
+(ADR-0038's amendment) added a `distance` handle on set 1's Radius**
+(`features/edgeHandles.ts`): the middle of the set's first edge and the
+unit bisector of its two faces' outward normals there, read from the model
+meshes through the edge's own name (`e[<face>|<face>]`, `parseCompound`), so
+dragging away from the body grows the round (the bisector points into the
+void whether the corner is convex or concave). **No handle** where it can't
+be read honestly: a seam (one face), more than two faces, a face the meshes
+don't have, or normals within 60° of each other. The handle stands on the
+edge's middle, so re-picking that edge takes a click a little along it.
+The handles also found a bug of their own: a dialog's heads-up box took
+**every** plain digit while it was open, Shift+1…7 (the view commands) with
+them, since its keydown listener runs before the shell's and prevented the
+default — which is why B8's fourth fillet edge (picked from the back view)
+found nothing. A key with a modifier is a command, so the box takes plain
+typing only (`e2e/fillet.spec.ts` covers Shift+4).
 ADR-0041 (P3-16) added the notification history: the toasts'
 store (`design-system/notifications.ts`, vanilla Zustand, `useToasts()`
 returns it as `notifications`) records every `push` for the session
@@ -406,10 +422,17 @@ Sketch). "Repeat last" is the `repeatLast` command (`ctx.repeat`, the last
 tool through `runTool`/`run`, `isRepeatable`). Preference `marking.radial`.
 Browser folders, origin rows, Parameters rows and home cards have context
 menus.
-ADR-0043 (P3-02) added chamfer: `packages/core/src/chamfer.ts` (up to 8
-edge sets as plain inputs, **each set with its own type**: `edges`,
-`mode` = equal / two-distances / distance-angle, `distance`, `distanceB`,
-`angle`, `flip`, then `edges2`, `mode2` …: `chamferSets`, `chamferInputs`),
+ADR-0043 (P3-02) added chamfer: `packages/core/src/chamfer.ts`
+(`CHAMFER_MAX_SETS` edge sets as plain inputs, **each set with its own
+type**: `edges`, `mode` = equal / two-distances / distance-angle, `distance`,
+`distanceB`, `angle`, `flip`, then `edges2`, `mode2` …: `chamferSets`,
+`chamferInputs`; **32 sets and a `face` per set since P4-12**, ADR-0043's
+amendment: `face`, `face2` … is a one-face ref that names the face taking
+`distance` for the two unequal modes, and the evaluator turns it into the
+`flip` the facade understands ("the picked face is not the lower-numbered of
+this edge's two faces", from `ctx.describe`'s edge→faces), refusing a face
+that touches no edge of the set; an equal set ignores it and the dialog
+hides Flip while a face is picked),
 the evaluator `packages/kernel/src/features/chamfer.ts` (same shape as
 fillet's; faces `chamfer:<id>:from:(<edge>)`), the facade's
 `chamfer(shape)` (staged edges + four numbers each: mode, a, b, flip; the
@@ -418,7 +441,8 @@ takes the other; on failure a fillet-style diagnosis whose too-large value
 is a **factor** the distances scale by, read through `Kernel.chamfer`'s
 `ChamferError.problems`; it uses `largestThatWorks` and the fillet's tangent
 chain query) and the dialog `apps/web/src/features/chamfer.ts` (a Type
-dropdown per set). The Chamfer tile has no default key.
+dropdown per set, a Reference face under it, and set 1's Distance handle as
+ADR-0038's amendment has it). The Chamfer tile has no default key.
 ADR-0044 (P3-06) added three body features: `combine` (target body + tool
 bodies, join/cut/intersect through `namedBoolean`, tools used up unless
 `keepTools`, strict messages instead of silent no-ops; `core/src/combine.ts`,
@@ -1114,7 +1138,10 @@ ring in pieces (`THREAD_CHUNK`), and `mergeTools` merges two **heavy** tools
 (over `HEAVY_TOOL_FACES` = 200 faces) whose boxes overlap without asking for
 their distance (`isHeavyTool` in `operation.ts`; `bodiesTouch` still asks for a
 mesh pair's `minGap`, P4-06 §4). **§H5** warns when a swept profile is drawn
-away from the path's start.
+away from the path's start. **P4-12's fillet/chamfer item** (2026-10-05, ADR-0038
+and ADR-0043 amendments) is on `p4-12-fillet`: 32 edge sets each, a chamfer
+set's `face` that decides `flip` in the kernel, and radius and distance
+handles on set 1's first edge (`features/edgeHandles.ts`).
 
 ADR-0068 (P5-01, all three slices) added **the public document API**,
 `packages/api` (`@extrudo/api`, GPL-3.0-or-later): `Design.create`/`Design.from`,
@@ -1815,6 +1842,16 @@ them. Notes further down that name a machine apply to that machine only.
   stored taper shows it on and unchecking it hides the other two. The
   variable test's volumes come from four `exportModel(page, '3MF')` calls
   (each leaves the 3D Print tab open, so `solidTab(page)` before a dialog).
+  P4-12 adds the radius handle: the overlay reads
+  `viewport.locator('[data-manipulators]')` with `data-manipulators="distance:radius"`,
+  and `[data-manipulator-handle="radius"]` carries its centre in `cx`/`cy`
+  (px in the view) — drag it **away from the edge** (the head is `radius`
+  from the edge's middle, up-left of it in the home view) and the Radius
+  field follows. **Blur the field after `fill`** before reading it: an
+  `ExpressionInput` keeps the user's own text while it has the focus (the
+  field is in `editing` mode), so a dragged value only shows blurred. The
+  handle stands on the edge's middle, so a pick *there* while the dialog is
+  open is the handle's: click a little along the edge to unpick it.
 - **Chamfer e2e** (`e2e/chamfer.spec.ts`, P3-02): the tool has no key: click
   the toolbar's Chamfer tile (`getByRole('button', { name: /^Chamfer/ })`,
   after picking an edge for pre-selection). The dialog is the region
@@ -1822,10 +1859,16 @@ them. Notes further down that name a machine apply to that machine only.
   (`exact: true`), the combobox "Type" (options "Equal distance", "Two
   distances", "Distance and angle": a Radix select, click it, then the
   option) and the textboxes "Distance", "Second distance" (two distances),
-  "Angle" (distance and angle) and the checkbox "Flip" (both non-equal
-  types); set 2 names get " 2" ("Edges 2", "Type 2", "Distance 2" …). Fields
-  of other types aren't in the DOM. The message is in the region "Feature
-  status". Kernel-side, the golden table is
+  "Angle" (distance and angle), the button **"Reference face"** (P4-12:
+  "Automatic" while empty, "1 face" once picked; it shows for the two
+  unequal types, and while it holds a face the checkbox "Flip" is gone) and
+  the checkbox "Flip" (both non-equal types); set 2 names get " 2" ("Edges
+  2", "Type 2", "Distance 2" …). Fields of other types aren't in the DOM.
+  The message is in the region "Feature status". P4-12's reference-face test
+  picks the top face for the 2 mm and the front one for the 6 mm of one
+  two-distance chamfer and reads the top face's footprint and the volume
+  from a `3MF` export (its triangles in the plane z = 20); the distance
+  handle works as the fillet's radius handle. Kernel-side, the golden table is
   `pnpm vitest run -u packages/kernel/src/features/chamfer`; a chamfer's
   failed build is diagnosed by rebuilding it like fillet's (keep failing
   cases out of previews that run often).

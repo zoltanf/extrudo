@@ -9,6 +9,7 @@
 import {
   type ChamferSetSpec,
   chamferInputs,
+  chamferSets,
   type ExtrudoDocument,
   extrudeInputs,
   type Feature,
@@ -203,6 +204,33 @@ async function withFrontEdge() {
   return { base, edge, ref: refTo(first, 'edge', edge), first };
 }
 
+/**
+ * A 24-sided prism 10 mm tall on XY (body `P:0`), whose 24 vertical edges
+ * give room for more sets than P4-12 allows. `edges` finds them in a
+ * recompute of its features.
+ */
+function polygonPrism(sides = 24, radius = 20, height = 10) {
+  const b = new SketchBuilder();
+  const at = (k: number) => {
+    const a = (2 * Math.PI * k) / sides;
+    return [radius * Math.cos(a), radius * Math.sin(a)] as const;
+  };
+  const lines = Array.from(
+    { length: sides },
+    (_, k) => b.line(...at(k), ...at((k + 1) % sides)).id,
+  );
+  const features = [sketch('SP', b.sketch), extrude('P', 'SP', b.sketch, `${height} mm`)];
+  const edges = (result: Done) =>
+    lines.map((line, k) =>
+      refTo(
+        result,
+        'edge',
+        between(`extrude:P:side:${line}`, `extrude:P:side:${lines[(k + 1) % sides]}`),
+      ),
+    );
+  return { features, edges };
+}
+
 describe('chamfer', { timeout: 120_000 }, () => {
   it('equal distance on one edge: a chamfer face named after it, the body a little smaller', async () => {
     const { base, edge, ref } = await withFrontEdge();
@@ -304,6 +332,161 @@ describe('chamfer', { timeout: 120_000 }, () => {
     for (const edge of [a, b, c]) {
       expect(result.bodies[0]?.mesh?.faceIds).toContain(`chamfer:F:from:(${edge})`);
     }
+  });
+
+  it('a picked reference face is the same chamfer as the flip that makes it the reference', async () => {
+    const base = block();
+    const edge = between(cap, side(base.lines.bottom));
+    const first = ok(await runWithShapes(testDocument(base.features)));
+    const pick = refTo(first, 'edge', edge);
+    // Every reference comes from the block alone: `reference` reads the last
+    // finished recompute, which the chamfers below replace.
+    const topRef = refTo(first, 'face', cap);
+    const frontRef = refTo(first, 'face', side(base.lines.bottom));
+    const at = async (set: Omit<ChamferSetSpec, 'edges'>) =>
+      runWithShapes(testDocument([...base.features, chamfer('F', [{ ...set, edges: [pick] }])]));
+    /** Whether the cap took `distance` (it gives up 2 mm along the edge). */
+    const capTookDistance = (result: Done) =>
+      Math.abs(faceArea(result, cap) - (CAP_AREA - 2 * 40)) < 1e-3;
+    const plain = ok(await at({ mode: 'two-distances', distance: '2 mm', distanceB: '6 mm' }));
+    const flip = ok(
+      await at({ mode: 'two-distances', distance: '2 mm', distanceB: '6 mm', flip: true }),
+    );
+    // The flip that puts `distance` on the cap (or the other one, if this block has it already).
+    const expected = capTookDistance(plain) ? plain : flip;
+
+    // The top face as the reference: the same shape as the flip that makes it so.
+    const withTop = ok(
+      await at({
+        mode: 'two-distances',
+        distance: '2 mm',
+        distanceB: '6 mm',
+        face: topRef,
+      }),
+    );
+    expect(capTookDistance(withTop)).toBe(capTookDistance(expected));
+    expect(faceArea(withTop, cap)).toBeCloseTo(faceArea(expected, cap), 3);
+    expect(measure('B:0').volume).toBeCloseTo(BOX_VOLUME - 0.5 * 2 * 6 * 40, 2);
+    expect(measure('B:0').valid).toBe(true);
+
+    // The front face instead: the other way round, and the same volume.
+    const withFront = ok(
+      await at({
+        mode: 'two-distances',
+        distance: '2 mm',
+        distanceB: '6 mm',
+        face: frontRef,
+      }),
+    );
+    expect(capTookDistance(withFront)).toBe(!capTookDistance(expected));
+    expect(measure('B:0').volume).toBeCloseTo(BOX_VOLUME - 0.5 * 2 * 6 * 40, 2);
+  });
+
+  it('a picked reference face also decides the distance-angle mode', async () => {
+    const base = block();
+    const edge = between(cap, side(base.lines.bottom));
+    const first = ok(await run(testDocument(base.features)));
+    const pick = refTo(first, 'edge', edge);
+    // Every reference comes from the block alone: `reference` reads the last
+    // finished recompute, which the chamfers below replace.
+    const top = refTo(first, 'face', cap);
+    const frontRef = refTo(first, 'face', side(base.lines.bottom));
+    const at = async (set: Omit<ChamferSetSpec, 'edges'>) =>
+      ok(
+        await runWithShapes(
+          testDocument([...base.features, chamfer('F', [{ ...set, edges: [pick] }])]),
+        ),
+      );
+    // 4 mm on the top face at 30°: the chamfer is 4·tan 30° long on the front face.
+    const withTop = await at({
+      mode: 'distance-angle',
+      distance: '4 mm',
+      angle: '30 deg',
+      face: top,
+    });
+    expect(faceArea(withTop, cap)).toBeCloseTo(CAP_AREA - 4 * 40, 2);
+    expect(measure('B:0').volume).toBeCloseTo(
+      BOX_VOLUME - 0.5 * 4 * (4 * Math.tan(Math.PI / 6)) * 40,
+      2,
+    );
+    // The front face instead: 4·tan 30° on the cap.
+    const withFront = await at({
+      mode: 'distance-angle',
+      distance: '4 mm',
+      angle: '30 deg',
+      face: frontRef,
+    });
+    expect(faceArea(withFront, cap)).toBeCloseTo(CAP_AREA - 4 * Math.tan(Math.PI / 6) * 40, 2);
+  });
+
+  it('a reference face that doesn’t touch an edge of the set says so', async () => {
+    const base = block();
+    const first = ok(await run(testDocument(base.features)));
+    const front = refTo(first, 'edge', between(cap, side(base.lines.bottom)));
+    // The back face touches neither of the front edge's two faces.
+    const back = refTo(first, 'face', side(base.lines.top));
+    // Nothing has recomputed yet, so this is the block's own face order.
+    const result = await run(
+      testDocument([
+        ...base.features,
+        chamfer('F', [
+          {
+            edges: [front],
+            mode: 'two-distances',
+            distance: '2 mm',
+            distanceB: '6 mm',
+            face: back,
+          },
+        ]),
+      ]),
+    );
+    expect(status(result, 'F')).toMatchObject({
+      status: 'error',
+      message: expect.stringMatching(
+        /^The reference face of edge set 1 doesn't touch edge \d+: pick a face next to every edge in the set\.$/,
+      ),
+    });
+    // An equal-distance set ignores the face, and the body is built as usual.
+    ok(
+      await runWithShapes(
+        testDocument([
+          ...base.features,
+          chamfer('F', [{ edges: [front], distance: '2 mm', face: back }]),
+        ]),
+      ),
+    );
+    expect(measure('B:0').volume).toBeCloseTo(BOX_VOLUME - 0.5 * 4 * 40, 2);
+  });
+
+  it('twenty edge sets (P4-12): the same body as one set with the same edges', async () => {
+    const prism = polygonPrism();
+    ok(await runWithShapes(testDocument(prism.features)));
+    const prismVolume = measure('P:0').volume;
+    const twentySets = prism
+      .edges(ok(await runWithShapes(testDocument(prism.features))))
+      .slice(0, 20);
+    // One set with the same 20 edges: the reference shape.
+    ok(
+      await runWithShapes(
+        testDocument([
+          ...prism.features,
+          chamfer('A', [{ edges: twentySets, distance: '0.5 mm' }]),
+        ]),
+      ),
+    );
+    const oneSet = { faces: measure('P:0').faces, volume: measure('P:0').volume };
+    // The same 20 edges, one per set (set 20 fits: the maximum went from 8 to 32).
+    const many = chamferInputs(twentySets.map((edge) => ({ edges: [edge], distance: '0.5 mm' })));
+    expect(chamferSets(many)).toHaveLength(20);
+    ok(
+      await runWithShapes(
+        testDocument([...prism.features, { ...testFeature('B', 'chamfer'), inputs: many }]),
+      ),
+    );
+    expect(measure('P:0').faces).toBe(oneSet.faces);
+    expect(measure('P:0').volume).toBeCloseTo(oneSet.volume, 6);
+    expect(measure('P:0').valid).toBe(true);
+    expect(measure('P:0').volume).toBeLessThan(prismVolume);
   });
 
   it('keeps its face names when a distance changes', async () => {

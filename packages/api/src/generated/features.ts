@@ -261,6 +261,102 @@ export interface FeatureMethods {
    * @param inputs.radius8 Set 8's radius; a length. Radius 0 leaves the edges as they are.
    * @param inputs.radiusEnd8 Set 8's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
    * @param inputs.swap8 Set 8's radius runs from the chain's other end. Default false.
+   * @param inputs.edges9 Set 9's edges to round. A set with no edges does nothing.
+   * @param inputs.radius9 Set 9's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd9 Set 9's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap9 Set 9's radius runs from the chain's other end. Default false.
+   * @param inputs.edges10 Set 10's edges to round. A set with no edges does nothing.
+   * @param inputs.radius10 Set 10's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd10 Set 10's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap10 Set 10's radius runs from the chain's other end. Default false.
+   * @param inputs.edges11 Set 11's edges to round. A set with no edges does nothing.
+   * @param inputs.radius11 Set 11's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd11 Set 11's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap11 Set 11's radius runs from the chain's other end. Default false.
+   * @param inputs.edges12 Set 12's edges to round. A set with no edges does nothing.
+   * @param inputs.radius12 Set 12's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd12 Set 12's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap12 Set 12's radius runs from the chain's other end. Default false.
+   * @param inputs.edges13 Set 13's edges to round. A set with no edges does nothing.
+   * @param inputs.radius13 Set 13's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd13 Set 13's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap13 Set 13's radius runs from the chain's other end. Default false.
+   * @param inputs.edges14 Set 14's edges to round. A set with no edges does nothing.
+   * @param inputs.radius14 Set 14's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd14 Set 14's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap14 Set 14's radius runs from the chain's other end. Default false.
+   * @param inputs.edges15 Set 15's edges to round. A set with no edges does nothing.
+   * @param inputs.radius15 Set 15's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd15 Set 15's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap15 Set 15's radius runs from the chain's other end. Default false.
+   * @param inputs.edges16 Set 16's edges to round. A set with no edges does nothing.
+   * @param inputs.radius16 Set 16's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd16 Set 16's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap16 Set 16's radius runs from the chain's other end. Default false.
+   * @param inputs.edges17 Set 17's edges to round. A set with no edges does nothing.
+   * @param inputs.radius17 Set 17's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd17 Set 17's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap17 Set 17's radius runs from the chain's other end. Default false.
+   * @param inputs.edges18 Set 18's edges to round. A set with no edges does nothing.
+   * @param inputs.radius18 Set 18's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd18 Set 18's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap18 Set 18's radius runs from the chain's other end. Default false.
+   * @param inputs.edges19 Set 19's edges to round. A set with no edges does nothing.
+   * @param inputs.radius19 Set 19's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd19 Set 19's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap19 Set 19's radius runs from the chain's other end. Default false.
+   * @param inputs.edges20 Set 20's edges to round. A set with no edges does nothing.
+   * @param inputs.radius20 Set 20's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd20 Set 20's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap20 Set 20's radius runs from the chain's other end. Default false.
+   * @param inputs.edges21 Set 21's edges to round. A set with no edges does nothing.
+   * @param inputs.radius21 Set 21's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd21 Set 21's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap21 Set 21's radius runs from the chain's other end. Default false.
+   * @param inputs.edges22 Set 22's edges to round. A set with no edges does nothing.
+   * @param inputs.radius22 Set 22's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd22 Set 22's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap22 Set 22's radius runs from the chain's other end. Default false.
+   * @param inputs.edges23 Set 23's edges to round. A set with no edges does nothing.
+   * @param inputs.radius23 Set 23's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd23 Set 23's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap23 Set 23's radius runs from the chain's other end. Default false.
+   * @param inputs.edges24 Set 24's edges to round. A set with no edges does nothing.
+   * @param inputs.radius24 Set 24's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd24 Set 24's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap24 Set 24's radius runs from the chain's other end. Default false.
+   * @param inputs.edges25 Set 25's edges to round. A set with no edges does nothing.
+   * @param inputs.radius25 Set 25's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd25 Set 25's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap25 Set 25's radius runs from the chain's other end. Default false.
+   * @param inputs.edges26 Set 26's edges to round. A set with no edges does nothing.
+   * @param inputs.radius26 Set 26's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd26 Set 26's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap26 Set 26's radius runs from the chain's other end. Default false.
+   * @param inputs.edges27 Set 27's edges to round. A set with no edges does nothing.
+   * @param inputs.radius27 Set 27's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd27 Set 27's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap27 Set 27's radius runs from the chain's other end. Default false.
+   * @param inputs.edges28 Set 28's edges to round. A set with no edges does nothing.
+   * @param inputs.radius28 Set 28's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd28 Set 28's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap28 Set 28's radius runs from the chain's other end. Default false.
+   * @param inputs.edges29 Set 29's edges to round. A set with no edges does nothing.
+   * @param inputs.radius29 Set 29's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd29 Set 29's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap29 Set 29's radius runs from the chain's other end. Default false.
+   * @param inputs.edges30 Set 30's edges to round. A set with no edges does nothing.
+   * @param inputs.radius30 Set 30's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd30 Set 30's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap30 Set 30's radius runs from the chain's other end. Default false.
+   * @param inputs.edges31 Set 31's edges to round. A set with no edges does nothing.
+   * @param inputs.radius31 Set 31's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd31 Set 31's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap31 Set 31's radius runs from the chain's other end. Default false.
+   * @param inputs.edges32 Set 32's edges to round. A set with no edges does nothing.
+   * @param inputs.radius32 Set 32's radius; a length. Radius 0 leaves the edges as they are.
+   * @param inputs.radiusEnd32 Set 32's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
+   * @param inputs.swap32 Set 32's radius runs from the chain's other end. Default false.
    *
    * The faces it makes, as `handle.face(role)` takes them:
    * - `from:(<edge>)` — The round: a face the fillet makes from each edge it rounds.
@@ -275,48 +371,224 @@ export interface FeatureMethods {
    * @param inputs.distanceB Set 1's second distance, with two-distances; a length.
    * @param inputs.angle Set 1's angle to the first distance, with distance-angle; an angle.
    * @param inputs.flip Set 1's first distance goes on the other face. Default false.
+   * @param inputs.face The face the chamfer's distances are measured from, for this set's edges.
    * @param inputs.edges2 Set 2's edges to chamfer. A set with no edges does nothing.
    * @param inputs.mode2 Set 2's sizes: equal distance, two distances, or distance and angle. Default equal.
    * @param inputs.distance2 Set 2's first distance, along the face that takes it; a length.
    * @param inputs.distanceB2 Set 2's second distance, with two-distances; a length.
    * @param inputs.angle2 Set 2's angle to the first distance, with distance-angle; an angle.
    * @param inputs.flip2 Set 2's first distance goes on the other face. Default false.
+   * @param inputs.face2 The face the chamfer's distances are measured from, for this set's edges.
    * @param inputs.edges3 Set 3's edges to chamfer. A set with no edges does nothing.
    * @param inputs.mode3 Set 3's sizes: equal distance, two distances, or distance and angle. Default equal.
    * @param inputs.distance3 Set 3's first distance, along the face that takes it; a length.
    * @param inputs.distanceB3 Set 3's second distance, with two-distances; a length.
    * @param inputs.angle3 Set 3's angle to the first distance, with distance-angle; an angle.
    * @param inputs.flip3 Set 3's first distance goes on the other face. Default false.
+   * @param inputs.face3 The face the chamfer's distances are measured from, for this set's edges.
    * @param inputs.edges4 Set 4's edges to chamfer. A set with no edges does nothing.
    * @param inputs.mode4 Set 4's sizes: equal distance, two distances, or distance and angle. Default equal.
    * @param inputs.distance4 Set 4's first distance, along the face that takes it; a length.
    * @param inputs.distanceB4 Set 4's second distance, with two-distances; a length.
    * @param inputs.angle4 Set 4's angle to the first distance, with distance-angle; an angle.
    * @param inputs.flip4 Set 4's first distance goes on the other face. Default false.
+   * @param inputs.face4 The face the chamfer's distances are measured from, for this set's edges.
    * @param inputs.edges5 Set 5's edges to chamfer. A set with no edges does nothing.
    * @param inputs.mode5 Set 5's sizes: equal distance, two distances, or distance and angle. Default equal.
    * @param inputs.distance5 Set 5's first distance, along the face that takes it; a length.
    * @param inputs.distanceB5 Set 5's second distance, with two-distances; a length.
    * @param inputs.angle5 Set 5's angle to the first distance, with distance-angle; an angle.
    * @param inputs.flip5 Set 5's first distance goes on the other face. Default false.
+   * @param inputs.face5 The face the chamfer's distances are measured from, for this set's edges.
    * @param inputs.edges6 Set 6's edges to chamfer. A set with no edges does nothing.
    * @param inputs.mode6 Set 6's sizes: equal distance, two distances, or distance and angle. Default equal.
    * @param inputs.distance6 Set 6's first distance, along the face that takes it; a length.
    * @param inputs.distanceB6 Set 6's second distance, with two-distances; a length.
    * @param inputs.angle6 Set 6's angle to the first distance, with distance-angle; an angle.
    * @param inputs.flip6 Set 6's first distance goes on the other face. Default false.
+   * @param inputs.face6 The face the chamfer's distances are measured from, for this set's edges.
    * @param inputs.edges7 Set 7's edges to chamfer. A set with no edges does nothing.
    * @param inputs.mode7 Set 7's sizes: equal distance, two distances, or distance and angle. Default equal.
    * @param inputs.distance7 Set 7's first distance, along the face that takes it; a length.
    * @param inputs.distanceB7 Set 7's second distance, with two-distances; a length.
    * @param inputs.angle7 Set 7's angle to the first distance, with distance-angle; an angle.
    * @param inputs.flip7 Set 7's first distance goes on the other face. Default false.
+   * @param inputs.face7 The face the chamfer's distances are measured from, for this set's edges.
    * @param inputs.edges8 Set 8's edges to chamfer. A set with no edges does nothing.
    * @param inputs.mode8 Set 8's sizes: equal distance, two distances, or distance and angle. Default equal.
    * @param inputs.distance8 Set 8's first distance, along the face that takes it; a length.
    * @param inputs.distanceB8 Set 8's second distance, with two-distances; a length.
    * @param inputs.angle8 Set 8's angle to the first distance, with distance-angle; an angle.
    * @param inputs.flip8 Set 8's first distance goes on the other face. Default false.
+   * @param inputs.face8 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges9 Set 9's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode9 Set 9's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance9 Set 9's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB9 Set 9's second distance, with two-distances; a length.
+   * @param inputs.angle9 Set 9's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip9 Set 9's first distance goes on the other face. Default false.
+   * @param inputs.face9 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges10 Set 10's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode10 Set 10's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance10 Set 10's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB10 Set 10's second distance, with two-distances; a length.
+   * @param inputs.angle10 Set 10's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip10 Set 10's first distance goes on the other face. Default false.
+   * @param inputs.face10 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges11 Set 11's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode11 Set 11's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance11 Set 11's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB11 Set 11's second distance, with two-distances; a length.
+   * @param inputs.angle11 Set 11's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip11 Set 11's first distance goes on the other face. Default false.
+   * @param inputs.face11 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges12 Set 12's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode12 Set 12's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance12 Set 12's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB12 Set 12's second distance, with two-distances; a length.
+   * @param inputs.angle12 Set 12's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip12 Set 12's first distance goes on the other face. Default false.
+   * @param inputs.face12 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges13 Set 13's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode13 Set 13's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance13 Set 13's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB13 Set 13's second distance, with two-distances; a length.
+   * @param inputs.angle13 Set 13's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip13 Set 13's first distance goes on the other face. Default false.
+   * @param inputs.face13 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges14 Set 14's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode14 Set 14's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance14 Set 14's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB14 Set 14's second distance, with two-distances; a length.
+   * @param inputs.angle14 Set 14's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip14 Set 14's first distance goes on the other face. Default false.
+   * @param inputs.face14 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges15 Set 15's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode15 Set 15's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance15 Set 15's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB15 Set 15's second distance, with two-distances; a length.
+   * @param inputs.angle15 Set 15's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip15 Set 15's first distance goes on the other face. Default false.
+   * @param inputs.face15 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges16 Set 16's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode16 Set 16's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance16 Set 16's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB16 Set 16's second distance, with two-distances; a length.
+   * @param inputs.angle16 Set 16's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip16 Set 16's first distance goes on the other face. Default false.
+   * @param inputs.face16 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges17 Set 17's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode17 Set 17's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance17 Set 17's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB17 Set 17's second distance, with two-distances; a length.
+   * @param inputs.angle17 Set 17's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip17 Set 17's first distance goes on the other face. Default false.
+   * @param inputs.face17 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges18 Set 18's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode18 Set 18's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance18 Set 18's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB18 Set 18's second distance, with two-distances; a length.
+   * @param inputs.angle18 Set 18's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip18 Set 18's first distance goes on the other face. Default false.
+   * @param inputs.face18 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges19 Set 19's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode19 Set 19's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance19 Set 19's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB19 Set 19's second distance, with two-distances; a length.
+   * @param inputs.angle19 Set 19's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip19 Set 19's first distance goes on the other face. Default false.
+   * @param inputs.face19 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges20 Set 20's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode20 Set 20's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance20 Set 20's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB20 Set 20's second distance, with two-distances; a length.
+   * @param inputs.angle20 Set 20's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip20 Set 20's first distance goes on the other face. Default false.
+   * @param inputs.face20 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges21 Set 21's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode21 Set 21's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance21 Set 21's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB21 Set 21's second distance, with two-distances; a length.
+   * @param inputs.angle21 Set 21's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip21 Set 21's first distance goes on the other face. Default false.
+   * @param inputs.face21 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges22 Set 22's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode22 Set 22's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance22 Set 22's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB22 Set 22's second distance, with two-distances; a length.
+   * @param inputs.angle22 Set 22's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip22 Set 22's first distance goes on the other face. Default false.
+   * @param inputs.face22 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges23 Set 23's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode23 Set 23's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance23 Set 23's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB23 Set 23's second distance, with two-distances; a length.
+   * @param inputs.angle23 Set 23's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip23 Set 23's first distance goes on the other face. Default false.
+   * @param inputs.face23 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges24 Set 24's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode24 Set 24's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance24 Set 24's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB24 Set 24's second distance, with two-distances; a length.
+   * @param inputs.angle24 Set 24's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip24 Set 24's first distance goes on the other face. Default false.
+   * @param inputs.face24 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges25 Set 25's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode25 Set 25's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance25 Set 25's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB25 Set 25's second distance, with two-distances; a length.
+   * @param inputs.angle25 Set 25's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip25 Set 25's first distance goes on the other face. Default false.
+   * @param inputs.face25 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges26 Set 26's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode26 Set 26's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance26 Set 26's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB26 Set 26's second distance, with two-distances; a length.
+   * @param inputs.angle26 Set 26's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip26 Set 26's first distance goes on the other face. Default false.
+   * @param inputs.face26 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges27 Set 27's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode27 Set 27's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance27 Set 27's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB27 Set 27's second distance, with two-distances; a length.
+   * @param inputs.angle27 Set 27's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip27 Set 27's first distance goes on the other face. Default false.
+   * @param inputs.face27 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges28 Set 28's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode28 Set 28's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance28 Set 28's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB28 Set 28's second distance, with two-distances; a length.
+   * @param inputs.angle28 Set 28's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip28 Set 28's first distance goes on the other face. Default false.
+   * @param inputs.face28 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges29 Set 29's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode29 Set 29's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance29 Set 29's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB29 Set 29's second distance, with two-distances; a length.
+   * @param inputs.angle29 Set 29's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip29 Set 29's first distance goes on the other face. Default false.
+   * @param inputs.face29 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges30 Set 30's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode30 Set 30's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance30 Set 30's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB30 Set 30's second distance, with two-distances; a length.
+   * @param inputs.angle30 Set 30's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip30 Set 30's first distance goes on the other face. Default false.
+   * @param inputs.face30 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges31 Set 31's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode31 Set 31's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance31 Set 31's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB31 Set 31's second distance, with two-distances; a length.
+   * @param inputs.angle31 Set 31's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip31 Set 31's first distance goes on the other face. Default false.
+   * @param inputs.face31 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.edges32 Set 32's edges to chamfer. A set with no edges does nothing.
+   * @param inputs.mode32 Set 32's sizes: equal distance, two distances, or distance and angle. Default equal.
+   * @param inputs.distance32 Set 32's first distance, along the face that takes it; a length.
+   * @param inputs.distanceB32 Set 32's second distance, with two-distances; a length.
+   * @param inputs.angle32 Set 32's angle to the first distance, with distance-angle; an angle.
+   * @param inputs.flip32 Set 32's first distance goes on the other face. Default false.
+   * @param inputs.face32 The face the chamfer's distances are measured from, for this set's edges.
    *
    * The faces it makes, as `handle.face(role)` takes them:
    * - `from:(<edge>)` — The bevel: a face the chamfer makes from each edge it bevels.

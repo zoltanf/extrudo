@@ -208,3 +208,69 @@ kept each body's result as soon as it was built, so a later body that
 failed left the earlier ones behind; results are now kept only when every
 body worked, like shell and offset face (`fillet.test.ts` "a body that can not
 be filleted releases the others").
+
+## Amendment 2026-10-05: 32 sets and a radius handle (P4-12)
+
+P4-12's backlog asked for more than eight edge sets and an on-canvas radius
+handle. Both are in, without a facade change.
+
+**32 sets.** `FILLET_MAX_SETS` (and `CHAMFER_MAX_SETS`) is 32. Nothing else
+changes: every input beyond the eighth is optional, so a document written
+with fewer sets is read exactly as it was, and the inputs are still plain
+`ref`/`expr`/`bool`. The cost is the schema's shape (128 keys) — a document
+parse measured 0.196 ms with 8 sets and 0.207 ms with 32 (200 parses of a
+four-set chamfer document, `loadDocument`), which is where parsing happens
+anyway (opening a file).
+
+Why 32 and not, say, 16: a body's edge count is what bounds the useful
+number (a block has 12), and 32 is where the dialog's field list stays a
+list a person reads rather than a spreadsheet. The dialog still shows one
+empty set after the last filled one, so the number of *visible* sets is
+what the user spends.
+
+**The radius handle.** Set 1's `radius` is a `distance` manipulator
+(ADR-0027) with its origin at the middle of the set's first edge and its
+direction the unit bisector of that edge's two faces' outward normals there,
+so the head sits `radius` away from the body and dragging it away grows the
+round. Everything comes from the model meshes (`features/edgeHandles.ts`):
+the edge's middle from its polyline, each face's normal from the node
+nearest that middle (a flat face's normal is the same everywhere, so its own
+mean is exact there), and the two faces from the edge's own name
+`e[<face>|<face>]` (ADR-0005). The bisector points into the void whether the
+corner is convex or concave — both normals point away from the material —
+so "away from the body" means the same either way and no inside test is
+needed.
+
+Where the handle can't be placed honestly there is none: a seam edge (one
+face), an edge of more than two faces, a face the meshes don't have, or two
+faces whose normals agree within 60° (a smooth chain, where there is no
+corner to point away from). A fingerprint's `dir` would give a plane's
+normal without the mesh, but every face of a body that has an edge is in that
+body's mesh, so it would only ever be a second path to the same number.
+
+A variable set's handle moves `radius` only; its End radius is a field of
+its own and gets a handle of its own in a later pass (the field names leave
+the room).
+
+**The cost:** the handle stands on the edge's middle, and like every
+manipulator handle it takes the clicks that land on it, so re-picking that
+same edge takes a click a little along it. The two tangent-chain e2e tests
+say so and click a little along (they also try the middle first, which is
+where the pick does not always find the edge).
+
+**A bug the handles found.** A dialog's heads-up box took every plain digit
+typed while it was open, `Shift+1…7` (the view commands) with them: the
+overlay's keydown listener is registered before the shell's (child effects
+run first) and called `preventDefault()`, so the shell's shortcut handler
+saw a handled event and skipped. That had been true for every dialog with a
+manipulator (an extrude's distance arrow) since P2-05; the fillet handle
+made it bite, in B8, whose fourth fillet edge is picked from the back view.
+A key with a modifier is a command, so the box takes plain typing only
+(`e2e/fillet.spec.ts` covers Shift+4).
+
+Rejected: a minimum screen length for the arrow (`scale`, so a 1 mm radius
+is still 18 px long) — it makes the arrow lie about the value, which is the
+one thing a handle next to a number must not do; a handle on every set (32
+arrows is a thicket, and set 1's is the one that matters); an inside test to
+flip the arrow on a concave edge (unnecessary: the bisector is already
+right).
