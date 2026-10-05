@@ -30,6 +30,7 @@ export {
 } from './Menu';
 export { NotificationHistory } from './NotificationHistory';
 export {
+  appNotifications,
   createNotifications,
   type Notification,
   type NotificationState,

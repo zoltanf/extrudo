@@ -324,11 +324,11 @@ files into `dist/sw.js` and versions it; registration in
 manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
 also found that the kernel uses no raw OCCT bindings, so the build's
-binding list is now just `ExtrudoFacade` (built by CI: WASM 18.74 MB raw,
-6.10 MB gzip, 4.25 MB brotli, after P4-04/P4-05/P4-10's facade methods and
-P4-12's `DYNAMIC_EXECUTION: 0`; the 15.76 MB / 3.69 MB
-brotli of ADR-0037 was P2-15's; OCCT input hash `7e63f57a1697` (release
-`occt-7e63f57a1697`); **don't
+binding list is now just `ExtrudoFacade` (built by CI: WASM 18.76 MB raw,
+6.07 MB gzip, 4.25 MB brotli, after P4-04/P4-05/P4-10's facade methods,
+P4-12's `DYNAMIC_EXECUTION: 0` and P4-12 §H3's `integrateVolume`; the
+15.76 MB / 3.69 MB brotli of ADR-0037 was P2-15's; OCCT input hash
+`19f2c939f2a8` (release `occt-19f2c939f2a8`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
@@ -981,7 +981,21 @@ every attempt), `DYNAMIC_EXECUTION: 0` sits beside the other emcc settings in
 solver's drag and the B1-B5 recomputes came out within noise (ADR-0067 §Results).
 `e2e/hosting.spec.ts` asserts the served `script-src` and walks a whole session
 (template, sketch, extrude, Ctrl+K, 3MF) under the real headers, failing on any
-`securitypolicyviolation` or console error. H2-H5 are other branches.
+`securitypolicyviolation` or console error. **§H3** (also on this branch) made
+the facade's `measure`/`properties` integrate BRepGProp with an error bound
+(`MASS_EPS = 1e-7`) where a B-spline surface makes OCCT's fixed-order integral
+wrong, and kept the cheap form where the bound is *worse* (a prism wall, a
+surface of revolution: there the volume integral's terms cancel), so
+`needsTolerance` asks the shape, not the call site. **§H4** added
+`KernelApi.heap()` (the facade's `heapTop()` and the WASM memory size), read
+after every recompute: over `HEAP_RECYCLE_BYTES` (1 GiB,
+`RecomputerOptions.heapRecycleBytes`) and with no dialog open, the `Recomputer`
+ends the kernel worker and boots a new one through `KernelClient.restart()`,
+which re-sends the fonts and recomputes cold; the model store keeps showing the
+result it has, and the app notes it in the notification history quietly
+(`useRecompute`'s `onRecycle`). It only replaces a worker whose heap has been
+under the limit since the last one, so a limit below a fresh WASM's own heap
+can't loop. H2 and H5 are other branches.
 
 Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-06**'s
 slices 2 to 5 (attachments and STEP, mesh bodies, mesh booleans, the canvas)
@@ -1483,7 +1497,10 @@ them. Notes further down that name a machine apply to that machine only.
   meant for the profile in sketch-mode tests; use "Select other…" or
   click off the axis. The revolve golden table updates with `pnpm
   vitest run -u packages/kernel/src/features/revolve`.
-- **WASM heap growth with a warm cache** (P2-07): OCCT 8's booleans and
+- **WASM heap growth with a warm cache** (P2-07): a worker that reaches the
+  browser's limit is now replaced between recomputes (P4-12 §H4,
+  `Recomputer`'s `heapRecycleBytes`, 1 GiB by default), which frees the whole
+  heap but recomputes cold; the growth itself is still unfixed. OCCT 8's booleans and
   mesher ask for blocks of up to 16 MB, so with cached shapes alive the
   heap top steps up 16 MB about every 350 recomputes of a revolve
   document (not levelling off in 1200); each op alone stays flat, and
@@ -2288,10 +2305,11 @@ them. Notes further down that name a machine apply to that machine only.
   `data-text-bounds` finds a letter; the `Create Sketch` dialog's
   "Construction planes" group takes the plane). A 10 × 4 mm pad of straight
   edges and a letter "O" are exact to 1e-7 (`toBeCloseTo(x, 6)`), a B-spline
-  wall (a curved profile, a letter's outline) only to 1-2 % (`within`, or 2 % as
-  `wrap.test.ts` does): **`Kernel.measure` integrates a B-spline surface with a
-  gap**, so a wrap's "exact" volume is only as exact as the integrator (a P4-12
-  item). The names are the prism's: `emboss:EM:cap:end` and
+  wall (a curved profile, a letter's outline) only to 1-2 %: since **P4-12
+  §H3** a wrap's volume is integrated to a tolerance, so a wrap of a *profile*
+  is within 1e-5 of `area × depth × (R ± depth/2) / R` (`wrap.test.ts`, which
+  used to allow 2 %) and the e2e can hold 1-2 % for the letters' own outline
+  area. The names are the prism's: `emboss:EM:cap:end` and
   `emboss:EM:side:<sketch curve>`; `cap:start` merges into the face it stands
   on. A wrap of one profile is one tool (`mergeTools` hands it back as it is,
   already tracked by the scope — **don't track it again**, that releases it

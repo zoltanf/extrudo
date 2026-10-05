@@ -47,6 +47,7 @@ export {
   type DraftProblem,
   FilletError,
   type FilletProblem,
+  type HeapUsage,
   Kernel,
   KernelError,
   type KernelStats,

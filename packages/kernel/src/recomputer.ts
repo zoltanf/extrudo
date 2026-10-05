@@ -41,8 +41,19 @@ export interface RecomputerOptions {
   delayMs?: number;
   /** A preview waits this long for the draft to settle. Default 60 ms. */
   previewDelayMs?: number;
+  /**
+   * Heap top, in bytes, over which the kernel worker is replaced between
+   * recomputes (P4-12 H4, ADR-0067 §H4). Default `HEAP_RECYCLE_BYTES`;
+   * 0 never recycles.
+   */
+  heapRecycleBytes?: number;
   client?: Omit<KernelClientOptions, 'onRestart'>;
   onKernelStatus?(status: KernelStatus, detail?: string): void;
+  /**
+   * Says the worker was replaced to free memory (P4-12 H4). The app puts it in
+   * the notification history, quietly.
+   */
+  onRecycle?(): void;
   /**
    * The fonts sketch text needs (P4-03, ADR-0058 §4): which font IDs the
    * document uses and where their bytes are. Each one the kernel doesn't have
@@ -51,6 +62,14 @@ export interface RecomputerOptions {
    */
   fonts?: FontSource;
 }
+
+/**
+ * Heap top over which the kernel worker is thrown away and replaced between
+ * recomputes (P4-12 H4). The heap of a long session grows about 11 MB per 100
+ * recomputes of a revolve document (ADR-0050 §6), and a worker that reaches
+ * the browser's limit dies; ending the worker frees it all at once.
+ */
+export const HEAP_RECYCLE_BYTES = 1024 * 1024 * 1024;
 
 export interface FontSource {
   used(doc: ExtrudoDocument): Iterable<string>;
@@ -97,6 +116,14 @@ export class Recomputer {
     | undefined;
   #previewSequence = 0;
   #disposed = false;
+  /** A feature dialog's draft is open, so the worker is left alone (P4-12 H4). */
+  #drafting = false;
+  /** A recycle is running; the heap is asked once per finished recompute. */
+  #recycling = false;
+  /** The heap has been under the limit since the last recycle, so one is due. */
+  #recycleArmed = true;
+  readonly #heapRecycleBytes: number;
+  readonly #onRecycle: (() => void) | undefined;
   /** The fonts this kernel has: a restart forgets them (ADR-0058 §4). */
   readonly #fonts = new Set<string>();
 
@@ -106,6 +133,8 @@ export class Recomputer {
     this.#fontSource = options.fonts;
     this.#delayMs = options.delayMs ?? 30;
     this.#previewDelayMs = options.previewDelayMs ?? 60;
+    this.#heapRecycleBytes = options.heapRecycleBytes ?? HEAP_RECYCLE_BYTES;
+    this.#onRecycle = options.onRecycle;
     this.client = new KernelClient(options.spawn, {
       ...options.client,
       onStatus: (status, detail) => {
@@ -147,6 +176,9 @@ export class Recomputer {
     options: { base?: boolean } = {},
   ): Promise<Preview | undefined> {
     this.#supersedePreview();
+    // A dialog is open from its first draft until it closes: the worker is not
+    // thrown away under it (P4-12 H4).
+    this.#drafting = true;
     const sequence = ++this.#previewSequence;
     return new Promise((resolve) => {
       const timer = setTimeout(async () => {
@@ -266,6 +298,7 @@ export class Recomputer {
   #endPreview(): void {
     this.#supersedePreview();
     this.#previewSequence++;
+    this.#drafting = false;
     this.#baseMeshes = new Map();
   }
 
@@ -382,6 +415,46 @@ export class Recomputer {
       },
       doc,
     });
+    // Between recomputes, never under a dialog: a worker whose heap has grown
+    // too large is thrown away and the new one recomputes cold, while the model
+    // store keeps showing this result until it arrives (P4-12 H4).
+    void this.#recycleIfBig();
+  }
+
+  /**
+   * Replaces the kernel worker when its heap top has passed the limit (P4-12
+   * H4). The result the model store has is untouched: `restart` goes through
+   * the client's restart path, so the fonts are sent again and the document
+   * recomputed cold by the next send.
+   */
+  async #recycleIfBig(): Promise<void> {
+    if (this.#disposed || this.#recycling || this.#drafting || this.#heapRecycleBytes <= 0) return;
+    let top: number;
+    try {
+      ({ top } = await this.client.call((api) => api.heap()));
+    } catch {
+      // A kernel that can't answer is the crash path's business, not this one.
+      return;
+    }
+    // Under the limit: a later growth past it is worth a fresh worker.
+    if (top <= this.#heapRecycleBytes) {
+      this.#recycleArmed = true;
+      return;
+    }
+    // Over it, but not since it was under: a fresh worker whose own heap
+    // already passes the limit (the limit is below what the WASM starts with)
+    // must not put the restart loop going.
+    if (!this.#recycleArmed || this.#disposed || this.#drafting) return;
+    this.#recycleArmed = false;
+    this.#recycling = true;
+    try {
+      await this.client.restart();
+      this.#onRecycle?.();
+    } catch {
+      // Restarting failed; the status bar says so through the kernel status.
+    } finally {
+      this.#recycling = false;
+    }
   }
 
   /** Crashed features that haven't changed since; forgets the others. */

@@ -875,9 +875,13 @@ end to end, faster than in Fusion 360.
     marking-menu wedges (ADR-0042).
   - Emboss: cones, spheres and free-form faces; more than half way round a
     cylinder; "tangent to the face" for a flat sketch far from it; several
-    faces at once (ADR-0060). `Kernel.measure`'s volume is 1-2 % off on the
+    faces at once (ADR-0060). ~~`Kernel.measure`'s volume is 1-2 % off on the
     B-spline walls of a wrap (its own gap, like the lofter's), so the wrap's
-    exactness is only as good as the integrator.
+    exactness is only as good as the integrator.~~ **Done 2026-10-05**
+    (ADR-0067 §H3): the facade integrates with an error bound where a B-spline
+    surface makes OCCT's fixed-order integral wrong (and keeps the cheap form
+    where the bound is worse, a prism wall), so a wrap's volume is exact to
+    1e-5 relative where it was 1-3 % out.
   - WASM heap growth with a warm cache (ADR-0029, ADR-0050 §6): about 11 MB
     per 100 recomputes of the revolve document with all three revolves.
     Attributed in P3-17 to `mesh` alone (`HEAP_ATTRIBUTE=1`, 4 jumps of
@@ -885,8 +889,12 @@ end to end, faster than in Fusion 360.
     after meshing (`BRepTools::Clean`, built in CI) gave 3 jumps instead of
     4, so it isn't the cure. Ideas left: patch OCCT's mesher block size
     (`IMeshData::MEMORY_BLOCK_SIZE_HUGE`, 1 MB), a dlmalloc build with
-    `heapTop` inside `mesh()`, recycling the kernel worker when the heap top
-    passes a limit.
+    `heapTop` inside `mesh()`. ~~Recycling the kernel worker when the heap top
+    passes a limit~~ **Done 2026-10-05** (ADR-0067 §H4): `KernelApi.heap()`
+    after every recompute, and the `Recomputer` replaces the worker between
+    recomputes over `HEAP_RECYCLE_BYTES` (1 GiB) with no dialog open, keeping
+    the model on screen and noting it in the history. The growth itself is
+    still unfixed, as the two ideas above are.
   - Patterns: colour classes made joins slower than fusing the instances
     (3.9 s against 2.1 s for overlapping bosses); a cheaper join of many
     interfering copies (ADR-0047).

@@ -340,6 +340,19 @@ export interface KernelStats {
   heapBytes: number;
 }
 
+/**
+ * How much of the WASM heap is in use (P4-12 H4, ADR-0067 §H4): `top` is the
+ * top of the malloc heap, which only ever grows (OCCT's mesher asks for 16 MB
+ * blocks), and `size` the whole WASM memory. The Recomputer reads this after
+ * each recompute and replaces the worker when `top` passes its limit.
+ */
+export interface HeapUsage {
+  /** Top of the malloc heap, in bytes. */
+  top: number;
+  /** Size of the WASM memory, in bytes. */
+  size: number;
+}
+
 const KIND_CODE: Record<SubShapeKind, number> = { face: 0, edge: 1, vertex: 2 };
 const BOOLEAN_CODE = { fuse: 0, cut: 1, common: 2 } as const;
 /** The facade's sub-shape kind code for solids (count, subShape). */
@@ -1117,11 +1130,16 @@ export class Kernel {
   }
 
   stats(): KernelStats {
-    return {
-      liveShapes: this.#facade.liveShapes(),
-      heapTop: this.#facade.heapTop(),
-      heapBytes: this.#oc.wasmMemory.buffer.byteLength,
-    };
+    const heap = this.heap();
+    return { liveShapes: this.#facade.liveShapes(), heapTop: heap.top, heapBytes: heap.size };
+  }
+
+  /**
+   * How much of the WASM heap is in use (P4-12 H4): the top of its malloc heap
+   * and the size of the WASM memory. Both are free to read.
+   */
+  heap(): HeapUsage {
+    return { top: this.#facade.heapTop(), size: this.#oc.wasmMemory.buffer.byteLength };
   }
 
   /** Aborts the WASM instance on purpose. Only for the crash-recovery test. */

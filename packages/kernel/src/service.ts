@@ -2,7 +2,7 @@ import type { BodyId, FeatureRegistry, GeomRef } from '@extrudo/core';
 import { kernelFeatures } from './features';
 import type { SmoothKind, SubShapeKind } from './history';
 import { type Inspection, type InspectTarget, inspectShapes } from './inspect';
-import { Kernel, KernelError, type KernelStats, type ShapeHandle } from './kernel';
+import { type HeapUsage, Kernel, KernelError, type KernelStats, type ShapeHandle } from './kernel';
 import type { ExportMesh, MeshOptions } from './mesh';
 import type { OcctModule } from './occt/types';
 import { type EngineOptions, RecomputeEngine, yieldToEvents } from './recompute/engine';
@@ -98,6 +98,13 @@ export interface KernelApi {
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
   debugCrash(): Promise<void>;
   stats(): Promise<KernelStats>;
+  /**
+   * How much of the WASM heap is in use (P4-12 H4, ADR-0067 §H4): the top of
+   * its malloc heap and the size of the WASM memory. The Recomputer asks after
+   * each recompute and replaces the worker when the top passes its limit, so
+   * this has to be cheap.
+   */
+  heap(): Promise<HeapUsage>;
 }
 
 /** Hears how far an export is; returns `false` to stop it (it may be async, across the worker). */
@@ -259,6 +266,10 @@ export class KernelService implements KernelApi {
 
   async stats(): Promise<KernelStats> {
     return this.#run((kernel) => kernel.stats());
+  }
+
+  async heap(): Promise<HeapUsage> {
+    return this.#run((kernel) => kernel.heap());
   }
 
   /** Frees the kernel's shapes. The OCCT instance itself goes with its worker. */

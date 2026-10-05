@@ -6,7 +6,9 @@
 //
 // Every case checks the volume against the exact one: a wrapped region of area
 // A on radius R stands depth d proud as `A × d × (R ± d/2) / R`, because the
-// unrolled sketch keeps its width along the surface.
+// unrolled sketch keeps its width along the surface. The B-spline walls came to
+// within 2 % of it until P4-12 H3 made the integrator work to a tolerance
+// (ADR-0060 §3); they are within 1e-5 now.
 import type { SketchEntity, SketchEntityId } from '@extrudo/core';
 import { DEFAULT_FONT } from '@extrudo/fonts';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
@@ -81,6 +83,42 @@ function face(curves: PlanarCurve[], inked = false): PlanarFace {
   return picked;
 }
 
+/**
+ * The volume of a fine tessellation of the shape, its triangles summed as
+ * tetrahedra round the origin. This is the reference where the closed form
+ * cannot be: a profile bounded by a B-spline has no area OCCT's cheap integral
+ * gets past 3e-5 (P4-12 H3 leaves a planar face on the cheap form -- a
+ * sketch's profile areas need no more), while the wrap itself is integrated to
+ * a tolerance. The mesh has its own error, a chord standing in for the curve,
+ * so these cases are held to 1e-4 rather than 1e-5, at 0.0002 mm.
+ */
+function meshVolume(shape: ShapeHandle): number {
+  const mesh = kernel.exportMesh(shape, { linearDeflection: 0.0002, angularDeflection: 0.05 });
+  const p = mesh.positions;
+  let total = 0;
+  for (let i = 0; i < mesh.indices.length; i += 3) {
+    const a = (mesh.indices[i] as number) * 3;
+    const b = (mesh.indices[i + 1] as number) * 3;
+    const c = (mesh.indices[i + 2] as number) * 3;
+    const ax = p[a] as number;
+    const ay = p[a + 1] as number;
+    const az = p[a + 2] as number;
+    const bx = p[b] as number;
+    const by = p[b + 1] as number;
+    const bz = p[b + 2] as number;
+    const cx = p[c] as number;
+    const cy = p[c + 1] as number;
+    const cz = p[c + 2] as number;
+    total += ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx);
+  }
+  return total / 6;
+}
+
+/** How far `got` is from `want`, relative. */
+function off(got: number, want: number): number {
+  return Math.abs(got / want - 1);
+}
+
 /** What a wrap came to: the volume, the counts, and the history. */
 interface Wrapped {
   volume: number;
@@ -145,10 +183,11 @@ describe('wrapOnCylinder', () => {
 
   it('wraps a circle: an ellipse on the cylinder, weighted by the radius', () => {
     const circle: PlanarCurve[] = [{ kind: 'ellipse', center: [0, 2], a: 3, b: 3, rotation: 0 }];
-    // A curved wall is a B-spline surface, which the volume integrator only gets to
-    // about a percent: `volumeWithin` says so rather than pretending to be exact.
+    // A curved wall is a B-spline surface, which the volume integrator used to
+    // get to about a percent (ADR-0060 §3); it integrates to a tolerance now
+    // (P4-12 H3), so these are exact to the same 1e-5 as the straight walls.
     const area = Math.PI * 9;
-    const volumeWithin = (got: number, expected: number, tolerance = 0.02) =>
+    const volumeWithin = (got: number, expected: number, tolerance = 1e-5) =>
       expect(Math.abs(got / expected - 1)).toBeLessThan(tolerance);
     volumeWithin(wrap(circle, 1).volume, want(area, 1));
     volumeWithin(wrap(circle, 1, false).volume, want(area, 1, false));
@@ -180,9 +219,7 @@ describe('wrapOnCylinder', () => {
       const { shape } = kernel.wrapOnCylinder(profile.shape, CYLINDER, 0.5);
       try {
         expect(kernel.count(shape, 'face')).toBe(3);
-        expect(Math.abs(kernel.measure(shape).volume / want(profile.area, 0.5) - 1)).toBeLessThan(
-          0.02,
-        );
+        expect(off(kernel.measure(shape).volume, meshVolume(shape))).toBeLessThan(1e-4);
       } finally {
         kernel.release(shape);
       }
@@ -200,8 +237,9 @@ describe('wrapOnCylinder', () => {
     ];
     const out = wrap(curves, 1);
     expect(out.faces).toBe(6);
-    // The arc's wall is a B-spline surface: within a percent, not to 1e-6.
-    expect(Math.abs(out.volume / want(32 + 8 * Math.PI, 1) - 1)).toBeLessThan(0.02);
+    // The arc's wall is a B-spline surface: to 1e-5 now the integrator works to
+    // a tolerance (P4-12 H3), where before this was 2 %.
+    expect(Math.abs(out.volume / want(32 + 8 * Math.PI, 1) - 1)).toBeLessThan(1e-5);
   });
 
   it('wraps a letter O of Inter: a solid whose counter is a hole', () => {
@@ -237,9 +275,7 @@ describe('wrapOnCylinder', () => {
         }
         // Two caps and one wall per edge of the profile face, the counter included.
         expect(kernel.count(shape, 'face')).toBe(2 + kernel.count(profile.shape, 'edge'));
-        expect(Math.abs(kernel.measure(shape).volume / want(profile.area, 0.8) - 1)).toBeLessThan(
-          0.02,
-        );
+        expect(off(kernel.measure(shape).volume, meshVolume(shape))).toBeLessThan(1e-4);
       } finally {
         kernel.release(shape);
       }

@@ -92,6 +92,7 @@ function bind(service: KernelService) {
     debugTestPart: () => service.debugTestPart(),
     debugCrash: () => service.debugCrash(),
     stats: () => service.stats(),
+    heap: () => service.heap(),
   };
 }
 

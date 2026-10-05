@@ -4,6 +4,20 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-05 · **P4-12 (H3, H4) Exact enough mass properties, and a kernel worker
+  that recycles itself** (ADR-0067 §H3, §H4): the facade's `measure` and
+  `properties` integrate BRepGProp with an error bound (`MASS_EPS = 1e-7`)
+  where a B-spline surface makes OCCT's fixed-order integral wrong -- a wrap's
+  walls went from 1-3 % off to exact, and `scale`'s non-uniformly scaled
+  cylinder from 0.77 % over to exact -- while a prism wall or a surface of
+  revolution, where the volume integral's terms cancel and the bound form is
+  worse, keeps the cheap form; the facade's own result checks (shell, offset
+  face, draft, the wrap of an emboss) decide on the accurate one. `wrap.test.ts`
+  tightens from 2 % to 1e-5 and a new `mass-properties.test.ts` checks a loft
+  and a conic extrude against a fine tessellation. And `KernelApi.heap()` after
+  every recompute: over 1 GiB, with no dialog open, the `Recomputer` ends the
+  kernel worker and boots a new one (fonts sent again, recomputed cold, the
+  model on screen throughout) and the notification history says so quietly.
 - 2026-10-04 · **P4-12 (H1) No `'unsafe-eval'` in the content policy**
   (ADR-0067 §H1): both WASM builds are made with `DYNAMIC_EXECUTION: 0` — the
   OCCT build beside its other emcc settings, planegcs beside

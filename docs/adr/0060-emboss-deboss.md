@@ -175,11 +175,16 @@ What the four slices came to, and what the implementation changed in §1-§4.
   different curve over its full range. The fix is in the wrap's own edge
   mapping: a B-spline edge's trimmed **piece** (`Geom_BSplineCurve` + its
   first/last parameters) is mapped pole by pole, not the whole curve.
-- **`Kernel.measure`'s volume is 1-2 % off on a B-spline wall** (the wrap's
+- ~~**`Kernel.measure`'s volume is 1-2 % off on a B-spline wall** (the wrap's
   curved walls are B-spline surfaces, like the lofter's), so the wrap's exact
   volumes are only as exact as the integrator: the kernel tests use 2 % where a
   wall is curved (a rectangle of lines is exact to 1e-7) and the arithmetic is
-  in **P4-12**.
+  in **P4-12**.~~ **Resolved 2026-10-05** (ADR-0067 §H3): the facade integrates
+  BRepGProp with an error bound where a B-spline face makes OCCT's fixed-order
+  integral wrong, so a wrap's volume is exact to 1e-5 of
+  `area × depth × (R ± depth/2) / R` where its reference is exact (and 1e-4
+  against a fine mesh where the profile's own area is the limit); the kernel
+  tests use 1e-5 and 1e-4 now, not 2 %.
 - **The dialog** puts its depth arrow on the wall at the letters: the frame is
   taken at the point of the surface nearest the profiles' centre
   (`surfaceFrameNear`), because a cylinder's own middle is on the axis, nowhere

@@ -1,3 +1,4 @@
+import type { HeapUsage } from './kernel';
 import { isKernelCrash, type KernelApi, KernelCrashError, type KernelInfo } from './service';
 
 /** One running kernel: a worker in the app, or an in-process service in tests. */
@@ -90,6 +91,34 @@ export class KernelClient {
     } finally {
       if (reject) this.#pending.delete(reject);
     }
+  }
+
+  /**
+   * How much of the WASM heap is in use (P4-12 H4): the top of its malloc heap
+   * and the size of the WASM memory.
+   */
+  heap(): Promise<HeapUsage> {
+    return this.call((api) => api.heap());
+  }
+
+  /**
+   * Throws the kernel away on purpose and starts a new one, once the caller is
+   * between calls (P4-12 H4: a heap that has grown past what the browser will
+   * give a worker is freed by ending the worker, not by clearing shapes).
+   * `onRestart` runs as it does after a crash, so the caller re-sends what the
+   * new kernel needs; the crash budget doesn't move, since nothing went wrong.
+   * A call in flight rejects with KernelCrashError rather than hanging.
+   */
+  async restart(): Promise<void> {
+    this.#connection?.terminate();
+    this.#connection = undefined;
+    for (const reject of this.#pending) {
+      reject(new KernelCrashError('The kernel was restarted.'));
+    }
+    const ready = this.#boot('restarting');
+    this.#ready = ready;
+    await ready;
+    this.#options.onRestart?.(this.#restarts);
   }
 
   /** Stops the kernel. The client can be started again. */

@@ -42,6 +42,7 @@ function connect(worker: Worker): KernelConnection {
     debugTestPart: () => api.debugTestPart(),
     debugCrash: () => api.debugCrash(),
     stats: () => api.stats(),
+    heap: () => api.heap(),
   };
   return {
     api: proxied,

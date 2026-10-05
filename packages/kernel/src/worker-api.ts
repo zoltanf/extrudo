@@ -32,6 +32,7 @@ export function workerApi(service: KernelService): KernelApi {
     },
     debugCrash: () => service.debugCrash(),
     stats: () => service.stats(),
+    heap: () => service.heap(),
   };
 }
 
