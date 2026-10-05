@@ -280,7 +280,7 @@ exist so far: a font (a sketch `text` entity's `attachment:<id>`), a model an
 |---|---|---|---|
 | `name` | string | yes | 1 to 200 characters. What the user sees, e.g. `Comic Neue Bold`. |
 | `fileName` | string | yes | 1 to 255 characters. The name of the file it was added from, so an export can offer it back. |
-| `mediaType` | one of `font/ttf`, `font/otf`, `font/woff`, `model/step`, `model/stl`, `model/3mf`, `model/obj`, `image/png`, `image/jpeg`, `image/webp` | yes | How the bytes are to be read. WOFF2 is not accepted: the font shaper can't read it, so such a file is refused. A reader must take the type from the file **name's extension**, never from the browser's `File.type` (empty for most of these): `.ttf`, `.otf`, `.woff`, `.step`/`.stp`, `.stl`, `.3mf`, `.obj`, `.png`, `.jpg`/`.jpeg`, `.webp` (case apart). |
+| `mediaType` | one of `font/ttf`, `font/otf`, `font/woff`, `model/step`, `model/stl`, `model/3mf`, `model/obj`, `application/x-openscad`, `image/png`, `image/jpeg`, `image/webp` | yes | How the bytes are to be read. WOFF2 is not accepted: the font shaper can't read it, so such a file is refused. A reader must take the type from the file **name's extension**, never from the browser's `File.type` (empty for most of these): `.ttf`, `.otf`, `.woff`, `.step`/`.stp`, `.stl`, `.3mf`, `.obj`, `.scad`, `.png`, `.jpg`/`.jpeg`, `.webp` (case apart). `application/x-openscad` (P5-04, ADR-0071) is an OpenSCAD source file, UTF-8 text. |
 | `sha256` | string | yes | Exactly 64 lower case hex digits: the SHA-256 of the bytes, which is the name of the file in the container and in storage. |
 | `size` | integer | yes | At least 1. The file's size in bytes, used for the storage limits (one file at most 25 MB, all of a design at most 100 MB; raised in P4-06 for imported models, ADR-0066 §0). |
 
@@ -1163,13 +1163,26 @@ than 1,000,000 triangles, is an error (the message names the file).
 
 | Input | Kind | Required | Rule |
 |---|---|---|---|
-| `file` | `file` | yes | The attachment ID of the file (section 4.5). Its media type must be `model/*`: `model/step`, `model/stl`, `model/3mf` or `model/obj`. |
-| `units` | `enum` | no | What unit the file's numbers are in: `auto` (default; a 3MF's own unit, STL and OBJ as millimetres), `mm`, `cm`, `m` or `in`. Meshes only — a STEP file converts its own units, so the value has no effect there. |
+| `file` | `file` | yes | The attachment ID of the file (section 4.5). Its media type must be `model/step`, `model/stl`, `model/3mf`, `model/obj` or `application/x-openscad`. |
+| `units` | `enum` | no | What unit the file's numbers are in: `auto` (default; a 3MF's own unit, STL, OBJ and OpenSCAD as millimetres), `mm`, `cm`, `m` or `in`. Meshes and OpenSCAD files only — a STEP file converts its own units, so the value has no effect there. |
 | `up` | `enum` | no | The file's up axis: `z` (default) or `y`. `y` turns the file +90° about X, so a Y-up file stands up in a Z-up design. |
+| `scadName`, `scadName2` ... `scadName32` | `enum` | no | OpenSCAD files only (P5-04, ADR-0071 §5): override `n`'s variable, the name of a top-level variable of the file (`^\$?[A-Za-z_][A-Za-z0-9_]*$`, so `$fn` too). The value is free text, not one of a list. |
+| `scadValue`, `scadValue2` ... `scadValue32` | `expr` | no | OpenSCAD files only: override `n`'s value, an expression of any unit (`unit` says which: a length reaches OpenSCAD in millimetres, an angle in degrees, a plain number as it is). Without a stored `unit` it is a length, as everywhere (section 6.1); a writer should store one. |
 
 There are no placement inputs: the bodies land at the file's coordinates, and
 Move or Place on Bed puts them elsewhere. An `import` is not patternable, but
 its bodies are, through Pattern › Bodies.
+
+**OpenSCAD files** (P5-04, ADR-0071): the file is compiled by OpenSCAD (its
+Manifold backend) with every override as a `-D name=value` definition, and the
+mesh it makes is read like a mesh file's. A pair with only one of its two
+inputs, or the same variable twice, is an error; a variable the file never
+assigns is a warning. The overrides are numbered like a fillet's sets
+(section 6.8): `scadName` + `scadValue` is the first, `scadName<n>` +
+`scadValue<n>` the `n`th, and an absent pair is skipped. OpenSCAD's own errors
+(a syntax error, a failed `assert`, a 2D or empty result, a file it `include`s
+that the design lacks) are the feature's error, its `echo`es and warnings the
+feature's warnings.
 
 **Names:** a STEP file's face `n` (1-based, in the order the file's faces are
 listed before the bodies are split) is `import:<feature id>:face:<n>`, with its

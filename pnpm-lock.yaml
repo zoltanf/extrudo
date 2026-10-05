@@ -373,9 +373,6 @@ importers:
       '@extrudo/io':
         specifier: workspace:*
         version: link:../io
-      fflate:
-        specifier: ^0.8.3
-        version: 0.8.3
 
   packages/sketch:
     dependencies:

@@ -50,5 +50,5 @@ different geometry model (triangle-mesh CSG, whereas we use exact B-rep).
 | CADmium | Browser CAD in Rust/WASM; a comparable history-based web CAD | check |
 | Chili3D | Browser CAD on OCCT WASM with a Fusion-like UI | AGPL, ideas only, no code |
 | FreeCAD (Sketcher, TNP work in 1.0) | Constraint UX and topological-naming approach | LGPL-2.1 |
-| OpenSCAD / openscad-wasm | Phase 5 import | GPL-2.0-or-later |
+| OpenSCAD (its own WebAssembly snapshot, ADR-0071) | Phase 5 import (P5-04): `.scad` files compiled to mesh bodies | GPL-2.0-or-later (the WASM bundles CGAL: GPL-3.0-or-later) |
 | Manifold | Mesh booleans | Apache-2.0 |

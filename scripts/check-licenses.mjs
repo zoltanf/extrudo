@@ -19,6 +19,10 @@ const ALLOWED = new Set([
   'LGPL-2.0-or-later', // planegcs's JavaScript wrapper
   'LGPL-2.1-or-later',
   'GPL-3.0-or-later',
+  // OpenSCAD (ADR-0071). Its WASM is not an npm dependency (packages/openscad
+  // mirrors OpenSCAD's own build, NOTICE §1); listed for whatever of it may come
+  // through npm later.
+  'GPL-2.0-or-later',
   'CC0-1.0',
   'Unlicense',
   'BlueOak-1.0.0',

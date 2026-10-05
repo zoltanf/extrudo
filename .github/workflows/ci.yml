@@ -95,9 +95,42 @@ jobs:
         if: steps.release.outputs.exists == 'false'
         run: node packages/sketch/planegcs/planegcs.mjs publish
 
+  openscad:
+    # OpenSCAD's own WebAssembly snapshot (packages/openscad, ADR-0071 §1):
+    # files.openscad.org prunes snapshots after some months, so the pinned one
+    # is mirrored as a release asset (`openscad-<hash>`). The "build" is a
+    # download, a checksum and a one-line patch. A quick no-op when it exists.
+    name: OpenSCAD WASM mirror
+    runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Look for a published mirror of these inputs
+        id: release
+        run: |
+          echo "hash=$(node packages/openscad/openscad.mjs hash)" >> "$GITHUB_OUTPUT"
+          if node packages/openscad/openscad.mjs exists; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.release.outputs.exists == 'false'
+        run: node packages/openscad/openscad.mjs build
+
+      - name: Publish
+        if: steps.release.outputs.exists == 'false'
+        run: node packages/openscad/openscad.mjs publish
+
   check:
     name: Typecheck, lint, unit and memory tests
-    needs: [occt, planegcs]
+    needs: [occt, planegcs, openscad]
     runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 30
     env:
@@ -114,7 +147,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Download the OCCT and planegcs WASM
+      - name: Download the OCCT, planegcs and OpenSCAD WASM
         run: pnpm wasm
 
       - name: Typecheck, lint, package boundaries, bindings, unit and memory tests
@@ -125,7 +158,7 @@ jobs:
     # about 20 minutes by P3-14 (178 tests; the job with `pnpm check` before it
     # took 27-33). Two shards run beside the check job, each on its own runner.
     name: E2E tests (${{ matrix.shard }}/2)
-    needs: [occt, planegcs]
+    needs: [occt, planegcs, openscad]
     runs-on: ${{ vars.RUNS_ON && fromJSON(vars.RUNS_ON) || 'ubuntu-latest' }}
     timeout-minutes: 40
     strategy:
@@ -146,7 +179,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Download the OCCT and planegcs WASM
+      - name: Download the OCCT, planegcs and OpenSCAD WASM
         run: pnpm wasm
 
       - name: Install Playwright Chromium

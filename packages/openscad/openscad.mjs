@@ -12,11 +12,10 @@
 //
 //   node openscad.mjs hash|ensure|fetch|build|publish|exists
 import { createHash } from 'node:crypto';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { unzipSync } from 'fflate';
-import { wasmRelease } from '../../scripts/wasm-release.mjs';
+import { run, wasmRelease } from '../../scripts/wasm-release.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
@@ -37,11 +36,20 @@ async function build() {
   const zip = new Uint8Array(await response.arrayBuffer());
   const sum = createHash('sha256').update(zip).digest('hex');
   if (sum !== SHA256) throw new Error(`${URL}: sha256 ${sum}, expected ${SHA256}`);
-  const files = unzipSync(zip);
-  const glue = files['openscad.js'];
-  const wasm = files['openscad.wasm'];
-  if (!glue || !wasm) throw new Error(`${URL} has no openscad.js and openscad.wasm`);
-  const text = new TextDecoder().decode(glue);
+  // `unzip` rather than a package: CI's mirror job runs this without an install.
+  const tmp = join(HERE, '.unzip');
+  rmSync(tmp, { recursive: true, force: true });
+  mkdirSync(tmp, { recursive: true });
+  let text;
+  let wasm;
+  try {
+    writeFileSync(join(tmp, 'openscad.zip'), zip);
+    run('unzip', ['-q', '-o', join(tmp, 'openscad.zip'), 'openscad.js', 'openscad.wasm', '-d', tmp]);
+    text = readFileSync(join(tmp, 'openscad.js'), 'utf8');
+    wasm = readFileSync(join(tmp, 'openscad.wasm'));
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
   if (!text.includes(HEAP_MAX[0])) {
     throw new Error(`OpenSCAD ${VERSION}'s glue has no "${HEAP_MAX[0]}" to patch`);
   }
