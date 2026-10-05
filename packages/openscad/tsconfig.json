@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // Both workers: the browser's (a nested module worker) and Node's
+  // (`worker_threads`). `.ts` imports, because Node runs the Node worker's
+  // TypeScript as it is and resolves no extensionless import there.
+  "compilerOptions": {
+    "lib": ["es2023", "esnext.disposable", "webworker"],
+    "types": ["node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src"]
+}

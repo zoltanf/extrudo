@@ -13,7 +13,18 @@ const ALLOWED = {
   '@extrudo/sketch': ['@extrudo/core', '@extrudo/io', '@extrudo/fonts'],
   // io (MIT): the `import` evaluator parses STL, 3MF and OBJ files with it
   // (ADR-0066 §3), and the export tests check meshes with it.
-  '@extrudo/kernel': ['@extrudo/core', '@extrudo/sketch', '@extrudo/io', '@extrudo/fonts'],
+  // openscad: the compile protocol's types, and the worker entry's lazy
+  // `import()` of its browser compiler (ADR-0071 §3).
+  '@extrudo/kernel': [
+    '@extrudo/core',
+    '@extrudo/sketch',
+    '@extrudo/io',
+    '@extrudo/fonts',
+    '@extrudo/openscad',
+  ],
+  // OpenSCAD in WebAssembly (P5-04, ADR-0071): nothing internal at run time;
+  // its tests read the 3MFs it writes with io.
+  '@extrudo/openscad': ['@extrudo/io'],
   // MIT-licensed: must stay independent of the GPL packages.
   '@extrudo/io': [],
   // The bundled fonts: a data package, nothing internal may depend the other
@@ -34,6 +45,7 @@ const ALLOWED = {
     '@extrudo/fonts',
     '@extrudo/io',
     '@extrudo/kernel',
+    '@extrudo/openscad',
     '@extrudo/sketch',
     '@extrudo/storage',
   ],
