@@ -3,6 +3,7 @@
 One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
+
 - 2026-10-05 · **P4-12 (H2, H5) Threads cut in pieces; heavy tools merged without
   distances; fuzz budgets; a sweep says where its profile lands** (ADR-0067 §H2,
   §H5): a thread of about 400 turns trapped the WASM heap, and `spikes/
@@ -20,7 +21,6 @@ One line per completed roadmap task, newest first. Dates are absolute.
   of the path's length (or 0.5 mm) away, which is what B10 got wrong.
 # Changelog
 One line per completed roadmap task, newest first. Dates are absolute.
-## v0.4 (Phase 4, in progress)
 - 2026-10-05 · **P4-12 (H3, H4) Exact enough mass properties, and a kernel worker
   that recycles itself** (ADR-0067 §H3, §H4): the facade's `measure` and
   `properties` integrate BRepGProp with an error bound (`MASS_EPS = 1e-7`)
@@ -55,6 +55,20 @@ One line per completed roadmap task, newest first. Dates are absolute.
   so the tool's tessellation is not where a mesh boolean loses accuracy). The
   e2e cuts a Ø6 mm hole through the imported cube, joins a box to it, moves it
   and splits it, reading the volumes from a 3MF export.
+- 2026-10-04 · **P4-12 (H1) No `'unsafe-eval'` in the content policy**
+  (ADR-0067 §H1): both WASM builds are made with `DYNAMIC_EXECUTION: 0` — the
+  OCCT build beside its other emcc settings, planegcs beside
+  `ALLOW_MEMORY_GROWTH` in its link flags (CI built and published both, new
+  input hashes) — so their embind glue builds its invokers as closures and
+  evaluates nothing; zod's JIT is off too (`z.config({ jitless: true })` in the
+  new `packages/core/src/zod.ts`, our one zod import, with `zod.test.ts`
+  proving no `new Function` is ever attempted). `'unsafe-eval'` is out of
+  `apps/web/public/_headers`, which keeps `'wasm-unsafe-eval'` for the WASM,
+  and `e2e/hosting.spec.ts` asserts the served `script-src` and walks a whole
+  session (template, sketch, extrude, command palette, 3MF) under the real
+  headers, failing on any violation or console error. Measured: parsing a
+  document and dragging and recomputing the benchmarks are within noise
+  (ADR-0067 §Results).
 - 2026-10-04 · **Landing page: Cloudflare Web Analytics (cookieless) on extrudo.org
   only** — enabled through the `extrudo-site` Pages project's own setting (the tag
   is injected at deploy time, so no token is in the repo), its two hosts in the
@@ -198,18 +212,6 @@ One line per completed roadmap task, newest first. Dates are absolute.
   profile exactly where its sketch drew it** (OCCT's no-contact placement), so
   a swept section has to be *centred on the path*: centred on the sketch's
   origin instead, the link came out with 6 mm walls.
-- 2026-10-04 · **P4-06 (1 of 5) Drawings into a sketch** (ADR-0066 §1,
-  FR-SK-14): `readSvg` and `readDxf` in `@extrudo/io` (an XML tokenizer of our
-  own, a path-data parser with the SVG arc conversion, transforms composed down
-  the tree, `$INSUNITS`, blocks and `INSERT`, bulges, B-splines by knot
-  insertion, everything left out counted) give a `Drawing` in millimetres with
-  y up; `@extrudo/sketch/import`'s `drawingToSketch` turns it into a
-  `SketchChange` (lines, circles and arcs, ellipses, and control-point splines
-  for elliptical arcs and Béziers, so nothing is flattened), fixed by default,
-  the 5,000-curve limit and the user's own IDs; and the tool `importDrawing`
-  with its panel "Import drawing" (unit, scale, position, fixed, what the file
-  brings in), which commits the drawing as one undo step. The e2e extrudes the
-  imported plate and reads its size.
 - 2026-10-04 · **P4-10 (2 of 2) Variable-radius fillet** (ADR-0064 §2,
   FR-FT-04): each edge set of a fillet takes an optional **end radius**
   (`radiusEnd<n>`) and a **swap** (`swap<n>`), so the round tapers along its

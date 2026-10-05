@@ -1,4 +1,4 @@
-# Release checklist: v0.3.0 and going public
+# Release checklist: v0.4.0, the first public release
 
 Everything the code can do for the release is done (P3-15, ADR-0054). What is
 left needs the owner: accounts, repository settings and the machines the agents
@@ -97,17 +97,22 @@ cannot reach. Tick them off in order; each box says who and where.
   Done 2026-10-02 (`8810502`; first deploy after `ffe159a` replaced
   wrangler-action with `npx wrangler`). Paste secrets through the GitHub web
   page: `gh secret set`'s hidden prompt saved empty values once.
-- [ ] Tag it on the v0.3.0 commit (main has Phase 4 work after it): `git tag -a
-  v0.3.0 -m "v0.3.0" 20a10bb && git push origin v0.3.0`. (All package versions
-  are 0.3.0 there.) Then **deploy it as the stable app**: Actions > Deploy > Run
-  workflow on main, target `stable`, ref `v0.3.0` (ADR-0057; that commit predates
-  the tag trigger). Later releases: bump the versions, tag; the tag deploys
-  itself.
-- [ ] GitHub > Releases > **Draft a new release** for `v0.3.0`. Use the
-  `## v0.3.0` section of `docs/CHANGELOG.md` for the notes (grouped by task;
-  trim it to a readable summary of what is new: sketching, solids, patterns,
-  print aids, onboarding), link <https://extrudo.org> and `docs/file-format.md`, and
-  say that it is the first public release and rough in places.
+- [ ] **Decided 2026-10-04: no v0.3.0 tag; the first public release is v0.4.0**
+  (Phase 4: sweeps, threads, text, emboss, splines, customizer, tolerance,
+  timeline groups, linked folders, import, canvas; the hardening of ADR-0067).
+  Before the tag: the slicer check and the fresh look above, on
+  <https://edge.extrudo.org> (the latest main). Then the agent bumps every
+  package version to 0.4.0 and renames the CHANGELOG's "v0.4 (Phase 4, in
+  progress)" heading to "v0.4.0" in one commit, and **the owner tags that
+  commit**: `git tag -a v0.4.0 -m "v0.4.0" <commit> && git push origin v0.4.0`.
+  The tag deploys itself as the stable app (`app.extrudo.org`, ADR-0057) once
+  that commit's CI on main passed.
+- [ ] GitHub > Releases > **Draft a new release** for `v0.4.0`. Use the
+  `## v0.4.0` and `## v0.3.0` sections of `docs/CHANGELOG.md` for the notes
+  (grouped by task; trim them to a readable summary of what is new: sketching,
+  solids, patterns, print aids, threads, text and emboss, import, the customizer,
+  onboarding), link <https://extrudo.org> and `docs/file-format.md`, and say that
+  it is the first public release and rough in places.
 - [ ] Announce it where you like (a print-community forum, a short demo video).
   Have the demo ready: the tutorial's box, the Wall bracket with a parameter
   change, an export into a slicer.
