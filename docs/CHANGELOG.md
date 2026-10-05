@@ -4,6 +4,15 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-05 · **Landing page: text contrast on the hero's glow.** In the dark
+  theme the nav links, the intro paragraph and the "latest build" line sat at
+  3.0-4.0:1 on the glow (WCAG AA asks 4.5:1); two site tokens,
+  `--x-glow-muted` (#c8cfdb) and `--x-glow-link` (#a4cfff), make them 4.5:1 or
+  more even at its brightest point, and the light theme is unchanged.
+  `e2e/site.spec.ts` now measures every text on the page against the pixels
+  painted behind it (glyphs made transparent, a screenshot, both themes, desktop
+  and phone widths), where axe reports text over a gradient as incomplete; it
+  replaces the footer-only check.
 - 2026-10-05 · **P4-12 Patterns: a skip list, count handles and a path handle**
   (ADR-0047's amendment): any of the three pattern types can leave single
   instances out. `skip` is the list of their position labels (`2`, `m1`,

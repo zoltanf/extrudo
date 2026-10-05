@@ -20,6 +20,12 @@
      3.6:1 on white, under WCAG AA's 4.5:1 for text). Non-text uses keep --x-sketch. */
   --x-link: var(--x-sketch);
   --x-glow: radial-gradient(90% 80% at 50% 0%, #46557a 0%, #29313f 45%, #1b1f27 80%);
+  /* Text on the glow (the landing page's header and hero). At the glow's centre
+     (#46557a) the muted grey is 2.9:1 and the link blue 3.1:1, so text there is
+     lighter in dark: both of these are 4.5:1 or more even on that brightest point.
+     In light the glow is near white and the usual colours pass. */
+  --x-glow-muted: #c8cfdb;
+  --x-glow-link: #a4cfff;
   --x-logo-top: #ffc76a;
   --x-logo-side: #e0922a;
   --x-logo-sketch: #5aa9ff;
@@ -42,6 +48,8 @@
     --x-sketch: #2f86f0;
     --x-link: #1a6ad0;
     --x-glow: radial-gradient(90% 80% at 50% 0%, #ffffff 0%, #eef1f5 50%, #ffffff 85%);
+    --x-glow-muted: var(--x-muted);
+    --x-glow-link: var(--x-link);
     --x-logo-top: #f2a93b;
     --x-logo-side: #c97a16;
     --x-logo-sketch: #2f86f0;

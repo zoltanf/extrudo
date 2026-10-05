@@ -126,7 +126,7 @@ nav {
 }
 
 nav a:not(.button) {
-  color: var(--x-muted);
+  color: var(--x-glow-muted);
   text-decoration: none;
 }
 
@@ -188,7 +188,7 @@ h1 {
 .lead {
   max-width: 36em;
   margin: 20px auto 0;
-  color: var(--x-muted);
+  color: var(--x-glow-muted);
   font-size: 1.2rem;
 }
 
@@ -198,8 +198,12 @@ h1 {
 
 .edge-note {
   margin: 16px 0 0;
-  color: var(--x-muted);
+  color: var(--x-glow-muted);
   font-size: 0.95rem;
+}
+
+.edge-note a {
+  color: var(--x-glow-link);
 }
 
 .intro {

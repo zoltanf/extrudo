@@ -307,36 +307,154 @@ function contrast(a: string, b: string): number {
   return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }
 
-test("the footer's links meet WCAG AA contrast in both themes", async ({ page }) => {
-  // axe's own rule cannot judge this (see the audit test below), and the brand's sketch
-  // blue is 3.63:1 on white in the light theme, under AA's 4.5:1 for text, so the footer's
-  // links have their own measurement. The footer sits below the glow (the gradient is the
-  // body's top 80 %), so the flat `--x-bg` is what is painted behind it. The links *over*
-  // the glow are a separate design question.
-  for (const colorScheme of ['light', 'dark'] as const) {
-    await page.emulateMedia({ colorScheme });
-    await page.goto(`${host.url}/`);
-    await expect(heading(page)).toBeVisible();
-    const links = (await page.evaluate(
-      `(() => Array.from(document.querySelectorAll('footer a')).map((a) => ({
-      text: (a.textContent || '').trim().replace(/\\s+/g, ' '),
-      colour: getComputedStyle(a).color,
-      background: getComputedStyle(document.body).backgroundColor,
-    })))()`,
-    )) as { text: string; colour: string; background: string }[];
-    expect(links.length).toBeGreaterThan(0);
-    const tooLow = links
-      .map((l) => ({ text: l.text, ratio: Number(contrast(l.colour, l.background).toFixed(2)) }))
-      .filter((l) => l.ratio < 4.5);
-    expect.soft(tooLow, `footer links under 4.5:1 in the ${colorScheme} theme`).toEqual([]);
+/** A piece of text on the page: its colour, whether WCAG counts it as large, its line boxes. */
+interface TextBox {
+  text: string;
+  colour: string;
+  large: boolean;
+  rects: { x: number; y: number; w: number; h: number }[];
+}
+
+// Every visible text node of the page, with its line boxes in page coordinates. Text
+// off the page (the skip link until it has focus) is left out.
+const TEXT_BOXES = `(() => {
+  const out = [];
+  const width = document.documentElement.scrollWidth;
+  const height = document.documentElement.scrollHeight;
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = (node.textContent || '').trim().replace(/\\s+/g, ' ');
+    const element = node.parentElement;
+    if (!text || !element || element.closest('script, style, noscript')) continue;
+    const style = getComputedStyle(element);
+    if (style.visibility !== 'visible') continue;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const rects = Array.from(range.getClientRects())
+      .map((r) => ({ x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height }))
+      .filter((r) => r.w >= 2 && r.h >= 2 && r.x >= 0 && r.y >= 0 &&
+        r.x + r.w <= width && r.y + r.h <= height);
+    if (rects.length === 0) continue;
+    const size = parseFloat(style.fontSize);
+    const bold = Number(style.fontWeight) >= 700;
+    out.push({ text: text.slice(0, 48), colour: style.color, rects,
+      large: size >= 24 || (bold && size >= 18.66) });
   }
+  return out;
+})()`;
+
+// Makes every glyph transparent, so a screenshot shows only what is painted behind the
+// text. Through the CSSOM, which the site's content policy allows (an injected <style>
+// would not be).
+const HIDE_TEXT = `(() => {
+  for (const element of document.querySelectorAll('*')) {
+    element.style.setProperty('color', 'transparent', 'important');
+    element.style.setProperty('-webkit-text-fill-color', 'transparent', 'important');
+    element.style.setProperty('text-shadow', 'none', 'important');
+  }
+})()`;
+
+/**
+ * The light and dark end of what is painted behind each text box, read from a PNG of the
+ * page in a blank page of its own (no content policy there), so the worst background for a
+ * light text and for a dark one are both known. Each box is read 2 px inside its edges,
+ * and its ends are the 2nd and 98th percentile of the pixels' luminance rather than the
+ * extremes: a code chip's border can land on the first row of its text's box (sub-pixel
+ * layout), and the pixels at a box's edge are no glyph's background.
+ */
+function backgroundRange(png: Buffer, boxes: TextBox[]): string {
+  return `(async () => {
+    const image = new Image();
+    image.src = 'data:image/png;base64,${png.toString('base64')}';
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width;
+    canvas.height = image.height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(image, 0, 0);
+    const luminance = (r, g, b) => [r, g, b]
+      .map((v) => v / 255)
+      .map((s) => (s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4))
+      .reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+    return ${JSON.stringify(boxes)}.map((box) => {
+      const pixels = [];
+      for (const r of box.rects) {
+        const x = Math.ceil(r.x) + 2;
+        const y = Math.ceil(r.y) + 2;
+        const w = Math.max(1, Math.floor(r.w) - 5);
+        const h = Math.max(1, Math.floor(r.h) - 5);
+        const data = context.getImageData(x, y, w, h).data;
+        for (let i = 0; i < data.length; i += 4) {
+          pixels.push([luminance(data[i], data[i + 1], data[i + 2]), data[i], data[i + 1], data[i + 2]]);
+        }
+      }
+      pixels.sort((a, b) => a[0] - b[0]);
+      const at = (q) => {
+        const p = pixels[Math.min(pixels.length - 1, Math.floor(q * pixels.length))];
+        return 'rgb(' + p[1] + ', ' + p[2] + ', ' + p[3] + ')';
+      };
+      return { light: at(0.98), dark: at(0.02) };
+    });
+  })()`;
+}
+
+test('every text on the landing page meets WCAG AA contrast against what is painted behind it', async ({
+  page,
+}) => {
+  // axe reports text over the body's gradient (`--x-glow`) as *incomplete* instead of
+  // judging it (see the audit below), and that is where the hero and the nav sit. So
+  // this measures the real pixels: every glyph made transparent, a screenshot, and each
+  // text's own colour against the lightest and the darkest pixel behind its line boxes.
+  // AA is 4.5:1, or 3:1 for large text (24 px, or 18.66 px bold).
+  test.setTimeout(90_000);
+  const failures: { scheme: string; width: number; text: string; ratio: number; need: number }[] =
+    [];
+  for (const colorScheme of ['dark', 'light'] as const) {
+    for (const viewport of [
+      { width: 1280, height: 860 },
+      { width: 375, height: 812 },
+    ]) {
+      await page.setViewportSize(viewport);
+      await page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
+      await page.goto(`${host.url}/`);
+      await expect(heading(page)).toBeVisible();
+      await page.evaluate('document.fonts.ready.then(() => true)');
+      const boxes = (await page.evaluate(TEXT_BOXES)) as TextBox[];
+      expect(boxes.length).toBeGreaterThan(20);
+      await page.evaluate(HIDE_TEXT);
+      const png = await page.screenshot({ fullPage: true, animations: 'disabled' });
+      const blank = await page.context().newPage();
+      const ranges = (await blank.evaluate(backgroundRange(png, boxes))) as {
+        light: string;
+        dark: string;
+      }[];
+      await blank.close();
+      boxes.forEach((box, i) => {
+        const range = ranges[i];
+        if (!range) return;
+        const ratio = Math.min(contrast(box.colour, range.light), contrast(box.colour, range.dark));
+        const need = box.large ? 3 : 4.5;
+        if (ratio < need) {
+          failures.push({
+            scheme: colorScheme,
+            width: viewport.width,
+            text: box.text,
+            ratio: Number(ratio.toFixed(2)),
+            need,
+          });
+        }
+      });
+    }
+  }
+  expect(failures, 'text under WCAG AA contrast against its painted background').toEqual([]);
 });
 
 test('the landing page passes an axe audit in both themes', async ({ page }) => {
   // NFR-07, like e2e/a11y.spec.ts for the app: WCAG 2.1 A and AA, both colour schemes.
   // This is a net for the rules axe can judge; it deliberately does **not** judge text
   // over the body's gradient (`--x-glow`), which it reports as *incomplete* instead of
-  // passing or failing, so the footer's links have their own ratio test above.
+  // passing or failing, so the measurement of every text against its painted
+  // background above covers contrast.
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
     await page.goto(`${host.url}/`);

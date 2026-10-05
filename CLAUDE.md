@@ -1973,6 +1973,13 @@ them. Notes further down that name a machine apply to that machine only.
   `host.override` (which takes a content type, as `/` has no extension) and stubs
   both Cloudflare hosts with `page.route`: the script (which then posts to the RUM
   endpoint) must load, or the site's policy has stopped allowing analytics.
+  "Every text on the landing page meets WCAG AA contrast against what is painted
+  behind it" makes every glyph transparent (through the CSSOM: the policy refuses
+  an injected `<style>`), screenshots the page and reads the pixels behind each
+  text box in a blank page of its own (a data-URL image on a canvas, 2 px inside
+  the box, the 2nd/98th luminance percentile), in both themes at 1280 and 375 px:
+  axe calls text over the body's gradient *incomplete*. Text on the hero's glow
+  takes `--x-glow-muted`/`--x-glow-link` (`apps/site/src/tokens.css`).
   **Docs site e2e** (ADR-0068 §6, the same spec): the footer's "API docs" link
   (`[data-api-docs]`, `/docs/api/`), the docs index's sidebar (`nav[aria-label="API
   docs"]`, with a "Create" group) and a feature page's inputs table (`table th`:

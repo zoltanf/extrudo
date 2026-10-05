@@ -82,6 +82,8 @@ Names map 1:1 to CSS custom properties (`--x-*`) in
 | `accent-soft` | amber at 16% | amber at 14% | Active tool background, selected rows |
 | `sketch` | `#5AA9FF` | `#2F86F0` | Sketch geometry (under-constrained), sketch profiles, info |
 | `link` (landing page) | `#5AA9FF` | `#1A6AD0` | Text links on the landing page; the light `sketch` blue is 3.6:1 on white, under WCAG AA for text |
+| `glow-muted` (landing page) | `#C8CFDB` | = `muted` | Grey text on the hero's glow (nav links, the intro, the latest-build note): 4.7:1 even at the glow's brightest point, where `muted` is 2.9:1 |
+| `glow-link` (landing page) | `#A4CFFF` | = `link` | Links on the hero's glow: 4.6:1 at its brightest point, where `sketch` is 3.1:1 |
 | `success` | `#3DD68C` | `#1B9E5E` | Saved, OK status, feature ✓ |
 | `warning` | `#F2C14E` | `#B7791F` | Feature ⚠, fallback reference |
 | `error` | `#FF6B6B` | `#D93D3D` | Feature ✕, conflicts, destructive actions |
