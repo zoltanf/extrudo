@@ -44,7 +44,15 @@ async function build() {
   let wasm;
   try {
     writeFileSync(join(tmp, 'openscad.zip'), zip);
-    run('unzip', ['-q', '-o', join(tmp, 'openscad.zip'), 'openscad.js', 'openscad.wasm', '-d', tmp]);
+    run('unzip', [
+      '-q',
+      '-o',
+      join(tmp, 'openscad.zip'),
+      'openscad.js',
+      'openscad.wasm',
+      '-d',
+      tmp,
+    ]);
     text = readFileSync(join(tmp, 'openscad.js'), 'utf8');
     wasm = readFileSync(join(tmp, 'openscad.wasm'));
   } finally {
