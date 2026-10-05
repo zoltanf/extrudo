@@ -44,6 +44,28 @@ function computed(page: Page, selector: string, property: string) {
 }
 
 /**
+ * The stage's stack (ADR-0057 amendment): every picture stays drawn and the
+ * active one sits on top by `z-index`, so this reads which pictures are marked
+ * active, the highest `z-index` and which picture that belongs to.
+ */
+function stageStack(page: Page) {
+  return page.evaluate(`(() => {
+    const images = Array.from(document.querySelectorAll('[data-walkthrough-stage] img[data-step]'));
+    const z = (image) => Number(getComputedStyle(image).zIndex);
+    const top = Math.max(...images.map(z));
+    return {
+      active: images.filter((image) => image.hasAttribute('data-active')).map((image) => image.dataset.step),
+      top: images.filter((image) => z(image) === top).map((image) => image.dataset.step),
+    };
+  })()`) as Promise<{ active: string[]; top: string[] }>;
+}
+
+/** Asserts that step `n` is the one picture marked active and the top of the stack. */
+async function expectOnTop(page: Page, n: number) {
+  await expect.poll(() => stageStack(page)).toEqual({ active: [String(n)], top: [String(n)] });
+}
+
+/**
  * What the site's content policy refuses and what the console reports while a
  * page loads (ADR-0057). The docs pages carry no script and load nothing from
  * another origin, so both stay empty.
@@ -127,15 +149,7 @@ test('the walkthrough follows the scroll', async ({ page }) => {
     await expect(section.locator('[data-walkthrough-counter]')).toHaveText(`Step ${n} of 9`);
     await expect(section.locator('li.step[aria-current="step"]')).toHaveCount(1);
     await expect(steps.nth(n - 1)).toHaveAttribute('aria-current', 'step');
-    await expect
-      .poll(() => computed(page, `[data-walkthrough-stage] img[data-step="${n}"]`, 'opacity'))
-      .toBe('1');
-    for (let other = 1; other <= 9; other++) {
-      if (other === n) continue;
-      await expect
-        .poll(() => computed(page, `[data-walkthrough-stage] img[data-step="${other}"]`, 'opacity'))
-        .toBe('0');
-    }
+    await expectOnTop(page, n);
   }
 });
 
@@ -151,9 +165,7 @@ test('the walkthrough works on a phone', async ({ page }) => {
     await expect.poll(() => section.getAttribute('data-active-step')).toBe(String(n));
     await expect(section.locator('[data-walkthrough-counter]')).toHaveText(`Step ${n} of 9`);
     await expect(section.locator('li.step[aria-current="step"]')).toHaveCount(1);
-    await expect
-      .poll(() => computed(page, `[data-walkthrough-stage] img[data-step="${n}"]`, 'opacity'))
-      .toBe('1');
+    await expectOnTop(page, n);
   }
 });
 
@@ -178,16 +190,38 @@ test('the walkthrough is a plain list without JavaScript', async ({ browser }) =
   await context.close();
 });
 
-test('the walkthrough swaps without a fade under reduced motion', async ({ page }) => {
-  const selector = '[data-walkthrough-stage] img[data-step="1"]';
+test('the walkthrough sweeps between pictures, and not under reduced motion', async ({ page }) => {
+  // ADR-0057 amendment: the incoming picture is revealed by a clip-path sweep (up going
+  // forward, down going back), which starts once the stage is `data-ready`; the first
+  // paint has none. Reduced motion swaps the pictures without it.
+  const active = '[data-walkthrough-stage] img[data-active]';
+  const ready = '[data-walkthrough-stage] [data-ready]';
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto(`${host.url}/`);
   await expect(page.locator('[data-walkthrough]')).toHaveAttribute('data-enhanced', '');
-  await expect.poll(() => computed(page, selector, 'transition-duration')).toBe('0s');
+  await expect(page.locator(ready)).toHaveCount(1);
+  await expect.poll(() => computed(page, active, 'animation-name')).toBe('none');
+  await expect.poll(() => computed(page, active, 'animation-duration')).toBe('0s');
+  // The swap still happens.
+  await scrollToStep(page, 4);
+  await expectOnTop(page, 4);
+  await expect.poll(() => computed(page, active, 'animation-name')).toBe('none');
+
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.reload();
   await expect(page.locator('[data-walkthrough]')).toHaveAttribute('data-enhanced', '');
-  await expect.poll(() => computed(page, selector, 'transition-duration')).toBe('0.35s');
+  await expect(page.locator(ready)).toHaveCount(1);
+  await expect.poll(() => computed(page, active, 'animation-name')).toBe('walkthrough-sweep-up');
+  await expect.poll(() => computed(page, active, 'animation-duration')).toBe('0.6s');
+  // Going forward sweeps up, going back sweeps down.
+  const pictures = page.locator('[data-walkthrough-stage] .stage-pictures');
+  await scrollToStep(page, 4);
+  await expectOnTop(page, 4);
+  await expect(pictures).toHaveAttribute('data-direction', 'forward');
+  await scrollToStep(page, 1);
+  await expectOnTop(page, 1);
+  await expect(pictures).toHaveAttribute('data-direction', 'back');
+  await expect.poll(() => computed(page, active, 'animation-name')).toBe('walkthrough-sweep-down');
 });
 
 test('every walkthrough picture comes from the build', async ({ page }) => {
