@@ -1,9 +1,9 @@
 /**
  * The logic of the 3D-print aids (P3-10, ADR-0048), called from `AppShell`:
  *
- * - `usePrintInfo`: the weight and filament estimate of the selected bodies (or every shown
- *   one) from the kernel's exact volumes (`KernelApi.inspect`), the material kept in the
- *   `print.material` preference.
+ * - `usePrintInfo`: the weight, filament and cost estimate of the selected bodies (or every
+ *   shown one) from the kernel's exact volumes and areas (`KernelApi.inspect`), with the
+ *   walls, infill and price a person prints with in the `print.material` preference.
  * - `useOverhang`: the overhang analysis in the viewport store (view state, like the section),
  *   the angle evaluated in the document's parameters, and the view and counts it gives the
  *   viewport.
@@ -29,11 +29,14 @@ import type { Preferences } from '../platform';
 import { readTopology } from '../selection/items';
 import type { ViewportStore } from '../viewport/store';
 import {
-  DEFAULT_MATERIAL,
+  checkPrintField,
+  DEFAULT_PRINT,
   type MaterialChoice,
   type PrintEstimate,
+  type PrintField,
   presetDensity,
   printEstimate,
+  resolveMaterialChoice,
 } from './material';
 import {
   analyzeOverhang,
@@ -64,6 +67,8 @@ export interface PrintInfoBody {
   name: string;
   /** mm³. */
   volume: number;
+  /** mm², of every face of the body: how much of it a wall's thickness can cover. */
+  area: number;
 }
 
 export interface PrintInfo {
@@ -71,13 +76,13 @@ export interface PrintInfo {
   scope: 'selected' | 'shown';
   choice: MaterialChoice;
   setChoice(change: Partial<MaterialChoice>): void;
-  /** Evaluates the custom density (a plain number, g/cm³). */
-  evaluateDensity(expression: string): EvaluateResult;
+  /** Evaluates one of the preference's numbers (its unit, and what it may be). */
+  evaluate(field: PrintField, expression: string): EvaluateResult;
   /** The density in use, g/cm³; undefined while a custom one doesn't evaluate. */
   density: number | undefined;
   state: 'empty' | 'pending' | 'ready' | 'error';
   bodies: PrintInfoBody[];
-  /** Total volume, mm³. */
+  /** Total solid volume, mm³. */
   volume: number | undefined;
   estimate: PrintEstimate | undefined;
   error?: string;
@@ -104,10 +109,9 @@ export function usePrintInfo({
   meshes,
   active,
 }: PrintInfoOptions): PrintInfo {
-  const [choice, setChoiceState] = useState<MaterialChoice>(() => ({
-    ...DEFAULT_MATERIAL,
-    ...preferences.get<Partial<MaterialChoice>>(MATERIAL_PREFERENCE, {}),
-  }));
+  const [choice, setChoiceState] = useState<MaterialChoice>(() =>
+    resolveMaterialChoice(preferences.get<Partial<MaterialChoice>>(MATERIAL_PREFERENCE, {})),
+  );
   const setChoice = useCallback(
     (change: Partial<MaterialChoice>) =>
       setChoiceState((current) => {
@@ -119,25 +123,29 @@ export function usePrintInfo({
   );
 
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
-  const evaluateDensity = useCallback(
-    (expression: string): EvaluateResult => {
-      const result = evaluation.evaluate(expression, 'unitless');
-      if (!result.ok || result.value > 0) return result;
-      return {
-        ok: false,
-        error: new ExprError('A density is more than 0 g/cm³.', {
-          start: 0,
-          end: expression.length,
-        }),
-      };
-    },
+  // Every field is a plain number of its own unit (a density in g/cm³, a line width in mm):
+  // these are the printer's settings, not the drawing's, so the document's units don't change
+  // them. A bare number in a length field would take them.
+  const evaluate = useCallback(
+    (field: PrintField, expression: string): EvaluateResult =>
+      checkPrintField(field, expression, evaluation.evaluate(expression, 'unitless')),
     [evaluation],
+  );
+  /** The number of a field, or its default while an expression that used a deleted parameter fails. */
+  const number = useCallback(
+    (field: Exclude<PrintField, 'density'>): number => {
+      // The wall count is kept as a number, the rest as the expressions they are.
+      const expression = field === 'walls' ? String(choice[field]) : choice[field];
+      const result = evaluate(field, expression);
+      return result.ok ? result.value : DEFAULT_PRINT[field];
+    },
+    [evaluate, choice],
   );
   const density = useMemo(() => {
     if (choice.material !== 'custom') return presetDensity(choice.material);
-    const result = evaluateDensity(choice.density);
+    const result = evaluate('density', choice.density);
     return result.ok ? result.value : undefined;
-  }, [choice.material, choice.density, evaluateDensity]);
+  }, [choice.material, choice.density, evaluate]);
 
   // The bodies: those selected (a face or an edge picks its body), else every shown one.
   const ids = useMemo(() => initialBodies(bodyList, selection), [bodyList, selection]);
@@ -185,21 +193,29 @@ export function usePrintInfo({
     const items = fresh?.inspection?.items ?? [];
     return ids.flatMap((id, i) => {
       const item = items[i];
-      return item?.kind === 'body' ? [{ id, name: names.get(id) ?? id, volume: item.volume }] : [];
+      return item?.kind === 'body'
+        ? [{ id, name: names.get(id) ?? id, volume: item.volume, area: item.area }]
+        : [];
     });
   }, [fresh, ids, names]);
   const volume = fresh?.inspection ? bodies.reduce((sum, b) => sum + b.volume, 0) : undefined;
+  const settings = {
+    density: density ?? 0,
+    diameter: choice.diameter,
+    walls: number('walls'),
+    lineWidth: number('lineWidth'),
+    infill: number('infill'),
+    price: number('price'),
+  };
   const estimate =
-    volume !== undefined && density !== undefined
-      ? printEstimate(volume, density, choice.diameter)
-      : undefined;
+    volume !== undefined && density !== undefined ? printEstimate(bodies, settings) : undefined;
   const state: PrintInfo['state'] =
     ids.length === 0 ? 'empty' : fresh?.error ? 'error' : fresh?.inspection ? 'ready' : 'pending';
   return {
     scope,
     choice,
     setChoice,
-    evaluateDensity,
+    evaluate,
     density,
     state,
     bodies,

@@ -121,10 +121,13 @@ brief, voice) is in **`05-brand.md`**. In short:
 - **Print aids** (P3-10, ADR-0048), all in 3D Print › Prepare. *Print Info*:
   a panel like Measure's. Material (PLA, PETG, ABS, TPU with their g/cm³, or
   Custom density as an expression field) and filament diameter (1.75 or
-  2.85 mm) above; below, the volume, weight and filament length of the
-  selected bodies (a face or edge counts for its body) or, with none
-  selected, of every shown body. The note "Solid, 100 % infill" says infill
-  isn't modelled. The choice is remembered. *Overhang Analysis*: a panel with
+  2.85 mm) above, then the print itself — Walls, Line width, Infill and Price
+  per kg, every one an expression field, all in the `print.material`
+  preference; below, the solid volume, what a print of it takes ("Printed
+  (est.)"), its weight, filament length and cost of the selected bodies (a face
+  or edge counts for its body) or, with none selected, of every shown body. The
+  note "An estimate: walls and infill as set, no supports" says what the number
+  is. The choice is remembered. *Overhang Analysis*: a panel with
   an Angle (an expression field, 0–90°, 45° default), Down (-Z the bed, +Z,
   ±Y, ±X) and "Show overhangs", and a line saying how many faces and how much
   area overhang. Faces whose normal points more than the angle below the

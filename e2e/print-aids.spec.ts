@@ -1,12 +1,13 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { meshBounds } from '../packages/io/src/index';
-import { exportModel, objectsOf3mf } from './benchmark-helpers';
+import { exportModel, objectsOf3mf, primitive, solidTab } from './benchmark-helpers';
 import { kernelReady, openProject, projector } from './helpers';
 
-// P3-10: the 3D-print aids (FR-3DP-02..04, ADR-0048). Print Info gives a weight and a filament
-// length from the exact volume; the overhang analysis shades the faces that lean out (view
-// state, counted in `data-overhang`); Place on Bed turns a flat face down onto the bed as a real,
-// undoable feature that exports as it lies.
+// P3-10: the 3D-print aids (FR-3DP-02..04, ADR-0048). Print Info gives a weight, a filament
+// length and a cost from the exact volume, with the walls, infill and price a person prints
+// with (P4-12's amendment to ADR-0048); the overhang analysis shades the faces that lean out
+// (view state, counted in `data-overhang`); Place on Bed turns a flat face down onto the bed as
+// a real, undoable feature that exports as it lies.
 
 test.use({ viewport: { width: 1440, height: 900 } });
 test.setTimeout(90_000);
@@ -73,12 +74,15 @@ test('Print Info: weight and filament length for PLA and PETG, a custom density,
   const panel = info(page);
   await expect(panel).toHaveAttribute('data-print-state', 'ready', { timeout: 20_000 });
   await expect(panel.locator('[data-print-scope]')).toHaveAttribute('data-print-scope', 'shown');
-  await expect(panel).toContainText('Solid, 100 % infill');
+  await expect(panel).toContainText('no supports');
 
+  // Solid at 100 % infill, so the numbers are the ones P3-10 showed.
+  await panel.getByRole('textbox', { name: 'Infill' }).fill('100');
   // PLA is the default: weight = volume × 1.24 g/cm³ (the volume is the kernel's exact one).
   await expect(panel.getByRole('combobox', { name: 'Material' })).toHaveValue('pla');
   const volume = numberOf(await row(panel, 'volume').textContent());
   expect(volume).toBeGreaterThan(5);
+  expect(numberOf(await row(panel, 'printed').textContent())).toBeCloseTo(volume, 1);
   const pla = numberOf(await row(panel, 'weight').textContent());
   expect(Math.abs(pla - volume * 1.24)).toBeLessThan(0.15);
   const filament = numberOf(await row(panel, 'filament').textContent());
@@ -120,6 +124,82 @@ test('Print Info: weight and filament length for PLA and PETG, a custom density,
   await page.getByRole('button', { name: /^Print Info/ }).click();
   await expect(info(page).getByRole('combobox', { name: 'Material' })).toHaveValue('custom');
   await expect(info(page).getByRole('radio', { name: '2.85 mm' })).toBeChecked();
+  await expect(info(page).getByRole('textbox', { name: 'Infill' })).toHaveValue('100');
+});
+
+test('Print Info: walls and infill make the print lighter, and the cost follows the price', async ({
+  page,
+}) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  await solidTab(page);
+  await primitive(page, 'Box', { Length: '20', Width: '20', Height: '20' });
+  await expect(viewport).toHaveAttribute('data-bodies', /Body1:6:20,20,20/);
+  await openPrintTab(page);
+  await page.getByRole('button', { name: /^Print Info/ }).click();
+  const panel = info(page);
+  await expect(panel).toHaveAttribute('data-print-state', 'ready', { timeout: 20_000 });
+
+  // The cube is 8 cm³ of solid. Two walls of 0.45 mm over its 2400 mm² of surface take
+  // 2160 mm³, and 15 % of the 5840 mm³ inside it is 876: 3.036 cm³ printed.
+  const value = async (name: string) => numberOf(await row(panel, name).textContent());
+  expect(await value('volume')).toBeCloseTo(8, 2);
+  await expect.poll(async () => value('printed')).toBeCloseTo(3.04, 2);
+  expect(await value('weight')).toBeCloseTo(3.76, 1);
+  // π (0.875)² = 2.405 mm² of filament for every mm³ printed: 1262 mm, which the panel shows
+  // in metres.
+  const filament = await value('filament');
+  expect(filament).toBeGreaterThan(1);
+  expect(filament).toBeCloseTo(3036 / (Math.PI * 0.875 ** 2) / 1000, 2);
+  // 3.76464 g of PLA at 25 per kg.
+  expect(await value('cost')).toBeCloseTo(0.09, 2);
+  // The price is currency-neutral: a plain number.
+  expect(await row(panel, 'cost').textContent()).not.toMatch(/[$€£]/);
+
+  // A price of your own, as an expression.
+  await panel.getByRole('textbox', { name: 'Price per kg' }).fill('100');
+  await expect.poll(async () => value('cost')).toBeCloseTo(0.38, 2);
+  // Walls and line width: 4 walls of 0.6 mm is 5760 mm³ of skin, plus 15 % of the 2240 mm³
+  // left inside it.
+  await panel.getByRole('textbox', { name: 'Walls' }).fill('4');
+  await panel.getByRole('textbox', { name: 'Line width' }).fill('0.6');
+  await expect.poll(async () => value('printed')).toBeCloseTo(6.1, 2);
+  // A whole count: 3.6 walls is 4, once the field has the value.
+  await panel.getByRole('textbox', { name: 'Walls' }).fill('3.6');
+  await panel.getByRole('textbox', { name: 'Walls' }).blur();
+  await expect(panel.getByRole('textbox', { name: 'Walls' })).toHaveValue('4');
+
+  // A value out of range is refused and the last one stands.
+  await panel.getByRole('textbox', { name: 'Infill' }).fill('150');
+  await expect(panel).toContainText('Between 0 % and 100 %');
+  await panel.getByRole('textbox', { name: 'Infill' }).fill('100');
+  await expect(panel.getByRole('textbox', { name: 'Infill' })).toHaveValue('100');
+  // 100 % infill: the print is the solid part, whatever the walls.
+  await expect.poll(async () => value('printed')).toBeCloseTo(8, 2);
+  await expect.poll(async () => value('weight')).toBeCloseTo(9.92, 1);
+
+  // These are preferences, not the design: Ctrl+Z reaches the Box (the last command) and
+  // leaves the panel's settings alone.
+  await panel.getByRole('textbox', { name: 'Infill' }).blur();
+  await page.keyboard.press('Control+z');
+  await expect(viewport).not.toHaveAttribute('data-bodies', /Body1/);
+  await expect(panel.getByRole('textbox', { name: 'Infill' })).toHaveValue('100');
+  await expect(panel.getByRole('textbox', { name: 'Price per kg' })).toHaveValue('100');
+  await page.keyboard.press('Control+y');
+  await expect(viewport).toHaveAttribute('data-bodies', /Body1:6:20,20,20/);
+
+  // They survive a reload, unlike a session's panel.
+  await page.reload();
+  await expect(viewport).toHaveAttribute('data-ready', 'true');
+  await kernelReady(page);
+  await openPrintTab(page);
+  await page.getByRole('button', { name: /^Print Info/ }).click();
+  const again = info(page);
+  await expect(again).toHaveAttribute('data-print-state', 'ready', { timeout: 20_000 });
+  await expect(again.getByRole('textbox', { name: 'Infill' })).toHaveValue('100');
+  await expect(again.getByRole('textbox', { name: 'Price per kg' })).toHaveValue('100');
+  await expect(again.getByRole('textbox', { name: 'Walls' })).toHaveValue('4');
+  expect(numberOf(await row(again, 'printed').textContent())).toBeCloseTo(8, 2);
 });
 
 test('Overhang analysis: shading counts follow the angle, the down direction and the bed', async ({

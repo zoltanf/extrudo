@@ -48,7 +48,9 @@ shown one; the same rule as the export dialog's (`initialBodies`).
   under the numbers.
 - **Infill is not modelled.** The panel says "Solid, 100 % infill: a real
   print with infill is lighter". The numbers are an upper bound, which is the
-  honest reading of a solid model.
+  honest reading of a solid model. **Superseded in P4-12** (amendment below):
+  the panel now estimates a print with walls and infill, and 100 % infill is
+  the case above.
 - **The material is a preference** (`print.material`: preset, custom density
   expression, filament diameter), not a document setting. It is what a person
   prints with, which follows them from design to design, and it costs no
@@ -216,8 +218,9 @@ single flat face, which starts the dialog with the face already picked.
   (each on its own face).~~ Done in P3-17 (amendment below).
 - ~~The down direction from a picked face~~ (done in P3-17, below); an
   arbitrary vector is still open (today an axis or a face).
-- Per-body support estimates (volume of support), infill in the weight, a
-  cost per kg: Print Info is for the solid part only.
+- ~~Per-body support estimates (volume of support), infill in the weight, a
+  cost per kg~~ — infill and cost done in P4-12 (amendment below); support volume
+  is still open: generating supports needs a slicer.
 - Overhangs in the dialogs' preview shapes (only the bodies are shaded).
 - ~~A checked-in screenshot of the shading, in CI's image.~~ Done in P3-17
   (amendment below).
@@ -264,3 +267,68 @@ is not. +Z rather than the default -Z because the bracket's overhangs under
 the default (the rounded corner) can't be seen from above. Like the section's
 shots it is made in the Playwright Ubuntu image (`--update-snapshots=all`), not
 on this machine.
+
+## Amendment (P4-12): Print Info with walls, infill and cost
+
+**The estimate is for a print, not only for the solid part.** The
+`print.material` preference gains four fields, all with defaults so that a
+preference written before them reads as it did: `walls` (a whole count, 2),
+`lineWidth` (mm, "0.45"), `infill` (%, "15") and `price` (per kg, "25"). The
+panel has a field for each — Walls, Line width, Infill and Price per kg, every
+one an `<ExpressionInput>` like every other number — and two more rows under the
+volume: **Printed (est.)** and **Cost**. The material and the filament diameter
+are unchanged.
+
+**The maths** (`printEstimate` in `material.ts`, pure and unit tested): for each
+body, whose volume *and area* the kernel already measures (ADR-0035's
+`properties`), the skin is `min(volume, area × walls × lineWidth)` and the
+interior is what is left. `printed = skin + interior × infill`, and the weight,
+the filament length and the cost (`weight / 1000 × price`) follow from the
+printed volume. At 100 % infill this is the solid part exactly, so P3-10's
+numbers are a special case of it, not a different rule.
+
+- **The skin is worked out per body, not over the sum.** A model of two thin
+  plates has two small interiors, where one thick block of the same total volume
+  has one: `min` per body first, then the sum.
+- **A part thinner than its walls is all skin.** A real slicer spends more than
+  one line width of material on such a part (and a slicer knows its layer
+  heights, its top and bottom layers, its seam, its perimeters' spacing and its
+  sparse or gyroid patterns). The panel never claims more material than the part
+  has, and its note says what the number is: "An estimate: walls and infill as
+  set, no supports."
+- **The price has no currency.** The panel shows a plain number with "/ kg" and a
+  cost with no symbol: the filament's price is whatever the user buys, and
+  guessing a currency (or converting one) would be wrong for most of the world.
+- **Every field is a plain number of its own unit, evaluated `unitless`.** A line
+  width is millimetres whatever the document's units, because this is the
+  printer's setting, not the drawing's: a bare number in a length field would
+  take the document's unit (ADR-0004), so "0.45" would mean 11.4 mm in an inch
+  design. `checkPrintField` then refuses a density or a line width that is not
+  above 0, a wall count or a price below 0 and an infill outside 0…100 %, with a
+  message that names the range; the wall count is rounded, and a value that
+  doesn't evaluate is never committed, so the last number stands.
+- **Support volume is still open.** Where support material comes from (which
+  faces need it, at what density, tree or raft) is a slicer's decision; a model
+  cannot be asked for it. It would need the slicer's own support generation, not
+  a formula here.
+
+Nothing else moved: no schema, no migration, no file-format text (it is a
+preference, as decided above), no kernel change (the area was already there) and
+no undo — these are settings of the person printing, like the material, so the
+e2e spec checks that a reload keeps them and that Ctrl+Z does not touch them.
+
+**Rejected**
+
+- **Slicing the model in Extrudo** (meshing the interior, computing perimeters,
+  layers, seams). That is a slicer: P4-08 leaves the hand-off to one
+  (`Platform.openInSlicer`), and a second, cruder implementation of it here
+  would disagree with every real slicer about what a print needs.
+- **A per-layer or per-body breakdown** (what each wall and each body's infill
+  costs). More numbers than a person deciding a print needs, and the skin is an
+  estimate anyway.
+- **A layer height, top/bottom layer count or seam length** in the preference.
+  Each is one more field for a number this panel cannot act on, since the skin
+  formula does not use them; if the formula ever grows them, they come with it.
+- **The price in the document** (so a shared file shows the same cost). Decided
+  against in §1, and it has not changed: what a print costs is what the person
+  pays.

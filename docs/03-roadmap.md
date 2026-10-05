@@ -587,7 +587,9 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
   Prepare has Print Info (volume, weight and filament length of the selected or
   all shown bodies from the kernel's exact volumes; PLA 1.24, PETG 1.27, ABS 1.04,
   TPU 1.21 g/cm³ or a custom density expression; 1.75 or 2.85 mm filament; kept
-  in the `print.material` preference; "solid, 100 % infill"), Overhang Analysis
+  in the `print.material` preference; "solid, 100 % infill" — since P4-12 it
+  estimates a print with walls and infill and costs it, see the P4-12 item
+  below), Overhang Analysis
   (view state like the section: faces whose normal points more than N° (an
   angle expression, 45° default) below the horizontal for a chosen down
   direction (-Z default) are shaded in the error colour by a shader patch, faces
@@ -881,7 +883,14 @@ end to end, faster than in Fusion 360.
     of the path's length, 0.5 mm) from the path's start line, naming the
     distance. Still open: an edit dialog that reads where the profile will
     sit.
-  - Print Info: support volume, infill, cost per kg (ADR-0048).
+  - ~~Print Info: support volume, infill, cost per kg~~ (ADR-0048). **Done
+    2026-10-05** for infill and cost (ADR-0048's P4-12 amendment): the panel
+    estimates a print from each body's exact volume *and* area —
+    `skin = min(volume, area × walls × lineWidth)` per body, `printed = skin +
+    interior × infill`, at 100 % infill exactly the solid numbers — with a wall
+    count, a line width, an infill and a price per kg in the `print.material`
+    preference, and "Printed (est.)" and "Cost" rows. **Still open: support
+    volume**, which needs a slicer's support generation.
   - Patterns: a skip list, count and path handles (ADR-0047).
   - A ghost of lost geometry in the view (ADR-0005, -0033); remappable
     marking-menu wedges (ADR-0042).

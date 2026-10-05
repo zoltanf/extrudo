@@ -4,6 +4,18 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-05 · **P4-12 Print Info with walls, infill and cost** (ADR-0048's
+  amendment): the panel estimates what a *print* takes, not only what the solid
+  part is. Each body's exact volume and area (the kernel already measures both)
+  give the skin, `min(volume, area × walls × lineWidth)` per body, and
+  `printed = skin + interior × infill` — at 100 % infill exactly P3-10's
+  numbers. A wall count (2), a line width (0.45 mm), an infill (15 %) and a
+  price per kg (25) are `<ExpressionInput>` fields, each a plain number of its
+  own unit (the line width is mm whatever the document's units) checked by
+  `checkPrintField`; all four live in the `print.material` preference with
+  defaults, so an older preference reads as it did. Two new rows, "Printed
+  (est.)" and "Cost", and a note that says what an estimate is. Support volume
+  stays open: where supports come from is a slicer's decision.
 - 2026-10-05 · **P4-12 (H2, H5) Threads cut in pieces; heavy tools merged without
   distances; fuzz budgets; a sweep says where its profile lands** (ADR-0067 §H2,
   §H5): a thread of about 400 turns trapped the WASM heap, and `spikes/

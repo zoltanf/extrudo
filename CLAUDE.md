@@ -482,9 +482,14 @@ in `features/matrix.ts` on every recompute, through the same
 `transformBodies` as Move, so names survive; warns when the faces are already
 on the bed or a body reaches below it; also a flat face's context entry).
 **Print Info** (`usePrintInfo`, `PrintInfoPanel`) sums `KernelApi.inspect`
-body volumes and turns them into weight and filament length
-(`material.ts`; the material is the `print.material` preference, not a
-document setting). **Overhang analysis is view state** (`viewport.overhang`,
+body volumes **and areas** and turns them into the printed volume, weight,
+filament length and cost (`printEstimate` in `material.ts`; the walls, line
+width, infill, price and the material are the `print.material` preference, not
+a document setting: `skin = min(volume, area × walls × lineWidth)` per body,
+`printed = skin + interior × infill`, at 100 % infill exactly P3-10's solid
+numbers; every field is a plain number of its own unit — the line width is mm
+whatever the document's units — checked by `checkPrintField`; support volume
+needs a slicer, so it is not modelled (P4-12)). **Overhang analysis is view state** (`viewport.overhang`,
 `OverhangState`: an angle expression, a `down` axis or a picked flat `face`
 (its outward normal is down, its plane the bed; P3-17), `on`), classified
 per triangle on the CPU for the counts (`print/overhang.ts`: normal ·
@@ -1944,10 +1949,17 @@ them. Notes further down that name a machine apply to that machine only.
   Prepare group has the buttons "Place on Bed", "Print Info" and
   "Overhangs" (`/^Overhang/`). The Print Info panel is the region "Print
   Info" (`data-print-state` `empty`/`pending`/`ready`/`error`, rows
-  `[data-print-row="volume|weight|filament"]`, the native selects and
-  fields "Material" (`selectOption('petg')`, `'custom'`), the textbox
-  "Density" and the radios "1.75 mm" / "2.85 mm"; a density of 0 shows the
-  expression error and isn't taken). The Overhang panel is the region
+  `[data-print-row="volume|printed|weight|filament|cost"]`, the native selects and
+  fields "Material" (`selectOption('petg')`, `'custom'`), the textboxes
+  "Density", "Walls", "Line width", "Infill" and "Price per kg" and the radios
+  "1.75 mm" / "2.85 mm"; a density of 0 or an infill of 150 shows the
+  expression error and isn't taken). The material test sets Infill to 100
+  first, so its numbers are P3-10's solid ones; the walls/infill/cost test
+  (P4-12) makes the Box tool's 20 mm cube (8 cm³, 2400 mm² → 3.04 cm³ printed
+  at 2 × 0.45 mm and 15 %, 3.8 g of PLA, 0.09 at 25 per kg), changes the walls,
+  the line width and the price, rounds a decimal wall count, and checks that
+  Ctrl+Z undoes the Box but not the settings and that a reload keeps them. The
+  Overhang panel is the region
   "Overhang Analysis" (textbox "Angle" with `exact: true`, combobox "Down"
   with `selectOption('+z')`, checkbox "Show overhangs", buttons "Done" and
   "Remove"); the Viewport region's `data-overhang` reads "down=-z angle=45

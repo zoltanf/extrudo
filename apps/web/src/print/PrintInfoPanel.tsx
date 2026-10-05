@@ -4,10 +4,12 @@ import { Button, Select, ToolIcon } from '../design-system';
 import { ExpressionInput } from '../parameters/ExpressionInput';
 import { TOOLS } from '../shell/tools';
 import {
+  costText,
   FILAMENT_DIAMETERS,
   lengthText,
   MATERIALS,
   type MaterialChoice,
+  type PrintField,
   volumeText,
   weightText,
 } from './material';
@@ -17,20 +19,30 @@ import type { PrintInfo } from './usePrintAids';
 const HOME = { right: 12, top: 148 };
 
 /**
- * The Print Info panel (P3-10, FR-3DP-02): the volume, weight and filament length of the
- * selected bodies (or every shown body), for a material (PLA, PETG, ABS, TPU or a density of
- * your own) and a filament diameter (1.75 or 2.85 mm). The volume is exact (from the kernel, not
- * the display mesh). Infill isn't modelled: the numbers are for a solid part. The material is
+ * The Print Info panel (P3-10, FR-3DP-02; walls, infill and cost in P4-12, ADR-0048's
+ * amendment): what the selected bodies (or every shown one) take to print. The volume and the
+ * area are exact (from the kernel, not the display mesh), so the walls' volume and the printed
+ * one are worked out from them for a material (PLA, PETG, ABS, TPU or a density of your own),
+ * a filament diameter (1.75 or 2.85 mm), a wall count, a line width, an infill and a price per
+ * kg. Supports are not modelled: generating them needs a slicer. Everything the panel sets is
  * remembered in the `print.material` preference.
  *
  * Test hooks: the region "Print Info", `data-print-state` (`empty`, `pending`, `ready`,
- * `error`), rows `[data-print-row="volume|weight|filament"]`, the combobox "Material", the
- * textbox "Density" (custom only), the radios "1.75 mm" and "2.85 mm".
+ * `error`), rows `[data-print-row="volume|printed|weight|filament|cost"]`, the combobox
+ * "Material", the textbox "Density" (custom only), the radios "1.75 mm" and "2.85 mm", and the
+ * textboxes "Walls", "Line width", "Infill" and "Price per kg".
  */
 export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): void }) {
   const { choice, estimate } = info;
   const tool = TOOLS.printInfo;
   const set = (change: Partial<MaterialChoice>) => info.setChoice(change);
+  const number = (field: PrintField) => (expression: string) => info.evaluate(field, expression);
+  /** A whole count of walls: a decimal one is rounded. */
+  const walls = (expression: string, valid: boolean) => {
+    if (!valid) return;
+    const result = info.evaluate('walls', expression);
+    if (result.ok) set({ walls: Math.round(result.value) });
+  };
   return (
     <section
       aria-label="Print Info"
@@ -57,7 +69,7 @@ export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): 
       </header>
 
       <div className="flex min-h-0 flex-col gap-3 overflow-y-auto p-3" aria-live="polite">
-        <div className="grid grid-cols-[72px_minmax(0,1fr)] items-center gap-2">
+        <div className="grid grid-cols-[92px_minmax(0,1fr)] items-center gap-2">
           <span className="text-sm text-muted">Material</span>
           <Select
             aria-label="Material"
@@ -79,7 +91,7 @@ export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): 
               <ExpressionInput
                 label="Density"
                 value={choice.density}
-                evaluate={info.evaluateDensity}
+                evaluate={number('density')}
                 format={(r) => `${r.value} g/cm³`}
                 onCommit={(density) => set({ density })}
                 onDraftChange={(density, valid) => {
@@ -105,6 +117,48 @@ export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): 
               </label>
             ))}
           </fieldset>
+          <span className="text-sm text-muted">Walls</span>
+          <ExpressionInput
+            label="Walls"
+            value={String(choice.walls)}
+            evaluate={number('walls')}
+            format={(r) => `${r.value}`}
+            onCommit={(expression) => walls(expression, true)}
+            onDraftChange={walls}
+          />
+          <span className="text-sm text-muted">Line width</span>
+          <ExpressionInput
+            label="Line width"
+            value={choice.lineWidth}
+            evaluate={number('lineWidth')}
+            format={(r) => `${r.value} mm`}
+            onCommit={(lineWidth) => set({ lineWidth })}
+            onDraftChange={(lineWidth, valid) => {
+              if (valid) set({ lineWidth });
+            }}
+          />
+          <span className="text-sm text-muted">Infill</span>
+          <ExpressionInput
+            label="Infill"
+            value={choice.infill}
+            evaluate={number('infill')}
+            format={(r) => `${r.value} %`}
+            onCommit={(infill) => set({ infill })}
+            onDraftChange={(infill, valid) => {
+              if (valid) set({ infill });
+            }}
+          />
+          <span className="text-sm text-muted">Price per kg</span>
+          <ExpressionInput
+            label="Price per kg"
+            value={choice.price}
+            evaluate={number('price')}
+            format={(r) => `${r.value} / kg`}
+            onCommit={(price) => set({ price })}
+            onDraftChange={(price, valid) => {
+              if (valid) set({ price });
+            }}
+          />
         </div>
 
         <div className="border-t border-line pt-3">
@@ -126,11 +180,17 @@ export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): 
                 <Row name="volume" label="Volume">
                   {estimate ? volumeText(estimate.volume) : '…'}
                 </Row>
+                <Row name="printed" label="Printed (est.)">
+                  {estimate ? volumeText(estimate.printed) : '…'}
+                </Row>
                 <Row name="weight" label="Weight">
                   {estimate ? weightText(estimate.weight) : '…'}
                 </Row>
                 <Row name="filament" label="Filament length">
                   {estimate ? lengthText(estimate.filament) : '…'}
+                </Row>
+                <Row name="cost" label="Cost">
+                  {estimate ? costText(estimate.cost) : '…'}
                 </Row>
               </dl>
               {info.density === undefined && (
@@ -142,8 +202,8 @@ export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): 
           )}
         </div>
         <p className="text-xs text-muted">
-          Solid, 100 % infill: a real print with infill is lighter. Filament length is the same for
-          every material.
+          An estimate: walls and infill as set, no supports. Filament length is the same for every
+          material.
         </p>
       </div>
 
