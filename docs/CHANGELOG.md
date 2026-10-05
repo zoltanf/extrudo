@@ -4,6 +4,35 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-05 · **P5-01 (3 of 3) The API reference and the docs site pages**
+  (ADR-0068 §6): `pnpm api:generate` writes `docs/api/features/<type>.md` as well
+  as the methods -- one page per feature type with its inputs (type, required or
+  default, description), its face roles and an example call, plus an index by
+  category -- and the landing page's site builds `docs/api/**/*.md` into static
+  pages under `/docs/api/` at build time (`marked`, a build-only dependency; no
+  script in a docs page), linked from the landing page's footer. The examples are
+  the same lines as a generated `featureExamples`, so `tsc` checks them and a test
+  runs them against a real `Design`; a test also compiles every code block of the
+  hand-written pages. `docs/api/README.md`, `sketch.md` and `references.md` are
+  written by hand.
+- 2026-10-05 · **P5-01 (2 of 3) The public document API: sketches, face roles,
+  examples** (ADR-0068 §4-§6): `d.sketch(plane, build)` with a `SketchBuilder`
+  for every entity, every constraint type and each kind of dimension, built from
+  the very builders the drawing tools use (moved out of the app into
+  `@extrudo/sketch/build`), plus profile references (`s.profileAt([x, y])`), and
+  every body-making feature lists the roles its faces are named with
+  (`faceRoles`), which `handle.face(role)` is typed by and a kernel test checks
+  against the real geometry. The examples under `docs/api/examples` are tests:
+  the Wall bracket, benchmark B1 (equal to the fixture the app exported, up to
+  its IDs, and recomputed headless) and a parametric box with a customizer and
+  two configurations.
+- 2026-10-05 · **P5-01 (1 of 3) The public document API, `@extrudo/api`** (ADR-0068
+  §1-§4, §7): a package of its own (`Design`, `ApiError`, `FeatureHandle`,
+  `ParameterHandle`) that changes a design only through core's commands, with
+  counting IDs so the same calls give byte-identical JSON, the origin and
+  feature references the kernel's persistent names need, and one method per
+  feature type generated from core's registry (`pnpm api:generate`, with a
+  staleness test). Slice 3 adds the docs and the site's pages.
 - 2026-10-05 · **P4-12 Print Info with walls, infill and cost** (ADR-0048's
   amendment): the panel estimates what a *print* takes, not only what the solid
   part is. Each body's exact volume and area (the kernel already measures both)

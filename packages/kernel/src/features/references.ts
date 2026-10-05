@@ -11,6 +11,7 @@ import {
   type FeatureId,
   faceSketchFrame,
   type GeomRef,
+  ORIGIN_POINT_ID,
   originAxis,
   originPlane,
   parseSketchEntityRefId,
@@ -140,7 +141,10 @@ function sketchLine(ctx: EvalContext, ref: GeomRef, label: string): LineOf {
   return { origin: a, direction: unit(along) };
 }
 
-/** A construction point's place, or a body vertex's. */
+/**
+ * A construction point's place, a body vertex's, or the world origin
+ * (`origin:point`, the origin planes' and axes' naming: ADR-0068 §4).
+ */
 export function pointOf(ctx: EvalContext, ref: GeomRef, label: string): Vec3 {
   if (ref.kind === 'vertex') {
     const hit = ctx.resolve(ref, { label });
@@ -149,6 +153,7 @@ export function pointOf(ctx: EvalContext, ref: GeomRef, label: string): Vec3 {
     return vertex.point;
   }
   if (ref.kind === 'point') {
+    if (ref.id === ORIGIN_POINT_ID) return [0, 0, 0];
     const report = constructionOf(ctx, ref, 'point', capitalize(label));
     if (report?.kind === 'point') return report.point;
   }

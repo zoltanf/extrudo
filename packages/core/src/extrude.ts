@@ -9,6 +9,8 @@
  * a direction doesn't use are ignored (side 2 unless it is `two-sides`), so
  * a dialog can keep them while the user switches back and forth.
  */
+
+import { SWEEP_FACE_ROLES } from './face-roles';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
@@ -57,32 +59,60 @@ export const EXTRUDE_OBJECT_KINDS: readonly GeomRefKind[] = ['face', 'vertex', '
 
 export const ExtrudeInputsSchema = z.strictObject({
   /** Profiles and flat faces, all in one plane. Missing or empty: the feature fails until some are picked. */
-  profiles: refsOf(EXTRUDE_PROFILE_KINDS).optional(),
+  profiles: refsOf(EXTRUDE_PROFILE_KINDS)
+    .optional()
+    .describe('Profiles and flat faces to sweep, all in one plane.'),
   /** Default `one-side`. */
-  direction: enumInput(EXTRUDE_DIRECTIONS).optional(),
+  direction: enumInput(EXTRUDE_DIRECTIONS)
+    .optional()
+    .describe(
+      'How the sweep leaves the plane: one-side, symmetric or two-sides. Default one-side.',
+    ),
   /** Side 1 (and symmetric): default `distance`. */
-  extent: enumInput(EXTRUDE_EXTENTS).optional(),
+  extent: enumInput(EXTRUDE_EXTENTS)
+    .optional()
+    .describe("Side 1's extent: distance, to-object or through-all. Default distance."),
   /** Side 1's length; the whole length when symmetric. */
-  distance: exprOf('length').optional(),
+  distance: exprOf('length')
+    .optional()
+    .describe("Side 1's length (the whole length when symmetric); a length."),
   /** Side 1's object for `to-object`. */
-  toObject: refsOf(EXTRUDE_OBJECT_KINDS, 1).optional(),
+  toObject: refsOf(EXTRUDE_OBJECT_KINDS, 1)
+    .optional()
+    .describe('The flat face, vertex or plane side 1 stops at.'),
   /** Side 1's taper in degrees, default 0: positive widens along the sweep, negative narrows. */
-  taper: exprOf('angle').optional(),
+  taper: exprOf('angle')
+    .optional()
+    .describe(
+      "Side 1's taper; an angle. Positive widens the sweep, the default 0° keeps the section's size.",
+    ),
   /** Side 2 of `two-sides`, like side 1. */
-  extent2: enumInput(EXTRUDE_EXTENTS).optional(),
-  distance2: exprOf('length').optional(),
-  toObject2: refsOf(EXTRUDE_OBJECT_KINDS, 1).optional(),
-  taper2: exprOf('angle').optional(),
+  extent2: enumInput(EXTRUDE_EXTENTS)
+    .optional()
+    .describe("Side 2's extent, like side 1. Default distance."),
+  distance2: exprOf('length').optional().describe("Side 2's length; a length."),
+  toObject2: refsOf(EXTRUDE_OBJECT_KINDS, 1)
+    .optional()
+    .describe('The flat face, vertex or plane side 2 stops at.'),
+  taper2: exprOf('angle').optional().describe("Side 2's taper; an angle."),
   /** Reverses the direction (side 1 against the normal). Default false. */
-  flip: BoolInputSchema.optional(),
+  flip: BoolInputSchema.optional().describe(
+    "Sweep side 1 against the plane's normal. Default false.",
+  ),
   /** Default `new-body`. */
-  operation: enumInput(EXTRUDE_OPERATIONS).optional(),
+  operation: enumInput(EXTRUDE_OPERATIONS)
+    .optional()
+    .describe('New body, join, cut or intersect. Default new-body.'),
   /**
    * The bodies to join, cut or intersect (`body` references, body IDs).
    * Empty or missing: every body the extrude touches (join) or overlaps
    * (cut, intersect).
    */
-  bodies: refsOf(['body']).optional(),
+  bodies: refsOf(['body'])
+    .optional()
+    .describe(
+      'The bodies to join, cut or intersect; by default every body the extrude touches (join) or overlaps (cut, intersect).',
+    ),
 });
 export type ExtrudeInputs = z.infer<typeof ExtrudeInputsSchema>;
 
@@ -92,6 +122,23 @@ export const extrudeFeature: FeatureDefinition<ExtrudeInputs> = {
   category: 'create',
   icon: 'extrude',
   inputsSchema: ExtrudeInputsSchema,
+  // ADR-0068 §4, from the kernel's `sweep` (P2-06).
+  faceRoles: [
+    ...SWEEP_FACE_ROLES,
+    {
+      pattern: 'cap:plane',
+      description:
+        'The middle face of a two-sided tapered extrude: the plane the two sides meet in.',
+    },
+    {
+      pattern: 'side2:<curve>',
+      description: 'A wall of side 2, when both sides of a two-sided extrude are tapered.',
+    },
+    {
+      pattern: 'trim:<curve>',
+      description: 'The end where the sweep was trimmed to an object (To object).',
+    },
+  ],
 };
 
 /** The input names of each side, in `ExtrudeInputs`. */

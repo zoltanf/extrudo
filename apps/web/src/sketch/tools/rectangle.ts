@@ -11,11 +11,10 @@
  * perpendicular and parallel. Typed widths, heights and lengths become
  * driving dimensions on the edges.
  */
-import type { DimensionId, SketchConstraint, SketchEntityId, Vec2 } from '@extrudo/core';
+import type { DimensionId, SketchEntityId, Vec2 } from '@extrudo/core';
+import { axisOf, constrain, place, rectangleEdit, typedEnd } from '@extrudo/sketch/build';
 import type { Inference } from '@extrudo/sketch/inference';
-import { addLine, addPoint, axisOf, place, typedEnd } from './build';
 import {
-  constrain,
   EMPTY_PREVIEW,
   emptyEdit,
   type HeadsUpField,
@@ -281,29 +280,13 @@ export class RectangleTool implements SketchTool {
 
     const ctx = this.context;
     const edit = emptyEdit();
-    const lines = [0, 1, 2, 3].map((i) =>
-      addLine(edit, ctx, r.corners[i] as Vec2, r.corners[(i + 1) % 4] as Vec2),
-    );
+    // The four lines, their joins and the axis constraints (ADR-0068 §5: the
+    // same builder `k.rectangle(…)` uses).
+    const mode =
+      this.mode === '3-point' ? 'perpendicular' : this.mode === 'center' ? 'centre' : 'aligned';
+    const rectangle = rectangleEdit(edit, ctx, r.corners, mode, this.#clicks[0]?.point as Vec2);
+    const lines = rectangle.edges;
     const edge = (i: number) => lines[i] as (typeof lines)[number];
-    const required: SketchConstraint[] = [];
-    for (let i = 0; i < 4; i++) {
-      required.push({ type: 'coincident', a: edge(i).end, b: edge((i + 1) % 4).start });
-    }
-    if (this.mode === '3-point') {
-      required.push(
-        { type: 'perpendicular', a: edge(0).id, b: edge(1).id },
-        { type: 'parallel', a: edge(0).id, b: edge(2).id },
-        { type: 'parallel', a: edge(1).id, b: edge(3).id },
-      );
-    } else {
-      required.push(
-        { type: 'horizontal', a: edge(0).id },
-        { type: 'vertical', a: edge(1).id },
-        { type: 'horizontal', a: edge(2).id },
-        { type: 'vertical', a: edge(3).id },
-      );
-    }
-    constrain(edit, ctx, required, false);
     if (r.axis) constrain(edit, ctx, [{ type: r.axis, a: edge(0).id }], true);
 
     // Corners the user placed keep what they snapped to.
@@ -313,25 +296,8 @@ export class RectangleTool implements SketchTool {
         place(edit, ctx, inference, edge(i).start, i === 1 ? { line: edge(0).id } : {});
     });
 
-    if (this.mode === 'center') {
-      // Two construction diagonals; the center point sits in the middle of one.
-      const diagonals: ToolContext = { ...ctx, construction: () => true };
-      const ac = addLine(edit, diagonals, r.corners[0], r.corners[2]);
-      const bd = addLine(edit, diagonals, r.corners[1], r.corners[3]);
-      const center = addPoint(edit, ctx, this.#clicks[0]?.point as Vec2);
-      constrain(
-        edit,
-        ctx,
-        [
-          { type: 'coincident', a: ac.start, b: edge(0).start },
-          { type: 'coincident', a: ac.end, b: edge(2).start },
-          { type: 'coincident', a: bd.start, b: edge(1).start },
-          { type: 'coincident', a: bd.end, b: edge(3).start },
-          { type: 'midpoint', point: center, of: ac.id },
-        ],
-        false,
-      );
-      place(edit, ctx, this.#clicks[0], center);
+    if (mode === 'centre') {
+      place(edit, ctx, this.#clicks[0], rectangle.center as SketchEntityId);
     }
 
     r.dims.forEach((typed, i) => {

@@ -1,9 +1,13 @@
 /**
- * Building blocks for the drawing tools (P1-04, ADR-0013): add points and
- * curves to an edit, and the constraints that tie a placed point to what it
- * snapped to.
+ * Where a placed point keeps what it snapped to: the inferred constraints a
+ * drawing tool adds beside a point (ADR-0012, P1-02), and the small geometry
+ * the tools share (a tangent arc's join, an edge drawn to a typed length).
+ *
+ * Pure, and about inference rather than stored data, so `@extrudo/api` leaves
+ * these alone (it has no pointer to infer from) and the app's tools import them
+ * from here.
  */
-import type { SketchData, SketchEntityId, Vec2 } from '@extrudo/core';
+import type { ConstraintId, SketchData, SketchEntityId, Vec2 } from '@extrudo/core';
 import {
   type AnchorEntities,
   type ArcShape,
@@ -11,65 +15,18 @@ import {
   type Inference,
   type Snap,
   snapConstraints,
-} from '@extrudo/sketch/inference';
-import { constrain, type SketchEdit, type ToolContext, type Typed } from './tool';
+} from '../inference';
+import { type ArcPoints, type BuildIds, constrain, type SketchAdd } from './add';
 
 const DEG = Math.PI / 180;
 
-export function addPoint(edit: SketchEdit, context: ToolContext, p: Vec2): SketchEntityId {
-  const id = context.newId() as SketchEntityId;
-  edit.entities[id] = { type: 'point', x: p[0], y: p[1] };
-  return id;
-}
-
-export function addLine(edit: SketchEdit, context: ToolContext, a: Vec2, b: Vec2) {
-  const start = addPoint(edit, context, a);
-  const end = addPoint(edit, context, b);
-  const id = context.newId() as SketchEntityId;
-  edit.entities[id] = { type: 'line', start, end, construction: context.construction() };
-  return { id, start, end };
-}
-
-export function addCircle(edit: SketchEdit, context: ToolContext, center: Vec2, radius: number) {
-  const c = addPoint(edit, context, center);
-  const id = context.newId() as SketchEntityId;
-  edit.entities[id] = { type: 'circle', center: c, radius, construction: context.construction() };
-  return { id, center: c };
-}
-
 /**
- * Adds an arc. `first` and `last` are the points in the order the user drew
- * them; for a clockwise arc they are the stored end and start.
+ * A value typed into the heads-up box (P1-04): the expression and its value in
+ * base units (mm, degrees).
  */
-export function addArc(edit: SketchEdit, context: ToolContext, arc: ArcShape) {
-  const polar = (a: number): Vec2 => [
-    arc.center[0] + arc.radius * Math.cos(a),
-    arc.center[1] + arc.radius * Math.sin(a),
-  ];
-  const center = addPoint(edit, context, arc.center);
-  const start = addPoint(edit, context, polar(arc.from));
-  const end = addPoint(edit, context, polar(arc.from + arc.sweep));
-  const id = context.newId() as SketchEntityId;
-  edit.entities[id] = { type: 'arc', center, start, end, construction: context.construction() };
-  return {
-    id,
-    center,
-    first: arc.reversed ? end : start,
-    last: arc.reversed ? start : end,
-  };
-}
-
-/** Inferred constraints for a point placed where the pointer snapped and aligned. */
-export function place(
-  edit: SketchEdit,
-  context: ToolContext,
-  pointer: Inference | undefined,
-  point: SketchEntityId,
-  anchor: AnchorEntities = {},
-): void {
-  if (!pointer) return;
-  constrain(edit, context, snapConstraints(pointer.snap, point), true);
-  constrain(edit, context, alignmentConstraints(pointer.alignments, point, anchor), true);
+export interface Typed {
+  expr: string;
+  value: number;
 }
 
 /**
@@ -77,21 +34,20 @@ export function place(
  * point goes on the curve (the new curve has no point of its own there).
  */
 export function throughPoint(
-  edit: SketchEdit,
-  context: ToolContext,
+  edit: SketchAdd,
+  ids: BuildIds,
   snap: Snap | undefined,
   curve: SketchEntityId,
-): void {
-  if (!snap || !['endpoint', 'center', 'point'].includes(snap.kind)) return;
+): ConstraintId[] {
+  if (!snap || !['endpoint', 'center', 'point'].includes(snap.kind)) return [];
   const point = snap.ids[0];
-  if (point) {
-    constrain(
-      edit,
-      context,
-      [{ type: 'pointOnCurve', point: point as SketchEntityId, curve }],
-      true,
-    );
-  }
+  if (!point) return [];
+  return constrain(
+    edit,
+    ids,
+    [{ type: 'pointOnCurve', point: point as SketchEntityId, curve }],
+    true,
+  );
 }
 
 /** Where a curve ends at a point: the way out of it there, for a tangent continuation. */
@@ -142,19 +98,19 @@ export function curveEnd(sketch: SketchData, point: SketchEntityId): CurveEnd | 
  * coincident, and tangent with the side stored (`reversed`, see the schema).
  */
 export function tangentJoin(
-  edit: SketchEdit,
-  context: ToolContext,
+  edit: SketchAdd,
+  ids: BuildIds,
   from: Pick<CurveEnd, 'curve' | 'isEnd'>,
   joint: SketchEntityId,
   arc: { id: SketchEntityId; first: SketchEntityId },
-  shape: ArcShape,
+  shape: ArcPoints,
 ): void {
   // The existing curve runs along `outward` at its end and against it at its
   // start; the arc runs along it unless it was drawn clockwise.
-  const reversed = from.isEnd ? shape.reversed : !shape.reversed;
+  const reversed = from.isEnd ? Boolean(shape.reversed) : !shape.reversed;
   constrain(
     edit,
-    context,
+    ids,
     [
       { type: 'coincident', a: arc.first, b: joint },
       { type: 'tangent', a: from.curve, b: arc.id, reversed },
@@ -163,8 +119,21 @@ export function tangentJoin(
   );
 }
 
+/** Inferred constraints for a point placed where the pointer snapped and aligned. */
+export function place(
+  edit: SketchAdd,
+  ids: BuildIds,
+  pointer: Inference | undefined,
+  point: SketchEntityId,
+  anchor: AnchorEntities = {},
+): void {
+  if (!pointer) return;
+  constrain(edit, ids, snapConstraints(pointer.snap, point), true);
+  constrain(edit, ids, alignmentConstraints(pointer.alignments, point, anchor), true);
+}
+
 /** The direction of travel at the end of an arc drawn from `first` to `last`. */
-export function arcEndDirection(shape: ArcShape): Vec2 {
+export function arcEndDirection(shape: ArcShape | ArcPoints): Vec2 {
   const angle = shape.reversed ? shape.from : shape.from + shape.sweep;
   const ccw: Vec2 = [-Math.sin(angle), Math.cos(angle)];
   return shape.reversed ? [-ccw[0], -ccw[1]] : ccw;

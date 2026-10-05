@@ -191,6 +191,9 @@ importers:
         specifier: ^5.3.0
         version: 5.3.0
     devDependencies:
+      marked:
+        specifier: ^18.0.14
+        version: 18.0.14
       vite:
         specifier: ^8.3.0
         version: 8.3.0(@types/node@26.6.2)(jiti@2.7.0)(yaml@2.9.1)
@@ -267,6 +270,22 @@ importers:
       vite:
         specifier: ^8.3.0
         version: 8.3.0(@types/node@26.6.2)(jiti@2.7.0)(yaml@2.9.1)
+
+  packages/api:
+    dependencies:
+      '@extrudo/core':
+        specifier: workspace:*
+        version: link:../core
+      '@extrudo/sketch':
+        specifier: workspace:*
+        version: link:../sketch
+      '@extrudo/storage':
+        specifier: workspace:*
+        version: link:../storage
+    devDependencies:
+      '@extrudo/kernel':
+        specifier: workspace:*
+        version: link:../kernel
 
   packages/core:
     dependencies:
@@ -2055,6 +2074,11 @@ packages:
       '@gltf-transform/extensions': ^4.2.0
       '@gltf-transform/functions': ^4.2.0
       esbuild-wasm: ^0.27.3
+
+  marked@18.0.14:
+    resolution: {integrity: sha512-mBHK6FBHuBAlhgRe88w9F0O1AbwwXJUcQibUbC/QcdTbVGAD7aWza+xt3N6oT/jCZx3/OMeS+8rnuiHZcQ9s7A==}
+    engines: {node: '>= 20'}
+    hasBin: true
 
   meshoptimizer@1.1.1:
     resolution: {integrity: sha512-oRFNWJRDA/WTrVj7NWvqa5HqE1t9MYDj2VaWirQCzCCrAd2GHrqR/sQezCxiWATPNlKTcRaPRHPJwIRoPBAp5g==}
@@ -3868,6 +3892,8 @@ snapshots:
       fast-xml-parser: 5.11.2
       fflate: 0.8.3
       magic-string: 0.30.21
+
+  marked@18.0.14: {}
 
   meshoptimizer@1.1.1: {}
 

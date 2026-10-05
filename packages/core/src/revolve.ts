@@ -10,6 +10,8 @@
  * `two-sides`), as for extrude (ADR-0028), so a dialog can keep them while
  * the user switches back and forth.
  */
+
+import { SWEEP_FACE_ROLES } from './face-roles';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
@@ -55,28 +57,48 @@ export const FULL_TURN = '360 deg';
 
 export const RevolveInputsSchema = z.strictObject({
   /** Profiles and flat faces, all in one plane. Missing or empty: the feature fails until some are picked. */
-  profiles: refsOf(REVOLVE_PROFILE_KINDS).optional(),
+  profiles: refsOf(REVOLVE_PROFILE_KINDS)
+    .optional()
+    .describe('Profiles and flat faces to revolve, all in one plane.'),
   /** The axis, in the profiles' plane. Missing: the feature fails until one is picked. */
-  axis: refsOf(REVOLVE_AXIS_KINDS, 1).optional(),
+  axis: refsOf(REVOLVE_AXIS_KINDS, 1)
+    .optional()
+    .describe("The axis to revolve about, which lies in the profiles' plane."),
   /** Default `one-side`. */
-  direction: enumInput(REVOLVE_DIRECTIONS).optional(),
+  direction: enumInput(REVOLVE_DIRECTIONS)
+    .optional()
+    .describe('How the revolve goes round: one-side, symmetric or two-sides. Default one-side.'),
   /**
    * Side 1's angle (the whole angle when symmetric), default 360°: a full
    * turn has no end faces. Negative turns the other way.
    */
-  angle: exprOf('angle').optional(),
+  angle: exprOf('angle')
+    .optional()
+    .describe(
+      "Side 1's angle (the whole angle when symmetric); an angle. Default 360°, a full turn with no end faces.",
+    ),
   /** Side 2's angle for `two-sides`: the other way round. Default 0. */
-  angle2: exprOf('angle').optional(),
+  angle2: exprOf('angle')
+    .optional()
+    .describe("Side 2's angle, the other way round; an angle. Default 0°."),
   /** Turns side 1 the other way round the axis. Default false. */
-  flip: BoolInputSchema.optional(),
+  flip: BoolInputSchema.optional().describe(
+    'Turn side 1 the other way round the axis. Default false.',
+  ),
   /** Default `new-body`. */
-  operation: enumInput(REVOLVE_OPERATIONS).optional(),
+  operation: enumInput(REVOLVE_OPERATIONS)
+    .optional()
+    .describe('New body, join, cut or intersect. Default new-body.'),
   /**
    * The bodies to join, cut or intersect (`body` references, body IDs).
    * Empty or missing: every body the revolve touches (join) or overlaps
    * (cut, intersect).
    */
-  bodies: refsOf(['body']).optional(),
+  bodies: refsOf(['body'])
+    .optional()
+    .describe(
+      'The bodies to join, cut or intersect; by default every body the revolve touches (join) or overlaps (cut, intersect).',
+    ),
 });
 export type RevolveInputs = z.infer<typeof RevolveInputsSchema>;
 
@@ -86,6 +108,8 @@ export const revolveFeature: FeatureDefinition<RevolveInputs> = {
   category: 'create',
   icon: 'revolve',
   inputsSchema: RevolveInputsSchema,
+  // ADR-0068 §4, from the kernel's revolve (P2-07): a whole turn has no caps.
+  faceRoles: SWEEP_FACE_ROLES,
 };
 
 /** A revolve's inputs with every default filled in: what the kernel builds. */

@@ -14,11 +14,19 @@
  * tangent to the first edge, which a typed diameter dimensions. The number
  * of sides is a heads-up field that stays set for the next polygon.
  */
-import type { DimensionId, SketchConstraint, SketchEntityId, Vec2 } from '@extrudo/core';
-import type { Inference } from '@extrudo/sketch/inference';
-import { addCircle, addLine, axisOf, place, typedEnd } from './build';
+import type { DimensionId, Vec2 } from '@extrudo/core';
 import {
+  axisOf,
   constrain,
+  type PolygonShape,
+  place,
+  polygonAround,
+  polygonEdit,
+  polygonOnEdge,
+  typedEnd,
+} from '@extrudo/sketch/build';
+import type { Inference } from '@extrudo/sketch/inference';
+import {
   EMPTY_PREVIEW,
   emptyEdit,
   type HeadsUpField,
@@ -46,25 +54,6 @@ export const DEFAULT_SIDES = 6;
 export const MAX_SIDES = 64;
 
 const DEG = Math.PI / 180;
-
-/** A regular polygon: its corners in order, and the circle through them. */
-interface Shape {
-  corners: Vec2[];
-  center: Vec2;
-  /** Circumradius. */
-  radius: number;
-  /** Distance from the center to each edge. */
-  apothem: number;
-}
-
-/** The regular n-gon around `center` with its first corner at `angle` (radians). */
-function around(center: Vec2, radius: number, angle: number, n: number): Shape {
-  const corners = Array.from({ length: n }, (_, k): Vec2 => {
-    const t = angle + (2 * Math.PI * k) / n;
-    return [center[0] + radius * Math.cos(t), center[1] + radius * Math.sin(t)];
-  });
-  return { corners, center, radius, apothem: radius * Math.cos(Math.PI / n) };
-}
 
 export class PolygonTool implements SketchTool {
   readonly id: string;
@@ -244,42 +233,21 @@ export class PolygonTool implements SketchTool {
     return { at: p, distance, angle };
   }
 
-  #shape(): Shape | undefined {
+  #shape(): PolygonShape | undefined {
     const n = this.sides;
     if (this.mode === 'edge') {
       const [first, second] = this.#clicks;
       const pointer = this.#pointer;
       if (!first || !second || !pointer) return undefined;
-      const a = first.point;
-      const b = second.point;
-      const e: Vec2 = [b[0] - a[0], b[1] - a[1]];
-      const s = Math.hypot(e[0], e[1]);
-      if (s === 0) return undefined;
-      let normal: Vec2 = [-e[1] / s, e[0] / s];
-      const side = (pointer.cursor[0] - a[0]) * normal[0] + (pointer.cursor[1] - a[1]) * normal[1];
-      if (side < 0) normal = [-normal[0], -normal[1]];
-      const apothem = s / 2 / Math.tan(Math.PI / n);
-      const center: Vec2 = [
-        (a[0] + b[0]) / 2 + normal[0] * apothem,
-        (a[1] + b[1]) / 2 + normal[1] * apothem,
-      ];
-      const radius = s / 2 / Math.sin(Math.PI / n);
-      // Corners from `a` round through `b`: the turn from a to b around the center.
-      const angle = Math.atan2(a[1] - center[1], a[0] - center[0]);
-      const turn = Math.sign((a[0] - center[0]) * e[1] - (a[1] - center[1]) * e[0]) || 1;
-      const corners = Array.from({ length: n }, (_, k): Vec2 => {
-        const t = angle + (turn * 2 * Math.PI * k) / n;
-        return [center[0] + radius * Math.cos(t), center[1] + radius * Math.sin(t)];
-      });
-      return { corners, center, radius, apothem };
+      return polygonOnEdge(first.point, second.point, pointer.cursor, n);
     }
     const reach = this.#reach();
     const center = this.#clicks[0]?.point;
     if (!reach || !center || reach.distance < 1e-9) return undefined;
-    if (this.mode === 'inscribed') return around(center, reach.distance, reach.angle, n);
+    if (this.mode === 'inscribed') return polygonAround(center, reach.distance, reach.angle, n);
     // Circumscribed: the pointer marks the middle of the first edge.
     const radius = reach.distance / Math.cos(Math.PI / n);
-    return around(center, radius, reach.angle - Math.PI / n, n);
+    return polygonAround(center, radius, reach.angle - Math.PI / n, n);
   }
 
   #finish(): SketchEdit | undefined {
@@ -287,32 +255,18 @@ export class PolygonTool implements SketchTool {
     const pointer = this.#pointer;
     if (!shape || !pointer || shape.radius < 1e-9) return undefined;
     const ctx = this.context;
-    const construction: ToolContext = { ...ctx, construction: () => true };
     const edit = emptyEdit();
-    const n = shape.corners.length;
-    const corner = (i: number) => shape.corners[i % n] as Vec2;
-    const lines = shape.corners.map((_, i) => addLine(edit, ctx, corner(i), corner(i + 1)));
-    const edge = (i: number) => lines[i % n] as (typeof lines)[number];
-    const circle = addCircle(edit, construction, shape.center, shape.radius);
-
-    const required: SketchConstraint[] = [];
-    for (let i = 0; i < n; i++) {
-      required.push(
-        { type: 'coincident', a: edge(i).end, b: edge(i + 1).start },
-        { type: 'pointOnCurve', point: edge(i).start, curve: circle.id },
-      );
-      if (i > 0) required.push({ type: 'equal', a: edge(0).id, b: edge(i).id });
-    }
-    let inner: SketchEntityId | undefined;
-    if (this.mode === 'circumscribed') {
-      const flats = addCircle(edit, construction, shape.center, shape.apothem);
-      inner = flats.id;
-      required.push(
-        { type: 'concentric', a: circle.id, b: flats.id },
-        { type: 'tangent', a: flats.id, b: edge(0).id },
-      );
-    }
-    constrain(edit, ctx, required, false);
+    // The n equal lines, their joins and the construction circles (ADR-0068 §5:
+    // the same builder `k.polygon(…)` uses).
+    const polygon = polygonEdit(
+      edit,
+      ctx,
+      shape,
+      this.mode === 'circumscribed' ? 'circumscribed' : 'inscribed',
+    );
+    const edges = polygon.edges;
+    const edge = (i: number) => edges[i % edges.length] as (typeof edges)[number];
+    const { circle } = polygon;
 
     const diameter = this.#locks.get('diameter');
     if (this.mode === 'edge') {
@@ -345,7 +299,7 @@ export class PolygonTool implements SketchTool {
       if (diameter) {
         edit.dimensions[ctx.newId() as DimensionId] = {
           type: 'diameter',
-          curve: inner ?? circle.id,
+          curve: polygon.flats?.id ?? circle.id,
           expr: diameter.expr,
           driven: false,
         };

@@ -24,9 +24,13 @@ export const OFFSET_FACE_KINDS = ['face'] as const;
 
 export const OffsetFaceInputsSchema = z.strictObject({
   /** The faces to move, of one or several bodies. Empty: an error until one is picked. */
-  faces: refsOf(OFFSET_FACE_KINDS),
+  faces: refsOf(OFFSET_FACE_KINDS).describe(
+    'The faces to move along their outward normal. Required.',
+  ),
   /** How far, along the outward normal (a length; negative goes in; 0 is refused by the kernel). */
-  distance: exprOf('length'),
+  distance: exprOf('length').describe(
+    'How far; a length. Positive grows the body outwards, negative closes it in. Required.',
+  ),
 });
 export type OffsetFaceInputs = z.infer<typeof OffsetFaceInputsSchema>;
 

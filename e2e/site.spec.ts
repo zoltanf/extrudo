@@ -29,6 +29,31 @@ test.afterEach(async () => {
 const heading = (page: Page) =>
   page.getByRole('heading', { name: 'Parametric CAD for 3D printing, in your browser.' });
 
+/**
+ * What the site's content policy refuses and what the console reports while a
+ * page loads (ADR-0057). The docs pages carry no script and load nothing from
+ * another origin, so both stay empty.
+ */
+async function watchPolicy(
+  page: Page,
+): Promise<{ errors: string[]; violations: () => Promise<string[]> }> {
+  await page.addInitScript(`
+    window.__violations = [];
+    document.addEventListener('securitypolicyviolation', (e) => {
+      window.__violations.push(e.violatedDirective + ' ' + e.blockedURI);
+    });
+  `);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') errors.push(message.text());
+  });
+  return {
+    errors,
+    violations: () => page.evaluate('window.__violations') as Promise<string[]>,
+  };
+}
+
 test('the landing page leads to the app, plays the intro and keeps to its content policy', async ({
   page,
 }) => {
@@ -114,6 +139,97 @@ test("Cloudflare Web Analytics runs under the landing page's content policy", as
   // And nothing it refused afterwards either: a blocked beacon reports from its own
   // script, so a `connect-src` refusal only shows up once the deferred script has run.
   expect(errors).toEqual([]);
+});
+
+test('the API docs are built into the site and the footer links to them', async ({ page }) => {
+  const policy = await watchPolicy(page);
+
+  // The landing page's footer carries the link (ADR-0068 §6).
+  await page.goto(`${host.url}/`);
+  const link = page.getByRole('link', { name: 'API docs' });
+  await expect(link).toHaveAttribute('href', '/docs/api/');
+
+  // The docs' own index: a sidebar, a heading and the examples.
+  await link.click();
+  await expect(page).toHaveURL(`${host.url}/docs/api/`);
+  await expect(page.getByRole('heading', { name: 'The Extrudo document API' })).toBeVisible();
+  const sidebar = page.getByRole('navigation', { name: 'API docs' });
+  await expect(sidebar.getByRole('link', { name: 'References' })).toHaveAttribute(
+    'href',
+    '/docs/api/references/',
+  );
+  await expect(sidebar.getByRole('heading', { name: 'Create' })).toBeVisible();
+  await expect(page.locator('pre code').first()).toBeVisible();
+
+  // Nothing refused, and nothing the pages brought with them: no script at all
+  // (the site's own policy allows the app's, not these pages').
+  expect(policy.errors).toEqual([]);
+  expect(await policy.violations()).toEqual([]);
+  expect(await page.evaluate('document.querySelectorAll("script").length')).toBe(0);
+  await expect(page.locator('link[rel="stylesheet"]')).toHaveAttribute(
+    'href',
+    /\/assets\/docs-[^/]+\.css$/,
+  );
+});
+
+test('a feature page shows its inputs table, its face roles and its example', async ({ page }) => {
+  const policy = await watchPolicy(page);
+
+  await page.goto(`${host.url}/docs/api/features/extrude/`);
+  await expect(page.getByRole('heading', { name: 'Extrude', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Extrude', exact: true })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+
+  // The inputs table, with the rows the generator wrote from the schemas.
+  const table = page.locator('table').first();
+  const headers = table.locator('th');
+  await expect(headers).toHaveText(['Input', 'Type', 'Required or default', 'What it does']);
+  await expect(table.getByRole('cell', { name: 'distance', exact: true })).toBeVisible();
+  await expect(table).toContainText('string | number | ParameterHandle');
+  await expect(table).toContainText('default one-side');
+
+  // The face roles, and an example call with the code in it.
+  await expect(page.getByRole('cell', { name: 'cap:end' })).toBeVisible();
+  await expect(page.locator('pre code')).toContainText(
+    "d.extrude({ profiles: profile, distance: '10 mm' });",
+  );
+  // A link between pages is a page, not a Markdown file.
+  await page.getByRole('main').getByRole('link', { name: 'Sketches', exact: true }).click();
+  await expect(page).toHaveURL(`${host.url}/docs/api/sketch/`);
+  await expect(page.getByRole('heading', { name: 'Sketches', exact: true })).toBeVisible();
+
+  expect(policy.errors).toEqual([]);
+  expect(await policy.violations()).toEqual([]);
+});
+
+test('the API docs pass an axe audit in both themes', async ({ page }) => {
+  // NFR-07, like the landing page's own audit below: the docs are pages of the
+  // site, and their tables and code blocks are as much content as its cards are.
+  for (const colorScheme of ['light', 'dark'] as const) {
+    await page.emulateMedia({ colorScheme });
+    for (const path of ['/docs/api/', '/docs/api/features/extrude/']) {
+      await page.goto(`${host.url}${path}`);
+      await expect(page.locator('main h1')).toBeVisible();
+      const results = await new AxeBuilder({ page })
+        .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+        .analyze();
+      expect
+        .soft(
+          results.violations.map((v) => ({
+            theme: colorScheme,
+            page: path,
+            rule: v.id,
+            impact: v.impact,
+            help: v.help,
+            nodes: v.nodes.map((n) => `${n.target.join(' ')} :: ${n.html.slice(0, 220)}`),
+          })),
+          `axe violations on ${path} in the ${colorScheme} theme`,
+        )
+        .toEqual([]);
+    }
+  }
 });
 
 test('an old link to a design goes on to the app with its route', async ({ page }) => {

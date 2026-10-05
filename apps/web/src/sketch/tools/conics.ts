@@ -21,8 +21,8 @@ import {
   splinePolyline,
   type Vec2,
 } from '@extrudo/core';
+import { addPoint, place } from '@extrudo/sketch/build';
 import type { Inference } from '@extrudo/sketch/inference';
-import { addPoint, place } from './build';
 import {
   EMPTY_PREVIEW,
   emptyEdit,

@@ -1,0 +1,320 @@
+/* The API docs' own rules (ADR-0068 §6). The brand's tokens come first: the
+   build puts `src/tokens.css` and the font faces above this file, so these
+   pages and the landing page are the same look with no script to switch them.
+
+   A page is a sidebar and a column of prose. No client script, so nothing here
+   can collapse, scroll or fetch: the sidebar is a list, the code blocks are
+   `<pre>`, and the only focusable things are links. */
+
+body {
+  margin: 0;
+  background: var(--x-bg);
+  color: var(--x-ink);
+  font:
+    400 1rem / 1.65 "Instrument Sans",
+    system-ui,
+    sans-serif;
+}
+
+a {
+  color: var(--x-link);
+}
+
+a:focus-visible {
+  outline: 2px solid var(--x-sketch);
+  outline-offset: 3px;
+}
+
+code {
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: 0.9em;
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  background: var(--x-raised);
+  border: 1px solid var(--x-line);
+}
+
+.skip {
+  position: absolute;
+  left: -999px;
+}
+
+.skip:focus {
+  left: 16px;
+  top: 16px;
+  z-index: 1;
+  padding: 8px 12px;
+  background: var(--x-raised);
+}
+
+/* The bar, as the landing page's */
+
+.top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px 16px;
+  border-bottom: 1px solid var(--x-line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--x-ink);
+  text-decoration: none;
+}
+
+.mark-top {
+  fill: var(--x-logo-top);
+}
+
+.mark-side {
+  fill: var(--x-logo-side);
+}
+
+.mark-sketch {
+  fill: var(--x-logo-sketch-fill);
+  stroke: var(--x-logo-sketch);
+  stroke-width: 2;
+  stroke-dasharray: 3.2 2.6;
+}
+
+.mark-dot {
+  fill: var(--x-logo-sketch);
+}
+
+/* `extrudo` in Instrument Sans 600, −0.04em, ending in the amber square. */
+.wordmark {
+  font-weight: 600;
+  font-size: 1.5rem;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.wordmark::after {
+  content: "";
+  display: inline-block;
+  width: 0.15em;
+  height: 0.15em;
+  margin-left: 0.07em;
+  border-radius: 0.03em;
+  background: var(--x-accent);
+}
+
+.where {
+  margin: 0;
+  color: var(--x-muted);
+  font-size: 0.95rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+/* The layout */
+
+.docs {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 40px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 16px 64px;
+  align-items: start;
+}
+
+.side {
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  font-size: 0.925rem;
+}
+
+.side section {
+  margin-bottom: 24px;
+}
+
+.side h2 {
+  margin: 0 0 6px;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--x-muted);
+  font-weight: 600;
+}
+
+.side ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-left: 1px solid var(--x-line);
+}
+
+.side a {
+  display: block;
+  padding: 3px 12px;
+  color: var(--x-muted);
+  text-decoration: none;
+}
+
+.side a:hover {
+  color: var(--x-ink);
+}
+
+.side a[aria-current="page"] {
+  color: var(--x-ink);
+  border-left: 2px solid var(--x-accent);
+  margin-left: -1px;
+  background: var(--x-accent-soft);
+}
+
+.page {
+  min-width: 0;
+  max-width: 78ch;
+}
+
+/* The prose */
+
+.page h1 {
+  margin: 0 0 8px;
+  font-size: clamp(1.9rem, 4vw, 2.6rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+}
+
+.page h2 {
+  margin: 40px 0 12px;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  padding-top: 12px;
+  border-top: 1px solid var(--x-line);
+}
+
+.page h3 {
+  margin: 28px 0 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.page h1 code,
+.page h2 code {
+  font-size: 0.8em;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.page p {
+  margin: 0 0 16px;
+}
+
+.page ul,
+.page ol {
+  margin: 0 0 16px;
+  padding-left: 1.4em;
+}
+
+.page li {
+  margin: 4px 0;
+}
+
+.page hr {
+  border: 0;
+  border-top: 1px solid var(--x-line);
+  margin: 32px 0;
+}
+
+.page blockquote {
+  margin: 0 0 16px;
+  padding: 8px 16px;
+  border-left: 3px solid var(--x-accent);
+  background: var(--x-panel);
+  border-radius: 0 8px 8px 0;
+  color: var(--x-muted);
+}
+
+/* Tables: the inputs of a feature type are the reference's heart, so they get
+   the full width of the column and scroll on a narrow screen rather than wrap
+   into unreadable rows. */
+
+.page table {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  margin: 0 0 16px;
+  font-size: 0.95rem;
+}
+
+.page th,
+.page td {
+  border: 1px solid var(--x-line);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.page th {
+  background: var(--x-panel);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.page td:first-child code {
+  white-space: nowrap;
+}
+
+/* Code: plain `<pre>`, wrapped by default, scrollable when a line is long. */
+
+.page pre {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--x-line);
+  background: var(--x-panel);
+  overflow-x: auto;
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.page pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: inherit;
+}
+
+.foot {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+  border-top: 1px solid var(--x-line);
+  font-size: 0.95rem;
+}
+
+.muted {
+  color: var(--x-muted);
+}
+
+/* One column on a narrow screen, the sidebar above the page. */
+
+@media (max-width: 860px) {
+  .docs {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .side {
+    position: static;
+    max-height: none;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--x-line);
+  }
+}

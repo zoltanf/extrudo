@@ -28,7 +28,8 @@ analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus),
 P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-15
 (public release prep, ADR-0054: done except the owner's release steps),
 P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 is
-complete** (version 0.3.0). Phase 4: P4-01 (sweep, loft, coil), P4-02
+complete** (version 0.3.0). Phase 5 has started: P5-01 is **done** (the public document API, `packages/api`,
+its generated reference and the site's `/docs/api/` pages, ADR-0068). Phase 4: P4-01 (sweep, loft, coil), P4-02
 (modeled threads), P4-03 (sketch text, bundled fonts), P4-03b (user fonts
 as attachments), P4-04 (emboss, deboss), P4-05 (control-point splines,
 conics), P4-07 (customizer, configurations), P4-08 (print tolerance,
@@ -1115,8 +1116,92 @@ their distance (`isHeavyTool` in `operation.ts`; `bodiesTouch` still asks for a
 mesh pair's `minGap`, P4-06 §4). **§H5** warns when a swept profile is drawn
 away from the path's start.
 
-Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-06 is
-done** (all five slices, ADR-0066) and P4-12's hardening part (ADR-0067 H1 to
+ADR-0068 (P5-01, all three slices) added **the public document API**,
+`packages/api` (`@extrudo/api`, GPL-3.0-or-later): `Design.create`/`Design.from`,
+`d.parameter`/`setParameter`, `d.configuration`/`applyConfiguration`, one method
+per feature type generated from core's registry, `d.add`, `remove`, `suppress`,
+`rename`, `move`, `group`, `transaction`, `validate`, `toJSON`/`toFile`, and the
+references a call needs without a kernel (`d.origin.*`, `handle.ref()`,
+`handle.constructionRef()`, `handle.body()`/`bodies()`, `handle.face`/`edge`/
+`vertex`, `d.ref(kind, id)`). Rules a change must keep: **every change is a
+core command on the `DocumentState`** (`design.state` is there for the rest) and
+inputs are checked with the feature's own schema before anything is dispatched,
+so a bad call throws `ApiError` with the input path and nothing changes; **IDs
+are deterministic** (a counter per kind, `f1`, `p1`, `s1`, `c1`, `d1`, …, seeded
+from a loaded document so a new ID never collides, `options.ids` to inject — the
+same calls must give byte-identical JSON, P5-02 runs a script on every
+recompute); **names follow the app** (`nextFeatureName`, and a new driving
+dimension takes the next `d<n>` like the app's host gives it); the references
+are the kernel's persistent names, built as plain strings (`src/names.ts`, the
+grammar of `packages/kernel/src/naming/topo-id.ts`), so **a new feature's
+methods must not need geometry**. **The feature methods are generated**:
+`pnpm api:generate` (`scripts/generate-api.mjs`, run through
+`scripts/ts-import.mjs`, which resolves the extensionless imports core's
+TypeScript uses) reads core's `documentFeatures()` and writes
+`packages/api/src/generated/features.ts` from the input schemas' `.describe()`
+texts, and **the reference pages under `docs/api/`** (`docs/api/features/<type>.md`
+per type and their index, from `packages/api/src/pages.ts`) — **a new feature
+input needs a `.describe()`** or the generator fails, and `generated.test.ts` and
+`docs.test.ts` fail with "run pnpm api:generate" until the files are
+regenerated. Every page's example call is the line the generator writes into a
+generated `featureExamples(d)`, so **`tsc` checks every example** and
+`packages/api/src/docs.test.ts` runs them against a real `Design` (a new feature
+type needs an entry in `EXAMPLE_INPUTS`, `packages/api/src/example-calls.ts`, and
+its example may not leave out a required input); the same test compiles every
+```ts block of the three hand-written pages (`docs/api/README.md`, `sketch.md`,
+`references.md`) with the package's own strictness. Each input schema also says what it is under `meta({ input })`
+(core's `feature-inputs.ts`), which is how a call turns `'10 mm'`, a reference
+or `true` into a stored input. **Import zod only through core's `zod.ts`**
+(`import { z } from '@extrudo/core'`), like the kernel's golden tables do.
+Remove and Move are the document commands, so their features' methods are
+`removeBodies` and `moveBodies`; `sketch` has no generated method.
+
+**Sketches (slice 2):** `d.sketch(plane, build, options?)` runs `build` with a
+`SketchBuilder` — every entity kind of the schema, one method per constraint
+type, and `k.dimension(target, value, { name })` for each kind of dimension —
+and the entities, constraints and dimensions come from
+**`@extrudo/sketch/build`**, the pure builders the drawing tools use, which
+moved there out of `apps/web/src/sketch/tools/build.ts` (the tools import them
+from there now; `BuildIds` is an ID factory and the construction flag, which a
+`ToolContext` already is). **Nothing is solved** (the solver needs planegcs,
+which the API keeps out); profile IDs don't depend on positions, so a later
+solve keeps them. Profile references are `s.profiles()`, `s.profileAt([x, y])`
+(throws where there is none), `s.profilesInside(...)`, and a sketch handle lists
+its `lines()`, `circles()`, `arcs()`, `points()`.
+
+**Face roles (slice 2):** every body-making feature definition in core lists the
+roles its faces are named with (`faceRoles: { pattern, description }[]`, patterns
+with `<…>` for what varies, in `packages/core/src/face-roles.ts`), filled in from
+what the kernel evaluator really names. **A new body-making feature needs its
+roles**, or `packages/core/src/face-roles.test.ts` and the kernel's
+`features/face-roles.test.ts` (which builds one of every feature and checks every
+face name it makes) say so. The roles type `handle.face(role)`/`faceName(role)`
+through the generated `FaceRoleName<T>` and appear in the methods' doc comments.
+
+**Docs site (slice 3):** `apps/site` builds `docs/api/**/*.md` into static pages
+under `/docs/api/` at build time (`apps/site/src/docs.ts` reads the front matter,
+rewrites relative links and renders with `marked`, a **build-only** devDependency;
+`src/docs-plugin.ts` emits the pages, the brand's stylesheet — `src/tokens.css`,
+which `site.css` imports too — and the two font faces with hashed names). **A docs
+page carries no script at all** (plain `<pre>`, a sidebar, the brand's colours),
+which is what the site's stricter `_headers` asks for; `tabindex="0"` on the
+sidebar, the tables and the code blocks keeps the scrollable regions reachable.
+The landing page's footer links to `/docs/api/`. Rules a change must keep: **a
+docs page needs no internal package** (ADR-0057), so anything the sidebar needs
+comes from the Markdown's front matter (`title`, `section`, `category`, `order`),
+and **the pages are the repository's Markdown**, so a link that names a `.md`
+file is a bug (`docs.test.ts` fails on one).
+
+**Examples (slice 2):** `docs/api/examples/*.ts` are tests, run by
+`packages/api/src/examples.test.ts` — the Wall bracket, benchmark B1 (equal to
+the fixture the app exported, up to its IDs, and recomputed headless) and a
+parametric box with a customizer and two configurations. The kernel is a
+devDependency of the API package for that one test and nothing else.
+
+Next, one task at a time (not parallel tracks, since 2026-09-30): **P5-01 is
+done** (all three slices, ADR-0068), so onward in Phase 5 with P5-02 (the Script
+feature, which runs user code against this API in a sandboxed worker and wants the
+same deterministic IDs); **P4-06 is done** (all five slices, ADR-0066) and P4-12's hardening part (ADR-0067 H1 to
 H5) is on main, so **Phase 4 is complete apart from P4-12's backlog** (exact
 rational conics in the kernel, closed splines, trimming and offsetting
 splines — ADR-0063's Deferred; and the modelling depth items P4-12 lists);
@@ -1137,6 +1222,7 @@ pnpm format       # Biome auto-fix
 pnpm wasm         # download the OCCT and planegcs WASM for the current inputs (check/dev/build do this)
 pnpm occt build   # build OCCT locally with Docker (~11 min; Arch workstation only); see packages/kernel/occt/README.md
 pnpm planegcs build  # build planegcs locally with Docker (~2 min; Arch workstation only); see packages/sketch/planegcs/README.md
+pnpm api:generate   # rewrite @extrudo/api's generated methods and docs/api pages (ADR-0068)
 ```
 
 Package dependency rules live in `scripts/check-boundaries.mjs` (run by
@@ -1155,7 +1241,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for the v0.4.0 release |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`) |
 
 ## Stack summary
 
@@ -1808,6 +1894,17 @@ them. Notes further down that name a machine apply to that machine only.
   `host.override` (which takes a content type, as `/` has no extension) and stubs
   both Cloudflare hosts with `page.route`: the script (which then posts to the RUM
   endpoint) must load, or the site's policy has stopped allowing analytics.
+  **Docs site e2e** (ADR-0068 §6, the same spec): the footer's "API docs" link
+  (`[data-api-docs]`, `/docs/api/`), the docs index's sidebar (`nav[aria-label="API
+  docs"]`, with a "Create" group) and a feature page's inputs table (`table th`:
+  "Input", "Type", "Required or default", "What it does"), its face roles and its
+  example code, the sidebar link that navigates (`aria-current="page"` on the page's
+  own entry), **no `script` element at all** and no policy violation
+  (`watchPolicy`), plus an axe audit of both themes on `/docs/api/` and a feature
+  page. The pages come from `docs/api/**.md` at build time, so run `pnpm
+  api:generate` before `pnpm build` when the Markdown changed, and the unit tests
+  are `apps/site/src/docs.test.ts` (every file becomes a page, links point to
+  pages, the sidebar's order).
 - **Update toast e2e** (`e2e/pwa.spec.ts`, "an update is waiting"): the host
   swaps `/sw.js` for a copy with another `VERSION`, `registration.update()` makes
   the browser install it, and it **waits** (the old version stays active:

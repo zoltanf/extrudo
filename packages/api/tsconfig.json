@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // No DOM is used here (ADR-0068 §1): the lib is there for the `Blob` and
+  // `crypto` types @extrudo/storage's public API is written in, and Node's
+  // types so a script can import it (P5-03's CLI).
+  "compilerOptions": {
+    "lib": ["es2023", "dom"],
+    "types": ["node"],
+    // The examples under `docs/api/examples/` are typechecked here (the test
+    // imports them) and they import the package by its own name, as a user
+    // writes it (ADR-0068 §6).
+    "paths": { "@extrudo/api": ["./src/index.ts"] }
+  },
+  "include": ["src"]
+}

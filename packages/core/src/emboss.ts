@@ -12,6 +12,8 @@
  * Every input except `profiles` and `face` is optional and has a default, so
  * a minimal emboss is `{ profiles, face }`: 1 mm, embossed.
  */
+
+import { SWEEP_FACE_ROLES } from './face-roles';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { ExprInput, GeomRef, GeomRefKind, RefInput, UnitKind } from './schema';
@@ -37,13 +39,21 @@ export const EMBOSS_DEFAULT_DEPTH = 1;
 
 export const EmbossInputsSchema = z.strictObject({
   /** The profiles and whole texts to emboss, all in one plane. Missing or empty: the feature fails until some are picked. */
-  profiles: refsOf(EMBOSS_PROFILE_KINDS).optional(),
+  profiles: refsOf(EMBOSS_PROFILE_KINDS)
+    .optional()
+    .describe('The profiles and whole texts to emboss, all in one plane and parallel to the face.'),
   /** The face to emboss on: the body that owns it is the only body touched. */
-  face: refsOf(EMBOSS_FACE_KINDS, 1).optional(),
+  face: refsOf(EMBOSS_FACE_KINDS, 1)
+    .optional()
+    .describe('The face to emboss on: the body that owns it is the only body touched.'),
   /** How far the letters stand out or go in; must be greater than 0. */
-  depth: exprOf('length').optional(),
+  depth: exprOf('length')
+    .optional()
+    .describe('How far the letters stand out or go in; a length greater than 0.'),
   /** Default `emboss`. */
-  mode: enumInput(EMBOSS_MODES).optional(),
+  mode: enumInput(EMBOSS_MODES)
+    .optional()
+    .describe('Emboss joins material outwards, deboss cuts inwards. Default emboss.'),
 });
 export type EmbossInputs = z.infer<typeof EmbossInputsSchema>;
 
@@ -53,6 +63,9 @@ export const embossFeature: FeatureDefinition<EmbossInputs> = {
   category: 'create',
   icon: 'emboss',
   inputsSchema: EmbossInputsSchema,
+  // ADR-0068 §4, from the kernel's prism or wrap (P4-04, ADR-0060): a cap on
+  // the face it stands on and one out, and a wall per edge of the profiles.
+  faceRoles: SWEEP_FACE_ROLES,
 };
 
 /** An emboss's inputs with every default filled in: what the kernel builds. */

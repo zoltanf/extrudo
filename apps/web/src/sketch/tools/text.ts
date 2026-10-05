@@ -18,6 +18,7 @@ import {
   textPolylines,
   type Vec2,
 } from '@extrudo/core';
+import { addPoint, place } from '@extrudo/sketch/build';
 import type { Inference } from '@extrudo/sketch/inference';
 import { ensureUiFonts, hasUiFont } from '../fonts';
 import {
@@ -27,7 +28,6 @@ import {
   type TextDraft,
   textDraftStore,
 } from '../textDraft';
-import { addPoint, place } from './build';
 import {
   EMPTY_PREVIEW,
   emptyEdit,

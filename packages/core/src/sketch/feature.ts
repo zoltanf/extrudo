@@ -3,6 +3,7 @@
  * content. The kernel adds its evaluator and the web app its sketch mode,
  * each in its own registry keyed by `SKETCH_TYPE` (ADR-0003).
  */
+import type { RefInputMeta } from '../feature-inputs';
 import type { FeatureDefinition } from '../features';
 import type { FeatureId, SketchEntityId } from '../ids';
 import {
@@ -21,11 +22,15 @@ export const SKETCH_TYPE = 'sketch';
 export const SketchPlaneInputSchema = RefInputSchema.refine(
   (input) => input.refs.length === 1 && ['plane', 'face'].includes(input.refs[0]?.kind ?? ''),
   'must be one plane or face',
-);
+).meta({ input: { kind: 'ref', kinds: ['plane', 'face'], max: 1 } satisfies RefInputMeta });
 
 export const SketchInputsSchema = z.strictObject({
-  plane: SketchPlaneInputSchema,
-  sketch: SketchDataInputSchema,
+  plane: SketchPlaneInputSchema.describe(
+    'The plane the sketch is drawn on: an origin plane, a construction plane or a flat face. Required.',
+  ),
+  sketch: SketchDataInputSchema.describe(
+    "The sketch's points, curves, constraints and dimensions. Required.",
+  ),
 });
 export type SketchInputs = z.infer<typeof SketchInputsSchema>;
 

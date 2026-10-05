@@ -21,6 +21,8 @@
  * Every input is optional, so a minimal coil is `{}`: 5 turns 20 mm high of
  * a 2 mm wire on a 20 mm diameter on the XY plane, a new body.
  */
+
+import { SWEEP_FACE_ROLES } from './face-roles';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { DEFAULT_PLACEMENT, PLACEMENT_KINDS, type PrimitiveNumber } from './primitives';
@@ -86,40 +88,80 @@ export const MAX_COIL_TURNS = 1000;
 
 export const CoilInputsSchema = z.strictObject({
   /** The plane or flat face it stands on. Missing: the XY plane (`DEFAULT_PLACEMENT`). */
-  plane: refsOf(PLACEMENT_KINDS, 1).optional(),
+  plane: refsOf(PLACEMENT_KINDS, 1)
+    .optional()
+    .describe('The plane or flat face it stands on. Default the XY plane.'),
   /** The axis's place along the plane frame's X and Y; default 0. */
-  x: exprOf('length').optional(),
-  y: exprOf('length').optional(),
+  x: exprOf('length')
+    .optional()
+    .describe("The axis's place along the plane frame's X; a length. Default 0."),
+  y: exprOf('length')
+    .optional()
+    .describe("The axis's place along the plane frame's Y; a length. Default 0."),
   /** How far the coil starts off the plane along its normal; default 0. */
-  offset: exprOf('length').optional(),
+  offset: exprOf('length')
+    .optional()
+    .describe('How far the coil starts off the plane along its normal; a length. Default 0.'),
   /** Default `revolutions-height`. */
-  type: enumInput(COIL_TYPES).optional(),
+  type: enumInput(COIL_TYPES)
+    .optional()
+    .describe(
+      'Whether the height or the pitch sets the number of turns. Default revolutions-height.',
+    ),
   /** The helix's diameter at the start (through the section's centre when `on`); default 20 mm. */
-  diameter: exprOf('length').optional(),
+  diameter: exprOf('length')
+    .optional()
+    .describe(
+      "The helix's diameter at the start, through the section's centre when the section is on the axis; a length. Default 20 mm.",
+    ),
   /** A plain number, fractions allowed; default 5. */
-  revolutions: exprOf('unitless').optional(),
+  revolutions: exprOf('unitless')
+    .optional()
+    .describe('How many turns; a plain number, fractions allowed. Default 5.'),
   /** Along the axis, start to end; default 20 mm. */
-  height: exprOf('length').optional(),
+  height: exprOf('length')
+    .optional()
+    .describe('Along the axis, start to end; a length. Default 20 mm.'),
   /** Rise per turn; default 4 mm. */
-  pitch: exprOf('length').optional(),
+  pitch: exprOf('length').optional().describe('Rise per turn; a length. Default 4 mm.'),
   /** Half-angle of the cone it winds on; positive widens with height. Default 0°. */
-  taper: exprOf('angle').optional(),
+  taper: exprOf('angle')
+    .optional()
+    .describe(
+      'Half-angle of the cone it winds on; an angle. Positive widens it with height, the default 0° keeps it even.',
+    ),
   /** Default `counter-clockwise`. */
-  direction: enumInput(COIL_DIRECTIONS).optional(),
+  direction: enumInput(COIL_DIRECTIONS)
+    .optional()
+    .describe('Which way round the axis it winds. Default counter-clockwise.'),
   /** Default `circle`. */
-  section: enumInput(COIL_SECTIONS).optional(),
+  section: enumInput(COIL_SECTIONS)
+    .optional()
+    .describe('The shape of the wire: circle, square or triangle. Default circle.'),
   /** The circle's diameter, the square's side, the triangle's base; default 2 mm. */
-  size: exprOf('length').optional(),
+  size: exprOf('length')
+    .optional()
+    .describe(
+      "The section's size: the circle's diameter, the square's side, the triangle's base; a length. Default 2 mm.",
+    ),
   /** Default `on`. */
-  position: enumInput(COIL_POSITIONS).optional(),
+  position: enumInput(COIL_POSITIONS)
+    .optional()
+    .describe('The section on the helix, or on the axis. Default on.'),
   /** Default `new-body`. */
-  operation: enumInput(BODY_OPERATIONS).optional(),
+  operation: enumInput(BODY_OPERATIONS)
+    .optional()
+    .describe('New body, join, cut or intersect. Default new-body.'),
   /**
    * The bodies to join, cut or intersect (`body` references, body IDs).
    * Empty or missing: every body the coil touches (join) or overlaps (cut,
    * intersect).
    */
-  bodies: refsOf(['body']).optional(),
+  bodies: refsOf(['body'])
+    .optional()
+    .describe(
+      'The bodies to join, cut or intersect; by default every body the coil touches (join) or overlaps (cut, intersect).',
+    ),
 });
 export type CoilInputs = z.infer<typeof CoilInputsSchema>;
 
@@ -129,6 +171,9 @@ export const coilFeature: FeatureDefinition<CoilInputs> = {
   category: 'create',
   icon: 'coil',
   inputsSchema: CoilInputsSchema,
+  // ADR-0068 §4, from the kernel's coil (P4-01): the sweep's own caps and one
+  // side per curve of the section (`surface`, `outer`, `top`, ...).
+  faceRoles: SWEEP_FACE_ROLES,
 };
 
 /** A coil's inputs with every default filled in, but for its numbers. */

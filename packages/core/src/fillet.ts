@@ -44,10 +44,21 @@ export const FILLET_EDGE_KINDS = ['edge'] as const;
 
 const shape: Record<string, z.ZodType> = {};
 for (let n = 1; n <= FILLET_MAX_SETS; n++) {
-  shape[filletEdgesKey(n)] = refsOf(FILLET_EDGE_KINDS).optional();
-  shape[filletRadiusKey(n)] = exprOf('length').optional();
-  shape[filletEndKey(n)] = exprOf('length').optional();
-  shape[filletSwapKey(n)] = BoolInputSchema.optional();
+  const set = n === 1 ? 'Set 1' : `Set ${n}`;
+  shape[filletEdgesKey(n)] = refsOf(FILLET_EDGE_KINDS)
+    .optional()
+    .describe(`${set}'s edges to round. A set with no edges does nothing.`);
+  shape[filletRadiusKey(n)] = exprOf('length')
+    .optional()
+    .describe(`${set}'s radius; a length. Radius 0 leaves the edges as they are.`);
+  shape[filletEndKey(n)] = exprOf('length')
+    .optional()
+    .describe(
+      `${set}'s radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.`,
+    );
+  shape[filletSwapKey(n)] = BoolInputSchema.optional().describe(
+    `${set}'s radius runs from the chain's other end. Default false.`,
+  );
 }
 
 /** A fillet's inputs: `edges`/`radius`, `edges2`/`radius2` … (all optional). */
@@ -61,6 +72,13 @@ export const filletFeature: FeatureDefinition<FilletInputs> = {
   category: 'modify',
   icon: 'fillet',
   inputsSchema: FilletInputsSchema,
+  // ADR-0068 §4, from the kernel's fillet (P3-01): the round an edge makes.
+  faceRoles: [
+    {
+      pattern: 'from:(<edge>)',
+      description: 'The round: a face the fillet makes from each edge it rounds.',
+    },
+  ],
 };
 
 /** One set of a fillet: its edges and the inputs holding its radii. */

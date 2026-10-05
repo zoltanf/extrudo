@@ -34,13 +34,19 @@ export const SHELL_FACE_KINDS = ['face'] as const;
 
 export const ShellInputsSchema = z.strictObject({
   /** Faces to remove (openings). Optional: with none the bodies are hollowed closed. */
-  faces: refsOf(SHELL_FACE_KINDS).optional(),
+  faces: refsOf(SHELL_FACE_KINDS)
+    .optional()
+    .describe('The faces to remove (openings). Without any, the bodies are hollowed closed.'),
   /** Bodies to hollow closed, besides the bodies of the faces. */
-  bodies: refsOf(['body']).optional(),
+  bodies: refsOf(['body'])
+    .optional()
+    .describe('The bodies to hollow closed, besides the bodies of the faces.'),
   /** The wall thickness; required. */
-  thickness: exprOf('length'),
+  thickness: exprOf('length').describe('The wall thickness; a length. Required.'),
   /** Default `inside`. */
-  direction: enumInput(SHELL_DIRECTIONS).optional(),
+  direction: enumInput(SHELL_DIRECTIONS)
+    .optional()
+    .describe('Hollow inside the bodies or outside them. Default inside.'),
 });
 export type ShellInputs = z.infer<typeof ShellInputsSchema>;
 
@@ -50,6 +56,27 @@ export const shellFeature: FeatureDefinition<ShellInputs> = {
   category: 'modify',
   icon: 'shell',
   inputsSchema: ShellInputsSchema,
+  // ADR-0068 §4, from the kernel's `nameShell` (P3-03): the faces that aren't
+  // the original skin keep the original names, these are the new ones.
+  faceRoles: [
+    {
+      pattern: 'inner:<face>',
+      description:
+        'The face of the wall itself, on the side away from the outer skin (an inside shell hollows in).',
+    },
+    {
+      pattern: 'rim:<face>',
+      description: 'The rim round an opening, between the removed face and the inner face.',
+    },
+    {
+      pattern: 'round:<face>',
+      description: 'The round on a face that meets the one removed at an angle.',
+    },
+    {
+      pattern: 'new',
+      description: 'A face with no face of its own before, which nothing else names.',
+    },
+  ],
 };
 
 /** A shell's inputs with the defaults filled in: what the kernel builds. */

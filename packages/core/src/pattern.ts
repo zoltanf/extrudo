@@ -24,6 +24,7 @@
 import { COIL_TYPE } from './coil';
 import { EMBOSS_TYPE } from './emboss';
 import { EXTRUDE_TYPE } from './extrude';
+import type { FaceRole } from './face-roles';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { HOLE_TYPE } from './hole';
@@ -93,70 +94,150 @@ export const MAX_PATTERN_INSTANCES = 1000;
 
 const CommonShape = {
   /** Default `bodies`. */
-  objects: enumInput(PATTERN_OBJECTS).optional(),
+  objects: enumInput(PATTERN_OBJECTS)
+    .optional()
+    .describe('Copy bodies, or replay the tools of features. Default bodies.'),
   /** `bodies`: the bodies to copy. */
-  bodies: refsOf(['body']).optional(),
+  bodies: refsOf(['body']).optional().describe('The bodies to copy, with objects: bodies.'),
   /** `features`: the features whose tools are replayed (`feature` references, feature IDs). */
-  features: refsOf(['feature']).optional(),
+  features: refsOf(['feature'])
+    .optional()
+    .describe('The features whose tools are replayed, with objects: features.'),
   /** `bodies`: fuse the copies into the original. Default false. */
-  join: BoolInputSchema.optional(),
+  join: BoolInputSchema.optional().describe('Fuse each copy into the original. Default false.'),
 };
 
 export const RectangularPatternInputsSchema = z.strictObject({
   ...CommonShape,
-  direction1: refsOf(PATTERN_DIRECTION_KINDS, 1).optional(),
+  direction1: refsOf(PATTERN_DIRECTION_KINDS, 1)
+    .optional()
+    .describe('The direction to step in first.'),
   /** A whole number, at least 1 (the original counts). Default 2. */
-  count1: exprOf('unitless').optional(),
+  count1: exprOf('unitless')
+    .optional()
+    .describe(
+      'How many instances there are, the original included; a whole number of at least 1. Default 2.',
+    ),
   /** Default 20 mm. */
-  distance1: exprOf('length').optional(),
+  distance1: exprOf('length')
+    .optional()
+    .describe('The spacing in the first direction; a length. Default 20 mm.'),
   /** Default `spacing`. */
-  measure1: enumInput(PATTERN_MEASURES).optional(),
-  symmetric1: BoolInputSchema.optional(),
+  measure1: enumInput(PATTERN_MEASURES)
+    .optional()
+    .describe('Whether distance1 and count1 mean a spacing or a whole extent. Default spacing.'),
+  symmetric1: BoolInputSchema.optional().describe(
+    'Step both ways from the original. Default false.',
+  ),
   /** A second direction makes a grid; missing: a single row. */
-  direction2: refsOf(PATTERN_DIRECTION_KINDS, 1).optional(),
-  count2: exprOf('unitless').optional(),
-  distance2: exprOf('length').optional(),
-  measure2: enumInput(PATTERN_MEASURES).optional(),
-  symmetric2: BoolInputSchema.optional(),
+  direction2: refsOf(PATTERN_DIRECTION_KINDS, 1)
+    .optional()
+    .describe('A second direction, which makes a grid. Without one, a single row.'),
+  count2: exprOf('unitless')
+    .optional()
+    .describe(
+      'How many instances along the second direction; a whole number of at least 1. Default 2.',
+    ),
+  distance2: exprOf('length')
+    .optional()
+    .describe('The spacing in the second direction; a length. Default 20 mm.'),
+  measure2: enumInput(PATTERN_MEASURES)
+    .optional()
+    .describe('Whether distance2 and count2 mean a spacing or a whole extent. Default spacing.'),
+  symmetric2: BoolInputSchema.optional().describe(
+    'Step both ways in the second direction. Default false.',
+  ),
 });
 export type RectangularPatternInputs = z.infer<typeof RectangularPatternInputsSchema>;
 
 export const CircularPatternInputsSchema = z.strictObject({
   ...CommonShape,
-  axis: refsOf(PATTERN_DIRECTION_KINDS, 1).optional(),
+  axis: refsOf(PATTERN_DIRECTION_KINDS, 1)
+    .optional()
+    .describe('The axis to spread the instances round.'),
   /** Default 3. */
-  count: exprOf('unitless').optional(),
+  count: exprOf('unitless')
+    .optional()
+    .describe(
+      'How many instances there are, the original included; a whole number of at least 1. Default 3.',
+    ),
   /** Default 360 deg. */
-  angle: exprOf('angle').optional(),
+  angle: exprOf('angle')
+    .optional()
+    .describe('The angle the instances take in; an angle. Default 360 deg.'),
   /** Default `total`. With a whole turn, the instances are spread evenly round it. */
-  measure: enumInput(PATTERN_ANGLES).optional(),
-  symmetric: BoolInputSchema.optional(),
+  measure: enumInput(PATTERN_ANGLES)
+    .optional()
+    .describe('Whether angle is the whole turn or the step between instances. Default total.'),
+  symmetric: BoolInputSchema.optional().describe(
+    'Spread both ways from the original. Default false.',
+  ),
 });
 export type CircularPatternInputs = z.infer<typeof CircularPatternInputsSchema>;
 
 export const PathPatternInputsSchema = z.strictObject({
   ...CommonShape,
   /** Sketch curves and edges, chained end to end. */
-  path: refsOf(PATTERN_PATH_KINDS).optional(),
+  path: refsOf(PATTERN_PATH_KINDS)
+    .optional()
+    .describe('The sketch curves and edges to follow, chained end to end.'),
   /** Default 3. */
-  count: exprOf('unitless').optional(),
+  count: exprOf('unitless')
+    .optional()
+    .describe(
+      'How many instances there are, the original included; a whole number of at least 1. Default 3.',
+    ),
   /** Default 20 mm. */
-  distance: exprOf('length').optional(),
+  distance: exprOf('length')
+    .optional()
+    .describe('The spacing along the path; a length. Default 20 mm.'),
   /** Default `spacing`. */
-  measure: enumInput(PATTERN_MEASURES).optional(),
+  measure: enumInput(PATTERN_MEASURES)
+    .optional()
+    .describe('Whether distance is a spacing or the whole extent of the path. Default spacing.'),
   /** Turn each instance to the path's direction (default: keep the original's orientation). */
-  aligned: BoolInputSchema.optional(),
+  aligned: BoolInputSchema.optional().describe(
+    'Turn each instance to the direction of the path. Default false.',
+  ),
   /** Walk the path from its other end. */
-  flip: BoolInputSchema.optional(),
+  flip: BoolInputSchema.optional().describe('Walk the path from its other end. Default false.'),
 });
 export type PathPatternInputs = z.infer<typeof PathPatternInputsSchema>;
+
+/**
+ * The roles a pattern's copies get (ADR-0068 §4, from the kernel's `replicate`,
+ * P3-07): each copy's faces are named after the instance's own label, so a
+ * reference to a face of one instance keeps meaning it when the count grows.
+ */
+const PATTERN_ROLES: readonly FaceRole[] = [
+  {
+    pattern: '<label>:from:(<face>)',
+    description:
+      "A face of a copy: the label is the instance's own (`2`, `m1`, `1x2`), so the face keeps its name as the count grows.",
+  },
+  {
+    pattern: 'from:(<face>)',
+    description: 'A face of a copy whose instance has no label of its own.',
+  },
+  {
+    pattern: 'new',
+    description: 'A face with no face of its own before, which nothing else names.',
+  },
+];
 
 const definition = <I extends FeatureInputs>(
   type: PatternType,
   label: string,
   icon: string,
   inputsSchema: z.ZodType<I>,
-): FeatureDefinition<I> => ({ type, label, category: 'modify', icon, inputsSchema });
+): FeatureDefinition<I> => ({
+  type,
+  label,
+  category: 'modify',
+  icon,
+  inputsSchema,
+  faceRoles: PATTERN_ROLES,
+});
 
 export const rectangularPatternFeature = definition(
   RECTANGULAR_PATTERN_TYPE,

@@ -25,6 +25,8 @@
  * so its first turn starts whole and prints. `hand` is `right` (default) or
  * `left`.
  */
+
+import { SWEEP_FACE_ROLES } from './face-roles';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
@@ -86,25 +88,35 @@ const optionalLength = () => exprOf('length').optional();
 
 export const ThreadInputsSchema = z.strictObject({
   /** The cylindrical faces, one thread each. */
-  faces: refsOf(THREAD_FACE_KINDS, MAX_THREAD_FACES),
+  faces: refsOf(THREAD_FACE_KINDS, MAX_THREAD_FACES).describe(
+    'The cylindrical faces to thread, one thread each. Required.',
+  ),
   /** Nominal (major) diameter; with `pitch` missing too, the ISO coarse thread that fits. */
-  diameter: optionalLength(),
+  diameter: optionalLength().describe(
+    "The thread's nominal (major) diameter; a length. With pitch missing too, the ISO coarse thread that fits.",
+  ),
   /** Crest to crest along the axis. */
-  pitch: optionalLength(),
+  pitch: optionalLength().describe('Crest to crest along the axis; a length.'),
   /** Default `full`. */
-  extent: enumInput(THREAD_EXTENTS).optional(),
+  extent: enumInput(THREAD_EXTENTS)
+    .optional()
+    .describe('Thread the face to its end or to a length. Default full.'),
   /** With `extent: length`; default 10 mm. */
-  length: optionalLength(),
+  length: optionalLength().describe(
+    'How far to thread, with extent: length; a length. Default 10 mm.',
+  ),
   /** From the face's end to where the thread starts; default 0. */
-  offset: optionalLength(),
+  offset: optionalLength().describe(
+    "From the face's end to where the thread starts; a length. Default 0.",
+  ),
   /** Start from the face's other end. */
-  flip: BoolInputSchema.optional(),
+  flip: BoolInputSchema.optional().describe("Start from the face's other end. Default false."),
   /** Default `right`. */
-  hand: enumInput(THREAD_HANDS).optional(),
+  hand: enumInput(THREAD_HANDS).optional().describe('Right- or left-handed. Default right.'),
   /** Radial clearance on this part (mm); default 0.1 mm. */
-  tolerance: optionalLength(),
+  tolerance: optionalLength().describe('Radial clearance on this part; a length. Default 0.1 mm.'),
   /** A 45° lead-in at open ends; default true. */
-  chamfer: BoolInputSchema.optional(),
+  chamfer: BoolInputSchema.optional().describe('A 45° lead-in at open ends. Default true.'),
 });
 export type ThreadInputs = z.infer<typeof ThreadInputsSchema>;
 
@@ -114,6 +126,16 @@ export const threadFeature: FeatureDefinition<ThreadInputs> = {
   category: 'modify',
   icon: 'thread',
   inputsSchema: ThreadInputsSchema,
+  // ADR-0068 §4, from the kernel's ring and tooth (P4-02, ADR-0056): the
+  // thread's own faces, one per piece of the profile it cuts.
+  faceRoles: [
+    ...SWEEP_FACE_ROLES,
+    {
+      pattern: 'side:<piece>',
+      description:
+        "One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1`, prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn.",
+    },
+  ],
 };
 
 /** A thread's inputs with the defaults filled in, but for its numbers. */

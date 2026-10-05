@@ -15,8 +15,8 @@ import {
   type SketchEntityId,
   type Vec2,
 } from '@extrudo/core';
+import { addPoint, place, typedEnd } from '@extrudo/sketch/build';
 import type { Inference } from '@extrudo/sketch/inference';
-import { addPoint, place, typedEnd } from './build';
 import {
   EMPTY_PREVIEW,
   emptyEdit,

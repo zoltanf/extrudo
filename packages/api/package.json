@@ -1,0 +1,22 @@
+{
+  "name": "@extrudo/api",
+  "version": "0.3.0",
+  "private": true,
+  "description": "The public document API: build and change a design from code (ADR-0068). Pure TypeScript: no DOM, no WASM; the kernel is a test-only dependency.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@extrudo/core": "workspace:*",
+    "@extrudo/sketch": "workspace:*",
+    "@extrudo/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "@extrudo/kernel": "workspace:*"
+  }
+}

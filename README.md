@@ -72,6 +72,13 @@ a right-click marking menu, light and dark themes, a built-in tutorial and
 templates, undo that covers everything, offline use, and an open
 [file format](docs/file-format.md).
 
+**From code.** [`@extrudo/api`](docs/api/README.md) builds and changes a design
+from TypeScript — a sketch, a solid, a parameter, a reference to a face — with
+the same commands the app uses, so a script and a person end up with the same
+design. Pure TypeScript: no DOM, no WASM. It runs in Node, in a worker and in the
+browser; the reference is published at
+[extrudo.org/docs/api/](https://extrudo.org/docs/api/).
+
 ## Build from source
 
 You need Node 24 or newer and pnpm 12 (see [pnpm.io](https://pnpm.io/installation)).
@@ -112,8 +119,11 @@ stored.
 | `packages/kernel` | Geometry kernel (OpenCascade WASM) in a Web Worker, recompute engine |
 | `packages/io` | STL, 3MF, SVG and DXF readers and writers (MIT) |
 | `packages/storage` | Local project storage (OPFS and IndexedDB) |
+| `packages/api` | The public document API, `@extrudo/api`: a design from code, no DOM and no WASM |
+| `apps/site` | The landing page and the API docs, static pages built from `docs/` |
 | `e2e/` | Playwright end-to-end tests |
 | `docs/` | Requirements, architecture, roadmap, UI spec, brand, file format, decision records |
+| `docs/api/` | The API reference: the guide pages here, the per-feature pages generated |
 
 Start with [`docs/02-architecture.md`](docs/02-architecture.md), then the
 [roadmap](docs/03-roadmap.md) and the [decision records](docs/adr/).

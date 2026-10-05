@@ -934,8 +934,12 @@ end to end, faster than in Fusion 360.
 
 ## Phase 5 — Programmatic design (→ v0.6)
 
-- [ ] **P5-01 Public document API** (`@extrudo/api`), generated from the feature
-  registry, with docs site pages. FR-PRG-01.
+- [x] **P5-01 Public document API** (`@extrudo/api`), generated from the feature
+  registry, with docs site pages. FR-PRG-01. Done 2026-10-05 (ADR-0068) in three
+  slices: the package and its generated methods, sketches and face roles with the
+  examples as tests, and the reference (`docs/api/`, one page per feature type,
+  generated with the methods) published by the landing page's site under
+  `/docs/api/`.
 - [ ] **P5-02 Script feature:** Monaco editor, sandboxed worker (no DOM, no
   network, time and memory limits), reads parameters, outputs bodies and
   sketches; errors shown inline. FR-PRG-02.

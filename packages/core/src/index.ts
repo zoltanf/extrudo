@@ -25,6 +25,15 @@ export * from './draft';
 export * from './emboss';
 export * from './expr/index';
 export * from './extrude';
+export {
+  type FaceRole,
+  faceRoleIssues,
+  faceRolePattern,
+  KEEPS_FACE_ROLES,
+  matchesFaceRole,
+  ownFaceRole,
+  SWEEP_FACE_ROLES,
+} from './face-roles';
 export * from './feature-inputs';
 export {
   type FeatureCategory,
@@ -59,6 +68,7 @@ export * from './offset-face';
 export * from './pattern';
 export * from './place-on-bed';
 export * from './primitives';
+export { documentFeatures } from './registry';
 export * from './remove';
 export * from './revolve';
 export * from './rib';
@@ -95,3 +105,9 @@ export * from './sweep';
 export * from './thread';
 export * from './timeline';
 export * from './tolerance';
+/**
+ * Our one zod, with the JIT off (ADR-0067 §H1). Every package that builds or
+ * reads a schema imports zod from here, never from `zod` directly, so one
+ * module configures it once.
+ */
+export { z } from './zod';

@@ -1,52 +1,7 @@
-/* The landing page (ADR-0057). Colours are the app's tokens (docs/05-brand.md §3,
-   apps/web/src/design-system/tokens.css); dark is the default, light follows the
-   system setting. */
+/* The landing page (ADR-0057): the brand's tokens (tokens.css) and its own rules.
+   The API docs' stylesheet (docs.css) starts with the same tokens. */
 
-:root {
-  color-scheme: dark;
-  --x-bg: #1b1f27;
-  --x-panel: #20252f;
-  --x-raised: #282e3a;
-  --x-line: #343b4a;
-  --x-ink: #e9edf3;
-  --x-muted: #939cad;
-  --x-accent: #ffb23e;
-  --x-on-accent: #15171c;
-  --x-accent-soft: rgb(255 178 62 / 16%);
-  --x-sketch: #5aa9ff;
-  /* Text links: the sketch blue in dark, a darker one in light (the sketch blue is
-     3.6:1 on white, under WCAG AA's 4.5:1 for text). Non-text uses keep --x-sketch. */
-  --x-link: var(--x-sketch);
-  --x-glow: radial-gradient(90% 80% at 50% 0%, #46557a 0%, #29313f 45%, #1b1f27 80%);
-  --x-logo-top: #ffc76a;
-  --x-logo-side: #e0922a;
-  --x-logo-sketch: #5aa9ff;
-  --x-logo-sketch-fill: rgb(90 169 255 / 16%);
-  --x-shadow: 0 24px 60px -24px rgb(0 0 0 / 70%);
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
-    --x-bg: #ffffff;
-    --x-panel: #f3f5f9;
-    --x-raised: #ffffff;
-    --x-line: #e0e4ec;
-    --x-ink: #111318;
-    --x-muted: #5b6375;
-    --x-accent: #e08a1e;
-    --x-on-accent: #15171c;
-    --x-accent-soft: rgb(224 138 30 / 14%);
-    --x-sketch: #2f86f0;
-    --x-link: #1a6ad0;
-    --x-glow: radial-gradient(90% 80% at 50% 0%, #ffffff 0%, #eef1f5 50%, #ffffff 85%);
-    --x-logo-top: #f2a93b;
-    --x-logo-side: #c97a16;
-    --x-logo-sketch: #2f86f0;
-    --x-logo-sketch-fill: rgb(47 134 240 / 12%);
-    --x-shadow: 0 24px 60px -28px rgb(17 19 24 / 35%);
-  }
-}
+@import "./tokens.css";
 
 *,
 *::before,

@@ -12,6 +12,8 @@
  * centred on the sketch plane, growing to the side of the line where the body
  * is. The rest are optional with defaults, like extrude's (ADR-0028).
  */
+
+import { SWEEP_FACE_ROLES } from './face-roles';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
@@ -44,13 +46,19 @@ export type RibSide = (typeof RIB_SIDES)[number];
 
 export const RibInputsSchema = z.strictObject({
   /** The line the rib grows from, in world mm. Missing: the feature fails until one is picked. */
-  curve: refsOf(RIB_CURVE_KINDS, 1).optional(),
+  curve: refsOf(RIB_CURVE_KINDS, 1).optional().describe('The sketch line the rib grows from.'),
   /** How thick the wall is; must be greater than 0. Default 2 mm. */
-  thickness: exprOf('length').optional(),
+  thickness: exprOf('length')
+    .optional()
+    .describe('How thick the wall is; a length greater than 0. Default 2 mm.'),
   /** Default `both`: centred on the sketch plane. */
-  side: enumInput(RIB_SIDES).optional(),
+  side: enumInput(RIB_SIDES)
+    .optional()
+    .describe(
+      'Which side of the line the wall grows on, or centred on the sketch plane. Default both.',
+    ),
   /** Grow to the other side of the line. Default false. */
-  flip: BoolInputSchema.optional(),
+  flip: BoolInputSchema.optional().describe('Grow to the other side of the line. Default false.'),
 });
 export type RibInputs = z.infer<typeof RibInputsSchema>;
 
@@ -60,6 +68,20 @@ export const ribFeature: FeatureDefinition<RibInputs> = {
   category: 'create',
   icon: 'rib',
   inputsSchema: RibInputsSchema,
+  // ADR-0068 §4, from the kernel's rib (P4-10): the face on the line, the far
+  // one, a wall per side of the line, and the slab's own two ends.
+  faceRoles: [
+    ...SWEEP_FACE_ROLES,
+    {
+      pattern: 'side:<line>:end0',
+      description:
+        'The wall at the first end of the line, where the slab was extended to reach the body.',
+    },
+    {
+      pattern: 'side:<line>:end1',
+      description: 'The wall at the second end of the line, the other way round.',
+    },
+  ],
 };
 
 /** A rib's inputs with every default filled in: what the kernel builds. */

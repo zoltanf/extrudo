@@ -7,6 +7,7 @@
  * its own `FeatureRegistry` of the extended type, keyed by the same `type`.
  */
 import type { z } from 'zod';
+import type { FaceRole } from './face-roles';
 import type { ExtrudoDocument, Feature, FeatureInputs } from './schema';
 
 export type FeatureCategory = 'sketch' | 'create' | 'modify' | 'construct' | 'inspect';
@@ -21,6 +22,13 @@ export interface FeatureDefinition<I extends FeatureInputs = FeatureInputs> {
   icon: string;
   /** Validates `Feature.inputs`. Build it from the input schemas in `schema.ts`. */
   inputsSchema: z.ZodType<I>;
+  /**
+   * The roles the faces of this feature's bodies are named with (ADR-0068 §4),
+   * for the features that make or change a body. The kernel's naming is what
+   * they list, and a kernel test checks every face it makes is one of them;
+   * left out for a feature that makes no body, or names no face of its own.
+   */
+  faceRoles?: readonly FaceRole[];
 }
 
 export interface FeatureIssue {

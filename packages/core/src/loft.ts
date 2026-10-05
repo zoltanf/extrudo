@@ -11,6 +11,8 @@
  * kernel lines them up. Sections with holes are refused. Rails and a centre
  * line are not part of this loft (ADR-0055: deferred).
  */
+
+import { SWEEP_FACE_ROLES } from './face-roles';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { BoolInputSchema, type GeomRef, type GeomRefKind, type RefInput } from './schema';
@@ -33,19 +35,31 @@ export const LOFT_SECTION_KINDS: readonly GeomRefKind[] = [
 
 export const LoftInputsSchema = z.strictObject({
   /** In order, at least two (three for a closed loft). Missing: the feature fails until some are picked. */
-  sections: refsOf(LOFT_SECTION_KINDS).optional(),
+  sections: refsOf(LOFT_SECTION_KINDS)
+    .optional()
+    .describe('The sections to loft through, in order; at least two, three for a closed loft.'),
   /** Straight between neighbouring sections; default false (smooth through them all). */
-  ruled: BoolInputSchema.optional(),
+  ruled: BoolInputSchema.optional().describe(
+    'Straight between neighbouring sections. Default false.',
+  ),
   /** The last section joins the first again: a ring, no end faces. Default false. */
-  closed: BoolInputSchema.optional(),
+  closed: BoolInputSchema.optional().describe(
+    'The last section joins the first again: a ring, with no end faces. Default false.',
+  ),
   /** Default `new-body`. */
-  operation: enumInput(BODY_OPERATIONS).optional(),
+  operation: enumInput(BODY_OPERATIONS)
+    .optional()
+    .describe('New body, join, cut or intersect. Default new-body.'),
   /**
    * The bodies to join, cut or intersect (`body` references, body IDs).
    * Empty or missing: every body the loft touches (join) or overlaps (cut,
    * intersect).
    */
-  bodies: refsOf(['body']).optional(),
+  bodies: refsOf(['body'])
+    .optional()
+    .describe(
+      'The bodies to join, cut or intersect; by default every body the loft touches (join) or overlaps (cut, intersect).',
+    ),
 });
 export type LoftInputs = z.infer<typeof LoftInputsSchema>;
 
@@ -55,6 +69,9 @@ export const loftFeature: FeatureDefinition<LoftInputs> = {
   category: 'create',
   icon: 'loft',
   inputsSchema: LoftInputsSchema,
+  // ADR-0068 §4, from the kernel's loft (P4-01): the first section's cap, the
+  // last's, and a side per edge of the earliest section that bounds it.
+  faceRoles: SWEEP_FACE_ROLES,
 };
 
 /** A loft's inputs with every default filled in: what the kernel builds. */

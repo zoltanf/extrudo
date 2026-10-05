@@ -31,11 +31,19 @@ export const IMPORT_UP = ['z', 'y'] as const;
 
 export const ImportInputsSchema = z.strictObject({
   /** The file: an attachment of the design with a `model/*` media type. */
-  file: FileInputSchema,
+  file: FileInputSchema.describe(
+    'The file to import: an attachment of this design with a `model/*` media type (a STEP solid or a mesh). Required.',
+  ),
   /** Meshes only: what unit the file's numbers are in. STEP converts its own. */
-  units: enumInput(IMPORT_UNITS).optional(),
+  units: enumInput(IMPORT_UNITS)
+    .optional()
+    .describe(
+      "Meshes only: what unit the file's numbers are in (`auto` takes a 3MF's own). STEP converts its own units. Default auto.",
+    ),
   /** The file's up axis; `y` turns it +90° about X (Y-up to Z-up). */
-  up: enumInput(IMPORT_UP).optional(),
+  up: enumInput(IMPORT_UP)
+    .optional()
+    .describe("The file's up axis; `y` turns it +90° about X (Y-up to Z-up). Default z."),
 });
 export type ImportInputs = z.infer<typeof ImportInputsSchema>;
 
@@ -54,6 +62,19 @@ export const importFeature: FeatureDefinition<ImportInputs> = {
   category: 'create',
   icon: 'insert-svg',
   inputsSchema: ImportInputsSchema,
+  // ADR-0068 §4, from the kernel's import (P4-06): the file's own faces for a
+  // STEP solid, and one face for a mesh body (ADR-0066 §3), numbered `#2`, `#3`…
+  // after the first so two bodies' faces can be told apart.
+  faceRoles: [
+    {
+      pattern: 'face:<n>',
+      description: "A face of the imported solid, in the order the file's B-rep has them.",
+    },
+    {
+      pattern: 'mesh',
+      description: "A mesh body's one face: a mesh is a single face of triangles (ADR-0066 §3).",
+    },
+  ],
 };
 
 /** The media types an `import` feature's file may have (ADR-0066 §0). */

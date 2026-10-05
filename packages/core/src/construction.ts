@@ -162,71 +162,91 @@ export const POINT_SOURCE_KINDS: readonly GeomRefKind[] = ['point', 'vertex'];
 /** A line a plane turns about: an axis (origin or construction), a straight edge or a sketch line. */
 export const LINE_SOURCE_KINDS: readonly GeomRefKind[] = ['axis', 'edge', 'sketchEntity'];
 
-const length = () => exprOf('length').optional();
-const angle = () => exprOf('angle').optional();
+const length = (what: string) => exprOf('length').optional().describe(what);
+const angle = (what: string) => exprOf('angle').optional().describe(what);
 
 export const OffsetPlaneInputsSchema = z.strictObject({
   /** The plane or flat face to offset from. Missing: the feature fails until one is picked. */
-  plane: refsOf(PLANE_SOURCE_KINDS, 1).optional(),
+  plane: refsOf(PLANE_SOURCE_KINDS, 1)
+    .optional()
+    .describe('The plane or flat face to offset from.'),
   /** Along the plane's normal (a face's outward one); negative goes the other way. Default 0. */
-  distance: length(),
+  distance: length("Along the plane's normal; a length. Default 0."),
 });
 export type OffsetPlaneInputs = z.infer<typeof OffsetPlaneInputsSchema>;
 
 export const PlaneAtAngleInputsSchema = z.strictObject({
   /** The line the plane turns about. */
-  axis: refsOf(LINE_SOURCE_KINDS, 1).optional(),
+  axis: refsOf(LINE_SOURCE_KINDS, 1).optional().describe('The line the plane turns about.'),
   /**
    * The plane the angle counts from (right-handed about the axis). Without
    * one, 0° is the plane through the axis that is as horizontal as it can be.
    */
-  plane: refsOf(PLANE_SOURCE_KINDS, 1).optional(),
+  plane: refsOf(PLANE_SOURCE_KINDS, 1)
+    .optional()
+    .describe(
+      'The plane the angle counts from. Without one, 0 deg is the plane through the axis that is as horizontal as it can be.',
+    ),
   /** Default 0. */
-  angle: angle(),
+  angle: angle('From that plane, right-handed about the axis; an angle. Default 0 deg.'),
 });
 export type PlaneAtAngleInputs = z.infer<typeof PlaneAtAngleInputsSchema>;
 
 export const MidplaneInputsSchema = z.strictObject({
   /** Two parallel planes or flat faces. */
-  planes: refsOf(PLANE_SOURCE_KINDS, 2).optional(),
+  planes: refsOf(PLANE_SOURCE_KINDS, 2).optional().describe('Two parallel planes or flat faces.'),
 });
 export type MidplaneInputs = z.infer<typeof MidplaneInputsSchema>;
 
 export const PlaneThroughPointsInputsSchema = z.strictObject({
   /** Three points that don't lie on one line; the plane's normal follows their order (right-handed). */
-  points: refsOf(POINT_SOURCE_KINDS, 3).optional(),
+  points: refsOf(POINT_SOURCE_KINDS, 3)
+    .optional()
+    .describe('Three points that do not lie on one line; the normal follows their order.'),
 });
 export type PlaneThroughPointsInputs = z.infer<typeof PlaneThroughPointsInputsSchema>;
 
 export const TangentPlaneInputsSchema = z.strictObject({
   /** A cylindrical, conical or spherical face. */
-  face: refsOf(['face'], 1).optional(),
+  face: refsOf(['face'], 1)
+    .optional()
+    .describe('The cylindrical, conical or spherical face to touch.'),
   /**
    * The plane that says where round the face the tangent plane touches: it
    * touches where the face's normal is closest to the plane's normal.
    * Without one, a fixed direction square to the face's axis.
    */
-  plane: refsOf(PLANE_SOURCE_KINDS, 1).optional(),
+  plane: refsOf(PLANE_SOURCE_KINDS, 1)
+    .optional()
+    .describe(
+      "The plane that says where round the face it touches: it touches where the face's normal is closest to this one. Without one, a fixed direction square to the face's axis.",
+    ),
   /** Turns the touching point about the face's axis (right-handed), from the reference. Default 0. */
-  angle: angle(),
+  angle: angle("Turns the touching point about the face's axis; an angle. Default 0 deg."),
 });
 export type TangentPlaneInputs = z.infer<typeof TangentPlaneInputsSchema>;
 
 export const AxisThroughPointsInputsSchema = z.strictObject({
   /** Two different points; the axis points from the first to the second. */
-  points: refsOf(POINT_SOURCE_KINDS, 2).optional(),
+  points: refsOf(POINT_SOURCE_KINDS, 2)
+    .optional()
+    .describe('Two different points; the axis runs from the first to the second.'),
 });
 export type AxisThroughPointsInputs = z.infer<typeof AxisThroughPointsInputsSchema>;
 
 export const AxisThroughCylinderInputsSchema = z.strictObject({
   /** A cylindrical, conical or toroidal face (or a face of revolution). */
-  face: refsOf(['face'], 1).optional(),
+  face: refsOf(['face'], 1)
+    .optional()
+    .describe('The round face (a cylinder, cone or torus) whose own axis is taken.'),
 });
 export type AxisThroughCylinderInputs = z.infer<typeof AxisThroughCylinderInputsSchema>;
 
 export const AxisAlongEdgeInputsSchema = z.strictObject({
   /** A straight edge or sketch line, or a circular edge (the axis through its centre, square to it). */
-  edge: refsOf(['edge', 'sketchEntity'], 1).optional(),
+  edge: refsOf(['edge', 'sketchEntity'], 1)
+    .optional()
+    .describe('A straight edge or sketch line, or a circular edge (the axis through its centre).'),
 });
 export type AxisAlongEdgeInputs = z.infer<typeof AxisAlongEdgeInputsSchema>;
 
@@ -235,11 +255,15 @@ export const ConstructionPointInputsSchema = z.strictObject({
    * Where it starts: a vertex, a construction point, a circular edge (its
    * centre; another edge, its middle) or a face (its centre). Without one, the origin.
    */
-  at: refsOf(['point', 'vertex', 'edge', 'face'], 1).optional(),
+  at: refsOf(['point', 'vertex', 'edge', 'face'], 1)
+    .optional()
+    .describe(
+      'What it starts from: a vertex, a point, a circular edge (its centre) or a face (its centre). Without one, the origin.',
+    ),
   /** Moves it along the world axes, default 0. */
-  x: length(),
-  y: length(),
-  z: length(),
+  x: length('How far it moves along the world X axis; a length. Default 0.'),
+  y: length('How far it moves along the world Y axis; a length. Default 0.'),
+  z: length('How far it moves along the world Z axis; a length. Default 0.'),
 });
 export type ConstructionPointInputs = z.infer<typeof ConstructionPointInputsSchema>;
 

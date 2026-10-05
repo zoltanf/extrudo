@@ -17,6 +17,8 @@
  * the web app its dialog, each in its own registry keyed by `MOVE_TYPE`
  * (ADR-0003).
  */
+
+import { KEEPS_FACE_ROLES } from './face-roles';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { REVOLVE_AXIS_KINDS } from './revolve';
@@ -37,24 +39,40 @@ export const MOVE_TURNS = ['rx', 'ry', 'rz'] as const;
 
 export const MoveInputsSchema = z.strictObject({
   /** The bodies to move (`body` references). Empty: the feature fails until some are picked. */
-  bodies: refsOf(['body']),
+  bodies: refsOf(['body']).describe('The bodies to move. Required.'),
   /** Default `free`. */
-  mode: enumInput(MOVE_MODES).optional(),
-  dx: exprOf('length').optional(),
-  dy: exprOf('length').optional(),
-  dz: exprOf('length').optional(),
-  rx: exprOf('angle').optional(),
-  ry: exprOf('angle').optional(),
-  rz: exprOf('angle').optional(),
+  mode: enumInput(MOVE_MODES)
+    .optional()
+    .describe('How they move: free, rotate or point-to-point. Default free.'),
+  dx: exprOf('length').optional().describe('How far along the world X axis; a length. Default 0.'),
+  dy: exprOf('length').optional().describe('How far along the world Y axis; a length. Default 0.'),
+  dz: exprOf('length').optional().describe('How far along the world Z axis; a length. Default 0.'),
+  rx: exprOf('angle')
+    .optional()
+    .describe('Turn about the world X axis before the move; an angle. Default 0°.'),
+  ry: exprOf('angle')
+    .optional()
+    .describe('Turn about the world Y axis before the move; an angle. Default 0°.'),
+  rz: exprOf('angle')
+    .optional()
+    .describe('Turn about the world Z axis before the move; an angle. Default 0°.'),
   /** `rotate`: the axis to turn about. */
-  axis: refsOf(REVOLVE_AXIS_KINDS, 1).optional(),
+  axis: refsOf(REVOLVE_AXIS_KINDS, 1)
+    .optional()
+    .describe('The axis to turn about, with mode: rotate.'),
   /** `rotate`: the angle, right-handed about the axis. */
-  angle: exprOf('angle').optional(),
+  angle: exprOf('angle')
+    .optional()
+    .describe('The angle about the axis, right-handed; an angle. Default 0°.'),
   /** `point-to-point`: where the move starts and ends. */
-  from: refsOf(MOVE_POINT_KINDS, 1).optional(),
-  to: refsOf(MOVE_POINT_KINDS, 1).optional(),
+  from: refsOf(MOVE_POINT_KINDS, 1)
+    .optional()
+    .describe('Where the move starts, with mode: point-to-point.'),
+  to: refsOf(MOVE_POINT_KINDS, 1)
+    .optional()
+    .describe('Where the move ends, with mode: point-to-point.'),
   /** Keep the bodies and add moved copies. Default false. */
-  copy: BoolInputSchema.optional(),
+  copy: BoolInputSchema.optional().describe('Keep the bodies and add moved copies. Default false.'),
 });
 export type MoveInputs = z.infer<typeof MoveInputsSchema>;
 
@@ -64,6 +82,9 @@ export const moveBodiesFeature: FeatureDefinition<MoveInputs> = {
   category: 'modify',
   icon: 'move',
   inputsSchema: MoveInputsSchema,
+  // ADR-0068 §4: a moved body keeps every name (P3-06, ADR-0044); a copy's
+  // faces get `from:(<face>)` so a reference means one body.
+  faceRoles: KEEPS_FACE_ROLES,
 };
 
 /** A move's inputs with every default filled in: what the kernel builds. */

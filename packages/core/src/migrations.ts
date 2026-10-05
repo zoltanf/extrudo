@@ -30,12 +30,19 @@ export type DocumentLoadErrorCode = 'not-a-document' | 'too-new' | 'invalid';
 
 export class DocumentLoadError extends Error {
   override readonly name = 'DocumentLoadError';
+  // Plain fields, not parameter properties: Node loads core's TypeScript
+  // directly when a script imports it (scripts/generate-api.mjs), and type
+  // stripping doesn't allow parameter properties.
+  readonly code: DocumentLoadErrorCode;
+  readonly issues: readonly z.core.$ZodIssue[];
   constructor(
-    readonly code: DocumentLoadErrorCode,
+    code: DocumentLoadErrorCode,
     message: string,
-    readonly issues: readonly z.core.$ZodIssue[] = [],
+    issues: readonly z.core.$ZodIssue[] = [],
   ) {
     super(message);
+    this.code = code;
+    this.issues = issues;
   }
 }
 

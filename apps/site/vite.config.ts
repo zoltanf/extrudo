@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from 'vite';
 import { addresses } from './addresses';
+import { docsPlugin } from './src/docs-plugin';
 
 // The landing page (ADR-0057): one static page. `__SITE_URL__`, `__APP_URL__`,
 // `__EDGE_URL__` and `__CONTACT_EMAIL__` in index.html become the build's addresses
@@ -19,7 +20,9 @@ function addressPlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [addressPlugin()],
+  // The API docs (ADR-0068 §6): `docs/api/**/*.md` becomes static pages under
+  // `/docs/api/` while the site is built, with no script in them.
+  plugins: [addressPlugin(), docsPlugin()],
   define: { __APP_URL__: JSON.stringify(urls.APP_URL) },
   // No data: URLs: the content policy allows fonts and images from this origin only.
   build: { target: 'es2022', assetsInlineLimit: 0 },

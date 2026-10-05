@@ -11,6 +11,8 @@
  * minimal sweep is `{ profiles, path }`: following the path, no twist, no
  * scale, a new body.
  */
+
+import { SWEEP_FACE_ROLES } from './face-roles';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { ExprInput, GeomRef, GeomRefKind, RefInput } from './schema';
@@ -33,26 +35,44 @@ export const SWEEP_PATH_KINDS: readonly GeomRefKind[] = ['sketchEntity', 'edge']
 
 export const SweepInputsSchema = z.strictObject({
   /** Missing or empty: the feature fails until some are picked. */
-  profiles: refsOf(SWEEP_PROFILE_KINDS).optional(),
+  profiles: refsOf(SWEEP_PROFILE_KINDS)
+    .optional()
+    .describe('The profiles and flat faces to sweep along the path. They need not touch it.'),
   /** Sketch curves and edges that join end to end into one chain. */
-  path: refsOf(SWEEP_PATH_KINDS).optional(),
+  path: refsOf(SWEEP_PATH_KINDS)
+    .optional()
+    .describe('The sketch curves and edges to follow, chained end to end.'),
   /** Default `follow`. */
-  orientation: enumInput(SWEEP_ORIENTATIONS).optional(),
+  orientation: enumInput(SWEEP_ORIENTATIONS)
+    .optional()
+    .describe('How the profile turns along the path: follow it or hold it fixed. Default follow.'),
   /**
    * How far the profile turns about the path from start to end, evenly
    * along it; default 0. Only with `follow`, along a smooth path.
    */
-  twist: exprOf('angle').optional(),
+  twist: exprOf('angle')
+    .optional()
+    .describe('How far the profile turns about the path from start to end; an angle. Default 0°.'),
   /** The profile's size at the path's end, as a factor of its size at the start; default 1. */
-  scale: exprOf('unitless').optional(),
+  scale: exprOf('unitless')
+    .optional()
+    .describe(
+      "The profile's size at the path's end as a factor of its size at the start; a plain number. Default 1.",
+    ),
   /** Default `new-body`. */
-  operation: enumInput(BODY_OPERATIONS).optional(),
+  operation: enumInput(BODY_OPERATIONS)
+    .optional()
+    .describe('New body, join, cut or intersect. Default new-body.'),
   /**
    * The bodies to join, cut or intersect (`body` references, body IDs).
    * Empty or missing: every body the sweep touches (join) or overlaps
    * (cut, intersect).
    */
-  bodies: refsOf(['body']).optional(),
+  bodies: refsOf(['body'])
+    .optional()
+    .describe(
+      'The bodies to join, cut or intersect; by default every body the sweep touches (join) or overlaps (cut, intersect).',
+    ),
 });
 export type SweepInputs = z.infer<typeof SweepInputsSchema>;
 
@@ -62,6 +82,8 @@ export const sweepFeature: FeatureDefinition<SweepInputs> = {
   category: 'create',
   icon: 'sweep',
   inputsSchema: SweepInputsSchema,
+  // ADR-0068 §4, from the kernel's sweep (P4-01).
+  faceRoles: SWEEP_FACE_ROLES,
 };
 
 /** A sweep's inputs with every default filled in: what the kernel builds. */

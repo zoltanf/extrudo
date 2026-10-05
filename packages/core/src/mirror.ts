@@ -13,6 +13,8 @@
  * ignored then, and `copy` and `join` don't apply. The kernel adds its evaluator and the web app its dialog, each in its own
  * registry keyed by `MIRROR_TYPE` (ADR-0003).
  */
+
+import { KEEPS_FACE_ROLES } from './face-roles';
 import { enumInput, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { PATTERN_OBJECTS, type PatternObjects } from './pattern';
@@ -27,17 +29,25 @@ export const MIRROR_PLANE_KINDS = PLACEMENT_KINDS;
 
 export const MirrorInputsSchema = z.strictObject({
   /** Default `bodies`; `features` mirrors the tools of `features` instead (P3-07). */
-  objects: enumInput(PATTERN_OBJECTS).optional(),
+  objects: enumInput(PATTERN_OBJECTS)
+    .optional()
+    .describe('Mirror bodies, or replay the tools of features. Default bodies.'),
   /** The bodies to mirror (`body` references). Empty: the feature fails until some are picked. */
-  bodies: refsOf(['body']).optional(),
+  bodies: refsOf(['body']).optional().describe('The bodies to mirror.'),
   /** `features`: the features whose tools are mirrored (`feature` references, feature IDs). */
-  features: refsOf(['feature']).optional(),
+  features: refsOf(['feature'])
+    .optional()
+    .describe('The features whose tools are mirrored, with objects: features.'),
   /** The mirror plane. Empty: the feature fails until one is picked. */
-  plane: refsOf(MIRROR_PLANE_KINDS, 1),
+  plane: refsOf(MIRROR_PLANE_KINDS, 1).describe('The mirror plane. Required.'),
   /** Keep the originals and add mirrored copies. Default true. */
-  copy: BoolInputSchema.optional(),
+  copy: BoolInputSchema.optional().describe(
+    'Keep the originals and add mirrored copies. Default true.',
+  ),
   /** Fuse each copy into its original (with `copy`). Default false. */
-  join: BoolInputSchema.optional(),
+  join: BoolInputSchema.optional().describe(
+    'Fuse each copy into its original (with copy). Default false.',
+  ),
 });
 export type MirrorInputs = z.infer<typeof MirrorInputsSchema>;
 
@@ -47,6 +57,8 @@ export const mirrorFeature: FeatureDefinition<MirrorInputs> = {
   category: 'modify',
   icon: 'mirror',
   inputsSchema: MirrorInputsSchema,
+  // ADR-0068 §4: the mirrored bodies keep the names they had (P3-06, ADR-0044).
+  faceRoles: KEEPS_FACE_ROLES,
 };
 
 /** A mirror's inputs with every default filled in: what the kernel builds. */

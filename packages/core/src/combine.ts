@@ -13,6 +13,8 @@
  * The kernel adds its evaluator and the web app its dialog, each in its own
  * registry keyed by `COMBINE_TYPE` (ADR-0003).
  */
+
+import { KEEPS_FACE_ROLES } from './face-roles';
 import { enumInput, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { BoolInputSchema, type GeomRef } from './schema';
@@ -25,13 +27,17 @@ export type CombineOperation = (typeof COMBINE_OPERATIONS)[number];
 
 export const CombineInputsSchema = z.strictObject({
   /** The body that stays (one `body` reference). Empty: the feature fails until one is picked. */
-  target: refsOf(['body'], 1),
+  target: refsOf(['body'], 1).describe('The body that stays. Required.'),
   /** The bodies combined into it (`body` references). Empty: the feature fails until some are picked. */
-  tools: refsOf(['body']),
+  tools: refsOf(['body']).describe('The bodies combined into it. Required.'),
   /** Default `join`. */
-  operation: enumInput(COMBINE_OPERATIONS).optional(),
+  operation: enumInput(COMBINE_OPERATIONS)
+    .optional()
+    .describe('Join, cut or intersect the tools into the target. Default join.'),
   /** Keep the tool bodies instead of consuming them. Default false. */
-  keepTools: BoolInputSchema.optional(),
+  keepTools: BoolInputSchema.optional().describe(
+    'Keep the tool bodies instead of consuming them. Default false.',
+  ),
 });
 export type CombineInputs = z.infer<typeof CombineInputsSchema>;
 
@@ -41,6 +47,9 @@ export const combineFeature: FeatureDefinition<CombineInputs> = {
   category: 'modify',
   icon: 'combine',
   inputsSchema: CombineInputsSchema,
+  // ADR-0068 §4: a boolean keeps the faces of both inputs, so only the faces it
+  // makes itself are new (P3-06).
+  faceRoles: KEEPS_FACE_ROLES,
 };
 
 /** A combine's inputs with every default filled in: what the kernel builds. */

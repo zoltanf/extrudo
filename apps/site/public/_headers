@@ -25,3 +25,10 @@
 
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# The API docs (ADR-0068 §6): hashed stylesheet and fonts for good, the pages
+# themselves revalidated (a deploy replaces them under the same addresses).
+/docs/api/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/docs/api/*
+  Cache-Control: public, max-age=0, must-revalidate

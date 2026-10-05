@@ -12,7 +12,9 @@ import {
   FeatureRegistry,
   type FeatureStatus,
   type GeomRef,
+  ORIGIN_POINT_ID,
   originPlaneRef,
+  originPointRef,
   primitiveInputs,
   revolveInputs,
   type SketchData,
@@ -76,6 +78,8 @@ function feature(id: string, type: string, inputs: Feature['inputs'] = {}): Feat
 const XY = originPlaneRef('origin:xy');
 const XZ = originPlaneRef('origin:xz');
 const YZ = originPlaneRef('origin:yz');
+/** The world origin as a point reference (ADR-0068 §4). */
+const ORIGIN = originPointRef();
 
 const offsetPlane = (id: string, plane: GeomRef, distance: string) =>
   feature(id, 'offsetPlane', { plane: refs([plane]), distance: length(distance) });
@@ -543,6 +547,31 @@ describe('construction points', { timeout: 120_000 }, () => {
     // A cylinder on XY overlaps the block's top? No: it doesn't touch it, so the top is intact.
     expect(rounded(report('F', 'point').point)).toEqual([30, 20, 10]);
     expect(report('O', 'point').point).toEqual([0, 0, 0]);
+  });
+
+  it('a point reference for the world origin starts there (ADR-0068 §4)', async () => {
+    expect(ORIGIN).toEqual({ kind: 'point', id: ORIGIN_POINT_ID });
+    ok(
+      await fresh([
+        feature('P', 'constructionPoint', { at: refs([ORIGIN]), x: length('4 mm') }),
+        feature('Q', 'constructionPoint', { at: refs([ORIGIN]) }),
+      ]),
+    );
+    expect(report('P', 'point').point).toEqual([4, 0, 0]);
+    expect(report('Q', 'point').point).toEqual([0, 0, 0]);
+  });
+
+  it('takes the world origin as one of the points a plane goes through', async () => {
+    const a = point('A', 10, 0, 0);
+    const b = point('B', 0, 10, 0);
+    const through = (second: GeomRef) =>
+      feature('P', 'planeThroughPoints', { points: refs([ORIGIN, ref(a), second]) });
+    ok(await fresh([a, b, through(ref(b))]));
+    expect(report('P', 'plane').frame.origin).toEqual([0, 0, 0]);
+    expect(report('P', 'plane').frame.normal).toEqual([0, 0, 1]);
+    // A point that is not there is still a lost reference.
+    const lost = await fresh([a, b, through({ kind: 'point', id: 'nowhere' })]);
+    expect(status(lost, 'P').status).toBe('error');
   });
 });
 

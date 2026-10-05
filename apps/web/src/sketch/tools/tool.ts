@@ -18,16 +18,13 @@ import {
   UNITS,
   type Vec2,
 } from '@extrudo/core';
+import type { Typed } from '@extrudo/sketch/build';
 import type { Inference, PickFilter } from '@extrudo/sketch/inference';
+
+export type { Typed };
 
 /** Lengths in mm, angles in degrees; unitless fields are counts (a polygon's sides). */
 export type FieldKind = 'length' | 'angle' | 'unitless';
-
-/** A value typed into the heads-up box: the expression and its value in base units (mm, degrees). */
-export interface Typed {
-  expr: string;
-  value: number;
-}
 
 /** A heads-up field (FR-SK-06): the live measurement, or the typed value that locks it. */
 export interface HeadsUpField {
@@ -181,18 +178,4 @@ export const EMPTY_PREVIEW: ToolPreview = { lines: [], points: [] };
 
 export function emptyEdit(): SketchEdit {
   return { entities: {}, constraints: {}, dimensions: {}, auto: [] };
-}
-
-/** Adds constraints to an edit, marking them as inferred when `auto`. */
-export function constrain(
-  edit: SketchEdit,
-  context: ToolContext,
-  constraints: readonly SketchConstraint[],
-  auto: boolean,
-): void {
-  for (const c of constraints) {
-    const id = context.newId() as ConstraintId;
-    edit.constraints[id] = c;
-    if (auto) edit.auto.push(id);
-  }
 }

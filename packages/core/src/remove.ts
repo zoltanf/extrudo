@@ -5,6 +5,8 @@
  * the timeline back past it, suppressing or deleting it brings the body
  * back. The kernel adds its evaluator, keyed by `REMOVE_TYPE` (ADR-0003).
  */
+
+import type { RefInputMeta } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { BodyId, FeatureId } from './ids';
 import { type Feature, type GeomRef, RefInputSchema } from './schema';
@@ -17,7 +19,9 @@ export const RemoveInputsSchema = z.strictObject({
   bodies: RefInputSchema.refine(
     (input) => input.refs.length > 0 && input.refs.every((ref) => ref.kind === 'body'),
     'must be one or more body references',
-  ),
+  )
+    .meta({ input: { kind: 'ref', kinds: ['body'] } satisfies RefInputMeta })
+    .describe('The bodies to take out of the model. Required.'),
 });
 export type RemoveInputs = z.infer<typeof RemoveInputsSchema>;
 

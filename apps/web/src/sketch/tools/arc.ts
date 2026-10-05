@@ -13,6 +13,14 @@
  */
 import type { DimensionId, SketchEntityId, Vec2 } from '@extrudo/core';
 import {
+  addArc,
+  type CurveEnd,
+  curveEnd,
+  place,
+  tangentJoin,
+  throughPoint,
+} from '@extrudo/sketch/build';
+import {
   type ArcShape,
   arcAround,
   arcThrough,
@@ -20,7 +28,6 @@ import {
   type Inference,
   tangentArc,
 } from '@extrudo/sketch/inference';
-import { addArc, type CurveEnd, curveEnd, place, tangentJoin, throughPoint } from './build';
 import {
   EMPTY_PREVIEW,
   emptyEdit,

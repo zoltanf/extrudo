@@ -11,6 +11,8 @@
  * factor is 1. The kernel adds its evaluator and the web app its dialog,
  * each in its own registry keyed by `SCALE_TYPE` (ADR-0003).
  */
+
+import { KEEPS_FACE_ROLES } from './face-roles';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import { MOVE_POINT_KINDS } from './move';
@@ -30,19 +32,33 @@ export const SCALE_AXES = ['x', 'y', 'z'] as const;
 
 export const ScaleInputsSchema = z.strictObject({
   /** The bodies to scale. Empty: the feature fails until some are picked. */
-  bodies: refsOf(['body']),
+  bodies: refsOf(['body']).describe('The bodies to scale. Required.'),
   /** The fixed point. Absent: the centre of the bodies' box. */
-  point: refsOf(SCALE_POINT_KINDS, 1).optional(),
+  point: refsOf(SCALE_POINT_KINDS, 1)
+    .optional()
+    .describe("The point that stays put. Without one, the centre of the bodies' box."),
   /** Default `uniform`. */
-  mode: enumInput(SCALE_MODES).optional(),
+  mode: enumInput(SCALE_MODES)
+    .optional()
+    .describe('Scale every axis the same, or each on its own. Default uniform.'),
   /** `uniform`: the factor (a plain number greater than 0). Default 1. */
-  factor: exprOf('unitless').optional(),
+  factor: exprOf('unitless')
+    .optional()
+    .describe('The factor of a uniform scale; a plain number greater than 0. Default 1.'),
   /** `non-uniform`: the factors along the world X, Y and Z axes. Default 1 each. */
-  x: exprOf('unitless').optional(),
-  y: exprOf('unitless').optional(),
-  z: exprOf('unitless').optional(),
+  x: exprOf('unitless')
+    .optional()
+    .describe('The factor along the world X axis; a plain number greater than 0. Default 1.'),
+  y: exprOf('unitless')
+    .optional()
+    .describe('The factor along the world Y axis; a plain number greater than 0. Default 1.'),
+  z: exprOf('unitless')
+    .optional()
+    .describe('The factor along the world Z axis; a plain number greater than 0. Default 1.'),
   /** Keep the bodies and add scaled copies. Default false. */
-  copy: BoolInputSchema.optional(),
+  copy: BoolInputSchema.optional().describe(
+    'Keep the bodies and add scaled copies. Default false.',
+  ),
 });
 export type ScaleInputs = z.infer<typeof ScaleInputsSchema>;
 
@@ -52,6 +68,9 @@ export const scaleFeature: FeatureDefinition<ScaleInputs> = {
   category: 'modify',
   icon: 'scale',
   inputsSchema: ScaleInputsSchema,
+  // ADR-0068 §4: every face is the image of the one before, so a scaled body
+  // keeps its names and only a copy's are new (P3-08, ADR-0053).
+  faceRoles: KEEPS_FACE_ROLES,
 };
 
 /** A scale's inputs with every default filled in (but the factors, which are expressions). */

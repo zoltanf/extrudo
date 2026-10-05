@@ -33,6 +33,8 @@
  * out smaller than modelled; `presetMatches` recognises both forms, so the
  * dialog's dropdown still shows the preset. P4-08, ADR-0062, FR-3DP-05.
  */
+
+import { SWEEP_FACE_ROLES } from './face-roles';
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
@@ -112,30 +114,46 @@ const optionalAngle = () => exprOf('angle').optional();
 
 export const HoleInputsSchema = z.strictObject({
   /** Where the holes start; missing or empty: the XY plane. */
-  plane: refsOf(HOLE_PLANE_KINDS, 1).optional(),
+  plane: refsOf(HOLE_PLANE_KINDS, 1)
+    .optional()
+    .describe(
+      'Where the holes start: an origin plane, a construction plane or a flat face. Default the XY plane.',
+    ),
   /** Sketch points (`<sketch>/<point>`). With none, the hole is at `x`, `y`. */
-  points: refsOf(HOLE_POINT_KINDS).optional(),
+  points: refsOf(HOLE_POINT_KINDS)
+    .optional()
+    .describe('The sketch points to drill at. With none, the one hole is at x and y.'),
   /** The one hole's place in the plane's sketch frame, default 0 (without `points`). */
-  x: optionalLength(),
-  y: optionalLength(),
+  x: optionalLength().describe("The hole's place along the plane frame's X; a length. Default 0."),
+  y: optionalLength().describe("The hole's place along the plane frame's Y; a length. Default 0."),
   /** Default `simple`. */
-  type: enumInput(HOLE_KINDS).optional(),
+  type: enumInput(HOLE_KINDS)
+    .optional()
+    .describe('Simple, counterbored or countersunk. Default simple.'),
   /** Default `blind`. */
-  extent: enumInput(HOLE_EXTENTS).optional(),
+  extent: enumInput(HOLE_EXTENTS).optional().describe('Blind or through. Default blind.'),
   /** Default 5 mm. */
-  diameter: optionalLength(),
+  diameter: optionalLength().describe("The hole's diameter; a length. Default 5 mm."),
   /** Blind: from the plane to the end of the full diameter; default 10 mm. */
-  depth: optionalLength(),
+  depth: optionalLength().describe(
+    "A blind hole's depth to the end of the full diameter; a length. Default 10 mm.",
+  ),
   /** Blind: the drill point's full angle, 0° for a flat bottom; default 118°. */
-  tipAngle: optionalAngle(),
+  tipAngle: optionalAngle().describe(
+    "The drill point's full angle; an angle. Default 118°, 0° for a flat bottom.",
+  ),
   /** Counterbore: the step's diameter (default 10 mm) and depth (default 4 mm). */
-  cbDiameter: optionalLength(),
-  cbDepth: optionalLength(),
+  cbDiameter: optionalLength().describe("The counterbore's diameter; a length. Default 10 mm."),
+  cbDepth: optionalLength().describe("The counterbore's depth; a length. Default 4 mm."),
   /** Countersink: the cone's diameter at the surface (default 10 mm) and full angle (default 90°). */
-  csDiameter: optionalLength(),
-  csAngle: optionalAngle(),
+  csDiameter: optionalLength().describe(
+    "The countersink cone's diameter at the surface; a length. Default 10 mm.",
+  ),
+  csAngle: optionalAngle().describe("The countersink cone's full angle; an angle. Default 90°."),
   /** Drill the other way: against a face's inward direction. */
-  flip: BoolInputSchema.optional(),
+  flip: BoolInputSchema.optional().describe(
+    "Drill the other way, against a face's inward direction. Default false.",
+  ),
 });
 export type HoleInputs = z.infer<typeof HoleInputsSchema>;
 
@@ -145,6 +163,16 @@ export const holeFeature: FeatureDefinition<HoleInputs> = {
   category: 'create',
   icon: 'hole',
   inputsSchema: HoleInputsSchema,
+  // ADR-0068 §4, from the kernel's half section turned whole (P3-04, ADR-0049):
+  // the faces the drilled hole's own segments leave, one per segment.
+  faceRoles: [
+    ...SWEEP_FACE_ROLES,
+    {
+      pattern: 'side:<segment>',
+      description:
+        "One segment of the hole's own wall: `top` (where it opens), `wall`, `tip`, `floor`, `bottom`, `cbwall`, `cbfloor` or `cone`, prefixed with the sketch point's ID where the hole was placed at one.",
+    },
+  ],
 };
 
 /** A hole's inputs with the defaults filled in, but for its numbers. */

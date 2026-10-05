@@ -57,12 +57,27 @@ export const chamferFlipKey = (n: number) => keyOf('flip', n);
 
 const shape: Record<string, z.ZodType> = {};
 for (let n = 1; n <= CHAMFER_MAX_SETS; n++) {
-  shape[chamferEdgesKey(n)] = refsOf(CHAMFER_EDGE_KINDS).optional();
-  shape[chamferModeKey(n)] = enumInput(CHAMFER_MODES).optional();
-  shape[chamferDistanceKey(n)] = exprOf('length').optional();
-  shape[chamferDistanceBKey(n)] = exprOf('length').optional();
-  shape[chamferAngleKey(n)] = exprOf('angle').optional();
-  shape[chamferFlipKey(n)] = BoolInputSchema.optional();
+  const set = n === 1 ? 'Set 1' : `Set ${n}`;
+  shape[chamferEdgesKey(n)] = refsOf(CHAMFER_EDGE_KINDS)
+    .optional()
+    .describe(`${set}'s edges to chamfer. A set with no edges does nothing.`);
+  shape[chamferModeKey(n)] = enumInput(CHAMFER_MODES)
+    .optional()
+    .describe(
+      `${set}'s sizes: equal distance, two distances, or distance and angle. Default equal.`,
+    );
+  shape[chamferDistanceKey(n)] = exprOf('length')
+    .optional()
+    .describe(`${set}'s first distance, along the face that takes it; a length.`);
+  shape[chamferDistanceBKey(n)] = exprOf('length')
+    .optional()
+    .describe(`${set}'s second distance, with two-distances; a length.`);
+  shape[chamferAngleKey(n)] = exprOf('angle')
+    .optional()
+    .describe(`${set}'s angle to the first distance, with distance-angle; an angle.`);
+  shape[chamferFlipKey(n)] = BoolInputSchema.optional().describe(
+    `${set}'s first distance goes on the other face. Default false.`,
+  );
 }
 
 /** A chamfer's inputs: `edges`/`mode`/`distance`/… and their numbered copies (all optional). */
@@ -76,6 +91,13 @@ export const chamferFeature: FeatureDefinition<ChamferInputs> = {
   category: 'modify',
   icon: 'chamfer',
   inputsSchema: ChamferInputsSchema,
+  // ADR-0068 §4, from the kernel's chamfer (P3-02): the bevel an edge makes.
+  faceRoles: [
+    {
+      pattern: 'from:(<edge>)',
+      description: 'The bevel: a face the chamfer makes from each edge it bevels.',
+    },
+  ],
 };
 
 /** One set of a chamfer: its edges, mode and the inputs holding its values. */

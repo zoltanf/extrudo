@@ -30,13 +30,17 @@ export const DRAFT_PLANE_KINDS = PLACEMENT_KINDS;
 
 export const DraftInputsSchema = z.strictObject({
   /** The faces to tilt. Empty: an error until one is picked. */
-  faces: refsOf(DRAFT_FACE_KINDS),
+  faces: refsOf(DRAFT_FACE_KINDS).describe('The faces to tilt. Required.'),
   /** The neutral plane, whose normal is the pull direction. Empty: an error until one is picked. */
-  plane: refsOf(DRAFT_PLANE_KINDS, 1),
+  plane: refsOf(DRAFT_PLANE_KINDS, 1).describe(
+    'The neutral plane, whose normal is the pull direction. Required.',
+  ),
   /** The draft angle (positive narrows the body along the pull; 0 is refused by the kernel). */
-  angle: exprOf('angle'),
+  angle: exprOf('angle').describe(
+    'The draft angle; an angle. Positive narrows the body along the pull.',
+  ),
   /** Pull the other way (against the plane's normal). Default false. */
-  flip: BoolInputSchema.optional(),
+  flip: BoolInputSchema.optional().describe("Pull against the plane's normal. Default false."),
 });
 export type DraftInputs = z.infer<typeof DraftInputsSchema>;
 

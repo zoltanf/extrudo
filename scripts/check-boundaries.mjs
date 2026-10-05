@@ -20,6 +20,11 @@ const ALLOWED = {
   // way; @extrudo/sketch (the shaper), @extrudo/kernel and the app use it.
   '@extrudo/fonts': [],
   '@extrudo/storage': ['@extrudo/core'],
+  // The public document API (ADR-0068 §1): the document, the sketch package's
+  // pure entries and the archive writer. No DOM, no WASM, no kernel — the
+  // kernel is a devDependency only, for the tests that recompute a design
+  // headless (`examples.test.ts`).
+  '@extrudo/api': ['@extrudo/core', '@extrudo/sketch', '@extrudo/storage', '@extrudo/kernel'],
   // The landing page: no internal packages (ADR-0057).
   '@extrudo/site': [],
   '@extrudo/web': [

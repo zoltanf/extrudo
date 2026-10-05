@@ -14,18 +14,18 @@
  * the chain goes on from the arc's end.
  */
 import type { DimensionId, SketchEntityId, Vec2 } from '@extrudo/core';
-import { type ArcShape, type Inference, tangentArc } from '@extrudo/sketch/inference';
 import {
   addArc,
   addLine,
   arcEndDirection,
   type CurveEnd,
+  constrain,
   curveEnd,
   place,
   tangentJoin,
-} from './build';
+} from '@extrudo/sketch/build';
+import { type ArcShape, type Inference, tangentArc } from '@extrudo/sketch/inference';
 import {
-  constrain,
   EMPTY_PREVIEW,
   emptyEdit,
   type HeadsUpField,

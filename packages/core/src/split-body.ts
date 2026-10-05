@@ -29,11 +29,13 @@ export type SplitKeep = (typeof SPLIT_KEEP)[number];
 
 export const SplitBodyInputsSchema = z.strictObject({
   /** The bodies to split. Empty: the feature fails until some are picked. */
-  bodies: refsOf(['body']),
+  bodies: refsOf(['body']).describe('The bodies to split. Required.'),
   /** The splitting plane. Empty: the feature fails until one is picked. */
-  plane: refsOf(SPLIT_TOOL_KINDS, 1),
+  plane: refsOf(SPLIT_TOOL_KINDS, 1).describe('The plane to split them on. Required.'),
   /** Default `both`. */
-  keep: enumInput(SPLIT_KEEP).optional(),
+  keep: enumInput(SPLIT_KEEP)
+    .optional()
+    .describe('Keep both sides, the one above the plane or the one below. Default both.'),
 });
 export type SplitBodyInputs = z.infer<typeof SplitBodyInputsSchema>;
 
@@ -43,6 +45,18 @@ export const splitBodyFeature: FeatureDefinition<SplitBodyInputs> = {
   category: 'modify',
   icon: 'split-body',
   inputsSchema: SplitBodyInputsSchema,
+  // ADR-0068 §4, from the kernel's split (P3-08): the faces the plane cut, and
+  // the two sides each carry one.
+  faceRoles: [
+    {
+      pattern: 'cut:above',
+      description: 'The face the plane cut on the part above it, facing down the normal.',
+    },
+    {
+      pattern: 'cut:below',
+      description: 'The face the plane cut on the part below it, facing up the normal.',
+    },
+  ],
 };
 
 /** A split's inputs with every default filled in: what the kernel builds. */

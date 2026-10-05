@@ -10,6 +10,7 @@
  * drags with the solver so the moved geometry keeps its constraints.
  */
 import type { SketchEntityId, Vec2 } from '@extrudo/core';
+import { typedEnd } from '@extrudo/sketch/build';
 import type { Inference } from '@extrudo/sketch/inference';
 import {
   axisOf,
@@ -27,7 +28,6 @@ import {
   rotation,
   scale,
 } from '@extrudo/sketch/modify';
-import { typedEnd } from './build';
 import { toEdit } from './split';
 import {
   EMPTY_PREVIEW,

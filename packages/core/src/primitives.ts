@@ -23,6 +23,8 @@
  * face). Every input is optional and has a default, so a minimal box is
  * `{}`: a 20 mm cube on the XY plane at the origin, a new body.
  */
+
+import type { FaceRole } from './face-roles';
 import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { ExprInput, GeomRef, GeomRefKind, RefInput, UnitKind } from './schema';
@@ -116,59 +118,81 @@ const placementShape = {
    * The plane it sits on: an origin plane or a flat face of a body. Missing
    * or empty: the XY plane (`DEFAULT_PLACEMENT`).
    */
-  plane: refsOf(PLACEMENT_KINDS, 1).optional(),
+  plane: refsOf(PLACEMENT_KINDS, 1)
+    .optional()
+    .describe('The plane it sits on: an origin plane or a flat face. Default the XY plane.'),
   /** The centre's place along the plane frame's X and Y, default 0. */
-  x: exprOf('length').optional(),
-  y: exprOf('length').optional(),
+  x: exprOf('length')
+    .optional()
+    .describe("Its place along the plane frame's X; a length. Default 0."),
+  y: exprOf('length')
+    .optional()
+    .describe("Its place along the plane frame's Y; a length. Default 0."),
   /** How far the base (a sphere's or torus's centre) sits off the plane along its normal, default 0. */
-  offset: exprOf('length').optional(),
+  offset: exprOf('length')
+    .optional()
+    .describe('How far the base sits off the plane along its normal; a length. Default 0.'),
   /** Default `new-body`. */
-  operation: enumInput(PRIMITIVE_OPERATIONS).optional(),
+  operation: enumInput(PRIMITIVE_OPERATIONS)
+    .optional()
+    .describe('New body, join, cut or intersect. Default new-body.'),
   /**
    * The bodies to join, cut or intersect (`body` references, body IDs).
    * Empty or missing: every body the primitive touches (join) or overlaps
    * (cut, intersect).
    */
-  bodies: refsOf(['body']).optional(),
+  bodies: refsOf(['body'])
+    .optional()
+    .describe(
+      'The bodies to join, cut or intersect; by default every body the primitive touches (join) or overlaps (cut, intersect).',
+    ),
 };
 
-const length = () => exprOf('length').optional();
+const length = (what: string) => exprOf('length').optional().describe(what);
 
 export const BoxInputsSchema = z.strictObject({
   ...placementShape,
   /** Along the plane frame's X (turned by `rotation`); default 20 mm. */
-  length: length(),
+  length: length("Along the plane frame's X; a length. Default 20 mm."),
   /** Along the frame's Y; default 20 mm. */
-  width: length(),
+  width: length("Along the plane frame's Y; a length. Default 20 mm."),
   /** Along the plane's normal from the base; negative goes below the plane. Default 20 mm. */
-  height: length(),
+  height: length(
+    "Along the plane's normal from the base; a length. Default 20 mm, negative goes below the plane.",
+  ),
   /** Turns the box about the normal through its centre; default 0°. */
-  rotation: exprOf('angle').optional(),
+  rotation: exprOf('angle')
+    .optional()
+    .describe(
+      "Turns the box about the plane's normal through its centre; an angle. Default 0 deg.",
+    ),
 });
 export type BoxInputs = z.infer<typeof BoxInputsSchema>;
 
 export const CylinderInputsSchema = z.strictObject({
   ...placementShape,
   /** Default 20 mm. */
-  diameter: length(),
+  diameter: length('Its diameter; a length. Default 20 mm.'),
   /** Along the plane's normal from the base; negative goes below the plane. Default 20 mm. */
-  height: length(),
+  height: length(
+    "Along the plane's normal from the base; a length. Default 20 mm, negative goes below the plane.",
+  ),
 });
 export type CylinderInputs = z.infer<typeof CylinderInputsSchema>;
 
 export const SphereInputsSchema = z.strictObject({
   ...placementShape,
   /** Default 20 mm. */
-  diameter: length(),
+  diameter: length('Its diameter; a length. Default 20 mm.'),
 });
 export type SphereInputs = z.infer<typeof SphereInputsSchema>;
 
 export const TorusInputsSchema = z.strictObject({
   ...placementShape,
   /** Through the tube's centre line; default 40 mm. */
-  diameter: length(),
+  diameter: length('Its diameter; a length. Default 20 mm.'),
   /** The tube's own diameter, smaller than `diameter`; default 10 mm. */
-  tube: length(),
+  tube: length("The tube's own diameter, smaller than the outer one; a length. Default 10 mm."),
 });
 export type TorusInputs = z.infer<typeof TorusInputsSchema>;
 
@@ -178,12 +202,48 @@ const definition = <I extends PrimitiveInputs>(
   type: PrimitiveType,
   label: string,
   inputsSchema: z.ZodType<I>,
-): FeatureDefinition<I> => ({ type, label, category: 'create', icon: type, inputsSchema });
+  // ADR-0068 §4, from the kernel's builders (P2-10, ADR-0032).
+  faceRoles: readonly FaceRole[],
+): FeatureDefinition<I> => ({
+  type,
+  label,
+  category: 'create',
+  icon: type,
+  inputsSchema,
+  faceRoles,
+});
 
-export const boxFeature = definition(BOX_TYPE, 'Box', BoxInputsSchema);
-export const cylinderFeature = definition(CYLINDER_TYPE, 'Cylinder', CylinderInputsSchema);
-export const sphereFeature = definition(SPHERE_TYPE, 'Sphere', SphereInputsSchema);
-export const torusFeature = definition(TORUS_TYPE, 'Torus', TorusInputsSchema);
+const CAPS: readonly FaceRole[] = [
+  {
+    pattern: 'cap:start',
+    description: 'The face the primitive stands on, in the plane it was placed on.',
+  },
+  {
+    pattern: 'cap:end',
+    description: 'The far face, the height away (half the diameter for a sphere).',
+  },
+];
+
+export const boxFeature = definition(BOX_TYPE, 'Box', BoxInputsSchema, [
+  ...CAPS,
+  { pattern: 'side:front', description: "The side towards the frame's −Y." },
+  { pattern: 'side:right', description: "The side towards the frame's +X." },
+  { pattern: 'side:back', description: "The side towards the frame's +Y." },
+  { pattern: 'side:left', description: "The side towards the frame's −X." },
+]);
+export const cylinderFeature = definition(CYLINDER_TYPE, 'Cylinder', CylinderInputsSchema, [
+  ...CAPS,
+  { pattern: 'side:wall', description: 'The round wall, one face around the cylinder.' },
+]);
+export const sphereFeature = definition(SPHERE_TYPE, 'Sphere', SphereInputsSchema, [
+  {
+    pattern: 'side:surface',
+    description: 'The whole surface, one face; the poles lie on the normal.',
+  },
+]);
+export const torusFeature = definition(TORUS_TYPE, 'Torus', TorusInputsSchema, [
+  { pattern: 'side:surface', description: 'The whole surface, one face.' },
+]);
 
 /** The four definitions, by type. */
 export const PRIMITIVE_FEATURES: Readonly<Record<PrimitiveType, FeatureDefinition>> = {

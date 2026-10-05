@@ -2,6 +2,11 @@
  * Input schema pieces that solid features share (extrude, revolve, and the
  * features after them): enums, expressions of one unit, references of some
  * kinds, and the four body operations.
+ *
+ * Each piece says what it is under `meta({ input: … })`, which is what the
+ * generated API methods read to type their plain values (`'10 mm'`, a face
+ * reference, `true`) and turn them into the stored input (`design.ts`'s
+ * `plainInput`, ADR-0068 §3).
  */
 import { ExprInputSchema, type GeomRefKind, RefInputSchema, type UnitKind } from './schema';
 import { z } from './zod';
@@ -17,21 +22,46 @@ import { z } from './zod';
 export const BODY_OPERATIONS = ['new-body', 'join', 'cut', 'intersect'] as const;
 export type BodyOperation = (typeof BODY_OPERATIONS)[number];
 
-/** An `enum` input whose value is one of `values`. */
-export const enumInput = <T extends readonly [string, ...string[]]>(values: T) =>
-  z.strictObject({ kind: z.literal('enum'), value: z.enum(values) });
+/** What a `ref` input takes, read off a `refsOf` schema. */
+export interface RefInputMeta {
+  kind: 'ref';
+  /** The reference kinds it accepts. */
+  kinds: readonly GeomRefKind[];
+  /** How many it takes at most; absent means any number. */
+  max?: number;
+}
+
+/** What an `expr` input measures, read off an `exprOf` schema. */
+export interface ExprInputMeta {
+  kind: 'expr';
+  unit: UnitKind;
+}
+
+/** An `enum` input: its value is one of `values`, given as the string itself. */
+export interface EnumInputMeta {
+  kind: 'enum';
+}
 
 /** An `expr` input of one unit (a missing unit means length). */
 export const exprOf = (unit: UnitKind) =>
-  ExprInputSchema.refine((input) => (input.unit ?? 'length') === unit, `must be ${an(unit)}`);
+  ExprInputSchema.refine((input) => (input.unit ?? 'length') === unit, `must be ${an(unit)}`).meta({
+    input: { kind: 'expr', unit } satisfies ExprInputMeta,
+  });
 
 /** A `ref` input of these kinds, at most `max` of them. */
 export const refsOf = (kinds: readonly GeomRefKind[], max = Number.POSITIVE_INFINITY) =>
   RefInputSchema.refine(
     (input) => input.refs.length <= max && input.refs.every((ref) => kinds.includes(ref.kind)),
     max === 1 ? `must be one ${kinds.join(', ')}` : `must be ${kinds.join(' or ')} references`,
-  );
+  ).meta({ input: { kind: 'ref', kinds, max: Number.isFinite(max) ? max : undefined } });
+
+/** An `enum` input whose value is one of `values`. */
+export const enumInput = <T extends readonly [string, ...string[]]>(values: T) =>
+  z
+    .strictObject({ kind: z.literal('enum'), value: z.enum(values) })
+    .meta({ input: { kind: 'enum' } satisfies EnumInputMeta });
 
 function an(unit: UnitKind): string {
-  return unit === 'unitless' ? 'a plain number' : `an ${unit === 'angle' ? 'angle' : 'length'}`;
+  if (unit === 'unitless') return 'a plain number';
+  return unit === 'angle' ? 'an angle' : 'a length';
 }

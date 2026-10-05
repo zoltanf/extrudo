@@ -9,8 +9,8 @@
  * A typed diameter becomes a driving diameter dimension.
  */
 import type { DimensionId, Vec2 } from '@extrudo/core';
+import { addCircle, place, throughPoint } from '@extrudo/sketch/build';
 import { type CircleShape, circleThrough, type Inference } from '@extrudo/sketch/inference';
-import { addCircle, place, throughPoint } from './build';
 import {
   EMPTY_PREVIEW,
   emptyEdit,

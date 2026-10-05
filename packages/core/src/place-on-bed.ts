@@ -10,6 +10,7 @@
  * The kernel adds its evaluator and the web app its dialog, each in its own
  * registry keyed by `PLACE_ON_BED_TYPE` (ADR-0003).
  */
+
 import { exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import type { ExprInput, GeomRef, RefInput } from './schema';
@@ -23,12 +24,16 @@ export const PlaceOnBedInputsSchema = z.strictObject({
    * lies on its own face, where it is). Empty: the feature fails until one is
    * picked. Two faces of one body is an error.
    */
-  face: refsOf(['face']),
+  face: refsOf(['face']).describe('The flat faces that go down, one per body. Required.'),
   /**
    * Turn about the vertical through the face's centre after the face lies on
    * the bed (P3-17). Absent: no turn.
    */
-  spin: exprOf('angle').optional(),
+  spin: exprOf('angle')
+    .optional()
+    .describe(
+      "Turn about the vertical through the face's centre once it lies on the bed; an angle. Without one, no turn.",
+    ),
 });
 export type PlaceOnBedInputs = z.infer<typeof PlaceOnBedInputsSchema>;
 

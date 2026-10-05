@@ -185,3 +185,18 @@ export function originAxis(id: string): OriginAxis | undefined {
 export function originAxisRef(id: OriginAxisId): GeomRef {
   return { kind: 'axis', id };
 }
+
+/**
+ * The world origin as a point reference, named like the origin planes and axes
+ * (`origin:point`, ADR-0068 §4): what an input that takes a point gets when the
+ * user picks nothing. The kernel's `pointOf` reads it, so a construction plane
+ * through two points or a construction point can start there.
+ */
+export type OriginPointId = 'origin:point';
+
+export const ORIGIN_POINT_ID: OriginPointId = 'origin:point';
+
+/** A point reference for the world origin. */
+export function originPointRef(): GeomRef {
+  return { kind: 'point', id: ORIGIN_POINT_ID };
+}

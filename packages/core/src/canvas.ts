@@ -105,20 +105,34 @@ export const CanvasInputsSchema = z.strictObject({
    * The plane the image lies on: an origin plane, a construction plane or a
    * flat face. Missing: the XY plane.
    */
-  plane: refsOf(PLACEMENT_KINDS, 1).optional(),
+  plane: refsOf(PLACEMENT_KINDS, 1)
+    .optional()
+    .describe(
+      'The plane the image lies on: an origin plane, a construction plane or a flat face. Default the XY plane.',
+    ),
   /** The image: an attachment of the design with an `image/*` media type. */
-  image: FileInputSchema,
+  image: FileInputSchema.describe(
+    'The picture: an attachment of this design with an `image/*` media type (PNG, JPEG or WebP). Required.',
+  ),
   /** The image's centre along the plane frame's X, default 0. */
-  x: length(),
-  y: length(),
+  x: length().describe("The image's centre along the plane frame's X; a length. Default 0."),
+  y: length().describe("The image's centre along the plane frame's Y; a length. Default 0."),
   /** The image's width; the height follows its aspect. Default 100 mm. */
-  width: length(),
+  width: length().describe(
+    "The image's width; a length, the height follows its aspect. Default 100 mm.",
+  ),
   /** Turns the image about the plane's normal (right-handed), from the frame's X. Default 0°. */
-  rotation: exprOf('angle').optional(),
+  rotation: exprOf('angle')
+    .optional()
+    .describe(
+      "Turns the image about the plane's normal, right-handed, from the frame's X; an angle. Default 0 deg.",
+    ),
   /** How opaque it is drawn, 0.05…1. Default 0.5. */
-  opacity: exprOf('unitless').optional(),
+  opacity: exprOf('unitless')
+    .optional()
+    .describe('How opaque it is drawn, 0.05 to 1. Default 0.5.'),
   /** Mirrors the image left–right. Default false. */
-  flip: BoolInputSchema.optional(),
+  flip: BoolInputSchema.optional().describe('Mirrors the image left to right. Default false.'),
 });
 export type CanvasInputs = z.infer<typeof CanvasInputsSchema>;
 
