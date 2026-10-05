@@ -31,8 +31,6 @@ One line per completed roadmap task, newest first. Dates are absolute.
   step limit, `FUZZ_B9` gone; B8 gets its own 40 s). A sweep measures its
   profile's centroid against the path's start and warns when it is more than 1 %
   of the path's length (or 0.5 mm) away, which is what B10 got wrong.
-# Changelog
-One line per completed roadmap task, newest first. Dates are absolute.
 - 2026-10-05 · **P4-12 (H3, H4) Exact enough mass properties, and a kernel worker
   that recycles itself** (ADR-0067 §H3, §H4): the facade's `measure` and
   `properties` integrate BRepGProp with an error bound (`MASS_EPS = 1e-7`)
