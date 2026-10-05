@@ -18,6 +18,7 @@ export const MEDIA_TYPES = [
   'model/stl',
   'model/3mf',
   'model/obj',
+  'application/x-openscad',
   'image/png',
   'image/jpeg',
   'image/webp',
@@ -25,13 +26,20 @@ export const MEDIA_TYPES = [
 
 export type MediaType = (typeof MEDIA_TYPES)[number];
 
-/** The media types an `import` feature's `file` may have (ADR-0066 §2). */
+/**
+ * The media types an `import` feature's `file` may have (ADR-0066 §2): STEP,
+ * the meshes, and an OpenSCAD file, which compiles to a mesh (ADR-0071 §2).
+ */
 export const MODEL_MEDIA_TYPES: readonly MediaType[] = [
   'model/step',
   'model/stl',
   'model/3mf',
   'model/obj',
+  'application/x-openscad',
 ];
+
+/** An OpenSCAD source file (P5-04, ADR-0071). */
+export const SCAD_MEDIA_TYPE = 'application/x-openscad' satisfies MediaType;
 
 /** The media types a canvas image may have (ADR-0066 §5). */
 export const IMAGE_MEDIA_TYPES: readonly MediaType[] = ['image/png', 'image/jpeg', 'image/webp'];
@@ -51,6 +59,7 @@ const BY_EXTENSION: Readonly<Record<string, MediaType>> = {
   stl: 'model/stl',
   '3mf': 'model/3mf',
   obj: 'model/obj',
+  scad: 'application/x-openscad',
   png: 'image/png',
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -80,9 +89,18 @@ export function isModelMediaType(
   return mediaType !== undefined && MODEL_MEDIA_TYPES.includes(mediaType as MediaType);
 }
 
-/** Whether a media type is a mesh: a mesh model, whose `units` the user picks. */
+/**
+ * Whether a media type is a mesh: a mesh model, whose `units` the user picks.
+ * An OpenSCAD file is one: it compiles to a mesh body (ADR-0071 §2), so it
+ * needs manifold-3d like the others.
+ */
 export function isMeshMediaType(mediaType: string | undefined): boolean {
   return mediaType !== undefined && isModelMediaType(mediaType) && mediaType !== 'model/step';
+}
+
+/** Whether a media type is an OpenSCAD file, which the kernel compiles first (ADR-0071). */
+export function isScadMediaType(mediaType: string | undefined): boolean {
+  return mediaType === SCAD_MEDIA_TYPE;
 }
 
 /** STEP or a mesh: what kind of import a file is. */

@@ -6,6 +6,7 @@ import {
   type ExtrudoDocument,
   type Feature,
   ImportInputsSchema,
+  importInputs,
   newId,
 } from '@extrudo/core';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -18,6 +19,14 @@ import {
   pendingImportStore,
 } from './import';
 import { featureDialogs, specForCommand } from './registry';
+import {
+  evaluateOverride,
+  overrideInputs,
+  overrideIssue,
+  overrideValues,
+  rowOrder,
+  SCAD_ORDER,
+} from './scadRows';
 import type { DialogContext, DialogValues } from './spec';
 import { setupDialogs } from './testing';
 import { shownFields } from './values';
@@ -145,6 +154,121 @@ describe('the Import dialog', () => {
     expect(formatSize(512)).toBe('512 B');
     expect(formatSize(30_906)).toBe('30 kB');
     expect(formatSize(2.5 * 1024 * 1024)).toBe('2.5 MB');
+  });
+});
+
+describe("the Import dialog's OpenSCAD rows (P5-04 slice 2)", () => {
+  const values = (exprs: Record<string, string>, order: string[]): DialogValues => ({
+    refs: {},
+    exprs,
+    choices: {},
+    toggles: {},
+    labels: { [SCAD_ORDER]: order },
+  });
+
+  it('names an OpenSCAD file in the info line and turns rows into packed pairs', () => {
+    const pending = pick('gear.scad', 'application/x-openscad');
+    const t = setupDialogs([importDialog]);
+    t.controller.start('import');
+    const ctx = contextOf(emptyDocument(), pending);
+    const info = importDialog.fields[0];
+    expect(info?.kind === 'info' && info.text(t.open()?.values as DialogValues, ctx)).toBe(
+      'gear.scad · 30 kB · OpenSCAD',
+    );
+    // The list arrived: the rows' order is the file's.
+    t.controller.setLabels(SCAD_ORDER, ['width', 'depth', 'holes']);
+    t.controller.setExpr('scad:width', '60');
+    t.controller.setExpr('scad:holes', '3');
+    let inputs = t.open()?.draft.inputs;
+    expect(ImportInputsSchema.safeParse(inputs).success).toBe(true);
+    expect(inputs).toMatchObject({
+      scadName: { kind: 'enum', value: 'width' },
+      scadValue: { kind: 'expr', expr: '60', unit: 'unitless' },
+      scadName2: { kind: 'enum', value: 'holes' },
+      scadValue2: { kind: 'expr', expr: '3', unit: 'unitless' },
+    });
+    // Emptying a row takes its pair out, and the others move up: no hole.
+    t.controller.setExpr('scad:width', '');
+    inputs = t.open()?.draft.inputs;
+    expect(inputs).toMatchObject({
+      scadName: { kind: 'enum', value: 'holes' },
+      scadValue: { kind: 'expr', expr: '3', unit: 'unitless' },
+    });
+    expect(inputs?.scadName2).toBeUndefined();
+    expect(inputs?.scadValue2).toBeUndefined();
+    expect(t.controller.ok()).toBe(true);
+    expect(t.store.getState().doc.features.at(-1)?.inputs.scadName).toEqual({
+      kind: 'enum',
+      value: 'holes',
+    });
+  });
+
+  it("stores each value with the unit its expression has, a parameter's own", () => {
+    const doc: ExtrudoDocument = {
+      ...emptyDocument(),
+      parameters: [
+        { id: 'p1' as never, name: 'plateWidth', expression: '60 mm', unit: 'length' },
+        { id: 'p2' as never, name: 'count', expression: '4', unit: 'unitless' },
+      ],
+    };
+    const inputs = overrideInputs(
+      values(
+        { 'scad:width': 'plateWidth', 'scad:holes': 'count', 'scad:tilt': '30 deg', 'scad:n': '3' },
+        ['width', 'holes', 'tilt', 'n'],
+      ),
+      doc,
+    );
+    expect(Object.values(inputs).filter((i) => i.kind === 'expr')).toEqual([
+      { kind: 'expr', expr: 'plateWidth', unit: 'length' },
+      { kind: 'expr', expr: 'count', unit: 'unitless' },
+      { kind: 'expr', expr: '30 deg', unit: 'angle' },
+      { kind: 'expr', expr: '3', unit: 'unitless' },
+    ]);
+    // In an inch document a plain number is still the number OpenSCAD gets.
+    const inch = { ...doc, settings: { units: 'in' as const, precision: 2 } };
+    expect(evaluateOverride(inch, '24')).toMatchObject({ unit: 'unitless', result: { value: 24 } });
+    expect(evaluateOverride(inch, 'plateWidth')).toMatchObject({ unit: 'length' });
+    expect(overrideIssue(values({ 'scad:width': 'plateWidht' }, ['width']), doc)?.message).toMatch(
+      /^width: /,
+    );
+  });
+
+  it("reads stored pairs back as rows, and keeps the file's order with stored extras last", () => {
+    const stored = importInputs({
+      file: 'f' as AttachmentId,
+      overrides: [
+        { name: 'holes', value: '3' },
+        { name: 'gone', value: '2' },
+        { name: 'width', value: 'plateWidth', unit: 'length' },
+      ],
+    });
+    const read = overrideValues(stored);
+    expect(read.exprs).toEqual({ 'scad:holes': '3', 'scad:gone': '2', 'scad:width': 'plateWidth' });
+    expect(read.labels?.[SCAD_ORDER]).toEqual(['holes', 'gone', 'width']);
+    // The file's list: numbers become rows, a string or a boolean is read only (no row order).
+    const list = [
+      { name: 'width', type: 'number', initial: 40 },
+      { name: 'depth', type: 'number', initial: 30 },
+      { name: 'holes', type: 'number', initial: 2 },
+      { name: 'label', type: 'string', initial: 'plate' },
+      { name: 'size', type: 'number', initial: [1, 2] },
+    ];
+    expect(rowOrder(list, ['holes', 'gone', 'width'])).toEqual(['width', 'depth', 'holes', 'gone']);
+    expect(rowOrder(undefined, ['holes', 'gone'])).toEqual(['holes', 'gone']);
+    // Editing: the dialog's values hold the rows.
+    const t = setupDialogs([importDialog]);
+    const pending = pick('gear.scad', 'application/x-openscad');
+    t.controller.start('import');
+    t.controller.setLabels(SCAD_ORDER, ['width', 'holes']);
+    t.controller.setExpr('scad:holes', '5');
+    t.controller.ok();
+    const id = t.store.getState().doc.features.at(-1)?.id;
+    clearPendingImport();
+    if (!id) throw new Error('no feature');
+    t.controller.edit(id);
+    expect(t.open()?.values.exprs['scad:holes']).toBe('5');
+    expect(t.open()?.values.labels[SCAD_ORDER]).toEqual(['holes']);
+    expect(t.store.getState().doc.attachments?.[pending.id]).toBeDefined();
   });
 });
 

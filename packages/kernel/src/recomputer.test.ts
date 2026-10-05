@@ -67,6 +67,17 @@ function setup(doc: ExtrudoDocument, options: { fonts?: FontSource; files?: File
           events.push('meshes');
           return service.enableMeshes();
         },
+        // This kernel has no compiler: the test hears the call and goes on.
+        enableOpenscad: async () => {
+          events.push('openscad');
+        },
+        scadParameters: async (id: AttachmentId) => {
+          events.push(`scad-parameters:${id}`);
+          return {
+            ok: true as const,
+            parameters: [{ name: 'width', type: 'number', initial: 40 }],
+          };
+        },
         recompute: (request, onFeature) => {
           requests.push(request);
           events.push('recompute');
@@ -342,6 +353,73 @@ describe('Recomputer', () => {
     edit(second.document, (d) => withExpr(d, 'a', 'size', '12 mm'));
     await until(() => second.events.length > before);
     expect(second.events.slice(before)).not.toContain('meshes');
+  });
+
+  it('loads OpenSCAD once for a document that imports a .scad file (ADR-0071 §3)', {
+    timeout: 60_000,
+  }, async () => {
+    const bytes = new TextEncoder().encode('cube(10);').buffer as ArrayBuffer;
+    const file = 's1' as AttachmentId;
+    const importer: Feature = { ...testFeature('imp', 'import'), inputs: importInputs({ file }) };
+    const doc: ExtrudoDocument = {
+      ...testDocument([testFeature('a', 'test-box', { size: '10 mm' }), importer]),
+      attachments: {
+        [file]: {
+          name: 'part',
+          fileName: 'part.scad',
+          mediaType: 'application/x-openscad',
+          sha256: 'c'.repeat(64),
+          size: bytes.byteLength,
+        },
+      },
+    };
+    const { model, events, document } = setup(doc, { files: { bytes: async () => bytes } });
+    await until(() => ready(model));
+    // OpenSCAD (which brings manifold-3d with it), after the file, before the recompute.
+    expect(events.filter((e) => e === 'openscad')).toEqual(['openscad']);
+    expect(events).not.toContain('meshes');
+    expect(events.indexOf(`file:${file}:application/x-openscad:part.scad:9`)).toBeLessThan(
+      events.indexOf('openscad'),
+    );
+    expect(events.indexOf('openscad')).toBeLessThan(events.indexOf('recompute'));
+    const before = events.length;
+    edit(document, (d) => withExpr(d, 'a', 'size', '12 mm'));
+    await until(() => events.length > before);
+    expect(events.slice(before)).not.toContain('openscad');
+
+    // The Import dialog's rows: the kernel lists the file's variables.
+    const listed = await recomputer?.scadParameters(file);
+    expect(listed).toEqual({
+      ok: true,
+      parameters: [{ name: 'width', type: 'number', initial: 40 }],
+    });
+    expect(events.at(-1)).toBe(`scad-parameters:${file}`);
+  });
+
+  it('sends a just-picked .scad file before listing its variables', {
+    timeout: 30_000,
+  }, async () => {
+    const bytes = new TextEncoder().encode('width = 4;').buffer as ArrayBuffer;
+    const file = 'picked' as AttachmentId;
+    const { model, events } = setup(
+      testDocument([testFeature('a', 'test-box', { size: '10 mm' })]),
+      {
+        files: {
+          bytes: async () => bytes,
+          mediaType: (id) => (id === file ? 'application/x-openscad' : undefined),
+          fileName: (id) => (id === file ? 'gear.scad' : undefined),
+        },
+      },
+    );
+    await until(() => ready(model));
+    expect(events).not.toContain('openscad');
+    await recomputer?.scadParameters(file);
+    const slice = events.filter((e) => e !== 'recompute');
+    expect(slice).toEqual([
+      `file:${file}:application/x-openscad:gear.scad:10`,
+      'openscad',
+      `scad-parameters:${file}`,
+    ]);
   });
 
   it("collects the canvases' frames, and never sends an image to the worker", {

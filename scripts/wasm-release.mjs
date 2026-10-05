@@ -1,5 +1,6 @@
 // Shared build/publish/fetch logic for the WASM builds we make ourselves
-// (packages/kernel/occt, packages/sketch/planegcs).
+// (packages/kernel/occt, packages/sketch/planegcs) or mirror
+// (packages/openscad: OpenSCAD's own snapshot, ADR-0071 §1).
 //
 // A build needs Docker and takes minutes, so it is keyed by a hash of its
 // inputs. CI builds each new hash once and publishes `dist/` as a GitHub
@@ -48,7 +49,9 @@ export function run(cmd, args, options = {}) {
  * @param {string} spec.dir      the build's directory; `dist/` lives in it
  * @param {string[]} spec.inputs files whose content keys the build
  * @param {string} [spec.salt]   extra hash input (a toolchain version)
- * @param {() => void} spec.build builds into dist/
+ * @param {() => void | Promise<void>} spec.build builds into dist/
+ * @param {boolean} [spec.buildOnMissing] `ensure` builds when the release is
+ *   missing (a build that is only a download, like OpenSCAD's mirror)
  * @param {string} spec.notes    release notes
  * @param {string} spec.buildHint command that builds it locally, for error messages
  * @param {Record<string, () => void>} [spec.commands] extra commands
@@ -142,6 +145,12 @@ export async function wasmRelease(spec) {
         try {
           await fetchRelease(hash);
         } catch (error) {
+          if (spec.buildOnMissing) {
+            console.log(`${spec.label}: no ${tag(hash)} release (${error.message}), building it`);
+            await spec.build();
+            writeFileSync(STAMP, `${hash}\n`);
+            break;
+          }
           console.error(
             `\nCould not download ${tag(hash)} (${error.message}).\n` +
               `If you changed ${relative(process.cwd(), spec.dir) || spec.dir}, build it locally with Docker:\n` +
@@ -155,7 +164,7 @@ export async function wasmRelease(spec) {
         await fetchRelease(hash);
         break;
       case 'build':
-        spec.build();
+        await spec.build();
         writeFileSync(STAMP, `${hash}\n`);
         break;
       case 'publish':

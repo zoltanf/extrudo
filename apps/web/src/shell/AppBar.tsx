@@ -49,7 +49,7 @@ export interface FileActions {
   importFile(): void;
   /** Opens the model's export (STL, 3MF, STEP; P2-12). */
   exportModel?(): void;
-  /** Picks a STEP or mesh file and opens the Import dialog (P4-06, ADR-0066 §2). */
+  /** Picks a STEP, mesh or OpenSCAD file and opens the Import dialog (P4-06, P5-04). */
   importModel?(): void;
   /** Opens the Versions dialog at its description field (P2-14). */
   saveVersion?(): void;
@@ -142,7 +142,7 @@ export function AppBar({
         )}
         {file.importModel && (
           <MenuItem icon={<FileUp size={14} />} onSelect={file.importModel}>
-            Import STEP or mesh…
+            Import STEP, mesh or OpenSCAD…
           </MenuItem>
         )}
         <MenuItem icon={<Import size={14} />} onSelect={file.importFile}>

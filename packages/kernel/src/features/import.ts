@@ -23,6 +23,13 @@
  * message), one with no solids in it, a mesh that isn't closed or has more
  * triangles than Extrudo reads, and a mesh file our readers can't read (the
  * reader's message).
+ *
+ * **An OpenSCAD file** (P5-04, ADR-0071) is compiled first, in `prepare`: the
+ * OpenSCAD compiler runs in a worker of its own, so the compile is awaited
+ * there, with the overrides' values as `-D` definitions; the 3MF it writes then
+ * takes the mesh path above unchanged. OpenSCAD's errors are the feature's
+ * error and its echoes and warnings the feature's warnings, worded by
+ * `@extrudo/openscad`.
  */
 import {
   type AttachmentId,
@@ -32,6 +39,8 @@ import {
   importFeature,
   importSettings,
   isMeshMediaType,
+  isScadMediaType,
+  scadOverrides,
   UNIT_FACTORS,
 } from '@extrudo/core';
 import {
@@ -39,13 +48,20 @@ import {
   readObj,
   readStl,
   stlTriangleCount,
+  type ThreeMfModel,
   type ThreeMfObject,
   type TriangleMesh,
 } from '@extrudo/io';
+import type { ScadCompiler, ScadDefine, ScadRequest, ScadResult } from '@extrudo/openscad';
 import { KernelError, MeshError, type ShapeHandle, type Vec3 } from '../kernel';
 import { compareGeometry, deriveNames, type TopoNames } from '../naming/names';
 import { splitName } from '../naming/topo-id';
-import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import type {
+  EvalContext,
+  FeatureOutput,
+  KernelFeatureDefinition,
+  PrepareContext,
+} from '../recompute/types';
 import { splitSolids } from './bodies';
 import { rotation } from './matrix';
 
@@ -68,6 +84,7 @@ const THREE_MF_UNITS: Readonly<Record<string, number>> = {
 export const kernelImport: KernelFeatureDefinition<ImportInputs> = {
   ...importFeature,
   bodyAccess: () => 'write',
+  prepare: prepareImport,
   evaluate: evaluateImport,
 };
 
@@ -77,6 +94,9 @@ const UP_Y = rotation([0, 0, 0], [1, 0, 0], Math.PI / 2);
 function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
   const settings = importSettings(ctx.inputs);
   const mediaType = ctx.fileType(settings.file);
+  if (isScadMediaType(mediaType)) {
+    return evaluateScadImport(ctx, settings.file, settings.units, settings.up);
+  }
   if (isMeshMediaType(mediaType)) {
     return evaluateMeshImport(ctx, settings.file, settings.units, settings.up);
   }
@@ -134,9 +154,17 @@ function evaluateMeshImport(
   units: MeshUnits,
   up: 'z' | 'y',
 ): FeatureOutput {
+  return meshBodies(ctx, ctx.fileName(file), readMeshFile(ctx, file, units), up);
+}
+
+/** Meshes as bodies: `meshFrom`, the `up` turn, one body per connected piece. */
+function meshBodies(
+  ctx: EvalContext<ImportInputs>,
+  name: string,
+  meshes: readonly TriangleMesh[],
+  up: 'z' | 'y',
+): FeatureOutput {
   const { kernel } = ctx;
-  const name = ctx.fileName(file);
-  const meshes = readMeshFile(ctx, file, units);
   using scope = kernel.scope();
   const pieces: { shape: ShapeHandle; center: Vec3; volume: number }[] = [];
   for (const mesh of meshes) {
@@ -212,25 +240,7 @@ function readMeshFile(
   const bytes = ctx.file(file);
   const name = ctx.fileName(file);
   const mediaType = ctx.fileType(file);
-  if (mediaType === 'model/3mf') {
-    const model = read(read3mf, bytes, name);
-    const factor =
-      units === 'auto' ? (THREE_MF_UNITS[model.unit] ?? 1) : (UNIT_FACTORS[units] ?? 1);
-    // The build's items in order: one body per object the build makes. A file
-    // with no build items is read as its objects, which is what it means.
-    const byId = new Map(model.objects.map((object) => [object.id, object]));
-    const ids = model.build.length > 0 ? model.build : model.objects.map((object) => object.id);
-    const objects = ids
-      .map((id) => byId.get(id))
-      .filter((object): object is ThreeMfObject => !!object && object.mesh.indices.length > 0);
-    if (objects.length === 0) throw new KernelError(`The file ${name} has no objects in it.`);
-    let triangles = 0;
-    return objects.map((object) => {
-      triangles += object.mesh.indices.length / 3;
-      refuseTooMany(name, triangles);
-      return scaled(object.mesh, factor);
-    });
-  }
+  if (mediaType === 'model/3mf') return threeMfMeshes(read(read3mf, bytes, name), units, name);
   if (mediaType === 'model/obj') {
     const objects = read(readObj, new TextDecoder().decode(bytes), name);
     if (objects.length === 0) throw new KernelError(`The file ${name} has no faces in it.`);
@@ -248,6 +258,150 @@ function readMeshFile(
   const stl = read(readStl, bytes, name);
   refuseTooMany(name, stl.mesh.indices.length / 3);
   return [scaled(stl.mesh, UNIT_FACTORS[units] ?? 1)];
+}
+
+/**
+ * A 3MF's meshes in millimetres: one per object its build makes, in the
+ * build's order. A file with no build items is read as its objects, which is
+ * what it means.
+ */
+function threeMfMeshes(model: ThreeMfModel, units: MeshUnits, name: string): TriangleMesh[] {
+  const factor = units === 'auto' ? (THREE_MF_UNITS[model.unit] ?? 1) : (UNIT_FACTORS[units] ?? 1);
+  const byId = new Map(model.objects.map((object) => [object.id, object]));
+  const ids = model.build.length > 0 ? model.build : model.objects.map((object) => object.id);
+  const objects = ids
+    .map((id) => byId.get(id))
+    .filter((object): object is ThreeMfObject => !!object && object.mesh.indices.length > 0);
+  if (objects.length === 0) throw new KernelError(`The file ${name} has no objects in it.`);
+  let triangles = 0;
+  return objects.map((object) => {
+    triangles += object.mesh.indices.length / 3;
+    refuseTooMany(name, triangles);
+    return scaled(object.mesh, factor);
+  });
+}
+
+/** What `prepare` hands an OpenSCAD import's `evaluate`: the compiled model and what was said. */
+interface ScadCompiled {
+  /** OpenSCAD's 3MF (ADR-0071 §1). */
+  model: Uint8Array;
+  warnings: string[];
+}
+
+/**
+ * Compiles an OpenSCAD file (ADR-0071 §3): the overrides' values as `-D`
+ * definitions, in the compiler's own worker. Anything else is left to
+ * `evaluate`, which needs nothing from outside.
+ */
+async function prepareImport(ctx: PrepareContext<ImportInputs>): Promise<ScadCompiled | undefined> {
+  const { file } = importSettings(ctx.inputs);
+  if (!isScadMediaType(ctx.fileType(file))) return undefined;
+  const name = ctx.fileName(file);
+  const source = ctx.file(file);
+  const { defines, warnings } = scadDefines(ctx, name, new TextDecoder().decode(source));
+  const result = await compileOnce(ctx.openscad(), { fileName: name, source, defines });
+  if (!result.ok) throw new KernelError(result.error);
+  return { model: result.model, warnings: [...warnings, ...result.warnings] };
+}
+
+/**
+ * The overrides as `-D` definitions (ADR-0071 §5), checked: both halves of
+ * every pair, no variable twice, a finite value. A variable the file never
+ * assigns is a warning, not an error — OpenSCAD takes it and nothing changes.
+ */
+function scadDefines(
+  ctx: PrepareContext<ImportInputs>,
+  name: string,
+  source: string,
+): { defines: ScadDefine[]; warnings: string[] } {
+  const defines: ScadDefine[] = [];
+  const warnings: string[] = [];
+  for (const override of scadOverrides(ctx.inputs)) {
+    if (override.name === undefined) {
+      throw new KernelError(
+        `Override ${override.n} has a value but no variable: name the variable of ${name} it sets.`,
+      );
+    }
+    if (override.value === undefined) {
+      throw new KernelError(`Override ${override.n} (${override.name}) has no value.`);
+    }
+    if (defines.some((define) => define.name === override.name)) {
+      throw new KernelError(`${override.name} is overridden twice: keep one of the two.`);
+    }
+    const value = ctx.value(override.value);
+    if (!Number.isFinite(value)) {
+      throw new KernelError(`The value of ${override.name} isn't a number OpenSCAD can take.`);
+    }
+    defines.push({ name: override.name, value });
+    if (!override.name.startsWith('$') && !assigns(source, override.name)) {
+      warnings.push(`${name} has no variable ${override.name}: its override does nothing.`);
+    }
+  }
+  return { defines, warnings };
+}
+
+/** Whether a file assigns a variable somewhere (`width = …`, not `width == …`). */
+function assigns(source: string, variable: string): boolean {
+  return new RegExp(`(^|[^A-Za-z0-9_$.])${variable.replace(/\$/g, '\\$')}\\s*=(?!=)`, 'm').test(
+    source,
+  );
+}
+
+/**
+ * The compiles a compiler has done lately, by file and definitions, so that
+ * moving an import in the timeline, or a preview and a recompute of the same
+ * values, compile once (the engine's cache key also has the bodies before the
+ * feature in it). A few, since a result is a small 3MF.
+ */
+const compiles = new WeakMap<ScadCompiler, Map<string, Promise<ScadResult>>>();
+const COMPILES_KEPT = 16;
+
+function compileOnce(compiler: ScadCompiler, request: ScadRequest): Promise<ScadResult> {
+  const kept = compiles.get(compiler) ?? new Map<string, Promise<ScadResult>>();
+  compiles.set(compiler, kept);
+  const key = `${request.fileName}\n${digest(request.source)}\n${JSON.stringify(request.defines)}`;
+  const known = kept.get(key);
+  if (known) {
+    kept.delete(key);
+    kept.set(key, known);
+    return known;
+  }
+  const result = compiler.compile(request);
+  kept.set(key, result);
+  // A compile that was stopped (its time, a crash) or found no WASM (offline)
+  // may do better another time.
+  void result.then((r) => {
+    if (!r.ok && /stopped|isn't downloaded/.test(r.error)) kept.delete(key);
+  });
+  while (kept.size > COMPILES_KEPT) kept.delete(kept.keys().next().value as string);
+  return result;
+}
+
+/** A 64-bit FNV-1a of the bytes, as hex: enough to tell two sources apart. */
+function digest(bytes: Uint8Array): string {
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of bytes) hash = BigInt.asUintN(64, (hash ^ BigInt(byte)) * 0x100000001b3n);
+  return hash.toString(16);
+}
+
+/**
+ * An OpenSCAD import's bodies (ADR-0071 §2): the 3MF `prepare` compiled read
+ * like any 3MF, then ADR-0066's mesh path. OpenSCAD's own unit is the
+ * millimetre (its 3MF says so), and `units` scales it like a mesh's.
+ */
+function evaluateScadImport(
+  ctx: EvalContext<ImportInputs>,
+  file: AttachmentId,
+  units: MeshUnits,
+  up: 'z' | 'y',
+): FeatureOutput {
+  const compiled = ctx.prepared as ScadCompiled | undefined;
+  const name = ctx.fileName(file);
+  if (!compiled) throw new KernelError(`${name} wasn't compiled: OpenSCAD isn't loaded here.`);
+  const meshes = threeMfMeshes(read(read3mf, compiled.model, name), units, name);
+  const output = meshBodies(ctx, name, meshes, up);
+  for (const warning of compiled.warnings) ctx.warn(warning);
+  return output;
 }
 
 /** Reads a file, with the reader's own message when it can't. */

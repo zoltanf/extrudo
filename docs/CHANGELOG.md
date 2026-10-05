@@ -4,6 +4,36 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-05 · **P5-04 OpenSCAD import (2 of 2): the app** (ADR-0071): Insert ›
+  Import (and the File menu's "Import STEP, mesh or OpenSCAD…") takes `.scad`
+  files. The Import dialog lists the file's customizer variables under its
+  groups, each a row whose empty state is the file's own value (the
+  placeholder) and whose expression — a number, or a parameter like `width` —
+  overrides it; a string, boolean or vector variable is shown read only. The
+  rows are packed into the numbered `scadName`/`scadValue` pairs, each value
+  stored with the unit its expression has (`scadValue`'s `unit` is now
+  required: file format §6.28), and the API gives a parameter handle its own
+  unit. A design parameter bound to a variable works in the Customizer: each
+  slider step recompiles. The `Recomputer` loads OpenSCAD once per kernel (again
+  after a crash or a heap recycle), the service worker caches the 11 MB WASM in
+  `extrudo-openscad` on first use instead of precaching it, and offline before
+  that the import says "OpenSCAD isn't downloaded yet: connect to the internet
+  once to compile gear.scad." New e2e: `import-scad.spec.ts`, plus `.scad`
+  cases in `hosting.spec.ts` and `pwa.spec.ts`.
+- 2026-10-05 · **P5-04 OpenSCAD import (1 of 2): kernel, Node and the CLI**
+  (ADR-0071): a `.scad` file is an attachment (`application/x-openscad`) the
+  `import` feature reads; OpenSCAD's own WebAssembly snapshot (Manifold backend,
+  GPL-2.0-or-later, mirrored as the release `openscad-<hash>`) compiles it to a
+  3MF in a worker of its own — one fresh instance per compile, a 60 s limit
+  and a 1 GiB heap ceiling — and the mesh goes on through ADR-0066's mesh path.
+  Up to 32 overrides (`scadName`/`scadValue` …) set the file's top-level
+  variables from expressions, so a `.scad` part follows the document's
+  parameters, compiled again only when a value changes. OpenSCAD's errors are
+  the feature's in the app's words ("gear.scad, line 4: syntax error.", a
+  missing `include` named, a 2D or empty result explained) and its echoes and
+  warnings the feature's warnings. New: `packages/openscad`, the engine's async
+  `prepare` hook, `KernelApi.enableOpenscad()`; the CLI compiles `.scad`
+  imports. The app's side (dialog, `Recomputer`, service worker) is slice 2.
 - 2026-10-05 · **Landing page: a scroll walkthrough (nine pictures of a PCB
   enclosure built from sketches, recorded from the app) replaces the intro video**
   (ADR-0057 amendment).

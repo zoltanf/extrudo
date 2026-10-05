@@ -65,6 +65,10 @@ function fakeSpawn(options: FakeOptions) {
       enableMeshes: async () => {
         events.push(`meshes:${worker}`);
       },
+      enableOpenscad: async () => {
+        events.push(`openscad:${worker}`);
+      },
+      scadParameters: async () => ({ ok: true, parameters: [] }),
       recompute: async (_request: RecomputeRequest) => {
         requests++;
         events.push(`recompute:${worker}`);
@@ -282,6 +286,36 @@ describe('Recomputer heap recycling', () => {
     expect(events.indexOf('meshes:1')).toBeLessThan(events.indexOf('recompute:1'));
     expect(events.lastIndexOf('meshes:2')).toBeLessThan(events.indexOf('recompute:2'));
     expect(model.getState().status).toBe('ready');
+  });
+
+  it('loads OpenSCAD again on the new worker for a .scad import (ADR-0071 §3)', async () => {
+    const file = 's1' as AttachmentId;
+    const files: FileSource = {
+      bytes: async () => new ArrayBuffer(9),
+      mediaType: () => 'application/x-openscad',
+    };
+    const { model, events } = setup(
+      {
+        ...testDocument([{ ...testFeature('Import1', 'import'), inputs: importInputs({ file }) }]),
+        attachments: {
+          [file]: {
+            name: 'gear',
+            fileName: 'gear.scad',
+            mediaType: 'application/x-openscad',
+            sha256: 'd'.repeat(64),
+            size: 9,
+          },
+        },
+      },
+      { heapRecycleBytes: 1024, heap: (worker) => (worker === 1 ? 4096 : 512), files },
+    );
+    await until(() => ready(model) && events.filter((e) => e === 'recompute:2').length === 1);
+    expect(events.filter((e) => e.startsWith('file:'))).toEqual(['file:s1', 'file:s1']);
+    expect(events.filter((e) => e.startsWith('openscad:'))).toEqual(['openscad:1', 'openscad:2']);
+    // OpenSCAD brings manifold-3d with it: no separate call.
+    expect(events.filter((e) => e.startsWith('meshes:'))).toEqual([]);
+    expect(events.indexOf('openscad:1')).toBeLessThan(events.indexOf('recompute:1'));
+    expect(events.lastIndexOf('openscad:2')).toBeLessThan(events.indexOf('recompute:2'));
   });
 
   it('recycles a real kernel whose heap passes a few MB, with the same result', {

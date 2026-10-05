@@ -472,3 +472,35 @@ describe('toFile', () => {
     expect(stored.meta.modified).toBeTruthy();
   });
 });
+
+describe('OpenSCAD overrides (ADR-0071 §5)', () => {
+  it("store a parameter handle with the parameter's own unit, a plain value as unitless", () => {
+    const d = Design.create(FIXED);
+    const width = d.parameter('width', '60 mm');
+    const teeth = d.parameter('teeth', '24', { unit: 'unitless' });
+    const part = d.import({
+      file: 'att-gear.scad',
+      scadName: 'width',
+      scadValue: width,
+      scadName2: 'teeth',
+      scadValue2: teeth,
+      scadName3: 'fn',
+      scadValue3: 64,
+    });
+    const inputs = part.feature?.inputs ?? {};
+    expect(inputs.scadValue).toEqual({ kind: 'expr', expr: 'width', unit: 'length' });
+    expect(inputs.scadValue2).toEqual({ kind: 'expr', expr: 'teeth', unit: 'unitless' });
+    expect(inputs.scadValue3).toEqual({ kind: 'expr', expr: '64', unit: 'unitless' });
+  });
+
+  it('refuses a stored value without its unit', () => {
+    const d = Design.create(FIXED);
+    expect(() =>
+      d.import({
+        file: 'att-gear.scad',
+        scadName: 'width',
+        scadValue: { kind: 'expr', expr: '5' },
+      }),
+    ).toThrow(/scadValue: must say its unit/);
+  });
+});

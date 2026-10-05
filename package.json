@@ -25,8 +25,9 @@
     "api:generate": "node --import ./scripts/ts-import.mjs scripts/generate-api.mjs",
     "extrudo": "node packages/cli/bin/extrudo.mjs",
     "occt": "node packages/kernel/occt/occt.mjs",
-    "wasm": "pnpm occt ensure && pnpm planegcs ensure",
-    "planegcs": "node packages/sketch/planegcs/planegcs.mjs"
+    "wasm": "pnpm occt ensure && pnpm planegcs ensure && pnpm openscad ensure",
+    "planegcs": "node packages/sketch/planegcs/planegcs.mjs",
+    "openscad": "node packages/openscad/openscad.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

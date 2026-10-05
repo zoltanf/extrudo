@@ -31,6 +31,8 @@ function connect(worker: Worker): KernelConnection {
     addFont: (id, bytes) => api.addFont(id, bytes),
     addFile: (id, bytes, mediaType, fileName) => api.addFile(id, bytes, mediaType, fileName),
     enableMeshes: () => api.enableMeshes(),
+    enableOpenscad: () => api.enableOpenscad(),
+    scadParameters: (id) => api.scadParameters(id),
     recompute: (request, onFeature) =>
       api.recompute(request, onFeature && Comlink.proxy(onFeature)),
     preview: (request, onFeature) => api.preview(request, onFeature && Comlink.proxy(onFeature)),

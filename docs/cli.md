@@ -83,6 +83,11 @@ extrudo export box.extrudo --format step --resolution fine --out box.step
   chose go into that one file.
 - A mesh body (an imported STL, 3MF or OBJ, or one a boolean made) is left out
   of a STEP file, which says so; STL and 3MF take its triangles as they are.
+- An imported OpenSCAD file (`.scad`, ADR-0071) is compiled by OpenSCAD's own
+  WASM in a worker thread, with the import's overrides as `-D` definitions, so
+  `--param` reaches the `.scad` part through any override bound to that
+  parameter. Its body is a mesh body like an STL's. `pnpm wasm` downloads the
+  compiler with the rest.
 - `--resolution` is `coarse` (0.1 mm), `medium` (0.02 mm, the default), `fine`
   (0.005 mm) or a deflection in millimetres.
 - With `--json` it prints `{ "files": [{ "path", "name", "bytes", "bodies",
@@ -97,7 +102,8 @@ extrudo set bracket.extrudo --config Large --out bracket-large.extrudo
 
 Writes a new `.extrudo` file with the changes: its saved versions, its
 thumbnail and the attachments it names travel with it (a font the design
-carries, a STEP or mesh file it imports). The design it was given is untouched.
+carries, a STEP, mesh or OpenSCAD file it imports). The design it was given is
+untouched.
 
 ### `check` — is this design sound?
 

@@ -690,7 +690,7 @@ export const TOOLS = {
     label: 'Import',
     icon: 'insert-svg',
     category: 'insert',
-    hint: 'Bring a STEP file in as solid bodies you can fillet, cut and print.',
+    hint: 'Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print.',
   },
   canvas: {
     id: 'canvas',

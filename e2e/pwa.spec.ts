@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
-import { kernelReady } from './helpers';
+import { kernelReady, saveStatus } from './helpers';
 import { type StaticHost, startStaticHost } from './static-host';
 
 // The rest of the suite blocks service workers (playwright.config.ts); this
@@ -59,6 +59,74 @@ test('the service worker precaches the app, WASM included, and the app opens off
   await expect(
     page.getByRole('button', { name: 'Project name: Storage box. Rename' }),
   ).toBeVisible();
+});
+
+// ADR-0071 §4: OpenSCAD's 11 MB WASM is not precached. The first `.scad`
+// import fetches it, the service worker keeps it in a cache of its own, and
+// from then on a `.scad` design computes offline; before that, offline, the
+// feature says what it needs.
+const openscadCached = (page: Page) =>
+  page.evaluate(
+    `caches.open('extrudo-openscad').then(async (c) => (await c.keys()).map((r) => new URL(r.url).pathname))`,
+  ) as Promise<string[]>;
+
+async function importScad(page: Page) {
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('tab', { name: 'Insert' }).click();
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await (await chooser).setFiles('fixtures/imports/customizer-plate.scad');
+  const dialog = page.getByRole('region', { name: 'Import dialog' });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+test('OpenSCAD is cached on first use, and a .scad design computes offline after', async ({
+  page,
+  context,
+}) => {
+  await page.goto('./');
+  await page.evaluate('navigator.serviceWorker.ready.then(() => true)');
+  expect((await cachedUrls(page)).some((p) => /\/assets\/openscad-.*\.wasm$/.test(p))).toBe(false);
+  // The glue is small and precached; the WASM is not.
+  expect((await cachedUrls(page)).some((p) => /\/assets\/openscad-.*\.js$/.test(p))).toBe(true);
+
+  await page.getByRole('button', { name: 'New design' }).click();
+  await kernelReady(page);
+  const dialog = await importScad(page);
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 90_000 });
+  await dialog.getByRole('button', { name: /^OK/ }).click();
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:1:40,30,4', { timeout: 60_000 });
+  await expect
+    .poll(() => openscadCached(page))
+    .toEqual([expect.stringMatching(/\/assets\/openscad-.*\.wasm$/)]);
+  // Saved before going offline: the reload opens the stored design.
+  await expect(saveStatus(page)).toHaveText('Saved', { timeout: 20_000 });
+
+  await context.setOffline(true);
+  await page.reload();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:1:40,30,4', { timeout: 60_000 });
+});
+
+test('offline before OpenSCAD was ever downloaded, a .scad import says so', async ({
+  page,
+  context,
+}) => {
+  await page.goto('./');
+  await page.evaluate('navigator.serviceWorker.ready.then(() => true)');
+  await page.getByRole('button', { name: 'New design' }).click();
+  await kernelReady(page);
+  await context.setOffline(true);
+  const dialog = await importScad(page);
+  await expect(dialog).toHaveAttribute('data-preview-status', 'error', { timeout: 90_000 });
+  await expect(dialog.getByRole('status', { name: 'Feature status' })).toHaveText(
+    "OpenSCAD isn't downloaded yet: connect to the internet once to compile customizer-plate.scad.",
+  );
+  await expect(dialog.locator('[data-scad-error]')).toHaveText(
+    "OpenSCAD isn't downloaded yet: connect to the internet once to compile customizer-plate.scad.",
+  );
+  expect(await openscadCached(page)).toEqual([]);
 });
 
 test("an update keeps the previous version's files for one more round, then drops them", async ({

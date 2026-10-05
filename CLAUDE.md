@@ -30,7 +30,8 @@ P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-15
 P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 is
 complete** (version 0.3.0). Phase 5 has started: P5-01 is **done** (the public document API, `packages/api`,
 its generated reference and the site's `/docs/api/` pages, ADR-0068) and P5-03 is
-**done** (the headless CLI, `packages/cli` and the `extrudo` command, ADR-0069). Phase 4: P4-01 (sweep, loft, coil), P4-02
+**done** (the headless CLI, `packages/cli` and the `extrudo` command, ADR-0069) and P5-04 is
+**done** (OpenSCAD import, `packages/openscad`, both slices, ADR-0071). Phase 4: P4-01 (sweep, loft, coil), P4-02
 (modeled threads), P4-03 (sketch text, bundled fonts), P4-03b (user fonts
 as attachments), P4-04 (emboss, deboss), P4-05 (control-point splines,
 conics), P4-07 (customizer, configurations), P4-08 (print tolerance,
@@ -1302,6 +1303,66 @@ configuration, a user font, a STEP and a mesh import, the errors) and
 `cli.test.ts` (spawns the binary; also prints the export times). Docs:
 `docs/cli.md`.
 
+**OpenSCAD import (ADR-0071, P5-04; slice 1: kernel, Node, CLI):** a `.scad`
+file is an attachment (`application/x-openscad`, `SCAD_MEDIA_TYPE`,
+`isScadMediaType`; `isMeshMediaType` is true for it too, since it becomes a mesh
+body) read by the **existing `import` feature**, whose `.scad` branch compiles it
+and then takes ADR-0066's mesh path unchanged. `packages/openscad`
+(`@extrudo/openscad`, nothing internal) holds OpenSCAD's own WebAssembly
+**snapshot**, pinned by date and sha256 in `openscad.mjs` (a `wasmRelease` whose
+"build" downloads, checks and patches; CI's `openscad` job mirrors it as
+`openscad-<hash>`, `pnpm wasm` fetches it, `ensure` builds when the mirror is
+missing; `dist/` is not in git). Rules a change must keep: **OpenSCAD never runs
+in the kernel's thread** — `createNodeCompiler` (`worker_threads`) and
+`createBrowserCompiler` (a nested module worker) run it in a worker of its own,
+**one fresh instance per compile** from the compiled module (no state or cache
+carried from file to file), one compile at a time, stopped by `terminate()` after
+`DEFAULT_TIMEOUT_MS` (60 s) or at `DEFAULT_HEAP_MAX_BYTES` (1 GiB; the glue's
+`getHeapMax` is patched to read `Module.heapMax`); **the kernel imports only
+types** from it (the worker entry's `openscad` option `import()`s the browser
+compiler on the first `enableOpenscad()`, Node callers pass `createNodeCompiler`
+through `KernelServiceOptions.openscad`), and `enableOpenscad()` enables meshes
+too. **The compile is asynchronous, evaluators are not**, so a definition may
+have **`prepare(ctx)`**, which the engine awaits right before `evaluate` (only on
+a cache miss, cancellation checked after it) and `evaluate` reads as
+`ctx.prepared`; a `KernelError` it throws is the feature's error, and it makes no
+shapes. The overrides are **numbered pairs** `scadName`/`scadValue` …
+`scadName32`/`scadValue32` (`scadOverrides`, `SCAD_MAX_OVERRIDES`): the name an
+`enum` input with no listed values (the API generator types it `string`), the
+value an `expr` of **any** unit (not `exprOf`: a length reaches OpenSCAD in mm,
+an angle in degrees); half a pair or a name twice is an error, a name the source
+never assigns a warning. Compiles are cached by the engine's key and, per
+compiler, by file digest and definitions (`compileOnce`, 16 kept). OpenSCAD's
+log is worded in `packages/openscad/src/messages.ts` (`explainRun`: "gear.scad,
+line 4: syntax error.", a missing `include`/`use`/`import()` is an **error**
+naming the file, 2D/empty results explained, at most `MAX_SCAD_WARNINGS` echoes
+and warnings). Fixtures: `fixtures/imports/*.scad`; tests
+`packages/openscad/src/compiler.test.ts`, `kernel/src/features/import-scad.test.ts`
+(the kernel's program has no Node types, so it loads `@extrudo/openscad/node`
+through a name the checker doesn't follow), the CLI's `headless.test.ts` and
+`cli.test.ts`. **Slice 2** is the app: Insert › Import (and the File menu's
+"Import STEP, mesh or OpenSCAD…") takes `.scad`, and the Import dialog lists the
+file's customizer variables as rows (`features/ScadOverrides.tsx`, the spec's
+`extra`; the pure part `features/scadRows.ts`) from **`KernelApi.scadParameters
+(fileId)`** (`ScadCompiler.parameters`: the list without compiling the model),
+asked once per attachment (`scadParameterStore`) through the `Recomputer`, which
+sends a just-picked file first. A row's text is `exprs['scad:<name>']`, the
+order `labels.scad` (the file's, then stored overrides the list lacks, which
+keep a row with a warning); `toInputs` **packs** the non-empty rows into the
+pairs (emptying a row removes its pair, no holes) and stores each value with the
+unit its expression evaluates to (unitless, then length, then angle: `24` is
+unitless whatever the document's units). **`scadValue<n>`'s `unit` is required**
+(the schema refuses one without; file format §6.28), and the API's `plainInput`
+gives a `ParameterHandle` its own unit for an input whose meta says `anyUnit`.
+The `Recomputer` calls `enableOpenscad()` once per kernel for a document or
+draft that names a `.scad` attachment (it brings manifold with it), reset by
+`#resend`. **`openscad-*.wasm` is cached at run time**: `sw.js` answers it from
+the cache `extrudo-openscad`, else fetches and keeps it; activation keeps only
+the build's own (`RUNTIME`, filled by `precache-plugin.ts`) and leaves that
+cache alone. A failed fetch in `browser-worker.ts` is replied `offline: true`
+and worded "OpenSCAD isn't downloaded yet: connect to the internet once to
+compile gear.scad." (the module isn't kept, so the next compile tries again).
+
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): **P5-01 is
 done** (all three slices, ADR-0068) and **P5-03 is done** (both slices,
@@ -1325,9 +1386,10 @@ pnpm dev          # app at http://localhost:5173
 pnpm check        # typecheck + Biome + package boundaries + license allow-list + Vitest. Must pass.
 pnpm e2e          # build + Playwright (run `pnpm e2e:install` once)
 pnpm format       # Biome auto-fix
-pnpm wasm         # download the OCCT and planegcs WASM for the current inputs (check/dev/build do this)
+pnpm wasm         # download the OCCT, planegcs and OpenSCAD WASM for the current inputs (check/dev/build do this)
 pnpm occt build   # build OCCT locally with Docker (~11 min; Arch workstation only); see packages/kernel/occt/README.md
 pnpm planegcs build  # build planegcs locally with Docker (~2 min; Arch workstation only); see packages/sketch/planegcs/README.md
+pnpm openscad build  # download OpenSCAD's pinned WASM snapshot into packages/openscad/dist (ADR-0071; no Docker)
 pnpm api:generate   # rewrite @extrudo/api's generated methods and docs/api pages (ADR-0068)
 pnpm extrudo        # the headless CLI: info, export, set, check (ADR-0069); `pnpm extrudo --help`
 ```
@@ -1348,7 +1410,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for the v0.4.0 release |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0071: OpenSCAD import (`.scad` files as mesh bodies, `@extrudo/openscad`) |
 
 ## Stack summary
 
@@ -2714,6 +2776,29 @@ them. Notes further down that name a machine apply to that machine only.
   cube's top at `[10, 10, 20]`): with pre-selection the *target* is the first
   body **in creation order**, so a mesh target and a solid tool warn about
   nothing.
+- **Import OpenSCAD e2e** (`e2e/import-scad.spec.ts`, P5-04 slice 2): the
+  Insert tab's Import with `fixtures/imports/customizer-plate.scad` (a 40 × 30 ×
+  4 mm plate with two Ø4 holes; groups Size: `width`, `depth` and Holes:
+  `holes`, `hole`, plus a string `label` and a boolean `rounded`). The dialog
+  "Import dialog" has `[data-info="file"]` ("customizer-plate.scad · 1 kB ·
+  OpenSCAD") and the group "OpenSCAD variables" with
+  `[data-scad-overrides="loading|ready|error"]` (`[data-scad-error]` holds an
+  error's text), headings `[data-scad-group]` and rows `[data-scad-row="<name>"]`
+  (`data-scad-readonly` for a non-number, "(not editable yet)";
+  `data-scad-missing` for a stored override the file doesn't list); a row's
+  textbox is named after the **variable** (`width`, `exact: true`) and its
+  placeholder is the file's value. The first list and preview take a moment
+  (the nested worker, the WASM): wait up to 90 s for `ready` and
+  `data-preview-status="ok"`. The body is a mesh body, `Body1:1:40,30,4` in
+  `data-bodies`. A typed parameter name (`plateWidth`) shows "= 50.00 mm" under
+  the row; the Customizer's slider on it recompiles each step (the panel is on
+  the Solid tab: `solidTab(page)` after the Insert tab). `syntax-error.scad`
+  says "syntax-error.scad, line 4: syntax error." in "Feature status" with OK
+  `aria-disabled` (don't click it: Playwright waits for it to be enabled). Three
+  tests, 9.3 s, 10.5 s and 3.4 s; `hosting.spec.ts` has the
+  same import under the served headers and `pwa.spec.ts` the runtime cache
+  (`caches.open('extrudo-openscad')`), the offline reload after first use and
+  the "isn't downloaded yet" message offline before it.
 - **Canvas e2e** (`e2e/canvas.spec.ts`, P4-06 slice 5): the picture is a
   200 × 100 PNG **built in the page** with an `OffscreenCanvas` (as a string:
   the e2e specs typecheck without the DOM) and handed to the file chooser as

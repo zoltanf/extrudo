@@ -396,6 +396,58 @@ describe('fonts and files of a design', () => {
   });
 });
 
+describe('an OpenSCAD import (P5-04, ADR-0071)', () => {
+  it('compiles a .scad file, follows a parameter through an override and exports it', {
+    timeout: 120_000,
+  }, async () => {
+    const source = new Uint8Array(await readFile(fixture('imports/plate.scad')));
+    const { sha256Hex, writeArchive } = await import('@extrudo/storage');
+    const hash = sha256Hex(source);
+    const design = Design.create({ name: 'Plate' });
+    design.parameter('width', '30 mm');
+    const attachment = 'a1sc';
+    design.state.dispatch(
+      addAttachment({
+        id: attachment as AttachmentId,
+        attachment: {
+          name: 'Plate',
+          fileName: 'plate.scad',
+          mediaType: 'application/x-openscad',
+          sha256: hash,
+          size: source.length,
+        },
+      }),
+    );
+    // `size` follows the length parameter `width`; `hole` is a plain number.
+    design.import({
+      file: attachment as AttachmentId,
+      scadName: 'size',
+      scadValue: { kind: 'expr', expr: 'width', unit: 'length' },
+      scadName2: 'hole',
+      scadValue2: 5,
+    });
+    const job = await openBytes(writeArchive(design.doc, undefined, [], new Map([[hash, source]])));
+
+    const result = await job.compute();
+    expect(result.errors).toBe(0);
+    const [body] = result.bodies;
+    expect(body?.mesh).toBe(true);
+    expect(size(body as { size: number[] })).toEqual([30, 30, 10]);
+    const hole = (d: number) => 0.5 * 64 * (d / 2) ** 2 * Math.sin((2 * Math.PI) / 64) * 10;
+    expect(body?.volume).toBeCloseTo(30 * 30 * 10 - hole(5), 1);
+
+    await job.setParameters({ width: '45 mm' });
+    const wider = await job.compute();
+    expect(size(wider.bodies[0] as { size: number[] })).toEqual([45, 45, 10]);
+
+    const [file] = await job.export({ format: '3mf' });
+    expect(file?.closed).toBe(true);
+    const [object] = read3mf(file?.bytes as Uint8Array).objects;
+    expect(checkManifold(object?.mesh as Parameters<typeof checkManifold>[0]).ok).toBe(true);
+    expect((await job.dispose()).liveShapes).toBe(0);
+  });
+});
+
 describe('what the design gets wrong', () => {
   it('names an unknown parameter, a bad expression and a missing file', async () => {
     const job = await openFixture('b2-storage-box.extrudo');

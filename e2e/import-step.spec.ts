@@ -187,7 +187,7 @@ test('the File menu imports, and the drawing import needs a sketch', async ({ pa
   // The File menu's Import is the same command.
   const chooser = page.waitForEvent('filechooser');
   await page.getByRole('button', { name: 'File menu' }).click();
-  await page.getByRole('menuitem', { name: 'Import STEP or mesh…' }).click();
+  await page.getByRole('menuitem', { name: 'Import STEP, mesh or OpenSCAD…' }).click();
   await (await chooser).setFiles(STEP_FILE);
   const panel = dialog(page);
   await expect(panel).toBeVisible();

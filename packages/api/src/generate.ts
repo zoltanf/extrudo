@@ -300,11 +300,12 @@ function readInput(property: JsonProperty): { type: string; kinds?: string[]; fa
       return { type: 'string | number | ParameterHandle', fallback };
     case 'ref':
       return { type: 'GeomRef | GeomRef[]', kinds: property.input?.kinds, fallback };
-    case 'enum':
-      return {
-        type: (property.properties?.value?.enum ?? []).map((v) => `'${v}'`).join(' | '),
-        fallback,
-      };
+    // An enum whose values come from elsewhere (an OpenSCAD import's variable
+    // names, ADR-0071 §5) lists none: any string the schema's pattern takes.
+    case 'enum': {
+      const values = property.properties?.value?.enum ?? [];
+      return { type: values.length ? values.map((v) => `'${v}'`).join(' | ') : 'string', fallback };
+    }
     case 'bool':
       return { type: 'boolean', fallback };
     case 'file':

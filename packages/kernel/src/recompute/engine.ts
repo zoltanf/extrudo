@@ -26,6 +26,7 @@ import {
   type GeomRef,
   type ReferenceIssue,
 } from '@extrudo/core';
+import type { ScadCompiler } from '@extrudo/openscad';
 import type { z } from 'zod';
 import type { SmoothKind, SubShapeKind } from '../history';
 import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
@@ -42,6 +43,7 @@ import {
   type ImportedFile,
   type KernelFeatureDefinition,
   MissingFileError,
+  type PrepareContext,
   type PreviewRequest,
   type PreviewToolMesh,
   type ProgressListener,
@@ -60,6 +62,11 @@ export interface EngineOptions {
    * fills with `addFile` and hands it here.
    */
   files?: (id: AttachmentId) => ImportedFile | undefined;
+  /**
+   * The OpenSCAD compiler, once the service has one (P5-04, ADR-0071 §3):
+   * an `import` of a `.scad` file compiles it in its `prepare`.
+   */
+  openscad?: () => ScadCompiler | undefined;
   /**
    * Throw when an evaluator leaves shapes behind (tests). Otherwise the
    * leak is reported through `onLeak` (default: `console.warn`).
@@ -81,6 +88,9 @@ interface Entry {
 type Passed = { state: 'done'; entry: Entry } | { state: 'failed' } | { state: 'suppressed' };
 
 type Channel = 'recompute' | 'preview';
+
+/** What a definition's `prepare` resolved to, or what it threw (ADR-0071 §3). */
+type Prepared = { value: unknown } | { error: unknown };
 
 const EMPTY_BODIES = 'bodies:none';
 
@@ -348,12 +358,21 @@ export class RecomputeEngine {
         // Another walk (a preview, say) may have computed it meanwhile.
         entry = this.#entries.get(key);
       }
+      // Work outside the kernel's thread first (ADR-0071 §3: an OpenSCAD
+      // compile), awaited like the yield above and checked the same way.
+      let prepared: Prepared | undefined;
+      if (!entry && definition.prepare) {
+        onFeature?.(feature.id);
+        prepared = await this.#prepare(definition, feature, parsed.data, values, doc);
+        if (cancelled()) return { status: 'cancelled' };
+        entry = this.#entries.get(key);
+      }
       if (entry) {
         reused++;
         this.#entries.delete(key);
         this.#entries.set(key, entry);
       } else {
-        onFeature?.(feature.id);
+        if (!prepared) onFeature?.(feature.id);
         const outputs = new Map(dependencies.map((id, i) => [id, upstream[i]?.output]));
         entry = this.#evaluate(
           definition,
@@ -365,6 +384,7 @@ export class RecomputeEngine {
           key,
           (id) => doc.features[index.get(id) ?? -1]?.name,
           doc,
+          prepared,
         );
         evaluated.push(feature.id);
       }
@@ -475,6 +495,7 @@ export class RecomputeEngine {
     key: string,
     featureName: (id: FeatureId) => string | undefined,
     doc: ExtrudoDocument,
+    prepared?: Prepared,
   ): Entry {
     const kernel = this.#kernel;
     const warnings: string[] = [];
@@ -492,14 +513,7 @@ export class RecomputeEngine {
       return names;
     };
     const describe = (shape: ShapeHandle) => this.#describe(shape);
-    // A file of the design (P4-06): what the app sent with `addFile`, named by
-    // the attachment ID. Missing bytes are the feature's error, worded with
-    // the file's own name.
-    const file = (id: AttachmentId) => {
-      const held = this.#options.files?.(id);
-      if (!held) throw new MissingFileError(id, doc.attachments?.[id]?.fileName ?? id);
-      return held.bytes;
-    };
+    const files = this.#files(doc);
     const ctx: EvalContext = {
       kernel,
       feature,
@@ -549,24 +563,18 @@ export class RecomputeEngine {
         if (!output) throw new Error(`${feature.name} doesn't refer to feature ${id}.`);
         return output;
       },
-      file,
-      fileType: (id: AttachmentId) => {
-        const held = this.#options.files?.(id);
-        if (!held) throw new MissingFileError(id, doc.attachments?.[id]?.fileName ?? id);
-        return held.mediaType;
-      },
-      // The file's own name first: a dialog's previewed file has no record in
-      // the document yet (ADR-0061 §2 writes the bytes first).
-      fileName: (id: AttachmentId) =>
-        this.#options.files?.(id)?.fileName ?? doc.attachments?.[id]?.fileName ?? id,
+      ...files,
       featureName,
       bodyId: (n = 0) => `${feature.id}:${n}` as BodyId,
+      ...(prepared && 'value' in prepared && { prepared: prepared.value }),
     };
 
     const before = kernel.stats().liveShapes;
     let output: FeatureOutput | undefined;
     let status: FeatureStatus;
     try {
+      // What `prepare` failed with is the feature's error, as if thrown here.
+      if (prepared && 'error' in prepared) throw prepared.error;
       output = definition.evaluate(ctx);
       this.#checkNames(output, bodies);
       const all = [...new Set([...warnings, ...(output.warnings ?? [])])];
@@ -610,6 +618,61 @@ export class RecomputeEngine {
     const entry: Entry = { key, status, output, handles };
     this.#entries.set(key, entry);
     return entry;
+  }
+
+  /**
+   * A design's files as an evaluator reads them (P4-06): what the app sent
+   * with `addFile`, named by the attachment ID. Missing bytes are the
+   * feature's error, worded with the file's own name.
+   */
+  #files(doc: ExtrudoDocument): Pick<EvalContext, 'file' | 'fileType' | 'fileName'> {
+    const held = (id: AttachmentId) => {
+      const found = this.#options.files?.(id);
+      if (!found) throw new MissingFileError(id, doc.attachments?.[id]?.fileName ?? id);
+      return found;
+    };
+    return {
+      file: (id) => held(id).bytes,
+      fileType: (id) => held(id).mediaType,
+      // The file's own name first: a dialog's previewed file has no record in
+      // the document yet (ADR-0061 §2 writes the bytes first).
+      fileName: (id) =>
+        this.#options.files?.(id)?.fileName ?? doc.attachments?.[id]?.fileName ?? id,
+    };
+  }
+
+  /** Runs a definition's `prepare` (ADR-0071 §3); what it threw is kept for `evaluate`. */
+  async #prepare(
+    definition: KernelFeatureDefinition,
+    feature: Feature,
+    inputs: Feature['inputs'],
+    values: Record<string, number>,
+    doc: ExtrudoDocument,
+  ): Promise<Prepared> {
+    const ctx: PrepareContext = {
+      feature,
+      inputs,
+      value(input) {
+        const value = values[input];
+        if (value === undefined) throw new Error(`${feature.name} has no expression "${input}".`);
+        return value;
+      },
+      ...this.#files(doc),
+      openscad: () => {
+        const compiler = this.#options.openscad?.();
+        if (!compiler) {
+          throw new KernelError(
+            "OpenSCAD isn't loaded in this kernel, so .scad files can't be compiled here.",
+          );
+        }
+        return compiler;
+      },
+    };
+    try {
+      return { value: await definition.prepare?.(ctx) };
+    } catch (error) {
+      return { error };
+    }
   }
 
   /** Names by position for a body its feature didn't name; none if OCCT can't describe it. */

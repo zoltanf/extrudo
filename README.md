@@ -63,7 +63,8 @@ handles, and patterns that skip single instances.
 
 **Import** (_0.4_). STEP files as solid bodies; STL, 3MF and OBJ meshes as
 bodies you can still cut, join, move and split; pictures on a plane to trace
-over.
+over. On the latest build: OpenSCAD files (`.scad`), compiled in the browser,
+whose customizer variables can follow your design's parameters.
 
 **Construction geometry.** Offset, angled, mid and three-point planes, tangent
 planes, axes through points, cylinders or edges, and points.

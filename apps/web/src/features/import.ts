@@ -2,7 +2,9 @@
  * The Import dialog and the file it reads (P4-06, ADR-0066 §0, §2): the
  * Insert tab's "Import" tile (tool `importBody`) and the File menu's "Import…"
  * pick a STEP or mesh file, store its bytes with the design and open this
- * dialog; OK adds the attachment record and the `import` feature **in one undo
+ * dialog (an OpenSCAD file too, P5-04: its customizer variables are rows of
+ * overrides, `ScadOverrides.tsx`); OK adds the attachment record and the
+ * `import` feature **in one undo
  * step** (`spec.commitWith`, the framework's one transaction around both).
  *
  * The bytes go to storage **before** the dialog opens (ADR-0061 §2: a design
@@ -22,12 +24,14 @@ import {
   type Command,
   type DocumentStore,
   type ExtrudoDocument,
+  type FeatureInputs,
   IMPORT_UNITS,
   IMPORT_UP,
   type ImportInputs,
   importFeature,
   importInputs,
   isMeshMediaType,
+  isScadMediaType,
   mediaTypeOf,
   modelKind,
   newId,
@@ -36,14 +40,17 @@ import { type ProjectStore, sha256Hex } from '@extrudo/storage';
 import { createStore } from 'zustand/vanilla';
 import type { FileAccess } from '../platform';
 import { putAttachmentBytes } from '../sketch/fonts';
+import { ScadOverrides } from './ScadOverrides';
+import { overrideInputs, overrideIssue, overrideValues } from './scadRows';
 import { type DialogContext, type DialogValues, defineFeatureDialog } from './spec';
-import { shownFields } from './values';
+import { defaultFromInputs, shownFields } from './values';
 
 /** What the platform's file picker is asked for: the model files of §0. */
-export const IMPORT_ACCEPT = '.step,.stp,.stl,.3mf,.obj';
+export const IMPORT_ACCEPT = '.step,.stp,.stl,.3mf,.obj,.scad';
 
 /** What a file the picker refuses says so, in the app's voice. */
-export const IMPORT_REFUSED = 'Extrudo reads STEP files (.step, .stp) as solid bodies.';
+export const IMPORT_REFUSED =
+  'Extrudo imports STEP files (.step, .stp), meshes (.stl, .3mf, .obj) and OpenSCAD files (.scad).';
 
 /** The file the dialog is about, while it is open (the picked bytes and record). */
 export interface PendingImport {
@@ -171,7 +178,8 @@ export const importDialog = defineFeatureDialog({
       text: (_values, ctx) => {
         const file = importedFile(ctx);
         if (!file) return 'No file';
-        return `${file.attachment.fileName} · ${formatSize(file.attachment.size)}`;
+        const kind = isScadMediaType(file.attachment.mediaType) ? ' · OpenSCAD' : '';
+        return `${file.attachment.fileName} · ${formatSize(file.attachment.size)}${kind}`;
       },
     },
     {
@@ -205,15 +213,32 @@ export const importDialog = defineFeatureDialog({
     const file = importedFile(ctx);
     // A hidden field makes no input (as everywhere): `units` is a mesh's only.
     const units = shownFields(importDialog, values, ctx).some((f) => f.name === 'units');
-    return importInputs({
+    const inputs = importInputs({
       file: file?.id ?? ('' as AttachmentId),
       ...(units && values.choices.units && { units: values.choices.units as 'auto' | 'mm' }),
       up: (values.choices.up ?? 'z') as 'z' | 'y',
     });
+    // An OpenSCAD file's overrides, packed in the rows' order (ADR-0071 §5).
+    return isScadMediaType(file?.attachment.mediaType)
+      ? { ...inputs, ...overrideInputs(values, ctx.doc) }
+      : inputs;
   },
-  validate(_values: DialogValues, ctx: DialogContext) {
-    return importedFile(ctx) ? undefined : { message: 'Pick a file to import.', field: 'file' };
+  fromInputs(inputs: FeatureInputs, _ctx: DialogContext) {
+    const stored = defaultFromInputs(importDialog, inputs);
+    const scad = overrideValues(inputs);
+    return {
+      ...stored,
+      exprs: { ...stored.exprs, ...scad.exprs },
+      labels: { ...stored.labels, ...scad.labels },
+    };
   },
+  validate(values: DialogValues, ctx: DialogContext) {
+    const file = importedFile(ctx);
+    if (!file) return { message: 'Pick a file to import.', field: 'file' };
+    return isScadMediaType(file.attachment.mediaType) ? overrideIssue(values, ctx.doc) : undefined;
+  },
+  // An OpenSCAD file's variables, one row each (P5-04 slice 2).
+  extra: ScadOverrides,
   // The attachment record, in the same undo step as the feature (ADR-0066 §0).
   commitWith(_values: DialogValues, ctx: DialogContext): readonly Command<unknown>[] {
     const file = importedFile(ctx);

@@ -969,7 +969,16 @@ end to end, faster than in Fusion 360.
   `check`, `--json`, exit codes 0/1/2/3). The re-solve and the export's own
   logic moved into `@extrudo/sketch` and `@extrudo/kernel`, so the app and the
   CLI do the same thing; `docs/cli.md`.
-- [ ] **P5-04 OpenSCAD import** via openscad-wasm → mesh body. FR-IO-08.
+- [x] **P5-04 OpenSCAD import** via openscad-wasm → mesh body. FR-IO-08. Done
+  2026-10-05 (ADR-0071) in two slices: the kernel, Node and the CLI
+  (`@extrudo/openscad`: OpenSCAD's own WASM snapshot, mirrored, in a worker of
+  its own with a time limit and a heap ceiling; the `import` feature's `.scad`
+  branch and its 32 numbered overrides; the engine's async `prepare`) and the
+  app (Insert › Import takes `.scad`; the Import dialog lists the file's
+  customizer variables as rows of `<ExpressionInput>`s, from
+  `KernelApi.scadParameters`; the `Recomputer` loads OpenSCAD once per kernel;
+  the service worker caches the 11 MB WASM on first use, not at install, and a
+  design computes offline after that).
 - [ ] **P5-05 Macro recording.** FR-PRG-04.
 - [ ] **P5-06 Wall-thickness check.** FR-3DP-07.
 

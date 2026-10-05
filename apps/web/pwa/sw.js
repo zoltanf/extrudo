@@ -10,13 +10,22 @@
 // swaps under an open design); on activation it keeps the previous version's
 // files too, so a tab that is still running the old bundle finds its lazy
 // chunks. The new version's index.html shows on the next navigation.
+//
+// OpenSCAD's WASM (ADR-0071 §4) is not precached: it is 11 MB few designs need.
+// The first fetch of it goes to the network and is kept in a cache of its own,
+// so every later `.scad` import works offline; an update keeps it while the
+// build's hashed name is the same, and drops any other.
 
 /* global self, caches */
 const VERSION = '__VERSION__';
 const HASHED = /*__HASHED__*/ [];
 const FIXED = /*__FIXED__*/ [];
+// Files cached on first use instead of at install: this build's OpenSCAD WASM.
+const RUNTIME = /*__RUNTIME__*/ [];
 
 const CACHE = 'extrudo-precache';
+const RUNTIME_CACHE = 'extrudo-openscad';
+const IS_RUNTIME = /\/assets\/openscad-[^/]+\.wasm$/;
 const INDEX = './index.html';
 // The URLs the previous version precached: this version keeps them one more round.
 const PREVIOUS = './.previous-precache';
@@ -78,8 +87,16 @@ self.addEventListener('activate', (event) => {
         url(PREVIOUS),
         new Response(JSON.stringify(current), { headers: { 'x-extrudo-version': VERSION } }),
       );
+      // The runtime cache keeps only what this build would fetch.
+      const runtime = await caches.open(RUNTIME_CACHE);
+      const wanted = new Set(RUNTIME.map(url));
+      for (const request of await runtime.keys()) {
+        if (!wanted.has(request.url)) await runtime.delete(request);
+      }
       // Caches of other names (an earlier scheme) are never ours to keep.
-      for (const name of await caches.keys()) if (name !== CACHE) await caches.delete(name);
+      for (const name of await caches.keys()) {
+        if (name !== CACHE && name !== RUNTIME_CACHE) await caches.delete(name);
+      }
       await self.clients.claim();
     })(),
   );
@@ -93,6 +110,20 @@ self.addEventListener('fetch', (event) => {
   // The tools' demo clips (P3-12) aren't precached and are range-requested by
   // <video>: the browser fetches them itself.
   if (/\/demos\/[^/]+$/.test(target.pathname)) return;
+  // OpenSCAD's WASM: from its own cache, else fetched once and kept (ADR-0071 §4).
+  if (IS_RUNTIME.test(target.pathname)) {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(RUNTIME_CACHE);
+        const hit = await cache.match(request.url, { ignoreVary: true });
+        if (hit) return hit;
+        const response = await fetch(request);
+        if (response.ok && !response.redirected) await cache.put(request.url, response.clone());
+        return response;
+      })(),
+    );
+    return;
+  }
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);

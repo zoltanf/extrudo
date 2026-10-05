@@ -69,6 +69,9 @@ export function useFeatureDialogs({
           kernelRef.current?.reference(body, kind, index, base) ?? Promise.resolve(undefined),
         tangentChain: (body, index, base, kind) =>
           kernelRef.current?.tangentChain?.(body, index, base, kind) ?? Promise.resolve(undefined),
+        scadParameters: (file) =>
+          kernelRef.current?.scadParameters?.(file) ??
+          Promise.resolve({ ok: false, error: 'The kernel is not running.' }),
       },
       notify: (tone, text, options) => notifyRef.current(tone, text, options),
     });

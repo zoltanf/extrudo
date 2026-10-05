@@ -8,6 +8,7 @@ import {
   FILE_INPUT_MEDIA_TYPES,
   isMeshMediaType,
   isModelMediaType,
+  isScadMediaType,
   MEDIA_TYPES,
   mediaTypeOf,
   modelKind,
@@ -40,7 +41,7 @@ describe('mediaTypeOf', () => {
   });
 
   it('knows which types are models, meshes and STEP', () => {
-    expect(MEDIA_TYPES).toHaveLength(10);
+    expect(MEDIA_TYPES).toHaveLength(11);
     expect(isModelMediaType('model/step')).toBe(true);
     expect(isModelMediaType('model/3mf')).toBe(true);
     expect(isModelMediaType('image/png')).toBe(false);
@@ -51,6 +52,12 @@ describe('mediaTypeOf', () => {
     expect(modelKind('model/step')).toBe('step');
     expect(modelKind('model/obj')).toBe('mesh');
     expect(modelKind('font/ttf')).toBeUndefined();
+    // An OpenSCAD file is a model that becomes a mesh body (ADR-0071 §2).
+    expect(mediaTypeOf('gear.SCAD')).toBe('application/x-openscad');
+    expect(isModelMediaType('application/x-openscad')).toBe(true);
+    expect(isMeshMediaType('application/x-openscad')).toBe(true);
+    expect(isScadMediaType('application/x-openscad')).toBe(true);
+    expect(isScadMediaType('model/stl')).toBe(false);
   });
 
   it('has the media types the attachment schema accepts', () => {
@@ -82,6 +89,7 @@ describe('mediaTypeOf', () => {
       'model/stl',
       'model/3mf',
       'model/obj',
+      'application/x-openscad',
     ]);
     expect(FILE_INPUT_MEDIA_TYPES.canvas).toEqual(['image/png', 'image/jpeg', 'image/webp']);
   });

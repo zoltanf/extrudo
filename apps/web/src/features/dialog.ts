@@ -16,6 +16,7 @@
  *   inputs), so it is one undo step; Cancel leaves the document alone.
  */
 import {
+  type AttachmentId,
   type BodyId,
   type Command,
   CommandError,
@@ -43,7 +44,7 @@ import {
   usedSketches,
   type Vec3,
 } from '@extrudo/core';
-import type { BodyMesh, Preview, SubShapeKind } from '@extrudo/kernel';
+import type { BodyMesh, Preview, ScadParametersResult, SubShapeKind } from '@extrudo/kernel';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { ToastOptions } from '../design-system';
 import { readTopology, topologyItem } from '../selection/items';
@@ -105,6 +106,11 @@ export interface DialogKernel {
     base?: boolean,
     kind?: 'edge' | 'face',
   ): Promise<number[] | undefined>;
+  /**
+   * The customizer variables of a `.scad` file (P5-04 slice 2, ADR-0071 §5):
+   * the Import dialog's rows. Absent: the dialog shows only stored overrides.
+   */
+  scadParameters?(file: AttachmentId): Promise<ScadParametersResult>;
 }
 
 export interface DialogPreview {
@@ -218,6 +224,8 @@ export interface DialogController {
   activate(field: string | undefined): void;
   /** The viewport's model-mode picking while a dialog is open. */
   readonly select: ModelSelect;
+  /** A `.scad` file's customizer variables, from the kernel; undefined without one. */
+  scadParameters(file: AttachmentId): Promise<ScadParametersResult | undefined>;
   /** Evaluates text typed into an expression field, with the draft in the document. */
   evaluate(field: string, expr: string): EvaluateResult;
   /** What manipulators and custom fields see; undefined while no dialog is open. */
@@ -757,6 +765,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       }
     },
     select,
+    scadParameters: (file) => kernel?.scadParameters?.(file) ?? Promise.resolve(undefined),
     evaluate(field, expr) {
       const current = get();
       const doc = store.getState().doc;

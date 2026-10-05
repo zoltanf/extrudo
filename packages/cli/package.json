@@ -21,6 +21,7 @@
     "@extrudo/fonts": "workspace:*",
     "@extrudo/io": "workspace:*",
     "@extrudo/kernel": "workspace:*",
+    "@extrudo/openscad": "workspace:*",
     "@extrudo/sketch": "workspace:*",
     "@extrudo/storage": "workspace:*"
   }

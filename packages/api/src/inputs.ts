@@ -117,8 +117,9 @@ function plainInput(definition: FeatureDefinition, name: string, value: unknown)
   switch (what?.kind) {
     case 'expr':
       // A parameter handle stands for its name, so `height: wall` works.
+      // An input of any unit (an OpenSCAD override) takes the parameter's own.
       if (value instanceof ParameterHandle) {
-        return { kind: 'expr', expr: value.name, unit: what.unit };
+        return { kind: 'expr', expr: value.name, unit: what.anyUnit ? value.unit : what.unit };
       }
       return typeof value === 'number' || typeof value === 'string'
         ? { kind: 'expr', expr: String(value), unit: what.unit }

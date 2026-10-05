@@ -5,6 +5,9 @@
  * kernel itself runs in a worker (spawnBrowserKernel) or, in Node, through
  * `@extrudo/kernel/node`.
  */
+
+/** An OpenSCAD file's customizer variables (P5-04, ADR-0071): the Import dialog's rows. */
+export type { ScadParameter, ScadParametersResult } from '@extrudo/openscad';
 export { spawnBrowserKernel, spawnDebugKernel } from './browser';
 export {
   KernelClient,

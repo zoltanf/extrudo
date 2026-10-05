@@ -19,15 +19,18 @@ import {
   type FeatureId,
   type FeatureStatus,
   type GeomRef,
+  IMPORT_TYPE,
   importFileOf,
   isCanvasReport,
   isConstructionReport,
   isMeshMediaType,
   isPatternReport,
+  isScadMediaType,
   type ModelStore,
   type PatternReport,
   type SketchReport,
 } from '@extrudo/core';
+import type { ScadParametersResult } from '@extrudo/openscad';
 import {
   KernelClient,
   type KernelClientOptions,
@@ -162,6 +165,8 @@ export class Recomputer {
   #disposed = false;
   /** Whether this kernel has manifold-3d (P4-06, ADR-0066 §3); a restart forgets it. */
   #meshesEnabled = false;
+  /** Whether this kernel has OpenSCAD's compiler (P5-04, ADR-0071 §3); a restart forgets it. */
+  #openscadEnabled = false;
   /**
    * What this kernel has, by resource: a font ID, or `file:<attachment ID>`
    * (ADR-0058 §4, ADR-0066 §0). A restart forgets them all, and `#resend` sends
@@ -384,6 +389,7 @@ export class Recomputer {
     // nor the mesh kernel a mesh body needs (ADR-0066 §3).
     this.#resources.clear();
     this.#meshesEnabled = false;
+    this.#openscadEnabled = false;
     this.#schedule();
   }
 
@@ -424,16 +430,42 @@ export class Recomputer {
       await this.client.call((api) => api.addFile(id, data, mediaType, fileName));
       this.#resources.add(key);
     }
+    const types = ids.map((id) => files.mediaType?.(id, doc) ?? doc.attachments?.[id]?.mediaType);
+    // A `.scad` file needs OpenSCAD's compiler in the worker, and manifold-3d
+    // with it (P5-04, ADR-0071 §3): once per kernel, and only for a design
+    // (or a dialog's draft) that imports one.
+    if (!this.#openscadEnabled && !this.#disposed && types.some(isScadMediaType)) {
+      await this.client.call((api) => api.enableOpenscad());
+      this.#openscadEnabled = true;
+      this.#meshesEnabled = true;
+    }
     // A mesh file needs manifold-3d in the worker (ADR-0066 §3). Only now, and
     // once per kernel: a design without a mesh import never loads it.
-    if (!this.#meshesEnabled && !this.#disposed) {
-      const mesh = ids.some((id) =>
-        isMeshMediaType(files.mediaType?.(id, doc) ?? doc.attachments?.[id]?.mediaType),
-      );
-      if (mesh) {
-        await this.client.call((api) => api.enableMeshes());
-        this.#meshesEnabled = true;
-      }
+    if (!this.#meshesEnabled && !this.#disposed && types.some(isMeshMediaType)) {
+      await this.client.call((api) => api.enableMeshes());
+      this.#meshesEnabled = true;
+    }
+  }
+
+  /**
+   * The customizer variables of a `.scad` file of the design, or of the one
+   * the Import dialog just picked (P5-04 slice 2, ADR-0071 §5): the file goes
+   * to the kernel first, like a preview's, and OpenSCAD with it.
+   */
+  async scadParameters(id: AttachmentId): Promise<ScadParametersResult> {
+    try {
+      const doc = this.#document.getState().doc;
+      const probe = {
+        id: 'scad-parameters',
+        type: IMPORT_TYPE,
+        name: 'Import',
+        suppressed: false,
+        inputs: { file: { kind: 'file', id } },
+      } as unknown as Feature;
+      await this.#sendResources(doc, [probe]);
+      return await this.client.call((api) => api.scadParameters(id));
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 

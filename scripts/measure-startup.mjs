@@ -46,24 +46,29 @@ const files = walk(DIST).map((path) => {
     br: brotli(data).length,
   };
 });
+/** Fetched on first use, not precached: the demo clips and OpenSCAD's WASM (ADR-0071 §4). */
+const notPrecached = (name) =>
+  name.startsWith('demos/') || /^assets\/openscad-[^/]*\.wasm$/.test(name);
 const group = (name) =>
   name.startsWith('demos/')
     ? 'demos (no cache)'
-    : name.endsWith('.wasm')
-      ? name.includes('occt')
-        ? 'OCCT WASM'
-        : name.includes('manifold')
-          ? 'manifold WASM'
-          : 'planegcs WASM'
-      : /woff2?$/.test(name)
-        ? 'fonts'
-        : name.endsWith('.js')
-          ? name.includes('worker') || name.includes('extrudo_occt')
-            ? 'kernel JS'
-            : 'app JS'
-          : name.endsWith('.css')
-            ? 'CSS'
-            : 'other';
+    : notPrecached(name)
+      ? 'OpenSCAD WASM (no cache)'
+      : name.endsWith('.wasm')
+        ? name.includes('occt')
+          ? 'OCCT WASM'
+          : name.includes('manifold')
+            ? 'manifold WASM'
+            : 'planegcs WASM'
+        : /woff2?$/.test(name)
+          ? 'fonts'
+          : name.endsWith('.js')
+            ? name.includes('worker') || name.includes('extrudo_occt')
+              ? 'kernel JS'
+              : 'app JS'
+            : name.endsWith('.css')
+              ? 'CSS'
+              : 'other';
 const groups = new Map();
 for (const f of files) {
   const g = groups.get(group(f.name)) ?? { raw: 0, br: 0 };
@@ -71,14 +76,15 @@ for (const f of files) {
   g.br += f.br;
   groups.set(group(f.name), g);
 }
-// The tools' demo clips (P3-12) are fetched when a tooltip opens and aren't precached.
-const precached = files.filter((f) => !f.name.startsWith('demos/'));
+// The tools' demo clips (P3-12) are fetched when a tooltip opens and OpenSCAD's
+// WASM when a design imports a `.scad` file (ADR-0071 §4): neither is precached.
+const precached = files.filter((f) => !notPrecached(f.name));
 const sum = (key) => precached.reduce((n, f) => n + f[key], 0);
 console.log(`Sizes of apps/web/dist (${files.length} files)\n`);
-console.log('group'.padEnd(16), 'raw'.padStart(12), 'brotli'.padStart(12));
+console.log('group'.padEnd(26), 'raw'.padStart(12), 'brotli'.padStart(12));
 for (const [g, v] of [...groups].sort((a, b) => b[1].br - a[1].br))
-  console.log(g.padEnd(16), fmt(v.raw).padStart(12), fmt(v.br).padStart(12));
-console.log('precache total'.padEnd(16), fmt(sum('raw')).padStart(12), fmt(sum('br')).padStart(12));
+  console.log(g.padEnd(26), fmt(v.raw).padStart(12), fmt(v.br).padStart(12));
+console.log('precache total'.padEnd(26), fmt(sum('raw')).padStart(12), fmt(sum('br')).padStart(12));
 console.log(
   `\nAt ${mbit} Mbit, the whole precache takes ${((sum('br') * 8) / (mbit * 1e6)).toFixed(1)} s`,
 );

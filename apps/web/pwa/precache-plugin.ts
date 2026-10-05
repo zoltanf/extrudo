@@ -9,12 +9,18 @@ import type { Plugin } from 'vite';
  * which the service worker leaves to the network), the host's `_headers` file and
  * the link-preview picture.
  */
+/** Cached by the service worker on first use, not at install (ADR-0071 §4). */
+const RUNTIME = /^assets\/openscad-[^/]*\.wasm$/;
+
 const SKIPPED = [
   /(^|\/)debug-worker-/,
   /Debug-[^/]*\.js$/,
   /\.woff$/,
   /\.map$/,
   /^demos\//,
+  // OpenSCAD's 11 MB WASM (ADR-0071 §4): only a design with a `.scad` import
+  // fetches it, and the service worker keeps it then (`RUNTIME`).
+  RUNTIME,
   // For the host and for link previews (ADR-0054), never for the app itself.
   /^_headers$/,
   /^og-image\.png$/,
@@ -53,6 +59,14 @@ export function precachePlugin(): Plugin {
             hashed.map((f) => `./${f}`),
             null,
             2,
+          ),
+        )
+        .replace(
+          '/*__RUNTIME__*/ []',
+          JSON.stringify(
+            listFiles(dir)
+              .filter((f) => RUNTIME.test(f))
+              .map((f) => `./${f}`),
           ),
         )
         .replace(

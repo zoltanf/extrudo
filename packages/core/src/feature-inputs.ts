@@ -35,6 +35,12 @@ export interface RefInputMeta {
 export interface ExprInputMeta {
   kind: 'expr';
   unit: UnitKind;
+  /**
+   * The input takes an expression of any unit and stores which (an OpenSCAD
+   * override, ADR-0071 §5): `unit` is what a plain value is given, and a
+   * parameter keeps its own.
+   */
+  anyUnit?: boolean;
 }
 
 /** An `enum` input: its value is one of `values`, given as the string itself. */

@@ -9,6 +9,7 @@ import type {
   FeatureStatus,
   GeomRef,
 } from '@extrudo/core';
+import type { ScadCompiler } from '@extrudo/openscad';
 import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
 import type { BodyMesh, MeshOptions } from '../mesh';
 import type { ShapeDescription } from '../naming/description';
@@ -71,7 +72,28 @@ export interface KernelFeatureDefinition<I extends FeatureInputs = FeatureInputs
    * shape you don't return (use `kernel.scope()` and `keep`).
    */
   evaluate(ctx: EvalContext<I>): FeatureOutput;
+  /**
+   * Work that has to wait for something outside the kernel's thread before
+   * `evaluate` can run (P5-04, ADR-0071 §3: an OpenSCAD compile in a worker
+   * of its own). The engine awaits it right before `evaluate`, only when the
+   * cache misses, and `evaluate` reads what it resolved to as `ctx.prepared`.
+   * A `KernelError` it throws is the feature's error, as if `evaluate` threw
+   * it. It makes no shapes.
+   */
+  prepare?(ctx: PrepareContext<I>): Promise<unknown>;
 }
+
+/** What `prepare` may read: the inputs, their values, the design's files and the compilers. */
+export type PrepareContext<I extends FeatureInputs = FeatureInputs> = Pick<
+  EvalContext<I>,
+  'feature' | 'inputs' | 'value' | 'file' | 'fileType' | 'fileName'
+> & {
+  /**
+   * The OpenSCAD compiler (ADR-0071 §3). A `KernelError` when the worker has
+   * none: `KernelApi.enableOpenscad()` was not called for this design.
+   */
+  openscad(): ScadCompiler;
+};
 
 export interface EvalContext<I extends FeatureInputs = FeatureInputs> {
   kernel: Kernel;
@@ -121,6 +143,8 @@ export interface EvalContext<I extends FeatureInputs = FeatureInputs> {
   resolve(ref: GeomRef, options?: ResolveOptions): ResolvedRef;
   /** Adds a warning to the feature's status. */
   warn(message: string): void;
+  /** What the definition's `prepare` resolved to (ADR-0071 §3); undefined without one. */
+  prepared?: unknown;
 }
 
 export interface FeatureOutput {

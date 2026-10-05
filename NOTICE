@@ -22,7 +22,8 @@ the list below, so a new one is reviewed before it ships.
 The WASM files are separate artifacts that the app loads at run time. Their
 sources, build recipes and the pinned toolchains are in this repository, and CI
 publishes each build as a GitHub release (`occt-<hash>`, `planegcs-<hash>`) so
-that anyone can rebuild or replace them.
+that anyone can rebuild or replace them. OpenSCAD's WASM is OpenSCAD's own
+build, mirrored the same way (`openscad-<hash>`).
 
   OpenCascade Technology (OCCT) 8.0.1 (commit b8f597c677811d1f9f4d8a97f5ae2825c0353a42)
     The geometry kernel, in extrudo_occt_single.wasm.
@@ -60,6 +61,29 @@ that anyone can rebuild or replace them.
     https://eigen.tuxfamily.org/) and Boost (Boost Software License 1.0,
     https://www.boost.org/), both used header-only at build time.
 
+  OpenSCAD 2026.10.05 (a nightly snapshot), in openscad.wasm and openscad.js
+    https://openscad.org/ and https://github.com/openscad/openscad
+    License: GPL-2.0-or-later. OpenSCAD's own WebAssembly build
+    (https://files.openscad.org/snapshots/OpenSCAD-2026.10.05-WebAssembly-web.zip,
+    sha256 a27c885251865aca407af68908ced454266f902cd2b59e1923e33a97c825ef3d),
+    mirrored as the release openscad-<hash> of this repository with one change:
+    its JavaScript glue reads the heap limit from a module option
+    (packages/openscad/openscad.mjs). Loaded only by a design that imports a
+    .scad file (ADR-0071), in a worker of its own. The WASM also contains, as
+    built by OpenSCAD's own WebAssembly toolchain:
+      CGAL (GPL-3.0-or-later and LGPL-3.0-or-later, https://www.cgal.org/)
+      Manifold (Apache-2.0, https://github.com/elalish/manifold)
+      GMP and MPFR (LGPL-3.0-or-later, https://gmplib.org/, https://www.mpfr.org/)
+      Boost (Boost Software License 1.0) and Eigen (MPL-2.0)
+      Clipper2 (Boost Software License 1.0, https://github.com/AngusJohnson/Clipper2)
+      lib3mf (BSD-2-Clause, https://github.com/3MFConsortium/lib3mf)
+      libzip (BSD-3-Clause) and zlib (Zlib)
+      FreeType (FreeType License), HarfBuzz (MIT), Fontconfig (MIT-style)
+      GLib (LGPL-2.1-or-later), libxml2 (MIT), cairo (LGPL-2.1 or MPL-1.1)
+      nlohmann/json (MIT), oneTBB (Apache-2.0), double-conversion (BSD-3-Clause)
+    CGAL's GPL-3.0-or-later parts make the combined WASM a GPL-3.0-or-later work,
+    which Extrudo's own license is.
+
 How to get the sources of the LGPL parts
   - OCCT: https://github.com/Open-Cascade-SAS/OCCT at the commit above, or the
     build inputs in packages/kernel/occt/ (libcascade.config.ts, facade/) with
@@ -68,8 +92,11 @@ How to get the sources of the LGPL parts
   - planegcs: packages/sketch/planegcs/ (build.sh pins the upstream commit,
     planegcs.patch is our change) with `pnpm planegcs build`, documented in
     packages/sketch/planegcs/README.md.
-  - The released builds: the GitHub releases named occt-<hash> and
-    planegcs-<hash> of this repository. The hash in use is written to
+  - OpenSCAD (GPL): the snapshot's URL and checksum above, and OpenSCAD's
+    sources at https://github.com/openscad/openscad (the snapshot is the
+    master branch of that date); `pnpm openscad build` downloads it again.
+  - The released builds: the GitHub releases named occt-<hash>,
+    planegcs-<hash> and openscad-<hash> of this repository. The hash in use is written to
     dist/.inputs-hash next to the files.
   You may replace either WASM file with your own build of the same inputs.
 

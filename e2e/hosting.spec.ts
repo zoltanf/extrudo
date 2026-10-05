@@ -132,6 +132,44 @@ test('a sketch solves under the content policy (the solver WASM, too)', async ({
   expect(policy.errors).toEqual([]);
 });
 
+// ADR-0071 (P5-04): OpenSCAD runs in a module worker nested in the kernel
+// worker, its glue a hashed asset and its 11 MB WASM fetched on first use. Under
+// the served headers (COOP/COEP, the CSP) a `.scad` import compiles to a body
+// with no violation and no console error.
+test('an OpenSCAD import compiles under the content policy', async ({ page, request }) => {
+  const policy = await watchPolicy(page);
+  const wasm: string[] = [];
+  page.on('requestfinished', (finished) => {
+    if (/\/assets\/openscad-[^/]+\.wasm$/.test(finished.url())) wasm.push(finished.url());
+  });
+  await page.goto(`${host.url}/`);
+  await page.getByRole('button', { name: 'New design' }).click();
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  await expect(viewport).toHaveAttribute('data-ready', 'true');
+  await kernelReady(page);
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('tab', { name: 'Insert' }).click();
+  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await (await chooser).setFiles('fixtures/imports/customizer-plate.scad');
+  const dialog = page.getByRole('region', { name: 'Import dialog' });
+  await expect(dialog.locator('[data-scad-overrides]')).toHaveAttribute(
+    'data-scad-overrides',
+    'ready',
+    { timeout: 90_000 },
+  );
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 90_000 });
+  await dialog.getByRole('button', { name: /^OK/ }).click();
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:1:40,30,4', { timeout: 60_000 });
+  // The WASM came from this origin, as a hashed asset served as WASM.
+  expect(wasm.length).toBeGreaterThan(0);
+  const served = await request.get(wasm[0] as string);
+  expect(served.headers()['content-type']).toBe('application/wasm');
+  expect(served.headers()['cache-control']).toContain('immutable');
+
+  expect(await policy.violations()).toEqual([]);
+  expect(policy.errors).toEqual([]);
+});
+
 // ADR-0067 H1: the policy allows nothing to evaluate a string. Both WASM builds
 // are made with dynamic execution off and zod's JIT off, so 'unsafe-eval' is
 // gone from script-src; this walks a whole session under the served headers and

@@ -50,6 +50,8 @@ describe('KernelClient', () => {
       addFont: async () => {},
       addFile: async () => {},
       enableMeshes: async () => {},
+      enableOpenscad: async () => {},
+      scadParameters: async () => ({ ok: true, parameters: [] }),
       debugTestPart: () => new Promise(() => {}),
       debugCrash: async () => {},
       stats: async () => ({ liveShapes: 0, heapTop: 0, heapBytes: 0 }),
@@ -82,6 +84,8 @@ describe('KernelClient', () => {
       addFont: async () => {},
       addFile: async () => {},
       enableMeshes: async () => {},
+      enableOpenscad: async () => {},
+      scadParameters: async () => ({ ok: true, parameters: [] }),
       debugTestPart: async () => {
         throw new KernelCrashError('boom');
       },
