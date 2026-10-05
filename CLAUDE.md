@@ -10,7 +10,7 @@ from the same codebase.
 steps). CI runs on every push and pull request, on GitHub-hosted runners (a
 self-hosted backup exists, off by default: `docs/deploy.md`).
 
-**Status (2026-10-03):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
+**Status (2026-10-05):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
@@ -39,7 +39,9 @@ variable-radius fillet) are done; P4-11
 thread adapter), B8 (the name tag) and B10 (the cable chain link) — and P4-06
 (import: drawings into a sketch, STEP as a base body, mesh bodies with
 manifold-3d booleans, canvas images) is **done** on 2026-10-05, all five slices
-(ADR-0066). **Phase 4 is therefore complete apart from P4-12's backlog.**
+(ADR-0066). **Phase 4 is therefore complete apart from P4-12's backlog**, of
+which the hardening (ADR-0067), Print Info's walls/infill/cost, fillet and
+chamfer depth and the pattern skip list and handles are done (2026-10-05).
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -1261,7 +1263,8 @@ the fixture the app exported, up to its IDs, and recomputed headless) and a
 parametric box with a customizer and two configurations. The kernel is a
 devDependency of the API package for that one test and nothing else.
 
-Next, one task at a time (not parallel tracks, since 2026-09-30): **P5-01 is
+Next (tasks may run in parallel on separate branches and worktrees, merged to
+main one at a time): **P5-01 is
 done** (all three slices, ADR-0068), so onward in Phase 5 with P5-02 (the Script
 feature, which runs user code against this API in a sandboxed worker and wants the
 same deterministic IDs); **P4-06 is done** (all five slices, ADR-0066) and P4-12's hardening part (ADR-0067 H1 to

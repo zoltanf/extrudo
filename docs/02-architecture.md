@@ -75,7 +75,7 @@ and scripting simple.
 ## 3. Monorepo layout
 
 ```
-3d-composer-app/
+extrudo/
 ├─ apps/
 │  ├─ web/                 Vite + React app (UI shell, viewport, tools, dialogs)
 │  │  └─ src/
@@ -90,6 +90,8 @@ and scripting simple.
 │  │     ├─ home/          home screen: project grid, templates, trash (P0-08)
 │  │     ├─ project/       project page, autosave, templates (P0-08)
 │  │     └─ platform/      web implementations of platform interfaces
+│  ├─ site/                landing page at extrudo.org and the API docs pages
+│  │                       (static, no internal packages; ADR-0057, ADR-0068)
 │  └─ desktop/             Electron shell (Phase 6): main, preload, fs adapter
 ├─ packages/
 │  ├─ core/                document schema (zod), migrations, feature registry
@@ -104,17 +106,23 @@ and scripting simple.
 │  │                       (format-level, geometry-agnostic)
 │  ├─ storage/             ProjectStore interface + OPFS/IndexedDB impl +
 │  │                       .extrudo zip (de)serializer
-│  └─ cli/                 (Phase 5) headless recompute and export
+│  ├─ fonts/               bundled fonts for sketch text (data only; ADR-0058)
+│  ├─ api/                 public document API, @extrudo/api (P5-01, ADR-0068)
+│  ├─ cli/                 (P5-03, in progress) headless recompute and export
+│  └─ script/              (P5-02, in progress) the Script feature's sandboxed runner
 ├─ fixtures/               sample projects, benchmark models (B1–B10), golden values
 ├─ docs/                   these documents + adr/ (architecture decision records)
 └─ e2e/                    Playwright tests
 ```
 
-Dependency direction (enforced by lint rule): `apps/* → packages/*`;
-`kernel → core, sketch` (and `io` in its tests only, a devDependency:
-P2-12's export tests check meshes with it); `sketch → core, io` (P1-13:
-sketch export builds `io` drawings); `storage → core`; `core` and `io`
-depend on nothing internal (`io` uses fflate for 3MF).
+Dependency direction (enforced by `scripts/check-boundaries.mjs`, the
+source of truth): `apps/web → packages/*`; `apps/site` depends on nothing
+internal; `kernel → core, sketch, io, fonts` (`io` parses imported meshes,
+ADR-0066); `sketch → core, io, fonts` (P1-13: sketch export builds `io`
+drawings; the text shaper reads the fonts); `storage → core`; `api → core,
+sketch, storage` (and `kernel` as a devDependency for its examples' tests);
+`core`, `io` and `fonts` depend on nothing internal (`io` is MIT, uses fflate
+for 3MF, and must never depend on the GPL packages).
 
 ## 4. The document model
 
@@ -740,3 +748,8 @@ bundle-size budget. Every agent task must leave CI green.
   frame, offset, a box's rotation), solids from named prisms and revolves
   of planar faces, proposals (XY, the face's centre, join/cut), and
   Create Sketch's plane-or-face picker reused for a dialog's Plane field.
+
+This list stops at ADR-0032. Every later record (ADR-0033 onwards: timeline
+v2, export, measuring, versions, the Phase 3 and 4 features, hosting,
+hardening, the document API) is in `docs/adr/`, with a one-line summary
+each in `CLAUDE.md`'s "Read first" table.

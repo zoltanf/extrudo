@@ -102,8 +102,9 @@ cannot reach. Tick them off in order; each box says who and where.
   timeline groups, linked folders, import, canvas; the hardening of ADR-0067).
   Before the tag: the slicer check and the fresh look above, on
   <https://edge.extrudo.org> (the latest main). Then the agent bumps every
-  package version to 0.4.0 and renames the CHANGELOG's "v0.4 (Phase 4, in
-  progress)" heading to "v0.4.0" in one commit, and **the owner tags that
+  package version to 0.4.0, renames the CHANGELOG's "v0.4 (Phase 4, in
+  progress)" heading to "v0.4.0" and turns the README's status note and its
+  _0.4_ marks into plain text for the release, in one commit, and **the owner tags that
   commit**: `git tag -a v0.4.0 -m "v0.4.0" <commit> && git push origin v0.4.0`.
   The tag deploys itself as the stable app (`app.extrudo.org`, ADR-0057) once
   that commit's CI on main passed.
