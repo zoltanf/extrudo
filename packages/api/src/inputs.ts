@@ -23,6 +23,7 @@ import {
   type FeatureInputs,
   type FileInput,
   type GeomRef,
+  type LabelsInput,
   type RefInput,
   type RefInputMeta,
   z,
@@ -39,17 +40,23 @@ export type ExprValue = string | number | ParameterHandle;
 export type RefValue = GeomRef | readonly GeomRef[];
 
 /**
- * What a schema says an input is: an expression, a reference list, an enum or a
- * file. A file input carries no metadata of its own (its kind says it all), so
- * this adds the one the JSON schema shows.
+ * What a schema says an input is: an expression, a reference list, an enum, a
+ * file or a list of labels. A file or labels input carries no metadata of its
+ * own (its kind says it all), so this adds the one the JSON schema shows.
  */
-export type InputMeta = ExprInputMeta | RefInputMeta | EnumInputMeta | { kind: 'file' };
+export type InputMeta =
+  | ExprInputMeta
+  | RefInputMeta
+  | EnumInputMeta
+  | { kind: 'file' }
+  | { kind: 'labels' };
 
 /**
  * The plain value a stored input takes: an expression as a string, a number or
  * a parameter handle, references as one reference or a list, an enum as its own
  * value (so the union of its choices), a toggle as a boolean, a file as its
- * attachment's ID, and a sketch's content as it is.
+ * attachment's ID, a pattern's skip list as the position labels themselves, and
+ * a sketch's content as it is.
  */
 type PlainValue<T> = T extends ExprInput
   ? ExprValue
@@ -61,7 +68,9 @@ type PlainValue<T> = T extends ExprInput
         ? boolean
         : T extends FileInput
           ? string
-          : never;
+          : T extends LabelsInput
+            ? readonly string[]
+            : never;
 
 /**
  * Core's own input type with each input written as the plain value it takes, so
@@ -99,8 +108,9 @@ export function storedInputs(type: string, inputs: FeatureInputValue): FeatureIn
 /**
  * One plain value as the input its schema expects: an expression gets its unit,
  * references become a list (one ref for a single-reference input), an enum is
- * the string itself, a boolean a toggle. An input the schema says nothing about
- * keeps its value, and a boolean without metadata still becomes a toggle.
+ * the string itself, a boolean a toggle, a pattern's skip list the labels it
+ * names. An input the schema says nothing about keeps its value, and a boolean
+ * without metadata still becomes a toggle.
  */
 function plainInput(definition: FeatureDefinition, name: string, value: unknown): unknown {
   const what = inputMeta(definition, name);
@@ -120,6 +130,11 @@ function plainInput(definition: FeatureDefinition, name: string, value: unknown)
     // A file input is an attachment of the design, named by its ID (P4-06).
     case 'file':
       return typeof value === 'string' ? { kind: 'file', id: value } : value;
+    // A pattern's skipped instances, given as the position labels (P4-12).
+    case 'labels':
+      return Array.isArray(value) && value.every((v) => typeof v === 'string')
+        ? { kind: 'labels', labels: [...value] }
+        : value;
     default:
       return typeof value === 'boolean' ? { kind: 'bool', value } : value;
   }
@@ -132,7 +147,7 @@ function referenceInput(value: unknown): unknown {
 }
 
 /** The kinds core stores an input as (`schema.ts`'s `InputSchema`). */
-const STORED_KINDS = new Set(['expr', 'enum', 'bool', 'ref', 'sketchData']);
+const STORED_KINDS = new Set(['expr', 'enum', 'bool', 'ref', 'file', 'labels', 'sketchData']);
 
 /**
  * Whether a value is already one of core's stored input shapes. A reference is
@@ -166,8 +181,11 @@ export function inputMeta(definition: FeatureDefinition, name: string): InputMet
     };
     properties = {};
     for (const [key, property] of Object.entries(schema.properties ?? {})) {
-      const isFile = property.properties?.kind?.const === 'file';
-      properties[key] = (property.input ?? (isFile ? { kind: 'file' } : undefined)) as never;
+      // A file or a labels input says what it is in its own kind, with no
+      // metadata beside it, so the JSON schema's `kind` is the metadata here.
+      const bare = property.properties?.kind?.const;
+      const fromKind = bare === 'file' || bare === 'labels' ? { kind: bare } : undefined;
+      properties[key] = (property.input ?? fromKind) as never;
     }
     metaCache.set(definition, properties);
   }

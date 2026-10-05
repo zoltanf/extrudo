@@ -50,6 +50,7 @@ describe('values and inputs', () => {
       exprs: { distance: '5 mm', angle: '10 deg' },
       choices: { operation: 'join' },
       toggles: { tilted: false },
+      labels: {},
     });
     expect(shownFields(fakeSpec, values).map((f) => f.name)).toEqual([
       'faces',

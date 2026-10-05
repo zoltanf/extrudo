@@ -301,7 +301,10 @@ describe('the extrude dialog', () => {
 });
 
 describe('extrude manipulators', () => {
-  const at = (ms: readonly Manipulator[], field: string) => ms.find((m) => m.field === field);
+  /** The arrow or arc of a field; the kinds with no `origin` are a pattern's (P4-12). */
+  type WithOrigin = Extract<Manipulator, { origin: unknown }>;
+  const at = (ms: readonly Manipulator[], field: string): WithOrigin | undefined =>
+    ms.find((m): m is WithOrigin => 'origin' in m && m.field === field);
 
   it('put a distance arrow on a profile’s centroid along its plane’s normal, flip-aware', () => {
     const { sketch, profile } = rectangleSketch();

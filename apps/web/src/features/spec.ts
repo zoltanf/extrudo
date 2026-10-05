@@ -26,6 +26,7 @@ import type {
   FeatureInputs,
   GeomRef,
   GeomRefKind,
+  PatternReport,
   SketchReport,
   UnitKind,
   Vec3,
@@ -45,6 +46,8 @@ export interface DialogValues {
   /** Choice fields (dropdowns): the option's value. */
   choices: Readonly<Record<string, string>>;
   toggles: Readonly<Record<string, boolean>>;
+  /** Labels fields: the names they hold, in the order they were added. */
+  labels: Readonly<Record<string, readonly string[]>>;
 }
 
 interface FieldBase {
@@ -126,6 +129,18 @@ export interface InfoField extends FieldBase {
 }
 
 /**
+ * A read-only line of names, with a Clear button (P4-12: a pattern's skipped
+ * instances, which its in-view toggles fill in). Its value is a `labels`
+ * input, so it fills one input and takes no picks; an empty list makes no
+ * input at all.
+ */
+export interface LabelsField extends FieldBase {
+  kind: 'labels';
+  /** What the line reads when the list is empty. Default "None". */
+  empty?: string;
+}
+
+/**
  * A list of the document's features before the draft, to tick (P3-07: the
  * features a pattern or mirror repeats). Its value is `feature` references,
  * kept in `values.refs` like a selection field's; nothing is picked in the
@@ -144,6 +159,7 @@ export type DialogField =
   | ExpressionField
   | ChoiceField
   | ToggleField
+  | LabelsField
   | FeatureListField
   | InfoField;
 
@@ -159,6 +175,12 @@ export interface DialogContext {
   sketches?: Readonly<Record<FeatureId, SketchReport>>;
   /** What the kernel reports about each construction plane, axis and point (P3-05). */
   construction?: ConstructionReports;
+  /**
+   * The draft's own pattern layout (P4-12: its instances and series, from the
+   * last preview): where the dialog's per-instance toggles and count handles
+   * go. Absent for anything else, and while the first preview is on its way.
+   */
+  pattern?: PatternReport;
 }
 
 export interface ManipulatorContext extends DialogContext {
@@ -205,6 +227,13 @@ export interface DistanceManipulator {
    * length) has 0.5.
    */
   scale?: number;
+  /**
+   * How far the head is drawn off its own shaft, in screen pixels, upwards
+   * (P4-12: a pattern's arrow ends on an instance's centre, where its skip
+   * dot is; the lift keeps both clickable). It changes nothing about a drag,
+   * which follows the pointer.
+   */
+  lift?: number;
 }
 
 /**
@@ -238,7 +267,7 @@ export interface AngleManipulator {
  * along `direction` (world, unit length) for `length` mm. Clicking its head
  * flips the field; nothing is dragged, so no heads-up box opens on it.
  */
-export interface ToggleManipulator {
+export interface ArrowManipulator {
   kind: 'arrow';
   /** A toggle field of the dialog (a `bool` input). */
   field: string;
@@ -249,7 +278,65 @@ export interface ToggleManipulator {
   length?: number;
 }
 
-export type Manipulator = DistanceManipulator | AngleManipulator | ToggleManipulator;
+/**
+ * A dot on one instance of a pattern (P4-12): drawn at `at` (world mm), a
+ * filled dot while the instance is made and a ring with a slash through it
+ * while it is skipped. A click puts `label` into, or takes it out of, the
+ * dialog's `labels` field; nothing is dragged, so no heads-up box opens on it.
+ */
+export interface SwitchManipulator {
+  kind: 'toggle';
+  /** The labels field the instance's label goes in and out of (`skip`). */
+  field: string;
+  /** The instance's position label: `2`, `m1`, `1x3`. */
+  label: string;
+  /** mm, where the instance's centre is. */
+  at: Vec3;
+  /** The instance is skipped: drawn as a ring with a slash. */
+  skipped: boolean;
+}
+
+/**
+ * A handle on the last instance of a series of a pattern (P4-12): at `last`
+ * (world mm), dragged along `direction` (a row) or about it (a turn), where
+ * the whole number of instances it reaches becomes the field. `measure`
+ * `extent` keeps the distance and shares it out again, `spacing` steps by the
+ * series' own step.
+ */
+export interface CountManipulator {
+  kind: 'count';
+  /** An expression field of unit `unitless`: a count. */
+  field: string;
+  /** mm, where the series' first instance is: a drag counts steps from here. */
+  origin: Vec3;
+  /** mm, where the series' last instance is: where the handle is drawn. */
+  last: Vec3;
+  /** The unit direction of the series (a row) or its axis (a turn). */
+  direction: Vec3;
+  /** mm between neighbours, or radians: what a step is. */
+  step: number;
+  /** How many instances the series has now. */
+  count: number;
+  /** The distance is from the first instance to the last, not between neighbours. */
+  extent: boolean;
+  /** The series turns about `direction` instead of running along it. */
+  turn?: boolean;
+  /**
+   * For a turn, the direction on the axis's plane the angle is measured from
+   * (unit length, across `direction`), so the drag counts steps round from the
+   * first instance. Default: away from the axis through `origin`.
+   */
+  zero?: Vec3;
+  /** Off the instance's centre, in screen pixels (P4-12, as a distance arrow's `lift`). */
+  lift?: number;
+}
+
+export type Manipulator =
+  | DistanceManipulator
+  | AngleManipulator
+  | ArrowManipulator
+  | SwitchManipulator
+  | CountManipulator;
 
 /** What a spec's own UI is given: the open dialog and its controller. */
 export interface DialogExtraProps {

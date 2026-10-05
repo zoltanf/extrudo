@@ -899,7 +899,18 @@ end to end, faster than in Fusion 360.
     count, a line width, an infill and a price per kg in the `print.material`
     preference, and "Printed (est.)" and "Cost" rows. **Still open: support
     volume**, which needs a slicer's support generation.
-  - Patterns: a skip list, count and path handles (ADR-0047).
+  - ~~Patterns: a skip list, count and path handles~~ **done 2026-10-05**
+    (ADR-0047's amendment): all three pattern types take a `skip` input (the
+    position labels of the instances they leave out, a new `labels` input
+    kind), which the kernel drops before the boolean and previews as a faint
+    ghost of each skipped instance; the original can't be skipped, a label past
+    the count is ignored and kept, and every instance skipped says so. The
+    evaluators report the layout (`PatternReport`: every instance's centre and
+    each series' first and last), which the dialogs read for a dot on every
+    instance (a click skips or keeps it), a **count handle** on the last
+    instance of each series (rectangular and circular) and the path pattern's
+    **distance handle** at its last instance. A pattern's handles float clear of
+    the instances so the dots stay clickable.
   - A ghost of lost geometry in the view (ADR-0005, -0033); remappable
     marking-menu wedges (ADR-0042).
   - Emboss: cones, spheres and free-form faces; more than half way round a

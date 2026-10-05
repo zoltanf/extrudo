@@ -4,6 +4,22 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-05 · **P4-12 Patterns: a skip list, count handles and a path handle**
+  (ADR-0047's amendment): any of the three pattern types can leave single
+  instances out. `skip` is the list of their position labels (`2`, `m1`,
+  `1x3`), a new `labels` input kind, so nothing in it can go stale: the kernel
+  drops those placements before the boolean (the rest is exactly what the
+  pattern would have made), the original can't be skipped, a label past the
+  count is ignored and kept for when the count grows, and a skipped instance is
+  previewed as a faint ghost of what it would have been. In the view, a **dot
+  on every instance** skips or keeps it with a click (the read-only "Skipped"
+  line lists them and clears them), a **count handle** on the last instance of
+  each direction — dragged along the row or round the arc, the count becomes
+  the nearest whole number of steps it reaches — and a path pattern's
+  **distance handle** at its last instance stretches or closes the run. The
+  handles read a new layout report from the kernel (every instance's centre and
+  each series' first and last) rather than repeating the layout maths, and they
+  float clear of the instances so the dots stay clickable.
 - 2026-10-05 · **P4-12 Fillet and chamfer depth: 32 edge sets, a chamfer's
   reference face, radius and distance handles** (ADR-0038 and ADR-0043
   amendments): `FILLET_MAX_SETS` and `CHAMFER_MAX_SETS` go from 8 to 32 (a

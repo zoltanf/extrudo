@@ -547,6 +547,42 @@ the exact distance to the solids whose boxes meet). A path is a polyline (`pathF
 `curves`). Mirror's `objects: 'features'` uses the same `replayFeatures`.
 The dialogs have a new field kind `features` (a checkbox list of
 `repeatableFeatures`). No facade change.
+**P4-12 added a skip list, count handles and a path handle** (ADR-0047's
+amendment, no facade change): all three types take an optional `skip` input, the
+**position labels** (`"2"`, `"m1"`, `"1x3"`) of the instances they leave out, as
+the new `labels` input kind (`skipLabels`, `toggleSkip`, `isOriginalLabel` in
+core). **A label names a position, so nothing in the list can go stale**: the
+kernel drops those placements before any boolean (`splitSkip`; the rest is
+exactly what the pattern would have made), the original can't be skipped ("The
+original can't be skipped."), a label past the count is ignored **and kept**,
+every instance skipped warns, and a skipped instance is previewed as a faint
+ghost (the new `PreviewToolStyle` `skip`, drawn beside the rest of the preview,
+never instead of it). The evaluators **report the layout** (`PatternReport`:
+every instance's centre, its label and whether it is skipped, plus a
+`PatternSeries` per direction — direction, step, count and where its first and
+last instances are; `rectangularSeries`/`circularSeries`/`pathSeries` and
+`patternReport` are pure in `pattern-layout.ts`), which comes through
+`Preview.pattern` for the dialogs, so the app never repeats the layout maths
+(the path pattern cannot work it out at all: its points come from OCCT). Three
+new manipulator kinds: **`toggle`** (a dot on every instance's centre, filled
+while it is made and a ring with a slash while it is skipped, a click skips or
+keeps it; off above `MAX_PATTERN_TOGGLES` = 100 instances), **`count`** (a
+handle on the last instance of each series, dragged along the row or round the
+arc: `draggedCount` makes it the nearest whole number of steps reached, or, when
+the measure is an extent, the count scaled by the share of it the drag reached)
+and the path's **`distance`** handle at the last instance (its scale is
+`count - 1`, since with the distance read between neighbours the arrow spans the
+whole run). **A pattern's handles carry a `lift` (14 px)** — drawn across the
+shaft, or straight out from the axis for a turn, with a tick back — because an
+arrow's tip and a count handle land on an instance's centre, where its dot is;
+a lifted drag measures from the origin, since where a lifted head was pressed
+says nothing about the value. A `labels` **field** kind is the read-only
+"Skipped" line with a Clear button; an empty list makes **no input at all**, so
+every existing pattern file is unchanged. **The `labels` input kind reaches
+`@extrudo/api` too** (ADR-0068): `generate.ts`'s `readInput` gives it the type
+column `string[]` and `inputs.ts` maps a call's plain list to it
+(`d.rectangularPattern({ …, skip: ['2'] })`), like `file` has no metadata of its
+own, so **a new input kind needs a case in both**.
 ADR-0049 (P3-04) added hole: `packages/core/src/hole.ts` (one feature type
 that **always cuts**: `plane`, `points`, `x`/`y`, `type` simple /
 counterbore / countersink, `extent` blind / through, `diameter`, `depth`,
@@ -2151,8 +2187,24 @@ them. Notes further down that name a machine apply to that machine only.
   "Distance" (`exact`), the combobox "Pattern" (Mirror's is "Mirror") with
   `bodies`/`features`, and for features a list of checkboxes named like
   `Cylinder1 cut` (`[data-feature]`). The ghosts are `data-preview` ("new
-  new" for two copies, one `cut` for a repeated hole); handles
-  `data-manipulators="distance:distance1"` / `angle:angle`. After switching to
+  new" for two copies, one `cut` for a repeated hole, "cut skip" with a
+  skipped instance); handles `data-manipulators="distance:distance1
+  count:count1 toggle:skip"` / `"angle:angle count:count toggle:skip"` /
+  `"distance:distance toggle:skip"` (each kind and field listed **once**, even
+  with a dot per instance). **P4-12's handles:** an instance's dot is
+  `[data-instance-toggle="1x1"]` (with `data-skipped` on it), the count handle
+  and the path's distance handle are `[data-manipulator-handle="count1"|"count"|
+  "distance"]` whose `cx`/`cy` are px in the viewport, and the read-only
+  "Skipped" line is `[data-labels="skip"]` (its text, "None" when empty, with a
+  "Clear Skipped" button). A pattern's handles are drawn 14 px clear of the
+  geometry (`lift`), so a drag must start where the handle is drawn but is
+  measured from the origin: drag to the projection of a point on the *shaft*
+  (the direction line's origin is the report's `series.first`, which for a
+  features pattern is the *tool's* centre, not the body's), and take the count
+  or the distance from what the drag reads, not from where the head was. The
+  three new tests: a 3 × 2 pattern of a cut with a dot clicked out (five holes,
+  one undo step), a count handle dragged two spacings (count 5), a circular
+  one round the arc, and the path's distance handle. After switching to
   Features the pick field is stale: click the "Axis"/"Plane" button first. The
   Z axis is pickable above a 20 mm cube at (0, 0, 25…45) in the home view; a
   mirror plane at YZ needs a click where no body is in front (the spec tries

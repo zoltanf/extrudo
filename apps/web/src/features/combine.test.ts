@@ -58,7 +58,13 @@ describe('the combine dialog', () => {
 
   it('previews in the style of the operation', () => {
     const style = (operation: string) =>
-      combineDialog.previewStyle?.({ refs: {}, exprs: {}, choices: { operation }, toggles: {} });
+      combineDialog.previewStyle?.({
+        refs: {},
+        exprs: {},
+        choices: { operation },
+        toggles: {},
+        labels: {},
+      });
     expect([style('join'), style('cut'), style('intersect')]).toEqual(['join', 'cut', 'intersect']);
   });
 });

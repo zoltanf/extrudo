@@ -23,7 +23,9 @@ import {
   isCanvasReport,
   isConstructionReport,
   isMeshMediaType,
+  isPatternReport,
   type ModelStore,
+  type PatternReport,
   type SketchReport,
 } from '@extrudo/core';
 import {
@@ -122,6 +124,12 @@ export interface Preview {
   construction?: ConstructionReport;
   /** The draft's frame when it is a canvas that computed (P4-06, ADR-0066 §5). */
   canvas?: CanvasReport;
+  /**
+   * The draft's own layout when it is a pattern (P4-12): its instances and
+   * series, for the dialog's in-view toggles and count handles. Absent for
+   * anything else, or while the draft fails.
+   */
+  pattern?: PatternReport;
 }
 
 export class Recomputer {
@@ -268,6 +276,7 @@ export class Recomputer {
             ...(base && { base }),
             ...(isConstructionReport(own) && { construction: own }),
             ...(isCanvasReport(own) && { canvas: own }),
+            ...(isPatternReport(own) && { pattern: own }),
           });
         } catch {
           resolve(undefined);

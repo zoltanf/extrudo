@@ -172,6 +172,7 @@ describe('the Canvas dialog', () => {
       exprs: { x: '10 mm', y: '-5 mm', width: '40 mm', rotation: '30 deg', opacity: '0.8' },
       choices: {},
       toggles: { flip: true },
+      labels: {},
     };
     expect(canvasDialogInputs(values, ctx)).toEqual(
       canvasInputs({
@@ -183,7 +184,7 @@ describe('the Canvas dialog', () => {
     );
     expect(CanvasInputsSchema.safeParse(canvasDialogInputs(values, ctx)).success).toBe(true);
     // Every field's default reaches the inputs, and an empty field takes it too.
-    const blank: DialogValues = { refs: {}, exprs: {}, choices: {}, toggles: {} };
+    const blank: DialogValues = { refs: {}, exprs: {}, choices: {}, toggles: {}, labels: {} };
     expect(canvasDialogInputs(blank, ctx)).toEqual({
       image: { kind: 'file', id: pending.id },
       x: { kind: 'expr', expr: '0 mm', unit: 'length' },
@@ -246,7 +247,7 @@ describe('the Canvas dialog', () => {
   });
 });
 
-const EMPTY: DialogValues = { refs: {}, exprs: {}, choices: {}, toggles: {} };
+const EMPTY: DialogValues = { refs: {}, exprs: {}, choices: {}, toggles: {}, labels: {} };
 
 describe("a canvas's placement and calibration (ADR-0066 §5)", () => {
   const values: DialogValues = {

@@ -198,7 +198,13 @@ function mirrorFeatures(
     slot: 0,
     matrix: mirror(frame.origin, frame.normal),
   };
-  return replayFeatures(ctx, scope, settings.features, [placement], 'mirror');
+  return replayFeatures(
+    ctx,
+    scope,
+    settings.features,
+    { placements: [placement], skipped: [] },
+    'mirror',
+  );
 }
 
 function evaluateMirror(ctx: EvalContext<MirrorInputs>): FeatureOutput {

@@ -94,4 +94,38 @@ describe('preview drawings', () => {
     expect(previewSummary({ shapes: drawing.shapes, dimmed: false })).toBe('join');
     expect(previewSummary(undefined)).toBeUndefined();
   });
+
+  it('draws the skipped instances of a pattern beside the rest, not instead (P4-12)', () => {
+    const same = namedBoxMesh();
+    const changed = boxMesh([0, 0, 0], [5, 5, 5]);
+    const ghost = boxMesh([20, 0, 0], [25, 5, 5]);
+    const model = { [BOX]: same };
+    // A pattern of bodies has no other tools: its ghosts show with the copies.
+    const drawing = previewDrawing(
+      {
+        features: {},
+        bodies: { [BOX]: changed, ['new' as BodyId]: ghost },
+        tools: [{ mesh: ghost, style: 'skip' }],
+      },
+      model,
+      'new',
+    );
+    expect(drawing).toEqual({
+      shapes: [
+        { mesh: changed, style: 'new' },
+        { mesh: ghost, style: 'new' },
+        { mesh: ghost, style: 'skip' },
+      ],
+      tools: false,
+    });
+    expect(previewSummary({ shapes: drawing.shapes, dimmed: false })).toBe('new new skip');
+    // A body the draft didn't change adds nothing, so the ghost is all that is drawn.
+    expect(
+      previewDrawing(
+        { features: {}, bodies: { [BOX]: same }, tools: [{ mesh: ghost, style: 'skip' }] },
+        model,
+        'cut',
+      ),
+    ).toEqual({ shapes: [{ mesh: ghost, style: 'skip' }], tools: false });
+  });
 });

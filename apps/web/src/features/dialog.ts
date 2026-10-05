@@ -31,12 +31,14 @@ import {
   type ModelStore,
   newId,
   nextFeatureName,
+  type PatternReport,
   parseSketchEntityRefId,
   type ReferenceIssue,
   readSketch,
   type SelectionItem,
   type SessionStore,
   setFeatureVisibility,
+  toggleSkip,
   updateFeatureInputs,
   usedSketches,
   type Vec3,
@@ -112,6 +114,12 @@ export interface DialogPreview {
   status: FeatureStatus | undefined;
   /** A preview of the current values is on its way. */
   pending: boolean;
+  /**
+   * The draft's own pattern layout (P4-12): its instances and series, which
+   * the manipulators read for their dots and count handles. From the last
+   * preview that had one, so the handles don't jump about while it is late.
+   */
+  pattern?: PatternReport;
 }
 
 export interface OpenDialog {
@@ -194,6 +202,10 @@ export interface DialogController {
   setTyping(field: string, message: string | undefined): void;
   setChoice(field: string, value: string): void;
   setToggle(field: string, value: boolean): void;
+  /** Replaces the names a labels field holds (a pattern's `skip`). */
+  setLabels(field: string, labels: readonly string[]): void;
+  /** Puts `label` into, or takes it out of, a labels field (an in-view instance dot). */
+  toggleLabel(field: string, label: string): void;
   /** Makes a selection field the one picks go to. */
   pickInto(field: string): void;
   /**
@@ -277,12 +289,24 @@ export function createDialogController(options: DialogControllerOptions): Dialog
   /** The draft and document of the last preview asked for. */
   let previewed: { draft: string; doc: unknown } | undefined;
 
-  const context = (open: Pick<OpenDialog, 'mode' | 'id' | 'base'>): DialogContext => {
+  const context = (
+    open: Pick<OpenDialog, 'mode' | 'id' | 'base'> & {
+      preview?: DialogPreview;
+    },
+  ): DialogContext => {
     const doc = store.getState().doc;
     const feature = open.mode === 'edit' ? doc.features.find((f) => f.id === open.id) : undefined;
     const bodies = dialogBodies(open, model.getState().bodies);
     const { sketches, construction } = model.getState();
-    return { doc, bodies, sketches, construction, ...(feature && { feature }) };
+    const pattern = open.preview?.pattern;
+    return {
+      doc,
+      bodies,
+      sketches,
+      construction,
+      ...(pattern && { pattern }),
+      ...(feature && { feature }),
+    };
   };
 
   /** The draft of the values: inputs with parameter names, and its expressions evaluated. */
@@ -377,10 +401,17 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         const bodies = result.base ?? dialogBodies(open, model.getState().bodies);
         const drawing =
           status?.status === 'error' ? open.preview.drawing : previewDrawing(result, bodies, style);
+        const pattern = result.pattern;
         state.setState({
           open: {
             ...open,
-            preview: { drawing, status, pending: false },
+            preview: {
+              drawing,
+              status,
+              pending: false,
+              ...(pattern && { pattern }),
+              ...(!pattern && open.preview.pattern && { pattern: open.preview.pattern }),
+            },
             ...(result.base && { base: result.base }),
           },
         });
@@ -675,6 +706,20 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     setToggle: (field, value) =>
       update(field, (open) => ({
         values: { ...open.values, toggles: { ...open.values.toggles, [field]: value } },
+      })),
+    setLabels: (field, labels) =>
+      update(field, (open) => ({
+        values: { ...open.values, labels: { ...open.values.labels, [field]: [...labels] } },
+      })),
+    toggleLabel: (field, label) =>
+      update(field, (open) => ({
+        values: {
+          ...open.values,
+          labels: {
+            ...open.values.labels,
+            [field]: toggleSkip(open.values.labels[field] ?? [], label),
+          },
+        },
       })),
     pickAt(item, at) {
       const current = get();

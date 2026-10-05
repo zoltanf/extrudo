@@ -157,8 +157,13 @@ export interface FeatureOutput {
   previewTools?: readonly PreviewTool[];
 }
 
-/** How a preview tool is drawn: new bodies and joins translucent, cuts red (UI spec §3.4). */
-export type PreviewToolStyle = 'new' | 'join' | 'cut' | 'intersect';
+/**
+ * How a preview tool is drawn: new bodies and joins translucent, cuts red
+ * (UI spec §3.4), an intersection violet, and `skip` a faint ghost of what a
+ * pattern's skipped instance would have been (P4-12). A `skip` tool is drawn
+ * beside whatever else the preview shows, never instead of it.
+ */
+export type PreviewToolStyle = 'new' | 'join' | 'cut' | 'intersect' | 'skip';
 
 export interface PreviewTool {
   shape: ShapeHandle;

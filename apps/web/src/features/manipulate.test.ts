@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   angleAround,
   distanceAlong,
+  draggedCount,
   draggedExpression,
   lengthStep,
   type Ray,
@@ -86,5 +87,38 @@ describe('unwrapAngle (P2-07)', () => {
     // A symmetric arc shows half the angle: it wraps every 720° of the value.
     expect(unwrapAngle(-340, 350, 720)).toBe(360);
     expect(unwrapAngle(100, 90, 720)).toBe(100);
+  });
+});
+
+describe('draggedCount (P4-12)', () => {
+  const row = { step: 20, count: 3, extent: false };
+
+  it('is the nearest whole number of steps the drag reached, the first included', () => {
+    expect(draggedCount(0, row)).toBe(1);
+    expect(draggedCount(20, row)).toBe(2);
+    expect(draggedCount(29, row)).toBe(2);
+    expect(draggedCount(31, row)).toBe(3);
+    expect(draggedCount(70, row)).toBe(5); // 3.5 steps, rounded up
+  });
+
+  it('counts by the share of the extent when the distance is first to last', () => {
+    const extent = { step: 10, count: 3, extent: true };
+    // Two steps of 10 mm are the whole extent, so the drag is where the handle is.
+    expect(draggedCount(20, extent)).toBe(3);
+    expect(draggedCount(30, extent)).toBe(5);
+    expect(draggedCount(12, extent)).toBe(2);
+    expect(draggedCount(0, extent)).toBe(1); // never below one instance
+  });
+
+  it('never drops below one, never passes the limit, and steps on a turn', () => {
+    expect(draggedCount(-100, row)).toBe(1);
+    expect(draggedCount(1e6, row)).toBe(1000);
+    expect(draggedCount(400, row, 12)).toBe(12);
+    // A whole turn of a six-instance pattern: 60 degrees a step.
+    expect(draggedCount(0, { step: 60, count: 6, extent: true })).toBe(1);
+    expect(draggedCount(180, { step: 60, count: 6, extent: true })).toBe(4);
+    // A step of zero (the first two instances on top of each other) can't divide.
+    expect(draggedCount(40, { step: 0, count: 2, extent: false })).toBe(1000);
+    expect(draggedCount(40, { step: 0, count: 1, extent: true })).toBe(1000);
   });
 });

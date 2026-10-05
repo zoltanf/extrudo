@@ -43,6 +43,7 @@ export function PreviewShapes({
       mesh={shape.mesh}
       color={styleColor(shape.style, colors)}
       dimmed={preview.dimmed}
+      faint={shape.style === 'skip'}
       planes={planes}
     />
   ));
@@ -61,15 +62,21 @@ export function styleColor(style: PreviewToolStyle, colors: SceneColors): Rgba {
   }
 }
 
+/** How much of its own colour a shape is drawn with: a skipped instance's ghost is barely there. */
+const FAINT = 0.3;
+
 function PreviewShape({
   mesh,
   color,
   dimmed,
+  faint = false,
   planes,
 }: {
   mesh: BodyMesh;
   color: Rgba;
   dimmed: boolean;
+  /** A ghost of what a skipped instance would have been (P4-12). */
+  faint?: boolean;
   planes: Plane[] | null;
 }) {
   const faces = useMemo(() => {
@@ -119,7 +126,7 @@ function PreviewShape({
     [fill, lines],
   );
   const rgb = new Color().setRGB(color.r, color.g, color.b, 'srgb');
-  const fade = dimmed ? 0.4 : 1;
+  const fade = (dimmed ? 0.4 : 1) * (faint ? FAINT : 1);
   fill.color = rgb;
   fill.opacity = color.a * fade;
   lines.color = rgb;

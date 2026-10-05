@@ -16,7 +16,6 @@ import {
   type SketchData,
   sketchInputs,
   TOLERANCE_PARAMETER,
-  type Vec3,
 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { describe, expect, it } from 'vitest';
@@ -33,7 +32,7 @@ import {
 import { dialogPlanePicker } from './planePicker';
 import { fieldFilter } from './refs';
 import { featureDialogs, specForCommand } from './registry';
-import type { DialogValues, ManipulatorContext } from './spec';
+import type { DialogValues, Manipulator, ManipulatorContext } from './spec';
 import { BOX, faceItem, namedBoxMesh, setupDialogs } from './testing';
 import { defaultValues, inputsFor, mergeValues, shownFields, valuesFor } from './values';
 
@@ -64,6 +63,9 @@ const withValues = (numbers: Record<string, number> = {}): ManipulatorContext =>
 });
 
 const round = (v: readonly number[]) => v.map((c) => Math.round(c * 1000) / 1000 + 0);
+/** Where a handle sits (the kinds without an `origin`, a pattern's dots, are none here). */
+const originOf = (m: Manipulator | undefined): readonly number[] =>
+  m && 'origin' in m ? (m.origin as unknown as readonly number[]) : [0, 0, 0];
 
 /** A document with a sketch on XY holding two points, and the dialogs on it. */
 function withSketch() {
@@ -454,7 +456,7 @@ describe('the handles', () => {
     const through = on({}, { x: 3, y: 4 });
     expect(through.map((m) => m.kind === 'distance' && m.field)).toEqual(['diameter']);
     expect(through[0]).toMatchObject({ scale: 0.5, direction: [1, 0, 0] });
-    expect(round((through[0]?.origin ?? [0, 0, 0]) as Vec3)).toEqual([3, 4, 10]);
+    expect(round(originOf(through[0]))).toEqual([3, 4, 10]);
     const blind = on({ choices: { extent: 'blind' } }, { x: 3, y: 4 });
     expect(blind.map((m) => m.kind === 'distance' && m.field)).toEqual(['diameter', 'depth']);
     // Into the face: against its outward normal.
@@ -475,7 +477,7 @@ describe('the handles', () => {
       'cbDepth',
     ]);
     // The depth arrow starts on the step's edge, 4 mm from the axis.
-    expect(round((bore[3]?.origin ?? [0, 0, 0]) as Vec3)).toEqual([0, 4, 10]);
+    expect(round(originOf(bore[3]))).toEqual([0, 4, 10]);
     const sink = on({ choices: { type: 'countersink' } });
     expect(sink.map((m) => m.kind === 'distance' && m.field)).toEqual(['diameter', 'csDiameter']);
   });
@@ -489,7 +491,7 @@ describe('the handles', () => {
     };
     const arrows = holeManipulators(values({ refs: { plane: [TOP], points: [t.p1] } }), ctx);
     // p1 is (2, 3) on XY (z = 0): dropped onto the top face at z = 10.
-    expect(round((arrows[0]?.origin ?? [0, 0, 0]) as Vec3)).toEqual([2, 3, 10]);
+    expect(round(originOf(arrows[0]))).toEqual([2, 3, 10]);
     expect(holeManipulators(values({ refs: { plane: [{ kind: 'face', id: 'x' }] } }), ctx)).toEqual(
       [],
     );

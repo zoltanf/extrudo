@@ -849,6 +849,7 @@ export interface FeatureMethods {
    * @param inputs.bodies The bodies to copy, with objects: bodies.
    * @param inputs.features The features whose tools are replayed, with objects: features.
    * @param inputs.join Fuse each copy into the original. Default false.
+   * @param inputs.skip Instances left out, by their position labels (`2`, `m1`, `1x3`). The original cannot be listed; a label no instance has is ignored and kept.
    * @param inputs.direction1 The direction to step in first.
    * @param inputs.count1 How many instances there are, the original included; a whole number of at least 1. Default 2.
    * @param inputs.distance1 The spacing in the first direction; a length. Default 20 mm.
@@ -876,6 +877,7 @@ export interface FeatureMethods {
    * @param inputs.bodies The bodies to copy, with objects: bodies.
    * @param inputs.features The features whose tools are replayed, with objects: features.
    * @param inputs.join Fuse each copy into the original. Default false.
+   * @param inputs.skip Instances left out, by their position labels (`2`, `m1`, `1x3`). The original cannot be listed; a label no instance has is ignored and kept.
    * @param inputs.axis The axis to spread the instances round.
    * @param inputs.count How many instances there are, the original included; a whole number of at least 1. Default 3.
    * @param inputs.angle The angle the instances take in; an angle. Default 360 deg.
@@ -898,6 +900,7 @@ export interface FeatureMethods {
    * @param inputs.bodies The bodies to copy, with objects: bodies.
    * @param inputs.features The features whose tools are replayed, with objects: features.
    * @param inputs.join Fuse each copy into the original. Default false.
+   * @param inputs.skip Instances left out, by their position labels (`2`, `m1`, `1x3`). The original cannot be listed; a label no instance has is ignored and kept.
    * @param inputs.path The sketch curves and edges to follow, chained end to end.
    * @param inputs.count How many instances there are, the original included; a whole number of at least 1. Default 3.
    * @param inputs.distance The spacing along the path; a length. Default 20 mm.

@@ -24,6 +24,7 @@ a valid feature.
 | `bodies` | `GeomRef \| GeomRef[]` (`body`) | optional | The bodies to copy, with objects: bodies. |
 | `features` | `GeomRef \| GeomRef[]` (`feature`) | optional | The features whose tools are replayed, with objects: features. |
 | `join` | `boolean` | default `false` | Fuse each copy into the original. |
+| `skip` | `string[]` | optional | Instances left out, by their position labels (`2`, `m1`, `1x3`). The original cannot be listed; a label no instance has is ignored and kept. |
 | `axis` | `GeomRef \| GeomRef[]` (`axis`, `sketchEntity`, `edge`) | optional | The axis to spread the instances round. |
 | `count` | `string \| number \| ParameterHandle` | default `3` | How many instances there are, the original included; a whole number of at least 1. |
 | `angle` | `string \| number \| ParameterHandle` | default `360 deg` | The angle the instances take in; an angle. |

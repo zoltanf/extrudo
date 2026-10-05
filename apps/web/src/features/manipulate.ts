@@ -3,7 +3,13 @@
  * arc puts the value, how finely it snaps, and the expression it writes.
  * Pure, over plain 3-vectors, so it runs in Vitest.
  */
-import { type ExtrudoDocument, UNITS, type UnitKind, type Vec3 } from '@extrudo/core';
+import {
+  type ExtrudoDocument,
+  MAX_PATTERN_INSTANCES,
+  UNITS,
+  type UnitKind,
+  type Vec3,
+} from '@extrudo/core';
 
 export interface Ray {
   origin: Vec3;
@@ -68,6 +74,26 @@ export function unwrapAngle(measured: number, previous: number, period = 360, li
   const k = Math.round((previous - measured) / period);
   const value = measured + k * period;
   return Math.max(-limit, Math.min(limit, value));
+}
+
+/**
+ * The count a dragged pattern series reaches (P4-12), from how far the drag
+ * got from the series' first instance: the nearest whole number of steps when
+ * the distance is between neighbours (the first instance included), or, when
+ * it is from the first to the last, the count scaled by the share of that
+ * extent the drag reached — at the handle's own place that share is 1, so the
+ * count stands still until the drag moves. Never below 1, never above `max`.
+ */
+export function draggedCount(
+  reached: number,
+  series: { step: number; count: number; extent: boolean },
+  max = MAX_PATTERN_INSTANCES,
+): number {
+  const step = Math.max(Math.abs(series.step), 1e-9);
+  const span = (series.count - 1) * step;
+  const share = series.extent && series.count > 1 && span > 1e-9 ? reached / span : reached / step;
+  const count = series.extent ? series.count * share : share + 1;
+  return Math.max(1, Math.min(max, Math.round(count)));
 }
 
 /**

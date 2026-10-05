@@ -272,3 +272,113 @@ repeating that pattern again is refused ("repeats a tool whose instances
 overlap"); the Hole feature keeps fusing its own holes, since a Hole is
 repeatable. A pattern is not in the dialogs' list of repeatable features, so this
 only shows for a hand-edited document.
+
+## Amendment (P4-12): a skip list, count handles and a path handle
+
+The backlog item this closes: *"Patterns: a skip list, count and path handles
+(ADR-0047)."* No facade change; no OCCT build.
+
+### `skip`: leaving instances out
+
+All three pattern types take an optional **`skip`** input: the position labels
+of the instances they leave out (`"2"`, `"m1"`, `"1x3"`), as the new `labels`
+input kind (`schema.ts`: a list of names of a design's own making, with nothing
+to refer to, each matching `m?\d+(xm?\d+)?`).
+
+A label is a **position**, which is what makes the list safe: it cannot go
+stale, nothing has to be re-resolved, and a skip stays on its instance while
+the counts change (the counts only add instances at the end of each series, and
+the grid labels are `i x j`). So:
+
+- The kernel drops the listed placements **before any boolean**
+  (`splitSkip` in `features/pattern.ts`), so what is left is exactly what the
+  pattern would have made without those instances: the same body IDs, the same
+  face names, the same geometry. Nothing else had to change.
+- **The original can't be skipped** ("The original can't be skipped.") — it is
+  the thing being patterned, and `0`/`0x0` is a label like any other, so the
+  mistake is caught with a message instead of silence.
+- **A label no instance has is ignored, not an error**, and it stays in the
+  list: the user lowered the count and the skip comes back when they raise it.
+- **Every instance skipped** makes nothing new and says so as a warning (the
+  ghosts are still drawn), rather than failing: it is a state a user passes
+  through, not a mistake.
+- A skipped instance is previewed as a **ghost** (`PreviewToolStyle` gained
+  `skip`): the copy of the original, or the feature's tool, at that
+  placement. It costs one `transform` per skipped instance per body, and the
+  shapes are the engine's (the scope keeps them, like every preview tool), so
+  a failed pattern releases them as usual — `strictLeaks` and the leak test
+  cover it.
+
+`skip` needed a **new input kind** rather than an `enum`: a list of strings
+with a shape of its own. `packages/core/src/pattern.ts` gets `skipLabels`,
+`toggleSkip` and `isOriginalLabel`; the dialogs get a `labels` field kind
+(`spec.ts`), which is the read-only "Skipped" line with a Clear button and the
+input behind it. **An empty list makes no input at all**, so a design with
+nothing skipped says nothing and every existing pattern file is unchanged.
+
+### The layout report
+
+The in-view handles need to know where the instances are, and the app cannot
+work that out: a path pattern's points come from OCCT's sampled edges. So the
+evaluators **report the layout** (`FeatureOutput.report`, a `PatternReport`):
+every instance's centre (its placement applied to the box centre of what is
+patterned — the picked bodies, or the first replayed feature's tool), its label,
+whether it is skipped, and one entry per **series** (`PatternSeries`: the
+direction, the step, the count, and where its first and last instances are). It
+is plain JSON, checked by `isPatternReport`, and comes through a preview like
+any other report (`Preview.pattern`). The app reads it and never repeats the
+layout maths — `rectangularSeries`, `circularSeries` and `pathSeries` are pure
+and tested in the kernel, where the placements are.
+
+`includeOriginal` on the three placement builders lists the original with the
+others (`original: true` on its `Placement`), which is what the report needs;
+the placements an evaluator *runs* still leave it out, as before.
+
+### Handles
+
+Three new manipulator kinds in `spec.ts`, all drawn by `DialogOverlay`:
+
+- **`toggle`** — a dot on every instance's centre: filled while it is made, a
+  ring with a slash through it while it is skipped. A click puts the label in,
+  or takes it out of, the `skip` field. Off above `MAX_PATTERN_TOGGLES` (100)
+  instances: that many dots are more than anyone can use, and the Skipped field
+  still works.
+- **`count`** — a handle on the last instance of each series (one per direction
+  of a rectangular pattern, on the arc for a circular one). Dragged along the
+  direction (or round the axis), the count becomes the nearest whole number of
+  steps the drag reached (`draggedCount`, pure): `round(share) + 1` when the
+  distance is between neighbours, and, when it is from the first instance to
+  the last, the count scaled by the share of that extent the drag reached — at
+  the handle's own place the share is 1, so the count stands still until the
+  drag moves. Never below 1, never above `MAX_PATTERN_INSTANCES`.
+- the path pattern's **`distance`** handle at the last instance, along the path's
+  tangent there, driving the extent along the path. With the distance read
+  between neighbours the arrow spans the whole run, so its scale is `count - 1`.
+
+**A lifted handle.** An arrow's tip and a count handle both land on an
+instance's centre, which is where that instance's dot is: one of the two was
+unreachable. The pattern's handles therefore carry a `lift` (14 px) and are drawn
+clear of the geometry — across the shaft for a row, straight out from the axis
+for a turn — with a tick back to where the handle really is. A lifted drag
+measures from the origin rather than taking its offset where it was pressed,
+because where a lifted head was pressed says nothing about the value (in
+perspective a 14 px offset moves the ray's intersection with the shaft
+noticeably). Nothing else changed: a handle with no `lift` behaves exactly as
+before.
+
+### Rejected
+
+- **Filtering in the app** (dropping the ghosts or the copies from the preview
+  drawing): the preview comes from the kernel and the bodies are what it is, so
+  the kernel has to do it, and `skip` has to be an input for the same reason.
+- **A per-instance boolean in the document** (the Fusion way, `skip1 = true`):
+  it grows with the count, and a flag that names a position by index is exactly
+  the thing that goes stale when the count changes. A label list is the same
+  information and cannot.
+- **Repeating the layout maths in the app** so the handles need no report: it
+  would be a second copy of `rectangularPlacements` and friends, drifting from
+  the kernel's. The path pattern cannot be worked out in the app at all.
+- **Dragging a count handle changes the distance** instead (what Fusion does):
+  a count is the thing the handle sits on, and the distance already has an
+  arrow. Making the distance change too would mean every instance moving under
+  the pointer.

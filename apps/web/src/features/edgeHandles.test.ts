@@ -25,6 +25,7 @@ const values = (refs: DialogValues['refs']): DialogValues => ({
   exprs: {},
   choices: {},
   toggles: {},
+  labels: {},
 });
 
 describe('a fillet or chamfer handle on an edge', () => {

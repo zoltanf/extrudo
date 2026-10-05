@@ -4,6 +4,10 @@
  * cut red), or, for a feature whose evaluator gives none, the bodies the
  * draft made or changed, in the spec's style. The model's own bodies stay
  * drawn and pickable underneath.
+ *
+ * A `skip` tool (P4-12: what a pattern's skipped instance would have been) is
+ * **beside** the rest, never instead of it: a pattern of bodies has no other
+ * tools to show, and its ghosts say where the instances it left out are.
  */
 import type {
   BodyId,
@@ -39,15 +43,19 @@ export function previewDrawing(
 ): PreviewDrawing {
   if (preview.construction) return { shapes: [], tools: false, construction: preview.construction };
   if (preview.canvas) return { shapes: [], tools: false, canvas: preview.canvas };
-  if (preview.tools.length > 0) {
-    return { shapes: preview.tools.map(({ mesh, style }) => ({ mesh, style })), tools: true };
+  const ghosts = preview.tools.filter((tool) => tool.style === 'skip');
+  const tools = preview.tools.filter((tool) => tool.style !== 'skip');
+  const asShapes = (list: typeof preview.tools): PreviewShape[] =>
+    list.map(({ mesh, style }) => ({ mesh, style }));
+  if (tools.length > 0) {
+    return { shapes: [...asShapes(tools), ...asShapes(ghosts)], tools: true };
   }
   const shapes: PreviewShape[] = [];
   for (const [id, mesh] of Object.entries(preview.bodies) as [BodyId, BodyMesh][]) {
     // Bodies the draft passed on unchanged are the model's own meshes.
     if (model[id] !== mesh) shapes.push({ mesh, style });
   }
-  return { shapes, tools: false };
+  return { shapes: [...shapes, ...asShapes(ghosts)], tools: false };
 }
 
 /** The draft's own status in a preview. */

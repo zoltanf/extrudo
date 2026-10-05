@@ -24,11 +24,20 @@ import type {
   FeatureDialogSpec,
 } from './spec';
 
-export const EMPTY_VALUES: DialogValues = { refs: {}, exprs: {}, choices: {}, toggles: {} };
+export const EMPTY_VALUES: DialogValues = {
+  refs: {},
+  exprs: {},
+  choices: {},
+  toggles: {},
+  labels: {},
+};
+
+/** The records `DialogValues` holds, one per kind of field that carries a value. */
+const KINDS = ['refs', 'exprs', 'choices', 'toggles', 'labels'] as const;
 
 /** Every field at its default: selection fields empty. */
 export function defaultValues(spec: FeatureDialogSpec): DialogValues {
-  const values = { refs: {}, exprs: {}, choices: {}, toggles: {} } as {
+  const values = { refs: {}, exprs: {}, choices: {}, toggles: {}, labels: {} } as {
     [K in keyof DialogValues]: Record<string, DialogValues[K][string]>;
   };
   for (const field of spec.fields) {
@@ -36,6 +45,7 @@ export function defaultValues(spec: FeatureDialogSpec): DialogValues {
     else if (field.kind === 'expression') values.exprs[field.name] = field.default;
     else if (field.kind === 'choice') values.choices[field.name] = field.default;
     else if (field.kind === 'toggle') values.toggles[field.name] = field.default;
+    else if (field.kind === 'labels') values.labels[field.name] = [];
   }
   return values;
 }
@@ -47,13 +57,14 @@ export function mergeValues(base: DialogValues, more: Partial<DialogValues>): Di
     exprs: { ...base.exprs, ...more.exprs },
     choices: { ...base.choices, ...more.choices },
     toggles: { ...base.toggles, ...more.toggles },
+    labels: { ...base.labels, ...more.labels },
   };
 }
 
 /** The fields whose value in `more` differs from `base` (refs compared by kind and ID). */
 export function changedFields(base: DialogValues, more: Partial<DialogValues>): string[] {
   const changed: string[] = [];
-  for (const kind of ['refs', 'exprs', 'choices', 'toggles'] as const) {
+  for (const kind of KINDS) {
     for (const [field, value] of Object.entries(more[kind] ?? {})) {
       if (JSON.stringify(value) !== JSON.stringify(base[kind][field])) changed.push(field);
     }
@@ -65,7 +76,7 @@ export function changedFields(base: DialogValues, more: Partial<DialogValues>): 
 export function pickFields(values: Partial<DialogValues>, fields: readonly string[]) {
   const keep = new Set(fields);
   const out: Partial<DialogValues> = {};
-  for (const kind of ['refs', 'exprs', 'choices', 'toggles'] as const) {
+  for (const kind of KINDS) {
     const entries = Object.entries(values[kind] ?? {}).filter(([field]) => keep.has(field));
     if (entries.length > 0) (out as Record<string, unknown>)[kind] = Object.fromEntries(entries);
   }
@@ -111,6 +122,11 @@ function fieldInput(field: DialogField, values: DialogValues): Input | undefined
       return { kind: 'enum', value: values.choices[field.name] ?? field.default };
     case 'toggle':
       return { kind: 'bool', value: values.toggles[field.name] ?? field.default };
+    // An empty list makes no input: a design with nothing skipped says nothing.
+    case 'labels': {
+      const labels = values.labels[field.name] ?? [];
+      return labels.length > 0 ? { kind: 'labels', labels: [...labels] } : undefined;
+    }
     // A read-only line fills no input.
     case 'info':
       return undefined;
@@ -126,6 +142,7 @@ export function defaultFromInputs(
   const exprs: Record<string, string> = {};
   const choices: Record<string, string> = {};
   const toggles: Record<string, boolean> = {};
+  const labels: Record<string, string[]> = {};
   for (const field of spec.fields) {
     const input = inputs[field.name];
     if ((field.kind === 'selection' || field.kind === 'features') && input?.kind === 'ref') {
@@ -134,8 +151,10 @@ export function defaultFromInputs(
       exprs[field.name] = input.expr;
     else if (field.kind === 'choice' && input?.kind === 'enum') choices[field.name] = input.value;
     else if (field.kind === 'toggle' && input?.kind === 'bool') toggles[field.name] = input.value;
+    else if (field.kind === 'labels' && input?.kind === 'labels')
+      labels[field.name] = [...input.labels];
   }
-  return { refs, exprs, choices, toggles };
+  return { refs, exprs, choices, toggles, labels };
 }
 
 /** A spec's inputs for the values: its own `toInputs`, or the default mapping. */

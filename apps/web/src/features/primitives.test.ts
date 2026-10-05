@@ -287,7 +287,7 @@ describe('where a primitive sits and its handles', () => {
     expect(box[3]).toMatchObject({ axis: [0, -1, 0], zero: [1, 0, 0] });
     const torus = on('torus', { diameter: 40 });
     expect(torus.map((m) => m.field)).toEqual(['diameter', 'tube']);
-    expect(torus[1]?.origin as Vec3).toEqual([20, 0, 0]);
+    expect((torus[1] as { origin: Vec3 }).origin).toEqual([20, 0, 0]);
     expect(on('sphere', {}).map((m) => m.field)).toEqual(['diameter']);
     expect(on('cylinder', {}).map((m) => m.field)).toEqual(['diameter', 'height']);
     // No plane, no handles.

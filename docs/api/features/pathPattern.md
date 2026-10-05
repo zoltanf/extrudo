@@ -24,6 +24,7 @@ a valid feature.
 | `bodies` | `GeomRef \| GeomRef[]` (`body`) | optional | The bodies to copy, with objects: bodies. |
 | `features` | `GeomRef \| GeomRef[]` (`feature`) | optional | The features whose tools are replayed, with objects: features. |
 | `join` | `boolean` | default `false` | Fuse each copy into the original. |
+| `skip` | `string[]` | optional | Instances left out, by their position labels (`2`, `m1`, `1x3`). The original cannot be listed; a label no instance has is ignored and kept. |
 | `path` | `GeomRef \| GeomRef[]` (`sketchEntity`, `edge`) | optional | The sketch curves and edges to follow, chained end to end. |
 | `count` | `string \| number \| ParameterHandle` | default `3` | How many instances there are, the original included; a whole number of at least 1. |
 | `distance` | `string \| number \| ParameterHandle` | default `20 mm` | The spacing along the path; a length. |

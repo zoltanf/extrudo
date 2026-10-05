@@ -38,8 +38,10 @@ import {
   circularSettings,
   type FeatureId,
   type GeomRef,
+  isOriginalLabel,
   type PathPatternInputs,
   type PatternObjectSettings,
+  type PatternSeries,
   pairSlots,
   pathPatternFeature,
   pathSettings,
@@ -48,7 +50,8 @@ import {
   rectangularSettings,
   seriesStep,
 } from '@extrudo/core';
-import { KernelError, type ShapeHandle, type ShapeScope } from '../kernel';
+import { unionBox } from '../inspect';
+import { KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
 import { deriveNames, type TopoNames } from '../naming/names';
 import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
@@ -71,11 +74,15 @@ import {
 } from './operation';
 import {
   circularPlacements,
+  circularSeries,
   limitInstances,
   type Placement,
   pathPlacements,
+  pathSeries,
+  patternReport,
   type Row,
   rectangularPlacements,
+  rectangularSeries,
   rowStep,
   wholeCount,
 } from './pattern-layout';
@@ -89,6 +96,80 @@ const WORDS: OperationWords = {
   noun: 'pattern',
   check: "Check the pattern's direction, count and distance.",
 };
+
+/** What a pattern feature's settings give an evaluator: what it repeats, and the instances it skips. */
+type PatternSettings = PatternObjectSettings & { skip: readonly string[] };
+
+/** A pattern's instances, split into the ones it makes and the ones `skip` leaves out. */
+interface Layout {
+  /** The instances that are made; the original is not among them. */
+  placements: Placement[];
+  /** The ones `skip` names: ghosts in the preview, nothing in the result. */
+  skipped: Placement[];
+}
+
+/**
+ * Splits a layout into what a pattern makes and what it skips (P4-12): the
+ * original is never moved and never skipped, a label past the count is
+ * ignored (so a skip comes back when the count grows), and listing the
+ * original is refused with a message.
+ */
+function splitSkip(skip: readonly string[], all: readonly Placement[]): Layout {
+  const listed = new Set(skip);
+  for (const label of listed) {
+    if (isOriginalLabel(label)) throw new KernelError("The original can't be skipped.");
+  }
+  const placements: Placement[] = [];
+  const skipped: Placement[] = [];
+  for (const placement of all) {
+    if (placement.original === true) continue;
+    if (listed.has(placement.label)) skipped.push(placement);
+    else placements.push(placement);
+  }
+  return { placements, skipped };
+}
+
+/**
+ * The middle of what a pattern repeats: the box centre of the bodies it
+ * copies, or of the first feature's tool (P4-12: the anchor its report puts
+ * the instances' centres on). The bodies of the model are the fallback, so a
+ * pattern that can't be made yet still has somewhere to put its report.
+ */
+function sourceCentre(ctx: EvalContext, settings: PatternObjectSettings): Vec3 {
+  const shapes: ShapeHandle[] = [];
+  if (settings.objects === 'bodies') {
+    for (const ref of settings.bodies) {
+      const shape = ctx.bodies.get(ref.id as BodyId);
+      if (shape !== undefined) shapes.push(shape);
+    }
+  }
+  const first = settings.features[0];
+  if (settings.objects === 'features' && first) {
+    try {
+      const tool = ctx.output(first.id as FeatureId).previewTools?.[0];
+      if (tool) shapes.push(tool.shape);
+    } catch {
+      // A lost feature: the evaluator says so; the report is only a hint.
+    }
+  }
+  if (shapes.length === 0) shapes.push(...ctx.bodies.values());
+  const boxes: { min: Vec3; max: Vec3 }[] = [];
+  for (const shape of shapes) {
+    try {
+      const { min, max } = ctx.kernel.measure(shape).bbox;
+      const at = (v: readonly number[], k: number) => v[k] ?? 0;
+      boxes.push({
+        min: [at(min, 0), at(min, 1), at(min, 2)],
+        max: [at(max, 0), at(max, 1), at(max, 2)],
+      });
+    } catch {
+      // A shape OCCT can't measure (a mesh's, if it ever happens): skip it.
+    }
+  }
+  const box = unionBox(boxes);
+  const at = (k: number) => (box ? ((box.min[k] ?? 0) + (box.max[k] ?? 0)) / 2 : 0);
+  return [at(0), at(1), at(2)];
+}
 
 // ---------------------------------------------------------------- copies
 
@@ -298,8 +379,8 @@ export function existingBodies(ctx: EvalContext, refs: readonly GeomRef[], what:
 function patternBodies(
   ctx: EvalContext,
   scope: ShapeScope,
-  settings: PatternObjectSettings,
-  placements: readonly Placement[],
+  settings: PatternSettings,
+  layout: Layout,
   op: string,
 ): FeatureOutput {
   const { kernel } = ctx;
@@ -312,10 +393,16 @@ function patternBodies(
   const kept: ShapeHandle[] = [];
   ids.forEach((id, bodyIndex) => {
     const original: NamedShape = { shape: ctx.bodies.get(id) as ShapeHandle, names: ctx.names(id) };
-    const copies = placements.map((placement) => ({
+    const copies = layout.placements.map((placement) => ({
       placement,
       named: replicate(ctx, scope, original, placement, op),
     }));
+    // What a skipped instance would have been, drawn faint (P4-12).
+    for (const placement of layout.skipped) {
+      const ghost = replicate(ctx, scope, original, placement, op);
+      previewTools.push({ shape: ghost.shape, style: 'skip' });
+      kept.push(ghost.shape);
+    }
     if (!settings.join) {
       for (const { placement, named } of copies) {
         // The instance's slot and the body's position make the ID, so it stays when counts grow.
@@ -324,6 +411,11 @@ function patternBodies(
         kept.push(named.shape);
         names.set(copyId, named.names);
       }
+      return;
+    }
+    if (layout.placements.length === 0) {
+      // Every instance is skipped: the ghosts above are the whole preview.
+      for (const shape of new Set(kept)) scope.keep(shape);
       return;
     }
     // Joined copies are fused (a tree) first: measured faster than one fuse per colour class.
@@ -366,14 +458,16 @@ function patternBodies(
 /**
  * Replays the tools of features at each placement and applies each feature's
  * operation (join or cut) to the bodies its instances touch. The features
- * are taken in the order given, each working on what the last left.
- * Shared with Mirror (`op` `mirror`, one placement).
+ * are taken in the order given, each working on what the last left. The
+ * placements `skip` names (P4-12) make no cut or join, only the faint ghost
+ * of what they would have done.
+ * Shared with Mirror (`op` `mirror`, one placement, nothing skipped).
  */
 export function replayFeatures(
   ctx: EvalContext,
   scope: ShapeScope,
   refs: readonly GeomRef[],
-  placements: readonly Placement[],
+  layout: Layout,
   op: string,
 ): FeatureOutput {
   if (refs.length === 0) throw new KernelError('Pick the features to repeat.');
@@ -390,6 +484,8 @@ export function replayFeatures(
     held.add(shape);
     scope.track(shape);
   };
+  // The ghosts of the skipped instances (`replicate` tracked them once already).
+  const ghosts: ShapeHandle[] = [];
 
   refs.forEach((ref, k) => {
     const id = ref.id as FeatureId;
@@ -414,7 +510,17 @@ export function replayFeatures(
       );
     }
     const source: NamedShape = { shape: tool.shape, names: tool.names };
-    const copies = placements.map((placement) => replicate(ctx, scope, source, placement, op));
+    const copies = layout.placements.map((placement) =>
+      replicate(ctx, scope, source, placement, op),
+    );
+    // What a skipped instance would have cut or joined, drawn faint (P4-12).
+    for (const placement of layout.skipped) {
+      const ghost = replicate(ctx, scope, source, placement, op);
+      previewTools.push({ shape: ghost.shape, style: 'skip' });
+      ghosts.push(ghost.shape);
+    }
+    // Every instance is skipped: only the ghosts above.
+    if (layout.placements.length === 0) return;
     // Cuts go one colour class at a time (half the time of fusing the holes first, in the
     // overlapping 10 × 10 case); joins fuse the copies first, which was measured faster.
     const merged =
@@ -456,6 +562,7 @@ export function replayFeatures(
   // A body an earlier round made and a later one replaced is no longer output: it goes with the scope.
   const output = new Set([...bodies.values(), ...previewTools.map((tool) => tool.shape)]);
   for (const shape of held) if (output.has(shape)) scope.keep(shape);
+  for (const shape of ghosts) scope.keep(shape);
   return {
     bodies,
     names,
@@ -466,10 +573,18 @@ export function replayFeatures(
 
 // --------------------------------------------------------------- features
 
+/**
+ * Runs a pattern over its whole layout (every instance, the original
+ * included), with the series its report carries. `skip` (P4-12) takes the
+ * listed instances out before any boolean, and they come back as the faint
+ * ghosts of what they would have been.
+ */
 function run(
   ctx: EvalContext,
-  settings: PatternObjectSettings,
-  placements: readonly Placement[],
+  settings: PatternSettings,
+  all: readonly Placement[],
+  series: readonly PatternSeries[],
+  centre: Vec3,
 ): FeatureOutput {
   if (settings.objects === 'bodies' && settings.bodies.length === 0) {
     throw new KernelError('Pick the bodies to pattern.');
@@ -477,27 +592,40 @@ function run(
   if (settings.objects === 'features' && settings.features.length === 0) {
     throw new KernelError('Pick the features to pattern.');
   }
-  if (placements.length === 0) {
+  const layout = splitSkip(settings.skip, all);
+  const report = patternReport(all, series, centre, new Set(settings.skip));
+  const made = layout.placements;
+  if (all.every((placement) => placement.original === true)) {
     ctx.warn(
       'The pattern has one instance, the original, so it makes nothing new. Raise the count.',
     );
-    return { bodies: ctx.bodies };
+    return { bodies: ctx.bodies, report };
+  }
+  if (made.length === 0) {
+    ctx.warn('Every instance is skipped, so the pattern makes nothing new.');
   }
   if (settings.objects === 'features') {
     // A repeat on top of the original (a distance or angle of 0) changes nothing, and OCCT
     // can take most of a minute to cut a tool into faces it already cut (a coil's, P4-01).
-    const apart = distinctPlacements(placements);
-    if (apart.length === 0) {
+    const apart = distinctPlacements(made);
+    if (made.length > 0 && apart.length === 0) {
       ctx.warn(
         'Every instance lies on the original, so the pattern repeats nothing. Change the distance or the angle.',
       );
-      return { bodies: ctx.bodies };
+      return { bodies: ctx.bodies, report };
     }
     using scope = ctx.kernel.scope();
-    return replayFeatures(ctx, scope, settings.features, apart, 'pattern');
+    const result = replayFeatures(
+      ctx,
+      scope,
+      settings.features,
+      { placements: apart, skipped: layout.skipped },
+      'pattern',
+    );
+    return { ...result, report };
   }
   using scope = ctx.kernel.scope();
-  return patternBodies(ctx, scope, settings, placements, 'pattern');
+  return { ...patternBodies(ctx, scope, settings, layout, 'pattern'), report };
 }
 
 const IDENTITY: readonly number[] = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
@@ -545,7 +673,14 @@ export const kernelRectangularPattern: KernelFeatureDefinition<RectangularPatter
       };
     }
     limitInstances(count1 * (second?.count ?? 1));
-    return run(ctx, settings, rectangularPlacements(first, second));
+    const centre = sourceCentre(ctx, settings);
+    return run(
+      ctx,
+      settings,
+      rectangularPlacements(first, second, true),
+      rectangularSeries(first, second, centre),
+      centre,
+    );
   },
 };
 
@@ -561,10 +696,13 @@ export const kernelCircularPattern: KernelFeatureDefinition<CircularPatternInput
     limitInstances(count);
     const axis = lineOf(ctx, settings.axis, 'the axis to turn about');
     const angle = valueOr(ctx, 'angle', 360) * RADIANS;
+    const centre = sourceCentre(ctx, settings);
     return run(
       ctx,
       settings,
-      circularPlacements(axis, count, angle, settings.measure, settings.symmetric),
+      circularPlacements(axis, count, angle, settings.measure, settings.symmetric, true),
+      [circularSeries(axis, count, angle, settings.measure, settings.symmetric, centre)],
+      centre,
     );
   },
 };
@@ -580,6 +718,13 @@ export const kernelPathPattern: KernelFeatureDefinition<PathPatternInputs> = {
     limitInstances(count);
     const path = pathFromRefs(ctx, settings.path, settings.flip);
     const step = seriesStep(count, valueOr(ctx, 'distance', 20), settings.measure);
-    return run(ctx, settings, pathPlacements(path, count, step, settings.aligned));
+    const centre = sourceCentre(ctx, settings);
+    return run(
+      ctx,
+      settings,
+      pathPlacements(path, count, step, settings.aligned, true),
+      [pathSeries(path, count, step, settings.aligned, centre)],
+      centre,
+    );
   },
 };

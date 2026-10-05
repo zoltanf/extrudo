@@ -465,6 +465,7 @@ before something it uses. Expressions do not order features.
 | `ref` | `refs` (array of GeomRef, required, may be empty) | Persistent references to geometry (section 8). |
 | `sketchData` | `sketch` (SketchData, required) | A sketch's 2D content (section 7). Only the `sketch` feature uses it. |
 | `file` | `id` (attachment ID string, required) | A file of the design itself (P4-06, ADR-0066 §0): the `id` of an `attachments` entry (4.5) whose bytes the kernel reads. A document that names an `id` it doesn't carry, or one of a media type the feature doesn't read, is **damaged** (section 3), like a `text` font the design doesn't carry. |
+| `labels` | `labels` (array of strings, required, may be empty) | Names of a design's own making, with nothing to refer to (P4-12): the instances a pattern leaves out, as position labels matching `m?\d+(xm?\d+)?` (6.16). Only the pattern features use it. |
 
 Feature-specific rules below are enforced by the per-type inputs schema (each
 inputs object is strict too: the recompute ignores unknown input names with
@@ -787,6 +788,7 @@ ones. Three feature types share these inputs:
 | `bodies` | `ref` | with `bodies` | Refs of kind `body`, each once. Empty or missing: an error until some are picked |
 | `features` | `ref` | with `features` | Refs of kind `feature` (`{"kind": "feature", "id": "<feature id>"}`): the features to repeat, in the order they are applied. Each must come earlier in the timeline, be a solid feature that **joins or cuts** (`extrude`, `revolve`, a primitive, a `hole`, which always cuts) and not be suppressed; the pattern depends on it like on any feature it refers to |
 | `join` | `bool` | no | Bodies only; default `false`: the copies are new bodies `<feature id>:<n>`. `true`: they are fused into the original body, and a copy that doesn't touch it becomes a body of its own with a warning |
+| `skip` | `labels` | no | The instances left out, as their position labels (`"2"`, `"m1"`, `"1x3"`; P4-12). Missing or empty: every instance is made. The original (`"0"`, `"0x0"`) can't be listed (an error), and a label no instance has (the count went down) is ignored and kept, so the skip comes back if the count grows. Because a label names a position and not a face, nothing in it can go stale |
 
 Counts are `expr` inputs of unit `unitless` that must evaluate to a whole
 number from 1 up; a pattern makes at most 1000 instances. Distances are
@@ -841,7 +843,15 @@ The first instance is taken to sit at the start of the path and the others
 move by the way the path went from there. A path shorter than the pattern
 needs is an error.
 
-Skipping single instances is not supported yet.
+#### Skipping instances (P4-12)
+
+`skip` leaves single instances out of any of the three types, before the
+boolean: the named placements are dropped, and the dialog draws each one as a
+faint ghost of what it would have been. A pattern whose every instance is
+skipped makes nothing new and says so as a warning. The other instances are
+untouched: their body IDs, their face names and their geometry are exactly
+what they would have been with the skip off, because a label names a
+position.
 
 ### 6.17 `hole`
 

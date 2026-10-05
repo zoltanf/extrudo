@@ -3,10 +3,14 @@ import {
   circularSettings,
   type Feature,
   type FeatureId,
+  MAX_PATTERN_TOGGLES,
   originAxisRef,
   PathPatternInputsSchema,
+  type PatternReport,
   RectangularPatternInputsSchema,
+  rectangularPatternInputs,
   rectangularSettings,
+  toggleSkip,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { fixReferences } from './dialog';
@@ -48,6 +52,7 @@ describe('the pattern dialogs', () => {
       'symmetric1',
       'direction2',
       'join',
+      'skip',
     ]);
     expect(names(rectangularPatternDialog, { choices: { objects: 'features' } })).toEqual([
       'objects',
@@ -58,6 +63,7 @@ describe('the pattern dialogs', () => {
       'measure1',
       'symmetric1',
       'direction2',
+      'skip',
     ]);
   });
 
@@ -78,6 +84,7 @@ describe('the pattern dialogs', () => {
       'measure',
       'symmetric',
       'join',
+      'skip',
     ]);
     expect(names(pathPatternDialog)).toEqual([
       'objects',
@@ -89,6 +96,7 @@ describe('the pattern dialogs', () => {
       'aligned',
       'flip',
       'join',
+      'skip',
     ]);
   });
 
@@ -248,6 +256,191 @@ describe('pattern handles', () => {
     expect(first?.kind === 'distance' && first.direction).toEqual([1, 0, 0]);
   });
 
+  /**
+   * The layout a 3 × 2 pattern of the box would report: the original at its
+   * centre, five more 20 mm along X and Z, `1x1` skipped (P4-12).
+   */
+  const layout = (): PatternReport => ({
+    instances: [
+      { label: '0x0', at: [20, 15, 10], skipped: false, original: true },
+      { label: '1x0', at: [40, 15, 10], skipped: false, original: false },
+      { label: '2x0', at: [60, 15, 10], skipped: false, original: false },
+      { label: '0x1', at: [20, 15, 30], skipped: false, original: false },
+      { label: '1x1', at: [40, 15, 30], skipped: true, original: false },
+      { label: '2x1', at: [60, 15, 30], skipped: false, original: false },
+    ],
+    series: [
+      {
+        mode: 'linear',
+        direction: [1, 0, 0],
+        step: 20,
+        count: 3,
+        first: [20, 15, 10],
+        last: [60, 15, 10],
+      },
+      {
+        mode: 'linear',
+        direction: [0, 0, 1],
+        step: 20,
+        count: 2,
+        first: [20, 15, 10],
+        last: [20, 15, 30],
+      },
+    ],
+  });
+
+  it('a count handle on the last instance of each direction, and a dot per instance', () => {
+    const values = mergeValues(defaultValues(rectangularPatternDialog), {
+      refs: { bodies: [body], direction1: [X], direction2: [Z] },
+    });
+    const handles =
+      rectangularPatternDialog.manipulators?.(values, { ...ctx, pattern: layout() }) ?? [];
+    expect(handles.map((h) => `${h.kind}:${h.field}`)).toEqual([
+      'distance:distance1',
+      'distance:distance2',
+      'count:count1',
+      'count:count2',
+      ...Array.from({ length: 5 }, () => 'toggle:skip'),
+    ]);
+    const counts = handles.filter((h) => h.kind === 'count');
+    expect(counts[0]).toMatchObject({
+      field: 'count1',
+      origin: [20, 15, 10],
+      last: [60, 15, 10],
+      direction: [1, 0, 0],
+      step: 20,
+      count: 3,
+      extent: false,
+    });
+    expect(counts[1]).toMatchObject({ field: 'count2', direction: [0, 0, 1] });
+    const dots = handles.filter((h) => h.kind === 'toggle');
+    // No dot on the original (it can't be skipped), and the skipped one says so.
+    expect(dots.map((d) => (d.kind === 'toggle' ? [d.label, d.at, d.skipped] : []))).toEqual([
+      ['1x0', [40, 15, 10], false],
+      ['2x0', [60, 15, 10], false],
+      ['0x1', [20, 15, 30], false],
+      ['1x1', [40, 15, 30], true],
+      ['2x1', [60, 15, 30], false],
+    ]);
+  });
+
+  it("reads the dialog's own skip list, and leaves a huge pattern without dots", () => {
+    const values = mergeValues(defaultValues(rectangularPatternDialog), {
+      refs: { bodies: [body], direction1: [X] },
+      // A skip the last report hasn't caught up with yet still shows as skipped.
+      labels: { skip: ['1x0'] },
+    });
+    const dots = (
+      rectangularPatternDialog.manipulators?.(values, { ...ctx, pattern: layout() }) ?? []
+    )
+      .filter((h) => h.kind === 'toggle' && h.skipped)
+      .map((h) => (h.kind === 'toggle' ? h.label : ''));
+    expect(dots).toEqual(['1x0', '1x1']);
+    const many = {
+      instances: Array.from({ length: MAX_PATTERN_TOGGLES + 1 }, (_, i) => ({
+        label: String(i + 1),
+        at: [20 + i, 15, 10] as [number, number, number],
+        skipped: false,
+        original: false,
+      })),
+      series: layout().series,
+    };
+    expect(
+      (rectangularPatternDialog.manipulators?.(values, { ...ctx, pattern: many }) ?? []).filter(
+        (h) => h.kind === 'toggle',
+      ),
+    ).toEqual([]);
+  });
+
+  it('counts by its share when the measure is an extent', () => {
+    const values = mergeValues(defaultValues(rectangularPatternDialog), {
+      refs: { bodies: [body], direction1: [X] },
+      choices: { measure1: 'extent' },
+    });
+    const handles =
+      rectangularPatternDialog.manipulators?.(values, { ...ctx, pattern: layout() }) ?? [];
+    expect(handles.find((h) => h.kind === 'count')).toMatchObject({
+      field: 'count1',
+      extent: true,
+    });
+  });
+
+  it('a circular pattern counts round the arc, and a path drives its distance', () => {
+    const turn: PatternReport = {
+      instances: layout().instances,
+      series: [
+        {
+          mode: 'turn',
+          direction: [0, 0, 1],
+          step: Math.PI / 3,
+          count: 3,
+          first: [20, 15, 10],
+          last: [0, 38, 10],
+        },
+      ],
+    };
+    const round = mergeValues(defaultValues(circularPatternDialog), {
+      refs: { bodies: [body], axis: [Z] },
+    });
+    const ring = circularPatternDialog.manipulators?.(round, { ...ctx, pattern: turn }) ?? [];
+    expect(ring[0]).toMatchObject({ kind: 'angle', field: 'angle' });
+    // The count turns about the axis, measured from where the series starts on it.
+    expect(ring[1]).toMatchObject({
+      kind: 'count',
+      field: 'count',
+      origin: [0, 0, 10],
+      // Away from the axis: the box's centre (20, 15, 10) off the world Z axis.
+      zero: [0.8, 0.6, 0],
+      last: [0, 38, 10],
+      direction: [0, 0, 1],
+      turn: true,
+      extent: true,
+    });
+
+    const series: PatternReport['series'][number] = {
+      mode: 'linear',
+      direction: [1, 0, 0],
+      step: 40,
+      count: 3,
+      first: [20, 15, 10],
+      last: [100, 15, 10],
+    };
+    const along = mergeValues(defaultValues(pathPatternDialog), {
+      refs: { bodies: [body], path: [{ kind: 'sketchEntity', id: 'S1/l1' }] },
+    });
+    const onPath = pathPatternDialog.manipulators?.(along, {
+      ...ctx,
+      pattern: { instances: layout().instances, series: [series] },
+    });
+    // Between neighbours the distance is one step, and the arrow spans the whole
+    // run: two steps of it, which is the scale.
+    expect(onPath?.[0]).toMatchObject({
+      kind: 'distance',
+      field: 'distance',
+      origin: [20, 15, 10],
+      direction: [1, 0, 0],
+      scale: 2,
+    });
+    // First to last: the distance is the whole extent, so the arrow is not scaled.
+    const asExtent = pathPatternDialog.manipulators?.(
+      { ...along, choices: { measure: 'extent' } },
+      { ...ctx, pattern: { instances: layout().instances, series: [series] } },
+    );
+    const extentArrow = asExtent?.[0] as unknown as {
+      kind: string;
+      origin: number[];
+      scale?: number;
+    };
+    expect(extentArrow).toMatchObject({ kind: 'distance', origin: [20, 15, 10] });
+    expect(extentArrow.scale ?? 1).toBe(1);
+    // Nothing to stretch: one instance makes no copy, so no distance handle.
+    const alone = pathPatternDialog.manipulators?.(along, {
+      ...ctx,
+      pattern: { instances: layout().instances, series: [{ ...series, count: 1 }] },
+    });
+    expect(alone?.filter((h) => h.kind === 'distance')).toEqual([]);
+  });
+
   it('a features pattern puts them in the middle of all bodies; nothing without a direction', () => {
     const values = mergeValues(defaultValues(rectangularPatternDialog), {
       choices: { objects: 'features' },
@@ -264,6 +457,66 @@ describe('pattern handles', () => {
     });
     const [ring] = circularPatternDialog.manipulators?.(values, ctx) ?? [];
     expect(ring).toMatchObject({ kind: 'angle', field: 'angle', axis: [0, 0, 1], fullTurn: true });
+  });
+});
+
+describe('the Skipped field (P4-12)', () => {
+  it('is empty to begin with, and a dot on an instance fills it', () => {
+    const t = setupDialogs([rectangularPatternDialog]);
+    t.controller.start('rectangularPattern');
+    t.controller.setRefs('bodies', [body]);
+    t.controller.setRefs('direction1', [X]);
+    expect(t.open()?.values.labels.skip).toEqual([]);
+    // Nothing skipped makes no input at all.
+    expect(t.open()?.draft.inputs.skip).toBeUndefined();
+
+    t.controller.toggleLabel('skip', '1');
+    t.controller.toggleLabel('skip', '1x1');
+    expect(t.open()?.values.labels.skip).toEqual(['1', '1x1']);
+    expect(t.open()?.draft.inputs.skip).toEqual({ kind: 'labels', labels: ['1', '1x1'] });
+    expect(RectangularPatternInputsSchema.safeParse(t.open()?.draft.inputs).success).toBe(true);
+
+    // Clicking the same dot again takes the label back out.
+    t.controller.toggleLabel('skip', '1');
+    expect(t.open()?.values.labels.skip).toEqual(['1x1']);
+    // A label that isn't there is refused: the original can't be skipped.
+    t.controller.toggleLabel('skip', '0');
+    expect(t.open()?.values.labels.skip).toEqual(['1x1', '0']);
+
+    t.controller.setLabels('skip', []);
+    expect(t.open()?.values.labels.skip).toEqual([]);
+    expect(t.open()?.draft.inputs.skip).toBeUndefined();
+  });
+
+  it('commits the list with the feature, and reads it back when the dialog opens again', () => {
+    const t = setupDialogs([rectangularPatternDialog]);
+    t.controller.start('rectangularPattern');
+    t.controller.setRefs('bodies', [body]);
+    t.controller.setRefs('direction1', [X]);
+    t.controller.setLabels('skip', ['1']);
+    expect(t.controller.ok()).toBe(true);
+    const stored = t.store.getState().doc.features.at(-1);
+    expect(stored?.inputs.skip).toEqual({ kind: 'labels', labels: ['1'] });
+    expect(rectangularSettings(stored?.inputs as never).skip).toEqual(['1']);
+
+    expect(t.controller.edit(stored?.id as never)).toBe(true);
+    expect(t.open()?.values.labels.skip).toEqual(['1']);
+    // One undo step takes the list with the feature.
+    t.store.getState().undo();
+    expect(t.store.getState().doc.features).toHaveLength(1);
+  });
+
+  it('the list repeats nothing, so a label twice is one', () => {
+    const inputs = rectangularPatternInputs({
+      bodies: ['A:0'],
+      direction1: X,
+      skip: ['1', '1', '2'],
+    });
+    expect(inputs.skip).toEqual({ kind: 'labels', labels: ['1', '1', '2'] });
+    expect(rectangularSettings(inputs).skip).toEqual(['1', '2']);
+    // What is left out of a grid is named by its position, negatives as `m1`.
+    expect(toggleSkip(['m1'], '1x0')).toEqual(['m1', '1x0']);
+    expect(toggleSkip(['m1', '1x0'], 'm1')).toEqual(['1x0']);
   });
 });
 

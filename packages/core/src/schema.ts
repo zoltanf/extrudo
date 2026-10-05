@@ -127,6 +127,18 @@ export const FileInputSchema = z.strictObject({
 });
 export type FileInput = z.infer<typeof FileInputSchema>;
 
+/**
+ * A list of names of its own (P4-12, ADR-0047 amendment): the instances a
+ * pattern leaves out, as their position labels (`"2"`, `"m1"`, `"1x3"`). It
+ * names positions, not faces or features, so nothing can go stale in it.
+ */
+export const INSTANCE_LABEL = /^(?:m?\d+)(?:xm?\d+)?$/;
+export const LabelsInputSchema = z.strictObject({
+  kind: z.literal('labels'),
+  labels: z.array(z.string().regex(INSTANCE_LABEL, 'an instance label like 2, m1 or 1x3')),
+});
+export type LabelsInput = z.infer<typeof LabelsInputSchema>;
+
 /** One feature input. Every number is an expression; there is no raw-number kind. */
 export const InputSchema = z.discriminatedUnion('kind', [
   ExprInputSchema,
@@ -135,6 +147,7 @@ export const InputSchema = z.discriminatedUnion('kind', [
   RefInputSchema,
   SketchDataInputSchema,
   FileInputSchema,
+  LabelsInputSchema,
 ]);
 export type Input = z.infer<typeof InputSchema>;
 export type ExprInput = z.infer<typeof ExprInputSchema>;
@@ -142,6 +155,7 @@ export type EnumInput = z.infer<typeof EnumInputSchema>;
 export type BoolInput = z.infer<typeof BoolInputSchema>;
 export type RefInput = z.infer<typeof RefInputSchema>;
 export type SketchDataInput = z.infer<typeof SketchDataInputSchema>;
+export type LabelsInputType = z.infer<typeof LabelsInputSchema>;
 
 export const FeatureInputsSchema = z.record(z.string(), InputSchema);
 export type FeatureInputs = z.infer<typeof FeatureInputsSchema>;

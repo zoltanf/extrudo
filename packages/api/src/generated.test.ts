@@ -131,6 +131,30 @@ describe('a call per category', () => {
     expect(design.validate()).toEqual([]);
   });
 
+  it('leaves instances of a pattern out, by their position labels (P4-12)', () => {
+    const design = d();
+    const box = design.box({ length: '10 mm' });
+    const pattern = design.rectangularPattern({
+      objects: 'bodies',
+      bodies: [box.body()],
+      direction1: design.origin.x,
+      count1: '3',
+      skip: ['2'],
+    });
+    expect(pattern.feature?.inputs.skip).toEqual({ kind: 'labels', labels: ['2'] });
+    expect(design.validate()).toEqual([]);
+    // The stored form is the same call (ADR-0068 §3).
+    const stored = design.circularPattern({
+      axis: design.origin.z,
+      skip: { kind: 'labels', labels: ['1', '3'] },
+    });
+    expect(stored.feature?.inputs.skip).toEqual({ kind: 'labels', labels: ['1', '3'] });
+    // A list that isn't labels is the schema's to refuse, in its own words.
+    expect(() => design.circularPattern({ axis: design.origin.z, skip: [7] as never })).toThrow(
+      /skip/,
+    );
+  });
+
   it('makes a construction plane (construct, P3-05)', () => {
     const design = d();
     const plane = design.offsetPlane({ plane: design.origin.xy, distance: '12 mm' });

@@ -19,6 +19,7 @@ import {
   originAxisRef,
   originPlaneRef,
   type PathOptions,
+  type PatternReport,
   type PrimitiveInputOptions,
   pairSlots,
   pathPatternInputs,
@@ -33,11 +34,11 @@ import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SubShapeKind } from '../history';
-import { Kernel, type Vec3 } from '../kernel';
+import { Kernel, type ShapeHandle, type Vec3 } from '../kernel';
 import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature, testFeatures } from '../recompute/testing';
-import type { KernelFeatureDefinition, RecomputeResult } from '../recompute/types';
+import type { FeatureOutput, KernelFeatureDefinition, RecomputeResult } from '../recompute/types';
 
 let kernel: Kernel;
 let engine: RecomputeEngine;
@@ -46,11 +47,25 @@ beforeAll(async () => {
   kernel = new Kernel(await loadOcct());
 });
 
+/** The output of each feature's latest evaluation, for the ghosts and reports. */
+const seen = new Map<string, FeatureOutput>();
+
+/** A definition that remembers what it evaluated (the `extrude` test's `seen`). */
+const watched = (definition: KernelFeatureDefinition): KernelFeatureDefinition => ({
+  ...definition,
+  evaluate(ctx) {
+    const output = definition.evaluate(ctx);
+    seen.set(ctx.feature.name, output);
+    return output;
+  },
+});
+
 beforeEach(() => {
   engine?.clear();
+  seen.clear();
   expect(kernel.stats().liveShapes).toBe(0);
   const registry = new FeatureRegistry<KernelFeatureDefinition>();
-  for (const definition of testFeatures().registry.list()) registry.register(definition);
+  for (const definition of testFeatures().registry.list()) registry.register(watched(definition));
   engine = new RecomputeEngine(kernel, registry, { strictLeaks: true });
 });
 
@@ -155,6 +170,11 @@ function ok(result: Done): Done {
 const round = (x: number, digits = 3) => {
   const r = Number(x.toFixed(digits));
   return Object.is(r, -0) ? 0 : r;
+};
+
+/** A point equal to `b`, to `digits`. */
+const near3 = (a: readonly number[], b: readonly number[], digits = 6) => {
+  for (let k = 0; k < 3; k++) expect(a[k]).toBeCloseTo(b[k] as number, digits);
 };
 
 function shapeOf(body: string) {
@@ -847,6 +867,220 @@ describe('what a pattern says when it cannot be made', { timeout: 120_000 }, () 
     const h = { ...hole('H', 10, 10), suppressed: true };
     const result = await run([...plate(), h, rect('P', { features: ['H'], direction1: AXIS_X })]);
     expect(status(result, 'P').message).toMatch(/suppressed/);
+  });
+});
+
+// ---------------------------------------------------------------- skipping
+
+describe('skipping instances (P4-12)', { timeout: 120_000 }, () => {
+  /** A 3 × 3 grid of the block `A`, skipping `labels`. */
+  const grid = (labels: readonly string[]) =>
+    rect('P', {
+      bodies: ['A:0'],
+      direction1: AXIS_X,
+      count1: '3',
+      distance1: '60 mm',
+      direction2: AXIS_Y,
+      count2: '3',
+      distance2: '60 mm',
+      skip: labels,
+    });
+
+  it('leaves the named instances out and keeps the rest whole', async () => {
+    const result = ok(await run([...A, grid(['1x1', '2x2'])]));
+    expect(ids(result)).toHaveLength(7);
+    expect(ids(result)).not.toContain(`P:${pairSlots(slotOf(1, 1), 0)}`);
+    expect(ids(result)).not.toContain(`P:${pairSlots(slotOf(2, 2), 0)}`);
+    // What is there sits where its label says (A is 40 × 30 × 20 at the origin).
+    expect(shapeOf(copy('P', 1)).min).toEqual([60, 0, 0]);
+    expect(shapeOf(`P:${pairSlots(slotOf(0, 2), 0)}`).min).toEqual([0, 120, 0]);
+    for (const id of ids(result)) expect(shapeOf(id).volume).toBe(24_000);
+  });
+
+  it('a skip stays on its instance when the counts grow', async () => {
+    const three = ok(await run([...A, grid(['1x1'])]));
+    expect(ids(three)).toHaveLength(8);
+    const taller = ok(
+      await run([
+        ...A,
+        rect('P', {
+          bodies: ['A:0'],
+          direction1: AXIS_X,
+          count1: '3',
+          distance1: '60 mm',
+          direction2: AXIS_Y,
+          count2: '5',
+          distance2: '60 mm',
+          skip: ['1x1'],
+        }),
+      ]),
+    );
+    expect(ids(taller)).toHaveLength(14);
+    // The label follows the position, so the same instance is gone in the taller grid.
+    expect(ids(taller)).not.toContain(`P:${pairSlots(slotOf(1, 1), 0)}`);
+    expect(ids(taller)).toContain(`P:${pairSlots(slotOf(1, 3), 0)}`);
+  });
+
+  it('the original cannot be skipped', async () => {
+    const skipped = await run([...A, grid(['0x0'])]);
+    expect(status(skipped, 'P')).toMatchObject({
+      status: 'error',
+      message: "The original can't be skipped.",
+    });
+    const row = await run([
+      ...A,
+      rect('P', { bodies: ['A:0'], direction1: AXIS_X, count1: '3', skip: ['0'] }),
+    ]);
+    expect(status(row, 'P').message).toBe("The original can't be skipped.");
+  });
+
+  it('a label past the count is ignored, and kept', async () => {
+    const past = ok(await run([...A, grid(['2x4'])]));
+    expect(ids(past)).toHaveLength(9);
+    // The list is what was asked for, so the skip comes back when the count grows.
+    const grown = ok(
+      await run([
+        ...A,
+        rect('P', {
+          bodies: ['A:0'],
+          direction1: AXIS_X,
+          count1: '5',
+          distance1: '60 mm',
+          direction2: AXIS_Y,
+          count2: '5',
+          distance2: '60 mm',
+          skip: ['2x4'],
+        }),
+      ]),
+    );
+    expect(ids(grown)).toHaveLength(24);
+    expect(ids(grown)).not.toContain(`P:${pairSlots(slotOf(2, 4), 0)}`);
+  });
+
+  it('a circular pattern skips instances of its turn too', async () => {
+    const result = ok(
+      await run([
+        ...block('L', -50, -50, 100, 100, 10),
+        hole('H', 30, 0),
+        circ('C', { features: ['H'], axis: AXIS_Z, count: '6', skip: ['2'] }),
+      ]),
+    );
+    expect(shapeOf('L:0')).toMatchObject({
+      volume: expect.closeTo(100 * 100 * 10 - 5 * HOLE_VOLUME, 2),
+      valid: true,
+    });
+    const names = namesOf(result, 'L:0', 'face');
+    expect(names.some((n) => n.startsWith('pattern:C:2:from:('))).toBe(false);
+    expect(names.some((n) => n.startsWith('pattern:C:1:from:('))).toBe(true);
+  });
+
+  it('a path pattern skips instances along the path', async () => {
+    const b = new SketchBuilder();
+    const line = b.line(0, 100, 200, 100);
+    const ref = { kind: 'sketchEntity', id: `SL/${line.id}` } as GeomRef;
+    const result = ok(
+      await run([
+        ...A,
+        sketch('SL', b.sketch),
+        along('W', { bodies: ['A:0'], path: [ref], count: '4', distance: '50 mm', skip: ['1'] }),
+      ]),
+    );
+    // The original, then instances 2 and 3.
+    expect(result.bodies.map((b) => shapeOf(b.id).min[0]).sort((x, y) => x - y)).toEqual([
+      0, 100, 150,
+    ]);
+  });
+
+  it('skipped instances are preview ghosts of what they would have been', async () => {
+    ok(await run([...A, grid(['1x1'])]));
+    const tools = seen.get('P')?.previewTools ?? [];
+    expect(tools.map((t) => t.style)).toEqual(['skip']);
+    const ghost = tools[0] as { shape: ShapeHandle };
+    expect(round(kernel.measure(ghost.shape).volume)).toBe(24_000);
+    // Where the label says it would be: the original's centre moved by (60, 60, 0).
+    const box = kernel.measure(ghost.shape).bbox;
+    near3(box.min, [60, 60, 0]);
+    near3(box.max, [100, 90, 20]);
+  });
+
+  it('reports the whole layout: every instance, its centre, and the series', async () => {
+    ok(await run([...A, grid(['1x1'])]));
+    const report = seen.get('P')?.report as PatternReport | undefined;
+    expect(report?.instances.map((i) => i.label)).toEqual([
+      '0x0',
+      '1x0',
+      '2x0',
+      '0x1',
+      '1x1',
+      '2x1',
+      '0x2',
+      '1x2',
+      '2x2',
+    ]);
+    expect(report?.instances.filter((i) => i.skipped).map((i) => i.label)).toEqual(['1x1']);
+    expect(report?.instances[0]?.original).toBe(true);
+    // A is 40 × 30 × 20 at the origin, so its centre is (20, 15, 10).
+    near3(report?.instances[0]?.at as Vec3, [20, 15, 10]);
+    near3(report?.instances[4]?.at as Vec3, [80, 75, 10]);
+    const [first, second] = report?.series ?? [];
+    expect(first).toMatchObject({ mode: 'linear', direction: [1, 0, 0], step: 60, count: 3 });
+    near3(first?.first as Vec3, [20, 15, 10]);
+    near3(first?.last as Vec3, [140, 15, 10]);
+    expect(second).toMatchObject({ mode: 'linear', direction: [0, 1, 0], count: 3 });
+    near3(second?.last as Vec3, [20, 135, 10]);
+  });
+
+  it('reports a turn as one series', async () => {
+    ok(
+      await run([
+        ...block('L', -50, -50, 100, 100, 10),
+        hole('H', 30, 0),
+        circ('C', { features: ['H'], axis: AXIS_Z, count: '4', angle: '90 deg' }),
+      ]),
+    );
+    const turn = seen.get('C')?.report as PatternReport;
+    expect(turn.series).toHaveLength(1);
+    // A quarter spread over four instances: 30 degrees each, the last at 90.
+    expect(turn.series[0]).toMatchObject({ mode: 'turn', direction: [0, 0, 1], count: 4 });
+    expect(turn.series[0]?.step).toBeCloseTo(Math.PI / 6, 9);
+    // The hole's tool is centred at (30, 0, 10); a quarter about +Z takes it to (0, 30, 10).
+    near3(turn.series[0]?.last as Vec3, [0, 30, 10]);
+    expect(turn.instances).toHaveLength(4);
+  });
+
+  it('reports a path as one series, running along the path', async () => {
+    const b = new SketchBuilder();
+    const line = b.line(0, 100, 200, 100);
+    const ref = { kind: 'sketchEntity', id: `SL/${line.id}` } as GeomRef;
+    ok(
+      await run([
+        ...A,
+        sketch('SL', b.sketch),
+        along('W', { bodies: ['A:0'], path: [ref], count: '3', distance: '40 mm' }),
+      ]),
+    );
+    const report = seen.get('W')?.report as PatternReport;
+    expect(report.series).toHaveLength(1);
+    expect(report.series[0]).toMatchObject({
+      mode: 'linear',
+      direction: [1, 0, 0],
+      count: 3,
+      step: 40,
+    });
+    // Two steps of 40 mm along the path: the body's centre moves 80 mm in x.
+    near3(report.series[0]?.last as Vec3, [100, 15, 10]);
+  });
+
+  it('every instance skipped makes nothing new and says so', async () => {
+    const result = await run([
+      ...A,
+      rect('P', { bodies: ['A:0'], direction1: AXIS_X, count1: '3', skip: ['1', '2'] }),
+    ]);
+    expect(ids(result)).toHaveLength(1);
+    expect(status(result, 'P')).toMatchObject({
+      status: 'warning',
+      message: 'Every instance is skipped, so the pattern makes nothing new.',
+    });
   });
 });
 

@@ -395,6 +395,7 @@ export const holeDialog: FeatureDialogSpec = defineFeatureDialog({
       exprs: stored.exprs ?? {},
       choices: stored.choices ?? {},
       toggles: stored.toggles ?? {},
+      labels: stored.labels ?? {},
     };
     // The stored inputs lack the dialog's defaults: read the preset from what is there.
     const filled = {

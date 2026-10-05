@@ -289,8 +289,8 @@ interface JsonProperty {
 /**
  * The reference's type column and reference kinds for one input, read off the
  * stored shape the schema holds: `kind` says what the input is (`expr`, `ref`,
- * `enum`, `bool`, `file`, `sketchData`) and the metadata says the unit and the
- * reference kinds. What a call passes is the plain value of each (ADR-0068 §3).
+ * `enum`, `bool`, `file`, `labels`, `sketchData`) and the metadata says the unit
+ * and the reference kinds. What a call passes is the plain value of each (ADR-0068 §3).
  */
 function readInput(property: JsonProperty): { type: string; kinds?: string[]; fallback?: string } {
   const stored = property.properties?.kind?.const;
@@ -309,6 +309,9 @@ function readInput(property: JsonProperty): { type: string; kinds?: string[]; fa
       return { type: 'boolean', fallback };
     case 'file':
       return { type: 'string (an attachment ID)', fallback };
+    // A pattern's skipped instances (P4-12): the position labels themselves.
+    case 'labels':
+      return { type: 'string[]', fallback };
     case 'sketchData':
       return { type: 'SketchData', fallback };
     default:

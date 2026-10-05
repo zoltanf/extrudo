@@ -4,9 +4,13 @@ import type { Vec3 } from '../kernel';
 import { apply, determinant, turnTo } from './matrix';
 import {
   circularPlacements,
+  circularSeries,
   limitInstances,
   pathPlacements,
+  pathSeries,
+  patternReport,
   rectangularPlacements,
+  rectangularSeries,
   wholeCount,
 } from './pattern-layout';
 import { pathOf } from './pattern-path';
@@ -160,6 +164,60 @@ describe('turning one direction to another', () => {
   it('takes a direction to another about the pivot', () => {
     const m = turnTo([1, 1, 0], [1, 0, 0], [0, 1, 0]);
     near(apply(m, [2, 1, 0]), [1, 2, 0]);
+  });
+});
+
+describe('the report the view reads (P4-12)', () => {
+  const centre: Vec3 = [20, 15, 10];
+
+  it('lists every instance, the original included, where its centre goes', () => {
+    const all = rectangularPlacements(
+      { line: X, count: 2, step: 25, symmetric: false },
+      { line: Y, count: 2, step: 5, symmetric: false },
+      true,
+    );
+    const report = patternReport(all, [], centre, new Set(['1x1']));
+    expect(report.instances.map((i) => i.label)).toEqual(['0x0', '1x0', '0x1', '1x1']);
+    expect(report.instances[0]).toEqual({
+      label: '0x0',
+      at: [20, 15, 10],
+      skipped: false,
+      original: true,
+    });
+    near(report.instances[3]?.at as Vec3, [45, 20, 10]);
+    expect(report.instances[3]?.skipped).toBe(true);
+    expect(report.instances.filter((i) => i.skipped).map((i) => i.label)).toEqual(['1x1']);
+  });
+
+  it('says where each direction’s first and last instances are', () => {
+    const first = { line: X, count: 4, step: 10, symmetric: false };
+    const [x, y] = rectangularSeries(
+      first,
+      { line: Y, count: 3, step: 5, symmetric: true },
+      centre,
+    );
+    expect(x).toMatchObject({ mode: 'linear', direction: [1, 0, 0], step: 10, count: 4 });
+    near(x?.first as Vec3, centre);
+    near(x?.last as Vec3, [50, 15, 10]);
+    // A symmetric series starts behind the centre.
+    near(y?.first as Vec3, [20, 10, 10]);
+    near(y?.last as Vec3, [20, 20, 10]);
+  });
+
+  it('says where a turn and a path end', () => {
+    const turn = circularSeries(Z, 4, Math.PI / 2, 'total', false, centre);
+    expect(turn).toMatchObject({ mode: 'turn', direction: [0, 0, 1], count: 4 });
+    expect(turn.step).toBeCloseTo(Math.PI / 6, 9);
+    // (20, 15, 10) turned a quarter about +Z is (-15, 20, 10).
+    near(turn.last, [-15, 20, 10]);
+    const line = pathOf([
+      [0, 0, 0],
+      [100, 0, 0],
+    ]);
+    const along = pathSeries(line, 3, 40, false, centre);
+    expect(along).toMatchObject({ mode: 'linear', direction: [1, 0, 0], step: 40, count: 3 });
+    // Two steps of 40 mm along the path, so the centre moves 80 mm in x.
+    near(along.last, [100, 15, 10]);
   });
 });
 

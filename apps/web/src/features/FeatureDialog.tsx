@@ -9,7 +9,13 @@ import { TOOLS, type Tool } from '../shell/tools';
 import { canCommit, commitProblem, type DialogController, type OpenDialog } from './dialog';
 import { repeatableFeatures } from './featureList';
 import { pickName } from './pickName';
-import type { DialogField, FeatureDialogSpec, FeatureListField, SelectionField } from './spec';
+import type {
+  DialogField,
+  FeatureDialogSpec,
+  FeatureListField,
+  LabelsField,
+  SelectionField,
+} from './spec';
 import { countLabel, pickPrompt, shownFields } from './values';
 
 export interface FeatureDialogProps {
@@ -247,6 +253,9 @@ function FieldRow({
         />
       );
       break;
+    case 'labels':
+      control = <LabelsControl field={field} open={open} controller={controller} />;
+      break;
     case 'info': {
       // A read-only line: what the file is, not something to change (ADR-0066 §2).
       const ctx = controller.context();
@@ -272,6 +281,43 @@ function FieldRow({
           </p>
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * A labels field (P4-12: a pattern's skipped instances): the names the field
+ * holds, and a clear button. What fills it is the dots on the instances in the
+ * view, so there is nothing to type.
+ */
+function LabelsControl({
+  field,
+  open,
+  controller,
+}: {
+  field: LabelsField;
+  open: OpenDialog;
+  controller: DialogController;
+}) {
+  const labels = open.values.labels[field.name] ?? [];
+  return (
+    <div className="flex min-w-0 items-center gap-1 pt-1" data-labels={field.name}>
+      <p
+        className={`min-w-0 flex-1 truncate text-sm ${labels.length ? 'text-ink' : 'text-muted'}`}
+        data-skipped={labels.join(' ')}
+      >
+        {labels.length > 0 ? labels.join(', ') : (field.empty ?? 'None')}
+      </p>
+      {labels.length > 0 && (
+        <button
+          type="button"
+          aria-label={`Clear ${field.label}`}
+          onClick={() => controller.setLabels(field.name, [])}
+          className="grid size-6 shrink-0 place-items-center rounded-control text-muted hover:bg-accent-soft hover:text-ink"
+        >
+          <X size={12} />
+        </button>
+      )}
     </div>
   );
 }

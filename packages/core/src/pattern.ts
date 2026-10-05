@@ -17,6 +17,11 @@
  * makes two new ones. `symmetric` keeps the original in the middle of the
  * series instead of at its start.
  *
+ * Instances can be left out (`skip`, P4-12): the labels are positions, so a
+ * skip stays on its instance as the counts change, and the kernel reports the
+ * whole layout (`PatternReport`) for the dialog's per-instance toggles and its
+ * count handles.
+ *
  * The layout maths (`seriesOf`, `seriesStep`, `slotOf`) is pure and here, so
  * the kernel and the web app agree on it. The kernel adds evaluators and the
  * web app dialogs, each in its own registry keyed by the type (ADR-0003).
@@ -38,7 +43,9 @@ import {
   type FeatureInputs,
   type GeomRef,
   type GeomRefKind,
+  LabelsInputSchema,
 } from './schema';
+import type { Vec3 } from './sketch/planes';
 import { SWEEP_TYPE } from './sweep';
 import { z } from './zod';
 
@@ -92,6 +99,13 @@ export type PatternAngle = (typeof PATTERN_ANGLES)[number];
 /** The most instances one pattern makes (a guard against `1000 * 1000`). */
 export const MAX_PATTERN_INSTANCES = 1000;
 
+/**
+ * Beyond this many instances a pattern's in-view toggles are left out (P4-12,
+ * ADR-0047 amendment): a dot at every instance of a 500-instance grid is more
+ * than anyone can use, and the `skip` field still works.
+ */
+export const MAX_PATTERN_TOGGLES = 100;
+
 const CommonShape = {
   /** Default `bodies`. */
   objects: enumInput(PATTERN_OBJECTS)
@@ -105,6 +119,14 @@ const CommonShape = {
     .describe('The features whose tools are replayed, with objects: features.'),
   /** `bodies`: fuse the copies into the original. Default false. */
   join: BoolInputSchema.optional().describe('Fuse each copy into the original. Default false.'),
+  /**
+   * The instances left out, as position labels (P4-12): `"2"`, `"m1"`,
+   * `"1x3"`. Labels follow positions, so a skip stays on its instance while
+   * the counts change, and a label past the count is simply ignored.
+   */
+  skip: LabelsInputSchema.optional().describe(
+    'Instances left out, by their position labels (`2`, `m1`, `1x3`). The original cannot be listed; a label no instance has is ignored and kept.',
+  ),
 };
 
 export const RectangularPatternInputsSchema = z.strictObject({
@@ -357,6 +379,90 @@ export function instanceLabel(i: number, j?: number): string {
   return j === undefined ? one(i) : `${one(i)}x${one(j)}`;
 }
 
+/**
+ * Whether a label names the original instance (P4-12): `0` for a row or a turn,
+ * `0x0` for a grid. The original is the thing being patterned, so it can't be
+ * skipped.
+ */
+export const isOriginalLabel = (label: string): boolean =>
+  label === instanceLabel(0) || label === instanceLabel(0, 0);
+
+/** The instances a pattern leaves out (`skip`), each label once, in the order given. */
+export function skipLabels(inputs: { skip?: { labels: string[] } | undefined }): string[] {
+  const seen = new Set<string>();
+  return (inputs.skip?.labels ?? []).filter((label) => !seen.has(label) && seen.add(label));
+}
+
+/**
+ * Adds or removes `label` in a skip list: the list keeps the order the labels
+ * were first skipped in, and the original is never in it.
+ */
+export function toggleSkip(skip: readonly string[], label: string): string[] {
+  return skip.includes(label) ? skip.filter((l) => l !== label) : [...skip, label];
+}
+
+// ----------------------------------------------------------------- report
+
+/**
+ * One instance of a pattern, as the kernel reports it for the view (P4-12,
+ * ADR-0047 amendment): where the patterned objects' centre goes, so the dialog
+ * can put a dot on it to skip or keep the instance.
+ */
+export interface PatternInstance {
+  /** The instance's label: `0` (or `0x0`) for the original, then `2`, `m1`, `1x3`. */
+  label: string;
+  /** mm, the placement applied to the centre of what is patterned. */
+  at: Vec3;
+  /** The instance is left out (`skip` names it). */
+  skipped: boolean;
+  /** The original, which is never skipped. */
+  original: boolean;
+}
+
+/**
+ * One series of a pattern (a direction of a rectangular one, a turn, or the
+ * path), for a count handle (P4-12): where its first and last instances are,
+ * which way it runs and how far apart they are, so a drag can turn into a
+ * whole number of instances.
+ */
+export interface PatternSeries {
+  /** `linear` runs along `direction` by `step` mm; `turn` turns about it by `step` radians. */
+  mode: 'linear' | 'turn';
+  /** The direction to run along, or the axis to turn about (unit length). */
+  direction: Vec3;
+  /** mm between neighbours, or radians between them. */
+  step: number;
+  /** How many instances the series has, the original included. */
+  count: number;
+  /** mm, where the series' first instance's centre is. */
+  first: Vec3;
+  /** mm, where the series' last instance's centre is. */
+  last: Vec3;
+}
+
+/** What a pattern's evaluator reports for the view (P4-12): its instances and its series. */
+export interface PatternReport {
+  instances: PatternInstance[];
+  series: PatternSeries[];
+}
+
+/** Whether a kernel report (plain JSON) is a pattern's. */
+export function isPatternReport(report: unknown): report is PatternReport {
+  if (typeof report !== 'object' || report === null) return false;
+  const { instances, series } = report as Partial<PatternReport>;
+  return (
+    Array.isArray(instances) &&
+    instances.every(
+      (i) =>
+        typeof i?.label === 'string' &&
+        Array.isArray(i.at) &&
+        i.at.length === 3 &&
+        i.at.every((n) => typeof n === 'number'),
+    ) &&
+    Array.isArray(series)
+  );
+}
+
 // ------------------------------------------------------------- settings
 
 export interface Series {
@@ -374,6 +480,8 @@ export interface RectangularSettings extends PatternObjectSettings {
   measure2: PatternMeasure;
   symmetric1: boolean;
   symmetric2: boolean;
+  /** The instances left out (P4-12). */
+  skip: string[];
 }
 
 export function rectangularSettings(inputs: RectangularPatternInputs): RectangularSettings {
@@ -385,6 +493,7 @@ export function rectangularSettings(inputs: RectangularPatternInputs): Rectangul
     measure2: inputs.measure2?.value ?? 'spacing',
     symmetric1: inputs.symmetric1?.value ?? false,
     symmetric2: inputs.symmetric2?.value ?? false,
+    skip: skipLabels(inputs),
   };
 }
 
@@ -392,6 +501,8 @@ export interface CircularSettings extends PatternObjectSettings {
   axis: GeomRef | undefined;
   measure: PatternAngle;
   symmetric: boolean;
+  /** The instances left out (P4-12). */
+  skip: string[];
 }
 
 export function circularSettings(inputs: CircularPatternInputs): CircularSettings {
@@ -400,6 +511,7 @@ export function circularSettings(inputs: CircularPatternInputs): CircularSetting
     axis: inputs.axis?.refs[0],
     measure: inputs.measure?.value ?? 'total',
     symmetric: inputs.symmetric?.value ?? false,
+    skip: skipLabels(inputs),
   };
 }
 
@@ -409,6 +521,8 @@ export interface PathSettings extends PatternObjectSettings {
   measure: PatternMeasure;
   aligned: boolean;
   flip: boolean;
+  /** The instances left out (P4-12). */
+  skip: string[];
 }
 
 export function pathSettings(inputs: PathPatternInputs): PathSettings {
@@ -418,6 +532,7 @@ export function pathSettings(inputs: PathPatternInputs): PathSettings {
     measure: inputs.measure?.value ?? 'spacing',
     aligned: inputs.aligned?.value ?? false,
     flip: inputs.flip?.value ?? false,
+    skip: skipLabels(inputs),
   };
 }
 
@@ -471,6 +586,8 @@ export interface RectangularOptions extends PatternObjectOptions {
   distance2?: string;
   measure2?: PatternMeasure;
   symmetric2?: boolean;
+  /** Instance labels left out (P4-12): `['1x1', '2x2']`. */
+  skip?: readonly string[];
 }
 
 export function rectangularPatternInputs(options: RectangularOptions): RectangularPatternInputs {
@@ -486,6 +603,7 @@ export function rectangularPatternInputs(options: RectangularOptions): Rectangul
   if (o.distance2 !== undefined) inputs.distance2 = expr(o.distance2, 'length');
   if (o.measure2) inputs.measure2 = { kind: 'enum', value: o.measure2 };
   if (o.symmetric2 !== undefined) inputs.symmetric2 = { kind: 'bool', value: o.symmetric2 };
+  if (o.skip?.length) inputs.skip = { kind: 'labels', labels: [...o.skip] };
   return inputs;
 }
 
@@ -495,6 +613,8 @@ export interface CircularOptions extends PatternObjectOptions {
   angle?: string;
   measure?: PatternAngle;
   symmetric?: boolean;
+  /** Instance labels left out (P4-12). */
+  skip?: readonly string[];
 }
 
 export function circularPatternInputs(options: CircularOptions): CircularPatternInputs {
@@ -505,6 +625,7 @@ export function circularPatternInputs(options: CircularOptions): CircularPattern
   if (o.angle !== undefined) inputs.angle = expr(o.angle, 'angle');
   if (o.measure) inputs.measure = { kind: 'enum', value: o.measure };
   if (o.symmetric !== undefined) inputs.symmetric = { kind: 'bool', value: o.symmetric };
+  if (o.skip?.length) inputs.skip = { kind: 'labels', labels: [...o.skip] };
   return inputs;
 }
 
@@ -515,6 +636,8 @@ export interface PathOptions extends PatternObjectOptions {
   measure?: PatternMeasure;
   aligned?: boolean;
   flip?: boolean;
+  /** Instance labels left out (P4-12). */
+  skip?: readonly string[];
 }
 
 export function pathPatternInputs(options: PathOptions): PathPatternInputs {
@@ -526,5 +649,6 @@ export function pathPatternInputs(options: PathOptions): PathPatternInputs {
   if (o.measure) inputs.measure = { kind: 'enum', value: o.measure };
   if (o.aligned !== undefined) inputs.aligned = { kind: 'bool', value: o.aligned };
   if (o.flip !== undefined) inputs.flip = { kind: 'bool', value: o.flip };
+  if (o.skip?.length) inputs.skip = { kind: 'labels', labels: [...o.skip] };
   return inputs;
 }

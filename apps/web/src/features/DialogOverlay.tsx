@@ -18,6 +18,7 @@ import {
   angleAround,
   cross,
   distanceAlong,
+  draggedCount,
   draggedExpression,
   type Ray,
   unwrapAngle,
@@ -51,15 +52,20 @@ type Screen = readonly [number, number];
 /**
  * The open dialog's in-canvas manipulators (UI spec §3.4, ADR-0027): a
  * distance arrow and an angle arc per the spec, drawn over the view, with a
- * heads-up box next to the active one, and a direction arrow for a toggle
- * (a rib's Flip), which a click turns the other way. Dragging a handle writes
- * the field; typing a number while nothing else has the keyboard goes into the box.
+ * heads-up box next to the active one, a direction arrow for a toggle (a rib's
+ * Flip), which a click turns the other way, and (P4-12) a dot on every
+ * instance of a pattern, which a click skips or keeps, and a handle on the
+ * last instance of each series, which a drag turns into a whole count.
+ * Dragging a handle writes the field; typing a number while nothing else has
+ * the keyboard goes into the box.
  * Rendered directly from the shell, never through `React.lazy` (keys typed
  * while a lazy boundary suspends are lost).
  *
- * Test hooks: `data-manipulators` ("distance:depth angle:tilt", kind and
- * field), each handle's `data-manipulator-handle` (its field) with its
- * centre in `cx`/`cy` (px in the view), and the box's `data-heads-up`.
+ * Test hooks: `data-manipulators` ("distance:depth angle:tilt count:count1
+ * toggle:skip", kind and field, each listed once), each draggable handle's
+ * `data-manipulator-handle` (its field) with its centre in `cx`/`cy` (px in
+ * the view), a pattern instance's `data-instance-toggle` (its label), and the
+ * box's `data-heads-up`.
  */
 export function DialogOverlay({ controller, viewport, settings, bodies }: DialogOverlayProps) {
   const open = useStore(controller.state, (s) => s.open);
@@ -77,11 +83,11 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     return () => observer.disconnect();
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: manipulators follow the values, their evaluation and the bodies.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: manipulators follow the values, their evaluation, the bodies and the layout the last preview reported (P4-12's dots and count handles).
   const manipulators = useMemo(() => {
     const ctx = controller.context();
     return open && ctx ? (open.spec.manipulators?.(open.values, ctx) ?? []) : [];
-  }, [controller, open?.values, open?.expressions, bodies]);
+  }, [controller, open?.values, open?.expressions, open?.preview?.pattern, bodies]);
 
   // The last value of each field that evaluated, so an arrow stays put while its text is invalid.
   const last = useRef(new Map<string, number>());
@@ -107,10 +113,9 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
   };
   const perPixel = (p: Vec3) => worldPerPixel(view, projection, height, p);
 
-  // A direction arrow writes a toggle: it has no heads-up box and no value.
-  const current =
-    manipulators.find((m) => m.kind !== 'arrow' && m.field === open?.activeField) ??
-    manipulators.find((m) => m.kind !== 'arrow');
+  // A direction arrow or an instance dot writes without a heads-up box and no value.
+  const boxed = manipulators.filter((m) => m.kind !== 'arrow' && m.kind !== 'toggle');
+  const current = boxed.find((m) => m.field === open?.activeField) ?? boxed[0];
 
   // Typing a number goes straight into the heads-up box (UI spec §3.4); Tab moves into it.
   // A key with a modifier is a command, not typing: Shift+1…7 turn the view and
@@ -155,6 +160,13 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
       const at = angleAround(m.origin, m.axis, m.zero, ray);
       return at === undefined ? undefined : at / (m.scale ?? 1);
     }
+    if (m.kind === 'toggle') return undefined; // a dot is clicked, never dragged
+    if (m.kind === 'count') {
+      // A row is dragged along, a turn round about its axis (in degrees, as `angleAround`).
+      return m.turn
+        ? angleAround(m.origin, m.direction, m.zero ?? turnZero(m), ray)
+        : distanceAlong(m.origin, m.direction, ray);
+    }
     const at = distanceAlong(m.origin, m.direction, ray);
     return at === undefined ? undefined : at / (m.kind === 'arrow' ? 1 : (m.scale ?? 1));
   };
@@ -170,11 +182,22 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
       controller.setToggle(m.field, open?.values.toggles[m.field] !== true);
       return;
     }
+    if (m.kind === 'toggle') {
+      controller.toggleLabel(m.field, m.label);
+      return;
+    }
     const [x, y] = local(event);
     const at = measure(m, x, y);
     if (at === undefined) return;
     (event.currentTarget as Element).setPointerCapture(event.pointerId);
-    drag.current = { m, offset: fieldValue(m.field) - at, pointer: event.pointerId };
+    // A lifted head is drawn away from the geometry, so where it was pressed says
+    // nothing about the value: such a drag is measured from the origin instead.
+    const liftedBy = 'lift' in m ? (m.lift ?? 0) : 0;
+    drag.current = {
+      m,
+      offset: liftedBy > 0 ? 0 : fieldValue(m.field) - at,
+      pointer: event.pointerId,
+    };
     controller.activate(m.field);
   };
   const onMove = (event: ReactPointerEvent<SVGElement>) => {
@@ -183,6 +206,19 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     const [x, y] = local(event);
     const at = measure(d.m, x, y);
     if (at === undefined) return;
+    if (d.m.kind === 'count') {
+      // The step is the series' own, held still while the drag runs, so the count
+      // follows the pointer instead of chasing it.
+      // A turn's step is in radians and a drag reads degrees, and reads −180…180,
+      // so it is taken round to the steps the count is at now.
+      const step = d.m.turn ? (d.m.step * 180) / Math.PI : d.m.step;
+      const reached = d.m.turn ? unwrapAngle(at, (d.m.count - 1) * step, 360) : at + d.offset;
+      controller.setExpr(
+        d.m.field,
+        String(draggedCount(reached, { step, count: d.m.count, extent: d.m.extent })),
+      );
+      return;
+    }
     let value = at + d.offset;
     if (d.m.kind === 'angle' && d.m.fullTurn) {
       // Round and round: the value nearest the last one, within a whole turn.
@@ -190,6 +226,7 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     } else if (d.m.kind === 'angle') {
       value = ((((value + 180) % 360) + 360) % 360) - 180;
     }
+    if (d.m.kind === 'toggle') return;
     const unit = fieldUnit(open, d.m.field);
     // A pixel along a scaled arrow is worth 1 / scale of the value.
     const step = perPixel(d.m.origin) / (d.m.kind === 'distance' ? (d.m.scale ?? 1) : 1);
@@ -201,7 +238,7 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
   };
 
   const drawn = manipulators.map((m) => {
-    const radius = ARC_PX * perPixel(m.origin);
+    const radius = ARC_PX * perPixel(m.kind === 'toggle' ? m.at : m.origin);
     return { m, radius, shape: shapeOf(m, fieldValue(m.field), radius) };
   });
   const currentHandle = drawn.find((d) => d.m === current)?.shape.handle;
@@ -212,7 +249,9 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     <div
       ref={layer}
       className="pointer-events-none absolute inset-0 z-[4] overflow-hidden"
-      data-manipulators={manipulators.map((m) => `${m.kind}:${m.field}`).join(' ') || undefined}
+      data-manipulators={
+        [...new Set(manipulators.map((m) => `${m.kind}:${m.field}`))].join(' ') || undefined
+      }
     >
       {open && width > 0 && (
         <svg
@@ -222,14 +261,70 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
           aria-hidden="true"
         >
           {drawn.map(({ m, shape, radius }) => {
+            if (m.kind === 'toggle') {
+              const at = toScreen(m.at);
+              if (!at) return null;
+              const color = m.skipped ? 'var(--x-muted)' : 'var(--x-accent)';
+              const r = 7;
+              return (
+                <g key={`${m.kind}:${m.label}`} data-manipulator="toggle">
+                  <circle
+                    data-instance-toggle={m.label}
+                    data-skipped={m.skipped}
+                    data-view-passthrough=""
+                    cx={round(at[0])}
+                    cy={round(at[1])}
+                    r={r}
+                    fill="none"
+                    stroke={color}
+                    strokeWidth={m.skipped ? 1.5 : 2}
+                    strokeDasharray={m.skipped ? '3 2' : undefined}
+                    style={{ pointerEvents: 'all', cursor: 'pointer' }}
+                    onPointerDown={onDown(m)}
+                  >
+                    <title>
+                      {m.skipped
+                        ? `Click to make instance ${m.label}`
+                        : `Click to skip instance ${m.label}`}
+                    </title>
+                  </circle>
+                  {m.skipped ? (
+                    <line
+                      x1={round(at[0] - 4)}
+                      y1={round(at[1] + 4)}
+                      x2={round(at[0] + 4)}
+                      y2={round(at[1] - 4)}
+                      stroke={color}
+                      strokeWidth={1.5}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  ) : (
+                    <circle
+                      cx={round(at[0])}
+                      cy={round(at[1])}
+                      r={2.5}
+                      fill={color}
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  )}
+                </g>
+              );
+            }
             const active = m === current;
             const color = active ? 'var(--x-accent)' : 'var(--x-sketch)';
-            const handle = toScreen(shape.handle);
+            const shaft = toScreen(shape.handle);
             const line = (m.kind === 'distance' ? shape.line : arcPoints(m, shape.angle, radius))
               .map(toScreen)
               .filter((p): p is Screen => p !== undefined);
             const zero = m.kind === 'angle' ? toScreen(along(m.origin, m.zero, radius)) : undefined;
             const base = toScreen(m.origin);
+            // A lifted head floats clear of the geometry under it (a pattern's
+            // instance dot), with a tick back to where it really is.
+            const lift = 'lift' in m ? (m.lift ?? 0) : 0;
+            const handle =
+              shaft && lift
+                ? lifted(shaft, base, lift, m.kind === 'count' && m.turn === true)
+                : shaft;
             return (
               <g key={`${m.kind}:${m.field}`} data-manipulator={m.kind}>
                 {zero && base && (
@@ -253,6 +348,31 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
                 {(m.kind === 'distance' || m.kind === 'arrow') && handle && base && (
                   <ArrowHead from={line.at(-2) ?? base} to={handle} color={color} />
                 )}
+                {lift > 0 && shaft && handle && (
+                  <line
+                    x1={round(shaft[0])}
+                    y1={round(shaft[1])}
+                    x2={round(handle[0])}
+                    y2={round(handle[1])}
+                    stroke={color}
+                    strokeWidth={1}
+                    opacity={0.7}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
+                {m.kind === 'count' && handle && (
+                  <line
+                    x1={base?.[0]}
+                    y1={base?.[1]}
+                    x2={handle[0]}
+                    y2={handle[1]}
+                    stroke={color}
+                    strokeWidth={1}
+                    strokeDasharray="3 3"
+                    opacity={0.5}
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )}
                 {handle && (
                   <circle
                     data-manipulator-handle={m.field}
@@ -275,7 +395,9 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
                     <title>
                       {m.kind === 'arrow'
                         ? `Click to turn ${fieldLabel(open, m.field)?.toLowerCase()} the other way`
-                        : `Drag to set ${fieldLabel(open, m.field)?.toLowerCase()}`}
+                        : m.kind === 'count'
+                          ? `Drag to set ${fieldLabel(open, m.field)?.toLowerCase()}`
+                          : `Drag to set ${fieldLabel(open, m.field)?.toLowerCase()}`}
                     </title>
                   </circle>
                 )}
@@ -315,6 +437,30 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
 
 const round = (v: number) => Math.round(v * 10) / 10;
 
+/**
+ * A head drawn `up` px above its own shaft (P4-12: the arrow of a pattern ends
+ * where one of its instances is, and that instance's dot has to stay clickable).
+ * Upwards on screen, or straight out from the origin where there is no shaft.
+ */
+function lifted(handle: Screen, base: Screen | undefined, px: number, radial = false): Screen {
+  const dx = base ? handle[0] - base[0] : 0;
+  const dy = base ? handle[1] - base[1] : 0;
+  const length = Math.hypot(dx, dy);
+  if (length < 4) return [handle[0], handle[1] - px];
+  // Straight out from the origin for a turn (an arc's own direction), else across
+  // the shaft and upwards, which is the shorter way round.
+  const ax = radial ? dx / length : -dy / length;
+  const ay = radial ? dy / length : dx / length;
+  const way = !radial && ay > 0 ? -1 : 1;
+  return [handle[0] + ax * way * px, handle[1] + ay * way * px];
+}
+
+/** A vector's unit length (a zero vector stands for itself). */
+function unit(v: Vec3): Vec3 {
+  const length = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / length, v[1] / length, v[2] / length];
+}
+
 function fieldOf(open: OpenDialog | undefined, name: string): DialogField | undefined {
   return open?.spec.fields.find((f) => f.name === name);
 }
@@ -337,8 +483,28 @@ function shapeOf(m: Manipulator, value: number, r: number) {
         : along(m.origin, m.direction, value * (m.scale ?? 1));
     return { handle: head, line: [m.origin, head], angle: 0 };
   }
+  // A count handle sits on the series' last instance; an instance dot on its own.
+  if (m.kind === 'count') return { handle: m.last, line: [], angle: 0 };
+  if (m.kind === 'toggle') return { handle: m.at, line: [], angle: 0 };
   const angle = value * (m.scale ?? 1);
   return { handle: arcPoint(m, angle, r), line: [], angle };
+}
+
+/**
+ * The direction a turn is measured from when the spec gives none (P4-12): from
+ * the series' first instance out from the axis, so a drag counts steps round
+ * from there. (The axis is taken through `last`, which a pattern's centre is
+ * never on, so the fallback is only ever used by a spec of its own.)
+ */
+function turnZero(m: Extract<Manipulator, { kind: 'count' }>): Vec3 {
+  const axis = unit(m.direction);
+  const at = m.origin;
+  const t =
+    (at[0] - m.last[0]) * axis[0] + (at[1] - m.last[1]) * axis[1] + (at[2] - m.last[2]) * axis[2];
+  const foot: Vec3 = [m.last[0] + t * axis[0], m.last[1] + t * axis[1], m.last[2] + t * axis[2]];
+  const out: Vec3 = [at[0] - foot[0], at[1] - foot[1], at[2] - foot[2]];
+  if (Math.hypot(...out) > 1e-9) return unit(out);
+  return unit(cross(axis, Math.abs(axis[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]));
 }
 
 /** A point on the arc at `degrees` and radius `r` (world mm). */

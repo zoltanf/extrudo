@@ -215,7 +215,9 @@ export const threadDialog: FeatureDialogSpec = defineFeatureDialog({
     const stored = defaultFromInputs(threadDialog, inputs);
     const sized = 'diameter' in inputs || 'pitch' in inputs;
     const exprs = stored.exprs ?? {};
-    const preset = sized ? presetOf({ refs: {}, exprs, choices: {}, toggles: {} }) : AUTO;
+    const preset = sized
+      ? presetOf({ refs: {}, exprs, choices: {}, toggles: {}, labels: {} })
+      : AUTO;
     return { ...stored, choices: { ...stored.choices, preset } };
   },
   validate(values, ctx) {

@@ -16,12 +16,21 @@
  * - The in-view handles: a distance arrow per direction (from the middle of
  *   the picked bodies, or of all bodies), and for circular an angle ring
  *   about the axis. The ghosts are the evaluator's preview tools.
+ * - **P4-12:** a dot on every instance, which a click skips or keeps, a count
+ *   handle on the last instance of each series, and for a path a distance
+ *   handle at its last instance. They read the layout the kernel reports
+ *   (`PatternReport`: every instance's centre and each series' first and last
+ *   instance), so they follow the real placements rather than repeating the
+ *   maths here. `Skipped` is the read-only list those dots fill.
  */
 import {
   circularPatternFeature,
+  MAX_PATTERN_TOGGLES,
   PATTERN_DIRECTION_KINDS,
   PATTERN_PATH_KINDS,
   PATTERNABLE_FEATURE_TYPES,
+  type PatternReport,
+  type PatternSeries,
   pathPatternFeature,
   rectangularPatternFeature,
   type Vec3,
@@ -37,6 +46,7 @@ import {
   defineFeatureDialog,
   type Manipulator,
   type ManipulatorContext,
+  type SwitchManipulator,
 } from './spec';
 
 const OBJECTS = [
@@ -119,6 +129,26 @@ const lengthField = (name: string, label: string, hint: string, shown?: DialogFi
 
 const hasRef = (field: string) => (v: DialogValues) => (v.refs[field]?.length ?? 0) > 0;
 
+/**
+ * How far the in-view handles float clear of the instances (P4-12), in screen
+ * pixels: an arrow's tip and a count handle both land on an instance's centre,
+ * which is where its skip dot is, and both have to stay clickable.
+ */
+const LIFT = 14;
+
+/**
+ * The instances left out (P4-12): a read-only line of their labels with a
+ * Clear button. The in-view dots and the field fill the same `skip` input, so
+ * the list makes no input of its own.
+ */
+const skipField = (): DialogField => ({
+  kind: 'labels',
+  name: 'skip',
+  label: 'Skipped',
+  empty: 'None',
+  hint: 'Click a dot in the view to leave one instance out, or clear them here.',
+});
+
 // ------------------------------------------------------------ manipulators
 
 /** The middle of what is patterned: the picked bodies, else every body. */
@@ -136,6 +166,94 @@ const unit = (v: Vec3): Vec3 => {
   return [v[0] / length, v[1] / length, v[2] / length];
 };
 
+// ------------------------------------------------- instances (P4-12)
+
+/** The instances the kernel laid out, or none while its first preview is late. */
+const layoutOf = (ctx: ManipulatorContext): PatternReport | undefined => ctx.pattern;
+
+/** The labels the dialog's `skip` field holds: the dots read and write these. */
+const skippedOf = (values: DialogValues): readonly string[] => values.labels.skip ?? [];
+
+/**
+ * A dot on every instance (P4-12), which a click skips or keeps. The original
+ * has none (it can't be skipped), and a pattern of more than
+ * `MAX_PATTERN_TOGGLES` instances has none either: that many dots are more than
+ * anyone can use, and the `Skipped` field still works.
+ */
+function instanceDots(values: DialogValues, ctx: ManipulatorContext): SwitchManipulator[] {
+  const layout = layoutOf(ctx);
+  if (!layout || layout.instances.length > MAX_PATTERN_TOGGLES) return [];
+  const skipped = skippedOf(values);
+  return layout.instances
+    .filter((instance) => !instance.original)
+    .map((instance) => ({
+      kind: 'toggle' as const,
+      field: 'skip',
+      label: instance.label,
+      at: instance.at,
+      skipped: instance.skipped || skipped.includes(instance.label),
+    }));
+}
+
+/**
+ * The plane of a turn (P4-12): the foot of what turns on its axis, and the
+ * direction from the axis to it, which the angle ring and the count handle both
+ * measure from. A centre that lies on the axis has no such direction, so the
+ * ring falls back to any one across it.
+ */
+function turnFrame(at: Vec3, axis: { origin: Vec3; direction: Vec3 }): { foot: Vec3; zero: Vec3 } {
+  const d = unit(axis.direction);
+  const o = axis.origin;
+  const t = (at[0] - o[0]) * d[0] + (at[1] - o[1]) * d[1] + (at[2] - o[2]) * d[2];
+  const foot: Vec3 = [o[0] + t * d[0], o[1] + t * d[1], o[2] + t * d[2]];
+  const out: Vec3 = [at[0] - foot[0], at[1] - foot[1], at[2] - foot[2]];
+  return {
+    foot,
+    zero:
+      Math.hypot(...out) > 1e-9
+        ? unit(out)
+        : unit(cross(d, Math.abs(d[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0])),
+  };
+}
+
+/** A count handle on the last instance of a series, for its count field. */
+function countHandle(
+  series: PatternSeries,
+  field: string,
+  extent: boolean,
+  frame?: { foot: Vec3; zero: Vec3 },
+): Manipulator {
+  return {
+    kind: 'count',
+    field,
+    // A turn is measured about its axis, from where its series starts on it.
+    origin: frame?.foot ?? series.first,
+    last: series.last,
+    direction: series.direction,
+    step: series.step,
+    count: series.count,
+    extent,
+    lift: LIFT,
+    ...(series.mode === 'turn' ? { turn: true, ...(frame && { zero: frame.zero }) } : {}),
+  };
+}
+
+/** The count handles of a rectangular pattern: one per direction. */
+function rectangularCounts(values: DialogValues, ctx: ManipulatorContext): Manipulator[] {
+  const series = layoutOf(ctx)?.series ?? [];
+  const out: Manipulator[] = [];
+  // The first series is `count1`, which counts by `measure1`; the second, by `measure2`.
+  for (const [k, measure] of [
+    [0, 'measure1'],
+    [1, 'measure2'],
+  ] as const) {
+    const one = series[k];
+    if (!one) continue;
+    out.push(countHandle(one, `count${k + 1}`, values.choices[measure] === 'extent'));
+  }
+  return out;
+}
+
 function rectangularManipulators(values: DialogValues, ctx: ManipulatorContext): Manipulator[] {
   const centre = centreOf(values, ctx);
   if (!centre) return [];
@@ -149,8 +267,10 @@ function rectangularManipulators(values: DialogValues, ctx: ManipulatorContext):
       field: `distance${n}`,
       origin: centre,
       direction: line.direction,
+      lift: LIFT,
     });
   }
+  out.push(...rectangularCounts(values, ctx), ...instanceDots(values, ctx));
   return out;
 }
 
@@ -159,16 +279,51 @@ function circularManipulators(values: DialogValues, ctx: ManipulatorContext): Ma
   const ref = values.refs.axis?.[0];
   const line = ref && axisLine(ref, ctx);
   if (!centre || !line) return [];
-  const d = line.direction;
-  const o = line.origin;
-  const t = (centre[0] - o[0]) * d[0] + (centre[1] - o[1]) * d[1] + (centre[2] - o[2]) * d[2];
-  const foot: Vec3 = [o[0] + t * d[0], o[1] + t * d[1], o[2] + t * d[2]];
-  const out: Vec3 = [centre[0] - foot[0], centre[1] - foot[1], centre[2] - foot[2]];
-  const zero =
-    Math.hypot(...out) > 1e-9
-      ? unit(out)
-      : unit(cross(d, Math.abs(d[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0]));
-  return [{ kind: 'angle', field: 'angle', origin: foot, axis: d, zero, fullTurn: true }];
+  // What turns is the centre of the pattern, which the kernel's layout knows
+  // exactly (for a features pattern it is the tool's own centre).
+  const turn = layoutOf(ctx)?.series[0];
+  const frame = turnFrame(turn?.first ?? centre, line);
+  return [
+    {
+      kind: 'angle',
+      field: 'angle',
+      origin: frame.foot,
+      axis: line.direction,
+      zero: frame.zero,
+      fullTurn: true,
+    },
+    // The count follows the handle round the arc; the angle is the whole spread.
+    ...(turn ? [countHandle(turn, 'count', values.choices.measure !== 'step', frame)] : []),
+    ...instanceDots(values, ctx),
+  ];
+}
+
+/**
+ * A path pattern's handles (P4-12): a distance handle at the last instance,
+ * along the path's tangent there, which drives the distance along the path
+ * (the whole extent, or a step between neighbours), and a dot per instance.
+ */
+function pathManipulators(values: DialogValues, ctx: ManipulatorContext): Manipulator[] {
+  const series = layoutOf(ctx)?.series[0];
+  const spacing = values.choices.measure !== 'extent';
+  // Between neighbours the distance is one step, and the handle spans the whole
+  // run: that is `count - 1` steps (a run of one instance has no handle at all).
+  const scale = series && spacing && series.count > 1 ? series.count - 1 : 1;
+  return [
+    ...(series && series.count > 1
+      ? [
+          {
+            kind: 'distance' as const,
+            field: 'distance',
+            origin: series.first,
+            direction: series.direction,
+            lift: LIFT,
+            ...(scale !== 1 && { scale }),
+          },
+        ]
+      : []),
+    ...instanceDots(values, ctx),
+  ];
 }
 
 // ----------------------------------------------------------------- specs
@@ -241,6 +396,7 @@ export const rectangularPatternDialog = defineFeatureDialog({
       shown: hasRef('direction2'),
     },
     joinField(),
+    skipField(),
   ],
   manipulators: rectangularManipulators,
   previewStyle: () => 'new',
@@ -285,6 +441,7 @@ export const circularPatternDialog = defineFeatureDialog({
       hint: 'Put the original in the middle instead of at the start.',
     },
     joinField(),
+    skipField(),
   ],
   manipulators: circularManipulators,
   previewStyle: () => 'new',
@@ -328,7 +485,9 @@ export const pathPatternDialog = defineFeatureDialog({
       hint: 'Walk the path from its other end.',
     },
     joinField(),
+    skipField(),
   ],
+  manipulators: pathManipulators,
   previewStyle: () => 'new',
 });
 
