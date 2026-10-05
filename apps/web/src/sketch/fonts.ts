@@ -10,9 +10,11 @@
  * is part of the key of every cache that holds text geometry: the profile
  * cache (`profiles.ts`) and the sketch drawing.
  *
- * A font the user added to the design comes from its attachment
- * (`attachment:<id>`, P4-03b, ADR-0061 §3), which needs the open project, so
- * the page sets where to read it (`useFontAttachments`) while one is open.
+ * A file the design carries comes from its attachment (`attachment:<id>` for
+ * a font, P4-03b, ADR-0061 §3; the ID itself for an imported model, P4-06,
+ * ADR-0066 §0), which needs the open project, so the page sets where to read
+ * it (`useFontAttachments`) while one is open. The worker gets the same bytes
+ * from the `Recomputer` (`files: attachmentBytes`).
  */
 import {
   type AttachmentId,
@@ -67,12 +69,13 @@ export function usedFonts(doc: ExtrudoDocument): Set<string> {
 const bytes = new Map<string, Promise<ArrayBuffer | undefined>>();
 
 /**
- * Where a design's own fonts come from (P4-03b, ADR-0061 §3): the open
+ * Where a design's own files come from (P4-03b, ADR-0061 §3; P4-06): the open
  * project, its document's attachment record and the stored bytes. Without one
  * (no project is open) an `attachment:` font has no bytes, like any unknown
- * font, and the kernel warns about it.
+ * font, and the kernel warns about it; an imported file has none either, and
+ * the feature says the file is missing.
  */
-export interface AttachmentFonts {
+export interface AttachmentFiles {
   /**
    * The bytes of the attachment `id` in the open project, or `undefined` when
    * the design has no record of it or the file isn't stored (a name that never
@@ -81,26 +84,26 @@ export interface AttachmentFonts {
   read(id: string): Promise<Uint8Array | undefined>;
 }
 
-let attachmentFonts: AttachmentFonts | undefined;
+let attachmentFiles: AttachmentFiles | undefined;
 
 /**
- * The project whose attachments fonts are read from, or `undefined`. The open
- * project's page sets it (the cache follows, so one design's fonts are never
+ * The project whose attachments files are read from, or `undefined`. The open
+ * project's page sets it (the cache follows, so one design's files are never
  * served for another's).
  */
-export function setAttachmentFonts(source: AttachmentFonts | undefined): void {
-  attachmentFonts = source;
+export function setAttachmentFiles(source: AttachmentFiles | undefined): void {
+  attachmentFiles = source;
   for (const key of [...bytes.keys()]) if (key.startsWith(ATTACHMENT_CACHE)) bytes.delete(key);
 }
 
-/** The project's page tells this module where its design's fonts live. */
+/** The project's page tells this module where its design's files live. */
 export function useFontAttachments(
   projectId: string,
   store: DocumentStore,
   projects: ProjectStore,
 ): void {
   useEffect(() => {
-    setAttachmentFonts({
+    setAttachmentFiles({
       read: (id) => {
         const attachment = store.getState().doc.attachments?.[id as AttachmentId];
         return attachment
@@ -108,7 +111,7 @@ export function useFontAttachments(
           : Promise.resolve(undefined);
       },
     });
-    return () => setAttachmentFonts(undefined);
+    return () => setAttachmentFiles(undefined);
   }, [projectId, store, projects]);
 }
 
@@ -135,12 +138,18 @@ export function fontBytes(id: string): Promise<ArrayBuffer | undefined> {
   return promise;
 }
 
-/** One attachment's bytes, read once per open project and kept in the cache. */
-function attachmentBytes(id: AttachmentId): Promise<ArrayBuffer | undefined> {
+/**
+ * One attachment's bytes, read once per open project and kept in the cache:
+ * what a font is shaped from and what the worker gets for an import
+ * (ADR-0066 §0). `putAttachmentBytes` puts a file the app has just read
+ * (a picked model) into the same cache, so a preview finds it before the
+ * document names it.
+ */
+export function attachmentBytes(id: AttachmentId): Promise<ArrayBuffer | undefined> {
   const key = `${ATTACHMENT_CACHE}${id}`;
   const known = bytes.get(key);
   if (known) return known;
-  const source = attachmentFonts;
+  const source = attachmentFiles;
   const promise = (source ? source.read(id) : Promise.resolve(undefined))
     .then((data) => {
       if (!data) return undefined;
@@ -152,6 +161,19 @@ function attachmentBytes(id: AttachmentId): Promise<ArrayBuffer | undefined> {
     .catch(() => undefined);
   bytes.set(key, promise);
   return promise;
+}
+
+/**
+ * Puts a file's bytes in the cache under its attachment ID, as the open
+ * project's store would: the bytes go to storage first (ADR-0061 §2) and the
+ * dialog previews from this cache before the document names them, so the
+ * preview's `addFile` finds them (ADR-0066 §0).
+ */
+export function putAttachmentBytes(id: AttachmentId, data: Uint8Array): void {
+  // A copy in its own buffer: the file's view may sit in a bigger one.
+  const copy = new Uint8Array(data.length);
+  copy.set(data);
+  bytes.set(`${ATTACHMENT_CACHE}${id}`, Promise.resolve(copy.buffer));
 }
 
 /** The fonts loaded on the UI thread. */

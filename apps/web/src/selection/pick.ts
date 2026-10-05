@@ -30,7 +30,7 @@ import {
   type Vec2,
   worldToSketch,
 } from '@extrudo/core';
-import { type BodyMesh, EDGE_SEAM } from '@extrudo/kernel';
+import { type BodyMesh, EDGE_MESH, EDGE_SEAM } from '@extrudo/kernel';
 import { pickEntity } from '@extrudo/sketch/inference';
 import { type Profile, profileAt } from '@extrudo/sketch/profiles';
 import { BufferAttribute, BufferGeometry, DoubleSide, Ray, Vector3 } from 'three';
@@ -300,6 +300,12 @@ function faceHits(e: Eye, scene: PickScene) {
   return out.sort((a, b) => a.depth - b.depth);
 }
 
+/**
+ * Edges the pointer can't pick (P4-06, ADR-0066 §3): a seam isn't there to
+ * pick, and a mesh body's creases are drawn but have no B-rep edge to name.
+ */
+const UNPICKABLE = EDGE_SEAM | EDGE_MESH;
+
 /** Edges near the pointer: the closest approach of the ray to each edge's polyline. */
 function nearEdges(e: Eye, scene: PickScene): Near[] {
   const out: Near[] = [];
@@ -307,7 +313,7 @@ function nearEdges(e: Eye, scene: PickScene): Near[] {
   for (const body of scene.bodies) {
     const { edgePoints: p, edgeRanges, edgeFlags } = body.mesh;
     for (let edge = 0; edge < edgeRanges.length >> 1; edge++) {
-      if (((edgeFlags[edge] ?? 0) & EDGE_SEAM) !== 0) continue;
+      if (((edgeFlags[edge] ?? 0) & UNPICKABLE) !== 0) continue;
       const first = edgeRanges[2 * edge] ?? 0;
       const count = edgeRanges[2 * edge + 1] ?? 0;
       let best: Near | undefined;
@@ -912,7 +918,7 @@ export function pickBox(
         const out: SelectionItem[] = [];
         const { edgePoints: p, edgeRanges, edgeFlags } = mesh;
         for (let e = 0; e < edgeRanges.length >> 1; e++) {
-          if (((edgeFlags[e] ?? 0) & EDGE_SEAM) !== 0) continue;
+          if (((edgeFlags[e] ?? 0) & UNPICKABLE) !== 0) continue;
           const first = edgeRanges[2 * e] ?? 0;
           const count = edgeRanges[2 * e + 1] ?? 0;
           if (scene.clip && edgeClipped(mesh, first, count, scene.clip)) continue;

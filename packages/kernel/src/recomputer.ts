@@ -9,7 +9,9 @@
  * crashes the kernel, it is marked as an error and skipped until it changes.
  */
 import {
+  type AttachmentId,
   type BodyId,
+  type CanvasReport,
   type ConstructionReport,
   type DocumentStore,
   type ExtrudoDocument,
@@ -17,7 +19,10 @@ import {
   type FeatureId,
   type FeatureStatus,
   type GeomRef,
+  importFileOf,
+  isCanvasReport,
   isConstructionReport,
+  isMeshMediaType,
   type ModelStore,
   type SketchReport,
 } from '@extrudo/core';
@@ -61,20 +66,48 @@ export interface RecomputerOptions {
    * warns about a font it hasn't got and draws no ink for it.
    */
   fonts?: FontSource;
+  /**
+   * The files an `import` needs (P4-06, ADR-0066 §0): where the design's own
+   * attachments' bytes are. Each one the kernel doesn't have yet is sent
+   * before the first recompute or preview that names it, with its media type;
+   * the evaluator reads it with `ctx.file`.
+   */
+  files?: FileSource;
 }
 
 /**
  * Heap top over which the kernel worker is thrown away and replaced between
  * recomputes (P4-12 H4). The heap of a long session grows about 11 MB per 100
- * recomputes of a revolve document (ADR-0050 §6), and a worker that reaches
- * the browser's limit dies; ending the worker frees it all at once.
+ * recomputes of a revolve document (ADR-0050 §6), and a worker that reaches the
+ * browser's limit dies; ending the worker frees it all at once.
  */
 export const HEAP_RECYCLE_BYTES = 1024 * 1024 * 1024;
 
+/** Where the bytes of the fonts a design uses come from (ADR-0058 §4). */
 export interface FontSource {
   used(doc: ExtrudoDocument): Iterable<string>;
   /** A font's bytes, or undefined for an ID no source knows. */
   bytes(id: string): Promise<ArrayBuffer | undefined>;
+}
+
+/**
+ * Where the bytes of a design's own files come from (ADR-0066 §0), and what
+ * they are: the media type is the document's attachment record, except for a
+ * file the user has just picked for a dialog that is still previewing it and
+ * the record isn't in the document yet.
+ */
+export interface FileSource {
+  /** An attachment's bytes, or undefined when the design has no record of it or the file isn't stored. */
+  bytes(id: AttachmentId): Promise<ArrayBuffer | undefined>;
+  /** What the file is (`model/step`, `model/stl`…); the document's record by default. */
+  mediaType?(id: AttachmentId, doc: ExtrudoDocument): string | undefined;
+  /**
+   * What the file is called, for a message about it (which mesh file is not
+   * closed). The document's record by default, which is wrong for a file a
+   * dialog previews before the design names it (ADR-0061 §2), so the app says
+   * what the file it just picked is called.
+   */
+  fileName?(id: AttachmentId, doc: ExtrudoDocument): string | undefined;
 }
 
 export interface Preview {
@@ -87,6 +120,8 @@ export interface Preview {
   base?: Record<BodyId, BodyMesh>;
   /** The draft's plane, axis or point when it is a construction feature that computed (P3-05). */
   construction?: ConstructionReport;
+  /** The draft's frame when it is a canvas that computed (P4-06, ADR-0066 §5). */
+  canvas?: CanvasReport;
 }
 
 export class Recomputer {
@@ -94,6 +129,7 @@ export class Recomputer {
   readonly #document: DocumentStore;
   readonly #model: ModelStore<BodyMesh>;
   readonly #fontSource: FontSource | undefined;
+  readonly #fileSource: FileSource | undefined;
   readonly #delayMs: number;
   readonly #previewDelayMs: number;
   #timer: ReturnType<typeof setTimeout> | undefined;
@@ -116,6 +152,15 @@ export class Recomputer {
     | undefined;
   #previewSequence = 0;
   #disposed = false;
+  /** Whether this kernel has manifold-3d (P4-06, ADR-0066 §3); a restart forgets it. */
+  #meshesEnabled = false;
+  /**
+   * What this kernel has, by resource: a font ID, or `file:<attachment ID>`
+   * (ADR-0058 §4, ADR-0066 §0). A restart forgets them all, and `#resend` sends
+   * every one again — with mesh bodies, whose module the new kernel has not
+   * loaded either (P4-12 H4's recycle takes the same path as a crash).
+   */
+  readonly #resources = new Set<string>();
   /** A feature dialog's draft is open, so the worker is left alone (P4-12 H4). */
   #drafting = false;
   /** A recycle is running; the heap is asked once per finished recompute. */
@@ -124,13 +169,12 @@ export class Recomputer {
   #recycleArmed = true;
   readonly #heapRecycleBytes: number;
   readonly #onRecycle: (() => void) | undefined;
-  /** The fonts this kernel has: a restart forgets them (ADR-0058 §4). */
-  readonly #fonts = new Set<string>();
 
   constructor(options: RecomputerOptions) {
     this.#document = options.document;
     this.#model = options.model;
     this.#fontSource = options.fonts;
+    this.#fileSource = options.files;
     this.#delayMs = options.delayMs ?? 30;
     this.#previewDelayMs = options.previewDelayMs ?? 60;
     this.#heapRecycleBytes = options.heapRecycleBytes ?? HEAP_RECYCLE_BYTES;
@@ -186,6 +230,12 @@ export class Recomputer {
         try {
           const doc = this.#document.getState().doc;
           const have = { ...this.#have(), ...this.#baseHave() };
+          // A preview's draft isn't in the document yet, so its file goes now.
+          await this.#sendResources(doc, [draft]);
+          if (sequence !== this.#previewSequence || this.#disposed) {
+            resolve(undefined);
+            return;
+          }
           const result = await this.client.call((api) =>
             api.preview({ doc, draft, index, have, ...(options.base && { base: true }) }),
           );
@@ -217,6 +267,7 @@ export class Recomputer {
             tools: result.tools ?? [],
             ...(base && { base }),
             ...(isConstructionReport(own) && { construction: own }),
+            ...(isCanvasReport(own) && { canvas: own }),
           });
         } catch {
           resolve(undefined);
@@ -320,27 +371,60 @@ export class Recomputer {
   /** After a kernel restart: the new kernel has an empty cache and needs the document again. */
   #resend(): void {
     this.#sent = undefined;
-    // The new kernel has no fonts either (ADR-0058 §4).
-    this.#fonts.clear();
+    // The new kernel has neither fonts nor files (ADR-0058 §4, ADR-0066 §0),
+    // nor the mesh kernel a mesh body needs (ADR-0066 §3).
+    this.#resources.clear();
+    this.#meshesEnabled = false;
     this.#schedule();
   }
 
   /**
-   * Sends the document's fonts this kernel doesn't have (P4-03): the sketch
-   * evaluator shapes text with them, and a font ID that never changes under
-   * its ID, so once is enough. An ID no source knows is left out, and the
-   * sketch warns about it.
+   * Sends what the kernel doesn't have yet and what these features need: the
+   * document's fonts (the sketch evaluator shapes text with them) and the
+   * files its `import` features name, plus a preview's own draft. A font ID
+   * never changes under its ID and a file's bytes are content-addressed
+   * (ADR-0061 §1), so once per kernel is enough. A font no source knows is
+   * left out (the sketch warns about it); a file the design has no record of,
+   * or whose bytes aren't stored, is left out too, and the feature says the
+   * file is missing.
    */
-  async #sendFonts(doc: ExtrudoDocument): Promise<void> {
-    const source = this.#fontSource;
-    if (!source) return;
-    for (const id of source.used(doc)) {
-      if (this.#fonts.has(id) || this.#disposed) continue;
-      const data = await source.bytes(id);
+  async #sendResources(doc: ExtrudoDocument, extra: readonly Feature[] = []): Promise<void> {
+    const fonts = this.#fontSource;
+    if (fonts) {
+      for (const id of fonts.used(doc)) {
+        if (this.#resources.has(id) || this.#disposed) continue;
+        const data = await fonts.bytes(id);
+        if (this.#disposed) return;
+        if (!data) continue;
+        await this.client.call((api) => api.addFont(id, data));
+        this.#resources.add(id);
+      }
+    }
+    const files = this.#fileSource;
+    if (!files) return;
+    const ids = importFiles(doc, extra);
+    for (const id of ids) {
+      const key = `file:${id}`;
+      if (this.#resources.has(key) || this.#disposed) continue;
+      const mediaType = files.mediaType?.(id, doc) ?? doc.attachments?.[id]?.mediaType;
+      if (!mediaType) continue;
+      const data = await files.bytes(id);
       if (this.#disposed) return;
       if (!data) continue;
-      await this.client.call((api) => api.addFont(id, data));
-      this.#fonts.add(id);
+      const fileName = files.fileName?.(id, doc) ?? doc.attachments?.[id]?.fileName;
+      await this.client.call((api) => api.addFile(id, data, mediaType, fileName));
+      this.#resources.add(key);
+    }
+    // A mesh file needs manifold-3d in the worker (ADR-0066 §3). Only now, and
+    // once per kernel: a design without a mesh import never loads it.
+    if (!this.#meshesEnabled && !this.#disposed) {
+      const mesh = ids.some((id) =>
+        isMeshMediaType(files.mediaType?.(id, doc) ?? doc.attachments?.[id]?.mediaType),
+      );
+      if (mesh) {
+        await this.client.call((api) => api.enableMeshes());
+        this.#meshesEnabled = true;
+      }
     }
   }
 
@@ -353,7 +437,7 @@ export class Recomputer {
     const crashed = this.#stillCrashed(doc);
     let result: RecomputeResult;
     try {
-      await this.#sendFonts(doc);
+      await this.#sendResources(doc);
       if (sequence !== this.#sequence || this.#disposed) return;
       result = await this.client.call((api) =>
         api.recompute({ doc, have: this.#have(), crashed }, (id) => {
@@ -390,11 +474,15 @@ export class Recomputer {
     }
     // Unchanged records keep their identity, so views that read them don't redraw.
     const previous = this.#model.getState();
-    // Construction features report their plane, axis or point; sketches their frame (P3-05).
+    // Construction features report their plane, axis or point; canvases their
+    // frame; sketches theirs (P3-05, P4-06).
     const sketches: Record<string, unknown> = {};
     const construction: Record<string, unknown> = {};
+    const canvases: Record<string, unknown> = {};
     for (const [id, report] of Object.entries(result.reports)) {
-      (isConstructionReport(report) ? construction : sketches)[id] = report;
+      if (isConstructionReport(report)) construction[id] = report;
+      else if (isCanvasReport(report)) canvases[id] = report;
+      else sketches[id] = report;
     }
     const bodies = Object.fromEntries([...meshes].map(([id, { mesh }]) => [id, mesh]));
     this.#model.getState().computed({
@@ -408,6 +496,9 @@ export class Recomputer {
       construction: sameReports(previous.construction, construction)
         ? previous.construction
         : (construction as Record<FeatureId, ConstructionReport>),
+      canvases: sameReports(previous.canvases, canvases)
+        ? previous.canvases
+        : (canvases as Record<FeatureId, CanvasReport>),
       stats: {
         ms: result.stats.ms,
         evaluated: result.stats.evaluated.length,
@@ -488,6 +579,16 @@ export class Recomputer {
     const held = this.#meshes.get(body.id);
     return held?.version === body.version ? held.mesh : undefined;
   }
+}
+
+/** The attachments the document's `import` features name, and a preview draft's own. */
+function importFiles(doc: ExtrudoDocument, extra: readonly Feature[]): AttachmentId[] {
+  const out = new Set<AttachmentId>();
+  for (const feature of [...doc.features, ...extra]) {
+    const id = importFileOf(feature);
+    if (id) out.add(id);
+  }
+  return [...out];
 }
 
 function sameRecord<T>(a: Readonly<Record<string, T>>, b: Readonly<Record<string, T>>): boolean {

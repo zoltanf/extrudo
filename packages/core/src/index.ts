@@ -4,6 +4,7 @@
  */
 
 export * from './attachments';
+export * from './canvas';
 export * from './chamfer';
 export * from './coil';
 export * from './combine';
@@ -38,7 +39,9 @@ export * from './groups';
 export { type HistoryEntry, type HistoryOptions, UndoHistory } from './history';
 export * from './hole';
 export * from './ids';
+export * from './import';
 export * from './loft';
+export * from './media-types';
 export {
   DocumentLoadError,
   type DocumentLoadErrorCode,

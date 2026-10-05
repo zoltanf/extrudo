@@ -82,7 +82,9 @@ describe('attachments in the document (P4-03b, ADR-0061 §1)', () => {
     ]);
     expect(issues(at(aid('f1'), font({ sha256: 'A'.repeat(64) })))).toHaveLength(1);
     expect(issues(at(aid('f1'), font({ mediaType: 'font/woff2' as 'font/ttf' })))).toHaveLength(1);
-    expect(issues(at(aid('f1'), font({ mediaType: 'image/png' as 'font/ttf' })))).toHaveLength(1);
+    expect(
+      issues(at(aid('f1'), font({ mediaType: 'application/octet-stream' as 'font/ttf' }))),
+    ).toHaveLength(1);
     expect(issues(at(aid('f1'), font({ size: 0 })))).toHaveLength(1);
     expect(issues(at(aid('f1'), font({ name: '' })))).toHaveLength(1);
     expect(issues(at(aid('f1'), font({ fileName: '' })))).toHaveLength(1);

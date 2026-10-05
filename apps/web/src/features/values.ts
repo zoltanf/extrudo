@@ -35,7 +35,7 @@ export function defaultValues(spec: FeatureDialogSpec): DialogValues {
     if (field.kind === 'selection' || field.kind === 'features') values.refs[field.name] = [];
     else if (field.kind === 'expression') values.exprs[field.name] = field.default;
     else if (field.kind === 'choice') values.choices[field.name] = field.default;
-    else values.toggles[field.name] = field.default;
+    else if (field.kind === 'toggle') values.toggles[field.name] = field.default;
   }
   return values;
 }
@@ -72,15 +72,28 @@ export function pickFields(values: Partial<DialogValues>, fields: readonly strin
   return out;
 }
 
-/** The fields shown for these values, in the spec's order. */
-export function shownFields(spec: FeatureDialogSpec, values: DialogValues): DialogField[] {
-  return spec.fields.filter((field) => field.shown?.(values) ?? true);
+/**
+ * The fields shown for these values, in the spec's order. The document is
+ * passed to `shown` for a field that decides from it (a mesh's `units`,
+ * ADR-0066 §2); where there is none yet (a dialog opening), the field falls
+ * back to the values alone.
+ */
+export function shownFields(
+  spec: FeatureDialogSpec,
+  values: DialogValues,
+  ctx?: DialogContext,
+): DialogField[] {
+  return spec.fields.filter((field) => field.shown?.(values, ctx) ?? true);
 }
 
 /** One input per shown field, named like it (the default `toInputs`). */
-export function defaultInputs(spec: FeatureDialogSpec, values: DialogValues): FeatureInputs {
+export function defaultInputs(
+  spec: FeatureDialogSpec,
+  values: DialogValues,
+  ctx?: DialogContext,
+): FeatureInputs {
   const inputs: FeatureInputs = {};
-  for (const field of shownFields(spec, values)) {
+  for (const field of shownFields(spec, values, ctx)) {
     const input = fieldInput(field, values);
     if (input) inputs[field.name] = input;
   }
@@ -98,6 +111,9 @@ function fieldInput(field: DialogField, values: DialogValues): Input | undefined
       return { kind: 'enum', value: values.choices[field.name] ?? field.default };
     case 'toggle':
       return { kind: 'bool', value: values.toggles[field.name] ?? field.default };
+    // A read-only line fills no input.
+    case 'info':
+      return undefined;
   }
 }
 
@@ -128,7 +144,7 @@ export function inputsFor(
   values: DialogValues,
   ctx: DialogContext,
 ): FeatureInputs {
-  return spec.toInputs ? spec.toInputs(values, ctx) : defaultInputs(spec, values);
+  return spec.toInputs ? spec.toInputs(values, ctx) : defaultInputs(spec, values, ctx);
 }
 
 /** A spec's values for a stored feature: defaults, then what its inputs say. */
@@ -308,7 +324,7 @@ export function checkValues(
 ): Checked {
   const fields: Record<string, string> = {};
   const issues: DialogIssue[] = [];
-  for (const field of shownFields(spec, values)) {
+  for (const field of shownFields(spec, values, ctx)) {
     let message: string | undefined;
     if (field.kind === 'selection') {
       const refs = values.refs[field.name] ?? [];

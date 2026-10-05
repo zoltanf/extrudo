@@ -64,6 +64,12 @@ export interface ModelExporter {
 export interface ExportBody {
   id: BodyId;
   meta: BodyMeta;
+  /**
+   * The body is a mesh, not a solid (P4-06, ADR-0066 §3): STEP holds exact
+   * B-rep geometry, so the dialog leaves a mesh body out of a STEP file. STL
+   * and 3MF take its triangles as they are.
+   */
+  mesh?: boolean;
 }
 
 /** Meshed bodies with their check, for the summary and the file. */

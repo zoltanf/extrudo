@@ -456,25 +456,25 @@ describe('ProjectStore attachments (P4-03b, ADR-0061 §2)', () => {
     expect(files.paths()).toEqual([`projects/${d.id}/document.json`]);
   });
 
-  it('refuses a file over 10 MB and a design over 50 MB of them', async () => {
+  it('refuses a file over 25 MB and a design over 100 MB of them', async () => {
     const { store } = setup();
     const d = doc('Bracket');
     await store.save(d);
     const big = new Uint8Array(MAX_ATTACHMENT_BYTES + 1);
     await expect(store.writeAttachment(d.id, hash(big), big)).rejects.toThrow(
-      'one file may be at most 10 MB',
+      'one file may be at most 25 MB',
     );
     // The design's limit comes from the sizes its stored document records:
-    // six 9 MB fonts pass 50 MB before the seventh is written.
+    // eleven 9 MB fonts fit in 100 MB, so the twelfth is what doesn't.
     const heavy = Object.fromEntries(
-      Array.from({ length: 6 }, (_, i) => [aid(`f${i}`), font(someBytes(i, 16), 9 * 1024 * 1024)]),
+      Array.from({ length: 11 }, (_, i) => [aid(`f${i}`), font(someBytes(i, 16), 9 * 1024 * 1024)]),
     );
     await store.save({ ...d, attachments: heavy });
-    const bytes = someBytes(9);
+    const bytes = someBytes(1, 9 * 1024 * 1024);
     await expect(store.writeAttachment(d.id, hash(bytes), bytes)).rejects.toThrow(
-      'they may be at most 50 MB',
+      'they may be at most 100 MB',
     );
-    expect(MAX_ATTACHMENTS_BYTES).toBe(50 * 1024 * 1024);
+    expect(MAX_ATTACHMENTS_BYTES).toBe(100 * 1024 * 1024);
   });
 
   it('takes the attachments folder with the project when it is deleted', async () => {

@@ -12,6 +12,7 @@
  */
 import { freeze } from 'immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import type { CanvasReport } from './canvas';
 import { applyCommand, type Command } from './commands';
 import type { ConstructionReport } from './construction';
 import { type HistoryOptions, UndoHistory } from './history';
@@ -238,6 +239,11 @@ export interface ModelState<TBody> {
    * (P3-05): where it is, for drawing, picking and as a sketch's frame.
    */
   construction: Record<FeatureId, ConstructionReport>;
+  /**
+   * What the kernel reports about each canvas (P4-06, ADR-0066 §5): the
+   * frame of the plane its image lies on, which is all the geometry it has.
+   */
+  canvases: Record<FeatureId, CanvasReport>;
   stats: ModelStats | undefined;
   /**
    * The document `features` and `bodies` were computed from, when the
@@ -251,6 +257,7 @@ export interface ModelState<TBody> {
     bodies: Record<BodyId, TBody>;
     sketches?: Record<FeatureId, SketchReport>;
     construction?: Record<FeatureId, ConstructionReport>;
+    canvases?: Record<FeatureId, CanvasReport>;
     stats?: ModelStats;
     doc?: ExtrudoDocument;
   }): void;
@@ -268,6 +275,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     bodies: {} as Record<BodyId, TBody>,
     sketches: {} as Record<FeatureId, SketchReport>,
     construction: {} as Record<FeatureId, ConstructionReport>,
+    canvases: {} as Record<FeatureId, CanvasReport>,
     stats: undefined,
     doc: undefined,
   });
@@ -276,7 +284,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     computing() {
       set({ status: 'computing', error: undefined });
     },
-    computed({ features, bodies, sketches, construction, stats, doc }) {
+    computed({ features, bodies, sketches, construction, canvases, stats, doc }) {
       set((s) => ({
         status: 'ready',
         error: undefined,
@@ -284,6 +292,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
         bodies,
         sketches: sketches ?? s.sketches,
         construction: construction ?? s.construction,
+        canvases: canvases ?? s.canvases,
         stats,
         doc,
       }));

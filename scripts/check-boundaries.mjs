@@ -11,7 +11,8 @@ const ROOT = new URL('..', import.meta.url).pathname;
 const ALLOWED = {
   '@extrudo/core': [],
   '@extrudo/sketch': ['@extrudo/core', '@extrudo/io', '@extrudo/fonts'],
-  // io only in tests (a devDependency): the export tests check meshes with it.
+  // io (MIT): the `import` evaluator parses STL, 3MF and OBJ files with it
+  // (ADR-0066 §3), and the export tests check meshes with it.
   '@extrudo/kernel': ['@extrudo/core', '@extrudo/sketch', '@extrudo/io', '@extrudo/fonts'],
   // MIT-licensed: must stay independent of the GPL packages.
   '@extrudo/io': [],

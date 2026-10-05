@@ -122,7 +122,8 @@ function evaluateEmboss(ctx: EvalContext<EmbossInputs>): FeatureOutput {
   const parts = partsOf(ctx, scope, settings.profiles, WORDS.noun);
   if (parts.length === 0) throw new KernelError('Pick at least one profile or text to emboss.');
   // A cylinder wraps (ADR-0060 §3); anything else has to be flat.
-  const round = kernel.threadFace(hit.shape, hit.index);
+  // The third argument names the feature in a mesh refusal (ADR-0066 §4).
+  const round = kernel.threadFace(hit.shape, hit.index, 'Emboss');
   // Each branch leaves its tool tracked by `scope` exactly once.
   const { tool, data } = round
     ? wrappedTool(ctx, scope, parts, hit, round, settings.mode, depth)

@@ -1,5 +1,6 @@
 import {
   type BodyId,
+  CANVAS_TYPE,
   type DocumentStore,
   type Feature,
   type FeatureId,
@@ -146,6 +147,10 @@ export function BrowserPanel({
     .map((feature, index) => ({ feature, index }))
     .filter(({ feature }) => isConstructionType(feature.type));
   const constructionShown = constructions.some(({ feature }) => isFeatureVisible(feature));
+  const canvasFeatures = doc.features
+    .map((feature, index) => ({ feature, index }))
+    .filter(({ feature }) => feature.type === CANVAS_TYPE);
+  const canvasShown = canvasFeatures.some(({ feature }) => isFeatureVisible(feature));
   const originShown = ORIGIN_ITEMS.some(({ value }) => origin[value]);
   const sketchesShown = sketches.some(({ feature }) => isFeatureVisible(feature));
   const bodiesShown = bodies.some(({ meta }) => meta.visible);
@@ -284,7 +289,7 @@ export function BrowserPanel({
                     position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
                     active={false}
                     actions={actions}
-                    data-construction={feature.id}
+                    rowAttribute={{ 'data-construction': feature.id }}
                     icon={
                       <ToolIcon
                         name={toolForFeature(feature.type).icon}
@@ -296,6 +301,44 @@ export function BrowserPanel({
                 ))
               )}
             </Folder>
+            {/* The Canvases folder while there is one (P4-06, ADR-0066 §5), as
+                the Analysis folder below: a design with no picture has nothing to
+                show there. */}
+            {canvasFeatures.length > 0 && (
+              <Folder
+                label="Canvases"
+                icon={<ToolIcon name="canvas" category="insert" size={16} />}
+                eye={{
+                  visible: canvasShown,
+                  onToggle: () =>
+                    actions.setVisible(
+                      canvasFeatures.map(({ feature }) => feature.id),
+                      !canvasShown,
+                    ),
+                }}
+              >
+                {canvasFeatures.map(({ feature, index }) => (
+                  <SketchLeaf
+                    key={feature.id}
+                    feature={feature}
+                    editable={actions.canEdit(feature, index, doc.timelineMarker)}
+                    rolledBack={index >= doc.timelineMarker}
+                    problem={featureProblem(feature, index, doc.timelineMarker, statuses)}
+                    position={{ index, marker: doc.timelineMarker, count: doc.features.length }}
+                    active={false}
+                    actions={actions}
+                    rowAttribute={{ 'data-canvas': feature.id }}
+                    icon={
+                      <ToolIcon
+                        name={toolForFeature(feature.type).icon}
+                        category="insert"
+                        size={14}
+                      />
+                    }
+                  />
+                ))}
+              </Folder>
+            )}
             {(section || overhang) && (
               <Folder
                 label="Analysis"
@@ -399,7 +442,7 @@ function SketchLeaf({
   active,
   actions,
   icon,
-  'data-construction': constructionId,
+  rowAttribute,
 }: {
   feature: Feature;
   editable: boolean;
@@ -409,9 +452,10 @@ function SketchLeaf({
   position: { index: number; marker: number; count: number };
   active: boolean;
   actions: FeatureActions;
-  /** A small icon before the name (construction rows, P3-05). */
+  /** A small icon before the name (construction and canvas rows, P3-05, P4-06). */
   icon?: ReactNode;
-  'data-construction'?: string;
+  /** A hook for the test to find this row (`data-construction`, `data-canvas`). */
+  rowAttribute?: Record<string, string>;
 }) {
   const [renaming, setRenaming] = useState(false);
   const visible = isFeatureVisible(feature);
@@ -436,7 +480,7 @@ function SketchLeaf({
       trigger={
         <Leaf
           active={active}
-          data-construction={constructionId}
+          {...rowAttribute}
           data-feature-row={feature.id}
           data-feature-status={problem?.status}
           onDoubleClick={editable && !renaming ? () => actions.edit(feature.id) : undefined}
@@ -552,6 +596,8 @@ function BodyLeaf({
       data-body={id}
       // Selection is the name button's aria-pressed: a list item takes no aria-selected (axe).
       data-selected={selected || undefined}
+      // A mesh body (P4-06, ADR-0066 §3) says so, next to its "Mesh" tag.
+      data-body-mesh={body.mesh || undefined}
       className={selected ? 'bg-accent-soft' : ''}
       onPointerEnter={() => onHover?.(id)}
       onPointerLeave={() => onHover?.(undefined)}
@@ -594,6 +640,9 @@ function BodyLeaf({
         >
           {meta.name}
         </button>
+      )}
+      {body.mesh && (
+        <span className="shrink-0 rounded-full bg-accent-soft px-1.5 text-xs text-muted">Mesh</span>
       )}
       {!renaming && (
         <EyeToggle

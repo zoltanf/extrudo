@@ -4,6 +4,7 @@
  */
 
 export { kernelFeatures } from './features';
+export { loadManifold, type ManifoldLoadOptions } from './manifold';
 export { type LoadOptions, loadOcct } from './occt/load';
 export { type OcctObject, OcctScope } from './occt/scope';
 export type { FacadeBinding, OcctModule } from './occt/types';

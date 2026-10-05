@@ -4,10 +4,12 @@
 // the heap and the calls visible; the real one (with a limit of a few MB, which
 // any recompute passes) is in the last test.
 import {
+  type AttachmentId,
   createDocumentStore,
   createModelStore,
   type ExtrudoDocument,
   type FeatureId,
+  importInputs,
   type ModelStore,
   renameFeature,
 } from '@extrudo/core';
@@ -18,7 +20,7 @@ import type { BodyMesh } from './mesh';
 import { loadOcct } from './occt/load';
 import { chainDocument, testDocument, testFeature, testFeatures } from './recompute/testing';
 import type { RecomputeRequest } from './recompute/types';
-import { type FontSource, Recomputer } from './recomputer';
+import { type FileSource, type FontSource, Recomputer } from './recomputer';
 import type { KernelApi } from './service';
 import { KernelService } from './service';
 
@@ -56,6 +58,12 @@ function fakeSpawn(options: FakeOptions) {
       init: async () => ({ initMs: 0, heapBytes: 16 }),
       addFont: async (id: string) => {
         events.push(`font:${id}`);
+      },
+      addFile: async (id: string) => {
+        events.push(`file:${id}`);
+      },
+      enableMeshes: async () => {
+        events.push(`meshes:${worker}`);
       },
       recompute: async (_request: RecomputeRequest) => {
         requests++;
@@ -107,7 +115,12 @@ function fakeSpawn(options: FakeOptions) {
 
 function setup(
   doc: ExtrudoDocument,
-  options: { heapRecycleBytes: number; heap: (worker: number) => number; fonts?: FontSource },
+  options: {
+    heapRecycleBytes: number;
+    heap: (worker: number) => number;
+    fonts?: FontSource;
+    files?: FileSource;
+  },
 ) {
   const fake = fakeSpawn({ heap: options.heap });
   const document = createDocumentStore(doc);
@@ -121,6 +134,7 @@ function setup(
     previewDelayMs: 5,
     heapRecycleBytes: options.heapRecycleBytes,
     ...(options.fonts && { fonts: options.fonts }),
+    ...(options.files && { files: options.files }),
     onRecycle: () => recycled.push(fake.spawned()),
   });
   recomputer.start();
@@ -231,6 +245,42 @@ describe('Recomputer heap recycling', () => {
     expect(events.indexOf('font:inter-regular@1')).toBeLessThan(events.indexOf('recompute:1'));
     expect(events.lastIndexOf('font:inter-regular@1')).toBeLessThan(events.indexOf('recompute:2'));
     // The store was ready the whole time: the recycle never emptied it.
+    expect(model.getState().status).toBe('ready');
+  });
+
+  it('sends a mesh file and loads manifold-3d again on the new worker', async () => {
+    // A document that imports a mesh file: the worker needs the file's bytes
+    // and manifold-3d, and a replacement needs both again (P4-06 §0/§3 through
+    // the restart path P4-12 H4 takes).
+    const file = 'a1' as AttachmentId;
+    const files: FileSource = {
+      bytes: async () => new ArrayBuffer(8),
+      mediaType: () => 'model/stl',
+    };
+    const { model, events } = setup(
+      {
+        ...testDocument([{ ...testFeature('Import1', 'import'), inputs: importInputs({ file }) }]),
+        attachments: {
+          [file]: {
+            name: 'cube',
+            fileName: 'cube.stl',
+            mediaType: 'model/stl',
+            sha256: 'c'.repeat(64),
+            size: 8,
+          },
+        },
+      },
+      { heapRecycleBytes: 1024, heap: (worker) => (worker === 1 ? 4096 : 512), files },
+    );
+    await until(() => ready(model) && events.filter((e) => e === 'recompute:2').length === 1);
+    // The file and manifold-3d went to each worker, each before its recompute.
+    expect(events.filter((e) => e.startsWith('file:'))).toEqual(['file:a1', 'file:a1']);
+    expect(events.filter((e) => e.startsWith('meshes:'))).toEqual(['meshes:1', 'meshes:2']);
+    expect(events.indexOf('file:a1')).toBeLessThan(events.indexOf('recompute:1'));
+    expect(events.lastIndexOf('file:a1')).toBeLessThan(events.indexOf('recompute:2'));
+    // manifold-3d is loaded before the first recompute that needs it.
+    expect(events.indexOf('meshes:1')).toBeLessThan(events.indexOf('recompute:1'));
+    expect(events.lastIndexOf('meshes:2')).toBeLessThan(events.indexOf('recompute:2'));
     expect(model.getState().status).toBe('ready');
   });
 

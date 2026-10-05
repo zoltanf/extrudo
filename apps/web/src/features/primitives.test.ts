@@ -121,8 +121,8 @@ describe('the primitive dialogs', () => {
               expression: 'exprs',
               choice: 'choices',
               toggle: 'toggles',
-            } as const;
-            const k = kind[field.kind];
+            } as Record<string, keyof typeof v>;
+            const k = kind[field.kind] as keyof typeof v;
             expect(back[k][field.name], `${type} ${field.name}`).toEqual(v[k][field.name]);
           }
           checked++;

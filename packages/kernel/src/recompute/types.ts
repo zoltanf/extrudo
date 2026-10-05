@@ -1,4 +1,5 @@
 import type {
+  AttachmentId,
   BodyId,
   ExtrudoDocument,
   Feature,
@@ -8,11 +9,40 @@ import type {
   FeatureStatus,
   GeomRef,
 } from '@extrudo/core';
-import type { Kernel, ShapeHandle } from '../kernel';
+import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
 import type { BodyMesh, MeshOptions } from '../mesh';
 import type { ShapeDescription } from '../naming/description';
 import type { TopoNames } from '../naming/names';
 import type { ResolvedRef, ResolveOptions } from '../naming/resolve';
+
+/**
+ * A file of the design that the worker doesn't have (P4-06, ADR-0066 §0): the
+ * design names it but its bytes never arrived (an attachment record without
+ * its file, or a file the app couldn't read). A `KernelError`, so the engine
+ * makes it the feature's error and not an internal one.
+ */
+export class MissingFileError extends KernelError {
+  override readonly name = 'MissingFileError';
+  constructor(
+    readonly id: AttachmentId,
+    fileName: string,
+  ) {
+    super(`The file ${fileName} is missing from this design.`);
+  }
+}
+
+/** A file the worker holds for the session (`KernelApi.addFile`). */
+export interface ImportedFile {
+  bytes: Uint8Array;
+  /** As the document's attachment record has it (`model/step`, `model/stl`…). */
+  mediaType: string;
+  /**
+   * What the file is called ("bracket.stl"), for a message about it. The app
+   * sends it with the bytes, because a file a dialog previews is not in the
+   * document yet; the document's own record is the fallback.
+   */
+  fileName?: string;
+}
 
 /**
  * How a feature uses the bodies made before it. It decides what the
@@ -53,6 +83,19 @@ export interface EvalContext<I extends FeatureInputs = FeatureInputs> {
    * input that exists.
    */
   value(input: string): number;
+  /**
+   * The bytes of a file of the design (P4-06, ADR-0066 §0), by its
+   * attachment ID: an `import` reads its STEP file with this. A `MissingFileError`
+   * when the worker doesn't have it, which is the feature's error.
+   */
+  file(id: AttachmentId): Uint8Array;
+  /** The media type of such a file, to tell a STEP file from a mesh. */
+  fileType(id: AttachmentId): string;
+  /**
+   * The name the design's record gives such a file ("bracket.stl"), for a
+   * message about it: an `import` says which file it couldn't read or use.
+   */
+  fileName(id: AttachmentId): string;
   /** The bodies before this feature, in creation order. Don't release them. */
   bodies: ReadonlyMap<BodyId, ShapeHandle>;
   /**

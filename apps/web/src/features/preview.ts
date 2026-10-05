@@ -5,8 +5,15 @@
  * draft made or changed, in the spec's style. The model's own bodies stay
  * drawn and pickable underneath.
  */
-import type { BodyId, ConstructionReport, FeatureId, FeatureStatus } from '@extrudo/core';
+import type {
+  BodyId,
+  CanvasReport,
+  ConstructionReport,
+  FeatureId,
+  FeatureStatus,
+} from '@extrudo/core';
 import type { BodyMesh, Preview, PreviewToolStyle } from '@extrudo/kernel';
+import type { CanvasDrawing } from '../viewport/canvasGeometry';
 import type { ConstructionDrawing } from '../viewport/constructionGeometry';
 
 export interface PreviewShape {
@@ -20,6 +27,8 @@ export interface PreviewDrawing {
   tools: boolean;
   /** A construction feature's plane, axis or point (P3-05): drawn in place of shapes. */
   construction?: ConstructionReport;
+  /** A canvas's frame (P4-06, ADR-0066 §5): drawn as the draft's own image. */
+  canvas?: CanvasReport;
 }
 
 /** The shapes to draw for a preview, compared with the model's bodies. */
@@ -29,6 +38,7 @@ export function previewDrawing(
   style: PreviewToolStyle,
 ): PreviewDrawing {
   if (preview.construction) return { shapes: [], tools: false, construction: preview.construction };
+  if (preview.canvas) return { shapes: [], tools: false, canvas: preview.canvas };
   if (preview.tools.length > 0) {
     return { shapes: preview.tools.map(({ mesh, style }) => ({ mesh, style })), tools: true };
   }
@@ -52,6 +62,8 @@ export interface ViewPreview {
   dimmed: boolean;
   /** The draft's plane, axis or point when it is a construction feature (P3-05). */
   construction?: ConstructionDrawing;
+  /** The draft's image when it is a canvas (P4-06, ADR-0066 §5). */
+  canvas?: CanvasDrawing;
 }
 
 /** "cut", "new join": the styles drawn, for the viewport's test attribute. */

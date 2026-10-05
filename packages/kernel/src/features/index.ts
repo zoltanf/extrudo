@@ -1,6 +1,7 @@
 import { FeatureRegistry } from '@extrudo/core';
 import type { KernelFeatureDefinition } from '../recompute/types';
 import { kernelRemove } from './bodies';
+import { kernelCanvas } from './canvas';
 import { kernelChamfer } from './chamfer';
 import { kernelCoil } from './coil';
 import { kernelCombine } from './combine';
@@ -10,6 +11,7 @@ import { kernelEmboss } from './emboss';
 import { kernelExtrude } from './extrude';
 import { kernelFillet } from './fillet';
 import { kernelHole } from './hole';
+import { kernelImport } from './import';
 import { kernelLoft } from './loft';
 import { kernelOffsetFace } from './offset-face';
 import { kernelCircularPattern, kernelPathPattern, kernelRectangularPattern } from './pattern';
@@ -75,5 +77,9 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
   registry.register(kernelEmboss as unknown as KernelFeatureDefinition);
   // Rib (P4-10, ADR-0064 §1).
   registry.register(kernelRib as unknown as KernelFeatureDefinition);
+  // Import: a STEP file as bodies (P4-06, ADR-0066 §2).
+  registry.register(kernelImport as unknown as KernelFeatureDefinition);
+  // Canvas: a reference image on a plane, drawn by the view (P4-06, ADR-0066 §5).
+  registry.register(kernelCanvas as unknown as KernelFeatureDefinition);
   return registry;
 }

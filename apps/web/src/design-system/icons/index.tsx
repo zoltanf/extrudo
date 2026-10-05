@@ -97,6 +97,7 @@ export const ICON_NAMES = [
   'measure',
   'section',
   'insert-svg',
+  'canvas',
   'export',
   'place-on-bed',
   'print-info',

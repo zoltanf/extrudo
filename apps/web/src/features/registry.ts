@@ -6,6 +6,7 @@
  * browser row open it for editing.
  */
 import { FeatureRegistry } from '@extrudo/core';
+import { canvasDialog } from './canvas';
 import { chamferDialog } from './chamfer';
 import { coilDialog } from './coil';
 import { combineDialog } from './combine';
@@ -15,6 +16,7 @@ import { embossDialog } from './emboss';
 import { extrudeDialog } from './extrude';
 import { filletDialog } from './fillet';
 import { holeDialog } from './hole';
+import { importDialog } from './import';
 import { loftDialog } from './loft';
 import { mirrorDialog } from './mirror';
 import { moveDialog } from './move';
@@ -67,6 +69,10 @@ export function featureDialogs(): FeatureDialogs {
   dialogs.register(ribDialog);
   // Remove: edit which bodies a Remove takes out (P3-17).
   dialogs.register(removeDialog);
+  // Import: a STEP file as bodies (P4-06, ADR-0066 §2).
+  dialogs.register(importDialog);
+  // Canvas: a reference image on a plane (P4-06, ADR-0066 §5).
+  dialogs.register(canvasDialog);
   return dialogs;
 }
 

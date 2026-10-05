@@ -70,3 +70,37 @@ describe('the slicer hand-off in the Export dialog (P4-08, ADR-0062)', () => {
     expect(out).toMatch(/<option value="prusaslicer" selected="">PrusaSlicer/);
   });
 });
+
+describe('a mesh body in the Export dialog (P4-06, ADR-0066 §3)', () => {
+  const meshBody: BodyEntry = {
+    id: 'Import1:0' as never,
+    meta: { name: 'Bracket', visible: true },
+    stored: true,
+    mesh: true,
+  };
+
+  it('leaves a mesh body out of a STEP file, with the reason', () => {
+    const over = props({
+      bodies: [meshBody],
+      preferences: (() => {
+        const p = memoryPreferences();
+        p.set('export.model', { format: 'step', resolution: 'medium', deviation: '', angle: '' });
+        return p;
+      })(),
+    });
+    const out = renderToStaticMarkup(<ExportModelForm {...over} />);
+    // The body's checkbox is off and disabled, and the row says why.
+    expect(out).toMatch(/<input type="checkbox" disabled="" class="accent-\(--x-accent\)"/);
+    expect(out).toContain('Meshes can&#x27;t go into a STEP file');
+    expect(out).toContain('Mesh bodies go into STL and 3MF, not into a STEP file.');
+    // Nothing to export, so Export is off: a STEP file of no bodies.
+    expect(out).toContain('Choose a body to export.');
+  });
+
+  it('keeps a mesh body for STL and 3MF', () => {
+    const out = html({ bodies: [meshBody] });
+    expect(out).not.toContain('STEP file');
+    // The checkbox is enabled, as any body is for a mesh format.
+    expect(out).toContain('<input type="checkbox" class="accent-(--x-accent)"/>');
+  });
+});

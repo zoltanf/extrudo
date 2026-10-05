@@ -3,6 +3,7 @@ import {
   CircleHelp,
   FileDown,
   FilePlus2,
+  FileUp,
   FolderSync,
   GraduationCap,
   History,
@@ -48,6 +49,8 @@ export interface FileActions {
   importFile(): void;
   /** Opens the model's export (STL, 3MF, STEP; P2-12). */
   exportModel?(): void;
+  /** Picks a STEP or mesh file and opens the Import dialog (P4-06, ADR-0066 §2). */
+  importModel?(): void;
   /** Opens the Versions dialog at its description field (P2-14). */
   saveVersion?(): void;
   /** Opens the Versions dialog (P2-14). */
@@ -135,6 +138,11 @@ export function AppBar({
         {file.exportModel && (
           <MenuItem icon={<FileDown size={14} />} onSelect={file.exportModel}>
             Export 3MF, STL or STEP…
+          </MenuItem>
+        )}
+        {file.importModel && (
+          <MenuItem icon={<FileUp size={14} />} onSelect={file.importModel}>
+            Import STEP or mesh…
           </MenuItem>
         )}
         <MenuItem icon={<Import size={14} />} onSelect={file.importFile}>

@@ -50,9 +50,8 @@ import {
 } from '@extrudo/core';
 import { KernelError, type ShapeHandle, type ShapeScope } from '../kernel';
 import { deriveNames, type TopoNames } from '../naming/names';
-import { type NamedShape, namedBoolean, withHistory } from '../naming/ops';
+import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
-import { createdName } from '../naming/topo-id';
 import type {
   EvalContext,
   FeatureOutput,
@@ -60,13 +59,14 @@ import type {
   PreviewTool,
 } from '../recompute/types';
 import { splitSolids } from './bodies';
+import { nameMeshBodies, transformedNames, warnIfBecameMesh } from './mesh-bodies';
 import {
   type Box,
+  bodiesTouch,
   boxesTouch,
   isHeavyTool,
   type OperationWords,
   operate,
-  TOUCH,
   type ToolSet,
 } from './operation';
 import {
@@ -108,20 +108,14 @@ function replicate(
   op: string,
 ): NamedShape {
   const { kernel } = ctx;
-  const moved = withHistory(
-    kernel,
-    kernel.transform(source.shape, placement.matrix),
-    [source.names],
-    {
-      op,
-      feature: ctx.feature.id,
-    },
-  );
-  scope.track(moved.shape);
-  const faces = moved.names.faces.map((name) =>
-    createdName(op, ctx.feature.id, roleOf(placement.label), name),
-  );
-  return { shape: moved.shape, names: deriveNames(faces, kernel.describe(moved.shape)) };
+  const result = kernel.transform(source.shape, placement.matrix);
+  // A mesh body's one face follows the same copy rule as a solid's (ADR-0066 §4).
+  const names = transformedNames(ctx, result, source.names, {
+    op,
+    role: roleOf(placement.label),
+  });
+  scope.track(result.shape);
+  return { shape: result.shape, names };
 }
 
 /**
@@ -165,7 +159,7 @@ export function mergeTools(
       }
       const a = parts[i] as NamedShape;
       const b = parts[j] as NamedShape;
-      if (kernel.distance(a.shape, b.shape) <= TOUCH) group[find(j)] = find(i);
+      if (bodiesTouch(ctx, a.shape, b.shape)) group[find(j)] = find(i);
     }
   }
   const groups = new Map<number, NamedShape[]>();
@@ -210,7 +204,7 @@ export function toolSet(
   for (let i = 0; i < parts.length; i++) {
     for (let j = i + 1; j < parts.length; j++) {
       if (!boxesTouch(boxes[i] as Box, boxes[j] as Box)) continue;
-      if (kernel.distance((parts[i] as NamedShape).shape, (parts[j] as NamedShape).shape) > TOUCH) {
+      if (!bodiesTouch(ctx, (parts[i] as NamedShape).shape, (parts[j] as NamedShape).shape)) {
         continue;
       }
       (meets[i] as number[]).push(j);
@@ -345,6 +339,7 @@ function patternBodies(
       simplify: true,
     });
     scope.track(joined.shape);
+    warnIfBecameMesh(ctx, original.shape, joined.shape);
     bodies.set(id, joined.shape);
     kept.push(joined.shape);
     names.set(id, joined.names);
@@ -352,9 +347,12 @@ function patternBodies(
     kept.push(tool.shape);
   });
   for (const shape of new Set(kept)) scope.keep(shape);
-  const result = settings.join
-    ? splitSolids(ctx, scope, { bodies, names, previewTools })
-    : { bodies, names, previewTools };
+  const result = nameMeshBodies(
+    ctx,
+    settings.join
+      ? splitSolids(ctx, scope, { bodies, names, previewTools })
+      : { bodies, names, previewTools },
+  );
   if (settings.join && result.bodies.size > ctx.bodies.size) {
     warnings.push(
       "Some instances don't touch their body, so they are separate bodies. Bring them closer, or turn Join off.",

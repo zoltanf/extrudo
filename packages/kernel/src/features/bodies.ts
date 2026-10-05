@@ -5,6 +5,7 @@
 import { type BodyId, type RemoveInputs, removeBodiesFeature } from '@extrudo/core';
 import { KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
 import { compareGeometry, deriveNames, type TopoNames } from '../naming/names';
+import { splitName } from '../naming/topo-id';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 
 /** Relative volume difference below which two pieces count as the same size. */
@@ -68,7 +69,11 @@ export function splitSolids<T extends Pick<FeatureOutput, 'bodies' | 'names'>>(
     pieces.set(
       id,
       ordered.map(({ solid }, i) => {
-        const faces = kernel.locate(solid, whole, 'face').map((at) => table.faces[at] ?? '');
+        // A mesh body's one face is the whole body, so every piece keeps the
+        // name and the ones after the first are numbered (ADR-0066 §4).
+        const faces = kernel.isMesh(solid)
+          ? [i === 0 ? (table.faces[0] ?? '') : splitName(table.faces[0] ?? '', i + 1)]
+          : kernel.locate(solid, whole, 'face').map((at) => table.faces[at] ?? '');
         return {
           id: i === 0 ? id : freshId(),
           shape: scope.keep(solid),

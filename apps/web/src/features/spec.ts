@@ -14,8 +14,10 @@
  * (`command: 'extrude'`, whose label, icon, keys and toolbar place come from
  * `shell/tools.ts` and `commands/keymap.ts`), or a command of its own.
  */
+
 import type {
   BodyId,
+  Command,
   ConstructionReports,
   ExtrudoDocument,
   Feature,
@@ -29,8 +31,10 @@ import type {
   Vec3,
 } from '@extrudo/core';
 import type { BodyMesh, PreviewToolStyle } from '@extrudo/kernel';
+import type { ComponentType } from 'react';
 import type { IconName, ToolCategory } from '../design-system';
 import type { ToolId } from '../shell/tools';
+import type { DialogController, OpenDialog } from './dialog';
 
 /** The values of a dialog's fields, by field name, one record per field kind. */
 export interface DialogValues {
@@ -49,8 +53,12 @@ interface FieldBase {
   label: string;
   /** A sentence under the field or in its tooltip. */
   hint?: string;
-  /** Whether the field shows for these values (default: always). Hidden fields make no input. */
-  shown?(values: DialogValues): boolean;
+  /**
+   * Whether the field shows for these values (default: always). Hidden fields
+   * make no input. The document is there for a field whose own input is a
+   * choice (a mesh's `units`, which only a mesh file has: ADR-0066 §2).
+   */
+  shown?(values: DialogValues, ctx?: DialogContext): boolean;
 }
 
 /**
@@ -108,6 +116,16 @@ export interface ToggleField extends FieldBase {
 }
 
 /**
+ * A read-only line, for what a dialog can only report: the file an `import`
+ * reads (P4-06, ADR-0066 §2). It fills no input and takes no picks, so it
+ * only needs text.
+ */
+export interface InfoField extends FieldBase {
+  kind: 'info';
+  text(values: DialogValues, ctx: DialogContext): string;
+}
+
+/**
  * A list of the document's features before the draft, to tick (P3-07: the
  * features a pattern or mirror repeats). Its value is `feature` references,
  * kept in `values.refs` like a selection field's; nothing is picked in the
@@ -126,7 +144,8 @@ export type DialogField =
   | ExpressionField
   | ChoiceField
   | ToggleField
-  | FeatureListField;
+  | FeatureListField
+  | InfoField;
 
 /** What the spec's functions may look at besides the values. */
 export interface DialogContext {
@@ -232,6 +251,12 @@ export interface ToggleManipulator {
 
 export type Manipulator = DistanceManipulator | AngleManipulator | ToggleManipulator;
 
+/** What a spec's own UI is given: the open dialog and its controller. */
+export interface DialogExtraProps {
+  open: OpenDialog;
+  controller: DialogController;
+}
+
 /** A command of its own, for a spec without a toolbar tool (a debug page's). */
 export interface DialogCommand {
   id: string;
@@ -291,15 +316,35 @@ export interface FeatureDialogSpec<I extends FeatureInputs = FeatureInputs>
     values: DialogValues,
     ctx: ManipulatorContext,
   ): Partial<DialogValues> | undefined;
+  /**
+   * Whether such a click also goes into the pick field (default: yes). **A
+   * canvas's calibration clicks are the user's two marks, not another plane**
+   * (P4-06, ADR-0066 §5), so while one runs the plane stays as it is.
+   */
+  placeAtOnly?(values: DialogValues, ctx: ManipulatorContext): boolean;
   /** Checks beyond each field's own (pick counts, expressions): the first problem. */
   validate?(values: DialogValues, ctx: DialogContext): DialogIssue | undefined;
   /** In-canvas handles for expression fields, in world mm. */
   manipulators?(values: DialogValues, ctx: ManipulatorContext): readonly Manipulator[];
   /**
+   * UI of its own, under the fields (a canvas's Calibrate, P4-06,
+   * ADR-0066 §5): a component the dialog renders after them, which keeps
+   * state of its own (the two picked points) and re-renders itself.
+   */
+  extra?: ComponentType<DialogExtraProps>;
+  /**
    * How bodies the draft makes or changes are drawn when its evaluator
    * gives no `previewTools` (a fillet): default `new`.
    */
   previewStyle?(values: DialogValues): PreviewToolStyle;
+  /**
+   * Commands the feature needs beside itself, dispatched in the same undo step
+   * (P4-06, ADR-0066 §0): an `import` adds the file's attachment record.
+   * They come after the feature's own command, so a command that reads the
+   * feature sees it. The bytes of the file were written before the dialog
+   * opened (ADR-0061 §2), so nothing here is asynchronous.
+   */
+  commitWith?(values: DialogValues, ctx: DialogContext): readonly Command<unknown>[];
 }
 
 /** Defines a spec with its input type checked. */

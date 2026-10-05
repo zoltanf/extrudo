@@ -800,8 +800,19 @@ end to end, faster than in Fusion 360.
 - [x] **P4-05 Control-point splines, conics, sketch polish.** FR-SK-03. Done
   2026-10-04 (ADR-0063). Sketch polish beyond the two curve types is deferred:
   what P4-05 added is the modes, the tools and the control polygon.
-- [ ] **P4-06 Import:** SVG/DXF → sketch; STEP → base body; STL/3MF/OBJ → mesh
-  body with Manifold booleans; canvas images. FR-SK-14, FR-IO-05..07.
+- [x] **P4-06 Import:** SVG/DXF → sketch; STEP → base body; STL/3MF/OBJ → mesh
+  body with Manifold booleans; canvas images. FR-SK-14, FR-IO-05..07. Done
+  2026-10-05 (ADR-0066) in five slices: **drawings** into a sketch (SVG, DXF,
+  `e2e/import-drawing.spec.ts`), **attachments for imports and STEP** as a
+  non-parametric base body (`e2e/import-step.spec.ts`), **mesh bodies** kept by
+  manifold-3d (`e2e/import-mesh.spec.ts`), **mesh booleans and transforms**
+  (a boolean with a mesh in it goes to manifold-3d and gives a mesh body again;
+  Move, Mirror, Scale, Split Body and patterns work on it), and **canvas
+  images** on a plane with a calibration (`e2e/canvas.spec.ts`). Deferred, as
+  ADR-0066's Deferred says: replacing an imported file, names and colours from
+  the file, drag and drop, DXF text as sketch text, mesh repair and decimation,
+  faces of a mesh as references, STEP export of a mesh body, and the canvas's
+  perspective correction.
 - [x] **P4-07 Customizer panel and configurations.** FR-PAR-05, -06. Done
   2026-10-03 (ADR-0059).
 - [x] **P4-08 Tolerance helpers and slicer hand-off.** FR-3DP-05, -06. Done

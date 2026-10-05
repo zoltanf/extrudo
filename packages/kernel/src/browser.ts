@@ -29,6 +29,8 @@ function connect(worker: Worker): KernelConnection {
   const proxied: KernelApi = {
     init: () => api.init(),
     addFont: (id, bytes) => api.addFont(id, bytes),
+    addFile: (id, bytes, mediaType, fileName) => api.addFile(id, bytes, mediaType, fileName),
+    enableMeshes: () => api.enableMeshes(),
     recompute: (request, onFeature) =>
       api.recompute(request, onFeature && Comlink.proxy(onFeature)),
     preview: (request, onFeature) => api.preview(request, onFeature && Comlink.proxy(onFeature)),

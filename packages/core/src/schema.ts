@@ -9,6 +9,7 @@
  * says so, instead of refusing the file.
  */
 import { FORMAT_NAME, FORMAT_VERSION } from './format';
+import { FILE_INPUT_MEDIA_TYPES, MEDIA_TYPES } from './media-types';
 import { PARAMETER_NAME } from './names';
 import { GeomRefSchema, Vec3Schema } from './refs';
 import { attachmentFontId, SketchDataSchema } from './sketch/schema';
@@ -115,6 +116,16 @@ export const SketchDataInputSchema = z.strictObject({
   kind: z.literal('sketchData'),
   sketch: SketchDataSchema,
 });
+/**
+ * A file of the design itself (P4-06, ADR-0066 §0): an `AttachmentId` of
+ * `doc.attachments`, whose bytes the kernel reads. An `import` names its
+ * STEP or mesh file this way.
+ */
+export const FileInputSchema = z.strictObject({
+  kind: z.literal('file'),
+  id: AttachmentIdSchema,
+});
+export type FileInput = z.infer<typeof FileInputSchema>;
 
 /** One feature input. Every number is an expression; there is no raw-number kind. */
 export const InputSchema = z.discriminatedUnion('kind', [
@@ -123,6 +134,7 @@ export const InputSchema = z.discriminatedUnion('kind', [
   BoolInputSchema,
   RefInputSchema,
   SketchDataInputSchema,
+  FileInputSchema,
 ]);
 export type Input = z.infer<typeof InputSchema>;
 export type ExprInput = z.infer<typeof ExprInputSchema>;
@@ -190,16 +202,17 @@ export type Settings = z.infer<typeof SettingsSchema>;
  * beside the document (storage's `writeAttachment`, the `.extrudo` file's
  * `attachments/` folder), never in it, and are content-addressed by
  * `sha256`: one file is stored once however many attachments or versions
- * name it. Only fonts exist so far; a text entity names its font as
- * `attachment:<AttachmentId>`.
+ * name it. Fonts (`attachment:<AttachmentId>`, P4-03), imported models and
+ * canvas images (P4-06, ADR-0066 §0) name one the same way. The media type
+ * comes from the file name's extension (`mediaTypeOf`), never from the
+ * browser's `File.type`; WOFF2 is not accepted: the font shaper can't read it.
  */
 export const AttachmentSchema = z.strictObject({
   /** What the user sees, e.g. "Comic Neue Bold". */
   name: z.string().min(1).max(200),
   /** The name of the file it came from, so an export can offer it back. */
   fileName: z.string().min(1).max(255),
-  /** WOFF2 is not accepted: the font shaper can't read it (ADR-0061 §1). */
-  mediaType: z.enum(['font/ttf', 'font/otf', 'font/woff']),
+  mediaType: z.enum(MEDIA_TYPES),
   /** Lower case hex, the file's name in storage and in the archive. */
   sha256: z.string().regex(/^[0-9a-f]{64}$/, 'must be 64 lower case hex digits'),
   /** The file's size in bytes, for the design's attachment limit. */
@@ -290,8 +303,40 @@ export const DocumentSchema = z
       });
     });
     reportFonts(ctx, doc);
+    reportFiles(ctx, doc);
   });
 export type ExtrudoDocument = z.infer<typeof DocumentSchema>;
+
+/**
+ * A `file` input needs the attachment it names, of a media type the feature
+ * can read (P4-06, ADR-0066 §2): an `import` that names an image, or a
+ * design that carries no such file, is refused. The issue names the input,
+ * so the file's error points at it.
+ */
+function reportFiles(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>): void {
+  for (const [index, feature] of doc.features.entries()) {
+    const allowed = FILE_INPUT_MEDIA_TYPES[feature.type];
+    if (!allowed) continue;
+    for (const [name, input] of Object.entries(feature.inputs)) {
+      if (input.kind !== 'file') continue;
+      const attachment = doc.attachments?.[input.id];
+      if (!attachment) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['features', index, 'inputs', name],
+          message: `is attachment "${input.id}", which this design doesn't carry`,
+        });
+        continue;
+      }
+      if (allowed.includes(attachment.mediaType)) continue;
+      ctx.addIssue({
+        code: 'custom',
+        path: ['features', index, 'inputs', name],
+        message: `is "${attachment.fileName}", whose media type ${attachment.mediaType} isn't one this feature reads`,
+      });
+    }
+  }
+}
 
 /**
  * A group's two ends must name features that exist, run forwards along the

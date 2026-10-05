@@ -174,7 +174,7 @@ function conflicting(solver: SketchSolver): string[] {
   const { builder } = plate({ entities: 9, layout: 'anchored' });
   const sketch = builder.sketch;
   const bottom = Object.entries(sketch.entities).find(([, e]) => e.type === 'line');
-  if (!bottom || bottom[1].type !== 'line') return [];
+  if (bottom?.[1].type !== 'line') return [];
   const withSecond = {
     ...sketch,
     dimensions: {

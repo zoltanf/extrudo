@@ -1,14 +1,20 @@
 // The Recomputer against an in-process kernel with the test features. The
 // worker path (Comlink, transfers) is covered by e2e/recompute.spec.ts.
 import {
+  type AttachmentId,
+  AttachmentIdSchema,
   type BodyId,
+  canvasInputs,
   createDocumentStore,
   createModelStore,
   type DocumentStore,
   type ExtrudoDocument,
+  type Feature,
   type FeatureId,
   type GeomRef,
+  importInputs,
   type ModelStore,
+  originPlaneRef,
   renameFeature,
 } from '@extrudo/core';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -24,7 +30,7 @@ import {
   withExpr,
 } from './recompute/testing';
 import type { RecomputeRequest } from './recompute/types';
-import { type FontSource, Recomputer } from './recomputer';
+import { type FileSource, type FontSource, Recomputer } from './recomputer';
 import { KernelService } from './service';
 
 const until = async (condition: () => boolean, ms = 20_000) => {
@@ -38,9 +44,9 @@ const until = async (condition: () => boolean, ms = 20_000) => {
 let recomputer: Recomputer | undefined;
 afterEach(() => recomputer?.dispose());
 
-function setup(doc: ExtrudoDocument, options: { fonts?: FontSource } = {}) {
+function setup(doc: ExtrudoDocument, options: { fonts?: FontSource; files?: FileSource } = {}) {
   const requests: RecomputeRequest[] = [];
-  /** What went to each kernel, in order: `font:<id>` then `recompute`. */
+  /** What went to each kernel, in order: a font or file, then `recompute`. */
   const events: string[] = [];
   let spawned = 0;
   const spawn = (): KernelConnection => {
@@ -53,10 +59,22 @@ function setup(doc: ExtrudoDocument, options: { fonts?: FontSource } = {}) {
           events.push(`font:${id}:${bytes.byteLength}`);
           return service.addFont(id, bytes);
         },
+        addFile: (id: AttachmentId, bytes: ArrayBuffer, mediaType: string, fileName?: string) => {
+          events.push(`file:${id}:${mediaType}:${fileName}:${bytes.byteLength}`);
+          return service.addFile(id, bytes, mediaType, fileName);
+        },
+        enableMeshes: () => {
+          events.push('meshes');
+          return service.enableMeshes();
+        },
         recompute: (request, onFeature) => {
           requests.push(request);
           events.push('recompute');
           return service.recompute(request, onFeature);
+        },
+        preview: (request, onFeature) => {
+          events.push(`preview:${request.draft.id}`);
+          return service.preview(request, onFeature);
         },
       },
       terminate: () => {},
@@ -72,6 +90,7 @@ function setup(doc: ExtrudoDocument, options: { fonts?: FontSource } = {}) {
     delayMs: 5,
     previewDelayMs: 5,
     ...(options.fonts && { fonts: options.fonts }),
+    ...(options.files && { files: options.files }),
   });
   recomputer.start();
   return { document, model, requests, events, spawned: () => spawned };
@@ -227,6 +246,163 @@ describe('Recomputer', () => {
     edit(document, (d) => withExpr(d, 'a', 'size', '12 mm'));
     await until(() => events.length > before);
     expect(events.slice(before).filter((e) => e.startsWith('font:'))).toEqual([]);
+  });
+
+  it('sends a file once, before the recompute that needs it, and a preview its own', {
+    timeout: 60_000,
+  }, async () => {
+    const bytes = Uint8Array.from([1, 2, 3]).buffer as ArrayBuffer;
+    const attachment = (fileName: string) => ({
+      name: fileName.replace(/\..*$/, ''),
+      fileName,
+      mediaType: 'model/step' as const,
+      sha256: 'b'.repeat(64),
+      size: bytes.byteLength,
+    });
+    const file = 'a1' as AttachmentId;
+    // The design's own import, and one only the preview's draft names.
+    const importer: Feature = { ...testFeature('imp', 'import'), inputs: importInputs({ file }) };
+    const doc: ExtrudoDocument = {
+      ...testDocument([testFeature('a', 'test-box', { size: '10 mm' }), importer]),
+      attachments: { [file]: attachment('bracket.step') },
+    };
+    const files: FileSource = {
+      bytes: async (id) => (id === ('a-nobody-has' as AttachmentId) ? undefined : bytes),
+    };
+    const { document, model, events } = setup(doc, { files });
+    await until(() => ready(model));
+    // Once, before the recompute that names it: the evaluator gets its bytes
+    // (this test registry can't compute an import, but the file went out).
+    expect(events.filter((e) => e.startsWith('file:'))).toEqual([
+      `file:${file}:model/step:bracket.step:3`,
+    ]);
+    expect(events[0]).toBe(`file:${file}:model/step:bracket.step:3`);
+
+    // An edit doesn't send it again.
+    const before = events.length;
+    edit(document, (d) => withExpr(d, 'a', 'size', '12 mm'));
+    await until(() => events.length > before);
+    expect(events.slice(before).filter((e) => e.startsWith('file:'))).toEqual([]);
+
+    // A preview's draft isn't in the document yet, so its file goes first too.
+    const other = 'a2' as AttachmentId;
+    edit(document, (d) => ({
+      ...d,
+      attachments: { ...d.attachments, [other]: attachment('other.step') },
+    }));
+    const marked = events.length;
+    await (recomputer as Recomputer).preview(
+      { ...importer, id: 'draft' as FeatureId, inputs: importInputs({ file: other }) },
+      2,
+    );
+    await until(() => events.slice(marked).some((e) => e.startsWith('preview:')));
+    const slice = events.slice(marked);
+    expect(slice).toContain(`file:${other}:model/step:other.step:3`);
+    expect(slice.indexOf(`file:${other}:model/step:other.step:3`)).toBeLessThan(
+      slice.indexOf('preview:draft'),
+    );
+  });
+
+  it('asks for manifold-3d only for a document that imports a mesh', {
+    timeout: 60_000,
+  }, async () => {
+    const bytes = Uint8Array.from([1, 2, 3]).buffer as ArrayBuffer;
+    const file = 'm1' as AttachmentId;
+    const importer: Feature = { ...testFeature('imp', 'import'), inputs: importInputs({ file }) };
+    const attachment = (mediaType: 'model/step' | 'model/stl') => ({
+      name: 'part',
+      fileName: mediaType === 'model/step' ? 'part.step' : 'part.stl',
+      mediaType,
+      sha256: 'b'.repeat(64),
+      size: bytes.byteLength,
+    });
+    const files: FileSource = { bytes: async () => bytes };
+
+    // A STEP import needs no mesh kernel.
+    const step: ExtrudoDocument = {
+      ...testDocument([testFeature('a', 'test-box', { size: '10 mm' }), importer]),
+      attachments: { [file]: attachment('model/step') },
+    };
+    const first = setup(step, { files });
+    await until(() => ready(first.model));
+    expect(first.events).not.toContain('meshes');
+
+    // The same document with an STL does: once, before the recompute.
+    const mesh: ExtrudoDocument = {
+      ...step,
+      attachments: { [file]: attachment('model/stl') },
+    };
+    const second = setup(mesh, { files });
+    await until(() => ready(second.model));
+    expect(second.events.filter((e) => e === 'meshes')).toEqual(['meshes']);
+    const recompute = second.events.indexOf('recompute');
+    expect(second.events.indexOf('meshes')).toBeLessThan(recompute);
+    // Once per kernel: an edit doesn't ask again.
+    const before = second.events.length;
+    edit(second.document, (d) => withExpr(d, 'a', 'size', '12 mm'));
+    await until(() => second.events.length > before);
+    expect(second.events.slice(before)).not.toContain('meshes');
+  });
+
+  it("collects the canvases' frames, and never sends an image to the worker", {
+    timeout: 30_000,
+  }, async () => {
+    const image = AttachmentIdSchema.parse('a-1');
+    const doc: ExtrudoDocument = {
+      ...testDocument([
+        testFeature(
+          'plane',
+          'offsetPlane',
+          { distance: '15 mm' },
+          {
+            plane: { kind: 'ref', refs: [originPlaneRef('origin:xy')] },
+          },
+        ),
+        {
+          ...testFeature('canvas', 'canvas'),
+          inputs: canvasInputs({ image, plane: { kind: 'plane', id: 'plane' } }),
+        },
+      ]),
+      attachments: {
+        [image]: {
+          name: 'plan',
+          fileName: 'plan.png',
+          mediaType: 'image/png',
+          sha256: 'a'.repeat(64),
+          size: 10,
+        },
+      },
+    };
+    const { document, model, events, requests } = setup(doc);
+    await until(() => ready(model));
+    // The report is the plane's frame, in the model store's own `canvases`.
+    expect(model.getState().canvases).toEqual({
+      canvas: {
+        kind: 'canvas',
+        frame: expect.objectContaining({ origin: [0, 0, 15], normal: [0, 0, 1] }),
+      },
+    });
+    // A canvas makes no body, and its image is the view's business (ADR-0066 §5).
+    expect(model.getState().bodies).toEqual({});
+    expect(events.filter((e) => e.startsWith('file:'))).toEqual([]);
+
+    // Unchanged reports keep their object, so the view doesn't redraw the image.
+    const { canvases } = model.getState();
+    document.getState().dispatch(renameFeature({ id: 'plane' as FeatureId, name: 'Above' }));
+    await until(() => ready(model) && requests.length === 2);
+    expect(model.getState().canvases).toBe(canvases);
+
+    // A dialog's preview of a canvas carries its own frame (ADR-0066 §5).
+    const r = recomputer as Recomputer;
+    const preview = await r.preview(
+      {
+        ...testFeature('canvas2', 'canvas'),
+        inputs: canvasInputs({ image }),
+      },
+      2,
+    );
+    expect(preview?.canvas?.frame.origin).toEqual([0, 0, 0]);
+    expect(preview?.construction).toBeUndefined();
   });
 
   it('previews a draft after it settles; a newer draft supersedes the older', {

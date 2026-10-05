@@ -46,6 +46,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { ToastOptions } from '../design-system';
 import { readTopology, topologyItem } from '../selection/items';
 import { clearPickedHover, createModelSelect } from '../selection/useModelSelection';
+import { canvasDrawing } from '../viewport/canvasGeometry';
 import type { ModelSelect } from '../viewport/Viewport';
 import type { ViewPreview } from './preview';
 import { draftStatus, type PreviewDrawing, previewDrawing } from './preview';
@@ -232,6 +233,16 @@ export function viewPreview(open: OpenDialog | undefined): ViewPreview | undefin
         preview: true,
         dimmed,
       },
+    }),
+    // A canvas draws its own image, from the draft's inputs and the frame the
+    // kernel reported for it (ADR-0066 §5).
+    ...(drawing.canvas && {
+      canvas: canvasDrawing(
+        { id: open.id, name: open.name, inputs: open.draft.inputs },
+        drawing.canvas,
+        (name) => okValue(open.expressions, name),
+        { preview: true, dimmed },
+      ),
     }),
   };
 }
@@ -434,7 +445,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
 
   /** The next selection field below its minimum after `field`, if any. */
   const nextPickField = (open: OpenDialog, values: DialogValues, after: string) => {
-    const fields = shownFields(open.spec, values).filter(
+    const fields = shownFields(open.spec, values, context(open)).filter(
       (f): f is SelectionField => f.kind === 'selection',
     );
     const at = fields.findIndex((f) => f.name === after);
@@ -554,8 +565,8 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     clearPickedHover(session);
   };
 
-  const firstPickField = (spec: FeatureDialogSpec, values: DialogValues) => {
-    const fields = shownFields(spec, values).filter(
+  const firstPickField = (spec: FeatureDialogSpec, values: DialogValues, ctx: DialogContext) => {
+    const fields = shownFields(spec, values, ctx).filter(
       (f): f is SelectionField => f.kind === 'selection',
     );
     return (fields.find((f) => (values.refs[f.name]?.length ?? 0) < (f.min ?? 1)) ?? fields[0])
@@ -585,7 +596,10 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       // what that field doesn't take goes on to the next fields that take it (a profile and
       // an axis selected before Revolve, P2-07). Each item fills one field.
       const selection = session.getState().selection;
-      const fields = shownFields(spec, values).filter(
+      // The fields the picked selection can fill, with the document behind them
+      // (a mesh's `units` is shown from the file it imports).
+      const startCtx = context({ mode: 'create', id: newId<FeatureId>() });
+      const fields = shownFields(spec, values, startCtx).filter(
         (f): f is SelectionField => f.kind === 'selection',
       );
       const used: SelectionItem[] = [];
@@ -611,7 +625,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         name: nextFeatureName(doc, spec.label),
         values,
         paramNames: {},
-        pickField: firstPickField(spec, values),
+        pickField: firstPickField(spec, values, startCtx),
         chosen: [],
         ...blank,
       });
@@ -633,7 +647,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         name: feature.name,
         values,
         paramNames: storedParameterNames(feature),
-        pickField: fixed?.fields[0] ?? firstPickField(spec, values),
+        pickField: fixed?.fields[0] ?? firstPickField(spec, values, context({ mode: 'edit', id })),
         chosen: undefined,
         ...blank,
         ...(fixed && { note: fixNote(feature.name, spec, fixed) }),
@@ -669,14 +683,16 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         select.onClick(item, false);
         return;
       }
-      pick([item], 'add');
+      const ctx: ManipulatorContext = {
+        ...context(current),
+        value: (f) => okValue(current.expressions, f),
+      };
+      // A spec that only wants the click (a canvas's calibration, ADR-0066 §5)
+      // keeps it out of the pick field; the others pick it as well.
+      if (!spec.placeAtOnly?.(current.values, ctx)) pick([item], 'add');
       const now = get();
       const world = at;
       if (!now || !world) return;
-      const ctx: ManipulatorContext = {
-        ...context(now),
-        value: (f) => okValue(now.expressions, f),
-      };
       const placed = spec.placeAt(world, now.values, ctx);
       if (!placed) return;
       let next = now;
@@ -740,9 +756,21 @@ export function createDialogController(options: DialogControllerOptions): Dialog
         fresh.mode === 'create'
           ? insertFeature({ feature: fresh.draft, index: fresh.index })
           : updateFeatureInputs({ id: fresh.id, inputs: fresh.draft.inputs, replace: true });
+      // What the feature needs beside itself (an import's attachment record),
+      // in the same undo step (ADR-0066 §0).
+      const withFeature = fresh.spec.commitWith?.(fresh.values, context(fresh)) ?? [];
       let used: FeatureId[] = [];
       try {
-        store.getState().dispatch(command);
+        if (withFeature.length === 0) store.getState().dispatch(command);
+        else {
+          store.getState().beginTransaction(command.label);
+          try {
+            store.getState().dispatch(command);
+            for (const extra of withFeature) store.getState().dispatch(extra);
+          } finally {
+            store.getState().commitTransaction();
+          }
+        }
         // A new feature hides the sketches whose profiles it used, in the same undo step.
         used =
           fresh.mode === 'create' ? usedSketches(fresh.draft, store.getState().doc.features) : [];

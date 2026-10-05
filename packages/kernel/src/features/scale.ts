@@ -12,10 +12,8 @@
  */
 import { type ScaleInputs, scaleFeature, scaleSettings } from '@extrudo/core';
 import { KernelError, type ShapeHandle, type Vec3 } from '../kernel';
-import { deriveNames } from '../naming/names';
-import { withHistory } from '../naming/ops';
-import { createdName } from '../naming/topo-id';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import { transformedNames } from './mesh-bodies';
 import { pointOf } from './references';
 import { centreOf, existing, type Image, withImages } from './transform';
 
@@ -43,20 +41,20 @@ function evaluateScale(ctx: EvalContext<ScaleInputs>): FeatureOutput {
 
   using scope = kernel.scope();
   const images: Image[] = ids.map((source, i) => {
+    // A mesh body is scaled by the same 3 × 4 matrix Move and Mirror use
+    // (ADR-0066 §4), and its one face follows Move's rule (a copy gets its own
+    // name, a plain scale keeps the one it had).
     const result = kernel.scale(ctx.bodies.get(source) as ShapeHandle, centre, factors);
-    let named = withHistory(kernel, result, [ctx.names(source)], {
+    const names = transformedNames(ctx, result, ctx.names(source), {
       op: 'scale',
-      feature: ctx.feature.id,
+      ...(settings.copy ? { role: 'from' } : {}),
     });
-    scope.track(named.shape);
-    if (settings.copy) {
-      // A copy's faces get names of their own, as Move's copies do (ADR-0044).
-      const faces = named.names.faces.map((name) =>
-        createdName('scale', ctx.feature.id, 'from', name),
-      );
-      named = { shape: named.shape, names: deriveNames(faces, kernel.describe(named.shape)) };
-    }
-    return { source, id: settings.copy ? ctx.bodyId(i) : source, named };
+    scope.track(result.shape);
+    return {
+      source,
+      id: settings.copy ? ctx.bodyId(i) : source,
+      named: { shape: result.shape, names },
+    };
   });
   return withImages(ctx, scope, images);
 }

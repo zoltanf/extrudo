@@ -4,13 +4,15 @@ import type { DocumentId, ExtrudoDocument } from '@extrudo/core';
 export type ProjectId = DocumentId;
 
 /**
- * How much of a design's attachments storage takes (ADR-0061 §2): one file at
- * most 10 MB, all of them together 50 MB. Both are refused with a message for
- * the user, checked in `writeAttachment`, so every way in is covered (adding a
- * font, importing a file, duplicating a project).
+ * How much of a design's attachments storage takes (ADR-0061 §2; P4-06,
+ * ADR-0066 §0): one file at most 25 MB, all of them together 100 MB. Both are
+ * refused with a message for the user, checked in `writeAttachment`, so every
+ * way in is covered (adding a font, importing a STEP file or a mesh,
+ * duplicating a project). The limits are for the files imports bring: a
+ * binary STL of 200,000 triangles is 10 MB on its own.
  */
-export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-export const MAX_ATTACHMENTS_BYTES = 50 * 1024 * 1024;
+export const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024;
+export const MAX_ATTACHMENTS_BYTES = 100 * 1024 * 1024;
 
 /**
  * A file in the linked folder that a project is written back to (FR-PRJ-06,

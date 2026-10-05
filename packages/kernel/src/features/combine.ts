@@ -22,7 +22,8 @@ import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { TOUCH } from './operation';
+import { nameMeshBodies, warnIfBecameMesh } from './mesh-bodies';
+import { bodiesTouch } from './operation';
 
 export const kernelCombine: KernelFeatureDefinition<CombineInputs> = {
   ...combineFeature,
@@ -54,6 +55,9 @@ function evaluateCombine(ctx: EvalContext<CombineInputs>): FeatureOutput {
   });
   const options = { feature: ctx.feature.id, op: 'combine' };
   const volume = (shape: ShapeHandle) => kernel.measure(shape).volume;
+  // A mesh body has no B-rep distance, so a pair with a mesh in it is asked
+  // manifold-3d's `minGap` (ADR-0066 §4).
+  const touches = (a: ShapeHandle, b: ShapeHandle): boolean => bodiesTouch(ctx, a, b);
   const empty = (was: number, now: number) => now <= 1e-6 * Math.max(1, Math.abs(was));
 
   using scope = kernel.scope();
@@ -64,9 +68,7 @@ function evaluateCombine(ctx: EvalContext<CombineInputs>): FeatureOutput {
       let current = named(target);
       const pending = [...tools];
       while (pending.length > 0) {
-        const at = pending.findIndex(
-          (id) => kernel.distance(current.shape, named(id).shape) <= TOUCH,
-        );
+        const at = pending.findIndex((id) => touches(current.shape, named(id).shape));
         if (at < 0) {
           throw new KernelError(
             pending.length === 1
@@ -75,8 +77,10 @@ function evaluateCombine(ctx: EvalContext<CombineInputs>): FeatureOutput {
           );
         }
         const [id] = pending.splice(at, 1) as [BodyId];
+        const before = current.shape;
         current = namedBoolean(kernel, 'fuse', current, named(id), { ...options, simplify: true });
         scope.track(current.shape);
+        warnIfBecameMesh(ctx, before, current.shape);
       }
       result = current;
       break;
@@ -84,8 +88,10 @@ function evaluateCombine(ctx: EvalContext<CombineInputs>): FeatureOutput {
     case 'cut': {
       let current = named(target);
       for (const id of tools) {
+        const before = current.shape;
         current = namedBoolean(kernel, 'cut', current, named(id), options);
         scope.track(current.shape);
+        warnIfBecameMesh(ctx, before, current.shape);
       }
       const was = volume(named(target).shape);
       const now = volume(current.shape);
@@ -109,6 +115,7 @@ function evaluateCombine(ctx: EvalContext<CombineInputs>): FeatureOutput {
       }
       const current = namedBoolean(kernel, 'common', named(target), tool, options);
       scope.track(current.shape);
+      warnIfBecameMesh(ctx, named(target).shape, current.shape);
       if (empty(volume(named(target).shape), volume(current.shape))) {
         throw new KernelError(
           "The target doesn't overlap the tool bodies, so nothing is left after intersecting. Move them into each other, or pick other bodies.",
@@ -128,5 +135,5 @@ function evaluateCombine(ctx: EvalContext<CombineInputs>): FeatureOutput {
     shape: ctx.bodies.get(id) as ShapeHandle,
     style: settings.operation,
   }));
-  return splitSolids(ctx, scope, { bodies, names, previewTools });
+  return nameMeshBodies(ctx, splitSolids(ctx, scope, { bodies, names, previewTools }));
 }

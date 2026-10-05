@@ -1,12 +1,14 @@
-import type { BodyId, FeatureRegistry, GeomRef } from '@extrudo/core';
+import type { AttachmentId, BodyId, FeatureRegistry, GeomRef } from '@extrudo/core';
 import { kernelFeatures } from './features';
 import type { SmoothKind, SubShapeKind } from './history';
 import { type Inspection, type InspectTarget, inspectShapes } from './inspect';
 import { type HeapUsage, Kernel, KernelError, type KernelStats, type ShapeHandle } from './kernel';
+import { loadManifold, type ManifoldLoadOptions } from './manifold';
 import type { ExportMesh, MeshOptions } from './mesh';
 import type { OcctModule } from './occt/types';
 import { type EngineOptions, RecomputeEngine, yieldToEvents } from './recompute/engine';
 import type {
+  ImportedFile,
   KernelFeatureDefinition,
   PreviewRequest,
   ProgressListener,
@@ -35,6 +37,28 @@ export interface KernelApi {
    * part of a cache key.
    */
   addFont(id: string, bytes: ArrayBuffer): Promise<void>;
+  /**
+   * Registers a file of the design (P4-06, ADR-0066 §0): the bytes of the
+   * attachment `id`, with its media type and (for a message about it) its file
+   * name, for an `import` feature to read through `ctx.file`. The app sends
+   * every file a document names before it recomputes, so no file is part of a
+   * cache key. A repeated ID replaces the bytes (an attachment ID never
+   * changes its content, but a fresh preview may send them again).
+   */
+  addFile(
+    id: AttachmentId,
+    bytes: ArrayBuffer,
+    mediaType: string,
+    fileName?: string,
+  ): Promise<void>;
+  /**
+   * Loads manifold-3d in the worker (P4-06, ADR-0066 §3): mesh bodies are
+   * `Manifold`s instead of OCCT shapes, and only a design that imports a mesh
+   * file pays for the second WASM. The app's `Recomputer` calls this before
+   * the first recompute or preview with a mesh `import`; calling it again is a
+   * no-op, so it can be asked for every such request.
+   */
+  enableMeshes(): Promise<void>;
   /**
    * Recomputes the document (ADR-0024). A newer call cancels a running one
    * between features. `onFeature` hears of each feature before it is
@@ -152,6 +176,11 @@ export interface KernelServiceOptions {
   /** The feature types to compute. Default: every type the kernel knows. */
   features?: FeatureRegistry<KernelFeatureDefinition>;
   engine?: EngineOptions;
+  /**
+   * Where manifold-3d's `.wasm` is (P4-06, ADR-0066 §3): the app's worker
+   * imports it with `?url`. Node finds it next to the glue by itself.
+   */
+  manifold?: ManifoldLoadOptions;
 }
 
 export class KernelService implements KernelApi {
@@ -161,6 +190,10 @@ export class KernelService implements KernelApi {
   #engine: RecomputeEngine | undefined;
   #initMs = 0;
   #crashed: Error | undefined;
+  /** The design's files for this session (ADR-0066 §0), by attachment ID. */
+  readonly #files = new Map<AttachmentId, ImportedFile>();
+  /** manifold-3d, once a design needs it (ADR-0066 §3). */
+  #meshes: Promise<void> | undefined;
 
   constructor(load: () => Promise<OcctModule>, options: KernelServiceOptions = {}) {
     this.#load = load;
@@ -183,6 +216,40 @@ export class KernelService implements KernelApi {
     // A second call with the same ID is a no-op: the bytes never change
     // under an ID (ADR-0058 §3).
     if (!text.hasFont(id)) text.loadFont(id, new Uint8Array(bytes));
+  }
+
+  /**
+   * File bytes for an `import` (P4-06, ADR-0066 §0). Kept for the session (a
+   * kernel restart starts an empty one, and the app sends them again), and
+   * never in the OCCT heap: the bytes are ordinary JavaScript, read by the
+   * evaluator.
+   */
+  addFile(
+    id: AttachmentId,
+    bytes: ArrayBuffer,
+    mediaType: string,
+    fileName?: string,
+  ): Promise<void> {
+    // A copy in its own buffer: the transferred one may be a view into a bigger one.
+    const own = new Uint8Array(bytes.byteLength);
+    own.set(new Uint8Array(bytes));
+    this.#files.set(id, {
+      bytes: own,
+      mediaType,
+      // A previewed file isn't in the document yet, so the app's name is the
+      // only one a message can use.
+      ...(fileName !== undefined && { fileName }),
+    });
+    return Promise.resolve();
+  }
+
+  async enableMeshes(): Promise<void> {
+    this.#meshes ??= (async () => {
+      const kernel = await this.#ready();
+      const manifold = await loadManifold(this.#options.manifold ?? {});
+      kernel.enableMeshes(manifold);
+    })();
+    await this.#meshes;
   }
 
   recompute(request: RecomputeRequest, onFeature?: ProgressListener): Promise<RecomputeResult> {
@@ -298,11 +365,10 @@ export class KernelService implements KernelApi {
     this.#kernel ??= (async () => {
       const start = performance.now();
       const kernel = new Kernel(await this.#load());
-      this.#engine = new RecomputeEngine(
-        kernel,
-        this.#options.features ?? kernelFeatures(),
-        this.#options.engine,
-      );
+      this.#engine = new RecomputeEngine(kernel, this.#options.features ?? kernelFeatures(), {
+        ...this.#options.engine,
+        files: (id) => this.#files.get(id),
+      });
       this.#initMs = performance.now() - start;
       return kernel;
     })();

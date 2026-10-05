@@ -12,6 +12,8 @@ export function workerApi(service: KernelService): KernelApi {
   return {
     init: () => service.init(),
     addFont: (id, bytes) => service.addFont(id, bytes),
+    addFile: (id, bytes, mediaType, fileName) => service.addFile(id, bytes, mediaType, fileName),
+    enableMeshes: () => service.enableMeshes(),
     recompute: async (request, onFeature) => transfer(await service.recompute(request, onFeature)),
     preview: async (request, onFeature) => transfer(await service.preview(request, onFeature)),
     endPreview: () => service.endPreview(),

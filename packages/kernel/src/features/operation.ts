@@ -3,6 +3,16 @@
  * with revolve, ADR-0029): new bodies, or join, cut and intersect with the
  * bodies it touches or the ones it names. Moved from `extrude.ts`
  * unchanged, but for the feature's words in messages and names.
+ *
+ * A mesh body takes part in all of it (P4-06, ADR-0066 §4): the boolean itself
+ * goes to manifold-3d, the result is a mesh body named `mesh:<feature>`, and a
+ * body that becomes a mesh here is told so once.
+ *
+ * `mergeTools` (a pattern's instances) puts two tools in one group whose boxes
+ * overlap when either is **heavy** (P4-12, ADR-0067 §H2), so it never asks
+ * OCCT for the distance between two long threads; `touchingBodies`, Combine's
+ * join order and a Mirror's copy do ask, and a pair with a mesh in it is asked
+ * manifold-3d's `minGap` (`bodiesTouch`) instead.
  */
 import type { BodyId, BodyOperation } from '@extrudo/core';
 import { type Kernel, KernelError, type ShapeHandle, type ShapeScope } from '../kernel';
@@ -10,10 +20,33 @@ import { compareGeometry, deriveNames, type TopoNames } from '../naming/names';
 import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, PreviewTool } from '../recompute/types';
+import { nameMeshBodies, warnIfBecameMesh } from './mesh-bodies';
 import { add, scale } from './vec';
 
 /** Distances (mm) at or below which shapes touch. */
 export const TOUCH = 1e-4;
+
+/**
+ * How close two bodies have to be when one of them is a mesh (P4-06,
+ * ADR-0066 §4). A mesh body's gap comes from manifold-3d's `minGap`, whose
+ * answer is capped at the length it searches, so the search is a little longer
+ * than the touch distance; nanometres are close enough, since a mesh cut and
+ * the body it cuts meet exactly.
+ */
+export const MESH_TOUCH = 1e-6;
+const MESH_GAP_SEARCH = 1e-3;
+
+/**
+ * Whether two bodies touch, overlap or lie inside each other (the question a
+ * join asks before it fuses and a Mirror asks before it joins a copy to its
+ * original). Two solids are OCCT's `distance` at `TOUCH`; a pair with a mesh in
+ * it is manifold-3d's `minGap` at `MESH_TOUCH` (ADR-0066 §4).
+ */
+export function bodiesTouch(ctx: EvalContext, a: ShapeHandle, b: ShapeHandle): boolean {
+  const { kernel } = ctx;
+  if (!kernel.isMesh(a) && !kernel.isMesh(b)) return kernel.distance(a, b) <= TOUCH;
+  return kernel.minGap(a, b, MESH_GAP_SEARCH) <= MESH_TOUCH;
+}
 
 /**
  * More faces than this and a tool is **heavy** (P4-12, ADR-0067 §H2). Asking
@@ -122,7 +155,11 @@ export function operate(
     const bodies = new Map(ctx.bodies);
     for (const id of rest) bodies.delete(id);
     bodies.set(first, scope.keep(joined.shape));
-    return { bodies, names: new Map([[first, joined.names]]), previewTools: preview() };
+    return nameMeshBodies(ctx, {
+      bodies,
+      names: new Map([[first, joined.names]]),
+      previewTools: preview(),
+    });
   }
 
   const op = operation === 'cut' ? 'cut' : 'common';
@@ -148,6 +185,8 @@ export function operate(
       scope.track(result.shape);
       if (set && kernel.measure(result.shape).volume <= 0) break;
     }
+    // A solid that a mesh has swallowed is a mesh from here on (ADR-0066 §4).
+    warnIfBecameMesh(ctx, before.shape, result.shape);
     const was = kernel.measure(before.shape).volume;
     const now = kernel.measure(result.shape).volume;
     const eps = 1e-6 * Math.max(1, Math.abs(was));
@@ -186,7 +225,7 @@ export function operate(
     bodies.set(id, scope.keep(result.shape));
     names.set(id, result.names);
   }
-  return { bodies, names, previewTools: preview() };
+  return nameMeshBodies(ctx, { bodies, names, previewTools: preview() });
 }
 
 /** A box as `Kernel.measure` gives it (loose: it never cuts into the shape). */
@@ -210,6 +249,9 @@ export const boxesTouch = (a: Box, b: Box): boolean =>
  * most pairs are far apart, so: a body whose box doesn't meet the tool's box
  * is out, and the others are asked solid by solid of the tool, boxes first
  * (P3-17). The exact answer is the same.
+ *
+ * A mesh body has no B-rep distance, so a pair with a mesh in it is asked
+ * manifold-3d's `minGap` instead (ADR-0066 §4), within `MESH_TOUCH`.
  */
 export function touchingBodies(ctx: EvalContext, scope: ShapeScope, tool: ShapeHandle): BodyId[] {
   const { kernel } = ctx;
@@ -220,18 +262,17 @@ export function touchingBodies(ctx: EvalContext, scope: ShapeScope, tool: ShapeH
     if (boxesTouch(box, toolBox)) near.push({ id, shape, box });
   }
   if (near.length === 0) return [];
+  const touches = (a: ShapeHandle, b: ShapeHandle): boolean => bodiesTouch(ctx, a, b);
   const solids = kernel.solids(tool);
   for (const solid of solids) scope.track(solid);
   // One solid (or something that has none): the exact distance to the whole tool.
   if (solids.length < 2) {
-    return near.filter(({ shape }) => kernel.distance(shape, tool) <= TOUCH).map(({ id }) => id);
+    return near.filter(({ shape }) => touches(shape, tool)).map(({ id }) => id);
   }
   const parts = solids.map((shape) => ({ shape, box: kernel.measure(shape).bbox }));
   return near
     .filter(({ shape, box }) =>
-      parts.some(
-        (part) => boxesTouch(box, part.box) && kernel.distance(shape, part.shape) <= TOUCH,
-      ),
+      parts.some((part) => boxesTouch(box, part.box) && touches(shape, part.shape)),
     )
     .map(({ id }) => id);
 }

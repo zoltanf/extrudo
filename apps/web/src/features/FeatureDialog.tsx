@@ -132,7 +132,7 @@ export function FeatureDialogPanel({
             {open.note}
           </p>
         )}
-        {shownFields(spec, open.values).map((field) => (
+        {shownFields(spec, open.values, controller.context()).map((field) => (
           <FieldRow
             key={field.name}
             field={field}
@@ -141,6 +141,11 @@ export function FeatureDialogPanel({
             settings={settings}
           />
         ))}
+        {spec.extra && (
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <spec.extra open={open} controller={controller} />
+          </div>
+        )}
       </div>
       {(status?.status === 'error' || status?.status === 'warning' || (why && !fieldIssue)) && (
         <p
@@ -242,6 +247,17 @@ function FieldRow({
         />
       );
       break;
+    case 'info': {
+      // A read-only line: what the file is, not something to change (ADR-0066 §2).
+      const ctx = controller.context();
+      const text = ctx ? field.text(open.values, ctx) : '';
+      control = (
+        <p data-info={field.name} className="truncate pt-1.5 text-sm">
+          {text}
+        </p>
+      );
+      break;
+    }
   }
   return (
     <div className="grid grid-cols-[72px_minmax(0,1fr)] items-start gap-2" data-field={field.name}>

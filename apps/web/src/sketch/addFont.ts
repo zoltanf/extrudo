@@ -6,14 +6,16 @@
  * anything is stored: a file that isn't a readable font leaves no trace, which
  * also means the shaper has proved it can shape with it.
  *
- * Sizes are the store's business (`writeAttachment` refuses a file over 10 MB
- * and a design over 50 MB, ADR-0061 §2), so this shows whatever it says.
+ * Sizes are the store's business (`writeAttachment` refuses a file over 25 MB
+ * and a design over 100 MB, ADR-0061 §2), so this shows whatever it says.
  */
 import {
-  type Attachment,
   type AttachmentId,
   addAttachment,
+  baseName,
   type DocumentStore,
+  FONT_MEDIA_TYPES,
+  mediaTypeOf,
   newId,
 } from '@extrudo/core';
 import { type ProjectStore, sha256Hex } from '@extrudo/storage';
@@ -47,20 +49,6 @@ export interface FontPicker {
   projects: ProjectStore;
 }
 
-/** The media type a font file's extension gives, or why it can't be added. */
-function mediaTypeOf(fileName: string): Attachment['mediaType'] | 'woff2' | undefined {
-  if (/\.woff2$/i.test(fileName)) return 'woff2';
-  if (/\.ttf$/i.test(fileName)) return 'font/ttf';
-  if (/\.otf$/i.test(fileName)) return 'font/otf';
-  if (/\.woff$/i.test(fileName)) return 'font/woff';
-  return undefined;
-}
-
-/** A file name without its extension: what a font with no name of its own is called. */
-function baseName(fileName: string): string {
-  return fileName.replace(/\.[^.]+$/, '') || fileName;
-}
-
 /**
  * The font ID for a file the user picked, or `undefined` when they cancelled
  * or the file was refused (which it then says). The ID is
@@ -71,12 +59,15 @@ export async function addFontFile(deps: AddFontDeps): Promise<string | undefined
   const file = await deps.files.pick(FONT_ACCEPT);
   if (!file) return undefined;
   const doc = deps.store.getState().doc;
+  // The extension gives the media type (P4-06 §0). WOFF2 is the one case named
+  // on its own: it is a font the shaper can't read (ADR-0061 §1), and the
+  // user is told what to do about it.
   const mediaType = mediaTypeOf(file.name);
-  if (mediaType === 'woff2') {
+  if (/\.woff2$/i.test(file.name)) {
     deps.notify('error', "WOFF2 isn't supported; convert the font to TTF or OTF first.");
     return undefined;
   }
-  if (!mediaType) {
+  if (!mediaType || !FONT_MEDIA_TYPES.includes(mediaType)) {
     deps.notify('error', 'Extrudo reads TrueType (.ttf), OpenType (.otf) and WOFF (.woff) fonts.');
     return undefined;
   }

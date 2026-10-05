@@ -17,7 +17,7 @@ import {
   type SketchFrame,
   sketchToWorld,
 } from '@extrudo/core';
-import { KernelError, type Vec3 } from '../kernel';
+import { KernelError, MeshBodyError, meshBodyMessage, type Vec3 } from '../kernel';
 import { LostReferenceError } from '../naming/resolve';
 import type { EvalContext } from '../recompute/types';
 import type { SketchOutputData } from './sketch';
@@ -70,6 +70,9 @@ export function planeOf(
 ): PlaneOf {
   if (ref.kind === 'face') {
     const hit = ctx.resolve(ref, { label });
+    // A mesh body's one face is its whole surface of triangles, not a flat
+    // face to sit something on (ADR-0066 §3).
+    if (ctx.kernel.isMesh(hit.shape)) throw new MeshBodyError(meshBodyMessage(capitalize(label)));
     const face = ctx.describe(hit.shape).faces[hit.index];
     if (face?.type !== 'plane' || !face.direction) {
       throw new KernelError(`${capitalize(label)} isn't flat. Pick a flat face or a plane.`);

@@ -52,7 +52,9 @@ const group = (name) =>
     : name.endsWith('.wasm')
       ? name.includes('occt')
         ? 'OCCT WASM'
-        : 'planegcs WASM'
+        : name.includes('manifold')
+          ? 'manifold WASM'
+          : 'planegcs WASM'
       : /woff2?$/.test(name)
         ? 'fonts'
         : name.endsWith('.js')

@@ -121,8 +121,8 @@ describe('the revolve dialog', () => {
                 expression: 'exprs',
                 choice: 'choices',
                 toggle: 'toggles',
-              } as const;
-              const k = kind[field.kind];
+              } as Record<string, keyof typeof v>;
+              const k = kind[field.kind] as keyof typeof v;
               expect(back[k][field.name], `${field.name} (${direction})`).toEqual(v[k][field.name]);
             }
             checked++;

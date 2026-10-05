@@ -2,7 +2,8 @@ import type { DocumentStore, ModelStore } from '@extrudo/core';
 import { type BodyMesh, Recomputer, type SpawnKernel, spawnBrowserKernel } from '@extrudo/kernel';
 import { useEffect, useState } from 'react';
 import { appNotifications } from '../design-system';
-import { fontBytes, usedFonts } from '../sketch/fonts';
+import { fileMediaType, fileName } from '../features/import';
+import { attachmentBytes, fontBytes, usedFonts } from '../sketch/fonts';
 
 /** What a replaced kernel worker says in the notification history (P4-12 H4). */
 export const RECYCLED_TEXT = 'The geometry kernel was restarted to free memory.';
@@ -11,11 +12,13 @@ export const RECYCLED_TEXT = 'The geometry kernel was restarted to free memory.'
  * One kernel per open project, recomputing the document as it changes and
  * filling the model store (P2-01, ADR-0024). Created in an effect, like the
  * autosaver, so strict mode's second mount gets a fresh one. Feature dialogs
- * preview through it (P2-05). The document's text fonts go to the worker
- * before the recompute that needs them (P4-03, ADR-0058 §4). A worker whose
- * heap has grown past its limit is replaced between recomputes (P4-12 H4),
- * which the notification history records, quietly: the view carries on showing
- * the model throughout.
+ * preview through it (P2-05). The document's text fonts and the files its
+ * imports name go to the worker before the recompute that needs them (P4-03,
+ * ADR-0058 §4; P4-06, ADR-0066 §0). A worker whose heap has grown past its
+ * limit is replaced between recomputes (P4-12 H4), which the notification
+ * history records, quietly: the view carries on showing the model throughout,
+ * and the new worker is sent the fonts and files again (`Recomputer`'s restart
+ * path, which mesh bodies need as well for manifold-3d).
  */
 export function useRecompute(
   store: DocumentStore,
@@ -29,6 +32,7 @@ export function useRecompute(
       document: store,
       model,
       fonts: { used: usedFonts, bytes: fontBytes },
+      files: { bytes: attachmentBytes, mediaType: fileMediaType, fileName },
       onRecycle: () => {
         appNotifications.getState().push('info', RECYCLED_TEXT, { quiet: true });
       },

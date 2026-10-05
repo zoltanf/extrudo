@@ -9,7 +9,7 @@
  * vertical through its face's centre.
  */
 import { type BodyId, type PlaceOnBedInputs, placeOnBedFeature } from '@extrudo/core';
-import { KernelError } from '../kernel';
+import { KernelError, MeshBodyError, meshBodyMessage } from '../kernel';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { compose, faceDown, type Matrix12, rotation } from './matrix';
 import { isIdentity, transformBodies, withImages } from './transform';
@@ -43,6 +43,9 @@ function evaluatePlaceOnBed(ctx: EvalContext<PlaceOnBedInputs>): FeatureOutput {
         'Two of the faces belong to the same body, and a body lies on one face. Pick one face per body.',
       );
     }
+    // A mesh body's one face is all its triangles, so there is no flat face
+    // to lay down (ADR-0066 §3).
+    if (ctx.kernel.isMesh(hit.shape)) throw new MeshBodyError(meshBodyMessage('Place on Bed'));
     const face = ctx.describe(hit.shape).faces[hit.index];
     if (face?.type !== 'plane' || !face.direction) {
       throw new KernelError(

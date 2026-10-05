@@ -35,7 +35,11 @@ conics), P4-07 (customizer, configurations), P4-08 (print tolerance,
 slicer hand-off), P4-09 (timeline groups, linked folders) and P4-10 (rib/web,
 variable-radius fillet) are done; P4-11
 (benchmarks B8–B10) is **done** on 2026-10-04 — B9 (the threaded bottle cap and
-thread adapter), B8 (the name tag) and B10 (the cable chain link). ADR-0001 chose
+thread adapter), B8 (the name tag) and B10 (the cable chain link) — and P4-06
+(import: drawings into a sketch, STEP as a base body, mesh bodies with
+manifold-3d booleans, canvas images) is **done** on 2026-10-05, all five slices
+(ADR-0066). **Phase 4 is therefore complete apart from P4-12's backlog.**
+ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
 (facade, TS `Kernel`, worker, `KernelClient` with crash restart, memory test,
@@ -974,7 +978,103 @@ texts"); OK commits the change through `ToolHost` as one undo step ("Import
 <file name>"), and a reader error or the limit shows in the panel with OK
 disabled. A nested region is a hole of its parent **and** a region of its own
 (ADR-0020), so a plate with a Ø10 circle reads `profiles=2 holes=1`.
-
+ADR-0066 (P4-06, slice 2) added **attachments for imports and STEP import**:
+core's `media-types.ts` holds the ten media types and `mediaTypeOf(fileName)`
+(extensions, never `File.type`; `addFont.ts` uses it too), an attachment may
+carry 25 MB a file and 100 MB a design, and a new `file` input kind
+(`{ kind: 'file', id }`) names an attachment — the document schema checks it
+exists and has a media type the feature reads (`FILE_INPUT_MEDIA_TYPES`,
+keyed by feature type). **Files reach the worker like fonts**:
+`KernelApi.addFile(id, bytes, mediaType)` keeps a `Map` for the session,
+`EvalContext.file(id)` / `fileType(id)` read it (`MissingFileError` is a
+`KernelError`, so a file the design names and the worker lacks is the feature's
+error), and the `Recomputer`'s `#sendResources` sends every attachment an
+`import` names before the recompute **or the preview's draft**, once per
+kernel (`FileSource.bytes`; the app side is `attachmentBytes` from
+`sketch/fonts.ts`, with `putAttachmentBytes` for a file just picked). The
+`import` feature (core `import.ts`, kernel `features/import.ts`, STEP branch
+only) is `readStep` → the `up` turn (`transform`) → `splitSolids`, faces
+`import:<id>:face:<n>` from the file's face order, mesh media types refused
+with "Mesh import comes in a later version."; **no facade change**. The UI is
+the **Insert tab** (it replaces the `insertSvg` placeholder; `importDrawing`
+joins it and is unavailable outside a sketch): `importBody` / File menu "Import
+STEP or mesh…" writes the bytes **before** the dialog opens, so the preview
+finds them, and OK adds the attachment record and the feature in one undo step
+through the dialog framework's `commitWith` hook (a transaction around both).
+The dialog grew a read-only `info` field kind and `shown(values, ctx)` (a
+mesh's `units` depends on the document). The fixture is B3's two bodies
+through our own `writeStep` (`fixtures/imports/b3.step`, `WRITE_FIXTURES=1`).
+ADR-0066 (P4-06, slice 3) added **mesh bodies**: a mesh is a `ShapeHandle` at
+`MESH_HANDLE_BASE` (2^30) kept in `Kernel.#meshes` as a manifold-3d 3.5.4
+`Manifold`, so the engine, the cache, `hold`, scopes and strict leaks are
+unchanged and a leaked mesh fails a test like a leaked shape (`release` sends a
+mesh to the map and a shape to OCCT). `meshFrom(mesh)` welds the corners
+(`Mesh.merge()`) and refuses a mesh that isn't closed with `checkManifold`'s
+counts on a `MeshError`; `mesh`, `exportMesh`, `measure`, `properties`,
+`describe`, `count`, `solids` and `transform` have a mesh branch, and **every
+other public method that takes a shape throws `MeshBodyError`** naming the
+operation for the user ("Shell needs a solid body: this body is a mesh
+(imported, or combined with a mesh)."; booleans no longer refuse, see slice 4).
+A mesh body is **one face** of all its triangles, flat across a 30°
+crease and smooth elsewhere, its creases are its edges with the new `EDGE_MESH`
+flag (drawn, never picked: `pick.ts`'s `UNPICKABLE`), and its centre is the
+centre of its box (manifold has no centre of mass). The module loads only for
+a design that needs it: `KernelApi.enableMeshes()` (the worker's
+`manifold-3d/manifold.wasm?url`) called by the `Recomputer` beside
+`#sendResources`, and `loadManifold` in Node — a design without a mesh import
+downloads 0.54 MB less. `import`'s mesh branch parses with `@extrudo/io`
+(`readStl` reads ASCII STL, the new `readObj`, `read3mf`), `units` scales the
+coordinates (`auto` = a 3MF's own unit), `up` is Move's turn, each piece is a
+body (the largest keeps `ctx.bodyId(0)`) named `mesh:<feature>` and `#2`, `#3`…
+for the rest, and the errors name the file: "open.stl isn't a closed solid (3
+open edges): repair it in your slicer…". The browser tags a mesh body "Mesh"
+(`data-body-mesh`), the Export dialog leaves it out of a STEP file, and
+`addFile` carries the file's **name** (a previewed file has no record yet), read
+back through `EvalContext.fileName`. Fixtures in `fixtures/imports/`:
+`cube.stl`, `open.stl`, `two-parts.3mf` (centimetres) and `ascii-cube.stl`
+through our own writers (`WRITE_FIXTURES=1`), plus a hand-written Y-up OBJ.
+ADR-0066 (P4-06, slice 4) added **booleans and transforms with mesh bodies**:
+`Kernel.boolean` dispatches to manifold-3d when either operand is a mesh, with
+the B-rep one meshed through `exportMesh` at `MESH_BOOLEAN_DEFLECTION`
+(0.01 mm, 0.1 rad) into a temporary `Manifold` that is deleted again, and **the
+result is a mesh body** with no history — so `operate` (extrude, revolve,
+sweep, hole, pattern instances, rib joins), Combine and Mirror's join work on
+meshes. `features/mesh-bodies.ts` holds the three rules that follow from a
+result having one face and no history: a mesh body a **boolean** made is named
+`mesh:<feature>` (`#2`, `#3`… over the bodies that feature touched,
+`nameMeshBodies` at the end of an evaluator, which leaves a **transform's**
+names alone — a move keeps the body's name, a copy keeps ADR-0044's or ADR-0047's
+copy rule), a solid that became a mesh says so **once** per
+feature (`MESH_WARNING`, "A solid body was combined with a mesh and is a mesh
+from here on: fillets and face picks no longer work on it.", through `ctx.warn`,
+so the engine's own de-duplication makes it once), and `transformedNames` gives
+a move the name the body had (a reference to its face still resolves) and a copy
+ADR-0044's copy rule (`move:M1:from:(mesh:Import1)`). `touchingBodies` asks a
+pair with a mesh in it `Kernel.minGap` (manifold's `minGap`, `bodiesTouch`,
+`MESH_TOUCH` 1e-6 mm) instead of OCCT's distance, so Combine's join order and a
+Mirror's copy do too; `Kernel.splitByPlane` cuts a mesh body (Split Body writes
+both halves out itself, the larger keeping the body's ID, since fusing them
+would give the body back) and `splitSolids` splits a mesh with `decompose()`;
+`Kernel.scale` dispatches a mesh to `transform` with the scale matrix about the
+centre, and `transform` keeps a reflection's triangles facing out
+(`#outward` is the net). A hole on a mesh face, Place on Bed and Rib still
+refuse with `meshBodyMessage` naming them. With P4-12's hardening merged
+(ADR-0067), `mergeTools`'s heavy-tool rule short-circuits before the mesh-aware
+`bodiesTouch` (a heavy B-rep pair never asks for a distance; a mesh pair still
+asks manifold's `minGap`), `stats()` reads the facade's heap through
+`Kernel.heap()` and still counts a leaked mesh, and a **recycled** worker
+(ADR-0067 §H4) gets `enableMeshes()` and every file again through the same
+`#resend` a crash takes (`recomputer-recycle.test.ts` covers the file and the
+module going to each worker before its recompute). Measured: a 204,800-triangle STL
+less a Ø10 mm B-rep cylinder in 193 ms, to 0.001 % of the exact volume and
+closed (`BENCH=1 pnpm vitest run packages/kernel/src/mesh-boolean-bench`).
+ADR-0066 (P4-06, slice 5) added **canvas images**: feature `canvas` (no body)
+with `plane`, `image`, `x`, `y`, `width`, `rotation`, `opacity` and `flip`; the
+kernel's evaluator reads the plane with `planeOf` and reports a `CanvasReport`
+(`ModelState.canvases`), so no image bytes reach the worker, and the app draws
+one textured quad per canvas from `createImageBitmap` (never picked), while the
+dialog writes `width` from the picture's pixels at 100 dpi and **Calibrate** sets
+it from two clicks on the plane and their real distance.
 ADR-0067 §H1 (P4-12) took **`'unsafe-eval'` out of the content policy**:
 `packages/core/src/zod.ts` is the only place zod is imported from and calls
 `z.config({ jitless: true })` before any schema exists (every schema module
@@ -1000,14 +1100,23 @@ which re-sends the fonts and recomputes cold; the model store keeps showing the
 result it has, and the app notes it in the notification history quietly
 (`useRecompute`'s `onRecycle`). It only replaces a worker whose heap has been
 under the limit since the last one, so a limit below a fresh WASM's own heap
-can't loop. H2 and H5 are other branches.
+can't loop, and it re-sends the fonts **and the files** of a document that
+imports a mesh, and calls `enableMeshes()` again (`Recomputer`'s `#resend`
+clears its resource list, P4-06 §0/§3). **§H2** found the ~400-turn thread trap to
+be OCCT running out of the 32-bit WASM heap, so the tooth is cut out of the
+ring in pieces (`THREAD_CHUNK`), and `mergeTools` merges two **heavy** tools
+(over `HEAVY_TOOL_FACES` = 200 faces) whose boxes overlap without asking for
+their distance (`isHeavyTool` in `operation.ts`; `bodiesTouch` still asks for a
+mesh pair's `minGap`, P4-06 §4). **§H5** warns when a swept profile is drawn
+away from the path's start.
 
-Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-06**'s
-slices 2 to 5 (attachments and STEP, mesh bodies, mesh booleans, the canvas)
-then onward in `docs/03-roadmap.md`; ADR-0063's Deferred (exact rational conics
-in the kernel, closed splines, trimming and offsetting splines) is P4-12
-backlog. The owner's own release steps (slicer check, making the
-repository public, Cloudflare, domain, tag v0.3.0) are in
+Next, one task at a time (not parallel tracks, since 2026-09-30): **P4-06 is
+done** (all five slices, ADR-0066) and P4-12's hardening part (ADR-0067 H1 to
+H5) is on main, so **Phase 4 is complete apart from P4-12's backlog** (exact
+rational conics in the kernel, closed splines, trimming and offsetting
+splines — ADR-0063's Deferred; and the modelling depth items P4-12 lists);
+onward in `docs/03-roadmap.md`. The owner's own release steps (slicer check,
+making the repository public, Cloudflare, domain, tag v0.3.0) are in
 `docs/release-checklist.md`; don't do them. Deeper carried-over items are the
 P4-12 backlog.
 
@@ -2313,6 +2422,89 @@ them. Notes further down that name a machine apply to that machine only.
   profile is picked in the model **outside** the circle (at sketch (−10, 0)),
   pressed with E, and `data-bodies` gives `40,20,5`; with Scale 2, `80,40,5`;
   and `square-inches.dxf` ($INSUNITS 1) gives 25.4 × 25.4 mm.
+- **Import mesh e2e** (`e2e/import-mesh.spec.ts`, P4-06 slices 3 and 4): the
+  same Insert tab › Import flow with `fixtures/imports/cube.stl` (Units "auto",
+  the preview's `data-preview-status="ok"` needs manifold-3d in the worker),
+  `two-parts.3mf` (two bodies at ×10 for centimetres, the largest first),
+  `bracket-y-up.obj` (read as Z-up, then Up `y` from the chip swaps y and z),
+  `open.stl` (the error in "Feature status" with OK disabled), a Fillet whose
+  Edges field stays "Pick edges" (the creases don't pick) and a Shell that says
+  "Shell needs a solid body", and an STL and 3MF export read back with
+  `@extrudo/io` (one closed object, 8000 mm³) while the Export dialog under
+  STEP disables the body. Slice 4's four tests: a **Ø6 circle sketched on XY and
+  extruded as a cut through all** (the profile is picked in the model and `e`
+  pressed; the Operation and Extent comboboxes read `cut` and `through-all`; the
+  body stays one face of triangles tagged "Mesh" and its 3MF is closed at
+  7434 mm³ ±0.5 %), a Box overlapping the cube **joined with Combine** (the
+  Target and Tools buttons take the picks, the warning is the region's whole
+  text, one body of 25 × 20 × 20 mm), a **Move** by 10 mm along X (the field is
+  "X distance"; the exported mesh's lowest x is 10) and a **Split Body** by YZ
+  (the browser row selected, then Modify › Split Body; the YZ plane picked on
+  its square at `[0, −half · 0.75, half · 0.75]` as `e2e/split-body.spec.ts`
+  does it, and two bodies of 10 × 20 × 20 mm whose volumes add up). **9 tests,
+  20.7 s** (1.7 s to 6.8 s each; a cut, a join, a move and a split each take a
+  mesh boolean), green with `--repeat-each=3`. Two things the four needed: the
+  circle's diameter is **typed into the tool's heads-up box** (the group
+  "Heads-up input", textbox "Diameter", Enter finishes the circle — the grid
+  would snap a drawn radius), and the circle is sketched on a construction plane
+  **10 mm below** the cube so its profile is in front of the body from the
+  bottom view (Shift+3) and can be picked. Combine picks its target and tool in
+  the view (`Target` then the box's top face at `[22, 10, 10]`, `Tools` then the
+  cube's top at `[10, 10, 20]`): with pre-selection the *target* is the first
+  body **in creation order**, so a mesh target and a solid tool warn about
+  nothing.
+- **Canvas e2e** (`e2e/canvas.spec.ts`, P4-06 slice 5): the picture is a
+  200 × 100 PNG **built in the page** with an `OffscreenCanvas` (as a string:
+  the e2e specs typecheck without the DOM) and handed to the file chooser as
+  `{ name: 'plan.png', mimeType: 'image/png', buffer }`; the tile is the
+  **Insert** tab's button "Canvas" (`exact: true`) and the dialog is "Canvas
+  dialog" / "Edit Canvas1 dialog": `[data-info="image"]`, the button "Plane"
+  (`exact: true`, "1 face"), the textboxes "X", "Y", "Width", "Rotation" and
+  "Opacity" (**all `exact: true`**: "Y" also matches "Opacity"), the checkbox
+  "Flip" and the button "Calibrate" (which reads "Calibrating…" while it runs,
+  so match it with a regex). The Viewport's `data-canvases` reads
+  `<feature id>:<w>x<h>:<origin>` per drawn canvas in mm to 0.01 ("…:20x10:0,0,20")
+  and is **absent until the picture is decoded** (its height is the picture's
+  aspect), so poll it. Calibrate counts its marked points on `[data-calibrate]`
+  ("0", "1", "2"), the dialog then shows `<measured> mm apart on the picture.`
+  and a "Real distance" textbox with "Apply". **Fit the view (F6) before
+  clicking on the picture**: the origin planes' squares are 0.16 × the view
+  size, and a click on one of them picks it instead of the face. While a
+  dialog's Plane field is the pick field the view has no `data-model-hover`
+  (that belongs to the model picker). The browser's rows carry `data-canvas`,
+  like the construction rows' `data-construction`.
+- **Import STEP e2e** (`e2e/import-step.spec.ts`, P4-06 slice 2): the tile is
+  `importBody` in the **Insert tab** (`role="tab"` "Insert", then the button
+  "Import", `exact: true`; `data-tool="importBody"`), and the File menu's
+  "Import STEP or mesh…" runs the same command. It opens the file dialog at
+  once, so wait for the `filechooser` beside the click and
+  `setFiles('fixtures/imports/b3.step')` (B3's two bodies through our own
+  `writeStep`). The dialog is the region "Import dialog" / "Edit Import1
+  dialog": `[data-info="file"]` ("b3.step · 30 kB"), the "Up" combobox
+  (`z`/`y`; **no** "Units" for a STEP file, it converts its own units),
+  `data-preview-status` (the preview takes a moment: read up to 60 s) and
+  `data-dialog-valid`. OK gives `data-bodies` **"Body1:6:60,80,10
+  Body2:6:60,31.8,60"** (sizes are rounded to 0.1 mm) and the chip "Import1";
+  one Ctrl+Z takes the feature and the file's record away together and
+  Ctrl+Shift+z brings them back. Editing from the chip (dblclick) turns Up `y`
+  and the sizes' y and z swap: "60,60,31.8" and "60,10,80". A file that isn't
+  a STEP file says so in the dialog's "Feature status" with `data-dialog-valid`
+  absent. Exporting the design and importing it as a new one brings the bodies
+  back (the attachment travels), as in the user-fonts spec.
+  Slice 5 added the **canvas** (`features/canvas.tsx`, `viewport/Canvas.tsx`,
+  `viewport/canvasGeometry.ts`, `viewport/canvasImages.ts`): a canvas is **view
+  geometry from a report, never picked** — the kernel evaluator reads the plane
+  (`planeOf`) and reports its frame as a `CanvasReport`
+  (`ModelState.canvases`), and `canvasGeometry.ts` reads the picture, centre,
+  width, turn and opacity from the feature's own inputs through core's
+  `canvasNumbers` (the kernel feeds it `ctx.value`, the view the document's
+  evaluation). The picture's bytes are decoded on the UI thread
+  (`createImageBitmap`, so the CSP is untouched) and its texture goes with the
+  last canvas using it; the width is the picture's pixel width × 0.1 mm, which
+  **only the app can know**, and Calibrate (its UI is `spec.extra`, a spec's
+  own component under the fields; its clicks stay out of the Plane field
+  through `spec.placeAtOnly`) writes `width × real / measured`. `spec.info` is
+  slice 2's field kind.
 - **Emboss e2e** (`e2e/emboss.spec.ts`, P4-04): the tool is `emboss` in Create's
   menu (`menuitem` "Emboss", no key); its dialog is the region "Emboss dialog" /
   "Edit Emboss1 dialog" with the buttons "Profiles" and "Face" (`exact: true`:

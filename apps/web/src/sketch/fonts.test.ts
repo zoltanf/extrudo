@@ -14,7 +14,7 @@ import {
 import { BUNDLED_FONTS } from '@extrudo/fonts';
 import { memoryProjectStore, type ProjectStore, sha256Hex } from '@extrudo/storage';
 import { afterEach, describe, expect, it } from 'vitest';
-import { fontBytes, fontUrls, setAttachmentFonts, usedFonts } from './fonts';
+import { fontBytes, fontUrls, setAttachmentFiles, usedFonts } from './fonts';
 
 const eid = (id: string) => id as SketchEntityId;
 
@@ -130,14 +130,14 @@ async function projectWithAttachment(bytes: Uint8Array): Promise<{
 }
 
 describe('fontBytes of a design font', () => {
-  afterEach(() => setAttachmentFonts(undefined));
+  afterEach(() => setAttachmentFiles(undefined));
 
   it('reads the bytes of the attachment, once', async () => {
     const bytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7]);
     const { font, store, projects } = await projectWithAttachment(bytes);
     const projectId = store.getState().doc.id;
     let reads = 0;
-    setAttachmentFonts({
+    setAttachmentFiles({
       read: (id) => {
         const record = store.getState().doc.attachments?.[id as AttachmentId];
         reads += 1;
@@ -158,7 +158,7 @@ describe('fontBytes of a design font', () => {
     const projectId = store.getState().doc.id;
     // No project open: nothing to read the attachment from.
     expect(await fontBytes(font)).toBeUndefined();
-    setAttachmentFonts({
+    setAttachmentFiles({
       read: (id) => {
         const record = store.getState().doc.attachments?.[id as AttachmentId];
         return record
@@ -173,7 +173,7 @@ describe('fontBytes of a design font', () => {
 
   it('keeps one design out of another', async () => {
     const mine = await projectWithAttachment(new Uint8Array([9, 9]));
-    setAttachmentFonts({ read: () => Promise.resolve(undefined) });
+    setAttachmentFiles({ read: () => Promise.resolve(undefined) });
     // The other project's file store has nothing under this ID, and the cache
     // for this font was dropped when the source changed.
     expect(await fontBytes(mine.font)).toBeUndefined();

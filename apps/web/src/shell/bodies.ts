@@ -36,6 +36,13 @@ export interface BodyEntry {
   meta: BodyMeta;
   /** Whether `meta` is stored in the document (false: the name it is about to get). */
   stored: boolean;
+  /**
+   * The body is a mesh, not a solid (P4-06, ADR-0066 §3): triangles from an
+   * imported file, which the view draws and the browser tags "Mesh". It comes
+   * from the body's mesh (`BodyMesh.mesh`), so it follows what the kernel
+   * computed.
+   */
+  mesh?: boolean;
 }
 
 /** Body IDs in timeline order: the feature that made each, then its number. */
@@ -69,8 +76,14 @@ export function bodyEntries(
   );
   return ids.map((id) => {
     const stored = doc.bodies[id];
-    if (stored) return { id, meta: stored, stored: true };
-    return { id, meta: { name: names[id] as string, visible: true }, stored: false };
+    const mesh = (live[id] as { mesh?: boolean } | undefined)?.mesh === true;
+    if (stored) return { id, meta: stored, stored: true, ...(mesh && { mesh: true }) };
+    return {
+      id,
+      meta: { name: names[id] as string, visible: true },
+      stored: false,
+      ...(mesh && { mesh: true }),
+    };
   });
 }
 

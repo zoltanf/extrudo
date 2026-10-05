@@ -127,8 +127,13 @@ export function inspectShapes(kernel: Kernel, sources: readonly InspectSource[])
   const shapes: ShapeHandle[] = [];
   const items: ItemMeasure[] = [];
   for (const { body, target } of sources) {
+    // A mesh body has no sub-shapes to take out (ADR-0066 §3): its one face is
+    // the body itself, and measuring an edge or a vertex of one is refused by
+    // the kernel with the message a user sees.
     const shape =
-      target.kind === 'body' ? body : scope.track(kernel.subShape(body, target.kind, target.index));
+      target.kind === 'body' || (target.kind === 'face' && kernel.isMesh(body))
+        ? body
+        : scope.track(kernel.subShape(body, target.kind, target.index));
     shapes.push(shape);
     items.push(measureItem(kernel, body, target, shape));
   }
@@ -157,6 +162,17 @@ function measureItem(
   }
   if (target.kind === 'vertex') return { kind: 'vertex', point: p.centroid, bbox: p.bbox };
   if (target.kind === 'face') {
+    if (kernel.isMesh(body)) {
+      // One face of all a mesh body's triangles: its area, its centre and its
+      // box, and no surface under it (ADR-0066 §3).
+      return {
+        kind: 'face',
+        area: p.area,
+        centroid: p.centroid,
+        bbox: p.bbox,
+        surface: 'other',
+      };
+    }
     const s = kernel.surfaceGeometry(body, target.index);
     const face: ItemMeasure = {
       kind: 'face',

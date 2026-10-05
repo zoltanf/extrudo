@@ -42,7 +42,15 @@ import {
   ribSettings,
   sketchToWorld,
 } from '@extrudo/core';
-import { type Kernel, KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
+import {
+  type Kernel,
+  KernelError,
+  MeshBodyError,
+  meshBodyMessage,
+  type ShapeHandle,
+  type ShapeScope,
+  type Vec3,
+} from '../kernel';
 import { deriveNames } from '../naming/names';
 import { type NamedShape, namedBoolean, namedPrism } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
@@ -104,6 +112,11 @@ function evaluateRib(ctx: EvalContext<RibInputs>): FeatureOutput {
   if (!(thickness > EPS)) throw new KernelError('The thickness must be greater than 0.');
   if (ctx.bodies.size === 0) {
     throw new KernelError("There's no body for the rib to grow on. Draw one first.");
+  }
+  // The slab is cut out of every body, which needs B-rep geometry: a mesh body
+  // can't have a rib grown on it (ADR-0066 §3).
+  for (const shape of ctx.bodies.values()) {
+    if (ctx.kernel.isMesh(shape)) throw new MeshBodyError(meshBodyMessage('Rib'));
   }
   const line = ribLine(ctx, settings.curve);
   using scope = ctx.kernel.scope();

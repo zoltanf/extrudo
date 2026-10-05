@@ -4,6 +4,7 @@
 // any real feature has a dialog. Spawned by spawnDebugKernel() (browser.ts);
 // the app's own worker never registers these types.
 import * as Comlink from 'comlink';
+import manifoldWasmUrl from 'manifold-3d/manifold.wasm?url';
 import wasmUrl from '../occt/dist/extrudo_occt_single.wasm?url';
 import { loadOcct } from './occt/load';
 import { testFeatures } from './recompute/testing';
@@ -12,7 +13,7 @@ import { workerApi } from './worker-api';
 
 const service = new KernelService(
   () => loadOcct({ wasmUrl, log: (line) => console.debug('[occt]', line) }),
-  { features: testFeatures().registry },
+  { features: testFeatures().registry, manifold: { wasmUrl: manifoldWasmUrl } },
 );
 
 Comlink.expose(workerApi(service));

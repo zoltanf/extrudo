@@ -40,7 +40,7 @@ import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve } from '../planar';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
-import { boxesTouch, type OperationWords, operate, TOUCH } from './operation';
+import { bodiesTouch, boxesTouch, type OperationWords, operate } from './operation';
 import { mergeTools } from './pattern';
 import { planarFace, planeFrame, upright } from './primitives';
 import type { SketchOutputData } from './sketch';
@@ -125,7 +125,7 @@ export const kernelHole: KernelFeatureDefinition<HoleInputs> = {
     const misses = parts.filter((part) => {
       const box = ctx.kernel.measure(part.shape).bbox;
       return !bodies.some(
-        (body) => boxesTouch(body.box, box) && ctx.kernel.distance(body.shape, part.shape) <= TOUCH,
+        (body) => boxesTouch(body.box, box) && bodiesTouch(ctx, body.shape, part.shape),
       );
     }).length;
     if (misses > 0 && misses < parts.length) {

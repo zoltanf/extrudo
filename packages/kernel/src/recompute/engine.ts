@@ -14,6 +14,7 @@
  * the kernel when the last entry holding it is evicted.
  */
 import {
+  type AttachmentId,
   type BodyId,
   type EvaluateResult,
   type ExtrudoDocument,
@@ -34,16 +35,18 @@ import { fingerprintOf } from '../naming/fingerprint';
 import { namesOf, positionalNames, type TopoNames } from '../naming/names';
 import { LostReferenceError, resolveRef } from '../naming/resolve';
 import { hashOf } from './hash';
-import type {
-  BodyResult,
-  EvalContext,
-  FeatureOutput,
-  KernelFeatureDefinition,
-  PreviewRequest,
-  PreviewToolMesh,
-  ProgressListener,
-  RecomputeRequest,
-  RecomputeResult,
+import {
+  type BodyResult,
+  type EvalContext,
+  type FeatureOutput,
+  type ImportedFile,
+  type KernelFeatureDefinition,
+  MissingFileError,
+  type PreviewRequest,
+  type PreviewToolMesh,
+  type ProgressListener,
+  type RecomputeRequest,
+  type RecomputeResult,
 } from './types';
 
 export const DEFAULT_TESSELLATION: MeshOptions = { linearDeflection: 0.05, angularDeflection: 0.3 };
@@ -51,6 +54,12 @@ export const DEFAULT_TESSELLATION: MeshOptions = { linearDeflection: 0.05, angul
 export interface EngineOptions {
   /** Cache entries kept besides those the latest recompute and preview use. Default 256. */
   maxEntries?: number;
+  /**
+   * The files the worker holds (P4-06, ADR-0066 §0): an `import` reads its
+   * STEP or mesh file through `ctx.file`. The service keeps the map the app
+   * fills with `addFile` and hands it here.
+   */
+  files?: (id: AttachmentId) => ImportedFile | undefined;
   /**
    * Throw when an evaluator leaves shapes behind (tests). Otherwise the
    * leak is reported through `onLeak` (default: `console.warn`).
@@ -320,8 +329,9 @@ export class RecomputeEngine {
       }
       const upstream = dependencies.map((id) => (passed.get(id) as { entry: Entry }).entry);
       const access = definition.bodyAccess?.(parsed.data) ?? 'write';
-      // No font in the key: a font's bytes never change under its ID, and the
-      // worker has every font before the first recompute (ADR-0058 §4).
+      // No font and no file in the key: their bytes never change under their
+      // IDs (content-addressed, ADR-0061 §1), and the worker has every one
+      // before the recompute or preview that needs it (ADR-0058 §4, ADR-0066 §0).
       const key = hashOf(
         feature.type,
         feature.id,
@@ -354,6 +364,7 @@ export class RecomputeEngine {
           outputs,
           key,
           (id) => doc.features[index.get(id) ?? -1]?.name,
+          doc,
         );
         evaluated.push(feature.id);
       }
@@ -463,6 +474,7 @@ export class RecomputeEngine {
     outputs: ReadonlyMap<FeatureId, FeatureOutput | undefined>,
     key: string,
     featureName: (id: FeatureId) => string | undefined,
+    doc: ExtrudoDocument,
   ): Entry {
     const kernel = this.#kernel;
     const warnings: string[] = [];
@@ -480,6 +492,14 @@ export class RecomputeEngine {
       return names;
     };
     const describe = (shape: ShapeHandle) => this.#describe(shape);
+    // A file of the design (P4-06): what the app sent with `addFile`, named by
+    // the attachment ID. Missing bytes are the feature's error, worded with
+    // the file's own name.
+    const file = (id: AttachmentId) => {
+      const held = this.#options.files?.(id);
+      if (!held) throw new MissingFileError(id, doc.attachments?.[id]?.fileName ?? id);
+      return held.bytes;
+    };
     const ctx: EvalContext = {
       kernel,
       feature,
@@ -529,6 +549,16 @@ export class RecomputeEngine {
         if (!output) throw new Error(`${feature.name} doesn't refer to feature ${id}.`);
         return output;
       },
+      file,
+      fileType: (id: AttachmentId) => {
+        const held = this.#options.files?.(id);
+        if (!held) throw new MissingFileError(id, doc.attachments?.[id]?.fileName ?? id);
+        return held.mediaType;
+      },
+      // The file's own name first: a dialog's previewed file has no record in
+      // the document yet (ADR-0061 §2 writes the bytes first).
+      fileName: (id: AttachmentId) =>
+        this.#options.files?.(id)?.fileName ?? doc.attachments?.[id]?.fileName ?? id,
       featureName,
       bodyId: (n = 0) => `${feature.id}:${n}` as BodyId,
     };

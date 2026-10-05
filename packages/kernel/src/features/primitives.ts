@@ -20,7 +20,7 @@ import {
   torusFeature,
 } from '@extrudo/core';
 import { PROFILE_TOLERANCE } from '@extrudo/sketch/profiles';
-import { KernelError, type ShapeScope, type Vec3 } from '../kernel';
+import { KernelError, MeshBodyError, meshBodyMessage, type ShapeScope, type Vec3 } from '../kernel';
 import { type NamedShape, namedPrism, namedRevolve } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve, PlanarFrame } from '../planar';
@@ -127,10 +127,16 @@ function placement(ctx: EvalContext, settings: PrimitiveSettings, n: Numbers, no
   return { origin, x, y: cross(plane.normal, x), normal: plane.normal } satisfies SketchFrame;
 }
 
+/** A feature's noun as a message starts it ("the hole", "the box"). */
+const capital = (noun: string) => noun.charAt(0).toUpperCase() + noun.slice(1);
+
 /** The frame of the plane or flat face a feature sits on (the hole shares it). */
 export function planeFrame(ctx: EvalContext, ref: GeomRef, noun: string): SketchFrame {
   if (ref.kind === 'face') {
     const hit = ctx.resolve(ref, { label: `the face the ${noun} sits on` });
+    // A mesh body's one face is its whole surface of triangles, not a flat face
+    // to sit something on (ADR-0066 §3).
+    if (ctx.kernel.isMesh(hit.shape)) throw new MeshBodyError(meshBodyMessage(capital(noun)));
     const face = ctx.describe(hit.shape).faces[hit.index];
     if (face?.type !== 'plane' || !face.direction) {
       throw new KernelError(

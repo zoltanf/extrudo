@@ -218,10 +218,13 @@ Whole-document rules (checked after the per-field rules):
   the timeline, and not share a feature with another group.
 - A parameter's customizer `min` must not be above its `max` (section 5.1).
 - A `text` entity whose `font` is `attachment:<id>` needs that `id` in
-  `attachments` (section 7.1): the file is written before the document that
-  names it, so a text never names a font the design doesn't carry. A missing
-  attachment record makes the document *damaged* (section 3); a document whose
-  attachment bytes are missing from the container is not damaged (section 2).
+  `attachments` (section 7.1), and an input of kind `file` (section 6.1) needs
+  its `id` there too, of a media type that feature reads (6.28 for an `import`,
+  6.29 for a `canvas`): the file is
+  written before the document that names it, so nothing names a file the
+  design doesn't carry. A missing attachment record makes the document
+  *damaged* (section 3); a document whose attachment bytes are missing from
+  the container is not damaged (section 2).
 - Each feature's `inputs` is additionally checked per feature `type`
   (section 6); the document schema alone only knows the generic input shapes.
 
@@ -266,24 +269,27 @@ gets one at the next recompute.
 
 ### 4.5 `attachments[<attachmentId>]` (Attachment)
 
-A file that travels with the design (P4-03b, ADR-0061). The record says what
-the file **is**; its bytes live beside the document, never in it — in the
-container as `attachments/<sha256>` (section 2) and in the app's project store
-as `projects/<id>/attachments/<sha256>`. Only fonts exist so far (a sketch
-`text` entity's font); a canvas image or an imported body is the next kind.
+A file that travels with the design (P4-03b, ADR-0061; P4-06, ADR-0066 §0).
+The record says what the file **is**; its bytes live beside the document, never
+in it — in the container as `attachments/<sha256>` (section 2) and in the app's
+project store as `projects/<id>/attachments/<sha256>`. Three kinds of file
+exist so far: a font (a sketch `text` entity's `attachment:<id>`), a model an
+`import` feature reads (6.28), and a canvas image (6.29).
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `name` | string | yes | 1 to 200 characters. What the user sees, e.g. `Comic Neue Bold`. |
 | `fileName` | string | yes | 1 to 255 characters. The name of the file it was added from, so an export can offer it back. |
-| `mediaType` | `font/ttf`, `font/otf` or `font/woff` | yes | How the bytes are to be read. WOFF2 is not accepted: the font shaper can't read it, so such a file is refused. |
+| `mediaType` | one of `font/ttf`, `font/otf`, `font/woff`, `model/step`, `model/stl`, `model/3mf`, `model/obj`, `image/png`, `image/jpeg`, `image/webp` | yes | How the bytes are to be read. WOFF2 is not accepted: the font shaper can't read it, so such a file is refused. A reader must take the type from the file **name's extension**, never from the browser's `File.type` (empty for most of these): `.ttf`, `.otf`, `.woff`, `.step`/`.stp`, `.stl`, `.3mf`, `.obj`, `.png`, `.jpg`/`.jpeg`, `.webp` (case apart). |
 | `sha256` | string | yes | Exactly 64 lower case hex digits: the SHA-256 of the bytes, which is the name of the file in the container and in storage. |
-| `size` | integer | yes | At least 1. The file's size in bytes, used for the storage limits (one file at most 10 MB, all of a design at most 50 MB). |
+| `size` | integer | yes | At least 1. The file's size in bytes, used for the storage limits (one file at most 25 MB, all of a design at most 100 MB; raised in P4-06 for imported models, ADR-0066 §0). |
 
 **Content-addressed.** Two attachments (or an attachment and a version) with
 the same `sha256` are the same file and are stored once. A record whose bytes
 are missing, or an entry whose bytes don't match its name, is harmless: the
-design opens and the texts that need it show without letters. An attachment
+design opens, the texts that need a missing font show without letters and the
+feature that names a missing file fails with "The file <fileName> is missing
+from this design." An attachment
 record nothing refers to any more is dropped by the writer of the document
 (the app's commands refuse to drop one a text uses); the bytes are collected
 when the project saves a version.
@@ -458,6 +464,7 @@ before something it uses. Expressions do not order features.
 | `bool` | `value` (boolean) | A flag. |
 | `ref` | `refs` (array of GeomRef, required, may be empty) | Persistent references to geometry (section 8). |
 | `sketchData` | `sketch` (SketchData, required) | A sketch's 2D content (section 7). Only the `sketch` feature uses it. |
+| `file` | `id` (attachment ID string, required) | A file of the design itself (P4-06, ADR-0066 §0): the `id` of an `attachments` entry (4.5) whose bytes the kernel reads. A document that names an `id` it doesn't carry, or one of a media type the feature doesn't read, is **damaged** (section 3), like a `text` font the design doesn't carry. |
 
 Feature-specific rules below are enforced by the per-type inputs schema (each
 inputs object is strict too: the recompute ignores unknown input names with
@@ -1129,6 +1136,62 @@ Names: the prism's own names under `rib:<feature id>` — `…:cap:start` and
 `…:side:<sketch line>` for the face the wall stands on, `…:side:(<sketch
 line>:end0)` and `…:side:(<sketch line>:end1)` for the extension's ends,
 `#n` where names repeat — like an extrude's.
+
+### 6.28 `import`
+
+A file of the design as a body (P4-06, ADR-0066 §2 and §3): a STEP file is read
+as solid bodies, and each solid becomes one body of the design (the largest
+keeps the feature's first body ID `<feature>:0`, the others `<feature>:1`,
+`<feature>:2`…, in creation order as everywhere). A mesh file (STL, 3MF, OBJ)
+is read as **mesh bodies**: one per object of the file, split into its
+connected pieces, numbered the same way. A mesh that isn't closed, or has more
+than 1,000,000 triangles, is an error (the message names the file).
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `file` | `file` | yes | The attachment ID of the file (section 4.5). Its media type must be `model/*`: `model/step`, `model/stl`, `model/3mf` or `model/obj`. |
+| `units` | `enum` | no | What unit the file's numbers are in: `auto` (default; a 3MF's own unit, STL and OBJ as millimetres), `mm`, `cm`, `m` or `in`. Meshes only — a STEP file converts its own units, so the value has no effect there. |
+| `up` | `enum` | no | The file's up axis: `z` (default) or `y`. `y` turns the file +90° about X, so a Y-up file stands up in a Z-up design. |
+
+There are no placement inputs: the bodies land at the file's coordinates, and
+Move or Place on Bed puts them elsewhere. An `import` is not patternable, but
+its bodies are, through Pattern › Bodies.
+
+**Names:** a STEP file's face `n` (1-based, in the order the file's faces are
+listed before the bodies are split) is `import:<feature id>:face:<n>`, with its
+edges and vertices derived from those faces. A mesh body has the one face of all
+its triangles, named `mesh:<feature id>` (`mesh:<feature id>#2`, `#3`… for the
+bodies after the first). The file never changes, so the order is stable and a
+recompute names the same face the same way. Nothing here is built from other
+geometry, so there is no history.
+
+### 6.29 `canvas`
+
+A reference picture on a plane (P4-06, ADR-0066 §5): it makes **no geometry**
+at all — not a face, not a body — so a reader of this file computes nothing
+from it. It is drawn by the view, as one quad on the frame of its plane, and
+it is never picked: clicks pass through to the model or to whatever is
+picking planes. Its `image` bytes are read on the UI thread (`createImageBitmap`
+from the attachment's bytes, so no URL is loaded); **they never reach the
+geometry kernel**.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `plane` | `ref` | no | The plane the picture lies on: a `plane` reference (an origin plane, or a construction feature's ID) or a flat `face`. Absent: the XY plane. |
+| `image` | `file` | yes | The attachment ID of the picture (section 4.5). Its media type must be `image/*`: `image/png`, `image/jpeg` or `image/webp`. |
+| `x`, `y` | `expr` (`length`) | no | The picture's centre in the plane's own sketch frame, default 0. |
+| `width` | `expr` (`length`) | no | How wide the picture is; its height follows the picture's aspect. Default 100 mm; the app writes the picked picture's own pixel width × 0.1 mm (100 dpi) when the feature is made. |
+| `rotation` | `expr` (`angle`) | no | Turns the picture about the plane's normal, right-handed, from the frame's X. Default 0°. |
+| `opacity` | `expr` (`unitless`) | no | How strongly the picture is drawn, 0.05 to 1 (outside that the feature is an error). Default 0.5. |
+| `flip` | `bool` | no | Mirrors the picture left–right. Default false. |
+
+Every number is an expression, as everywhere: `x`, `y`, `width` and `opacity`
+may be parameters of the design, and changing one brings the picture with it
+(only the plane comes from the kernel, through a report of its own).
+
+**Calibration** is not stored: the dialog writes a new `width` when the user
+marks two points of a known real distance on the picture (`width × real /
+measured`, to 0.01 mm, as a plain value).
 
 ---
 

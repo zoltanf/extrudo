@@ -1,10 +1,12 @@
 import {
   type BodyId,
+  CANVAS_TYPE,
   type Command,
   CommandError,
   type DocumentStore,
   type FeatureId,
   type GeomRef,
+  IMPORT_TYPE,
   isFeatureVisible,
   type ModelStore,
   readSketch,
@@ -39,9 +41,11 @@ import {
 } from '../design-system';
 import { ExportModelDialog, type ModelExportRequest } from '../export/ExportModelDialog';
 import type { ModelExporter } from '../export/modelExport';
+import { calibrationStore, pickCanvasFile } from '../features/canvas';
 import { DialogOverlay } from '../features/DialogOverlay';
 import { type DialogKernel, dialogBodies, viewPreview } from '../features/dialog';
 import { DIALOG_COLUMN, FeatureDialog } from '../features/FeatureDialog';
+import { pickImportFile } from '../features/import';
 import { pickName } from '../features/pickName';
 import { dialogPlanePick, dialogPlanePicker } from '../features/planePicker';
 import { PRESS_PULL, PRESS_PULL_PROMPT, pressPullTarget } from '../features/pressPull';
@@ -111,6 +115,8 @@ import { textDraftStore } from '../sketch/textDraft';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
 import { IMPORT_DRAWING_TOOL } from '../sketch/tools/importDrawing';
+import { canvasDrawings } from '../viewport/canvasGeometry';
+import { forgetCanvasImages } from '../viewport/canvasImages';
 import type { ConstructionDrawing } from '../viewport/constructionGeometry';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
@@ -119,7 +125,12 @@ import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
 import { bodyEntries, bodyMetaOf, createBodyActions, followBodyNames } from './bodies';
 import { CommandSearch, type SearchOpen } from './CommandSearch';
-import { type AppCommand, buildCommands, commandShortcuts } from './commands';
+import {
+  type AppCommand,
+  buildCommands,
+  commandShortcuts,
+  DRAWING_IMPORT_UNAVAILABLE,
+} from './commands';
 import { createFeatureActions } from './featureActions';
 import { createGroupActions } from './groupActions';
 import { Splitter, usePanel } from './panels';
@@ -230,11 +241,13 @@ export function AppShell({
     () => ({ files: platform.files, projects: platform.projects }),
     [platform],
   );
-  // The File menu offers the model's export too (P2-12), and versions (P2-14).
+  // The File menu offers the model's export too (P2-12), versions (P2-14) and
+  // an import (P4-06), which is the Insert tab's tile.
   const fileActions = useMemo(
     () => ({
       ...file,
       exportModel: () => setModelExport({}),
+      importModel: () => startImportRef.current(),
       saveVersion: () => setVersionsOpen(true),
       versionHistory: () => setVersionsOpen(true),
     }),
@@ -251,6 +264,7 @@ export function AppShell({
   const bodies = useStore(model, (s) => s.bodies);
   const sketchReports = useStore(model, (s) => s.sketches);
   const constructionReports = useStore(model, (s) => s.construction);
+  const canvasReports = useStore(model, (s) => s.canvases);
   const featureStatuses = useStore(model, (s) => s.features);
   const doc = useStore(store, (s) => s.doc);
   const mode = useStore(session, (s) => s.mode);
@@ -344,6 +358,10 @@ export function AppShell({
   // `run` changes every render; commands reach the latest one through a ref.
   const runRef = useRef<(tool: ToolId) => void>(() => {});
   const startTutorialRef = useRef<() => void>(() => {});
+  /** The File menu's Import, which is the Insert tab's tile (P4-06). */
+  const startImportRef = useRef<() => void>(() => {});
+  /** Canvas's tool, which picks its picture before its dialog opens. */
+  const startCanvasRef = useRef<() => void>(() => {});
   // Feature dialogs (P2-05): one controller; while a dialog is open, picks go to its fields.
   const { controller: dialog, open: dialogOpen } = useFeatureDialogs({
     store,
@@ -598,7 +616,9 @@ export function AppShell({
         runTool: (tool) => {
           if (isRepeatable(tool)) setLastTool(tool);
           // A key or a search result starts a sketch tool; only the toolbar toggles it off.
-          if (isSketchTool(tool) && host) host.start(tool);
+          // The drawing import picks its file before it has a panel (P4-06), so it
+          // goes through `run` like the toolbar's tile does.
+          if (tool !== IMPORT_DRAWING_TOOL && isSketchTool(tool) && host) host.start(tool);
           else runRef.current(tool);
         },
         notify,
@@ -786,6 +806,19 @@ export function AppShell({
       return;
     }
     if (isRepeatable(tool)) setLastTool(tool);
+    // P4-06: Import picks the file first (its bytes go with the design), then
+    // opens its dialog, which previews what the file holds.
+    if (tool === 'importBody' || tool === 'canvas') {
+      if (mode !== 'model') return;
+      if (picking) cancelCreateSketch(stores);
+      if (measuring || sectioning || printing || overhanging || customizing) {
+        session.getState().setTool(undefined);
+      }
+      dialog?.cancel();
+      if (tool === 'canvas') startCanvasRef.current();
+      else startImportRef.current();
+      return;
+    }
     // A feature dialog's command opens it (P2-05); another tool (not Parameters) ends it.
     const spec = specForCommand(dialogs, tool);
     if (spec) {
@@ -857,7 +890,10 @@ export function AppShell({
       }
     } else if (tool === IMPORT_DRAWING_TOOL) {
       // P4-06: the tool opens the file dialog, then its panel (ADR-0066 §1).
-      if (mode !== 'sketch' || !host) return;
+      if (mode !== 'sketch' || !host) {
+        notify('info', DRAWING_IMPORT_UNAVAILABLE);
+        return;
+      }
       if (activeTool === tool) host.stop();
       else void pickDrawing({ files: platform.files, host, notify });
     } else if (tool === 'exportSketch' && activeSketchId) {
@@ -867,6 +903,36 @@ export function AppShell({
       if (activeTool === tool) host.stop();
       else host.start(tool);
     }
+  };
+  // P4-06: Import picks a model file, stores its bytes with the design and opens
+  // the dialog, which previews what the file holds (ADR-0066 §0, §2).
+  startImportRef.current = () => {
+    if (mode !== 'model') return;
+    if (picking) cancelCreateSketch(stores);
+    if (measuring || sectioning || printing || overhanging || customizing) {
+      session.getState().setTool(undefined);
+    }
+    dialog?.cancel();
+    void pickImportFile({
+      files: platform.files,
+      projects: platform.projects,
+      store,
+      notify,
+    }).then((pending) => {
+      if (pending) dialog?.start(IMPORT_TYPE);
+    });
+  };
+  // P4-06: Canvas picks an image, stores its bytes with the design and opens
+  // its dialog, which previews the picture on its plane (ADR-0066 §5).
+  startCanvasRef.current = () => {
+    void pickCanvasFile({
+      files: platform.files,
+      projects: platform.projects,
+      store,
+      notify,
+    }).then((pending) => {
+      if (pending) dialog?.start(CANVAS_TYPE);
+    });
   };
   runRef.current = run;
   startTutorialRef.current = startTutorial;
@@ -1004,6 +1070,16 @@ export function AppShell({
   // hidden), in its status colours. Profiles are shaded (P1-11) unless the palette hides them.
   // The pointer on a sketch's chip or browser row highlights it (P1-12).
   const status = useHostState(host, (s) => s.status);
+  // The pictures a canvas draws are this project's: they go when it closes, like
+  // the attachment resolver's (ADR-0061 §3, ADR-0066 §5). The page is keyed by
+  // project, so another one mounts afresh.
+  useEffect(() => {
+    return () => {
+      forgetCanvasImages();
+    };
+  }, []);
+  // The two points a canvas calibration marked, drawn in the view (ADR-0066 §5).
+  const calibration = useStore(calibrationStore, (s) => s.points);
   // An open feature dialog's picks are what the view shows selected (a revolve's axis line,
   // the bodies in the browser).
   const shownSelection = dialogItems ?? selection;
@@ -1076,6 +1152,12 @@ export function AppShell({
     });
     return out;
   }, [doc.features, doc.timelineMarker, constructionReports, editedId]);
+  // Canvas images to draw: every shown canvas the kernel has reported a frame
+  // for, minus the one the open dialog edits (its draft is the preview).
+  const canvasList = useMemo(
+    () => canvasDrawings(doc, canvasReports, editedId ? { skip: editedId } : {}),
+    [doc, canvasReports, editedId],
+  );
   const activeSketch = doc.features.find((f) => f.id === activeSketchId);
   const sketchPlane = sketches.find((s) => s.active)?.frame;
   // The right-click marking menu (P3-11): offered while nothing else owns the pointer.
@@ -1336,6 +1418,8 @@ export function AppShell({
             sketchPlane={sketchPlane}
             planePicker={planePicker}
             construction={constructionDrawings}
+            canvases={canvasList}
+            calibration={calibration}
             sketchInput={sketchInput}
             commandRunning={drawing || picking || projecting || measuring || section.choosing}
             onStopCommand={stopCommand}

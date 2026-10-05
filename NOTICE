@@ -19,7 +19,7 @@ the list below, so a new one is reviewed before it ships.
 1. WebAssembly components (separate files, built from source we publish)
 ------------------------------------------------------------------------
 
-The two WASM files are separate artifacts that the app loads at run time. Their
+The WASM files are separate artifacts that the app loads at run time. Their
 sources, build recipes and the pinned toolchains are in this repository, and CI
 publishes each build as a GitHub release (`occt-<hash>`, `planegcs-<hash>`) so
 that anyone can rebuild or replace them.
@@ -44,6 +44,12 @@ that anyone can rebuild or replace them.
     C++ object owns (NCollection_Array1, BRepAlgoAPI_Cut without Clear(),
     BRepFilletAPI_MakeFillet). It is why our C++ facade owns every OCCT object and
     JavaScript only holds integer handles. https://github.com/taucad/opencascade.js/issues/40
+
+  manifold-3d 3.5.4 (the mesh kernel mesh bodies live in), in manifold.wasm
+    https://github.com/elalish/manifold
+    License: Apache-2.0. A separate WASM file, loaded only by a design that
+    imports a mesh file (STL, 3MF, OBJ: ADR-0066 §3), from the npm package's
+    own build. It runs in the kernel worker and in Node.
 
   planegcs (the sketch constraint solver), in planegcs.wasm
     FreeCAD's PlaneGCS, via https://github.com/Salusoft89/planegcs
@@ -121,6 +127,7 @@ Regenerate the list with `pnpm licenses list --prod`.
     Extrudo's)
   Apache-2.0
     comlink (Google LLC)
+    manifold-3d (the Elalish/Lalish manifold authors; see section 1)
   BSD-3-Clause
     ieee754
   0BSD

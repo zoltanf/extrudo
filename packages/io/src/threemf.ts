@@ -23,6 +23,12 @@ const MODEL_TYPE = 'application/vnd.ms-package.3dmanufacturing-3dmodel+xml';
 const RELS_TYPE = 'application/vnd.openxmlformats-package.relationships+xml';
 
 export interface ThreeMfOptions {
+  /**
+   * The package's `unit` attribute, the core specification's own name for the
+   * numbers in the model part ("millimeter" by default; "centimeter" is what a
+   * slicer that measures in cm writes).
+   */
+  unit?: string;
   /** `Title` metadata: the design's name. */
   title?: string;
   /** `Application` metadata, e.g. "Extrudo 0.2.0". */
@@ -69,7 +75,7 @@ export function modelXml(objects: readonly MeshObject[], options: ThreeMfOptions
   const decimals = options.decimals ?? 5;
   const out: string[] = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    `<model unit="millimeter" xml:lang="en-US" xmlns="${CORE}" xmlns:m="${MATERIAL}">`,
+    `<model unit="${options.unit ?? 'millimeter'}" xml:lang="en-US" xmlns="${CORE}" xmlns:m="${MATERIAL}">`,
   ];
   if (options.title) out.push(` <metadata name="Title">${xmlText(options.title)}</metadata>`);
   if (options.application) {

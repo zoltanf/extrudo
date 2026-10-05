@@ -93,6 +93,13 @@ export interface CommandContext {
 
 const icon = (Icon: typeof Box) => <Icon size={16} strokeWidth={1.75} />;
 
+/**
+ * Why the Insert tab's drawing import can't run outside a sketch (P4-06): a
+ * drawing becomes the open sketch's curves, so there is nothing for it to
+ * join. The tile is there either way and says this.
+ */
+export const DRAWING_IMPORT_UNAVAILABLE = 'Open a sketch to import a drawing into it.';
+
 const VIEWS: { id: string; face?: FaceName; label: string }[] = [
   { id: 'viewHome', label: 'Home View' },
   { id: 'viewTop', face: 'Top', label: 'Top View' },
@@ -141,7 +148,8 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
   for (const tab of visibleTabs(ctx.mode)) {
     for (const group of tab.groups) {
       for (const id of [...group.tools, ...(group.more ?? [])]) {
-        add(toolCommand(id, `${tab.label} › ${group.label}`, ctx));
+        const command = toolCommand(id, `${tab.label} › ${group.label}`, ctx);
+        add(id === 'importDrawing' && ctx.mode !== 'sketch' ? noDrawing(ctx, command) : command);
       }
     }
     if (tab.id === 'sketch') {
@@ -271,6 +279,15 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     }
   }
   return out;
+}
+
+/** The drawing import outside a sketch: the command with the reason it can't run. */
+function noDrawing(ctx: CommandContext, command: AppCommand): AppCommand {
+  return {
+    ...command,
+    unavailable: DRAWING_IMPORT_UNAVAILABLE,
+    run: () => ctx.notify('info', DRAWING_IMPORT_UNAVAILABLE),
+  };
 }
 
 /** Whether a tool runs: built, or made ready by a registered feature dialog (P2-05). */

@@ -685,13 +685,19 @@ export const TOOLS = {
     category: 'inspect',
     hint: 'Cut the view through a plane, with the cut filled in. Look inside without changing the model.',
   },
-  insertSvg: {
-    id: 'insertSvg',
-    label: 'Insert SVG',
+  importBody: {
+    id: 'importBody',
+    label: 'Import',
     icon: 'insert-svg',
     category: 'insert',
-    hint: 'Bring in an SVG as a sketch.',
-    comesWith: 'P4-06',
+    hint: 'Bring a STEP file in as solid bodies you can fillet, cut and print.',
+  },
+  canvas: {
+    id: 'canvas',
+    label: 'Canvas',
+    icon: 'canvas',
+    category: 'insert',
+    hint: 'Lay a picture on a plane as a reference to trace, and calibrate it to real scale.',
   },
   export: {
     id: 'export',
@@ -765,8 +771,9 @@ export type TabId = 'solid' | 'sketch' | 'insert' | 'print';
 /**
  * Toolbar tabs (UI spec §2). `sketch` shows only while a sketch is open, in
  * place of `solid`; Finish Sketch sits after its groups. Insert and export
- * aren't modelling tools, so they have tabs of their own: Insert, and 3D
- * Print for the model's export (a sketch's export stays in the Sketch tab).
+ * aren't modelling tools, so they have tabs of their own: Insert (what comes
+ * into the design, P4-06), and 3D Print for the model's export (a sketch's
+ * export stays in the Sketch tab).
  */
 export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
   {
@@ -887,7 +894,9 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
   {
     id: 'insert',
     label: 'Insert',
-    groups: [{ label: 'Insert', tools: ['insertSvg'] }],
+    // P4-06: a model file becomes bodies, a drawing becomes sketch curves, and a
+    // picture lies on a plane to trace (ADR-0066).
+    groups: [{ label: 'Insert', tools: ['importBody', 'importDrawing', 'canvas'] }],
   },
   {
     id: 'print',

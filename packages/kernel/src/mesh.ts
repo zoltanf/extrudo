@@ -33,6 +33,13 @@ export interface BodyMesh {
   edgeIds?: string[];
   /** Persistent name of each vertex, in vertex order. */
   vertexIds?: string[];
+  /**
+   * The body is a mesh, not a solid (P4-06, ADR-0066 §3): one face of all its
+   * triangles, its edges are the creases between them (`EDGE_MESH`), and the
+   * features that need B-rep geometry refuse it. The app shows a body like
+   * this with a "Mesh" tag and leaves it out of a STEP export.
+   */
+  mesh?: boolean;
 }
 
 /**
@@ -41,6 +48,13 @@ export interface BodyMesh {
  * doesn't draw it.
  */
 export const EDGE_SEAM = 1;
+
+/**
+ * Edge flag: a crease of a mesh body (P4-06, ADR-0066 §3) — where two of its
+ * triangles meet at more than 30°. The view draws it like any edge; picking
+ * skips it, because there is no B-rep edge behind it to name.
+ */
+export const EDGE_MESH = 2;
 
 export interface Measurements {
   /** mm³ */

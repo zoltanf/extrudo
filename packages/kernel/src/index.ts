@@ -51,6 +51,11 @@ export {
   Kernel,
   KernelError,
   type KernelStats,
+  MESH_HANDLE_BASE,
+  MeshBodyError,
+  MeshError,
+  type MeshProblem,
+  meshBodyMessage,
   OffsetFaceError,
   type OffsetFaceProblem,
   type OperationResult,
@@ -65,14 +70,17 @@ export {
   type Vec3,
   type WrapFrame,
 } from './kernel';
+export { loadManifold, type ManifoldLoadOptions, type ManifoldToplevel } from './manifold';
 export {
   type BodyMesh,
+  EDGE_MESH,
   EDGE_SEAM,
   type ExportMesh,
   type Measurements,
   type MeshOptions,
   meshBuffers,
 } from './mesh';
+export { CREASE, displayMesh, type MeshTriangles } from './mesh-body';
 export {
   type CurveType,
   compareGeometry,

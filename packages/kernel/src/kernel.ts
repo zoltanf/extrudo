@@ -1,5 +1,8 @@
+import { checkManifold, type TriangleMesh } from '@extrudo/io';
 import { decodeHistory, type HistoryRecord, type SubShapeKind } from './history';
+import type { Manifold, ManifoldToplevel, Mat4 } from './manifold';
 import type { BodyMesh, ExportMesh, Measurements, MeshOptions } from './mesh';
+import { displayMesh } from './mesh-body';
 import { decodeDescription, type ShapeDescription } from './naming/description';
 import type { FacadeBinding, OcctModule } from './occt/types';
 import {
@@ -13,6 +16,26 @@ import {
 export type ShapeHandle = number & { readonly __brand: 'ShapeHandle' };
 
 export type Vec3 = readonly [number, number, number];
+
+/**
+ * Handles from here up are mesh bodies (P4-06, ADR-0066 §3): a
+ * manifold-3d `Manifold` the `Kernel` owns instead of an OCCT shape. The
+ * arena's handles are small numbers, so the two kinds of body are one kind of
+ * handle to the engine and every cache, scope and leak count works unchanged.
+ */
+export const MESH_HANDLE_BASE = 2 ** 30;
+
+/**
+ * How finely a solid is meshed when a boolean or a gap test meets a mesh body
+ * (P4-06, ADR-0066 §4). The mesh has to be closed and manifold by
+ * construction, which is what `exportMesh` gives (ADR-0034), and fine enough
+ * that the result is the shape the user asked for: 0.01 mm and 0.1 rad, the
+ * fine end of what the view draws at.
+ */
+export const MESH_BOOLEAN_DEFLECTION: MeshOptions = {
+  linearDeflection: 0.01,
+  angularDeflection: 0.1,
+};
 
 /** A cylindrical face as a thread sees it (`Kernel.threadFace`). */
 export interface ThreadFace {
@@ -33,6 +56,56 @@ export interface ThreadFace {
 /** A kernel operation failed in a way the user can act on (bad radius, …). */
 export class KernelError extends Error {
   override name = 'KernelError';
+}
+
+/** What a mesh file isn't, in the counts `checkManifold` found (P4-06). */
+export interface MeshProblem {
+  /** Edges used by one triangle only: holes in the surface. */
+  openEdges: number;
+  /** Edges used by more than two triangles. */
+  nonManifoldEdges: number;
+  /** Edges whose two triangles run along it the same way. */
+  misorientedEdges: number;
+  /** Triangles that repeat a node or name one that doesn't exist. */
+  badTriangles: number;
+  /** Nodes with a coordinate that isn't a finite number. */
+  badNodes: number;
+  /**
+   * The volume the triangles enclose in mm³ (signed): negative when the whole
+   * mesh faces inwards, which is closed and consistent but inside-out.
+   */
+  volume: number;
+}
+
+/**
+ * A mesh isn't a closed, oriented solid, or is too big (P4-06, ADR-0066 §3):
+ * what `checkManifold` found, so the message can count the open edges.
+ */
+export class MeshError extends KernelError {
+  override name = 'MeshError';
+  constructor(
+    message: string,
+    readonly problem?: MeshProblem,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * An operation needs B-rep geometry and was given a mesh body (P4-06,
+ * ADR-0066 §3): one message from the kernel, so every feature that refuses a
+ * mesh says the same thing.
+ */
+export class MeshBodyError extends KernelError {
+  override name = 'MeshBodyError';
+}
+
+/**
+ * The message a refused operation shows: `Mesh needs a solid body: this body
+ * is a mesh (imported, or combined with a mesh).`
+ */
+export function meshBodyMessage(operation: string): string {
+  return `${operation} needs a solid body: this body is a mesh (imported, or combined with a mesh).`;
 }
 
 /**
@@ -369,10 +442,82 @@ type TypedArrayConstructor<T> = new (buffer: ArrayBuffer, byteOffset: number, le
 export class Kernel {
   readonly #oc: OcctModule;
   readonly #facade: FacadeBinding;
+  /** Mesh bodies (ADR-0066 §3), by handle; `enableMeshes` must come first. */
+  readonly #meshes = new Map<number, Manifold>();
+  #manifold: ManifoldToplevel | undefined;
+  #nextMesh = MESH_HANDLE_BASE;
 
   constructor(oc: OcctModule) {
     this.#oc = oc;
     this.#facade = new oc.ExtrudoFacade();
+  }
+
+  /**
+   * Hands the kernel the manifold-3d module, which mesh bodies need
+   * (P4-06, ADR-0066 §3). The app's `KernelService` calls this when a document
+   * imports a mesh file, and Node calls `loadManifold` for it: a design
+   * without a mesh body never loads the second WASM.
+   */
+  enableMeshes(module: ManifoldToplevel): void {
+    this.#manifold = module;
+  }
+
+  /** Whether mesh bodies can be made (the module is loaded). */
+  meshesEnabled(): boolean {
+    return this.#manifold !== undefined;
+  }
+
+  /** Whether a handle is a mesh body rather than an OCCT shape. */
+  isMesh(shape: ShapeHandle): boolean {
+    return shape >= MESH_HANDLE_BASE;
+  }
+
+  /**
+   * A mesh body from triangles (P4-06, ADR-0066 §3): the nodes are welded
+   * (`Mesh.merge()`) and the result is one closed, oriented manifold-3d
+   * solid, whose handles are the body. A mesh that isn't closed is refused
+   * with a `MeshError` carrying what `checkManifold` found, so the feature can
+   * word the message with the file's name.
+   */
+  meshFrom(mesh: TriangleMesh): ShapeHandle {
+    const module = this.#manifold;
+    if (!module) {
+      throw new KernelError(
+        "Mesh bodies need the mesh kernel, which isn't loaded (the document has no mesh import).",
+      );
+    }
+    const report = checkManifold(mesh);
+    const problem: MeshProblem = {
+      openEdges: report.boundaryEdges,
+      nonManifoldEdges: report.nonManifoldEdges,
+      misorientedEdges: report.misorientedEdges,
+      badTriangles: report.badTriangles,
+      badNodes: report.badNodes,
+      volume: report.volume,
+    };
+    if (!report.ok) throw new MeshError(meshNotSolid(problem), problem);
+    const gl = new module.Mesh({
+      numProp: 3,
+      vertProperties: Float32Array.from(mesh.positions),
+      triVerts: mesh.indices,
+    });
+    // Weld the corners that are the same point but sit apart in the file.
+    gl.merge();
+    let manifold: Manifold | undefined;
+    try {
+      manifold = new module.Manifold(gl);
+    } catch (error) {
+      throw new MeshError(
+        `This mesh isn't a solid Extrudo can use: ${error instanceof Error ? error.message : String(error)}.`,
+        problem,
+      );
+    }
+    const status = manifold.status();
+    if (manifold.isEmpty() || status !== 'NoError') {
+      manifold.delete();
+      throw new MeshError(`This mesh isn't a solid Extrudo can use (${status}).`, problem);
+    }
+    return this.#meshHandle(manifold);
   }
 
   box(size: Vec3, origin: Vec3 = [0, 0, 0]): ShapeHandle {
@@ -396,6 +541,7 @@ export class Kernel {
     edges: readonly number[],
     radius: number | readonly number[],
   ): OperationResult {
+    this.#solid(shape, 'Fillet');
     const f = this.#facade;
     f.clearArgs();
     f.clearNumbers();
@@ -429,6 +575,7 @@ export class Kernel {
     edges: readonly number[],
     radii: readonly (readonly [number, number])[],
   ): OperationResult {
+    this.#solid(shape, 'Fillet');
     const f = this.#facade;
     f.clearArgs();
     f.clearNumbers();
@@ -454,6 +601,7 @@ export class Kernel {
    * edge included: what `fillet` rounds together.
    */
   tangentChain(shape: ShapeHandle, edge: number): number[] {
+    this.#solid(shape, 'Fillet');
     const f = this.#facade;
     if (f.tangentChain(shape, edge) < 0) throw new KernelError(f.lastError() || 'Unknown edge.');
     return Array.from(this.#copy(Int32Array, f.lookupPtr(), f.lookupSize()));
@@ -473,6 +621,7 @@ export class Kernel {
     edges: readonly number[],
     spec: ChamferSpec | readonly ChamferSpec[],
   ): OperationResult {
+    this.#solid(shape, 'Chamfer');
     const f = this.#facade;
     f.clearArgs();
     f.clearNumbers();
@@ -512,6 +661,7 @@ export class Kernel {
     thickness: number,
     side: ShellSide = 'inside',
   ): OperationResult {
+    this.#solid(shape, 'Shell');
     const f = this.#facade;
     f.clearArgs();
     for (const face of faces) f.pushArg(face);
@@ -535,6 +685,7 @@ export class Kernel {
    * face generates its offset image, a face the offset swallows is deleted.
    */
   offsetFaces(shape: ShapeHandle, faces: readonly number[], distance: number): OperationResult {
+    this.#solid(shape, 'Press Pull');
     const f = this.#facade;
     f.clearArgs();
     for (const face of faces) f.pushArg(face);
@@ -553,6 +704,7 @@ export class Kernel {
    * included: the faces `offsetFaces` moves together with it.
    */
   tangentFaces(shape: ShapeHandle, face: number): number[] {
+    this.#solid(shape, 'Press Pull');
     const f = this.#facade;
     if (f.tangentFaces(shape, face) < 0) throw new KernelError(f.lastError() || 'Unknown face.');
     return Array.from(this.#copy(Int32Array, f.lookupPtr(), f.lookupSize()));
@@ -577,8 +729,62 @@ export class Kernel {
     tool: ShapeHandle,
     options: BooleanOptions = {},
   ): OperationResult {
+    // A mesh operand takes the whole boolean to manifold-3d (P4-06,
+    // ADR-0066 §4): a B-rep operand is meshed at `MESH_BOOLEAN_DEFLECTION`
+    // and the result is a mesh body, with no history (there are no B-rep
+    // sub-shapes to carry names through).
+    if (this.isMesh(target) || this.isMesh(tool)) {
+      return { shape: this.#meshBoolean(op, target, tool), history: [] };
+    }
     const code = BOOLEAN_CODE[op];
     return this.#withHistory(this.#facade.boolean(code, target, tool, options.simplify ?? false));
+  }
+
+  /**
+   * The gap between two bodies in mm: 0 where they touch, overlap or one lies
+   * inside the other, and how far apart they are otherwise, found within
+   * `search` mm (`search` caps the answer). The distance features ask "do these
+   * touch?" — `touchingBodies`, a Combine's join order, a Mirror's copy — and
+   * a mesh body has no B-rep distance, so a pair with a mesh in it is answered
+   * by manifold-3d's own `minGap` with the other operand meshed as above.
+   * `search` caps the answer, so it is the range the caller is sure about.
+   */
+  minGap(a: ShapeHandle, b: ShapeHandle, search = 1): number {
+    if (!this.isMesh(a) && !this.isMesh(b)) return this.distance(a, b);
+    const left = this.#manifoldFor(a);
+    const right = this.#manifoldFor(b);
+    try {
+      return left.minGap(right, search);
+    } finally {
+      // The manifolds built here are ours to free; one that came from a handle
+      // is the body's own and stays (`#meshOwned` says which).
+      if (!this.isMesh(a)) left.delete();
+      if (!this.isMesh(b)) right.delete();
+    }
+  }
+
+  /**
+   * Splits a mesh body along a plane in two (P3-08's Split Body on a mesh
+   * body, P4-06 ADR-0066 §4): the part along `normal` and the part on the
+   * other side, straight from manifold-3d. `offset` is the plane's distance
+   * from the origin along `normal`, so the plane is `x · normal = offset`.
+   * A side with nothing in it comes back as `null` (manifold's own empty
+   * manifold is not a body). A solid body has no such call: the feature cuts
+   * it with a half-space box (ADR-0053).
+   */
+  splitByPlane(
+    shape: ShapeHandle,
+    normal: Vec3,
+    offset: number,
+  ): [ShapeHandle | null, ShapeHandle | null] {
+    if (!this.isMesh(shape)) {
+      throw new KernelError('Only a mesh body is split by a plane this way.');
+    }
+    const [along, against] = this.#manifoldOf(shape).splitByPlane(normal, offset);
+    return [
+      along.isEmpty() ? (along.delete(), null) : this.#meshHandle(along),
+      against.isEmpty() ? (against.delete(), null) : this.#meshHandle(against),
+    ];
   }
 
   /**
@@ -590,6 +796,14 @@ export class Kernel {
    */
   transform(shape: ShapeHandle, matrix: readonly number[]): OperationResult {
     if (matrix.length !== 12) throw new KernelError('A transform needs 12 numbers.');
+    if (this.isMesh(shape)) {
+      // manifold-3d's own transform: no history, since there are no B-rep
+      // sub-shapes to carry names through. It keeps the triangles facing out
+      // under a reflection (measured, ADR-0066 §4), and `#outward` is the net
+      // in case a future version doesn't.
+      const moved = this.#manifoldOf(shape).transform(mat4Of(matrix));
+      return { shape: this.#meshHandle(this.#outward(moved)), history: [] };
+    }
     const f = this.#facade;
     f.clearNumbers();
     for (const value of matrix) f.pushNumber(value);
@@ -605,6 +819,28 @@ export class Kernel {
    * face, edge and vertex is `modified` into its image.
    */
   scale(shape: ShapeHandle, centre: Vec3, factors: Vec3): OperationResult {
+    // A mesh body has no B-rep surfaces to rebuild, so the same 3 × 4 matrix
+    // Move and Mirror use does the job (P4-06, ADR-0066 §4). Its factors are
+    // all greater than 0, which the feature checks, so the matrix is never a
+    // reflection.
+    if (this.isMesh(shape)) {
+      const [fx, fy, fz] = factors;
+      const matrix = [
+        fx,
+        0,
+        0,
+        centre[0] * (1 - fx),
+        0,
+        fy,
+        0,
+        centre[1] * (1 - fy),
+        0,
+        0,
+        fz,
+        centre[2] * (1 - fz),
+      ];
+      return this.transform(shape, matrix);
+    }
     const f = this.#facade;
     f.clearNumbers();
     for (const value of [...centre, ...factors]) f.pushNumber(value);
@@ -627,6 +863,7 @@ export class Kernel {
     plane: { origin: Vec3; normal: Vec3 },
     angle: number,
   ): OperationResult {
+    this.#solid(shape, 'Draft');
     const f = this.#facade;
     f.clearArgs();
     for (const face of faces) f.pushArg(face);
@@ -654,6 +891,7 @@ export class Kernel {
    * fails. The history is the same as without a taper.
    */
   prism(shape: ShapeHandle, vector: Vec3, shift: Vec3 = [0, 0, 0], taper = 0): OperationResult {
+    this.#solid(shape, 'Extrude');
     return this.#withHistory(this.#facade.prism(shape, ...shift, ...vector, taper));
   }
 
@@ -662,6 +900,8 @@ export class Kernel {
    * overlap or one lies inside a solid of the other.
    */
   distance(a: ShapeHandle, b: ShapeHandle): number {
+    this.#solid(a, 'Measure');
+    this.#solid(b, 'Measure');
     const d = this.#facade.distance(a, b);
     if (d < 0) throw new KernelError(this.#facade.lastError() || 'Unknown shape.');
     return d;
@@ -680,8 +920,22 @@ export class Kernel {
     return { distance, from: [at(0), at(1), at(2)], to: [at(3), at(4), at(5)] };
   }
 
-  /** New handles to each solid of a shape (a compound of solids from a boolean or a sweep). */
+  /**
+   * New handles to each solid of a shape (a compound of solids from a boolean
+   * or a sweep). A mesh body's are its connected pieces (`decompose()`), which
+   * is how an STL of several parts becomes one body each.
+   */
   solids(shape: ShapeHandle): ShapeHandle[] {
+    if (this.isMesh(shape)) {
+      const out: ShapeHandle[] = [];
+      try {
+        for (const piece of this.#manifoldOf(shape).decompose()) out.push(this.#meshHandle(piece));
+      } catch (error) {
+        this.release(...out);
+        throw error;
+      }
+      return out;
+    }
     const n = this.#facade.count(shape, SOLID_CODE);
     if (n < 0) throw new KernelError('Unknown shape.');
     const out: ShapeHandle[] = [];
@@ -701,6 +955,7 @@ export class Kernel {
    * no start and end faces. History as for `prism`.
    */
   revolve(shape: ShapeHandle, axis: Axis, angle: number): OperationResult {
+    this.#solid(shape, 'Revolve');
     const { origin: o, direction: d } = axis;
     return this.#withHistory(this.#facade.revolve(shape, ...o, ...d, angle));
   }
@@ -716,6 +971,7 @@ export class Kernel {
     f.pathClear();
     for (const piece of pieces) {
       if (piece.kind === 'edge') {
+        this.#solid(piece.shape, 'Sweep');
         this.#check(f.pathEdge(piece.shape, piece.edge));
         continue;
       }
@@ -759,6 +1015,8 @@ export class Kernel {
    * (each face's caps), `generated` (each edge's side faces).
    */
   sweep(profile: ShapeHandle, path: ShapeHandle, options: SweepOptions = {}): OperationResult {
+    this.#solid(profile, 'Sweep');
+    this.#solid(path, 'Sweep');
     const f = this.#facade;
     const orientation = options.orientation ?? 'follow';
     const mode = orientation === 'follow' ? 0 : orientation === 'fixed' ? 1 : 2;
@@ -799,6 +1057,9 @@ export class Kernel {
     sections: readonly LoftSection[],
     options: { ruled?: boolean; closed?: boolean } = {},
   ): OperationResult {
+    for (const section of sections) {
+      if (isShapeSection(section)) this.#solid(section, 'Loft');
+    }
     const f = this.#facade;
     f.clearArgs();
     f.clearNumbers();
@@ -844,6 +1105,7 @@ export class Kernel {
     turns: number,
     left: boolean,
   ): OperationResult {
+    this.#solid(profile, 'Thread');
     const { origin: o, direction: d } = axis;
     return this.#withHistory(this.#facade.threadSweep(profile, ...o, ...d, pitch, turns, left));
   }
@@ -852,7 +1114,10 @@ export class Kernel {
    * What a thread needs of cylindrical face `face` of `shape` (P4-02), or
    * undefined when it isn't a cylinder: see `ThreadFace`.
    */
-  threadFace(shape: ShapeHandle, face: number): ThreadFace | undefined {
+  threadFace(shape: ShapeHandle, face: number, operation = 'Thread'): ThreadFace | undefined {
+    // `operation` names the feature in a mesh refusal: Emboss asks for the same
+    // geometry and says "Emboss", not "Thread" (ADR-0066 §4).
+    this.#solid(shape, operation);
     const f = this.#facade;
     if (f.threadFace(shape, face) < 0) return undefined;
     const v = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
@@ -891,6 +1156,7 @@ export class Kernel {
     depth: number,
     outward = true,
   ): OperationResult {
+    this.#solid(face, 'Emboss');
     const f = this.#facade;
     const handle = f.wrapOnCylinder(
       face,
@@ -909,6 +1175,7 @@ export class Kernel {
 
   /** A compound holding the shapes (which stay valid; release them separately). */
   compound(shapes: readonly ShapeHandle[]): ShapeHandle {
+    for (const shape of shapes) this.#solid(shape, 'Combine');
     this.#facade.clearArgs();
     for (const shape of shapes) this.#facade.pushArg(shape);
     return this.#check(this.#facade.compound());
@@ -916,6 +1183,7 @@ export class Kernel {
 
   /** A new handle to one face, edge or vertex of a shape (by sub-shape index). */
   subShape(shape: ShapeHandle, kind: SubShapeKind, index: number): ShapeHandle {
+    this.#solid(shape, 'Sketch on face');
     return this.#check(this.#facade.subShape(shape, KIND_CODE[kind], index));
   }
 
@@ -925,13 +1193,37 @@ export class Kernel {
    * (A face of a body: which body edges bound it.)
    */
   locate(part: ShapeHandle, whole: ShapeHandle, kind: SubShapeKind): number[] {
+    this.#solid(part, 'Split Body');
+    this.#solid(whole, 'Split Body');
     const f = this.#facade;
     if (f.locate(part, whole, KIND_CODE[kind]) < 0) throw new KernelError('Unknown shape.');
     return Array.from(this.#copy(Int32Array, f.lookupPtr(), f.lookupSize()));
   }
 
-  /** Geometry and adjacency of every face, edge and vertex (topological naming, fingerprints). */
+  /**
+   * Geometry and adjacency of every face, edge and vertex (topological naming,
+   * fingerprints). A mesh body has the one face of all its triangles and no
+   * edges or vertices: its creases are display edges, not B-rep ones.
+   */
   describe(shape: ShapeHandle): ShapeDescription {
+    if (this.isMesh(shape)) {
+      const box = this.#boxOf(shape);
+      return {
+        faces: [
+          {
+            type: 'other',
+            area: this.#manifoldOf(shape).surfaceArea(),
+            centroid: [
+              (box.min[0] + box.max[0]) / 2,
+              (box.min[1] + box.max[1]) / 2,
+              (box.min[2] + box.max[2]) / 2,
+            ],
+          },
+        ],
+        edges: [],
+        vertices: [],
+      };
+    }
     const f = this.#facade;
     if (f.describe(shape) < 0) throw new KernelError(f.lastError() || 'Unknown shape.');
     return decodeDescription(
@@ -978,6 +1270,7 @@ export class Kernel {
    * projects), with `samples` points along it for curves that aren't lines.
    */
   edgeGeometry(shape: ShapeHandle, edge: number, samples = 24): EdgeGeometry {
+    this.#solid(shape, 'Project');
     const f = this.#facade;
     if (!f.edgeGeometry(shape, edge, samples)) {
       throw new KernelError(f.lastError() || 'Unknown edge.');
@@ -991,6 +1284,7 @@ export class Kernel {
    * to the face (P2-09). None for other surfaces.
    */
   faceSilhouettes(shape: ShapeHandle, face: number, direction: Vec3): [Vec3, Vec3][] {
+    this.#solid(shape, 'Sketch on face');
     const f = this.#facade;
     const n = f.faceSilhouettes(shape, face, direction[0], direction[1], direction[2]);
     if (n < 0) throw new KernelError(f.lastError() || 'Unknown face.');
@@ -1008,16 +1302,31 @@ export class Kernel {
   }
 
   count(shape: ShapeHandle, kind: SubShapeKind): number {
+    // A mesh body is one face and no edges or vertices (ADR-0066 §3).
+    if (this.isMesh(shape)) return kind === 'face' ? 1 : 0;
     const n = this.#facade.count(shape, KIND_CODE[kind]);
     if (n < 0) throw new KernelError('Unknown shape.');
     return n;
   }
 
   isValid(shape: ShapeHandle): boolean {
+    if (this.isMesh(shape)) return this.#manifoldOf(shape).status() === 'NoError';
     return this.#facade.isValid(shape);
   }
 
   measure(shape: ShapeHandle): Measurements {
+    if (this.isMesh(shape)) {
+      const manifold = this.#manifoldOf(shape);
+      const box = manifold.boundingBox();
+      return {
+        volume: manifold.volume(),
+        area: manifold.surfaceArea(),
+        bbox: {
+          min: [box.min[0], box.min[1], box.min[2]],
+          max: [box.max[0], box.max[1], box.max[2]],
+        },
+      };
+    }
     if (!this.#facade.measure(shape)) throw new KernelError(this.#facade.lastError());
     const m = (i: number) => this.#facade.measured(i);
     return {
@@ -1034,6 +1343,22 @@ export class Kernel {
    * from the exact geometry (`measure`'s box may be looser).
    */
   properties(shape: ShapeHandle): ShapeProperties {
+    if (this.isMesh(shape)) {
+      // manifold-3d has no centre of mass, so a mesh body's is the centre of
+      // its box (ADR-0066's Results says so).
+      const { volume, area, bbox } = this.measure(shape);
+      return {
+        volume,
+        area,
+        length: 0,
+        centroid: [
+          (bbox.min[0] + bbox.max[0]) / 2,
+          (bbox.min[1] + bbox.max[1]) / 2,
+          (bbox.min[2] + bbox.max[2]) / 2,
+        ],
+        bbox,
+      };
+    }
     if (!this.#facade.properties(shape)) throw new KernelError(this.#facade.lastError());
     const m = (i: number) => this.#facade.measured(i);
     return {
@@ -1047,12 +1372,19 @@ export class Kernel {
 
   /** The surface under face `face` of a shape: its kind and, where it has them, axis and radii. */
   surfaceGeometry(shape: ShapeHandle, face: number): SurfaceGeometry {
+    this.#solid(shape, 'Construction geometry');
     const f = this.#facade;
     if (!f.surfaceGeometry(shape, face)) throw new KernelError(f.lastError() || 'Unknown face.');
     return decodeSurfaceGeometry(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize()));
   }
 
+  /**
+   * Tessellates a shape for the view. A mesh body meshes to itself: one face
+   * of all its triangles, normals flat across a crease (30°) and smooth
+   * elsewhere, and its creases as edges (`EDGE_MESH`).
+   */
   mesh(shape: ShapeHandle, options: MeshOptions): BodyMesh {
+    if (this.isMesh(shape)) return displayMesh(this.#trianglesOf(shape));
     const f = this.#facade;
     if (!f.mesh(shape, options.linearDeflection, options.angularDeflection)) {
       throw new KernelError(f.lastError());
@@ -1079,6 +1411,8 @@ export class Kernel {
    * deflection, whatever the display mesh used.
    */
   exportMesh(shape: ShapeHandle, options: MeshOptions): ExportMesh {
+    // A mesh body exports its own triangles: nothing to tessellate.
+    if (this.isMesh(shape)) return this.#trianglesOf(shape);
     const f = this.#facade;
     if (f.exportMesh(shape, options.linearDeflection, options.angularDeflection) < 0) {
       throw new KernelError(f.lastError() || "Couldn't mesh the body.");
@@ -1095,9 +1429,11 @@ export class Kernel {
 
   /**
    * A STEP AP242 file (mm) of the shapes, each a product with its name
-   * (P2-12). The text is ASCII.
+   * (P2-12). The text is ASCII. A mesh body is refused: STEP holds exact
+   * B-rep geometry (ADR-0066 §3).
    */
   writeStep(parts: readonly { shape: ShapeHandle; name: string }[]): string {
+    for (const { shape } of parts) this.#solid(shape, 'A STEP file');
     const f = this.#facade;
     f.clearArgs();
     f.clearStepNames();
@@ -1121,7 +1457,15 @@ export class Kernel {
   }
 
   release(...shapes: ShapeHandle[]): void {
-    for (const shape of shapes) this.#facade.release(shape);
+    for (const shape of shapes) {
+      const manifold = this.#meshes.get(shape);
+      if (manifold === undefined) continue;
+      this.#meshes.delete(shape);
+      manifold.delete();
+    }
+    for (const shape of shapes) {
+      if (!this.isMesh(shape)) this.#facade.release(shape);
+    }
   }
 
   /** Tracks handles and releases them all when the scope is disposed (`using`). */
@@ -1130,8 +1474,13 @@ export class Kernel {
   }
 
   stats(): KernelStats {
+    // A leaked mesh counts as a leaked shape, so strict leaks catches it.
     const heap = this.heap();
-    return { liveShapes: this.#facade.liveShapes(), heapTop: heap.top, heapBytes: heap.size };
+    return {
+      liveShapes: this.#facade.liveShapes() + this.#meshes.size,
+      heapTop: heap.top,
+      heapBytes: heap.size,
+    };
   }
 
   /**
@@ -1150,6 +1499,7 @@ export class Kernel {
 
   /** Frees every shape and the facade itself. The kernel is unusable afterwards. */
   dispose(): void {
+    this.release(...([...this.#meshes.keys()] as ShapeHandle[]));
     this.#facade.releaseAll();
     this.#facade.delete();
   }
@@ -1175,6 +1525,136 @@ export class Kernel {
     }
   }
 
+  /** The mesh a handle stands for, or the mesh refusal a user should see. */
+  #manifoldOf(shape: ShapeHandle): Manifold {
+    const manifold = this.#meshes.get(shape);
+    if (!manifold) {
+      throw new MeshBodyError('This body is a mesh, and it is no longer in the model. Try again.');
+    }
+    return manifold;
+  }
+
+  /**
+   * The manifold of a body for a boolean or a gap: the mesh body's own, or a
+   * temporary manifold made of the solid meshed at `MESH_BOOLEAN_DEFLECTION`.
+   * The caller frees what `#meshOwned` says is temporary.
+   */
+  #manifoldFor(shape: ShapeHandle): Manifold {
+    if (this.isMesh(shape)) return this.#manifoldOf(shape);
+    const module = this.#manifold;
+    if (!module) {
+      throw new KernelError(
+        "A boolean with a mesh body needs the mesh kernel, which isn't loaded (the document has no mesh import).",
+      );
+    }
+    const mesh = this.exportMesh(shape, MESH_BOOLEAN_DEFLECTION);
+    // A `Mesh` is a value manifold-3d copies out of, not a handle: the
+    // manifold owns what it needs afterwards.
+    const gl = new module.Mesh({
+      numProp: 3,
+      vertProperties: Float32Array.from(mesh.positions),
+      triVerts: mesh.indices,
+    });
+    gl.merge();
+    return new module.Manifold(gl);
+  }
+
+  /**
+   * A boolean between a mesh body and anything else (P4-06, ADR-0066 §4): both
+   * operands go to manifold-3d, the B-rep one meshed at
+   * `MESH_BOOLEAN_DEFLECTION`, and the result is a mesh body.
+   */
+  #meshBoolean(op: keyof typeof BOOLEAN_CODE, target: ShapeHandle, tool: ShapeHandle): ShapeHandle {
+    const module = this.#manifold;
+    if (!module) {
+      throw new KernelError(
+        "A boolean with a mesh body needs the mesh kernel, which isn't loaded (the document has no mesh import).",
+      );
+    }
+    const left = this.#manifoldFor(target);
+    const right = this.#manifoldFor(tool);
+    let result: Manifold;
+    try {
+      result =
+        op === 'fuse'
+          ? module.Manifold.union(left, right)
+          : op === 'cut'
+            ? module.Manifold.difference(left, right)
+            : module.Manifold.intersection(left, right);
+    } catch (error) {
+      // The `finally` frees the temporaries; a second `delete()` on the same
+      // manifold would be a double free inside the WASM heap.
+      throw new KernelError(
+        `The boolean failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    } finally {
+      // The operands the bodies own stay; the ones built here go.
+      if (!this.isMesh(target)) left.delete();
+      if (!this.isMesh(tool)) right.delete();
+    }
+    if (result.status() !== 'NoError') {
+      const status = result.status();
+      result.delete();
+      throw new KernelError(`The boolean failed (${status}).`);
+    }
+    return this.#meshHandle(result);
+  }
+
+  /**
+   * The triangles of a manifold facing outwards: manifold-3d keeps them so
+   * under a reflection (ADR-0066 §4 measures it), and this turns them the
+   * other way if one day it doesn't, since a solid whose faces point inwards
+   * has a negative volume and every boolean of it is nonsense.
+   */
+  #outward(manifold: Manifold): Manifold {
+    const module = this.#manifold;
+    if (!module || manifold.volume() >= 0) return manifold;
+    const gl = manifold.getMesh();
+    const indices = gl.triVerts;
+    const reversed = new Uint32Array(indices.length);
+    for (let t = 0; t < indices.length; t += 3) {
+      reversed[t] = indices[t] as number;
+      reversed[t + 1] = indices[t + 2] as number;
+      reversed[t + 2] = indices[t + 1] as number;
+    }
+    const mesh = new module.Mesh({
+      numProp: 3,
+      vertProperties: Float32Array.from(gl.vertProperties),
+      triVerts: reversed,
+    });
+    mesh.merge();
+    const fixed = new module.Manifold(mesh);
+    manifold.delete();
+    return fixed;
+  }
+
+  /** The triangles of a mesh body: the export mesh form, which is the same mesh. */
+  #trianglesOf(shape: ShapeHandle): ExportMesh {
+    const gl = this.#manifoldOf(shape).getMesh();
+    return {
+      positions: Float64Array.from(gl.vertProperties),
+      indices: Uint32Array.from(gl.triVerts),
+    };
+  }
+
+  /** Keeps a manifold as a body, with a handle of its own. */
+  #meshHandle(manifold: Manifold): ShapeHandle {
+    const handle = this.#nextMesh++ as ShapeHandle;
+    this.#meshes.set(handle, manifold);
+    return handle;
+  }
+
+  /** The box of a mesh body, in world mm. */
+  #boxOf(shape: ShapeHandle) {
+    const box = this.#manifoldOf(shape).boundingBox();
+    return { min: [...box.min] as Vec3, max: [...box.max] as Vec3 };
+  }
+
+  /** Throws for a mesh body where the operation needs B-rep geometry. */
+  #solid(shape: ShapeHandle, operation: string): void {
+    if (this.isMesh(shape)) throw new MeshBodyError(meshBodyMessage(operation));
+  }
+
   #check(handle: number): ShapeHandle {
     if (handle === 0) {
       throw new KernelError(this.#facade.lastError() || 'The kernel operation failed.');
@@ -1194,6 +1674,54 @@ export class Kernel {
   #copy<T extends { slice(): T }>(Type: TypedArrayConstructor<T>, ptr: number, length: number): T {
     return new Type(this.#oc.wasmMemory.buffer as ArrayBuffer, ptr, length).slice();
   }
+}
+
+/** Whether a loft section is a shape rather than a point (`LoftSection`). */
+function isShapeSection(section: LoftSection): section is ShapeHandle {
+  return typeof section === 'number';
+}
+
+/** What is wrong with a mesh, in the words a user sees (ADR-0066 §3). */
+function meshNotSolid(problem: MeshProblem): string {
+  const parts: string[] = [];
+  if (problem.openEdges > 0) parts.push(`${problem.openEdges} open edges`);
+  if (problem.nonManifoldEdges > 0)
+    parts.push(`${problem.nonManifoldEdges} edges used by more than two triangles`);
+  if (problem.misorientedEdges > 0)
+    parts.push(`${problem.misorientedEdges} triangles facing the wrong way`);
+  if (problem.badTriangles > 0)
+    parts.push(`${problem.badTriangles} faces of fewer than three corners`);
+  if (problem.badNodes > 0) parts.push(`${problem.badNodes} points that aren't numbers`);
+  // Closed and consistent with every edge used twice, but inside-out: the
+  // volume it encloses is negative.
+  if (parts.length === 0 && problem.volume <= 0) return 'its triangles face inwards';
+  return parts.length > 0 ? parts.join(', ') : "it isn't a closed solid";
+}
+
+/**
+ * A `Kernel.transform` matrix (three rows of a 3 × 3, each followed by its
+ * translation) as manifold-3d's column-major `Mat4`; its last row is ignored.
+ */
+function mat4Of(matrix: readonly number[]): Mat4 {
+  const at = (row: number, col: number) => matrix[4 * row + col] as number;
+  return [
+    at(0, 0),
+    at(1, 0),
+    at(2, 0),
+    0,
+    at(0, 1),
+    at(1, 1),
+    at(2, 1),
+    0,
+    at(0, 2),
+    at(1, 2),
+    at(2, 2),
+    0,
+    at(0, 3),
+    at(1, 3),
+    at(2, 3),
+    1,
+  ] as unknown as Mat4;
 }
 
 /**

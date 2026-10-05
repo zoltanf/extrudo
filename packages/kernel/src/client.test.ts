@@ -48,6 +48,8 @@ describe('KernelClient', () => {
     const hanging: KernelApi = {
       init: async () => ({ initMs: 0, heapBytes: 0 }),
       addFont: async () => {},
+      addFile: async () => {},
+      enableMeshes: async () => {},
       debugTestPart: () => new Promise(() => {}),
       debugCrash: async () => {},
       stats: async () => ({ liveShapes: 0, heapTop: 0, heapBytes: 0 }),
@@ -78,6 +80,8 @@ describe('KernelClient', () => {
     const crashing: KernelApi = {
       init: async () => ({ initMs: 0, heapBytes: 0 }),
       addFont: async () => {},
+      addFile: async () => {},
+      enableMeshes: async () => {},
       debugTestPart: async () => {
         throw new KernelCrashError('boom');
       },

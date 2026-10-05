@@ -189,10 +189,16 @@ export function ExportModelForm({
     return { linearDeflection: deviation.value, angularDeflection: angle.value * DEGREE };
   }, [settings, evaluate]);
 
+  // A STEP file holds exact geometry, so a mesh body is out of it (P4-06,
+  // ADR-0066 §3): its checkbox is off and disabled while STEP is the format,
+  // and it comes back when a mesh format is picked again.
+  const inStep = settings.format === 'step';
   const selected = useMemo<ExportBody[]>(
-    () => bodies.filter((b) => chosen.has(b.id)),
-    [bodies, chosen],
+    () => bodies.filter((b) => chosen.has(b.id) && (settings.format !== 'step' || !b.mesh)),
+    [bodies, chosen, settings.format],
   );
+  /** Whether a body can go into the chosen format at all. */
+  const exportable = (body: ExportBody) => settings.format !== 'step' || !body.mesh;
   const current = status === 'ready' && computedDoc === doc;
   const meshFormat = settings.format !== 'step';
 
@@ -251,7 +257,13 @@ export function ExportModelForm({
   else if (!current)
     summary = { text: 'Waiting for the model to finish computing…', tone: 'muted' };
   else if (!meshFormat) {
-    summary = { text: `${count}, exact geometry in millimetres (AP242)`, tone: 'muted' };
+    summary =
+      selected.length === bodies.length
+        ? { text: `${count}, exact geometry in millimetres (AP242)`, tone: 'muted' }
+        : {
+            text: `${selected.length} of ${bodies.length} bodies: a STEP file holds exact geometry, so the meshes are left out.`,
+            tone: 'warning',
+          };
   } else if (!tessellation) summary = { text: 'Fix the custom resolution.', tone: 'error' };
   else if (!ready) {
     const at = progress?.key === key && progress.total > 1 ? progress : undefined;
@@ -343,11 +355,14 @@ export function ExportModelForm({
           {bodies.map((body) => (
             <label
               key={body.id}
-              className="flex h-7 shrink-0 cursor-pointer items-center gap-2 rounded-input px-1 hover:bg-accent-soft"
+              className={`flex h-7 shrink-0 items-center gap-2 rounded-input px-1 ${
+                inStep && body.mesh ? 'opacity-60' : 'cursor-pointer hover:bg-accent-soft'
+              }`}
             >
               <input
                 type="checkbox"
-                checked={chosen.has(body.id)}
+                checked={chosen.has(body.id) && exportable(body)}
+                disabled={!exportable(body)}
                 onChange={() => toggle(body.id)}
                 className="accent-(--x-accent)"
               />
@@ -360,6 +375,7 @@ export function ExportModelForm({
                 {body.meta.name}
               </span>
               {!body.meta.visible && <Hint>hidden</Hint>}
+              {!exportable(body) && <Hint>Meshes can't go into a STEP file</Hint>}
             </label>
           ))}
         </div>
@@ -373,6 +389,11 @@ export function ExportModelForm({
             />
             All bodies
           </label>
+        )}
+        {inStep && bodies.some((b) => b.mesh) && (
+          <p className="text-sm text-muted">
+            Mesh bodies go into STL and 3MF, not into a STEP file.
+          </p>
         )}
       </fieldset>
 

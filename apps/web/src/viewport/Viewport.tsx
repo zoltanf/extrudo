@@ -43,8 +43,11 @@ import { sketchTargetAt } from '../sketch/facePick';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
 import { Bodies, clipPlanes } from './Bodies';
 import { CameraRig } from './CameraRig';
+import { CalibrationMarks, Canvases } from './Canvas';
 import { Construction } from './Construction';
 import { basis, orbit, pan, rayPlane, type View, viewRay, worldPerPixel, zoomAt } from './camera';
+import { type CanvasDrawing, canvasSummary } from './canvasGeometry';
+import { canvasPixelsStore } from './canvasImages';
 import { type Rgba, type SceneColors, useSceneColors } from './colors';
 import {
   type ConstructionDrawing,
@@ -115,6 +118,13 @@ export interface ViewportProps {
   preview?: ViewPreview;
   /** Construction planes, axes and points to draw and pick (P3-05). */
   construction?: readonly ConstructionDrawing[];
+  /**
+   * Canvas images to draw (P4-06, ADR-0066 §5): view geometry from the
+   * kernel's reports, never picked.
+   */
+  canvases?: readonly CanvasDrawing[];
+  /** The two points a canvas calibration marked, in world mm (ADR-0066 §5). */
+  calibration?: readonly (readonly number[])[];
   /**
    * The right-click marking menu (P3-11): present while the pointer is free to select (model
    * mode with no dialog or tool, sketch mode). Without it, a right click without movement
@@ -201,6 +211,8 @@ const NO_META: Record<BodyId, BodyMeta> = {};
 const NO_SKETCHES: readonly SketchDrawing[] = [];
 const NO_SELECTION: readonly SelectionItem[] = [];
 const NO_CONSTRUCTION: readonly ConstructionDrawing[] = [];
+const NO_CANVASES: readonly CanvasDrawing[] = [];
+const NO_CALIBRATION: readonly (readonly number[])[] = [];
 
 /**
  * The drawn bodies for tests (`data-bodies`): name, face count and the
@@ -271,6 +283,8 @@ export function Viewport({
   modelSelect,
   preview,
   construction = NO_CONSTRUCTION,
+  canvases = NO_CANVASES,
+  calibration = NO_CALIBRATION,
   viewMenu,
   sectionClip,
   overhang,
@@ -341,6 +355,14 @@ export function Viewport({
     () => ({ bodies, meta, sketches, construction, clip: sectionClip }),
     [bodies, meta, sketches, construction, sectionClip],
   );
+  // A dialog's preview of a canvas replaces the canvas it edits (P4-06).
+  const drawnCanvases = useMemo(
+    () => (preview?.canvas ? [...canvases, preview.canvas] : canvases),
+    [canvases, preview?.canvas],
+  );
+  // The pixel sizes of the images the view has decoded: a canvas's height is
+  // the picture's aspect, so `data-canvases` waits for the picture.
+  const pixels = useStore(canvasPixelsStore, (s) => s.pixels);
   // The marking menu (P3-11): the shell fills it in when the view reports a right click.
   const [marking, setMarking] = useState<OpenViewMenu>();
   const viewMenuRef = useRef(viewMenu);
@@ -418,6 +440,7 @@ export function Viewport({
       data-bodies={bodiesKey}
       data-body-appearance={appearanceKey}
       data-construction={constructionSummary(drawnConstruction)}
+      data-canvases={canvasSummary(drawnCanvases, pixels)}
       data-section={sectionSummary(sectionState)}
       data-section-clip={clipSummary(sectionClip)}
       data-overhang={overhang?.summary}
@@ -454,6 +477,8 @@ export function Viewport({
             selection={selection}
             preview={preview}
             construction={drawnConstruction}
+            canvases={drawnCanvases}
+            calibration={calibration}
             sectionClip={sectionClip}
             overhang={overhang?.view}
             onSilhouettes={onSilhouettes}
@@ -566,6 +591,8 @@ function Scene({
   selection,
   preview,
   construction,
+  canvases,
+  calibration,
   sectionClip,
   overhang,
   onSilhouettes,
@@ -582,6 +609,8 @@ function Scene({
   selection: readonly SelectionItem[];
   preview: ViewPreview | undefined;
   construction: readonly ConstructionDrawing[];
+  canvases: readonly CanvasDrawing[];
+  calibration: readonly (readonly number[])[];
   sectionClip: SectionClip | undefined;
   overhang: OverhangView | undefined;
   onSilhouettes(body: BodyId, segments: number): void;
@@ -698,6 +727,9 @@ function Scene({
           section: { clip: sectionClip, color: colors.section, hatch: colors.sectionHatch },
         })}
       />
+      {/* Canvases lie on the model (P4-06): under the bodies and the sketches. */}
+      <Canvases items={canvases} />
+      <CalibrationMarks points={calibration} color={{ ...colors.preselect, a: 1 }} />
       <PreviewShapes preview={preview} colors={colors} planes={previewPlanes} />
       <Sketches
         store={viewport}

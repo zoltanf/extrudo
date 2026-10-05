@@ -21,14 +21,14 @@ import {
   moveSettings,
 } from '@extrudo/core';
 import { KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
-import { deriveNames, type TopoNames } from '../naming/names';
-import { type NamedShape, namedBoolean, withHistory } from '../naming/ops';
+import type { TopoNames } from '../naming/names';
+import { type NamedShape, namedBoolean } from '../naming/ops';
 import { LostReferenceError } from '../naming/resolve';
-import { createdName } from '../naming/topo-id';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
 import { compose, IDENTITY, type Matrix12, mirror, rotation, translation } from './matrix';
-import { TOUCH } from './operation';
+import { nameMeshBodies, transformedNames, warnIfBecameMesh } from './mesh-bodies';
+import { bodiesTouch } from './operation';
 import { replayFeatures } from './pattern';
 import type { Placement } from './pattern-layout';
 import { lineOf, planeOf, pointOf } from './references';
@@ -73,15 +73,15 @@ export function transformBodies(
   const { kernel } = ctx;
   return ids.map((source, i) => {
     const result = kernel.transform(ctx.bodies.get(source) as ShapeHandle, matrix);
-    let named = withHistory(kernel, result, [ctx.names(source)], { op, feature: ctx.feature.id });
-    scope.track(named.shape);
-    if (copy) {
-      // A copy's faces get names of their own, `<op>:<feature>:from:(<name>)`: with the
-      // original's names a reference to a face could mean either body (ADR-0005).
-      const faces = named.names.faces.map((name) => createdName(op, ctx.feature.id, 'from', name));
-      named = { shape: named.shape, names: deriveNames(faces, kernel.describe(named.shape)) };
-    }
-    return { source, id: copy ? ctx.bodyId(i) : source, named };
+    // A mesh body's single face keeps the name it had (a move) or gets the
+    // copy rule (a copy); a solid's names come from the transform's history
+    // (ADR-0066 §4, `transformedNames`).
+    const names = transformedNames(ctx, result, ctx.names(source), {
+      op,
+      ...(copy ? { role: 'from' } : {}),
+    });
+    scope.track(result.shape);
+    return { source, id: copy ? ctx.bodyId(i) : source, named: { shape: result.shape, names } };
   });
 }
 
@@ -226,7 +226,7 @@ function evaluateMirror(ctx: EvalContext<MirrorInputs>): FeatureOutput {
       shape: ctx.bodies.get(source) as ShapeHandle,
       names: ctx.names(source),
     };
-    if (kernel.distance(original.shape, named.shape) > TOUCH) {
+    if (!bodiesTouch(ctx, original.shape, named.shape)) {
       const id = ctx.bodyId(extra++);
       bodies.set(id, named.shape);
       kept.push(named.shape);
@@ -240,6 +240,7 @@ function evaluateMirror(ctx: EvalContext<MirrorInputs>): FeatureOutput {
       simplify: true,
     });
     scope.track(joined.shape);
+    warnIfBecameMesh(ctx, original.shape, joined.shape);
     bodies.set(source, joined.shape);
     kept.push(joined.shape);
     names.set(source, joined.names);
@@ -253,5 +254,5 @@ function evaluateMirror(ctx: EvalContext<MirrorInputs>): FeatureOutput {
         : `${apart} mirrored copies don't touch their originals, so they stay separate bodies.`,
     );
   }
-  return splitSolids(ctx, scope, { bodies, names });
+  return nameMeshBodies(ctx, splitSolids(ctx, scope, { bodies, names }));
 }
