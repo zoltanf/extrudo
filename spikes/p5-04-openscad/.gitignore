@@ -1,0 +1,8 @@
+*.tgz
+*.zip
+*.wasm
+pre/
+ow/
+snap/
+snapnode/
+web/openscad.js
