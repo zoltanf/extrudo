@@ -200,7 +200,7 @@ export const includeProjection = defineCommand<{
 }>('sketch.include', 'Include', (draft, { feature, id, entities }) => {
   const data = sketchDraft(draft, feature);
   const projection = data.projections?.[id];
-  if (!projection || projection.linked !== false) {
+  if (projection?.linked !== false) {
     throw new CommandError('That include is already done.');
   }
   for (const [eid, e] of Object.entries(entities)) {
