@@ -14,6 +14,7 @@ import {
   type CanvasReport,
   type ConstructionReport,
   type DocumentStore,
+  type EmbossReport,
   type ExtrudoDocument,
   type Feature,
   type FeatureId,
@@ -24,6 +25,7 @@ import {
   importFileOf,
   isCanvasReport,
   isConstructionReport,
+  isEmbossReport,
   isImportReport,
   isMeshMediaType,
   isPatternReport,
@@ -138,6 +140,11 @@ export interface Preview {
    * anything else, or while the draft fails.
    */
   pattern?: PatternReport;
+  /**
+   * How the draft put its profiles on the face when it is an emboss that
+   * computed (P4-12, ADR-0060's amendment): moved, wrapped or projected.
+   */
+  emboss?: EmbossReport;
 }
 
 export class Recomputer {
@@ -292,6 +299,7 @@ export class Recomputer {
             ...(isConstructionReport(own) && { construction: own }),
             ...(isCanvasReport(own) && { canvas: own }),
             ...(isPatternReport(own) && { pattern: own }),
+            ...(isEmbossReport(own) && { emboss: own }),
           });
         } catch {
           resolve(undefined);

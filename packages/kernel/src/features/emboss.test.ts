@@ -403,9 +403,10 @@ describe('emboss on a flat face', { timeout: 300_000 }, () => {
     }
   });
 
-  it('refuses surfaces that are neither flat nor round', async () => {
+  it('takes other surfaces too: a torus by projection, a cone by its wrap (P4-12)', async () => {
     const p = pad('SK');
-    // A torus face.
+    // A torus face: the rectangle at the middle of an XY sketch looks through
+    // the ring's hole along Z, so it misses the face (P4-12 projects it).
     const torus = feature('K', 'torus', {
       diameter: length('30 mm'),
       tube: length('6 mm'),
@@ -417,10 +418,10 @@ describe('emboss on a flat face', { timeout: 300_000 }, () => {
     ]);
     expect(status(other, 'EM')).toMatchObject({
       status: 'error',
-      message: 'Emboss works on flat and cylindrical faces.',
+      message: "The profiles don't touch the face.",
     });
 
-    // So is the cone of a countersunk hole (a cylinder wraps, a cone does not).
+    // The cone of a countersunk hole wraps (P4-12), so an XY sketch across its axis is refused.
     const countersink = {
       ...testFeature('H', HOLE_TYPE),
       inputs: holeInputs({
@@ -444,7 +445,7 @@ describe('emboss on a flat face', { timeout: 300_000 }, () => {
     ]);
     expect(status(cone, 'EM')).toMatchObject({
       status: 'error',
-      message: 'Emboss works on flat and cylindrical faces.',
+      message: "Sketch on a plane parallel to the cone's axis to emboss on a round face.",
     });
   });
 
@@ -713,7 +714,7 @@ describe('emboss on a cylindrical face', { timeout: 300_000 }, () => {
     expect(shapeOf().volume).toBeCloseTo(box - bored - want(INK, 10, 1), 6);
   });
 
-  it('refuses a sketch across the axis, a too deep deboss and too long profiles', async () => {
+  it('refuses a sketch across the axis, a too deep deboss and too wide profiles', async () => {
     // Across the axis: an XY sketch on a cylinder whose axis is Z.
     const across = pad('SK', XY, [-5, -2, 10, 4]);
     const square = await run([
@@ -738,9 +739,9 @@ describe('emboss on a cylindrical face', { timeout: 300_000 }, () => {
       message: expect.stringContaining('the depth is bigger than the radius'),
     });
 
-    // More than half way round: an 80 mm edge runs four radians (229°) round a
+    // Past a whole turn (P4-12: up to one turn wraps): a 130 mm edge round a
     // wall whose whole circumference is 126 mm.
-    const wide = pad('SK', XZ, [0, 8, 80, 4]);
+    const wide = pad('SK', XZ, [0, 8, 130, 4]);
     const long = await run([
       cylinder(),
       ...wide.features,
@@ -748,7 +749,7 @@ describe('emboss on a cylindrical face', { timeout: 300_000 }, () => {
     ]);
     expect(status(long, 'EM')).toMatchObject({
       status: 'error',
-      message: expect.stringContaining('longer than half way round the cylinder'),
+      message: "The profile is wider than the face's circumference.",
     });
   });
 

@@ -35,6 +35,15 @@
  * says whether the wall is a boss's (its normal points away from the axis) or
  * a hole's.
  *
+ * A **cone** (P4-12, ADR-0060's amendment) is wrapped the same way through
+ * `Kernel.wrapOnCone`, with the frame on the axis at the profiles' centroid's
+ * height: `s` turns into the angle at the radius there and `z` runs along the
+ * generator. **Any other face** — a sphere, a torus, a free-form face — takes
+ * the profiles **projected** along the sketch plane's normal
+ * (`Kernel.projectOnFace`): the prism through the face, cut back to the part
+ * between the face and the face offset by the depth. Which of the four it was
+ * is the feature's report (`EmbossReport`), for the dialog's status line.
+ *
  * Names: the prism's or the wrap's own, under `emboss:<id>` — `…:cap:start`
  * (on the face) and `…:cap:end`, and `…:side:<sketch curve>` for each edge of
  * the profiles, taken through the move's history so they follow the rebuild.
@@ -43,20 +52,28 @@ import {
   type BodyId,
   EMBOSS_DEFAULT_DEPTH,
   type EmbossInputs,
+  type EmbossMethod,
   type EmbossMode,
+  type EmbossReport,
   embossFeature,
   embossSettings,
 } from '@extrudo/core';
 import {
+  type Axis,
   KernelError,
   type OperationResult,
   type ShapeHandle,
   type ShapeScope,
-  type ThreadFace,
   type Vec3,
   type WrapFrame,
 } from '../kernel';
-import { type NamedShape, namedPrism, namedWrap, type SweepSource } from '../naming/ops';
+import {
+  type NamedShape,
+  namedPrism,
+  namedProjection,
+  namedWrap,
+  type SweepSource,
+} from '../naming/ops';
 import type { ResolvedRef } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
@@ -121,13 +138,27 @@ function evaluateEmboss(ctx: EvalContext<EmbossInputs>): FeatureOutput {
   using scope = kernel.scope();
   const parts = partsOf(ctx, scope, settings.profiles, WORDS.noun);
   if (parts.length === 0) throw new KernelError('Pick at least one profile or text to emboss.');
-  // A cylinder wraps (ADR-0060 §3); anything else has to be flat.
+  // A cylinder wraps (ADR-0060 §3), and a cone (P4-12); a flat face takes the
+  // profiles moved onto it, and anything else projected onto it.
   // The third argument names the feature in a mesh refusal (ADR-0066 §4).
   const round = kernel.threadFace(hit.shape, hit.index, 'Emboss');
+  const cone = round ? undefined : kernel.coneFace(hit.shape, hit.index, 'Emboss');
+  const flat = round || cone ? undefined : flatFaceOf(ctx, hit);
+  const method: EmbossMethod = round
+    ? 'wrapped-cylinder'
+    : cone
+      ? 'wrapped-cone'
+      : flat
+        ? 'moved'
+        : 'projected';
   // Each branch leaves its tool tracked by `scope` exactly once.
   const { tool, data } = round
-    ? wrappedTool(ctx, scope, parts, hit, round, settings.mode, depth)
-    : flatTool(ctx, scope, parts, hit, settings.mode, depth);
+    ? wrappedTool(ctx, scope, parts, hit, { ...round, halfAngle: 0 }, settings.mode, depth)
+    : cone
+      ? wrappedTool(ctx, scope, parts, hit, cone, settings.mode, depth)
+      : flat
+        ? flatTool(ctx, scope, parts, hit, flat, settings.mode, depth)
+        : projectedTool(ctx, scope, parts, hit, settings.mode, depth);
   // A join of two solids that miss each other would leave a second body, and a
   // cut that removes nothing would only say so in its own words: one message
   // for both, and the exact distance is cheap for one tool and one body.
@@ -149,7 +180,20 @@ function evaluateEmboss(ctx: EvalContext<EmbossInputs>): FeatureOutput {
       ),
     ),
     data,
+    report: { kind: 'emboss', method } satisfies EmbossReport,
   };
+}
+
+/** A face the profiles wrap round: a cylinder (`halfAngle` 0) or a cone. */
+interface RoundFace {
+  /** A point of the axis and its direction. */
+  axis: Axis;
+  /** The radius at `axis.origin`. */
+  radius: number;
+  /** Radians: the radius grows by tan(halfAngle) per mm along the axis; 0 for a cylinder. */
+  halfAngle: number;
+  /** The face is a hole's wall (its material outside it). */
+  inside: boolean;
 }
 
 /** The tool of an emboss on a **flat** face (ADR-0060 §2), and where it stands. */
@@ -158,10 +202,10 @@ function flatTool(
   scope: ShapeScope,
   parts: Base[],
   hit: ResolvedRef,
+  face: Plane,
   mode: EmbossMode,
   depth: number,
 ): { tool: NamedShape; data: EmbossOutputData } {
-  const face = flatFaceOf(ctx, hit);
   for (const part of parts) {
     if (!parallel(part.plane, face)) {
       throw new KernelError('Sketch on a plane parallel to the face to emboss on a flat face.');
@@ -187,20 +231,20 @@ function flatTool(
 }
 
 /**
- * The tool of an emboss on a **cylindrical** face (ADR-0060 §3), and where it
- * stands: every part's face wrapped round the cylinder in the unrolled frame
- * of the sketches' plane, fused into one tool.
+ * The tool of an emboss on a **cylindrical** face (ADR-0060 §3) or a
+ * **conical** one (P4-12), and where it stands: every part's face wrapped round
+ * it in the unrolled frame of the sketches' plane, fused into one tool.
  */
 function wrappedTool(
   ctx: EvalContext,
   scope: ShapeScope,
   parts: Base[],
   hit: ResolvedRef,
-  round: ThreadFace,
+  round: RoundFace,
   mode: EmbossMode,
   depth: number,
 ): { tool: NamedShape; data: EmbossOutputData } {
-  const frame = wrapFrameOf(round, parts);
+  const frame = wrapFrameOf(ctx, round, parts);
   // A boss's wall looks away from the axis and a hole's wall towards it: the
   // letters stand out of the face for an emboss and go into it for a deboss,
   // which is the other way round for a hole.
@@ -227,7 +271,60 @@ function wrappedTool(
     tool,
     data: {
       origin: centre,
-      direction: scale(radialAt(frame, centre), outward ? 1 : -1),
+      direction: scale(normalAt(frame, centre), outward ? 1 : -1),
+      depth,
+      body: hit.body,
+    },
+  };
+}
+
+/**
+ * The tool of an emboss on any face that is neither flat, a cylinder nor a
+ * cone (P4-12, ADR-0060's amendment): each part's face projected onto it along
+ * the sketch plane's normal and cut back to the face and its offset by
+ * `depth`, outwards for an emboss and inwards for a deboss, fused into one tool.
+ * The output's origin is the tool's centre and its direction the sketch's
+ * normal pointing back at the sketch (out of the face where the letters are),
+ * or the other way for a deboss.
+ */
+function projectedTool(
+  ctx: EvalContext,
+  scope: ShapeScope,
+  parts: Base[],
+  hit: ResolvedRef,
+  mode: EmbossMode,
+  depth: number,
+): { tool: NamedShape; data: EmbossOutputData } {
+  const first = parts[0] as Base;
+  for (const part of parts) {
+    if (!parallel(part.plane, first.plane)) {
+      throw new KernelError('Put the profiles in one plane to emboss them on a curved face.');
+    }
+  }
+  const projected = parts.map((part) => {
+    const tool = namedProjection(ctx.kernel, {
+      feature: ctx.feature.id,
+      op: WORDS.noun,
+      shape: part.source.shape,
+      edgeSources: part.source.edgeSources,
+      body: hit.shape,
+      face: hit.index,
+      depth,
+      outward: mode === 'emboss',
+    });
+    scope.track(tool.shape);
+    return tool;
+  });
+  const tool = mergeTools(ctx, scope, projected, WORDS.noun);
+  const origin = centroidOf(ctx, tool.shape);
+  const normal = unit(first.plane.normal);
+  const towardsSketch =
+    dot(sub(first.plane.point, origin), normal) >= 0 ? normal : scale(normal, -1);
+  return {
+    tool,
+    data: {
+      origin,
+      direction: mode === 'emboss' ? towardsSketch : scale(towardsSketch, -1),
       depth,
       body: hit.body,
     },
@@ -240,50 +337,84 @@ function wrappedTool(
  * sketch plane meets it) and `z` along the axis, so a sketch point lands on the
  * cylinder at angle `s / radius` from `reference`, which points from the axis
  * towards the sketch. The sketches' plane has to run **along** the axis.
+ *
+ * A cone's frame (P4-12) is centred on the axis at the height of the profiles'
+ * area centroid, one height for them all so a text's letters stay in line:
+ * `radius` is the cone's radius there, `z` is measured from it and runs along
+ * the generator, and `halfAngle` says how the radius changes.
  */
-function wrapFrameOf(round: ThreadFace, parts: Base[]): WrapFrame {
+function wrapFrameOf(ctx: EvalContext, round: RoundFace, parts: Base[]): WrapFrame {
   const axis = unit(round.axis.direction);
-  const centre = round.axis.origin;
+  const conical = round.halfAngle !== 0;
   const first = parts[0] as Base;
   for (const part of parts) {
     if (Math.abs(dot(part.plane.normal, axis)) >= AXIS_TOLERANCE) {
       throw new KernelError(
-        "Sketch on a plane parallel to the cylinder's axis to emboss on a round face.",
+        conical
+          ? "Sketch on a plane parallel to the cone's axis to emboss on a round face."
+          : "Sketch on a plane parallel to the cylinder's axis to emboss on a round face.",
       );
     }
   }
+  const height = conical ? dot(sub(partsCentroid(ctx, parts), round.axis.origin), axis) : 0;
+  const centre = add(round.axis.origin, scale(axis, height));
+  const radius = round.radius + height * Math.tan(round.halfAngle);
   const normal = unit(first.plane.normal);
   const reference = dot(sub(first.plane.point, centre), normal) >= 0 ? normal : scale(normal, -1);
   return {
     origin: centre,
     axis,
     reference,
-    radius: round.radius,
+    radius,
     corner: add(centre, scale(reference, dot(sub(first.plane.point, centre), reference))),
     across: cross(axis, reference),
+    ...(conical && { halfAngle: round.halfAngle }),
   };
 }
 
-/** A point of the sketch plane where the wrap puts it: on the cylinder, same angle and height. */
+/** The area centroid of every part's faces together, in world mm. */
+function partsCentroid(ctx: EvalContext, parts: readonly Base[]): Vec3 {
+  let area = 0;
+  let sum: Vec3 = [0, 0, 0];
+  for (const part of parts) {
+    for (const face of ctx.kernel.describe(part.source.shape).faces) {
+      area += face.area;
+      sum = add(sum, scale(face.centroid, face.area));
+    }
+  }
+  return area > 0 ? scale(sum, 1 / area) : centroidOf(ctx, (parts[0] as Base).source.shape);
+}
+
+/**
+ * A point of the sketch plane where the wrap puts it: on the cylinder at the
+ * same angle and height, or on the cone at that angle, `z` along the generator.
+ */
 function onCylinder(frame: WrapFrame, point: Vec3): Vec3 {
   const along = sub(point, frame.corner);
   const angle = dot(along, frame.across) / frame.radius;
+  const v = dot(along, frame.axis);
+  const alpha = frame.halfAngle ?? 0;
+  const r = frame.radius + v * Math.sin(alpha);
   return add(
     frame.origin,
     add(
-      add(
-        scale(frame.reference, frame.radius * Math.cos(angle)),
-        scale(frame.across, frame.radius * Math.sin(angle)),
-      ),
-      scale(frame.axis, dot(along, frame.axis)),
+      add(scale(frame.reference, r * Math.cos(angle)), scale(frame.across, r * Math.sin(angle))),
+      scale(frame.axis, v * Math.cos(alpha)),
     ),
   );
 }
 
-/** The unit direction from the axis towards a point of the cylinder (its radius there). */
-function radialAt(frame: WrapFrame, point: Vec3): Vec3 {
+/**
+ * The unit normal of the cylinder or cone at a point of it that points away
+ * from the axis: the radius for a cylinder, tilted against the axis by the
+ * half-angle for a cone.
+ */
+function normalAt(frame: WrapFrame, point: Vec3): Vec3 {
   const from = sub(point, frame.origin);
-  return unit(sub(from, scale(frame.axis, dot(from, frame.axis))));
+  const radial = unit(sub(from, scale(frame.axis, dot(from, frame.axis))));
+  const alpha = frame.halfAngle ?? 0;
+  if (alpha === 0) return radial;
+  return unit(sub(scale(radial, Math.cos(alpha)), scale(frame.axis, Math.sin(alpha))));
 }
 
 /**
@@ -305,17 +436,15 @@ function wrappedCentre(ctx: EvalContext, parts: readonly Base[], frame: WrapFram
 }
 
 /**
- * The flat face to emboss on as a plane with its **outward** normal:
+ * The flat face to emboss on as a plane with its **outward** normal, or
+ * undefined for a face that isn't flat (P4-12: it takes a projection then):
  * `surfaceGeometry` gives a plane's normal reversed for a reversed face, so it
  * points out of the body (the same thing `describe` reports as a plane face's
- * `direction`). A cylinder went down the wrap branch; anything else that is
- * neither (a cone, a sphere, a torus) is refused.
+ * `direction`).
  */
-function flatFaceOf(ctx: EvalContext, hit: ResolvedRef): Plane {
+function flatFaceOf(ctx: EvalContext, hit: ResolvedRef): Plane | undefined {
   const surface = ctx.kernel.surfaceGeometry(hit.shape, hit.index);
-  if (surface.type !== 'plane' || !surface.origin || !surface.direction) {
-    throw new KernelError('Emboss works on flat and cylindrical faces.');
-  }
+  if (surface.type !== 'plane' || !surface.origin || !surface.direction) return undefined;
   return { point: surface.origin, normal: surface.direction };
 }
 

@@ -464,7 +464,7 @@ export const TOOLS = {
     label: 'Emboss',
     icon: 'emboss',
     category: 'create',
-    hint: 'Raise the letters of a sketch, or a whole text, off a flat or round face, or press them into it; on a round one they keep their width.',
+    hint: 'Raise the letters of a sketch, or a whole text, off a face, or press them into it; round a cylinder or a cone they keep their width.',
   },
   script: {
     id: 'script',

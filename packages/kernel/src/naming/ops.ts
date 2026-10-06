@@ -92,9 +92,36 @@ export interface WrapOptions extends SweepSource {
  * `…:side:<source>`, exactly as `namedPrism` names a prism.
  */
 export function namedWrap(kernel: Kernel, options: WrapOptions): NamedShape {
-  const result = kernel.wrapOnCylinder(
+  // A cone's frame carries its half-angle (P4-12); a cylinder's has none.
+  const result = options.frame.halfAngle
+    ? kernel.wrapOnCone(options.shape, options.frame, options.depth, options.outward ?? true)
+    : kernel.wrapOnCylinder(options.shape, options.frame, options.depth, options.outward ?? true);
+  return nameSwept(kernel, result, options.op ?? 'emboss', options.feature, options.edgeSources);
+}
+
+export interface ProjectionOptions extends SweepSource {
+  feature: string;
+  /** Default `emboss`. */
+  op?: string;
+  /** The body the face belongs to, and the face's index in it. */
+  body: ShapeHandle;
+  face: number;
+  depth: number;
+  /** Whether the letters stand out of the face (true) or go into it. */
+  outward?: boolean;
+}
+
+/**
+ * Projects a profile face onto a face of a body along the profile's normal
+ * (P4-12, ADR-0060's amendment, `Kernel.projectOnFace`): the face's pieces are
+ * `op:feature:cap:start`, the offset's `…:cap:end` and each edge's wall
+ * `…:side:<source>`, as `namedPrism` names a prism.
+ */
+export function namedProjection(kernel: Kernel, options: ProjectionOptions): NamedShape {
+  const result = kernel.projectOnFace(
     options.shape,
-    options.frame,
+    options.body,
+    options.face,
     options.depth,
     options.outward ?? true,
   );
