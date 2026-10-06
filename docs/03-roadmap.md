@@ -944,9 +944,14 @@ end to end, faster than in Fusion 360.
     Fix References is open or its chip is picked (`data-ghosts`); the
     `marking.slots` preference and the Customize Marking Menu dialog give each
     wedge of both rings any command the mode offers.
-  - Emboss: cones, spheres and free-form faces; more than half way round a
-    cylinder; "tangent to the face" for a flat sketch far from it; several
-    faces at once (ADR-0060). ~~`Kernel.measure`'s volume is 1-2 % off on the
+  - Emboss: ~~cones, spheres and free-form faces; more than half way round a
+    cylinder;~~ "tangent to the face" for a flat sketch far from it; several
+    faces at once (ADR-0060). **Cones, spheres, free-form faces and wraps past
+    half way round done 2026-10-06** (ADR-0060's amendment): a cone wraps like a
+    cylinder (`wrapOnCone`, exact, the frame at the profiles' centroid's
+    height), any other curved face takes the profiles projected along the
+    sketch's normal (`projectOnFace`, a sphere's or torus's offset exact), the
+    dialog says which, and a wrap may go up to a whole turn. ~~`Kernel.measure`'s volume is 1-2 % off on the
     B-spline walls of a wrap (its own gap, like the lofter's), so the wrap's
     exactness is only as good as the integrator.~~ **Done 2026-10-05**
     (ADR-0067 §H3): the facade integrates with an error bound where a B-spline

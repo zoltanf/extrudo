@@ -1038,7 +1038,17 @@ grow is the face itself, read with `Kernel.threadFace` — a boss's wall is conv
 a hole's concave — so an emboss on a hole fills its free space in and a deboss
 cuts into the material round it. Names are the prism's: `emboss:<id>:cap:end` and
 `…:side:<sketch curve>` per wall (`namedWrap`, whose history is a prism's).
-Cones, spheres and free-form faces are refused. The tool is `emboss` in Solid ›
+**P4-12 (ADR-0060's amendment)**: a **cone** wraps the same way (facade
+`wrapOnCone`, the cylinder's map with the frame on the axis at the profiles'
+area centroid's height, `z` along the generator; `coneFace` gives convex or
+concave), and **any other face** (sphere, torus, free-form) takes the profiles
+**projected** along the sketch's normal (`projectOnFace`: the prism `common`
+the face's thick piece, a sphere's or torus's exactly concentric; refused past
+the face's edge or outline as seen from the sketch); the method is no input but
+an `EmbossReport` (`Preview.emboss`, the dialog's read-only "Method" line). A
+wrap may run up to a whole turn ("The profile is wider than the face's
+circumference."); "tangent to the face" and several faces stay deferred. Native
+harness `spikes/p4-12-emboss-faces/`. The tool is `emboss` in Solid ›
 Create's menu after Coil, no key; `e2e/emboss.spec.ts` covers both kinds of face
 in both modes. Native harness: `spikes/p4-04-harness/`.
 ADR-0061 (P4-03b) added **user fonts as attachments**: `doc.attachments` holds
@@ -3372,7 +3382,13 @@ them. Notes further down that name a machine apply to that machine only.
   menu (`menuitem` "Emboss", no key); its dialog is the region "Emboss dialog" /
   "Edit Emboss1 dialog" with the buttons "Profiles" and "Face" (`exact: true`:
   **"1 text"**, **"1 face"**), the `Depth` textbox (`exact`) and the `Mode`
-  combobox (`emboss`/`deboss`). **Sketch on a construction plane clear of the
+  combobox (`emboss`/`deboss`); P4-12 adds the read-only line
+  `[data-info="method"]` ("Wrapped round the cone", "Projected onto the face",
+  after the first preview) and two tests: 'AB' on a Cylinder drafted 10° about
+  XY (Modify › Draft, the wall picked at (0, −10, 10), the plane on XY's square)
+  and a Ø6 circle typed into the heads-up box on a plane 40 mm over a Sphere
+  primitive, its profile picked at z = 40 and the sphere at 10/√3 (1, −1, 1);
+  an emboss makes it `…:20,20,21`. **Sketch on a construction plane clear of the
   body**: the letters have to be clickable in the model, and a sketch through
   the body (an XZ sketch inside a cylinder) puts them behind its faces, where a
   click is refused as occluded (the text spec's `inkPoints` scan over
