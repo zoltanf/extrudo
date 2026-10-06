@@ -587,6 +587,106 @@ public:
     }
   }
 
+  /** Clears the walls staged for shellFaces(). */
+  void clearWalls() {
+    wallFaces_.clear();
+    wallThickness_.clear();
+  }
+
+  /**
+   * Stages one wall for shellFaces() (P4-12, ADR-0046's amendment): face
+   * `face` (a 0-based index) gets walls of `thickness` mm instead of the
+   * shell's own thickness.
+   */
+  void pushWall(int face, double thickness) {
+    wallFaces_.push_back(face);
+    wallThickness_.push_back(thickness);
+  }
+
+  /**
+   * Shells the solid `shape` like shell() (the staged args are the faces to
+   * remove), with a thickness per face (P4-12, ADR-0046's amendment): the
+   * walls staged with clearWalls()/pushWall() get their own thickness, every
+   * other face `thickness`. OCCT gives the faces that run smoothly into a
+   * staged face (its smooth chain, see tangentFaces) the same thickness, and
+   * so does the check. Built on BRepOffset_MakeOffset with SetOffsetOnFace,
+   * which is what traps the heap on bodies where a smooth chain has a sharp
+   * edge inside it (ADR-0051), so those are refused before OCCT runs. Records
+   * history for input 0 as shell() does.
+   *
+   * On failure it returns 0 with a message in lastError() and, in
+   * geometryNumbers, [status, value]: 2 to 6 as shell(), and
+   * - 1 the walls are too thick: the largest factor every thickness (the
+   *   shell's and the walls') can be scaled by together, by bisection;
+   * - 7 a smooth chain has a sharp edge inside it (value 0);
+   * - 8 a staged wall is a removed face: its index;
+   * - 9 a face is staged twice with different thicknesses: its index;
+   * - 10 two faces of one smooth chain are staged with different
+   *   thicknesses: the second face's index.
+   */
+  int shellFaces(int shape, double thickness, bool outside) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* input = find(shape);
+    if (input == nullptr) return fail("Shell failed: unknown input shape.");
+    if (!(thickness > 0)) return fail("Shell failed: the thickness must be greater than 0.");
+    for (double t : wallThickness_) {
+      if (!(t > 0)) return fail("Shell failed: every wall thickness must be greater than 0.");
+    }
+    try {
+      if (!TopExp_Explorer(*input, TopAbs_SOLID).More()) {
+        pushShellStatus(4, 0);
+        return fail("Shell failed: the body isn't a solid.");
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*input, TopAbs_FACE, faces);
+      std::vector<int> removed;
+      for (int index : args_) {
+        if (index < 0 || index >= faces.Extent()) return fail("Shell failed: face index out of range.");
+        if (std::find(removed.begin(), removed.end(), index) == removed.end()) removed.push_back(index);
+      }
+      if (static_cast<int>(removed.size()) >= faces.Extent()) {
+        pushShellStatus(3, 0);
+        return fail("Shell failed: every face would be removed.");
+      }
+      for (int index : wallFaces_) {
+        if (index < 0 || index >= faces.Extent()) return fail("Shell failed: wall face index out of range.");
+      }
+      for (int index : removed) {
+        if (touchesTangentFace(*input, TopoDS::Face(faces(index + 1)))) {
+          pushShellStatus(6, index);
+          return fail("Shell failed: a removed face is tangent to its neighbours.");
+        }
+      }
+      std::vector<int> chain;
+      if (smoothChains(*input, faces, chain)) {
+        pushShellStatus(7, 0);
+        return fail("Shell failed: rounded edges meet at a sharp corner.");
+      }
+      std::vector<double> perFace;
+      if (!wallThicknesses(chain, removed, thickness, perFace)) return 0;
+      {
+        // A copy for every build, as in shell(): OCCT repairs its input in place.
+        const TopoDS_Shape copy = BRepBuilderAPI_Copy(*input, true, false).Shape();
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> copyFaces;
+        TopExp::MapShapes(copy, TopAbs_FACE, copyFaces);
+        if (copyFaces.Extent() == faces.Extent()) {
+          BRepOffset_MakeOffset builder;
+          TopoDS_Shape result;
+          if (buildShellFaces(builder, copy, copyFaces, removed, perFace, thickness, 1.0, outside, result) &&
+              shellFacesGood(builder, copy, copyFaces, removed, perFace, 1.0, result, outside)) {
+            recordHistory(builder, copy, 0, result);
+            return store(result);
+          }
+        }
+      }
+      return explainShellFaces(*input, removed, perFace, thickness, outside);
+    } catch (...) {
+      pushShellStatus(5, 0);
+      return failFromException("Shell failed");
+    }
+  }
+
   /**
    * Moves faces of the solid `shape` along their normals (P3-08, offset
    * face): the staged faces (clearArgs/pushArg, 0-based face indices,
@@ -3266,6 +3366,9 @@ private:
   std::string exportText_;
   std::vector<std::string> stepNames_;
   std::vector<double> numbers_;
+  /** Walls staged for shellFaces(): face indices and their thicknesses. */
+  std::vector<int> wallFaces_;
+  std::vector<double> wallThickness_;
   /** Staged edges: one per curve, or a spline's pieces (sketchCurveOf_ says whose). */
   std::vector<TopoDS_Edge> sketchEdges_;
   std::vector<int> sketchCurveOf_;
@@ -4359,6 +4462,155 @@ private:
         [&](double t) { return shellWorks(input, removed, t, outside); }, thickness);
     pushShellStatus(largest > 0 ? 1 : 2, largest);
     return fail(largest > 0 ? "Shell failed: the thickness is too large for this body."
+                            : "Shell failed: OCCT can't offset this body.");
+  }
+
+  /**
+   * The thickness of every face of a shellFaces() call into `perFace` (0
+   * for a removed face): the staged walls and their smooth chains (OCCT
+   * offsets a chain by one value), the shell's thickness elsewhere. False
+   * with the status (8, 9 or 10, see shellFaces()) and lastError set when
+   * the walls contradict each other or the removed faces.
+   */
+  bool wallThicknesses(const std::vector<int>& chain, const std::vector<int>& removed, double thickness,
+                      std::vector<double>& perFace) {
+    const size_t count = chain.size();
+    perFace.assign(count, thickness);
+    std::vector<int> setBy(count, -1);
+    for (size_t w = 0; w < wallFaces_.size(); ++w) {
+      const int face = wallFaces_[w];
+      const double t = wallThickness_[w];
+      if (std::find(removed.begin(), removed.end(), face) != removed.end()) {
+        pushShellStatus(8, face);
+        fail("Shell failed: a wall is also a removed face.");
+        return false;
+      }
+      for (size_t i = 0; i < count; ++i) {
+        if (chain[i] != chain[static_cast<size_t>(face)]) continue;
+        if (setBy[i] >= 0 && std::fabs(perFace[i] - t) > 1e-9) {
+          const bool same = setBy[i] == face;
+          pushShellStatus(same ? 9 : 10, face);
+          fail(same ? "Shell failed: a face has two wall thicknesses."
+                    : "Shell failed: faces that run smoothly into each other have different walls.");
+          return false;
+        }
+        perFace[i] = t;
+        setBy[i] = face;
+      }
+    }
+    for (int index : removed) perFace[static_cast<size_t>(index)] = 0;
+    return true;
+  }
+
+  /**
+   * Builds a shell with a thickness per face (see shellFaces()) of `input`
+   * into `result` with `builder`, kept by the caller for its history:
+   * `perFace` scaled by `factor` (the diagnosis' probes scale everything
+   * together). Without removed faces the solid with a void is put together
+   * as in buildShell. False when OCCT can't build it.
+   */
+  static bool buildShellFaces(BRepOffset_MakeOffset& builder, const TopoDS_Shape& input,
+                              const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                              const std::vector<int>& removed, const std::vector<double>& perFace, double thickness,
+                              double factor, bool outside, TopoDS_Shape& result) {
+    try {
+      const double sign = outside ? factor : -factor;
+      // Sharp joins, as offsetFaces(): with round joins OCCT spreads a face's
+      // own offset over every edge where the offsets diverge (convex edges
+      // outwards, concave ones inwards), so one thicker floor thickened a
+      // whole box grown outwards. With sharp joins it spreads over smooth
+      // edges only, which is what wallThicknesses() and the check assume.
+      builder.Initialize(input, sign * thickness, 1e-3, BRepOffset_Skin, true, false, GeomAbs_Intersection, false,
+                         false);
+      for (int index : removed) builder.AddFace(TopoDS::Face(faces(index + 1)));
+      for (int i = 1; i <= faces.Extent(); ++i) {
+        const double t = perFace[static_cast<size_t>(i - 1)];
+        if (t > 0 && std::fabs(t - thickness) > 1e-9) builder.SetOffsetOnFace(TopoDS::Face(faces(i)), sign * t);
+      }
+      builder.MakeThickSolid();
+      if (!builder.IsDone()) return false;
+      result = builder.Shape();
+      if (removed.empty()) result = hollowSolid(input, result, outside);
+      return !result.IsNull();
+    } catch (...) {
+      result.Nullify();
+      return false;
+    }
+  }
+
+  /**
+   * Whether `result` is a sound shell with a thickness per face: shellIsGood's
+   * tests, with the distance test per thickness (each group of faces stays
+   * at least its own thickness from its offsets) and over all faces (at
+   * least the thinnest wall).
+   */
+  static bool shellFacesGood(BRepOffset_MakeOffset& builder, const TopoDS_Shape& input,
+                             const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                             const std::vector<int>& removed, const std::vector<double>& perFace, double factor,
+                             const TopoDS_Shape& result, bool outside) {
+    if (result.IsNull() || !TopExp_Explorer(result, TopAbs_SOLID).More()) return false;
+    if (!BRepCheck_Analyzer(result).IsValid()) return false;
+    const double volume = exactVolume(result);
+    if (!(volume > 0)) return false;
+    if (!outside && !(volume < exactVolume(input) * (1 - 1e-6))) return false;
+    std::vector<double> groups;
+    for (int i = 0; i < faces.Extent(); ++i) {
+      const double t = perFace[static_cast<size_t>(i)];
+      if (t > 0 && std::find(groups.begin(), groups.end(), t) == groups.end()) groups.push_back(t);
+    }
+    if (groups.empty()) return true;
+    // One entry per thickness, and a last one over every face for the thinnest.
+    groups.push_back(-*std::min_element(groups.begin(), groups.end()));
+    for (double group : groups) {
+      BRep_Builder compounds;
+      TopoDS_Compound originals;
+      TopoDS_Compound offsets;
+      compounds.MakeCompound(originals);
+      compounds.MakeCompound(offsets);
+      bool any = false;
+      for (int i = 1; i <= faces.Extent(); ++i) {
+        const double t = perFace[static_cast<size_t>(i - 1)];
+        if (!(t > 0) || std::find(removed.begin(), removed.end(), i - 1) != removed.end()) continue;
+        if (group > 0 && t != group) continue;
+        const TopoDS_Shape& face = faces(i);
+        for (const TopoDS_Shape& made : builder.Generated(face)) {
+          if (made.ShapeType() != TopAbs_FACE) continue;
+          compounds.Add(offsets, made);
+          any = true;
+        }
+        compounds.Add(originals, face);
+      }
+      if (!any) continue;
+      BRepExtrema_DistShapeShape measure(originals, offsets, Extrema_ExtFlag_MIN);
+      if (!measure.IsDone()) continue;
+      if (measure.Value() < 0.999 * std::fabs(group) * factor - 1e-3) return false;
+    }
+    return true;
+  }
+
+  /** Whether the shell with a thickness per face builds and is sound at `factor` (a probe), on a fresh copy. */
+  static bool shellFacesWork(const TopoDS_Shape& input, const std::vector<int>& removed,
+                             const std::vector<double>& perFace, double thickness, double factor, bool outside) {
+    const TopoDS_Shape copy = BRepBuilderAPI_Copy(input, true, false).Shape();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+    TopExp::MapShapes(copy, TopAbs_FACE, faces);
+    BRepOffset_MakeOffset builder;
+    TopoDS_Shape result;
+    return buildShellFaces(builder, copy, faces, removed, perFace, thickness, factor, outside, result) &&
+           shellFacesGood(builder, copy, faces, removed, perFace, factor, result, outside);
+  }
+
+  /**
+   * Fills geometry_ after a shell with a thickness per face failed: the
+   * largest factor every thickness can be scaled by together, or "nothing
+   * does". Returns 0 with lastError set.
+   */
+  int explainShellFaces(const TopoDS_Shape& input, const std::vector<int>& removed,
+                        const std::vector<double>& perFace, double thickness, bool outside) {
+    const double largest = largestThatWorks(
+        [&](double f) { return shellFacesWork(input, removed, perFace, thickness, f, outside); }, 1.0);
+    pushShellStatus(largest > 0 ? 1 : 2, largest);
+    return fail(largest > 0 ? "Shell failed: the walls are too thick for this body."
                             : "Shell failed: OCCT can't offset this body.");
   }
 
