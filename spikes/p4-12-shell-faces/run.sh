@@ -23,7 +23,7 @@ RUN="node $OUT $*"
 if [ "${1:-}" = "sweep" ]; then RUN="sh sweep.sh"; fi
 if [ "${1:-}" = "sweep2" ]; then RUN="sh sweep2.sh"; fi
 docker run --rm --user 0 -v "$ROOT:/w" -w /w/spikes/p4-12-shell-faces --entrypoint sh "$IMAGE" -c "
-  em++ -std=c++17 $OPT $EXTRA -fwasm-exceptions -I/opencascade.js/build/occt-includes harness.cpp \
+  rm -f $OUT; em++ -std=c++17 $OPT $EXTRA -fwasm-exceptions -I/opencascade.js/build/occt-includes harness.cpp \
     -sALLOW_MEMORY_GROWTH -sENVIRONMENT=node -sERROR_ON_UNDEFINED_SYMBOLS=0 -sSTACK_SIZE=5MB \
     $LINK -o $OUT 2>&1 | grep -v 'warning:' | grep -E 'error|undefined' ;
   $RUN"

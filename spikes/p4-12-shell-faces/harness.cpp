@@ -528,7 +528,136 @@ static int sequence(int argc, char** argv) {
   return 0;
 }
 
+/** One build of a shell with walls at `factor`, with sharp or round joins, checked (a probe). */
+static int checkStep = 99;
+
+static bool oneBuild(const TopoDS_Shape& input, const std::vector<int>& removed, const std::vector<double>& perFace,
+                     double t, double factor, bool sharp) {
+  const TopoDS_Shape copy = BRepBuilderAPI_Copy(input, true, false).Shape();
+  FaceMap faces;
+  TopExp::MapShapes(copy, TopAbs_FACE, faces);
+  BRepOffset_MakeOffset builder;
+  TopoDS_Shape result;
+  try {
+    const double sign = -factor;
+    builder.Initialize(copy, sign * t, 1e-3, BRepOffset_Skin, sharp, false, sharp ? GeomAbs_Intersection : GeomAbs_Arc,
+                       false, false);
+    for (int r : removed) builder.AddFace(TopoDS::Face(faces(r + 1)));
+    for (int i = 1; i <= faces.Extent(); ++i) {
+      const double w = perFace[i - 1];
+      if (w > 0 && std::abs(w - t) > 1e-9) builder.SetOffsetOnFace(TopoDS::Face(faces(i)), sign * w);
+    }
+    builder.MakeThickSolid();
+    if (!builder.IsDone()) {
+      static int said = 0;
+      if (said++ == 0) std::printf("oneBuild: not done, error %d\n", static_cast<int>(builder.Error()));
+      return false;
+    }
+    result = builder.Shape();
+  } catch (const Standard_Failure& e) {
+    static int said = 0;
+    if (said++ == 0) std::printf("oneBuild: exception %s\n", e.what());
+    return false;
+  } catch (...) {
+    static int said = 0;
+    if (said++ == 0) std::printf("oneBuild: exception (other)\n");
+    return false;
+  }
+  {
+    static int said = 0;
+    if (said++ == 0) std::printf("oneBuild: built, valid %d\n", BRepCheck_Analyzer(result).IsValid() ? 1 : 0);
+  }
+  if (checkStep == 0) return false;
+  if (checkStep == 1) return BRepCheck_Analyzer(result).IsValid();
+  if (checkStep == 2) return ExtrudoFacade::exactVolume(result) > 0;
+  if (checkStep == 3) {
+    BRep_Builder bb;
+    TopoDS_Compound originals, offsets;
+    bb.MakeCompound(originals);
+    bb.MakeCompound(offsets);
+    for (int i = 1; i <= faces.Extent(); ++i) {
+      if (std::find(removed.begin(), removed.end(), i - 1) != removed.end()) continue;
+      for (const TopoDS_Shape& made : builder.Generated(faces(i))) if (made.ShapeType() == TopAbs_FACE) bb.Add(offsets, made);
+      bb.Add(originals, faces(i));
+    }
+    BRepExtrema_DistShapeShape m(originals, offsets, Extrema_ExtFlag_MIN);
+    return m.IsDone();
+  }
+  return ExtrudoFacade::shellFacesGood(builder, copy, faces, removed, perFace, factor, result, false);
+}
+
+/** Heap growth (bytes per call) of `what` over n calls after a warm-up. */
+static int leaks(const std::string& what, int n) {
+  const int one = body("one3");
+  const int round = body("round3");
+  const int oneTop = faceAt(one, 10, 11.5, 20);
+  const int oneFloor = faceAt(one, 10, 10, 0);
+  const int roundTop = faceAt(round, 10, 10, 20);
+  const int plate = f.makeBox(0, 0, 0, 40, 30, 10);
+  const int x0 = faceAt(plate, 0, 15, 5);
+  const int x40 = faceAt(plate, 40, 15, 5);
+  const TopoDS_Shape input = *f.find(plate);
+  std::vector<double> perFace(6, 1.0);
+  perFace[x40] = 45;
+  perFace[x0] = 0;
+  const auto call = [&](int i) {
+    if (what == "shellFaces") {
+      const int r = shellFaces(plate, {x0}, {{x40, 45}}, 1, false);
+      if (r) f.release(r);
+    } else if (what == "sharp1") {
+      oneBuild(input, {x0}, perFace, 1, 1.0, true);
+    } else if (what == "sharpHalf") {
+      oneBuild(input, {x0}, perFace, 1, 0.5 + (i % 3) * 0.01, true);
+    } else if (what == "plugThick") {
+      const int r = shellFaces(one, {oneTop}, {{oneFloor, 30}}, 1, false);
+      if (r) f.release(r);
+    } else if (what == "plugWalls") {
+      const int r = shellFaces(one, {oneTop}, {{oneFloor, 2 + (i % 3) * 0.1}}, 1, false);
+      if (r) f.release(r);
+    } else if (what == "plugRound") {
+      f.clearArgs();
+      f.pushArg(roundTop);
+      const int r = f.shell(round, 4, false);
+      if (r) f.release(r);
+    } else if (what == "plugOk") {
+      f.clearArgs();
+      f.pushArg(roundTop);
+      const int r = f.shell(round, 1 + (i % 3) * 0.1, i % 2 == 0);
+      if (r) f.release(r);
+    } else if (what == "facesOutside") {
+      const int r = shellFaces(plate, {x0}, {{x40, 45.0 + (i % 2)}}, 1, true);
+      if (r) f.release(r);
+    } else if (what.rfind("wall", 0) == 0) {
+      // wall<mm>: one sharp build with the x = 40 face's wall at that thickness.
+      std::vector<double> w = perFace;
+      w[x40] = std::atof(what.c_str() + 4);
+      oneBuild(input, {x0}, w, 1, 1.0, true);
+    } else if (what == "round1") {
+      oneBuild(input, {x0}, perFace, 1, 1.0, false);
+    } else if (what == "offset") {
+      f.clearArgs();
+      f.pushArg(x40);
+      const int r = f.offsetFaces(plate, -45);
+      if (r) f.release(r);
+    } else if (what == "shell") {
+      f.clearArgs();
+      f.pushArg(x0);
+      const int r = f.shell(plate, 30, false);
+      if (r) f.release(r);
+    }
+  };
+  for (int i = 0; i < 30; ++i) call(i);
+  const double before = f.heapTop();
+  for (int i = 0; i < n; ++i) call(i);
+  const double after = f.heapTop();
+  std::printf("%s: %d calls, heap +%ld bytes, %.0f bytes a call, live shapes %d\n", what.c_str(), n,
+              static_cast<long>(after - before), static_cast<double>(after - before) / n, f.liveShapes());
+  return 0;
+}
+
 int main(int argc, char** argv) {
+  if (argc >= 5 && std::strcmp(argv[1], "leaks") == 0) checkStep = std::atoi(argv[4]);
+  if (argc >= 4 && std::strcmp(argv[1], "leaks") == 0) return leaks(argv[2], std::atoi(argv[3]));
   if (argc >= 2 && std::strcmp(argv[1], "plug") == 0) {
     const auto rounded = [](double a, double r) {
       return std::pow(a - 2 * r, 3) + 6 * (a - 2 * r) * (a - 2 * r) * r + 3 * PI * r * r * (a - 2 * r) +

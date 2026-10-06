@@ -4509,6 +4509,54 @@ private:
   }
 
   /**
+   * Whether some flat face's wall, scaled by `factor`, reaches through the
+   * body when hollowing inwards: at least as deep as the body is behind the
+   * face (`skip`: removed faces, which have no wall). No such wall can work,
+   * and OCCT's per-face offset (sharp joins) builds junk for it and leaks
+   * about 9 kB doing so (P4-12: a 40 mm wall on a 40 mm plate leaks, 39 mm
+   * doesn't), so it is not built. The depth is the box's bound first, then,
+   * for a wall past half of that, exact: the body's distance from a plane
+   * beyond it.
+   */
+  static bool wallsPassThrough(const TopoDS_Shape& input,
+                               const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
+                               const std::vector<int>& skip, const std::vector<double>& perFace, double factor,
+                               bool outside) {
+    if (outside) return false;
+    Bnd_Box box;
+    BRepBndLib::AddOptimal(input, box, false, false);
+    if (box.IsVoid()) return false;
+    double x0, y0, z0, x1, y1, z1;
+    box.Get(x0, y0, z0, x1, y1, z1);
+    const double size = gp_Pnt(x0, y0, z0).Distance(gp_Pnt(x1, y1, z1)) + 1;
+    for (int i = 1; i <= faces.Extent(); ++i) {
+      const double t = perFace[static_cast<size_t>(i - 1)] * factor;
+      if (!(t > 0) || std::find(skip.begin(), skip.end(), i - 1) != skip.end()) continue;
+      const TopoDS_Face face = TopoDS::Face(faces(i));
+      BRepAdaptor_Surface surface(face);
+      if (surface.GetType() != GeomAbs_Plane) continue;
+      const gp_Pln plane = surface.Plane();
+      gp_Vec n(plane.Axis().Direction());
+      if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+      const gp_Pnt at = plane.Location();
+      double far = 0;
+      for (double x : {x0, x1}) {
+        for (double y : {y0, y1}) {
+          for (double z : {z0, z1}) far = std::max(far, gp_Vec(gp_Pnt(x, y, z), at).Dot(n));
+        }
+      }
+      if (t < 0.5 * far) continue;
+      const gp_Pnt beyond = at.Translated(-n * (far + 1));
+      const TopoDS_Face wall =
+          BRepBuilderAPI_MakeFace(gp_Pln(beyond, gp_Dir(n)), -size, size, -size, size).Face();
+      BRepExtrema_DistShapeShape distance(input, wall, Extrema_ExtFlag_MIN);
+      if (!distance.IsDone()) continue;
+      if (t >= far + 1 - distance.Value() - 1e-6) return true;
+    }
+    return false;
+  }
+
+  /**
    * Builds a shell with a thickness per face (see shellFaces()) of `input`
    * into `result` with `builder`, kept by the caller for its history:
    * `perFace` scaled by `factor` (the diagnosis' probes scale everything
@@ -4519,6 +4567,7 @@ private:
                               const NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& faces,
                               const std::vector<int>& removed, const std::vector<double>& perFace, double thickness,
                               double factor, bool outside, TopoDS_Shape& result) {
+    if (wallsPassThrough(input, faces, removed, perFace, factor, outside)) return false;
     try {
       const double sign = outside ? factor : -factor;
       // Sharp joins, as offsetFaces(): with round joins OCCT spreads a face's
@@ -4714,6 +4763,8 @@ private:
                            const std::vector<int>& removed, const std::vector<double>& perFace, double thickness,
                            double factor, bool outside, bool sharp, TopoDS_Shape& result,
                            std::vector<TopoDS_Shape>& plugs) {
+    // Hollowed closed, every face has a wall, the removed ones too.
+    if (sharp && wallsPassThrough(input, faces, {}, perFace, factor, outside)) return false;
     try {
       const double sign = outside ? factor : -factor;
       thick.Initialize(input, sign * thickness, 1e-3, BRepOffset_Skin, sharp, false,
