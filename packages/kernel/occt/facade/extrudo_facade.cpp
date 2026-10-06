@@ -6026,7 +6026,7 @@ private:
   }
 
   /** A planar face from a compound of wires: the largest bbox is the outer, the rest holes. */
-  static TopoDS_Face faceFromWires(const TopoDS_Shape& wires, const gp_Pln& plane) {
+  static TopoDS_Face faceFromWires(const TopoDS_Shape& wires) {
     TopoDS_Wire outer;
     NCollection_List<TopoDS_Shape> holes;
     double best = -1;
@@ -6045,13 +6045,16 @@ private:
       }
     }
     if (outer.IsNull()) return TopoDS_Face();
-    BRepBuilderAPI_MakeFace maker(plane, outer);
+    // Find the plane from the outline: an offset B-spline wire's plane can be a
+    // fraction of a tolerance off the profile's, which makes a face built on the
+    // profile's plane invalid.
+    BRepBuilderAPI_MakeFace maker(outer, true);
     for (NCollection_List<TopoDS_Shape>::Iterator it(holes); it.More(); it.Next()) {
       maker.Add(TopoDS::Wire(it.Value()));
     }
     if (maker.IsDone() && BRepCheck_Analyzer(maker.Face()).IsValid()) return maker.Face();
     // The offset wires may come out with the other orientation.
-    BRepBuilderAPI_MakeFace fallback(plane, outer);
+    BRepBuilderAPI_MakeFace fallback(outer, true);
     for (NCollection_List<TopoDS_Shape>::Iterator it(holes); it.More(); it.Next()) {
       fallback.Add(TopoDS::Wire(TopoDS::Wire(it.Value()).Reversed()));
     }
@@ -6136,7 +6139,7 @@ private:
       if (after < before) return fail("The taper closes a hole of the profile.");
       const TopoDS_Shape offsetShape = offset.Shape().Moved(shift);
       const gp_Pln endPlane(plane.Location().Translated(along), plane.Axis().Direction());
-      const TopoDS_Face endCap = faceFromWires(offsetShape, endPlane);
+      const TopoDS_Face endCap = faceFromWires(offsetShape);
       if (endCap.IsNull()) {
         return fail("The taper is too steep for this outline: a side would cross another.");
       }

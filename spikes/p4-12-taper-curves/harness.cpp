@@ -331,6 +331,72 @@ static void refusal(const char* name, int faceHandle, double d) {
 int main(int argc, char** argv) {
   try {
   const bool leaks = argc > 1 && std::strcmp(argv[1], "leaks") == 0;
+  if (argc > 1 && std::strcmp(argv[1], "debug") == 0) {
+    // The kernel's closed control spline (8 points on a radius-30 ring, wave 1)
+    // with a Ø10 circular hole, exactly as the engine builds it.
+    const double P[][2] = {{27.0711, 0.1667},  {27.2377, 7.2377},  {21.7132, 21.7132},
+                           {0, 29},           {-21.7132, 21.7132}, {-30, 0},
+                           {-20.7132, -20.7132}, {0, -31},        {20.7132, -20.7132},
+                           {26.9044, -6.9044}, {27.0711, 0.1667}};
+    const double K[] = {0, 0, 0, 0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1, 1, 1, 1};
+    NCollection_Array1<gp_Pnt> poles(1, 11);
+    for (int i = 0; i < 11; ++i) poles(i + 1) = gp_Pnt(P[i][0], P[i][1], 0);
+    NCollection_Array1<double> distinct(1, 9);
+    NCollection_Array1<int> mults(1, 9);
+    const double keys[9] = {0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1};
+    const int counts[9] = {4, 1, 1, 1, 1, 1, 1, 1, 4};
+    for (int i = 0; i < 9; ++i) {
+      distinct(i + 1) = keys[i];
+      mults(i + 1) = counts[i];
+    }
+    Handle(Geom_BSplineCurve) curve = new Geom_BSplineCurve(poles, distinct, mults, 3);
+    BRepBuilderAPI_MakeWire wire(BRepBuilderAPI_MakeEdge(curve).Edge());
+    BRepBuilderAPI_MakeFace face(wire.Wire(), true);
+    BRepBuilderAPI_MakeEdge hole(gp_Circ(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), 5));
+    face.Add(TopoDS::Wire(BRepBuilderAPI_MakeWire(hole.Edge()).Wire().Reversed()));
+    const int h = f.prism(store(face.Face()), 0, 0, 0, 0, 0, 20, 3 * M_PI / 180);
+    std::printf("debug spline-hole: h=%d faces=%d volume=%.4f error='%s'\n", h, faces(h), volumeOf(*f.find(h)),
+                f.lastError_.c_str());
+    // Diagnose the offset itself.
+    const TopoDS_Face base = face.Face();
+    BRepOffsetAPI_MakeOffset off(base, GeomAbs_Arc);
+    off.Perform(20 * std::tan(3 * M_PI / 180));
+    int wires = 0;
+    for (TopExp_Explorer w(off.Shape(), TopAbs_WIRE); w.More(); w.Next()) ++wires;
+    std::printf("debug offset: done=%d shapeNull=%d wires=%d valid=%d crosses=%d\n", (int)off.IsDone(),
+                (int)off.Shape().IsNull(), wires, (int)valid(off.Shape()), (int)ExtrudoFacade::crossesItself(off.Shape()));
+    TopoDS_Face cap = ExtrudoFacade::faceFromWires(off.Shape());
+    int capFaces = 0;
+    if (!cap.IsNull()) for (TopExp_Explorer e(cap, TopAbs_FACE); e.More(); e.Next()) ++capFaces;
+    std::printf("debug endcap: null=%d valid=%d area=%.4f faces=%d\n", (int)cap.IsNull(), (int)valid(cap),
+                cap.IsNull() ? 0.0 : areaOf(cap), capFaces);
+    // Try other cap constructions.
+    TopoDS_Wire outer;
+    NCollection_List<TopoDS_Shape> holes;
+    for (TopExp_Explorer w(off.Shape(), TopAbs_WIRE); w.More(); w.Next()) {
+      if (ExtrudoFacade::wireBoxArea(w.Current()) > 1000) outer = TopoDS::Wire(w.Current());
+      else holes.Append(w.Current());
+    }
+    int oe = 0, he = 0;
+    for (TopExp_Explorer e(outer, TopAbs_EDGE); e.More(); e.Next()) ++oe;
+    for (NCollection_List<TopoDS_Shape>::Iterator it(holes); it.More(); it.Next())
+      for (TopExp_Explorer e(it.Value(), TopAbs_EDGE); e.More(); e.Next()) ++he;
+    std::printf("debug wires: outer edges=%d closed=%d, hole edges=%d\n", oe, (int)outer.Closed(), he);
+    for (int mode = 0; mode < 4; ++mode) {
+      BRepBuilderAPI_MakeFace mk((mode < 2) ? gp_Pln(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)) : gp_Pln(), outer);
+      if (mode >= 2) {
+        BRepBuilderAPI_MakeFace mk2(outer, true);
+        for (NCollection_List<TopoDS_Shape>::Iterator it(holes); it.More(); it.Next())
+          mk2.Add(TopoDS::Wire((mode % 2 == 1) ? TopoDS::Wire(it.Value()).Reversed() : it.Value()));
+        std::printf("debug cap mode %d: faceValid=%d\n", mode, (int)valid(mk2.Face()));
+      } else {
+        for (NCollection_List<TopoDS_Shape>::Iterator it(holes); it.More(); it.Next())
+          mk.Add(TopoDS::Wire((mode % 2 == 1) ? TopoDS::Wire(it.Value()).Reversed() : it.Value()));
+        std::printf("debug cap mode %d: done=%d faceValid=%d\n", mode, (int)mk.IsDone(), (int)valid(mk.Face()));
+      }
+    }
+    return 0;
+  }
   if (!leaks) {
     // 1. Circle: all sides are cylinders, so the DraftAngle route (byte-identical).
     {
