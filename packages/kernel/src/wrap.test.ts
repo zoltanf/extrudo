@@ -290,10 +290,10 @@ describe('wrapOnCylinder', () => {
     try {
       expect(() => kernel.wrapOnCylinder(profile.shape, CYLINDER, R, false)).toThrow(/radius/);
       expect(() => kernel.wrapOnCylinder(profile.shape, CYLINDER, -1)).toThrow(/depth/);
-      // More than half way round the cylinder.
+      // More than a whole turn round the cylinder (P4-12: up to one turn wraps).
       const wide = face(rectangle(0, 0, 8 * R, 2));
       try {
-        expect(() => kernel.wrapOnCylinder(wide.shape, CYLINDER, 1)).toThrow(/half way round/);
+        expect(() => kernel.wrapOnCylinder(wide.shape, CYLINDER, 1)).toThrow(/circumference/);
       } finally {
         kernel.release(wide.shape);
       }

@@ -111,3 +111,36 @@ export function embossInputs(
   if (options.mode) inputs.mode = { kind: 'enum', value: options.mode };
   return inputs;
 }
+
+/**
+ * How an emboss put its profiles onto the face (P4-12, ADR-0060's amendment):
+ * moved onto a flat face, wrapped round a cylinder or a cone, or projected
+ * along the sketch's normal onto any other face. The kernel decides from the
+ * face; it is no input.
+ */
+export const EMBOSS_METHODS = ['moved', 'wrapped-cylinder', 'wrapped-cone', 'projected'] as const;
+export type EmbossMethod = (typeof EMBOSS_METHODS)[number];
+
+/** What an emboss reports (`FeatureOutput.report`): the method it took. */
+export interface EmbossReport {
+  kind: 'emboss';
+  method: EmbossMethod;
+}
+
+export function isEmbossReport(report: unknown): report is EmbossReport {
+  return (report as { kind?: unknown } | null | undefined)?.kind === 'emboss';
+}
+
+/** The dialog's line for a method: "Wrapped round the cone". */
+export function embossMethodText(method: EmbossMethod): string {
+  switch (method) {
+    case 'moved':
+      return 'Moved onto the face';
+    case 'wrapped-cylinder':
+      return 'Wrapped round the cylinder';
+    case 'wrapped-cone':
+      return 'Wrapped round the cone';
+    case 'projected':
+      return 'Projected onto the face';
+  }
+}

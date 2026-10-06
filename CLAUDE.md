@@ -394,8 +394,8 @@ files into `dist/sw.js` and versions it; registration in
 manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
 also found that the kernel uses no raw OCCT bindings, so the build's
-binding list is now just `ExtrudoFacade` (built by CI: WASM 20.01 MB raw,
-6.48 MB gzip, 4.50 MB brotli (Node's zlib at its best settings), after
+binding list is now just `ExtrudoFacade` (built by CI: WASM 20.04 MB raw,
+6.49 MB gzip, 4.50 MB brotli (Node's zlib at its best settings), after
 P4-04/P4-05/P4-10's facade methods, P4-12's `DYNAMIC_EXECUTION: 0`, P4-12
 §H3's `integrateVolume`, P4-12's split boolean and `extendFace` (about 10 kB)
 and P4-12's `shellFaces`, `pushWall`/`clearWalls` and the shell's plugs (about
@@ -403,9 +403,11 @@ and P4-12's `shellFaces`, `pushWall`/`clearWalls` and the shell's plugs (about
 finder in `faceSilhouettes` (TKHLR's `Contap_Contour` and `HLRBRep_Algo`: 388 kB
 raw, 0.08 MB brotli; 18.80 / 6.13 / 4.26 MB before) and P4-12's STEP colours
 (XDE's reader, writer and XCAF document: +0.83 MB raw, +0.16 MB brotli; 19.19 /
-6.25 / 4.34 MB before); the 15.76 MB / 3.69 MB brotli
+6.25 / 4.34 MB before) and P4-12's emboss faces (`wrapOnCone`, `coneFace`,
+`projectOnFace`: +26 kB raw, under 0.01 MB brotli; 20.01 / 6.48 / 4.50 MB
+before); the 15.76 MB / 3.69 MB brotli
 of ADR-0037 was P2-15's; OCCT input hash
-`3e0fd2a88782` (release `occt-3e0fd2a88782`); **don't
+`d198f62163f2` (release `occt-d198f62163f2`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
@@ -1047,7 +1049,17 @@ grow is the face itself, read with `Kernel.threadFace` — a boss's wall is conv
 a hole's concave — so an emboss on a hole fills its free space in and a deboss
 cuts into the material round it. Names are the prism's: `emboss:<id>:cap:end` and
 `…:side:<sketch curve>` per wall (`namedWrap`, whose history is a prism's).
-Cones, spheres and free-form faces are refused. The tool is `emboss` in Solid ›
+**P4-12 (ADR-0060's amendment)**: a **cone** wraps the same way (facade
+`wrapOnCone`, the cylinder's map with the frame on the axis at the profiles'
+area centroid's height, `z` along the generator; `coneFace` gives convex or
+concave), and **any other face** (sphere, torus, free-form) takes the profiles
+**projected** along the sketch's normal (`projectOnFace`: the prism `common`
+the face's thick piece, a sphere's or torus's exactly concentric; refused past
+the face's edge or outline as seen from the sketch); the method is no input but
+an `EmbossReport` (`Preview.emboss`, the dialog's read-only "Method" line). A
+wrap may run up to a whole turn ("The profile is wider than the face's
+circumference."); "tangent to the face" and several faces stay deferred. Native
+harness `spikes/p4-12-emboss-faces/`. The tool is `emboss` in Solid ›
 Create's menu after Coil, no key; `e2e/emboss.spec.ts` covers both kinds of face
 in both modes. Native harness: `spikes/p4-04-harness/`.
 ADR-0061 (P4-03b) added **user fonts as attachments**: `doc.attachments` holds
@@ -3387,7 +3399,15 @@ them. Notes further down that name a machine apply to that machine only.
   menu (`menuitem` "Emboss", no key); its dialog is the region "Emboss dialog" /
   "Edit Emboss1 dialog" with the buttons "Profiles" and "Face" (`exact: true`:
   **"1 text"**, **"1 face"**), the `Depth` textbox (`exact`) and the `Mode`
-  combobox (`emboss`/`deboss`). **Sketch on a construction plane clear of the
+  combobox (`emboss`/`deboss`); P4-12 adds the read-only line
+  `[data-info="method"]` ("Wrapped round the cone", "Projected onto the face",
+  after the first preview) and two tests: 'AB' on a Cylinder drafted 10° about
+  XY (Modify › Draft, the wall picked at (0, −10, 10), the plane on XY's square)
+  and a Ø6 circle typed into the heads-up box on a plane 40 mm over a Sphere
+  primitive, its profile picked at z = 40 (the field reads "Profile · Sketch1")
+  and the sphere at 10/√3 (1, −1, 1); the sphere's display box is
+  `Body1:1:20,19.9,20`, an emboss makes its height 21 and a deboss 19.5 (the cut
+  takes the top away). **Sketch on a construction plane clear of the
   body**: the letters have to be clickable in the model, and a sketch through
   the body (an XZ sketch inside a cylinder) puts them behind its faces, where a
   click is refused as occluded (the text spec's `inkPoints` scan over

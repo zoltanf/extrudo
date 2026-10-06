@@ -53,6 +53,18 @@ export interface ThreadFace {
   open: [boolean, boolean];
 }
 
+/** A conical face as an emboss sees it (`Kernel.coneFace`, P4-12). */
+export interface ConeFace {
+  /** A point of the axis and its direction (canonical sign: first non-zero component positive). */
+  axis: Axis;
+  /** The cone's radius at `axis.origin`. */
+  radius: number;
+  /** Radians: the radius grows by tan(halfAngle) per mm along `axis.direction` (negative: it narrows). */
+  halfAngle: number;
+  /** The face's material lies outside the cone (a countersink's wall, a funnel's inside). */
+  inside: boolean;
+}
+
 /** A kernel operation failed in a way the user can act on (bad radius, …). */
 export class KernelError extends Error {
   override name = 'KernelError';
@@ -436,6 +448,12 @@ export interface WrapFrame {
   corner: Vec3;
   /** The in-plane direction the sketch's `s` runs along, square to the axis. */
   across: Vec3;
+  /**
+   * A cone's half-angle in radians (P4-12, `Kernel.wrapOnCone`): its radius is
+   * `radius` at `origin` and grows by tan(halfAngle) per mm along `axis`, and
+   * the sketch's `z` runs along the generator. Absent or 0: a cylinder.
+   */
+  halfAngle?: number;
 }
 
 export interface KernelStats {
@@ -1249,6 +1267,79 @@ export class Kernel {
       outward,
     );
     if (handle === 0) throw new KernelError(f.lastError() || 'The wrap failed.');
+    return this.#withHistory(handle);
+  }
+
+  /**
+   * What an emboss needs of conical face `face` of `shape` (P4-12, ADR-0060's
+   * amendment), or undefined when it isn't a cone: see `ConeFace`.
+   */
+  coneFace(shape: ShapeHandle, face: number, operation = 'Emboss'): ConeFace | undefined {
+    this.#solid(shape, operation);
+    const f = this.#facade;
+    if (f.coneFace(shape, face) < 0) return undefined;
+    const v = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+    const at = (k: number) => v[k] as number;
+    return {
+      axis: { origin: [at(0), at(1), at(2)], direction: [at(3), at(4), at(5)] },
+      radius: at(6),
+      halfAngle: at(7),
+      inside: at(8) === 1,
+    };
+  }
+
+  /**
+   * Wraps the planar profile `face` round a cone (P4-12, ADR-0060's
+   * amendment): `wrapOnCylinder` with the cylinder replaced by the cone through
+   * the frame's circle whose radius grows by tan(`frame.halfAngle`) per mm
+   * along its axis. The sketch's `s` turns into the angle `s / radius` and its
+   * `z` runs along the generator, exactly (a line to a line, a circle to an
+   * ellipse in the cone's parameters, a B-spline pole by pole); the far cap is
+   * the cone offset by `depth` along its normal. History as `wrapOnCylinder`.
+   */
+  wrapOnCone(face: ShapeHandle, frame: WrapFrame, depth: number, outward = true): OperationResult {
+    this.#solid(face, 'Emboss');
+    const f = this.#facade;
+    const handle = f.wrapOnCone(
+      face,
+      ...frame.origin,
+      ...frame.axis,
+      ...frame.reference,
+      frame.radius,
+      frame.halfAngle ?? 0,
+      ...frame.corner,
+      ...frame.across,
+      depth,
+      outward,
+    );
+    if (handle === 0) throw new KernelError(f.lastError() || 'The wrap failed.');
+    return this.#withHistory(handle);
+  }
+
+  /**
+   * Projects the planar profile `profile` onto face `face` of `body` along the
+   * profile's normal (P4-12, ADR-0060's amendment: spheres, tori and free-form
+   * faces) and returns the solid between the face and the face offset `depth`
+   * along its outward normal (`outward`) or against it, which an emboss joins
+   * or a deboss cuts. The profiles come from the side of the sketch the face
+   * looks at; a profile past the face's edge or its silhouette as seen from
+   * the sketch is a `KernelError` that says so.
+   *
+   * History (input 0, the profile): `first` (the face's pieces), `last` (the
+   * offset's) and `generated` (each edge's wall), as a prism's.
+   */
+  projectOnFace(
+    profile: ShapeHandle,
+    body: ShapeHandle,
+    face: number,
+    depth: number,
+    outward = true,
+  ): OperationResult {
+    this.#solid(profile, 'Emboss');
+    this.#solid(body, 'Emboss');
+    const f = this.#facade;
+    const handle = f.projectOnFace(profile, body, face, depth, outward);
+    if (handle === 0) throw new KernelError(f.lastError() || 'The projection failed.');
     return this.#withHistory(handle);
   }
 

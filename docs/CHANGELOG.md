@@ -4,6 +4,18 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 Emboss on cones, spheres and free-form faces**
+  (ADR-0060's amendment): a cone takes letters wrapped round it like a
+  cylinder (the facade's new `wrapOnCone`, the cylinder's exact map with the
+  frame at the profiles' centroid's height, `coneFace` for which way round the
+  wall is), a sphere, a torus or a free-form face takes them projected along
+  the sketch's normal and cut back to the depth along the face's normal (the
+  new `projectOnFace`; a sphere's and a torus's offsets are concentric
+  surfaces, exactly), refused past the face's edge or outline; a wrap may now
+  run up to a whole turn instead of half way round each side; the Emboss
+  dialog's Method line says whether the profiles were moved, wrapped or
+  projected (`EmbossReport` through `Preview.emboss`). "Tangent to the face"
+  and several faces at once stay deferred.
 - 2026-10-06 · **P4-12 torus placement and symmetric half-length**
   (ADR-0032's and ADR-0028's amendments): the torus takes an `axis`
   (Normal — the default — or X / Y, the ring on edge) and a `seat`

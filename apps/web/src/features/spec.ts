@@ -20,6 +20,7 @@ import type {
   Command,
   ConstructionReport,
   ConstructionReports,
+  EmbossReport,
   ExtrudoDocument,
   Feature,
   FeatureDefinition,
@@ -194,6 +195,12 @@ export interface DialogContext {
    * anything else and while the first preview is on its way.
    */
   draftConstruction?: ConstructionReport;
+  /**
+   * The draft's emboss report (P4-12: whether its profiles were moved onto the
+   * face, wrapped round it or projected onto it). Absent for anything else and
+   * while the draft fails.
+   */
+  draftEmboss?: EmbossReport;
 }
 
 export interface ManipulatorContext extends DialogContext {

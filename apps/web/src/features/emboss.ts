@@ -12,6 +12,11 @@
  * text (`wholeTexts`, P4-03) and the field counts it as one, and the face is
  * picked in the model, so its reference is the face's own name.
  *
+ * The kernel decides how the profiles go on the face (P4-12, ADR-0060's
+ * amendment): moved onto a flat one, wrapped round a cylinder or a cone,
+ * projected along the sketch's normal onto anything else. The read-only
+ * "Method" line says which, from the preview's `EmbossReport`.
+ *
  * A depth arrow stands on the face among the letters, along the face's
  * outward normal (or against it for a deboss), as the kernel grows them: on a
  * round face that is the radius where the letters are. The preview is drawn as
@@ -25,6 +30,7 @@ import {
   type EmbossMode,
   type ExtrudoDocument,
   embossFeature,
+  embossMethodText,
   evaluateParameters,
   type GeomRef,
   parseSketchEntityRefId,
@@ -62,7 +68,7 @@ export const embossDialog: FeatureDialogSpec = defineFeatureDialog({
       accepts: EMBOSS_PROFILE_KINDS,
       prompt: 'Pick profiles or a text',
       wholeTexts: true,
-      hint: 'Sketch profiles or a whole text, in a plane parallel to the face. They are moved onto the face, so the sketch can lie anywhere beside it.',
+      hint: 'Sketch profiles or a whole text, beside the face: parallel to a flat face, along the axis of a cylinder or a cone. They are moved, wrapped or projected onto the face, so the sketch can lie anywhere beside it.',
     },
     {
       kind: 'selection',
@@ -70,8 +76,8 @@ export const embossDialog: FeatureDialogSpec = defineFeatureDialog({
       label: 'Face',
       accepts: EMBOSS_FACE_KINDS,
       max: 1,
-      prompt: 'Pick a flat or round face',
-      hint: 'The flat or round face the letters go on. On a round face the sketch plane has to run along its axis, and the letters are wrapped round it so they keep their width. Only the body that owns the face is changed.',
+      prompt: 'Pick a face',
+      hint: 'The face the letters go on. Round a cylinder or a cone the sketch plane has to run along its axis, and the letters are wrapped round it so they keep their width; on a sphere or any other curved face they are projected along the sketch’s normal. Only the body that owns the face is changed.',
     },
     {
       kind: 'expression',
@@ -87,6 +93,13 @@ export const embossDialog: FeatureDialogSpec = defineFeatureDialog({
       label: 'Mode',
       options: MODES,
       default: 'emboss',
+    },
+    {
+      kind: 'info',
+      name: 'method',
+      label: 'Method',
+      shown: (_values, ctx) => ctx?.draftEmboss !== undefined,
+      text: (_values, ctx) => (ctx.draftEmboss ? embossMethodText(ctx.draftEmboss.method) : ''),
     },
   ],
   // Both fields filled is the framework's own check (a pick count each); this is

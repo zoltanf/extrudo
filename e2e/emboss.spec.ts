@@ -302,3 +302,149 @@ test('wraps a text round a cylinder wall, and presses it back in as a deboss', a
   expect(pressed[0]?.size[2]).toBeCloseTo(20, 1);
   expect(pressed[0]?.faces).toBeGreaterThan(3);
 });
+
+// P4-12 (ADR-0060's amendment): a cone wraps like a cylinder, and any other
+// curved face takes the profiles projected along the sketch's normal; the
+// dialog's read-only Method line says which the kernel did.
+const method = (dialog: Locator) => dialog.locator('[data-info="method"]');
+
+test('wraps a text round a cone (a drafted cylinder), out and in', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Cylinder', {});
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:3:20,20,20');
+  const at = await settledProjector(viewport);
+  const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
+
+  // Draft the wall 10° about the XY plane: it narrows towards the top, a cone.
+  await page.getByRole('button', { name: 'Modify', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Draft/ }).click();
+  const draft = dialogOf(page, 'Draft');
+  await expect(draft).toBeVisible();
+  await clickFace(page, at, [0, -10, 10]);
+  await expect(draft.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
+  await draft.getByRole('button', { name: 'Plane', exact: true }).click();
+  await clickAt(page, at, [half * 0.75, -half * 0.75, 0]);
+  await expect(draft.getByRole('button', { name: 'Plane', exact: true })).toHaveText('XY plane');
+  await draft.getByRole('textbox', { name: 'Angle', exact: true }).fill('10 deg');
+  await ok(page, draft);
+  await expect(chip(page, 'Draft1')).toBeVisible();
+
+  // The text on a plane 30 mm in front, as on the cylinder.
+  await offsetPlane(page, 'XZ', '30 mm', viewport);
+  await sketchText(page, viewport, /:0,-30,0:0,-1,0$/, 'AB', [0, 10], '5 mm');
+  const view = await settledProjector(viewport);
+  await pickText(page, viewport, view, ([u, v]) => [u, -30, v]);
+  const plain = (await bodies(page))[0]?.faces ?? 0;
+
+  await pickTool(page, 'Emboss');
+  const dialog = dialogOf(page, 'Emboss');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText('1 text');
+  // The cone's wall high up, clear of the letters: its radius there is 10 - 17 tan 10°.
+  const r = 10 - 17 * Math.tan((10 * Math.PI) / 180);
+  await clickFace(page, view, [0, -r * 0.99, 17]);
+  await expect(dialog.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(method(dialog)).toHaveText('Wrapped round the cone', { timeout: 30_000 });
+  await ok(page, dialog);
+  const raised = await bodies(page);
+  expect(raised).toHaveLength(1);
+  expect(raised[0]?.faces).toBeGreaterThan(plain);
+
+  await chip(page, 'Emboss1').dblclick();
+  const edit = dialogOf(page, 'Edit Emboss1');
+  await expect(edit).toBeVisible();
+  await edit.getByRole('combobox', { name: 'Mode' }).selectOption('deboss');
+  await expect(method(edit)).toHaveText('Wrapped round the cone', { timeout: 30_000 });
+  await ok(page, edit);
+  const pressed = await bodies(page);
+  expect(pressed).toHaveLength(1);
+  expect(pressed[0]?.faces).toBeGreaterThan(plain);
+  expect(pressed[0]?.size[2]).toBeCloseTo(20, 1);
+});
+
+test('projects a circle onto a sphere, out and in', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Sphere', {});
+  // The display mesh's box is a tessellation short across the equator (19.9).
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:1:/);
+  const plain = (await bodies(page))[0]?.size ?? [];
+
+  // A Ø6 circle on a plane 40 mm above the sphere's centre, over its top.
+  await offsetPlane(page, 'XY', '40 mm', viewport);
+  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await page
+    .getByRole('region', { name: 'Create Sketch' })
+    .getByRole('group', { name: 'Construction planes' })
+    .getByRole('button', { name: 'Offset Plane1' })
+    .click();
+  await expect(viewport).toHaveAttribute('data-sketch-frames', /:0,0,40:0,0,1$/, {
+    timeout: 15_000,
+  });
+  const click = clicker(page, await mapping(viewport));
+  await page.keyboard.press('c');
+  await click(0, 0);
+  // Typed, so the grid can't snap the diameter.
+  const headsUp = page.getByRole('group', { name: 'Heads-up input' });
+  await expect(headsUp).toBeVisible();
+  const diameter = headsUp.getByRole('textbox', { name: 'Diameter' });
+  await diameter.fill('6 mm');
+  await diameter.press('Enter');
+  await page.keyboard.press('Escape');
+  await expect(viewport).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(chip(page, 'Sketch1')).toBeVisible();
+  await kernelReady(page);
+
+  // The disc picked in the model, where it lies above the sphere.
+  const at = await settledProjector(viewport);
+  let picked = false;
+  for (const [u, v] of [
+    [0, 0],
+    [1, 1],
+    [-1, 1],
+    [1, -1],
+    [-1.5, -1.5],
+  ] as const) {
+    const { x, y } = at([u, v, 40]);
+    await page.mouse.move(x, y);
+    if (!/^profile:/.test(await attr(viewport, 'data-model-hover'))) continue;
+    await page.mouse.click(x, y);
+    picked = true;
+    break;
+  }
+  expect(picked).toBe(true);
+  await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+
+  await pickTool(page, 'Emboss');
+  const dialog = dialogOf(page, 'Emboss');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText(
+    'Profile · Sketch1',
+  );
+  // The sphere where it looks at the home view's camera, clear of the disc.
+  const s = 10 / Math.sqrt(3);
+  await clickFace(page, at, [s, -s, s]);
+  await expect(dialog.getByRole('button', { name: 'Face', exact: true })).toHaveText('1 face');
+  await expect(method(dialog)).toHaveText('Projected onto the face', { timeout: 30_000 });
+  await ok(page, dialog);
+  // The disc stands 1 mm off the top of the sphere.
+  const raised = await bodies(page);
+  expect(raised).toHaveLength(1);
+  expect(Math.abs((raised[0]?.size[2] ?? 0) - ((plain[2] ?? 0) + 1))).toBeLessThan(0.15);
+  expect(raised[0]?.faces).toBeGreaterThan(1);
+
+  await chip(page, 'Emboss1').dblclick();
+  const edit = dialogOf(page, 'Edit Emboss1');
+  await expect(edit).toBeVisible();
+  await edit.getByRole('combobox', { name: 'Mode' }).selectOption('deboss');
+  await expect(method(edit)).toHaveText('Projected onto the face', { timeout: 30_000 });
+  await ok(page, edit);
+  const pressed = await bodies(page);
+  expect(pressed).toHaveLength(1);
+  // The cut takes the sphere's top away: its highest point is now the rim of the
+  // Ø6 hole, √(10² − 3²) above the centre.
+  expect(Math.abs((pressed[0]?.size[2] ?? 0) - (10 + Math.sqrt(91)))).toBeLessThan(0.15);
+  expect(pressed[0]?.faces).toBeGreaterThan(1);
+});

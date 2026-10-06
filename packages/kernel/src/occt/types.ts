@@ -243,6 +243,36 @@ export interface FacadeBinding {
     left: boolean,
   ): number;
   threadFace(shape: number, face: number): number;
+  wrapOnCone(
+    face: number,
+    ox: number,
+    oy: number,
+    oz: number,
+    ax: number,
+    ay: number,
+    az: number,
+    rx: number,
+    ry: number,
+    rz: number,
+    radius: number,
+    halfAngle: number,
+    px: number,
+    py: number,
+    pz: number,
+    sx: number,
+    sy: number,
+    sz: number,
+    depth: number,
+    outward: boolean,
+  ): number;
+  coneFace(shape: number, face: number): number;
+  projectOnFace(
+    profile: number,
+    shape: number,
+    face: number,
+    depth: number,
+    outward: boolean,
+  ): number;
   delete(): void;
 }
 

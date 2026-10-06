@@ -4,6 +4,7 @@ import {
   EMBOSS_FACE_KINDS,
   EMBOSS_PROFILE_KINDS,
   EmbossInputsSchema,
+  type EmbossMethod,
   type ExtrudoDocument,
   embossInputs,
   embossSettings,
@@ -102,8 +103,38 @@ describe('the emboss dialog', () => {
     expect(featureDialogs().get('emboss')).toBe(embossDialog);
     expect(embossDialog.category).toBe('create');
     expect(embossDialog.command).toBe('emboss');
-    expect(embossDialog.fields.map((f) => f.name)).toEqual(['profiles', 'face', 'depth', 'mode']);
-    expect(embossDialog.fields.map((f) => f.label)).toEqual(['Profiles', 'Face', 'Depth', 'Mode']);
+    expect(embossDialog.fields.map((f) => f.name)).toEqual([
+      'profiles',
+      'face',
+      'depth',
+      'mode',
+      'method',
+    ]);
+    expect(embossDialog.fields.map((f) => f.label)).toEqual([
+      'Profiles',
+      'Face',
+      'Depth',
+      'Mode',
+      'Method',
+    ]);
+  });
+
+  it('says how the kernel put the profiles on the face, once a preview has (P4-12)', () => {
+    const field = embossDialog.fields.find((f) => f.name === 'method');
+    if (field?.kind !== 'info') throw new Error('no method line');
+    const values = { refs: {}, exprs: {}, choices: {}, toggles: {} } as never;
+    const ctx = (method?: EmbossMethod) =>
+      ({
+        doc: {},
+        bodies: {},
+        ...(method && { draftEmboss: { kind: 'emboss', method } }),
+      }) as never;
+    expect(field.shown?.(values, ctx())).toBe(false);
+    expect(field.shown?.(values, ctx('wrapped-cone'))).toBe(true);
+    expect(field.text(values, ctx('wrapped-cone'))).toBe('Wrapped round the cone');
+    expect(field.text(values, ctx('wrapped-cylinder'))).toBe('Wrapped round the cylinder');
+    expect(field.text(values, ctx('projected'))).toBe('Projected onto the face');
+    expect(field.text(values, ctx('moved'))).toBe('Moved onto the face');
   });
 
   it('takes profiles and whole texts, one face, and says what it needs', () => {
@@ -182,11 +213,11 @@ describe('the emboss dialog', () => {
     expect(t.open()?.pickField).toBe('profiles');
     expect(t.open()?.checked.fields).toEqual({
       profiles: 'Pick profiles or a text.',
-      face: 'Pick a flat or round face.',
+      face: 'Pick a face.',
     });
     expect(t.controller.ok()).toBe(false);
     t.controller.setRefs('profiles', [t.profile]);
-    expect(t.open()?.checked.fields).toEqual({ face: 'Pick a flat or round face.' });
+    expect(t.open()?.checked.fields).toEqual({ face: 'Pick a face.' });
     t.controller.setRefs('face', [TOP]);
     expect(t.open()?.checked.first).toBeUndefined();
     expect(t.open()?.draft.inputs.depth).toMatchObject({

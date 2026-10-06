@@ -21,6 +21,7 @@ import {
   type Command,
   CommandError,
   type DocumentStore,
+  type EmbossReport,
   type EvaluateResult,
   type ExtrudoDocument,
   evaluateParameters,
@@ -126,6 +127,8 @@ export interface DialogPreview {
    * preview that had one, so the handles don't jump about while it is late.
    */
   pattern?: PatternReport;
+  /** The draft's emboss report from the latest preview (P4-12): the method it took. */
+  emboss?: EmbossReport;
 }
 
 export interface OpenDialog {
@@ -310,6 +313,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     const { sketches, construction } = model.getState();
     const pattern = open.preview?.pattern;
     const draftConstruction = open.preview?.drawing?.construction;
+    const draftEmboss = open.preview?.emboss;
     return {
       doc,
       bodies,
@@ -317,6 +321,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       construction,
       ...(pattern && { pattern }),
       ...(draftConstruction && { draftConstruction }),
+      ...(draftEmboss && { draftEmboss }),
       ...(feature && { feature }),
     };
   };
@@ -433,6 +438,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
                 pending: false,
                 ...(pattern && { pattern }),
                 ...(!pattern && open.preview.pattern && { pattern: open.preview.pattern }),
+                ...(result.emboss && { emboss: result.emboss }),
               },
               ...(result.base && { base: result.base }),
             },

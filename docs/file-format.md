@@ -1135,7 +1135,7 @@ feature (6.16). No new keys.
 | Input | Kind | Required | Rule |
 |---|---|---|---|
 | `profiles` | `ref` | yes | Refs of kind `profile` (`<sketch>/<region>`) and `sketchEntity` (a whole text, `<sketch>/<text>`: every ink region of it, so editing the string keeps the feature). All in one plane, parallel to the face's. Missing or empty: an error until some are picked |
-| `face` | `ref` | yes | One ref of kind `face`: the face to emboss on (a flat face; a cylinder needs the same feature with a sketch parallel to its axis). Missing: an error until picked |
+| `face` | `ref` | yes | One ref of kind `face`: the face to emboss on (a flat face; a cylinder or a cone needs the sketch parallel to its axis; any other face takes the profiles projected along the sketch's normal, P4-12). Missing: an error until picked |
 | `depth` | `expr` | no | Length, greater than 0; default 1 mm. How far the letters stand out (`emboss`) or go in (`deboss`) |
 | `mode` | `enum` | no | `emboss` (default: joins material outwards) or `deboss` (cuts inwards) |
 
@@ -1144,8 +1144,12 @@ outward normal) and swept `depth` along it (emboss) or against it (deboss),
 then joined to or cut from the face's body. So a sketch below the face or above
 it, at any offset, works the same; the profiles must lie in a **parallel**
 plane, or the feature says so. Profiles that miss the face entirely, a depth
-of 0 or less, a face that isn't flat or cylindrical, and a sketch that isn't
-parallel to the face are errors.
+of 0 or less and a sketch that isn't parallel to a flat face are errors.
+Since P4-12 (ADR-0060's amendment) the kernel also wraps the profiles round a
+**cone** like a cylinder, and **projects** them onto any other face (a sphere,
+a torus, a free-form face) along the sketch's normal, refusing profiles that
+reach past the face's edge or outline as seen from the sketch; a wrap may run up
+to a whole turn. The method is chosen from the face, not stored: no new keys.
 
 Names: the prism's own names under `emboss:<feature id>` — `…:cap:start` (on
 the face's plane) and `…:cap:end`, and `…:side:<source>` for each sketch curve
