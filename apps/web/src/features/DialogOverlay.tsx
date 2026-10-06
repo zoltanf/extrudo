@@ -35,6 +35,9 @@ export interface DialogOverlayProps {
 
 /** Screen radius of an angle arc, px. */
 const ARC_PX = 64;
+/** Handles closer than this (px) are lifted apart by `LIFT` px each (P4-12). */
+const LIFT_NEAR = 12;
+const LIFT = 14;
 /** How long a direction arrow is drawn, mm. */
 const ARROW_MM = 12;
 const BOX_WIDTH = 168;
@@ -115,7 +118,17 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
 
   // A direction arrow or an instance dot writes without a heads-up box and no value.
   const boxed = manipulators.filter((m) => m.kind !== 'arrow' && m.kind !== 'toggle');
-  const current = boxed.find((m) => m.field === open?.activeField) ?? boxed[0];
+  // The active one is the last whose own field, or a field it follows, was touched (the
+  // pick field counts: `pickInto` sets it). A field no manipulator knows keeps the last.
+  const lastActive = useRef<string>(undefined);
+  const touched = open?.activeField;
+  const hit = touched
+    ? boxed.find(
+        (m) => m.field === touched || (m.kind === 'distance' && m.follows?.includes(touched)),
+      )
+    : undefined;
+  if (hit) lastActive.current = hit.field;
+  const current = hit ?? boxed.find((m) => m.field === lastActive.current) ?? boxed[0];
 
   // Typing a number goes straight into the heads-up box (UI spec §3.4); Tab moves into it.
   // A key with a modifier is a command, not typing: Shift+1…7 turn the view and
@@ -151,6 +164,13 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [current]);
+
+  // Handles that land within LIFT_NEAR px of an earlier one float clear of it (P4-12:
+  // the sets of a fillet start at the same edge). Decided between drags, so a head
+  // doesn't jump while it is held.
+  const lifts = useRef(new Map<string, number>());
+  const extraLift = (m: Manipulator) =>
+    ('lift' in m ? (m.lift ?? 0) : 0) || (lifts.current.get(`${m.kind}:${m.field}`) ?? 0);
 
   // A drag: which manipulator, and the offset between the value and where the pointer grabbed it.
   const drag = useRef<{ m: Manipulator; offset: number; pointer: number }>(undefined);
@@ -192,7 +212,7 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     (event.currentTarget as Element).setPointerCapture(event.pointerId);
     // A lifted head is drawn away from the geometry, so where it was pressed says
     // nothing about the value: such a drag is measured from the origin instead.
-    const liftedBy = 'lift' in m ? (m.lift ?? 0) : 0;
+    const liftedBy = extraLift(m);
     drag.current = {
       m,
       offset: liftedBy > 0 ? 0 : fieldValue(m.field) - at,
@@ -241,6 +261,23 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     const radius = ARC_PX * perPixel(m.kind === 'toggle' ? m.at : m.origin);
     return { m, radius, shape: shapeOf(m, fieldValue(m.field), radius) };
   });
+  const heads = drawn.map(({ m, shape }) =>
+    m.kind === 'distance' && !m.lift ? toScreen(shape.handle) : undefined,
+  );
+  if (!drag.current) {
+    const next = new Map<string, number>();
+    heads.forEach((head, i) => {
+      const m = drawn[i]?.m;
+      if (!head || !m) return;
+      let near = 0;
+      for (let j = 0; j < i; j++) {
+        const other = heads[j];
+        if (other && Math.hypot(head[0] - other[0], head[1] - other[1]) < LIFT_NEAR) near++;
+      }
+      if (near > 0) next.set(`${m.kind}:${m.field}`, LIFT * near);
+    });
+    lifts.current = next;
+  }
   const currentHandle = drawn.find((d) => d.m === current)?.shape.handle;
   const handleAt = currentHandle && toScreen(currentHandle);
   const label = current && fieldLabel(open, current.field);
@@ -312,6 +349,8 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
             }
             const active = m === current;
             const color = active ? 'var(--x-accent)' : 'var(--x-sketch)';
+            // One of several arrows of a kind (a set's): small and faint unless it is the active one.
+            const quiet = m.kind === 'distance' && m.quiet === true && !active;
             const shaft = toScreen(shape.handle);
             const line = (m.kind === 'distance' ? shape.line : arcPoints(m, shape.angle, radius))
               .map(toScreen)
@@ -320,13 +359,20 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
             const base = toScreen(m.origin);
             // A lifted head floats clear of the geometry under it (a pattern's
             // instance dot), with a tick back to where it really is.
-            const lift = 'lift' in m ? (m.lift ?? 0) : 0;
+            const lift = extraLift(m);
             const handle =
               shaft && lift
                 ? lifted(shaft, base, lift, m.kind === 'count' && m.turn === true)
                 : shaft;
             return (
-              <g key={`${m.kind}:${m.field}`} data-manipulator={m.kind}>
+              <g
+                key={`${m.kind}:${m.field}`}
+                data-manipulator={m.kind}
+                data-manipulator-state={
+                  m.kind === 'distance' && m.quiet ? (active ? 'active' : 'quiet') : undefined
+                }
+                opacity={quiet ? 0.6 : 1}
+              >
                 {zero && base && (
                   <line
                     x1={base[0]}
@@ -343,7 +389,7 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
                   points={line.map((p) => p.join(',')).join(' ')}
                   fill="none"
                   stroke={color}
-                  strokeWidth={2}
+                  strokeWidth={quiet ? 1.5 : 2}
                 />
                 {(m.kind === 'distance' || m.kind === 'arrow') && handle && base && (
                   <ArrowHead from={line.at(-2) ?? base} to={handle} color={color} />
@@ -379,10 +425,10 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
                     data-view-passthrough=""
                     cx={round(handle[0])}
                     cy={round(handle[1])}
-                    r={7}
+                    r={quiet ? 5 : 7}
                     fill="var(--x-raised)"
                     stroke={color}
-                    strokeWidth={2}
+                    strokeWidth={quiet ? 1.5 : 2}
                     style={{
                       pointerEvents: 'auto',
                       cursor: m.kind === 'arrow' ? 'pointer' : 'grab',

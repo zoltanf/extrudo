@@ -17,9 +17,13 @@
  * radius — so turning the toggle off drops those two inputs again (the
  * default mapping only writes the fields that are shown).
  *
- * **The radius handle (P4-12).** Set 1's Radius has an in-view arrow on the
- * set's first edge, pointing away from the body (`features/edgeHandles.ts`),
- * so dragging it sets the radius; a variable set's arrow moves Radius only.
+ * **The radius handles (P4-12).** Every set with edges has an in-view arrow
+ * on its first edge, pointing away from the body (`features/edgeHandles.ts`),
+ * so dragging it sets that set's radius. A variable set has two instead: Radius
+ * where the round starts and End radius where it ends, on the bisector at each
+ * end of its tangent chain (swapped, they change ends); none where the chain has
+ * no ends to read (a closed one). The overlay draws the set last focused
+ * prominent and the others small and faint.
  */
 import {
   FILLET_EDGE_KINDS,
@@ -30,7 +34,7 @@ import {
   filletRadiusKey,
   filletSwapKey,
 } from '@extrudo/core';
-import { setDistanceManipulator } from './edgeHandles';
+import { setDistanceManipulator, variableSetManipulators } from './edgeHandles';
 import { type DialogField, type DialogValues, defineFeatureDialog, type Manipulator } from './spec';
 import { defaultFromInputs, defaultInputs } from './values';
 
@@ -124,9 +128,32 @@ export const filletDialog = defineFeatureDialog({
   },
   // The result replaces the body it rounds: drawn as the body itself.
   previewStyle: () => 'new',
-  manipulators: (values, ctx) => [
-    ...[setDistanceManipulator(filletRadiusKey(1), filletEdgesKey(1), values, ctx.bodies)].filter(
-      (m): m is Manipulator => m !== undefined,
-    ),
-  ],
+  manipulators: (values, ctx) => {
+    const out: Manipulator[] = [];
+    // Only sets that have edges: the 32 possible ones cost nothing while empty.
+    for (let n = 1; n <= FILLET_MAX_SETS; n++) {
+      if (!hasEdges(values, n)) continue;
+      const edges = filletEdgesKey(n);
+      const radius = filletRadiusKey(n);
+      const end = filletEndKey(n);
+      const follows = [edges, variableKey(n), filletSwapKey(n)];
+      if (!isVariable(values, n)) {
+        const one = setDistanceManipulator(radius, edges, values, ctx.bodies, { follows });
+        if (one) out.push(one);
+        continue;
+      }
+      // Swapped, the end radius is where the round starts.
+      const swapped = values.toggles[filletSwapKey(n)] === true;
+      out.push(
+        ...variableSetManipulators(
+          { start: swapped ? end : radius, end: swapped ? radius : end },
+          edges,
+          values,
+          ctx.bodies,
+          { [radius]: { follows } },
+        ),
+      );
+    }
+    return out;
+  },
 });

@@ -415,3 +415,116 @@ test('a shortcut with a digit is the app’s, not the heads-up box’s', async (
   await expect.poll(() => viewport.getAttribute('data-camera-direction')).not.toBe(home);
   await expect(radiusField).toHaveValue('2 mm');
 });
+
+/** The state ("active" or "quiet") of the arrow that writes `field`, as the overlay draws it. */
+async function arrowState(viewport: Locator, field: string) {
+  return viewport
+    .locator(`[data-manipulator-state]:has([data-manipulator-handle="${field}"])`)
+    .getAttribute('data-manipulator-state');
+}
+
+test('a second set has its own radius handle, the prominent one follows the focus', async ({
+  page,
+}) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await cube(page);
+  const at = await settledProjector(viewport);
+
+  await clickEdge(page, at, [0, -10, 20]);
+  await page.keyboard.press('f');
+  const dialog = page.getByRole('region', { name: 'Fillet dialog' });
+  await expect(dialog).toBeVisible();
+  const markers = viewport.locator('[data-manipulators]');
+  await expect(markers).toHaveAttribute('data-manipulators', 'distance:radius');
+
+  // The right top edge goes to set 2, which brings its own handle.
+  await dialog.getByRole('button', { name: 'Edges 2', exact: true }).click();
+  await clickEdge(page, at, [10, 0, 20]);
+  await expect(dialog.getByRole('button', { name: 'Edges 2', exact: true })).toHaveText('1 edge');
+  await expect(markers).toHaveAttribute('data-manipulators', 'distance:radius distance:radius2');
+  // The set whose pick field was last used is the prominent one.
+  await expect.poll(() => arrowState(viewport, 'radius2')).toBe('active');
+  expect(await arrowState(viewport, 'radius')).toBe('quiet');
+  const radiusField = dialog.getByRole('textbox', { name: 'Radius', exact: true });
+  await radiusField.focus();
+  await expect.poll(() => arrowState(viewport, 'radius')).toBe('active');
+  expect(await arrowState(viewport, 'radius2')).toBe('quiet');
+
+  const radius2 = dialog.getByRole('textbox', { name: 'Radius 2', exact: true });
+  await radius2.fill('2 mm');
+  await radius2.blur();
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  // Grabbing the quiet arrow makes it the prominent one and drags Radius 2.
+  const middle = at([10, 0, 20]);
+  const head = await handle(viewport, 'radius2');
+  const out = { x: head.x - middle.x, y: head.y - middle.y };
+  expect(Math.hypot(out.x, out.y)).toBeGreaterThan(4);
+  await drag(page, head, out.x, out.y);
+  await expect.poll(() => arrowState(viewport, 'radius2')).toBe('active');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await radius2.blur();
+  const radius = Number.parseFloat(await radius2.inputValue());
+  expect(radius, `Radius 2 after the drag`).toBeGreaterThan(3);
+  expect(radius).toBeLessThan(8);
+  // Set 1 kept its own value.
+  await expect(radiusField).toHaveValue('1 mm');
+});
+
+test('a variable set has a handle at each end of its chain; Swap ends changes their places', async ({
+  page,
+}) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await cube(page);
+  const at = await settledProjector(viewport);
+
+  await clickEdge(page, at, [0, -10, 20]);
+  await page.keyboard.press('f');
+  const dialog = page.getByRole('region', { name: 'Fillet dialog' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('checkbox', { name: 'Variable', exact: true }).check();
+  const radiusField = dialog.getByRole('textbox', { name: 'Radius', exact: true });
+  const endField = dialog.getByRole('textbox', { name: 'End radius', exact: true });
+  await radiusField.fill('2 mm');
+  await radiusField.blur();
+  await endField.fill('5 mm');
+  await endField.blur();
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  // Two handles, one per end, and no handle in the middle of the edge.
+  await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
+    'data-manipulators',
+    'distance:radius distance:radiusEnd',
+  );
+  const left = at([-10, -10, 20]);
+  const right = at([10, -10, 20]);
+  const nearer = (head: { x: number; y: number }) =>
+    Math.hypot(head.x - left.x, head.y - left.y) < Math.hypot(head.x - right.x, head.y - right.y)
+      ? 'left'
+      : 'right';
+  const first = nearer(await handle(viewport, 'radius'));
+  const second = nearer(await handle(viewport, 'radiusEnd'));
+  expect(first).not.toBe(second);
+
+  // Swapped, the two change ends.
+  await dialog.getByRole('checkbox', { name: 'Swap ends', exact: true }).check();
+  await expect.poll(async () => nearer(await handle(viewport, 'radius'))).toBe(second);
+  expect(nearer(await handle(viewport, 'radiusEnd'))).toBe(first);
+  await dialog.getByRole('checkbox', { name: 'Swap ends', exact: true }).uncheck();
+  await expect.poll(async () => nearer(await handle(viewport, 'radius'))).toBe(first);
+
+  // The End radius handle drags End radius.
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  const head = await handle(viewport, 'radiusEnd');
+  const end = second === 'left' ? left : right;
+  const out = { x: head.x - end.x, y: head.y - end.y };
+  expect(Math.hypot(out.x, out.y)).toBeGreaterThan(4);
+  await drag(page, head, out.x * 0.4, out.y * 0.4);
+  await expect(dialog).toHaveAttribute('data-preview-status', /^(ok|error)$/, { timeout: 15_000 });
+  await endField.blur();
+  const changed = Number.parseFloat(await endField.inputValue());
+  expect(changed, 'End radius after the drag').toBeGreaterThan(5.5);
+  await expect(radiusField).toHaveValue('2 mm');
+});

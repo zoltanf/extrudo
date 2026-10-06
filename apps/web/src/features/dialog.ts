@@ -772,8 +772,10 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     },
     pickInto(field) {
       const current = get();
-      if (current && current.pickField !== field) {
-        state.setState({ open: { ...current, pickField: field } });
+      // The pick field is also the last field touched: a manipulator that follows it
+      // (a fillet set's arrow follows its edges) becomes the prominent one (P4-12).
+      if (current && (current.pickField !== field || current.activeField !== field)) {
+        state.setState({ open: { ...current, pickField: field, activeField: field } });
       }
     },
     activate(field) {

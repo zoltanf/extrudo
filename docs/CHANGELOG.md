@@ -52,7 +52,17 @@ One line per completed roadmap task, newest first. Dates are absolute.
   `export` and `check` compute scripts; `docs/api/examples/script-hole-ring.ts`
   and `script-shelf.ts` are tests. The runner now depends on
   `quickjs-emscripten-core` and the release-sync variant only.
-
+- 2026-10-05 · **P4-12 fillet and chamfer handles for every set** (ADR-0038
+  and ADR-0043 amendments): each fillet or chamfer edge set that has edges has
+  its own in-view arrow (`radius2`, `distance3` …); the one whose field or pick
+  field was touched last is drawn as before and the rest small and faint
+  (`data-manipulator-state="active|quiet"`), and grabbing one makes it the
+  active one. A variable fillet set has two arrows, Radius where the round
+  starts and End radius where it ends on the tangent chain (Swap ends changes
+  their places; none for a closed chain). A chamfer of the two unequal types
+  runs Distance along the reference face and Second distance along the other
+  face, on flat faces and a straight edge. Arrows within 12 px of each other lift
+  apart. No kernel, facade or schema change.
 - 2026-10-05 · **P5-04 OpenSCAD import (2 of 2): the app** (ADR-0071): Insert ›
   Import (and the File menu's "Import STEP, mesh or OpenSCAD…") takes `.scad`
   files. The Import dialog lists the file's customizer variables under its

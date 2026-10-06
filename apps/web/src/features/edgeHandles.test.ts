@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { type EdgeHandle, edgeHandle, setDistanceManipulator } from './edgeHandles';
+import {
+  chainEnds,
+  chamferSetManipulators,
+  type EdgeHandle,
+  edgeHandle,
+  faceDirections,
+  setDistanceManipulator,
+  variableSetManipulators,
+} from './edgeHandles';
 import type { DialogValues } from './spec';
 import { BOX, namedBoxEdgesMesh, namedBoxMesh } from './testing';
 
@@ -72,5 +80,195 @@ describe('a fillet or chamfer handle on an edge', () => {
     const plain = { [BOX]: namedBoxMesh() };
     expect(edgeHandle(plain, { kind: 'edge', id: TOP_FRONT })).toBeUndefined();
     expect(edgeHandle(plain, { kind: 'edge', id: 'box:e2' })).toBeUndefined();
+  });
+});
+
+const mesh = namedBoxEdgesMesh();
+const edgeRef = (i: number) => ({ kind: 'edge' as const, id: mesh.edgeIds?.[i] as string });
+const faceRef = (name: string) => ({ kind: 'face' as const, id: `box:${name}` });
+/** The box's top edges as chains: 2 runs (0,0,10)→(10,0,10), 7 on to (10,10,10), 3 is (0,10,10)→(10,10,10), 6 (0,0,10)→(0,10,10). */
+const TOP_FRONT_EDGE = 2;
+const TOP_RIGHT_EDGE = 7;
+const TOP_BACK_EDGE = 3;
+const TOP_LEFT_EDGE = 6;
+const unit = (v: readonly number[]) => round(v);
+
+describe('where a variable round starts and ends', () => {
+  it('walks the chain from its free end, the way the edges’ own polylines run', () => {
+    const ends = chainEnds(bodies, [edgeRef(TOP_FRONT_EDGE), edgeRef(TOP_RIGHT_EDGE)]);
+    expect(ends && round(ends.start.point)).toEqual([0, 0, 10]);
+    expect(ends && round(ends.end.point)).toEqual([10, 10, 10]);
+    expect(ends?.start.edge.id).toBe(edgeRef(TOP_FRONT_EDGE).id);
+    expect(ends?.end.edge.id).toBe(edgeRef(TOP_RIGHT_EDGE).id);
+    // The order the set lists them in changes nothing.
+    const again = chainEnds(bodies, [edgeRef(TOP_RIGHT_EDGE), edgeRef(TOP_FRONT_EDGE)]);
+    expect(again && round(again.start.point)).toEqual([0, 0, 10]);
+  });
+
+  it('is one edge’s own two ends', () => {
+    const ends = chainEnds(bodies, [edgeRef(TOP_FRONT_EDGE)]);
+    expect(ends && round(ends.start.point)).toEqual([0, 0, 10]);
+    expect(ends && round(ends.end.point)).toEqual([10, 0, 10]);
+  });
+
+  it('has no ends where the chain is closed, broken, or its edges disagree on the way', () => {
+    // The four top edges close up.
+    const ring = [TOP_FRONT_EDGE, TOP_RIGHT_EDGE, TOP_BACK_EDGE, TOP_LEFT_EDGE].map(edgeRef);
+    expect(chainEnds(bodies, ring)).toBeUndefined();
+    // Two edges that don't meet.
+    expect(chainEnds(bodies, [edgeRef(TOP_FRONT_EDGE), edgeRef(5)])).toBeUndefined();
+    // Front → right runs with the polylines, back runs against them (6 → 7 after 5 → 7).
+    expect(
+      chainEnds(bodies, [edgeRef(TOP_FRONT_EDGE), edgeRef(TOP_RIGHT_EDGE), edgeRef(TOP_BACK_EDGE)]),
+    ).toBeUndefined();
+    // An edge the meshes don't have, and nothing at all.
+    expect(chainEnds(bodies, [{ kind: 'edge', id: 'e[a|b]' }])).toBeUndefined();
+    expect(chainEnds(bodies, [])).toBeUndefined();
+  });
+
+  it('makes a handle at each end on the bisector there, Radius first unless swapped', () => {
+    const v = values({ edges: [edgeRef(TOP_FRONT_EDGE), edgeRef(TOP_RIGHT_EDGE)] });
+    const placed = (fields: { start: string; end: string }) =>
+      variableSetManipulators(fields, 'edges', v, bodies).map((m) =>
+        m.kind === 'distance'
+          ? { field: m.field, origin: round(m.origin), direction: unit(m.direction) }
+          : m,
+      );
+    expect(placed({ start: 'radius', end: 'radiusEnd' })).toEqual([
+      { field: 'radius', origin: [0, 0, 10], direction: half([0, 0, 1], [0, -1, 0]) },
+      { field: 'radiusEnd', origin: [10, 10, 10], direction: half([0, 0, 1], [1, 0, 0]) },
+    ]);
+    // Swapped, the two change places.
+    expect(placed({ start: 'radiusEnd', end: 'radius' })).toEqual([
+      { field: 'radiusEnd', origin: [0, 0, 10], direction: half([0, 0, 1], [0, -1, 0]) },
+      { field: 'radius', origin: [10, 10, 10], direction: half([0, 0, 1], [1, 0, 0]) },
+    ]);
+    // A closed chain: no handle at all.
+    const ring = values({
+      edges: [TOP_FRONT_EDGE, TOP_RIGHT_EDGE, TOP_BACK_EDGE, TOP_LEFT_EDGE].map(edgeRef),
+    });
+    expect(
+      variableSetManipulators({ start: 'radius', end: 'radiusEnd' }, 'edges', ring, bodies),
+    ).toEqual([]);
+  });
+
+  it('leaves out only the end whose bisector can’t be read', () => {
+    // The first edge's second face isn't in the meshes: its end has no handle, the other end keeps its own.
+    const names = mesh.edgeIds as string[];
+    const broken = {
+      ...mesh,
+      edgeIds: names.map((n, i) => (i === TOP_FRONT_EDGE ? 'e[box:top|box:gone]' : n)),
+    };
+    const v = values({
+      edges: [{ kind: 'edge', id: 'e[box:top|box:gone]' }, edgeRef(TOP_RIGHT_EDGE)],
+    });
+    const out = variableSetManipulators({ start: 'radius', end: 'radiusEnd' }, 'edges', v, {
+      [BOX]: broken,
+    });
+    expect(out.map((m) => m.field)).toEqual(['radiusEnd']);
+  });
+});
+
+describe('the handles of every set', () => {
+  it('computes nothing for a set without edges', () => {
+    let touched = 0;
+    const counted = {} as Record<string, never>;
+    Object.defineProperty(counted, BOX, {
+      enumerable: true,
+      get: () => {
+        touched++;
+        return mesh;
+      },
+    });
+    const empty = values({ edges: [], edges2: [] });
+    expect(setDistanceManipulator('radius2', 'edges2', empty, counted)).toBeUndefined();
+    expect(touched).toBe(0);
+    const one = values({ edges2: [edgeRef(TOP_FRONT_EDGE)] });
+    expect(setDistanceManipulator('radius2', 'edges2', one, counted)?.field).toBe('radius2');
+    expect(touched).toBeGreaterThan(0);
+  });
+
+  it('keeps each set’s own refusals', () => {
+    const seam = values({ edges: [{ kind: 'edge', id: 'e[box:top]' }] });
+    expect(setDistanceManipulator('radius', 'edges', seam, bodies)).toBeUndefined();
+  });
+});
+
+describe('a chamfer’s distances along the faces', () => {
+  const near = (v: readonly number[] | undefined) => v && unit(v);
+
+  it('runs the first along the lower-numbered face and the second along the other', () => {
+    // Top (index 1) is lower-numbered than front (2): the first distance runs
+    // across the top away from the front edge, the second down the front.
+    const d = faceDirections(bodies, edgeRef(TOP_FRONT_EDGE), undefined, false);
+    expect(near(d?.origin)).toEqual([5, 0, 10]);
+    expect(near(d?.first)).toEqual([0, 1, 0]);
+    expect(near(d?.second)).toEqual([0, 0, -1]);
+  });
+
+  it('turns round with Flip, or with the picked reference face', () => {
+    const flipped = faceDirections(bodies, edgeRef(TOP_FRONT_EDGE), undefined, true);
+    expect(near(flipped?.first)).toEqual([0, 0, -1]);
+    expect(near(flipped?.second)).toEqual([0, 1, 0]);
+    // A picked face decides, whatever Flip says.
+    const picked = faceDirections(bodies, edgeRef(TOP_FRONT_EDGE), faceRef('front'), false);
+    expect(near(picked?.first)).toEqual([0, 0, -1]);
+    const again = faceDirections(bodies, edgeRef(TOP_FRONT_EDGE), faceRef('front'), true);
+    expect(near(again?.first)).toEqual([0, 0, -1]);
+  });
+
+  it('is left out for a face that isn’t one of the edge’s, a curved edge or a missing face', () => {
+    expect(faceDirections(bodies, edgeRef(TOP_FRONT_EDGE), faceRef('left'), false)).toBeUndefined();
+    expect(
+      faceDirections(bodies, { kind: 'edge', id: 'e[box:top|box:gone]' }, undefined, false),
+    ).toBeUndefined();
+    expect(
+      faceDirections(bodies, { kind: 'edge', id: 'e[box:top]' }, undefined, false),
+    ).toBeUndefined();
+    expect(faceDirections(bodies, undefined, undefined, false)).toBeUndefined();
+  });
+
+  const set = (mode: string, over: { flip?: boolean; face?: ReturnType<typeof faceRef> } = {}) =>
+    chamferSetManipulators(
+      {
+        edges: 'edges',
+        distance: 'distance',
+        distanceB: 'distanceB',
+        mode,
+        flip: over.flip ?? false,
+        face: over.face,
+      },
+      values({ edges: [edgeRef(TOP_FRONT_EDGE)] }),
+      bodies,
+    ).map((m) => (m.kind === 'distance' ? { field: m.field, direction: unit(m.direction) } : m));
+
+  it('gives equal distances the bisector, two distances both face directions', () => {
+    expect(set('equal')).toEqual([{ field: 'distance', direction: half([0, 0, 1], [0, -1, 0]) }]);
+    expect(set('two-distances')).toEqual([
+      { field: 'distance', direction: [0, 1, 0] },
+      { field: 'distanceB', direction: [0, 0, -1] },
+    ]);
+    // Distance and angle has no second distance.
+    expect(set('distance-angle')).toEqual([{ field: 'distance', direction: [0, 1, 0] }]);
+    expect(set('two-distances', { face: faceRef('front') })[0]).toEqual({
+      field: 'distance',
+      direction: [0, 0, -1],
+    });
+  });
+
+  it('keeps the bisector for Distance where the faces can’t be read', () => {
+    const out = chamferSetManipulators(
+      {
+        edges: 'edges',
+        distance: 'distance',
+        distanceB: 'distanceB',
+        mode: 'two-distances',
+        flip: false,
+        face: faceRef('left'),
+      },
+      values({ edges: [edgeRef(TOP_FRONT_EDGE)] }),
+      bodies,
+    );
+    expect(out.map((m) => m.field)).toEqual(['distance']);
   });
 });

@@ -213,3 +213,22 @@ the same either way round), "a reference face that doesn't touch an edge of
 the set says so", "twenty edge sets build the same body as one set with the
 same 20 edges"; `e2e/chamfer.spec.ts` measures the top face's footprint and
 the volume from a 3MF export for each reference face.
+
+### Amendment: distance handles for every set, along the faces (P4-12, second part)
+
+Every chamfer set with edges has its Distance arrow (`distance<n>`), drawn
+active or quiet as ADR-0038's second amendment says. **Equal** sets keep the
+bisector arrow. **The unequal types** run Distance **along the reference face**
+across the edge into the face, and **two distances** also gets a Second distance
+arrow (`distanceB<n>`) along the other face (`faceDirections`, `edgeHandles.ts`):
+the reference face is the picked one, else the lower-numbered of the edge's two
+by the body mesh's face order (the kernel's rule), or the other with Flip.
+Both faces must be flat (mesh flatness ≥ 0.98) and the edge straight, the
+direction is `t × n` turned towards where the face's nodes lie, and a picked
+face that isn't one of the edge's two gives nothing. Where any of that can't be
+read the set **keeps the single bisector arrow** for Distance and has no
+Second distance arrow: a chamfer on a cylinder rim is the usual case. Distance
+and angle has the Distance arrow only. `e2e/chamfer.spec.ts` reads the arrows'
+screen positions and then checks them against the kernel by the footprint on the
+top face (the handle on the top face is the one whose value the top face gives
+up).

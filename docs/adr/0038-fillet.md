@@ -274,3 +274,33 @@ one thing a handle next to a number must not do; a handle on every set (32
 arrows is a thicket, and set 1's is the one that matters); an inside test to
 flip the arrow on a concave edge (unnecessary: the bisector is already
 right).
+
+### Amendment: handles for every set and a variable fillet's ends (P4-12, second part)
+
+**Built.** Every set with edges has its own Radius arrow (`radius<n>`), by the
+same rules and refusals as set 1's; empty sets compute nothing (the spec loops
+over the sets that have edges only). The overlay draws the **active** arrow as
+before and the others small (5 px head, 1.5 px line) and at 0.6 opacity, in
+the same tokens. The active one is the arrow whose own field, or one it
+`follows` (the set's Edges pick field, Variable, Swap ends), was touched last:
+`pickInto` now also sets the dialog's `activeField`, and a field no arrow knows
+leaves the last choice standing. Grabbing a quiet arrow activates it. A
+`DistanceManipulator` has the two new optional members `quiet` and `follows`.
+Arrows whose heads land within 12 px of an earlier one are drawn 14 px apart
+by `lift` (decided between drags so a head doesn't jump under the pointer).
+
+**A variable set has two arrows**, at the two free ends of its tangent chain,
+each on the bisector of the faces of the chain's edge at that end. `chainEnds`
+(`edgeHandles.ts`) walks the chain through the edges' shared end points. **Which
+end is the start comes from the edges' own polylines**: the round starts at the
+end the polylines flow away from. That is not documented OCCT behaviour, so it
+is measured (`packages/kernel/src/features/fillet-variable-start.test.ts`: all
+twelve edges of a box and a line-arc-line chain, whichever edge comes first,
+each by the distance from the chain's ends to the result's nearest vertex, 2 mm
+at the start and 4 mm at the end); if the edges of a chain disagree about the
+direction, or the chain is closed, branched or broken, nothing says which end
+starts and **both arrows are left out** (the fields still work). With Swap ends
+the arrow that writes `radius` stands at the end and the one that writes
+`radiusEnd` at the start. Rejected: asking the kernel for the start (a facade or
+report change for something the meshes already say), and keeping a Radius arrow
+at the first edge's middle for a variable set (a radius that isn't there).

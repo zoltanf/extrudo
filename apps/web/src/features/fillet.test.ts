@@ -272,9 +272,48 @@ describe('the fillet dialog’s radius handle', () => {
     expect(filletDialog.manipulators).toBeDefined();
   });
 
-  it('moves Radius only, even where the set tapers', () => {
+  it('has two where the set tapers: Radius at the chain’s start, End radius at its end', () => {
     const variable = withEdge({ toggles: { variable: true }, exprs: { radiusEnd: '5 mm' } });
-    expect(handles(variable)).toEqual([{ field: 'radius', origin: [5, 0, 10] }]);
+    expect(handles(variable)).toEqual([
+      { field: 'radius', origin: [0, 0, 10] },
+      { field: 'radiusEnd', origin: [10, 0, 10] },
+    ]);
+    // Swapped, the End radius is where the round starts.
+    const swapped = withEdge({
+      toggles: { variable: true, swap: true },
+      exprs: { radiusEnd: '5 mm' },
+    });
+    expect(handles(swapped)).toEqual([
+      { field: 'radiusEnd', origin: [0, 0, 10] },
+      { field: 'radius', origin: [10, 0, 10] },
+    ]);
+  });
+
+  it('gives every set with edges its own, named after its fields', () => {
+    const at = (i: number) => ({ kind: 'edge' as const, id: edges.edgeIds?.[i] as string });
+    const three = mergeValues(defaultValues(filletDialog), {
+      refs: { edges: [topFront], edges2: [at(7)], edges3: [at(3)] },
+    });
+    expect(handles(three)).toEqual([
+      { field: 'radius', origin: [5, 0, 10] },
+      { field: 'radius2', origin: [10, 5, 10] },
+      { field: 'radius3', origin: [5, 10, 10] },
+    ]);
+    // A set without edges draws nothing, and a later set with some still does.
+    const gap = mergeValues(defaultValues(filletDialog), { refs: { edges3: [at(3)] } });
+    expect(handles(gap)).toEqual([{ field: 'radius3', origin: [5, 10, 10] }]);
+  });
+
+  it('draws a set’s arrow quietly and lets its pick field and toggles make it active', () => {
+    const all =
+      filletDialog.manipulators?.(withEdge(), {
+        doc: setupDialogs().store.getState().doc,
+        bodies,
+        value: () => 2,
+      }) ?? [];
+    const first = all[0];
+    expect(first?.kind === 'distance' && first.quiet).toBe(true);
+    expect(first?.kind === 'distance' && first.follows).toEqual(['edges', 'variable', 'swap']);
   });
 
   it('is nothing until an edge is picked', () => {

@@ -377,7 +377,17 @@ void whether the corner is convex or concave). **No handle** where it can't
 be read honestly: a seam (one face), more than two faces, a face the meshes
 don't have, or normals within 60° of each other. The handle stands on the
 edge's middle, so re-picking that edge takes a click a little along it.
-The handles also found a bug of their own: a dialog's heads-up box took
+**P4-12's second part (2026-10-05)** gave **every set with edges** its own
+arrow (`radius2` …; empty sets compute nothing; `DistanceManipulator.quiet`
+and `follows`: the overlay draws the arrow whose field or `follows` field was
+touched last as before, the others small and faint,
+`data-manipulator-state="active|quiet"`; `pickInto` also sets `activeField`;
+heads within 12 px lift 14 px apart) and a **variable set two arrows**, Radius
+and End radius at the two free ends of the tangent chain (`chainEnds`: the
+round starts at the end the edges' own polylines flow away from — measured in
+`kernel/src/features/fillet-variable-start.test.ts`, not documented OCCT; a
+closed, broken or mixed-direction chain gives **no** arrows; swapped, the
+`radius` arrow stands at the end). The handles also found a bug of their own: a dialog's heads-up box took
 **every** plain digit while it was open, Shift+1…7 (the view commands) with
 them, since its keydown listener runs before the shell's and prevented the
 default — which is why B8's fourth fillet edge (picked from the back view)
@@ -445,8 +455,11 @@ takes the other; on failure a fillet-style diagnosis whose too-large value
 is a **factor** the distances scale by, read through `Kernel.chamfer`'s
 `ChamferError.problems`; it uses `largestThatWorks` and the fillet's tangent
 chain query) and the dialog `apps/web/src/features/chamfer.ts` (a Type
-dropdown per set, a Reference face under it, and set 1's Distance handle as
-ADR-0038's amendment has it). The Chamfer tile has no default key.
+dropdown per set, a Reference face under it, and a Distance handle per set as
+ADR-0038's amendments have it: the unequal types run Distance along the
+reference face and two distances a **Second distance** arrow along the other
+(`faceDirections`; flat faces and a straight edge only, else the single
+bisector arrow; ADR-0043's second amendment)). The Chamfer tile has no default key.
 ADR-0044 (P3-06) added three body features: `combine` (target body + tool
 bodies, join/cut/intersect through `namedBoolean`, tools used up unless
 `keepTools`, strict messages instead of silent no-ops; `core/src/combine.ts`,
@@ -1215,7 +1228,8 @@ mesh pair's `minGap`, P4-06 §4). **§H5** warns when a swept profile is drawn
 away from the path's start. **P4-12's fillet/chamfer item** (2026-10-05, ADR-0038
 and ADR-0043 amendments) is on `p4-12-fillet`: 32 edge sets each, a chamfer
 set's `face` that decides `flip` in the kernel, and radius and distance
-handles on set 1's first edge (`features/edgeHandles.ts`).
+handles on every set's first edge, a variable set's two ends and a chamfer's
+face directions (`features/edgeHandles.ts`, branch `p4-12-set-handles`).
 
 ADR-0068 (P5-01, all three slices) added **the public document API**,
 `packages/api` (`@extrudo/api`, GPL-3.0-or-later): `Design.create`/`Design.from`,
@@ -2119,7 +2133,14 @@ them. Notes further down that name a machine apply to that machine only.
   stored taper shows it on and unchecking it hides the other two. The
   variable test's volumes come from four `exportModel(page, '3MF')` calls
   (each leaves the 3D Print tab open, so `solidTab(page)` before a dialog).
-  P4-12 adds the radius handle: the overlay reads
+  P4-12's second part: a second set's handle is `[data-manipulator-handle="radius2"]`
+  (`data-manipulators="distance:radius distance:radius2"`), a variable set's are
+  `radius` and `radiusEnd` (one per end of the edge; **Swap ends changes their
+  places**) and `arrowState(viewport, field)` in the specs reads
+  `[data-manipulator-state]:has([data-manipulator-handle=…])` (`active` or `quiet`;
+  focusing a field or the set's Edges button makes its arrow active). Nearer an end
+  than the middle, so measure a head against the nearer of the edge's two end
+  points. P4-12 adds the radius handle: the overlay reads
   `viewport.locator('[data-manipulators]')` with `data-manipulators="distance:radius"`,
   and `[data-manipulator-handle="radius"]` carries its centre in `cx`/`cy`
   (px in the view) — drag it **away from the edge** (the head is `radius`
@@ -2129,7 +2150,12 @@ them. Notes further down that name a machine apply to that machine only.
   field is in `editing` mode), so a dragged value only shows blurred. The
   handle stands on the edge's middle, so a pick *there* while the dialog is
   open is the handle's: click a little along the edge to unpick it.
-- **Chamfer e2e** (`e2e/chamfer.spec.ts`, P3-02): the tool has no key: click
+- **Chamfer e2e** (`e2e/chamfer.spec.ts`, P3-02; P4-12's second part adds
+  `distance2` for a second set and, for two distances, `distance` and
+  `distanceB` handles along the two faces — in the home view the one on the front
+  face points straight down the screen, the one on the top face up and right, and
+  **which is Distance is the body mesh's face order**, so the spec reads the top
+  face's footprint from a 3MF to check it): the tool has no key: click
   the toolbar's Chamfer tile (`getByRole('button', { name: /^Chamfer/ })`,
   after picking an edge for pre-selection). The dialog is the region
   "Chamfer dialog" / "Edit Chamfer1 dialog"; set 1 has the button "Edges"

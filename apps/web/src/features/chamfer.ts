@@ -18,9 +18,13 @@
  * disappears (the face decides). The kernel refuses a face that doesn't
  * touch every edge of the set.
  *
- * **The distance handle (P4-12).** Set 1's Distance has an in-view arrow on
- * the set's first edge, pointing away from the body (`edgeHandles.ts`), so
- * dragging it sets the distance.
+ * **The distance handles (P4-12).** Every set with edges has an in-view arrow
+ * for its Distance on the set's first edge (`edgeHandles.ts`): away from the
+ * body for equal distances; for the unequal types along the reference face (the
+ * picked one, else the kernel's choice, or the other with Flip) across the edge,
+ * and for two distances a Second distance arrow along the other face, where both
+ * faces are flat and the edge straight (else Distance keeps the bisector arrow
+ * and there is no second). The overlay draws the set last focused prominent.
  */
 import {
   CHAMFER_EDGE_KINDS,
@@ -35,7 +39,7 @@ import {
   chamferFlipKey,
   chamferModeKey,
 } from '@extrudo/core';
-import { setDistanceManipulator } from './edgeHandles';
+import { chamferSetManipulators } from './edgeHandles';
 import { type DialogField, type DialogValues, defineFeatureDialog, type Manipulator } from './spec';
 
 const hasEdges = (values: DialogValues, n: number) =>
@@ -141,9 +145,36 @@ export const chamferDialog = defineFeatureDialog({
   fields: Array.from({ length: CHAMFER_MAX_SETS }, (_, i) => setFields(i + 1)).flat(),
   // The result replaces the body it bevels: drawn as the body itself.
   previewStyle: () => 'new',
-  manipulators: (values, ctx) => [
-    ...[
-      setDistanceManipulator(chamferDistanceKey(1), chamferEdgesKey(1), values, ctx.bodies),
-    ].filter((m): m is Manipulator => m !== undefined),
-  ],
+  manipulators: (values, ctx) => {
+    const out: Manipulator[] = [];
+    // Only sets that have edges: the 32 possible ones cost nothing while empty.
+    for (let n = 1; n <= CHAMFER_MAX_SETS; n++) {
+      if (!hasEdges(values, n)) continue;
+      const distance = chamferDistanceKey(n);
+      const distanceB = chamferDistanceBKey(n);
+      const follows = [
+        chamferEdgesKey(n),
+        chamferModeKey(n),
+        chamferFaceKey(n),
+        chamferFlipKey(n),
+        chamferAngleKey(n),
+      ];
+      out.push(
+        ...chamferSetManipulators(
+          {
+            edges: chamferEdgesKey(n),
+            distance,
+            distanceB,
+            mode: modeOf(values, n),
+            flip: values.toggles[chamferFlipKey(n)] === true,
+            face: values.refs[chamferFaceKey(n)]?.[0],
+          },
+          values,
+          ctx.bodies,
+          { distance: { follows } },
+        ),
+      );
+    }
+    return out;
+  },
 });

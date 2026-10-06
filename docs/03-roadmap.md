@@ -859,8 +859,10 @@ end to end, faster than in Fusion 360.
     Flip while a face is picked), and a `distance` handle on set 1's first
     edge along the outward bisector of its two faces' normals (no handle
     where that can't be read: a seam, a smooth chain, a face the meshes
-    don't have). Still open: handles for the other sets and for a variable
-    fillet's End radius.
+    don't have). **Handles for every set, a variable fillet's two ends and a
+    chamfer's face directions are done** (2026-10-05, the amendments' second
+    part). Still open: a chamfer's handles on curved faces or edges (they keep
+    the single bisector handle) and a handle for a chamfer's Angle.
   - Shell: a thickness per face; removing faces next to a fillet (ADR-0046).
   - Primitives: position handles and a click point as the centre, torus
     placement options, a box from two corners (ADR-0032).

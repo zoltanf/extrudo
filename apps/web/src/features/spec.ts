@@ -234,6 +234,15 @@ export interface DistanceManipulator {
    * which follows the pointer.
    */
   lift?: number;
+  /**
+   * One of several arrows for the same kind of value (a fillet's or chamfer's
+   * handle per edge set, P4-12): drawn small and faint while it isn't the
+   * active one, and the active one when the user grabs it, focuses its field
+   * or one of `follows`.
+   */
+  quiet?: boolean;
+  /** Other fields (a set's pick field, its toggles) whose focus makes this arrow the active one. */
+  follows?: readonly string[];
 }
 
 /**

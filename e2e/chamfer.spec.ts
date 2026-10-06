@@ -361,3 +361,124 @@ test('a picked reference face says which face takes the distance', async ({ page
   expect(withTop.volume).toBeCloseTo(withFront.volume, 0);
   expect(withTop.volume).toBeCloseTo(8000 - 0.5 * 2 * 6 * 20, -1);
 });
+
+/** The state ("active" or "quiet") of the arrow that writes `field`, as the overlay draws it. */
+async function arrowState(viewport: Locator, field: string) {
+  return viewport
+    .locator(`[data-manipulator-state]:has([data-manipulator-handle="${field}"])`)
+    .getAttribute('data-manipulator-state');
+}
+
+/** A manipulator handle's centre in page px. */
+async function handleAt(viewport: Locator, field: string) {
+  const circle = viewport.locator(`[data-manipulator-handle="${field}"]`);
+  const box = await viewport.boundingBox();
+  return {
+    x: (box?.x ?? 0) + Number(await circle.getAttribute('cx')),
+    y: (box?.y ?? 0) + Number(await circle.getAttribute('cy')),
+  };
+}
+
+async function dragBy(page: Page, from: { x: number; y: number }, dx: number, dy: number) {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + dx / 2, from.y + dy / 2, { steps: 4 });
+  await page.mouse.move(from.x + dx, from.y + dy, { steps: 4 });
+  await page.mouse.up();
+}
+
+test('a second set has its own distance handle', async ({ page }) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await cube(page);
+  const at = await settledProjector(viewport);
+
+  await clickEdge(page, at, [0, -10, 20]);
+  await startChamfer(page);
+  const dialog = page.getByRole('region', { name: 'Chamfer dialog' });
+  await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
+    'data-manipulators',
+    'distance:distance',
+  );
+  await dialog.getByRole('button', { name: 'Edges 2', exact: true }).click();
+  await clickEdge(page, at, [10, 0, 20]);
+  await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
+    'data-manipulators',
+    'distance:distance distance:distance2',
+  );
+  await expect.poll(() => arrowState(viewport, 'distance2')).toBe('active');
+  expect(await arrowState(viewport, 'distance')).toBe('quiet');
+
+  const field = dialog.getByRole('textbox', { name: 'Distance 2', exact: true });
+  await field.fill('2 mm');
+  await field.blur();
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  const middle = at([10, 0, 20]);
+  const head = await handleAt(viewport, 'distance2');
+  const out = { x: head.x - middle.x, y: head.y - middle.y };
+  expect(Math.hypot(out.x, out.y)).toBeGreaterThan(4);
+  await dragBy(page, head, out.x, out.y);
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await field.blur();
+  const distance = Number.parseFloat(await field.inputValue());
+  expect(distance, 'Distance 2 after the drag').toBeGreaterThan(3);
+  await expect(dialog.getByRole('textbox', { name: 'Distance', exact: true })).toHaveValue('1 mm');
+});
+
+test('two distances: Distance runs along the reference face, Second distance along the other', async ({
+  page,
+}) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await cube(page);
+  const at = await settledProjector(viewport);
+
+  // The top front edge, between the top face (lower-numbered) and the front one.
+  await clickEdge(page, at, [0, -10, 20]);
+  await startChamfer(page);
+  const dialog = page.getByRole('region', { name: 'Chamfer dialog' });
+  await dialog
+    .getByRole('combobox', { name: 'Type', exact: true })
+    .selectOption({ label: 'Two distances' });
+  await dialog.getByRole('textbox', { name: 'Distance', exact: true }).fill('4 mm');
+  await dialog.getByRole('textbox', { name: 'Second distance', exact: true }).fill('4 mm');
+  await dialog.getByRole('textbox', { name: 'Second distance', exact: true }).blur();
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
+    'data-manipulators',
+    'distance:distance distance:distanceB',
+  );
+  // One handle lies on the top face (up the screen from the edge's middle, towards the
+  // back), the other on the front face (straight down the screen, into the wall). Which
+  // is which is the kernel's face order (the lower-numbered face takes Distance).
+  const middle = at([0, -10, 20]);
+  const first = await handleAt(viewport, 'distance');
+  const second = await handleAt(viewport, 'distanceB');
+  const onFront = (h: { y: number }) => h.y > middle.y + 4;
+  const onTop = (h: { y: number }) => h.y < middle.y - 4;
+  expect([onFront(first), onTop(second)]).toEqual([onFront(first), onFront(first)]);
+  expect(onFront(first) !== onFront(second)).toBe(true);
+  expect(onFront(first) || onTop(first)).toBe(true);
+  expect(onFront(second) || onTop(second)).toBe(true);
+
+  // Dragging Second distance's handle further down the front writes it, and only it.
+  await dragBy(page, second, second.x - middle.x, second.y - middle.y);
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  const field = dialog.getByRole('textbox', { name: 'Second distance', exact: true });
+  await field.blur();
+  expect(Number.parseFloat(await field.inputValue()), 'Second distance').toBeGreaterThan(5);
+  await expect(dialog.getByRole('textbox', { name: 'Distance', exact: true })).toHaveValue('4 mm');
+
+  // The handles tell the truth: with Distance 2 mm and Second distance 6 mm, the top
+  // face gives up the value of whichever handle lies on it.
+  await dialog.getByRole('textbox', { name: 'Distance', exact: true }).fill('2 mm');
+  await dialog.getByRole('textbox', { name: 'Second distance', exact: true }).fill('6 mm');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+  const topTaken = onTop(first) ? 2 : 6;
+  expect((await measureTop(page)).area).toBeCloseTo(400 - topTaken * 20, 0);
+});
