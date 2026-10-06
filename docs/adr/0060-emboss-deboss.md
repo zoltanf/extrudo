@@ -265,7 +265,15 @@ piece of the face. The thick piece is OCCT's simple offset of a copy of the
 face; a **sphere or a torus** (a whole one is a closed face with poles the
 simple offset can't take) is the shell between two concentric spheres or two
 tori on the same centre circle, exactly, with its seam turned away from the
-sketch so the caps aren't cut in two. Which side the profiles come from is the
+sketch (a sphere's along the travel, its poles square to it; a torus's round
+the axis away from the profile) so the caps aren't cut in two — a torus's tube
+seam runs round its outer equator and can't be turned, so a profile projected
+onto that equator from the side gets its caps in two pieces (`cap:end#1`,
+`#2`), which is sound. The face's outward normal falls back to second
+derivatives where the first ones give none: the line through the centre of a
+circle sketched over a Sphere primitive lands on its pole, and without that
+no piece of the face looked at the sketch (the kernel test found it, the
+harness's pole case covers it). Which side the profiles come from is the
 side of the sketch the face looks at (the hit nearest the sketch, on the line
 through the profiles' centre, where the face's outward normal looks back);
 from there:
@@ -333,6 +341,11 @@ every volume integrated with a 1e-12 tolerance):
   boolean with the sphere exact; from the other side onto the far half; a
   letter O (4 faces) exact; past the outline, past the inner sphere's outline
   for a deboss and off the sphere refused; about 50 ms;
+- the Sphere primitive's own shape (a half disc turned about Z) with a Ø6
+  circle above it, through the pole: 28.4274498 / 28.4437619, exact, 3 faces;
+- a Ø4 circle onto a torus's tube (major 15, tube 5) from above, out and in by
+  0.5 mm: valid, 3 faces, 6.40 / 6.43 mm³ (2 % over area × depth: the tube
+  curves under it), the boolean exact;
 - an 8 mm square onto a lofted B-spline side, out and in: valid, 6 faces,
   65.15 mm³ (between 0.9 and 1.3 × the column's 64), the boolean exact to 1e-9;
   past the face's top edge refused; about 0.55 s;

@@ -124,7 +124,7 @@ for the phase's release, **S** = should, **C** = could.
 | FR-FT-13 | **Construction:** offset plane, plane at angle, midplane, plane through 3 points, tangent plane, axis (2 points, through a cylinder, along an edge), point. | M | 3 |
 | FR-FT-14 | **Sweep**, **loft**, **coil**. | M | 4 |
 | FR-FT-15 | **Modeled threads** (ISO metric and inch presets) with print-tolerance offset. | M | 4 |
-| FR-FT-16 | **Emboss/deboss** text or sketches onto planar and cylindrical faces. | S | 4 |
+| FR-FT-16 | **Emboss/deboss** text or sketches onto planar and cylindrical faces (and, since P4-12, conical ones by wrapping and any other face by projection). | S | 4 |
 | FR-FT-17 | **Rib / web**. | C | 4 |
 
 ### 5.5 Timeline and history (FR-TL)
