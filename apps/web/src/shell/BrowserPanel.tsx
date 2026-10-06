@@ -93,6 +93,8 @@ export interface BrowserPanelProps {
   section?: AnalysisEntry;
   /** The overhang analysis (P3-10), while there is one: a row in the same folder. */
   overhang?: AnalysisEntry;
+  /** The wall-thickness check (P5-06), while there is one: a row in the same folder. */
+  thickness?: AnalysisEntry;
   /** The kernel's verdict per feature: rows show ✕ or ⚠ as the timeline's chips do (P3-17). */
   statuses?: Readonly<Record<string, FeatureStatus | undefined>>;
 }
@@ -135,6 +137,7 @@ export function BrowserPanel({
   onHoverBody,
   section,
   overhang,
+  thickness,
   statuses = NO_STATUSES,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
@@ -339,15 +342,15 @@ export function BrowserPanel({
                 ))}
               </Folder>
             )}
-            {(section || overhang) && (
+            {(section || overhang || thickness) && (
               <Folder
                 label="Analysis"
                 icon={<ToolIcon name="section" category="inspect" size={16} />}
                 eye={{
-                  visible: Boolean(section?.on || overhang?.on),
+                  visible: Boolean(section?.on || overhang?.on || thickness?.on),
                   onToggle: () => {
-                    const on = Boolean(section?.on || overhang?.on);
-                    for (const entry of [section, overhang]) {
+                    const on = Boolean(section?.on || overhang?.on || thickness?.on);
+                    for (const entry of [section, overhang, thickness]) {
                       if (entry && entry.on === on) entry.onToggle();
                     }
                   },
@@ -365,6 +368,13 @@ export function BrowserPanel({
                     name="overhang"
                     entry={overhang}
                     rowAttribute={{ 'data-overhang-row': overhang.on ? 'on' : 'off' }}
+                  />
+                )}
+                {thickness && (
+                  <AnalysisRow
+                    name="wall thickness"
+                    entry={thickness}
+                    rowAttribute={{ 'data-thickness-row': thickness.on ? 'on' : 'off' }}
                   />
                 )}
               </Folder>
@@ -945,7 +955,14 @@ function Leaf({
   );
 }
 
-/** A row of the Analysis folder (P3-09, P3-10): name (opens the panel), eye, and a menu. */
+/** The menu label of an Analysis row, by its name. */
+const ANALYSIS_MENUS: Record<string, string> = {
+  section: 'Section',
+  overhang: 'Overhang',
+  'wall thickness': 'Wall thickness',
+};
+
+/** A row of the Analysis folder (P3-09, P3-10, P5-06): name (opens the panel), eye, and a menu. */
 function AnalysisRow({
   name,
   entry,
@@ -957,7 +974,7 @@ function AnalysisRow({
 }) {
   return (
     <ContextMenu
-      label={`${name === 'section' ? 'Section' : 'Overhang'} menu`}
+      label={`${ANALYSIS_MENUS[name] ?? name} menu`}
       trigger={
         <Leaf active={entry.active} {...rowAttribute}>
           <button

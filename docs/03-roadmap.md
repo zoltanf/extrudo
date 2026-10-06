@@ -984,7 +984,11 @@ end to end, faster than in Fusion 360.
   the service worker caches the 11 MB WASM on first use, not at install, and a
   design computes offline after that).
 - [ ] **P5-05 Macro recording.** FR-PRG-04.
-- [ ] **P5-06 Wall-thickness check.** FR-3DP-07.
+- [x] **P5-06 Wall-thickness check.** FR-3DP-07. Done 2026-10-05 (ADR-0072):
+  thickness per triangle of the display mesh by a ray along its inward normal
+  (the picking BVH, cached by mesh), as view state with the Wall Thickness
+  panel (a Minimum expression, two line widths by default), red shading, the
+  thinnest spot marked, `data-thickness` and a browser Analysis row.
 
 ---
 

@@ -141,6 +141,12 @@ export interface ViewportProps {
    * while it is off), `summary` the counts for `data-overhang`.
    */
   overhang?: { view: OverhangView | undefined; summary: string };
+  /**
+   * The wall-thickness check (P5-06, ADR-0072): `thin` is the per-node flag per body the
+   * bodies are shaded with (absent while the shading is off), `summary` the counts for
+   * `data-thickness`.
+   */
+  thickness?: { thin: Record<BodyId, Float32Array> | undefined; summary: string };
 }
 
 /**
@@ -288,6 +294,7 @@ export function Viewport({
   viewMenu,
   sectionClip,
   overhang,
+  thickness,
 }: ViewportProps) {
   const section = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -444,6 +451,7 @@ export function Viewport({
       data-section={sectionSummary(sectionState)}
       data-section-clip={clipSummary(sectionClip)}
       data-overhang={overhang?.summary}
+      data-thickness={thickness?.summary}
       data-preview={previewSummary(preview)}
       data-preview-dimmed={preview?.dimmed || undefined}
       className="relative isolate min-w-0 flex-1 overflow-hidden"
@@ -481,6 +489,7 @@ export function Viewport({
             calibration={calibration}
             sectionClip={sectionClip}
             overhang={overhang?.view}
+            thin={thickness?.thin}
             onSilhouettes={onSilhouettes}
             onFirstFrame={() => setReady(true)}
           />
@@ -595,6 +604,7 @@ function Scene({
   calibration,
   sectionClip,
   overhang,
+  thin,
   onSilhouettes,
   onFirstFrame,
 }: {
@@ -613,6 +623,8 @@ function Scene({
   calibration: readonly (readonly number[])[];
   sectionClip: SectionClip | undefined;
   overhang: OverhangView | undefined;
+  /** The wall-thickness check's per-node flags per body (P5-06), while it shades. */
+  thin: Record<BodyId, Float32Array> | undefined;
   onSilhouettes(body: BodyId, segments: number): void;
   onFirstFrame(): void;
 }) {
@@ -723,6 +735,7 @@ function Scene({
         onBounds={setBodyBounds}
         onSilhouettes={onSilhouettes}
         {...(overhang && { overhang: { view: overhang, color: colors.overhang } })}
+        {...(thin && { thickness: { thin, color: colors.thickness } })}
         {...(sectionClip && {
           section: { clip: sectionClip, color: colors.section, hatch: colors.sectionHatch },
         })}

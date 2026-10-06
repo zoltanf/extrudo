@@ -46,6 +46,8 @@ export interface SceneColors {
   sectionHatch: Rgba;
   /** The overhang analysis' shading (P3-10). */
   overhang: Rgba;
+  /** The wall-thickness check's shading (P5-06): the error colour, as the overhang's. */
+  thickness: Rgba;
 }
 
 const TOKENS: Record<keyof SceneColors, string> = {
@@ -71,6 +73,7 @@ const TOKENS: Record<keyof SceneColors, string> = {
   section: '--x-cat-inspect',
   sectionHatch: '--x-ink',
   overhang: '--x-error',
+  thickness: '--x-error',
 };
 
 const FALLBACK: Rgba = { r: 0.5, g: 0.5, b: 0.5, a: 1 };

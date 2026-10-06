@@ -163,6 +163,14 @@ function indexOf(mesh: BodyMesh): MeshIndex {
   return index;
 }
 
+/**
+ * The picking BVH of a body's mesh (built once per mesh). The wall-thickness check (P5-06)
+ * casts its rays against this same BVH rather than building a second one (ADR-0072 §1).
+ */
+export function meshBvh(mesh: BodyMesh): MeshBVH {
+  return indexOf(mesh).bvh;
+}
+
 /** The face each triangle belongs to (`faceRanges`). */
 export function triangleFaces(mesh: BodyMesh): Uint32Array {
   const out = new Uint32Array(mesh.indices.length / 3);

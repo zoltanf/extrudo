@@ -37,6 +37,7 @@ import {
   silhouetteSegments,
 } from './silhouette';
 import type { Bounds, VisualStyle } from './store';
+import { createThicknessShading } from './thicknessShading';
 
 /**
  * Body meshes from the model store, drawn in the chosen visual style
@@ -70,6 +71,11 @@ export interface BodiesProps {
   section?: { clip: SectionClip; color: Rgba; hatch: Rgba };
   /** An overhang analysis (P3-10, ADR-0048): the faces it flags are shaded in `color`. */
   overhang?: { view: OverhangView; color: Rgba };
+  /**
+   * The wall-thickness check (P5-06, ADR-0072): `thin` is a per-node flag per body (1 where a
+   * triangle is thinner than the minimum), shaded in `color`.
+   */
+  thickness?: { thin: Record<BodyId, Float32Array>; color: Rgba };
 }
 
 /** The clipping plane as three.js keeps it: it keeps what lies on its normal's side. */
@@ -101,6 +107,7 @@ export function Bodies({
   onSilhouettes,
   section,
   overhang,
+  thickness,
 }: BodiesProps) {
   const shown = useMemo(
     () =>
@@ -125,6 +132,7 @@ export function Bodies({
       marks={bodyHighlight(id, mesh, hover, selection)}
       onSilhouettes={onSilhouettes}
       {...(overhang && { overhang })}
+      {...(thickness && { thickness: { thin: thickness.thin[id], color: thickness.color } })}
       {...(section && planes && { section: { ...section, planes, order: 10 + 3 * index } })}
     />
   ));
@@ -147,6 +155,7 @@ function Body({
   onSilhouettes,
   section,
   overhang,
+  thickness,
 }: {
   id: BodyId;
   mesh: BodyMesh;
@@ -160,20 +169,27 @@ function Body({
   onSilhouettes?(body: BodyId, segments: number): void;
   section?: { clip: SectionClip; color: Rgba; hatch: Rgba; planes: Plane[]; order: number };
   overhang?: { view: OverhangView; color: Rgba };
+  /** The wall-thickness check (P5-06): per-node thin flags, shaded in `color`. */
+  thickness?: { thin: Float32Array | undefined; color: Rgba };
 }) {
   const planes = section?.planes ?? null;
-  // The overhang shading is one patch of the face material; its settings are uniforms.
+  // The analysis shadings are patches of the face material; their settings are uniforms.
+  // The thin-wall mix runs after the overhang one wherever both flag a triangle (ADR-0072 §3).
   const shading = useMemo(() => createOverhangShading(), []);
+  const thinShading = useMemo(() => createThicknessShading(), []);
   shading.set(overhang?.view, overhang?.color ?? body);
+  thinShading.set(thickness?.thin ? thickness.color : undefined);
   const faces = useMemo(() => {
     const g = new BufferGeometry();
     g.setAttribute('position', new BufferAttribute(mesh.positions, 3));
     g.setAttribute('normal', new BufferAttribute(mesh.normals, 3));
     g.setAttribute('color', new BufferAttribute(new Float32Array(mesh.positions.length), 3));
+    g.setAttribute('aThin', new BufferAttribute(new Float32Array(mesh.positions.length / 3), 1));
     g.setIndex(new BufferAttribute(mesh.indices, 1));
     return g;
   }, [mesh]);
   useFaceColors(faces, mesh, body, accent, marks.faces);
+  useThinFlags(faces, thickness?.thin);
   const edges = useMemo(() => {
     const g = new LineSegmentsGeometry();
     g.setPositions(edgeSegments(mesh));
@@ -235,8 +251,11 @@ function Body({
             // A see-through body doesn't hide what is behind it.
             depthWrite={opacity >= 1}
             clippingPlanes={planes}
-            onBeforeCompile={shading.onBeforeCompile}
-            customProgramCacheKey={shading.cacheKey}
+            onBeforeCompile={(shader) => {
+              thinShading.onBeforeCompile(shader);
+              shading.onBeforeCompile(shader);
+            }}
+            customProgramCacheKey={analysisCacheKey}
           />
         </mesh>
       )}
@@ -308,6 +327,24 @@ function useFaceColors(
     attribute.addUpdateRange(range[0] * 3, range[1] * 3);
     attribute.needsUpdate = true;
   }, [faces, mesh, body, accent, states]);
+}
+
+/** One compiled program for both analysis patches; their settings are uniforms. */
+const analysisCacheKey = () => 'extrudo-body-analysis';
+
+/**
+ * Keeps the faces' thin-wall attribute in step with the check (P5-06): 1 on the nodes of a
+ * thin triangle (nodes are shared inside a face, so a thin edge bleeds one triangle), 0
+ * elsewhere. No flags clear it.
+ */
+function useThinFlags(faces: BufferGeometry, thin: Float32Array | undefined) {
+  useLayoutEffect(() => {
+    const attribute = faces.getAttribute('aThin') as BufferAttribute;
+    const array = attribute.array as Float32Array;
+    if (thin) array.set(thin);
+    else array.fill(0);
+    attribute.needsUpdate = true;
+  }, [faces, thin]);
 }
 
 /**

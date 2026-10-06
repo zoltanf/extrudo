@@ -139,6 +139,10 @@ for (const theme of ['dark', 'light'] as const) {
       await expect(page.getByRole('region', { name: 'Print Info' })).toBeVisible();
       await audit(page, `${theme} print info`);
       await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'Wall Thickness' }).click();
+      await expect(page.getByRole('region', { name: 'Wall Thickness' })).toBeVisible();
+      await audit(page, `${theme} wall thickness`);
+      await page.keyboard.press('Escape');
       await page.getByRole('tab', { name: 'Solid' }).click();
       await page.keyboard.press('Control+k');
       await page.keyboard.type('Notification History');

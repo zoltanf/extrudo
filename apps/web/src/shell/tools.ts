@@ -750,6 +750,13 @@ export const TOOLS = {
     category: 'export',
     hint: 'Shade the faces that lean out more than an angle: they need support to print.',
   },
+  wallThickness: {
+    id: 'wallThickness',
+    label: 'Wall Thickness',
+    icon: 'wall-thickness',
+    category: 'export',
+    hint: 'Shade the walls thinner than a minimum: they print weak or not at all.',
+  },
   slicer: {
     id: 'slicer',
     label: 'Send to Slicer',
@@ -910,7 +917,10 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
     id: 'print',
     label: '3D Print',
     groups: [
-      { label: 'Prepare', tools: ['placeOnBed', 'measure', 'printInfo', 'tolerance', 'overhang'] },
+      {
+        label: 'Prepare',
+        tools: ['placeOnBed', 'measure', 'printInfo', 'tolerance', 'overhang', 'wallThickness'],
+      },
       { label: 'Output', tools: ['export', 'slicer'] },
     ],
   },

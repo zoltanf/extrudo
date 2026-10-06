@@ -4,6 +4,19 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-05 · **P5-06 Wall-thickness check** (ADR-0072, FR-3DP-07): walls
+  thinner than a minimum are found before exporting. Thickness is measured on
+  the display mesh, per triangle, by a ray from its centroid along the inward
+  normal to the far side of the same body (the picking BVH, one per mesh, and
+  cached, so changing the minimum only re-classifies); it is view state like
+  the overhang analysis — 3D Print › Prepare › Wall Thickness, a Minimum
+  expression (two line widths of the print material by default) with "Show
+  thin walls", the thinnest wall and the thin area in the panel, thin
+  triangles shaded red (they win over an overhang on the same triangle) and
+  the thinnest spot marked with a label in the view. `data-thickness` on the
+  Viewport region and a row in the browser's Analysis folder read and toggle
+  it; hidden bodies are not measured, and the numbers are estimates on the
+  display tessellation (no kernel or file-format change).
 - 2026-10-05 · **P5-02/P5-04 integration:** script-generated OpenSCAD imports
   use the async preparation hook and the design's model attachments; project
   workers retain both lazy loaders. Preview timing is generic to all features.
@@ -39,6 +52,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
   `export` and `check` compute scripts; `docs/api/examples/script-hole-ring.ts`
   and `script-shelf.ts` are tests. The runner now depends on
   `quickjs-emscripten-core` and the release-sync variant only.
+
 - 2026-10-05 · **P5-04 OpenSCAD import (2 of 2): the app** (ADR-0071): Insert ›
   Import (and the File menu's "Import STEP, mesh or OpenSCAD…") takes `.scad`
   files. The Import dialog lists the file's customizer variables under its

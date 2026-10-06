@@ -104,6 +104,7 @@ export const ICON_NAMES = [
   'print-info',
   'tolerance',
   'overhang',
+  'wall-thickness',
   'send-to-slicer',
 ] as const;
 

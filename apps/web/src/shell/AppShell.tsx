@@ -5,9 +5,11 @@ import {
   CommandError,
   type DocumentStore,
   type FeatureId,
+  formatQuantity,
   type GeomRef,
   IMPORT_TYPE,
   isFeatureVisible,
+  LENGTH,
   type ModelStore,
   readSketch,
   redefineSketchPlane,
@@ -69,9 +71,12 @@ import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import { OverhangPanel } from '../print/OverhangPanel';
 import { PrintInfoPanel } from '../print/PrintInfoPanel';
+import { ThicknessOverlay } from '../print/ThicknessOverlay';
 import { TolerancePanel } from '../print/TolerancePanel';
 import { OVERHANG_TOOL, PRINT_INFO_TOOL, useOverhang, usePrintInfo } from '../print/usePrintAids';
+import { THICKNESS_TOOL, useThickness } from '../print/useThickness';
 import { TOLERANCE_TOOL, useTolerance } from '../print/useTolerance';
+import { WallThicknessPanel } from '../print/WallThicknessPanel';
 import type { Autosaver } from '../project/autosave';
 import { setRestoreGuard } from '../project/restoreGuard';
 import { VersionsDialog } from '../project/VersionsDialog';
@@ -279,6 +284,7 @@ export function AppShell({
   const printing = mode === 'model' && activeTool === PRINT_INFO_TOOL;
   const tolerancing = mode === 'model' && activeTool === TOLERANCE_TOOL;
   const overhanging = mode === 'model' && activeTool === OVERHANG_TOOL;
+  const thickening = mode === 'model' && activeTool === THICKNESS_TOOL;
   const customizing = mode === 'model' && activeTool === CUSTOMIZER_TOOL;
   // The first-run tutorial (P3-12): it reads the design, so it needs no hooks into the tools.
   const tutorial = useTutorial({ store, session, preferences: platform.preferences });
@@ -498,6 +504,16 @@ export function AppShell({
     session,
     kernel,
     notify,
+  });
+  // The wall-thickness check (P5-06): view state like the overhang's, measured on the display
+  // meshes with the picking BVHs (no kernel call).
+  const thickness = useThickness({
+    viewport,
+    doc,
+    bodies: shownBodies,
+    meta: bodyMeta,
+    model: mode === 'model',
+    preferences: platform.preferences,
   });
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
   const preview = useMemo(() => viewPreview(dialogOpen), [dialogOpen]);
@@ -728,7 +744,7 @@ export function AppShell({
             { keys: 'Enter', run: () => host.enter() },
           ]
         : []),
-      ...(measuring || sectioning || printing || overhanging || customizing
+      ...(measuring || sectioning || printing || overhanging || thickening || customizing
         ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }]
         : []),
       // In the model, Esc stops a nav tool (as the viewport's own Esc does), or else clears
@@ -767,6 +783,7 @@ export function AppShell({
       sectioning,
       printing,
       overhanging,
+      thickening,
       customizing,
       mode,
       drawing,
@@ -792,6 +809,13 @@ export function AppShell({
     dialog?.cancel();
     session.getState().setTool(OVERHANG_TOOL);
   };
+  /** Opens the Wall Thickness panel on the check as it is (the browser's row). */
+  const openThickness = () => {
+    if (mode !== 'model') return;
+    if (picking) cancelCreateSketch(stores);
+    dialog?.cancel();
+    session.getState().setTool(THICKNESS_TOOL);
+  };
   const run = (tool: ToolId) => {
     // Press Pull (P3-08) runs the tool that fits the selection; Repeat last repeats Press Pull.
     if (tool === PRESS_PULL) {
@@ -811,7 +835,7 @@ export function AppShell({
     if (tool === 'importBody' || tool === 'canvas') {
       if (mode !== 'model') return;
       if (picking) cancelCreateSketch(stores);
-      if (measuring || sectioning || printing || overhanging || customizing) {
+      if (measuring || sectioning || printing || overhanging || thickening || customizing) {
         session.getState().setTool(undefined);
       }
       dialog?.cancel();
@@ -824,7 +848,7 @@ export function AppShell({
     if (spec) {
       if (mode === 'model') {
         if (picking) cancelCreateSketch(stores);
-        if (measuring || sectioning || printing || overhanging || customizing)
+        if (measuring || sectioning || printing || overhanging || thickening || customizing)
           session.getState().setTool(undefined);
         dialog?.start(spec.type);
       }
@@ -888,6 +912,14 @@ export function AppShell({
         overhang.start();
         session.getState().setTool(OVERHANG_TOOL);
       }
+    } else if (tool === THICKNESS_TOOL) {
+      if (mode !== 'model') return;
+      if (thickening) session.getState().setTool(undefined);
+      else {
+        if (picking) cancelCreateSketch(stores);
+        thickness.start();
+        session.getState().setTool(THICKNESS_TOOL);
+      }
     } else if (tool === IMPORT_DRAWING_TOOL) {
       // P4-06: the tool opens the file dialog, then its panel (ADR-0066 §1).
       if (mode !== 'sketch' || !host) {
@@ -909,7 +941,7 @@ export function AppShell({
   startImportRef.current = () => {
     if (mode !== 'model') return;
     if (picking) cancelCreateSketch(stores);
-    if (measuring || sectioning || printing || overhanging || customizing) {
+    if (measuring || sectioning || printing || overhanging || thickening || customizing) {
       session.getState().setTool(undefined);
     }
     dialog?.cancel();
@@ -950,7 +982,15 @@ export function AppShell({
   const stopCommand = () => {
     if (picking) cancelCreateSketch(stores);
     else if (drawing) host?.stop();
-    else if (projecting || measuring || sectioning || printing || overhanging || customizing)
+    else if (
+      projecting ||
+      measuring ||
+      sectioning ||
+      printing ||
+      overhanging ||
+      thickening ||
+      customizing
+    )
       session.getState().setTool(undefined);
   };
 
@@ -1321,6 +1361,7 @@ export function AppShell({
                 sectioning ||
                 printing ||
                 overhanging ||
+                thickening ||
                 customizing
               ? (activeTool as ToolId)
               : dialogOpen && typeof dialogOpen.spec.command === 'string'
@@ -1382,6 +1423,26 @@ export function AppShell({
                 },
               },
             })}
+            {...(thickness.state && {
+              thickness: {
+                label: `Wall thickness · ${
+                  thickness.min === undefined
+                    ? '?'
+                    : formatQuantity(thickness.min, LENGTH, {
+                        ...doc.settings,
+                        precision: 1,
+                      })
+                }`,
+                on: thickness.state.on,
+                active: thickening,
+                onToggle: () => thickness.setOn(!thickness.state?.on),
+                onEdit: openThickness,
+                onRemove: () => {
+                  thickness.remove();
+                  if (thickening) session.getState().setTool(undefined);
+                },
+              },
+            })}
             width={browser.size}
             collapsed={browser.collapsed}
             animate={browser.animate}
@@ -1432,6 +1493,9 @@ export function AppShell({
             {...(overhang.summary !== undefined && {
               overhang: { view: overhang.view, summary: overhang.summary },
             })}
+            {...(thickness.summary !== undefined && {
+              thickness: { thin: thickness.shading, summary: thickness.summary },
+            })}
           >
             {dialogOpen && dialog && (
               <DialogOverlay
@@ -1439,6 +1503,14 @@ export function AppShell({
                 viewport={viewport}
                 settings={doc.settings}
                 bodies={shownBodies}
+              />
+            )}
+            {thickness.spot && (
+              <ThicknessOverlay
+                spot={thickness.spot}
+                viewport={viewport}
+                settings={doc.settings}
+                {...(section.clip && { clip: section.clip })}
               />
             )}
             {sectioning && (
@@ -1553,6 +1625,13 @@ export function AppShell({
         {overhanging && (
           <OverhangPanel
             tool={overhang}
+            settings={doc.settings}
+            onClose={() => session.getState().setTool(undefined)}
+          />
+        )}
+        {thickening && (
+          <WallThicknessPanel
+            tool={thickness}
             settings={doc.settings}
             onClose={() => session.getState().setTool(undefined)}
           />

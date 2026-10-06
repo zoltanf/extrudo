@@ -7,6 +7,7 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { Preferences } from '../platform';
 import type { OverhangState } from '../print/overhang';
+import type { ThicknessState } from '../print/thickness';
 import type { SectionState } from '../section/clip';
 import { DEFAULT_FILTER, type FilterKind, type SelectionFilter } from '../selection/filter';
 import {
@@ -162,6 +163,12 @@ export interface ViewportState extends ViewportSettings {
    * open.
    */
   overhang: OverhangState | undefined;
+  /**
+   * The wall-thickness check (P5-06, ADR-0072): walls below a minimum shaded in the view.
+   * View state like the overhang's: not in the document, not undoable, lasts while the
+   * project is open.
+   */
+  thickness: ThicknessState | undefined;
 
   /** Moves the camera at once (drags, wheel) and stops any animation. */
   setView(view: View): void;
@@ -204,6 +211,10 @@ export interface ViewportState extends ViewportSettings {
   setOverhang(overhang: OverhangState | undefined): void;
   /** Changes part of the overhang analysis; nothing while there is none. */
   updateOverhang(patch: Partial<OverhangState>): void;
+  /** Starts, replaces or (`undefined`) removes the wall-thickness check. */
+  setThickness(thickness: ThicknessState | undefined): void;
+  /** Changes part of the wall-thickness check; nothing while there is none. */
+  updateThickness(patch: Partial<ThicknessState>): void;
 }
 
 export type ViewportStore = StoreApi<ViewportState>;
@@ -265,6 +276,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       pickAxes: false,
       section: undefined,
       overhang: undefined,
+      thickness: undefined,
 
       setView(view) {
         set({ view, transition: undefined });
@@ -368,6 +380,13 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       updateOverhang(patch) {
         const current = get().overhang;
         if (current) set({ overhang: { ...current, ...patch } });
+      },
+      setThickness(thickness) {
+        set({ thickness });
+      },
+      updateThickness(patch) {
+        const current = get().thickness;
+        if (current) set({ thickness: { ...current, ...patch } });
       },
     };
   });
