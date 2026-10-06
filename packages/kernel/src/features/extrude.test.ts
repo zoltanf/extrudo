@@ -1113,7 +1113,10 @@ describe('extrude', { timeout: 120_000 }, () => {
       for (const taper of ['0 deg', '5 deg', '-5 deg']) {
         const key = `${name} taper ${taper}`;
         const result = await runWithShapes(
-          testDocument([sketch('S', data), extrude('E', [profile('S', data)], { distance: '20 mm', taper })]),
+          testDocument([
+            sketch('S', data),
+            extrude('E', [profile('S', data)], { distance: '20 mm', taper }),
+          ]),
         );
         const s = status(result, 'E');
         if (s.status === 'error') {

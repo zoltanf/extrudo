@@ -151,13 +151,15 @@ function splineHole(radius: number, wave: number, hole: number) {
  * the ruled loft matches this to ~1e-7). */
 function steinerVolume(area: number, perimeter: number, length: number, taper: number) {
   const t = Math.tan(taper);
-  return area * length + (perimeter * t * length * length) / 2 + (Math.PI * t * t * length ** 3) / 3;
+  return (
+    area * length + (perimeter * t * length * length) / 2 + (Math.PI * t * t * length ** 3) / 3
+  );
 }
 
 describe('extrude taper on curves', { timeout: 120_000 }, () => {
   it('an ellipse profile tapered 10 degrees by a ruled loft, named like a prism', async () => {
     const e = ellipse(20, 10);
-    const r = 10 * Math.PI / 180;
+    const r = (10 * Math.PI) / 180;
     const result = await runWithShapes(
       testDocument([
         sketch('S', e.data),
@@ -170,7 +172,7 @@ describe('extrude taper on curves', { timeout: 120_000 }, () => {
     // Ellipse 20 × 10: area = π·10·5, perimeter by Ramanujan.
     const a = 10;
     const b = 5;
-    const hh = ((a - b) ** 2) / ((a + b) ** 2);
+    const hh = (a - b) ** 2 / (a + b) ** 2;
     const perimeter = Math.PI * (a + b) * (1 + (3 * hh) / (10 + Math.sqrt(4 - 3 * hh)));
     const exact = steinerVolume(Math.PI * a * b, perimeter, 20, r);
     expect(rel(m.volume, exact), `${m.volume} vs ${exact}`).toBeLessThan(1e-5);
@@ -242,13 +244,16 @@ describe('extrude taper on curves', { timeout: 120_000 }, () => {
     const e = ellipse(20, 10);
     for (const options of [
       { direction: 'symmetric', distance: '20 mm', taper: '5 deg' },
-      { direction: 'two-sides', distance: '12 mm', taper: '5 deg', distance2: '8 mm', taper2: '-4 deg' },
+      {
+        direction: 'two-sides',
+        distance: '12 mm',
+        taper: '5 deg',
+        distance2: '8 mm',
+        taper2: '-4 deg',
+      },
     ]) {
       const result = await runWithShapes(
-        testDocument([
-          sketch('S', e.data),
-          extrude('E', [profile('S', e.data)], options),
-        ]),
+        testDocument([sketch('S', e.data), extrude('E', [profile('S', e.data)], options)]),
       );
       const s = status(result, 'E');
       expect(s.status, s.message).toBe('ok');

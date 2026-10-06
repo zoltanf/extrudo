@@ -456,7 +456,7 @@ test('tapers an ellipse profile (P4-12: a ruled loft, no more refusal)', async (
   // Steiner: A L + P tan L²/2 + π tan² L³/3 for the ellipse's area and perimeter.
   const a = 20;
   const b = 10;
-  const hh = ((a - b) ** 2) / ((a + b) ** 2);
+  const hh = (a - b) ** 2 / (a + b) ** 2;
   const perimeter = Math.PI * (a + b) * (1 + (3 * hh) / (10 + Math.sqrt(4 - 3 * hh)));
   const t = Math.tan((10 * Math.PI) / 180);
   const exact = Math.PI * a * b * 20 + (perimeter * t * 400) / 2 + (Math.PI * t * t * 8000) / 3;
