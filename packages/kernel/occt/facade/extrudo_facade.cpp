@@ -151,6 +151,15 @@
 #include <GeomAbs_SurfaceType.hxx>
 #include <Precision.hxx>
 #include <STEPControl_Reader.hxx>
+#include <STEPCAFControl_Reader.hxx>
+#include <STEPCAFControl_Writer.hxx>
+#include <Quantity_Color.hxx>
+#include <TDF_Label.hxx>
+#include <TDocStd_Document.hxx>
+#include <XCAFDoc_ColorTool.hxx>
+#include <XCAFDoc_ColorType.hxx>
+#include <XCAFDoc_DocumentTool.hxx>
+#include <XCAFDoc_ShapeTool.hxx>
 #include <StepBasic_Product.hxx>
 #include <StepData_StepModel.hxx>
 #include <TCollection_HAsciiString.hxx>
@@ -1965,10 +1974,25 @@ public:
   void pushStepName(const char* name) { stepNames_.emplace_back(name == nullptr ? "" : name); }
 
   /**
+   * Colours the shapes of the next writeStep() in order (P4-12, ADR-0034's
+   * amendment): one stageStepColor() per shape, r, g and b in 0..1 (sRGB, as
+   * STEP's COLOUR_RGB holds them), or -1 for a shape without a colour.
+   */
+  void clearStepColors() { stepColors_.clear(); }
+  void stageStepColor(double r, double g, double b) {
+    stepColors_.push_back(r);
+    stepColors_.push_back(g);
+    stepColors_.push_back(b);
+  }
+
+  /**
    * Writes the shapes staged with clearArgs()/pushArg() as one STEP AP242
    * file in millimetres, each shape a product named by pushStepName() (a
    * missing or empty name leaves OCCT's "Product <n>"). Names are STEP strings: encode
-   * non-ASCII characters as \X2\…\X0\ first. Read the text with
+   * non-ASCII characters as \X2\…\X0\ first. When stageStepColor() gave some
+   * shape a colour, the file is written through XDE (STEPCAFControl_Writer)
+   * with each coloured solid's colour as a styled item; with none it is
+   * STEPControl_Writer's, exactly as before. Read the text with
    * exportTextPtr/Size. Returns its length in bytes, or -1.
    */
   int writeStep() {
@@ -1976,34 +2000,17 @@ public:
     clearExport();
     quietMessages();
     try {
+      for (size_t i = 0; i < args_.size(); ++i) {
+        if (find(args_[i]) == nullptr) return failExport("STEP export failed: unknown shape.");
+      }
+      if (stepColored()) return writeStepXde();
       STEPControl_Writer writer;
       int scanned = 0;
       for (size_t i = 0; i < args_.size(); ++i) {
-        const TopoDS_Shape* s = find(args_[i]);
-        if (s == nullptr) return failExport("STEP export failed: unknown shape.");
-        DESTEP_Parameters parameters;
-        parameters.WriteSchema = DESTEP_Parameters::WriteMode_StepSchema_AP242DIS;
-        parameters.WriteUnit = UnitsMethods_LengthUnit_Millimeter;
-        if (writer.Transfer(*s, STEPControl_AsIs, parameters) != IFSelect_RetDone) {
+        if (writer.Transfer(*find(args_[i]), STEPControl_AsIs, stepParameters()) != IFSelect_RetDone) {
           return failExport("STEP export failed: a body couldn't be translated.");
         }
-        // OCCT names products "<name> <level>" ("Product 1"): the first
-        // product this transfer made (its root) gets the body's name as is.
-        const Handle(StepData_StepModel) model = writer.Model();
-        const int entities = model->NbEntities();
-        for (; scanned < entities; ++scanned) {
-          const Handle(StepBasic_Product) product =
-              Handle(StepBasic_Product)::DownCast(model->Value(scanned + 1));
-          if (product.IsNull()) continue;
-          if (i < stepNames_.size() && !stepNames_[i].empty()) {
-            const Handle(TCollection_HAsciiString) name =
-                new TCollection_HAsciiString(stepNames_[i].c_str());
-            product->SetId(name);
-            product->SetName(name);
-          }
-          scanned = entities;
-          break;
-        }
+        nameStepProduct(writer.Model(), scanned, i);
       }
       std::ostringstream out;
       if (writer.WriteStream(out) != IFSelect_RetDone) {
@@ -2036,6 +2043,81 @@ public:
       return store(reader.OneShape());
     } catch (...) {
       return failFromException("STEP import failed");
+    }
+  }
+
+  /**
+   * The colours of a STEP file's solids (P4-12, ADR-0034's amendment): the
+   * same text as readStep(), read through XDE (STEPCAFControl_Reader into an
+   * XCAF document that lives only for this call). Per solid, in the order
+   * readStep()'s shape lists them (TopExp::MapShapes, as count()/subShape()
+   * do), [r, g, b] in 0..1 (sRGB) or [-1, -1, -1]: the solid's own colour
+   * (surface, then generic), else its part's, else the nearest assembly
+   * instance's, else none. A face's colour never colours a solid. Read with
+   * geometryPtr/Size: [faces with a colour of their own, then r, g, b per
+   * solid]. Returns the number of solids, or -1.
+   */
+  int readStepColors(const char* text) {
+    beginOp();
+    quietMessages();
+    geometry_.clear();
+    try {
+      // Declared first, so the reader (which keeps labels) goes before it.
+      Handle(TDocStd_Document) doc = new TDocStd_Document("BinXCAF");
+      XCAFDoc_DocumentTool::Set(doc->Main(), false);
+      int solids = -1;
+      int faces = 0;
+      {
+        STEPCAFControl_Reader reader;
+        reader.SetColorMode(true);
+        reader.SetNameMode(false);
+        reader.SetLayerMode(false);
+        reader.SetPropsMode(false);
+        reader.SetMetaMode(false);
+        reader.SetProductMetaMode(false);
+        reader.SetSHUOMode(false);
+        reader.SetGDTMode(false);
+        reader.SetMatMode(false);
+        reader.SetViewMode(false);
+        std::istringstream in(text == nullptr ? "" : text);
+        if (reader.ReadStream("extrudo.step", in) == IFSelect_RetDone && reader.Transfer(doc)) {
+          const Handle(XCAFDoc_ShapeTool) shapes = XCAFDoc_DocumentTool::ShapeTool(doc->Main());
+          geometry_.push_back(0);
+          NCollection_Sequence<TDF_Label> roots;
+          shapes->GetFreeShapes(roots);
+          for (NCollection_Sequence<TDF_Label>::Iterator root(roots); root.More(); root.Next()) {
+            stepSolidColors(shapes, root.Value(), nullptr);
+          }
+          solids = static_cast<int>((geometry_.size() - 1) / 3);
+          NCollection_Sequence<TDF_Label> labels;
+          shapes->GetShapes(labels);
+          for (NCollection_Sequence<TDF_Label>::Iterator label(labels); label.More(); label.Next()) {
+            NCollection_Sequence<TDF_Label> subs;
+            XCAFDoc_ShapeTool::GetSubShapes(label.Value(), subs);
+            for (NCollection_Sequence<TDF_Label>::Iterator sub(subs); sub.More(); sub.Next()) {
+              Quantity_Color color;
+              const TopoDS_Shape shape = XCAFDoc_ShapeTool::GetShape(sub.Value());
+              if (!shape.IsNull() && shape.ShapeType() == TopAbs_FACE &&
+                  stepLabelColor(sub.Value(), color)) {
+                ++faces;
+              }
+            }
+          }
+          geometry_[0] = faces;
+        }
+      }
+      // An XCAF document is OCCT memory the facade owns (ADR-0001): drop its
+      // attributes before the handle goes, so nothing outlives the call.
+      doc->Main().Root().ForgetAllAttributes(true);
+      if (solids < 0) {
+        geometry_.clear();
+        return fail("STEP import failed: the file's colours couldn't be read.");
+      }
+      return solids;
+    } catch (...) {
+      geometry_.clear();
+      failFromException("STEP import failed");
+      return -1;
     }
   }
 
@@ -3498,7 +3580,151 @@ private:
   std::vector<double> exportPositions_;
   std::vector<uint32_t> exportIndices_;
   std::string exportText_;
+  /** The settings of every STEP transfer: AP242, millimetres (P2-12). */
+  static DESTEP_Parameters stepParameters() {
+    DESTEP_Parameters parameters;
+    parameters.WriteSchema = DESTEP_Parameters::WriteMode_StepSchema_AP242DIS;
+    parameters.WriteUnit = UnitsMethods_LengthUnit_Millimeter;
+    return parameters;
+  }
+
+  /** Whether stageStepColor() gave any staged part a colour. */
+  bool stepColored() const {
+    for (size_t i = 0; i < args_.size() && 3 * i + 2 < stepColors_.size(); ++i) {
+      if (stepColors_[3 * i] >= 0) return true;
+    }
+    return false;
+  }
+
+  /**
+   * OCCT names products "<name> <level>" ("Product 1"): the first product a
+   * transfer made (its root), scanning on from `scanned`, gets part i's name
+   * as is.
+   */
+  void nameStepProduct(const Handle(StepData_StepModel)& model, int& scanned, size_t i) const {
+    const int entities = model->NbEntities();
+    for (; scanned < entities; ++scanned) {
+      const Handle(StepBasic_Product) product =
+          Handle(StepBasic_Product)::DownCast(model->Value(scanned + 1));
+      if (product.IsNull()) continue;
+      if (i < stepNames_.size() && !stepNames_[i].empty()) {
+        const Handle(TCollection_HAsciiString) name =
+            new TCollection_HAsciiString(stepNames_[i].c_str());
+        product->SetId(name);
+        product->SetName(name);
+      }
+      scanned = entities;
+      break;
+    }
+  }
+
+  /**
+   * writeStep() with colours: each part a free shape of an XCAF document
+   * (with its colour as XCAFDoc_ColorSurf on its label), transferred one
+   * label at a time so its product is named as on the plain path; names stay
+   * ours (XDE's name mode off), colours are XDE's styled items.
+   */
+  int writeStepXde() {
+    // Declared first, so the writer (which keeps labels) goes before it.
+    Handle(TDocStd_Document) doc = new TDocStd_Document("BinXCAF");
+    XCAFDoc_DocumentTool::Set(doc->Main(), false);
+    XCAFDoc_DocumentTool::SetLengthUnit(doc, 1, UnitsMethods_LengthUnit_Millimeter);
+    int result = -1;
+    {
+      const Handle(XCAFDoc_ShapeTool) shapes = XCAFDoc_DocumentTool::ShapeTool(doc->Main());
+      const Handle(XCAFDoc_ColorTool) colors = XCAFDoc_DocumentTool::ColorTool(doc->Main());
+      STEPCAFControl_Writer writer;
+      writer.SetNameMode(false);
+      writer.SetLayerMode(false);
+      writer.SetPropsMode(false);
+      writer.SetMetadataMode(false);
+      writer.SetSHUOMode(false);
+      writer.SetDimTolMode(false);
+      writer.SetMaterialMode(false);
+      int scanned = 0;
+      bool ok = true;
+      for (size_t i = 0; ok && i < args_.size(); ++i) {
+        const TDF_Label label = shapes->AddShape(*find(args_[i]), false, false);
+        if (3 * i + 2 < stepColors_.size() && stepColors_[3 * i] >= 0) {
+          const Quantity_Color color(clamp01(stepColors_[3 * i]), clamp01(stepColors_[3 * i + 1]),
+                                     clamp01(stepColors_[3 * i + 2]), Quantity_TOC_sRGB);
+          colors->SetColor(label, color, XCAFDoc_ColorSurf);
+        }
+        if (!writer.Transfer(label, stepParameters())) {
+          ok = false;
+          failExport("STEP export failed: a body couldn't be translated.");
+          break;
+        }
+        nameStepProduct(writer.ChangeWriter().Model(), scanned, i);
+      }
+      if (ok) {
+        std::ostringstream out;
+        if (writer.WriteStream(out) != IFSelect_RetDone) {
+          failExport("STEP export failed: the file couldn't be written.");
+        } else {
+          exportText_ = out.str();
+          result = static_cast<int>(exportText_.size());
+        }
+      }
+    }
+    doc->Main().Root().ForgetAllAttributes(true);
+    return result;
+  }
+
+  static double clamp01(double v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
+
+  /** A label's colour: XCAFDoc_ColorSurf, else XCAFDoc_ColorGen. */
+  static bool stepLabelColor(const TDF_Label& label, Quantity_Color& color) {
+    return XCAFDoc_ColorTool::GetColor(label, XCAFDoc_ColorSurf, color) ||
+           XCAFDoc_ColorTool::GetColor(label, XCAFDoc_ColorGen, color);
+  }
+
+  /**
+   * readStepColors()'s walk: an assembly's components in order (each passes
+   * down its own instance colour, else the one it was given), a part's solids
+   * in TopExp::MapShapes order (each its own sub-shape colour, else the
+   * part's, else the instance's), so the solids come in the order the
+   * compound of the file's roots lists them.
+   */
+  void stepSolidColors(const Handle(XCAFDoc_ShapeTool)& shapes, const TDF_Label& label,
+                       const Quantity_Color* inherited) {
+    Quantity_Color own;
+    const Quantity_Color* given = stepLabelColor(label, own) ? &own : inherited;
+    TDF_Label referred;
+    if (XCAFDoc_ShapeTool::IsReference(label) && XCAFDoc_ShapeTool::GetReferredShape(label, referred)) {
+      stepSolidColors(shapes, referred, given);
+      return;
+    }
+    if (XCAFDoc_ShapeTool::IsAssembly(label)) {
+      NCollection_Sequence<TDF_Label> components;
+      XCAFDoc_ShapeTool::GetComponents(label, components, false);
+      for (NCollection_Sequence<TDF_Label>::Iterator c(components); c.More(); c.Next()) {
+        stepSolidColors(shapes, c.Value(), given);
+      }
+      return;
+    }
+    const TopoDS_Shape part = XCAFDoc_ShapeTool::GetShape(label);
+    if (part.IsNull()) return;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> solids;
+    TopExp::MapShapes(part, TopAbs_SOLID, solids);
+    for (int i = 1; i <= solids.Extent(); ++i) {
+      Quantity_Color color;
+      const Quantity_Color* found = given;
+      TDF_Label sub;
+      if (shapes->FindSubShape(label, solids(i), sub) && stepLabelColor(sub, color)) found = &color;
+      if (found == nullptr) {
+        geometry_.insert(geometry_.end(), {-1.0, -1.0, -1.0});
+      } else {
+        double r = 0, g = 0, b = 0;
+        found->Values(r, g, b, Quantity_TOC_sRGB);
+        geometry_.insert(geometry_.end(), {r, g, b});
+      }
+    }
+  }
+
   std::vector<std::string> stepNames_;
+  /** Per staged STEP part, [r, g, b] in 0..1 (sRGB), or -1s for none (P4-12). */
+  std::vector<double> stepColors_;
   std::vector<double> numbers_;
   /** Walls staged for shellFaces(): face indices and their thicknesses. */
   std::vector<int> wallFaces_;
