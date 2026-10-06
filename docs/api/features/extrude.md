@@ -24,6 +24,7 @@ a valid feature.
 | `direction` | `'one-side' \| 'symmetric' \| 'two-sides'` | default `one-side` | How the sweep leaves the plane: one-side, symmetric or two-sides. |
 | `extent` | `'distance' \| 'to-object' \| 'through-all'` | default `distance` | Side 1's extent: distance, to-object or through-all. |
 | `distance` | `string \| number \| ParameterHandle` | optional | Side 1's length (the whole length when symmetric); a length. |
+| `symmetricMeasure` | `'whole' \| 'half'` | default `whole; read only for symmetric` | How a symmetric extrude measures its distance: whole (the whole length) or half (the length of each side, twice that). |
 | `toObject` | `GeomRef \| GeomRef[]` (`face`, `body`, `vertex`, `plane`) | optional | The face (flat or curved), body, vertex or plane side 1 stops at, where the sweep first meets it. |
 | `offset` | `string \| number \| ParameterHandle` | default `0; read only for to-object` | How far past side 1's object the extrude ends, along the sweep; a length. Negative stops short. |
 | `taper` | `string \| number \| ParameterHandle` | optional | Side 1's taper; an angle. Positive widens the sweep, the default 0° keeps the section's size. |

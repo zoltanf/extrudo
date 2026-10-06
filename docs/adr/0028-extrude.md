@@ -365,8 +365,9 @@ kernel (one body, 40 × 80 × 60 mm, 10 faces).
 - ~~A cut that splits a body stays one body with several solids (P2-08
   decides whether it becomes several).~~ Done in P2-08: one body per solid
   (`splitSolids`, ADR-0030).
-- Symmetric "half length" measurement (Fusion offers both); here
-  `distance` is the whole length.
+- ~~Symmetric "half length" measurement (Fusion offers both); here
+  `distance` is the whole length.~~ Done 2026-10-06 as `symmetricMeasure`
+  (the amendment at the end; `revolve`'s symmetric angle takes it too).
 - ~~Body metadata (`doc.bodies` names and colours) for new bodies: P2-08.
   Derived "Body<n>" names shift when an earlier body goes away.~~ Done in
   P2-08: stored names, never reused, and colours (ADR-0030).
@@ -489,5 +490,26 @@ round).
 - **Cut with automatic bodies imprints a body the tool only touches**, as it
   always did for a flat to-object face: the target gets its contact face
   split (golden rows "to-object … cut"). Pick the bodies to cut to avoid it.
-- **Left out:** taper on ellipse and spline sides and the symmetric
-  half-length stay in P4-12's list; to-object on a mesh body (refused).
+- **Left out:** ~~the symmetric half-length~~ (done in the amendment below);
+  taper on ellipse and spline sides stays in P4-12's list; to-object on a
+  mesh body (refused).
+
+## Amendment (P4-12, 2026-10-06): a symmetric extrude's distance per side
+
+`extrude` (and `revolve`, which has the same symmetric direction) takes an
+optional `enum` input `symmetricMeasure`: `whole` (the default —
+`distance` is the whole length, the `angle` the whole angle, as every file
+without the input has it) or `half` (the length, or the angle, of **each
+side**, so the body is twice `distance` long). Read only when `direction`
+is `symmetric`, and stored only when the user picks `half` (the dialogs'
+`toInputs` leave it out otherwise), so existing files and the golden
+tables' rows are unchanged. The revolve refuses a per-side angle whose
+two sides add up to more than a full turn ("The two sides add up to more
+than a full turn. Make the angle smaller."). The dialogs' new Measure
+select (Whole length / Each side) shows while Direction is Symmetric; the
+arrows and arcs reach `distance` (`angle`) each way with `half` — today
+half of it — and a drag writes the per-side value. Kernel tests cover 10
+mm symmetric whole/half/absent, the dialog tests the arrow's scale, and
+the e2e spec commits 20 mm and edits back to 10 mm. Golden tables: two
+rows each in the extrude's and the revolve's, additions only. No facade
+change.

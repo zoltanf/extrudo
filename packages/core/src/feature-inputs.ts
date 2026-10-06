@@ -28,6 +28,15 @@ import { z } from './zod';
 export const BODY_OPERATIONS = ['new-body', 'join', 'cut', 'intersect'] as const;
 export type BodyOperation = (typeof BODY_OPERATIONS)[number];
 
+/**
+ * How a symmetric sweep measures its extent (P4-12's amendment): `whole`
+ * makes the extrude's `distance` (the revolve's `angle`) the whole length
+ * or angle, `half` the length or angle of each side, so the body is twice
+ * that. Default `whole`, as every file without the input has it.
+ */
+export const SYMMETRIC_MEASURES = ['whole', 'half'] as const;
+export type SymmetricMeasure = (typeof SYMMETRIC_MEASURES)[number];
+
 /** What a `ref` input takes, read off a `refsOf` schema. */
 export interface RefInputMeta {
   kind: 'ref';

@@ -247,6 +247,7 @@ export interface FeatureMethods {
    * @param inputs.direction How the sweep leaves the plane: one-side, symmetric or two-sides. Default one-side.
    * @param inputs.extent Side 1's extent: distance, to-object or through-all. Default distance.
    * @param inputs.distance Side 1's length (the whole length when symmetric); a length.
+   * @param inputs.symmetricMeasure How a symmetric extrude measures its distance: whole (the whole length) or half (the length of each side, twice that). Default whole; read only for symmetric.
    * @param inputs.toObject The face (flat or curved), body, vertex or plane side 1 stops at, where the sweep first meets it.
    * @param inputs.offset How far past side 1's object the extrude ends, along the sweep; a length. Negative stops short. Default 0; read only for to-object.
    * @param inputs.taper Side 1's taper; an angle. Positive widens the sweep, the default 0° keeps the section's size.
@@ -277,6 +278,7 @@ export interface FeatureMethods {
    * @param inputs.extent How far it turns: angle, or to-object (one side, until it first meets toObject). Default angle.
    * @param inputs.toObject The face (flat or curved), body or plane the revolve turns up to, where it first meets it; read only for to-object.
    * @param inputs.angle Side 1's angle (the whole angle when symmetric); an angle. Default 360°, a full turn with no end faces.
+   * @param inputs.symmetricMeasure How a symmetric revolve measures its angle: whole (the whole angle) or half (the angle of each side, twice that). Default whole; read only for symmetric.
    * @param inputs.angle2 Side 2's angle, the other way round; an angle. Default 0°.
    * @param inputs.flip Turn side 1 the other way round the axis. Default false.
    * @param inputs.operation New body, join, cut or intersect. Default new-body.
@@ -766,6 +768,8 @@ export interface FeatureMethods {
    * @param inputs.bodies The bodies to join, cut or intersect; by default every body the primitive touches (join) or overlaps (cut, intersect).
    * @param inputs.diameter Its diameter; a length. Default 20 mm.
    * @param inputs.tube The tube's own diameter, smaller than the outer one; a length. Default 10 mm.
+   * @param inputs.axis A torus only: where its axis points, in the plane's frame — normal (along the plane's normal, the ring flat in the plane) or x / y (along the frame's X or Y, the ring on edge). Default normal.
+   * @param inputs.seat A torus only: centre (the ring's centre on the point) or plane (the torus rests on the plane: lifted along its normal so its lowest point touches it, offset still adding on top). Default centre.
    *
    * The faces it makes, as `handle.face(role)` takes them:
    * - `side:surface` — The whole surface, one face.

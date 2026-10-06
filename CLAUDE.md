@@ -247,7 +247,13 @@ ends are `cap:end`, a mesh target is refused), through all, participants by `dis
 solid, `previewTools`) and the dialog `apps/web/src/features/extrude.ts`
 (fields named like the inputs; per-side arrows, symmetric at half
 length, taper arcs; press-pull through the spec's `propose` hook: join
-outwards, cut inwards until the user picks an operation). The browser
+outwards, cut inwards until the user picks an operation). **P4-12's
+second amendment (2026-10-06)** added **`symmetricMeasure`** (`whole` —
+`distance` is the whole length, the default — or `half`, the length of
+each side; `revolve`'s symmetric `angle` takes the same input; read only
+when symmetric, stored only when `half`): the dialogs' Measure select
+shows while Direction is Symmetric and the arrows reach the value each
+way with `half`. The browser
 lists the model's live bodies (`shell/bodies.ts`). The Wall bracket
 template computes a real bracket. ADR-0029 (P2-07) added revolve
 (`packages/core/src/revolve.ts`, `packages/kernel/src/features/revolve.ts`,
@@ -323,7 +329,10 @@ size handles in `data-manipulators`), a **click-to-place** (`placeAt`:
 `primitivePlaceAt`, X and Y from the click in the plane's frame, as the
 hole's) and the Box's **Two corners** button (`features/primitiveCorners.tsx`,
 a `spec.extra`; its marks are `cornersStore`, drawn through the view's
-calibration marks): torus placement options stay deferred. ADR-0034
+calibration marks); the torus's **`axis`** (normal, the default — or `x`/
+`y`, the ring on edge) and **`seat`** (`centre`, the default — or `plane`,
+resting on the plane, `offset` still adding on top) are P4-12's second
+amendment's inputs, stored only when not the default. ADR-0034
 (P2-12) added export: facade `exportMesh` (meshes a
 `BRepBuilderAPI_Copy` at the export's deflection, so the display
 triangulation is untouched, and welds nodes through each edge's
@@ -2182,7 +2191,10 @@ them. Notes further down that name a machine apply to that machine only.
   20.8 with Offset 2 mm; To object takes planes, so it picks through the plane
   picker — no `data-model-hover`, just click — and its `curvedFaces` flag lets
   a curved face in; mind the Taper heads-up box beside the profile, which
-  takes a click on it): the Viewport region's
+  takes a click on it. P4-12's second amendment adds the combobox "Measure"
+  ("whole" default, "half"), shown while Direction is Symmetric: the test
+  commits 10 mm with Each side (`Body1:6:60,40,20`) and edits back to Whole
+  length (`…,10`)): the Viewport region's
   `data-bodies` lists drawn bodies as `name:faces:x,y,z` (bbox size in
   mm, e.g. "Body1:7:60,40,15"). The dialog is the region "Extrude
   dialog" / "Edit Extrude1 dialog", its operation the combobox
@@ -2274,7 +2286,10 @@ them. Notes further down that name a machine apply to that machine only.
   the plane set X, Y, Length and Width (the height stays; a turned box goes back
   to 0°) and disarm; Esc with focus in the dialog disarms. The right side of the
   home view is under the dialog: pick points with a negative y of about
-  −0.2 h or more. The kernel golden table updates with `pnpm vitest run -u
+  −0.2 h or more. P4-12's second amendment gives the Torus dialog the
+  comboboxes "Axis" (`normal`/`x`/`y`) and "Seat" (`centre`/`plane`; `plane`
+  rests it on the plane, `offset` still adding): the test sets Axis X +
+  Seat On the plane and reads `Body1:1:10,50,50` (one face). The kernel golden table updates with `pnpm vitest run -u
   packages/kernel/src/features/primitives`.
 - **Export e2e** (`e2e/export-3d.spec.ts`): the dialog is `dialog`
   "Export model"; bodies are checkboxes by name, formats radios

@@ -3221,5 +3221,85 @@
     ]
    }
   }
+ },
+ "symmetric distance measure whole": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 1178.1,
+    "area": 628.32,
+    "bbox": [
+     4.99,
+     5,
+     -7.51,
+     15.01,
+     15,
+     7.51
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
+ },
+ "symmetric distance measure half": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "extrudeFaces": []
+   },
+   "E:0": {
+    "volume": 2356.19,
+    "area": 1099.56,
+    "bbox": [
+     4.99,
+     5,
+     -15.01,
+     15.01,
+     15,
+     15.01
+    ],
+    "faces": 3,
+    "edges": 3,
+    "vertices": 2,
+    "extrudeFaces": [
+     "extrude:E:cap:end",
+     "extrude:E:cap:start",
+     "extrude:E:side:c1"
+    ]
+   }
+  }
  }
 }

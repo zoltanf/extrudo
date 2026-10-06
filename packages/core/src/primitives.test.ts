@@ -12,6 +12,8 @@ import {
   primitiveNumbers,
   primitiveSettings,
   SphereInputsSchema,
+  TORUS_AXES,
+  TORUS_SEATS,
   TorusInputsSchema,
 } from './primitives';
 import type { GeomRef } from './schema';
@@ -132,5 +134,26 @@ describe('primitive inputs', () => {
     expect(TorusInputsSchema.safeParse({ tube: { kind: 'expr', expr: '5 mm' } }).success).toBe(
       true,
     );
+  });
+
+  it('reads a torus’s axis and seat, and refuses them on the others (P4-12)', () => {
+    expect(TORUS_AXES).toEqual(['normal', 'x', 'y']);
+    expect(TORUS_SEATS).toEqual(['centre', 'plane']);
+    const inputs = primitiveInputs('torus', { axis: 'x', seat: 'plane' });
+    expect(inputs).toEqual({
+      axis: { kind: 'enum', value: 'x' },
+      seat: { kind: 'enum', value: 'plane' },
+    });
+    expect(TorusInputsSchema.safeParse(inputs).success).toBe(true);
+    expect(TorusInputsSchema.safeParse({}).success).toBe(true);
+    expect(TorusInputsSchema.safeParse({ axis: { kind: 'enum', value: 'edge' } }).success).toBe(
+      false,
+    );
+    expect(primitiveSettings(inputs)).toMatchObject({ axis: 'x', seat: 'plane' });
+    expect(primitiveSettings({})).not.toHaveProperty('axis');
+    // Only a torus takes them.
+    expect(() => primitiveInputs('box', { axis: 'x' })).toThrow('Only a torus takes');
+    expect(() => primitiveInputs('sphere', { seat: 'plane' })).toThrow('Only a torus takes');
+    expect(BoxInputsSchema.safeParse({ axis: { kind: 'enum', value: 'x' } }).success).toBe(false);
   });
 });

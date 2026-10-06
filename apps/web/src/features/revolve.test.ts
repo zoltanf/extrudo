@@ -276,11 +276,53 @@ describe('revolve arcs', () => {
     );
     expect(symmetric).toHaveLength(1);
     expect(symmetric[0]).toMatchObject({ scale: 0.5 });
+    // With the `half` measure (P4-12's amendment) the arc reaches the
+    // angle itself: the value is each side's.
+    const perSide = revolveManipulators(
+      values({ refs, choices: { direction: 'symmetric', symmetricMeasure: 'half' } }),
+      ctx,
+    );
+    expect(
+      perSide[0]?.kind === 'angle' && perSide[0].scale,
+      'the arc reaches the angle itself',
+    ).toBeUndefined();
     const two = revolveManipulators(values({ refs, choices: { direction: 'two-sides' } }), ctx);
     expect(two.map((m) => m.field)).toEqual(['angle', 'angle2']);
     expect(two[1]).toMatchObject({ axis: [-0, -1, -0] });
     // Nothing until both are picked.
     expect(revolveManipulators(values({ refs: { profiles: [profile] } }), ctx)).toEqual([]);
+  });
+
+  it('stores the symmetric measure only when it is `half` (P4-12)', () => {
+    const ctx = context();
+    const { profile } = rectangleSketch();
+    const refs = { profiles: [profile], axis: [Y] };
+    const inputs = (choices: Record<string, string>) =>
+      inputsFor(revolveDialog, values({ refs, choices }), ctx);
+    // The default (whole) and the hidden select make no input.
+    expect(inputs({ direction: 'symmetric' })).not.toHaveProperty('symmetricMeasure');
+    expect(inputs({ direction: 'one-side', symmetricMeasure: 'half' })).not.toHaveProperty(
+      'symmetricMeasure',
+    );
+    expect(inputs({ direction: 'two-sides', symmetricMeasure: 'half' })).not.toHaveProperty(
+      'symmetricMeasure',
+    );
+    expect(inputs({ direction: 'symmetric', symmetricMeasure: 'half' })?.symmetricMeasure).toEqual({
+      kind: 'enum',
+      value: 'half',
+    });
+    // A stored whole-angle revolve reads the select as the default again.
+    const back = valuesFor(
+      revolveDialog,
+      {
+        id: 'V',
+        type: 'revolve',
+        name: 'Revolve1',
+        inputs: inputs({ direction: 'symmetric' }),
+      } as Feature,
+      ctx,
+    );
+    expect(back.choices.symmetricMeasure).toBe('whole');
   });
 });
 

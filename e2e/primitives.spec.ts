@@ -155,6 +155,20 @@ test('places a box, a cylinder, a sphere and a torus on the origin planes', asyn
   await expect(viewport).toHaveAttribute('data-bodies', /Body3:1:\S+$/);
 });
 
+test('a torus stands on edge and rests on the plane (P4-12)', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+
+  // Axis X stands the ring on edge; Seat "On the plane" rests it on XY.
+  const torus = await start(page, 'Torus');
+  await torus.getByRole('combobox', { name: 'Axis' }).selectOption('x');
+  await torus.getByRole('combobox', { name: 'Seat' }).selectOption('plane');
+  await expect(torus).toHaveAttribute('data-preview-status', 'ok');
+  await ok(page, torus);
+  // One face: tube across X, the ring's diameter + tube across Y and up Z.
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:1:10,50,50');
+});
+
 test('sits on a body’s face, joins and cuts, and follows the face when the body is edited', async ({
   page,
 }) => {

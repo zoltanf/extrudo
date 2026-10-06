@@ -272,8 +272,16 @@ function anglesOf(ctx: EvalContext<RevolveInputs>, settings: RevolveSettings): T
       }
       return turn(0, one, [one, 0]);
     case 'symmetric': {
-      const whole = Math.abs(one);
-      if (whole <= ANGLE_EPS) throw new KernelError('The angle is 0. Enter an angle other than 0.');
+      // `half` (P4-12's amendment) measures each side, so it turns twice
+      // as far in all.
+      const per = Math.abs(one);
+      if (per <= ANGLE_EPS) throw new KernelError('The angle is 0. Enter an angle other than 0.');
+      const whole = settings.symmetricMeasure === 'half' ? per * 2 : per;
+      if (whole > 360 + ANGLE_EPS) {
+        throw new KernelError(
+          'The two sides add up to more than a full turn. Make the angle smaller.',
+        );
+      }
       return turn(-whole / 2, whole, [whole / 2, whole / 2]);
     }
     case 'two-sides': {

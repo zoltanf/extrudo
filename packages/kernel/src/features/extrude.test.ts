@@ -277,6 +277,8 @@ describe('extrude', { timeout: 120_000 }, () => {
       [{ distance: '-4 mm' }, -4, 0, [-4, 0]],
       [{ distance: '4 mm', flip: true }, -4, 0, [4, 0]],
       [{ distance: '6 mm', direction: 'symmetric' }, -3, 3, [3, 3]],
+      // The `half` measure (P4-12's amendment): the distance is each side's.
+      [{ distance: '6 mm', direction: 'symmetric', symmetricMeasure: 'half' }, -6, 6, [6, 6]],
       [{ distance: '6 mm', direction: 'two-sides', distance2: '2 mm' }, -2, 6, [6, 2]],
       [{ distance: '6 mm', direction: 'two-sides', distance2: '-2 mm' }, 2, 6, [6, -2]],
     ] as [ExtrudeInputOptions, number, number, [number, number]][]) {
@@ -295,6 +297,34 @@ describe('extrude', { timeout: 120_000 }, () => {
       expect(data.extents.map((e) => round(e))).toEqual(extents);
       expect(data.origin.map((v) => round(v))).toEqual([10, 10, 0]);
       expect(data.direction.map((v) => round(v))).toEqual([0, 0, options.flip ? -1 : 1]);
+    }
+  });
+
+  it('a symmetric extrude measures the whole length or each side (P4-12)', async () => {
+    const c = circle();
+    for (const [how, reach] of [
+      ['half', 10],
+      ['whole', 5],
+      [undefined, 5],
+    ] as [ExtrudeInputOptions['symmetricMeasure'], number][]) {
+      const options: ExtrudeInputOptions = {
+        direction: 'symmetric',
+        distance: '10 mm',
+        ...(how === 'half' ? { symmetricMeasure: how } : {}),
+      };
+      const result = ok(
+        await runWithShapes(
+          testDocument([c.feature, extrude('E', [profile('SC', c.data)], options)]),
+        ),
+      );
+      const m = measure(result, 'E:0');
+      close(m.volume, 25 * Math.PI * 2 * reach);
+      close(m.bbox.min[2], -reach, 0.02);
+      close(m.bbox.max[2], reach, 0.02);
+      const data = await outputData(
+        testDocument([c.feature, extrude('E', [profile('SC', c.data)], options)]),
+      );
+      expect(data.extents.map((e) => round(e))).toEqual([reach, reach]);
     }
   });
 
@@ -1010,6 +1040,48 @@ describe('extrude', { timeout: 120_000 }, () => {
           }
         }
       }
+    }
+    // The symmetric measure (P4-12's amendment): `distance` the whole
+    // length, or each side's.
+    for (const how of ['whole', 'half'] as const) {
+      const key = `symmetric distance measure ${how}`;
+      const result = await runWithShapes(
+        testDocument([
+          ...base.features,
+          c.feature,
+          extrude('E', [pick], {
+            direction: 'symmetric',
+            extent: 'distance',
+            distance: '15 mm',
+            operation: 'new-body',
+            ...(how === 'half' ? { symmetricMeasure: how } : {}),
+          }),
+        ]),
+      );
+      const s = status(result, 'E');
+      table[key] =
+        s.status === 'error'
+          ? { error: s.message }
+          : {
+              ...(s.status === 'warning' ? { warning: s.message } : {}),
+              bodies: Object.fromEntries(
+                result.bodies.map((body) => {
+                  const m = measure(result, body.id);
+                  return [
+                    body.id,
+                    {
+                      volume: round(m.volume, 2),
+                      area: round(m.area, 2),
+                      bbox: [...m.bbox.min, ...m.bbox.max].map((v) => round(v, 2)),
+                      faces: m.faces,
+                      edges: m.edges,
+                      vertices: m.vertices,
+                      extrudeFaces: m.names.filter((n) => n.includes(':E:')).sort(),
+                    },
+                  ];
+                }),
+              ),
+            };
     }
     await expect(`${JSON.stringify(table, null, 1)}\n`).toMatchFileSnapshot(
       './golden/extrude-options.json',

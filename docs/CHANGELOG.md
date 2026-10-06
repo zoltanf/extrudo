@@ -4,6 +4,16 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 torus placement and symmetric half-length**
+  (ADR-0032's and ADR-0028's amendments): the torus takes an `axis`
+  (Normal — the default — or X / Y, the ring on edge) and a `seat`
+  (Centre — the default — or On the plane, resting on the plane with
+  Offset still adding), both optional enums stored only when not the
+  default; and a symmetric extrude or revolve takes `symmetricMeasure`
+  (`whole` — the default — or `half`, the distance or angle of each side),
+  read only while symmetric and stored only when `half`. The dialogs'
+  Axis/Seat selects and Measure select drive them; the arrows reach the
+  per-side value with `half`. No facade change.
 - 2026-10-06 · **P4-12 STEP colours (XDE)** (ADR-0034's amendment): a STEP
   file's solid colours (their own, their part's or their assembly instance's)
   colour the imported bodies when they are first named, and never again, so a

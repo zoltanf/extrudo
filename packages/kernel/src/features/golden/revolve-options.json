@@ -966,5 +966,95 @@
  },
  "to-object body intersect flipped": {
   "error": "Part of the profile passes beside that body, so V wouldn't end on it. Pick an object that covers the whole profile, or use a distance."
+ },
+ "symmetric new-body angle 90 deg measure whole": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": []
+   },
+   "V:0": {
+    "volume": 2356.19,
+    "area": 1142.48,
+    "bbox": [
+     7.05,
+     -14.17,
+     4.98,
+     20.02,
+     14.17,
+     15.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:cap:start",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
+ },
+ "symmetric new-body angle 90 deg measure half": {
+  "bodies": {
+   "B:0": {
+    "volume": 24000,
+    "area": 5200,
+    "bbox": [
+     0,
+     0,
+     -10,
+     40,
+     30,
+     10
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": []
+   },
+   "V:0": {
+    "volume": 4712.39,
+    "area": 2084.96,
+    "bbox": [
+     -0.02,
+     -20.02,
+     4.98,
+     20.02,
+     20.02,
+     15.02
+    ],
+    "faces": 6,
+    "edges": 12,
+    "vertices": 8,
+    "valid": true,
+    "revolveFaces": [
+     "revolve:V:cap:end",
+     "revolve:V:cap:start",
+     "revolve:V:side:l11",
+     "revolve:V:side:l2",
+     "revolve:V:side:l5",
+     "revolve:V:side:l8"
+    ]
+   }
+  }
  }
 }

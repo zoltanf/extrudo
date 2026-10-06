@@ -12,7 +12,15 @@
  */
 
 import { SWEEP_FACE_ROLES } from './face-roles';
-import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
+import {
+  BODY_OPERATIONS,
+  type BodyOperation,
+  enumInput,
+  exprOf,
+  refsOf,
+  SYMMETRIC_MEASURES,
+  type SymmetricMeasure,
+} from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
   BoolInputSchema,
@@ -92,13 +100,25 @@ export const RevolveInputsSchema = z.strictObject({
       'The face (flat or curved), body or plane the revolve turns up to, where it first meets it; read only for to-object.',
     ),
   /**
-   * Side 1's angle (the whole angle when symmetric), default 360°: a full
-   * turn has no end faces. Negative turns the other way.
+   * Side 1's angle (the whole angle when symmetric, or each side's with
+   * `symmetricMeasure: 'half'`), default 360°: a full turn has no end
+   * faces. Negative turns the other way.
    */
   angle: exprOf('angle')
     .optional()
     .describe(
       "Side 1's angle (the whole angle when symmetric); an angle. Default 360°, a full turn with no end faces.",
+    ),
+  /**
+   * How `angle` measures a symmetric revolve (P4-12's amendment): the
+   * whole angle (`whole`, the default) or each side's (`half`, so it
+   * turns twice as far in all). Read only when symmetric, and stored only
+   * when it is `half`.
+   */
+  symmetricMeasure: enumInput(SYMMETRIC_MEASURES)
+    .optional()
+    .describe(
+      'How a symmetric revolve measures its angle: whole (the whole angle) or half (the angle of each side, twice that). Default whole; read only for symmetric.',
     ),
   /** Side 2's angle for `two-sides`: the other way round. Default 0. */
   angle2: exprOf('angle')
@@ -148,6 +168,8 @@ export interface RevolveSettings {
   angle?: 'angle';
   /** Two sides only: the `expr` input holding side 2's angle; none means 0. */
   angle2?: 'angle2';
+  /** How symmetric measures `angle` (P4-12's amendment): `whole` or `half`. Default `whole`. */
+  symmetricMeasure: SymmetricMeasure;
   flip: boolean;
   operation: RevolveOperation;
   /** Explicit participants (body IDs); empty means automatic. */
@@ -165,6 +187,8 @@ export function revolveSettings(inputs: RevolveInputs): RevolveSettings {
     ...(inputs.toObject?.refs[0] ? { toObject: inputs.toObject.refs[0] } : {}),
     ...(inputs.angle ? { angle: 'angle' as const } : {}),
     ...(direction === 'two-sides' && inputs.angle2 ? { angle2: 'angle2' as const } : {}),
+    symmetricMeasure:
+      direction === 'symmetric' ? (inputs.symmetricMeasure?.value ?? 'whole') : 'whole',
     flip: inputs.flip?.value ?? false,
     operation: inputs.operation?.value ?? 'new-body',
     bodies: (inputs.bodies?.refs ?? []).map((ref) => ref.id),
@@ -177,6 +201,8 @@ export interface RevolveInputOptions {
   toObject?: GeomRef;
   /** An angle expression: `'90 deg'`, `'sweep / 2'`. */
   angle?: string;
+  /** How symmetric measures `angle` (P4-12's amendment). Default `whole`. */
+  symmetricMeasure?: SymmetricMeasure;
   angle2?: string;
   flip?: boolean;
   operation?: RevolveOperation;
@@ -202,6 +228,7 @@ export function revolveInputs(
   if (o.extent) inputs.extent = { kind: 'enum', value: o.extent };
   if (o.toObject) inputs.toObject = refs([o.toObject]);
   if (o.angle !== undefined) inputs.angle = expr(o.angle);
+  if (o.symmetricMeasure) inputs.symmetricMeasure = { kind: 'enum', value: o.symmetricMeasure };
   if (o.angle2 !== undefined) inputs.angle2 = expr(o.angle2);
   if (o.flip !== undefined) inputs.flip = { kind: 'bool', value: o.flip };
   if (o.operation) inputs.operation = { kind: 'enum', value: o.operation };

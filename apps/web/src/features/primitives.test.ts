@@ -87,6 +87,8 @@ describe('the primitive dialogs', () => {
       'plane',
       'diameter',
       'tube',
+      'axis',
+      'seat',
       'x',
       'y',
       'offset',
@@ -111,7 +113,10 @@ describe('the primitive dialogs', () => {
           const v = values(type, {
             refs: { plane: [plane], bodies: [{ kind: 'body', id: BOX }] },
             exprs: { x: '5 mm', offset: 'd9 / 2' },
-            choices: { operation },
+            choices: {
+              operation,
+              ...(type === 'torus' ? { axis: 'x', seat: 'plane' } : {}),
+            },
           });
           const inputs = inputsFor(spec, v, ctx);
           expect(SCHEMAS[type].safeParse(inputs).success, `${type} ${operation}`).toBe(true);
@@ -157,6 +162,34 @@ describe('the primitive dialogs', () => {
         operation: 'new-body',
       }),
     );
+  });
+
+  it('stores a torus’s axis and seat only when they aren’t the default (P4-12)', () => {
+    const ctx = { doc: setupDialogs().store.getState().doc, bodies };
+    const inputsOf = (choices: Record<string, string>) =>
+      inputsFor(torusDialog, values('torus', { refs: { plane: [XZ] }, choices }), ctx);
+    expect(Object.keys(inputsOf({ axis: 'x', seat: 'plane' })).sort()).toEqual([
+      'axis',
+      'diameter',
+      'offset',
+      'operation',
+      'plane',
+      'seat',
+      'tube',
+      'x',
+      'y',
+    ]);
+    expect(inputsOf({})).not.toHaveProperty('axis');
+    expect(inputsOf({ seat: 'plane' })).not.toHaveProperty('axis');
+    expect(inputsOf({ axis: 'x' })).not.toHaveProperty('seat');
+    // A torus stored without them reads the selects as the defaults again.
+    const back = valuesFor(
+      torusDialog,
+      { id: 'P', type: 'torus', name: 'Torus1', inputs: inputsOf({}) } as Feature,
+      ctx,
+    );
+    expect(back.choices.axis).toBe('normal');
+    expect(back.choices.seat).toBe('centre');
   });
 
   it('shows a primitive stored without a plane on the XY plane', () => {
@@ -302,6 +335,24 @@ describe('where a primitive sits and its handles', () => {
       'y',
       'offset',
     ]);
+    // A torus on edge runs its ring arrows up the plane's Y (world Z on XZ);
+    // resting on the plane lifts them by the seat lift along the normal.
+    const rings = (choices: Record<string, string>, numbers: Record<string, number>) =>
+      primitiveManipulators(
+        'torus',
+        values('torus', { refs: { plane: [XZ] }, choices }),
+        withValues(numbers),
+      ).slice(0, 2);
+    const onEdge = rings({ axis: 'x' }, { diameter: 40, tube: 10 });
+    expect((onEdge[0] as { origin: Vec3 }).origin).toEqual([0, 0, 0]);
+    expect(round((onEdge[0] as { direction: Vec3 }).direction)).toEqual([0, 0, 1]);
+    expect((onEdge[1] as { origin: Vec3 }).origin).toEqual([0, 0, 20]);
+    const resting = rings({ axis: 'x', seat: 'plane' }, { diameter: 40, tube: 10 });
+    expect((resting[0] as { origin: Vec3 }).origin).toEqual([0, -25, 0]);
+    expect((resting[1] as { origin: Vec3 }).origin).toEqual([0, -25, 20]);
+    expect(
+      (rings({ seat: 'plane' }, { diameter: 40, tube: 10 })[0] as { origin: Vec3 }).origin,
+    ).toEqual([0, -5, 0]);
     // No plane, no handles.
     expect(
       primitiveManipulators('box', values('box', { refs: { plane: [] } }), withValues()),

@@ -17,7 +17,7 @@
  * | `box` | `length` (along the frame's X), `width` (Y), `height` (normal) | centred on the point, from the plane up |
  * | `cylinder` | `diameter`, `height` (normal) | its base centred on the point |
  * | `sphere` | `diameter` | centred on the point |
- * | `torus` | `diameter` (through the tube's centre), `tube` (the tube's diameter) | centred on the point, about the normal |
+ * | `torus` | `diameter` (through the tube's centre), `tube` (the tube's diameter) | centred on the point, about the normal (P4-12's amendment: `axis` turns it on edge and `seat` rests it on the plane) |
  *
  * A negative height puts a box or a cylinder below the plane (a cut into a
  * face). Every input is optional and has a default, so a minimal box is
@@ -48,6 +48,26 @@ export const PLACEMENT_KINDS: readonly GeomRefKind[] = ['plane', 'face'];
 
 /** Where a primitive sits without a `plane` input: the XY plane. */
 export const DEFAULT_PLACEMENT: GeomRef = originPlaneRef('origin:xy');
+
+/**
+ * A torus's `axis` (P4-12's amendment): where the ring's axis points, in the
+ * plane's frame — `normal` along the plane's normal (the ring lies flat in
+ * the plane), or `x` / `y` along the frame's X or Y (the ring stands on
+ * edge, seen from above as a bar). Default `normal`, as every file without
+ * the input has it.
+ */
+export const TORUS_AXES = ['normal', 'x', 'y'] as const;
+export type TorusAxis = (typeof TORUS_AXES)[number];
+
+/**
+ * A torus's `seat` (P4-12's amendment): `centre` puts the ring's centre on
+ * the point; `plane` rests the torus on the plane — lifted along the normal
+ * by the tube's radius (`tube / 2`) with the axis along the normal, by
+ * `diameter / 2 + tube / 2` with the axis in the plane, so its lowest point
+ * touches the plane and `offset` still adds on top. Default `centre`.
+ */
+export const TORUS_SEATS = ['centre', 'plane'] as const;
+export type TorusSeat = (typeof TORUS_SEATS)[number];
 
 /** The body operations (`BODY_OPERATIONS`): new body, join, cut, intersect. */
 export const PRIMITIVE_OPERATIONS = BODY_OPERATIONS;
@@ -193,6 +213,18 @@ export const TorusInputsSchema = z.strictObject({
   diameter: length('Its diameter; a length. Default 20 mm.'),
   /** The tube's own diameter, smaller than `diameter`; default 10 mm. */
   tube: length("The tube's own diameter, smaller than the outer one; a length. Default 10 mm."),
+  /** Where the ring's axis points, in the plane's frame. Default `normal`. */
+  axis: enumInput(TORUS_AXES)
+    .optional()
+    .describe(
+      "A torus only: where its axis points, in the plane's frame — normal (along the plane's normal, the ring flat in the plane) or x / y (along the frame's X or Y, the ring on edge). Default normal.",
+    ),
+  /** How the torus sits on the plane. Default `centre`. */
+  seat: enumInput(TORUS_SEATS)
+    .optional()
+    .describe(
+      "A torus only: centre (the ring's centre on the point) or plane (the torus rests on the plane: lifted along its normal so its lowest point touches it, offset still adding on top). Default centre.",
+    ),
 });
 export type TorusInputs = z.infer<typeof TorusInputsSchema>;
 
@@ -264,6 +296,10 @@ export interface PrimitiveSettings {
    * a number without one takes its `PrimitiveNumber.value`.
    */
   exprs: ReadonlySet<string>;
+  /** Torus only (P4-12's amendment): where the ring's axis points. Absent: `normal`. */
+  axis?: TorusAxis;
+  /** Torus only: how it sits on the plane. Absent: `centre`. */
+  seat?: TorusSeat;
 }
 
 /** Reads a primitive's (valid) inputs with their defaults. */
@@ -272,11 +308,14 @@ export function primitiveSettings(inputs: PrimitiveInputs): PrimitiveSettings {
   for (const [name, input] of Object.entries(inputs)) {
     if ((input as { kind?: string } | undefined)?.kind === 'expr') exprs.add(name);
   }
+  const torus = inputs as Partial<TorusInputs>;
   return {
     plane: inputs.plane?.refs[0] ?? DEFAULT_PLACEMENT,
     operation: inputs.operation?.value ?? 'new-body',
     bodies: (inputs.bodies?.refs ?? []).map((ref) => ref.id),
     exprs,
+    ...(torus.axis ? { axis: torus.axis.value } : {}),
+    ...(torus.seat ? { seat: torus.seat.value } : {}),
   };
 }
 
@@ -287,12 +326,17 @@ export interface PrimitiveInputOptions {
   numbers?: Readonly<Record<string, string>>;
   operation?: PrimitiveOperation;
   bodies?: string[];
+  /** Torus only (P4-12's amendment): where the ring's axis points. Default `normal`. */
+  axis?: TorusAxis;
+  /** Torus only: how it sits on the plane. Default `centre`. */
+  seat?: TorusSeat;
 }
 
 /**
  * A primitive's inputs from plain options (tests, scripts; the dialog builds
  * the same shape). Expressions get their unit; `paramName`s are left to the
- * caller, as for any feature. Unknown number names throw.
+ * caller, as for any feature. Unknown number names, and a torus-only option
+ * on another type, throw.
  */
 export function primitiveInputs(
   type: PrimitiveType,
@@ -309,5 +353,11 @@ export function primitiveInputs(
   }
   if (options.operation) inputs.operation = { kind: 'enum', value: options.operation };
   if (options.bodies) inputs.bodies = refs(options.bodies.map((id) => ({ kind: 'body', id })));
+  if (type === TORUS_TYPE) {
+    if (options.axis) inputs.axis = { kind: 'enum', value: options.axis };
+    if (options.seat) inputs.seat = { kind: 'enum', value: options.seat };
+  } else if (options.axis !== undefined || options.seat !== undefined) {
+    throw new Error('Only a torus takes "axis" and "seat".');
+  }
   return inputs as PrimitiveInputs;
 }

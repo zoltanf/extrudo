@@ -280,6 +280,8 @@ describe('revolve', { timeout: 120_000 }, () => {
       [{ angle: '-90 deg' }, 0, 8, [-90, 0]],
       [{ angle: '90 deg', flip: true }, 0, 8, [90, 0]],
       [{ angle: '90 deg', direction: 'symmetric' }, -5.66, 5.66, [45, 45]],
+      // The `half` measure (P4-12's amendment): 90° per side is 180° in all.
+      [{ angle: '90 deg', direction: 'symmetric', symmetricMeasure: 'half' }, -8, 8, [90, 90]],
       [{ angle: '90 deg', direction: 'two-sides', angle2: '30 deg' }, -8, 4, [90, 30]],
     ] as [RevolveInputOptions, number, number, [number, number]][]) {
       const doc = testDocument([p.feature, revolve('V', [profile('S', p.data)], y, options)]);
@@ -747,6 +749,47 @@ describe('revolve', { timeout: 120_000 }, () => {
                 };
         }
       }
+    }
+    // The symmetric measure (P4-12's amendment): `angle` the whole angle,
+    // or each side's.
+    for (const how of ['whole', 'half'] as const) {
+      const key = `symmetric new-body angle 90 deg measure ${how}`;
+      const result = await runWithShapes(
+        testDocument([
+          ...features,
+          revolve('V', [pick], originAxisRef('origin:z'), {
+            direction: 'symmetric',
+            angle: '90 deg',
+            operation: 'new-body',
+            ...(how === 'half' ? { symmetricMeasure: how } : {}),
+          }),
+        ]),
+      );
+      const st = status(result, 'V');
+      table[key] =
+        st.status === 'error'
+          ? { error: st.message }
+          : {
+              ...(st.status === 'warning' ? { warning: st.message } : {}),
+              bodies: Object.fromEntries(
+                result.bodies.map((body) => {
+                  const m = measure(result, body.id);
+                  return [
+                    body.id,
+                    {
+                      volume: round(m.volume, 2),
+                      area: round(m.area, 2),
+                      bbox: [...m.bbox.min, ...m.bbox.max].map((v) => round(v, 2)),
+                      faces: m.faces,
+                      edges: m.edges,
+                      vertices: m.vertices,
+                      valid: m.valid,
+                      revolveFaces: m.names.filter((n) => n.includes(':V:')).sort(),
+                    },
+                  ];
+                }),
+              ),
+            };
     }
     await expect(`${JSON.stringify(table, null, 1)}\n`).toMatchFileSnapshot(
       './golden/revolve-options.json',

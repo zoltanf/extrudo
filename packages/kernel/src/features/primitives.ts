@@ -40,7 +40,10 @@ export interface PrimitiveOutputData {
    * The primitive's own frame: `origin` is the centre of its base (a
    * sphere's or torus's centre) on the plane, lifted by the offset; `x` is
    * the plane frame's X (turned by a box's rotation), `y` = `normal` × `x`,
-   * `normal` the plane's (a face's outward normal).
+   * `normal` the plane's (a face's outward normal). A torus (P4-12's
+   * amendment) puts its centre at `origin` when `seat` is `centre`, and
+   * `seat`'s lift along the normal above it when `seat` is `plane` — where
+   * its lowest point is, at `origin` itself.
    */
   frame: SketchFrame;
   /** Every number input's value (mm, degrees), defaults filled in, by input name. */
@@ -53,7 +56,13 @@ const LENGTH_EPS = 1e-6;
 type Numbers = Record<string, number>;
 
 /** How each primitive makes its solid, named (ADR-0005), in its frame. */
-type Build = (ctx: EvalContext, scope: ShapeScope, frame: SketchFrame, n: Numbers) => NamedShape;
+type Build = (
+  ctx: EvalContext,
+  scope: ShapeScope,
+  frame: SketchFrame,
+  n: Numbers,
+  settings: PrimitiveSettings,
+) => NamedShape;
 
 /**
  * A primitive's kernel definition (P2-10, ADR-0032): the placement frame,
@@ -79,7 +88,7 @@ function primitive<I extends PrimitiveInputs>(
       const numbers = numbersOf(ctx, type, settings);
       const frame = placement(ctx, settings, numbers, words.noun);
       using scope = ctx.kernel.scope();
-      const tool = build(ctx, scope, frame, numbers);
+      const tool = build(ctx, scope, frame, numbers, settings);
       const participants = explicitBodies(ctx, settings, words);
       const warnings: string[] = [];
       const result = splitSolids(
@@ -247,10 +256,16 @@ const buildSphere: Build = (ctx, scope, frame, n) => {
 
 /**
  * A torus: a circle of the tube's diameter, its centre half the diameter
- * out along X, turned a whole turn about the normal. One face,
- * `torus:<id>:side:surface`.
+ * out along X, turned a whole turn about the ring's axis. One face,
+ * `torus:<id>:side:surface`. `axis` (P4-12's amendment) points the axis
+ * along the plane's normal (default), X or Y: the ring stands on edge for
+ * X and Y, seen from above as a bar. `seat` rests it on the plane: the
+ * circle's centre is lifted along the normal by the tube's radius (axis
+ * along the normal) or `diameter / 2 + tube / 2` (axis in the plane), so
+ * the torus's lowest point is at the frame's origin; `offset` still adds
+ * on top of it.
  */
-const buildTorus: Build = (ctx, scope, frame, n) => {
+const buildTorus: Build = (ctx, scope, frame, n, settings) => {
   const big = (n.diameter ?? 0) / 2;
   const small = (n.tube ?? 0) / 2;
   if (small >= big - LENGTH_EPS) {
@@ -258,8 +273,21 @@ const buildTorus: Build = (ctx, scope, frame, n) => {
       'The tube is as thick as the torus: make the tube diameter smaller than the diameter.',
     );
   }
-  const face = planarFace(ctx, scope, [circle([big, 0], small)], upright(frame), ['surface']);
-  return turn(ctx, scope, face, frame);
+  const axis = settings.axis ?? 'normal';
+  const seat = settings.seat ?? 'centre';
+  const lift = seat === 'centre' ? 0 : axis === 'normal' ? small : big + small;
+  const origin = add(frame.origin, scale(frame.normal, lift));
+  const along = axis === 'normal' ? frame.normal : axis === 'x' ? frame.x : frame.y;
+  // The revolve's own frame: its normal is the axis, its X a direction the
+  // circle is drawn along (the plane's X, unless the axis is that one).
+  const local: SketchFrame = {
+    origin,
+    x: axis === 'x' ? frame.y : frame.x,
+    y: cross(along, axis === 'x' ? frame.y : frame.x),
+    normal: along,
+  };
+  const face = planarFace(ctx, scope, [circle([big, 0], small)], upright(local), ['surface']);
+  return turn(ctx, scope, face, local);
 };
 
 export const circle = (center: readonly [number, number], radius: number): PlanarCurve => ({

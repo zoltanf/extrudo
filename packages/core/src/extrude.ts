@@ -11,7 +11,15 @@
  */
 
 import { SWEEP_FACE_ROLES } from './face-roles';
-import { BODY_OPERATIONS, type BodyOperation, enumInput, exprOf, refsOf } from './feature-inputs';
+import {
+  BODY_OPERATIONS,
+  type BodyOperation,
+  enumInput,
+  exprOf,
+  refsOf,
+  SYMMETRIC_MEASURES,
+  type SymmetricMeasure,
+} from './feature-inputs';
 import type { FeatureDefinition } from './features';
 import {
   BoolInputSchema,
@@ -28,7 +36,9 @@ export const EXTRUDE_TYPE = 'extrude';
 /**
  * - `one-side`: from the profile's plane along its normal (or against it,
  *   with `flip` or a negative distance).
- * - `symmetric`: centred on the plane; `distance` is the whole length.
+ * - `symmetric`: centred on the plane; `distance` is the whole length —
+ *   or the length of each side with `symmetricMeasure: 'half'` (P4-12's
+ *   amendment).
  * - `two-sides`: side 1 along the normal, side 2 against it, each with its
  *   own extent and taper.
  */
@@ -77,10 +87,21 @@ export const ExtrudeInputsSchema = z.strictObject({
   extent: enumInput(EXTRUDE_EXTENTS)
     .optional()
     .describe("Side 1's extent: distance, to-object or through-all. Default distance."),
-  /** Side 1's length; the whole length when symmetric. */
+  /** Side 1's length; the whole length when symmetric (each side with `symmetricMeasure: 'half'`). */
   distance: exprOf('length')
     .optional()
     .describe("Side 1's length (the whole length when symmetric); a length."),
+  /**
+   * How `distance` measures a symmetric sweep (P4-12's amendment): the
+   * whole length (`whole`, the default) or each side's (`half`, so the
+   * body is twice `distance` long). Read only when symmetric, and stored
+   * only when it is `half`.
+   */
+  symmetricMeasure: enumInput(SYMMETRIC_MEASURES)
+    .optional()
+    .describe(
+      'How a symmetric extrude measures its distance: whole (the whole length) or half (the length of each side, twice that). Default whole; read only for symmetric.',
+    ),
   /** Side 1's object for `to-object`. */
   toObject: refsOf(EXTRUDE_OBJECT_KINDS, 1)
     .optional()
@@ -199,6 +220,8 @@ export interface ExtrudeSettings {
   operation: ExtrudeOperation;
   /** Explicit participants (body IDs); empty means automatic. */
   bodies: string[];
+  /** How symmetric measures `distance` (P4-12's amendment): `whole` or `half`. Default `whole`. */
+  symmetricMeasure: SymmetricMeasure;
 }
 
 /** Reads an extrude's (valid) inputs with their defaults. */
@@ -222,6 +245,8 @@ export function extrudeSettings(inputs: ExtrudeInputs): ExtrudeSettings {
     flip: inputs.flip?.value ?? false,
     operation: inputs.operation?.value ?? 'new-body',
     bodies: (inputs.bodies?.refs ?? []).map((ref) => ref.id),
+    symmetricMeasure:
+      direction === 'symmetric' ? (inputs.symmetricMeasure?.value ?? 'whole') : 'whole',
   };
 }
 
@@ -230,6 +255,8 @@ export interface ExtrudeInputOptions {
   extent?: ExtrudeExtent;
   /** An expression: `'10 mm'`, `'wall * 5'`. */
   distance?: string;
+  /** How symmetric measures `distance` (P4-12's amendment). Default `whole`. */
+  symmetricMeasure?: SymmetricMeasure;
   toObject?: GeomRef;
   /** A length expression: how far past `toObject` (`'2 mm'`). */
   offset?: string;
@@ -261,6 +288,7 @@ export function extrudeInputs(
   if (o.direction) inputs.direction = { kind: 'enum', value: o.direction };
   if (o.extent) inputs.extent = { kind: 'enum', value: o.extent };
   if (o.distance !== undefined) inputs.distance = expr(o.distance, 'length');
+  if (o.symmetricMeasure) inputs.symmetricMeasure = { kind: 'enum', value: o.symmetricMeasure };
   if (o.toObject) inputs.toObject = refs([o.toObject]);
   if (o.offset !== undefined) inputs.offset = expr(o.offset, 'length');
   if (o.taper !== undefined) inputs.taper = expr(o.taper, 'angle');

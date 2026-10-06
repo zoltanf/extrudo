@@ -29,6 +29,7 @@ describe('revolve inputs', () => {
       flip: false,
       operation: 'new-body',
       bodies: [],
+      symmetricMeasure: 'whole',
     });
     expect(FULL_TURN).toBe('360 deg');
     expect(RevolveInputsSchema.safeParse({}).success).toBe(true);
@@ -56,6 +57,7 @@ describe('revolve inputs', () => {
       flip: true,
       operation: 'cut',
       bodies: ['E:0'],
+      symmetricMeasure: 'whole',
     });
     const symmetric = revolveSettings({ ...all, direction: { kind: 'enum', value: 'symmetric' } });
     expect(symmetric.angle).toBe('angle');

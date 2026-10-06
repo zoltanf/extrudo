@@ -179,8 +179,9 @@ for an origin plane.
   P3-05 (`planeOf`, ADR-0040).
 - The dialog's Plane field keeps the origin planes on screen while it is
   the pick field, even after a plane is picked.
-- Fusion's torus position option (inside / on centre / outside) — still open
-  (a box from two corners: done, amendment below).
+- ~~Fusion's torus position option (inside / on centre / outside)~~ Done
+  2026-10-06 as `axis` and `seat` (the amendment below; Fusion's inside /
+  outside, which resizes the ring around the point, stays deferred).
 
 ## Amendment 2026-10-06: placement by handle and click (P4-12)
 
@@ -218,5 +219,45 @@ No kernel, facade, schema or file-format change; all in `apps/web/src/features/`
 - **Rejected:** a delta-based move arrow (a `distance` handle writes the
   distance from its own origin, and a new manipulator kind is more machinery
   than a chain of three arrows needs).
-- **Still deferred:** the torus placement options (inside / on centre /
-  outside), the roadmap bullet keeps them.
+- ~~**Still deferred:** the torus placement options (inside / on centre /
+  outside), the roadmap bullet keeps them.~~ Done in the amendment below.
+
+## Amendment 2026-10-06: torus placement options (P4-12)
+
+Two optional `enum` inputs on `torus` alone; a file without them reads and
+computes exactly as before, and the face name stays
+`torus:<id>:side:surface`.
+
+- **`axis`** — `normal` (the default: the ring's axis along the plane's
+  normal, the ring flat in the plane, as it always was), `x` or `y`: the
+  axis along the plane frame's X or Y, so the ring stands on edge, seen
+  from above as a bar. The kernel picks the revolve's frame from the
+  choice (its normal is the axis; the circle is drawn along the frame's X,
+  or Y when the axis is that one), so it is still a whole-turn
+  `namedRevolve` of a circle and a proper torus surface.
+- **`seat`** — `centre` (the default: the ring's centre on the point) or
+  `plane`: the torus rests on the plane, its circle's centre lifted along
+  the normal by the tube's radius (`tube / 2`) with the axis along the
+  normal, by `diameter / 2 + tube / 2` with the axis in the plane, so the
+  torus's lowest point is the frame's origin and `offset` still adds on
+  top.
+- **The dialog** has an Axis select (Normal / X / Y) and a Seat select
+  (Centre / On the plane) after the sizes; its `toInputs` stores the two
+  only when they aren't the default. The position handles are unchanged —
+  the Offset arrow still measures `offset` from the plane point, which is
+  the seat's base when it rests on the plane — and the two ring arrows
+  (Diameter from the centre, Tube from the ring) follow the axis (along
+  the frame's X, or its Y when the axis is X) and start at the lifted
+  centre.
+- **Tests:** the kernel checks the surface's exact geometry
+  (`Kernel.surfaceGeometry`: a torus whose axis is the plane's X or Y, the
+  radii as entered, the centre at the seat's lift) and the tight box it
+  gives (the shape's own box is that within OCCT's 1e-7 shape tolerance);
+  `e2e/primitives.spec.ts` sets Axis X and Seat "On the plane" and reads
+  `Body1:1:10,50,50` (one face; the default 40/10 torus on XY). The golden
+  table grew four rows (`torus axis x/y`, `torus seat plane`, `torus axis
+  x seat plane`); the diff is additions only. No facade change.
+- **Rejected:** Fusion's inside / outside position (the ring resized
+  around the point, inside the tube) — `seat: 'plane'` covers resting the
+  torus, and inside/outside changes what `diameter` means, which the
+  templates and files rely on.

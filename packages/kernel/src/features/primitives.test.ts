@@ -208,6 +208,13 @@ const round = (x: number, digits = 3) => {
 const box = (b: { min: readonly number[]; max: readonly number[] }) =>
   [...b.min, ...b.max].map((v) => round(v, 1));
 
+/** The tight box of a body's shape, from the exact geometry (`Kernel.properties`). */
+function tightBox(body: string) {
+  const shape = bodyShapes.get(body);
+  if (!shape) throw new Error(`no body ${body}`);
+  return kernel.properties(shape).bbox;
+}
+
 /** Where a face's centroid is, by name, in the last `runWithShapes` (first body that has it). */
 function faceCentroid(result: Done, name: string): number[] {
   for (const body of result.bodies) {
@@ -356,6 +363,83 @@ describe('primitives', { timeout: 120_000 }, () => {
     // About −Y (the XZ plane's normal): a ring in XZ, 10 mm thick along Y.
     expect(box(m.bbox)).toEqual([-25, -5, -25, 25, 5, 25]);
     expect(m.names).toEqual(['torus:P:side:surface']);
+  });
+
+  it('a torus with Axis X or Y stands on edge: the tube across the axis, the ring over the plane', async () => {
+    for (const axis of ['x', 'y'] as const) {
+      const doc = testDocument([
+        primitive('P', 'torus', {
+          numbers: { diameter: '40 mm', tube: '10 mm' },
+          axis,
+        }),
+      ]);
+      const result = ok(await runWithShapes(doc));
+      const m = measure(result, 'P:0');
+      close(m.volume, 2 * PI ** 2 * 20 * 25);
+      expect(m.valid, axis).toBe(true);
+      expect([m.faces, m.solids], axis).toEqual([1, 1]);
+      expect(m.names, axis).toEqual(['torus:P:side:surface']);
+      // The surface is an exact torus: the axis along the plane's X (Y),
+      // the radii as entered, the centre on the plane's origin.
+      const shape = bodyShapes.get('P:0');
+      if (!shape) throw new Error('no shape');
+      const g = kernel.surfaceGeometry(shape, 0);
+      expect(g.type, axis).toBe('torus');
+      expect(g.direction, `${axis} axis`).toEqual(axis === 'x' ? [1, 0, 0] : [0, 1, 0]);
+      expect(g.radius, `${axis} R`).toBe(20);
+      expect(g.minorRadius, `${axis} r`).toBe(5);
+      expect(g.origin, `${axis} centre`).toEqual([0, 0, 0]);
+      // Its box follows from the surface: the tube across the axis, the
+      // ring's diameter + tube across the plane and up its normal (the
+      // shape's own box is that within OCCT's 1e-7 shape tolerance).
+      const t = tightBox('P:0');
+      const span = (i: 0 | 1 | 2) => (t.max[i] as number) - (t.min[i] as number);
+      const want: readonly [number, number, number] = axis === 'x' ? [10, 50, 50] : [50, 10, 50];
+      expect(span(0), `${axis} x`).toBeCloseTo(want[0], 6);
+      expect(span(1), `${axis} y`).toBeCloseTo(want[1], 6);
+      expect(span(2), `${axis} z`).toBeCloseTo(want[2], 6);
+      for (const i of [0, 1, 2] as const) {
+        expect(((t.min[i] as number) + (t.max[i] as number)) / 2, `${axis} mid ${i}`).toBeCloseTo(
+          0,
+          6,
+        );
+      }
+    }
+  });
+
+  it('a torus with Seat "On the plane" rests on the plane: its lowest point at offset', async () => {
+    for (const axis of ['normal', 'x'] as const) {
+      for (const offset of ['0 mm', '3 mm']) {
+        const doc = testDocument([
+          primitive('P', 'torus', {
+            numbers: { diameter: '40 mm', tube: '10 mm', offset },
+            seat: 'plane',
+            ...(axis === 'x' ? { axis } : {}),
+          }),
+        ]);
+        const result = ok(await runWithShapes(doc));
+        const m = measure(result, 'P:0');
+        close(m.volume, 2 * PI ** 2 * 20 * 25);
+        expect(m.valid, `${axis} ${offset}`).toBe(true);
+        // The surface's centre sits at the seat's lift above the plane
+        // exactly (the tube's radius with the axis along the normal, the
+        // ring's radius + the tube's with it in the plane), so the lowest
+        // point is at `offset`.
+        const shape = bodyShapes.get('P:0');
+        if (!shape) throw new Error('no shape');
+        const g = kernel.surfaceGeometry(shape, 0);
+        const at = Number.parseFloat(offset);
+        const lift = axis === 'normal' ? 5 : 25;
+        expect(g.type, `${axis} ${offset} surface`).toBe('torus');
+        expect(g.origin?.[2], `${axis} ${offset} centre z`).toBeCloseTo(at + lift, 9);
+        const t = tightBox('P:0');
+        expect(t.min[2] as number, `${axis} ${offset} min z`).toBeCloseTo(at, 6);
+        expect(t.max[2] as number, `${axis} ${offset} max z`).toBeCloseTo(
+          at + (axis === 'normal' ? 10 : 50),
+          6,
+        );
+      }
+    }
   });
 
   it('refuses sizes it can’t build, with a message for each', async () => {
@@ -563,44 +647,56 @@ describe('primitives', { timeout: 120_000 }, () => {
       ['on the top face at (30, 20)', { plane: top, numbers: { x: '30 mm', y: '20 mm' } }],
     ];
     const operations: PrimitiveOperation[] = ['new-body', 'join', 'cut', 'intersect'];
+    const row = (key: string, type: PrimitiveType, options: PrimitiveInputOptions) =>
+      runWithShapes(testDocument([...block(), primitive('P', type, options)])).then((result) => {
+        const st = status(result, 'P');
+        if (st.status === 'error') {
+          table[key] = { error: st.message };
+          return;
+        }
+        table[key] = {
+          ...(st.status === 'warning' ? { warning: st.message } : {}),
+          bodies: Object.fromEntries(
+            result.bodies.map((body) => {
+              const m = measure(result, body.id);
+              return [
+                body.id,
+                {
+                  volume: round(m.volume, 1),
+                  area: round(m.area, 1),
+                  bbox: box(m.bbox),
+                  counts: [m.faces, m.edges, m.vertices, m.solids],
+                  valid: m.valid,
+                  names: m.names.filter((n) => n.startsWith(`${type}:`)).sort(),
+                },
+              ];
+            }),
+          ),
+        };
+      });
     for (const [type, sizes] of types) {
       for (const [where, place] of placements) {
         for (const operation of operations) {
-          const key = `${type} ${where} ${operation}`;
           const options = {
             ...place,
             numbers: { ...sizes, ...place.numbers },
             operation,
           };
-          const result = await runWithShapes(
-            testDocument([...block(), primitive('P', type, options)]),
-          );
-          const st = status(result, 'P');
-          if (st.status === 'error') {
-            table[key] = { error: st.message };
-            continue;
-          }
-          table[key] = {
-            ...(st.status === 'warning' ? { warning: st.message } : {}),
-            bodies: Object.fromEntries(
-              result.bodies.map((body) => {
-                const m = measure(result, body.id);
-                return [
-                  body.id,
-                  {
-                    volume: round(m.volume, 1),
-                    area: round(m.area, 1),
-                    bbox: box(m.bbox),
-                    counts: [m.faces, m.edges, m.vertices, m.solids],
-                    valid: m.valid,
-                    names: m.names.filter((n) => n.startsWith(`${type}:`)).sort(),
-                  },
-                ];
-              }),
-            ),
-          };
+          await row(`${type} ${where} ${operation}`, type, options);
         }
       }
+    }
+    // The torus's axis and seat (P4-12's amendment), on XY in the same sizes:
+    // each option alone, then together.
+    const torusSizes = { diameter: '20 mm', tube: '6 mm', offset: '2 mm' };
+    const torusRows: [string, PrimitiveInputOptions][] = [
+      ['axis x', { numbers: torusSizes, axis: 'x' }],
+      ['axis y', { numbers: torusSizes, axis: 'y' }],
+      ['seat plane', { numbers: torusSizes, seat: 'plane' }],
+      ['axis x seat plane', { numbers: torusSizes, axis: 'x', seat: 'plane' }],
+    ];
+    for (const [where, options] of torusRows) {
+      await row(`torus ${where} new-body`, 'torus', options);
     }
     await expect(`${JSON.stringify(table, null, 1)}\n`).toMatchFileSnapshot(
       './golden/primitive-options.json',

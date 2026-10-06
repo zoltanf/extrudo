@@ -28,6 +28,8 @@ a valid feature.
 | `bodies` | `GeomRef \| GeomRef[]` (`body`) | optional | The bodies to join, cut or intersect; by default every body the primitive touches (join) or overlaps (cut, intersect). |
 | `diameter` | `string \| number \| ParameterHandle` | default `20 mm` | Its diameter; a length. |
 | `tube` | `string \| number \| ParameterHandle` | default `10 mm` | The tube's own diameter, smaller than the outer one; a length. |
+| `axis` | `'normal' \| 'x' \| 'y'` | default `normal` | A torus only: where its axis points, in the plane's frame — normal (along the plane's normal, the ring flat in the plane) or x / y (along the frame's X or Y, the ring on edge). |
+| `seat` | `'centre' \| 'plane'` | default `centre` | A torus only: centre (the ring's centre on the point) or plane (the torus rests on the plane: lifted along its normal so its lowest point touches it, offset still adding on top). |
 
 ## Faces
 

@@ -25,6 +25,7 @@ describe('extrude inputs', () => {
       flip: false,
       operation: 'new-body',
       bodies: [],
+      symmetricMeasure: 'whole',
     });
   });
 

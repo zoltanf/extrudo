@@ -868,9 +868,10 @@ end to end, faster than in Fusion 360.
     a fillet opened as a plug. Still open: an opening through a curved face
     or past a slanted neighbour next to a fillet, two touching removed faces
     next to one, round joins with wall sets).
-  - Primitives: ~~position handles and a click point as the centre~~, torus
-    placement options, ~~a box from two corners~~ (ADR-0032; done 2026-10-06,
-    the torus options stay open).
+  - Primitives: ~~position handles and a click point as the centre~~,
+    ~~torus placement options~~ (ADR-0032; done 2026-10-06 — the handles
+    and the two-corner box in the amendment, the torus as `axis` and
+    `seat`, the second amendment), ~~a box from two corners~~.
   - ~~Construction: point on path, point through two edges, plane along a
     path, midplane of non-parallel planes, tangent planes on tori and
     free-form faces, planes in box selection~~ **done 2026-10-06**
@@ -885,9 +886,10 @@ end to end, faster than in Fusion 360.
     point at the intersection of two curved faces, and a cone's nearest
     tangency point.
   - ~~Extrude to object on curved faces and bodies, with an offset; revolve
-    "to"~~; taper on ellipse and spline sides; symmetric half-length
-    (ADR-0028, -0029; the first two done 2026-10-06, the taper and the
-    half-length stay open).
+    "to"~~; ~~symmetric half-length~~ (ADR-0028, -0029; done 2026-10-06 —
+    the first two in the amendment, the half-length as `symmetricMeasure`
+    for the extrude's distance and the revolve's angle); taper on ellipse
+    and spline sides stays open.
   - ~~Silhouettes of spheres, tori and free-form faces (HLR); projecting
     vertices and bodies, an "include" mode; Intersect~~ **done (P4-12,
     2026-10-06, ADR-0031's amendment)**; Slice stays open (ADR-0031).

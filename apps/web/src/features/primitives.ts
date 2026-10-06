@@ -48,13 +48,26 @@ import {
   type ManipulatorContext,
   type ProposeContext,
 } from './spec';
-import { defaultFromInputs } from './values';
+import { defaultFromInputs, defaultInputs } from './values';
 
 const OPERATIONS = [
   { value: 'new-body', label: 'New body' },
   { value: 'join', label: 'Join' },
   { value: 'cut', label: 'Cut' },
   { value: 'intersect', label: 'Intersect' },
+] as const;
+
+/** A torus's Axis (P4-12's amendment): where the ring's axis points. */
+const TORUS_AXIS_OPTIONS = [
+  { value: 'normal', label: 'Normal' },
+  { value: 'x', label: 'X' },
+  { value: 'y', label: 'Y' },
+] as const;
+
+/** A torus's Seat: centred on the point, or resting on the plane. */
+const TORUS_SEAT_OPTIONS = [
+  { value: 'centre', label: 'Centre' },
+  { value: 'plane', label: 'On the plane' },
 ] as const;
 
 const PREVIEW_STYLE: Record<BodyOperation, PreviewToolStyle> = {
@@ -97,6 +110,26 @@ function numberField(type: PrimitiveType, number: PrimitiveNumber): DialogField 
   };
 }
 
+/** The torus's Axis and Seat fields (P4-12's amendment), typed once. */
+const TORUS_FIELDS: readonly DialogField[] = [
+  {
+    kind: 'choice',
+    name: 'axis',
+    label: 'Axis',
+    options: TORUS_AXIS_OPTIONS,
+    default: 'normal',
+    hint: 'Which way the ring’s axis points: X or Y stands it on edge.',
+  },
+  {
+    kind: 'choice',
+    name: 'seat',
+    label: 'Seat',
+    options: TORUS_SEAT_OPTIONS,
+    default: 'centre',
+    hint: 'On the plane: the torus rests on it, Offset still lifting it.',
+  },
+];
+
 /** The dialog of one primitive type; its command is the toolbar tool of the same ID. */
 function primitiveDialog(type: PrimitiveType): FeatureDialogSpec {
   const feature = PRIMITIVE_FEATURES[type] as FeatureDefinition;
@@ -114,6 +147,7 @@ function primitiveDialog(type: PrimitiveType): FeatureDialogSpec {
         hint: `An origin plane or a flat face of a body: the ${feature.label.toLowerCase()} sits on it.`,
       },
       ...PRIMITIVE_SIZES[type].map((n) => numberField(type, n)),
+      ...(type === 'torus' ? TORUS_FIELDS : []),
       ...PLACEMENT_NUMBERS.map((n) => numberField(type, n)),
       ...(type === 'box' ? [numberField(type, BOX_ROTATION)] : []),
       {
@@ -140,6 +174,20 @@ function primitiveDialog(type: PrimitiveType): FeatureDialogSpec {
       const plane = values.refs?.plane?.length ? values.refs.plane : [DEFAULT_PLACEMENT];
       return { ...values, refs: { ...values.refs, plane } };
     },
+    // The torus's axis and seat are stored only when they aren't the default
+    // (P4-12's amendment), so a default torus's file reads as it always did.
+    ...(type === 'torus' && {
+      toInputs(values, ctx) {
+        const inputs = { ...defaultInputs(spec, values, ctx) };
+        for (const name of ['axis', 'seat'] as const) {
+          const field = spec.fields.find((f) => f.name === name);
+          if (field?.kind === 'choice' && values.choices[name] === field.default) {
+            delete inputs[name];
+          }
+        }
+        return inputs;
+      },
+    }),
     validate(values, ctx) {
       const plane = values.refs.plane?.[0];
       if (plane?.kind === 'face' && isCurvedFace(plane, ctx)) {
@@ -266,8 +314,21 @@ export function primitiveManipulators(
       sizes = [arrow('diameter', x, origin, 0.5)];
       break;
     case 'torus': {
-      const ring = along(origin, x, numberValue(type, ctx, 'diameter') / 2);
-      sizes = [arrow('diameter', x, origin, 0.5), arrow('tube', x, ring, 0.5)];
+      // The ring runs square to the torus's axis (P4-12's amendment), and
+      // `seat: 'plane'` lifts the whole torus by its seat lift along the
+      // normal, so the size arrows start at the ring's lifted centre.
+      const which = values.choices.axis ?? 'normal';
+      const seat = values.choices.seat ?? 'centre';
+      const big = numberValue(type, ctx, 'diameter') / 2;
+      const small = numberValue(type, ctx, 'tube') / 2;
+      const centre = along(
+        origin,
+        normal,
+        seat === 'centre' ? 0 : which === 'normal' ? small : big + small,
+      );
+      const across = which === 'x' ? y : x;
+      const ring = along(centre, across, big);
+      sizes = [arrow('diameter', across, centre, 0.5), arrow('tube', across, ring, 0.5)];
       break;
     }
   }

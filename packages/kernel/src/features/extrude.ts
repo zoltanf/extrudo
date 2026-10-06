@@ -142,7 +142,10 @@ function resolveSides(
         half = Math.max(through(n), through(scale(n, -1)));
         if (half <= LENGTH_EPS) throw nothingToGoThrough();
       } else {
-        half = Math.abs(distanceOf(ctx, first)) / 2;
+        // The distance is the whole length, or each side's with the
+        // `half` measure (P4-12's amendment).
+        const value = Math.abs(distanceOf(ctx, first));
+        half = settings.symmetricMeasure === 'half' ? value : value / 2;
       }
       return [
         { along: n, length: half, taper, reach: half },

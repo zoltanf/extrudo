@@ -269,6 +269,7 @@ describe('the extrude dialog', () => {
       extent: 'distance',
       extent2: 'distance',
       operation: 'new-body',
+      symmetricMeasure: 'whole',
     });
     expect(v.exprs.distance).toBe('inner / 4');
     expect(v.refs.profiles).toEqual([]);
@@ -355,6 +356,19 @@ describe('extrude manipulators', () => {
     expect(half?.kind === 'distance' && half.scale).toBe(0.5);
     expect(at(symmetric, 'taper')?.origin).toEqual([5, 5, 14]);
 
+    // With the `half` measure (P4-12's amendment) the arrow reaches the
+    // distance itself: the value is each side's.
+    const perSide = extrudeManipulators(
+      values({
+        refs: { profiles: [TOP] },
+        choices: { direction: 'symmetric', symmetricMeasure: 'half' },
+      }),
+      manipulatorContext(ctx, { distance: 8 }),
+    );
+    const reach = at(perSide, 'distance');
+    expect(reach?.kind === 'distance' && reach.scale).toBeUndefined();
+    expect(at(perSide, 'taper')?.origin).toEqual([5, 5, 18]);
+
     const two = extrudeManipulators(
       values({ refs: { profiles: [TOP] }, choices: { direction: 'two-sides' } }),
       manipulatorContext(ctx, { distance: 8, distance2: 3 }),
@@ -369,6 +383,42 @@ describe('extrude manipulators', () => {
     expect(side2?.kind === 'distance' && round(side2.direction)).toEqual([0, 0, -1]);
     expect(side2?.kind === 'distance' && side2.scale).toBeUndefined();
     expect(at(two, 'taper2')?.origin).toEqual([5, 5, 7]);
+  });
+
+  it('stores the symmetric measure only when it is `half`', () => {
+    const ctx = context();
+    const { profile } = rectangleSketch();
+    const inputs = (choices: Record<string, string>) =>
+      inputsFor(extrudeDialog, values({ refs: { profiles: [profile] }, choices }), ctx);
+    // Whole (the default) makes no input; half does.
+    expect(inputs({ direction: 'symmetric' })).not.toHaveProperty('symmetricMeasure');
+    expect(inputs({ direction: 'symmetric', symmetricMeasure: 'half' })).toEqual({
+      profiles: { kind: 'ref', refs: [profile] },
+      distance: { kind: 'expr', expr: '10 mm', unit: 'length' },
+      direction: { kind: 'enum', value: 'symmetric' },
+      extent: { kind: 'enum', value: 'distance' },
+      symmetricMeasure: { kind: 'enum', value: 'half' },
+      taper: { kind: 'expr', expr: '0 deg', unit: 'angle' },
+      flip: { kind: 'bool', value: false },
+      operation: { kind: 'enum', value: 'new-body' },
+    });
+    // One side and two sides never store it, whatever the select said.
+    expect(inputs({ symmetricMeasure: 'half' })).not.toHaveProperty('symmetricMeasure');
+    expect(inputs({ direction: 'two-sides', symmetricMeasure: 'half' })).not.toHaveProperty(
+      'symmetricMeasure',
+    );
+    // A stored one-sided extrude reads the select as the default again.
+    const back = valuesFor(
+      extrudeDialog,
+      {
+        id: 'E',
+        type: 'extrude',
+        name: 'Extrude1',
+        inputs: inputs({ direction: 'symmetric' }),
+      } as Feature,
+      ctx,
+    );
+    expect(back.choices.symmetricMeasure).toBe('whole');
   });
 
   it('have no arrow for a side that goes to an object or through all', () => {

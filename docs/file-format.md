@@ -520,6 +520,7 @@ Every input is optional in the schema; a useful extrude has `profiles` and
 | `direction` | `enum` | `one-side`, `symmetric`, `two-sides` | `one-side`. Symmetric is centred on the plane and `distance` is the whole length; two-sides uses side 2 inputs too |
 | `extent` | `enum` | `distance`, `to-object`, `through-all` | `distance` (side 1) |
 | `distance` | `expr` length | | Side 1's length; negative goes the other way |
+| `symmetricMeasure` | `enum` | `whole`, `half` | How `distance` measures a symmetric sweep: `whole` (the whole length, the default) or `half` (the length of each side, so the body is twice `distance` long). Read only for `symmetric`, and stored only when `half` |
 | `toObject` | `ref` | At most one ref of kind `face` (flat or curved), `body`, `vertex` or `plane` | Side 1's target for `to-object`: the sweep ends where it first meets the face's surface (extended past the face) or the body |
 | `offset` | `expr` length | | Side 1's offset from `toObject`, default 0: the target is moved along the sweep by it, so positive ends past it and negative short of it. Read only for `to-object` |
 | `taper` | `expr` angle | | Side 1's taper, default 0. Positive widens along the sweep, negative narrows |
@@ -545,6 +546,7 @@ for extrude; a useful revolve has `profiles` and `axis`.
 | `extent` | `enum` | `angle`, `to-object` | `angle`. `to-object` turns one side (`direction` must be `one-side`) until it first meets `toObject`; the angles are ignored |
 | `toObject` | `ref` | At most one ref of kind `face` (flat or curved), `body` or `plane` | The target for `to-object` |
 | `angle` | `expr` angle | | Side 1 (the whole angle when symmetric); default a full turn, `360 deg` (no end faces). Right-handed about the axis. Negative turns the other way |
+| `symmetricMeasure` | `enum` | `whole`, `half` | How `angle` measures a symmetric revolve: `whole` (the whole angle, the default) or `half` (the angle of each side, so it turns twice as far in all). Read only for `symmetric`, and stored only when `half` |
 | `angle2` | `expr` angle | | Side 2 of `two-sides`, the other way round; default 0 |
 | `flip` | `bool` | | Turns side 1 the other way, default false |
 | `operation` | `enum` | section 6.3 | `new-body` |
@@ -580,6 +582,8 @@ body, on the XY plane at the origin).
 | `sphere` | `diameter` | 20 mm | Centred on the point; greater than 0 |
 | `torus` | `diameter` | 40 mm | Through the tube's centre line; greater than 0 |
 | `torus` | `tube` | 10 mm | The tube's own diameter, smaller than `diameter` |
+| `torus` | `axis` (`enum`) | `normal` | Where the ring's axis points, in the plane's frame: `normal` (along the plane's normal, the ring flat in the plane), or `x`, `y` (along the frame's X or Y, the ring on edge) |
+| `torus` | `seat` (`enum`) | `centre` | `centre` puts the ring's centre on the point; `plane` rests the torus on the plane, lifted along the normal so its lowest point touches it (`tube / 2` with `axis` `normal`, `diameter / 2 + tube / 2` with the axis in the plane), and `offset` still adds on top |
 
 The size sign rules ("greater than 0") are checked by the kernel when the
 value is known, not by the schema, since values are expressions.

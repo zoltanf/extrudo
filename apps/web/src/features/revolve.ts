@@ -13,6 +13,7 @@
  */
 import {
   type ExtrudoDocument,
+  type FeatureInputs,
   FULL_TURN,
   type GeomRef,
   parseSketchEntityRefId,
@@ -33,9 +34,11 @@ import {
   type DialogContext,
   type DialogValues,
   defineFeatureDialog,
+  type FeatureDialogSpec,
   type Manipulator,
   type ManipulatorContext,
 } from './spec';
+import { defaultInputs } from './values';
 
 const DIRECTIONS = [
   { value: 'one-side', label: 'One side' },
@@ -55,6 +58,12 @@ const OPERATIONS = [
   { value: 'intersect', label: 'Intersect' },
 ] as const;
 
+/** What Angle means for a symmetric revolve (P4-12's amendment). */
+const MEASURES = [
+  { value: 'whole', label: 'Whole angle' },
+  { value: 'half', label: 'Each side' },
+] as const;
+
 const PREVIEW_STYLE: Record<RevolveOperation, PreviewToolStyle> = {
   'new-body': 'new',
   join: 'join',
@@ -66,6 +75,9 @@ const PREVIEW_STYLE: Record<RevolveOperation, PreviewToolStyle> = {
 const toObject = (v: DialogValues) => v.choices.extent === 'to-object';
 const twoSides = (v: DialogValues) => !toObject(v) && v.choices.direction === 'two-sides';
 
+// `spec` is the dialog itself, bound after its definition: its `toInputs`
+// uses the default mapping and then drops the measure when it isn't stored.
+let spec: FeatureDialogSpec;
 export const revolveDialog = defineFeatureDialog({
   ...revolveFeature,
   command: 'revolve',
@@ -115,8 +127,17 @@ export const revolveDialog = defineFeatureDialog({
       label: 'Angle',
       unit: 'angle',
       default: FULL_TURN,
-      hint: '360° is a whole turn. Negative turns the other way. Symmetric: the whole angle.',
+      hint: '360° is a whole turn. Negative turns the other way. Symmetric: the whole angle, or each side with Measure.',
       shown: (v) => !toObject(v),
+    },
+    {
+      kind: 'choice',
+      name: 'symmetricMeasure',
+      label: 'Measure',
+      options: MEASURES,
+      default: 'whole',
+      hint: 'Each side turns twice as far in all.',
+      shown: (v) => !toObject(v) && v.choices.direction === 'symmetric',
     },
     {
       kind: 'expression',
@@ -153,11 +174,19 @@ export const revolveDialog = defineFeatureDialog({
     }
     return undefined;
   },
+  // The symmetric measure is stored only when it isn't the default (P4-12's
+  // amendment), so a whole-angle revolve's file reads as it always did.
+  toInputs(values, ctx): FeatureInputs {
+    const inputs = { ...defaultInputs(spec, values, ctx) };
+    if (values.choices.symmetricMeasure !== 'half') delete inputs.symmetricMeasure;
+    return inputs;
+  },
   propose: (values, ctx) => proposeRevolveOperation(values, ctx),
   manipulators: (values, ctx) => revolveManipulators(values, ctx),
   previewStyle: (values) =>
     PREVIEW_STYLE[(values.choices.operation ?? 'new-body') as RevolveOperation] ?? 'new',
 });
+spec = revolveDialog;
 
 /** Whether a picked sketch curve (`<sketch>/<entity>`) is a line. */
 function isSketchLine(doc: ExtrudoDocument, ref: GeomRef): boolean {
@@ -263,7 +292,10 @@ export function revolveManipulators(values: DialogValues, ctx: ManipulatorContex
     ...(scaleBy !== 1 && { scale: scaleBy }),
   });
   const symmetric = values.choices.direction === 'symmetric';
-  const out = [arc('angle', axis.direction, symmetric ? 0.5 : 1)];
+  // With `half` (P4-12's amendment) the angle is each side's: the arc
+  // reaches the angle itself, and a drag writes the per-side value.
+  const reach = symmetric && values.choices.symmetricMeasure === 'half' ? 1 : symmetric ? 0.5 : 1;
+  const out = [arc('angle', axis.direction, reach)];
   if (twoSides(values)) out.push(arc('angle2', scale(axis.direction, -1)));
   return out;
 }

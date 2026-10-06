@@ -16,6 +16,7 @@ import {
   EXTRUDE_PROFILE_KINDS,
   type ExtrudeOperation,
   extrudeFeature,
+  type FeatureInputs,
   type GeomRef,
   type Vec3,
 } from '@extrudo/core';
@@ -27,9 +28,11 @@ import {
   type DialogContext,
   type DialogValues,
   defineFeatureDialog,
+  type FeatureDialogSpec,
   type Manipulator,
   type ManipulatorContext,
 } from './spec';
+import { defaultInputs } from './values';
 
 const DIRECTIONS = [
   { value: 'one-side', label: 'One side' },
@@ -50,6 +53,12 @@ const OPERATIONS = [
   { value: 'intersect', label: 'Intersect' },
 ] as const;
 
+/** What Distance means for a symmetric extrude (P4-12's amendment). */
+const MEASURES = [
+  { value: 'whole', label: 'Whole length' },
+  { value: 'half', label: 'Each side' },
+] as const;
+
 const PREVIEW_STYLE: Record<ExtrudeOperation, PreviewToolStyle> = {
   'new-body': 'new',
   join: 'join',
@@ -58,9 +67,13 @@ const PREVIEW_STYLE: Record<ExtrudeOperation, PreviewToolStyle> = {
 };
 
 const twoSides = (v: DialogValues) => v.choices.direction === 'two-sides';
+const symmetric = (v: DialogValues) => v.choices.direction === 'symmetric';
 const extentOf = (v: DialogValues, side: 1 | 2) =>
   v.choices[side === 1 ? 'extent' : 'extent2'] ?? 'distance';
 
+// `spec` is the dialog itself, bound after its definition: its `toInputs`
+// uses the default mapping and then drops the measure when it isn't stored.
+let spec: FeatureDialogSpec;
 export const extrudeDialog = defineFeatureDialog({
   ...extrudeFeature,
   command: 'extrude',
@@ -89,8 +102,17 @@ export const extrudeDialog = defineFeatureDialog({
       label: 'Distance',
       unit: 'length',
       default: '10 mm',
-      hint: 'Negative goes the other way. Symmetric: the whole length.',
+      hint: 'Negative goes the other way. Symmetric: the whole length, or each side with Measure.',
       shown: (v) => extentOf(v, 1) === 'distance',
+    },
+    {
+      kind: 'choice',
+      name: 'symmetricMeasure',
+      label: 'Measure',
+      options: MEASURES,
+      default: 'whole',
+      hint: 'Each side makes the extrude twice the distance long.',
+      shown: symmetric,
     },
     {
       kind: 'selection',
@@ -191,11 +213,19 @@ export const extrudeDialog = defineFeatureDialog({
     }
     return undefined;
   },
+  // The symmetric measure is stored only when it isn't the default (P4-12's
+  // amendment), so a whole-length extrude's file reads as it always did.
+  toInputs(values, ctx): FeatureInputs {
+    const inputs = { ...defaultInputs(spec, values, ctx) };
+    if (values.choices.symmetricMeasure !== 'half') delete inputs.symmetricMeasure;
+    return inputs;
+  },
   propose: (values, ctx) => proposeOperation(values, ctx),
   manipulators: (values, ctx) => extrudeManipulators(values, ctx),
   previewStyle: (values) =>
     PREVIEW_STYLE[(values.choices.operation ?? 'new-body') as ExtrudeOperation] ?? 'new',
 });
+spec = extrudeDialog;
 
 /**
  * The press-pull rule (ADR-0028, unified in `operation.ts`, ADR-0051):
@@ -276,7 +306,10 @@ export function extrudeManipulators(values: DialogValues, ctx: ManipulatorContex
   const manipulators: Manipulator[] = [];
   for (const { side, dir, distance, taper } of sides) {
     const byDistance = extentOf(values, side) === 'distance';
-    const reach = side === 1 && symmetric ? 0.5 : 1;
+    // A symmetric arrow reaches half the length when `distance` is the
+    // whole of it (P4-12's amendment), the length itself with `half`.
+    const reach =
+      side === 1 && symmetric ? (values.choices.symmetricMeasure === 'half' ? 1 : 0.5) : 1;
     if (byDistance) {
       manipulators.push({
         kind: 'distance',

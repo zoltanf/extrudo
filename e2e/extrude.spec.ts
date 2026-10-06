@@ -284,6 +284,50 @@ test('the Wall bracket template computes its bracket; its cut edits through all'
   await expect(viewport).toHaveAttribute('data-bodies', 'Bracket:12:40,80,60');
 });
 
+test('a symmetric extrude measures the whole length or each side (P4-12)', async ({ page }) => {
+  const at = await sketchOnXY(page);
+  const viewport = viewportOf(page);
+  const click = clicker(page, at);
+  // A 60 × 40 plate around the origin.
+  await page.keyboard.press('r');
+  await click(-30, -20);
+  await click(30, 20);
+  await page.keyboard.press('Escape');
+  await expect(prompt(page)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(chip(page, 'Sketch1')).toBeVisible();
+
+  const plate = at(15, 5);
+  await page.mouse.move(plate.x, plate.y);
+  await page.mouse.click(plate.x, plate.y);
+  await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+  await page.keyboard.press('e');
+  const dialog = page.getByRole('region', { name: 'Extrude dialog' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('combobox', { name: 'Direction' }).selectOption('symmetric');
+  const measure = dialog.getByRole('combobox', { name: 'Measure' });
+  await expect(measure).toBeVisible();
+  await measure.selectOption('half');
+  await dialog.getByRole('textbox', { name: 'Distance' }).fill('10 mm');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+  // The distance is each side's: 20 mm tall.
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:60,40,20');
+
+  // Back to the whole length: 10 mm all in all, and the stored input goes.
+  await chip(page, 'Extrude1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Extrude1 dialog' });
+  await expect(edit.getByRole('combobox', { name: 'Measure' })).toHaveValue('half');
+  await edit.getByRole('combobox', { name: 'Measure' }).selectOption('whole');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:60,40,10');
+});
+
 test('extrudes up to a cylinder’s curved wall, then 2 mm past it', async ({ page }) => {
   const viewport = await openProject(page);
   await kernelReady(page);

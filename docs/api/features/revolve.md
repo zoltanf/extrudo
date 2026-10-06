@@ -26,6 +26,7 @@ a valid feature.
 | `extent` | `'angle' \| 'to-object'` | default `angle` | How far it turns: angle, or to-object (one side, until it first meets toObject). |
 | `toObject` | `GeomRef \| GeomRef[]` (`face`, `body`, `plane`) | optional | The face (flat or curved), body or plane the revolve turns up to, where it first meets it; read only for to-object. |
 | `angle` | `string \| number \| ParameterHandle` | default `360°, a full turn with no end faces` | Side 1's angle (the whole angle when symmetric); an angle. |
+| `symmetricMeasure` | `'whole' \| 'half'` | default `whole; read only for symmetric` | How a symmetric revolve measures its angle: whole (the whole angle) or half (the angle of each side, twice that). |
 | `angle2` | `string \| number \| ParameterHandle` | default `0°` | Side 2's angle, the other way round; an angle. |
 | `flip` | `boolean` | default `false` | Turn side 1 the other way round the axis. |
 | `operation` | `'new-body' \| 'join' \| 'cut' \| 'intersect'` | default `new-body` | New body, join, cut or intersect. |
