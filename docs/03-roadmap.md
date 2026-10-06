@@ -903,8 +903,11 @@ end to end, faster than in Fusion 360.
     (`MAX_TURNS` stays 150 for the time it takes). **`mergeTools`' exact
     distance between two heavy tools is gone** (over `HEAVY_TOOL_FACES`
     faces they are merged without it; two 36- and 30-turn threads' tools were
-    277 s in one call), and B9 is back in the default fuzz run. Still open: a
-    bottle-cap profile of its own (ADR-0056 Deferred).
+    277 s in one call), and B9 is back in the default fuzz run. ~~A
+    bottle-cap profile of its own~~ **done (P4-12, 2026-10-06, ADR-0056's
+    amendment): a `profile` input picks iso, trapezoidal (Tr), buttress
+    (DIN 513 S) or bottle (PCO-1881), one table in core; multi-start and
+    tapered threads stay deferred.**
   - ~~Sweep: say where a profile lands~~ **done in ADR-0067 §H5 (P4-12,
     2026-10-05): the sweep warns** when its profile is drawn more than max(1 %
     of the path's length, 0.5 mm) from the path's start line, naming the

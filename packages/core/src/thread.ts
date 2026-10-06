@@ -51,6 +51,54 @@ export type ThreadExtent = (typeof THREAD_EXTENTS)[number];
 export const THREAD_HANDS = ['right', 'left'] as const;
 export type ThreadHand = (typeof THREAD_HANDS)[number];
 
+/**
+ * The thread's tooth profile (P4-12, ADR-0056's amendment). `iso` is what
+ * there was (ISO 68-1, 60°, UNC and UNF included); the others are:
+ * `trapezoidal` (ISO 2901 / DIN 103 Tr), `buttress` (DIN 513) and `bottle`
+ * (the PCO-1881 soft-drink finish). The profile is one table here
+ * (`threadProfile`); the kernel knows no angles of its own.
+ */
+export const THREAD_PROFILE_NAMES = ['iso', 'trapezoidal', 'buttress', 'bottle'] as const;
+export type ThreadProfileName = (typeof THREAD_PROFILE_NAMES)[number];
+
+export interface ThreadProfileOption {
+  value: ThreadProfileName;
+  label: string;
+  description: string;
+}
+
+/** The profiles the dialog offers, with a one-line description each. */
+export const THREAD_PROFILES: readonly ThreadProfileOption[] = [
+  {
+    value: 'iso',
+    label: 'ISO metric (60°)',
+    description: 'The ISO 68-1 basic profile: 60°, the form UNC and UNF share.',
+  },
+  {
+    value: 'trapezoidal',
+    label: 'Trapezoidal (Tr)',
+    description: 'ISO 2901 / DIN 103: 30°, depth 0.5 P, equal crest and root flats.',
+  },
+  {
+    value: 'buttress',
+    label: 'Buttress (S)',
+    description: 'DIN 513: a 3° load flank and a 30° trailing flank, depth 0.75 P.',
+  },
+  {
+    value: 'bottle',
+    label: 'Bottle (PCO-1881)',
+    description: 'A soft-drink bottle thread: a rounded trapezoid, 20° flanks.',
+  },
+];
+
+/**
+ * On a buttress thread, which axial end the steep 3° load flank faces:
+ * `end` (default) the `to` end, `start` the `from` end. `flip` still says
+ * which end the thread starts from.
+ */
+export const THREAD_LOAD_FLANKS = ['start', 'end'] as const;
+export type ThreadLoadFlank = (typeof THREAD_LOAD_FLANKS)[number];
+
 /** One number input of a thread. */
 export interface ThreadNumber {
   name: string;
@@ -113,6 +161,16 @@ export const ThreadInputsSchema = z.strictObject({
   flip: BoolInputSchema.optional().describe("Start from the face's other end. Default false."),
   /** Default `right`. */
   hand: enumInput(THREAD_HANDS).optional().describe('Right- or left-handed. Default right.'),
+  /** Default `iso`. */
+  profile: enumInput(THREAD_PROFILE_NAMES)
+    .optional()
+    .describe(
+      'The tooth profile: iso (the default, 60°), trapezoidal (Tr), buttress (DIN 513) or bottle (PCO-1881).',
+    ),
+  /** With `profile: buttress`; default `end`. */
+  loadFlank: enumInput(THREAD_LOAD_FLANKS)
+    .optional()
+    .describe('Buttress only: the end the steep 3° load flank faces, start or end. Default end.'),
   /** Radial clearance on this part (mm); default 0.1 mm. */
   tolerance: optionalLength().describe('Radial clearance on this part; a length. Default 0.1 mm.'),
   /** A 45° lead-in at open ends; default true. */
@@ -145,6 +203,8 @@ export interface ThreadSettings {
   hand: ThreadHand;
   flip: boolean;
   chamfer: boolean;
+  profile: ThreadProfileName;
+  loadFlank: ThreadLoadFlank;
   /** The `expr` inputs present, by name; a number without one takes `THREAD_DEFAULTS`. */
   exprs: ReadonlySet<string>;
   /** No size given: the kernel picks the ISO coarse thread that fits each face. */
@@ -163,6 +223,8 @@ export function threadSettings(inputs: ThreadInputs): ThreadSettings {
     hand: inputs.hand?.value ?? 'right',
     flip: inputs.flip?.value ?? false,
     chamfer: inputs.chamfer?.value ?? true,
+    profile: inputs.profile?.value ?? 'iso',
+    loadFlank: inputs.loadFlank?.value ?? 'end',
     exprs,
     auto: !exprs.has('diameter') && !exprs.has('pitch'),
   };
@@ -176,6 +238,8 @@ export interface ThreadInputOptions {
   hand?: ThreadHand;
   flip?: boolean;
   chamfer?: boolean;
+  profile?: ThreadProfileName;
+  loadFlank?: ThreadLoadFlank;
 }
 
 /** A thread's inputs from plain options (tests, scripts; the dialog builds the same shape). */
@@ -193,21 +257,249 @@ export function threadInputs(options: ThreadInputOptions): ThreadInputs {
   if (options.hand) inputs.hand = { kind: 'enum', value: options.hand };
   if (options.flip !== undefined) inputs.flip = { kind: 'bool', value: options.flip };
   if (options.chamfer !== undefined) inputs.chamfer = { kind: 'bool', value: options.chamfer };
+  if (options.profile) inputs.profile = { kind: 'enum', value: options.profile };
+  if (options.loadFlank) inputs.loadFlank = { kind: 'enum', value: options.loadFlank };
   return inputs as ThreadInputs;
 }
 
 // ------------------------------------------------------------------ profile
 
+/** A point of the tooth's cross-section, `[axial, radial]` (mm). */
+export type ProfilePoint = readonly [number, number];
+
 /**
- * The radii of a thread as printed (ISO 68-1 basic profile, H = √3/2 · P):
- * the basic major radius D/2 and minor radius D/2 − 5H/8, both moved by the
- * tolerance into the part's material. On an external thread the crest is
- * the major radius (a flat P/8 wide) and the root the minor (P/4); on an
- * internal one the crest is the minor (P/4) and the root the major (P/8).
+ * One side of the tooth's closed outline, in `[axial, radial]` coordinates
+ * relative to the tooth's centre (axial 0) and its crest (radial 0, positive
+ * towards the root). `line` runs straight to `to`; `arc` runs from the
+ * previous point to `to` about `centre`, counter-clockwise when `ccw`.
+ * `source` is the face name the kernel gives the surface it makes.
+ */
+export type ProfileSegment =
+  | { kind: 'line'; to: ProfilePoint; source: string }
+  | { kind: 'arc'; to: ProfilePoint; centre: ProfilePoint; ccw: boolean; source: string };
+
+/** A thread profile's tooth: its outline and the crest-to-root depth. */
+export interface ThreadProfileShape {
+  segments: ProfileSegment[];
+  /** Crest to root, mm. */
+  depth: number;
+  /** Half the crest flat, mm. */
+  crestHalf: number;
+  /** Half the root flat, mm. */
+  rootHalf: number;
+}
+
+interface ProfileOptions {
+  /** The nut's profile (only the ISO flat widths differ). */
+  internal?: boolean;
+  /** Buttress only: which side the steep 3° load flank faces. */
+  loadFlank?: ThreadLoadFlank;
+}
+
+/** The ISO 68-1 basic profile (5H/8 deep, 60°). */
+function isoProfile(pitch: number, internal: boolean): ThreadProfileShape {
+  const depth = (5 * Math.sqrt(3) * pitch) / 16; // 5H/8
+  const crestHalf = internal ? pitch / 8 : pitch / 16;
+  const rootHalf = internal ? pitch / 16 : pitch / 8;
+  return straightTooth(pitch, {
+    depth,
+    crestHalf,
+    rootHalf,
+    flank0: Math.PI / 6,
+    flank1: Math.PI / 6,
+  });
+}
+
+/** A symmetric-or-not straight-flank tooth: two flanks, a crest flat and a foot. */
+function straightTooth(
+  pitch: number,
+  spec: {
+    depth: number;
+    crestHalf: number;
+    rootHalf: number;
+    flank0: number;
+    flank1: number;
+  },
+): ThreadProfileShape {
+  const kink = spec.depth + 0.05 * pitch;
+  const foot = spec.depth + 0.25 * pitch;
+  const half0 = spec.crestHalf + kink * Math.tan(spec.flank0);
+  const half1 = spec.crestHalf + kink * Math.tan(spec.flank1);
+  return {
+    depth: spec.depth,
+    crestHalf: spec.crestHalf,
+    rootHalf: spec.rootHalf,
+    segments: [
+      { kind: 'line', to: [-half0, kink], source: 'side0' },
+      { kind: 'line', to: [-spec.crestHalf, 0], source: 'flank0' },
+      { kind: 'line', to: [spec.crestHalf, 0], source: 'crest' },
+      { kind: 'line', to: [half1, kink], source: 'flank1' },
+      { kind: 'line', to: [half1, foot], source: 'side1' },
+      { kind: 'line', to: [-half0, foot], source: 'foot' },
+    ],
+  };
+}
+
+const sub = (a: ProfilePoint, b: ProfilePoint): [number, number] => [a[0] - b[0], a[1] - b[1]];
+const add = (a: ProfilePoint, b: readonly [number, number]): [number, number] => [
+  a[0] + b[0],
+  a[1] + b[1],
+];
+const mul = (a: readonly [number, number], s: number): [number, number] => [a[0] * s, a[1] * s];
+const unit = (a: readonly [number, number]): [number, number] => {
+  const l = Math.hypot(a[0], a[1]);
+  return [a[0] / l, a[1] / l];
+};
+const cross2 = (a: readonly [number, number], b: readonly [number, number]) =>
+  a[0] * b[1] - a[1] * b[0];
+
+/**
+ * The bottle profile's rounded tooth (P4-12): a 20° trapezoid whose crest
+ * and root corners are rounded by arcs. Built as a six-vertex loop with a
+ * radius per corner and a source per corner arc.
+ */
+function bottleProfile(pitch: number): ThreadProfileShape {
+  const depth = 0.45 * pitch;
+  const crestHalf = 0.15 * pitch; // a 0.3 P crest flat
+  const rootHalf = 0.15 * pitch;
+  const flank = (20 * Math.PI) / 180;
+  const kink = depth + 0.05 * pitch;
+  const foot = depth + 0.25 * pitch;
+  const half = crestHalf + kink * Math.tan(flank);
+  const vertices: ProfilePoint[] = [
+    [-half, foot], // A left foot
+    [-half, kink], // B left kink
+    [-crestHalf, 0], // C left crest
+    [crestHalf, 0], // D right crest
+    [half, kink], // E right kink
+    [half, foot], // F right foot
+  ];
+  const edgeSources = ['side0', 'flank0', 'crest', 'flank1', 'side1', 'foot'];
+  // Round the crest corners (C, D) and the root kinks (B, E); the foot stays sharp.
+  const radii = [0, 0.06 * pitch, 0.06 * pitch, 0.06 * pitch, 0.06 * pitch, 0];
+  const cornerSources = [null, 'side0', 'crest', 'crest', 'side1', null];
+  return {
+    depth,
+    crestHalf,
+    rootHalf,
+    segments: roundLoop(vertices, radii, edgeSources, cornerSources),
+  };
+}
+
+/**
+ * The tooth outline of `profile`, in `[axial, radial]` relative to the
+ * tooth's centre and crest. Pure; the kernel stages these lines and arcs and
+ * knows none of the angles itself.
+ */
+export function threadProfile(
+  profile: ThreadProfileName,
+  pitch: number,
+  options: ProfileOptions = {},
+): ThreadProfileShape {
+  switch (profile) {
+    case 'trapezoidal': {
+      // ISO 2901 / DIN 103: H1 = 0.5 P, a 30° included angle, so each flank
+      // is 15° to the radial and both flats are 0.366 P (a 0.183 P half).
+      const depth = 0.5 * pitch;
+      const flat = (1 - Math.tan((15 * Math.PI) / 180)) / 4; // half of the 0.366 P flat
+      return straightTooth(pitch, {
+        depth,
+        crestHalf: flat * pitch,
+        rootHalf: flat * pitch,
+        flank0: (15 * Math.PI) / 180,
+        flank1: (15 * Math.PI) / 180,
+      });
+    }
+    case 'buttress': {
+      // DIN 513: H1 = 0.75 P, a 3° load flank and a 30° trailing flank, a
+      // 0.26384 P crest flat (0.13192 P half) and a root radius (not modelled:
+      // the ring gives the root). `loadFlank` picks the steep side.
+      const depth = 0.75 * pitch;
+      const crestHalf = 0.13192 * pitch;
+      const steep = (3 * Math.PI) / 180;
+      const trailing = Math.PI / 6;
+      const steepOnEnd = (options.loadFlank ?? 'end') === 'end';
+      return straightTooth(pitch, {
+        depth,
+        crestHalf,
+        rootHalf: crestHalf,
+        flank0: steepOnEnd ? trailing : steep,
+        flank1: steepOnEnd ? steep : trailing,
+      });
+    }
+    case 'bottle':
+      return bottleProfile(pitch);
+    default:
+      return isoProfile(pitch, options.internal ?? false);
+  }
+}
+
+/**
+ * Builds a closed loop's segments from its vertices, rounding the corner at
+ * `radii[i]` (0 leaves it sharp) with an arc. `arcSources[i]` names that arc
+ * (default the edge before the corner).
+ */
+function roundLoop(
+  vertices: readonly ProfilePoint[],
+  radii: readonly number[],
+  edgeSources: readonly string[],
+  arcSources: readonly (string | null)[],
+): ProfileSegment[] {
+  const n = vertices.length;
+  const P = (i: number) => vertices[((i % n) + n) % n] as ProfilePoint;
+  const tangentIn: (ProfilePoint | null)[] = [];
+  const tangentOut: (ProfilePoint | null)[] = [];
+  const centres: (ProfilePoint | null)[] = [];
+  const ccw: boolean[] = [];
+  for (let i = 0; i < n; i++) {
+    const r = radii[i] ?? 0;
+    if (!(r > 0)) {
+      tangentIn[i] = null;
+      tangentOut[i] = null;
+      centres[i] = null;
+      continue;
+    }
+    const p = P(i);
+    const d1 = unit(sub(P(i - 1), p)); // towards the previous vertex
+    const d2 = unit(sub(P(i + 1), p)); // towards the next
+    const half = Math.acos(Math.max(-1, Math.min(1, d1[0] * d2[0] + d1[1] * d2[1]))) / 2;
+    const t = r / Math.tan(half);
+    const bisector = unit([d1[0] + d2[0], d1[1] + d2[1]]);
+    const centre = add(p, mul(bisector, r / Math.sin(half)));
+    const a = add(p, mul(d1, t));
+    const b = add(p, mul(d2, t));
+    tangentIn[i] = a;
+    tangentOut[i] = b;
+    centres[i] = centre;
+    ccw[i] = cross2(sub(a, centre), sub(b, centre)) >= 0;
+  }
+  const segments: ProfileSegment[] = [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const to = tangentIn[j] ?? P(j);
+    segments.push({ kind: 'line', to, source: edgeSources[i] as string });
+    const r = radii[j] ?? 0;
+    if (r > 0) {
+      segments.push({
+        kind: 'arc',
+        to: tangentOut[j] as ProfilePoint,
+        centre: centres[j] as ProfilePoint,
+        ccw: ccw[j] as boolean,
+        source: arcSources[j] ?? (edgeSources[i] as string),
+      });
+    }
+  }
+  return segments;
+}
+
+/**
+ * The radii of a thread as printed, from its profile: the basic major radius
+ * D/2 and the root, `depth` closer to the axis (external) or further out
+ * (internal), both moved by the tolerance into the part's material.
  */
 export interface ThreadRadii {
-  /** Fundamental triangle height √3/2 · P. */
-  H: number;
+  /** Crest to root, mm. */
+  depth: number;
   /** The part's crest (the tooth's tip) radius. */
   crest: number;
   /** The part's root (the groove's bottom) radius. */
@@ -219,29 +511,23 @@ export interface ThreadRadii {
 }
 
 export function threadRadii(
+  profile: ThreadProfileName,
   diameter: number,
   pitch: number,
   tolerance: number,
   internal: boolean,
 ): ThreadRadii {
-  const H = (Math.sqrt(3) / 2) * pitch;
+  const shape = threadProfile(profile, pitch, { internal });
   const major = diameter / 2;
-  const minor = major - (5 * H) / 8;
-  return internal
-    ? {
-        H,
-        crest: minor + tolerance,
-        root: major + tolerance,
-        crestHalf: pitch / 8,
-        rootHalf: pitch / 16,
-      }
-    : {
-        H,
-        crest: major - tolerance,
-        root: minor - tolerance,
-        crestHalf: pitch / 16,
-        rootHalf: pitch / 8,
-      };
+  const crest = internal ? major - shape.depth + tolerance : major - tolerance;
+  const root = internal ? major + tolerance : major - shape.depth - tolerance;
+  return {
+    depth: shape.depth,
+    crest,
+    root,
+    crestHalf: shape.crestHalf,
+    rootHalf: shape.rootHalf,
+  };
 }
 
 // ------------------------------------------------------------------ presets
@@ -253,7 +539,9 @@ export function threadRadii(
 export interface ThreadPreset {
   id: string;
   label: string;
-  group: 'metric' | 'metric-fine' | 'unc' | 'unf';
+  group: 'metric' | 'metric-fine' | 'unc' | 'unf' | 'trapezoidal' | 'bottle';
+  /** The tooth profile this size belongs to. */
+  profile: ThreadProfileName;
   /** mm. */
   diameter: number;
   /** mm. */
@@ -345,6 +633,7 @@ const metric = (group: 'metric' | 'metric-fine') => {
       id: group === 'metric' ? `m${size}` : `m${size}x${pitch}`,
       label,
       group,
+      profile: 'iso',
       diameter: size,
       pitch,
       exprs: { diameter: `${size} mm`, pitch: `${pitch} mm` },
@@ -357,17 +646,47 @@ const inch = (group: 'unc' | 'unf') => {
     id: `${group}-${name.replace('#', 'no').replace('/', 'q')}`,
     label: `${name} ${group.toUpperCase()}`,
     group,
+    profile: 'iso',
     diameter: diameter * 25.4,
     pitch: 25.4 / tpi,
     exprs: { diameter: `${diameter} in`, pitch: `1 in / ${tpi}` },
   });
 };
 
+/** ISO 2901 / DIN 103 trapezoidal sizes, `[nominal diameter, pitch]` in mm. */
+const TRAPEZOIDAL: readonly (readonly [number, number])[] = [
+  [8, 1.5],
+  [10, 2],
+  [12, 3],
+  [16, 4],
+  [20, 4],
+];
+
+const trapezoidal = ([size, pitch]: readonly [number, number]): ThreadPreset => ({
+  id: `tr${size}x${pitch}`,
+  label: `Tr ${size} × ${pitch}`,
+  group: 'trapezoidal',
+  profile: 'trapezoidal',
+  diameter: size,
+  pitch,
+  exprs: { diameter: `${size} mm`, pitch: `${pitch} mm` },
+});
+
 export const THREAD_PRESETS: readonly ThreadPreset[] = [
   ...METRIC_COARSE.map(metric('metric')),
   ...METRIC_FINE.map(metric('metric-fine')),
   ...UNC.map(inch('unc')),
   ...UNF.map(inch('unf')),
+  ...TRAPEZOIDAL.map(trapezoidal),
+  {
+    id: 'pco-1881',
+    label: 'PCO-1881',
+    group: 'bottle',
+    profile: 'bottle',
+    diameter: 27.43,
+    pitch: 2.7,
+    exprs: { diameter: '27.43 mm', pitch: '2.7 mm' },
+  },
 ];
 
 /** The preset with this ID. */
@@ -375,10 +694,21 @@ export function threadPreset(id: string): ThreadPreset | undefined {
   return THREAD_PRESETS.find((p) => p.id === id);
 }
 
-/** The preset a diameter and pitch (mm) are, to 0.001 mm; undefined for a custom size. */
-export function threadPresetOf(diameter: number, pitch: number): ThreadPreset | undefined {
+/**
+ * The preset a diameter, pitch (mm) and profile are, to 0.001 mm; undefined
+ * for a custom size. The profile matters: the same diameter and pitch in a
+ * different profile is not that preset.
+ */
+export function threadPresetOf(
+  diameter: number,
+  pitch: number,
+  profile: ThreadProfileName = 'iso',
+): ThreadPreset | undefined {
   return THREAD_PRESETS.find(
-    (p) => Math.abs(p.diameter - diameter) < 1e-3 && Math.abs(p.pitch - pitch) < 1e-3,
+    (p) =>
+      p.profile === profile &&
+      Math.abs(p.diameter - diameter) < 1e-3 &&
+      Math.abs(p.pitch - pitch) < 1e-3,
   );
 }
 

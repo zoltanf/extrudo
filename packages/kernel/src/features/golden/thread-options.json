@@ -88,5 +88,72 @@
       "thread:T:side:f0.lead1",
       "thread:T:side:f0.root"
     ]
+  },
+  "Tr 20 × 4": {
+    "valid": true,
+    "volume": 1107.9,
+    "faces": 13,
+    "bbox": [
+      -9.39,
+      -9.9,
+      0,
+      9.9,
+      9.39,
+      5
+    ],
+    "designation": "Tr 20 × 4",
+    "turns": 1.25,
+    "names": [
+      "thread:T:side:f0.crest",
+      "thread:T:side:f0.flank0",
+      "thread:T:side:f0.flank1",
+      "thread:T:side:f0.lead0",
+      "thread:T:side:f0.lead1",
+      "thread:T:side:f0.root"
+    ]
+  },
+  "S 20 × 4 buttress": {
+    "valid": true,
+    "volume": 1132.6,
+    "faces": 13,
+    "bbox": [
+      -9.9,
+      -9.9,
+      0,
+      9.9,
+      9.9,
+      5
+    ],
+    "designation": "S Ø20 × 4",
+    "turns": 1.25,
+    "names": [
+      "thread:T:side:f0.crest",
+      "thread:T:side:f0.flank0",
+      "thread:T:side:f0.flank1",
+      "thread:T:side:f0.root"
+    ]
+  },
+  "PCO-1881 on a 27.43 mm shaft": {
+    "valid": true,
+    "volume": 2569.3,
+    "faces": 19,
+    "bbox": [
+      -13.62,
+      -13.61,
+      0,
+      13.62,
+      13.62,
+      5
+    ],
+    "designation": "PCO-1881",
+    "turns": 1.852,
+    "names": [
+      "thread:T:side:f0.crest",
+      "thread:T:side:f0.flank0",
+      "thread:T:side:f0.flank1",
+      "thread:T:side:f0.lead0",
+      "thread:T:side:f0.lead1",
+      "thread:T:side:f0.root"
+    ]
   }
 }

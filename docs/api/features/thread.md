@@ -28,6 +28,8 @@ a valid feature.
 | `offset` | `string \| number \| ParameterHandle` | default `0` | From the face's end to where the thread starts; a length. |
 | `flip` | `boolean` | default `false` | Start from the face's other end. |
 | `hand` | `'right' \| 'left'` | default `right` | Right- or left-handed. |
+| `profile` | `'iso' \| 'trapezoidal' \| 'buttress' \| 'bottle'` | optional | The tooth profile: iso (the default, 60°), trapezoidal (Tr), buttress (DIN 513) or bottle (PCO-1881). |
+| `loadFlank` | `'start' \| 'end'` | default `end` | Buttress only: the end the steep 3° load flank faces, start or end. |
 | `tolerance` | `string \| number \| ParameterHandle` | optional | Radial clearance on this part; a length. Default 0.1 mm. |
 | `chamfer` | `boolean` | default `true` | A 45° lead-in at open ends. |
 

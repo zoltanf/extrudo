@@ -28,10 +28,13 @@ import {
   type BodyId,
   THREAD_DEFAULTS,
   type ThreadInputs,
+  type ThreadLoadFlank,
+  type ThreadProfileName,
   type ThreadRadii,
   type ThreadSettings,
   threadFeature,
   threadPresetOf,
+  threadProfile,
   threadRadii,
   threadSettings,
 } from '@extrudo/core';
@@ -72,6 +75,8 @@ export interface ThreadNumbers {
 /** One threaded face, as the output's `data` lists it. */
 export interface ThreadOutputFace {
   internal: boolean;
+  /** The tooth profile. */
+  profile: ThreadProfileName;
   /** Nominal (major) diameter and pitch, mm. */
   diameter: number;
   pitch: number;
@@ -149,8 +154,18 @@ function numbersOf(ctx: EvalContext, settings: ThreadSettings): ThreadNumbers {
 const round = (value: number) => Math.round(value * 1000) / 1000;
 const mm = (value: number) => `${round(value)} mm`;
 
-export function designation(diameter: number, pitch: number): string {
-  return threadPresetOf(diameter, pitch)?.label ?? `Ø${round(diameter)} × ${round(pitch)}`;
+export function designation(
+  diameter: number,
+  pitch: number,
+  profile: ThreadProfileName = 'iso',
+): string {
+  const preset = threadPresetOf(diameter, pitch, profile);
+  if (preset) return preset.label;
+  const prefix =
+    profile === 'iso'
+      ? ''
+      : `${profile === 'trapezoidal' ? 'Tr' : profile === 'buttress' ? 'S' : 'PCO'} `;
+  return `${prefix}Ø${round(diameter)} × ${round(pitch)}`;
 }
 
 // --------------------------------------------------------------- planning
@@ -162,6 +177,9 @@ export interface ThreadPlan {
   x: Vec3;
   internal: boolean;
   pitch: number;
+  profile: ThreadProfileName;
+  /** Buttress only: which side the steep load flank faces. */
+  loadFlank: ThreadLoadFlank;
   radii: ThreadRadii;
   /** The face's radius. */
   radius: number;
@@ -195,6 +213,9 @@ export function planThread(
   const what = internal ? 'hole' : 'shaft';
   let { diameter, pitch } = n;
   if (settings.auto) {
+    if (settings.profile !== 'iso') {
+      throw new KernelError(`Enter a diameter and pitch for a ${settings.profile} thread.`);
+    }
     const preset = autoThread(face.radius, internal);
     if (!preset) {
       throw new KernelError(
@@ -204,8 +225,8 @@ export function planThread(
     diameter = preset.diameter;
     pitch = preset.pitch;
   }
-  const radii = threadRadii(diameter, pitch, n.tolerance, internal);
-  const name = designation(diameter, pitch);
+  const radii = threadRadii(settings.profile, diameter, pitch, n.tolerance, internal);
+  const name = designation(diameter, pitch, settings.profile);
   const r = face.radius;
   if (internal) {
     if (r >= radii.root - EPS) {
@@ -265,6 +286,8 @@ export function planThread(
     x: squareTo(face.axis.direction),
     internal,
     pitch,
+    profile: settings.profile,
+    loadFlank: settings.loadFlank,
     radii,
     radius: r,
     from,
@@ -273,6 +296,7 @@ export function planThread(
     left: settings.hand === 'left',
     report: {
       internal,
+      profile: settings.profile,
       diameter,
       pitch,
       designation: name,
@@ -294,39 +318,82 @@ function squareTo(d: Vec3): Vec3 {
 
 // ------------------------------------------------------------------ sections
 
-/** A closed polygon in the (u, v) half-plane and each side's source (side i runs from vertex i). */
+/**
+ * A closed section in the (u, v) half-plane (u from the axis, v along it) and
+ * each curve's source (curve i runs from the previous curve's end to `to`).
+ */
 export interface Section {
-  vertices: [number, number][];
+  curves: PlanarCurve[];
   sources: string[];
 }
 
 /**
  * The tooth of the part (`internal` points inward), one tooth centred at
- * `v0` on the axis: crest flat, flanks at 30° to the radius out to a kink a
- * little past the root, then straight sides to the foot. The foot stays
- * clear of the neighbouring turn (`pitch` along the axis).
+ * `v0` on the axis. The outline comes from the profile table
+ * (`threadProfile`), so the kernel knows no angles of its own: each segment
+ * (a line or an arc) is placed with `u = crest + s·r` (`s` points towards
+ * the root) and `v = v0 + a`.
  */
 export function toothSection(
-  plan: Pick<ThreadPlan, 'internal' | 'pitch' | 'radii'>,
+  plan: Pick<ThreadPlan, 'internal' | 'pitch' | 'profile' | 'loadFlank' | 'radii'>,
   v0: number,
 ): Section {
-  const { internal, pitch, radii } = plan;
-  const tan30 = Math.tan(Math.PI / 6);
-  const s = internal ? 1 : -1; // from the crest towards the root, in u
-  const kink = radii.root + s * 0.05 * pitch;
-  const foot = radii.root + s * 0.25 * pitch;
-  const half = radii.crestHalf + Math.abs(kink - radii.crest) * tan30;
-  return {
-    vertices: [
-      [foot, v0 - half],
-      [kink, v0 - half],
-      [radii.crest, v0 - radii.crestHalf],
-      [radii.crest, v0 + radii.crestHalf],
-      [kink, v0 + half],
-      [foot, v0 + half],
-    ],
-    sources: ['side0', 'flank0', 'crest', 'flank1', 'side1', 'foot'],
-  };
+  const { radii, internal } = plan;
+  const shape = threadProfile(plan.profile, plan.pitch, {
+    internal,
+    loadFlank: plan.loadFlank,
+  });
+  const s = internal ? 1 : -1;
+  const place = ([a, r]: readonly [number, number]): [number, number] => [
+    radii.crest + s * r,
+    v0 + a,
+  ];
+  const curves: PlanarCurve[] = [];
+  const sources: string[] = [];
+  const segments = shape.segments;
+  const last = segments[segments.length - 1];
+  let at = last ? place(last.to) : ([0, 0] as [number, number]);
+  for (const segment of segments) {
+    const to = place(segment.to);
+    if (segment.kind === 'line') {
+      curves.push({ kind: 'line', a: at, b: to });
+    } else {
+      // (a, r) -> (u, v) swaps the axes (a reflection); an external thread
+      // negates r too, a second reflection that restores the turn's sense.
+      const centre = place(segment.centre);
+      curves.push(arcFrom(at, to, centre, internal ? !segment.ccw : segment.ccw));
+    }
+    sources.push(segment.source);
+    at = to;
+  }
+  return { curves, sources };
+}
+
+/**
+ * A planar arc from `a` to `b` about `centre`, counter-clockwise when `ccw`.
+ * The sketch model stores arcs counter-clockwise, so a clockwise arc is
+ * emitted as the same geometric arc traversed the other way (its start
+ * angle moves to the old end): General Fuse finds the loop by its shared
+ * vertices either way.
+ */
+function arcFrom(
+  a: readonly [number, number],
+  b: readonly [number, number],
+  centre: readonly [number, number],
+  ccw: boolean,
+): PlanarCurve {
+  const radius = Math.hypot(a[0] - centre[0], a[1] - centre[1]);
+  let from = Math.atan2(a[1] - centre[1], a[0] - centre[0]);
+  const end = Math.atan2(b[1] - centre[1], b[0] - centre[0]);
+  let sweep = end - from;
+  if (ccw) {
+    while (sweep <= 0) sweep += 2 * Math.PI;
+  } else {
+    while (sweep >= 0) sweep -= 2 * Math.PI;
+    from += sweep;
+    sweep = -sweep;
+  }
+  return { kind: 'arc', center: centre, radius, from, sweep };
 }
 
 /** How far past the face and the crest the ring reaches. */
@@ -338,13 +405,18 @@ export function ringSection(plan: ThreadPlan): Section {
   const far = internal
     ? Math.max(0, Math.min(plan.radius, radii.crest) - reach(plan))
     : Math.max(plan.radius, radii.crest) + reach(plan);
+  const corners: [number, number][] = [
+    [radii.root, from],
+    [far, from],
+    [far, to],
+    [radii.root, to],
+  ];
   return {
-    vertices: [
-      [radii.root, from],
-      [far, from],
-      [far, to],
-      [radii.root, to],
-    ],
+    curves: corners.map((a, i) => ({
+      kind: 'line',
+      a,
+      b: corners[(i + 1) % corners.length] as [number, number],
+    })),
     sources: ['end0', 'far', 'end1', 'root'],
   };
 }
@@ -365,13 +437,18 @@ export function leadSection(plan: ThreadPlan, end: 0 | 1): Section {
   const at = end === 0 ? plan.from : plan.to;
   const into = end === 0 ? 1 : -1; // along v into the thread
   const beyond = at - into * 2 * pitch;
+  const corners: [number, number][] = [
+    [start, beyond],
+    [start, at],
+    [crestSide, at + into * rise],
+    [crestSide, beyond],
+  ];
   return {
-    vertices: [
-      [start, beyond],
-      [start, at],
-      [crestSide, at + into * rise],
-      [crestSide, beyond],
-    ],
+    curves: corners.map((a, i) => ({
+      kind: 'line',
+      a,
+      b: corners[(i + 1) % corners.length] as [number, number],
+    })),
     sources: [`lead${end}x`, `lead${end}`, `lead${end}y`, `lead${end}z`],
   };
 }
@@ -394,18 +471,12 @@ function face(
   section: Section,
   prefix: string,
 ) {
-  const { vertices, sources } = section;
-  const curves: PlanarCurve[] = vertices.map((a, i) => ({
-    kind: 'line',
-    a,
-    b: vertices[(i + 1) % vertices.length] as [number, number],
-  }));
   return planarFace(
     ctx,
     scope,
-    curves,
+    section.curves,
     halfPlane(plan),
-    sources.map((s) => `${prefix}${s}`),
+    section.sources.map((s) => `${prefix}${s}`),
   );
 }
 

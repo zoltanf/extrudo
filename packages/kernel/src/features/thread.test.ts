@@ -23,9 +23,13 @@ import {
   revolveInputs,
   type SketchData,
   sketchInputs,
+  THREAD_PROFILE_NAMES,
   THREAD_TYPE,
   type ThreadInputOptions,
+  type ThreadLoadFlank,
+  type ThreadProfileName,
   threadInputs,
+  threadProfile,
   threadRadii,
   threadSettings,
 } from '@extrudo/core';
@@ -33,6 +37,7 @@ import { SketchBuilder } from '@extrudo/sketch/fixtures';
 import { detectProfiles } from '@extrudo/sketch/profiles';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Kernel, type ShapeHandle, type ThreadFace } from '../kernel';
+import type { BodyMesh } from '../mesh';
 import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
 import { testDocument, testFeature, testFeatures } from '../recompute/testing';
@@ -218,6 +223,101 @@ const env = (globalThis as { process?: { env: Record<string, string | undefined>
 
 const dataOf = (id: string) => seen.get(id)?.data as ThreadOutputData;
 
+/** A profile's outline as a polygon in (axial, radial), sampling its arcs. */
+function flattenProfile(
+  segments: ReturnType<typeof threadProfile>['segments'],
+): [number, number][] {
+  const last = segments[segments.length - 1];
+  const points: [number, number][] = [];
+  let at: [number, number] = last ? [last.to[0], last.to[1]] : [0, 0];
+  for (const segment of segments) {
+    if (segment.kind === 'line') {
+      points.push([segment.to[0], segment.to[1]]);
+    } else {
+      const [cx, cy] = segment.centre;
+      const r = Math.hypot(at[0] - cx, at[1] - cy);
+      const a0 = Math.atan2(at[1] - cy, at[0] - cx);
+      const a1 = Math.atan2(segment.to[1] - cy, segment.to[0] - cx);
+      let sweep = a1 - a0;
+      if (segment.ccw) while (sweep <= 0) sweep += 2 * Math.PI;
+      else while (sweep >= 0) sweep -= 2 * Math.PI;
+      const steps = 24;
+      for (let k = 1; k <= steps; k++) {
+        const angle = a0 + (sweep * k) / steps;
+        points.push([cx + r * Math.cos(angle), cy + r * Math.sin(angle)]);
+      }
+    }
+    at = [segment.to[0], segment.to[1]];
+  }
+  return points;
+}
+
+/** Clips a polygon to `radial <= depth` (Sutherland–Hodgman). */
+function clipAtRoot(points: [number, number][], depth: number): [number, number][] {
+  const out: [number, number][] = [];
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i] as [number, number];
+    const b = points[(i + 1) % points.length] as [number, number];
+    const aIn = a[1] <= depth;
+    const bIn = b[1] <= depth;
+    if (aIn) out.push(a);
+    if (aIn !== bIn) {
+      const t = (depth - a[1]) / (b[1] - a[1]);
+      out.push([a[0] + t * (b[0] - a[0]), depth]);
+    }
+  }
+  return out;
+}
+
+/** A polygon's area and centroid in (axial, radial). */
+function areaCentroid(points: [number, number][]) {
+  let a2 = 0;
+  let ca = 0;
+  let cr = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x1, y1] = points[i] as [number, number];
+    const [x2, y2] = points[(i + 1) % points.length] as [number, number];
+    const cross = x1 * y2 - x2 * y1;
+    a2 += cross;
+    ca += (x1 + x2) * cross;
+    cr += (y1 + y2) * cross;
+  }
+  return { area: Math.abs(a2) / 2, ca: ca / (3 * a2), cr: cr / (3 * a2) };
+}
+
+/** The groove's cross-section area (one pitch) and the radius of its centroid. */
+function grooveOf(profile: ThreadProfileName, pitch: number, crest: number, depth: number) {
+  const shape = threadProfile(profile, pitch);
+  const tooth = clipAtRoot(flattenProfile(shape.segments), depth);
+  const t = areaCentroid(tooth);
+  const rectArea = depth * pitch;
+  const grooveArea = rectArea - t.area;
+  const cr = ((depth / 2) * rectArea - t.cr * t.area) / grooveArea;
+  return { grooveArea, centroidRadius: crest - cr };
+}
+
+/** The average outward normal of a mesh face by name (a thread face is `#n` per turn). */
+function faceNormal(mesh: BodyMesh, name: string): [number, number, number] {
+  const ids = mesh.faceIds ?? [];
+  const index = ids.findIndex((id) => id === name || id.startsWith(`${name}#`));
+  if (index < 0) throw new Error(`no face ${name}`);
+  const start = mesh.faceRanges[2 * index] as number;
+  const count = mesh.faceRanges[2 * index + 1] as number;
+  let x = 0;
+  let y = 0;
+  let z = 0;
+  for (let t = start; t < start + count; t++) {
+    for (let k = 0; k < 3; k++) {
+      const n = mesh.indices[3 * t + k] as number;
+      x += mesh.normals[3 * n] as number;
+      y += mesh.normals[3 * n + 1] as number;
+      z += mesh.normals[3 * n + 2] as number;
+    }
+  }
+  const l = Math.hypot(x, y, z) || 1;
+  return [x / l, y / l, z / l];
+}
+
 /** A stepped shaft of two cylinders, both `tall` mm: `C1` Ø20, `C2` Ø24 above it. */
 function steppedShaft(tall: number): Feature[] {
   return [
@@ -241,32 +341,36 @@ function shaftVolume(result: Done): number {
 describe('thread sections', () => {
   it('draws a tooth that keeps clear of the next turn and a ring round it', () => {
     for (const internal of [false, true]) {
-      const radii = threadRadii(8, 1.25, 0.1, internal);
-      const tooth = toothSection({ internal, pitch: 1.25, radii }, 0);
-      const vs = tooth.vertices.map((v) => v[1]);
+      const radii = threadRadii('iso', 8, 1.25, 0.1, internal);
+      const tooth = toothSection(
+        { internal, pitch: 1.25, profile: 'iso', loadFlank: 'end' as const, radii },
+        0,
+      );
+      const pts = tooth.curves.map((c) => (c.kind === 'line' ? c.b : ([0, 0] as [number, number])));
+      const [b, c, d] = pts as [number, number][];
+      const vs = pts.map((p) => p[1]);
       expect(Math.max(...vs) - Math.min(...vs)).toBeLessThan(1.25 * 0.95);
       // The crest flat and the flanks at 30° to the radius.
-      const [, kink, c0, c1] = tooth.vertices as [
-        [number, number],
-        [number, number],
-        [number, number],
-        [number, number],
-      ];
-      expect(c1[1] - c0[1]).toBeCloseTo(internal ? 1.25 / 4 : 1.25 / 8, 9);
-      expect(Math.abs(c0[1] - kink[1]) / Math.abs(c0[0] - kink[0])).toBeCloseTo(
-        Math.tan(Math.PI / 6),
+      expect((d as [number, number])[1] - (c as [number, number])[1]).toBeCloseTo(
+        internal ? 1.25 / 4 : 1.25 / 8,
         9,
       );
+      expect(
+        Math.abs((c as [number, number])[1] - (b as [number, number])[1]) /
+          Math.abs((c as [number, number])[0] - (b as [number, number])[0]),
+      ).toBeCloseTo(Math.tan(Math.PI / 6), 9);
     }
   });
 
   it('starts a lead-in cone just past the root, at 45°', () => {
-    const radii = threadRadii(8, 1.25, 0, false);
+    const radii = threadRadii('iso', 8, 1.25, 0, false);
     const plan = {
       axis: { origin: [0, 0, 0] as const, direction: [0, 0, 1] as const },
       x: [1, 0, 0] as const,
       internal: false,
       pitch: 1.25,
+      profile: 'iso' as const,
+      loadFlank: 'end' as const,
       radii,
       radius: 4,
       from: 0,
@@ -276,12 +380,16 @@ describe('thread sections', () => {
       report: {} as never,
     };
     const lead = leadSection(plan, 0);
-    const [, b, c] = lead.vertices as [[number, number], [number, number], [number, number]];
-    expect(b[1]).toBe(0);
-    expect(c[1] - b[1]).toBeCloseTo(c[0] - b[0], 9);
-    expect(b[0]).toBeLessThan(radii.root);
+    const pts = lead.curves.map((c) => (c.kind === 'line' ? c.b : ([0, 0] as [number, number])));
+    const [b, c] = pts as [number, number][];
+    expect((b as [number, number])[1]).toBe(0);
+    expect((c as [number, number])[1] - (b as [number, number])[1]).toBeCloseTo(
+      (c as [number, number])[0] - (b as [number, number])[0],
+      9,
+    );
+    expect((b as [number, number])[0]).toBeLessThan(radii.root);
     const ring = ringSection(plan);
-    expect(ring.vertices[0]).toEqual([radii.root, 0]);
+    expect(ring.curves[0]).toMatchObject({ kind: 'line', a: [radii.root, 0] });
   });
 
   // P4-12, ADR-0067 §H2: the tooth is cut out of the ring in pieces, so that no
@@ -318,7 +426,7 @@ describe('thread', { timeout: 300_000 }, () => {
     expect(m.valid).toBe(true);
     expect(m.solids).toBe(1);
     const t = 0.1;
-    const radii = threadRadii(8, 1.25, t, false);
+    const radii = threadRadii('iso', 8, 1.25, t, false);
     // The crests are the diameter less twice the tolerance.
     expect(round(m.bbox.max[0], 2)).toBeLessThanOrEqual(round(radii.crest, 2));
     expect(m.bbox.max[0]).toBeGreaterThan(radii.crest - 0.01);
@@ -371,7 +479,7 @@ describe('thread', { timeout: 300_000 }, () => {
       ]);
       const result = ok(await runWithShapes(doc));
       const m = measure(result, 'C:0');
-      const r = threadRadii(8, 1.25, 0.1, false).crest - 0.05;
+      const r = threadRadii('iso', 8, 1.25, 0.1, false).crest - 0.05;
       // A crest on +Y at height z; a quarter turn on, it is P/4 higher (right) or lower (left).
       const z = [...Array(30).keys()]
         .map((i) => 2 + i * 0.05)
@@ -650,24 +758,179 @@ describe('thread', { timeout: 300_000 }, () => {
     );
   });
 
+  // P4-12: each profile builds, cuts about the volume its own section
+  // predicts (not a snapshot), and keeps its face names.
+  it('cuts two turns of each profile by its own section area', async () => {
+    const P = 2.5;
+    const tol = 0.1;
+    for (const profile of THREAD_PROFILE_NAMES) {
+      engine.clear();
+      const radii = threadRadii(profile, 20, P, tol, false);
+      // A shaft exactly at the crest radius: nothing is turned down, so the
+      // material taken off is the groove itself.
+      const result = ok(
+        await runWithShapes(
+          testDocument([
+            cylinder('C', 2 * radii.crest, 5),
+            thread('T', {
+              faces: [wall('C')],
+              numbers: {
+                diameter: '20 mm',
+                pitch: `${P} mm`,
+                tolerance: `${tol} mm`,
+              },
+              profile,
+              chamfer: false,
+            }),
+          ]),
+        ),
+      );
+      const body = measure(result, 'C:0');
+      expect(body.valid, profile).toBe(true);
+      const removed = Math.PI * radii.crest ** 2 * 5 - body.volume;
+      const { grooveArea, centroidRadius } = grooveOf(profile, P, radii.crest, radii.depth);
+      const turns = 5 / P;
+      const helix = turns * Math.sqrt((2 * Math.PI * centroidRadius) ** 2 + P ** 2);
+      const expected = grooveArea * helix;
+      expect(removed, `${profile} removed`).toBeGreaterThan(0.9 * expected);
+      expect(removed, `${profile} removed`).toBeLessThan(1.1 * expected);
+      expect(dataOf('T').faces[0]?.profile).toBe(profile);
+      const names = threadNames(body.names);
+      for (const piece of ['crest', 'flank0', 'flank1', 'root']) {
+        expect(names, `${profile} ${piece}`).toContain(`thread:T:side:f0.${piece}`);
+      }
+    }
+  });
+
+  it('cuts an internal bottle thread in a bore', async () => {
+    engine.clear();
+    const result = ok(
+      await runWithShapes(
+        testDocument([
+          cylinder('C', 40, 5),
+          {
+            ...testFeature('H', HOLE_TYPE),
+            inputs: holeInputs({
+              plane: { kind: 'face', id: 'cylinder:C:cap:end' },
+              extent: 'through',
+              numbers: { diameter: '27 mm' },
+            }),
+          },
+          thread('T', {
+            faces: [{ kind: 'face', id: 'hole:H:side:wall' }],
+            numbers: { diameter: '27.43 mm', pitch: '2.7 mm' },
+            profile: 'bottle',
+          }),
+        ]),
+      ),
+    );
+    expect(dataOf('T').faces[0]).toMatchObject({
+      internal: true,
+      profile: 'bottle',
+      designation: 'PCO-1881',
+    });
+    expect(measure(result, 'C:0').valid).toBe(true);
+  });
+
+  it('puts the steep buttress flank at the end loadFlank names', async () => {
+    const flanks = async (loadFlank: ThreadLoadFlank) => {
+      engine.clear();
+      const result = ok(
+        await runWithShapes(
+          testDocument([
+            cylinder('C', 20, 8),
+            thread('T', {
+              faces: [wall('C')],
+              numbers: { diameter: '20 mm', pitch: '4 mm' },
+              profile: 'buttress',
+              loadFlank,
+            }),
+          ]),
+        ),
+      );
+      const mesh = result.bodies.find((b) => b.id === 'C:0')?.mesh;
+      if (!mesh) throw new Error('no mesh');
+      return {
+        zero: faceNormal(mesh, 'thread:T:side:f0.flank0'),
+        one: faceNormal(mesh, 'thread:T:side:f0.flank1'),
+      };
+    };
+    // A 3° load flank is nearly radial, so its normal is nearly axial; a 30°
+    // flank's is not. The two flanks face opposite ways.
+    const atEnd = await flanks('end');
+    expect(Math.abs(atEnd.one[2])).toBeGreaterThan(Math.abs(atEnd.zero[2]));
+    expect(atEnd.one[2] * atEnd.zero[2]).toBeLessThan(0);
+    const atStart = await flanks('start');
+    expect(Math.abs(atStart.zero[2])).toBeGreaterThan(Math.abs(atStart.one[2]));
+    expect(atStart.zero[2] * atStart.one[2]).toBeLessThan(0);
+  });
+
+  it('refuses a non-ISO profile without a size', async () => {
+    engine.clear();
+    const result = await run(
+      testDocument([
+        cylinder('C', 20, 5),
+        thread('T', { faces: [wall('C')], profile: 'trapezoidal' }),
+      ]),
+    );
+    const s = status(result, 'T');
+    expect(s.status).toBe('error');
+    expect(s.message).toBe('Enter a diameter and pitch for a trapezoidal thread.');
+  });
+
   it('keeps a golden table of options', async () => {
     const rows: Record<string, unknown> = {};
-    const cases: Record<string, ThreadInputOptions> = {
-      'M6 full': { faces: [wall('C')] },
-      'M6 left, no lead-in': { faces: [wall('C')], hand: 'left', chamfer: false },
-      'Ø6 × 0.75 custom, 3 mm': {
-        faces: [wall('C')],
-        extent: 'length',
-        numbers: { diameter: '6 mm', pitch: '0.75 mm', length: '3 mm' },
-      },
-      '1/4-20 UNC on a 6.35 mm shaft': {
-        faces: [wall('C')],
-        numbers: { diameter: '0.25 in', pitch: '1 in / 20', tolerance: '0.2 mm' },
-      },
-    };
-    for (const [name, options] of Object.entries(cases)) {
+    const cases: [string, number, ThreadInputOptions][] = [
+      ['M6 full', 6, { faces: [wall('C')] }],
+      ['M6 left, no lead-in', 6, { faces: [wall('C')], hand: 'left', chamfer: false }],
+      [
+        'Ø6 × 0.75 custom, 3 mm',
+        6,
+        {
+          faces: [wall('C')],
+          extent: 'length',
+          numbers: { diameter: '6 mm', pitch: '0.75 mm', length: '3 mm' },
+        },
+      ],
+      [
+        '1/4-20 UNC on a 6.35 mm shaft',
+        6.35,
+        {
+          faces: [wall('C')],
+          numbers: { diameter: '0.25 in', pitch: '1 in / 20', tolerance: '0.2 mm' },
+        },
+      ],
+      [
+        'Tr 20 × 4',
+        20,
+        {
+          faces: [wall('C')],
+          numbers: { diameter: '20 mm', pitch: '4 mm' },
+          profile: 'trapezoidal',
+        },
+      ],
+      [
+        'S 20 × 4 buttress',
+        20,
+        {
+          faces: [wall('C')],
+          numbers: { diameter: '20 mm', pitch: '4 mm' },
+          profile: 'buttress',
+          chamfer: false,
+        },
+      ],
+      [
+        'PCO-1881 on a 27.43 mm shaft',
+        27.43,
+        {
+          faces: [wall('C')],
+          numbers: { diameter: '27.43 mm', pitch: '2.7 mm' },
+          profile: 'bottle',
+        },
+      ],
+    ];
+    for (const [name, diameter, options] of cases) {
       engine.clear();
-      const diameter = name.startsWith('1/4') ? 6.35 : 6;
       const result = ok(
         await runWithShapes(testDocument([cylinder('C', diameter, 5), thread('T', options)])),
       );

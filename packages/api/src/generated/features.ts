@@ -1186,6 +1186,8 @@ export interface FeatureMethods {
    * @param inputs.offset From the face's end to where the thread starts; a length. Default 0.
    * @param inputs.flip Start from the face's other end. Default false.
    * @param inputs.hand Right- or left-handed. Default right.
+   * @param inputs.profile The tooth profile: iso (the default, 60°), trapezoidal (Tr), buttress (DIN 513) or bottle (PCO-1881).
+   * @param inputs.loadFlank Buttress only: the end the steep 3° load flank faces, start or end. Default end.
    * @param inputs.tolerance Radial clearance on this part; a length. Default 0.1 mm.
    * @param inputs.chamfer A 45° lead-in at open ends. Default true.
    *

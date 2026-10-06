@@ -147,3 +147,66 @@ test('an internal thread in a Hole’s wall finds its size from the tap-drill ho
   const faces = Number((await viewport.getAttribute('data-bodies'))?.split(':')[1]);
   expect(faces).toBeGreaterThan(20);
 });
+
+// P4-12: the profiles. A trapezoidal Tr 20 × 4 on a Ø20 cylinder (the crest is
+// the major diameter less twice the tolerance, so 19.8 mm across, whatever the
+// profile) and the PCO-1881 bottle profile in a bore (an internal thread).
+test('threads a cylinder with the trapezoidal Tr 20 × 4 profile', async ({ page }) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Cylinder', {});
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:3:20,20,20');
+  const at = await settledProjector(viewport);
+
+  const s = Math.SQRT1_2 * 10;
+  await clickFace(page, at, [s, -s, 10]);
+  const dialog = await openThread(page);
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
+  await dialog.getByRole('combobox', { name: 'Profile' }).selectOption('trapezoidal');
+  await dialog.getByRole('combobox', { name: 'Size' }).selectOption('tr20x4');
+  await expect(dialog.getByRole('textbox', { name: 'Diameter', exact: true })).toHaveValue('20 mm');
+  await expect(dialog.getByRole('textbox', { name: 'Pitch', exact: true })).toHaveValue('4 mm');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await ok(page, dialog);
+  await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:19\.8,19\.8,20$/);
+});
+
+test('threads a bore with the PCO-1881 bottle profile', async ({ page }) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Cylinder', { Diameter: '40 mm', Height: '20 mm' });
+  await page.keyboard.press('Shift+1');
+  let at = await settledProjector(viewport);
+  // A through bore a little under the thread's root (Ø27.43 + 0.2): Ø27.
+  await page.keyboard.press('h');
+  const hole = page.getByRole('region', { name: 'Hole dialog' });
+  await expect(hole).toBeVisible();
+  const { x, y } = at([0, 0, 20]);
+  await page.mouse.click(x, y);
+  await expect(hole.getByRole('button', { name: 'Plane', exact: true })).toHaveText('1 face');
+  await hole.getByRole('textbox', { name: 'X', exact: true }).fill('0 mm');
+  await hole.getByRole('textbox', { name: 'Y', exact: true }).fill('0 mm');
+  await hole.getByRole('combobox', { name: 'Extent' }).selectOption('through');
+  await hole.getByRole('textbox', { name: 'Diameter', exact: true }).fill('27 mm');
+  await ok(page, hole);
+
+  at = await settledProjector(viewport);
+  const dialog = await openThread(page);
+  const r = 13.5 * Math.SQRT1_2;
+  await clickFace(page, at, [-r, r, 14]);
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
+  await dialog.getByRole('combobox', { name: 'Profile' }).selectOption('bottle');
+  await dialog.getByRole('combobox', { name: 'Size' }).selectOption('pco-1881');
+  await expect(dialog.getByRole('textbox', { name: 'Diameter', exact: true })).toHaveValue(
+    '27.43 mm',
+  );
+  await expect(dialog.getByRole('textbox', { name: 'Pitch', exact: true })).toHaveValue('2.7 mm');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await ok(page, dialog);
+  await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
+  // The outside is untouched. About two turns of a 2.7 mm pitch fit in 20 mm.
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:40,40,20$/);
+});

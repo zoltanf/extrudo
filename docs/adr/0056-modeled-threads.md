@@ -219,3 +219,51 @@ On-canvas handles (length, offset), tapered (pipe) threads, other profiles
 (trapezoidal, buttress, bottle-cap threads with their own profile: B9 will show
 whether the 60° profile with a coarse custom pitch is enough), multi-start
 threads, a thread per face with its own size, a faster preview.
+
+## P4-12 amendment (2026-10-06): thread profiles
+
+The tooth was one 60° ISO form. A `profile` input now picks it from a pure
+table, `threadProfile(profile, pitch)`, in `packages/core/src/thread.ts`: it
+returns the outline as lines and arcs in (axial, radial) coordinates and the
+crest-to-root depth, so `toothSection` only stages the curves and the kernel
+knows no angles of its own. `iso` (the default) reproduces the old tooth
+bit for bit, so every existing document and the golden table's rows are
+unchanged and no migration is needed. `threadRadii` takes the profile and
+places its depth under the major radius. Names are unchanged: a rounded crest
+or root is still one `crest`/`root` face.
+
+The profiles, with the numbers and where they come from:
+
+- **`iso`** — the ISO 68-1 basic profile as before: 60° included (30° a
+  flank), depth 5H/8 = 5√3/16 P ≈ 0.5413 P, crest flat P/8 at the major
+  diameter (P/4 on a nut's minor).
+- **`trapezoidal`** — ISO 2901 / DIN 103 **Tr**: 30° included (15° a flank),
+  thread height H1 = 0.5 P, and equal crest and root flats of 0.366 P (the
+  land DIN 103 lists), which makes the tooth tile exactly one pitch.
+- **`buttress`** — DIN 513 **S** (3°/30°): a 3° load flank and a 30° trailing
+  flank, a crest flat of 0.26384 P. The standard's basic profile (fundamental
+  triangle H = 1.5878 P, full depth h3 = 0.867767 P, clearance
+  ac = 0.117767 P, crest width 0.26384 P, root radius R = 0.124271 P) is
+  quoted from DIN 513:1985 (mirrored in the Bornemann and Gage Crib tables);
+  the modelled tooth stops at the load-bearing height H1 = 0.75 P and lets
+  `tolerance` supply the clearance, which is the print-friendly choice. A new
+  `loadFlank` enum (`start`/`end`, default `end`) says which axial end the
+  steep 3° flank faces; `flip` still says which end the thread starts from.
+- **`bottle`** — the PCO-1881 carbonated-drink finish: neck Ø27.43 mm, pitch
+  2.7 mm, thread height ≈1.15 mm (≈0.45 P), single start, about two turns
+  (from the PCO-1881 neck drawing / ISBT finish). The real finish is a
+  rounded sawtooth; the modelled profile is the printed-friendly rounded
+  trapezoid the P4-12 brief asks for — 20° flanks, a 0.3 P crest flat, a
+  0.45 P depth — with the crest and the root corners rounded by arcs (0.06 P
+  radii): FDM threads want a symmetric, rounded tooth, not a moulding.
+
+`THREAD_PROFILES` carries the enum values with a label and a one-line
+description for the dialog. `THREAD_PRESETS` gains a **Trapezoidal** group
+(Tr 8×1.5, Tr 10×2, Tr 12×3, Tr 16×4, Tr 20×4) and a **Bottle** group
+(`pco-1881` = Ø27.43 × 2.7), each setting the profile as well as the size;
+`threadPresetOf`/`presetOf` match the profile too, so the same size in
+another profile is not that preset and not stored. `autoThread` (Size
+`auto`) stays ISO coarse: another profile with no size is refused with
+"Enter a diameter and pitch for a <profile> thread." The dialog gets a
+Profile select after Size and, only for buttress, a Load flank select; no
+handles. Multi-start and tapered (pipe) threads stay deferred.

@@ -89,6 +89,12 @@ describe('thread sizes', () => {
   it('fills the numbers from a preset, and goes custom when they change', () => {
     expect(threadOnChange('preset', values({}, 'm5'))).toEqual({
       exprs: { diameter: '5 mm', pitch: '0.8 mm' },
+      choices: { preset: 'm5', profile: 'iso' },
+    });
+    // A trapezoidal preset sets the profile too.
+    expect(threadOnChange('preset', values({}, 'tr20x4'))).toEqual({
+      exprs: { diameter: '20 mm', pitch: '4 mm' },
+      choices: { preset: 'tr20x4', profile: 'trapezoidal' },
     });
     expect(threadOnChange('pitch', values({ diameter: '5 mm', pitch: '0.5 mm' }, 'm5'))).toEqual({
       choices: { preset: 'custom' },
@@ -98,6 +104,10 @@ describe('thread sizes', () => {
     ).toEqual({
       choices: { preset: 'm5' },
     });
+    // A non-ISO profile leaves "fit the face" for custom.
+    expect(
+      threadOnChange('profile', mergeValues(values({}, AUTO), { choices: { profile: 'bottle' } })),
+    ).toEqual({ choices: { preset: 'custom' } });
     expect(threadOnChange('preset', values({}, AUTO))).toBeUndefined();
   });
 

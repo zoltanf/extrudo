@@ -1090,22 +1090,32 @@ repeat it as a feature (6.16). No new keys.
 | `offset` | `expr` | no | Length, default 0: from the face's end to where the thread starts |
 | `flip` | `bool` | no | Default `false`: `offset` and `length` run from the face's lower end along its axis (the axis taken with its first non-zero component positive: a vertical shaft's bottom end); `true` from the other end |
 | `hand` | `enum` | no | `right` (default) or `left` |
+| `profile` | `enum` | no | `iso` (default: ISO 68-1, 60°), `trapezoidal` (ISO 2901 / DIN 103 Tr), `buttress` (DIN 513 S) or `bottle` (the PCO-1881 finish, a rounded trapezoid) |
+| `loadFlank` | `enum` | no | Buttress only: `start` or `end` (default), the end the steep 3° load flank faces |
 | `tolerance` | `expr` | no | Length, default 0.1 mm, not negative: the print clearance. The whole profile moves this far radially into the part's material, so an external thread's diameters shrink by twice it and an internal one's grow by twice it |
 | `chamfer` | `bool` | no | Default `true`: a 45° lead-in where the thread runs out of an open end of the face (a shaft's end, a hole's mouth; not a shoulder or a hole's floor) |
 
-The profile is the basic one: on a shaft a crest flat P/8 wide at the major
-diameter and a root flat P/4 wide at the minor (D − 1.0825 P), in a hole the
-reverse; both moved by `tolerance`. A shaft thicker than the thread is turned
+The profile is the tooth's shape, from the table `threadProfile` in core
+(`iso`, the default, is what older files get). The ISO 68-1 basic profile
+puts a crest flat P/8 wide at the major diameter and a root flat P/4 wide at
+the minor (D − 1.0825 P), in a hole the reverse; trapezoidal is a 30°
+trapezoid 0.5 P deep with equal 0.366 P flats; buttress is a 3° load flank
+and a 30° trailing flank at a 0.75 P load-bearing depth; bottle is a rounded
+20° trapezoid 0.45 P deep with arcs on its crest and root. All are moved by
+`tolerance`. A shaft thicker than the thread is turned
 down to it (a warning when much thicker); a shaft at or under the thread's root,
 a hole as wide as the thread, a thread longer than the face, an offset as long
-as the face and more than 400 turns are errors. A shaft's thread and a hole's
+as the face and more than 150 turns are errors. With `profile: iso` and no
+size the kernel picks the ISO coarse thread (`autoThread`); another profile
+with no size is refused ("Enter a diameter and pitch"). A shaft's thread and a hole's
 that start at the same plane mesh (the hole's tooth sits half a pitch on).
 Names: `thread:<feature id>:side:f<k>.<part>`, where k is the face's place in
 `faces` (0, 1 …) and the part is `crest`, `flank0`, `flank1` (one face per turn,
 `#n` along the helix), `root`, `end0` / `end1` (the flat steps where a thread
-stops inside a face) or `lead0` / `lead1` (the lead-in cones). The dialog's
-sizes (ISO metric coarse and fine, UNC, UNF) only fill `diameter` and `pitch`;
-nothing about a preset is stored. For a new thread the dialog writes the
+stops inside a face) or `lead0` / `lead1` (the lead-in cones); a rounded crest
+or root is still one `crest`/`root` face. The dialog's
+sizes (ISO metric coarse and fine, UNC, UNF, the Tr series and PCO-1881) only fill `diameter`, `pitch` and
+`profile`; nothing about a preset is stored. For a new thread the dialog writes the
 document's print-tolerance parameter (`tolerance`, P4-08, ADR-0062) here when
 it has one, which is an ordinary expression like any other.
 

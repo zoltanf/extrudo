@@ -961,7 +961,13 @@ to each face**, `autoThread`), `extent` full/length, `length`, `offset`, `flip`,
 `hand`, `tolerance` (radial, into the part's material; default 0.1 mm, the dialog
 proposes the parameter `tolerance` when the document has one), `chamfer`;
 `THREAD_PRESETS` ISO coarse/fine, UNC, UNF; `threadRadii` the ISO 68-1 basic
-profile). The evaluator (`kernel/src/features/thread.ts`) cuts ring − tooth per
+profile). **P4-12 (ADR-0056's amendment)** added a `profile` input (`iso`
+default, `trapezoidal`, `buttress` with `loadFlank`, `bottle`) and the one
+profile table `threadProfile(profile, pitch)` in `core/src/thread.ts` (lines
+and arcs in (axial, radial) plus the depth), which the kernel's `toothSection`
+stages so it knows no angles; `threadRadii(profile, …)` places the depth and
+`THREAD_PRESETS` gains a Trapezoidal group and PCO-1881. The evaluator
+(`kernel/src/features/thread.ts`) cuts ring − tooth per
 face: the tooth swept by the facade's `threadSweep` (one helix edge per turn: one
 long edge broke the boolean), lead-ins where the facade's `threadFace` says an
 end is open; it always cuts, so it is patternable. Faces
@@ -2973,7 +2979,9 @@ them. Notes further down that name a machine apply to that machine only.
   "Modify", `exact`) › `menuitem` `/^Thread/`; the dialog is the region "Thread
   dialog" / "Edit Thread1 dialog": button "Faces" (`exact`, "1 face"), combobox
   "Size" (values `auto`, `m8`, `m16x1.5`, `unc-1q4-20`…, `custom`; Diameter and
-  Pitch exist only off `auto`), "Extent", "Hand", textboxes "Length", "Offset",
+  Pitch exist only off `auto`), "Profile" (values `iso` default, `trapezoidal`,
+  `buttress`, `bottle`) and, only for `buttress`, "Load flank" (`start`/`end`),
+  "Extent", "Hand", textboxes "Length", "Offset",
   "Tolerance" (`exact`), checkboxes "From the other end", "Lead-in chamfer". A
   thread takes seconds to preview (wait up to 60 s). The default Ø20 cylinder
   threaded to fit is `Body1:<n>:19.8,19.8,20` (M20 less twice the tolerance);

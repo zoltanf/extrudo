@@ -4,6 +4,16 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 thread profiles** (ADR-0056's amendment): a thread's
+  tooth is no longer only ISO 60°. A `profile` input picks `iso` (the default,
+  bit-for-bit what it was), `trapezoidal` (ISO 2901 / DIN 103 Tr: 30°, 0.5 P
+  deep, equal 0.366 P flats), `buttress` (DIN 513 S: a 3° load flank and a 30°
+  trailing flank, with a `loadFlank` select) or `bottle` (the PCO-1881
+  soft-drink finish: a rounded 20° trapezoid, crest and root rounded by arcs).
+  The profiles are one pure table in core (`threadProfile`), staged by the
+  kernel as lines and arcs, so it knows no angles; `THREAD_PRESETS` gains a
+  Trapezoidal group and PCO-1881. `autoThread` stays ISO coarse; another
+  profile without a size is refused.
 - 2026-10-06 · **P4-12 Project: silhouettes of every surface, vertices and
   bodies, Intersect and Include** (ADR-0031's amendment): a projected sphere is
   its exact outline circle, a torus or a free-form face its outline through
