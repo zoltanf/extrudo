@@ -296,9 +296,10 @@ the faces plugs can't open — a crash in the worker is still the worse failure,
 and there is nothing to gain from trying — and those faces are now only curved
 ones, slanted neighbours and removed faces that touch. The plug route itself
 was swept the same way (`sweep2`: every flat tangent face of the bodies
-above and of a box with only its top edges rounded, walls 0.3 to 6 mm, through
-the facade, one process each): no trap; every case either built or reported
-the largest wall that works.
+above and of boxes with only their top edges rounded at 3 and 5 mm, walls 0.3
+to 6 mm, through the facade, one process each, 238 cases): no trap; 150 built
+and the other 88 reported the largest wall that works (a wall at or past the
+round's radius).
 
 ### Results (`bash spikes/p4-12-shell-faces/run.sh`; 20 mm cube unless named)
 

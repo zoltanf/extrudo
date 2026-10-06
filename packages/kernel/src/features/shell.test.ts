@@ -415,7 +415,12 @@ describe('shell', { timeout: 120_000 }, () => {
   it('a flat face next to a fillet opens through a plug; a rounded face can’t be removed', async () => {
     const { base, features } = await roundedBlock();
     const first = ok(await run(testDocument(features)));
+    // References read from the last recompute's meshes, so all of them before the shells run.
     const front = refTo(first, 'face', side(base.lines.bottom));
+    const corner = faceNames(first).find((n) => n.startsWith('fillet:R:'));
+    if (!corner) throw new Error('no rounded face');
+    const roundRef = refTo(first, 'face', corner);
+    const top = refTo(first, 'face', cap);
     // P4-12: the front runs smoothly into the rounded corners and meets the top and the
     // floor square, so the body is hollowed closed and the opening cut out as a plug.
     const opened = ok(
@@ -436,9 +441,6 @@ describe('shell', { timeout: 120_000 }, () => {
     expect(names).toContain(`shell:S:inner:(${cap})`);
     expect(new Set(names).size).toBe(names.length);
     // A rounded corner's face runs smoothly into both sides: there is no flat outline to open.
-    const corner = names.find((n) => n.startsWith('fillet:R:'));
-    if (!corner) throw new Error('no rounded face');
-    const roundRef = refTo(first, 'face', corner);
     const failed = await run(testDocument([...features, shell('S', [roundRef], '2 mm')]));
     const st = status(failed, 'S');
     expect(st.status).toBe('error');
@@ -446,7 +448,6 @@ describe('shell', { timeout: 120_000 }, () => {
       /^Face \d+ can't be removed: it runs smoothly into the faces next to it \(a fillet or another tangent face\)/,
     );
     // The top meets the rounded corners at a crease, so it goes the usual way.
-    const top = refTo(first, 'face', cap);
     const fine = await run(testDocument([...features, shell('S', [top], '2 mm')]));
     expect(status(fine, 'S').status).toBe('ok');
   });

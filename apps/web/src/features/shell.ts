@@ -25,6 +25,7 @@ import {
   shellWallThicknessKey,
 } from '@extrudo/core';
 import { type DialogField, type DialogValues, defineFeatureDialog } from './spec';
+import { defaultInputs } from './values';
 
 const count = (values: DialogValues, field: string) => values.refs[field]?.length ?? 0;
 
@@ -107,6 +108,14 @@ export const shellDialog = defineFeatureDialog({
     },
     ...Array.from({ length: SHELL_MAX_WALLS }, (_, i) => wallFields(i + 1)).flat(),
   ],
+  // An empty wall set makes no input: a shell without sets is stored as before.
+  toInputs(values) {
+    const inputs = defaultInputs(shellDialog, values);
+    for (let n = 1; n <= SHELL_MAX_WALLS; n++) {
+      if (!hasWalls(values, n)) delete inputs[shellWallFacesKey(n)];
+    }
+    return inputs;
+  },
   validate(values) {
     if (count(values, 'faces') === 0 && count(values, 'bodies') === 0) {
       return { field: 'faces', message: 'Pick a face to remove, or a body to hollow out.' };

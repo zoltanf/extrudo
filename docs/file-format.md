@@ -746,8 +746,8 @@ Hollows bodies with walls of a given thickness (P3-03).
 | `bodies` | `ref` | no | Refs of kind `body` (body IDs): bodies to hollow closed, with no opening. Bodies of the picked faces are shelled anyway |
 | `thickness` | `expr` | yes | Length, greater than 0 when the kernel evaluates it (not checked by the schema) |
 | `direction` | `enum` | no | `inside` (default) or `outside` |
-| `wallFaces`, `wallFaces2` … `wallFaces8` | `ref` | no | Refs of kind `face`: wall set *n*, faces of the shelled bodies whose walls get the set's own thickness (P4-12). A set with no faces does nothing |
-| `wallThickness`, `wallThickness2` … `wallThickness8` | `expr` (length) | no | Wall set *n*'s thickness, greater than 0; needed once the set has faces |
+| `wallFaces`, `wallFaces2`, `wallFaces3`, `wallFaces4`, `wallFaces5`, `wallFaces6`, `wallFaces7`, `wallFaces8` | `ref` | no | Refs of kind `face`: wall set *n*, faces of the shelled bodies whose walls get the set's own thickness (P4-12). A set with no faces does nothing |
+| `wallThickness`, `wallThickness2`, `wallThickness3`, `wallThickness4`, `wallThickness5`, `wallThickness6`, `wallThickness7`, `wallThickness8` | `expr` (length) | no | Wall set *n*'s thickness, greater than 0; needed once the set has faces |
 
 At least one face or body is needed (the kernel reports it otherwise). Each
 body with faces picked is shelled with those faces removed; a body without
