@@ -59,6 +59,10 @@ import {
   modifySketch,
   nextModelParameterName,
   profileRefId,
+  includedCurves,
+  includeLabel,
+  includeProjection,
+  type ProjectionId,
   projectionSync,
   radiusOf,
   newId as randomId,
@@ -1137,11 +1141,35 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           const view = readSketch(feature);
           const report = reports[feature.id];
           if (!view?.data.projections || !report) continue;
-          const change = projectionSync(view.data, report, newId);
+          // An include (P4-12, "Keep linked" off): its curves become plain entities, the
+          // record goes, and the step that added it is named for what it brought.
+          for (const [id, include] of Object.entries(includedCurves(view.data, report, newId))) {
+            try {
+              const command = includeProjection({
+                feature: feature.id,
+                id: id as ProjectionId,
+                entities: include.entities,
+              });
+              store
+                .getState()
+                .amend(
+                  include.count > 0 ? { ...command, label: includeLabel(include.count) } : command,
+                  { relabel: include.count > 0 },
+                );
+            } catch (error) {
+              if (!(error instanceof CommandError)) throw error;
+              console.warn(`[sketch] couldn't include into ${feature.name}:`, error);
+            }
+          }
+          const current = readSketch(
+            store.getState().doc.features.find((f) => f.id === feature.id) ?? feature,
+          );
+          if (!current?.data.projections) continue;
+          const change = projectionSync(current.data, report, newId);
           if (!change) continue;
           try {
             store.getState().amend(syncProjections({ feature: feature.id, ...change }));
-            settleProjections(feature.id, view.data);
+            settleProjections(feature.id, current.data);
           } catch (error) {
             if (!(error instanceof CommandError)) throw error;
             console.warn(`[sketch] couldn't update the projections of ${feature.name}:`, error);

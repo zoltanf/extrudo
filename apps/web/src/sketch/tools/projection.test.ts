@@ -6,6 +6,7 @@ import {
   addToSketch,
   ORIGIN_PLANES,
   type ProjectionId,
+  projectedEntities,
   type SketchEntityId,
   type SketchFrame,
   type SketchReport,
@@ -134,5 +135,36 @@ describe('syncProjections', () => {
     expect(t.point('a' as SketchEntityId)[1]).toBeCloseTo(33, 6);
     host.syncProjections({ [id]: edgeAt(-40) });
     expect(t.point('b' as SketchEntityId)[1]).toBeCloseTo(-37, 6);
+  });
+
+  it('includes curves without a link in one step named for them (P4-12)', async () => {
+    const t = await setup();
+    const { store, host, id } = t;
+    store
+      .getState()
+      .dispatch(
+        addProjection({ feature: id, id: P, ref: { kind: 'face', id: 'f' }, linked: false }),
+      );
+    host.syncProjections({
+      [id]: {
+        frame,
+        projections: {
+          [P]: {
+            curves: {
+              a: { type: 'line', a: [0, 0], b: [40, 0] },
+              b: { type: 'line', a: [40, 0], b: [40, 20] },
+            },
+          },
+        },
+      },
+    });
+    expect(t.data().projections).toBeUndefined();
+    const lines = Object.values(t.data().entities).filter((e) => e.type === 'line');
+    expect(lines).toHaveLength(2);
+    expect(store.getState().undoLabel).toBe('Include 2 curves');
+    // Nothing holds them: the solver can move them.
+    expect(projectedEntities(t.data()).size).toBe(0);
+    store.getState().undo();
+    expect(Object.keys(t.data().entities)).toEqual([]);
   });
 });

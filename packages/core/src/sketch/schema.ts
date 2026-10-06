@@ -312,13 +312,34 @@ export type SketchDimensionType = SketchDimension['type'];
  * constrained to them follows.
  *
  * `curves` maps what each curve comes from (the source edge's persistent
- * name, `sil:<n>` for a silhouette, `edge` for a projected edge itself) to
- * its entity, or to `null` once the user deleted that curve, so it doesn't
- * come back.
+ * name, `sil:<n>` for a face's silhouette, `sil:<face>:<n>` for a body's,
+ * `edge` for a projected edge itself, `vertex` for a projected vertex,
+ * `cut:<n>` for an intersection curve) to its entity, or to `null` once the
+ * user deleted that curve, so it doesn't come back.
+ *
+ * P4-12 (ADR-0031's amendment): `ref` may also be a vertex (one fixed point)
+ * or a body (its outline along the sketch normal); `mode: 'intersect'` makes
+ * the curves where the face or body meets the sketch plane instead of its
+ * projection; `linked: false` is an include waiting for the kernel's report,
+ * which the app turns into plain entities and drops the record with.
  */
 export const SketchProjectionSchema = z.strictObject({
-  ref: GeomRefSchema,
-  curves: z.record(z.string(), SketchEntityIdSchema.nullable()),
+  ref: GeomRefSchema.describe('The projected edge, face, vertex or body (a persistent reference).'),
+  curves: z
+    .record(z.string(), SketchEntityIdSchema.nullable())
+    .describe("Each curve's source key to its sketch entity, or null once deleted."),
+  mode: z
+    .enum(['project', 'intersect'])
+    .optional()
+    .describe(
+      'project (the default): the source seen along the sketch normal; intersect: where it meets the sketch plane.',
+    ),
+  linked: z
+    .literal(false)
+    .optional()
+    .describe(
+      'false: an include (no link), turned into plain entities once the kernel reports the curves.',
+    ),
 });
 export type SketchProjection = z.infer<typeof SketchProjectionSchema>;
 
@@ -340,6 +361,9 @@ export const SketchDataSchema = z
 export type SketchData = z.infer<typeof SketchDataSchema>;
 
 // Reference checks -----------------------------------------------------------
+
+const PROJECTABLE: readonly string[] = ['edge', 'face', 'vertex', 'body'];
+const INTERSECTABLE: readonly string[] = ['face', 'body'];
 
 type Kinds = readonly SketchEntityType[];
 const POINT: Kinds = ['point'];
@@ -379,7 +403,10 @@ export function sketchIssues(sketch: {
   entities: Record<string, SketchEntity>;
   constraints: Record<string, SketchConstraint>;
   dimensions: Record<string, SketchDimension>;
-  projections?: Record<string, { ref: GeomRef; curves: Record<string, string | null> }>;
+  projections?: Record<
+    string,
+    { ref: GeomRef; curves: Record<string, string | null>; mode?: 'project' | 'intersect' }
+  >;
 }): SketchIssue[] {
   const issues: SketchIssue[] = [];
   const { entities } = sketch;
@@ -581,18 +608,26 @@ export function sketchIssues(sketch: {
     }
   }
 
-  // Each curve belongs to at most one projection; projections are of edges and faces.
+  // Each curve belongs to at most one projection; projections are of edges, faces,
+  // vertices and bodies (P4-12), intersections of faces and bodies.
   const projectedBy = new Map<string, string>();
   for (const [id, projection] of Object.entries(sketch.projections ?? {})) {
-    if (projection.ref.kind !== 'edge' && projection.ref.kind !== 'face') {
-      fail('projections', id, `must project an edge or a face, not a ${projection.ref.kind}`);
+    const kinds = projection.mode === 'intersect' ? INTERSECTABLE : PROJECTABLE;
+    if (!kinds.includes(projection.ref.kind)) {
+      fail(
+        'projections',
+        id,
+        projection.mode === 'intersect'
+          ? `must intersect a face or a body, not a ${projection.ref.kind}`
+          : `must project an edge, a face, a vertex or a body, not a ${projection.ref.kind}`,
+      );
     }
     for (const [key, curve] of Object.entries(projection.curves)) {
       if (curve === null) continue;
       const path = ['projections', id, 'curves', key];
       const kind = kindOf(curve);
       if (!kind) issues.push({ path, message: `refers to missing entity "${curve}"` });
-      else if (kind === 'point' || kind === 'text') {
+      else if ((kind === 'point' && projection.ref.kind !== 'vertex') || kind === 'text') {
         issues.push({
           path,
           message: kind === 'point' ? 'must be a curve, not a point' : 'must be a curve, not text',

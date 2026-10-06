@@ -117,6 +117,7 @@ import {
   ImportDrawingPanel,
   OverConstrainedDialog,
   PanelColumn,
+  ProjectPanel,
   PlanePrompt,
   SelectionPanel,
   SketchPalette,
@@ -124,7 +125,7 @@ import {
 } from '../sketch/panels';
 import { pickDrawing } from '../sketch/pickDrawing';
 import { profileIdsIn, sketchProfiles } from '../sketch/profiles';
-import { PROJECT_TOOL, useProjectTool } from '../sketch/project';
+import { INTERSECT_TOOL, isProjectTool, PROJECT_TOOL, useProjectTool } from '../sketch/project';
 import { deleteSelection } from '../sketch/selection';
 import { textDraftStore } from '../sketch/textDraft';
 import type { ToolHost } from '../sketch/tools/host';
@@ -300,7 +301,7 @@ export function AppShell({
   const hover = useStore(session, (s) => s.hover);
   const picking = activeTool === CREATE_SKETCH;
   const drawing = mode === 'sketch' && isSketchTool(activeTool);
-  const projecting = mode === 'sketch' && activeTool === PROJECT_TOOL;
+  const projecting = mode === 'sketch' && isProjectTool(activeTool);
   const measuring = mode === 'model' && activeTool === MEASURE_TOOL;
   const sectioning = mode === 'model' && activeTool === SECTION_TOOL;
   const printing = mode === 'model' && activeTool === PRINT_INFO_TOOL;
@@ -513,15 +514,18 @@ export function AppShell({
     () => selection.filter((item) => item.kind === 'body').map((item) => item.id as BodyId),
     [selection],
   );
-  // The Project tool (P2-09) picks body edges and faces in the open sketch.
+  // The Project tool (P2-09) picks body edges, faces, vertices and bodies in the open sketch;
+  // Intersect (P4-12) faces and bodies. "Keep linked" off makes the next picks an include.
+  const [keepLinked, setKeepLinked] = useState(true);
   const project = useProjectTool({
     store,
     session,
     viewport,
     kernel,
     notify,
-    active: projecting,
+    tool: projecting && isProjectTool(activeTool) ? activeTool : undefined,
     sketchId: activeSketchId,
+    linked: keepLinked,
   });
   // Redefine Plane (P2-11): Create Sketch's plane pick, for an existing sketch. It shows and
   // picks the bodies before the sketch, which can only lie on what comes before it.
@@ -960,12 +964,12 @@ export function AppShell({
           void sketchOnFace(selected[0], true);
         } else startCreateSketch(stores);
       }
-    } else if (tool === PROJECT_TOOL) {
+    } else if (tool === PROJECT_TOOL || tool === INTERSECT_TOOL) {
       if (mode !== 'sketch') return;
-      if (projecting) session.getState().setTool(undefined);
+      if (activeTool === tool) session.getState().setTool(undefined);
       else {
         host?.stop();
-        session.getState().setTool(PROJECT_TOOL);
+        session.getState().setTool(tool);
       }
     } else if (tool === 'finishSketch') finishSketch(stores);
     else if (tool === 'export') setModelExport({});
@@ -1771,6 +1775,14 @@ export function AppShell({
         )}
         {mode === 'sketch' && activeSketch && (
           <PanelColumn>
+            {projecting && isProjectTool(activeTool) && (
+              <ProjectPanel
+                tool={activeTool}
+                linked={keepLinked}
+                onLinked={setKeepLinked}
+                onDone={() => session.getState().setTool(undefined)}
+              />
+            )}
             <SketchPalette
               name={activeSketch.name}
               viewport={viewport}

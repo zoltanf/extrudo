@@ -1413,7 +1413,11 @@ export class Kernel {
     const out: EdgeView[] = [];
     for (let i = 0; i < n; i++) {
       const flags = v[i] as number;
-      out.push({ visible: (flags & 1) !== 0, outline: (flags & 2) !== 0, sharp: (flags & 4) !== 0 });
+      out.push({
+        visible: (flags & 1) !== 0,
+        outline: (flags & 2) !== 0,
+        sharp: (flags & 4) !== 0,
+      });
     }
     return out;
   }
@@ -1928,7 +1932,15 @@ export function decodeCurvePieces(v: Float64Array, count: number): CurvePiece[] 
       const [first, last] = [num(), num()];
       out.push({
         type: kind === 3 ? 'ellipse' : 'circle',
-        conic: { center, axis, xDirection, radius, ...(minor !== undefined && { minor }), first, last },
+        conic: {
+          center,
+          axis,
+          xDirection,
+          radius,
+          ...(minor !== undefined && { minor }),
+          first,
+          last,
+        },
       });
     }
   }

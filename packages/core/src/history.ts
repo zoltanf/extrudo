@@ -56,13 +56,16 @@ export class UndoHistory {
    * nearest enclosing level's; cancelling a transaction then leaves the
    * change, since it belongs to the step before. With no step anywhere
    * (a freshly opened document) the change isn't recorded. Redo steps stay.
-   * Returns whether the change joined a step.
+   * Returns whether the change joined a step. With `relabel`, the step takes
+   * the entry's label (P4-12: an include names its step once it knows how many
+   * curves it brought).
    */
-  amend(entry: HistoryEntry): boolean {
+  amend(entry: HistoryEntry, relabel = false): boolean {
     if (entry.patches.length === 0) return false;
     for (let i = this.#levels.length - 1; i >= 0; i--) {
       const last = this.#levels[i]?.undo.at(-1);
       if (!last) continue;
+      if (relabel) last.label = entry.label;
       last.patches = [...last.patches, ...entry.patches];
       last.inversePatches = [...entry.inversePatches, ...last.inversePatches];
       return true;

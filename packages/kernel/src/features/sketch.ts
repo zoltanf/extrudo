@@ -1,4 +1,5 @@
 import {
+  type BodyId,
   curvePolyline,
   ellipseShape,
   faceSketchFrame,
@@ -25,11 +26,11 @@ import {
   profileIds,
   profileKey,
 } from '@extrudo/sketch/profiles';
-import { KernelError } from '../kernel';
+import { KernelError, MeshBodyError, type ShapeHandle } from '../kernel';
 import { LostReferenceError } from '../naming/resolve';
 import type { PlanarCurve, PlanarFace } from '../planar';
 import type { EvalContext, KernelFeatureDefinition } from '../recompute/types';
-import { projectEdge, projectSegment } from './projection';
+import { projectEdge, projectPieces, projectPoint, withoutRepeats } from './projection';
 import { planeOf } from './references';
 
 /** A profile of a sketch as later features see it (`SketchOutputData.profiles`). */
@@ -203,7 +204,8 @@ function sketchFrame(ctx: EvalContext<SketchInputs>, plane: GeomRef | undefined)
  * Where each projection's source is now, in the sketch plane (P2-09): the
  * curves by key, as `SketchProjection.curves` keys them. A source that
  * can't be found is reported lost, with a warning; the sketch still
- * computes with the curves where they were.
+ * computes with the curves where they were. An intersection (P4-12) reports
+ * the curves where its face or body meets the plane.
  */
 function projectAll(
   ctx: EvalContext<SketchInputs>,
@@ -213,13 +215,20 @@ function projectAll(
   const out: Record<ProjectionId, ProjectionReport> = {};
   for (const [pid, projection] of Object.entries(data.projections ?? {})) {
     const { ref } = projection;
-    const what = ref.kind === 'face' ? 'face' : 'edge';
+    const what = SOURCE_NOUN[ref.kind] ?? 'edge';
+    const intersect = projection.mode === 'intersect';
     try {
-      out[pid as ProjectionId] = { curves: projectSource(ctx, ref, frame) };
+      out[pid as ProjectionId] = {
+        curves: intersect ? intersectSource(ctx, ref, frame) : projectSource(ctx, ref, frame),
+      };
     } catch (error) {
       if (!(error instanceof KernelError)) throw error;
       ctx.warn(
-        `Lost a projected ${what} after an earlier change; its curves stay where they were. Delete them, or project the ${what} again.`,
+        error instanceof MeshBodyError
+          ? error.message
+          : intersect
+            ? `Lost an intersected ${what} after an earlier change; its curves stay where they were. Delete them, or intersect the ${what} again.`
+            : `Lost a projected ${what} after an earlier change; its curves stay where they were. Delete them, or project the ${what} again.`,
       );
       out[pid as ProjectionId] = { lost: true };
     }
@@ -227,7 +236,14 @@ function projectAll(
   return out;
 }
 
-/** The curves of one projected edge or face, by key. */
+const SOURCE_NOUN: Partial<Record<GeomRef['kind'], string>> = {
+  edge: 'edge',
+  face: 'face',
+  vertex: 'vertex',
+  body: 'body',
+};
+
+/** The curves of one projected edge, face, vertex or body, by key. */
 function projectSource(
   ctx: EvalContext<SketchInputs>,
   ref: GeomRef,
@@ -241,6 +257,14 @@ function projectSource(
     if (curve) curves.edge = curve;
     return curves;
   }
+  if (ref.kind === 'vertex') {
+    const hit = ctx.resolve(ref, { label: 'the projected vertex' });
+    const vertex = ctx.describe(hit.shape).vertices[hit.index];
+    if (!vertex) throw new LostReferenceError("Can't find the projected vertex any more.", ref);
+    curves.vertex = projectPoint(vertex.point, frame);
+    return curves;
+  }
+  if (ref.kind === 'body') return projectBody(ctx, ref, frame);
   const hit = ctx.resolve(ref, { label: 'the projected face' });
   const description = ctx.describe(hit.shape);
   const names = ctx.names(hit.body).edges;
@@ -255,11 +279,83 @@ function projectSource(
     const key = names[edge] ?? `edge#${edge}`;
     if (curve) curves[key] = curve;
   }
-  kernel.faceSilhouettes(hit.shape, hit.index, frame.normal).forEach((segment, i) => {
-    const curve = projectSegment(segment, frame);
-    if (curve) curves[`sil:${i}`] = curve;
+  projectPieces(kernel.faceSilhouettes(hit.shape, hit.index, frame.normal), frame).forEach(
+    (curve, i) => {
+      curves[`sil:${i}`] = curve;
+    },
+  );
+  return withoutRepeats(curves);
+}
+
+/** The body a `body` reference names, or a lost reference. */
+function bodyShape(ctx: EvalContext<SketchInputs>, ref: GeomRef, what: string): ShapeHandle {
+  const shape = ctx.bodies.get(ref.id as BodyId);
+  if (shape === undefined) {
+    throw new LostReferenceError(`Can't find the ${what} any more.`, { kind: 'body', id: ref.id });
+  }
+  return shape;
+}
+
+/**
+ * A body seen along the sketch normal (P4-12): its outline edges (where its
+ * faces turn from facing the view to facing away), its sharp edges that can
+ * be seen from the sketch's side (hidden-line removal), and every curved
+ * face's silhouettes. Edges are keyed by name, silhouettes `sil:<face>:<n>`.
+ */
+function projectBody(
+  ctx: EvalContext<SketchInputs>,
+  ref: GeomRef,
+  frame: SketchFrame,
+): Record<string, ProjectedCurve> {
+  const { kernel } = ctx;
+  const shape = bodyShape(ctx, ref, 'projected body');
+  const description = ctx.describe(shape);
+  const names = ctx.names(ref.id as BodyId);
+  const views = kernel.edgeVisibility(shape, frame.normal);
+  const curves: Record<string, ProjectedCurve> = {};
+  views.forEach((view, edge) => {
+    if (!view.outline && !(view.visible && view.sharp)) return;
+    const curve = projectEdge(kernel.edgeGeometry(shape, edge), frame);
+    if (curve) curves[names.edges[edge] ?? `edge#${edge}`] = curve;
   });
-  return curves;
+  description.faces.forEach((face, i) => {
+    if (face.type === 'plane') return;
+    const name = names.faces[i] ?? `face#${i}`;
+    projectPieces(kernel.faceSilhouettes(shape, i, frame.normal), frame).forEach((curve, n) => {
+      curves[`sil:${name}:${n}`] = curve;
+    });
+  });
+  return withoutRepeats(curves);
+}
+
+/**
+ * The curves where a face or body meets the sketch plane (P4-12, Intersect),
+ * keyed `cut:<n>` in the section's order.
+ */
+function intersectSource(
+  ctx: EvalContext<SketchInputs>,
+  ref: GeomRef,
+  frame: SketchFrame,
+): Record<string, ProjectedCurve> {
+  const { kernel } = ctx;
+  let pieces: ReturnType<typeof kernel.sectionWithPlane>;
+  if (ref.kind === 'body') {
+    pieces = kernel.sectionWithPlane(
+      bodyShape(ctx, ref, 'intersected body'),
+      frame.origin,
+      frame.normal,
+    );
+  } else {
+    const hit = ctx.resolve(ref, { label: 'the intersected face' });
+    using scope = kernel.scope();
+    const face = scope.track(kernel.subShape(hit.shape, 'face', hit.index));
+    pieces = kernel.sectionWithPlane(face, frame.origin, frame.normal);
+  }
+  const curves: Record<string, ProjectedCurve> = {};
+  projectPieces(pieces, frame).forEach((curve, n) => {
+    curves[`cut:${n}`] = curve;
+  });
+  return withoutRepeats(curves);
 }
 
 /** The sketch's lines (construction too) by entity ID, start to end (ADR-0029). */

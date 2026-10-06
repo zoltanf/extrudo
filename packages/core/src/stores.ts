@@ -36,9 +36,10 @@ export interface DocumentState {
    * its own (`UndoHistory.amend`): for a change that follows from that step,
    * such as naming the bodies it made (ADR-0030). Undoing the step undoes
    * both. With no step to join (a freshly opened document), the change is
-   * applied without one. Throws like `dispatch`.
+   * applied without one. Throws like `dispatch`. With `relabel`, the step
+   * takes the command's label.
    */
-  amend<P>(command: Command<P>): void;
+  amend<P>(command: Command<P>, options?: { relabel?: boolean }): void;
   undo(): void;
   redo(): void;
   beginTransaction(label: string): void;
@@ -71,10 +72,10 @@ export function createDocumentStore(
       history.record({ label: command.label, patches, inversePatches });
       set({ doc, ...historyState() });
     },
-    amend(command) {
+    amend(command, options) {
       const { doc, patches, inversePatches } = applyCommand(get().doc, command);
       if (patches.length === 0) return;
-      history.amend({ label: command.label, patches, inversePatches });
+      history.amend({ label: command.label, patches, inversePatches }, options?.relabel);
       set({ doc, ...historyState() });
     },
     undo() {

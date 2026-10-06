@@ -31,6 +31,8 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   sketchFillet: ['F'],
   sketchMove: ['M'],
   project: ['P'],
+  // Intersect (P4-12): Offset Plane's key, which is only offered on the model.
+  intersect: ['Shift+P'],
   construction: ['X'],
   // Solid (these tools arrive in Phases 2 and 3)
   extrude: ['E'],
