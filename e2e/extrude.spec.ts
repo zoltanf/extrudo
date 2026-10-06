@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { exportModel, objectsOf3mf, solidFacts, solidTab } from './benchmark-helpers';
 import {
   clicker,
   kernelReady,
@@ -408,4 +409,56 @@ test('extrudes up to a cylinder’s curved wall, then 2 mm past it', async ({ pa
   await expect(edit).toBeHidden();
   await kernelReady(page);
   await expect(viewport).toHaveAttribute('data-bodies', /^Body1:3:30,30,30 Body2:\d+:20,20,20\.8$/);
+});
+
+test('tapers an ellipse profile (P4-12: a ruled loft, no more refusal)', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  // A 40 × 20 ellipse about the origin: centre (0, 0), major (20, 0), minor (0, 10).
+  await pickTool(page, 'Ellipse');
+  await click(0, 0);
+  await click(20, 0);
+  await click(0, 10);
+  await page.keyboard.press('Escape');
+  await expect(prompt(page)).toHaveCount(0);
+  await expect(viewport).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(chip(page, 'Sketch1')).toBeVisible();
+
+  // Pre-select the ellipse's profile, then E and a 10° taper.
+  const inside = at(0, 0);
+  await page.mouse.move(inside.x, inside.y);
+  await page.mouse.click(inside.x, inside.y);
+  await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+  await page.keyboard.press('e');
+  const dialog = page.getByRole('region', { name: 'Extrude dialog' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('textbox', { name: 'Distance', exact: true }).fill('20 mm');
+  await dialog.getByRole('textbox', { name: 'Taper', exact: true }).fill('10 deg');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 20_000 });
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+  // The ellipse is 40 × 20; a 10° taper over 20 mm widens each side by
+  // 20·tan 10° ≈ 3.53 mm, so the box is 47.1 × 27.1 × 20.
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:47\.1,27\.1,20$/);
+  await expect(page.getByRole('alert')).toHaveCount(0);
+
+  const file = await exportModel(page, '3MF');
+  await solidTab(page);
+  const objects = objectsOf3mf(file);
+  expect(objects).toHaveLength(1);
+  const mesh = objects[0]?.mesh;
+  if (!mesh) throw new Error('no mesh');
+  const facts = solidFacts(mesh);
+  // Steiner: A L + P tan L²/2 + π tan² L³/3 for the ellipse's area and perimeter.
+  const a = 20;
+  const b = 10;
+  const hh = ((a - b) ** 2) / ((a + b) ** 2);
+  const perimeter = Math.PI * (a + b) * (1 + (3 * hh) / (10 + Math.sqrt(4 - 3 * hh)));
+  const t = Math.tan((10 * Math.PI) / 180);
+  const exact = Math.PI * a * b * 20 + (perimeter * t * 400) / 2 + (Math.PI * t * t * 8000) / 3;
+  expect(Math.abs(facts.volume - exact) / exact).toBeLessThan(0.02);
 });

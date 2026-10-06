@@ -253,7 +253,12 @@ second amendment (2026-10-06)** added **`symmetricMeasure`** (`whole` —
 each side; `revolve`'s symmetric `angle` takes the same input; read only
 when symmetric, stored only when `half`): the dialogs' Measure select
 shows while Direction is Symmetric and the arrows reach the value each
-way with `half`. The browser
+way with `half`. **P4-12 (2026-10-07)** added the taper on ellipse and
+B-spline sides: `prism` keeps `DraftAngle` for lines and arcs and takes
+`taperLoft` otherwise — a ruled loft between the profile and its 2D offset
+(`BRepOffsetAPI_MakeOffset` with `GeomAbs_Arc`, `ThruSections` per wire
+pair, caps sewn in) — with a prism's names, refusing an offset that
+crosses itself or closes a hole. The browser
 lists the model's live bodies (`shell/bodies.ts`). The Wall bracket
 template computes a real bracket. ADR-0029 (P2-07) added revolve
 (`packages/core/src/revolve.ts`, `packages/kernel/src/features/revolve.ts`,
@@ -2231,7 +2236,10 @@ them. Notes further down that name a machine apply to that machine only.
   takes a click on it. P4-12's second amendment adds the combobox "Measure"
   ("whole" default, "half"), shown while Direction is Symmetric: the test
   commits 10 mm with Each side (`Body1:6:60,40,20`) and edits back to Whole
-  length (`…,10`)): the Viewport region's
+  length (`…,10`). P4-12's taper on ellipse and spline sides is the test
+  drawing a 40 × 20 ellipse and tapering it 10° over 20 mm:
+  `Body1:<n>:47.1,27.1,20` (each side grows by 20·tan 10°), and the 3MF's
+  volume matches the kernel test's Steiner value). The Viewport region's
   `data-bodies` lists drawn bodies as `name:faces:x,y,z` (bbox size in
   mm, e.g. "Body1:7:60,40,15"). The dialog is the region "Extrude
   dialog" / "Edit Extrude1 dialog", its operation the combobox

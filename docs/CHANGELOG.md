@@ -4,6 +4,17 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P4-12 Taper on ellipse and spline sides** (ADR-0028's
+  amendment, FR-FT-01): a profile with an ellipse or B-spline edge is tapered
+  by a **ruled loft** between the profile and its 2D offset (`taperLoft` in
+  the facade: `BRepOffsetAPI_MakeOffset` with `GeomAbs_Arc`, `ThruSections`
+  ruled per wire pair, caps sewn in) instead of `DraftAngle`, which can't tilt
+  such a side. Faces keep a prism's names (`cap:start`, `cap:end`,
+  `side:<sketch curve>`); an offset that crosses itself and one that closes a
+  hole are refused in the user's words. Lines and arcs still take
+  `DraftAngle`, byte-identical. Native harness `spikes/p4-12-taper-curves`
+  (0 failures, heap flat over 300 rounds). No `@extrudo/core` or file-format
+  change.
 - 2026-10-06 · **P6-07 Auto-project** (ADR-0074, FR-SK-17): while a drawing,
   constraint or dimension tool runs, the view offers the shown bodies' edges
   and vertices under the pointer (behind the sketch's own geometry, vertices

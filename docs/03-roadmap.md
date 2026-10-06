@@ -888,8 +888,9 @@ end to end, faster than in Fusion 360.
   - ~~Extrude to object on curved faces and bodies, with an offset; revolve
     "to"~~; ~~symmetric half-length~~ (ADR-0028, -0029; done 2026-10-06 —
     the first two in the amendment, the half-length as `symmetricMeasure`
-    for the extrude's distance and the revolve's angle); taper on ellipse
-    and spline sides stays open.
+    for the extrude's distance and the revolve's angle); ~~taper on ellipse
+    and spline sides~~ **done 2026-10-07** (ADR-0028's amendment: a ruled
+    loft from the profile to its 2D offset; the bullet is complete).
   - ~~Silhouettes of spheres, tori and free-form faces (HLR); projecting
     vertices and bodies, an "include" mode; Intersect~~ **done (P4-12,
     2026-10-06, ADR-0031's amendment)**; Slice stays open (ADR-0031).

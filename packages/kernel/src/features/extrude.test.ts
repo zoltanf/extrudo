@@ -1083,6 +1083,51 @@ describe('extrude', { timeout: 120_000 }, () => {
               ),
             };
     }
+    // P4-12: a taper on an ellipse and on a spline outline (a ruled loft,
+    // ADR-0028's amendment). Additions only; the all-arc rows above are the
+    // DraftAngle route and don't change.
+    for (const [name, data] of [
+      [
+        'ellipse',
+        (() => {
+          const b = new SketchBuilder();
+          b.ellipse(0, 0, 20, 10);
+          return b.sketch;
+        })(),
+      ],
+      [
+        'spline',
+        (() => {
+          const b = new SketchBuilder();
+          const points: [number, number][] = [];
+          for (let i = 0; i < 8; i += 1) {
+            const a = (2 * Math.PI * i) / 8;
+            const r = 20 + 2 * Math.sin(3 * a);
+            points.push([r * Math.cos(a), r * Math.sin(a)]);
+          }
+          b.spline(points, { mode: 'control', closed: true });
+          return b.sketch;
+        })(),
+      ],
+    ] as [string, SketchData][]) {
+      for (const taper of ['0 deg', '5 deg', '-5 deg']) {
+        const key = `${name} taper ${taper}`;
+        const result = await runWithShapes(
+          testDocument([sketch('S', data), extrude('E', [profile('S', data)], { distance: '20 mm', taper })]),
+        );
+        const s = status(result, 'E');
+        if (s.status === 'error') {
+          table[key] = { error: s.message };
+          continue;
+        }
+        const m = measure(result, 'E:0');
+        table[key] = {
+          volume: round(m.volume, 2),
+          faces: m.faces,
+          extrudeFaces: m.names.filter((n) => n.includes(':E:')).sort(),
+        };
+      }
+    }
     await expect(`${JSON.stringify(table, null, 1)}\n`).toMatchFileSnapshot(
       './golden/extrude-options.json',
     );

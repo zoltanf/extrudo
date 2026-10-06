@@ -513,3 +513,63 @@ mm symmetric whole/half/absent, the dialog tests the arrow's scale, and
 the e2e spec commits 20 mm and edits back to 10 mm. Golden tables: two
 rows each in the extrude's and the revolve's, additions only. No facade
 change.
+
+## Amendment (P4-12, 2026-10-07): taper on ellipse and spline sides
+
+The last facade item of P4-12's backlog. `prism(…, taper)` keeps
+`BRepOffsetAPI_DraftAngle` for a profile whose sides are all planes,
+cylinders and cones — lines and circular arcs — so the golden table's
+existing rows are byte-identical. A profile with an **ellipse or
+B-spline** edge can't be tilted (DraftAngle makes only planes, cones and
+cylinders), so the facade takes a new route, `taperLoft`:
+
+- The far outline is the profile's **2D offset** in its plane by
+  `length · tan(taper)` (positive outwards, holes the other way) through
+  `BRepOffsetAPI_MakeOffset` with `GeomAbs_Arc` joins; the offset of an
+  ellipse or B-spline is OCCT's offset curve. The offset wires are moved
+  along the sweep by `length`.
+- The solid is a **ruled loft** (`BRepOffsetAPI_ThruSections`, ruled, one
+  wire pair at a time, outer and each hole paired largest first) between
+  the profile and the offset; the two caps (the profile and the offset
+  face) are sewn in (`BRepBuilderAPI_Sewing`) and the shell made a solid
+  (`BRepBuilderAPI_MakeSolid`, reversed when the volume is negative).
+  `BRepFill_CompatibleWires` turned out to be unnecessary even for the
+  closed wires (ThruSections' own `CheckCompatibility` splits the start
+  wire where the offset has more edges), as expected.
+- The sides are ruled surfaces between the two outlines. Faces keep a
+  prism's names: `cap:start` the profile, `cap:end` the offset face, each
+  side `side:<sketch curve>` through the loft's `Generated` of the start
+  edge (an ellipse or B-spline edge whose offset splits into several faces
+  gets `#1`…`#n`). History is recorded as `prism`'s through
+  `appendRelation`, so `nameSweep` names it exactly like a `DraftAngle`
+  extrude.
+
+**Refusals.** An offset that fails (`!IsDone`, or no wire at all) and one
+whose solid is invalid, crosses itself or has no volume say "The taper is
+too steep for this outline: a side would cross another."; an inward offset
+that leaves fewer wires than the profile has (a hole vanished, which
+`MakeOffset` reports as a plain success) says "The taper closes a hole of
+the profile." A taper that shrinks the outline to nothing is the same too-
+steep case. Two-sided and symmetric tapers compose exactly as before (two
+sweeps from the plane), and the dialog's arcs and `extrudeTravel` are
+unchanged. A mesh body, and revolve (which has no taper), are untouched.
+
+**Prototype first** (`spikes/p4-12-taper-curves/`, `#define private
+public` over the facade, run inside the pinned OCCT image): an ellipse
+profile's volume is the Steiner integral `∫ (A + P·d + π d²) dz` to 1e-7
+(relative); a B-spline outline's ruled loft differs from it by about
+0.07 % (the ruled surface is not the exact offset at intermediate
+heights); a profile with a circular hole matches the frustum pair to 1e-6;
+the harness's 0 failures include `leaks` (heap top flat over 300 rounds
+after a 344 kB warm-up).
+
+| case | got | exact | route |
+|---|---|---|---|
+| circle Ø20, 20 mm, 20° | 11966.784527338 | 11966.784527338 | DraftAngle (unchanged) |
+| ellipse 20 × 10, 20 mm, 10° | 5110.397059 | 5110.396538 | loft (Steiner) |
+| annulus 10/4, 20 mm, ±5° | 6817.056617 | 6817.056617 | loft |
+| spline outline, 20 mm, 5° | 10374.022 | 10381.213 | loft (ruled, 0.07 %) |
+| spline outline + hole, 20 mm, 5° | 10074.236 | 10081.426 | loft (ruled, 0.07 %) |
+
+No `@extrudo/core`, schema or file-format change: `taper` is the input it
+always was. The facade's WASM grows by TBD bytes after the amendment.
