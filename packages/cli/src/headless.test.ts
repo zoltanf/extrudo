@@ -104,7 +104,7 @@ describe.each(BENCHMARKS)('%s', (name) => {
       if (NOT_CLOSED.has(name)) continue;
       expect(checkManifold(object.mesh).ok).toBe(true);
     }
-    expect(file?.closed).toBe(NOT_CLOSED.has(name) ? false : true);
+    expect(file?.closed).toBe(!NOT_CLOSED.has(name));
     // The app's file name: the design's, and the body's when it is the only one.
     expect(file?.name).toMatch(
       new RegExp(`^${job.doc.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}( - .+)?\\.3mf$`),

@@ -266,10 +266,6 @@ code {
   white-space: nowrap;
 }
 
-.page td:first-child code {
-  white-space: nowrap;
-}
-
 /* Code: plain `<pre>`, wrapped by default, scrollable when a line is long. */
 
 .page pre {
@@ -289,6 +285,10 @@ code {
   border: 0;
   background: none;
   font-size: inherit;
+}
+
+.page td:first-child code {
+  white-space: nowrap;
 }
 
 .foot {

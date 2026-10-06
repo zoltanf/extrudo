@@ -817,10 +817,11 @@ export class Kernel {
       throw new KernelError('Only a mesh body is split by a plane this way.');
     }
     const [along, against] = this.#manifoldOf(shape).splitByPlane(normal, offset);
-    return [
-      along.isEmpty() ? (along.delete(), null) : this.#meshHandle(along),
-      against.isEmpty() ? (against.delete(), null) : this.#meshHandle(against),
-    ];
+    const alongBody = along.isEmpty() ? null : this.#meshHandle(along);
+    const againstBody = against.isEmpty() ? null : this.#meshHandle(against);
+    if (alongBody === null) along.delete();
+    if (againstBody === null) against.delete();
+    return [alongBody, againstBody];
   }
 
   /**
