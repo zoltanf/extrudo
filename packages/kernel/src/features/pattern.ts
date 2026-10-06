@@ -205,14 +205,17 @@ function replicate(
  * twice as fast as the tree is deep), and the fused groups, which don't
  * interfere, become one compound. A lone group is returned as it is.
  *
- * Two instances whose boxes overlap are put in one group without asking OCCT
- * for the exact distance when either is heavy (more than
- * `HEAVY_TOOL_FACES` faces): fusing instances that only nearly touch is still
- * correct (a fuse of disjoint solids is a compound, so the boolean after it
- * takes their union), and the exact distance between two big shapes is slow
- * (P4-12, ADR-0067 §H2: 26 s of a 30 s recompute on B9 at the time, 277 s
- * between the tools of two 36- and 30-turn threads). Light instances still get
- * the exact test, which keeps the tool as small as it can be.
+ * Two instances whose boxes meet are put in one group without asking OCCT
+ * for the exact distance when either is **heavy** (more than
+ * `HEAVY_TOOL_FACES` faces, ADR-0067 §H2) or when the parts are a **pattern's
+ * copies** (P4-12, ADR-0047's amendment). Fusing instances that only nearly
+ * touch is still correct: a fuse of disjoint solids is a compound, so the
+ * boolean after it takes their union. A pattern's copies are a field of one
+ * tool, so a pair that needn't have been fused is cheap to fuse anyway, while
+ * the exact `distance` measured 6-8 ms a call (100 calls in a 10x10 join). A
+ * feature's own tool parts (a thread's bands, a hole's holes, an emboss's
+ * letters) keep the exact test, which tells a near miss from a touch: two
+ * light thread bands' boxes overlap 5 mm although the bands don't meet.
  */
 export function mergeTools(
   ctx: EvalContext,
@@ -224,6 +227,7 @@ export function mergeTools(
   if (parts.length === 1) return parts[0] as NamedShape;
   const boxes = parts.map((p) => kernel.measure(p.shape).bbox);
   const heavy = parts.map((p) => isHeavyTool(kernel, p.shape));
+  const boxOnly = op === 'pattern' || op === 'mirror';
   // Groups of instances that interfere: boxes that meet, then the exact distance.
   const group = parts.map((_, i) => i);
   const find = (i: number): number => {
@@ -234,7 +238,7 @@ export function mergeTools(
   for (let i = 0; i < parts.length; i++) {
     for (let j = i + 1; j < parts.length; j++) {
       if (find(i) === find(j) || !boxesTouch(boxes[i] as Box, boxes[j] as Box)) continue;
-      if ((heavy[i] as boolean) || (heavy[j] as boolean)) {
+      if (boxOnly || (heavy[i] as boolean) || (heavy[j] as boolean)) {
         group[find(j)] = find(i);
         continue;
       }
@@ -266,6 +270,13 @@ const MAX_PASSES = 8;
  * overlapping holes is two classes. Without interference it is the one compound
  * `mergeTools` makes. With more than `MAX_PASSES` classes (a dense knot of
  * instances) it falls back to fusing.
+ *
+ * A pattern's copies are coloured on their **boxes alone** (P4-12, ADR-0047's
+ * amendment): a box is conservative, so a "meet" may add an edge the exact
+ * distance would not, which can only split a class and never lets two
+ * interfering instances share one — and it saves a `distance` per box pair
+ * (measured: 341 calls of 6-8 ms for a 10x10 grid, where `mergeTools`'
+ * union-find needed about 100).
  */
 export function toolSet(
   ctx: EvalContext,
@@ -279,15 +290,12 @@ export function toolSet(
     return { ...only, passes: [only], interferes: false };
   }
   const boxes = parts.map((p) => kernel.measure(p.shape).bbox);
-  // Who meets whom: boxes that meet, then the exact distance.
+  // Who meets whom: boxes that meet (no exact distance, see above).
   const meets: number[][] = parts.map(() => []);
   let interfering = false;
   for (let i = 0; i < parts.length; i++) {
     for (let j = i + 1; j < parts.length; j++) {
       if (!boxesTouch(boxes[i] as Box, boxes[j] as Box)) continue;
-      if (!bodiesTouch(ctx, (parts[i] as NamedShape).shape, (parts[j] as NamedShape).shape)) {
-        continue;
-      }
       (meets[i] as number[]).push(j);
       (meets[j] as number[]).push(i);
       interfering = true;

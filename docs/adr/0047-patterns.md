@@ -382,3 +382,101 @@ before.
   a count is the thing the handle sits on, and the distance already has an
   arrow. Making the distance change too would mean every instance moving under
   the pointer.
+
+## Amendment (P4-12): a cheaper join of many interfering copies
+
+The backlog item this closes: *"Patterns: colour classes made joins slower than
+fusing the instances (3.9 s against 2.1 s for overlapping bosses); a cheaper
+join of many interfering copies (ADR-0047)."* No facade change; no OCCT build.
+
+### What was measured first
+
+`BENCH=1 pnpm vitest run packages/kernel/src/features/pattern-join-bench.test.ts`
+times four joins (a **features** pattern is a `replayFeatures` join, a
+**bodies** pattern a `patternBodies` join) and, with the `Kernel` methods
+wrapped as `pattern-bench.test.ts` does, where the recompute spent its time. It
+is a whole document recompute with real OCCT in Node, on the Ubuntu machine
+(4 cores), **idle**:
+
+| Case | Before | After |
+|---|---|---|
+| features join, 10 × 10 overlapping bosses (4 mm pitch) | 2510 ms | 1728 ms |
+| features join, 10 × 10 touching bosses (6 mm pitch) | 1528 ms | 883 ms |
+| bodies join, 2 × 20 touching copies (40/30 mm pitch) | 621 ms | 350 ms |
+| features join, circular 36 overlapping cylinder bosses | 994 ms | 839 ms |
+
+Where the time went (the wrapped `Kernel` methods; ms and call counts):
+
+| Case | Before | After |
+|---|---|---|
+| a | `distance` 787 (100), `boolean` 943 (100), `describe` 348 | `boolean` 1018 (100), `describe` 282, `distance` ~0 (2) |
+| b | `distance` 626 (100), `boolean` 457 (100) | `boolean` 458 (100), `distance` 16 (2) |
+| c | `distance` 267 (38), `boolean` 182 (39) | `boolean` 182 (39), `distance` ~0 |
+| d | `boolean` 499 (36), `distance` 141 (44) | `boolean` 454 (36), `distance` 52 (2) |
+
+The `boolean` count is unchanged in every case: the change removes the exact
+`distance` from the interference search, not a boolean.
+
+### The change: a pattern's copies group on their boxes
+
+`mergeTools` put two instances in one group when their boxes met **and** OCCT's
+exact `distance` was at most `TOUCH` (unless either tool was heavy, ADR-0067
+§H2). That distance measured 6-8 ms a call and a 10 × 10 grid paid it about a
+hundred times. A **pattern's** copies (and a mirror's, op `pattern`/`mirror`)
+are now grouped on their boxes alone. A box is conservative, so a pair grouped
+without the distance may only *nearly* touch; fusing two instances that needn't
+have been fused is a valid boolean argument (a fuse of disjoint solids is a
+compound, and the boolean after it takes their union), so the result is the
+same. The exact distance is kept for a feature's **own tool parts** (a thread's
+bands, a hole's holes, an emboss's letters): those are not a field of repeated
+copies, and a near miss matters — two light thread bands' boxes overlap by
+5.16 mm although the bands don't meet, which `thread.test.ts` guards. A heavy
+tool still groups on its boxes, so its minutes-long distance is never asked.
+
+`toolSet` (a pattern of features that **cut**) also colours its graph on boxes
+alone, for the same reason: an over-grouped pair can only split a colour class,
+never let two interfering instances share one, and `toolSet` builds the graph
+with **341** exact distances for a 10 × 10 grid (it has no union-find
+short-circuit) where `mergeTools` needed about a hundred.
+
+### Rejected
+
+- **The certain-overlap test as first written** (`boxesOverlap` at the display
+  deflection, `CERTAIN_OVERLAP = 0.01 mm`, before the exact distance in
+  `mergeTools`/`toolSet`): it removed the distance in cases (a) and (d)
+  (2510 -> 1752 ms and 994 -> 837 ms) but **broke `thread.test.ts`**: two light
+  thread bands' boxes overlap 5.16 mm on every axis although the bands don't
+  meet, so the shortcut skipped a distance the feature's merge must ask
+  ("light tools are compared: expected 0 to be 1"). No overlap magnitude tells
+  the 2 mm-overlapping grid from the 5 mm-overlapping thread bands, so the
+  box-only grouping is confined to pattern copies, not to a feature's own tool
+  parts.
+- **Colour classes for joins** (make `replayFeatures` and `patternBodies` join
+  `toolSet`'s classes instead of fusing the copies, as cuts do): *slower* on
+  every interfering case — 4486 ms (a), 3439 ms (b), 1015 ms (c) against the
+  1728/883/350 the box-only grouping gives, and 668 ms (d). `toolSet` colours
+  the graph with 341 exact distances (no union-find short-circuit),
+  `touchingBodies` then walks the whole compound, and the growing body pays a
+  boolean per class. ADR-0047's original measurement (3.9 s against 2.1 s) is
+  confirmed; the tree fuse stays for joins. The change is therefore in the
+  **graph construction**, not in how the classes are applied.
+- **A balanced tree**: already there — `fuseTree` fuses halves first, so a
+  100-instance group's `n - 1` booleans already form a log-depth tree.
+- **Leaving `simplify` off the intermediate tree fuses** (a scratch measured
+  1745 -> 1478 ms for 100 overlapping boxes): rejected before the real path —
+  the intermediate shapes keep split faces, so the higher fuses process more
+  of them and the result's face names would change.
+
+The remaining cost is the boolean itself: the hundred fuses dominate cases (a)
+and (d). A facade call that takes every argument of a fuse at once
+(`BOPAlgo_Builder`, `SetRunParallel` off in WASM) is the lever for that; it is
+a later facade task, not this one.
+
+### Tests
+
+`pattern-join-bench.test.ts` (BENCH only) is the table above. The pattern
+suite, `combine`, `transform`, `pattern-layout`, `hole`, `thread`, `emboss`
+and `benchmarks` pass with **no golden-table diff**; the fuzzer passes
+(17 passed, 1 skipped), and `fuzz.test.ts`'s "B5 recomputes a pattern of 2 x 20
+instances" is tightened from 15 s to 8 s (measured 1.6 s, was 2.4 s) and now
+also checks the material: the bodies sum to 71235.45 mm³.

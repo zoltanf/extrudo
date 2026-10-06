@@ -549,10 +549,23 @@ describe('what the fuzzer found', () => {
       if (!doc) throw new Error('count2 refused');
       const started = performance.now();
       const result = await recompute(engine, doc);
-      expect(performance.now() - started).toBeLessThan(15_000);
+      const took = performance.now() - started;
+      // A pattern's copies are grouped on their boxes since P4-12 (ADR-0047's
+      // amendment): about 1.6 s here, against 2.4 s with the exact distance on
+      // every meeting pair, so 8 s leaves room for a loaded CI machine.
+      expect(took, 'B5 2 x 20 join').toBeLessThan(8_000);
       expect(result.features[pattern.id]?.status).toBe('warning');
       expect(result.features[pattern.id]?.message).toMatch(/separate bodies/);
       expect(internalErrors(result, doc)).toEqual([]);
+      // The material is unchanged: the tray, the posts joined to it and the
+      // holes cut from it, summed over every body (the copies that stand
+      // outside the tray are bodies of their own).
+      let volume = 0;
+      for (const body of result.bodies) {
+        const shape = engine.latestBody(body.id);
+        if (shape !== undefined) volume += kernel.measure(shape).volume;
+      }
+      expect(volume).toBeCloseTo(71235.45, 1);
     } finally {
       engine.clear();
     }

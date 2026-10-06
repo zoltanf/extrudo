@@ -4,6 +4,15 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 Patterns: a cheaper join of many interfering copies**
+  (ADR-0047's amendment): a pattern's copies (and a mirror's) are grouped by
+  their boxes alone instead of asking OCCT's exact distance (6-8 ms a call,
+  about 100 calls in a 10 × 10 grid), and `toolSet` colours its cut graph the
+  same way; a feature's own tool parts (thread, hole, emboss) keep the exact
+  test. All four measured joins are faster — overlapping 10 × 10 bosses
+  2.5 s → 1.7 s, touching 10 × 10 bosses 1.5 s → 0.9 s, 2 × 20 touching body
+  copies 0.6 s → 0.35 s, 36 overlapping circular bosses 1.0 s → 0.8 s — with
+  the same results and no golden-table change. No facade or schema change.
 - 2026-10-06 · **P4-12 Shell: a thickness per face, and openings next to a
   fillet** (ADR-0046's amendment): up to eight wall sets ("Wall faces" and
   "Wall thickness" in the dialog) give faces their own thickness — a thicker

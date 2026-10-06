@@ -673,11 +673,16 @@ is a list of `Placement`s (`Matrix12`, label, slot; `seriesOf`, `seriesStep`,
 instance's position, so both survive a growing count**. Many instances are
 one boolean: `mergeTools` fuses instances that interfere in trees and passes
 the groups as one compound (OCCT refuses a compound argument whose solids
-interfere); **a pattern of a cut instead colours the interference graph and
-cuts one class at a time** (`toolSet`, `ToolSet` in `features/operation.ts`;
-P3-17; joins still fuse, which measured faster), and **`operate` finds the
-bodies a tool touches solid by solid** (`touchingBodies`: boxes first, then
-the exact distance to the solids whose boxes meet). A path is a polyline (`pathFromRefs`; the sketch output has
+interfere); **a pattern of a cut colours the interference graph and cuts one
+class at a time** (`toolSet`, `ToolSet` in `features/operation.ts`; P3-17),
+and **`operate` finds the bodies a tool touches solid by solid**
+(`touchingBodies`: boxes first, then the exact distance to the solids whose
+boxes meet). **P4-12's amendment made that search cheaper**: a pattern's copies
+(and a mirror's) are grouped on their **boxes alone** (`mergeTools`, no exact
+`distance`; over-grouping only fuses an instance that needn't have been, a
+valid boolean argument) and `toolSet` colours its graph on boxes alone too,
+while a feature's own tool parts (thread, hole, emboss) keep the exact test — a
+10 × 10 join went 2.5 s → 1.7 s. A path is a polyline (`pathFromRefs`; the sketch output has
 `curves`). Mirror's `objects: 'features'` uses the same `replayFeatures`.
 The dialogs have a new field kind `features` (a checkbox list of
 `repeatableFeatures`). No facade change.

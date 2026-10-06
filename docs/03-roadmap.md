@@ -960,9 +960,15 @@ end to end, faster than in Fusion 360.
     recomputes over `HEAP_RECYCLE_BYTES` (1 GiB) with no dialog open, keeping
     the model on screen and noting it in the history. The growth itself is
     still unfixed, as the two ideas above are.
-  - Patterns: colour classes made joins slower than fusing the instances
+  - ~~Patterns: colour classes made joins slower than fusing the instances
     (3.9 s against 2.1 s for overlapping bosses); a cheaper join of many
-    interfering copies (ADR-0047).
+    interfering copies~~ **done 2026-10-06** (ADR-0047's amendment): a pattern's
+    copies (and a mirror's) are grouped on their boxes alone, without OCCT's
+    exact distance, and `toolSet` colours its cut graph the same way. Measured:
+    overlapping 10 × 10 bosses 2.5 s → 1.7 s, touching 10 × 10 bosses
+    1.5 s → 0.9 s, 2 × 20 touching body copies 0.6 s → 0.35 s, 36 circular
+    bosses 1.0 s → 0.8 s; no golden change. Colour classes for joins were
+    measured and rejected (slower).
   - Content policy: `'unsafe-eval'` dropped from `script-src` in
     `apps/web/public/_headers`. **Done 2026-10-04** (ADR-0067 §H1): both WASM
     builds are made with dynamic execution off (`DYNAMIC_EXECUTION: 0`, beside
