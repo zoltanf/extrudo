@@ -151,9 +151,24 @@ describe('model files', () => {
   it('writes STEP through the kernel with the bodies’ names', async () => {
     const { kernel, calls } = fakeKernel(meshes);
     const file = await stepFile(kernel, [bracket], 'Shelf');
-    expect(calls).toEqual([['step', [{ id: bracket.id, name: 'Bracket' }]]]);
+    expect(calls).toEqual([['step', [{ id: bracket.id, name: 'Bracket', color: '#ff7a66' }]]]);
     expect(file.name).toBe('Shelf - Bracket.step');
     expect(await file.blob.text()).toContain("PRODUCT('Bracket')");
+  });
+
+  it('passes each body’s colour to the STEP writer, and none for a body without one (P4-12)', async () => {
+    const { kernel, calls } = fakeKernel(meshes);
+    const red = body('Red', { color: '#c81e28' });
+    await stepFile(kernel, [red, pin], 'Shelf');
+    expect(calls).toEqual([
+      [
+        'step',
+        [
+          { id: red.id, name: 'Red', color: '#c81e28' },
+          { id: pin.id, name: 'Pin' },
+        ],
+      ],
+    ]);
   });
 
   it('names files after the project, and the body when there is one', () => {

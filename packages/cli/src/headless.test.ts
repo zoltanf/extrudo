@@ -10,9 +10,11 @@ import { Design } from '@extrudo/api';
 import {
   type AttachmentId,
   addAttachment,
+  type BodyId,
   evaluateParameters,
   readSketch,
   type SketchData,
+  updateBody,
 } from '@extrudo/core';
 import { checkManifold, read3mf, readStl } from '@extrudo/io';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -344,11 +346,26 @@ describe('fonts and files of a design', () => {
         },
       }),
     );
-    design.import({ file: attachment as AttachmentId });
+    const imported = design.import({ file: attachment as AttachmentId });
+    // A colour the app stored for the base plate (P4-12): it reaches the STEP
+    // file and the 3MF as the app's export writes them.
+    design.state.dispatch(
+      updateBody({
+        id: `${imported.id}:0` as BodyId,
+        changes: { name: 'Base', color: '#c81e28' },
+      }),
+    );
     const job = await openBytes(writeArchive(design.doc, undefined, [], new Map([[hash, step]])));
 
     const result = await job.compute();
     expect(result.errors).toBe(0);
+    const [stepFile] = await job.export({ format: 'step' });
+    const text = new TextDecoder().decode(stepFile?.bytes);
+    expect(text.match(/COLOUR_RGB/g)).toHaveLength(1);
+    expect(text).toContain("PRODUCT('Base'");
+    const [threeMf] = await job.export({ format: '3mf' });
+    const objects = read3mf(threeMf?.bytes as Uint8Array).objects;
+    expect(objects.find((o) => o.name === 'Base')?.color?.toLowerCase()).toMatch(/^#c81e28/);
     // B3's two bodies, as `e2e/import-step.spec.ts` reads them.
     expect(result.bodies.map((b) => size(b))).toEqual([
       [60, 80, 10],

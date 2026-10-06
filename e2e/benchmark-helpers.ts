@@ -126,7 +126,7 @@ export interface Exported {
 }
 
 /** Exports the model from the 3D Print tab as `format` ("3MF" or "STL") with the dialog's defaults. */
-export async function exportModel(page: Page, format: '3MF' | 'STL'): Promise<Exported> {
+export async function exportModel(page: Page, format: '3MF' | 'STL' | 'STEP'): Promise<Exported> {
   await page
     .getByRole('tablist', { name: 'Toolbar tabs' })
     .getByRole('tab', { name: '3D Print' })
@@ -135,10 +135,10 @@ export async function exportModel(page: Page, format: '3MF' | 'STL'): Promise<Ex
   const dialog = exportDialog(page);
   await expect(dialog).toBeVisible();
   await dialog.getByRole('radio', { name: new RegExp(`^${format}`) }).check();
-  // The summary says "watertight" once the bodies are meshed.
+  // The summary says "watertight" once the bodies are meshed (STEP: "exact geometry").
   await expect(dialog.locator('[data-export-summary]')).toHaveAttribute(
     'data-export-summary',
-    /triangles.*watertight/,
+    format === 'STEP' ? /exact geometry/ : /triangles.*watertight/,
     { timeout: 20_000 },
   );
   const [download] = (await Promise.all([

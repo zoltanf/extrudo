@@ -11,6 +11,13 @@
  * turn is `transform` (ADR-0044) for both, and one body per piece is
  * `splitSolids` (ADR-0030) for a solid and `Manifold.decompose()` for a mesh.
  *
+ * **Colours** (P4-12, ADR-0034's amendment): a STEP file that names a colour
+ * is read once more through XDE (the facade's `readStepColors`), and each
+ * body whose solid has a colour of its own, its part's or its assembly
+ * instance's gets it in the feature's `ImportReport`; the app takes it into
+ * the body's appearance once, when it first names the body. A face's colour
+ * is only counted.
+ *
  * **Names:** a STEP file's face `n` (1-based, in the order `TopExp` lists the
  * file's faces before splitting) is `import:<id>:face:<n>`; a mesh body's one
  * face is `mesh:<id>`, numbered `#n` for the bodies after the first, so two
@@ -36,6 +43,7 @@ import {
   type BodyId,
   type IMPORT_UNITS,
   type ImportInputs,
+  type ImportReport,
   importFeature,
   importSettings,
   isMeshMediaType,
@@ -109,9 +117,15 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
   using scope = ctx.kernel.scope();
   const read = scope.track(ctx.kernel.readStep(text));
   // A surface model has solids to count, and we only want to know whether it
-  // has any: the handles go straight back.
+  // has any: the handles go straight back (after saying which faces each
+  // holds, when the file's colours need it).
   const solids = ctx.kernel.solids(read);
-  ctx.kernel.release(...solids);
+  let colors: StepSolidColors | undefined;
+  try {
+    colors = solids.length > 0 ? stepSolidColors(ctx, text, read, solids) : undefined;
+  } finally {
+    ctx.kernel.release(...solids);
+  }
   if (solids.length === 0) {
     throw new KernelError(
       'The STEP file has no solids: Extrudo imports solid bodies, not surfaces.',
@@ -126,7 +140,66 @@ function evaluateImport(ctx: EvalContext<ImportInputs>): FeatureOutput {
   // leak (ADR-0024).
   const names = new Map<BodyId, TopoNames>([[id, importNames(ctx, placed)]]);
   bodies.set(id, scope.keep(placed));
-  return splitSolids(ctx, scope, { bodies, names });
+  const output = splitSolids(ctx, scope, { bodies, names });
+  return colors ? { ...output, report: importReport(ctx, colors, output) } : output;
+}
+
+/** Per solid of the file (in `solids(read)` order) its colour, and which solid owns each face. */
+interface StepSolidColors {
+  solids: (string | undefined)[];
+  coloredFaces: number;
+  /** Face index in the read shape → solid index. */
+  faceSolid: Map<number, number>;
+}
+
+/**
+ * The file's colours (P4-12, ADR-0034's amendment), or `undefined` for a file
+ * with none: only a file that names a colour at all is read a second time
+ * through XDE, so a design without STEP colours computes exactly as before.
+ * The XDE reader lists the solids as `solids(read)` does; if it ever saw a
+ * different number, its colours would land on the wrong bodies, so they are
+ * left out.
+ */
+function stepSolidColors(
+  ctx: EvalContext,
+  text: string,
+  read: ShapeHandle,
+  solids: readonly ShapeHandle[],
+): StepSolidColors | undefined {
+  if (!STEP_COLOR.test(text)) return undefined;
+  const found = ctx.kernel.readStepColors(text);
+  if (found.solids.length !== solids.length) return undefined;
+  if (found.coloredFaces === 0 && found.solids.every((c) => c === undefined)) return undefined;
+  const faceSolid = new Map<number, number>();
+  solids.forEach((solid, i) => {
+    for (const at of ctx.kernel.locate(solid, read, 'face')) faceSolid.set(at, i);
+  });
+  return { solids: found.solids, coloredFaces: found.coloredFaces, faceSolid };
+}
+
+/** The entities a STEP file colours with (AP214/AP242: `COLOUR_RGB`, `DRAUGHTING_PRE_DEFINED_COLOUR`). */
+const STEP_COLOR = /COLOUR_RGB|DRAUGHTING_PRE_DEFINED_COLOUR/i;
+
+/**
+ * Each body's colour: a body's faces are named `import:<feature>:face:<n>`
+ * after the read shape's face `n`, which says which of the file's solids it
+ * came from, whatever order `splitSolids` gave the bodies.
+ */
+function importReport(
+  ctx: EvalContext,
+  colors: StepSolidColors,
+  output: Pick<FeatureOutput, 'bodies' | 'names'>,
+): ImportReport {
+  const prefix = `import:${ctx.feature.id}:face:`;
+  const out: Record<BodyId, string> = {};
+  for (const [body, table] of output.names ?? []) {
+    const first = table.faces.find((name) => name.startsWith(prefix));
+    const n = first === undefined ? Number.NaN : Number.parseInt(first.slice(prefix.length), 10);
+    const solid = colors.faceSolid.get(n - 1);
+    const color = solid === undefined ? undefined : colors.solids[solid];
+    if (color !== undefined) out[body] = color;
+  }
+  return { kind: 'import', colors: out, coloredFaces: colors.coloredFaces };
 }
 
 /**

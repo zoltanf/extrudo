@@ -51,6 +51,7 @@ export {
   FilletError,
   type FilletProblem,
   type HeapUsage,
+  hexToRgb,
   Kernel,
   KernelError,
   type KernelStats,
@@ -62,6 +63,7 @@ export {
   OffsetFaceError,
   type OffsetFaceProblem,
   type OperationResult,
+  rgbToHex,
   type ShapeHandle,
   type ShapeProperties,
   ShapeScope,
@@ -69,6 +71,7 @@ export {
   type ShellProblem,
   type ShellSide,
   type ShellWall,
+  type StepColors,
   type SurfaceGeometry,
   stepString,
   type Vec3,
@@ -99,7 +102,9 @@ export {
   openBodies,
   RESOLUTIONS,
   type Resolution,
+  type StepBody,
   safeFileName,
+  stepBody,
   stlBytes,
 } from './model-export';
 export {

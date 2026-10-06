@@ -1,5 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { exportModel } from './benchmark-helpers';
 import { kernelReady, openProject } from './helpers';
 
 // P4-06, slice 2: a STEP file as solid bodies (ADR-0066 §0, §2). The Insert
@@ -154,6 +155,58 @@ test('the file travels with an exported design', async ({ page }, info) => {
       [60, 31.8, 60],
     ]);
   expect(await page.getByText(/is missing from this design/).count()).toBe(0);
+});
+
+const browserOf = (page: Page) => page.getByRole('complementary', { name: 'Browser' });
+
+/** A body's colour through its Appearance panel's hex field (one undo step). */
+async function colourBody(page: Page, name: string, hex: string) {
+  await browserOf(page).getByRole('button', { name, exact: true }).click({ button: 'right' });
+  await page.getByRole('menuitem', { name: 'Appearance…' }).click();
+  const panel = page.getByRole('dialog', { name: `${name} appearance` });
+  const field = panel.getByRole('textbox', { name: 'Hex colour' });
+  await field.fill(hex);
+  await field.press('Enter');
+  await field.blur();
+  await panel.getByRole('radio', { name: 'Opaque' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+}
+
+test("a STEP file's colours colour the imported bodies once (P4-12)", async ({ page }, info) => {
+  // The Wall bracket coloured through Appearance, exported as STEP: the body's
+  // colour is its solid's styled item (ADR-0034's amendment).
+  const view = await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  await colourBody(page, 'Bracket', '#c81e28');
+  await expect(view).toHaveAttribute('data-body-appearance', 'Bracket:#c81e28:1');
+  const step = await exportModel(page, 'STEP');
+  const text = step.bytes.toString('latin1');
+  expect(text.match(/COLOUR_RGB/g)).toHaveLength(1);
+  expect(text).toContain("PRODUCT('Bracket','Bracket'");
+  const file = info.outputPath('red-bracket.step');
+  await writeFile(file, step.bytes);
+
+  // Imported into a new design, the body comes in red.
+  await openProject(page);
+  await kernelReady(page);
+  const panel = await importFile(page, file);
+  await expect(panel).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await panel.getByRole('button', { name: /^OK/ }).click();
+  await expect.poll(async () => sizes(page), { timeout: 30_000 }).toEqual([[40, 80, 60]]);
+  await expect(viewport(page)).toHaveAttribute('data-body-appearance', 'Body1:#c81e28:1');
+
+  // Recoloured by the user, it stays so when the import changes (Up y): the
+  // document's metadata wins over the file's colour.
+  await colourBody(page, 'Body1', '#22b3c2');
+  await expect(viewport(page)).toHaveAttribute('data-body-appearance', 'Body1:#22b3c2:1');
+  await chip(page, 'Import1').dblclick();
+  const edit = dialog(page, 'Edit Import1 dialog');
+  await edit.getByRole('combobox', { name: 'Up' }).selectOption('y');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await edit.getByRole('button', { name: /^OK/ }).click();
+  await expect.poll(async () => sizes(page), { timeout: 30_000 }).toEqual([[40, 60, 80]]);
+  await expect(viewport(page)).toHaveAttribute('data-body-appearance', 'Body1:#22b3c2:1');
 });
 
 test('a file that is not a STEP file says so and cannot be committed', async ({ page }, info) => {

@@ -6,6 +6,7 @@ import { type Inspection, type InspectTarget, inspectShapes } from './inspect';
 import { type HeapUsage, Kernel, KernelError, type KernelStats, type ShapeHandle } from './kernel';
 import { loadManifold, type ManifoldLoadOptions } from './manifold';
 import type { ExportMesh, MeshOptions } from './mesh';
+import type { StepBody } from './model-export';
 import type { OcctModule } from './occt/types';
 import { type EngineOptions, RecomputeEngine, yieldToEvents } from './recompute/engine';
 import type {
@@ -133,7 +134,7 @@ export interface KernelApi {
     onProgress?: ExportProgress,
   ): Promise<BodyExportMesh[]>;
   /** Bodies of the last finished recompute as one STEP AP242 file, each a named product. */
-  exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string>;
+  exportStep(bodies: readonly StepBody[]): Promise<string>;
   /**
    * Measures bodies, faces, edges and vertices of the last finished
    * recompute (P2-13, ADR-0035): each item's properties, the box around
@@ -387,9 +388,15 @@ export class KernelService implements KernelApi {
     });
   }
 
-  exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string> {
+  exportStep(bodies: readonly StepBody[]): Promise<string> {
     return this.#run((kernel) =>
-      kernel.writeStep(bodies.map(({ id, name }) => ({ shape: this.#bodyShape(id), name }))),
+      kernel.writeStep(
+        bodies.map(({ id, name, color }) => ({
+          shape: this.#bodyShape(id),
+          name,
+          ...(color !== undefined && { color }),
+        })),
+      ),
     );
   }
 

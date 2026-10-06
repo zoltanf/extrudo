@@ -19,6 +19,7 @@ import {
   type ModelFormat,
   meshBytes,
   modelFileName,
+  stepBody,
 } from '@extrudo/kernel';
 import { SLICERS, type SlicerFile, type SlicerId } from '../platform/slicer';
 import { readTopology } from '../selection/items';
@@ -77,13 +78,13 @@ export function meshFile(meshed: MeshedBodies, format: 'stl' | '3mf', project: s
   };
 }
 
-/** A STEP AP242 file of the bodies, each a product with its name. */
+/** A STEP AP242 file of the bodies, each a product with its name and colour (P4-12). */
 export async function stepFile(
   kernel: ModelExporter,
   bodies: readonly ExportBody[],
   project: string,
 ): Promise<ModelFile> {
-  const text = await kernel.exportStep(bodies.map((b) => ({ id: b.id, name: b.meta.name })));
+  const text = await kernel.exportStep(bodies.map(stepBody));
   return {
     blob: new Blob([text], { type: TYPES.step }),
     name: modelFileName(project, bodies, 'step'),

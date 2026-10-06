@@ -18,7 +18,7 @@
  */
 import { type ExprInputMeta, enumInput } from './feature-inputs';
 import type { FeatureDefinition } from './features';
-import type { AttachmentId } from './ids';
+import type { AttachmentId, BodyId } from './ids';
 import { MODEL_MEDIA_TYPES } from './media-types';
 import type {
   EnumInput,
@@ -246,4 +246,24 @@ export function importFileOf(feature: Pick<Feature, 'type' | 'inputs'>): Attachm
   if (feature.type !== IMPORT_TYPE) return undefined;
   const parsed = ImportInputsSchema.safeParse(feature.inputs as FeatureInputs);
   return parsed.success ? parsed.data.file.id : undefined;
+}
+
+/**
+ * What the kernel reports about a STEP import whose file has colours (P4-12,
+ * ADR-0034's amendment): the colour of each body whose solid has one (its
+ * own, its part's or its assembly instance's), and how many faces carry a
+ * colour of their own (never taken as a body's). The app's
+ * `ModelState.imports` holds these; `followBodyNames` gives a body its
+ * colour once, when it first names it, so nothing in the document is written
+ * by the kernel.
+ */
+export interface ImportReport {
+  kind: 'import';
+  colors: Record<BodyId, string>;
+  coloredFaces: number;
+}
+
+/** Whether a kernel report is an import's (P4-12). */
+export function isImportReport(report: unknown): report is ImportReport {
+  return (report as { kind?: unknown } | null | undefined)?.kind === 'import';
 }

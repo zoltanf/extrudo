@@ -259,6 +259,19 @@ describe('KernelService export (the primitives of P2-10)', () => {
       ids.map((id, i) => ({ id, name: ['Block', 'Ball', 'Ring'][i] as string })),
     );
     for (const name of ['Ball', 'Ring', 'Block']) expect(text).toContain(`PRODUCT('${name}'`);
+    expect(text).not.toContain('COLOUR_RGB');
+
+    // A body's colour becomes its solid's styled item (P4-12, ADR-0034's
+    // amendment), and reads back as the same `#rrggbb`.
+    const coloured = await service.exportStep(
+      ids.map((id, i) => ({
+        id,
+        name: ['Block', 'Ball', 'Ring'][i] as string,
+        ...(i === 1 && { color: '#2fbf8f' }),
+      })),
+    );
+    expect(coloured.match(/COLOUR_RGB/g)).toHaveLength(1);
+    for (const name of ['Ball', 'Ring', 'Block']) expect(coloured).toContain(`PRODUCT('${name}'`);
 
     await expect(service.exportMeshes(['gone' as BodyId], MEDIUM)).rejects.toThrow(
       /no longer in the model/,

@@ -413,11 +413,15 @@ export class DesignJob {
   async export(options: ExportOptions): Promise<ExportedFile[]> {
     const service = await this.#kernel();
     const { result, names } = await this.#recompute();
-    const bodies: ExportBodyChoice[] = result.bodies.map(({ id, mesh }) => ({
-      id,
-      name: names[id] as string,
-      mesh: mesh?.mesh === true,
-    }));
+    const bodies: ExportBodyChoice[] = result.bodies.map(({ id, mesh }) => {
+      const color = this.doc.bodies[id]?.color;
+      return {
+        id,
+        name: names[id] as string,
+        mesh: mesh?.mesh === true,
+        ...(color !== undefined && { color }),
+      };
+    });
     const chosen = pickBodies(bodies, options.bodies);
     if (chosen.length === 0) {
       throw new HeadlessError('This design has no bodies to export.');
@@ -429,7 +433,13 @@ export class DesignJob {
           'A STEP file holds exact solid geometry: every body of this design is a mesh (imported, or combined with a mesh).',
         );
       }
-      const text = await service.exportStep(solids.map((b) => ({ id: b.id, name: b.name })));
+      const text = await service.exportStep(
+        solids.map((b) => ({
+          id: b.id,
+          name: b.name,
+          ...(b.color !== undefined && { color: b.color }),
+        })),
+      );
       return [
         {
           name: modelFileName(this.doc.name, solids.map(exportBody), 'step'),
@@ -856,6 +866,8 @@ export interface ExportBodyChoice {
   name: string;
   /** An imported mesh, which a STEP file leaves out (ADR-0066 §3). */
   mesh: boolean;
+  /** The body's colour (`#rrggbb`), written to a 3MF and a STEP file as the app writes it. */
+  color?: string;
 }
 
 /** The bodies an export takes, by name or ID, in the order asked or the model's. */
@@ -878,7 +890,11 @@ function pickBodies(
 }
 
 function exportBody(body: ExportBodyChoice): ExportBody {
-  const meta: BodyMeta = { name: body.name, visible: true };
+  const meta: BodyMeta = {
+    name: body.name,
+    visible: true,
+    ...(body.color !== undefined && { color: body.color }),
+  };
   return { id: body.id, meta, ...(body.mesh && { mesh: true }) };
 }
 

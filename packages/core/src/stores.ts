@@ -17,6 +17,7 @@ import { applyCommand, type Command } from './commands';
 import type { ConstructionReport } from './construction';
 import { type HistoryOptions, UndoHistory } from './history';
 import type { BodyId, FeatureId } from './ids';
+import type { ImportReport } from './import';
 import type { ExtrudoDocument, GeomRef, GeomRefKind } from './schema';
 import type { SketchReport } from './sketch/projection';
 
@@ -273,6 +274,12 @@ export interface ModelState<TBody> {
    * frame of the plane its image lies on, which is all the geometry it has.
    */
   canvases: Record<FeatureId, CanvasReport>;
+  /**
+   * What the kernel reports about each STEP import whose file has colours
+   * (P4-12, ADR-0034's amendment): the bodies' colours, which the app takes
+   * into `doc.bodies` once, when it first names a body.
+   */
+  imports: Record<FeatureId, ImportReport>;
   stats: ModelStats | undefined;
   /**
    * The document `features` and `bodies` were computed from, when the
@@ -287,6 +294,7 @@ export interface ModelState<TBody> {
     sketches?: Record<FeatureId, SketchReport>;
     construction?: Record<FeatureId, ConstructionReport>;
     canvases?: Record<FeatureId, CanvasReport>;
+    imports?: Record<FeatureId, ImportReport>;
     stats?: ModelStats;
     doc?: ExtrudoDocument;
   }): void;
@@ -305,6 +313,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     sketches: {} as Record<FeatureId, SketchReport>,
     construction: {} as Record<FeatureId, ConstructionReport>,
     canvases: {} as Record<FeatureId, CanvasReport>,
+    imports: {} as Record<FeatureId, ImportReport>,
     stats: undefined,
     doc: undefined,
   });
@@ -313,7 +322,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     computing() {
       set({ status: 'computing', error: undefined });
     },
-    computed({ features, bodies, sketches, construction, canvases, stats, doc }) {
+    computed({ features, bodies, sketches, construction, canvases, imports, stats, doc }) {
       set((s) => ({
         status: 'ready',
         error: undefined,
@@ -322,6 +331,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
         sketches: sketches ?? s.sketches,
         construction: construction ?? s.construction,
         canvases: canvases ?? s.canvases,
+        imports: imports ?? s.imports,
         stats,
         doc,
       }));

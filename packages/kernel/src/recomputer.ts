@@ -20,9 +20,11 @@ import {
   type FeatureStatus,
   type GeomRef,
   IMPORT_TYPE,
+  type ImportReport,
   importFileOf,
   isCanvasReport,
   isConstructionReport,
+  isImportReport,
   isMeshMediaType,
   isPatternReport,
   isScadMediaType,
@@ -42,6 +44,7 @@ import {
 import type { SmoothKind, SubShapeKind } from './history';
 import type { Inspection, InspectTarget } from './inspect';
 import type { BodyMesh, MeshOptions } from './mesh';
+import type { StepBody } from './model-export';
 import type { BodyResult, PreviewToolMesh, RecomputeResult } from './recompute/types';
 import { type BodyExportMesh, type ExportProgress, isKernelCrash } from './service';
 
@@ -349,7 +352,7 @@ export class Recomputer {
   }
 
   /** Bodies the model store shows as one STEP AP242 file, each a product with its name. */
-  exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string> {
+  exportStep(bodies: readonly StepBody[]): Promise<string> {
     return this.client.call((api) => api.exportStep(bodies));
   }
 
@@ -537,13 +540,16 @@ export class Recomputer {
     // Unchanged records keep their identity, so views that read them don't redraw.
     const previous = this.#model.getState();
     // Construction features report their plane, axis or point; canvases their
-    // frame; sketches theirs (P3-05, P4-06).
+    // frame; STEP imports their bodies' colours; sketches theirs (P3-05,
+    // P4-06, P4-12).
     const sketches: Record<string, unknown> = {};
     const construction: Record<string, unknown> = {};
     const canvases: Record<string, unknown> = {};
+    const imports: Record<string, unknown> = {};
     for (const [id, report] of Object.entries(result.reports)) {
       if (isConstructionReport(report)) construction[id] = report;
       else if (isCanvasReport(report)) canvases[id] = report;
+      else if (isImportReport(report)) imports[id] = report;
       else sketches[id] = report;
     }
     const bodies = Object.fromEntries([...meshes].map(([id, { mesh }]) => [id, mesh]));
@@ -561,6 +567,9 @@ export class Recomputer {
       canvases: sameReports(previous.canvases, canvases)
         ? previous.canvases
         : (canvases as Record<FeatureId, CanvasReport>),
+      imports: sameReports(previous.imports, imports)
+        ? previous.imports
+        : (imports as Record<FeatureId, ImportReport>),
       stats: {
         ms: result.stats.ms,
         evaluated: result.stats.evaluated.length,

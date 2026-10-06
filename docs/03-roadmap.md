@@ -891,7 +891,10 @@ end to end, faster than in Fusion 360.
   - ~~Silhouettes of spheres, tori and free-form faces (HLR); projecting
     vertices and bodies, an "include" mode; Intersect~~ **done (P4-12,
     2026-10-06, ADR-0031's amendment)**; Slice stays open (ADR-0031).
-  - STEP colours (XDE) (ADR-0034; the readers are P4-06).
+  - ~~STEP colours (XDE) (ADR-0034; the readers are P4-06)~~ **done (P4-12,
+    2026-10-06, ADR-0034's amendment)**: a file's solid and assembly-instance
+    colours become the imported bodies' appearance once, and coloured bodies
+    export their colours; face colours are counted, not applied.
   - ~~Section analysis on several planes, a section box~~ **done
     (P4-12, 2026-10-06, ADR-0045's amendment: up to three planes, a box of
     six)**; sections saved with named views, a hatch per material (ADR-0045).

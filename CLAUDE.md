@@ -332,7 +332,14 @@ mm, `DESTEP_Parameters` per transfer, products renamed to body names,
 `WriteStream`, OCCT printers removed) and `readStep`; `Kernel.exportMesh`
 / `writeStep` / `readStep`, `stepString` (non-ASCII as `\X2\`);
 `KernelApi.exportMeshes`/`exportStep` export the engine's
-`latestBody` shapes (last finished recompute). `@extrudo/io` has
+`latestBody` shapes (last finished recompute). **P4-12 (ADR-0034's
+amendment) added colours**: `stageStepColor(r, g, b)` per part (−1 none) makes
+`writeStep` go through XDE (`STEPCAFControl_Writer`, an XCAF document per call,
+one label transferred at a time so products are renamed as before) only when a
+part has a colour — uncoloured exports are byte-identical — and
+`readStepColors(text)` gives per solid (in `readStep`'s solid order) its own,
+part's or assembly instance's colour, face colours only counted; `exportStep`
+takes `{ id, name, color? }` (`StepBody`). `@extrudo/io` has
 `TriangleMesh`, `checkManifold`, `writeStl`/`readStl` (binary) and
 `write3mf`/`read3mf` (fflate; colours as `m:colorgroup` with object
 `pid`/`pindex` and per-triangle `pid`/`p1`). The app's
@@ -378,16 +385,18 @@ files into `dist/sw.js` and versions it; registration in
 manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
 also found that the kernel uses no raw OCCT bindings, so the build's
-binding list is now just `ExtrudoFacade` (built by CI: WASM 19.19 MB raw,
-6.25 MB gzip, 4.34 MB brotli (Node's zlib at its best settings), after
+binding list is now just `ExtrudoFacade` (built by CI: WASM 20.01 MB raw,
+6.48 MB gzip, 4.50 MB brotli (Node's zlib at its best settings), after
 P4-04/P4-05/P4-10's facade methods, P4-12's `DYNAMIC_EXECUTION: 0`, P4-12
 §H3's `integrateVolume`, P4-12's split boolean and `extendFace` (about 10 kB)
 and P4-12's `shellFaces`, `pushWall`/`clearWalls` and the shell's plugs (about
 30 kB) and P4-12 Project's `sectionWithPlane`/`edgeVisibility` and the contour
 finder in `faceSilhouettes` (TKHLR's `Contap_Contour` and `HLRBRep_Algo`: 388 kB
-raw, 0.08 MB brotli; 18.80 / 6.13 / 4.26 MB before); the 15.76 MB / 3.69 MB brotli
+raw, 0.08 MB brotli; 18.80 / 6.13 / 4.26 MB before) and P4-12's STEP colours
+(XDE's reader, writer and XCAF document: +0.83 MB raw, +0.16 MB brotli; 19.19 /
+6.25 / 4.34 MB before); the 15.76 MB / 3.69 MB brotli
 of ADR-0037 was P2-15's; OCCT input hash
-`f25e8583481f` (release `occt-f25e8583481f`); **don't
+`3e0fd2a88782` (release `occt-3e0fd2a88782`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
@@ -1254,7 +1263,11 @@ kernel (`FileSource.bytes`; the app side is `attachmentBytes` from
 `import` feature (core `import.ts`, kernel `features/import.ts`, STEP branch
 only) is `readStep` → the `up` turn (`transform`) → `splitSolids`, faces
 `import:<id>:face:<n>` from the file's face order, mesh media types refused
-with "Mesh import comes in a later version."; **no facade change**. The UI is
+with "Mesh import comes in a later version."; **no facade change**. **P4-12**:
+a file that names a colour reports an `ImportReport` (`colors` per body ID,
+found through each body's first face name; `ModelState.imports`), and
+`followBodyNames` takes it into `BodyMeta.color` **only when it first names the
+body**, so the user's colour and a later Up change are never repainted. The UI is
 the **Insert tab** (it replaces the `insertSvg` placeholder; `importDrawing`
 joins it and is unavailable outside a sketch): `importBody` / File menu "Import
 STEP or mesh…" writes the bytes **before** the dialog opens, so the preview
@@ -2270,7 +2283,10 @@ them. Notes further down that name a machine apply to that machine only.
   `data-export-summary` reads "1 body, 620 triangles, watertight" once
   meshed (poll it before Export). e2e imports `../packages/io/src/index`
   to read and check downloads. The format and resolution are remembered
-  in the `export.model` preference (per browser context).
+  in the `export.model` preference (per browser context). `exportModel(page,
+  'STEP')` (`e2e/benchmark-helpers.ts`) waits for "exact geometry" instead
+  of "watertight"; a coloured body's STEP has one `COLOUR_RGB` per colour
+  (P4-12), an uncoloured one none.
 - **Slicers on the Arch workstation** (2026-09-28; none on the Ubuntu
   machine): `prusa-slicer --info
   f.3mf|f.stl` prints `manifold = yes`, facets, volume per object;
@@ -3331,7 +3347,13 @@ them. Notes further down that name a machine apply to that machine only.
   and the sizes' y and z swap: "60,60,31.8" and "60,10,80". A file that isn't
   a STEP file says so in the dialog's "Feature status" with `data-dialog-valid`
   absent. Exporting the design and importing it as a new one brings the bodies
-  back (the attachment travels), as in the user-fonts spec.
+  back (the attachment travels), as in the user-fonts spec. **P4-12's colour
+  test**: the Wall bracket recoloured through its Appearance panel's "Hex
+  colour" (`#c81e28`; Esc closes the panel with focus on the "Opaque" radio),
+  exported with `exportModel(page, 'STEP')`, written to `info.outputPath` and
+  imported into a new design reads `data-body-appearance`
+  `Body1:#c81e28:1` (`Body1:<n>:40,80,60`); recoloured `#22b3c2` and its chip's
+  Up set to `y` (`40,60,80`), it stays `#22b3c2`.
   Slice 5 added the **canvas** (`features/canvas.tsx`, `viewport/Canvas.tsx`,
   `viewport/canvasGeometry.ts`, `viewport/canvasImages.ts`): a canvas is **view
   geometry from a report, never picked** — the kernel evaluator reads the plane

@@ -21,6 +21,7 @@ import {
   type ExtrudoDocument,
   type FeatureId,
   insertFeature,
+  type ModelState,
   type ModelStore,
   nameBodies,
   newBodyNames,
@@ -101,17 +102,45 @@ export function bodyMetaOf(entries: readonly BodyEntry[]): Record<BodyId, BodyMe
  */
 export function followBodyNames(store: DocumentStore, model: ModelStore<unknown>): () => void {
   const check = () => {
-    const { doc: source, bodies, status } = model.getState();
+    const { doc: source, bodies, status, imports } = model.getState();
     const { doc } = store.getState();
     if (status !== 'ready' || source !== doc) return;
     const missing = bodyEntries(doc, bodies).filter((e) => !e.stored);
     if (missing.length === 0) return;
-    store
-      .getState()
-      .amend(nameBodies({ bodies: Object.fromEntries(missing.map((e) => [e.id, e.meta])) }));
+    const colors = importedColors(imports);
+    store.getState().amend(
+      nameBodies({
+        bodies: Object.fromEntries(
+          missing.map((e) => {
+            const color = colors.get(e.id);
+            return [e.id, color === undefined ? e.meta : { ...e.meta, color }];
+          }),
+        ),
+      }),
+    );
   };
   check();
   return model.subscribe(check);
+}
+
+/**
+ * The colours STEP imports report for their bodies (P4-12, ADR-0034's
+ * amendment). `followBodyNames` gives a body its file's colour only when it
+ * first names it: a body with stored metadata (named, recoloured, or simply
+ * shown before) keeps what the document says, so a recompute, a re-import
+ * or a change of Up never repaints it.
+ */
+export function importedColors(
+  imports: ModelState<unknown>['imports'] | undefined,
+): Map<BodyId, string> {
+  const out = new Map<BodyId, string>();
+  for (const report of Object.values(imports ?? {})) {
+    for (const [id, color] of Object.entries(report.colors) as [BodyId, string][]) {
+      const parsed = parseBodyColor(color);
+      if (parsed) out.set(id, parsed);
+    }
+  }
+  return out;
 }
 
 /** Colour swatches for bodies (ADR-0030); `undefined` is the theme's `body-default`. */

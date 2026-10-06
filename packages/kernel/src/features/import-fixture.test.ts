@@ -11,6 +11,7 @@ import { type ExtrudoDocument, loadDocument } from '@extrudo/core';
 import { strFromU8, unzipSync } from 'fflate';
 import { expect, it } from 'vitest';
 import b3 from '../../../../fixtures/benchmarks/b3-phone-stand.extrudo?url&inline';
+import b3Step from '../../../../fixtures/imports/b3.step?url&inline';
 import { Kernel } from '../kernel';
 import { loadOcct } from '../occt/load';
 import { RecomputeEngine } from '../recompute/engine';
@@ -23,6 +24,11 @@ const env =
 function bytesOf(dataUrl: string): Uint8Array {
   const binary = atob(dataUrl.slice(dataUrl.indexOf(',') + 1));
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
+}
+
+/** A STEP file's DATA section: everything but the header's time stamp. */
+function dataSection(text: string): string {
+  return text.slice(text.indexOf('DATA;'));
 }
 
 /** The document inside an `.extrudo` fixture, loaded through core's migrations. */
@@ -62,6 +68,11 @@ it("writes the P4-06 STEP fixture from B3's two bodies", { timeout: 120_000 }, a
     shapes.map((shape, i) => ({ shape, name: i === 0 ? 'Stand base' : 'Stand rest' })),
   );
   expect(text).toContain('ISO-10303-21');
+  // Uncoloured bodies take the plain writer, byte for byte what it wrote
+  // before STEP colours (P4-12): the fixture's data section is the old
+  // writer's (the header carries the time it was written).
+  expect(text).not.toContain('COLOUR_RGB');
+  expect(dataSection(text)).toBe(dataSection(new TextDecoder('latin1').decode(bytesOf(b3Step))));
   if (env.WRITE_FIXTURES === '1') {
     // The kernel's tsconfig has no Node types: a module name in a variable
     // keeps tsc out of it.

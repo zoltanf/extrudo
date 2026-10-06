@@ -194,8 +194,11 @@ export interface FacadeBinding {
   exportMesh(shape: number, linearDeflection: number, angularDeflection: number): number;
   clearStepNames(): void;
   pushStepName(name: string): void;
+  clearStepColors(): void;
+  stageStepColor(r: number, g: number, b: number): void;
   writeStep(): number;
   readStep(text: string): number;
+  readStepColors(text: string): number;
   clearExport(): void;
   exportPositionsPtr(): number;
   exportPositionsSize(): number;

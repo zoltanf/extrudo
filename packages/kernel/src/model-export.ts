@@ -42,7 +42,23 @@ export interface ModelExporter {
     tessellation: MeshOptions,
     onProgress?: ExportProgress,
   ): Promise<BodyExportMesh[]>;
-  exportStep(bodies: readonly { id: BodyId; name: string }[]): Promise<string>;
+  exportStep(bodies: readonly StepBody[]): Promise<string>;
+}
+
+/**
+ * A body as a STEP export takes it: its name (the product's) and its colour
+ * (`#rrggbb`, the solid's styled item; P4-12, ADR-0034's amendment).
+ */
+export interface StepBody {
+  id: BodyId;
+  name: string;
+  color?: string;
+}
+
+/** A body's STEP part: the name, and the colour when it has one. */
+export function stepBody(body: ExportBody): StepBody {
+  const { color } = body.meta;
+  return { id: body.id, name: body.meta.name, ...(color !== undefined && { color }) };
 }
 
 export interface ExportBody {

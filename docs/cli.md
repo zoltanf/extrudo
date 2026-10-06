@@ -78,7 +78,8 @@ extrudo export box.extrudo --format step --resolution fine --out box.step
 ```
 
 - A 3MF keeps each body's name and colour, and a STEP file makes each body a
-  named product — both exactly as the app's Export dialog writes them.
+  named product with its colour (a body without one has none) — both exactly as
+  the app's Export dialog writes them.
 - An STL holds one solid, so without `--out` it writes **one file per body**,
   next to the design (`Box - Lid.stl` and so on). With `--out` the bodies you
   chose go into that one file.

@@ -1551,19 +1551,26 @@ export class Kernel {
   /**
    * A STEP AP242 file (mm) of the shapes, each a product with its name
    * (P2-12). The text is ASCII. A mesh body is refused: STEP holds exact
-   * B-rep geometry (ADR-0066 §3).
+   * B-rep geometry (ADR-0066 §3). A part's `color` (`#rrggbb`) is written as
+   * its solid's colour (P4-12, ADR-0034's amendment); with no colour at all
+   * the file is exactly what it was before colours.
    */
-  writeStep(parts: readonly { shape: ShapeHandle; name: string }[]): string {
+  writeStep(parts: readonly { shape: ShapeHandle; name: string; color?: string }[]): string {
     for (const { shape } of parts) this.#solid(shape, 'A STEP file');
     const f = this.#facade;
     f.clearArgs();
     f.clearStepNames();
-    for (const { shape, name } of parts) {
+    f.clearStepColors();
+    for (const { shape, name, color } of parts) {
       f.pushArg(shape);
       f.pushStepName(stepString(name));
+      const rgb = color === undefined ? undefined : hexToRgb(color);
+      if (rgb) f.stageStepColor(rgb[0], rgb[1], rgb[2]);
+      else f.stageStepColor(-1, -1, -1);
     }
     const size = f.writeStep();
     f.clearStepNames();
+    f.clearStepColors();
     if (size < 0) throw new KernelError(f.lastError() || "Couldn't write the STEP file.");
     try {
       return new TextDecoder('latin1').decode(this.#copy(Uint8Array, f.exportTextPtr(), size));
@@ -1575,6 +1582,28 @@ export class Kernel {
   /** Reads STEP text into one shape (a compound of its roots). Release it when done. */
   readStep(text: string): ShapeHandle {
     return this.#check(this.#facade.readStep(text));
+  }
+
+  /**
+   * The colours of a STEP file's solids (P4-12, ADR-0034's amendment), read
+   * through XDE: per solid in the order `solids(readStep(text))` lists them,
+   * its colour as `#rrggbb` or `undefined` (the solid's own, else its part's,
+   * else its assembly instance's). A face's colour never becomes a solid's:
+   * `coloredFaces` counts the faces that have one.
+   */
+  readStepColors(text: string): StepColors {
+    const f = this.#facade;
+    const n = f.readStepColors(text);
+    if (n < 0) throw new KernelError(f.lastError() || "Couldn't read the STEP file's colours.");
+    const values = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
+    const solids: (string | undefined)[] = [];
+    for (let i = 0; i < n; i++) {
+      const r = values[1 + 3 * i] as number;
+      const g = values[2 + 3 * i] as number;
+      const b = values[3 + 3 * i] as number;
+      solids.push(r < 0 ? undefined : rgbToHex(r, g, b));
+    }
+    return { solids, coloredFaces: values[0] ?? 0 };
   }
 
   release(...shapes: ShapeHandle[]): void {
@@ -1843,6 +1872,34 @@ function mat4Of(matrix: readonly number[]): Mat4 {
     at(2, 3),
     1,
   ] as unknown as Mat4;
+}
+
+/** What `Kernel.readStepColors` finds in a STEP file (P4-12, ADR-0034's amendment). */
+export interface StepColors {
+  /** Per solid, in `solids(readStep(text))` order: `#rrggbb`, or `undefined` for none. */
+  solids: (string | undefined)[];
+  /** Faces with a colour of their own (never taken as a body's colour). */
+  coloredFaces: number;
+}
+
+/** `#rrggbb` as r, g, b in 0..1, or `undefined` when it isn't one. */
+export function hexToRgb(color: string): [number, number, number] | undefined {
+  const match = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color);
+  if (!match) return undefined;
+  return [1, 2, 3].map((i) => Number.parseInt(match[i] as string, 16) / 255) as [
+    number,
+    number,
+    number,
+  ];
+}
+
+/** r, g, b in 0..1 as `#rrggbb` (rounded to the nearest of 255 steps, clamped). */
+export function rgbToHex(r: number, g: number, b: number): string {
+  const byte = (v: number) =>
+    Math.round(Math.min(1, Math.max(0, v)) * 255)
+      .toString(16)
+      .padStart(2, '0');
+  return `#${byte(r)}${byte(g)}${byte(b)}`;
 }
 
 /**

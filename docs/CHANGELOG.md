@@ -4,6 +4,16 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 STEP colours (XDE)** (ADR-0034's amendment): a STEP
+  file's solid colours (their own, their part's or their assembly instance's)
+  colour the imported bodies when they are first named, and never again, so a
+  colour the user picks stays; a body's colour is written to its STEP export as
+  the solid's styled item (`COLOUR_RGB`), and uncoloured exports are byte for
+  byte what they were. The facade's new `readStepColors` and the coloured
+  `writeStep` path go through OCCT's XDE with a document per call (no heap
+  growth over 2,520 rounds); the WASM grew 0.83 MB raw, 0.16 MB brotli. The
+  headless CLI's exports carry body colours too (STEP and 3MF).
+
 - 2026-10-06 · **P4-12 thread profiles** (ADR-0056's amendment): a thread's
   tooth is no longer only ISO 60°. A `profile` input picks `iso` (the default,
   bit-for-bit what it was), `trapezoidal` (ISO 2901 / DIN 103 Tr: 30°, 0.5 P

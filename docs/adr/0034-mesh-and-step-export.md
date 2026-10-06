@@ -204,7 +204,8 @@ thread never calls OCCT; shapes live in the worker's cache.
 ## Consequences and open items
 
 - The manual slicer check above (Bambu Studio; colours in the GUIs).
-- STEP carries names but no colours (XDE later, see Rejected).
+- ~~STEP carries names but no colours (XDE later, see Rejected).~~ Colours
+  both ways since P4-12 (the amendment below).
 - Meshing runs on the worker thread in one call; a very fine export of a
   big model blocks recomputes until it is done (no progress or cancel
   yet).
@@ -214,3 +215,111 @@ thread never calls OCCT; shapes live in the worker's cache.
 - `readStl`, `read3mf` and `readStep` are test-grade readers: no ASCII
   STL, no 3MF components, transforms or per-triangle properties, STEP
   text only. FR-IO-05/06 extend them.
+
+## Amendment (2026-10-06, P4-12): STEP colours through XDE
+
+The P4-12 backlog's "STEP colours (XDE)": a STEP file's colours become the
+imported bodies' appearance, and a body's colour is written to the STEP file it
+exports to. The Rejected item above ("XDE … revisit with STEP import") is
+revisited here; STEP import itself is ADR-0066 §2.
+
+### Decisions
+
+1. **Reading.** `readStep` is unchanged (the shape). The facade's new
+   `readStepColors(text)` reads the same text through XDE:
+   `STEPCAFControl_Reader` (colour mode only: names, layers, properties,
+   metadata, SHUOs, GD&T, materials and views off) into a **fresh
+   `TDocStd_Document` per call** (format `BinXCAF`, `XCAFDoc_DocumentTool::Set`
+   on its main label, never registered with an application), whose attributes
+   are forgotten (`Root().ForgetAllAttributes(true)`) before the handle goes —
+   an XCAF document is OCCT memory the facade owns (ADR-0001) and outlives no
+   call. It returns, **per solid in the order `readStep`'s shape lists them**,
+   `[r, g, b]` in 0..1 (sRGB, as STEP's `COLOUR_RGB` holds them) or
+   `[-1, -1, -1]`: the solid's own sub-shape colour, else its part's
+   (`XCAFDoc_ColorSurf`, then `XCAFDoc_ColorGen`), else the nearest assembly
+   instance's, else none; and the number of **faces with a colour of their
+   own**, which never becomes a body's colour. Read through `geometryPtr/Size`
+   as `[faces, r, g, b, …]`; `Kernel.readStepColors` gives `{ solids:
+   ('#rrggbb' | undefined)[], coloredFaces }`.
+2. **The order.** `count`/`subShape` (and so `Kernel.solids`) list a shape's
+   solids by `TopExp::MapShapes`. `readStepColors` walks the XCAF document's
+   free shapes in order; an assembly's components in label order (the order
+   `AddShape` made them from the compound's `TopoDS_Iterator`, which is the
+   order the plain reader's compound holds them in); a part's solids by
+   `TopExp::MapShapes` of its own shape. The two readers transfer the same
+   roots in the same order, so the lists agree. **How that was made sure**:
+   the native harness reads a file of two parts and a file with an assembly
+   (one part placed twice, the second instance coloured, plus a loose solid
+   with a generic colour) through both readers and matches every solid by its
+   position; the kernel test reads three boxes of different volumes. The
+   import feature also **drops the colours if the counts ever differ**, rather
+   than put a colour on the wrong body.
+3. **The import feature** calls `readStepColors` only when the text names a
+   colour at all (`COLOUR_RGB` or `DRAUGHTING_PRE_DEFINED_COLOUR`), so a file
+   without colours is read once, as before, and computes exactly as before. A
+   body's colour follows **its solid, not its position**: `splitSolids` orders
+   bodies by size, so each body's first face name (`import:<id>:face:<n>`)
+   says which solid of the read shape it came from (`Kernel.locate` per solid).
+   The output's `report` is an **`ImportReport`** (`kind: 'import'`,
+   `colors: Record<BodyId, '#rrggbb'>`, `coloredFaces`), which the
+   `Recomputer` puts in **`ModelState.imports`**; a file with colours but none
+   on any solid or face has no report. The kernel stores nothing.
+4. **The app applies them once**: `followBodyNames`, when it first names a body
+   (the same amend into the latest undo step as the name, ADR-0030), takes the
+   report's colour as the body's `color` and leaves `opacity`. A body with
+   stored metadata — named, recoloured, or simply shown before — keeps what the
+   document says (`nameBodies` never overwrites), so a recompute, a re-import or
+   an Up change never repaints. No schema or file-format change: the colour
+   lands in `BodyMeta.color` as Appearance's does. Mesh and `.scad` imports are
+   untouched.
+5. **Writing.** `writeStep` gets a colour per staged part (`clearStepColors()`,
+   `stageStepColor(r, g, b)`, -1 for none, beside `pushStepName`). **Only when
+   some part has a colour** it writes through `STEPCAFControl_Writer`: each
+   part is a free shape of a per-call XCAF document (length unit mm), its
+   colour `XCAFDoc_ColorSurf` on its label, and it is transferred **one label
+   at a time** with the same `DESTEP_Parameters` (AP242, mm), so the same scan
+   renames the transfer's first product to the body's name as on the plain
+   path; XDE's name mode is off, so ADR-0034's `\X2\` encoding of non-ASCII
+   names is unchanged. With no colour, `STEPControl_Writer` writes exactly what
+   it wrote before (the B3 fixture's data section is compared byte for byte in
+   `import-fixture.test.ts`; `WRITE_FIXTURES=1` changed only the header's time
+   stamp, so `fixtures/imports/b3.step` was **not** rewritten).
+   `KernelApi.exportStep` takes `{ id, name, color? }` (`StepBody`,
+   `stepBody(ExportBody)`); the app's `stepFile` and the headless CLI pass
+   `meta.color`. The CLI's bodies now carry the document's colour into its 3MF
+   export too, which it didn't before (`exportBody` gave only the name).
+
+### Results
+
+- **Native harness** (`spikes/p4-12-step-colours/`, `run.sh`): an XDE file
+  with one solid red and two faces of another blue reads `red, none` with 2
+  coloured faces; the assembly file reads `none` for the first placement,
+  green for the second and yellow (a generic colour) for the loose solid, each
+  matched to `readStep`'s solid at the same place; our coloured export of
+  three boxes (one uncoloured, one named `G\X2\00E4\X0\mma`) keeps every
+  product name and mm and reads back within 1/255; a plain export is the same
+  bytes before and after a coloured one; text that isn't STEP gives no solids.
+  **Heap** (`run.sh leaks 500`: every round writes a coloured file and reads
+  the colours of two files): top 8,912,896 bytes after 520 rounds and after
+  2,520, **no growth**. Without `ForgetAllAttributes` it was flat too; it stays
+  as cheap insurance.
+- **WASM** (`occt-3e0fd2a88782`; XDE's libraries were already in the image
+  and the toolchain links every one, so `libcascade.config.ts` didn't change):
+  19.19 → **20.01 MB** raw (+0.83 MB), 6.25 → **6.48 MB** gzip, 4.34 →
+  **4.50 MB** brotli (quality 11, Node's zlib), all of it the XCAF reader,
+  writer and document code the facade now reaches.
+- A coloured file is read twice (the shape, then the colours); a file without
+  colours once.
+
+### Rejected
+
+- **One reader for shape and colours** (the XDE document's shape as the body):
+  it would change `readStep`, which names every face by the plain reader's
+  order (ADR-0066 §2), and keep an XCAF document alive with the shape.
+- **Matching colours to bodies by geometry** (centres or volumes): the face
+  names already say which solid a body came from, exactly.
+- **A face's colour as the body's** (a majority, say): a body has one colour in
+  Extrudo, and a part painted on one face is not a red part; the count is
+  reported instead.
+- **Repainting on every recompute** from the report: it would undo the user's
+  own colour after any change to the import.

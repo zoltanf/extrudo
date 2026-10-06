@@ -584,6 +584,12 @@ describe('memory', () => {
         const back = kernel.readStep(kernel.writeStep([{ shape: body.shape, name: `Body${i}` }]));
         kernel.release(back);
       }
+      if (i % 5 === 2) {
+        // P4-12: a coloured STEP file (XDE's writer) and its colours read
+        // back through an XCAF document that lives only for the call.
+        const text = kernel.writeStep([{ shape: body.shape, name: `Body${i}`, color: '#c81e28' }]);
+        if (kernel.readStepColors(text).solids[0] !== '#c81e28') throw new Error('no colour');
+      }
     };
     for (let i = 0; i < WARM_UP; i++) run(i);
     const before = kernel.stats();

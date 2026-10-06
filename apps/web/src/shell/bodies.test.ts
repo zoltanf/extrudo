@@ -12,6 +12,7 @@ import {
   REMOVE_TYPE,
   removedBodies,
   renameDocument,
+  updateBody,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import {
@@ -19,6 +20,7 @@ import {
   bodyMetaOf,
   createBodyActions,
   followBodyNames,
+  importedColors,
   isSwatch,
   parseBodyColor,
 } from './bodies';
@@ -117,6 +119,48 @@ describe('followBodyNames', () => {
     followBodyNames(store, model as ModelStore<unknown>);
     expect(names(store)).toEqual({ 'X:0': 'Body1' });
     expect(store.getState().canUndo).toBe(false);
+  });
+
+  it("takes a STEP import's colour when it first names a body (P4-12), never later", () => {
+    const { store, model } = setup();
+    followBodyNames(store, model as ModelStore<unknown>);
+    const imports = (colors: Record<string, string>) => ({
+      B: { kind: 'import' as const, colors: colors as Record<BodyId, string>, coloredFaces: 0 },
+    });
+    model.getState().computed({
+      features: {},
+      bodies: live('A:0', 'B:0', 'B:1'),
+      imports: imports({ 'B:0': '#C81E28', 'A:0': 'not a colour' }),
+      doc: store.getState().doc,
+    });
+    const meta = (id: string) => store.getState().doc.bodies[bid(id)];
+    expect(meta('B:0')).toEqual({ name: 'Body2', visible: true, color: '#c81e28' });
+    expect(meta('B:1')).toEqual({ name: 'Body3', visible: true });
+    expect(meta('A:0')).toEqual({ name: 'Body1', visible: true });
+    // The user's colour wins: a later report (a re-import, another Up) repaints nothing.
+    store.getState().dispatch(updateBody({ id: bid('B:0'), changes: { color: '#22b3c2' } }));
+    model.getState().computed({
+      features: {},
+      bodies: live('A:0', 'B:0', 'B:1'),
+      imports: imports({ 'B:0': '#102030', 'B:1': '#405060' }),
+      doc: store.getState().doc,
+    });
+    expect(meta('B:0')?.color).toBe('#22b3c2');
+    expect(meta('B:1')?.color).toBeUndefined();
+  });
+});
+
+describe('importedColors', () => {
+  it('merges every import report, keeping only colours the document can store', () => {
+    const colors = importedColors({
+      ['F' as FeatureId]: {
+        kind: 'import',
+        colors: { [bid('F:0')]: '#ABCDEF', [bid('F:1')]: 'red' },
+        coloredFaces: 3,
+      },
+    });
+    expect([...colors]).toEqual([['F:0', '#abcdef']]);
+    expect(importedColors(undefined).size).toBe(0);
   });
 });
 
