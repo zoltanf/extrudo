@@ -47,6 +47,7 @@
 #include <BRepFilletAPI_MakeChamfer.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
 #include <BRepOffsetAPI_DraftAngle.hxx>
+#include <BRepOffsetAPI_MakeOffset.hxx>
 #include <BRepOffsetAPI_MakePipeShell.hxx>
 #include <BRepOffsetAPI_MakeThickSolid.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
@@ -1028,6 +1029,9 @@ public:
         recordSweep(builder, base, swept);
         return store(swept);
       }
+      // A side made from an ellipse or a B-spline can't be tilted by DraftAngle
+      // (P4-12): offset the profile and loft a ruled solid instead.
+      if (taperNeedsLoft(builder, base)) return taperLoft(base, along, taper);
       return taperSweep(builder, base, swept, along, taper);
     } catch (...) {
       return failFromException("Extrude failed");
@@ -5999,6 +6003,227 @@ private:
     gp_Trsf move;
     move.SetTranslation(gp_Vec(x, y, z));
     return shape.Moved(TopLoc_Location(move));
+  }
+
+  /**
+   * Whether a taper has to go through `taperLoft`: it does when any side the
+   * straight sweep made isn't a plane, a cylinder or a cone, that is, when a
+   * profile edge is an ellipse or a B-spline (ADR-0028's amendment, P4-12).
+   */
+  static bool taperNeedsLoft(BRepPrimAPI_MakePrism& builder, const TopoDS_Shape& base) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+    TopExp::MapShapes(base, TopAbs_EDGE, edges);
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> seen;
+    for (int i = 1; i <= edges.Extent(); ++i) {
+      for (NCollection_List<TopoDS_Shape>::Iterator it(builder.Generated(edges(i))); it.More(); it.Next()) {
+        if (it.Value().ShapeType() != TopAbs_FACE || seen.Contains(it.Value())) continue;
+        seen.Add(it.Value());
+        const GeomAbs_SurfaceType type = BRepAdaptor_Surface(TopoDS::Face(it.Value()), false).GetType();
+        if (type != GeomAbs_Plane && type != GeomAbs_Cylinder && type != GeomAbs_Cone) return true;
+      }
+    }
+    return false;
+  }
+
+  /** A planar face from a compound of wires: the largest bbox is the outer, the rest holes. */
+  static TopoDS_Face faceFromWires(const TopoDS_Shape& wires, const gp_Pln& plane) {
+    TopoDS_Wire outer;
+    NCollection_List<TopoDS_Shape> holes;
+    double best = -1;
+    for (TopExp_Explorer w(wires, TopAbs_WIRE); w.More(); w.Next()) {
+      Bnd_Box box;
+      BRepBndLib::Add(w.Current(), box);
+      double x0, y0, z0, x1, y1, z1;
+      box.Get(x0, y0, z0, x1, y1, z1);
+      const double area = (x1 - x0) * (y1 - y0);
+      if (area > best) {
+        if (!outer.IsNull()) holes.Append(outer);
+        outer = TopoDS::Wire(w.Current());
+        best = area;
+      } else {
+        holes.Append(w.Current());
+      }
+    }
+    if (outer.IsNull()) return TopoDS_Face();
+    BRepBuilderAPI_MakeFace maker(plane, outer);
+    for (NCollection_List<TopoDS_Shape>::Iterator it(holes); it.More(); it.Next()) {
+      maker.Add(TopoDS::Wire(it.Value()));
+    }
+    if (maker.IsDone() && BRepCheck_Analyzer(maker.Face()).IsValid()) return maker.Face();
+    // The offset wires may come out with the other orientation.
+    BRepBuilderAPI_MakeFace fallback(plane, outer);
+    for (NCollection_List<TopoDS_Shape>::Iterator it(holes); it.More(); it.Next()) {
+      fallback.Add(TopoDS::Wire(TopoDS::Wire(it.Value()).Reversed()));
+    }
+    if (fallback.IsDone()) return fallback.Face();
+    return TopoDS_Face();
+  }
+
+  /** The result faces whose surface is `plane` (the caps of a tapered loft). */
+  static NCollection_List<TopoDS_Shape> facesInPlane(const TopoDS_Shape& result, const gp_Pln& plane) {
+    NCollection_List<TopoDS_Shape> out;
+    for (TopExp_Explorer f(result, TopAbs_FACE); f.More(); f.Next()) {
+      BRepAdaptor_Surface surface(TopoDS::Face(f.Current()), false);
+      if (surface.GetType() != GeomAbs_Plane) continue;
+      const gp_Pln& pln = surface.Plane();
+      if (pln.Location().Distance(plane.Location()) > Precision::Confusion() * 1000) continue;
+      if (std::abs(pln.Axis().Direction().Dot(plane.Axis().Direction())) < 0.999) continue;
+      out.Append(f.Current());
+    }
+    return out;
+  }
+
+  /** The area of a wire's bounding box, for pairing a profile's wires with its offset's. */
+  static double wireBoxArea(const TopoDS_Shape& wire) {
+    Bnd_Box box;
+    BRepBndLib::Add(wire, box);
+    double x0, y0, z0, x1, y1, z1;
+    box.Get(x0, y0, z0, x1, y1, z1);
+    return (x1 - x0) * (y1 - y0);
+  }
+
+  /**
+   * Tapers a profile that has an ellipse or B-spline side (ADR-0028's
+   * amendment, P4-12). DraftAngle can't tilt such a side, so the far outline
+   * is the profile's 2D offset in its plane by length*tan(taper) (positive
+   * outwards, holes the other way; BRepOffsetAPI_MakeOffset with GeomAbs_Arc
+   * joins, an offset curve for an ellipse or B-spline), moved along the
+   * sweep, and the solid is a ruled loft (BRepOffsetAPI_ThruSections per
+   * pair of wires) between the profile and the offset, its caps added and the
+   * shell sewn into a solid. History as for `taperSweep`: input 0 is the
+   * profile, the caps first/last and each profile edge's wall generated, so a
+   * side keeps its sketch curve's name.
+   *
+   * The taper widens the outline for a positive angle and narrows it for a
+   * negative one. An offset that fails or crosses itself, and a hole the
+   * inward offset closes, are refused with a message for the user.
+   */
+  int taperLoft(const TopoDS_Shape& base, const gp_Vec& along, double taper) {
+    const double length = along.Magnitude();
+    const double distance = length * std::tan(taper);
+    gp_Trsf move;
+    move.SetTranslation(along);
+    const TopLoc_Location shift(move);
+
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> baseFaces;
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> baseEdges;
+    TopExp::MapShapes(base, TopAbs_FACE, baseFaces);
+    TopExp::MapShapes(base, TopAbs_EDGE, baseEdges);
+    if (baseFaces.IsEmpty()) return fail("Extrude failed: the profile has no face.");
+
+    std::vector<TopoDS_Shape> solids;
+    std::vector<NCollection_List<TopoDS_Shape>> walls(static_cast<size_t>(baseEdges.Extent()) + 1);
+    std::vector<gp_Pln> startPlanes(static_cast<size_t>(baseFaces.Extent()) + 1);
+    std::vector<gp_Pln> endPlanes(static_cast<size_t>(baseFaces.Extent()) + 1);
+
+    for (int fi = 1; fi <= baseFaces.Extent(); ++fi) {
+      const TopoDS_Face& face = TopoDS::Face(baseFaces(fi));
+      BRepAdaptor_Surface surface(face, false);
+      if (surface.GetType() != GeomAbs_Plane) {
+        return fail("Can only taper a flat profile. Pick another profile.");
+      }
+      const gp_Pln plane = surface.Plane();
+      BRepOffsetAPI_MakeOffset offset(face, GeomAbs_Arc);
+      offset.Perform(distance);
+      if (!offset.IsDone() || offset.Shape().IsNull()) {
+        return fail("The taper is too steep for this outline: a side would cross another.");
+      }
+      int before = 0;
+      for (TopExp_Explorer w(face, TopAbs_WIRE); w.More(); w.Next()) ++before;
+      int after = 0;
+      for (TopExp_Explorer w(offset.Shape(), TopAbs_WIRE); w.More(); w.Next()) ++after;
+      if (after == 0) return fail("The taper is too steep for this outline: a side would cross another.");
+      if (after < before) return fail("The taper closes a hole of the profile.");
+      const TopoDS_Shape offsetShape = offset.Shape().Moved(shift);
+      const gp_Pln endPlane(plane.Location().Translated(along), plane.Axis().Direction());
+      const TopoDS_Face endCap = faceFromWires(offsetShape, endPlane);
+      if (endCap.IsNull()) {
+        return fail("The taper is too steep for this outline: a side would cross another.");
+      }
+
+      // Pair each of the face's wires with its offset, largest first (outer then holes).
+      std::vector<TopoDS_Wire> startWires, endWires;
+      for (TopExp_Explorer w(face, TopAbs_WIRE); w.More(); w.Next()) startWires.push_back(TopoDS::Wire(w.Current()));
+      for (TopExp_Explorer w(offsetShape, TopAbs_WIRE); w.More(); w.Next()) endWires.push_back(TopoDS::Wire(w.Current()));
+      std::sort(startWires.begin(), startWires.end(),
+                [](const TopoDS_Wire& a, const TopoDS_Wire& b) { return wireBoxArea(a) > wireBoxArea(b); });
+      std::sort(endWires.begin(), endWires.end(),
+                [](const TopoDS_Wire& a, const TopoDS_Wire& b) { return wireBoxArea(a) > wireBoxArea(b); });
+
+      BRepBuilderAPI_Sewing sewing(Precision::Confusion());
+      std::vector<std::pair<int, NCollection_List<TopoDS_Shape>>> localWalls;
+      for (size_t i = 0; i < startWires.size() && i < endWires.size(); ++i) {
+        BRepOffsetAPI_ThruSections loft(false, true, Precision::Confusion());
+        loft.AddWire(startWires[i]);
+        loft.AddWire(endWires[i]);
+        loft.Build();
+        if (!loft.IsDone()) {
+          return fail("The taper is too steep for this outline: a side would cross another.");
+        }
+        for (TopExp_Explorer e(startWires[i], TopAbs_EDGE); e.More(); e.Next()) {
+          const int edgeIndex = baseEdges.FindIndex(e.Current());
+          NCollection_List<TopoDS_Shape> made;
+          for (NCollection_List<TopoDS_Shape>::Iterator it(loft.Generated(e.Current())); it.More(); it.Next()) {
+            if (it.Value().ShapeType() != TopAbs_FACE) continue;
+            sewing.Add(it.Value());
+            made.Append(it.Value());
+          }
+          if (edgeIndex > 0 && !made.IsEmpty()) localWalls.emplace_back(edgeIndex, std::move(made));
+        }
+      }
+      sewing.Add(face);
+      sewing.Add(endCap);
+      sewing.Perform();
+      if (sewing.NbFreeEdges() != 0) {
+        return fail("The taper is too steep for this outline: a side would cross another.");
+      }
+      // Sewing may have rebuilt the faces it was handed: follow its modification
+      // so the history names the faces that are really in the result.
+      for (auto& [edgeIndex, made] : localWalls) {
+        for (NCollection_List<TopoDS_Shape>::Iterator it(made); it.More(); it.Next()) {
+          const TopoDS_Shape& now = sewing.Modified(it.Value());
+          walls[static_cast<size_t>(edgeIndex)].Append(now.IsNull() ? it.Value() : now);
+        }
+      }
+      TopoDS_Shell shell;
+      for (TopExp_Explorer s(sewing.SewedShape(), TopAbs_SHELL); s.More() && shell.IsNull(); s.Next()) {
+        shell = TopoDS::Shell(s.Current());
+      }
+      if (shell.IsNull()) return fail("Extrude failed: OCCT couldn't build the tapered solid.");
+      BRepBuilderAPI_MakeSolid makeSolid(shell);
+      TopoDS_Shape solid = makeSolid.Solid();
+      if (volumeOf(solid) < 0) solid.Reverse();
+      if (!BRepCheck_Analyzer(solid).IsValid() || !(volumeOf(solid) > 0)) {
+        return fail("The taper is too steep for this outline: a side would cross another.");
+      }
+      solids.push_back(solid);
+      startPlanes[static_cast<size_t>(fi)] = plane;
+      endPlanes[static_cast<size_t>(fi)] = endPlane;
+    }
+
+    TopoDS_Shape result;
+    if (solids.size() == 1) {
+      result = solids[0];
+    } else {
+      TopoDS_Compound compound;
+      BRep_Builder builder;
+      builder.MakeCompound(compound);
+      for (const TopoDS_Shape& solid : solids) builder.Add(compound, solid);
+      result = compound;
+    }
+
+    // History as a prism's (input 0 = the profile). The caps are found by their
+    // plane, since sewing may have rebuilt the ones handed to it.
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultMaps[3];
+    for (int kind = 0; kind < 3; ++kind) TopExp::MapShapes(result, kindToEnum(kind), resultMaps[kind]);
+    for (int fi = 1; fi <= baseFaces.Extent(); ++fi) {
+      appendRelation(facesInPlane(result, startPlanes[static_cast<size_t>(fi)]), resultMaps, 0, 0, fi - 1, 4);
+      appendRelation(facesInPlane(result, endPlanes[static_cast<size_t>(fi)]), resultMaps, 0, 0, fi - 1, 5);
+    }
+    for (int ei = 1; ei <= baseEdges.Extent(); ++ei) {
+      appendRelation(walls[static_cast<size_t>(ei)], resultMaps, 0, 1, ei - 1, 1);
+    }
+    return store(result);
   }
 
   /**
