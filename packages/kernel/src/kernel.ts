@@ -1358,24 +1358,62 @@ export class Kernel {
   }
 
   /**
-   * The silhouette lines of face `face` seen along `direction`: the lines
-   * of a cylinder or cone where its normal is square to the view, clipped
-   * to the face (P2-09). None for other surfaces.
+   * The silhouettes of face `face` seen along `direction`: the curves on the
+   * face where its normal is square to the view, visible and hidden alike,
+   * clipped to the face, exact on the surface (P2-09; every curved surface
+   * since P4-12, ADR-0031's amendment). Cylinders and cones give lines, a
+   * sphere arcs of its great circle, other surfaces OCCT's contour lines,
+   * circles and walked polylines (points on the surface). None for planes.
+   * `deflection` (mm) bounds a polyline sampled from an edge.
    */
-  faceSilhouettes(shape: ShapeHandle, face: number, direction: Vec3): [Vec3, Vec3][] {
+  faceSilhouettes(
+    shape: ShapeHandle,
+    face: number,
+    direction: Vec3,
+    deflection = CURVE_DEFLECTION,
+  ): CurvePiece[] {
     this.#solid(shape, 'Sketch on face');
     const f = this.#facade;
-    const n = f.faceSilhouettes(shape, face, direction[0], direction[1], direction[2]);
+    const n = f.faceSilhouettes(shape, face, direction[0], direction[1], direction[2], deflection);
     if (n < 0) throw new KernelError(f.lastError() || 'Unknown face.');
+    return decodeCurvePieces(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize()), n);
+  }
+
+  /**
+   * The curves where a shape meets the plane through `origin` square to
+   * `normal` (P4-12, Intersect): lines, arcs and ellipses exact, other
+   * curves as polylines within `deflection`.
+   */
+  sectionWithPlane(
+    shape: ShapeHandle,
+    origin: Vec3,
+    normal: Vec3,
+    deflection = CURVE_DEFLECTION,
+  ): CurvePiece[] {
+    this.#solid(shape, 'Intersect');
+    const f = this.#facade;
+    const n = f.sectionWithPlane(shape, ...origin, ...normal, deflection);
+    if (n < 0) throw new KernelError(f.lastError() || 'The section failed.');
+    return decodeCurvePieces(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize()), n);
+  }
+
+  /**
+   * How each edge of a shape (sub-shape order) looks seen from the side
+   * `direction` points to, through OCCT's hidden-line removal (P4-12,
+   * projecting a body): whether some of it is visible, whether it is an
+   * outline (its two faces face opposite ways along the view) and whether
+   * it is sharp (no seam, no smooth join).
+   */
+  edgeVisibility(shape: ShapeHandle, direction: Vec3): EdgeView[] {
+    this.#solid(shape, 'Project');
+    const f = this.#facade;
+    const n = f.edgeVisibility(shape, ...direction);
+    if (n < 0) throw new KernelError(f.lastError() || 'Unknown shape.');
     const v = this.#copy(Float64Array, f.geometryPtr(), f.geometrySize());
-    const out: [Vec3, Vec3][] = [];
+    const out: EdgeView[] = [];
     for (let i = 0; i < n; i++) {
-      const o = 6 * i;
-      const at = (k: number) => v[o + k] as number;
-      out.push([
-        [at(0), at(1), at(2)],
-        [at(3), at(4), at(5)],
-      ]);
+      const flags = v[i] as number;
+      out.push({ visible: (flags & 1) !== 0, outline: (flags & 2) !== 0, sharp: (flags & 4) !== 0 });
     }
     return out;
   }
@@ -1832,6 +1870,71 @@ export function stepString(text: string): string {
   return out;
 }
 
+/** Chord deflection (mm) of the polylines `faceSilhouettes` and `sectionWithPlane` sample. */
+export const CURVE_DEFLECTION = 0.01;
+
+/** How one edge looks along a view (`Kernel.edgeVisibility`). */
+export interface EdgeView {
+  /** Some of it is visible from the side the view vector points to. */
+  visible: boolean;
+  /** Its two faces face opposite ways along the view: it bounds what is seen. */
+  outline: boolean;
+  /** Its faces meet at an angle (no seam, no smooth join). */
+  sharp: boolean;
+}
+
+/** A curve from `Kernel.faceSilhouettes` or `sectionWithPlane`, in world mm. */
+export type CurvePiece =
+  | { type: 'line'; points: [Vec3, Vec3] }
+  /** Counter-clockwise about `axis` from angle `first` to `last` (from `xDirection`). */
+  | { type: 'circle' | 'ellipse'; conic: Conic }
+  /** Points on the curve, in order: sampled or walked. */
+  | { type: 'polyline'; points: Vec3[] };
+
+/** A circle or ellipse arc in space. */
+export interface Conic {
+  center: Vec3;
+  axis: Vec3;
+  /** The x (circle) or major (ellipse) direction, from which angles count. */
+  xDirection: Vec3;
+  /** Radius, or major radius. */
+  radius: number;
+  /** Ellipses: the minor radius. */
+  minor?: number;
+  /** Angles about the axis from the x direction, radians. */
+  first: number;
+  last: number;
+}
+
+/** Decodes the facade's curve pieces (faceSilhouettes, sectionWithPlane). */
+export function decodeCurvePieces(v: Float64Array, count: number): CurvePiece[] {
+  let k = 0;
+  const num = () => v[k++] as number;
+  const vec = (): Vec3 => [num(), num(), num()];
+  const out: CurvePiece[] = [];
+  for (let i = 0; i < count; i++) {
+    const kind = num();
+    if (kind === 0) {
+      out.push({ type: 'line', points: [vec(), vec()] });
+    } else if (kind === 2) {
+      const n = num();
+      const points: Vec3[] = [];
+      for (let j = 0; j < n; j++) points.push(vec());
+      out.push({ type: 'polyline', points });
+    } else {
+      const [center, axis, xDirection] = [vec(), vec(), vec()];
+      const radius = num();
+      const minor = kind === 3 ? num() : undefined;
+      const [first, last] = [num(), num()];
+      out.push({
+        type: kind === 3 ? 'ellipse' : 'circle',
+        conic: { center, axis, xDirection, radius, ...(minor !== undefined && { minor }), first, last },
+      });
+    }
+  }
+  return out;
+}
+
 /** A body edge's geometry (`Kernel.edgeGeometry`), in world mm. */
 export type EdgeGeometry =
   | { type: 'degenerate' }
@@ -1841,19 +1944,7 @@ export type EdgeGeometry =
       /** Points along the edge, ends included, evenly spaced in its parameter. */
       points: Vec3[];
       /** Circles and ellipses. */
-      conic?: {
-        center: Vec3;
-        axis: Vec3;
-        /** The x (circle) or major (ellipse) direction, from which angles count. */
-        xDirection: Vec3;
-        /** Radius, or major radius. */
-        radius: number;
-        /** Ellipses: the minor radius. */
-        minor?: number;
-        /** Angles about the axis from the x direction, radians. */
-        first: number;
-        last: number;
-      };
+      conic?: Conic;
     };
 
 /** Decodes the facade's edgeGeometry numbers. */

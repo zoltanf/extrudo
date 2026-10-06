@@ -123,7 +123,25 @@ export interface FacadeBinding {
   describeNumbersPtr(): number;
   describeNumbersSize(): number;
   edgeGeometry(shape: number, edge: number, samples: number): number;
-  faceSilhouettes(shape: number, face: number, dx: number, dy: number, dz: number): number;
+  faceSilhouettes(
+    shape: number,
+    face: number,
+    dx: number,
+    dy: number,
+    dz: number,
+    deflection: number,
+  ): number;
+  sectionWithPlane(
+    shape: number,
+    ox: number,
+    oy: number,
+    oz: number,
+    nx: number,
+    ny: number,
+    nz: number,
+    deflection: number,
+  ): number;
+  edgeVisibility(shape: number, dx: number, dy: number, dz: number): number;
   geometryPtr(): number;
   geometrySize(): number;
   sketchClear(): void;
