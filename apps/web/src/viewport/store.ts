@@ -76,6 +76,13 @@ export interface ViewportSettings {
   sketchProfiles: boolean;
   /** Snap sketch points to the grid while drawing (sketch palette). */
   snap: boolean;
+  /**
+   * Auto-project (P6-07, ADR-0074): a body edge or vertex a drawing tool snaps
+   * to is projected into the sketch on the fly. On by default.
+   */
+  autoProject: boolean;
+  /** Also project a flat face's outline when a sketch starts on it (off by default). */
+  autoProjectFace: boolean;
 }
 
 export const DEFAULT_SETTINGS: ViewportSettings = {
@@ -92,6 +99,8 @@ export const DEFAULT_SETTINGS: ViewportSettings = {
   sketchDimensions: true,
   sketchProfiles: true,
   snap: true,
+  autoProject: true,
+  autoProjectFace: false,
 };
 
 /** The part of the scene that "fit" frames. */
@@ -204,6 +213,10 @@ export interface ViewportState extends ViewportSettings {
   setSketchDimensions(visible: boolean): void;
   setSketchProfiles(visible: boolean): void;
   setSnap(snap: boolean): void;
+  /** Turns auto-project on or off (P6-07). */
+  setAutoProject(autoProject: boolean): void;
+  /** Whether starting a sketch on a face projects the face's outline (P6-07). */
+  setAutoProjectFace(autoProjectFace: boolean): void;
   setSnapshot(snapshot: (() => Promise<Blob | null>) | undefined): void;
   setRenderStats(stats: RenderStats | undefined): void;
   setSelectionFilter(kind: FilterKind, on: boolean): void;
@@ -367,6 +380,12 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       setSnap(snap) {
         set({ snap });
       },
+      setAutoProject(autoProject) {
+        set({ autoProject });
+      },
+      setAutoProjectFace(autoProjectFace) {
+        set({ autoProjectFace });
+      },
       setSnapshot(snapshot) {
         set({ snapshot });
       },
@@ -440,7 +459,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       s.sketchConstraints !== prev.sketchConstraints ||
       s.sketchDimensions !== prev.sketchDimensions ||
       s.sketchProfiles !== prev.sketchProfiles ||
-      s.snap !== prev.snap
+      s.snap !== prev.snap ||
+      s.autoProject !== prev.autoProject ||
+      s.autoProjectFace !== prev.autoProjectFace
     ) {
       const {
         projection,
@@ -453,6 +474,8 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         sketchDimensions,
         sketchProfiles,
         snap,
+        autoProject,
+        autoProjectFace,
       } = s;
       preferences.set(PREFERENCES_KEY, {
         projection,
@@ -465,6 +488,8 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         sketchDimensions,
         sketchProfiles,
         snap,
+        autoProject,
+        autoProjectFace,
       });
     }
   });

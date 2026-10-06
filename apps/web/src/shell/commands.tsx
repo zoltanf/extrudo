@@ -16,6 +16,7 @@ import {
   History,
   House,
   Import,
+  Magnet,
   Maximize,
   Moon,
   PanelBottom,
@@ -172,6 +173,17 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
           keywords: 'Sketch view plane normal',
         });
       }
+      const autoProject = ctx.viewport.getState().autoProject;
+      plain(
+        'toggleAutoProject',
+        autoProject ? 'Auto-project: Off' : 'Auto-project: On',
+        'Sketch',
+        () => ctx.viewport.getState().setAutoProject(!autoProject),
+        {
+          icon: icon(Magnet),
+          keywords: 'Sketch auto project edges reference body snap projection on off',
+        },
+      );
     }
   }
   if (ctx.mode === 'model') for (const command of ctx.dialogCommands ?? []) add(command);

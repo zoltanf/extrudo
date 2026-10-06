@@ -1,4 +1,11 @@
-import { addToSketch, type SketchData, type SketchEntityId } from '@extrudo/core';
+import {
+  addProjection,
+  addToSketch,
+  type GeomRef,
+  type ProjectionId,
+  type SketchData,
+  type SketchEntityId,
+} from '@extrudo/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TOOLS } from '../../shell/tools';
 import { finishSketch } from '../mode';
@@ -254,5 +261,67 @@ describe('line tool through the host', () => {
     t.host.start(LINE_TOOL);
     expect(t.host.state.getState().tool).toBeUndefined();
     expect(t.session.getState().activeTool).toBeUndefined();
+  });
+});
+
+describe('auto-project through the host (P6-07)', () => {
+  const ref: GeomRef = { kind: 'vertex', id: 'v[face0|face1]' };
+  const frame = {
+    origin: [0, 0, 0] as [number, number, number],
+    normal: [0, 0, 1] as [number, number, number],
+    x: [1, 0, 0] as [number, number, number],
+    y: [0, 1, 0] as [number, number, number],
+  };
+  const model = { ref, point: [5, 0] as [number, number], kind: 'vertex' as const };
+  const report = (id: string) => ({
+    frame,
+    projections: {
+      [id]: { curves: { vertex: { type: 'point' as const, at: [5, 0] as [number, number] } } },
+    },
+  });
+
+  it('projects a body vertex a line end snapped to, holds it, and undoes as one', async () => {
+    const t = await setup();
+    t.host.click({ ...at(5, 0.1), model });
+    t.host.click(at(20, 0.3));
+    const projections = t.data().projections ?? {};
+    const [key] = Object.keys(projections);
+    expect(key).toBeDefined();
+    const pid = key as ProjectionId;
+    expect(projections[pid]?.ref).toEqual(ref);
+    // The kernel reports the projected vertex on the next recompute.
+    t.host.syncProjections({ [t.id]: report(pid) });
+    const projected = t.data().projections?.[pid]?.curves.vertex;
+    expect(projected).toBeTruthy();
+    expect(t.data().entities[projected as SketchEntityId]).toMatchObject({
+      type: 'point',
+      x: 5,
+      y: 0,
+    });
+    // The placed point is held on the projected vertex.
+    expect(
+      Object.values(t.data().constraints).some((c) => c.type === 'coincident' && c.b === projected),
+    ).toBe(true);
+    // One undo takes the line, the projection and the constraint away.
+    t.store.getState().undo();
+    expect(t.byType('line')).toHaveLength(0);
+    expect(Object.keys(t.data().projections ?? {})).toHaveLength(0);
+  });
+
+  it('reuses a ref the sketch already projects', async () => {
+    const t = await setup();
+    // A record the sketch already holds, its curves not reported yet.
+    t.store.getState().dispatch(addProjection({ feature: t.id, id: 'proj' as ProjectionId, ref }));
+    t.host.click({ ...at(5, 0.1), model });
+    t.host.click(at(20, 0.3));
+    // No second record for the same ref.
+    expect(Object.keys(t.data().projections ?? {})).toEqual(['proj']);
+    // The report lands: the projected point appears and the point is held on it.
+    t.host.syncProjections({ [t.id]: report('proj') });
+    const projected = t.data().projections?.['proj' as ProjectionId]?.curves.vertex;
+    expect(projected).toBeTruthy();
+    expect(
+      Object.values(t.data().constraints).some((c) => c.type === 'coincident' && c.b === projected),
+    ).toBe(true);
   });
 });

@@ -11,6 +11,7 @@ import {
   worldToSketch,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
+import type { ModelSnap } from '@extrudo/sketch/inference';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import {
   type ReactNode,
@@ -39,6 +40,7 @@ import {
   pickStack,
   pickTop,
 } from '../selection/pick';
+import { autoProjectSnap } from '../sketch/autoProject';
 import { sketchTargetAt } from '../sketch/facePick';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
 import { Bodies, clipPlanes } from './Bodies';
@@ -190,6 +192,12 @@ export interface SketchInput {
   onLeave(): void;
   /** The cursor over the view: a crosshair for drawing, the arrow for picking and selecting. */
   cursor?: 'crosshair' | 'default';
+  /**
+   * Auto-project (P6-07): offer the body edge or vertex under the pointer to
+   * the running tool. The view only does this while a drawing, constraint or
+   * dimension tool runs and the preference is on.
+   */
+  modelSnap?: boolean;
 }
 
 /**
@@ -376,6 +384,24 @@ export function Viewport({
     () => ({ bodies, meta, sketches, construction, clip: sectionClip }),
     [bodies, meta, sketches, construction, sectionClip],
   );
+  // Auto-project (P6-07): the body edge or vertex under the pointer while a
+  // tool runs. Off, the view offers nothing and the tool never sees one.
+  const modelSnapPicker = useMemo(
+    () =>
+      (pointer: ScreenPointer, frame: SketchFrame, cursor: Vec2): ModelSnap | undefined => {
+        const { view, projection, visualStyle } = viewport.getState();
+        return autoProjectSnap(
+          viewport,
+          pickScene(modelScene, visualStyle),
+          { view, projection, width: pointer.width, height: pointer.height },
+          frame,
+          [pointer.x, pointer.y],
+          cursor,
+          modelScene.bodies,
+        );
+      },
+    [viewport, modelScene],
+  );
   // A dialog's preview of a canvas replaces the canvas it edits (P4-06).
   const drawnCanvases = useMemo(
     () => (preview?.canvas ? [...canvases, preview.canvas] : canvases),
@@ -399,7 +425,14 @@ export function Viewport({
   useEffect(() => {
     if (!hasViewMenu) setMarking(undefined);
   }, [hasViewMenu]);
-  useSketchInput(surface, viewport, sketchInput, setBox, hasViewMenu ? openViewMenu : undefined);
+  useSketchInput(
+    surface,
+    viewport,
+    sketchInput,
+    setBox,
+    hasViewMenu ? openViewMenu : undefined,
+    modelSnapPicker,
+  );
   const bodiesKey = useMemo(() => bodiesSummary(bodies, meta), [bodies, meta]);
   const appearanceKey = useMemo(() => bodyAppearanceSummary(bodies, meta), [bodies, meta]);
   // Silhouette segments drawn per body (wireframe and hidden edges), summed into
@@ -905,7 +938,12 @@ function useSketchInput(
     request: ViewMenuRequest,
     hits: readonly PickHit[],
   ) => void,
+  modelSnap?: (pointer: ScreenPointer, frame: SketchFrame, cursor: Vec2) => ModelSnap | undefined,
 ) {
+  // The latest picker without re-binding the listeners on every scene change
+  // (a drag would be cut short); as `useModelInput` holds its scene.
+  const modelSnapRef = useRef(modelSnap);
+  modelSnapRef.current = modelSnap;
   const handlers = useMemo<PointerHandlers | undefined>(() => {
     if (!input) return undefined;
     const { frame } = input;
@@ -920,13 +958,18 @@ function useSketchInput(
       );
       if (!hit) return undefined;
       const world: Vec3 = [hit.x, hit.y, hit.z];
+      const point = worldToSketch(frame, world);
+      // Behind the sketch's own geometry: inference decides that, not the pick.
+      const pick = modelSnapRef.current;
+      const model = input.modelSnap && pick ? pick(p, frame, point) : undefined;
       return {
-        point: worldToSketch(frame, world),
+        point,
         perPixel: worldPerPixel(view, projection, p.height, world),
         screen: [p.x, p.y],
         infer: p.infer,
         toggle: p.toggle,
         ...(p.double !== undefined && { double: p.double }),
+        ...(model && { model }),
       };
     };
     const onPlane = (f: ((p: PlanePointer) => void) | undefined) => (p: ScreenPointer) => {
@@ -1434,7 +1477,8 @@ function sketchProjectedSummary(sketches: readonly SketchDrawing[]): string | un
         ys.push(e.y);
       } else if (e) curves++;
     }
-    if (curves > 0) out.push(`${id}:curves=${curves}:x=${span(xs)}:y=${span(ys)}`);
+    // A projected vertex is a point (P4-12): report it too, with `curves=0`.
+    if (curves > 0 || xs.length > 0) out.push(`${id}:curves=${curves}:x=${span(xs)}:y=${span(ys)}`);
   }
   return out.length > 0 ? out.join(' ') : undefined;
 }

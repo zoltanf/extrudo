@@ -13,6 +13,7 @@
  * 3. A horizontal or vertical alignment guide that crosses a curve close
  *    to the cursor: the crossing (on-curve plus alignment).
  * 4. A point on a curve.
+ * 4b. A body edge or vertex the view offers (auto-project, P6-07).
  * 5. Horizontal and vertical alignment with the anchor (the tool's last
  *    point) or another sketch point: both at once snap to the guides'
  *    crossing; one alone projects onto its guide, and the free coordinate
@@ -20,7 +21,7 @@
  * 6. The grid, if grid snapping is on.
  * 7. The cursor itself.
  */
-import type { SketchData, Vec2 } from '@extrudo/core';
+import type { GeomRef, SketchData, SketchEntityId, Vec2 } from '@extrudo/core';
 import {
   arcPoints,
   type Curve,
@@ -51,6 +52,32 @@ export interface Snap {
   kind: SnapKind;
   point: Vec2;
   ids: string[];
+  /**
+   * The body edge or vertex this snap came from (auto-project, P6-07): set
+   * only for a model target, so a tool can record the projection it needs.
+   * `ids` is empty then.
+   */
+  model?: GeomRef;
+}
+
+/**
+ * A body edge or vertex the view offers a sketch tool to snap to while it
+ * draws (auto-project, P6-07): the persistent reference, the snap point in
+ * sketch coordinates (a vertex projected onto the plane, or the nearest point
+ * of an edge's display polyline projected onto it) and which of the two it is.
+ */
+export interface ModelSnap {
+  ref: GeomRef;
+  point: Vec2;
+  kind: 'vertex' | 'edge';
+}
+
+/** A point a drawing tool placed on a model snap, to project in the same edit. */
+export interface ModelAttachment {
+  /** The new point to hold on the projected geometry. */
+  point: SketchEntityId;
+  ref: GeomRef;
+  kind: 'vertex' | 'edge';
 }
 
 /** Where an alignment guide starts: the tool's own last point, or a sketch point. */
@@ -84,6 +111,11 @@ export interface InferenceOptions {
   exclude?: ReadonlySet<string>;
   /** Grid step in mm when grid snapping is on. */
   grid?: number;
+  /**
+   * A body edge or vertex under the pointer to snap to (auto-project, P6-07):
+   * considered after the sketch's own curves and before alignment guides.
+   */
+  model?: ModelSnap;
   /** False turns inference and grid snapping off (a held modifier): the cursor is used as is. */
   enabled?: boolean;
 }
@@ -225,6 +257,18 @@ export function infer(sketch: SketchData, cursor: Vec2, options: InferenceOption
   }
   if (onCurve) {
     return result(onCurve.point, { kind: 'onCurve', point: onCurve.point, ids: [onCurve.id] });
+  }
+
+  // 4b: a body edge or vertex the view offers (auto-project, P6-07). A sketch
+  // point or curve above already won; this beats alignment guides and the grid.
+  const model = options.model;
+  if (model && dist(model.point, cursor) <= tolerance) {
+    return result(model.point, {
+      kind: model.kind === 'vertex' ? 'point' : 'onCurve',
+      point: model.point,
+      ids: [],
+      model: model.ref,
+    });
   }
 
   // 5: alignment.

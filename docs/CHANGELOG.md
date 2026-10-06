@@ -3,7 +3,17 @@
 One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
-
+- 2026-10-06 · **P6-07 Auto-project** (ADR-0074, FR-SK-17): while a drawing,
+  constraint or dimension tool runs, the view offers the shown bodies' edges
+  and vertices under the pointer (behind the sketch's own geometry, vertices
+  before edges, hidden ones last) as a `ModelSnap`; `infer` treats a vertex as
+  a point target and an edge as an on-curve one, so a point that snaps to a
+  body edge or vertex is projected into the sketch in the same undo step
+  (`addProjection`) and held on it (`coincident`/`pointOnCurve`) once the
+  kernel reports the projected curve. The preference `viewport.autoProject`
+  (on) and its palette checkbox and `toggleAutoProject` command turn it off;
+  `viewport.autoProjectFace` (off) also projects a flat face's outline when a
+  sketch starts on it. No file-format or kernel change.
 - 2026-10-06 · **P4-12 Emboss on cones, spheres and free-form faces**
   (ADR-0060's amendment): a cone takes letters wrapped round it like a
   cylinder (the facade's new `wrapOnCone`, the cylinder's exact map with the

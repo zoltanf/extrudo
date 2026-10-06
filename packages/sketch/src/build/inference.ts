@@ -130,6 +130,17 @@ export function place(
   if (!pointer) return;
   constrain(edit, ids, snapConstraints(pointer.snap, point), true);
   constrain(edit, ids, alignmentConstraints(pointer.alignments, point, anchor), true);
+  // A model snap (auto-project, P6-07): the host projects the ref and holds
+  // the point on the projected vertex or curve in the same edit.
+  const model = pointer.snap?.model;
+  if (model) {
+    edit.models = edit.models ?? [];
+    edit.models.push({
+      point,
+      ref: model,
+      kind: pointer.snap?.kind === 'onCurve' ? 'edge' : 'vertex',
+    });
+  }
 }
 
 /** The direction of travel at the end of an arc drawn from `first` to `last`. */

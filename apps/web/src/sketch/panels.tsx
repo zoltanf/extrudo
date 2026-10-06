@@ -242,6 +242,8 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
   const dimensions = useStore(viewport, (s) => s.sketchDimensions);
   const profiles = useStore(viewport, (s) => s.sketchProfiles);
   const snap = useStore(viewport, (s) => s.snap);
+  const autoProject = useStore(viewport, (s) => s.autoProject);
+  const autoProjectFace = useStore(viewport, (s) => s.autoProjectFace);
   return (
     <FloatingPanel label="Sketch palette">
       <PanelTitle>
@@ -296,6 +298,33 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
           <PaletteToggle checked={snap} onChange={(v) => viewport.getState().setSnap(v)}>
             Snap to grid
           </PaletteToggle>
+        </li>
+        <li>
+          <PaletteToggle
+            checked={autoProject}
+            onChange={(v) => viewport.getState().setAutoProject(v)}
+          >
+            Auto-project
+          </PaletteToggle>
+        </li>
+        <li>
+          <Tooltip
+            label="Auto-project face outline"
+            hint="Project a flat face's outline when a sketch starts on it."
+            side="left"
+          >
+            <label className="flex h-7 items-center gap-2 px-1 text-muted">
+              <input
+                type="checkbox"
+                disabled={!autoProject}
+                checked={autoProjectFace}
+                onChange={(e) => viewport.getState().setAutoProjectFace(e.target.checked)}
+                className="accent-(--x-accent)"
+                aria-label="Auto-project face outline"
+              />
+              Face outline
+            </label>
+          </Tooltip>
         </li>
         {LATER.map((option) => (
           <li key={option.label}>

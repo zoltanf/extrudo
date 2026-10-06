@@ -1,4 +1,4 @@
-import type { SketchData, SketchEntityId, Vec2 } from '@extrudo/core';
+import type { GeomRef, SketchData, SketchEntityId, Vec2 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { SketchBuilder } from '../fixtures';
 import { alignmentConstraints, snapConstraints } from './constraints';
@@ -218,6 +218,34 @@ describe('infer', () => {
     const { sketch } = scene();
     expect(infer(sketch, [21.5, 0], { tolerance: 1 }).snap).toBeUndefined();
     expect(infer(sketch, [21.5, 0], { tolerance: 2 }).snap?.kind).toBe('endpoint');
+  });
+});
+
+describe('infer with a model target (auto-project, P6-07)', () => {
+  const vertexRef: GeomRef = { kind: 'vertex', id: 'v[face1|face2]' };
+  const edgeRef: GeomRef = { kind: 'edge', id: 'e[face1|face2]' };
+
+  it('a model vertex beats the grid and loses to a sketch point', () => {
+    const b = new SketchBuilder();
+    const p = b.point(0.5, 0);
+    const model = { ref: vertexRef, point: [2, 0] as Vec2, kind: 'vertex' as const };
+    // The model vertex (2,0) is under the cursor; the grid would give (0,0).
+    const far = infer(b.sketch, [2.2, 0.1], { tolerance: TOL, grid: 10, model });
+    expect(far.point).toEqual([2, 0]);
+    expect(far.snap).toMatchObject({ kind: 'point', ids: [], model: vertexRef });
+    // The sketch point (0.5,0) is within the snap distance, so it wins.
+    const near = infer(b.sketch, [0.5, 0.1], { tolerance: TOL, model });
+    expect(near.snap?.ids).toEqual([p]);
+  });
+
+  it('a model edge gives an on-curve snap with the ref', () => {
+    const b = new SketchBuilder();
+    const model = { ref: edgeRef, point: [5, 5] as Vec2, kind: 'edge' as const };
+    const r = infer(b.sketch, [5.4, 5.2], { tolerance: TOL, model });
+    expect(r.point).toEqual([5, 5]);
+    expect(r.snap).toMatchObject({ kind: 'onCurve', ids: [], model: edgeRef });
+    // Out of tolerance the model target doesn't apply.
+    expect(infer(b.sketch, [9, 9], { tolerance: TOL, model }).snap).toBeUndefined();
   });
 });
 

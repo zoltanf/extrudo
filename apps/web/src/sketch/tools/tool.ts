@@ -19,7 +19,7 @@ import {
   type Vec2,
 } from '@extrudo/core';
 import type { Typed } from '@extrudo/sketch/build';
-import type { Inference, PickFilter } from '@extrudo/sketch/inference';
+import type { Inference, ModelAttachment, ModelSnap, PickFilter } from '@extrudo/sketch/inference';
 
 export type { Typed };
 
@@ -74,6 +74,12 @@ export interface SketchEdit {
   hold?: SketchEntityId[];
   /** Move the entities by `by`, the rest following, as a drag does (the Move tool). */
   move?: { entities: SketchEntityId[]; by: Vec2 };
+  /**
+   * Points placed on a body edge or vertex (auto-project, P6-07): the host
+   * projects the ref in the same undo step and holds the point on the
+   * projected geometry.
+   */
+  models?: ModelAttachment[];
   /** The undo step's name ("Trim"); a plain addition is "Draw". */
   label?: string;
   /** Why the click changes nothing, for the prompt. */
@@ -132,6 +138,12 @@ export interface ToolContext {
    * closes it, P4-12). Absent in tests that draw without a view.
    */
   snapDistance?(): number;
+  /**
+   * The body edge or vertex under the pointer (auto-project, P6-07), in sketch
+   * coordinates. `undefined` with the preference off, with no body under the
+   * pointer or when the view offers no model geometry.
+   */
+  model(): ModelSnap | undefined;
 }
 
 /** A length in mm as a dimension expression in the document's unit, rounded to its precision. */

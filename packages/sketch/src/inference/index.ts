@@ -36,6 +36,8 @@ export {
   type Inference,
   type InferenceOptions,
   infer,
+  type ModelAttachment,
+  type ModelSnap,
   type Snap,
   type SnapKind,
   snapToGrid,

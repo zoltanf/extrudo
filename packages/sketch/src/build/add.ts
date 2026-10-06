@@ -18,6 +18,7 @@ import type {
   SketchEntityId,
   Vec2,
 } from '@extrudo/core';
+import type { ModelAttachment } from '../inference/inference';
 
 /**
  * The three maps a change to a sketch's content carries. The app's
@@ -34,6 +35,12 @@ export interface SketchAdd {
    * what it is given.
    */
   auto?: string[];
+  /**
+   * Points a drawing tool placed on a body edge or vertex (auto-project,
+   * P6-07): the app's host projects the ref and holds the point on it. The
+   * API never makes one (it has no pointer).
+   */
+  models?: ModelAttachment[];
 }
 
 /**

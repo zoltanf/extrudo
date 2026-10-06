@@ -43,6 +43,7 @@
  * unsolved, there is no status, and geometry can't be dragged.
  */
 import {
+  addProjection,
   addToSketch,
   CONSTRAINT_LABELS,
   type Command,
@@ -56,6 +57,7 @@ import {
   entityPoints,
   evaluateParameters,
   type FeatureId,
+  type GeomRef,
   includedCurves,
   includeLabel,
   includeProjection,
@@ -73,6 +75,7 @@ import {
   type SketchData,
   type SketchDimension,
   type SketchEntityId,
+  type SketchProjection,
   type SketchReport,
   setSketchGeometry,
   syncProjections,
@@ -86,6 +89,7 @@ import {
   dimensionValues,
   type Inference,
   infer,
+  type ModelSnap,
   pickEntity,
   type SketchSettleChange,
   SketchSettleError,
@@ -232,6 +236,12 @@ export interface PlanePointer {
   toggle?: boolean;
   /** The second of two clicks close together: double-clicking a text opens its panel (P4-03). */
   double?: boolean;
+  /**
+   * The body edge or vertex under the pointer, in sketch coordinates
+   * (auto-project, P6-07). Absent when the preference is off, no body is under
+   * the pointer, or the view offers no model geometry.
+   */
+  model?: ModelSnap;
 }
 
 /** A box drawn over the view (P1-09), as it lies on the sketch plane. */
@@ -320,6 +330,17 @@ export interface ToolHost {
   dispose(): void;
 }
 
+/**
+ * A point placed on a model snap (auto-project, P6-07) that waits for the
+ * kernel to report the projected curve before its constraint can be written.
+ */
+interface PendingModelConstraint {
+  feature: FeatureId;
+  projection: ProjectionId;
+  point: SketchEntityId;
+  kind: 'vertex' | 'edge';
+}
+
 export function createToolHost(options: ToolHostOptions): ToolHost {
   const { store, session, viewport } = options;
   const newId = options.newId ?? (() => randomId());
@@ -345,8 +366,17 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   let committing = false;
   /** mm per pixel at the last pointer: picking reaches `SNAP_PIXELS` of them. */
   let perPixel = 1;
+  /** The body edge or vertex under the last pointer (auto-project, P6-07). */
+  let lastModel: ModelSnap | undefined;
   /** The edit waiting for `resolveOverConstrained`. */
   let waiting: SketchEdit | undefined;
+  /**
+   * Constraints that wait for a projection's curve (auto-project, P6-07): the
+   * projected entity doesn't exist until the kernel reports the curves, so the
+   * host remembers what to hold and resolves it in `syncProjections`. Session
+   * state only: it never enters the document.
+   */
+  const pendingModels: PendingModelConstraint[] = [];
   /**
    * A drag on geometry with no tool (P1-09): points follow the pointer's offset, or, for a
    * drag on a circle's rim, the radius follows the pointer's distance from the centre.
@@ -422,6 +452,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       return data ? selectedEntities(data) : [];
     },
     snapDistance: () => SNAP_PIXELS * perPixel,
+    model: () => lastModel,
   };
 
   const create = (id: string) => {
@@ -460,11 +491,14 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   const inferAt = (pointer: PlanePointer, tool: SketchTool): Inference => {
     const data = context.sketch();
     perPixel = pointer.perPixel;
+    lastModel = pointer.model;
+    const model = !tool.picks ? pointer.model : undefined;
     return infer(data, pointer.point, {
       tolerance: SNAP_PIXELS * pointer.perPixel,
       anchor: tool.anchor(),
       grid: viewport.getState().snap ? gridStep(pointer.perPixel) : undefined,
       enabled: pointer.infer && !tool.picks,
+      ...(model && { model }),
     });
   };
 
@@ -549,6 +583,32 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     }
     const { doc } = store.getState();
     const evaluation = evaluateParameters(doc);
+
+    // Auto-project (P6-07): a point the tool placed on a body edge or vertex
+    // projects the ref and holds the point on the projected geometry. An
+    // already-projected ref is used at once (its constraint joins the edit); a
+    // new one waits for the kernel's report (`syncProjections`).
+    const newProjections: { id: ProjectionId; ref: GeomRef }[] = [];
+    const deferredModels: PendingModelConstraint[] = [];
+    for (const m of edit.models ?? []) {
+      const key = m.kind === 'vertex' ? 'vertex' : 'edge';
+      const existing = projectionFor(sketch.data, m.ref);
+      if (existing && key in existing[1].curves && existing[1].curves[key] === null) continue;
+      const projected = existing?.[1].curves[key];
+      if (projected) {
+        const cid = newId() as ConstraintId;
+        edit.constraints[cid] =
+          m.kind === 'vertex'
+            ? { type: 'coincident', a: m.point, b: projected }
+            : { type: 'pointOnCurve', point: m.point, curve: projected };
+        edit.auto = [...(edit.auto ?? []), cid];
+        continue;
+      }
+      const id = existing ? existing[0] : (newId() as ProjectionId);
+      if (!existing) newProjections.push({ id, ref: m.ref });
+      deferredModels.push({ feature: sketch.id, projection: id, point: m.point, kind: m.kind });
+    }
+
     const auto = new Set<string>(edit.auto);
 
     // New dimensions; the optional ones (`auto`) join them if the solver keeps them.
@@ -703,6 +763,18 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         editing:
           edit.editDimension && edit.editDimension in dimensions ? edit.editDimension : undefined,
       });
+      // The projection records join the step that added the geometry (P6-07).
+      for (const entry of newProjections) {
+        try {
+          store
+            .getState()
+            .amend(addProjection({ feature: sketch.id, id: entry.id, ref: entry.ref }));
+        } catch (error) {
+          if (!(error instanceof CommandError)) throw error;
+          console.warn('[sketch] could not auto-project:', error);
+        }
+      }
+      pendingModels.push(...deferredModels);
     }
   };
 
@@ -868,6 +940,53 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     const edit = action(tool);
     if (edit) commit(edit);
     bump();
+  };
+
+  /**
+   * Holds the points placed on auto-projected geometry (P6-07) once the kernel
+   * has reported its curves: the constraint joins the step that added the
+   * projection, and a solver that refuses it drops it with a message. Does
+   * nothing while a projection's curve isn't there yet.
+   */
+  const resolvePendingModels = (feature: FeatureId, data: SketchData | undefined) => {
+    if (!data || pendingModels.length === 0) return;
+    for (let i = pendingModels.length - 1; i >= 0; i--) {
+      const pending = pendingModels[i] as PendingModelConstraint;
+      if (pending.feature !== feature) continue;
+      const projection = data.projections?.[pending.projection];
+      if (!projection) {
+        pendingModels.splice(i, 1);
+        continue;
+      }
+      const key = pending.kind === 'vertex' ? 'vertex' : 'edge';
+      const curve = projection.curves[key];
+      if (curve === undefined) continue;
+      pendingModels.splice(i, 1);
+      if (curve === null) continue;
+      const cid = newId() as ConstraintId;
+      const constraint: SketchConstraint =
+        pending.kind === 'vertex'
+          ? { type: 'coincident', a: pending.point, b: curve }
+          : { type: 'pointOnCurve', point: pending.point, curve };
+      const trial: SketchData = {
+        entities: data.entities,
+        constraints: { ...data.constraints, [cid]: constraint },
+        dimensions: data.dimensions,
+      };
+      const trialValues = dimensionValues(trial, evaluateParameters(store.getState().doc), feature);
+      if (solver && !solver.check(trial, trialValues, cid).accepted) {
+        state.setState({
+          error: 'The sketch already holds the point where auto-project would put it.',
+        });
+        continue;
+      }
+      try {
+        store.getState().amend(addToSketch({ feature, constraints: { [cid]: constraint } }));
+      } catch (error) {
+        if (!(error instanceof CommandError)) throw error;
+        console.warn('[sketch] could not hold a point to an auto-projected curve:', error);
+      }
+    }
   };
 
   const host: ToolHost = {
@@ -1170,6 +1289,10 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           if (!change) continue;
           try {
             store.getState().amend(syncProjections({ feature: feature.id, ...change }));
+            const updated = readSketch(
+              store.getState().doc.features.find((f) => f.id === feature.id) ?? feature,
+            );
+            resolvePendingModels(feature.id, updated?.data);
             settleProjections(feature.id, current.data);
           } catch (error) {
             if (!(error instanceof CommandError)) throw error;
@@ -1271,4 +1394,24 @@ function changedSketch(data: SketchData, edit: SketchEdit): SketchData {
   for (const id of edit.remove?.constraints ?? []) delete constraints[id];
   for (const id of edit.remove?.dimensions ?? []) delete dimensions[id];
   return { entities, constraints, dimensions };
+}
+
+/**
+ * The projection record a sketch already holds for a ref, with its ID, if it
+ * has one (auto-project reuses it rather than projecting the same ref twice).
+ */
+function projectionFor(
+  data: SketchData,
+  ref: GeomRef,
+): [ProjectionId, SketchProjection] | undefined {
+  for (const [id, projection] of Object.entries(data.projections ?? {})) {
+    if (
+      projection.ref.kind === ref.kind &&
+      projection.ref.id === ref.id &&
+      (projection.mode ?? 'project') === 'project'
+    ) {
+      return [id as ProjectionId, projection];
+    }
+  }
+  return undefined;
 }

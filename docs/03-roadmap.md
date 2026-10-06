@@ -1064,12 +1064,17 @@ end to end, faster than in Fusion 360.
 - [ ] **P6-05 Components and simple assemblies** (multiple components, as-built
   joints), if demand warrants.
 - [ ] **P6-06 Docs site, tutorials, example library.**
-- [ ] **P6-07 Auto-project** (Fusion's "auto project edges on reference"): a
+- [x] **P6-07 Auto-project** (Fusion's "auto project edges on reference"): a
   body edge or vertex a sketch tool snaps, constrains or dimensions to is
   projected into the sketch on the fly (a P2-09 projection record), with a
   preference to turn it off; optionally the face's outline when a sketch
   starts on a face. The Project tool (P) does this by hand today.
   *Deps:* P2-09. *AC:* FR-SK-17.
+  Done 2026-10-06 (ADR-0074): a `ModelSnap` the view offers while a tool runs
+  reaches `infer` and `ToolContext.model`; a point placed on it adds the
+  projection record in the same undo step and is held on the projected
+  vertex or curve when the kernel reports it; `viewport.autoProject` (on) and
+  `viewport.autoProjectFace` (off) gate it; no file-format or kernel change.
 
 ---
 

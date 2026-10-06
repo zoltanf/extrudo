@@ -11,12 +11,14 @@
  * - **Finish Sketch** commits the transaction, so the edits become one step.
  */
 import {
+  addProjection,
   createSketch,
   type DocumentStore,
   type FeatureId,
   type GeomRef,
   type ModelStore,
   newId,
+  type ProjectionId,
   readSketch,
   type SessionStore,
   type SketchFrame,
@@ -55,7 +57,24 @@ export function cancelCreateSketch({ session }: SketchModeStores): void {
 export function createSketchOn(stores: SketchModeStores, plane: GeomRef): FeatureId {
   const id = newId<FeatureId>();
   cancelCreateSketch(stores);
-  stores.store.getState().dispatch(createSketch({ id, plane }));
+  const { store, viewport } = stores;
+  // Auto-project (P6-07, ADR-0074): a sketch starting on a face can bring the
+  // face's outline with it, in the same undo step as the sketch.
+  const outline =
+    viewport.getState().autoProject && viewport.getState().autoProjectFace && plane.kind === 'face';
+  if (outline) store.getState().beginTransaction('Create sketch');
+  try {
+    store.getState().dispatch(createSketch({ id, plane }));
+    if (outline) {
+      store
+        .getState()
+        .dispatch(addProjection({ feature: id, id: newId<ProjectionId>(), ref: plane }));
+    }
+    if (outline) store.getState().commitTransaction();
+  } catch (error) {
+    if (outline) store.getState().cancelTransaction();
+    throw error;
+  }
   editSketch(stores, id);
   return id;
 }

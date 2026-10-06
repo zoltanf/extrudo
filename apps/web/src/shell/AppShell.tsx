@@ -1404,6 +1404,8 @@ export function AppShell({
         onDragEnd: host.dragEnd,
         onLeave: host.leave,
         cursor: isPickingTool(activeTool) ? 'default' : 'crosshair',
+        // Auto-project (P6-07): a drawing tool may snap to a body edge or vertex.
+        modelSnap: true,
       };
     }
     return {
