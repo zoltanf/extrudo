@@ -33,11 +33,14 @@ import {
 import { ParameterHandle } from './handles';
 
 /**
- * What a stored `expr` input is given as: an expression, a plain number, or a
+ * What a stored `expr` input is given as: an expression, a plain number, a
  * parameter handle — which stands for its name, so `height: wall` works
- * (ADR-0068 §2).
+ * (ADR-0068 §2) — or a plain object that also carries the input's own
+ * parameter name (`{ expr: '10 mm', paramName: 'd1' }`), which the macro
+ * emitter writes so expressions reading `d1` resolve after a round trip
+ * (ADR-0073 §2).
  */
-export type ExprValue = string | number | ParameterHandle;
+export type ExprValue = string | number | ParameterHandle | { expr: string; paramName?: string };
 /** What a stored `ref` input is given as: one reference or several. */
 export type RefValue = GeomRef | readonly GeomRef[];
 
@@ -126,9 +129,19 @@ function plainInput(definition: FeatureDefinition, name: string, value: unknown)
       if (value instanceof ParameterHandle) {
         return { kind: 'expr', expr: value.name, unit: what.anyUnit ? value.unit : what.unit };
       }
-      return typeof value === 'number' || typeof value === 'string'
-        ? { kind: 'expr', expr: String(value), unit: what.unit }
-        : value;
+      if (typeof value === 'number' || typeof value === 'string') {
+        return { kind: 'expr', expr: String(value), unit: what.unit };
+      }
+      // A plain object keeps its own parameter name (the emitter's form).
+      if (isPlainExpr(value)) {
+        return {
+          kind: 'expr',
+          expr: value.expr,
+          ...(value.paramName !== undefined ? { paramName: value.paramName } : {}),
+          unit: what.unit,
+        };
+      }
+      return value;
     case 'enum':
       return typeof value === 'string' ? { kind: 'enum', value } : value;
     case 'ref':
@@ -183,6 +196,15 @@ function isReference(value: unknown): value is GeomRef {
     value !== null &&
     typeof (value as GeomRef).kind === 'string' &&
     typeof (value as GeomRef).id === 'string'
+  );
+}
+
+/** A plain expression object (`{ expr, paramName? }`), the emitter's form. */
+function isPlainExpr(value: unknown): value is { expr: string; paramName?: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { expr?: unknown }).expr === 'string'
   );
 }
 

@@ -986,7 +986,12 @@ end to end, faster than in Fusion 360.
   `KernelApi.scadParameters`; the `Recomputer` loads OpenSCAD once per kernel;
   the service worker caches the 11 MB WASM on first use, not at install, and a
   design computes offline after that).
-- [ ] **P5-05 Macro recording.** FR-PRG-04.
+- [x] **P5-05 Macro recording.** FR-PRG-04. Done 2026-10-06 (ADR-0073): the
+  emitter `emitScript` in `@extrudo/api` (every fixture round-trips) and
+  `extrudo script`; the app's Record and Stop, the Macro dialog (Copy, Replace
+  with a Script in one undo step, Keep both suppressed) and File › Export design
+  as script…, with e2e proving a recorded sketch, extrude and fillet give the
+  same body as the Script that replaces them.
 - [x] **P5-06 Wall-thickness check.** FR-3DP-07. Done 2026-10-05 (ADR-0072):
   thickness per triangle of the display mesh by a ray along its inward normal
   (the picking BVH, cached by mesh), as view state with the Wall Thickness

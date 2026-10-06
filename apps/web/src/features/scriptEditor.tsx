@@ -53,6 +53,48 @@ const theme = EditorView.theme({
   },
 });
 
+const highlighting = syntaxHighlighting(
+  HighlightStyle.define([
+    { tag: tags.comment, color: 'color-mix(in srgb, var(--x-muted) 80%, var(--x-ink))' },
+    {
+      tag: [tags.keyword, tags.operator],
+      color: 'color-mix(in srgb, var(--x-accent) 60%, var(--x-ink))',
+    },
+    {
+      tag: [tags.string, tags.number, tags.bool],
+      color: 'color-mix(in srgb, var(--x-success) 60%, var(--x-ink))',
+    },
+    { tag: [tags.variableName, tags.propertyName, tags.typeName], color: 'var(--x-ink)' },
+  ]),
+);
+
+/**
+ * The same editor, read only (P5-05's Macro dialog): the recorded code to read, select and copy.
+ * It keeps the focus order of a page: Tab leaves it, since nothing here is typed.
+ */
+export function CodeView({ code, label }: { code: string; label: string }) {
+  const parent = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!parent.current) return;
+    const editor = new EditorView({
+      parent: parent.current,
+      state: EditorState.create({
+        doc: code,
+        extensions: [
+          basicSetup,
+          theme,
+          highlighting,
+          javascript({ typescript: true }),
+          EditorState.readOnly.of(true),
+          EditorView.contentAttributes.of({ 'aria-label': label, tabindex: '0' }),
+        ],
+      }),
+    });
+    return () => editor.destroy();
+  }, [code, label]);
+  return <div ref={parent} data-macro-code className="max-h-80 overflow-hidden" />;
+}
+
 export function ScriptEditor({ open, controller }: DialogExtraProps) {
   const parent = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView>(null);
@@ -70,20 +112,7 @@ export function ScriptEditor({ open, controller }: DialogExtraProps) {
         extensions: [
           basicSetup,
           theme,
-          syntaxHighlighting(
-            HighlightStyle.define([
-              { tag: tags.comment, color: 'color-mix(in srgb, var(--x-muted) 80%, var(--x-ink))' },
-              {
-                tag: [tags.keyword, tags.operator],
-                color: 'color-mix(in srgb, var(--x-accent) 60%, var(--x-ink))',
-              },
-              {
-                tag: [tags.string, tags.number, tags.bool],
-                color: 'color-mix(in srgb, var(--x-success) 60%, var(--x-ink))',
-              },
-              { tag: [tags.variableName, tags.propertyName, tags.typeName], color: 'var(--x-ink)' },
-            ]),
-          ),
+          highlighting,
           lintGutter(),
           language.current.of(
             javascript({ typescript: current.current.open.values.choices.language !== 'js' }),

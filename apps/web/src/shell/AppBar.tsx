@@ -1,6 +1,7 @@
 import { type DocumentStore, renameDocument } from '@extrudo/core';
 import {
   CircleHelp,
+  FileCode,
   FileDown,
   FilePlus2,
   FileUp,
@@ -51,6 +52,8 @@ export interface FileActions {
   exportModel?(): void;
   /** Picks a STEP, mesh or OpenSCAD file and opens the Import dialog (P4-06, P5-04). */
   importModel?(): void;
+  /** Downloads the design as TypeScript that makes it again (P5-05). */
+  exportScript?(): void;
   /** Opens the Versions dialog at its description field (P2-14). */
   saveVersion?(): void;
   /** Opens the Versions dialog (P2-14). */
@@ -138,6 +141,11 @@ export function AppBar({
         {file.exportModel && (
           <MenuItem icon={<FileDown size={14} />} onSelect={file.exportModel}>
             Export 3MF, STL or STEP…
+          </MenuItem>
+        )}
+        {file.exportScript && (
+          <MenuItem icon={<FileCode size={14} />} onSelect={file.exportScript}>
+            Export design as script…
           </MenuItem>
         )}
         {file.importModel && (

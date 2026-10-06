@@ -30,6 +30,7 @@ extrudo export <design.extrudo> --format stl|3mf|step [--out <path>]
                [--resolution coarse|medium|fine|<deviation mm>] [--json]
 extrudo set    <design.extrudo> [--param name=expr]… [--config <name>] --out <new.extrudo>
 extrudo check  <design.extrudo> [--param …] [--config …] [--json]
+extrudo script <design.extrudo> [--features a..b] [--param name=expr]…
 ```
 
 ### `info` — what the design holds and what it computes to
@@ -118,6 +119,21 @@ Recomputes the design (with `--param` and `--config` applied first) and exits 2
 if any feature has an error, listing them. Warnings are printed but do not fail
 the check. `--json` prints the whole report with `"ok": false`.
 
+### `script` — a design as the code that makes it again
+
+```sh
+extrudo script box.extrudo > box.ts
+extrudo script b4.extrudo --features 2..6 > lip.ts
+```
+
+Prints the design as TypeScript through the macro emitter (P5-05, ADR-0073):
+one call per feature, references as handle expressions, sketches as
+`design.sketch(plane, (k) => { … })`. With `--features a..b` only that run of
+the timeline (feature indices or IDs) is emitted, and its parameters are left
+out by default; `--param`/`--config` apply their change first, so the emitted
+code describes the changed design. Paste the output into a Script feature or
+run it against a [`Design`](api/README.md).
+
 ## Options
 
 | Option | Meaning |
@@ -125,6 +141,7 @@ the check. `--json` prints the whole report with `"ok": false`.
 | `--param name=expr` | Set a parameter to a new expression. Repeatable. The app's expression grammar with units: `width=60mm`, `tilt=30deg`, `wall=2 * tolerance`. A driving dimension's own parameter (`d1`, or the name it was given) works too and moves that sketch; a feature input's own parameter does not — the message says which feature and input it is. `info` lists all three kinds. |
 | `--config <name>` | Put a configuration's values on the parameters (ADR-0059), then re-solve. |
 | `--bodies a,b` | Export only these bodies, by name (or by ID). |
+| `--features a..b` | For `script`: emit only this run of the timeline (feature indices or IDs). |
 | `--out <path>` | The file to write: the export's, or the new design for `set`. Missing folders are made. |
 | `--resolution …` | `coarse`, `medium`, `fine` or a deflection in mm. |
 | `--json` | One JSON object on stdout instead of the text report. |

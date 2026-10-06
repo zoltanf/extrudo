@@ -35,6 +35,7 @@ import {
 } from 'react';
 import { useStore } from 'zustand';
 import { ContextMenu, IconButton, Popover, ToolIcon, Tooltip } from '../design-system';
+import { type MacroStore, recordedCount } from '../macro/macro';
 import { selectionSummary } from '../selection/items';
 import { formatRenderStats } from '../viewport/renderMeter';
 import type { ViewportStore } from '../viewport/store';
@@ -78,6 +79,8 @@ export interface TimelineProps {
   editing?: FeatureId;
   /** The size of the box around the selection ("40.00 × 80.00 × 60.00 mm", P2-13). */
   selectionSize?: string | undefined;
+  /** The macro recorder (P5-05): while it records, the status bar says so. */
+  macro?: MacroStore;
 }
 
 /** A chip being dragged to a new place (FR-TL-04). */
@@ -162,6 +165,7 @@ export function Timeline({
   session,
   editing,
   selectionSize,
+  macro,
 }: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
   const statuses = useStore(model ?? NO_MODEL, (s) => s.features);
@@ -400,6 +404,7 @@ export function Timeline({
         </>
       )}
       <span className="flex-1" />
+      {macro && <MacroRecording macro={macro} store={store} />}
       {session && <SelectionState session={session} store={store} size={selectionSize} />}
       <output className="font-mono text-[11px] whitespace-nowrap text-muted" aria-label="Status">
         {activeSketch ? `Editing ${activeSketch} · ` : ''}
@@ -954,6 +959,24 @@ function SelectionState({
         </Tooltip>
       )}
     </>
+  );
+}
+
+/** A red dot and the count while a macro records (P5-05): the count follows the document. */
+function MacroRecording({ macro, store }: { macro: MacroStore; store: DocumentStore }) {
+  const recording = useStore(macro, (s) => s.recording);
+  const doc = useStore(store, (s) => s.doc);
+  if (!recording) return null;
+  const made = recordedCount(recording, doc);
+  return (
+    <output
+      aria-label="Macro recording"
+      data-macro-recording={made}
+      className="flex items-center gap-1.5 font-mono text-[11px] whitespace-nowrap text-ink"
+    >
+      <span aria-hidden="true" className="size-2 rounded-full bg-error" />
+      Recording macro · {made} {made === 1 ? 'feature' : 'features'}
+    </output>
   );
 }
 

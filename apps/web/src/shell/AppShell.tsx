@@ -54,6 +54,15 @@ import { PRESS_PULL, PRESS_PULL_PROMPT, pressPullTarget } from '../features/pres
 import { cornersStore } from '../features/primitiveCorners';
 import { type FeatureDialogs, featureDialogs, specForCommand } from '../features/registry';
 import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs';
+import { MacroDialog } from '../macro/MacroDialog';
+import {
+  createMacroStore,
+  designCode,
+  endedByUndo,
+  macroCode,
+  type Recorded,
+  scriptFileName,
+} from '../macro/macro';
 import { analyticItem } from '../measure/analytic';
 import { sizeText } from '../measure/format';
 import {
@@ -238,6 +247,10 @@ export function AppShell({
   const [exportRequest, setExportRequest] = useState<ExportRequest>();
   const [modelExport, setModelExport] = useState<ModelExportRequest>();
   const [versionsOpen, setVersionsOpen] = useState(false);
+  // Macro recording (P5-05, ADR-0073 §4): session state, and what Stop wrote for its dialog.
+  const macro = useMemo(() => createMacroStore(), []);
+  const recording = useStore(macro, (s) => s.recording);
+  const [recorded, setRecorded] = useState<Recorded>();
   const versionContext = useMemo<VersionContext>(
     () => ({ store, autosave, projects: platform.projects }),
     [store, autosave, platform],
@@ -254,6 +267,7 @@ export function AppShell({
       ...file,
       exportModel: () => setModelExport({}),
       importModel: () => startImportRef.current(),
+      exportScript: () => exportScriptRef.current(),
       saveVersion: () => setVersionsOpen(true),
       versionHistory: () => setVersionsOpen(true),
     }),
@@ -367,6 +381,8 @@ export function AppShell({
   const startTutorialRef = useRef<() => void>(() => {});
   /** The File menu's Import, which is the Insert tab's tile (P4-06). */
   const startImportRef = useRef<() => void>(() => {});
+  /** The File menu's Export Design as Script (P5-05). */
+  const exportScriptRef = useRef<() => void>(() => {});
   /** Canvas's tool, which picks its picture before its dialog opens. */
   const startCanvasRef = useRef<() => void>(() => {});
   // Feature dialogs (P2-05): one controller; while a dialog is open, picks go to its fields.
@@ -626,6 +642,17 @@ export function AppShell({
     if (session.getState().mode === 'sketch') finishSketch(stores);
   }, [dialog, session, stores]);
   useEffect(() => setRestoreGuard(endTransaction), [endTransaction]);
+  // Undoing past where the recording started ends it (P5-05): there is nothing left to record.
+  useEffect(() => {
+    if (endedByUndo(macro.getState().recording, doc)) {
+      macro.getState().stop();
+      notify('info', 'Macro recording ended: you undid past where it started.');
+    }
+  }, [doc, macro, notify]);
+  const macroHidden = useMemo<ReadonlySet<string>>(
+    () => new Set([recording ? 'recordMacro' : 'stopMacro']),
+    [recording],
+  );
   const commands = useMemo(
     () =>
       buildCommands({
@@ -671,12 +698,14 @@ export function AppShell({
           notifications: { open: () => toasts.history?.getState().setOpen(true) },
         }),
         tutorial: { start: () => startTutorialRef.current() },
+        macro: { recording: recording !== undefined },
       }),
     [
       mode,
       host,
       notify,
       store,
+      recording,
       dialog,
       ready,
       dialogCommands,
@@ -831,6 +860,20 @@ export function AppShell({
       return;
     }
     if (isRepeatable(tool)) setLastTool(tool);
+    // P5-05: Record and Stop (ADR-0073 §4): the document is the record, so recording is only
+    // where the timeline stood, and Stop writes what was added after it.
+    if (tool === 'recordMacro') {
+      if (mode !== 'model') return;
+      const { features, timelineMarker } = store.getState().doc;
+      macro.getState().start(timelineMarker, features.length);
+      return;
+    }
+    if (tool === 'stopMacro') {
+      const stopped = macro.getState().stop();
+      if (stopped === undefined) return;
+      void macroCode(store.getState().doc, stopped).then(setRecorded);
+      return;
+    }
     // P4-06: Import picks the file first (its bytes go with the design), then
     // opens its dialog, which previews what the file holds.
     if (tool === 'importBody' || tool === 'canvas') {
@@ -939,6 +982,14 @@ export function AppShell({
   };
   // P4-06: Import picks a model file, stores its bytes with the design and opens
   // the dialog, which previews what the file holds (ADR-0066 §0, §2).
+  exportScriptRef.current = () => {
+    const { doc: current } = store.getState();
+    void designCode(current).then((code) => {
+      const name = scriptFileName(current.name);
+      platform.files.download(new Blob([code], { type: 'text/plain' }), name);
+      notify('success', `Exported ${name}.`);
+    });
+  };
   startImportRef.current = () => {
     if (mode !== 'model') return;
     if (picking) cancelCreateSketch(stores);
@@ -1374,6 +1425,7 @@ export function AppShell({
         }
         onRun={run}
         ready={ready}
+        hidden={macroHidden}
       />
       {/* The view fills the area; the browser floats over its left edge (glass, like the nav
           bar), so showing, hiding or resizing it never resizes the view. Overlays anchored to
@@ -1686,9 +1738,16 @@ export function AppShell({
         model={model}
         session={session}
         editing={dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined}
+        macro={macro}
         selectionSize={
           measured.measurement?.bbox && sizeText(measured.measurement.bbox, doc.settings)
         }
+      />
+      <MacroDialog
+        recorded={recorded}
+        store={store}
+        notify={notify}
+        onClose={() => setRecorded(undefined)}
       />
       <OverConstrainedDialog host={host} />
       <ParametersDialog

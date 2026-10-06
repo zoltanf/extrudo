@@ -31,7 +31,7 @@ P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 
 complete** (version 0.3.0). Phase 5 has started: P5-01 is **done** (the public document API, `packages/api`,
 its generated reference and the site's `/docs/api/` pages, ADR-0068) and P5-03 is
 **done** (the headless CLI, `packages/cli` and the `extrudo` command, ADR-0069) and P5-04 is
-**done** (OpenSCAD import, `packages/openscad`, both slices, ADR-0071). Phase 4: P4-01 (sweep, loft, coil), P4-02
+**done** (OpenSCAD import, `packages/openscad`, both slices, ADR-0071) and P5-05 is **done** (macro recording: the emitter and the app's Record, Stop and Macro dialog, ADR-0073). Phase 4: P4-01 (sweep, loft, coil), P4-02
 (modeled threads), P4-03 (sketch text, bundled fonts), P4-03b (user fonts
 as attachments), P4-04 (emboss, deboss), P4-05 (control-point splines,
 conics), P4-07 (customizer, configurations), P4-08 (print tolerance,
@@ -1515,13 +1515,66 @@ cache alone. A failed fetch in `browser-worker.ts` is replied `offline: true`
 and worded "OpenSCAD isn't downloaded yet: connect to the internet once to
 compile gear.scad." (the module isn't kept, so the next compile tries again).
 
+ADR-0073 (P5-05, slice 1) added **the macro emitter**: `emitScript(doc,
+options?)` in `@extrudo/api` (`src/emit.ts` plus `src/emit/{print,refs,sketch,
+context}.ts`) writes a design back as the TypeScript that makes it again, so a
+hand-made design becomes a Script or a reusable program. **The document is the
+record**: the emitter walks the timeline (or a run `[from, to]`,
+`options.features`, parameters left out of a run) and inverts the API. Rules a
+change must keep: inputs become the method's plain values (an `expr` string, an
+enum's value, a bool, `labels`, `code`, a file's attachment ID, one ref or an
+array by the schema's `meta({ input })`); references become the handle
+expression where one exists (`sketch1.profileAt(interior)`,
+`box1.face('cap:end')`, `box1.edge([…])`, `plane1.constructionRef()`; a body is
+emitted as `design.ref('body', …)` because the kernel keys a body
+`<feature>:0`), and **a name that embeds a recorded feature's ID** — a Script's
+generated `<script>.f1`, a face's `side:<curve>` source — is a **template
+literal through the handle's own `.id`**, rewritten boundary-aware so the `f1`
+in `f1.f1` only takes the script's part. A sketch is emitted as
+`design.sketch(plane, k => { … })` with its **solved** coordinates, every
+constraint and dimension as builder calls (a named dimension keeps its
+`paramName`, so expressions reading it resolve), and text with
+`{ upright: false, height: false }` (the stored pair is emitted itself;
+`SketchBuilder.text` gained the option, and `SketchHandle` gained
+`ellipses()`/`splines()`/`texts()`). **Projections are emitted as the curves
+they became** with a comment (a script can't project), so a round trip does not
+keep `projections` or per-entity construction flags (the builder has only the
+sketch-wide `construction` option); configurations, attachments, visibility and
+a script's generated features are Deferred. The output is printed by a small
+Biome-shaped writer (`src/emit/print.ts`), and the test runs `biome format` on
+it expecting no change. The proof is the round trip: `packages/api/src/
+emit.test.ts` compares the document up to IDs and names (dropping fingerprints,
+labels, feature-input `paramName` and projections, and canonicalising profile
+regions and sorted edge faces), and `packages/cli/src/emit-recompute.test.ts`
+recomputes every benchmark and the script fixture body by body. `extrudo script
+<file.extrudo> [--features a..b]` prints the code; `docs/api/emit.md` is the
+page. **A new feature or input kind reaches the emitter through
+`meta({ input })` and the schema; a new reference kind needs a case in
+`emit/refs.ts`.**
+**Slice 2 (the app, `apps/web/src/macro/`):** recording is session state
+(`createMacroStore`: `recording: { from, base }` — `from` is the timeline
+marker's index at Record, `base` its length, because new features land at the
+marker; the run is `features[from .. from + length − base)`, and an undo below
+`base` ends it); the status bar's `[data-macro-recording]` counts; the tools
+`recordMacro`/`stopMacro` (Solid › Create's menu; `CommandContext.macro` and
+`ToolbarProps.hidden` show one at a time) and `exportScript` (File menu, Ctrl+K)
+are in `AppShell.run`/`buildCommands`. **Stop** emits through a lazy `@extrudo/api`
+import (the web app depends on it only for this) and opens `MacroDialog` (region
+"Macro", code in `CodeView`, `scriptEditor.tsx`'s read-only editor). **Replace is
+one transaction** (insert the Script at the first recorded feature, then
+`removeFeature` last to first, `cancelTransaction` and the reason on any
+`CommandError`); **Keep both** appends the Script suppressed. A feature using a
+recorded one is always inside the run, so only an expression outside it (a user
+parameter reading a recorded sketch's `d1`) refuses a Replace in the UI.
+
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): **P5-01 is done** (all three slices, ADR-0068), **P5-03 is
 done** (both slices, ADR-0069: the headless library and the `extrudo` binary)
 and **P5-02 is done** (all three slices, ADR-0070: the runner, the feature in
 core/kernel/CLI, and the lazy CodeMirror dialog, chip, e2e and guide).
-**P5-04 is done** too (OpenSCAD import, ADR-0071). Next are
-P5-05 (macros) and P5-06 (wall-thickness check), according
+**P5-04 is done** too (OpenSCAD import, ADR-0071), and **P5-05**
+(macro recording, both slices, ADR-0073). Next is
+P5-06 (wall-thickness check), according
 to `docs/03-roadmap.md`; **P4-06 is done** (all five slices, ADR-0066) and
 P4-12's hardening part (ADR-0067 H1 to
 H5) is on main, so **Phase 4 is complete apart from P4-12's backlog** (exact
@@ -1565,7 +1618,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for the v0.4.0 release |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0070: the Script feature (QuickJS sandbox, `@extrudo/script`). ADR-0072: wall-thickness check |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0070: the Script feature (QuickJS sandbox, `@extrudo/script`). ADR-0073: macro recording (the document-to-script emitter, `@extrudo/api`; Record, Stop and the Macro dialog in the app) ADR-0072: wall-thickness check |
 | `docs/adr/0071-openscad-import.md` | OpenSCAD import: `.scad` attachments as mesh bodies, `@extrudo/openscad`, async preparation and runtime WASM caching. |
 
 
@@ -2994,6 +3047,23 @@ them. Notes further down that name a machine apply to that machine only.
   same import under the served headers and `pwa.spec.ts` the runtime cache
   (`caches.open('extrudo-openscad')`), the offline reload after first use and
   the "isn't downloaded yet" message offline before it.
+- **Macro e2e** (`e2e/macro.spec.ts`, P5-05 slice 2): `pickTool(page, 'Record Macro')`
+  / `'Stop Macro'` (menuitems of Create; only the one that applies is in the menu).
+  The status bar's `[data-macro-recording]` holds the count ("Recording macro · 3
+  features"). The dialog is the region "Macro" (`exact: true`) with
+  `data-macro-dialog` (`ready`, `done`, `empty`), the read-only editor "Macro code",
+  buttons "Copy", "Replace with a Script", "Keep both", "Close" (`exact: true`) and
+  `[data-macro-outcome]` (`ok`/`refused`) with the message. **The dialog is modal, so
+  the Viewport region leaves the accessibility tree while it is open**: read
+  `data-bodies` before Stop or after Close. CodeMirror renders only the lines in view:
+  read the whole code through Copy (`context.grantPermissions(['clipboard-read',
+  'clipboard-write'])`, then `navigator.clipboard.readText()`). A script's body is a
+  new body, so compare `data-bodies` without the names. Replace is checked against the
+  recorded body's size and face count, one Ctrl+Z, then Ctrl+Shift+Z; Keep both
+  gives "Script2" suppressed (unsuppress from the chip's right-click menu). The
+  refusal test records a sketch with a dimension (`d1`) and adds the parameter
+  `twice = d1 * 2`. Export Design as Script is File menu › "Export design as
+  script…". 4 tests, 2.4-9.4 s each.
 - **Canvas e2e** (`e2e/canvas.spec.ts`, P4-06 slice 5): the picture is a
   200 × 100 PNG **built in the page** with an `OffscreenCanvas` (as a string:
   the e2e specs typecheck without the DOM) and handed to the file chooser as

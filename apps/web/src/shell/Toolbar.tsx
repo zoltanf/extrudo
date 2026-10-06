@@ -16,10 +16,12 @@ export interface ToolbarProps {
   onRun(tool: ToolId): void;
   /** Tools a registered feature dialog makes work (P2-05). */
   ready?: ReadonlySet<string>;
+  /** Tools left out of the menus for now (Record Macro while recording, Stop Macro otherwise). */
+  hidden?: ReadonlySet<string>;
 }
 
 /** Tabs and tool groups (UI spec §2). */
-export function Toolbar({ mode = 'model', activeTool, onRun, ready }: ToolbarProps) {
+export function Toolbar({ mode = 'model', activeTool, onRun, ready, hidden }: ToolbarProps) {
   const home: TabId = mode === 'sketch' ? 'sketch' : 'solid';
   const [tab, setTab] = useState<TabId>(home);
   // Entering or leaving a sketch brings its tab forward.
@@ -107,20 +109,22 @@ export function Toolbar({ mode = 'model', activeTool, onRun, ready }: ToolbarPro
                 }
               >
                 <MenuLabel>{group.label}</MenuLabel>
-                {[...group.tools, ...(group.more ?? [])].map((id) => {
-                  const tool: Tool = TOOLS[id];
-                  return (
-                    <MenuItem
-                      key={id}
-                      disabled={!isToolReady(tool, ready)}
-                      shortcut={shortcutFor(id)}
-                      icon={<ToolIcon name={tool.icon} category={tool.category} size={16} />}
-                      onSelect={() => onRun(id)}
-                    >
-                      {tool.label}
-                    </MenuItem>
-                  );
-                })}
+                {[...group.tools, ...(group.more ?? [])]
+                  .filter((id) => !hidden?.has(id))
+                  .map((id) => {
+                    const tool: Tool = TOOLS[id];
+                    return (
+                      <MenuItem
+                        key={id}
+                        disabled={!isToolReady(tool, ready)}
+                        shortcut={shortcutFor(id)}
+                        icon={<ToolIcon name={tool.icon} category={tool.category} size={16} />}
+                        onSelect={() => onRun(id)}
+                      >
+                        {tool.label}
+                      </MenuItem>
+                    );
+                  })}
               </Menu>
             </fieldset>
           </div>

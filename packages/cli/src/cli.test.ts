@@ -448,6 +448,33 @@ describe('the command line itself', () => {
   });
 });
 
+describe('extrudo script', () => {
+  it('prints a design as the TypeScript that makes it again', SPAWNING, async () => {
+    const design = await fixture('b6-wall-hook');
+    const result = await extrudo(['script', design]);
+    expect(result.code).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toContain("design.parameter('wall', '5 mm');");
+    expect(result.stdout).toContain('const fillet1 = design.fillet(');
+  });
+
+  it('emits one run with --features a..b, without the parameters', SPAWNING, async () => {
+    const design = await fixture('b4-box-with-lid');
+    const partial = await extrudo(['script', design, '--features', '2..6']);
+    expect(partial.code).toBe(0);
+    expect(partial.stdout).not.toContain('design.parameter(');
+    // Shell1's face belongs to Box1 before the run.
+    expect(partial.stdout).toContain("design.ref('face',");
+  });
+
+  it('is a usage mistake for a malformed --features', SPAWNING, async () => {
+    const design = await fixture('b1-plate');
+    const result = await extrudo(['script', design, '--features', 'nonsense']);
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('--features takes a run as a..b');
+  });
+});
+
 describe('the time an export takes', { timeout: 600_000 }, () => {
   it('computes every benchmark design and writes a 3MF', SPAWNING, async () => {
     const times: [string, number][] = [];

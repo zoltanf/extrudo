@@ -175,6 +175,7 @@ and maps it, and says so in the changelog.
 - [Sketches](sketch.md) — the builder behind `d.sketch`
 - [References](references.md) — every helper that builds a reference
 - [Scripts](scripts.md) — a sandboxed program in the timeline, its environment and examples
+- [Macros](emit.md) — turn a design back into the code that makes it
 - [Features](features/README.md) — one page per feature type
 - The `.extrudo` [file format](https://github.com/zoltanf/extrudo/blob/main/docs/file-format.md)
 - [Source and issues](https://github.com/zoltanf/extrudo)

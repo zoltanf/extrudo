@@ -59,6 +59,8 @@ const ALLOWED = {
   // The landing page: no internal packages (ADR-0057).
   '@extrudo/site': [],
   '@extrudo/web': [
+    // Only the macro dialog imports it, lazily, for the emitter (P5-05, ADR-0073 §4).
+    '@extrudo/api',
     '@extrudo/core',
     '@extrudo/sketch',
     '@extrudo/kernel',

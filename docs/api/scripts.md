@@ -100,6 +100,18 @@ for (let i = 0; i <= compartments; i++) {
 design.box({ length: width, width: depth, height: board, offset: height - board, operation: 'join' });
 ```
 
+## Recording a macro
+
+Solid › Create › **Record Macro** starts recording; make features as usual (the
+status bar counts them) and choose **Stop Macro**. The Macro dialog shows the
+code that makes them again, the same code `emitScript` writes (see
+[emit.md](emit.md)). **Replace with a Script** swaps the recorded features for one
+Script feature in a single undo step; **Keep both** adds the Script suppressed
+beside them, and Copy puts the code on the clipboard. Replace is refused, with the
+reason, when something outside the recording still uses a recorded feature.
+File › **Export design as script…** does the same for the whole design,
+parameters included.
+
 ## IDs, names and later features
 
 Generated features have deterministic IDs `<script>.f1`, `<script>.f2`, … and

@@ -4,6 +4,25 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P5-05 (2 of 2) Macro recording in the app** (ADR-0073 §4):
+  Solid › Create › Record Macro and Stop Macro (and Ctrl+K) — the status bar shows
+  a red dot and the count while recording; Stop opens the Macro dialog with the
+  code read only, Copy, "Replace with a Script" (one undo step; refused with the
+  reason when something outside the run uses it) and "Keep both" (the Script
+  suppressed). File › Export design as script… downloads the whole design as
+  `<name>.ts`. P5-05 is complete.
+- 2026-10-06 · **P5-05 (1 of 2) Macro recording: the emitter** (ADR-0073):
+  `emitScript(doc, options?)` in `@extrudo/api` writes a design back as the
+  TypeScript that makes it — one call per feature, inputs as their plain values,
+  references as handle expressions (or `design.ref`), sketches as
+  `design.sketch(plane, (k) => { … })` with solved coordinates, parameters in
+  dependency order, suppression and groups; a name that embeds a recorded
+  feature's ID (a Script's generated `<script>.f1`, a face's source) becomes a
+  template literal through the handle's own `.id`. It is formatted the way
+  Biome formats TypeScript, and every benchmark and script fixture is
+  round-tripped in tests (document equality in `packages/api`, the recomputed
+  bodies in `packages/cli`). `extrudo script <file> [--features a..b]` prints
+  the same code, and `docs/api/emit.md` documents it.
 - 2026-10-06 · **P4-12 Primitives: placement** (ADR-0032 amendment): every
   primitive dialog has X, Y and Offset handles beside the size handles, a click
   on the picked plane or face puts the primitive there, and the Box has a "Two

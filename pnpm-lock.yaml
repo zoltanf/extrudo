@@ -221,6 +221,9 @@ importers:
       '@codemirror/view':
         specifier: ^6.43.13
         version: 6.43.13
+      '@extrudo/api':
+        specifier: workspace:*
+        version: link:../../packages/api
       '@extrudo/core':
         specifier: workspace:*
         version: link:../../packages/core

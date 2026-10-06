@@ -99,7 +99,9 @@ browser; the reference is published at
 CodeMirror editor, parameter completion, inline errors and console output.
 Programs run in a bounded QuickJS sandbox inside the geometry worker; the bodies
 they make are ordinary bodies you can fillet, measure and export.
-See the [script guide](docs/api/scripts.md).
+See the [script guide](docs/api/scripts.md). **Record Macro** turns what you
+make by hand into the same kind of script, and **Export design as script** writes a
+whole design as code.
 
 ## Build from source
 

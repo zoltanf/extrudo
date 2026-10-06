@@ -9,6 +9,7 @@
  *                [--resolution coarse|medium|fine|<mm>] [--json]
  * extrudo set    <design.extrudo> [--param name=expr]… [--config <name>] --out <new.extrudo>
  * extrudo check  <design.extrudo> [--param …] [--config …] [--json]
+ * extrudo script <design.extrudo> [--features a..b] [--param …]
  * ```
  *
  * **Exit codes** (ADR-0069 §3): 0 it worked; 1 the command line was wrong (a
@@ -24,6 +25,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { emitScript } from '@extrudo/api';
 import {
   type ComputeResult,
   type DesignJob,
@@ -53,7 +55,7 @@ export const DESIGN_ERROR = 2;
 export const FILE_ERROR = 3;
 
 /** The commands, in the order `--help` lists them. */
-const COMMANDS = ['info', 'export', 'set', 'check'] as const;
+const COMMANDS = ['info', 'export', 'set', 'check', 'script'] as const;
 type Command = (typeof COMMANDS)[number];
 
 const USAGE_TEXT = `extrudo ${EXTRUDO_VERSION} — recompute an Extrudo design in Node and export it.
@@ -65,12 +67,14 @@ Usage:
                 [--resolution coarse|medium|fine|<deviation mm>] [--json]
   extrudo set    <design.extrudo> [--param name=expr]... [--config <name>] --out <new.extrudo>
   extrudo check  <design.extrudo> [--param name=expr]... [--config <name>] [--json]
+  extrudo script <design.extrudo> [--features a..b] [--param name=expr]...
 
 Options:
   --param name=expr   Set a parameter (units are welcome: width=60mm, tilt=30deg).
                       Repeatable. A driving dimension's own parameter works too.
   --config <name>     Put a configuration's values on the parameters.
   --bodies a,b        Export only these bodies, by name.
+  --features a..b     Emit only this run of the timeline (feature indices or IDs).
   --out <path>        Where to write. For export it is the one file to write;
                       for set it is the .extrudo file to write.
   --resolution        coarse, medium (the default), fine, or a deflection in mm.
@@ -95,6 +99,7 @@ export interface Options {
   params: Record<string, string>;
   config?: string;
   bodies?: string[];
+  features?: [number | string, number | string];
   resolution?: string;
   json: boolean;
 }
@@ -106,6 +111,7 @@ const PARSE_OPTIONS = {
   param: { type: 'string', multiple: true },
   config: { type: 'string' },
   bodies: { type: 'string' },
+  features: { type: 'string' },
   resolution: { type: 'string' },
   json: { type: 'boolean' },
   help: { type: 'boolean', short: 'h' },
@@ -200,6 +206,7 @@ export function parse(argv: readonly string[]): Options | { help: true } | { ver
     }
   }
   if (values.resolution !== undefined) options.resolution = values.resolution;
+  if (values.features !== undefined) options.features = featuresOf(values.features);
   if (options.command === 'export' && options.format === undefined) {
     throw new UsageError('extrudo export needs --format stl, 3mf or step.');
   }
@@ -215,7 +222,24 @@ export function parse(argv: readonly string[]): Options | { help: true } | { ver
   if (options.command !== 'export' && options.resolution !== undefined) {
     throw new UsageError(`--resolution is for extrudo export, not ${options.command}.`);
   }
+  if (options.command !== 'script' && options.features !== undefined) {
+    throw new UsageError(`--features is for extrudo script, not ${options.command}.`);
+  }
   return options;
+}
+
+/** `a..b` as `[from, to]`: feature indices, or feature IDs. */
+function featuresOf(text: string): [number | string, number | string] {
+  const at = text.indexOf('..');
+  if (at < 0) {
+    throw new UsageError(`--features takes a run as a..b ("${text}" doesn't).`);
+  }
+  const ends = [text.slice(0, at), text.slice(at + 2)];
+  if (ends.some((end) => end.length === 0)) {
+    throw new UsageError(`--features takes a run as a..b ("${text}" doesn't).`);
+  }
+  const one = (end: string): number | string => (/^\d+$/.test(end) ? Number(end) : end);
+  return [one(ends[0] as string), one(ends[1] as string)];
 }
 
 /** `--resolution` as a preset name or a deflection in mm. */
@@ -484,6 +508,22 @@ async function check(options: Options, streams: Streams): Promise<number> {
 }
 
 /**
+ * `script`: the design (or a run of it) as TypeScript that makes it again
+ * (P5-05, ADR-0073). It prints the emitter's own output, so a macro from the
+ * app and one from here are the same code.
+ */
+async function script(options: Options, streams: Streams): Promise<number> {
+  const job = await opened(options);
+  try {
+    const code = emitScript(job.doc, options.features ? { features: options.features } : {});
+    streams.out(code.replace(/\n$/, ''));
+    return OK;
+  } finally {
+    await job.dispose();
+  }
+}
+
+/**
  * Runs one command line and returns its exit code. Nothing is thrown: every
  * failure becomes a message on stderr and a code (ADR-0069 §3).
  */
@@ -510,6 +550,8 @@ export async function run(
         return await set(parsed, streams);
       case 'check':
         return await check(parsed, streams);
+      case 'script':
+        return await script(parsed, streams);
     }
   } catch (error) {
     if (error instanceof UsageError) {

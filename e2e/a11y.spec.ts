@@ -1,5 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { primitive } from './benchmark-helpers';
 import { kernelReady, openProject, pickTool } from './helpers';
 
 // P3-13 (NFR-07): an axe audit of the main screens. Each screen is checked
@@ -95,6 +96,18 @@ for (const theme of ['dark', 'light'] as const) {
       );
       await audit(page, `${theme} script editor`);
       await page.getByRole('button', { name: 'Cancel Esc' }).click();
+
+      // The Macro dialog (P5-05): a recorded box, with its code.
+      await pickTool(page, 'Record Macro');
+      await primitive(page, 'Box', {});
+      await pickTool(page, 'Stop Macro');
+      await expect(page.getByRole('region', { name: 'Macro' })).toHaveAttribute(
+        'data-macro-dialog',
+        'ready',
+      );
+      await expect(page.getByRole('textbox', { name: 'Macro code' })).toBeVisible();
+      await audit(page, `${theme} macro dialog`);
+      await page.getByRole('button', { name: 'Close', exact: true }).click();
 
       // Parameters.
       await page.getByRole('button', { name: 'Parameters', exact: true }).click();

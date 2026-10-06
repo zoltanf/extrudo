@@ -9,6 +9,7 @@ import {
   Bell,
   Box,
   Circle,
+  FileCode,
   FilePlus2,
   FolderSync,
   GraduationCap,
@@ -79,6 +80,8 @@ export interface CommandContext {
    * it again. Absent until one has run, or when it isn't offered in this mode.
    */
   repeat?: { id: string };
+  /** Macro recording (P5-05): whether one runs; Record and Stop show accordingly. */
+  macro?: { recording: boolean };
   /** The right-click menu's style (P3-11): the ring, or one plain list. */
   markingMenu?: { radial: boolean; toggle(): void };
   theme: { choice: ThemeChoice; set(choice: ThemeChoice): void };
@@ -148,6 +151,8 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
   for (const tab of visibleTabs(ctx.mode)) {
     for (const group of tab.groups) {
       for (const id of [...group.tools, ...(group.more ?? [])]) {
+        if (id === 'recordMacro' && ctx.macro?.recording) continue;
+        if (id === 'stopMacro' && !ctx.macro?.recording) continue;
         const command = toolCommand(id, `${tab.label} › ${group.label}`, ctx);
         add(id === 'importDrawing' && ctx.mode !== 'sketch' ? noDrawing(ctx, command) : command);
       }
@@ -252,6 +257,12 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     icon: icon(Upload),
     keywords: 'File download save project backup',
   });
+  if (ctx.mode === 'model' && ctx.file.exportScript) {
+    plain('exportScript', 'Export Design as Script…', 'File', ctx.file.exportScript, {
+      icon: icon(FileCode),
+      keywords: 'File download code typescript macro api program',
+    });
+  }
   plain('importProject', 'Import .extrudo…', 'File', ctx.file.importFile, {
     icon: icon(Import),
     keywords: 'File open upload project',

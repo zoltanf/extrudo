@@ -32,6 +32,7 @@ import {
   type SketchEntity,
   type SketchEntityId,
   type SketchLine,
+  type SketchText,
   sketchEntityRefId,
   type Vec2,
 } from '@extrudo/core';
@@ -469,6 +470,29 @@ export class SketchHandle extends FeatureHandle<'sketch'> {
     });
   }
 
+  /** The sketch's ellipses, in the order they were added. */
+  ellipses(): SketchEntityHandle[] {
+    return this.#each('ellipse').map(([id]) => new SketchEntityHandle(this, id));
+  }
+
+  /** The sketch's splines (fit, control or conic), in the order they were added. */
+  splines(): SketchEntityHandle[] {
+    return this.#each('spline').map(([id]) => new SketchEntityHandle(this, id));
+  }
+
+  /** The sketch's texts, in the order they were added. */
+  texts(): TextHandle[] {
+    return this.#each('text').map(([id, entity]) => {
+      const text = entity as SketchText;
+      return new TextHandle(
+        this,
+        id,
+        new PointHandle(this, text.anchor),
+        new PointHandle(this, text.top),
+      );
+    });
+  }
+
   /** Every entity of one kind, as `[id, entity]` in the order they were added. */
   #each(type: SketchEntity['type']): [SketchEntityId, SketchEntity][] {
     return Object.entries(this.data.entities)
@@ -735,12 +759,19 @@ export class SketchBuilder {
    * upright constraint and the height dimension the Text tool adds, so the height
    * is a dimension (and a parameter) like any other.
    */
-  text(anchor: Vec2, top: Vec2, content: TextContent): TextHandle {
+  text(
+    anchor: Vec2,
+    top: Vec2,
+    content: TextContent,
+    options: { upright?: boolean; height?: boolean } = {},
+  ): TextHandle {
     const made = addText(this.#edit, this.#ids, anchor, top, content);
     const start = new PointHandle(this.sketch, made.anchor);
     const up = new PointHandle(this.sketch, made.top);
-    this.vertical(start, up);
-    this.dimension([start, up], `${mmLength(top, anchor)} mm`);
+    // A tool's text gets the upright constraint and the height dimension; the
+    // macro emitter turns both off, since it emits the stored pair itself.
+    if (options.upright !== false) this.vertical(start, up);
+    if (options.height !== false) this.dimension([start, up], `${mmLength(top, anchor)} mm`);
     return new TextHandle(this.sketch, made.id, start, up);
   }
 

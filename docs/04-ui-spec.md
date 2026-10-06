@@ -412,6 +412,11 @@ a right-click without movement, as Onshape's context menu does.
   Editor undo changes text, OK adds or edits one document undo step. The Script
   stays one timeline chip, with its generated count in the tooltip; bodies are
   ordinary browser entries and may be picked by later features.
+- **Record Macro and Stop Macro (P5-05, ADR-0073):** Solid › Create ▾ after Script
+  (no keys; Ctrl+K finds them). The menu offers Record while idle and Stop while
+  recording; the status bar shows a red dot and "Recording macro · N features".
+  Stop opens the Macro dialog (code read only, Copy, Replace with a Script, Keep
+  both, Close). File › Export design as script… downloads `<name>.ts`.
 - **Primitives (P2-10, ADR-0032):** Solid › Create ▾ → Box, Cylinder,
   Sphere, Torus (no keys). The dialog opens on the XY plane ("XY plane"
   in **Plane**) with a live preview; while Plane takes picks the origin

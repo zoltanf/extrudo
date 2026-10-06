@@ -46,6 +46,7 @@ export {
   type ParameterLike,
   type ParameterOptions,
 } from './design';
+export { type EmitOptions, emitScript } from './emit';
 export { ApiError } from './error';
 export { inferUnit } from './expr';
 export {

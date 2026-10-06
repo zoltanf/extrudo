@@ -19,6 +19,7 @@
     "@codemirror/lint": "^6.9.7",
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.13",
+    "@extrudo/api": "workspace:*",
     "@extrudo/core": "workspace:*",
     "@extrudo/fonts": "workspace:*",
     "@extrudo/io": "workspace:*",

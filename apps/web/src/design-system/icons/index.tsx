@@ -68,6 +68,8 @@ export const ICON_NAMES = [
   'emboss',
   'rib',
   'script',
+  'record-macro',
+  'stop-macro',
   'fillet',
   'chamfer',
   'shell',

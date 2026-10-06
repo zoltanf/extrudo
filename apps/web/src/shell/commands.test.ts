@@ -52,6 +52,26 @@ describe('buildCommands', () => {
     expect(Object.keys(DEFAULT_KEYMAP).filter((id) => !ids.has(id))).toEqual([]);
   });
 
+  it('offers Record Macro, then only Stop Macro while recording (P5-05)', () => {
+    const idle = byId(context('model'));
+    expect(idle.get('recordMacro')?.group).toBe('Solid › Create');
+    expect(idle.has('stopMacro')).toBe(false);
+    const recording = byId(context('model', { macro: { recording: true } }));
+    expect(recording.has('recordMacro')).toBe(false);
+    expect(recording.get('stopMacro')?.group).toBe('Solid › Create');
+    expect(byId(context('sketch')).has('recordMacro')).toBe(false);
+  });
+
+  it('offers Export Design as Script in the File group of the model (P5-05)', () => {
+    const exportScript = vi.fn();
+    const ctx = context('model');
+    const commands = byId({ ...ctx, file: { ...ctx.file, exportScript } });
+    commands.get('exportScript')?.run();
+    expect(commands.get('exportScript')?.group).toBe('File');
+    expect(exportScript).toHaveBeenCalled();
+    expect(byId(ctx).has('exportScript')).toBe(false);
+  });
+
   it('offers Save Version on Ctrl+S and Version History in both modes (P2-14)', () => {
     for (const mode of ['model', 'sketch'] as const) {
       const commands = byId(context(mode));
