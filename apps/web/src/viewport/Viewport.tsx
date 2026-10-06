@@ -56,7 +56,9 @@ import {
   constructionSummary,
 } from './constructionGeometry';
 import { navCursor } from './cursors';
+import { Ghosts } from './Ghosts';
 import { GRID_RADIUS, Grid, XY_FRAME } from './Grid';
+import { type Ghost, ghostsSummary } from './ghostGeometry';
 import { NavBar } from './NavBar';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
 import { Origin } from './Origin';
@@ -119,6 +121,8 @@ export interface ViewportProps {
   preview?: ViewPreview;
   /** Construction planes, axes and points to draw and pick (P3-05). */
   construction?: readonly ConstructionDrawing[];
+  /** Where lost or guessed references' geometry was, drawn dashed in the error colour (P4-12). */
+  ghosts?: readonly Ghost[];
   /**
    * Canvas images to draw (P4-06, ADR-0066 §5): view geometry from the
    * kernel's reports, never picked.
@@ -223,6 +227,7 @@ const NO_META: Record<BodyId, BodyMeta> = {};
 const NO_SKETCHES: readonly SketchDrawing[] = [];
 const NO_SELECTION: readonly SelectionItem[] = [];
 const NO_CONSTRUCTION: readonly ConstructionDrawing[] = [];
+const NO_GHOSTS: readonly Ghost[] = [];
 const NO_CANVASES: readonly CanvasDrawing[] = [];
 const NO_CALIBRATION: readonly (readonly number[])[] = [];
 
@@ -295,6 +300,7 @@ export function Viewport({
   modelSelect,
   preview,
   construction = NO_CONSTRUCTION,
+  ghosts = NO_GHOSTS,
   canvases = NO_CANVASES,
   calibration = NO_CALIBRATION,
   viewMenu,
@@ -455,6 +461,7 @@ export function Viewport({
       data-bodies={bodiesKey}
       data-body-appearance={appearanceKey}
       data-construction={constructionSummary(drawnConstruction)}
+      data-ghosts={ghostsSummary(ghosts)}
       data-canvases={canvasSummary(drawnCanvases, pixels)}
       data-section={sectionsSummary(sectionState, sectionBox)}
       data-section-clip={clipsSummary(sectionClip)}
@@ -495,6 +502,7 @@ export function Viewport({
             construction={drawnConstruction}
             canvases={drawnCanvases}
             calibration={calibration}
+            ghosts={ghosts}
             sectionClip={sectionClip}
             sectionBox={sectionBox?.on ? sectionBox.box : undefined}
             overhang={overhang?.view}
@@ -609,6 +617,7 @@ function Scene({
   selection,
   preview,
   construction,
+  ghosts,
   canvases,
   calibration,
   sectionClip,
@@ -629,6 +638,7 @@ function Scene({
   selection: readonly SelectionItem[];
   preview: ViewPreview | undefined;
   construction: readonly ConstructionDrawing[];
+  ghosts: readonly Ghost[];
   canvases: readonly CanvasDrawing[];
   calibration: readonly (readonly number[])[];
   sectionClip: readonly SectionClip[] | undefined;
@@ -800,6 +810,7 @@ function Scene({
         preview={{ ...colors.preview, a: 1 }}
         states={constructionStates}
       />
+      <Ghosts store={viewport} ghosts={ghosts} color={{ ...colors.sketchConflict, a: 1 }} />
     </>
   );
 }

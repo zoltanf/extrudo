@@ -8,7 +8,13 @@
  */
 import type { BodyId, Feature, FeatureId, SelectionItem, SessionStore } from '@extrudo/core';
 import { type ReactElement, useMemo, useState } from 'react';
-import { MODEL_SLOTS, resolveSlots, SKETCH_SLOTS } from '../commands/marking';
+import {
+  MARKING_SLOTS_KEY,
+  type MarkingOverrides,
+  MODEL_SLOTS,
+  resolveSlots,
+  SKETCH_SLOTS,
+} from '../commands/marking';
 import { type MarkingSlot, Popover, ToolIcon } from '../design-system';
 import type { Preferences } from '../platform/preferences';
 import type { ViewportStore } from '../viewport/store';
@@ -32,6 +38,30 @@ export function useMarkingStyle(preferences: Preferences) {
         preferences.set(MARKING_RADIAL_KEY, !on);
         return !on;
       }),
+  };
+}
+
+/** The wedge assignments (the `marking.slots` preference, P4-12) and the ways to change them. */
+export function useMarkingSlots(preferences: Preferences) {
+  const [overrides, setOverrides] = useState<MarkingOverrides>(() => {
+    const stored = preferences.get<MarkingOverrides | null>(MARKING_SLOTS_KEY, null);
+    return stored && typeof stored === 'object' ? stored : {};
+  });
+  const write = (next: MarkingOverrides) => {
+    preferences.set(MARKING_SLOTS_KEY, next);
+    setOverrides(next);
+  };
+  return {
+    overrides,
+    /** Assigns `command` to wedge `index` of the mode; `null` gives the table's wedge back. */
+    assign(mode: 'model' | 'sketch', index: number, command: string | null) {
+      const list = Array.from({ length: 8 }, (_, i) => overrides[mode]?.[i] ?? null);
+      list[index] = command;
+      write({ ...overrides, [mode]: list.some((c) => c !== null) ? list : undefined });
+    },
+    resetAll(mode: 'model' | 'sketch') {
+      write({ ...overrides, [mode]: undefined });
+    },
   };
 }
 
@@ -65,6 +95,8 @@ export interface ViewMenuInput {
   /** The menu is offered: nothing else (a dialog, Measure, Create Sketch) owns the pointer. */
   enabled: boolean;
   radial: boolean;
+  /** The user's wedge assignments (P4-12). */
+  overrides?: MarkingOverrides;
   /** A sketch tool runs: its name and how to stop it. */
   runningTool?: { label: string; cancel(): void };
 }
@@ -78,7 +110,7 @@ export function useViewMenu(input: ViewMenuInput): {
   popover: ReactElement;
 } {
   const [appearance, setAppearance] = useState<{ id: BodyId; at: { x: number; y: number } }>();
-  const { enabled, mode, session, radial, commands, bodies, bodyActions } = input;
+  const { enabled, mode, session, radial, commands, bodies, bodyActions, overrides } = input;
   const { viewport, features, featureActions, groupActions, pickedChips, runningTool } = input;
 
   const menu = useMemo<ViewMenu | undefined>(() => {
@@ -97,7 +129,7 @@ export function useViewMenu(input: ViewMenuInput): {
           state.select([target], 'replace');
         }
         const specs = mode === 'sketch' ? SKETCH_SLOTS : MODEL_SLOTS;
-        const slots = resolveSlots(specs, commands).map<MarkingSlot>((slot) => {
+        const slots = resolveSlots(specs, commands, overrides?.[mode]).map<MarkingSlot>((slot) => {
           const { command, spec } = slot;
           const tool = spec.icon;
           return {
@@ -135,6 +167,7 @@ export function useViewMenu(input: ViewMenuInput): {
     mode,
     session,
     radial,
+    overrides,
     commands,
     bodies,
     bodyActions,

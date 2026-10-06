@@ -133,6 +133,7 @@ import { IMPORT_DRAWING_TOOL } from '../sketch/tools/importDrawing';
 import { canvasDrawings } from '../viewport/canvasGeometry';
 import { forgetCanvasImages } from '../viewport/canvasImages';
 import type { ConstructionDrawing } from '../viewport/constructionGeometry';
+import { ghostsOf } from '../viewport/ghostGeometry';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
@@ -140,6 +141,7 @@ import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
 import { bodyEntries, bodyMetaOf, createBodyActions, followBodyNames } from './bodies';
 import { CommandSearch, type SearchOpen } from './CommandSearch';
+import { CustomizeMarkingMenu } from './CustomizeMarkingMenu';
 import {
   type AppCommand,
   buildCommands,
@@ -159,7 +161,7 @@ import {
   type TimelineSelectionStore,
 } from './timelineGroups';
 import { TOOLS, type ToolId } from './tools';
-import { useMarkingStyle, useViewMenu } from './viewMenu';
+import { useMarkingSlots, useMarkingStyle, useViewMenu } from './viewMenu';
 
 /** The toolbox's pins until the user changes them (P1-14). */
 const DEFAULT_PINS = ['sketch', 'line', 'rectangle', 'circle', 'dimension', 'trim', 'parameters'];
@@ -216,6 +218,11 @@ const APP_DIALOGS = featureDialogs();
  * browser rows) open as before: they handle the event first. Dialogs in
  * portals are covered too, since the listener is on the window.
  */
+/** Repeat last, as the dialog lists it: the name of the tool it happens to repeat doesn't belong there. */
+function relabelRepeat(commands: AppCommand[]): AppCommand[] {
+  return commands.map((c) => (c.id === 'repeatLast' ? { ...c, label: 'Repeat last' } : c));
+}
+
 function keepNativeMenuOut(event: MouseEvent) {
   const target = event.target instanceof Element ? event.target : null;
   if (isEditable(target) || target?.closest('a[href]')) return;
@@ -633,6 +640,7 @@ export function AppShell({
   // Repeat last (P3-11): the last tool run through the commands or the toolbar.
   const [lastTool, setLastTool] = useState<string>();
   const markingStyle = useMarkingStyle(platform.preferences);
+  const markingSlots = useMarkingSlots(platform.preferences);
   const [pinned, setPinned] = useState<string[]>(() =>
     platform.preferences.get<string[]>(PINS_KEY, DEFAULT_PINS),
   );
@@ -672,10 +680,13 @@ export function AppShell({
     () => new Set([recording ? 'recordMacro' : 'stopMacro']),
     [recording],
   );
-  const commands = useMemo(
-    () =>
+  const [markingDialog, setMarkingDialog] = useState(false);
+  // `listing` builds a mode's commands for the Customize Marking Menu dialog: what the mode
+  // offers whatever is selected now (Delete, Repeat last and the construction toggle included).
+  const commandBuilder = useMemo(
+    () => (m: 'model' | 'sketch', listing: boolean) =>
       buildCommands({
-        mode,
+        mode: m,
         runTool: (tool) => {
           if (isRepeatable(tool)) setLastTool(tool);
           // A key or a search result starts a sketch tool; only the toolbar toggles it off.
@@ -694,23 +705,33 @@ export function AppShell({
           dialog?.cancel();
           store.getState().redo();
         },
-        ...(mode === 'sketch' && !drawing && { remove }),
+        ...(listing ? { remove: () => {} } : m === 'sketch' && !drawing && { remove }),
         // Delete with bodies selected in the model removes them (a Remove feature, P2-08).
-        ...(mode === 'model' &&
+        ...(!listing &&
+          m === 'model' &&
           !dialogOpen &&
           selectedBodyIds.length > 0 && { remove: () => bodyActions.remove(selectedBodyIds) }),
-        ...(mode === 'sketch' &&
-          host && {
-            construction: { on: construction ?? false, toggle: () => host.toggleConstruction() },
+        ...(m === 'sketch' &&
+          (listing || host) && {
+            construction:
+              !listing && host
+                ? { on: construction ?? false, toggle: () => host.toggleConstruction() }
+                : { on: false, toggle: () => {} },
           }),
-        ...(mode === 'sketch' && { lookAtSketch: () => lookAtSketch(stores) }),
+        ...(m === 'sketch' && { lookAtSketch: () => lookAtSketch(stores) }),
         viewport,
         browser: { collapsed: browser.collapsed, toggle: browser.toggle },
         timeline: { collapsed: timeline.collapsed, toggle: timeline.toggle },
         file: fileActions,
         theme: { choice, set: setChoice },
-        ...(lastTool && { repeat: { id: lastTool } }),
-        markingMenu: { radial: markingStyle.radial, toggle: markingStyle.toggle },
+        ...(listing
+          ? { repeat: { id: m === 'model' ? 'extrude' : 'line' } }
+          : lastTool && { repeat: { id: lastTool } }),
+        markingMenu: {
+          radial: markingStyle.radial,
+          toggle: markingStyle.toggle,
+          customize: () => setMarkingDialog(true),
+        },
         ready,
         dialogCommands,
         ...(toasts?.history && {
@@ -720,7 +741,6 @@ export function AppShell({
         macro: { recording: recording !== undefined },
       }),
     [
-      mode,
       host,
       notify,
       store,
@@ -748,6 +768,17 @@ export function AppShell({
       markingStyle.radial,
       markingStyle.toggle,
     ],
+  );
+  const commands = useMemo(() => commandBuilder(mode, false), [commandBuilder, mode]);
+  const markingCommands = useMemo(
+    () =>
+      markingDialog
+        ? {
+            model: relabelRepeat(commandBuilder('model', true)),
+            sketch: relabelRepeat(commandBuilder('sketch', true)),
+          }
+        : { model: [], sketch: [] },
+    [markingDialog, commandBuilder],
   );
   const openToolbox = useMemo(
     () => () =>
@@ -1205,6 +1236,21 @@ export function AppShell({
   // The pointer on a group chip's row highlights every member (P4-09, ADR-0065 §2); the session
   // holds one hover, so a hovered member highlights its whole group.
   const hoveredFeatures = useMemo(() => hoveredFeatureIds(doc, hover), [doc, hover]);
+  // The ghosts of lost geometry (P4-12): of the hovered chip, the feature whose Fix References
+  // dialog is open and the feature picked in the timeline; not of every feature at once.
+  const pickedChips = useStore(timelineSelection, (s) => s.chips);
+  // A sketch's Fix References is the Redefine Plane prompt.
+  const fixingId =
+    dialogOpen?.mode === 'edit' && dialogOpen.note !== undefined ? dialogOpen.id : redefining;
+  const ghosts = useMemo(
+    () =>
+      ghostsOf(doc.features, featureStatuses, [
+        ...hoveredFeatures,
+        ...(fixingId ? [fixingId] : []),
+        ...pickedChips,
+      ]),
+    [doc.features, featureStatuses, hoveredFeatures, fixingId, pickedChips],
+  );
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
     doc.features.forEach((feature, index) => {
@@ -1298,6 +1344,7 @@ export function AppShell({
         ? !picking && !dialogOpen && !projecting && !measuring && !section.choosing
         : !projecting && sketchPlane !== undefined,
     radial: markingStyle.radial,
+    overrides: markingSlots.overrides,
     ...(runningTool && { runningTool }),
   });
   // In the model, with no command running, the view picks bodies, sketch curves and
@@ -1545,6 +1592,7 @@ export function AppShell({
             sketchPlane={sketchPlane}
             planePicker={planePicker}
             construction={constructionDrawings}
+            ghosts={ghosts}
             canvases={canvasList}
             calibration={calibration}
             sketchInput={sketchInput}
@@ -1768,6 +1816,14 @@ export function AppShell({
         apply={apply}
         open={parametersOpen}
         onOpenChange={setParametersOpen}
+      />
+      <CustomizeMarkingMenu
+        open={markingDialog}
+        onClose={() => setMarkingDialog(false)}
+        overrides={markingSlots.overrides}
+        commands={markingCommands}
+        assign={markingSlots.assign}
+        resetAll={markingSlots.resetAll}
       />
       <CommandSearch
         open={search}

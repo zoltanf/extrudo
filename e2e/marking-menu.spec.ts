@@ -515,3 +515,63 @@ test('a right-click on a construction plane offers Edit, Hide and Delete', async
   await entry(page, 'editConstruction').click();
   await expect(page.getByRole('region', { name: 'Edit Offset Plane1 dialog' })).toBeVisible();
 });
+
+test('a wedge can be given another command, kept across a reload and reset (P4-12)', async ({
+  page,
+}) => {
+  const { viewport } = await bracket(page);
+  await page.keyboard.press('Control+k');
+  await page.getByRole('combobox', { name: 'Search commands' }).fill('customize marking');
+  await page.getByRole('option', { name: /^Customize Marking Menu/ }).click();
+  const dialog = page.getByRole('region', { name: 'Customize Marking Menu' });
+  await expect(dialog).toBeVisible();
+
+  // The model ring's third wedge (east-north-east) is Fillet; give it Chamfer.
+  const wedge = dialog.locator('[data-slot-button="model:2"]');
+  await expect(wedge).toHaveAttribute('data-slot-command', 'fillet');
+  await wedge.click();
+  await dialog.getByRole('combobox', { name: 'Search commands' }).fill('chamfer');
+  await dialog.getByRole('option', { name: /^Chamfer/ }).click();
+  await expect(wedge).toHaveAttribute('data-slot-command', 'chamfer');
+  await expect(wedge).toHaveAttribute('data-slot-custom', 'true');
+  // The sketch ring is its own.
+  await dialog.getByRole('tab', { name: 'Sketch' }).click();
+  await expect(dialog.locator('[data-slot-button="sketch:2"]')).toHaveAttribute(
+    'data-slot-command',
+    'circle',
+  );
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+
+  const ringOnEmpty = async () => {
+    await rightClick(page, await empty(viewport));
+    await expect(menuOf(page)).toHaveAttribute('data-marking-menu', 'radial');
+  };
+  await ringOnEmpty();
+  await expect(slot(page, 'chamfer')).toBeEnabled();
+  await expect(slot(page, 'fillet')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // It is remembered.
+  await page.reload();
+  await expect(viewport).toHaveAttribute('data-ready', 'true');
+  await kernelReady(page);
+  await ringOnEmpty();
+  await expect(slot(page, 'chamfer')).toBeEnabled();
+  await expect(slot(page, 'fillet')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // Reset all gives the table back.
+  await page.keyboard.press('Control+k');
+  await page.getByRole('combobox', { name: 'Search commands' }).fill('customize marking');
+  await page.getByRole('option', { name: /^Customize Marking Menu/ }).click();
+  await dialog.getByRole('button', { name: 'Reset all' }).click();
+  await expect(dialog.locator('[data-slot-button="model:2"]')).toHaveAttribute(
+    'data-slot-command',
+    'fillet',
+  );
+  await page.keyboard.press('Escape');
+  await ringOnEmpty();
+  await expect(slot(page, 'fillet')).toBeEnabled();
+  await expect(slot(page, 'chamfer')).toHaveCount(0);
+});

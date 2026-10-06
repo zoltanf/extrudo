@@ -334,8 +334,8 @@ direction), a sketch line from the sketch data.
 
 ## Open
 
-- The repair UI: "fix references" with the old geometry as a ghost (P2-11)
-  reads the fingerprint to draw it.
+- ~~The repair UI: "fix references" with the old geometry as a ghost (P2-11)
+  reads the fingerprint to draw it.~~ Done in P4-12 (see the last amendment).
 - An exact name whose split pieces swapped order (two pieces crossing each
   other's x) resolves silently to the other piece. A fingerprint check on
   split names (see Rejected) would catch it.
@@ -343,3 +343,27 @@ direction), a sketch line from the sketch data.
   need an instance qualifier in names (`pattern:F:3:(…)`).
 - `KernelApi.reference` answers for the bodies of the last recompute, not
   a dialog's preview.
+
+## Amendment (P4-12, 2026-10-06): what the fingerprint draws
+
+The Open item "the old geometry as a ghost" is done. A fingerprint has a type,
+a place, an optional direction and a size, but no outline, so a ghost is an
+"about here" mark of the right place, size and orientation (`viewport/
+ghostGeometry.ts`, pure, in world mm; the view draws it dashed in `--x-error`
+with no depth test):
+
+| Reference | Fingerprint | Mark |
+|---|---|---|
+| face | `plane` | a square of side `√size` centred on `at`, square to `dir` |
+| face | any other type | a circle of radius `√(size / π)` centred on `at`, in the plane square to `dir` (no radius is stored) |
+| edge | `circle` | a circle of radius `size / 2π` centred on `at`, square to `dir` |
+| edge | `line` and every other type | a segment of length `size` through `at` along `dir` |
+| vertex | `point` | a cross of three axis-aligned segments, 2 % of the view size, steady on screen |
+
+Which of the two a type belongs to is the reference's kind, not the type
+(`bspline` is both a face and an edge type). A fingerprint without a size is
+marked with the cross. The fingerprint is the one stored with the reference
+in the feature's inputs (`ReferenceIssue` carries only kind and ID); a
+reference without one (a sketch profile, a plane) has no ghost. No label is
+drawn in the view yet: `data-ghosts` and the Fix References prompt name the
+feature.

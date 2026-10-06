@@ -72,13 +72,52 @@ export interface ResolvedSlot {
   hint?: string;
 }
 
-/** Matches a slot table with the commands offered now, wedge by wedge. */
+/**
+ * The user's wedge assignments (P4-12, ADR-0042's amendment): the
+ * `marking.slots` preference. Per mode, one entry per wedge: a command ID, or
+ * `null` (and a missing entry) for the table's own wedge.
+ */
+export interface MarkingOverrides {
+  model?: readonly (string | null)[];
+  sketch?: readonly (string | null)[];
+}
+
+export const MARKING_SLOTS_KEY = 'marking.slots';
+
+/** The override of wedge `index`, if there is one (a stored value may be anything). */
+function overrideAt(overrides: readonly (string | null)[] | undefined, index: number) {
+  const id = overrides?.[index];
+  return typeof id === 'string' && id !== '' ? id : undefined;
+}
+
+/**
+ * Matches a slot table with the commands offered now, wedge by wedge. An
+ * override replaces the wedge's command, label and icon with the command's
+ * own; one that names no command offered in this mode stays, dimmed, with the
+ * ID as its label.
+ */
 export function resolveSlots(
   specs: readonly SlotSpec[],
   commands: readonly AppCommand[],
+  overrides?: readonly (string | null)[],
 ): ResolvedSlot[] {
   const byId = new Map(commands.map((c) => [c.id, c]));
-  return specs.map((spec) => {
+  return specs.map((own, index) => {
+    const chosen = overrideAt(overrides, index);
+    if (chosen !== undefined) {
+      const command = byId.get(chosen);
+      const spec: SlotSpec = { command: chosen, label: command?.short ?? command?.label ?? chosen };
+      return {
+        spec,
+        command,
+        label: spec.label,
+        disabled: command === undefined || command.unavailable !== undefined,
+        ...(command === undefined
+          ? { hint: 'Not available here.' }
+          : command.unavailable !== undefined && { hint: command.unavailable }),
+      };
+    }
+    const spec = own;
     const command = byId.get(spec.command);
     if (command) {
       return {

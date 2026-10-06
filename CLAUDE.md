@@ -317,7 +317,12 @@ mm, `DESTEP_Parameters` per transfer, products renamed to body names,
 `pid`/`pindex` and per-triangle `pid`/`p1`). The app's
 `apps/web/src/export/` (`ExportModelDialog`, `modelExport.ts`) opens from
 3D Print › Export, the File menu and a body's menu. ADR-0033
-(P2-11) added timeline v2: `packages/core/src/timeline.ts` (a feature
+(P2-11) added timeline v2 (**P4-12 draws the ghost of lost geometry**: the
+fingerprint stored with a lost or guessed reference becomes dashed
+`--x-error` marks, `viewport/ghostGeometry.ts` pure and `Ghosts.tsx`, for the
+hovered chip or row, the feature whose Fix References is open and the picked
+chips only, `data-ghosts`; ADR-0005's and ADR-0033's amendments):
+`packages/core/src/timeline.ts` (a feature
 depends on the features whose IDs appear in its stored references:
 profiles, bodies, face/edge names; `moveFeature` refuses a move that
 breaks that, the marker stays between the same other features;
@@ -470,7 +475,15 @@ right-click where no `viewMenu` is passed: dialogs, Measure, Create
 Sketch). "Repeat last" is the `repeatLast` command (`ctx.repeat`, the last
 tool through `runTool`/`run`, `isRepeatable`). Preference `marking.radial`.
 Browser folders, origin rows, Parameters rows and home cards have context
-menus.
+menus. **P4-12 made the wedges remappable** (ADR-0042's amendment): the
+preference `marking.slots` (`{ model?, sketch? }`, eight command IDs or `null`
+each, `MarkingOverrides`; `useMarkingSlots`) is the third argument of
+`resolveSlots`, where an override takes the command's own label and icon and an
+ID the mode doesn't offer stays dimmed with the ID as its label; the command
+`customizeMarkingMenu` ("Customize Marking Menu…", Panels, no key) opens
+`shell/CustomizeMarkingMenu.tsx` (a ring per mode, a wedge opens the mode's
+command search, Reset wedge / Reset all, written at once; its command lists
+come from `buildCommands` with the `listing` flag in `AppShell`).
 ADR-0043 (P3-02) added chamfer: `packages/core/src/chamfer.ts`
 (`CHAMFER_MAX_SETS` edge sets as plain inputs, **each set with its own
 type**: `edges`, `mode` = equal / two-distances / distance-angle, `distance`,
@@ -2196,7 +2209,10 @@ them. Notes further down that name a machine apply to that machine only.
   a copy (`BRepBuilderAPI_Copy(s, false, false)`): BRepMesh keeps an
   existing triangulation that is fine enough, so meshing the cached shape
   would leave coarse exports fine and refine the display.
-- **Timeline v2 e2e** (`e2e/timeline-v2.spec.ts`): the marker is the
+- **Timeline v2 e2e** (`e2e/timeline-v2.spec.ts`; P4-12: the Viewport region's
+  `data-ghosts` lists `<featureId>:<type>:<x,y,z>` — in the lost-face test, hovering
+  Sketch2's chip gives `<id>:plane:0,-10,15` and it stays while Redefine Plane is
+  open): the marker is the
   slider "Timeline marker" (`aria-valuenow` = active features,
   `aria-valuetext` "After Extrude1"); while it is dragged the real marker
   stays and `[data-marker-ghost]` holds the target index. A dragged chip
@@ -2521,7 +2537,10 @@ them. Notes further down that name a machine apply to that machine only.
   corner, under the toasts: dismiss the toasts (`Dismiss`) before clicking
   near there. Unit tests use `createNotifications({ now, later })` with injected
   clock and timers; `renderToStaticMarkup` sees only the store's initial state.
-- **Marking menu e2e** (`e2e/marking-menu.spec.ts`): right-click without
+- **Marking menu e2e** (`e2e/marking-menu.spec.ts`; P4-12: Ctrl+K "customize marking" opens the
+  region "Customize Marking Menu" with tabs Model/Sketch, wedge buttons
+  `[data-slot-button="model:2"]` (`data-slot-command`, `data-slot-custom`), the
+  combobox "Search commands", options by label and "Reset all"): right-click without
   movement opens `menu` "Marking menu" (`data-marking-menu="radial|list"`)
   with wedges `[data-marking-slot="<command id>"]` (`aria-disabled` when
   dimmed; `[data-wedge="n"]` in the ring's SVG carries `data-active` under

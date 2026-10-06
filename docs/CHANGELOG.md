@@ -4,6 +4,14 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 ghost of lost geometry and remappable marking-menu
+  wedges** (ADR-0005, -0033 and -0042's amendments): a lost or guessed reference
+  is drawn dashed in the error colour where its fingerprint says the geometry
+  was (square, circle, segment or cross by type), for the hovered chip or row,
+  the feature being fixed and the picked chips (`data-ghosts`); the
+  `marking.slots` preference and "Customize Marking Menu…" (Ctrl+K) assign any
+  command the mode offers to each of the eight wedges of the model and sketch
+  rings, with Reset wedge and Reset all.
 - 2026-10-06 · **P4-12 construction geometry** (ADR-0040's amendment): four
   new construction types — Point on Path and Plane Along Path (a fraction or a
   length along a path of sketch curves and edges, with a distance handle along a

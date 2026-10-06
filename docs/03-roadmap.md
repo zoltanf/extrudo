@@ -926,8 +926,14 @@ end to end, faster than in Fusion 360.
     instance of each series (rectangular and circular) and the path pattern's
     **distance handle** at its last instance. A pattern's handles float clear of
     the instances so the dots stay clickable.
-  - A ghost of lost geometry in the view (ADR-0005, -0033); remappable
-    marking-menu wedges (ADR-0042).
+  - ~~A ghost of lost geometry in the view (ADR-0005, -0033); remappable
+    marking-menu wedges (ADR-0042).~~ **Done 2026-10-06**: a lost or guessed
+    reference is drawn dashed in the error colour from its fingerprint (a
+    square for a plane, a circle for a curved face or circle edge, a segment
+    for a line, a cross for a vertex) while its chip or row is hovered, its
+    Fix References is open or its chip is picked (`data-ghosts`); the
+    `marking.slots` preference and the Customize Marking Menu dialog give each
+    wedge of both rings any command the mode offers.
   - Emboss: cones, spheres and free-form faces; more than half way round a
     cylinder; "tangent to the face" for a flat sketch far from it; several
     faces at once (ADR-0060). ~~`Kernel.measure`'s volume is 1-2 % off on the

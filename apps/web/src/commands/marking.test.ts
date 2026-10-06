@@ -168,3 +168,47 @@ describe('Repeat last', () => {
     }
   });
 });
+
+describe('resolveSlots with overrides (P4-12)', () => {
+  const commands = buildCommands(context('model'));
+  const fillet = slot(MODEL_SLOTS, 'fillet');
+  const withOverride = (entries: (string | null)[]) => resolveSlots(MODEL_SLOTS, commands, entries);
+
+  it('is the table itself with no override, or only nulls', () => {
+    const plain = resolveSlots(MODEL_SLOTS, commands);
+    expect(resolveSlots(MODEL_SLOTS, commands, [])).toEqual(plain);
+    expect(withOverride(Array(8).fill(null))).toEqual(plain);
+  });
+
+  it("replaces a wedge's command, label and icon with the command's own", () => {
+    const entries: (string | null)[] = Array(8).fill(null);
+    entries[fillet] = 'chamfer';
+    const slots = withOverride(entries);
+    expect(slots[fillet]).toMatchObject({ disabled: false, label: 'Chamfer' });
+    expect(slots[fillet]?.spec.command).toBe('chamfer');
+    expect(slots[fillet]?.spec.icon).toBeUndefined();
+    expect(slots[fillet]?.command?.icon).toBeDefined();
+    // The other wedges keep their own.
+    expect(slots.map((s) => s.spec.command).filter((c) => c !== 'chamfer')).toEqual(
+      MODEL_SLOTS.map((s) => s.command).filter((c) => c !== 'fillet'),
+    );
+  });
+
+  it('dims a command this mode does not offer, with its ID as the label', () => {
+    const entries: (string | null)[] = Array(8).fill(null);
+    entries[0] = 'noSuchCommand';
+    expect(withOverride(entries)[0]).toMatchObject({
+      disabled: true,
+      label: 'noSuchCommand',
+      hint: 'Not available here.',
+    });
+    // A sketch tool is not offered in the model.
+    entries[0] = 'line';
+    expect(withOverride(entries)[0]).toMatchObject({ disabled: true, label: 'line' });
+  });
+
+  it('ignores entries that are not command IDs', () => {
+    const odd = [42, '', {}, null, undefined] as unknown as (string | null)[];
+    expect(resolveSlots(MODEL_SLOTS, commands, odd)).toEqual(resolveSlots(MODEL_SLOTS, commands));
+  });
+});

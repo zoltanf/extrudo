@@ -83,7 +83,7 @@ export interface CommandContext {
   /** Macro recording (P5-05): whether one runs; Record and Stop show accordingly. */
   macro?: { recording: boolean };
   /** The right-click menu's style (P3-11): the ring, or one plain list. */
-  markingMenu?: { radial: boolean; toggle(): void };
+  markingMenu?: { radial: boolean; toggle(): void; customize?: () => void };
   theme: { choice: ThemeChoice; set(choice: ThemeChoice): void };
   /**
    * Tools that work because a feature dialog is registered for them
@@ -221,6 +221,12 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
       ctx.markingMenu.toggle,
       { icon: icon(Circle), keywords: 'Panels marking menu radial right click context list' },
     );
+  }
+  if (ctx.markingMenu?.customize) {
+    plain('customizeMarkingMenu', 'Customize Marking Menu…', 'Panels', ctx.markingMenu.customize, {
+      icon: icon(Circle),
+      keywords: 'Panels marking menu radial right click wedges remap assign commands settings',
+    });
   }
   if (ctx.notifications) {
     plain('notificationHistory', 'Notification History', 'Panels', ctx.notifications.open, {

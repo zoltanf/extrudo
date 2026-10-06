@@ -322,14 +322,23 @@ test.describe(() => {
     await kernelReady(page);
     await expect(chip(page, 'Sketch2')).toHaveAccessibleName('Sketch2 (error)');
     await expect(row).toHaveAttribute('data-feature-status', 'error');
+    // P4-12: the ghost of the lost face. Hovering the chip draws where the face was (the top,
+    // at (0, -10, 15), the centroid stored when it was picked); the pointer away takes it off again.
+    await expect(viewport).not.toHaveAttribute('data-ghosts', /./);
+    await chip(page, 'Sketch2').hover();
+    await expect(viewport).toHaveAttribute('data-ghosts', `${sketch2}:plane:0,-10,15`);
     await chip(page, 'Sketch2').click({ button: 'right' });
     await menuItem(page, 'Fix References').click();
     const prompt = page.getByRole('region', { name: 'Redefine Plane' });
     await expect(prompt).toContainText('Sketch2');
+    // Fixing references keeps it listed, even with the pointer elsewhere.
+    await page.mouse.move(720, 450);
+    await expect(viewport).toHaveAttribute('data-ghosts', `${sketch2}:plane:0,-10,15`);
     await prompt.getByRole('button', { name: 'XY' }).click();
     await expect(prompt).toBeHidden();
     await kernelReady(page);
     await expect(chip(page, 'Sketch2')).toHaveAccessibleName('Sketch2');
+    await expect(viewport).not.toHaveAttribute('data-ghosts', /./);
     await expect
       .poll(() => attr(viewport, 'data-sketch-frames'))
       .toContain(`${sketch2}:0,0,0:0,0,1`);

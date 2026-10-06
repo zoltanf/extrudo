@@ -188,3 +188,14 @@ said which reference the kernel lost or guessed.
   take one ID or several. A click between chips, or Esc on a chip, lets go
   of the picks; the click that ends a drag doesn't change them.
 
+## Amendment (P4-12, 2026-10-06): ghosts of lost geometry
+
+`FeatureStatus.refs` also draws where the lost or guessed geometry was
+(ADR-0005's amendment says what a fingerprint draws). **Not every ghost all the
+time** (a design with many warnings would be noise): the ghosts of (a) the
+feature under the pointer on its chip or browser row (and a hovered group's
+members), (b) the feature whose Fix References is open — the edit dialog Fix
+References opens, or the Redefine Plane prompt of a sketch — and (c) the
+chips picked in the timeline. `ghostsOf` (pure) turns those IDs, the document
+and the statuses into the ghosts; the Viewport region's `data-ghosts` lists
+them as `<featureId>:<type>:<x,y,z>` (rounded to 0.01; absent with none).

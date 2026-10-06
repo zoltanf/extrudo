@@ -153,3 +153,28 @@ toast when a dimension's parameter is used elsewhere), Edit Value opens a
 dimension's in-place editor. No menu while a tool runs (the layer isn't
 interactive then). It is a `PointMenu` ("Constraint menu", "Dimension menu").
 
+## Amendment (P4-12, 2026-10-06): remappable wedges
+
+"The tables are data, so a settings page could layer overrides": the layer is
+there, and the settings page is one small dialog.
+
+- **Preference `marking.slots`**: `{ model?: (string | null)[]; sketch?: (string
+  | null)[] }`, eight entries each, a command ID or `null` for the table's own
+  wedge (a missing entry, or one that isn't a non-empty string, counts as
+  `null`). `resolveSlots(specs, commands, overrides?)` takes the mode's list:
+  an override replaces the wedge's command, label (the command's `short`, else
+  its label) and icon with the command's own; one naming no command offered in
+  this mode stays, dimmed ("Not available here."), with the ID as its label.
+  With no preference the result is the table's, as before.
+- **Customize Marking Menu…** (`customizeMarkingMenu`, Panels group, no key; the
+  Ctrl+K palette) opens a `FloatingDialog` (region "Customize Marking Menu",
+  `shell/CustomizeMarkingMenu.tsx`): a Model and a Sketch tab, each the ring
+  drawn with the geometry of `design-system/marking.ts` and the current label
+  in every wedge (`[data-slot-button="model:2"]`, with `data-slot-command` and
+  `data-slot-custom`). A click on a wedge opens the search over the commands
+  that mode offers (the palette's option list and fuzzy scorer); the first row
+  is "Reset wedge" while the wedge has an assignment; "Reset all" per tab. Every
+  choice writes the preference at once. The lists are built with a `listing`
+  flag so Delete, Repeat last (labelled without a tool's name) and the sketch's
+  Construction toggle are offered whatever is selected now.
+- A command may sit in two wedges; the dialog does not stop it.
