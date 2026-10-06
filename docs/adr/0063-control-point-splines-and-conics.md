@@ -1,6 +1,8 @@
 # ADR-0063: Control-point splines and conics
 
-- **Status:** Implemented, 2026-10-04 (branch `p4-05-splines`); see Results
+- **Status:** Implemented, 2026-10-04 (branch `p4-05-splines`); see Results.
+  Amended 2026-10-06 (P4-12: stored knots, closed splines, trim, break and
+  offset; branch `p4-12-splines`)
 - **Task:** P4-05 (FR-SK-03: "Spline (fit-point and control-point), conic").
 - **Builds on:** ADR-0010 (points are entities), ADR-0014 (fit-point splines:
   the curve is derived from points, the solver sees only the points),
@@ -201,3 +203,193 @@ in all):
 Splitting an interval at its worst point instead of its middle asks for the
 same pieces (144 for rho 0.95), so the subdivision is not what the cap would
 have cost.
+
+## Amendment, 2026-10-06 — P4-12: stored knots, closed splines, trim, break and offset
+
+The P4-12 backlog takes four of the Deferred items: stored knots, closed
+(periodic) splines, trimming and breaking splines, and offsetting them. Exact
+rational conics in the kernel stay deferred (they need the facade), as do
+end-tangent handles, degree choice and converting a fit spline to a control
+spline by hand. **No facade change**: the facade's `sketchSpline` already takes
+the poles and the full knot vector, so a non-uniform clamped B-spline reaches
+the kernel as it is.
+
+### A1. Stored knots
+
+The spline entity gets an optional `knots: number[]`, only with `mode:
+'control'`: the full clamped knot vector of the poles' **cubic**,
+`points.length + 4` values, non-decreasing, the first four 0 and the last four
+1 (so at least four poles). Absent means §1's uniform interior knots, so every
+existing file reads unchanged. `controlSpline(poles, knots?)` takes them; the
+degree stays 3 whenever knots are stored. The checks live in `sketchIssues`
+beside the conic's (the entity schemas are `strictObject`s in a union, and
+every other cross-field rule of a sketch is there).
+
+### A2. Closed splines
+
+An optional `closed: true` on `fit` and `control` splines (refused with
+`conic`, and with stored `knots`: a periodic curve's knots come from its
+points). A closed **fit** spline is the periodic cubic interpolant through its
+points (chord-length parameters round the loop, back to the first point; the
+knots are the parameters, which makes the system cyclic tridiagonal), a closed
+**control** spline the periodic uniform cubic B-spline of its poles. Both need
+at least 3 points. **Both are emitted as the clamped B-spline that is exactly
+the periodic curve**: the periodic poles are wrapped (the last pole, then all
+of them, then the first two), the knots extended by the period, the knot at
+the seam inserted to multiplicity 3 at both ends (Boehm) and the outer knots
+and poles dropped, and the last pole is set to the first so the curve closes
+exactly. So `BSpline`, the facade, profile detection, export and the kernel
+need no new curve kind. The seam is at the first point (a fit spline passes
+through it there; a control spline's seam is the curve point nearest its first
+pole, `(P[n−1] + 4·P[0] + P[1]) / 6`), and the curve is C2 across it.
+
+The Spline and Control Point Spline tools close a spline when a click lands on
+its first point (as the Line tool closes a chain) with three points or more;
+the selection panel gets a **Closed** checkbox for a selected fit or control
+spline, which writes the new core command `setSplineClosed` through
+`ToolHost.apply` (one undo step; closing a control spline drops its stored
+knots, since the periodic curve has its own). A closed spline's first and last
+points are plain `point`s for inference, not `endpoint`s. A closed spline is a
+region on its own in `detectProfiles` (like a circle) and may be crossed by
+other curves. Projections stay open fit splines.
+
+### A3. Trim and break on splines
+
+`split.ts` cuts a fit, control or closed spline where the other curves cross
+it — found on its polyline and refined by bisection of the signed distance to
+the cutter (a line's or a circle's own; a polyline cutter's chord) — by **knot
+insertion**: the knot is inserted to multiplicity 3, which makes the pieces the
+same curve exactly, and each piece is stored as `mode: 'control'` with its own
+`knots` (re-normalised to 0..1) over new pole points. A curve of degree below 3
+(two or three points) is raised to a cubic Bézier first. The first piece keeps
+the entity's ID; the others get new IDs; a closed spline loses `closed`.
+
+- **Trim** keeps what is outside the crossings around the cursor. On a closed
+  spline that is one piece from the far crossing round the seam to the near
+  one (the two parts each side of the seam joined into one B-spline, with the
+  seam a knot of multiplicity 3: exact, and C2 there in fact), so a trim
+  **opens** it; a closed spline crossed once goes whole, as a circle does.
+- **Break** makes the part between the crossings a curve of its own, joined by
+  coincident ends. A closed spline crossed once is **opened** there: one piece
+  whose two ends are held together by a coincident constraint; crossed twice or
+  more it becomes two.
+- **Points.** A trimmed **fit** spline is a control spline from then on (its
+  points become poles; the panel says "Control points: n"). A point of the
+  original is kept where a piece still has a pole at the same place — the
+  curve's ends always, a control spline's poles away from the cut — and every
+  other point goes, **with the constraints and dimensions on it** (resplit's
+  rule for a line's lost end, which is `entityRemoval`'s for a removed point).
+  New ends at a crossing go on the cutter (`pointOnCurve`, or coincident with
+  the cutter's own point there), as a line's do. A `fix` on the spline is
+  copied to every piece; a `pointOnCurve` on it moves to the piece the point
+  lies on.
+- Conics stay refused where curves cross them ("A conic can't be cut where
+  curves cross it."); a conic nothing crosses is still trimmed away whole.
+- **Extend stays refused for every spline**: a B-spline has no natural
+  continuation past its end (a straight tangent, a curvature-continuing arc and
+  an extrapolated polynomial all differ, and the last runs away fast).
+
+### A4. Offset of a spline
+
+No exact offset of a B-spline exists, so a spline's offset is a **fit spline**
+through the offsets of sample points: the polyline's parameters
+(`SPLINE_SEGMENTS_PER_SPAN` per knot span), each point moved along the curve's
+normal by the distance (closed stays closed, its seam sample not repeated). It
+is then checked: the fit spline's distance from the true offset at the
+samples' midpoints must be within **`OFFSET_TOLERANCE` = 1e-3 mm**, else the
+sampling is doubled, up to 8 × (128 per span), and past that the offset is
+refused ("The spline is too tight for that distance."). An offset towards the
+centre of a bend tighter than the distance is refused before any of that
+("The offset is larger than the spline's tightest bend."): the rule is signed
+— a bend whose centre is on the other side never collapses, so only
+`distance × curvature ≥ 1` on the offset's side counts.
+
+A spline joined end to end to lines, arcs or other splines **offsets with the
+chain** (`chainOf` follows a spline's first and last points; a closed spline is
+a chain on its own). Joints whose offsets still meet (a smooth joint) are
+joined at their common point; at a sharp joint the two offsets are trimmed
+where they cross, and where they part (the convex side) the spline's offset is
+carried on along its end tangent by a **straight line of its own** to where it
+meets the neighbour's. The fit-spline offset holds no constraint to its
+original (there is none a solver can state), so a chain with a spline gets
+**no** distance dimension: its lines and arcs keep their parallel and concentric
+constraints, and the offset spline carries a `fix`, so it stays the copy it was
+made as. The fit-point solve of a long offset (hundreds of points) needed a
+banded solve: `fitSpline` eliminates without pivoting inside the band above 32
+points (the B-spline collocation matrix is totally positive, so that is stable,
+de Boor), and keeps the dense solve below, so every existing spline computes
+the same curve to the last bit.
+
+### A5. Everything else
+
+Transforms (mirror, scale, copy, patterns) carry `knots` and `closed` over
+(both are affine-invariant). `drawingToSketch` is unchanged (its cubics are
+four-pole uniform Béziers). The export's Bézier pieces already split at every
+distinct knot (`bezierPieces` raises each interior knot to the degree), and a
+closed spline's contour is written closed. `SketchBuilder.spline(points, {
+closed })` and `splineControl(points, { knots, closed })` take the options
+(the old one-argument calls are unchanged), `SplineHandle` reads `closed` and
+`knots`, and the macro emitter writes them.
+
+### Rejected
+
+- **A periodic curve kind** in `BSpline` or the facade: every reader of
+  `BSpline` (profiles, export, kernel staging, the viewport) would need it, and
+  OCCT's periodic B-spline needs a facade change. The clamped unwrap is the
+  same curve.
+- **Splitting by parameter re-fitting** (re-fit a fit spline's two halves
+  through its own fit points): the pieces would not be the same curve, so a
+  trim would change the shape it keeps.
+- **Keeping a trimmed fit spline as a fit spline** through new points: same
+  reason; and its points could not reproduce the curve.
+- **A tighter `OFFSET_TOLERANCE`** (1e-5 mm, a conic's): the offset is itself
+  an approximation of a curve no one stored, and 1e-3 mm is a tenth of the
+  finest print line's tolerance while keeping offsets of tight splines in a few
+  hundred points.
+- **Extending a spline** (see A3).
+
+### Results (2026-10-06)
+
+Everything in A1–A5 is in; no facade change, `formatVersion` stays 1 (two
+optional keys, file format §6).
+
+| File | What |
+|---|---|
+| `packages/core/src/sketch/schema.ts` | `knots`, `closed`; `knotProblem` and the rules in `sketchIssues` |
+| `packages/core/src/sketch/curves.ts` | `controlSpline(poles, knots?)`, `closedFitSpline`, `closedControlSpline`, `periodicToClamped`, `insertKnot`, `splitSpline`, `splineRange` (round a seam too), `joinSplines`, `cubicOf`, `normalizeSpline`, `splineDerivative`; `splineCurve` reads `closed` and `knots`; `fitSpline` solves in its band above 32 points |
+| `packages/core/src/sketch/commands.ts` | `setSplineClosed`; removing a spline's point drops its stored knots (and `closed` below three points) |
+| `packages/sketch/src/modify/split.ts` | `splineSpanOf`, `splineCuts` (polyline hits refined by bisection), trim and break of splines, `replaceSpline`; extend refuses splines |
+| `packages/sketch/src/modify/offset.ts` | `chainOf` follows open splines and takes a closed one alone; spline shapes, the density loop, `OFFSET_TOLERANCE`, joints with a spline (`joinWithSpline`, `land`), `splineOffset` |
+| `packages/sketch/src/export/export.ts`, `inference/inference.ts`, `build/add.ts` | a closed spline's contour is closed; its first point is no endpoint; `addSpline`'s `shape` |
+| `packages/api/src/sketch.ts`, `emit/sketch.ts`, `emit/print.ts` | `spline(points, { closed })`, `splineControl(points, { knots, closed })`, `SplineHandle.closed`/`.knots`; the emitter writes them, and the printer now breaks an array of arrays as Biome does (no fixture had one before) |
+| `apps/web/src/sketch/tools/spline.ts`, `conics.ts`, `tool.ts`, `host.ts` | `closesOn` (a click within `ToolContext.snapDistance()` of the first point, with three points or more) |
+| `apps/web/src/sketch/panels.tsx` | the Closed checkbox |
+| `apps/web/src/sketch/tools/split.ts`, `offset.ts` | Break and Offset pick splines |
+
+Measured (unit probes and the tests):
+
+- **Seam continuity**: a closed fit spline through five points has its first
+  and second derivatives equal at the seam to 1.5e-13 and 1.9e-12 (against
+  magnitudes of 148 and 910 per unit parameter), a closed control spline to
+  2.0e-14 and 2.3e-13. A closed spline's polyline closes exactly (the last pole
+  is set to the first).
+- **Exactness of a cut**: the pieces of a trim or break lie on the original to
+  under 1e-9 mm (the test's bound; knot insertion is exact up to rounding), and
+  `splitSpline`'s two halves reproduce the curve at 101 parameters to 1e-12.
+- **Offset error** against the true offset at 200 parameters, all at the first
+  density (16 samples per span, so no doubling was needed): a five-pole control
+  wave at ±2 mm 1.7e-4 / 1.9e-4 mm (65 fit points, 4-15 ms), a closed fit
+  spline at 3 mm 1.0e-4 mm (80 points), a closed control spline at −3 mm
+  1.8e-5 mm, a fit wave at 1 mm 3.9e-4 mm — all under `OFFSET_TOLERANCE`.
+- **Kernel**: a closed fit or control spline extruded 5 mm is one valid solid
+  whose volume, read from a 0.2 µm mesh of it, is within 1e-4 of the fine
+  polygon area × 5 (7e-6 and 2e-5 measured). OCCT's own `measure` of the same
+  solids is about 1e-4 out (1.1e-4 for the fit loop): a prism with B-spline
+  walls takes the fixed-order mass integral (ADR-0067 §H3), so that test reads
+  the mesh. A trimmed spline's profile extrudes to one valid body.
+
+Deviations from the brief: the knot rules live in `sketchIssues`, not a
+`superRefine` (see A1); the tight-bend rule is signed (A4); a closed spline
+crossed once is trimmed away whole, as a circle is (A3); a chain with a spline
+has no driving dimension and its offset spline is fixed (A4); conics can be
+offset (their curve is a B-spline like any other), only cutting them is refused.

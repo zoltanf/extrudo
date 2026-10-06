@@ -1065,6 +1065,19 @@ refuse every spline mode as they refuse fit splines; projections stay fit.
 The tools are `splineControl` and `conic` (`sketch/tools/conics.ts`), the
 control polygon is `sketchSegments(…, controlPolygons)` and the panel's Rho
 field writes core's `setSplineRho` through `ToolHost.apply`.
+**P4-12's amendment (2026-10-06)**: a control spline may store its own `knots`
+(the full clamped cubic vector, `points + 4`), and fit and control splines may
+be `closed` — the periodic curve is emitted as the clamped B-spline that is
+exactly it (`closedFitSpline`, `closedControlSpline`, `periodicToClamped`), so
+nothing downstream has a new curve kind; the tools close on a click back on the
+first point and the panel has a Closed checkbox (`setSplineClosed`). Trim and
+break cut fit, control and closed splines by **knot insertion** (`splineRange`)
+into control splines with knots, exactly their part of the curve (a trimmed fit
+spline is a control spline from then on; dropped points take their constraints
+with them); offset makes a **fit spline** through offset samples checked to
+`OFFSET_TOLERANCE` (1e-3 mm), refused past the tightest bend, a chain with a
+spline getting no dimension and a fixed offset spline. Extend and cutting a
+conic stay refused.
 ADR-0064 (P4-10, slice 1) added the **rib**: a thin wall from one sketch
 **line** to the body beside it (a gusset, a web; the stiffening triangle in a
 bracket's corner). Core holds the definition (`curve`, `thickness`, `side`,
@@ -1667,8 +1680,9 @@ backlog** and then **Phase 6** (desktop), according to `docs/03-roadmap.md`;
 **P4-06 is done** (all five slices, ADR-0066), P4-12's hardening part (ADR-0067
 H1 to H5) is on main and its **construction backlog is done (ADR-0040's
 amendment, 2026-10-06)**, so **Phase 4 is complete apart from P4-12's backlog**
-(exact rational conics in the kernel, closed splines, trimming and offsetting
-splines — ADR-0063's Deferred; and the modelling depth items P4-12 lists);
+(exact rational conics in the kernel — ADR-0063's Deferred, whose closed
+splines, stored knots, trimming and offsetting are done since 2026-10-06; and
+the modelling depth items P4-12 lists);
 onward in `docs/03-roadmap.md`. The repository is public (2026-10-04); the
 first public release is **v0.4.0** (no v0.3.0 tag): the owner does the slicer
 check and a fresh look on edge, the agent then bumps the versions to 0.4.0, and
@@ -3055,7 +3069,16 @@ them. Notes further down that name a machine apply to that machine only.
   (`data-model-selection` starting `profile:`) and E extrudes 5 mm into one body
   40 mm wide whose height is the rho's share of the shoulder's (0.3 × 15 mm).
   A filled-in conic takes a moment to preview: `data-preview-status` polls up
-  to 30 s.
+  to 30 s. **P4-12**: a control spline clicked round (−30, −10) (30, −10)
+  (30, 30) (−30, 30) and back on (−30, −10) is closed (the panel's checkbox
+  "Closed" is checked; select it at (0, −8.33), where the periodic curve runs
+  between the two lower poles) and alone is `profiles=1 holes=0`; a fit wave
+  through (−40, 0) (−20, 20) (0, 0) (20, 20) (40, 0) trimmed with `t` at (20, 20)
+  against a line at x = 10 shows "Control points" (the point count can stay the
+  same: the piece has as many poles as the fit had points), and a click at a
+  fit point after Ctrl+Z selects the **point** (points win the pick); `o` on
+  the wave at (−20, 20), the pointer above and `2` makes `splines: 2` with no
+  dimension.
 - **Rib e2e** (`e2e/rib.spec.ts`, P4-10): the tool is `rib` in Create's menu
   after Emboss (`menuitem` "Rib", no key); its dialog is the region "Rib
   dialog" / "Edit Rib1 dialog" with the button "Line" (`exact: true`: a sketch

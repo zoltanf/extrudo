@@ -139,13 +139,18 @@ export function addEllipse(
   return { id, center: c, major: ma, minor: mi };
 }
 
-/** A spline over its points (ADR-0014, ADR-0063): `mode` and `rho` are the conic's. */
+/**
+ * A spline over its points (ADR-0014, ADR-0063): `mode` and `rho` are the
+ * conic's; `shape` carries a closed loop or a control spline's own knots
+ * (ADR-0063's P4-12 amendment).
+ */
 export function addSpline(
   edit: SketchAdd,
   ids: BuildIds,
   points: readonly Vec2[],
   mode?: 'fit' | 'control' | 'conic',
   rho?: number,
+  shape: { closed?: boolean; knots?: readonly number[] } = {},
 ): { id: SketchEntityId; points: SketchEntityId[] } {
   const refs = points.map((p) => addPoint(edit, ids, p));
   const id = ids.newId() as SketchEntityId;
@@ -154,6 +159,8 @@ export function addSpline(
     points: refs,
     ...(mode ? { mode } : {}),
     ...(rho === undefined ? {} : { rho }),
+    ...(shape.knots ? { knots: [...shape.knots] } : {}),
+    ...(shape.closed ? { closed: true } : {}),
     construction: ids.construction(),
   };
   return { id, points: refs };

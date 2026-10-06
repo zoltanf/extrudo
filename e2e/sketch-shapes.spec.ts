@@ -95,7 +95,9 @@ test('draws an ellipse and a fit-point spline', async ({ page }) => {
   const next = at(-10, 30);
   await page.mouse.move(next.x, next.y);
   await expect(page.locator('[data-preview="curve"]')).toHaveCount(1);
-  await expect(toolPrompt(page)).toHaveText('Click the next point, or press Enter to finish.');
+  await expect(toolPrompt(page)).toHaveText(
+    'Click the next point, Enter to finish, or the first point to close it.',
+  );
   await page.keyboard.press('Enter');
   await expect.poll(() => counts(page)).toMatchObject({ splines: 1, points: 6 });
 });

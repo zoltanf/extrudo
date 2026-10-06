@@ -417,6 +417,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       const data = activeSketch()?.data;
       return data ? selectedEntities(data) : [];
     },
+    snapDistance: () => SNAP_PIXELS * perPixel,
   };
 
   const create = (id: string) => {

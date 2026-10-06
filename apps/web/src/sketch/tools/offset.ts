@@ -65,7 +65,7 @@ export class OffsetTool implements SketchTool {
       this.#hover = undefined;
       return this.#chain
         ? undefined
-        : { ...emptyEdit(), error: 'Offset works on lines, circles and arcs.' };
+        : { ...emptyEdit(), error: 'Offset works on lines, circles, arcs and splines.' };
     }
     return this.#place();
   }
@@ -145,7 +145,7 @@ export class OffsetTool implements SketchTool {
   #pick(cursor: Vec2): SketchEntityId | undefined {
     return this.context.pick(
       cursor,
-      (e) => e.type === 'line' || e.type === 'arc' || e.type === 'circle',
+      (e) => e.type === 'line' || e.type === 'arc' || e.type === 'circle' || e.type === 'spline',
     );
   }
 }

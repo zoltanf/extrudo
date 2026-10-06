@@ -83,6 +83,7 @@ export {
 export {
   ArcHandle,
   CircleHandle,
+  type ControlSplineOptions,
   DimensionHandle,
   type DimensionOptions,
   type DimensionOrientation,
@@ -101,6 +102,7 @@ export {
   type SketchOptions,
   SlotHandle,
   SplineHandle,
+  type SplineOptions,
   type TextContent,
   TextHandle,
 } from './sketch';

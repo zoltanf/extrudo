@@ -13,13 +13,17 @@ import {
   type FeatureStatus,
   originPlaneRef,
   type SketchData,
+  SketchDataSchema,
   type SketchEntityId,
+  type SketchSpline,
   sketchInputs,
+  splineCurve,
   splinePoint,
   type Vec2,
 } from '@extrudo/core';
 import { SketchBuilder } from '@extrudo/sketch/fixtures';
-import { detectProfiles } from '@extrudo/sketch/profiles';
+import { trim } from '@extrudo/sketch/modify';
+import { detectProfiles, profileAt } from '@extrudo/sketch/profiles';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { Kernel, type ShapeHandle } from '../kernel';
 import { loadOcct } from '../occt/load';
@@ -204,6 +208,115 @@ describe('control-point splines and conics in the kernel', () => {
   });
 });
 
+describe('closed and trimmed splines in the kernel (P4-12)', () => {
+  const loop: [number, number][] = [
+    [0, 0],
+    [30, -4],
+    [36, 20],
+    [10, 28],
+    [-6, 14],
+  ];
+
+  for (const mode of ['fit', 'control'] as const) {
+    it(`extrudes a closed ${mode} spline alone into one solid of its area`, async () => {
+      const b = new SketchBuilder();
+      const s = b.spline(loop, { mode, closed: true });
+      const data = b.sketch;
+      const profiles = detectProfiles(data);
+      expect(profiles).toHaveLength(1);
+      const result = ok(
+        await run(
+          testDocument([
+            sketchFeature('SK', data),
+            extrude('E', [{ kind: 'profile', id: `SK/${profiles[0]?.id ?? ''}` }]),
+          ]),
+        ),
+      );
+      expect(result.bodies).toHaveLength(1);
+      // The polygon of a fine polyline of the curve, times the extrude's length.
+      const curve = splineCurve(
+        data.entities[eid(s.id)] as SketchSpline,
+        loop.map((p) => [p[0], p[1]] as Vec2),
+      );
+      const fine: Vec2[] = [];
+      for (let i = 0; i <= 20000; i++) fine.push(splinePoint(curve, i / 20000));
+      const area = areaUnder(fine);
+      const volume = meshVolume(result);
+      expect(Math.abs(volume - area * 5) / (area * 5)).toBeLessThan(1e-4);
+      const [body] = result.bodies;
+      if (!body) throw new Error('no body');
+      expect(kernel.isValid(engine.latestBody(body.id) as ShapeHandle)).toBe(true);
+    });
+  }
+
+  it("extrudes a profile bounded by a trimmed spline's piece", async () => {
+    const b = new SketchBuilder();
+    const s = b.spline([
+      [0, 0],
+      [10, 15],
+      [20, 15],
+      [30, 0],
+      [35, -5],
+    ]);
+    b.line(25, -10, 25, 30);
+    b.line(0, 0, 25, 0);
+    const before = b.sketch;
+    const change = trim(
+      before,
+      eid(s.id),
+      [32, -2],
+      (() => {
+        let n = 0;
+        return () => `t${n++}`;
+      })(),
+    );
+    const data = SketchDataSchema.parse({
+      entities: Object.fromEntries(
+        Object.entries({ ...before.entities, ...change.update, ...change.entities }).filter(
+          ([key]) => !change.remove?.entities?.includes(key as SketchEntityId),
+        ),
+      ),
+      constraints: Object.fromEntries(
+        Object.entries({ ...before.constraints, ...change.constraints }).filter(
+          ([key]) => !change.remove?.constraints?.includes(key as never),
+        ),
+      ),
+      dimensions: {},
+    });
+    expect(data.entities[eid(s.id)]).toMatchObject({ mode: 'control' });
+    const profile = profileAt(detectProfiles(data), [12, 5]);
+    expect(profile).toBeDefined();
+    const result = ok(
+      await run(
+        testDocument([
+          sketchFeature('SK', data),
+          extrude('E', [{ kind: 'profile', id: `SK/${profile?.id ?? ''}` }]),
+        ]),
+      ),
+    );
+    expect(result.bodies).toHaveLength(1);
+    // The region: the kept piece from (0, 0) to the line, down the line, back along the base.
+    const piece = data.entities[eid(s.id)] as SketchSpline;
+    const curve = splineCurve(
+      piece,
+      piece.points.map((p) => {
+        const e = data.entities[p] as { x: number; y: number };
+        return [e.x, e.y] as Vec2;
+      }),
+    );
+    const fine: Vec2[] = [];
+    for (let i = 0; i <= 20000; i++) fine.push(splinePoint(curve, i / 20000));
+    const area = areaUnder([...fine, [25, 0], [0, 0]]);
+    expect(area).toBeGreaterThan(200);
+    // The face and the solid follow the piece (OCCT's own integrals, a few 1e-5 out here).
+    expect(Math.abs((profileAreas()[0] ?? 0) - area) / area).toBeLessThan(1e-3);
+    expect(Math.abs(volumeOf(result) - area * 5) / (area * 5)).toBeLessThan(1e-3);
+    const [body] = result.bodies;
+    if (!body) throw new Error('no body');
+    expect(kernel.isValid(engine.latestBody(body.id) as ShapeHandle)).toBe(true);
+  });
+});
+
 /** The area a polyline and the line closing it enclose. */
 function areaUnder(polyline: Vec2[]): number {
   let area = 0;
@@ -213,4 +326,37 @@ function areaUnder(polyline: Vec2[]): number {
     area += (a[0] + b[0]) * (b[1] - a[1]);
   }
   return Math.abs(area / 2);
+}
+
+/**
+ * The volume of the bodies from a fine mesh of them (0.2 µm deflection): the
+ * mass integral OCCT uses for a prism with B-spline walls is a fixed-order one
+ * (ADR-0067 §H3 keeps it there), about 1e-4 out on these loops, while the mesh
+ * is within a few 1e-6 of the curve's own polygon.
+ */
+function meshVolume(result: Done): number {
+  let total = 0;
+  for (const { id } of result.bodies) {
+    const mesh = kernel.exportMesh(engine.latestBody(id) as ShapeHandle, {
+      linearDeflection: 0.0002,
+      angularDeflection: 0.01,
+    });
+    const p = mesh.positions;
+    const node = (k: number): [number, number, number] => [
+      p[3 * k] as number,
+      p[3 * k + 1] as number,
+      p[3 * k + 2] as number,
+    ];
+    for (let i = 0; i < mesh.indices.length; i += 3) {
+      const a = node(mesh.indices[i] as number);
+      const b = node(mesh.indices[i + 1] as number);
+      const c = node(mesh.indices[i + 2] as number);
+      total +=
+        (a[0] * (b[1] * c[2] - b[2] * c[1]) -
+          a[1] * (b[0] * c[2] - b[2] * c[0]) +
+          a[2] * (b[0] * c[1] - b[1] * c[0])) /
+        6;
+    }
+  }
+  return total;
 }

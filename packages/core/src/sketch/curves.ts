@@ -98,12 +98,19 @@ export function fitSpline(points: readonly Vec2[]): BSpline {
     });
     return row;
   });
-  const poles = solve(
-    matrix,
-    points.map((p) => [p[0], p[1]]),
-  ).map((r) => [r[0], r[1]] as Vec2);
+  const rhs = points.map((p) => [p[0], p[1]]);
+  // Above `BANDED_FIT` points the dense solve's n³ shows (an offset's fit spline
+  // has hundreds, ADR-0063's P4-12 amendment); the collocation matrix is banded
+  // and totally positive, so elimination inside the band without pivoting is
+  // stable (de Boor). Below it the dense solve stays, so every spline drawn
+  // before computes the same curve to the last bit.
+  const solved = points.length > BANDED_FIT ? solveBanded(matrix, rhs) : solve(matrix, rhs);
+  const poles = solved.map((r) => [r[0], r[1]] as Vec2);
   return { degree, poles, knots };
 }
+
+/** Fit splines with more points than this are solved in their band (ADR-0063's P4-12 amendment). */
+const BANDED_FIT = 32;
 
 /** The point of a B-spline at `u` in [0, 1]. */
 export function splinePoint(spline: BSpline, u: number): Vec2 {
@@ -161,17 +168,270 @@ export type SplineMode = 'fit' | 'control' | 'conic';
  * `mode: 'control'`): degree `min(3, n − 1)` with uniform interior knots, so
  * the curve starts at the first pole, ends at the last and is tangent to the
  * control polygon at both. Two poles give a line, three a quadratic Bézier.
+ *
+ * `knots` is a stored knot vector (ADR-0063's P4-12 amendment, A1): the full
+ * clamped vector of the poles' cubic, `poles + 4` values. A trimmed spline
+ * carries one; one of the wrong length is ignored (the schema refuses it).
  */
-export function controlSpline(poles: readonly Vec2[]): BSpline {
+export function controlSpline(poles: readonly Vec2[], knots?: readonly number[]): BSpline {
   if (poles.length < 2) throw new Error('controlSpline: needs at least two points');
+  const copy = poles.map((p) => [p[0], p[1]] as Vec2);
+  if (knots && knots.length === poles.length + 4) {
+    return { degree: 3, poles: copy, knots: [...knots] };
+  }
   const degree = Math.min(3, poles.length - 1);
   // Uniform interior knots, one per knot span after the first.
   const spans = poles.length - degree;
-  const knots: number[] = [];
-  for (let i = 0; i <= degree; i++) knots.push(0);
-  for (let j = 1; j < spans; j++) knots.push(j / spans);
-  for (let i = 0; i <= degree; i++) knots.push(1);
-  return { degree, poles: poles.map((p) => [p[0], p[1]] as Vec2), knots };
+  const uniform: number[] = [];
+  for (let i = 0; i <= degree; i++) uniform.push(0);
+  for (let j = 1; j < spans; j++) uniform.push(j / spans);
+  for (let i = 0; i <= degree; i++) uniform.push(1);
+  return { degree, poles: copy, knots: uniform };
+}
+
+// Closed splines (ADR-0063's P4-12 amendment, A2) -------------------------------
+
+/**
+ * The closed cubic B-spline through `points` (a closed fit spline): the
+ * periodic interpolant, its parameters chord-length round the loop and back to
+ * the first point, its knots those parameters (so the system is cyclic
+ * tridiagonal). Returned as the clamped B-spline that is exactly that periodic
+ * curve (`periodicToClamped`): the seam is at the first point, the curve is C2
+ * across it and its first and last poles are the same point.
+ */
+export function closedFitSpline(points: readonly Vec2[]): BSpline {
+  const n = points.length;
+  if (n < 3) throw new Error('closedFitSpline: needs at least three points');
+  const loop = [...points, points[0] as Vec2];
+  const lengths = loop
+    .slice(1)
+    .map((p, i) => Math.hypot(p[0] - (loop[i] as Vec2)[0], p[1] - (loop[i] as Vec2)[1]));
+  const total = lengths.reduce((s, l) => s + l, 0);
+  const floor = total > 0 ? (1e-6 * total) / n : 1;
+  const steps = lengths.map((l) => Math.max(l, floor));
+  const sum = steps.reduce((s, l) => s + l, 0);
+  const params = [0];
+  for (const step of steps) params.push((params[params.length - 1] as number) + step / sum);
+  params[n] = 1;
+
+  // At its own knot t_k the periodic curve is a blend of three poles, the
+  // middle one Q_k (the wrap below puts Q_k there): one cyclic row each.
+  const wrapped = wrappedKnots(params);
+  const unknown = (i: number) => (i - 1 + n) % n;
+  const rows: Map<number, number>[] = params.slice(0, n).map((u) => {
+    const row = new Map<number, number>();
+    const span = findSpan(n + 2, 3, u, wrapped);
+    basis(span, u, 3, wrapped).forEach((value, k) => {
+      const col = unknown(span - 3 + k);
+      row.set(col, (row.get(col) ?? 0) + value);
+    });
+    return row;
+  });
+  const rhs = points.map((p) => [p[0], p[1]]);
+  const solved =
+    n > BANDED_FIT
+      ? solveCyclic(rows, rhs)
+      : solve(
+          rows.map((row) => Array.from({ length: n }, (_, c) => row.get(c) ?? 0)),
+          rhs,
+        );
+  return periodicToClamped(
+    solved.map((r) => [r[0], r[1]] as Vec2),
+    params,
+  );
+}
+
+/**
+ * The closed uniform cubic B-spline of `poles` (a closed control spline), as
+ * the clamped B-spline that is exactly it. The seam is the curve point nearest
+ * the first pole, `(P[n−1] + 4·P[0] + P[1]) / 6`.
+ */
+export function closedControlSpline(poles: readonly Vec2[]): BSpline {
+  const n = poles.length;
+  if (n < 3) throw new Error('closedControlSpline: needs at least three points');
+  const params = Array.from({ length: n + 1 }, (_, k) => k / n);
+  return periodicToClamped(poles, params);
+}
+
+/** A periodic cubic's knots, `u[-3] … u[n+3]`: the parameters extended by the period 1. */
+function wrappedKnots(params: readonly number[]): number[] {
+  const n = params.length - 1;
+  const out: number[] = [];
+  for (let j = -3; j <= n + 3; j++) {
+    if (j < 0) out.push((params[n + j] as number) - 1);
+    else if (j > n) out.push((params[j - n] as number) + 1);
+    else out.push(params[j] as number);
+  }
+  return out;
+}
+
+/**
+ * The periodic cubic B-spline of the poles `Q[0..n)` over the knots `params`
+ * (`u[0] = 0 … u[n] = 1`, the period 1), as a clamped B-spline over [0, 1].
+ *
+ * The poles are wrapped as `Q[n−1], Q[0], …, Q[n−1], Q[0], Q[1]` (so the span
+ * starting at `u[k]` is centred on `Q[k]`) over the knots extended by the
+ * period, which is the periodic curve as an unclamped B-spline; the knots 0 and
+ * 1 are inserted until they are triple (Boehm), which leaves the curve as it is
+ * and makes a pole of its point there, and the outer knots and poles go. The
+ * last pole is the first one's point again, so the curve closes exactly.
+ */
+export function periodicToClamped(poles: readonly Vec2[], params: readonly number[]): BSpline {
+  const n = poles.length;
+  let spline: BSpline = {
+    degree: 3,
+    poles: Array.from({ length: n + 3 }, (_, i) => {
+      const p = poles[(i - 1 + n) % n] as Vec2;
+      return [p[0], p[1]] as Vec2;
+    }),
+    knots: wrappedKnots(params),
+  };
+  for (let i = 0; i < 2; i++) spline = insertKnot(spline, 0);
+  for (let i = 0; i < 2; i++) spline = insertKnot(spline, 1);
+  const first = spline.knots.indexOf(0);
+  const last = spline.knots.indexOf(1);
+  const knots = [0, ...spline.knots.slice(first, last + 3), 1];
+  const out = spline.poles.slice(first - 1, last);
+  out[out.length - 1] = [...(out[0] as Vec2)] as Vec2;
+  return { degree: 3, poles: out, knots };
+}
+
+// Knot insertion, splitting and joining (ADR-0063's P4-12 amendment, A3) ---------
+
+/**
+ * Inserts the knot `u` once (Boehm; Piegl & Tiller A5.1 with r = 1). The curve
+ * is unchanged; works on clamped and unclamped knot vectors alike, for `u`
+ * inside the curve's own range.
+ */
+export function insertKnot(spline: BSpline, u: number): BSpline {
+  const { degree: p, knots, poles } = spline;
+  // The span: the last knot at or below u, below the last pole's.
+  let k = p;
+  while (k < poles.length - 1 && (knots[k + 1] as number) <= u) k++;
+  const out: Vec2[] = [];
+  for (let i = 0; i <= poles.length; i++) {
+    if (i <= k - p) out.push(poles[i] as Vec2);
+    else if (i > k) out.push(poles[i - 1] as Vec2);
+    else {
+      const ki = knots[i] as number;
+      const a = (u - ki) / ((knots[i + p] as number) - ki);
+      const prev = poles[i - 1] as Vec2;
+      const cur = poles[i] as Vec2;
+      out.push([(1 - a) * prev[0] + a * cur[0], (1 - a) * prev[1] + a * cur[1]]);
+    }
+  }
+  return { degree: p, poles: out, knots: [...knots.slice(0, k + 1), u, ...knots.slice(k + 1)] };
+}
+
+/**
+ * A clamped spline of degree below 3 as the same curve of degree 3. Only a
+ * single Bézier can be below 3 here (two or three points), so this raises a
+ * Bézier's degree; a cubic comes back as it is.
+ */
+export function cubicOf(spline: BSpline): BSpline {
+  let { degree, poles } = spline;
+  if (degree === 3) return spline;
+  if (poles.length !== degree + 1) throw new Error('cubicOf: only a single Bézier is raised');
+  while (degree < 3) {
+    const next: Vec2[] = [poles[0] as Vec2];
+    for (let i = 1; i <= degree; i++) {
+      const a = i / (degree + 1);
+      const prev = poles[i - 1] as Vec2;
+      const cur = poles[i] as Vec2;
+      next.push([a * prev[0] + (1 - a) * cur[0], a * prev[1] + (1 - a) * cur[1]]);
+    }
+    next.push(poles[degree] as Vec2);
+    poles = next;
+    degree++;
+  }
+  return { degree: 3, poles, knots: [0, 0, 0, 0, 1, 1, 1, 1] };
+}
+
+/** A clamped spline's knots mapped onto 0..1, its ends exactly 0 and 1. */
+export function normalizeSpline(spline: BSpline): BSpline {
+  const { knots, degree } = spline;
+  const a = knots[0] as number;
+  const b = knots[knots.length - 1] as number;
+  const out = knots.map((k, i) => {
+    if (i <= degree) return 0;
+    if (i >= knots.length - degree - 1) return 1;
+    return Math.min(1, Math.max(0, (k - a) / (b - a)));
+  });
+  return { degree, poles: spline.poles, knots: out };
+}
+
+/**
+ * A clamped cubic split at `u` (strictly inside) into the curve before and
+ * after it, each still over its own part of the knots (normalise them with
+ * `normalizeSpline`). Knot insertion to multiplicity 3 makes the point at `u`
+ * a pole, so the two pieces are exactly the curve.
+ */
+export function splitSpline(spline: BSpline, u: number): [BSpline, BSpline] {
+  let s = spline;
+  const p = s.degree;
+  const have = s.knots.filter((k) => k === u).length;
+  for (let m = have; m < p; m++) s = insertKnot(s, u);
+  const r = s.knots.indexOf(u);
+  const before: BSpline = {
+    degree: p,
+    poles: s.poles.slice(0, r),
+    knots: [...s.knots.slice(0, r + p), u],
+  };
+  const after: BSpline = {
+    degree: p,
+    poles: s.poles.slice(r - 1),
+    knots: [u, ...s.knots.slice(r)],
+  };
+  return [before, after];
+}
+
+/**
+ * The part of a clamped cubic between the parameters `from` < `to`, over 0..1.
+ * A part that wraps round a closed spline's seam (`to` > 1) is the piece from
+ * `from` to the end joined to the piece from the start to `to − 1`.
+ */
+export function splineRange(spline: BSpline, from: number, to: number): BSpline {
+  const cubic = cubicOf(spline);
+  const tol = 1e-12;
+  const part = (a: number, b: number): BSpline => {
+    let s = cubic;
+    if (b < 1 - tol) s = splitSpline(s, b)[0];
+    if (a > tol) s = splitSpline(s, a)[1];
+    return normalizeSpline(s);
+  };
+  if (to <= 1 + tol) return part(from, Math.min(1, to));
+  const tail = part(from, 1);
+  const head = part(0, to - 1);
+  return joinSplines(tail, head, (1 - from) / (1 - from + (to - 1)));
+}
+
+/**
+ * Two clamped cubics over 0..1 where the first ends at the second's start, as
+ * one over 0..1: the first over [0, at], the second over [at, 1], the joint a
+ * knot of multiplicity 3 (a pole the two share), so it is exactly both.
+ */
+export function joinSplines(a: BSpline, b: BSpline, at: number): BSpline {
+  const knots = [
+    ...a.knots.slice(0, -1).map((k) => k * at),
+    ...b.knots.slice(4).map((k) => at + k * (1 - at)),
+  ];
+  knots[knots.length - 1] = 1;
+  for (let i = knots.length - 4; i < knots.length; i++) knots[i] = 1;
+  return { degree: 3, poles: [...a.poles, ...b.poles.slice(1)], knots };
+}
+
+/** The derivative of a B-spline, as a B-spline of one degree less. */
+export function splineDerivative(spline: BSpline): BSpline {
+  const { degree: p, poles, knots } = spline;
+  if (p === 0) return { degree: 0, poles: poles.map(() => [0, 0] as Vec2), knots };
+  const out: Vec2[] = [];
+  for (let i = 0; i < poles.length - 1; i++) {
+    const d = (knots[i + p + 1] as number) - (knots[i + 1] as number);
+    const a = poles[i] as Vec2;
+    const b = poles[i + 1] as Vec2;
+    out.push(d > 0 ? [(p * (b[0] - a[0])) / d, (p * (b[1] - a[1])) / d] : [0, 0]);
+  }
+  return { degree: p - 1, poles: out, knots: knots.slice(1, -1) };
 }
 
 /** The middle weight of a conic: the ratio a rational Bézier needs for its rho. */
@@ -379,7 +639,12 @@ function joinConicPieces(pieces: readonly { t0: number; points: Vec2[] }[]): BSp
  * picks how the points shape it; a spline without one is a fit-point spline.
  */
 export function splineCurve(entity: SketchSpline, points: Vec2[]): BSpline {
-  if (entity.mode === 'control') return controlSpline(points);
+  // A closed fit or control spline (ADR-0063's P4-12 amendment, A2): the clamped
+  // B-spline that is exactly the periodic curve.
+  if (entity.closed && entity.mode !== 'conic' && points.length >= 3) {
+    return entity.mode === 'control' ? closedControlSpline(points) : closedFitSpline(points);
+  }
+  if (entity.mode === 'control') return controlSpline(points, entity.knots);
   if (entity.mode === 'conic' && entity.rho !== undefined && points.length === 3) {
     const [start, shoulder, end] = points as [Vec2, Vec2, Vec2];
     return conicSpline(start, shoulder, end, entity.rho);
@@ -536,4 +801,99 @@ function solve(a: number[][], b: number[][]): number[][] {
     }
   }
   return x;
+}
+
+/**
+ * Solves A · X = B for a banded A (a fit spline's collocation matrix):
+ * elimination without pivoting, which is stable for it (totally positive).
+ */
+function solveBanded(a: number[][], b: number[][]): number[][] {
+  const n = a.length;
+  // The band's half-width, read from the matrix itself.
+  let w = 1;
+  a.forEach((row, r) => {
+    row.forEach((v, c) => {
+      if (v !== 0) w = Math.max(w, Math.abs(c - r));
+    });
+  });
+  // Each row kept from column r − w to r + w.
+  const band = a.map((row, r) => {
+    const out = new Array<number>(2 * w + 1).fill(0);
+    for (let c = Math.max(0, r - w); c <= Math.min(n - 1, r + w); c++)
+      out[c - r + w] = row[c] as number;
+    return out;
+  });
+  const x = b.map((row) => [...row]);
+  for (let col = 0; col < n; col++) {
+    const top = band[col] as number[];
+    const pivot = top[w] as number;
+    for (let r = col + 1; r <= Math.min(n - 1, col + w); r++) {
+      const row = band[r] as number[];
+      const f = (row[col - r + w] as number) / pivot;
+      if (f === 0) continue;
+      for (let c = col; c <= Math.min(n - 1, col + w); c++) {
+        row[c - r + w] = (row[c - r + w] as number) - f * (top[c - col + w] as number);
+      }
+      const xr = x[r] as number[];
+      const xc = x[col] as number[];
+      for (let k = 0; k < xr.length; k++) xr[k] = (xr[k] as number) - f * (xc[k] as number);
+    }
+  }
+  for (let r = n - 1; r >= 0; r--) {
+    const row = band[r] as number[];
+    const xr = x[r] as number[];
+    for (let c = r + 1; c <= Math.min(n - 1, r + w); c++) {
+      const xc = x[c] as number[];
+      for (let k = 0; k < xr.length; k++)
+        xr[k] = (xr[k] as number) - (row[c - r + w] as number) * (xc[k] as number);
+    }
+    for (let k = 0; k < xr.length; k++) xr[k] = (xr[k] as number) / (row[w] as number);
+  }
+  return x;
+}
+
+/**
+ * Solves a cyclic tridiagonal system (rows non-zero at their own column and
+ * the two cyclic neighbours: a closed fit spline's) by Sherman–Morrison over
+ * the Thomas algorithm.
+ */
+function solveCyclic(rows: readonly Map<number, number>[], b: number[][]): number[][] {
+  const n = rows.length;
+  const at = (r: number, c: number) => rows[r]?.get(((c % n) + n) % n) ?? 0;
+  const lower = rows.map((_, r) => at(r, r - 1));
+  const diag = rows.map((_, r) => at(r, r));
+  const upper = rows.map((_, r) => at(r, r + 1));
+  const alpha = upper[n - 1] as number; // row n−1, column 0
+  const beta = lower[0] as number; // row 0, column n−1
+  const gamma = -(diag[0] as number);
+  const d = [...diag];
+  d[0] = (d[0] as number) - gamma;
+  d[n - 1] = (d[n - 1] as number) - (alpha * beta) / gamma;
+  const thomas = (rhs: number[]): number[] => {
+    const c = new Array<number>(n).fill(0);
+    const y = new Array<number>(n).fill(0);
+    c[0] = (upper[0] as number) / (d[0] as number);
+    y[0] = (rhs[0] as number) / (d[0] as number);
+    for (let i = 1; i < n; i++) {
+      const m = (d[i] as number) - (lower[i] as number) * (c[i - 1] as number);
+      c[i] = (upper[i] as number) / m;
+      y[i] = ((rhs[i] as number) - (lower[i] as number) * (y[i - 1] as number)) / m;
+    }
+    for (let i = n - 2; i >= 0; i--)
+      y[i] = (y[i] as number) - (c[i] as number) * (y[i + 1] as number);
+    return y;
+  };
+  const u = new Array<number>(n).fill(0);
+  u[0] = gamma;
+  u[n - 1] = alpha;
+  const z = thomas(u);
+  const vz = (z[0] as number) + (beta / gamma) * (z[n - 1] as number);
+  const width = (b[0] as number[]).length;
+  const columns = Array.from({ length: width }, (_, k) => {
+    const y = thomas(b.map((row) => row[k] as number));
+    const vy = (y[0] as number) + (beta / gamma) * (y[n - 1] as number);
+    const f = vy / (1 + vz);
+    return y.map((v, i) => v - f * (z[i] as number));
+  });
+  return b.map((_, r) => columns.map((col) => col[r] as number));
 }

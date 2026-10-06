@@ -253,6 +253,8 @@ function canonicalEntity(entity: SketchEntity, id: (value: string) => string): u
         points: entity.points.map(id),
         mode: entity.mode ?? 'fit',
         rho: entity.rho ?? null,
+        knots: entity.knots ?? null,
+        closed: entity.closed ?? false,
         construction: entity.construction,
       };
     case 'text':
@@ -605,6 +607,50 @@ describe('emitScript', () => {
     expect(data?.kind).toBe('sketchData');
     const original = design.toJSON();
     const recreated = run(emitScript(original), original);
+    const map = idMap(original, recreated);
+    expect(canonical(recreated, map)).toEqual(canonical(original, map));
+  });
+
+  it('emits closed splines and a trimmed spline with its own knots (P4-12)', () => {
+    const design = Design.create();
+    design.sketch(design.origin.xy, (k) => {
+      k.spline(
+        [
+          [0, 0],
+          [20, 0],
+          [10, 15],
+        ],
+        { closed: true },
+      );
+      k.splineControl(
+        [
+          [30, 0],
+          [50, 0],
+          [50, 20],
+          [30, 20],
+        ],
+        { closed: true },
+      );
+      // What a trim leaves: a control spline with a knot of multiplicity 3.
+      k.splineControl(
+        [
+          [0, 30],
+          [5, 40],
+          [10, 32],
+          [15, 38],
+          [20, 30],
+          [25, 36],
+          [30, 31],
+        ],
+        { knots: [0, 0, 0, 0, 0.4, 0.4, 0.4, 1, 1, 1, 1] },
+      );
+    });
+    const original = design.toJSON();
+    const code = emitScript(original);
+    expect(code).toContain('{ closed: true }');
+    expect(code).toContain('knots: [0, 0, 0, 0, 0.4, 0.4, 0.4, 1, 1, 1, 1]');
+    expect(biomeFormat(code)).toBe(code);
+    const recreated = run(code, original);
     const map = idMap(original, recreated);
     expect(canonical(recreated, map)).toEqual(canonical(original, map));
   });

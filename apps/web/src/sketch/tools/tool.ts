@@ -126,6 +126,12 @@ export interface ToolContext {
   pick(cursor: Vec2, accept?: PickFilter): SketchEntityId | undefined;
   /** The open sketch's selected points and curves (P1-09), which the modify tools start from. */
   selection(): SketchEntityId[];
+  /**
+   * The snap distance in mm at the last pointer's zoom (a few pixels): how near
+   * a click must land to a point the tool holds itself (a spline's first point
+   * closes it, P4-12). Absent in tests that draw without a view.
+   */
+  snapDistance?(): number;
 }
 
 /** A length in mm as a dimension expression in the document's unit, rounded to its precision. */

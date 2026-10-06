@@ -101,6 +101,15 @@ export const SketchSplineSchema = z.strictObject({
   mode: z.enum(['fit', 'control', 'conic']).optional(),
   /** A conic's fullness; only for `mode: 'conic'`, and then required. */
   rho: z.number().gt(0).lt(1).optional(),
+  /**
+   * A control spline's own knots (ADR-0063's P4-12 amendment): the full clamped
+   * knot vector of its poles' cubic, `points.length + 4` values from 0 to 1, the
+   * first four 0 and the last four 1. Absent: uniform interior knots. A trimmed
+   * or broken spline carries them.
+   */
+  knots: z.array(z.number()).optional(),
+  /** A closed (periodic) fit or control spline: the curve runs back round to its first point. */
+  closed: z.boolean().optional(),
   construction: z.boolean(),
 });
 
@@ -348,6 +357,35 @@ const ROUND: Kinds = ['circle', 'arc'];
 const CURVE: Kinds = ['line', 'circle', 'arc'];
 const ON_CURVE: Kinds = ['line', 'circle', 'arc', 'ellipse'];
 const SYMMETRIC: Kinds = ['point', 'line', 'circle', 'arc'];
+/**
+ * What is wrong with a control spline's stored knots, if anything (ADR-0063's
+ * P4-12 amendment): `poles + 4` values, non-decreasing, the first four 0 and the
+ * last four 1, no interior knot more than three times.
+ */
+export function knotProblem(knots: readonly number[], poles: number): string | undefined {
+  if (knots.length !== poles + 4) {
+    return `${poles} control points take ${poles + 4} knots, not ${knots.length}`;
+  }
+  for (let i = 0; i < knots.length; i++) {
+    const k = knots[i] as number;
+    if (!Number.isFinite(k)) return 'the knots must be numbers';
+    if (i > 0 && k < (knots[i - 1] as number)) return 'the knots must not decrease';
+  }
+  for (let i = 0; i < 4; i++) {
+    if (knots[i] !== 0 || knots[knots.length - 1 - i] !== 1) {
+      return 'the first four knots must be 0 and the last four 1';
+    }
+  }
+  for (let i = 4; i < knots.length - 4; i++) {
+    const k = knots[i] as number;
+    if (k <= 0 || k >= 1) return 'the inner knots must lie between 0 and 1';
+  }
+  for (let i = 4; i + 3 < knots.length - 4; i++) {
+    if (knots[i] === knots[i + 3]) return 'an inner knot may repeat at most three times';
+  }
+  return undefined;
+}
+
 const ANY: Kinds = ['point', 'line', 'circle', 'arc', 'ellipse', 'spline'];
 
 const KIND_NAMES: Record<string, string> = {
@@ -470,6 +508,33 @@ export function sketchIssues(sketch: {
             path: ['entities', id, 'rho'],
             message: 'only a conic has a rho',
           });
+        }
+        // P4-12: stored knots are a control spline's, closed is a fit or control spline's.
+        if (entity.closed === true) {
+          if (entity.mode === 'conic') {
+            issues.push({ path: ['entities', id, 'closed'], message: "a conic can't be closed" });
+          } else if (entity.points.length < 3) {
+            issues.push({
+              path: ['entities', id, 'points'],
+              message: 'a closed spline has at least 3 points',
+            });
+          }
+        }
+        if (entity.knots !== undefined) {
+          const problem = knotProblem(entity.knots, entity.points.length);
+          if (entity.mode !== 'control') {
+            issues.push({
+              path: ['entities', id, 'knots'],
+              message: 'only a control spline has knots',
+            });
+          } else if (entity.closed === true) {
+            issues.push({
+              path: ['entities', id, 'knots'],
+              message: "a closed spline's knots come from its points",
+            });
+          } else if (problem) {
+            issues.push({ path: ['entities', id, 'knots'], message: problem });
+          }
         }
         break;
       case 'text':

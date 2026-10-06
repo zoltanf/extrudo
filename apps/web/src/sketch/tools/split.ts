@@ -120,7 +120,7 @@ export class SplitTool implements SketchTool {
       this.mode === 'extend'
         ? ['line', 'arc']
         : this.mode === 'break'
-          ? ['line', 'circle', 'arc']
+          ? ['line', 'circle', 'arc', 'spline']
           : undefined;
     return this.context.pick(cursor, (e) => (kinds ? kinds.includes(e.type) : e.type !== 'point'));
   }

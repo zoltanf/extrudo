@@ -22,6 +22,7 @@ export {
   type Chain,
   type ChainLink,
   chainOf,
+  OFFSET_TOLERANCE,
   type OffsetOptions,
   offset,
   offsetPreview,
@@ -34,6 +35,8 @@ export {
   extendPreview,
   spanCuts,
   spanOf,
+  splineCuts,
+  splineSpanOf,
   trim,
   trimPreview,
 } from './split';

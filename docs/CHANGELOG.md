@@ -4,6 +4,16 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 splines: closed, stored knots, trim, break and offset**
+  (ADR-0063's amendment): fit and control splines can be closed (a click back
+  on the first point, or the panel's Closed checkbox) into periodic C2 loops,
+  emitted as the clamped B-spline that is exactly the loop, so the kernel,
+  profiles and export need no new curve kind; a control spline may carry its
+  own knot vector (`knots`); Trim and Break cut fit, control and closed splines
+  by knot insertion into control splines that are exactly their part of the
+  curve; Offset takes splines alone, closed or in a chain as a fit spline within
+  1e-3 mm of the true offset (refused past the tightest bend). Extend and cutting
+  a conic stay refused; exact rational conics stay deferred. No facade change.
 - 2026-10-06 · **P4-12 Patterns: a cheaper join of many interfering copies**
   (ADR-0047's amendment): a pattern's copies (and a mirror's) are grouped by
   their boxes alone instead of asking OCCT's exact distance (6-8 ms a call,

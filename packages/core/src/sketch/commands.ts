@@ -285,7 +285,12 @@ export const removeFromSketch = defineCommand<RemoveFromSketchPayload>(
     }
     for (const [id, points] of Object.entries(removal.splines)) {
       const spline = data.entities[id as SketchEntityId];
-      if (spline?.type === 'spline') spline.points = points;
+      if (spline?.type === 'spline') {
+        spline.points = points;
+        // Stored knots counted the old poles, and a loop needs three points (P4-12).
+        delete spline.knots;
+        if (points.length < 3) delete spline.closed;
+      }
     }
     for (const id of removal.entities) delete data.entities[id];
     for (const id of allConstraints) delete data.constraints[id];
@@ -446,6 +451,31 @@ export const setSplineRho = defineCommand<{
     throw new CommandError(`${issue.path.join('.')}: ${issue.message}.`);
   }
   data.entities[id] = parsed.data;
+});
+
+/**
+ * Opens or closes a fit or control spline (ADR-0063's P4-12 amendment, A2): the
+ * selection panel's Closed checkbox, one undo step. The curve is derived from
+ * the points, so nothing moves and the solver has nothing to do. Closing a
+ * control spline drops its stored knots (a periodic curve's come from its
+ * points). Refused for a conic and for fewer than three points.
+ */
+export const setSplineClosed = defineCommand<{
+  feature: FeatureId;
+  id: SketchEntityId;
+  closed: boolean;
+}>('sketch.splineClosed', 'Close spline', (draft, { feature, id, closed }) => {
+  const data = sketchDraft(draft, feature);
+  const e = data.entities[id];
+  if (e?.type !== 'spline') throw new CommandError(`"${id}" isn't a spline of this sketch.`);
+  if (e.mode === 'conic') throw new CommandError("A conic can't be closed.");
+  if (closed && e.points.length < 3) {
+    throw new CommandError('A closed spline needs at least three points.');
+  }
+  const { closed: _closed, knots, ...rest } = e;
+  data.entities[id] = closed
+    ? { ...rest, closed: true }
+    : { ...rest, ...(knots === undefined ? {} : { knots }) };
 });
 
 /** Solved geometry for existing entities, as `addToSketch` takes it. */

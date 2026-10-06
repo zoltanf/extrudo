@@ -11,11 +11,14 @@
  * a crossing is put on the curve that made it. The curve's own constraints
  * go where they still mean the same, or go (ADR-0019 lists the rules).
  *
- * Ellipses and splines can only be deleted whole (no crossings) for now:
- * the sketch has no elliptical arcs, and cutting a fit-point spline would
- * change its shape.
+ * Ellipses can only be deleted whole (no crossings): the sketch has no
+ * elliptical arcs. Fit and control splines, open or closed, are cut by knot
+ * insertion (ADR-0063's P4-12 amendment, A3): each piece is exactly its part
+ * of the curve, stored as a control spline with its own knots. Conics are
+ * refused where curves cross them, and no spline can be extended.
  */
 import {
+  type BSpline,
   type ConstraintId,
   constraintRefs,
   curvePolyline,
@@ -26,8 +29,13 @@ import {
   type SketchData,
   type SketchEntity,
   type SketchEntityId,
+  type SketchSpline,
+  splineCurve,
+  splinePoint,
+  splineRange,
   type Vec2,
 } from '@extrudo/core';
+import { splineParam } from '../export/bezier';
 import {
   type Curve,
   dist,
@@ -264,6 +272,14 @@ export function trimPreview(data: SketchData, id: SketchEntityId, cursor: Vec2):
   const e = data.entities[id];
   if (!e || e.type === 'point') return [];
   const span = spanOf(data, id);
+  const spline = span ? undefined : splineSpanOf(data, id);
+  if (spline) {
+    const cuts = splineCuts(data, spline);
+    if (cuts.length === 0 || (spline.closed && cuts.length < 2))
+      return [samplesBetween(spline, 0, 1)];
+    const { from, to } = splineAround(spline, cuts, splineParam(spline.spline, cursor));
+    return [samplesBetween(spline, from, to)];
+  }
   if (!span) {
     const line = curvePolyline(data, e);
     return line ? [line] : [];
@@ -291,9 +307,14 @@ export function trim(
   if (!e || e.type === 'point') throw new ModifyError('Pick a curve to trim.');
   if (e.type === 'text') throw new ModifyError("Text can't be trimmed.");
   const span = spanOf(data, id);
+  const spline = span ? undefined : splineSpanOf(data, id);
+  if (spline) return trimSpline(b, spline, cursor);
   if (!span) {
     if (hasCrossings(data, id)) {
-      throw new ModifyError('Only lines, circles and arcs can be trimmed where curves cross.');
+      if (e.type === 'spline') throw new ModifyError(CONIC_CUT);
+      throw new ModifyError(
+        'Only lines, circles, arcs and splines can be trimmed where curves cross.',
+      );
     }
     return removeWhole(b, id);
   }
@@ -339,6 +360,15 @@ function removeWhole(b: ChangeBuilder, id: SketchEntityId): ModifyResult {
 
 /** What a break at the cursor would cut out as its own curve (the preview). */
 export function breakPreview(data: SketchData, id: SketchEntityId, cursor: Vec2): Vec2[][] {
+  const spline = splineSpanOf(data, id);
+  if (spline) {
+    const cuts = splineCuts(data, spline);
+    if (cuts.length === 0) return [];
+    // A closed spline crossed once just opens there: nothing is cut out.
+    if (spline.closed && cuts.length < 2) return [];
+    const { from, to } = splineAround(spline, cuts, splineParam(spline.spline, cursor));
+    return [samplesBetween(spline, from, to)];
+  }
   const span = spanOf(data, id);
   if (!span) return [];
   const cuts = spanCuts(data, span);
@@ -360,8 +390,11 @@ export function breakCurve(
 ): ModifyResult {
   const b = new ChangeBuilder(data, newId);
   if (data.entities[id]?.type === 'text') throw new ModifyError("Text can't be broken.");
+  const spline = splineSpanOf(data, id);
+  if (spline) return breakSpline(b, spline, cursor);
+  if (data.entities[id]?.type === 'spline') throw new ModifyError(CONIC_CUT);
   const span = spanOf(data, id);
-  if (!span) throw new ModifyError('Only lines, circles and arcs can be broken.');
+  if (!span) throw new ModifyError('Only lines, circles, arcs and splines can be broken.');
   const cuts = spanCuts(data, span);
   if (span.kind === 'circle' && cuts.length < 2) {
     throw new ModifyError('A circle breaks where two curves cross it.');
@@ -460,6 +493,10 @@ export function extend(
 ): ModifyResult {
   const e = data.entities[id];
   if (e?.type === 'text') throw new ModifyError("Text can't be extended.");
+  if (e?.type === 'spline') {
+    // ADR-0063's P4-12 amendment: a B-spline has no natural continuation.
+    throw new ModifyError("A spline can't be extended: draw on from its end instead.");
+  }
   if (e?.type !== 'line' && e?.type !== 'arc') {
     throw new ModifyError('Only lines and arcs can be extended.');
   }
@@ -716,5 +753,277 @@ export function retarget(
       return c.b === undefined ? { ...c, a: swap(c.a) } : { ...c, a: swap(c.a), b: swap(c.b) };
     default:
       return { ...c, a: swap(c.a), b: swap(c.b) };
+  }
+}
+
+// Splines (ADR-0063's P4-12 amendment, A3) ----------------------------------------
+
+/** What trim and break say for a conic that other curves cross. */
+const CONIC_CUT = "A conic can't be cut where curves cross it.";
+
+/** A fit or control spline (open or closed) of the sketch, with its curve and samples. */
+export interface SplineSpan {
+  id: SketchEntityId;
+  entity: SketchSpline;
+  /** The curve as the sketch draws it (a closed one unwrapped, ADR-0063's amendment A2). */
+  spline: BSpline;
+  closed: boolean;
+  /** The polyline the sketch draws, with each point's parameter. */
+  samples: { u: number; p: Vec2 }[];
+}
+
+/** Segments per knot span the cuts are looked for on (as `curvePolyline` draws a spline). */
+const SPLINE_SAMPLES = 16;
+
+/** The spline span of a fit or control spline; undefined for anything else (conics too). */
+export function splineSpanOf(data: SketchData, id: SketchEntityId): SplineSpan | undefined {
+  const e = data.entities[id];
+  if (e?.type !== 'spline' || e.mode === 'conic') return undefined;
+  const points = e.points.map((p) => pointOf(data, p));
+  if (!points.every((p) => p !== undefined)) return undefined;
+  const spline = splineCurve(e, points as Vec2[]);
+  const distinct = [...new Set(spline.knots)];
+  const samples = [{ u: 0, p: splinePoint(spline, 0) }];
+  for (let i = 1; i < distinct.length; i++) {
+    const u0 = distinct[i - 1] as number;
+    const u1 = distinct[i] as number;
+    for (let k = 1; k <= SPLINE_SAMPLES; k++) {
+      const u = u0 + ((u1 - u0) * k) / SPLINE_SAMPLES;
+      samples.push({ u, p: splinePoint(spline, u) });
+    }
+  }
+  return { id, entity: e, spline, closed: e.closed === true && points.length >= 3, samples };
+}
+
+/** How far a point is from a cutter, signed: across a line, outside a circle or an arc's circle. */
+function signedTo(curve: Curve, p: Vec2): number {
+  if (curve.kind === 'line') {
+    const d = sub(curve.b, curve.a);
+    return (d[0] * (p[1] - curve.a[1]) - d[1] * (p[0] - curve.a[0])) / Math.hypot(d[0], d[1]);
+  }
+  return dist(p, curve.center) - curve.radius;
+}
+
+/**
+ * Where the other curves cross a spline, in order of its parameter: found on
+ * its polyline and refined on the curve by bisection of the signed distance to
+ * the cutter (so a cut lies on a line or a circle exactly). An open spline's
+ * own ends don't count.
+ */
+export function splineCuts(data: SketchData, span: SplineSpan): Cut[] {
+  const { spline, samples } = span;
+  const start = (samples[0] as { p: Vec2 }).p;
+  const end = (samples[samples.length - 1] as { p: Vec2 }).p;
+  const cuts: Cut[] = [];
+  for (const { id, curves } of cutters(data, span.id)) {
+    for (const curve of curves) {
+      for (let i = 1; i < samples.length; i++) {
+        const a = samples[i - 1] as { u: number; p: Vec2 };
+        const c = samples[i] as { u: number; p: Vec2 };
+        for (const hit of intersectCurves({ kind: 'line', id: span.id, a: a.p, b: c.p }, curve)) {
+          const length = dist(a.p, c.p);
+          let u = a.u + (c.u - a.u) * (length > 0 ? dist(a.p, hit) / length : 0);
+          let lo = a.u;
+          let hi = c.u;
+          let fLo = signedTo(curve, a.p);
+          if (fLo * signedTo(curve, c.p) <= 0) {
+            for (let k = 0; k < 60; k++) {
+              const mid = (lo + hi) / 2;
+              const f = signedTo(curve, splinePoint(spline, mid));
+              if (fLo * f <= 0) hi = mid;
+              else {
+                lo = mid;
+                fLo = f;
+              }
+            }
+            u = (lo + hi) / 2;
+          }
+          const p = splinePoint(spline, u);
+          if (!span.closed && (dist(p, start) < SAME || dist(p, end) < SAME)) continue;
+          cuts.push(cutAt(data, id, p, u));
+        }
+      }
+    }
+  }
+  cuts.sort((x, y) => x.u - y.u);
+  const out: Cut[] = [];
+  for (const cut of cuts) {
+    const last = out[out.length - 1];
+    if (last && dist(last.p, cut.p) < SAME) {
+      if (!last.at && cut.at) out[out.length - 1] = cut;
+      continue;
+    }
+    out.push(cut);
+  }
+  // A closed spline's seam: a cut at its end is the one at its start.
+  if (
+    span.closed &&
+    out.length > 1 &&
+    dist((out[0] as Cut).p, (out[out.length - 1] as Cut).p) < SAME
+  ) {
+    const last = out.pop() as Cut;
+    if (!(out[0] as Cut).at && last.at) out[0] = { ...last, u: (out[0] as Cut).u };
+  }
+  return out;
+}
+
+/** The crossings either side of parameter `u`; a closed spline's range may run past 1. */
+function splineAround(
+  span: SplineSpan,
+  cuts: Cut[],
+  u: number,
+): { lo?: Cut; hi?: Cut; from: number; to: number } {
+  if (span.closed) {
+    const hiIndex = cuts.findIndex((c) => c.u > u);
+    const hi = cuts[hiIndex === -1 ? 0 : hiIndex] as Cut;
+    const lo = cuts[
+      hiIndex === -1 ? cuts.length - 1 : (hiIndex - 1 + cuts.length) % cuts.length
+    ] as Cut;
+    return { lo, hi, from: lo.u, to: hi.u > lo.u ? hi.u : hi.u + 1 };
+  }
+  const lo = [...cuts].reverse().find((c) => c.u <= u);
+  const hi = cuts.find((c) => c.u > u);
+  return { lo, hi, from: lo?.u ?? 0, to: hi?.u ?? 1 };
+}
+
+/** Points along a spline from `from` to `to` (past 1 round a closed one's seam): a preview. */
+function samplesBetween(span: SplineSpan, from: number, to: number): Vec2[] {
+  const n = Math.max(2, Math.ceil((to - from) * Math.max(1, span.samples.length - 1)));
+  const out: Vec2[] = [];
+  for (let i = 0; i <= n; i++) {
+    const u = from + ((to - from) * i) / n;
+    out.push(splinePoint(span.spline, u > 1 ? u - 1 : u));
+  }
+  return out;
+}
+
+/** A closed spline's piece from the crossing `hi` round to `lo` (past its seam where it must be). */
+function rest(lo: Cut, hi: Cut): Piece {
+  return { from: hi.u, to: hi.u > lo.u ? lo.u + 1 : lo.u, fromCut: hi, toCut: lo };
+}
+
+function trimSpline(b: ChangeBuilder, span: SplineSpan, cursor: Vec2): ModifyResult {
+  const cuts = splineCuts(b.data, span);
+  if (cuts.length === 0 || (span.closed && cuts.length < 2)) return removeWhole(b, span.id);
+  const { lo, hi, from, to } = splineAround(span, cuts, splineParam(span.spline, cursor));
+  const pieces: Piece[] = [];
+  if (span.closed && lo && hi) {
+    // What is left is one piece, from the far crossing round the seam to the near one.
+    pieces.push(rest(lo, hi));
+  } else {
+    if (lo) pieces.push({ from: 0, to: from, toCut: lo });
+    if (hi) pieces.push({ from: to, to: 1, fromCut: hi });
+  }
+  replaceSpline(b, span, pieces, false);
+  return b.result();
+}
+
+function breakSpline(b: ChangeBuilder, span: SplineSpan, cursor: Vec2): ModifyResult {
+  const cuts = splineCuts(b.data, span);
+  if (cuts.length === 0) throw new ModifyError('Nothing crosses it to break it at.');
+  const pieces: Piece[] = [];
+  if (span.closed && cuts.length === 1) {
+    // Crossed once, a closed spline just opens there, its two ends held together.
+    const cut = cuts[0] as Cut;
+    pieces.push({ from: cut.u, to: cut.u + 1, fromCut: cut, toCut: cut });
+    replaceSpline(b, span, pieces, true);
+    return b.result();
+  }
+  const { lo, hi, from, to } = splineAround(span, cuts, splineParam(span.spline, cursor));
+  if (span.closed && lo && hi) {
+    // Two pieces: the rest (from the far crossing round to the near one), then the part cut out.
+    pieces.push(rest(lo, hi), { from, to, fromCut: lo, toCut: hi });
+  } else {
+    if (lo) pieces.push({ from: 0, to: from, toCut: lo });
+    pieces.push({ from, to, fromCut: lo, toCut: hi });
+    if (hi) pieces.push({ from: to, to: 1, fromCut: hi });
+  }
+  replaceSpline(b, span, pieces, true);
+  return b.result();
+}
+
+/**
+ * Replaces a spline by `pieces` of its curve, each a control spline with its
+ * own knots (exact: knot insertion). The first piece keeps the ID. A point of
+ * the original stays where a piece has a pole at its place (the curve's ends;
+ * a control spline's poles away from the cuts); the others go with their
+ * constraints and dimensions. `joined` pieces meet at their shared crossings
+ * (break), else each new end goes on the curve that crosses there (trim).
+ */
+function replaceSpline(b: ChangeBuilder, span: SplineSpan, pieces: Piece[], joined: boolean): void {
+  const e = span.entity;
+  const original = e.points.map((id) => ({ id, at: pointOf(b.data, id) as Vec2 }));
+  const used = new Set<SketchEntityId>();
+  const keep = (p: Vec2, allowed: boolean): SketchEntityId | undefined => {
+    if (!allowed) return undefined;
+    const hit = original.find((o) => !used.has(o.id) && dist(o.at, p) < 1e-12);
+    if (hit) used.add(hit.id);
+    return hit?.id;
+  };
+  const control = e.mode === 'control';
+  const made = pieces.map((piece, i) => {
+    const curve = splineRange(span.spline, piece.from, piece.to);
+    const last = curve.poles.length - 1;
+    const points = curve.poles.map((pole, k) => {
+      // A fit spline's own points lie on the curve, not at its poles: only its ends stay.
+      const end = k === 0 || k === last;
+      const atEnd =
+        !span.closed && ((k === 0 && piece.from < 1e-12) || (k === last && piece.to > 1 - 1e-12));
+      return keep(pole, control || (end && atEnd)) ?? b.addPoint(pole);
+    });
+    const entity: SketchEntity = {
+      type: 'spline',
+      points,
+      mode: 'control',
+      knots: curve.knots,
+      construction: e.construction,
+    };
+    let id = span.id;
+    if (i === 0) b.set(id, entity);
+    else id = b.add(entity);
+    return {
+      ...piece,
+      id,
+      start: points[0] as SketchEntityId,
+      end: points[last] as SketchEntityId,
+    };
+  });
+
+  const removed = new Set<SketchEntityId>();
+  for (const { id } of original) {
+    if (!used.has(id)) {
+      removed.add(id);
+      b.removeEntity(id);
+    }
+  }
+
+  // New ends: joined to the neighbouring piece, or put on the curve that crosses there.
+  for (let i = 0; i < made.length; i++) {
+    const m = made[i] as (typeof made)[number];
+    const next = made[(i + 1) % made.length];
+    const wraps = i === made.length - 1;
+    if (joined && next && m.toCut && next.fromCut === m.toCut && (!wraps || span.closed)) {
+      b.constrain({ type: 'coincident', a: m.end, b: next.start });
+      continue;
+    }
+    if (m.toCut) boundary(b, m.end, m.toCut);
+    const prev = made[(i - 1 + made.length) % made.length];
+    const joinedBefore = joined && prev && prev.toCut === m.fromCut && (i > 0 || span.closed);
+    if (m.fromCut && !joinedBefore) boundary(b, m.start, m.fromCut);
+  }
+
+  for (const [key, c] of Object.entries(b.data.constraints)) {
+    const cid = key as ConstraintId;
+    const refs = constraintRefs(c);
+    if (refs.some((r) => removed.has(r))) {
+      b.removeConstraint(cid);
+      continue;
+    }
+    if (c.type === 'fix' && c.entity === span.id) {
+      for (const m of made) if (m.id !== span.id) b.constrain({ type: 'fix', entity: m.id });
+    }
+  }
+  for (const [key, d] of Object.entries(b.data.dimensions)) {
+    if (dimensionRefs(d).some((r) => removed.has(r))) b.removeDimension(key as DimensionId);
   }
 }

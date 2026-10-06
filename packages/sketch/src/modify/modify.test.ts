@@ -308,7 +308,7 @@ describe('trim', () => {
     const e = b.ellipse(0, 0, 10, 5);
     const l = b.line(-20, 0, 20, 0);
     const before = data(b);
-    expect(() => trim(before, id(e.id), [0, 5], newId)).toThrow(/lines, circles and arcs/);
+    expect(() => trim(before, id(e.id), [0, 5], newId)).toThrow(/lines, circles, arcs and splines/);
     expect(types(apply(before, trim(before, id(l.id), [0, 0], newId)))).toEqual([
       'ellipse',
       'line',
@@ -768,6 +768,46 @@ describe('mirror, copy, patterns and scale', () => {
       .filter(([key, e]) => e.type === 'spline' && !(key in before.entities))
       .map(([, e]) => e);
     expect(mirroredConic).toMatchObject({ mode: 'conic', rho: 0.3 });
+  });
+
+  it("carries a spline's closed flag and stored knots over to copies and mirrors (P4-12)", () => {
+    const b = new SketchBuilder();
+    const axis = b.line(0, -20, 0, 20, true);
+    b.constrain({ type: 'fix', entity: axis.start });
+    b.constrain({ type: 'fix', entity: axis.end });
+    const loop = b.spline(
+      [
+        [5, 0],
+        [15, 5],
+        [10, 15],
+      ],
+      { closed: true },
+    );
+    const knotted = b.spline(
+      [
+        [5, -10],
+        [10, -5],
+        [15, -12],
+        [20, -8],
+        [25, -10],
+      ],
+      { mode: 'control' },
+    );
+    const knots = [0, 0, 0, 0, 0.3, 1, 1, 1, 1];
+    (b.entities[knotted.id] as { knots?: number[] }).knots = knots;
+    const before = data(b);
+    for (const result of [
+      copy(before, [id(loop.id), id(knotted.id)], [40, 0], newId),
+      mirror(before, [id(loop.id), id(knotted.id), id(axis.id)], id(axis.id), newId),
+    ]) {
+      const after = apply(before, result);
+      const made = Object.entries(after.entities)
+        .filter(([key, e]) => e.type === 'spline' && !(key in before.entities))
+        .map(([, e]) => e);
+      expect(made).toHaveLength(2);
+      expect(made).toContainEqual(expect.objectContaining({ closed: true }));
+      expect(made).toContainEqual(expect.objectContaining({ mode: 'control', knots }));
+    }
   });
 
   it('copies geometry with its constraints and dimensions', () => {

@@ -160,8 +160,13 @@ export function sketchSegments(
         return point?.type === 'point' ? [point.x, point.y] : undefined;
       };
       let prev: [number, number] | undefined;
-      for (const ref of entity.points) {
-        const next = at(ref);
+      // A closed control spline's polygon runs back to its first pole (P4-12).
+      const loop =
+        entity.closed && entity.mode === 'control'
+          ? [...entity.points, entity.points[0]]
+          : entity.points;
+      for (const ref of loop) {
+        const next = ref === undefined ? undefined : at(ref);
         if (!next) continue;
         if (prev) polygons.push(...sketchToWorld(frame, prev), ...sketchToWorld(frame, next));
         prev = next;

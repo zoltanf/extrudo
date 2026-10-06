@@ -3,7 +3,9 @@ import { clicker, counts, kernelReady, pickTool, sketchOnXY } from './helpers';
 
 // P4-05: control-point splines and conics (ADR-0063): both drawn from the
 // Create menu, a control spline closed by a line as a profile, and a conic with
-// a typed rho, finished and extruded into one body.
+// a typed rho, finished and extruded into one body. P4-12 (ADR-0063's
+// amendment): a closed control spline drawn back to its first point and
+// extruded, a fit spline trimmed against a line, and a spline offset.
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -58,7 +60,7 @@ test('a control-point spline closed by a line is one profile', async ({ page }) 
   await page.mouse.move(next.x, next.y);
   await expect(page.locator('[data-preview="curve"]')).toHaveCount(1);
   await expect(toolPrompt(page)).toHaveText(
-    'Click the next control point, or press Enter to finish.',
+    'Click the next control point, Enter to finish, or the first one to close it.',
   );
   await page.keyboard.press('Enter');
   // Four control points, on the grid.
@@ -158,4 +160,147 @@ test('a conic with a typed rho extrudes into one body', async ({ page }) => {
   expect(drawn[0]?.size[2]).toBe(5);
   expect(drawn[0]?.size[1]).toBeGreaterThan(5);
   expect(drawn[0]?.size[1]).toBeLessThan(7);
+});
+
+/** Finishes the sketch, picks the profile at `inside` in the model and extrudes it 5 mm. */
+async function extrudeAt(
+  page: Page,
+  at: (x: number, y: number) => { x: number; y: number },
+  inside: [number, number],
+) {
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+  const middle = at(...inside);
+  await page.mouse.move(middle.x, middle.y);
+  await page.mouse.click(middle.x, middle.y);
+  await expect
+    .poll(async () => viewport(page).getAttribute('data-model-selection'))
+    .toMatch(/^profile:/);
+  await page.keyboard.press('e');
+  const dialog = page.getByRole('region', { name: 'Extrude dialog' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('textbox', { name: 'Distance' }).fill('5 mm');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 30_000 });
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+}
+
+/** A fit spline through five grid points, a wave from (−40, 0) to (40, 0). */
+async function wave(page: Page, click: (x: number, y: number) => Promise<void>) {
+  await pickTool(page, 'Fit Point Spline');
+  for (const [x, y] of [
+    [-40, 0],
+    [-20, 20],
+    [0, 0],
+    [20, 20],
+    [40, 0],
+  ] as const)
+    await click(x, y);
+  await page.keyboard.press('Enter');
+  await expect.poll(() => counts(page)).toMatchObject({ splines: 1, points: 5 });
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+}
+
+test('a control-point spline drawn back to its first point is closed, and extrudes', async ({
+  page,
+}) => {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+
+  await pickTool(page, 'Control Point Spline');
+  await click(-30, -10);
+  await click(30, -10);
+  await click(30, 30);
+  await click(-30, 30);
+  // A click back on the first pole closes the loop.
+  await click(-30, -10);
+  await expect.poll(() => counts(page)).toMatchObject({ splines: 1, points: 4 });
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+  // The loop alone is a region.
+  await expect(viewport(page)).toHaveAttribute('data-sketch-profiles', 'profiles=1 holes=0');
+
+  // Selected, the panel says it is closed. Between the two lower poles the
+  // closed curve runs at y = −8.33 ((P3 + 23 P0 + 23 P1 + P2) / 48).
+  const bottom = at(0, -25 / 3);
+  await page.mouse.move(bottom.x, bottom.y);
+  await page.mouse.click(bottom.x, bottom.y);
+  await expect(selection(page).locator('[data-selection-title]')).toHaveText('Spline');
+  await expect(selection(page).getByRole('checkbox', { name: 'Closed' })).toBeChecked();
+
+  await extrudeAt(page, at, [0, 10]);
+  const drawn = await bodies(page);
+  expect(drawn).toHaveLength(1);
+  expect(drawn[0]?.size[2]).toBe(5);
+  // The periodic curve stays inside its poles' 60 × 40 box.
+  expect(drawn[0]?.size[0]).toBeGreaterThan(30);
+  expect(drawn[0]?.size[0]).toBeLessThan(60);
+});
+
+test('a fit spline trimmed against a line becomes a control spline', async ({ page }) => {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  await wave(page, click);
+
+  // A line across the second hump.
+  await page.keyboard.press('l');
+  await click(10, -10);
+  await click(10, 30);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+
+  // T, then the part right of the line (at a fit point, where the curve runs).
+  await page.keyboard.press('t');
+  const stub = at(20, 20);
+  await page.mouse.move(stub.x, stub.y);
+  await expect(page.locator('[data-preview="removed"]')).toHaveCount(1);
+  const before = await counts(page);
+  await page.mouse.click(stub.x, stub.y);
+  // The part under the pointer is gone (nothing left there to preview), and it
+  // is still one spline beside the line.
+  await expect(page.locator('[data-preview="removed"]')).toHaveCount(0);
+  expect(await counts(page)).toMatchObject({ splines: 1, lines: 1 });
+  await page.keyboard.press('Escape');
+  await expect(toolPrompt(page)).toHaveCount(0);
+
+  // Selected, it is a control spline now (its points are the poles of its piece).
+  const crown = at(-20, 20);
+  await page.mouse.move(crown.x, crown.y);
+  await page.mouse.click(crown.x, crown.y);
+  await expect(selection(page).locator('[data-selection-title]')).toHaveText('Spline');
+  await expect(selection(page)).toContainText('Control points');
+  await expect(selection(page).getByRole('checkbox', { name: 'Closed' })).not.toBeChecked();
+
+  // One undo brings the fit spline back.
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+z');
+  await expect.poll(async () => (await counts(page)).constraints).toBe(before.constraints);
+  // The fit point at the crown is back (a click there takes the point first).
+  await page.mouse.click(crown.x, crown.y);
+  await expect(selection(page).locator('[data-selection-title]')).toHaveText('Point');
+});
+
+test('a spline offset 2 mm is a second spline', async ({ page }) => {
+  const at = await sketchOnXY(page);
+  const click = clicker(page, at);
+  await wave(page, click);
+
+  // O picks the spline, then the side (above the first hump) and a typed distance.
+  await page.keyboard.press('o');
+  await click(-20, 20);
+  await expect(toolPrompt(page)).toHaveText(
+    'Move to the side to offset to, and click. Type a distance to set it.',
+  );
+  const above = at(-20, 26);
+  await page.mouse.move(above.x, above.y);
+  await page.keyboard.type('2');
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => (await counts(page)).splines).toBe(2);
+  // A spline's offset carries no dimension, and is fixed in place.
+  const after = await counts(page);
+  expect(after.dimensions).toBe(0);
+  expect(after.lines).toBe(0);
 });

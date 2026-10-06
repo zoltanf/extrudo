@@ -159,7 +159,10 @@ function curveContour(data: SketchData, entity: SketchEntity): Contour | undefin
       const spline = splineCurve(entity, points as Vec2[]);
       const beziers = bezierRange(bezierPieces(spline), 0, 1);
       const start = beziers[0]?.[0];
-      return start && { start, segments: beziers.map(bezierSegment), closed: false };
+      // A closed spline (P4-12) is written as the clamped curve that is exactly
+      // its loop, ending on its first point.
+      const closed = entity.closed === true && entity.mode !== 'conic' && points.length >= 3;
+      return start && { start, segments: beziers.map(bezierSegment), closed };
     }
     case 'text':
       // A text is many curves: `sketchDrawing` expands it with `placeText`.

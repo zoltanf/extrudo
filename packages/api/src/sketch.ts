@@ -205,11 +205,38 @@ export class EllipseHandle extends SketchEntityHandle {
 /** A spline (ADR-0014, ADR-0063): fit points, control poles or a conic's three points. */
 export class SplineHandle extends SketchEntityHandle {
   readonly points: PointHandle[];
+  /** Whether it runs back round to its first point (ADR-0063's P4-12 amendment). */
+  readonly closed: boolean;
+  /** A control spline's own knot vector, if it was given one. */
+  readonly knots: readonly number[] | undefined;
 
-  constructor(sketch: SketchHandle, id: SketchEntityId, points: PointHandle[]) {
+  constructor(
+    sketch: SketchHandle,
+    id: SketchEntityId,
+    points: PointHandle[],
+    shape: { closed?: boolean; knots?: readonly number[] } = {},
+  ) {
     super(sketch, id);
     this.points = points;
+    this.closed = shape.closed === true;
+    this.knots = shape.knots ? [...shape.knots] : undefined;
   }
+}
+
+/** How a fit spline runs (ADR-0063's P4-12 amendment). */
+export interface SplineOptions {
+  /** Back round to the first point: a closed loop, C2 everywhere (at least three points). */
+  closed?: boolean;
+}
+
+/** How a control spline runs (ADR-0063's P4-12 amendment). */
+export interface ControlSplineOptions extends SplineOptions {
+  /**
+   * The full clamped knot vector of the poles' cubic: `points.length + 4`
+   * values from 0 to 1, the first four 0 and the last four 1. Without it the
+   * inner knots are uniform. Not with `closed`.
+   */
+  knots?: readonly number[];
 }
 
 /** A text (ADR-0058): the anchor on its baseline and the point a height above it. */
@@ -733,14 +760,20 @@ export class SketchBuilder {
     );
   }
 
-  /** A spline through `points` (ADR-0014): a smooth curve through every one. */
-  spline(points: readonly Vec2[]): SplineHandle {
-    return this.#spline(points, 'fit');
+  /**
+   * A spline through `points` (ADR-0014): a smooth curve through every one;
+   * `{ closed: true }` runs it back round to the first.
+   */
+  spline(points: readonly Vec2[], options: SplineOptions = {}): SplineHandle {
+    return this.#spline(points, 'fit', undefined, options);
   }
 
-  /** A spline guided by its points as B-spline poles (ADR-0063). */
-  splineControl(points: readonly Vec2[]): SplineHandle {
-    return this.#spline(points, 'control');
+  /**
+   * A spline guided by its points as B-spline poles (ADR-0063); `closed` makes
+   * it the periodic B-spline of the poles, `knots` gives it its own knot vector.
+   */
+  splineControl(points: readonly Vec2[], options: ControlSplineOptions = {}): SplineHandle {
+    return this.#spline(points, 'control', undefined, options);
   }
 
   /**
@@ -1015,12 +1048,18 @@ export class SketchBuilder {
     );
   }
 
-  #spline(points: readonly Vec2[], mode: 'fit' | 'control' | 'conic', rho?: number): SplineHandle {
-    const made = addSpline(this.#edit, this.#ids, points, mode, rho);
+  #spline(
+    points: readonly Vec2[],
+    mode: 'fit' | 'control' | 'conic',
+    rho?: number,
+    shape: ControlSplineOptions = {},
+  ): SplineHandle {
+    const made = addSpline(this.#edit, this.#ids, points, mode, rho, shape);
     return new SplineHandle(
       this.sketch,
       made.id,
       made.points.map((point) => new PointHandle(this.sketch, point)),
+      shape,
     );
   }
 

@@ -342,6 +342,59 @@ describe('sketch schema', () => {
         },
       }),
     ).toEqual(['entities.onFit.rho: only a conic has a rho']);
+
+    // P4-12: closed fit and control splines, and a control spline's stored knots.
+    const k4 = (id: string) => [`${id}a`, `${id}b`, `${id}c`, `${id}d`];
+    const more = {
+      ...entities,
+      ...points([
+        ...k4('ck'),
+        ...k4('kf'),
+        ...k4('kc'),
+        ...k4('kn'),
+        ...k4('km'),
+        ...k4('lp'),
+        ...k4('lq'),
+        ...k4('sh'),
+        'cla',
+        'clb',
+        'kme',
+      ]),
+      loop: spline('lp', { closed: true }),
+      loopc: spline('lq', { mode: 'control', closed: true }),
+      knotted: spline('ck', { points: k4('ck'), mode: 'control', knots: [0, 0, 0, 0, 1, 1, 1, 1] }),
+    };
+    expect(issues({ ...r, entities: more })).toEqual([]);
+    expect(
+      issues({
+        ...r,
+        entities: {
+          ...more,
+          shut: conic('sh', { closed: true }),
+          short: spline('cl', { points: ['cla', 'clb'], closed: true }),
+          onFitK: spline('kf', { points: k4('kf'), knots: [0, 0, 0, 0, 1, 1, 1, 1] }),
+          shutK: spline('kc', {
+            points: k4('kc'),
+            mode: 'control',
+            closed: true,
+            knots: [0, 0, 0, 0, 1, 1, 1, 1],
+          }),
+          count: spline('kn', { points: k4('kn'), mode: 'control', knots: [0, 0, 0, 0, 1, 1, 1] }),
+          down: spline('km', {
+            points: [...k4('km'), 'kme'],
+            mode: 'control',
+            knots: [0, 0, 0, 0, 0.6, 0.4, 1, 1, 1],
+          }),
+        },
+      }),
+    ).toEqual([
+      "entities.shut.closed: a conic can't be closed",
+      'entities.short.points: a closed spline has at least 3 points',
+      'entities.onFitK.knots: only a control spline has knots',
+      "entities.shutK.knots: a closed spline's knots come from its points",
+      'entities.count.knots: 4 control points take 8 knots, not 7',
+      'entities.down.knots: the knots must not decrease',
+    ]);
   });
 
   it('takes ellipses and fit-point splines (P1-05)', () => {

@@ -98,7 +98,7 @@ export class SketchBuilder {
    */
   spline(
     points: [number, number][],
-    options: { mode?: 'fit' | 'control' | 'conic'; rho?: number } = {},
+    options: { mode?: 'fit' | 'control' | 'conic'; rho?: number; closed?: boolean } = {},
   ) {
     const ids = points.map(([x, y]) => this.point(x, y));
     const id = this.id('s');
@@ -107,6 +107,7 @@ export class SketchBuilder {
       points: ids as never,
       ...(options.mode ? { mode: options.mode } : {}),
       ...(options.rho === undefined ? {} : { rho: options.rho }),
+      ...(options.closed ? { closed: true } : {}),
       construction: false,
     };
     return { id, points: ids };

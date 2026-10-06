@@ -139,6 +139,53 @@ describe('sketchDrawing', () => {
     expect(pointsOf(svg)).toBe(2);
   });
 
+  it('writes a closed spline as a closed contour and a trimmed one by its own knots (P4-12)', () => {
+    const b = new SketchBuilder();
+    b.spline(
+      [
+        [0, 0],
+        [30, 0],
+        [30, 20],
+        [0, 20],
+      ],
+      { closed: true },
+    );
+    const knotted = b.spline(
+      [
+        [0, 40],
+        [10, 60],
+        [20, 35],
+        [30, 55],
+        [40, 40],
+        [50, 50],
+      ],
+      { mode: 'control' },
+    );
+    // Non-uniform, with a knot of multiplicity 3 (a trimmed loop's joint).
+    const knots = [0, 0, 0, 0, 0.6, 0.6, 1, 1, 1, 1];
+    (b.sketch.entities[knotted.id as never] as unknown as { knots: number[] }).knots = knots;
+    const [loop, open] = sketchDrawing(b.sketch).shapes.map((shape) => shape.contours[0]);
+    expect(loop?.closed).toBe(true);
+    const last = loop?.segments.at(-1) as { to: Vec2 };
+    expect(last.to[0]).toBeCloseTo(loop?.start[0] as number, 9);
+    expect(last.to[1]).toBeCloseTo(loop?.start[1] as number, 9);
+    expect(open?.closed).toBe(false);
+    // One Bézier per distinct knot span: [0, 0.6] and [0.6, 1], whatever the multiplicities.
+    expect(open?.segments).toHaveLength(2);
+    const curve = {
+      degree: 3,
+      poles: knotted.points.map((p) => {
+        const e = b.sketch.entities[p as never] as unknown as { x: number; y: number };
+        return [e.x, e.y] as Vec2;
+      }),
+      knots,
+    };
+    const joint = (open?.segments[0] as { to: Vec2 } | undefined)?.to ?? [NaN, NaN];
+    const q = splinePoint(curve, 0.6);
+    expect(joint[0]).toBeCloseTo(q[0], 9);
+    expect(joint[1]).toBeCloseTo(q[1], 9);
+  });
+
   it('bounds a rotated ellipse and a spline by their curves', () => {
     const b = new SketchBuilder();
     b.ellipse(0, 0, 10, 4, 90);

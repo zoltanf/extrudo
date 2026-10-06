@@ -122,7 +122,8 @@ function analyse(sketch: SketchData): Analysis {
       role.set(e.start, 'endpoint');
       role.set(e.end, 'endpoint');
     } else if (e.type === 'ellipse') role.set(e.center, 'center');
-    else if (e.type === 'spline') {
+    else if (e.type === 'spline' && !(e.closed && e.mode !== 'conic')) {
+      // A closed spline (P4-12) has no ends: its first point is an ordinary one.
       role.set(e.points[0] as string, 'endpoint');
       role.set(e.points[e.points.length - 1] as string, 'endpoint');
     }

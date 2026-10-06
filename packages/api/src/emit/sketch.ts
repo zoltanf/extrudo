@@ -172,7 +172,15 @@ function sketchBody(data: SketchData, ctx: EmitContext): Body {
           );
         } else {
           const method = entity.mode === 'control' ? 'k.splineControl' : 'k.spline';
-          body.push(constant(variable, call(method, [points])));
+          // A closed loop and a control spline's own knots (ADR-0063's P4-12 amendment).
+          const shape: [string, ReturnType<typeof num>][] = [];
+          if (entity.closed) shape.push(['closed', bool(true)]);
+          if (entity.knots && entity.mode === 'control') {
+            shape.push(['knots', arr(entity.knots.map((k) => num(k)))]);
+          }
+          body.push(
+            constant(variable, call(method, shape.length > 0 ? [points, obj(shape)] : [points])),
+          );
         }
         break;
       }

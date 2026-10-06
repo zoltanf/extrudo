@@ -103,6 +103,36 @@ describe('detectProfiles', () => {
     expect((profiles[0] as Profile).area).toBeGreaterThan(100);
   });
 
+  it('makes a closed spline a region on its own, and two where a line crosses it (P4-12)', () => {
+    const loop: [number, number][] = [
+      [0, 0],
+      [30, -4],
+      [36, 20],
+      [10, 28],
+    ];
+    for (const mode of ['fit', 'control'] as const) {
+      const b = new SketchBuilder();
+      const s = b.spline(loop, { mode, closed: true });
+      const alone = detectProfiles(b.sketch);
+      expect(alone).toHaveLength(1);
+      // The area is the drawn polyline's, which closes on its first point.
+      const drawn = curvePolyline(
+        b.sketch,
+        b.sketch.entities[s.id as SketchEntityId] as SketchSpline,
+      ) as Vec2[];
+      expect(drawn[0]).toEqual(drawn.at(-1));
+      let area = 0;
+      for (let i = 1; i < drawn.length; i++) {
+        const p = drawn[i - 1] as Vec2;
+        const q = drawn[i] as Vec2;
+        area += (p[0] + q[0]) * (q[1] - p[1]);
+      }
+      expect((alone[0] as Profile).area).toBeCloseTo(Math.abs(area / 2), 6);
+      b.line(-20, 12, 60, 12);
+      expect(detectProfiles(b.sketch)).toHaveLength(2);
+    }
+  });
+
   it('closes a loop with a control-point spline or a conic (P4-05)', () => {
     // The area the polyline a curve draws and the line closing it enclose.
     // (Profile detection works on polylines, so this is the area it can see.)

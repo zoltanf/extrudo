@@ -22,6 +22,7 @@ import {
   type SketchEntity,
   type SketchEntityId,
   setSketchConstruction,
+  setSplineClosed,
   setSplineRho,
   UNITS,
   updateSketchDimension,
@@ -528,6 +529,25 @@ export function SelectionPanel({
           entity.mode === 'control' ? 'Control points' : 'Fit points',
           String(entity.points.length),
         ),
+      );
+      // P4-12: a fit or control spline can run back round to its first point.
+      rows.push(
+        <PaletteToggle
+          key="closed"
+          checked={entity.closed === true}
+          onChange={(closed) => {
+            try {
+              const command = setSplineClosed({ feature: sketchId, id: single, closed });
+              if (host) host.apply(command);
+              else store.getState().dispatch(command);
+            } catch (error) {
+              if (!(error instanceof CommandError)) throw error;
+              notify('error', error.message);
+            }
+          }}
+        >
+          Closed
+        </PaletteToggle>,
       );
     }
   } else if (entity?.type === 'text' && single) {

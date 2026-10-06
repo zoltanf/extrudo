@@ -162,7 +162,7 @@ export function sketchEntityMeasure(
       return {
         ...base,
         curve: 'other',
-        closed: false,
+        closed: entity.closed === true && entity.mode !== 'conic',
         start: poly[0] as Vec3,
         end: poly.at(-1) as Vec3,
       };

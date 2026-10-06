@@ -15,6 +15,7 @@
  * so the preview is the curve that will be stored.
  */
 import {
+  closedControlSpline,
   conicSpline,
   controlSpline,
   type SketchEntityId,
@@ -23,6 +24,7 @@ import {
 } from '@extrudo/core';
 import { addPoint, place } from '@extrudo/sketch/build';
 import type { Inference } from '@extrudo/sketch/inference';
+import { closesOn } from './spline';
 import {
   EMPTY_PREVIEW,
   emptyEdit,
@@ -67,7 +69,7 @@ export class SplineControlTool implements SketchTool {
       ? 'Click the first control point.'
       : n === 1
         ? 'Click the next control point.'
-        : 'Click the next control point, or press Enter to finish.';
+        : 'Click the next control point, Enter to finish, or the first one to close it.';
   }
 
   anchor(): Vec2 | undefined {
@@ -85,6 +87,7 @@ export class SplineControlTool implements SketchTool {
       // A second click on the last pole finishes, like a double-click.
       return this.#finish();
     }
+    if (closesOn(this.context, this.#clicks, pointer)) return this.#finish(true);
     this.#clicks.push(pointer);
     return undefined;
   }
@@ -115,10 +118,13 @@ export class SplineControlTool implements SketchTool {
         : points;
     if (poles.length === 0) return EMPTY_PREVIEW;
     if (poles.length === 1) return { lines: [], points };
+    if (this.#pointer && closesOn(this.context, this.#clicks, this.#pointer)) {
+      return { lines: [], polylines: [splinePolyline(closedControlSpline(points), 8)], points };
+    }
     return { lines: [], polylines: [previewCurve('control', poles, DEFAULT_RHO)], points };
   }
 
-  #finish(): SketchEdit | undefined {
+  #finish(closed = false): SketchEdit | undefined {
     if (this.#clicks.length < 2) return undefined;
     const ctx = this.context;
     const edit = emptyEdit();
@@ -132,6 +138,7 @@ export class SplineControlTool implements SketchTool {
       type: 'spline',
       points,
       mode: 'control',
+      ...(closed ? { closed: true } : {}),
       construction: ctx.construction(),
     };
     this.#clicks = [];

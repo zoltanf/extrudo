@@ -4,6 +4,8 @@ import {
   CIRCLE_SEGMENTS,
   CONIC_MAX_PIECES,
   CONIC_TOLERANCE,
+  closedControlSpline,
+  closedFitSpline,
   conicPoint,
   conicSpline,
   controlSpline,
@@ -11,9 +13,14 @@ import {
   ellipsePoint,
   ellipseShape,
   fitSpline,
+  insertKnot,
+  normalizeSpline,
   splineCurve,
+  splineDerivative,
   splinePoint,
   splinePolyline,
+  splineRange,
+  splitSpline,
 } from './curves';
 import type { Vec2 } from './planes';
 import type { SketchData, SketchSpline } from './schema';
@@ -458,5 +465,188 @@ describe('splineCurve', () => {
     );
     // A conic without a rho (which the schema refuses) falls back to a fit spline.
     expect(at({ mode: 'conic' }).poles).toEqual(fitSpline(points).poles);
+  });
+});
+
+// ADR-0063's P4-12 amendment: closed splines, stored knots, splitting ----------------
+
+const deriv = (spline: BSpline, u: number, order: number): Vec2 => {
+  let d = spline;
+  for (let i = 0; i < order; i++) d = splineDerivative(d);
+  return splinePoint(d, u);
+};
+const gap = (a: Vec2, b: Vec2) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+/** The periodic uniform cubic B-spline of `poles` at `u` in [0, 1), evaluated directly. */
+function periodicUniform(poles: readonly Vec2[], u: number): Vec2 {
+  const n = poles.length;
+  const x = u * n;
+  const k = Math.min(n - 1, Math.floor(x));
+  const t = x - k;
+  const b = [
+    (1 - t) ** 3 / 6,
+    (3 * t ** 3 - 6 * t ** 2 + 4) / 6,
+    (-3 * t ** 3 + 3 * t ** 2 + 3 * t + 1) / 6,
+    t ** 3 / 6,
+  ];
+  // The span from k/n to (k+1)/n is centred on pole k (the seam is at the first pole).
+  let px = 0;
+  let py = 0;
+  for (let j = 0; j < 4; j++) {
+    const p = poles[(k - 1 + j + n) % n] as Vec2;
+    px += (b[j] as number) * p[0];
+    py += (b[j] as number) * p[1];
+  }
+  return [px, py];
+}
+
+describe('closed splines', () => {
+  const fit: Vec2[] = [
+    [0, 0],
+    [30, -5],
+    [42, 18],
+    [20, 34],
+    [-6, 22],
+  ];
+
+  it('passes a closed fit spline through every point and makes it C2 across the seam', () => {
+    const spline = closedFitSpline(fit);
+    expect(spline.degree).toBe(3);
+    expect(spline.knots).toHaveLength(spline.poles.length + 4);
+    expect(spline.poles[0]).toEqual(spline.poles.at(-1));
+    // Each fit point at its own knot: the knots are the chord-length parameters.
+    const distinct = [...new Set(spline.knots)];
+    distinct.slice(0, fit.length).forEach((u, i) => {
+      expect(gap(splinePoint(spline, u), fit[i] as Vec2)).toBeLessThan(1e-9);
+    });
+    for (const order of [1, 2]) {
+      const start = deriv(spline, 0, order);
+      const end = deriv(spline, 1, order);
+      const scale = Math.max(1, Math.hypot(...start));
+      expect(gap(start, end) / scale).toBeLessThan(1e-9);
+    }
+  });
+
+  it('solves a long closed fit spline in its band, the same curve as the dense solve', () => {
+    const many: Vec2[] = Array.from({ length: 80 }, (_, i) => {
+      const t = (2 * Math.PI * i) / 80;
+      return [40 * Math.cos(t) + 3 * Math.cos(5 * t), 25 * Math.sin(t)];
+    });
+    const spline = closedFitSpline(many);
+    const distinct = [...new Set(spline.knots)];
+    distinct.slice(0, many.length).forEach((u, i) => {
+      expect(gap(splinePoint(spline, u), many[i] as Vec2)).toBeLessThan(1e-9);
+    });
+    for (const order of [1, 2]) {
+      expect(gap(deriv(spline, 0, order), deriv(spline, 1, order))).toBeLessThan(1e-6);
+    }
+  });
+
+  it('makes a closed control spline the periodic B-spline of its poles', () => {
+    const poles: Vec2[] = [
+      [0, 0],
+      [40, 0],
+      [40, 30],
+      [10, 40],
+      [-10, 20],
+    ];
+    const spline = closedControlSpline(poles);
+    for (let i = 0; i < 100; i++) {
+      const u = i / 100;
+      expect(gap(splinePoint(spline, u), periodicUniform(poles, u))).toBeLessThan(1e-12);
+    }
+    // The seam is the curve point nearest the first pole.
+    const seam: Vec2 = [
+      ((poles[4] as Vec2)[0] + 4 * (poles[0] as Vec2)[0] + (poles[1] as Vec2)[0]) / 6,
+      ((poles[4] as Vec2)[1] + 4 * (poles[0] as Vec2)[1] + (poles[1] as Vec2)[1]) / 6,
+    ];
+    expect(gap(splinePoint(spline, 0), seam)).toBeLessThan(1e-12);
+    for (const order of [1, 2]) {
+      expect(gap(deriv(spline, 0, order), deriv(spline, 1, order))).toBeLessThan(1e-9);
+    }
+  });
+
+  it("closes the unwrapped spline's polyline exactly", () => {
+    for (const spline of [closedFitSpline(fit), closedControlSpline(fit)]) {
+      const line = splinePolyline(spline);
+      expect(line[0]).toEqual(line.at(-1));
+    }
+  });
+
+  it('reads closed and knots off the entity', () => {
+    const closed: SketchSpline = { type: 'spline', points: [], closed: true, construction: false };
+    expect(splineCurve(closed, fit)).toEqual(closedFitSpline(fit));
+    expect(splineCurve({ ...closed, mode: 'control' }, fit)).toEqual(closedControlSpline(fit));
+    const knots = [0, 0, 0, 0, 0.2, 1, 1, 1, 1];
+    const stored = splineCurve(
+      { type: 'spline', points: [], mode: 'control', knots, construction: false },
+      fit,
+    );
+    expect(stored).toEqual({ degree: 3, poles: fit, knots });
+  });
+});
+
+describe('knot insertion and splitting', () => {
+  const spline = controlSpline(
+    [
+      [0, 0],
+      [10, 20],
+      [30, 25],
+      [45, -5],
+      [60, 10],
+      [70, 30],
+    ],
+    [0, 0, 0, 0, 0.3, 0.45, 1, 1, 1, 1],
+  );
+
+  it('leaves the curve as it is', () => {
+    let s = spline;
+    for (const u of [0.2, 0.3, 0.3, 0.7]) s = insertKnot(s, u);
+    for (let i = 0; i <= 100; i++) {
+      expect(gap(splinePoint(s, i / 100), splinePoint(spline, i / 100))).toBeLessThan(1e-12);
+    }
+  });
+
+  it('splits a curve into two pieces that are exactly it', () => {
+    const u = 0.38;
+    const [before, after] = splitSpline(spline, u).map(normalizeSpline) as [BSpline, BSpline];
+    expect(before.knots.slice(0, 4)).toEqual([0, 0, 0, 0]);
+    expect(after.knots.slice(-4)).toEqual([1, 1, 1, 1]);
+    for (let i = 0; i <= 100; i++) {
+      const t = i / 100;
+      expect(gap(splinePoint(before, t), splinePoint(spline, t * u))).toBeLessThan(1e-12);
+      expect(gap(splinePoint(after, t), splinePoint(spline, u + t * (1 - u)))).toBeLessThan(1e-12);
+    }
+  });
+
+  it("takes a part round a closed spline's seam as one piece", () => {
+    const closed = closedFitSpline([
+      [0, 0],
+      [30, 0],
+      [30, 20],
+      [0, 20],
+    ]);
+    const part = splineRange(closed, 0.7, 1.2);
+    expect(part.knots).toHaveLength(part.poles.length + 4);
+    const share = 0.3 / 0.5;
+    for (let i = 0; i <= 100; i++) {
+      const t = i / 100;
+      const u = t < share ? 0.7 + (t / share) * 0.3 : ((t - share) / (1 - share)) * 0.2;
+      expect(gap(splinePoint(part, t), splinePoint(closed, u))).toBeLessThan(1e-9);
+    }
+  });
+
+  it('raises a line or a quadratic to a cubic before cutting it', () => {
+    const quadratic = controlSpline([
+      [0, 0],
+      [10, 20],
+      [20, 0],
+    ]);
+    const part = splineRange(quadratic, 0.25, 0.75);
+    expect(part.degree).toBe(3);
+    for (let i = 0; i <= 50; i++) {
+      const t = i / 50;
+      expect(gap(splinePoint(part, t), splinePoint(quadratic, 0.25 + t / 2))).toBeLessThan(1e-12);
+    }
   });
 });

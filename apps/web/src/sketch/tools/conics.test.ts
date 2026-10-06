@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { CONIC_TOOL, SPLINE_CONTROL_TOOL } from './conics';
+import { SPLINE_TOOL } from './spline';
 import { at, disposeHosts, setup } from './testing';
 
 // P4-05: the Control Point Spline and Conic tools (ADR-0063 §4).
@@ -55,6 +56,26 @@ describe('control-point spline tool', () => {
     expect(t.byType('spline')).toHaveLength(1);
     expect(splineOf(t).mode).toBe('control');
   });
+});
+
+describe('closing a spline on its first point (P4-12)', () => {
+  for (const tool of [SPLINE_TOOL, SPLINE_CONTROL_TOOL]) {
+    it(`closes a ${tool} spline with a click back on its first point`, async () => {
+      const t = await setup({ tool });
+      t.host.click(at(0, 0));
+      t.host.click(at(20, 0));
+      t.host.click(at(20, 20));
+      t.host.click(at(0, 0));
+      const spline = splineOf(t);
+      expect(spline.closed).toBe(true);
+      expect(spline.points.map((p) => t.point(p))).toEqual([
+        [0, 0],
+        [20, 0],
+        [20, 20],
+      ]);
+      expect(spline.mode).toBe(tool === SPLINE_TOOL ? undefined : 'control');
+    });
+  }
 });
 
 describe('conic tool', () => {

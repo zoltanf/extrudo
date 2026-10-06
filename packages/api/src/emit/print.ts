@@ -157,6 +157,9 @@ function flatOf(node: Expr): string | undefined {
       return `\`${node.segments.map(templatePart).join('')}\``;
     case 'arr': {
       if (node.items.length === 0) return '[]';
+      // Biome always breaks an array of several arrays (or objects) of several
+      // items each, such as a spline's points: it has no one-line form.
+      if (isMatrix(node.items)) return undefined;
       const items = node.items.map((item) => flatOf(item));
       if (items.some((item) => item === undefined)) return undefined;
       return `[${items.join(', ')}]`;
@@ -175,6 +178,17 @@ function flatOf(node: Expr): string | undefined {
     case 'arrow':
       return undefined;
   }
+}
+
+/** Several arrays, or several objects, of more than one item each (Biome's rule for breaking). */
+function isMatrix(items: readonly Expr[]): boolean {
+  if (items.length < 2) return false;
+  const kind = items[0]?.t;
+  return items.every(
+    (item) =>
+      item.t === kind &&
+      ((item.t === 'arr' && item.items.length > 1) || (item.t === 'obj' && item.props.length > 1)),
+  );
 }
 
 function templatePart(segment: string | { expr: string }): string {
