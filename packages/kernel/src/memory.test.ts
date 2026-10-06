@@ -725,6 +725,69 @@ describe('memory', () => {
     expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
   });
 
+  it(`shelling with wall sets and plugs ${OFFSET_REBUILDS} times, failing ones included, does not grow the heap`, {
+    timeout: 300_000,
+  }, () => {
+    // P4-12 (ADR-0046's amendment): shells with walls of their own thickness
+    // (the facade's shellFaces, a per-face offset on its stack), inside, outside
+    // and closed, walls too thick (the factor found by probing) and a wall on a
+    // removed face, and openings cut as plugs out of a closed hollow next to a
+    // fillet (a closed shell and a boolean on the stack). A plugged shell costs
+    // 50 to 300 ms, so this runs the offset test's rounds.
+    const pick = kernel.box([40, 30, 10]);
+    const rounded0 = kernel.fillet(pick, [0, 2, 4, 6], [3, 3, 3, 3]);
+    // A flat face that runs into the rounds (its chain is more than itself) and opens as a plug.
+    let plugFace = -1;
+    for (let face = 0; face < kernel.count(rounded0.shape, 'face') && plugFace < 0; face++) {
+      if (kernel.tangentFaces(rounded0.shape, face).length < 2) continue;
+      try {
+        kernel.release(kernel.shell(rounded0.shape, [face], 1).shape);
+        plugFace = face;
+      } catch (error) {
+        if (!(error instanceof ShellError)) throw error;
+      }
+    }
+    kernel.release(rounded0.shape);
+    kernel.release(pick);
+    expect(plugFace).toBeGreaterThanOrEqual(0);
+    const rebuild = (i: number) => {
+      using scope = kernel.scope();
+      const plate = scope.track(kernel.box([40, 30, 10 + (i % 3) / 10]));
+      scope.track(kernel.shell(plate, [0], 1, 'inside', [{ face: 1, thickness: 2 + (i % 4) / 10 }]));
+      scope.track(kernel.shell(plate, [0], 1, 'outside', [{ face: 4, thickness: 2 }]));
+      scope.track(kernel.shell(plate, [], 1, 'inside', [{ face: 5, thickness: 1.5 }]));
+      const rounded = scope.track(kernel.fillet(plate, [0, 2, 4, 6], [3, 3, 3, 3]));
+      scope.track(kernel.shell(rounded.shape, [plugFace], 1 + (i % 2) / 10));
+      if (i % 3 === 0) {
+        scope.track(kernel.shell(rounded.shape, [plugFace], 1, 'outside'));
+      }
+      const failing = (run: () => unknown, what: string) => {
+        try {
+          run();
+        } catch (error) {
+          if (error instanceof ShellError) return;
+          throw error;
+        }
+        throw new Error(`${what} should fail`);
+      };
+      failing(
+        () => kernel.shell(plate, [0], 1, 'inside', [{ face: 1, thickness: 45 }]),
+        'a 45 mm wall in a 40 mm plate',
+      );
+      failing(
+        () => kernel.shell(plate, [0], 1, 'inside', [{ face: 0, thickness: 2 }]),
+        'a wall on the removed face',
+      );
+    };
+    for (let i = 0; i < WARM_UP; i++) rebuild(i);
+    const before = kernel.stats();
+    for (let i = 0; i < OFFSET_REBUILDS; i++) rebuild(i);
+    const after = kernel.stats();
+
+    expect(after.liveShapes).toBe(before.liveShapes);
+    expect(after.heapTop - before.heapTop).toBeLessThan(LIMIT_BYTES);
+  });
+
   it(`offsetting faces ${OFFSET_REBUILDS} times, failing ones with their diagnosis included, does not grow the heap`, {
     timeout: 300_000,
   }, () => {

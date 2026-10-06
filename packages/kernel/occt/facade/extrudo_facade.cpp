@@ -4829,8 +4829,8 @@ private:
    * History of a plugged shell for input 0 (as recordHistory writes it):
    * the closed hollow's (every face kept, each generating its offset, edges
    * and vertices the rounds) carried through the cut, and each removed
-   * face modified into the faces its plug leaves, the rim round the
-   * opening.
+   * face modified into what is left of it (the wall ends in its plane) and
+   * the faces its plug leaves: the rim round the opening.
    */
   void recordPlugged(BRepOffset_MakeOffset& thick, BRepAlgoAPI_Cut& cut, const TopoDS_Shape& input,
                      const std::vector<int>& removed, const std::vector<TopoDS_Shape>& plugs,
@@ -4857,7 +4857,11 @@ private:
         const TopoDS_Shape& sub = inputMap(i);
         const auto at = std::find(removed.begin(), removed.end(), i - 1);
         if (kind == 0 && at != removed.end()) {
+          // What is left of the face itself (the wall ends in its plane, where a
+          // neighbour meets it square) and the plug's faces are the rim.
           NCollection_List<TopoDS_Shape> rim;
+          bool left = false;
+          through(sub, rim, left);
           for (TopExp_Explorer it(plugs[static_cast<size_t>(at - removed.begin())], TopAbs_FACE); it.More();
                it.Next()) {
             bool kept = false;
