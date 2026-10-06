@@ -3240,6 +3240,8 @@ public:
       const gp_Dir n = carried.Plane().Axis().Direction();
 
       // The face's outward normal at (u, v): its surface's, turned for a reversed face.
+      // At a singular point (a sphere's pole, where a line through a sketch's centre
+      // may well land) the first derivatives give none, so the second ones are asked.
       BRepAdaptor_Surface surface(target);
       const bool reversed = target.Orientation() == TopAbs_REVERSED;
       const auto outwardAt = [&](double u, double v, gp_Vec& normal) {
@@ -3247,7 +3249,11 @@ public:
         gp_Vec du, dv;
         surface.D1(u, v, at, du, dv);
         normal = du.Crossed(dv);
-        if (normal.Magnitude() <= 1e-12) return false;
+        if (normal.Magnitude() <= 1e-12) {
+          BRepLProp_SLProps props(surface, u, v, 2, Precision::Confusion());
+          if (!props.IsNormalDefined()) return false;
+          normal = gp_Vec(props.Normal());
+        }
         normal.Normalize();
         if (reversed) normal.Reverse();
         return true;
@@ -3305,7 +3311,9 @@ public:
       TopoDS_Solid shell;
       TopoDS_Face skin;
       TopoDS_Face farFace;
-      if (const char* why = thickPiece(target, surface, d, depth, outward, shell, skin, farFace)) return fail(why);
+      if (const char* why = thickPiece(target, surface, d, middle, depth, outward, shell, skin, farFace)) {
+        return fail(why);
+      }
       IntCurvesFace_Intersector onFar(farFace, tol);
 
       // Every sample's first hit, coming from behind the sketch, must be on the face
@@ -3363,6 +3371,19 @@ public:
       for (const TopoDS_Shape& piece : imagesOf(skin)) onSkin.Add(piece);
       NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> onFarFace;
       for (const TopoDS_Shape& piece : imagesOf(farFace)) onFarFace.Add(piece);
+      // The prism's wall of each profile edge, and their pieces in the result.
+      std::vector<std::vector<TopoDS_Shape>> walls(static_cast<size_t>(profileEdges.Extent()));
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> onWalls;
+      for (int k = 1; k <= profileEdges.Extent(); ++k) {
+        const NCollection_List<TopoDS_Shape>& made = prism.Generated(moved.ModifiedShape(profileEdges(k)));
+        for (NCollection_List<TopoDS_Shape>::Iterator it(made); it.More(); it.Next()) {
+          if (it.Value().ShapeType() != TopAbs_FACE) continue;
+          for (const TopoDS_Shape& piece : imagesOf(it.Value())) {
+            walls[static_cast<size_t>(k - 1)].push_back(piece);
+            onWalls.Add(piece);
+          }
+        }
+      }
 
       // Keep the solids that stand on the face where it looks at the sketch: a closed
       // face (a whole sphere) gives its far side's piece too, which isn't the emboss.
@@ -3396,16 +3417,8 @@ public:
         // Only the face, its offset and the prism's walls may bound it: a wall of the
         // thick piece or an end of the prism means the profile reaches past the face.
         for (TopExp_Explorer e(solid.Current(), TopAbs_FACE); e.More(); e.Next()) {
-          if (onSkin.Contains(e.Current()) || onFarFace.Contains(e.Current())) continue;
-          bool wall = false;
-          for (int k = 1; k <= profileEdges.Extent() && !wall; ++k) {
-            const TopoDS_Shape side = prism.Generated(moved.ModifiedShape(profileEdges(k))).IsEmpty()
-                                          ? TopoDS_Shape()
-                                          : prism.Generated(moved.ModifiedShape(profileEdges(k))).First();
-            if (side.IsNull()) continue;
-            for (const TopoDS_Shape& piece : imagesOf(side)) wall = wall || piece.IsSame(e.Current());
-          }
-          if (!wall) return fail(past);
+          const TopoDS_Shape& f = e.Current();
+          if (!onSkin.Contains(f) && !onFarFace.Contains(f) && !onWalls.Contains(f)) return fail(past);
         }
         builder.Add(kept, solid.Current());
         only = TopoDS::Solid(solid.Current());
@@ -3426,13 +3439,7 @@ public:
       recordFaces(0, 0, 0, 4, starts, resultFaces);
       recordFaces(0, 0, 0, 5, ends, resultFaces);
       for (int k = 1; k <= profileEdges.Extent(); ++k) {
-        const NCollection_List<TopoDS_Shape>& made = prism.Generated(moved.ModifiedShape(profileEdges(k)));
-        std::vector<TopoDS_Shape> walls;
-        for (NCollection_List<TopoDS_Shape>::Iterator it(made); it.More(); it.Next()) {
-          if (it.Value().ShapeType() != TopAbs_FACE) continue;
-          for (const TopoDS_Shape& piece : imagesOf(it.Value())) walls.push_back(piece);
-        }
-        recordFaces(0, 1, k - 1, 1, walls, resultFaces);
+        recordFaces(0, 1, k - 1, 1, walls[static_cast<size_t>(k - 1)], resultFaces);
       }
       return store(result);
     } catch (...) {
@@ -3447,11 +3454,13 @@ private:
    * the face of it on the target's surface, `farFace` the offset one. A sphere
    * or a torus (a whole one is a closed face OCCT's offset can't take) is the
    * shell between two concentric spheres or two tori of the same centre circle,
-   * exactly; any other face is OCCT's simple offset of a copy of it. Returns
+   * exactly, their seams turned away from the profile at `profile` coming along
+   * `d`; any other face is OCCT's simple offset of a copy of it. Returns
    * the reason it can't be built, or nullptr.
    */
-  const char* thickPiece(const TopoDS_Face& target, const BRepAdaptor_Surface& surface, const gp_Dir& d, double depth,
-                         bool outward, TopoDS_Solid& shell, TopoDS_Face& skin, TopoDS_Face& farFace) {
+  const char* thickPiece(const TopoDS_Face& target, const BRepAdaptor_Surface& surface, const gp_Dir& d,
+                         const gp_Pnt& profile, double depth, bool outward, TopoDS_Solid& shell, TopoDS_Face& skin,
+                         TopoDS_Face& farFace) {
     const GeomAbs_SurfaceType type = surface.GetType();
     if (type == GeomAbs_Sphere || type == GeomAbs_Torus) {
       // Whether the outward normal points away from the centre (a ball, a ring's
@@ -3478,9 +3487,12 @@ private:
       } else {
         const gp_Torus torus = surface.Torus();
         place = torus.Position().Ax2();
-        // The seam round the axis on the far side from the sketch, where it can be.
-        const gp_Vec across = gp_Vec(d) - gp_Vec(place.Direction()) * gp_Vec(d).Dot(gp_Vec(place.Direction()));
-        if (across.Magnitude() > 1e-6) place.SetXDirection(gp_Dir(across));
+        // The seam round the axis on the far side from the profile (the tube's own
+        // seam, round its outer equator, stays where it is).
+        const gp_Vec up(place.Direction());
+        gp_Vec away(profile, torus.Location());
+        away -= up * away.Dot(up);
+        if (away.Magnitude() > 1e-6) place.SetXDirection(gp_Dir(away));
         major = torus.MajorRadius();
         r = torus.MinorRadius();
         // The tube's centre nearest the point: on the centre circle, below it.

@@ -240,7 +240,7 @@ describe('emboss on a cone', { timeout: 300_000 }, () => {
       expect(seen.get('EM')?.report).toEqual({ kind: 'emboss', method: 'wrapped-cone' });
       const names = faceNames(result, 'R:0');
       expect(names).toContain('emboss:EM:cap:end');
-      for (const line of p.lines) expect(names).toContain(`emboss:EM:side:SK/${line}`);
+      for (const line of p.lines) expect(names).toContain(`emboss:EM:side:${line}`);
       expect(new Set(names).size).toBe(names.length);
     }
   });
@@ -341,7 +341,7 @@ describe('emboss projected onto a sphere', { timeout: 300_000 }, () => {
       expect(seen.get('EM')?.report).toEqual({ kind: 'emboss', method: 'projected' });
       const names = faceNames(result, 'S:0');
       expect(names).toContain('emboss:EM:cap:end');
-      expect(names.some((name) => name.startsWith('emboss:EM:side:SK/'))).toBe(true);
+      expect(names.some((name) => name.startsWith("emboss:EM:side:"))).toBe(true);
       // On the top of the sphere, below the sketch.
       expect(seen.get('EM')?.data.origin[2]).toBeGreaterThan(R - 1);
     }

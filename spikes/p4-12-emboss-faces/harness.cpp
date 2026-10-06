@@ -14,6 +14,7 @@
 #include <BRepPrimAPI_MakeCone.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakeSphere.hxx>
+#include <BRepPrimAPI_MakeTorus.hxx>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -355,6 +356,51 @@ int main(int argc, char** argv) {
       check(faces(ring) == 4, "sphere O: 4 faces", faces(ring), 4);
       check(near(volume(ring), column(6, R, R + 1) - column(3, R, R + 1), 1e-7), "sphere O: volume", volume(ring),
             column(6, R, R + 1) - column(3, R, R + 1));
+    }
+    // 4b. The Sphere primitive's own shape (a half disc turned about Z) with a circle
+    // straight above it: the line through its centre lands on the pole.
+    {
+      BRepBuilderAPI_MakeWire half;
+      half.Add(BRepBuilderAPI_MakeEdge(
+                   gp_Circ(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, -1, 0), gp_Dir(0, 0, -1)), R), 0, M_PI)
+                   .Edge());
+      half.Add(BRepBuilderAPI_MakeEdge(gp_Pnt(0, 0, R), gp_Pnt(0, 0, -R)).Edge());
+      const TopoDS_Face disk = BRepBuilderAPI_MakeFace(half.Wire(), true).Face();
+      const int ball = f.store(BRepPrimAPI_MakeRevol(disk, gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1))).Shape());
+      const int index = curvedFace(ball);
+      check(index >= 0 && BRepAdaptor_Surface(TopoDS::Face(*f.find(f.subShape(ball, 0, index)))).GetType() ==
+                              GeomAbs_Sphere,
+            "revolved ball: its face is a sphere");
+      // A circle of radius 3 in the plane z = 30.
+      BRepBuilderAPI_MakeEdge edge(gp_Circ(gp_Ax2(gp_Pnt(0, 0, 30), gp_Dir(0, 0, 1)), 3));
+      for (bool out : {true, false}) {
+        const int top = f.store(BRepBuilderAPI_MakeFace(BRepBuilderAPI_MakeWire(edge.Edge()).Wire(), true).Face());
+        const int h = f.projectOnFace(top, ball, index, 1, out);
+        solid(h, out ? "pole emboss: valid solid" : "pole deboss: valid solid");
+        const double want = out ? column(3, R, R + 1) : column(3, R - 1, R);
+        check(near(volume(h), want, 1e-7), "pole: volume", volume(h), want);
+        check(faces(h) == 3, "pole: 3 faces", faces(h), 3);
+      }
+    }
+    // 4c. A torus (major 15, tube 5) with a circle above its tube: the shell between
+    // two tori on the same centre circle.
+    {
+      const int ring = f.store(BRepPrimAPI_MakeTorus(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), 15, 5).Shape());
+      BRepBuilderAPI_MakeEdge edge(gp_Circ(gp_Ax2(gp_Pnt(15, 0, 20), gp_Dir(0, 0, 1)), 2));
+      for (bool out : {true, false}) {
+        const int top = f.store(BRepBuilderAPI_MakeFace(BRepBuilderAPI_MakeWire(edge.Edge()).Wire(), true).Face());
+        const int h = f.projectOnFace(top, ring, 0, 0.5, out);
+        solid(h, out ? "torus emboss: valid solid" : "torus deboss: valid solid");
+        check(faces(h) == 3, "torus: 3 faces", faces(h), 3);
+        // About the disc's area times the depth (the tube is nearly flat under it).
+        const double v = volume(h);
+        check(v > M_PI * 4 * 0.5 * 0.95 && v < M_PI * 4 * 0.5 * 1.1, "torus: volume near area x depth", v,
+              M_PI * 4 * 0.5);
+        bool ok = false;
+        const double after = booleanVolume(ring, h, out, ok);
+        check(ok && near(after, out ? volume(ring) + v : volume(ring) - v, 1e-7), "torus: the boolean adds up",
+              after, out ? volume(ring) + v : volume(ring) - v);
+      }
     }
     // 5. A square projected onto a lofted (B-spline) face.
     {
