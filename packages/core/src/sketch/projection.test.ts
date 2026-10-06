@@ -16,6 +16,9 @@ import {
 } from './planes';
 import {
   addProjection,
+  includedCurves,
+  includeLabel,
+  includeProjection,
   projectedEntities,
   projectionOf,
   projectionSync,
@@ -145,9 +148,13 @@ describe('projections', () => {
     expect(() =>
       applyCommand(
         d,
-        addProjection({ feature: F, id: 'pr3' as ProjectionId, ref: { kind: 'body', id: 'b' } }),
+        addProjection({
+          feature: F,
+          id: 'pr3' as ProjectionId,
+          ref: { kind: 'plane', id: 'origin:xy' },
+        }),
       ),
-    ).toThrow(/edges and faces/);
+    ).toThrow(/edges, faces, vertices and bodies/);
     expect(DocumentSchema.safeParse(d).success).toBe(true);
   });
 
@@ -323,10 +330,119 @@ describe('projections', () => {
     };
     const messages = sketchIssues(bad as never).map((i) => `${i.path.join('.')} ${i.message}`);
     expect(messages).toEqual([
-      'projections.x must project an edge or a face, not a plane',
+      'projections.x must project an edge, a face, a vertex or a body, not a plane',
       'projections.x.curves.a must be a curve, not a point',
       'projections.x.curves.b refers to missing entity "missing"',
       'projections.p ID is also used in entities',
     ]);
+  });
+
+  it('take vertices and bodies, and intersections of faces and bodies (P4-12)', () => {
+    const vertexRef = { kind: 'vertex' as const, id: 'v[extrude:E:cap:end|a|b]' };
+    const bodyRef = { kind: 'body' as const, id: 'E' };
+    let d = doc();
+    d = applyCommand(d, addProjection({ feature: F, id: P, ref: vertexRef })).doc;
+    d = applyCommand(d, addProjection({ feature: F, id: 'pr2' as ProjectionId, ref: bodyRef })).doc;
+    d = applyCommand(
+      d,
+      addProjection({ feature: F, id: 'pr3' as ProjectionId, ref: bodyRef, mode: 'intersect' }),
+    ).doc;
+    expect(data(d).projections?.['pr3' as ProjectionId]).toEqual({
+      ref: bodyRef,
+      curves: {},
+      mode: 'intersect',
+    });
+    // The same body can't be intersected twice, and edges can't be intersected at all.
+    expect(() =>
+      applyCommand(
+        d,
+        addProjection({ feature: F, id: 'pr4' as ProjectionId, ref: bodyRef, mode: 'intersect' }),
+      ),
+    ).toThrow(/already intersected/);
+    expect(() =>
+      applyCommand(
+        d,
+        addProjection({ feature: F, id: 'pr4' as ProjectionId, ref: edgeRef, mode: 'intersect' }),
+      ),
+    ).toThrow(/faces and bodies/);
+
+    // A vertex becomes a point that moves with the report; a body its outline.
+    d = sync(
+      d,
+      report({
+        [P]: { curves: { vertex: { type: 'point', at: [3, 4] } } },
+        ['pr2' as ProjectionId]: {
+          curves: {
+            'sil:f:0': {
+              type: 'spline',
+              mode: 'control',
+              points: [
+                [0, 0],
+                [1, 2],
+                [3, 2],
+                [4, 0],
+              ],
+            },
+          },
+        },
+        ['pr3' as ProjectionId]: {
+          curves: { 'cut:0': { type: 'ellipse', center: [0, 0], major: [5, 0], minor: [0, 3] } },
+        },
+      }),
+    );
+    const point = data(d).projections?.[P]?.curves.vertex as SketchEntityId;
+    expect(data(d).entities[point]).toEqual({ type: 'point', x: 3, y: 4 });
+    expect(projectedEntities(data(d)).has(point)).toBe(true);
+    const spline = data(d).projections?.['pr2' as ProjectionId]?.curves[
+      'sil:f:0'
+    ] as SketchEntityId;
+    expect(data(d).entities[spline]).toMatchObject({ type: 'spline', mode: 'control' });
+    expect(DocumentSchema.safeParse(d).success).toBe(true);
+
+    d = sync(d, report({ [P]: { curves: { vertex: { type: 'point', at: [5, 4] } } } }));
+    expect(data(d).projections?.[P]?.curves.vertex).toBe(point);
+    expect(data(d).entities[point]).toEqual({ type: 'point', x: 5, y: 4 });
+  });
+
+  it('include curves without a link: plain entities, no record (P4-12)', () => {
+    let d = applyCommand(
+      doc(),
+      addProjection({ feature: F, id: P, ref: faceRef, linked: false }),
+    ).doc;
+    expect(data(d).projections?.[P]).toEqual({ ref: faceRef, curves: {}, linked: false });
+    const r = report({
+      [P]: {
+        curves: {
+          a: { type: 'line', a: [0, 0], b: [10, 0] },
+          b: { type: 'circle', center: [5, 5], radius: 2 },
+        },
+      },
+    });
+    // The linked sync leaves an include alone.
+    expect(projectionSync(data(d), r, newId)).toBeUndefined();
+    const included = includedCurves(data(d), r, newId)[P];
+    expect(included?.count).toBe(2);
+    d = applyCommand(
+      d,
+      includeProjection({ feature: F, id: P, entities: included?.entities ?? {} }),
+    ).doc;
+    expect(data(d).projections).toBeUndefined();
+    const types = Object.values(data(d).entities)
+      .map((e) => e.type)
+      .sort();
+    expect(types).toEqual(['circle', 'line', 'point', 'point', 'point']);
+    expect(projectedEntities(data(d)).size).toBe(0);
+    expect(includeLabel(2)).toBe('Include 2 curves');
+    expect(includeLabel(1)).toBe('Include 1 curve');
+    // A lost source is said so, with nothing to add.
+    const lost = applyCommand(
+      doc(),
+      addProjection({ feature: F, id: P, ref: faceRef, linked: false }),
+    ).doc;
+    expect(includedCurves(data(lost), report({ [P]: { lost: true } }), newId)[P]).toEqual({
+      entities: {},
+      count: 0,
+      lost: true,
+    });
   });
 });

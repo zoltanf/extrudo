@@ -32,7 +32,14 @@ export const TOOLS = {
     label: 'Project',
     icon: 'project',
     category: 'sketch',
-    hint: 'Bring body edges and faces into the sketch; they follow the model.',
+    hint: 'Bring body edges, faces, vertices and bodies into the sketch; they follow the model.',
+  },
+  intersect: {
+    id: 'intersect',
+    label: 'Intersect',
+    icon: 'intersect',
+    category: 'sketch',
+    hint: 'Bring in the curves where a face or body meets the sketch plane; they follow the model.',
   },
   finishSketch: {
     id: 'finishSketch',
@@ -924,6 +931,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
           'text',
           'importDrawing',
           'project',
+          'intersect',
           'sketchMirror',
           'sketchRectangularPattern',
           'sketchCircularPattern',

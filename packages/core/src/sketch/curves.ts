@@ -434,6 +434,173 @@ export function splineDerivative(spline: BSpline): BSpline {
   return { degree: p - 1, poles: out, knots: knots.slice(1, -1) };
 }
 
+/**
+ * The poles of a control-point spline (`controlSpline`'s uniform knots) that
+ * runs within `tolerance` (mm) of every point of `points`, in order (P4-12:
+ * a projected silhouette or section curve sampled by the kernel, ADR-0031's
+ * amendment). A least-squares fit with the ends held on the first and last
+ * point and chord-length parameters; the pole count grows until every point
+ * is within the tolerance of the curve, up to `maxPoles` (then the closest
+ * fit found). Two points give a line's two poles.
+ */
+export function fitControlPoles(
+  points: readonly Vec2[],
+  tolerance: number,
+  maxPoles = 120,
+): Vec2[] {
+  const n = points.length;
+  if (n < 2) throw new Error('fitControlPoles: needs at least two points');
+  const first = points[0] as Vec2;
+  const last = points[n - 1] as Vec2;
+  if (n === 2) return [first, last];
+  const chord = chordParameters(points);
+  const limit = Math.max(3, Math.min(maxPoles, n));
+  let best: { poles: Vec2[]; error: number } | undefined;
+  const attempt = (m: number): Vec2[] | undefined => {
+    // Fit, then move each point's parameter to its nearest place on the fit and fit again.
+    let params = chord;
+    for (let round = 0; round < 3; round++) {
+      const poles = leastSquaresPoles(points, params, m);
+      const { error, nearest } = fitError(controlSpline(poles), points, params);
+      if (!best || error < best.error) best = { poles, error };
+      if (error <= tolerance) return poles;
+      params = nearest;
+    }
+    return undefined;
+  };
+  // Double the pole count until a fit holds, then halve the gap to the one that didn't.
+  let low = Math.min(4, n) - 1;
+  let high = low + 1;
+  let found = attempt(high);
+  while (!found && high < limit) {
+    low = high;
+    high = Math.min(limit, high * 2);
+    found = attempt(high);
+  }
+  if (!found) return (best as { poles: Vec2[] }).poles;
+  while (high - low > 1) {
+    const mid = Math.floor((low + high) / 2);
+    const poles = attempt(mid);
+    if (poles) {
+      high = mid;
+      found = poles;
+    } else low = mid;
+  }
+  return found;
+}
+
+/** Normalised chord-length parameters of a polyline. */
+function chordParameters(points: readonly Vec2[]): number[] {
+  const steps = points
+    .slice(1)
+    .map((p, i) => Math.hypot(p[0] - (points[i] as Vec2)[0], p[1] - (points[i] as Vec2)[1]));
+  const total = steps.reduce((s, l) => s + l, 0) || 1;
+  const params = [0];
+  for (const step of steps) params.push((params[params.length - 1] as number) + step / total);
+  params[params.length - 1] = 1;
+  return params;
+}
+
+/** `m` poles of `controlSpline`'s knots fitted to the points, ends held. */
+function leastSquaresPoles(points: readonly Vec2[], params: number[], m: number): Vec2[] {
+  const first = points[0] as Vec2;
+  const last = points[points.length - 1] as Vec2;
+  const spline = controlSpline(new Array<Vec2>(m).fill([0, 0]));
+  const { degree, knots } = spline;
+  const free = m - 2;
+  if (free <= 0) return [first, last];
+  // Normal equations over the inner poles: (NᵀN) P = Nᵀ (Q − N₀ Q₀ − Nₘ Qₘ).
+  const ata = Array.from({ length: free }, () => new Array<number>(free).fill(0));
+  const atb = Array.from({ length: free }, () => [0, 0]);
+  params.forEach((u, i) => {
+    const row = new Array<number>(m).fill(0);
+    const span = findSpan(m - 1, degree, u, knots);
+    basis(span, u, degree, knots).forEach((value, k) => {
+      row[span - degree + k] = value;
+    });
+    const q = points[i] as Vec2;
+    const rx = q[0] - (row[0] as number) * first[0] - (row[m - 1] as number) * last[0];
+    const ry = q[1] - (row[0] as number) * first[1] - (row[m - 1] as number) * last[1];
+    for (let a = 1; a < m - 1; a++) {
+      const na = row[a] as number;
+      if (na === 0) continue;
+      const out = atb[a - 1] as number[];
+      out[0] = (out[0] as number) + na * rx;
+      out[1] = (out[1] as number) + na * ry;
+      const line = ata[a - 1] as number[];
+      for (let b = 1; b < m - 1; b++)
+        line[b - 1] = (line[b - 1] as number) + na * (row[b] as number);
+    }
+  });
+  // A pole no parameter reaches (more poles than points nearby) is held between its neighbours.
+  ata.forEach((line, i) => {
+    if ((line[i] as number) === 0) line[i] = 1e-12;
+  });
+  const inner = solve(ata, atb).map((r) => [r[0], r[1]] as Vec2);
+  return [first, ...inner, last];
+}
+
+/**
+ * The largest distance from a point to the spline (to its dense polyline),
+ * and each point's parameter at its nearest place on it.
+ */
+function fitError(
+  spline: BSpline,
+  points: readonly Vec2[],
+  params: readonly number[],
+): { error: number; nearest: number[] } {
+  const spans = spline.poles.length - spline.degree;
+  const steps = 8 * spans;
+  const line: Vec2[] = [];
+  for (let i = 0; i <= steps; i++) line.push(splinePoint(spline, i / steps));
+  // A point's nearest place lies near its parameter: look two spans either way.
+  const window = 2 * 8;
+  let worst = 0;
+  const nearest: number[] = [];
+  for (const [index, p] of points.entries()) {
+    let near = Number.POSITIVE_INFINITY;
+    let at = 0;
+    const centre = Math.round((params[index] as number) * steps);
+    const from = Math.max(1, centre - window);
+    const to = Math.min(line.length - 1, centre + window);
+    for (let i = from; i <= to; i++) {
+      const [d, t] = segmentDistance(p, line[i - 1] as Vec2, line[i] as Vec2);
+      if (d < near) {
+        near = d;
+        at = (i - 1 + t) / steps;
+      }
+    }
+    // The polyline's chords cut inside the curve: refine on the curve itself.
+    let lo = Math.max(0, at - 1 / steps);
+    let hi = Math.min(1, at + 1 / steps);
+    const distance = (u: number) => {
+      const q = splinePoint(spline, u);
+      return Math.hypot(p[0] - q[0], p[1] - q[1]);
+    };
+    for (let k = 0; k < 16; k++) {
+      const a = lo + (hi - lo) / 3;
+      const b = hi - (hi - lo) / 3;
+      if (distance(a) < distance(b)) hi = b;
+      else lo = a;
+    }
+    at = (lo + hi) / 2;
+    worst = Math.max(worst, distance(at));
+    nearest.push(at);
+  }
+  nearest[0] = 0;
+  nearest[nearest.length - 1] = 1;
+  return { error: worst, nearest };
+}
+
+/** The distance from p to segment ab, and where along it (0 to 1) the nearest point is. */
+function segmentDistance(p: Vec2, a: Vec2, b: Vec2): [number, number] {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / l2)) : 0;
+  return [Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy), t];
+}
+
 /** The middle weight of a conic: the ratio a rational Bézier needs for its rho. */
 const conicWeight = (rho: number): number => rho / (1 - rho);
 

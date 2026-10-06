@@ -308,3 +308,190 @@ so `offset()` adds a tangent constraint between the new pieces wherever two
 projected neighbours (a line and an arc, or two arcs) run smoothly into each
 other; without them a rounded outline's offset kept 8 freedoms. The benchmark
 B2 now uses Offset instead of four hand-made dimensions (ADR-0039 item 2).
+
+## Amendment (P4-12, 2026-10-06): every surface, vertices and bodies, Intersect, Include
+
+The P4-12 backlog took four items of the Open list. Code: the facade's
+`faceSilhouettes` (now with a `deflection`), `sectionWithPlane` and
+`edgeVisibility` (`packages/kernel/occt/facade/extrudo_facade.cpp`);
+`Kernel.faceSilhouettes`/`sectionWithPlane`/`edgeVisibility`,
+`CurvePiece`, `decodeCurvePieces` in `kernel.ts`; `projectPieces`,
+`joinArcs`, `projectPolyline`, `projectPoint`, `withoutRepeats` in
+`src/features/projection.ts`; `projectBody` and `intersectSource` in
+`src/features/sketch.ts`; core's `fitControlPoles` (`sketch/curves.ts`),
+`SketchProjectionSchema.mode`/`linked`, `addProjection`'s `mode` and `linked`,
+`includedCurves`, `includeProjection`, `includeLabel` (`sketch/projection.ts`)
+and `DocumentState.amend(command, { relabel })`; in the app `sketch/project.ts`
+(`INTERSECT_TOOL`, `isProjectTool`), `ProjectPanel` (`sketch/panels.tsx`) and
+`ToolHost.syncProjections`. Native harness: `spikes/p4-12-project/`. Tests:
+`kernel/src/features/project.test.ts`, core's `projection.test.ts`,
+`curves.test.ts`, `stores.test.ts`, the app's `sketch/tools/projection.test.ts`,
+`e2e/project.spec.ts`.
+
+### 1. Silhouettes of every surface
+
+`faceSilhouettes(shape, face, dx, dy, dz, deflection)` keeps the closed form for
+cylinders and cones (§6) and sends every other curved surface through
+**`Contap_Contour`**, TKHLR's contour finder: the very call `HLRBRep_Algo`
+makes per face (through `HLRTopoBRep_DSFiller`) to find its outlines, but
+without the projection and the hiding, which a sketch doesn't want: a
+projection takes the visible and the hidden outline alike, and it wants the
+curves **in 3D on the surface**, which the contour finder has before
+`HLRBRep_Algo` flattens them. It gives three kinds of line, and the facade
+returns them as they are:
+
+- **analytic** lines and circles (`Contap_Lin`, `Contap_Circle`, the quadrics:
+  a sphere's outline is exactly its great circle square to the view), cut where
+  they leave the face (the line's vertices);
+- **walked** lines (`Contap_Walking`, a torus, a B-spline face): the walk's own
+  points, each a surface evaluation, so they lie on the surface;
+- **restrictions** (`Contap_Restriction`): the contour runs along a boundary
+  edge. Kept (as the edge's own curve) on a seam and where the face meets its
+  neighbour smoothly, since no sharp edge draws that outline; left out on any
+  other edge, which projects as an edge already.
+
+The numbers are a list of pieces, shared with `sectionWithPlane`:
+`[0, start xyz, end xyz]` a line, `[1, centre, axis, x, radius, first, last]` a
+circle arc (counter-clockwise about the axis, `last − first = 2π` whole),
+`[2, n, xyz × n]` a polyline, `[3, centre, axis, x, major, minor, first, last]`
+an ellipse arc; the return value is the count. A polyline sampled from an edge
+is within `deflection` (`CURVE_DEFLECTION`, 0.01 mm, through
+`GCPnts_TangentialDeflection`).
+
+In the kernel, `projectPieces` puts them in the sketch plane:
+
+- **arcs of one circle or ellipse are joined first** (`joinArcs`: the union of
+  their angles, a run that closes is the whole curve). The contour finder cuts
+  a sphere's circle at the seam and, seen square to the seam, reports the seam
+  twice: four half-circles for a sphere seen along Y (harness);
+- lines and conics go through `projectEdge` (§6's table), so a sphere seen
+  along the sketch normal is **one exact circle**;
+- a polyline is split at sharp turns (over 30°: an outline seen along the view
+  has cusps) and, when it closes, in two (closed splines arrived the same day
+  in ADR-0063's amendment; fitting a periodic one to the samples is left open);
+  each run is the **line or circle arc** its
+  points lie on (within 1e-6 mm: a torus seen along its axis walks its inner
+  equator, which comes out an exact circle of 15), or **one control-point
+  spline** (`mode: 'control'`, ADR-0063) fitted to the samples within
+  `FIT_TOLERANCE` (1e-3 mm) — `fitControlPoles`: least squares on
+  `controlSpline`'s uniform knots, ends held, chord-length parameters corrected
+  by projecting the samples back onto each fit, the pole count found by
+  doubling and then bisection. At most 120 samples of a run are fitted (picked
+  evenly): a fit takes 40–70 ms for 200–400 points before that cap. Not a chain
+  of lines, and not a fit-point spline through hundreds of points (§6 keeps
+  those for projected B-spline edges, 24 samples).
+
+`ProjectedCurve`'s `spline` gained `mode?: 'control'`, and `projectionSync`
+keeps a spline in place only when its mode matches.
+
+### 2. Vertices and bodies
+
+`addProjection` takes a **vertex** (one fixed point entity, key `vertex`;
+`ProjectedCurve` `{ type: 'point', at }`) and a **body** (`{ kind: 'body', id }`,
+picked through the body's browser row while the tool runs: the row calls the
+active `modelSelect`, which the tool owns). A body projects as its outline seen
+along the sketch normal:
+
+- every **outline edge**: its two faces, at the edge's middle, face opposite
+  ways along the view (strictly: a face seen edge-on is neither);
+- every curved face's **silhouettes** (§1), keyed `sil:<face name>:<n>`;
+- the **sharp edges that can be seen** from the sketch's side, through OCCT's
+  hidden-line removal: `edgeVisibility(shape, dx, dy, dz)` runs `HLRBRep_Algo`
+  (its projector's eye on the side the normal points to, so Look At sees what
+  the sketch projects) and returns a flag sum per edge: 1 some of it is visible
+  (`HLRAlgo_EdgeIterator` over its status), 2 an outline, 4 sharp (no seam, not
+  G1 with its neighbour). Edges keep their names as keys.
+
+**Visible edges only, not all sharp edges**: seen square to a face, a body's
+hidden edges lie exactly under its visible ones (a box from above: the bottom
+square under the top one), so "all sharp edges" stacks fixed duplicates on top
+of each other, which profile detection and picking then fight over; obliquely
+they clutter the outline with lines the user can't see in Look At. A partly
+hidden edge comes whole (keys are edge names; a piece of an edge has none).
+`withoutRepeats` drops a curve that repeats an earlier one (the same type and
+points within 1e-6 mm: a silhouette along a boundary edge, a cylinder's
+silhouette on its own smooth edge), first key kept — for faces too.
+
+A lost body (`ctx.bodies` lacks its ID) reports `lost: true` and warns "Lost a
+projected body…"; a mesh body warns with `MeshBodyError`'s own message.
+
+### 3. Intersect
+
+The tool `intersect` (Sketch › Create's menu after Project, **Shift+P**, which
+is Offset Plane on the model — never offered together, like F — icon
+`intersect`) picks faces and bodies (`INTERSECT_FILTER`) and adds a record with
+**`mode: 'intersect'`** (`SketchProjectionSchema.mode`, absent = project,
+`docs/file-format.md`). The sketch evaluator dispatches on it
+(`intersectSource`): the facade's **`sectionWithPlane(shape, ox, oy, oz, nx, ny,
+nz, deflection)`** is `BRepAlgoAPI_Section` of the face (alone, as a sub-shape)
+or the body with the sketch plane, its edges in §1's encoding (lines, circles
+and ellipses exact, else polylines), keyed `cut:<n>` in the section's order,
+through the same `projectPieces`. It follows the model like a projection. A
+cylinder cut by a plane at 45° is one exact ellipse of 14.142 × 10 (harness and
+kernel test).
+
+### 4. Include
+
+The Project and Intersect tools have a panel ("Project"/"Intersect", in the
+sketch's panel column above the palette) with **"Keep linked"** (default on;
+session state of the shell). Off, `addProjection` stores the record with
+`linked: false`; the kernel reports its curves like any projection; and
+`ToolHost.syncProjections` then **amends** `includeProjection` into the step
+that added the record: the curves become new plain entities (no `fix`, nothing
+holds them, `projectedEntities` doesn't list them) and the record goes. The
+amend **relabels the step** "Include <n> curves" (`includeLabel`;
+`UndoHistory.amend(entry, relabel)`, `DocumentState.amend(command,
+{ relabel })`), since only the report says how many there are. So an include is
+one command on the host and one undo step, the report coming a recompute later
+as for every projection. A lost source drops the record with nothing added.
+`projectionSync` leaves `linked: false` records alone.
+
+### 5. Slice stays deferred
+
+A sketch slice (the palette's Slice, a section view while sketching) is still
+open; section analysis (ADR-0045) covers looking inside meanwhile.
+
+### Harness results (`spikes/p4-12-project/`, `bash run.sh`, OCCT 8.0.1 in the pinned image)
+
+- **Sphere r 10**: along +Z and (1, 1, 1) one exact arc of a whole turn on the
+  great circle (radius 10.000000000, centre at the origin, axis along the view);
+  along +Y, where the outline is the seam, four half-circles that cover one turn
+  together (hence `joinArcs`). `HLRBRep_Algo`'s own outline of the same sphere,
+  sampled 33 times, is within 1.8e-15 mm (3.6e-15 obliquely) of the exact
+  circle: the contour finder's circle is the exact one. An upper half sphere seen
+  from +Y: four quarter arcs covering half a turn.
+- **Torus R 20 r 5** along its axis: the outer equator as exact arcs (it is the
+  v-seam) covering one turn, the inner one walked: 201 points with |r − 15| +
+  |z| ≤ 2.5e-14 mm. From the side (+Y, (0, 1, 1), (0.3, 1, 2)): 3–9 pieces, 409–646
+  points, all within 2.3e-14 mm of the torus and with |n · d| ≤ 1.4e-15.
+- **A lofted free-form body** (circle, tilted ellipse, circle; two B-spline side
+  faces): one side face keeps n · d's sign everywhere and has no contour; the
+  other gives 2–4 walked polylines, 413–434 points within 1.7e-12 mm of the
+  surface; |n · d| ≤ 3.7e-13 obliquely, and 0.013 along Y where a restriction
+  piece (a smooth boundary edge taken whole, as HLR takes it) is reported.
+- **A 20 mm box with every edge filleted at 4 mm** seen along (1, −2, 1.5): 12
+  pieces over its 26 faces, every point within 2e-15 mm of its face.
+- **Sections**: a cylinder r 10 by a plane at 45° through z = 20 is one ellipse,
+  14.142135624 × 10.000000000; a sphere at z = 6 one circle of 8; a torus by a
+  tilted plane through its centre two polylines.
+- **Visibility**: a 20 × 10 × 5 box from +Z: its four top edges seen, none of
+  the bottom ones (and the reverse from −Z); obliquely (1, −2, 1.5) 9 edges seen,
+  6 on the outline; at 30° about X 7 seen, 2 on the outline.
+- **Leaks**: every call 100 and then 500 rounds, heap top unchanged (0 bytes).
+
+### Consequences
+
+- The facade changed (three methods, `faceSilhouettes`' signature), so the OCCT
+  input hash is now `f25e8583481f` (release `occt-f25e8583481f`, built by CI);
+  the build now pulls in TKHLR's contour finder and hidden-line removal (the
+  toolchain links every library of the image, so `libcascade.config.ts` is
+  unchanged): the WASM grew from 18.80 MB raw, 6.13 MB gzip, 4.26 MB brotli to
+  **19.19 MB raw, 6.25 MB gzip, 4.34 MB brotli** (+388 kB raw, +0.08 MB brotli;
+  Node's zlib at its best settings, as ADR-0037 measures).
+- A face projection of a sphere or torus, which used to give its boundary edges
+  only, now gives its outline too: an existing sketch gains those curves on its
+  next recompute, under new `sil:<n>` keys (amended into the latest step, §6).
+- The Rejected entry "OCCT's HLR for silhouettes" is reversed for the surfaces
+  the closed form can't do; cylinders and cones keep the closed form.
+- Projected splines (`mode: 'control'`) and points are ordinary entities: the
+  solver holds them fixed, profiles cut them, export writes them.

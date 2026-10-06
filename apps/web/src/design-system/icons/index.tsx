@@ -37,6 +37,7 @@ export const ICON_NAMES = [
   'conic',
   'text',
   'project',
+  'intersect',
   'sketch-dimension',
   'trim',
   'sketch-offset',

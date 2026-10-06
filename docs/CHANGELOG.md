@@ -4,6 +4,20 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 Project: silhouettes of every surface, vertices and
+  bodies, Intersect and Include** (ADR-0031's amendment): a projected sphere is
+  its exact outline circle, a torus or a free-form face its outline through
+  OCCT's contour finder (TKHLR's `Contap_Contour`; walked outlines come in as
+  control-point splines fitted within 1 µm, or as the circle or line they lie
+  on); Project also takes a vertex (a fixed point) and a whole body (picked in
+  the browser: its outline edges, silhouettes and the sharp edges seen from the
+  sketch's side, through `HLRBRep_Algo`); **Intersect** (Shift+P in a sketch)
+  brings in the curves where a face or body meets the sketch plane, following
+  the model; and the tools' "Keep linked" checkbox off makes an include — plain,
+  editable curves in one undo step, "Include 4 curves". New facade methods
+  `sectionWithPlane` and `edgeVisibility`, `faceSilhouettes` in a new encoding;
+  a sketch's projection gets `mode` and `linked` (file format §7.4). Slice
+  stays open.
 - 2026-10-06 · **P4-12 splines: closed, stored knots, trim, break and offset**
   (ADR-0063's amendment): fit and control splines can be closed (a click back
   on the first point, or the panel's Closed checkbox) into periodic C2 loops,

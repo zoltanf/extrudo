@@ -38,6 +38,9 @@ describe('document store', () => {
     expect(s().doc).toMatchObject({ name: 'Loaded', features: [{ name: 'Sketch1' }, {}, {}] });
     s().redo();
     expect(s().doc.name).toBe('Bracket');
+    // With `relabel` the step takes the amending command's label (P4-12: an include).
+    s().amend({ ...renameDocument({ name: 'Box' }), label: 'Include 3 curves' }, { relabel: true });
+    expect(s()).toMatchObject({ doc: { name: 'Box' }, undoLabel: 'Include 3 curves' });
   });
 
   it('freezes the document so components cannot mutate it', () => {

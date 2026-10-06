@@ -95,6 +95,49 @@ function PanelTitle({ children }: { children: ReactNode }) {
   );
 }
 
+export interface ProjectPanelProps {
+  tool: 'project' | 'intersect';
+  /** "Keep linked": the curves follow the model (default); off, they are plain entities. */
+  linked: boolean;
+  onLinked(linked: boolean): void;
+  onDone(): void;
+}
+
+/**
+ * The Project and Intersect tools' panel (P4-12, ADR-0031's amendment): what
+ * to pick, and "Keep linked" — off, the next picks come in as plain sketch
+ * curves (an include) that no longer follow the model.
+ *
+ * Test hooks: the region "Project" or "Intersect", the checkbox "Keep linked"
+ * and the button "Done".
+ */
+export function ProjectPanel({ tool, linked, onLinked, onDone }: ProjectPanelProps) {
+  const title = tool === 'intersect' ? 'Intersect' : 'Project';
+  return (
+    <FloatingPanel label={title}>
+      <h2 className="flex items-center gap-2 text-base font-semibold">
+        <ToolIcon name={tool} category="sketch" size={18} />
+        {title}
+      </h2>
+      <p className="text-sm text-muted">
+        {tool === 'intersect'
+          ? 'Pick a face in the view, or a body in the browser: its curves in the sketch plane come in.'
+          : 'Pick edges, faces or vertices in the view, or a body in the browser: their outline comes in.'}
+      </p>
+      <label className="flex h-7 cursor-pointer items-center gap-2 rounded-input px-1 text-sm hover:bg-accent-soft">
+        <input
+          type="checkbox"
+          checked={linked}
+          onChange={(e) => onLinked(e.target.checked)}
+          className="accent-(--x-accent)"
+        />
+        Keep linked
+      </label>
+      <Button onClick={onDone}>Done</Button>
+    </FloatingPanel>
+  );
+}
+
 export interface PlanePromptProps {
   session: SessionStore;
   /** Default "Create Sketch"; Redefine Plane (P2-11) names its own. */

@@ -81,6 +81,20 @@
 #include <BRepLib.hxx>
 #include <BRepLib_MakeEdge.hxx>
 #include <BRepTopAdaptor_FClass2d.hxx>
+#include <BRepTopAdaptor_TopolTool.hxx>
+#include <BRepTopAdaptor_Tool.hxx>
+#include <BRepAdaptor_Curve2d.hxx>
+#include <BRepAlgoAPI_Section.hxx>
+#include <BRepGProp_Face.hxx>
+#include <Contap_Contour.hxx>
+#include <Contap_Line.hxx>
+#include <Contap_Point.hxx>
+#include <ElCLib.hxx>
+#include <HLRAlgo_EdgeIterator.hxx>
+#include <HLRAlgo_Projector.hxx>
+#include <HLRBRep_Algo.hxx>
+#include <HLRBRep_Data.hxx>
+#include <HLRBRep_EdgeData.hxx>
 #include <BRepPrimAPI_MakeBox.hxx>
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
@@ -1272,14 +1286,29 @@ public:
   }
 
   /**
-   * The silhouette lines of face `face` of a shape seen along (dx, dy, dz):
-   * the straight lines on a cylinder or cone where its normal is square to
-   * the view, clipped to the face. Other surfaces have none here. Returns
-   * the number of segments, or -1 on failure.
+   * The silhouettes of face `face` of a shape seen along (dx, dy, dz): the
+   * curves on the face where its normal is square to the view, visible and
+   * hidden alike, clipped to the face, as exact 3D curves on the surface
+   * (P2-09; every surface since P4-12, ADR-0031's amendment). A cylinder or
+   * cone gives straight lines in closed form; a sphere, a torus and every
+   * other curved surface go through OCCT's contour finder (TKHLR's
+   * Contap_Contour, the one HLRBRep_Algo runs per face for its outlines):
+   * its lines and circles stay exact, and a walked contour comes back as the
+   * walk's own points, which lie on the surface. A contour that runs along a
+   * seam or along an edge where the face meets a neighbour smoothly is that
+   * edge; one along any other boundary edge is left out (the edge itself is
+   * an outline). Planes have none. `deflection` (mm) bounds the chord of a
+   * polyline sampled from an edge. Returns the number of pieces, or -1.
    *
-   * geometryNumbers: [start xyz, end xyz] per segment.
+   * geometryNumbers, per piece (shared with sectionWithPlane):
+   *   [0, start xyz, end xyz]                                 a line segment
+   *   [1, center xyz, axis xyz, x xyz, radius, first, last]   a circle arc,
+   *       counter-clockwise about the axis from angle `first` to `last`
+   *       (from the x direction; last - first = 2π for a whole circle)
+   *   [2, n, xyz × n]                                         a polyline
+   *   [3, center xyz, axis xyz, x xyz, major, minor, first, last]  an ellipse arc
    */
-  int faceSilhouettes(int shape, int face, double dx, double dy, double dz) {
+  int faceSilhouettes(int shape, int face, double dx, double dy, double dz, double deflection) {
     beginOp();
     geometry_.clear();
     const TopoDS_Shape* s = find(shape);
@@ -1299,46 +1328,145 @@ public:
         fail("The view direction has no length.");
         return -1;
       }
-      const TopoDS_Face f = TopoDS::Face(faces(face + 1));
+      TopoDS_Face f = TopoDS::Face(faces(face + 1));
       BRepAdaptor_Surface surface(f);
-      gp_Ax3 position;
-      double semiAngle = 0;
-      if (surface.GetType() == GeomAbs_Cylinder) {
-        position = surface.Cylinder().Position();
-      } else if (surface.GetType() == GeomAbs_Cone) {
-        position = surface.Cone().Position();
-        semiAngle = surface.Cone().SemiAngle();
-      } else {
-        return 0;
+      const GeomAbs_SurfaceType type = surface.GetType();
+      if (type == GeomAbs_Plane) return 0;
+      if (type == GeomAbs_Cylinder || type == GeomAbs_Cone) {
+        return ruledSilhouettes(f, surface, gp_Dir(view));
       }
-      // The normal at angle u is proportional to cos(A)(cos u X + sin u Y) - sin(A) Z
-      // (either sign), so the silhouette is where cos u a + sin u b = tan(A) c.
-      const gp_Dir d(view);
-      const double a = position.XDirection().Dot(d);
-      const double b = position.YDirection().Dot(d);
-      const double c = position.Direction().Dot(d);
-      const double rho = std::hypot(a, b);
-      if (rho <= 1e-9) return 0;
-      const double k = std::tan(semiAngle) * c / rho;
-      if (std::abs(k) > 1) return 0;
-      const double phi = std::atan2(b, a);
-      const double spread = std::acos(std::max(-1.0, std::min(1.0, k)));
-      double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
-      BRepTools::UVBounds(f, u0, u1, v0, v1);
-      BRepTopAdaptor_FClass2d classifier(f, Precision::PConfusion());
-      const double candidates[2] = {phi + spread, phi - spread};
-      int segments = 0;
-      for (int i = 0; i < 2; ++i) {
-        if (i == 1 && spread <= 1e-12) break;
-        double u = u0 + std::fmod(candidates[i] - u0, 2 * M_PI);
-        if (u < u0) u += 2 * M_PI;
-        if (u > u1 + 1e-9) continue;
-        segments += silhouetteRuns(surface, classifier, std::min(u, u1), v0, v1);
-      }
-      return segments;
+      return contourSilhouettes(*s, f, gp_Dir(view), deflection);
     } catch (...) {
       geometry_.clear();
       failFromException("Silhouette failed");
+      return -1;
+    }
+  }
+
+  /**
+   * The curves where a shape meets a plane (P4-12, Intersect: ADR-0031's
+   * amendment): BRepAlgoAPI_Section of the shape with the plane through
+   * (ox, oy, oz) square to (nx, ny, nz). Lines, circles and ellipses come
+   * back exact, anything else as a polyline within `deflection` (mm), in
+   * faceSilhouettes' encoding. Returns the number of pieces, or -1.
+   */
+  int sectionWithPlane(int shape, double ox, double oy, double oz, double nx, double ny,
+                       double nz, double deflection) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    try {
+      const gp_Vec normal(nx, ny, nz);
+      if (normal.Magnitude() <= Precision::Confusion()) {
+        fail("The plane's normal has no length.");
+        return -1;
+      }
+      const gp_Pln plane(gp_Pnt(ox, oy, oz), gp_Dir(normal));
+      BRepAlgoAPI_Section section(*s, plane, false);
+      section.Approximation(false);
+      section.ComputePCurveOn1(false);
+      section.Build();
+      if (!section.IsDone()) {
+        fail("The section failed.");
+        return -1;
+      }
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+      TopExp::MapShapes(section.Shape(), TopAbs_EDGE, edges);
+      int pieces = 0;
+      for (int i = 1; i <= edges.Extent(); ++i) {
+        const TopoDS_Edge e = TopoDS::Edge(edges(i));
+        if (BRep_Tool::Degenerated(e)) continue;
+        BRepAdaptor_Curve curve(e);
+        pieces += pushCurvePiece(curve, curve.FirstParameter(), curve.LastParameter(), deflection);
+      }
+      return pieces;
+    } catch (...) {
+      geometry_.clear();
+      failFromException("Section failed");
+      return -1;
+    }
+  }
+
+  /**
+   * Which edges of a shape are seen along (dx, dy, dz) (P4-12, projecting a
+   * body: ADR-0031's amendment), through OCCT's hidden-line removal
+   * (HLRBRep_Algo) looking from the side the vector points to, so a sketch's
+   * Look At sees what the sketch projects. Returns the number of edges
+   * (MapShapes order), or -1. geometryNumbers: one flag sum per edge,
+   * 1 = some of it is visible, 2 = an outline (its two faces, at its middle,
+   * face opposite ways along the view), 4 = sharp (its faces don't meet
+   * smoothly, and it is no seam).
+   */
+  int edgeVisibility(int shape, double dx, double dy, double dz) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) {
+      fail("Unknown shape.");
+      return -1;
+    }
+    try {
+      const gp_Vec view(dx, dy, dz);
+      if (view.Magnitude() <= Precision::Confusion()) {
+        fail("The view direction has no length.");
+        return -1;
+      }
+      const gp_Dir d(view);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+      TopExp::MapShapes(*s, TopAbs_EDGE, edges);
+      NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>
+          edgeFaces;
+      TopExp::MapShapesAndUniqueAncestors(*s, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+      std::vector<double> flags(edges.Extent(), 0.0);
+      for (int i = 1; i <= edges.Extent(); ++i) {
+        const TopoDS_Edge e = TopoDS::Edge(edges(i));
+        if (BRep_Tool::Degenerated(e) || !edgeFaces.Contains(e)) continue;
+        const NCollection_List<TopoDS_Shape>& around = edgeFaces.FindFromKey(e);
+        if (around.Extent() != 2) continue;
+        const TopoDS_Face f1 = TopoDS::Face(around.First());
+        const TopoDS_Face f2 = TopoDS::Face(around.Last());
+        if (BRep_Tool::Continuity(e, f1, f2) < GeomAbs_G1) flags[i - 1] += 4;
+        double a = 0, b = 0;
+        if (normalAlong(e, f1, d, a) && normalAlong(e, f2, d, b) &&
+            ((a > 1e-9 && b < -1e-9) || (a < -1e-9 && b > 1e-9))) {
+          flags[i - 1] += 2;
+        }
+      }
+      // HLR's eye is on the +Z side of its frame, looking down -Z: the view vector's side.
+      HLRAlgo_Projector projector(gp_Ax2(gp_Pnt(0, 0, 0), d));
+      occ::handle<HLRBRep_Algo> algo = new HLRBRep_Algo();
+      algo->Add(*s, 0);
+      algo->Projector(projector);
+      algo->Update();
+      algo->Hide();
+      occ::handle<HLRBRep_Data> data = algo->DataStructure();
+      if (!data.IsNull()) {
+        NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher>& hlrEdges = data->EdgeMap();
+        for (int ie = 1; ie <= hlrEdges.Extent(); ++ie) {
+          const int i = edges.FindIndex(hlrEdges(ie));
+          if (i == 0 || (static_cast<int>(flags[i - 1]) & 1)) continue;
+          HLRBRep_EdgeData& ed = data->EDataArray().ChangeValue(ie);
+          HLRAlgo_EdgeIterator it;
+          for (it.InitVisible(ed.Status()); it.MoreVisible(); it.NextVisible()) {
+            double sta = 0, end = 0;
+            float tolsta = 0, tolend = 0;
+            it.Visible(sta, tolsta, end, tolend);
+            if (std::abs(end - sta) > Precision::PConfusion()) {
+              flags[i - 1] += 1;
+              break;
+            }
+          }
+        }
+      }
+      geometry_ = flags;
+      return edges.Extent();
+    } catch (...) {
+      geometry_.clear();
+      failFromException("Visibility failed");
       return -1;
     }
   }
@@ -5331,6 +5459,180 @@ private:
     }
   }
 
+  /** The view direction · the face's outward normal at the middle of edge e. */
+  static bool normalAlong(const TopoDS_Edge& e, const TopoDS_Face& face, const gp_Dir& view,
+                          double& out) {
+    double first = 0, last = 0;
+    const occ::handle<Geom2d_Curve> pcurve = BRep_Tool::CurveOnSurface(e, face, first, last);
+    if (pcurve.IsNull()) return false;
+    const gp_Pnt2d uv = pcurve->Value(0.5 * (first + last));
+    BRepGProp_Face props(face);
+    gp_Pnt p;
+    gp_Vec n;
+    props.Normal(uv.X(), uv.Y(), p, n);
+    if (n.Magnitude() <= 1e-12) return false;
+    out = n.Normalized().Dot(gp_Vec(view));
+    return true;
+  }
+
+  /** faceSilhouettes for a cylinder or cone: closed form (P2-09). */
+  int ruledSilhouettes(const TopoDS_Face& f, const BRepAdaptor_Surface& surface, const gp_Dir& d) {
+    gp_Ax3 position;
+    double semiAngle = 0;
+    if (surface.GetType() == GeomAbs_Cylinder) {
+      position = surface.Cylinder().Position();
+    } else {
+      position = surface.Cone().Position();
+      semiAngle = surface.Cone().SemiAngle();
+    }
+    // The normal at angle u is proportional to cos(A)(cos u X + sin u Y) - sin(A) Z
+    // (either sign), so the silhouette is where cos u a + sin u b = tan(A) c.
+    const double a = position.XDirection().Dot(d);
+    const double b = position.YDirection().Dot(d);
+    const double c = position.Direction().Dot(d);
+    const double rho = std::hypot(a, b);
+    if (rho <= 1e-9) return 0;
+    const double k = std::tan(semiAngle) * c / rho;
+    if (std::abs(k) > 1) return 0;
+    const double phi = std::atan2(b, a);
+    const double spread = std::acos(std::max(-1.0, std::min(1.0, k)));
+    double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+    BRepTools::UVBounds(f, u0, u1, v0, v1);
+    BRepTopAdaptor_FClass2d classifier(f, Precision::PConfusion());
+    const double candidates[2] = {phi + spread, phi - spread};
+    int segments = 0;
+    for (int i = 0; i < 2; ++i) {
+      if (i == 1 && spread <= 1e-12) break;
+      double u = u0 + std::fmod(candidates[i] - u0, 2 * M_PI);
+      if (u < u0) u += 2 * M_PI;
+      if (u > u1 + 1e-9) continue;
+      segments += silhouetteRuns(surface, classifier, std::min(u, u1), v0, v1);
+    }
+    return segments;
+  }
+
+  /**
+   * faceSilhouettes for every other curved surface: Contap_Contour on the
+   * face, as HLRTopoBRep_DSFiller runs it for HLRBRep_Algo's outlines.
+   */
+  int contourSilhouettes(const TopoDS_Shape& shape, TopoDS_Face f, const gp_Dir& d,
+                         double deflection) {
+    f.Orientation(TopAbs_FORWARD);
+    BRepTopAdaptor_Tool tool(f, Precision::PConfusion());
+    const gp_Vec direction(d);
+    Contap_Contour contour(direction);
+    contour.Perform(tool.GetSurface(), tool.GetTopolTool());
+    if (!contour.IsDone() || contour.IsEmpty()) return 0;
+    NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher>
+        edgeFaces;
+    TopExp::MapShapesAndUniqueAncestors(shape, TopAbs_EDGE, TopAbs_FACE, edgeFaces);
+    int pieces = 0;
+    for (int l = 1; l <= contour.NbLines(); ++l) {
+      const Contap_Line& line = contour.Line(l);
+      const Contap_IType kind = line.TypeContour();
+      if (kind == Contap_Restriction) {
+        const TopoDS_Edge e = (*(BRepAdaptor_Curve2d*)(line.Arc().get())).Edge();
+        if (!contourOnEdge(e, f, edgeFaces)) continue;
+        BRepAdaptor_Curve curve(e);
+        pieces += pushCurvePiece(curve, curve.FirstParameter(), curve.LastParameter(), deflection);
+        continue;
+      }
+      const int nv = line.NbVertex();
+      for (int k = 1; k < nv; ++k) {
+        const double from = line.Vertex(k).ParameterOnLine();
+        const double to = line.Vertex(k + 1).ParameterOnLine();
+        if (!(to - from > Precision::PConfusion())) continue;
+        if (kind == Contap_Lin) {
+          const gp_Lin lin = line.Line();
+          pieces += pushLine(ElCLib::Value(from, lin), ElCLib::Value(to, lin));
+        } else if (kind == Contap_Circle) {
+          const gp_Circ c = line.Circle();
+          geometry_.push_back(1.0);
+          pushPoint(c.Location());
+          pushDir(c.Axis().Direction());
+          pushDir(c.XAxis().Direction());
+          geometry_.insert(geometry_.end(), {c.Radius(), from, to});
+          ++pieces;
+        } else {
+          // A walked contour: its points between the two vertices.
+          const int first = std::max(1, static_cast<int>(std::floor(from + 1e-9)));
+          const int last = std::min(line.NbPnts(), static_cast<int>(std::ceil(to - 1e-9)));
+          if (last - first < 1) continue;
+          geometry_.push_back(2.0);
+          geometry_.push_back(static_cast<double>(last - first + 1));
+          for (int i = first; i <= last; ++i) pushPoint(line.Point(i).Value());
+          ++pieces;
+        }
+      }
+    }
+    return pieces;
+  }
+
+  /**
+   * Whether a contour found on edge e of face f is a silhouette of its own
+   * (faceSilhouettes): yes on a seam, or where f meets its neighbour smoothly
+   * (no sharp edge draws it then); no on any other boundary edge.
+   */
+  static bool contourOnEdge(
+      const TopoDS_Edge& e, const TopoDS_Face& f,
+      const NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>,
+                                       TopTools_ShapeMapHasher>& edgeFaces) {
+    if (BRep_Tool::IsClosed(e, f)) return true;
+    if (!edgeFaces.Contains(e)) return false;
+    const NCollection_List<TopoDS_Shape>& around = edgeFaces.FindFromKey(e);
+    if (around.Extent() != 2) return false;
+    return BRep_Tool::Continuity(e, TopoDS::Face(around.First()), TopoDS::Face(around.Last())) >=
+           GeomAbs_G1;
+  }
+
+  int pushLine(const gp_Pnt& a, const gp_Pnt& b) {
+    if (a.Distance(b) <= Precision::Confusion()) return 0;
+    geometry_.push_back(0.0);
+    pushPoint(a);
+    pushPoint(b);
+    return 1;
+  }
+
+  /**
+   * One piece of faceSilhouettes' encoding for a curve from `first` to
+   * `last`: exact for a line, circle or ellipse, else a polyline within
+   * `deflection`.
+   */
+  int pushCurvePiece(const Adaptor3d_Curve& curve, double first, double last, double deflection) {
+    if (!(last - first > Precision::PConfusion())) return 0;
+    const GeomAbs_CurveType type = curve.GetType();
+    if (type == GeomAbs_Line) return pushLine(curve.Value(first), curve.Value(last));
+    if (type == GeomAbs_Circle || type == GeomAbs_Ellipse) {
+      gp_Ax2 position;
+      double major = 0, minor = 0;
+      if (type == GeomAbs_Circle) {
+        const gp_Circ c = curve.Circle();
+        position = c.Position();
+        major = minor = c.Radius();
+      } else {
+        const gp_Elips c = curve.Ellipse();
+        position = c.Position();
+        major = c.MajorRadius();
+        minor = c.MinorRadius();
+      }
+      geometry_.push_back(type == GeomAbs_Circle ? 1.0 : 3.0);
+      pushPoint(position.Location());
+      pushDir(position.Direction());
+      pushDir(position.XDirection());
+      geometry_.push_back(major);
+      if (type == GeomAbs_Ellipse) geometry_.push_back(minor);
+      geometry_.insert(geometry_.end(), {first, last});
+      return 1;
+    }
+    GCPnts_TangentialDeflection sampler(curve, first, last, 0.1, std::max(deflection, 1e-4));
+    const int n = sampler.NbPoints();
+    if (n < 2) return 0;
+    geometry_.push_back(2.0);
+    geometry_.push_back(static_cast<double>(n));
+    for (int k = 1; k <= n; ++k) pushPoint(sampler.Value(k));
+    return 1;
+  }
+
   /** A canonical sign for an axis or line direction: first non-zero component positive. */
   static gp_Dir canonical(const gp_Dir& d) {
     const double c[3] = {d.X(), d.Y(), d.Z()};
@@ -5385,12 +5687,7 @@ private:
   }
 
   int pushRun(const BRepAdaptor_Surface& surface, double u, double from, double to) {
-    const gp_Pnt a = surface.Value(u, from);
-    const gp_Pnt b = surface.Value(u, to);
-    if (a.Distance(b) <= Precision::Confusion()) return 0;
-    pushPoint(a);
-    pushPoint(b);
-    return 1;
+    return pushLine(surface.Value(u, from), surface.Value(u, to));
   }
 
   void pushNumbers(double size, const gp_Pnt& p, const gp_Dir* d) {

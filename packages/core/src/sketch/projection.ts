@@ -26,8 +26,14 @@ export type ProjectedCurve =
   /** Counter-clockwise from `start` to `end`, as sketch arcs run. */
   | { type: 'arc'; center: Vec2; start: Vec2; end: Vec2 }
   | { type: 'ellipse'; center: Vec2; major: Vec2; minor: Vec2 }
-  /** A fit-point spline through `points` (curves that aren't lines, circles or ellipses). */
-  | { type: 'spline'; points: Vec2[] };
+  /**
+   * A fit-point spline through `points` (curves that aren't lines, circles or
+   * ellipses), or with `mode: 'control'` a control-point spline whose poles
+   * they are (P4-12: silhouettes and sections fitted from the kernel's samples).
+   */
+  | { type: 'spline'; points: Vec2[]; mode?: 'control' }
+  /** A projected vertex (P4-12). */
+  | { type: 'point'; at: Vec2 };
 
 /** What the kernel found for one projection. */
 export interface ProjectionReport {
@@ -90,22 +96,45 @@ export function projectionOf(
   return undefined;
 }
 
+/** What the Project tool can project, and what Intersect can cut (P4-12). */
+const PROJECTABLE: Record<'project' | 'intersect', readonly GeomRef['kind'][]> = {
+  project: ['edge', 'face', 'vertex', 'body'],
+  intersect: ['face', 'body'],
+};
+
 /**
- * Projects a body edge or face into a sketch (the Project tool). The record
- * starts without curves: the kernel reports them on the next recompute and
- * the app adds them (`syncProjections`), in the same undo step.
+ * Projects a body edge, face, vertex or whole body into a sketch (the
+ * Project tool), or with `mode: 'intersect'` the curves where a face or body
+ * meets the sketch plane (Intersect, P4-12). The record starts without
+ * curves: the kernel reports them on the next recompute and the app adds them
+ * (`syncProjections`), in the same undo step. With `linked: false` (an
+ * include, "Keep linked" off) the app then turns them into plain entities and
+ * drops the record (`includeProjection`).
  */
 export const addProjection = defineCommand<{
   feature: FeatureId;
   id: ProjectionId;
   ref: GeomRef;
-}>('sketch.project', 'Project', (draft, { feature, id, ref }) => {
+  mode?: 'project' | 'intersect';
+  linked?: boolean;
+}>('sketch.project', 'Project', (draft, { feature, id, ref, mode = 'project', linked = true }) => {
   const data = sketchDraft(draft, feature);
-  if (ref.kind !== 'edge' && ref.kind !== 'face') {
-    throw new CommandError('Only body edges and faces can be projected.');
+  if (!PROJECTABLE[mode].includes(ref.kind)) {
+    throw new CommandError(
+      mode === 'intersect'
+        ? 'Only faces and bodies can be intersected with the sketch plane.'
+        : 'Only body edges, faces, vertices and bodies can be projected.',
+    );
   }
-  if (Object.values(data.projections ?? {}).some((p) => p.ref.id === ref.id)) {
-    throw new CommandError("That's already projected into this sketch.");
+  const already = Object.values(data.projections ?? {}).some(
+    (p) => p.ref.kind === ref.kind && p.ref.id === ref.id && (p.mode ?? 'project') === mode,
+  );
+  if (already) {
+    throw new CommandError(
+      mode === 'intersect'
+        ? "That's already intersected with this sketch."
+        : "That's already projected into this sketch.",
+    );
   }
   if (
     id in data.entities ||
@@ -116,8 +145,78 @@ export const addProjection = defineCommand<{
     throw new CommandError(`The sketch already has "${id}".`);
   }
   data.projections ??= {};
-  data.projections[id] = { ref, curves: {} };
+  data.projections[id] = {
+    ref,
+    curves: {},
+    ...(mode === 'intersect' && { mode }),
+    ...(!linked && { linked: false as const }),
+  };
 });
+
+/**
+ * The plain entities an include (`linked: false`) becomes once the kernel
+ * has reported its curves (P4-12): every reported curve as a new entity, in
+ * key order, with no record and nothing holding it. `undefined` while the
+ * report hasn't come (or the source is lost: then `lost` is true).
+ */
+export function includedCurves(
+  data: SketchData,
+  report: SketchReport,
+  newId: () => string,
+): Record<
+  ProjectionId,
+  { entities: Record<SketchEntityId, SketchEntity>; count: number; lost?: true }
+> {
+  const out: Record<
+    ProjectionId,
+    { entities: Record<SketchEntityId, SketchEntity>; count: number; lost?: true }
+  > = {};
+  for (const [pid, projection] of Object.entries(data.projections ?? {})) {
+    if (projection.linked !== false) continue;
+    const reported = report.projections?.[pid as ProjectionId];
+    if (!reported) continue;
+    if (!reported.curves) {
+      out[pid as ProjectionId] = { entities: {}, count: 0, lost: true };
+      continue;
+    }
+    const sync: ProjectionSync = { entities: {}, points: {}, radii: {}, remove: [], curves: {} };
+    const keys = Object.keys(reported.curves).sort();
+    for (const key of keys) addCurve(reported.curves[key] as ProjectedCurve, newId, sync, false);
+    out[pid as ProjectionId] = { entities: sync.entities, count: keys.length };
+  }
+  return out;
+}
+
+/**
+ * Turns an include into plain entities (P4-12, "Keep linked" off): adds the
+ * curves `includedCurves` made and drops the record, so nothing holds them
+ * and they don't follow the model. The app amends it into the step that
+ * added the record and names that step "Include <n> curves".
+ */
+export const includeProjection = defineCommand<{
+  feature: FeatureId;
+  id: ProjectionId;
+  entities: Record<SketchEntityId, SketchEntity>;
+}>('sketch.include', 'Include', (draft, { feature, id, entities }) => {
+  const data = sketchDraft(draft, feature);
+  const projection = data.projections?.[id];
+  if (projection?.linked !== false) {
+    throw new CommandError('That include is already done.');
+  }
+  for (const [eid, e] of Object.entries(entities)) {
+    if (eid in data.entities || eid in data.constraints || eid in data.dimensions) {
+      throw new CommandError(`The sketch already has "${eid}".`);
+    }
+    data.entities[eid as SketchEntityId] = e;
+  }
+  delete data.projections?.[id];
+  if (data.projections && Object.keys(data.projections).length === 0) delete data.projections;
+});
+
+/** The label of an include's undo step. */
+export function includeLabel(count: number): string {
+  return `Include ${count} ${count === 1 ? 'curve' : 'curves'}`;
+}
 
 /** A sketch change that brings projections in line with the kernel (`projectionSync`). */
 export interface ProjectionSync {
@@ -153,6 +252,8 @@ export function projectionSync(
   const sync: ProjectionSync = { entities: {}, points: {}, radii: {}, remove: [], curves: {} };
   let changed = false;
   for (const [pid, projection] of Object.entries(data.projections ?? {})) {
+    // An include becomes plain entities instead (`includedCurves`).
+    if (projection.linked === false) continue;
     const reported = report.projections?.[pid as ProjectionId];
     if (!reported?.curves) continue;
     const curves: Record<string, SketchEntityId | null> = {};
@@ -172,6 +273,12 @@ export function projectionSync(
       if (fits(data, entity, fresh)) {
         curves[key] = id;
         if (movePoints(data, entity, fresh, sync)) changed = true;
+        if (entity.type === 'point' && fresh.type === 'point') {
+          if (Math.abs(entity.x - fresh.at[0]) > SAME || Math.abs(entity.y - fresh.at[1]) > SAME) {
+            sync.points[id] = { x: fresh.at[0], y: fresh.at[1] };
+            changed = true;
+          }
+        }
         if (entity.type === 'circle' && fresh.type === 'circle') {
           if (Math.abs(entity.radius - fresh.radius) > SAME) {
             sync.radii[id] = fresh.radius;
@@ -200,7 +307,9 @@ export function projectionSync(
 /** Whether a stored curve can take a reported one's geometry in place. */
 function fits(data: SketchData, e: SketchEntity, c: ProjectedCurve): boolean {
   if (e.type !== c.type) return false;
-  if (e.type === 'spline' && c.type === 'spline') return e.points.length === c.points.length;
+  if (e.type === 'spline' && c.type === 'spline') {
+    return e.points.length === c.points.length && (e.mode ?? 'fit') === (c.mode ?? 'fit');
+  }
   return entityPoints(e).every((p) => data.entities[p]?.type === 'point');
 }
 
@@ -217,6 +326,8 @@ function pointsOf(c: ProjectedCurve): Vec2[] {
       return [c.center, c.major, c.minor];
     case 'spline':
       return c.points;
+    case 'point':
+      return [];
   }
 }
 
@@ -284,7 +395,15 @@ function addCurve(
       };
       break;
     case 'spline':
-      sync.entities[id] = { type: 'spline', points: c.points.map(point), construction };
+      sync.entities[id] = {
+        type: 'spline',
+        points: c.points.map(point),
+        ...(c.mode === 'control' && { mode: 'control' as const }),
+        construction,
+      };
+      break;
+    case 'point':
+      sync.entities[id] = { type: 'point', x: c.at[0], y: c.at[1] };
       break;
   }
   return id;

@@ -1410,11 +1410,15 @@ with the constraints is reported by the app; the file still loads.
 Model geometry projected into the sketch (P2-09), kept associative. The
 projected curves are ordinary `entities` that the solver holds fixed; the
 kernel reports where they should be on each recompute and the app moves them.
+Since P4-12 a projection may also be an intersection (`mode`), and a
+vertex or a body may be projected.
 
 | Field | Type | Required | Meaning |
 |---|---|---|---|
-| `ref` | GeomRef | yes | What is projected: kind `edge` or `face` (other kinds are refused). |
-| `curves` | record: string to entity ID or `null` | yes | Each key is what a curve comes from (the source edge's persistent name, `sil:<n>` for a silhouette line of a curved face, `edge` for a projected edge itself); its value the entity ID of the curve in the sketch, or `null` once the user deleted it (so it does not come back). A non-null value must be an existing curve (not a point), and no curve is used by two projections. |
+| `ref` | GeomRef | yes | What is projected: kind `edge`, `face`, `vertex` or `body`; with `mode: "intersect"` kind `face` or `body` (other kinds are refused). A body is referred to by its ID. |
+| `curves` | record: string to entity ID or `null` | yes | Each key is what a curve comes from (the source edge's persistent name, `sil:<n>` for a silhouette of a projected face, `sil:<face>:<n>` for a silhouette of a projected body's face, `edge` for a projected edge itself, `vertex` for a projected vertex, `cut:<n>` for an intersection curve); its value the entity ID of the curve in the sketch, or `null` once the user deleted it (so it does not come back). A non-null value must be an existing curve (not a point, except for a vertex's `vertex`), and no curve is used by two projections. Silhouettes and intersection curves that are neither lines nor conics are control-point splines (`mode: "control"`). |
+| `mode` | `"project"` or `"intersect"` | no | `intersect`: the curves where the face or body meets the sketch plane, instead of its projection along the sketch's normal. Absent: `project`. |
+| `linked` | `false` | no | An include ("Keep linked" off) waiting for the kernel's report: the app turns the reported curves into plain entities and removes the record, in the step that added it. Absent: linked. A file normally has none; one left in a file is finished on the next recompute. |
 
 ---
 

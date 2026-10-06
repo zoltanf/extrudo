@@ -531,7 +531,16 @@ a right-click without movement, as Onshape's context menu does.
   as the change. Deleting one keeps it deleted; trimming or filleting it is
   refused. Esc or Select ends the tool. In a sketch that later features
   build on, the view shows the bodies as they were before the sketch while
-  the tool runs.
+  the tool runs. Since P4-12 it also projects a sphere's, torus's or free-form
+  face's outline, a vertex (a fixed point) and a whole body (picked by its
+  browser row: its outline and the sharp edges seen from the sketch's side).
+  A panel in the sketch's column says what to pick and has **Keep linked**
+  (on): off, the next picks come in as plain curves that don't follow the
+  model, one undo step "Include 4 curves".
+- **Intersect (P4-12):** `Shift+P`, or Create ▾ → Intersect. Picks a face, or
+  a body by its browser row, and brings in the curves where it meets the
+  sketch plane (a cylinder cut by a slanted sketch is an ellipse); they follow
+  the model like projected curves, with the same panel and Keep linked.
 - The camera animates to look at the plane (can be turned off). The grid
   aligns to the sketch plane. Bodies are optionally sliced or dimmed.
 - **SKETCH tab groups:** CREATE (line, rectangle ▾, circle ▾, arc ▾, polygon
@@ -588,7 +597,8 @@ Fusion-compatible where Fusion has them; remappable in settings.
 
 Shift+1…7 are Home, Top, Bottom, Front, Back, Left, Right, by key
 position (they work on any layout). The keys live in one table,
-`apps/web/src/commands/keymap.ts`; P is Project (P2-09); Shift+S is Section
+`apps/web/src/commands/keymap.ts`; P is Project (P2-09), Shift+P Intersect in a
+sketch (P4-12; Offset Plane on the model); Shift+S is Section
 Analysis (P3-09); Q and J wait for their tools.
 
 ## 6. Home screen

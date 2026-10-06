@@ -12,6 +12,7 @@ import {
   curvePolyline,
   ellipsePoint,
   ellipseShape,
+  fitControlPoles,
   fitSpline,
   insertKnot,
   normalizeSpline,
@@ -465,6 +466,55 @@ describe('splineCurve', () => {
     );
     // A conic without a rho (which the schema refuses) falls back to a fit spline.
     expect(at({ mode: 'conic' }).poles).toEqual(fitSpline(points).poles);
+  });
+});
+
+describe('fitControlPoles (P4-12)', () => {
+  const nearest = (spline: BSpline, p: Vec2) => {
+    const line = splinePolyline(spline, 400);
+    let best = Number.POSITIVE_INFINITY;
+    for (let i = 1; i < line.length; i++) {
+      const [a, b] = [line[i - 1] as Vec2, line[i] as Vec2];
+      const d: Vec2 = [b[0] - a[0], b[1] - a[1]];
+      const l2 = d[0] * d[0] + d[1] * d[1] || 1;
+      const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * d[0] + (p[1] - a[1]) * d[1]) / l2));
+      best = Math.min(best, Math.hypot(p[0] - a[0] - t * d[0], p[1] - a[1] - t * d[1]));
+    }
+    return best;
+  };
+
+  it('follows samples of a smooth curve within the tolerance, ends held', () => {
+    // A quarter of an ellipse and a sine wave, sampled densely.
+    const curves: Vec2[][] = [
+      Array.from({ length: 80 }, (_, i) => {
+        const t = (i / 79) * (Math.PI / 2);
+        return [20 * Math.cos(t), 8 * Math.sin(t)] as Vec2;
+      }),
+      Array.from({ length: 200 }, (_, i) => [i * 0.2, 3 * Math.sin(i * 0.05)] as Vec2),
+    ];
+    for (const points of curves) {
+      const poles = fitControlPoles(points, 1e-3);
+      expect(poles[0]).toEqual(points[0]);
+      expect(poles[poles.length - 1]).toEqual(points[points.length - 1]);
+      expect(poles.length).toBeLessThan(points.length);
+      const spline = controlSpline(poles);
+      for (const p of points) expect(nearest(spline, p)).toBeLessThan(1.1e-3);
+    }
+  });
+
+  it('gives a line two poles', () => {
+    expect(
+      fitControlPoles(
+        [
+          [0, 0],
+          [3, 4],
+        ],
+        1e-3,
+      ),
+    ).toEqual([
+      [0, 0],
+      [3, 4],
+    ]);
   });
 });
 

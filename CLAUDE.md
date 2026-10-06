@@ -47,7 +47,9 @@ manifold-3d booleans, canvas images) is **done** on 2026-10-05, all five slices
 (ADR-0066). **Phase 4 is therefore complete apart from P4-12's backlog**, of
 which the hardening (ADR-0067), Print Info's walls/infill/cost, fillet and
 chamfer depth, the pattern skip list and handles, primitives placement and the
-**construction backlog (ADR-0040's amendment, 2026-10-06)** are done.
+**construction backlog (ADR-0040's amendment, 2026-10-06)** and **Project's
+backlog** (silhouettes of every surface, vertices and bodies, Intersect, Include:
+ADR-0031's amendment, 2026-10-06) are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -283,7 +285,26 @@ Project tool (`P`; `SketchData.projections` records whose curves are
 ordinary entities the solver holds fixed; the kernel projects through
 facade `edgeGeometry`/`faceSilhouettes`; `ToolHost.syncProjections`
 catches the sketch up after a recompute and re-solves, amended into
-the latest undo step). **In the app a sketch's frame comes only from
+the latest undo step). **P4-12 (ADR-0031's amendment)**: `faceSilhouettes`
+covers every curved surface (cylinders and cones in closed form, the rest
+through TKHLR's `Contap_Contour`: exact lines and circles — a sphere's outline
+is its great circle — and walked polylines on the surface) and returns
+**curve pieces** (`[0, a, b]` line, `[1, …]` circle arc, `[2, n, …]` polyline,
+`[3, …]` ellipse arc; `decodeCurvePieces`), which `projectPieces` joins (arcs of
+one circle, polylines that meet smoothly) and turns into lines, arcs, circles or
+**control-point splines** (`fitControlPoles` in core, within 1 µm, split at
+cusps; a closed one in two). Project also takes a **vertex** (a fixed point, key
+`vertex`) and a **body** (by its browser row: outline edges, every face's
+silhouettes `sil:<face>:<n>`, and the sharp edges the facade's `edgeVisibility`
+— `HLRBRep_Algo` from the normal's side — says are seen); the tool **Intersect**
+(`intersect`, `Shift+P` in a sketch) stores `mode: 'intersect'` and the kernel
+cuts the face or body with the sketch plane (facade `sectionWithPlane`, keys
+`cut:<n>`); and the tools' panel's **"Keep linked"** off stores `linked: false`,
+which `ToolHost.syncProjections` turns into plain entities (`includedCurves`,
+`includeProjection`) amended into the same step and **relabelled** "Include
+<n> curves" (`DocumentState.amend(command, { relabel })`). `withoutRepeats` drops
+a curve that repeats an earlier one. Slice stays open. Native harness:
+`spikes/p4-12-project/` (`run.sh`, `run.sh leaks 100`). **In the app a sketch's frame comes only from
 `sketchFrame(feature, plane, model.sketches)`** (`sketch/frame.ts`),
 never `planeFrame()` alone. ADR-0032 (P2-10) added the primitives
 `box`, `cylinder`, `sphere`, `torus` (`packages/core/src/primitives.ts`,
@@ -357,13 +378,16 @@ files into `dist/sw.js` and versions it; registration in
 manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
 also found that the kernel uses no raw OCCT bindings, so the build's
-binding list is now just `ExtrudoFacade` (built by CI: WASM 18.80 MB raw,
-6.13 MB gzip, 4.26 MB brotli (Node's zlib at its best settings), after
+binding list is now just `ExtrudoFacade` (built by CI: WASM 19.19 MB raw,
+6.25 MB gzip, 4.34 MB brotli (Node's zlib at its best settings), after
 P4-04/P4-05/P4-10's facade methods, P4-12's `DYNAMIC_EXECUTION: 0`, P4-12
 §H3's `integrateVolume`, P4-12's split boolean and `extendFace` (about 10 kB)
 and P4-12's `shellFaces`, `pushWall`/`clearWalls` and the shell's plugs (about
-30 kB); the 15.76 MB / 3.69 MB brotli of ADR-0037 was P2-15's; OCCT input hash
-`2b4714e5b37a` (release `occt-2b4714e5b37a`); **don't
+30 kB) and P4-12 Project's `sectionWithPlane`/`edgeVisibility` and the contour
+finder in `faceSilhouettes` (TKHLR's `Contap_Contour` and `HLRBRep_Algo`: 388 kB
+raw, 0.08 MB brotli; 18.80 / 6.13 / 4.26 MB before); the 15.76 MB / 3.69 MB brotli
+of ADR-0037 was P2-15's; OCCT input hash
+`f25e8583481f` (release `occt-f25e8583481f`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
@@ -2181,7 +2205,19 @@ them. Notes further down that name a machine apply to that machine only.
   the stored curves, not fresh projections. While Create Sketch waits,
   the view (not R3F plane events) picks planes and faces
   (`PlanePicker.faces`). An XY sketch under a body is hidden behind its
-  faces (depth test).
+  faces (depth test). **P4-12** (`e2e/project.spec.ts`): the tools' panel is
+  the region "Project" or "Intersect" (`exact`) with the checkbox "Keep linked"
+  and "Done"; Intersect is `Shift+P` in a sketch; a body is picked by its
+  browser row (`complementary` "Browser", button "Body2", `exact`); the
+  summary's bounds are the curves' **points**, so a projected circle reads
+  `curves=1:x=0..0:y=0..0` (its centre); projected curves are fixed in
+  `data-sketch-status` (`free=0 fixed=2` for a circle), an include's free
+  (`free=12 fixed=0` for four lines) with no `data-sketch-projected`. A sketch
+  on XY over a body below it opens fitted to the body in **perspective**, so
+  the sketch plane's curves can be off-screen: `zoomOutTo` and map through
+  `projector` at z = 0 before dragging them. An angled construction plane for
+  Intersect is the Angled Midplane of a Box's front and top faces, made
+  **before** the next body changes the home view's fit.
 - **Revolve e2e** (`e2e/revolve.spec.ts`): the dialog is the region
   "Revolve dialog", the axis field the button "Axis" ("Y axis", "1
   sketch curve"); origin axes appear in `data-model-hover` /

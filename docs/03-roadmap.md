@@ -888,9 +888,9 @@ end to end, faster than in Fusion 360.
     "to"~~; taper on ellipse and spline sides; symmetric half-length
     (ADR-0028, -0029; the first two done 2026-10-06, the taper and the
     half-length stay open).
-  - Silhouettes of spheres, tori and free-form faces (HLR); projecting
-    vertices and bodies, an "include" mode; Intersect and Slice
-    (ADR-0031).
+  - ~~Silhouettes of spheres, tori and free-form faces (HLR); projecting
+    vertices and bodies, an "include" mode; Intersect~~ **done (P4-12,
+    2026-10-06, ADR-0031's amendment)**; Slice stays open (ADR-0031).
   - STEP colours (XDE) (ADR-0034; the readers are P4-06).
   - ~~Section analysis on several planes, a section box~~ **done
     (P4-12, 2026-10-06, ADR-0045's amendment: up to three planes, a box of
