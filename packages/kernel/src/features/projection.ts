@@ -203,7 +203,7 @@ export function projectPoint(p: Vec3, frame: SketchFrame): ProjectedCurve {
  */
 export function projectPieces(pieces: readonly CurvePiece[], frame: SketchFrame): ProjectedCurve[] {
   const out: ProjectedCurve[] = [];
-  for (const piece of joinArcs(pieces)) {
+  for (const piece of joinPolylines(joinArcs(pieces))) {
     if (piece.type === 'line') {
       const curve = projectSegment(piece.points, frame);
       if (curve) out.push(curve);
@@ -214,6 +214,54 @@ export function projectPieces(pieces: readonly CurvePiece[], frame: SketchFrame)
       if (curve) out.push(curve);
     }
   }
+  return out;
+}
+
+/**
+ * Joins polylines that meet end to end (within 1e-6 mm) and run on smoothly
+ * there (in 3D, within 10°) into one, in place of the first: the contour
+ * finder walks one outline in several lines (a torus's tube seen from the
+ * side), which then project as one curve. Lines that only touch (a torus's
+ * top circle and its tube's outline) stay apart.
+ */
+export function joinPolylines(pieces: readonly CurvePiece[]): CurvePiece[] {
+  const close = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) <= 1e-6;
+  /** The direction a polyline leaves its first point in. */
+  const lead = (p: Vec3[]): Vec3 => unit(add(p[1] as Vec3, p[0] as Vec3, -1));
+  const near = (a: Vec3[], b: Vec3[]) =>
+    close(a.at(-1) as Vec3, b[0] as Vec3) &&
+    dot(lead([...a].reverse()), lead(b)) <= -Math.cos((10 * Math.PI) / 180);
+  const lines: (Vec3[] | undefined)[] = pieces.map((p) =>
+    p.type === 'polyline' ? [...p.points] : undefined,
+  );
+  let joined = true;
+  while (joined) {
+    joined = false;
+    for (let i = 0; i < lines.length && !joined; i++) {
+      const a = lines[i];
+      if (!a || a.length < 2) continue;
+      for (let j = 0; j < lines.length && !joined; j++) {
+        const b = lines[j];
+        if (i === j || !b || b.length < 2) continue;
+        const rb = [...b].reverse();
+        if (near(a, b)) lines[i] = [...a, ...b.slice(1)];
+        else if (near(a, rb)) lines[i] = [...a, ...rb.slice(1)];
+        else if (near(b, a)) lines[i] = [...b, ...a.slice(1)];
+        else if (near(rb, a)) lines[i] = [...rb, ...a.slice(1)];
+        else continue;
+        lines[j] = undefined;
+        joined = true;
+      }
+    }
+  }
+  const out: CurvePiece[] = [];
+  pieces.forEach((piece, i) => {
+    if (piece.type !== 'polyline') out.push(piece);
+    else {
+      const points = lines[i];
+      if (points) out.push({ type: 'polyline', points });
+    }
+  });
   return out;
 }
 

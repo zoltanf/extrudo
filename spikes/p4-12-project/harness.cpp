@@ -352,6 +352,23 @@ static void runChecks() {
                 faceCount(box), total, worst);
     check(failed == 0 && total > 0 && worst < 1e-4, "filleted box: silhouettes on the faces");
   }
+  // --- A cylinder from the side: its two silhouette lines, in the pieces' encoding.
+  {
+    const int cylinder = f.makeCylinder(20, 0, 0, 0, 0, 1, 5, 12);
+    int side = -1;
+    for (int i = 0; i < faceCount(cylinder); ++i) {
+      const BRepAdaptor_Surface surface(faceOf(cylinder, i));
+      if (surface.GetType() == GeomAbs_Cylinder) side = i;
+    }
+    const std::vector<Piece> pieces = silhouettes(cylinder, side, gp_Dir(0, -1, 0));
+    std::printf("  cylinder r 5 seen along -Y: %zu pieces\n", pieces.size());
+    bool lines = pieces.size() == 2;
+    for (const Piece& p : pieces) {
+      const double x = p.points.empty() ? 0 : p.points[0].X();
+      lines = lines && p.kind == 0 && (std::abs(x - 15) < 1e-9 || std::abs(x - 25) < 1e-9);
+    }
+    check(lines, "cylinder: two lines at x = 15 and 25");
+  }
   // --- Intersect: a cylinder with an oblique plane.
   {
     const int cylinder = f.makeCylinder(0, 0, 0, 0, 0, 1, 10, 40);

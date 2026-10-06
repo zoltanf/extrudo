@@ -5687,12 +5687,7 @@ private:
   }
 
   int pushRun(const BRepAdaptor_Surface& surface, double u, double from, double to) {
-    const gp_Pnt a = surface.Value(u, from);
-    const gp_Pnt b = surface.Value(u, to);
-    if (a.Distance(b) <= Precision::Confusion()) return 0;
-    pushPoint(a);
-    pushPoint(b);
-    return 1;
+    return pushLine(surface.Value(u, from), surface.Value(u, to));
   }
 
   void pushNumbers(double size, const gp_Pnt& p, const gp_Dir* d) {
