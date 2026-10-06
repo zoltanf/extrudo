@@ -174,3 +174,182 @@ native harness on the pinned image):
 - Shelling a body twice works (the cavity's faces are ordinary faces), and a
   sealed void is a legitimate result the slicers accept; a warning about
   trapped resin or powder is P3-10's (3D-print aids) business.
+
+## Amendment (P4-12, 2026-10-06): a thickness per face, and openings next to a fillet
+
+Two items of the P4-12 backlog: "Shell: a thickness per face; removing faces
+next to a fillet". Prototyped natively first (`spikes/p4-12-shell-faces/`:
+`run.sh` builds `harness.cpp` over the facade in the pinned image; `run.sh`
+alone prints the volume table below, `run.sh sweep` and `run.sh sweep2` are
+the trap sweeps, one node process per case, `DEBUG=1`, `MALLOC=…` and
+`OPT=…` choose the build).
+
+### Decisions
+
+1. **Wall sets.** The shell takes up to `SHELL_MAX_WALLS` = 8 numbered sets in
+   ADR-0038's manner: `wallFaces` + `wallThickness`, `wallFaces2` +
+   `wallThickness2` … (`shellWallFacesKey`, `shellWallThicknessKey`,
+   `shellWallSets` in core; `shellInputs`' `walls` option). Each set's faces
+   get its thickness instead of `thickness`. A set with no faces does
+   nothing, so a document without sets reads and computes exactly as before
+   (no schema-version change). The evaluator refuses, worded for the user: a
+   set with faces and no thickness, a thickness ≤ 0, a face of a body this
+   shell doesn't hollow, a removed face in a set, a face in two sets.
+2. **The facade: `clearWalls()`, `pushWall(face, thickness)` and
+   `shellFaces(shape, thickness, outside)`.** The removed faces are staged
+   with `pushArg` as for `shell`, the walls with `pushWall` (the facade's
+   existing staging style: a clear and a push per item, read by the call).
+   `Kernel.shell(shape, faces, thickness, side, walls)` calls `shellFaces`
+   only when there are walls; `shell` is unchanged for every other shell.
+   `shellFaces` runs `BRepOffset_MakeOffset` directly (what
+   `BRepOffsetAPI_MakeThickSolid` wraps: `Initialize`, `AddFace` per removed
+   face, `SetOffsetOnFace` per wall, `MakeThickSolid`) on a copy, and checks
+   its result like `shell` (a solid, `BRepCheck_Analyzer`, a positive volume,
+   smaller inwards) with the distance test **per thickness** (each group of
+   faces at least its own thickness from its offsets) and over all faces (at
+   least the thinnest). Its history is the builder's (its `Modified` of a
+   closing face is the API's), so `nameShell` names it unchanged: the outer
+   skin keeps the original names, the cavity is `shell:<id>:inner:(<face>)`,
+   the rim `shell:<id>:rim:(<face>)` — adding a wall set renames nothing.
+3. **Sharp joins with wall sets.** With `GeomAbs_Arc`, OCCT's
+   `UpdateFaceOffset` spreads a face's own offset over every edge where the
+   offsets diverge (convex edges outwards, concave ones inwards): a box shelled
+   outwards with a 4 mm floor came out 4 mm thick all round (10,145 mm³
+   instead of 5,824), an L's inner step spread to the wall above it. With
+   `GeomAbs_Intersection` (Offset Face's join, ADR-0051) it spreads over smooth
+   edges only, and every case of the table is exact. So **a shell with wall
+   sets joins its walls sharp**: outwards its corners are square instead of
+   rounded, inwards a concave edge's wall is thicker at the corner (an L's
+   inner corner: 7,472 mm³ against round joins' 7,458). A shell without sets
+   keeps round joins.
+4. **Smooth chains take one thickness.** OCCT offsets the faces that run
+   smoothly into a set's face (its smooth chain, `smoothChains`, ADR-0051) by
+   the set's value, so the facade does too (`wallThicknesses`), the check uses
+   it, and two sets that reach one chain with different thicknesses are
+   refused (status 10, "Face 7 runs smoothly into a face with another wall
+   thickness…"). The dialog's Wall faces fields have `tangentChain`, so a pick
+   shows the chain. A body where a smooth chain has a sharp edge inside it is
+   refused before OCCT runs (status 7), as Offset Face refuses it: the per-face
+   offset is the call ADR-0051 found trapping on such bodies.
+5. **Diagnosis**: a failing `shellFaces` bisects one factor every thickness
+   (the shell's and the walls') is scaled by together, `[1, factor]`, worded
+   "Walls of 2 mm, 25 mm are too thick for this body (max ≈ 1.5 mm, 19 mm, all
+   scaled together). Try thinner walls." Statuses 8 (a wall is a removed face)
+   and 9 (a face with two thicknesses) back up the evaluator's own checks.
+6. **Openings next to a fillet: plugs.** See "The trap" below: the refusal of
+   a removed face tangent to a neighbour was made for a trap that doesn't
+   reproduce, and OCCT can't open such a face anyway. What it does build is
+   the body **hollowed closed**. So when a removed face runs smoothly into a
+   neighbour (`openingRoute`), both `shell` and `shellFaces` hollow the body
+   closed (round joins for `shell`, sharp ones with wall sets) and cut each
+   removed face's **plug** out of it (`buildPlugged`, `plugShell`): the face's
+   prism, from half a wall outside the face to half a wall past the wall's
+   inner side, in common with the cavity moved out along the face's normal by
+   two walls, so the plug keeps to the cavity's own outline — at a tangent
+   edge the face's outline (the round below it is concentric), at a square
+   edge the inner side of the neighbouring wall. Inwards the cavity is the
+   skin's inside, outwards the body itself. This is a plain boolean, valid and
+   exact (the table), and its history (`recordPlugged`) is the closed hollow's
+   carried through the cut, with each removed face *modified* into what its
+   plug leaves, so the opening's walls are `shell:<id>:rim:(<face>)` like any
+   rim. The rule for a plug (`pluggable`): **the face is flat, each of its
+   edges meets a neighbour smoothly or square (within 1e-3 of 90°), and no two
+   removed faces share an edge** (two plugs would leave the bar between them).
+   Anything else stays refused before OCCT runs (status 6), with the message
+   now saying what an opening needs. A body whose fillet is thinner than the
+   wall fails like its closed hollow does and reports the largest wall that
+   works (a 1 mm round takes walls under 0.99 mm).
+7. **The dialog** (`apps/web/src/features/shell.ts`): under Direction, "Wall
+   faces" (prompt "Pick faces for another thickness") and, once it has faces,
+   "Wall thickness" (default 4 mm); set n + 1 shows once set n has faces, as
+   fillet's sets. The dialog's validation names a removed face in a set and a
+   face in two sets before a preview runs. Mesh bodies are refused as before
+   (`#solid`).
+
+### The trap (ADR-0046 Context): what was found
+
+ADR-0046 saw `RuntimeError: memory access out of bounds` inside
+`malloc`/`free` while removing a face next to a fillet, under
+`BRepOffset_Tool::ExtentFace` → `Approx_SameParameter`, depending on what ran
+before. Rebuilt with `-g2`, the shell **without the refusal** (the facade's
+whole path: build, check, and the seven-step bisection on failure) ran on
+rounded boxes (all twelve edges at r = 1, 3, 5 mm; one top edge at 3 and
+5 mm; the four vertical edges at 3 mm), cylinders with a rounded rim (r = 2,
+4 mm), every face, walls of 0.5 to 4 mm:
+
+- one case per process (`sweep`, raw `MakeThickSolidByJoin`, 130 cases),
+- in sequence in one process (`useq`, 112 and 302 cases, about 3,000 builds
+  with the probes), with Emscripten's dlmalloc at `-O1` and with **mimalloc at
+  `-O3`**, which is what the real build links (CLAUDE.md),
+- and under **`emmalloc-memvalidate`**, which checks the whole heap at every
+  allocation and stops at the first damaged block (six cases, 48 builds).
+
+**None trapped and the validator found no damage.** OCCT 8.0.1 never built a
+valid shell with such a face removed either: every result was either invalid
+(`BRepCheck_Analyzer`) or the body handed back unchanged (`NbOF == NbF`), and
+the bisection found no thickness that worked. So the trap of P3-03 is not
+reproducible on the current OCCT and facade (most likely it came from an
+earlier prototype that offset the cached body in place — the copy for every
+build arrived with the same ADR — but that can't be shown now), and refusing
+these faces cost nothing a build could have given. The refusal is **kept** for
+the faces plugs can't open — a crash in the worker is still the worse failure,
+and there is nothing to gain from trying — and those faces are now only curved
+ones, slanted neighbours and removed faces that touch. The plug route itself
+was swept the same way (`sweep2`: every flat tangent face of the bodies
+above and of a box with only its top edges rounded, walls 0.3 to 6 mm, through
+the facade, one process each): no trap; every case either built or reported
+the largest wall that works.
+
+### Results (`bash spikes/p4-12-shell-faces/run.sh`; 20 mm cube unless named)
+
+| Case | Volume mm³ | Exact | Faces |
+|---|---|---|---|
+| top removed, 2 mm, floor 4 mm | 3904.000 | 8000 − 16·16·16 | 11 |
+| top removed, outside 2 mm, floor 4 mm (sharp) | 5824.000 | 24³ − 8000 | 11 |
+| top removed, floor 4, front 3 | 4160.000 | 8000 − 16·15·16 | 11 |
+| top removed, 2 mm, floor 1 mm | 3136.000 | 8000 − 16·16·19 | 11 |
+| closed, 2 mm, top 4 mm | 4416.000 | 8000 − 16·16·14 | 12 |
+| closed, outside 2 mm, top 4 mm | 6976.000 | 24·24·26 − 8000 | 12 |
+| cylinder r 10, top removed, 2 mm, floor 5 mm | 3267.256 | π(2000 − 64·15) | 5 |
+| cylinder r 10, closed, 2 mm, both ends 4 mm | 3870.442 | π(2000 − 64·12) | 6 |
+| cylinder r 10, top removed, wall 3, floor 2 | 3512.301 | π(2000 − 49·18) | 5 |
+| cylinder r 10, top removed, outside 2, floor 5 | 5026.548 | π(144·25 − 2000) | 5 |
+| vertical edges r 3, top removed, 2, floor 4 | 3763.221 | exact | 19 |
+| vertical edges r 3, top removed, 2, sides 2.5 (the ring's chain) | 3799.350 | exact | 19 |
+| vertical edges r 3, top removed, outside 2, floor 4 | 5463.469 | exact | 19 |
+| all edges r 3, closed, 2, top 2.5 (its chain is the whole body) | 4207.109 | exact | 52 |
+| L (40·20·10 + 10·20·30), end removed, 2, step 4 | 8432.000 | exact | 15 |
+| all edges r 3, top removed, 0.5 / 2 / 2.9 (plug) | 900.501 / 3124.484 / 4141.296 | exact | 54 |
+| all edges r 3, top removed, outside 2 (plug) | 4481.652 | exact | 54 |
+| one top edge r 3, top removed, 1 (plug) | 1856.823 | exact | 20 |
+| one top edge r 3, top removed, 1, floor 4 (plug) | 2828.823 | exact | 20 |
+| cylinder, rim r 2, top removed, 1 (plug) | 1461.990 | exact (Pappus) | 7 |
+
+Every row matches its exact volume to within 1e-15 relative. A floor of 25 mm
+in a 20 mm cube reports the factor 0.797; two sides of one rounded ring at 2.5
+and 3 mm, a removed face in a set, a face in two sets, a body with only its
+top edges rounded given a wall set, a rounded edge's own face and two touching
+removed faces are refused before OCCT runs. A shell with wall sets takes 20 to
+200 ms in the harness, a plugged one 50 to 400 ms (a fully rounded box).
+
+### Rejected
+
+- **Removing the face's whole smooth chain** (Offset Face's `tangentFaces`):
+  on a rounded box the chain is the whole body, and on a box with one rounded
+  edge it opens the front as well as the top.
+- **Round joins with wall sets**: they spread a set's thickness across
+  diverging edges (decision 3), which a check can only refuse.
+- **The plug as the face's prism alone**: at a square edge it cuts the
+  neighbouring wall's top away (one top edge rounded: 1,778.8 mm³ instead of
+  1,856.8), hence the common with the moved cavity.
+- **Lifting the refusal of tangent faces** without plugs: OCCT builds nothing
+  there (see "The trap"), so it would only add eight failing builds to every
+  preview.
+
+### Open
+
+- Plugs through a **curved** face or past a **slanted** neighbour, and two
+  removed faces next to a fillet that share an edge.
+- Round joins with wall sets: a fillet of the outside corners after the shell
+  does it today.
+- A handle per wall set in the view.

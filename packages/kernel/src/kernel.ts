@@ -193,7 +193,32 @@ export type ShellProblem =
   | { kind: 'not-solid' }
   /** A removed face runs smoothly into a neighbour (next to a fillet): OCCT can't open it. */
   | { kind: 'tangent'; face: number }
+  /**
+   * The walls with thicknesses of their own are too thick (P4-12): `factor` is the
+   * largest every thickness (the shell's and the walls') can be scaled by together.
+   */
+  | { kind: 'walls-too-thick'; factor: number }
+  /**
+   * Some smooth chain of faces has a sharp edge inside it (fillets that meet at a
+   * corner): OCCT's per-face offset traps on such bodies, so walls of their own
+   * thickness aren't tried (P4-12, ADR-0051's rule).
+   */
+  | { kind: 'sharp-chain' }
+  /** A wall with a thickness of its own is also a removed face. */
+  | { kind: 'wall-removed'; face: number }
+  /** A face was given two different wall thicknesses. */
+  | { kind: 'wall-twice'; face: number }
+  /** Faces that run smoothly into each other were given different wall thicknesses. */
+  | { kind: 'wall-chain'; face: number }
   | { kind: 'other' };
+
+/** A face whose wall has a thickness of its own (P4-12, `Kernel.shell`). */
+export interface ShellWall {
+  /** The face's index in the shape's face list. */
+  face: number;
+  /** Its wall thickness, mm (> 0). */
+  thickness: number;
+}
 
 /** A shell OCCT couldn't build, with its diagnosis. */
 export class ShellError extends KernelError {
@@ -665,22 +690,39 @@ export class Kernel {
    * the faces that stay are kept and each generates its offset face, a
    * removed face is modified into the rim around the opening, edges and
    * vertices of the surface generate the rounded joins.
+   *
+   * With `walls` (P4-12, ADR-0046's amendment) those faces get their own
+   * thickness (and so do the faces that run smoothly into them) through the
+   * facade's `shellFaces`, whose joins are sharp; without, the facade's
+   * `shell` builds exactly what it always did (round joins where the
+   * offsets diverge).
    */
   shell(
     shape: ShapeHandle,
     faces: readonly number[],
     thickness: number,
     side: ShellSide = 'inside',
+    walls: readonly ShellWall[] = [],
   ): OperationResult {
     this.#solid(shape, 'Shell');
     const f = this.#facade;
     f.clearArgs();
     for (const face of faces) f.pushArg(face);
-    const handle = f.shell(shape, thickness, side === 'outside');
+    let handle: number;
+    if (walls.length > 0) {
+      f.clearWalls();
+      for (const wall of walls) f.pushWall(wall.face, wall.thickness);
+      handle = f.shellFaces(shape, thickness, side === 'outside');
+    } else {
+      handle = f.shell(shape, thickness, side === 'outside');
+    }
     if (handle === 0) {
       throw new ShellError(
         f.lastError() || 'The shell failed.',
-        decodeShellProblems(this.#copy(Float64Array, f.geometryPtr(), f.geometrySize())),
+        decodeShellProblems(
+          this.#copy(Float64Array, f.geometryPtr(), f.geometrySize()),
+          walls.length > 0,
+        ),
       );
     }
     return this.#withHistory(handle);
@@ -1889,13 +1931,18 @@ export function decodeChamferProblems(v: Float64Array): ChamferProblem[] {
   return problems.length > 0 ? problems : [{ kind: 'other' }];
 }
 
-/** Decodes the facade's shell diagnosis: [status, value]. */
-export function decodeShellProblems(v: Float64Array): ShellProblem[] {
+/**
+ * Decodes the facade's shell diagnosis: [status, value]. With `walls` it is
+ * `shellFaces`' (P4-12), whose status 1 carries a factor, not a thickness.
+ */
+export function decodeShellProblems(v: Float64Array, walls = false): ShellProblem[] {
   if (v.length < 2) return [{ kind: 'other' }];
   const value = v[1] as number;
   switch (v[0]) {
     case 1:
-      return [{ kind: 'too-thick', max: value }];
+      return [
+        walls ? { kind: 'walls-too-thick', factor: value } : { kind: 'too-thick', max: value },
+      ];
     case 2:
       return [{ kind: 'unshellable' }];
     case 3:
@@ -1904,6 +1951,14 @@ export function decodeShellProblems(v: Float64Array): ShellProblem[] {
       return [{ kind: 'not-solid' }];
     case 6:
       return [{ kind: 'tangent', face: Math.round(value) }];
+    case 7:
+      return [{ kind: 'sharp-chain' }];
+    case 8:
+      return [{ kind: 'wall-removed', face: Math.round(value) }];
+    case 9:
+      return [{ kind: 'wall-twice', face: Math.round(value) }];
+    case 10:
+      return [{ kind: 'wall-chain', face: Math.round(value) }];
     default:
       return [{ kind: 'other' }];
   }

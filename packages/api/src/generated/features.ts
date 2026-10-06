@@ -651,6 +651,22 @@ export interface FeatureMethods {
    * @param inputs.bodies The bodies to hollow closed, besides the bodies of the faces.
    * @param inputs.thickness The wall thickness; a length. Required.
    * @param inputs.direction Hollow inside the bodies or outside them. Default inside.
+   * @param inputs.wallFaces Wall set 1's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing.
+   * @param inputs.wallThickness Wall set 1's wall thickness; a length, needed once the set has faces.
+   * @param inputs.wallFaces2 Wall set 2's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing.
+   * @param inputs.wallThickness2 Wall set 2's wall thickness; a length, needed once the set has faces.
+   * @param inputs.wallFaces3 Wall set 3's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing.
+   * @param inputs.wallThickness3 Wall set 3's wall thickness; a length, needed once the set has faces.
+   * @param inputs.wallFaces4 Wall set 4's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing.
+   * @param inputs.wallThickness4 Wall set 4's wall thickness; a length, needed once the set has faces.
+   * @param inputs.wallFaces5 Wall set 5's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing.
+   * @param inputs.wallThickness5 Wall set 5's wall thickness; a length, needed once the set has faces.
+   * @param inputs.wallFaces6 Wall set 6's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing.
+   * @param inputs.wallThickness6 Wall set 6's wall thickness; a length, needed once the set has faces.
+   * @param inputs.wallFaces7 Wall set 7's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing.
+   * @param inputs.wallThickness7 Wall set 7's wall thickness; a length, needed once the set has faces.
+   * @param inputs.wallFaces8 Wall set 8's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing.
+   * @param inputs.wallThickness8 Wall set 8's wall thickness; a length, needed once the set has faces.
    *
    * The faces it makes, as `handle.face(role)` takes them:
    * - `inner:<face>` — The face of the wall itself, on the side away from the outer skin (an inside shell hollows in).

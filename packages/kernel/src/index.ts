@@ -68,6 +68,7 @@ export {
   ShellError,
   type ShellProblem,
   type ShellSide,
+  type ShellWall,
   type SurfaceGeometry,
   stepString,
   type Vec3,

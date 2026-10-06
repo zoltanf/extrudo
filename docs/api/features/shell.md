@@ -24,6 +24,22 @@ a valid feature.
 | `bodies` | `GeomRef \| GeomRef[]` (`body`) | optional | The bodies to hollow closed, besides the bodies of the faces. |
 | `thickness` | `string \| number \| ParameterHandle` | **required** | The wall thickness; a length. |
 | `direction` | `'inside' \| 'outside'` | default `inside` | Hollow inside the bodies or outside them. |
+| `wallFaces` | `GeomRef \| GeomRef[]` (`face`) | optional | Wall set 1's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing. |
+| `wallThickness` | `string \| number \| ParameterHandle` | optional | Wall set 1's wall thickness; a length, needed once the set has faces. |
+| `wallFaces2` | `GeomRef \| GeomRef[]` (`face`) | optional | Wall set 2's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing. |
+| `wallThickness2` | `string \| number \| ParameterHandle` | optional | Wall set 2's wall thickness; a length, needed once the set has faces. |
+| `wallFaces3` | `GeomRef \| GeomRef[]` (`face`) | optional | Wall set 3's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing. |
+| `wallThickness3` | `string \| number \| ParameterHandle` | optional | Wall set 3's wall thickness; a length, needed once the set has faces. |
+| `wallFaces4` | `GeomRef \| GeomRef[]` (`face`) | optional | Wall set 4's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing. |
+| `wallThickness4` | `string \| number \| ParameterHandle` | optional | Wall set 4's wall thickness; a length, needed once the set has faces. |
+| `wallFaces5` | `GeomRef \| GeomRef[]` (`face`) | optional | Wall set 5's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing. |
+| `wallThickness5` | `string \| number \| ParameterHandle` | optional | Wall set 5's wall thickness; a length, needed once the set has faces. |
+| `wallFaces6` | `GeomRef \| GeomRef[]` (`face`) | optional | Wall set 6's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing. |
+| `wallThickness6` | `string \| number \| ParameterHandle` | optional | Wall set 6's wall thickness; a length, needed once the set has faces. |
+| `wallFaces7` | `GeomRef \| GeomRef[]` (`face`) | optional | Wall set 7's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing. |
+| `wallThickness7` | `string \| number \| ParameterHandle` | optional | Wall set 7's wall thickness; a length, needed once the set has faces. |
+| `wallFaces8` | `GeomRef \| GeomRef[]` (`face`) | optional | Wall set 8's faces: their walls get the set's thickness instead of the shell's. A set with no faces does nothing. |
+| `wallThickness8` | `string \| number \| ParameterHandle` | optional | Wall set 8's wall thickness; a length, needed once the set has faces. |
 
 ## Faces
 

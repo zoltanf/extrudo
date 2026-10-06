@@ -4,6 +4,18 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 Shell: a thickness per face, and openings next to a
+  fillet** (ADR-0046's amendment): up to eight wall sets ("Wall faces" and
+  "Wall thickness" in the dialog) give faces their own thickness — a thicker
+  floor, a thinner lid — through the facade's new `shellFaces` (per-face
+  offsets, sharp joins; the faces that run smoothly into a picked one come
+  with it), with every thickness scaled together in the "too thick"
+  diagnosis. A flat face next to a fillet can now be removed: the body is
+  hollowed closed and the opening cut out as a plug kept to the cavity's
+  outline (exact volumes on rounded boxes and rimmed cylinders). The trap the
+  old refusal guarded against didn't reproduce in about 3,000 unguarded builds
+  (also with mimalloc and a heap validator); curved faces, slanted neighbours
+  and touching removed faces next to a fillet stay refused.
 - 2026-10-06 · **P4-12 Section analysis: several planes and a section box**
   (ADR-0045's amendment): the Section Analysis panel lists up to three planes
   as rows (offset, Flip, Show, Change, Remove, "Add plane"), each with its own
