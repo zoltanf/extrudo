@@ -91,7 +91,17 @@ export function FeatureDialogPanel({
   const onPointerMove = (event: PointerEvent<HTMLElement>) => {
     const d = drag.current;
     if (!d) return;
-    onMove({ x: d.from.x + event.clientX - d.x, y: d.from.y + event.clientY - d.y });
+    const panel = event.currentTarget.parentElement;
+    const view = panel?.parentElement;
+    const width = panel?.offsetWidth ?? 256;
+    const height = view?.clientHeight ?? 800;
+    onMove({
+      x: Math.max(
+        HOME.right + width - (view?.clientWidth ?? 1280),
+        Math.min(HOME.right, d.from.x + event.clientX - d.x),
+      ),
+      y: Math.max(-HOME.top, Math.min(height - HOME.top - 80, d.from.y + event.clientY - d.y)),
+    });
   };
   const onPointerUp = () => {
     drag.current = undefined;
@@ -106,7 +116,9 @@ export function FeatureDialogPanel({
       data-preview-status={open.preview.pending ? 'pending' : status?.status}
       className="pointer-events-auto absolute z-20 flex w-64 flex-col rounded-dialog border border-line shadow-raised backdrop-blur-[6px]"
       style={{
-        right: HOME.right - offset.x,
+        right: `clamp(12px, ${HOME.right - offset.x}px, calc(100% - ${spec.wide ? 560 : 256}px - 12px))`,
+        width: spec.wide ? 560 : 256,
+        maxWidth: 'calc(100% - 24px)',
         top: HOME.top + offset.y,
         // A long dialog (Extrude with two sides) scrolls its fields instead of running off the view.
         maxHeight: `calc(100% - ${Math.max(0, HOME.top + offset.y) + 8}px)`,
@@ -161,7 +173,12 @@ export function FeatureDialogPanel({
         >
           <CircleAlert size={14} className="mt-0.5 shrink-0" />
           <span>
-            <Message text={why && !fieldIssue ? why : (status?.message ?? '')} />
+            <Message
+              text={(why && !fieldIssue ? why : (status?.message ?? '')).replace(
+                /^(Line \d+: )?Error: /,
+                '$1',
+              )}
+            />
           </span>
         </p>
       )}

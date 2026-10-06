@@ -15,6 +15,7 @@ import type { BodyMesh, MeshOptions } from '../mesh';
 import type { ShapeDescription } from '../naming/description';
 import type { TopoNames } from '../naming/names';
 import type { ResolvedRef, ResolveOptions } from '../naming/resolve';
+import type { ScriptHost } from '../script-host';
 
 /**
  * A file of the design that the worker doesn't have (P4-06, ADR-0066 §0): the
@@ -73,14 +74,40 @@ export interface KernelFeatureDefinition<I extends FeatureInputs = FeatureInputs
    */
   evaluate(ctx: EvalContext<I>): FeatureOutput;
   /**
-   * Work that has to wait for something outside the kernel's thread before
-   * `evaluate` can run (P5-04, ADR-0071 §3: an OpenSCAD compile in a worker
-   * of its own). The engine awaits it right before `evaluate`, only when the
-   * cache misses, and `evaluate` reads what it resolved to as `ctx.prepared`.
-   * A `KernelError` it throws is the feature's error, as if `evaluate` threw
-   * it. It makes no shapes.
+   * A feature that **makes features** instead of a result (P5-02's Script,
+   * ADR-0070 §1): the engine calls this instead of `evaluate` and evaluates
+   * what it returns right after it, in order, each under its own cache key, as
+   * if they stood in the timeline there. The generated features' IDs must start
+   * with this feature's ID and `.` (`<id>.f3`). Throw `KernelError` (a
+   * `ScriptRunError` with its line) when nothing can be made.
+   */
+  expand?(ctx: ExpandContext<I>): Expansion;
+  /**
+   * Work outside the kernel's thread before evaluation (ADR-0071 §3).
+   * Awaited on a cache miss for stored and generated features; no shapes.
+   * Evaluation reads the result as `ctx.prepared`, or reports a thrown error.
    */
   prepare?(ctx: PrepareContext<I>): Promise<unknown>;
+}
+
+/** What `expand` is given. */
+export interface ExpandContext<I extends FeatureInputs = FeatureInputs> {
+  feature: Feature;
+  inputs: I;
+  /** The document as it is before this feature: the features before it, every parameter. */
+  doc: ExtrudoDocument;
+  /** Every parameter's value by name (mm, degrees, plain), of the whole document. */
+  params: Readonly<Record<string, number>>;
+  /** The script runner, when the kernel has one (`KernelApi.enableScripts`). */
+  scripts: ScriptHost | undefined;
+}
+
+/** What `expand` gives back. */
+export interface Expansion {
+  /** The features to evaluate after this one, in order. */
+  features: readonly Feature[];
+  /** What the feature printed (a script's `console.log`). */
+  log: readonly string[];
 }
 
 /** What `prepare` may read: the inputs, their values, the design's files and the compilers. */

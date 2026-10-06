@@ -16,6 +16,7 @@ import type {
   RecomputeRequest,
   RecomputeResult,
 } from './recompute/types';
+import { NO_SCRIPT_HOST, type ScriptHost, type ScriptHostLoader } from './script-host';
 import { makeTestPart, type TestPart } from './test-part';
 
 export interface KernelInfo {
@@ -60,6 +61,15 @@ export interface KernelApi {
    * no-op, so it can be asked for every such request.
    */
   enableMeshes(): Promise<void>;
+  /**
+   * Loads the script runner in the worker (P5-02, ADR-0070 §2): QuickJS is a
+   * WASM of its own, so only a design with a Script feature pays for it. The
+   * app's `Recomputer` calls this before the first recompute or preview of
+   * such a design (and again after a restart); calling it again is a no-op.
+   * Rejects when the kernel was started without a loader for one, and a
+   * script is then the feature's error.
+   */
+  enableScripts(): Promise<void>;
   /**
    * Loads the OpenSCAD compiler (P5-04, ADR-0071 §3) and manifold-3d with it,
    * since a compiled `.scad` file is a mesh body: only a design that imports
@@ -196,6 +206,12 @@ export interface KernelServiceOptions {
    */
   manifold?: ManifoldLoadOptions;
   /**
+   * Loads the script runner (P5-02, ADR-0070 §2) when `enableScripts` is first
+   * called: the kernel never imports it, so whoever starts the kernel gives
+   * it — the app's worker entry, the CLI. Without one, scripts are errors.
+   */
+  scripts?: ScriptHostLoader;
+  /**
    * Makes the OpenSCAD compiler (P5-04, ADR-0071 §3), called by the first
    * `enableOpenscad()`: the app's worker loads `@extrudo/openscad/browser`
    * with a dynamic `import()`, Node passes `createNodeCompiler`. Without it,
@@ -215,6 +231,9 @@ export class KernelService implements KernelApi {
   readonly #files = new Map<AttachmentId, ImportedFile>();
   /** manifold-3d, once a design needs it (ADR-0066 §3). */
   #meshes: Promise<void> | undefined;
+  /** The script runner, once a design needs it (ADR-0070 §2). */
+  #scriptHost: ScriptHost | undefined;
+  #scripts: Promise<void> | undefined;
   /** OpenSCAD's compiler, once a design needs it (ADR-0071 §3). */
   #openscad: Promise<ScadCompiler> | undefined;
   #compiler: ScadCompiler | undefined;
@@ -274,6 +293,21 @@ export class KernelService implements KernelApi {
       kernel.enableMeshes(manifold);
     })();
     await this.#meshes;
+  }
+
+  async enableScripts(): Promise<void> {
+    const load = this.#options.scripts;
+    if (!load) throw new KernelError(NO_SCRIPT_HOST);
+    this.#scripts ??= (async () => {
+      this.#scriptHost = await load();
+    })();
+    try {
+      await this.#scripts;
+    } catch (error) {
+      // A failed load may be tried again by the next design that needs it.
+      this.#scripts = undefined;
+      throw error;
+    }
   }
 
   async enableOpenscad(): Promise<void> {
@@ -422,6 +456,7 @@ export class KernelService implements KernelApi {
       this.#engine = new RecomputeEngine(kernel, this.#options.features ?? kernelFeatures(), {
         ...this.#options.engine,
         files: (id) => this.#files.get(id),
+        scripts: () => this.#scriptHost,
         openscad: () => this.#compiler,
       });
       this.#initMs = performance.now() - start;

@@ -2,6 +2,13 @@
   "extends": "../../tsconfig.base.json",
   // No DOM (ADR-0069): the CLI is Node only. Node's own types for the file
   // system and the child processes the tests spawn.
-  "compilerOptions": { "lib": ["es2023", "esnext.disposable"], "types": ["node"] },
+  "compilerOptions": {
+    "lib": ["es2023", "esnext.disposable"],
+    "types": ["node"],
+    // The script examples under `docs/api/examples/` (P5-02) are typechecked
+    // here (`scripts.test.ts` imports them), and they import the API by its own
+    // name, as a user writes it.
+    "paths": { "@extrudo/api": ["../api/src/index.ts"] }
+  },
   "include": ["src"]
 }

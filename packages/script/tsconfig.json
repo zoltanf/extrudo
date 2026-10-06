@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  // No DOM is used here (ADR-0070 §2): the sandbox is QuickJS in WebAssembly
+  // and nothing else. The `dom` lib is here for the `WebAssembly` types
+  // quickjs-emscripten's own API is written in; this package never touches one
+  // itself, and a script can't reach one either.
+  "compilerOptions": {
+    "lib": ["es2023", "esnext.disposable", "dom"],
+    // Node's types so the API's own sources (through `@extrudo/api`) compile.
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

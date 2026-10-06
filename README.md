@@ -95,6 +95,12 @@ design. Pure TypeScript: no DOM, no WASM. It runs in Node, in a worker and in th
 browser; the reference is published at
 [extrudo.org/docs/api/](https://extrudo.org/docs/api/).
 
+**Scripts.** A TypeScript or JavaScript program in one timeline feature, with a
+CodeMirror editor, parameter completion, inline errors and console output.
+Programs run in a bounded QuickJS sandbox inside the geometry worker; the bodies
+they make are ordinary bodies you can fillet, measure and export.
+See the [script guide](docs/api/scripts.md).
+
 ## Build from source
 
 You need Node 24 or newer and pnpm 12 (see [pnpm.io](https://pnpm.io/installation)).
@@ -154,6 +160,7 @@ stored.
 | `packages/storage` | Local project storage (OPFS and IndexedDB) |
 | `packages/api` | The public document API, `@extrudo/api`: a design from code, no DOM and no WASM |
 | `packages/cli` | The headless CLI `extrudo`: recompute a design and export it in Node ([docs](docs/cli.md)) |
+| `packages/script` | QuickJS sandbox for Script features, with bounded time, memory and output |
 | `apps/site` | The landing page and the API docs, static pages built from `docs/` |
 | `e2e/` | Playwright end-to-end tests |
 | `docs/` | Requirements, architecture, roadmap, UI spec, brand, file format, decision records |

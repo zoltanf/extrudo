@@ -403,6 +403,15 @@ a right-click without movement, as Onshape's context menu does.
   isn't in the profiles' plane, when a profile crosses the axis or the
   profiles lie on both sides of it, and when the angles are 0, beyond a
   whole turn or cancel out.
+- **Script (P5-02, ADR-0070):** Solid › Create ▾ → Script, after Rib (no
+  default key; Ctrl+K finds it). A 560 px draggable dialog with a lazily loaded
+  CodeMirror editor, Language (TypeScript/JavaScript), Script output and Made N
+  features. A new script starts with a working box. Preview waits 500 ms after
+  typing; errors underline their line and disable OK. Tab indents, Esc closes
+  completion first, Esc then Tab leaves the editor; Cancel closes the dialog.
+  Editor undo changes text, OK adds or edits one document undo step. The Script
+  stays one timeline chip, with its generated count in the tooltip; bodies are
+  ordinary browser entries and may be picked by later features.
 - **Primitives (P2-10, ADR-0032):** Solid › Create ▾ → Box, Cylinder,
   Sphere, Torus (no keys). The dialog opens on the XY plane ("XY plane"
   in **Plane**) with a live preview; while Plane takes picks the origin

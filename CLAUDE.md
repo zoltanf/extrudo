@@ -1266,6 +1266,103 @@ the fixture the app exported, up to its IDs, and recomputed headless) and a
 parametric box with a customizer and two configurations. The kernel is a
 devDependency of the API package for that one test and nothing else.
 
+ADR-0070 (P5-02, slice 1) added **the script runner**, `packages/script`
+(`@extrudo/script`; api, core, QuickJS, `sucrase`):
+`loadScriptRunner()` (`wasmUrl` for the browser's own asset — Emscripten's
+`locateFile` — or the package's own release-sync file in Node) and
+`runner.run({ code, language, design, featureId, params?, limits? })`. User code
+runs in **QuickJS in WASM** (ADR-0067: `'wasm-unsafe-eval'` and nothing else; no
+`eval` or `new Function` on the host), with TypeScript stripped by sucrase, which
+keeps every line — so a runtime error's line is the line in the editor. The
+sandbox is ADR-0070 §2's list and nothing else: `design` (a `Design` restricted
+to adds: `remove`, `move`, `rename`, `suppress`, `group`, the parameter calls,
+`transaction` and `toFile` are refused by name with "A script can only add
+features: …"; `removeBodies` and `moveBodies` are adds and stay), `params`
+frozen, `console.log` (200 lines, 100,000 characters), `Math.random` seeded from
+the feature ID, a `Date` at 0. The limits are 2 s (an interrupt handler with a
+deadline), 64 MB (`setMemoryLimit`), 1,000 features (counted in the one `add`
+every call comes down to) and 100,000 characters of source; each has its own
+message. **Rules a change must keep:** a call's arguments cross as JSON in both
+directions, and a **handle** — a `FeatureHandle`, a `SketchHandle`, a
+`SketchBuilder`, an entity handle or a composite one (a rectangle, a polyline, a
+slot, a polygon) — crosses as a *proxy* built by reflecting the host object
+(`src/bridge.ts`) and marked `@@extrudo`, so an argument comes back as the handle
+it stands for (`k.dimension(plate.bottom, '40 mm')`); `handles.test.ts` fails
+when the API publishes a handle class the bridge doesn't know. **Every QuickJS
+handle must be disposed** (as every OCCT shape must be): a run keeps them in a
+`Scope` and frees them, then the context, then the runtime, and QuickJS asserts
+at `JS_FreeRuntime` — a leaked handle aborts the process instead of failing a
+test, which is what `runner.test.ts`'s last test (100 runs) is. A host function
+in QuickJS is **not** a constructor, so the frozen `Date` is a small constant of
+`sandbox.ts` evaluated inside the sandbox. quickjs-emscripten 0.31 types a host
+function as `(this, ...args)` but passes the arguments alone; every argument goes
+through `Bridge.newFunction`, with a cast and a comment saying why. The runner
+depends on `quickjs-emscripten-core` and `@jitl/quickjs-wasmfile-release-sync`
+only (slice 2).
+ADR-0070 (P5-02, slice 2) added **the `script` feature**: core's `script.ts`
+(inputs `code` — a new input kind `{ kind: 'code', value }`, `codeOf(max)` — and
+`language`; not patternable, no `faceRoles`) and the engine's one hook,
+**`KernelFeatureDefinition.expand(ctx)`**: the engine runs it instead of
+`evaluate` and splices what it returns into its walk right after the feature,
+each generated feature **under its own cache key**, at a fractional timeline
+position past its script; the run itself is cached (32, no shapes) under code,
+ID, name, the document before it and the parameter values. Rules a change must
+keep: **the kernel never imports the runner** — it defines `ScriptHost`
+(`script-host.ts`), `KernelServiceOptions.scripts` (a loader) and
+`KernelApi.enableScripts()`, and whoever starts a kernel injects one: the app's
+own worker entry (`apps/web/src/project/kernelWorker.ts` → `serveKernel` from
+`@extrudo/kernel/worker`, spawned by `spawnProjectKernel`; the kernel's own
+`worker.ts` has no runner and is the debug page's), and the CLI; **the
+`Recomputer` calls `enableScripts()` for a document or draft with a script**,
+once per kernel and again after `#resend`. **Generated IDs are
+`<script>.f<n>` from a fresh, unseeded API counter** (`@extrudo/script`'s
+`host.ts`; sketch entities etc. inside are the plain counter), names "Script1 ›
+Box1" per type within the script; core's **`scriptOfGenerated`** (the part before
+the last `.`, only for a token that isn't a feature ID) makes a stored reference
+into a script's geometry a dependency on the script (`referencedFeatures`, so
+moves are refused, and `removeFeature` refuses a used script, faces and edges
+included). **The result lists the script, never its generated features**; their
+statuses are in `FeatureStatus.script` (`ScriptRunStatus`: `generated`, `log`,
+`line`, `column`), the script's message each failing one's own prefixed
+"Script1 › Fillet1: …" (no Fix References for them); `reports` keep the generated
+features' own under their IDs. A failed run makes nothing; a run without a
+runner (`NO_SCRIPT_HOST`) is not cached. **The app's workers are `es` bundles**
+(`worker: { format: 'es' }`), so a worker's dynamic imports (the runner,
+opentype.js, manifold's glue) stay lazy chunks. Tests with both the runner and
+the real kernel live in **`packages/cli`** (`scripts.test.ts`, `script-cli.test.ts`;
+the only package allowed both): the plate-with-holes equivalence, a later fillet
+by name, call counters, errors by line, cancel, the examples
+`docs/api/examples/script-*.ts` and seeded random edits; the fixture is
+`fixtures/scripts/plate-holes.extrudo` (`WRITE_FIXTURES=1`). The kernel's fuzzer
+can't load the runner, so it has no script fixture.
+
+**Slice 3 (the app):** `features/script.tsx` is the small dialog spec; its
+`extra` dynamically imports `scriptEditor.tsx` and renders the loaded component
+directly (never `React.lazy`). CodeMirror and the API completion support stay
+lazy. The framework's `wide` makes it 560 px, `initialValues` supplies a working
+box, and `previewDelay` debounces 500 ms. Source text is `values.choices.code`,
+mapped to the core `code` input through `scriptInputs`/`scriptSettings`; **OK
+waits for a script's current preview**, so a half-typed program cannot commit.
+The editor reads the preview's `FeatureStatus.script` for diagnostics, console
+output and Made N features; the chip's tooltip reads its generated count. The
+completion names come from `@extrudo/script/methods`' allowed list (no refused
+mutations or nested scripts), descriptions from the API generator's
+`FEATURE_METHOD_DESCRIPTIONS`, and parameter values from `evaluateParameters`.
+The editor owns key events and text undo. **Esc closes completion first; another
+Esc enables CodeMirror's Tab-focus mode**, so Tab leaves; focus or typing restores
+indentation. Theme colours mix the brand tokens with ink for AA contrast in
+both themes. `docs/api/scripts.md` is a hand-written guide whose TypeScript
+blocks the API's docs test compiles. Performance measures:
+`extrudo-preview` (feature type in `detail`) in the page and
+`extrudo-script-host-load` in the worker.
+**Script-generated imports** take the same async `prepare` path as stored ones
+(ADR-0071), reporting the Script ID as progress. App and CLI send model attachments
+for a design or draft with a script, since its generated imports aren't stored;
+the relevant compiler/mesh loader is enabled and resent after worker replacement.
+The script-run cache includes attachment metadata. `script-cli.test.ts` covers a
+generated `.scad` import, cache reuse and a parameter override; the recycle test
+checks the file and both loaders precede each worker's recompute.
+
 **The headless CLI (ADR-0069):** `packages/cli` (`@extrudo/cli`, GPL,
 `"bin": { "extrudo": "./bin/extrudo.mjs" }`) is the library plus the command.
 `src/headless.ts` is `openDesign(bytes | path)` (the archive with its
@@ -1364,11 +1461,14 @@ and worded "OpenSCAD isn't downloaded yet: connect to the internet once to
 compile gear.scad." (the module isn't kept, so the next compile tries again).
 
 Next (tasks may run in parallel on separate branches and worktrees, merged to
-main one at a time): **P5-01 is
-done** (all three slices, ADR-0068) and **P5-03 is done** (both slices,
-ADR-0069: the headless library and the `extrudo` binary), so onward in Phase 5
-with P5-02 (the Script feature, which runs user code against this API in a
-sandboxed worker and wants the same deterministic IDs); **P4-06 is done** (all five slices, ADR-0066) and P4-12's hardening part (ADR-0067 H1 to
+main one at a time): **P5-01 is done** (all three slices, ADR-0068), **P5-03 is
+done** (both slices, ADR-0069: the headless library and the `extrudo` binary)
+and **P5-02 is done** (all three slices, ADR-0070: the runner, the feature in
+core/kernel/CLI, and the lazy CodeMirror dialog, chip, e2e and guide).
+**P5-04 is done** too (OpenSCAD import, ADR-0071). Next are
+P5-05 (macros) and P5-06 (wall-thickness check), according
+to `docs/03-roadmap.md`; **P4-06 is done** (all five slices, ADR-0066) and
+P4-12's hardening part (ADR-0067 H1 to
 H5) is on main, so **Phase 4 is complete apart from P4-12's backlog** (exact
 rational conics in the kernel, closed splines, trimming and offsetting
 splines — ADR-0063's Deferred; and the modelling depth items P4-12 lists);
@@ -1410,7 +1510,8 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for the v0.4.0 release |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0071: OpenSCAD import (`.scad` files as mesh bodies, `@extrudo/openscad`) |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0070: the Script feature (QuickJS sandbox, `@extrudo/script`) |
+| `docs/adr/0071-openscad-import.md` | OpenSCAD import: `.scad` attachments as mesh bodies, `@extrudo/openscad`, async preparation and runtime WASM caching. |
 
 ## Stack summary
 
@@ -2819,6 +2920,22 @@ them. Notes further down that name a machine apply to that machine only.
   dialog's Plane field is the pick field the view has no `data-model-hover`
   (that belongs to the model picker). The browser's rows carry `data-canvas`,
   like the construction rows' `data-construction`.
+- **Script e2e** (`e2e/script.spec.ts`, P5-02): `pickTool(page, 'Script')` opens
+  the region "Script dialog"; a chip double-click opens "Edit Script1 dialog".
+  The editor is the textbox "Script code" (`.cm-content`, contenteditable): click,
+  `Control+a`, then `page.keyboard.insertText(code)` for bulk source; use real
+  `keyboard.type('.')` for completion and real keys for undo/Esc/Tab. Read code
+  with `innerText()` (CodeMirror lines are separate divs, so `toHaveText` joins
+  them without newlines). Wait for `data-preview-status="ok"` before OK, up to
+  30 s for the first runner load; `data-preview` on the viewport shows the body.
+  Line errors have `.cm-lintRange-error` inside `.cm-line` (zero-based locator
+  position); "Feature status" says "Line 3: …" and OK has `aria-disabled`.
+  The "Script output" region contains console text; `[data-script-made]` reads
+  "Made N features". Completion is `.cm-tooltip-autocomplete`. The loop test's
+  60 × 60 × 5 mm plate has 10 faces at count 4, 12 at count 6, and 13 after the
+  stored fillet. Both hosting's whole-session walk and axe's two-theme dialog
+  audit include Script. The first test prints editor-open, request-to-preview
+  and worker-load timings from the performance measures (ADR-0070 slice 3).
 - **Import STEP e2e** (`e2e/import-step.spec.ts`, P4-06 slice 2): the tile is
   `importBody` in the **Insert tab** (`role="tab"` "Insert", then the button
   "Import", `exact: true`; `data-tool="importBody"`), and the File menu's

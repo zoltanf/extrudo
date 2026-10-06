@@ -32,10 +32,12 @@ describe('the docs pages', () => {
     expect(paths.filter((path) => !path.startsWith('features/'))).toEqual([
       'README.md',
       'references.md',
+      'scripts.md',
       'sketch.md',
     ]);
     expect(paths).toContain('features/README.md');
-    expect(paths.filter((path) => path.startsWith('features/'))).toHaveLength(41);
+    // One page per feature type (41 since P5-02's `script`) and their index.
+    expect(paths.filter((path) => path.startsWith('features/'))).toHaveLength(42);
   });
 
   it('are at the address their links point to', () => {
@@ -93,6 +95,7 @@ describe('the sidebar', () => {
         { title: 'The API', url: '/docs/api/' },
         { title: 'Sketches', url: '/docs/api/sketch/' },
         { title: 'References', url: '/docs/api/references/' },
+        { title: 'Scripts', url: '/docs/api/scripts/' },
       ],
     });
   });

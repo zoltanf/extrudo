@@ -19,6 +19,11 @@ export default defineConfig({
   preview: {
     headers: Object.fromEntries(globalHeaders?.headers.map((h) => [h.name, h.value]) ?? []),
   },
+  // Module workers (every worker is started with `type: 'module'`), so a
+  // worker's dynamic imports stay chunks of their own: the kernel worker loads
+  // the script runner (QuickJS's glue, sucrase, the document API) only for a
+  // design with a script (P5-02, ADR-0070 §2), and opentype.js only for text.
+  worker: { format: 'es' },
   build: {
     // The main chunk holds three.js's core (~380 kB), since the viewport store
     // uses its math and three.core doesn't tree-shake. The R3F viewport itself

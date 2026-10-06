@@ -23,8 +23,11 @@ import {
   type FeatureId,
   type FeatureRegistry,
   type FeatureStatus,
+  type GeneratedFeatureStatus,
   type GeomRef,
+  type ParameterEvaluation,
   type ReferenceIssue,
+  scriptOfGenerated,
 } from '@extrudo/core';
 import type { ScadCompiler } from '@extrudo/openscad';
 import type { z } from 'zod';
@@ -35,6 +38,7 @@ import type { ShapeDescription } from '../naming/description';
 import { fingerprintOf } from '../naming/fingerprint';
 import { namesOf, positionalNames, type TopoNames } from '../naming/names';
 import { LostReferenceError, resolveRef } from '../naming/resolve';
+import { type ScriptHost, ScriptRunError } from '../script-host';
 import { hashOf } from './hash';
 import {
   type BodyResult,
@@ -73,7 +77,32 @@ export interface EngineOptions {
    */
   strictLeaks?: boolean;
   onLeak?(feature: Feature, shapes: number): void;
+  /**
+   * The script runner (P5-02, ADR-0070), once the service has one
+   * (`KernelApi.enableScripts`). Without it a Script feature is an error.
+   */
+  scripts?: () => ScriptHost | undefined;
 }
+
+/** How many script runs the engine remembers (they hold no shapes, only features). */
+const SCRIPT_RUNS = 32;
+
+/** A script's run: the features it made, with their expression values, or its failure. */
+type ScriptRun =
+  | {
+      ok: true;
+      key: string;
+      features: readonly Feature[];
+      log: readonly string[];
+      /** The generated features' expression inputs, evaluated with them in the document. */
+      inputs: ReadonlyMap<FeatureId, ReadonlyMap<string, EvaluateResult>>;
+    }
+  | {
+      ok: false;
+      status: FeatureStatus;
+      /** The script's own failure (a `ScriptRunError`), which the same inputs repeat. */
+      answer: boolean;
+    };
 
 interface Entry {
   key: string;
@@ -117,6 +146,8 @@ export class RecomputeEngine {
   readonly #generation: Record<Channel, number> = { recompute: 0, preview: 0 };
   /** Keys used by walks still running: eviction must not free shapes they hold. */
   readonly #inFlight = new Set<Set<string>>();
+  /** Recent script runs by their key (code, the document before, the parameters), oldest first. */
+  readonly #runs = new Map<string, ScriptRun>();
 
   constructor(
     kernel: Kernel,
@@ -245,6 +276,7 @@ export class RecomputeEngine {
   clear(): void {
     for (const entry of this.#entries.values()) this.#drop(entry);
     this.#entries.clear();
+    this.#runs.clear();
     this.#latest = new Map();
     this.#previewBase = new Map();
     this.#pinned.recompute.clear();
@@ -283,7 +315,18 @@ export class RecomputeEngine {
     const cancelled = () => this.#generation[channel] !== generation;
     const parameters = evaluateParameters(doc);
     const crashed = new Set(request.crashed ?? []);
-    const index = new Map(doc.features.map((f, i) => [f.id, i]));
+    // Where each feature stands in the timeline: a stored one at its index, a
+    // feature a script made (P5-02) at a fraction past its script's.
+    const index = new Map<FeatureId, number>(doc.features.map((f, i) => [f.id, i]));
+    const byId = new Map<FeatureId, Feature>(doc.features.map((f) => [f.id, f]));
+    const inputValues = new Map<FeatureId, ReadonlyMap<string, EvaluateResult>>(parameters.inputs);
+    /** Features scripts made, and the script that made each (ADR-0070 §1). */
+    const madeBy = new Map<FeatureId, FeatureId>();
+    /** Each script that ran, and what it made. */
+    const scriptRuns = new Map<
+      FeatureId,
+      { features: readonly Feature[]; log: readonly string[] }
+    >();
     const passed = new Map<FeatureId, Passed>();
     const features: Record<FeatureId, FeatureStatus> = {};
     const reports: Record<FeatureId, unknown> = {};
@@ -295,7 +338,11 @@ export class RecomputeEngine {
     /** The bodies before the draft (previews). */
     let base: ReadonlyMap<BodyId, ShapeHandle> | undefined;
 
-    for (const feature of doc.features.slice(0, end)) {
+    // What a script makes joins the walk right after it (`expand`).
+    const queue = doc.features.slice(0, end);
+    for (let at = 0; at < queue.length; at++) {
+      const feature = queue[at] as Feature;
+      const script = madeBy.get(feature.id);
       if (feature.id === draft) base = bodies;
       if (feature.suppressed) {
         passed.set(feature.id, { state: 'suppressed' });
@@ -305,7 +352,7 @@ export class RecomputeEngine {
         features[feature.id] = { status: 'error', message };
         passed.set(feature.id, { state: 'failed' });
       };
-      if (crashed.has(feature.id)) {
+      if (crashed.has(feature.id) && !script) {
         fail('The kernel stopped while computing this feature. Change it to try again.');
         continue;
       }
@@ -326,19 +373,60 @@ export class RecomputeEngine {
         fail(`Invalid inputs: ${issue?.path.join('.') || 'inputs'} ${issue?.message ?? ''}`.trim());
         continue;
       }
-      const values = expressionValues(parameters.inputs.get(feature.id));
+      const values = expressionValues(inputValues.get(feature.id));
       if (typeof values === 'string') {
         fail(values);
         continue;
       }
       const dependencies = featureDependencies(feature, index);
-      const problem = dependencyProblem(dependencies, passed, index, doc, index.get(feature.id));
+      const problem = dependencyProblem(dependencies, passed, index, byId, index.get(feature.id));
       if (problem) {
         fail(problem);
         continue;
       }
       const upstream = dependencies.map((id) => (passed.get(id) as { entry: Entry }).entry);
       const access = definition.bodyAccess?.(parsed.data) ?? 'write';
+
+      // A script (P5-02): its run gives the features to walk next.
+      if (definition.expand) {
+        if (script) {
+          fail("A script can't add a script.");
+          continue;
+        }
+        const run = this.#expand(definition, feature, parsed.data, doc, parameters, () => {
+          // A trap in the runner's own WASM ends the worker like an OCCT one;
+          // the app then holds the script as the feature that crashed it.
+          onFeature?.(feature.id);
+          evaluated.push(feature.id);
+        });
+        if (!run.ok) {
+          features[feature.id] = run.status;
+          passed.set(feature.id, { state: 'failed' });
+          continue;
+        }
+        const own = index.get(feature.id) ?? at;
+        const clash = run.features.find((f) => index.has(f.id));
+        if (clash) {
+          fail(`The script made a feature with the ID ${clash.id}, which another feature has.`);
+          continue;
+        }
+        run.features.forEach((made, k) => {
+          index.set(made.id, own + (k + 1) / (run.features.length + 1));
+          byId.set(made.id, made);
+          madeBy.set(made.id, feature.id);
+        });
+        for (const [id, values] of run.inputs) inputValues.set(id, values);
+        queue.splice(at + 1, 0, ...run.features);
+        scriptRuns.set(feature.id, run);
+        // Its own status comes from its features' once they are walked (below).
+        const status: FeatureStatus = { status: 'ok' };
+        features[feature.id] = status;
+        passed.set(feature.id, {
+          state: 'done',
+          entry: { key: run.key, status, output: {}, handles: [] },
+        });
+        continue;
+      }
       // No font and no file in the key: their bytes never change under their
       // IDs (content-addressed, ADR-0061 §1), and the worker has every one
       // before the recompute or preview that needs it (ADR-0058 §4, ADR-0066 §0).
@@ -362,7 +450,7 @@ export class RecomputeEngine {
       // compile), awaited like the yield above and checked the same way.
       let prepared: Prepared | undefined;
       if (!entry && definition.prepare) {
-        onFeature?.(feature.id);
+        onFeature?.(script ?? feature.id);
         prepared = await this.#prepare(definition, feature, parsed.data, values, doc);
         if (cancelled()) return { status: 'cancelled' };
         entry = this.#entries.get(key);
@@ -372,7 +460,8 @@ export class RecomputeEngine {
         this.#entries.delete(key);
         this.#entries.set(key, entry);
       } else {
-        if (!prepared) onFeature?.(feature.id);
+        // A crash in a script's feature is the script's (the app keys crashes by stored features).
+        if (!prepared) onFeature?.(script ?? feature.id);
         const outputs = new Map(dependencies.map((id, i) => [id, upstream[i]?.output]));
         entry = this.#evaluate(
           definition,
@@ -382,7 +471,7 @@ export class RecomputeEngine {
           bodies,
           outputs,
           key,
-          (id) => doc.features[index.get(id) ?? -1]?.name,
+          (id) => byId.get(id)?.name,
           doc,
           prepared,
         );
@@ -403,13 +492,18 @@ export class RecomputeEngine {
     }
 
     if (cancelled()) return { status: 'cancelled' };
+    for (const [id, run] of scriptRuns) features[id] = scriptStatus(run, features);
     this.#pinned[channel] = new Set(used);
     if (channel === 'recompute') this.#latest = bodies;
     if (channel === 'preview') this.#previewBase = base ?? new Map();
-    const results = this.#meshAll(bodies, request, features);
+    const results = this.#meshAll(bodies, request, features, madeBy);
     const tools = draft === undefined ? undefined : this.#toolMeshes(passed.get(draft), request);
     const wantsBase = channel === 'preview' && (request as PreviewRequest).base === true;
-    const baseResults = wantsBase ? this.#meshAll(base ?? new Map(), request, features) : undefined;
+    const baseResults = wantsBase
+      ? this.#meshAll(base ?? new Map(), request, features, madeBy)
+      : undefined;
+    // A script's features are the script's: their statuses are in its own.
+    for (const id of madeBy.keys()) delete features[id];
     this.#evict();
     return {
       status: 'done',
@@ -432,6 +526,7 @@ export class RecomputeEngine {
     bodies: ReadonlyMap<BodyId, ShapeHandle>,
     request: RecomputeRequest,
     features: Record<FeatureId, FeatureStatus>,
+    madeBy: ReadonlyMap<FeatureId, FeatureId>,
   ): BodyResult[] {
     const results: BodyResult[] = [];
     for (const [id, shape] of bodies) {
@@ -451,7 +546,9 @@ export class RecomputeEngine {
         results.push({ id, version, mesh });
       } catch (error) {
         if (!(error instanceof KernelError)) throw error;
-        const maker = this.#makers.get(shape);
+        const made = this.#makers.get(shape);
+        // A body a script's feature made is the script's to report.
+        const maker = made === undefined ? undefined : (madeBy.get(made) ?? made);
         if (maker) {
           features[maker] = {
             status: 'error',
@@ -483,6 +580,109 @@ export class RecomputeEngine {
       }
     }
     return out;
+  }
+
+  /**
+   * Runs a feature that makes features (a script, ADR-0070 §1) against the
+   * document before it, or takes the run from the last few: the same code over
+   * the same document and parameters makes the same features (the API's IDs
+   * are deterministic, ADR-0068 §2), so a recompute that changed something
+   * after the script doesn't run it again.
+   */
+  #expand(
+    definition: KernelFeatureDefinition,
+    feature: Feature,
+    inputs: Feature['inputs'],
+    doc: ExtrudoDocument,
+    parameters: ParameterEvaluation,
+    starting: () => void,
+  ): ScriptRun {
+    const own = doc.features.findIndex((f) => f.id === feature.id);
+    const before: ExtrudoDocument = {
+      ...doc,
+      features: doc.features.slice(0, Math.max(own, 0)),
+      timelineMarker: Math.max(own, 0),
+      // A group may name features after the script; the script can't group anyway.
+      groups: [],
+    };
+    const params: Record<string, number> = {};
+    for (const [name, parameter] of parameters.parameters) {
+      if (parameter.result.ok) params[name] = parameter.result.value;
+    }
+    // What the run can read: never the clock in `meta` or the bodies' names.
+    const key = hashOf(
+      'expand',
+      feature.type,
+      feature.id,
+      feature.name,
+      feature.inputs,
+      before.settings,
+      before.parameters,
+      before.attachments,
+      before.features,
+      params,
+    );
+    const known = this.#runs.get(key);
+    if (known) {
+      this.#runs.delete(key);
+      this.#runs.set(key, known);
+      return known;
+    }
+    starting();
+    let run: ScriptRun;
+    try {
+      // biome-ignore lint/style/noNonNullAssertion: only called for a definition with `expand`.
+      const expansion = definition.expand!({
+        feature,
+        inputs,
+        doc: before,
+        params,
+        scripts: this.#options.scripts?.(),
+      });
+      // Their expressions are evaluated with them in the document: a sketch's
+      // named dimensions are parameters, and the features use them.
+      const evaluation = evaluateParameters({
+        ...before,
+        features: [...before.features, ...expansion.features],
+        timelineMarker: before.features.length + expansion.features.length,
+      });
+      const values = new Map<FeatureId, ReadonlyMap<string, EvaluateResult>>();
+      for (const made of expansion.features) {
+        const found = evaluation.inputs.get(made.id);
+        if (found) values.set(made.id, found);
+      }
+      run = { ok: true, key, features: expansion.features, log: expansion.log, inputs: values };
+    } catch (error) {
+      if (error instanceof WebAssembly.RuntimeError) throw error;
+      if (!(error instanceof KernelError)) console.error(error);
+      const message = error instanceof Error ? error.message : String(error);
+      const failure = error instanceof ScriptRunError ? error : undefined;
+      run = {
+        ok: false,
+        answer: failure !== undefined,
+        status: {
+          status: 'error',
+          message: error instanceof KernelError ? message : `Internal error: ${message}`,
+          script: {
+            generated: [],
+            log: [...(failure?.log ?? [])],
+            ...(failure?.line !== undefined && { line: failure.line }),
+            ...(failure?.column !== undefined && { column: failure.column }),
+          },
+        },
+      };
+    }
+    // A run that failed for want of a runner, or on a bug, is not the script's
+    // answer: only what the code itself made or said is remembered.
+    if (run.ok || run.answer) {
+      this.#runs.set(key, run);
+    }
+    while (this.#runs.size > SCRIPT_RUNS) {
+      const oldest = this.#runs.keys().next().value;
+      if (oldest === undefined) break;
+      this.#runs.delete(oldest);
+    }
+    return run;
   }
 
   #evaluate(
@@ -800,13 +1000,13 @@ function dependencyProblem(
   dependencies: readonly FeatureId[],
   passed: ReadonlyMap<FeatureId, Passed>,
   index: ReadonlyMap<FeatureId, number>,
-  doc: ExtrudoDocument,
+  byId: ReadonlyMap<FeatureId, Feature>,
   own: number | undefined,
 ): string | undefined {
   for (const id of dependencies) {
     const at = index.get(id);
-    if (at === undefined) return 'Refers to a feature that no longer exists.';
-    const name = doc.features[at]?.name ?? id;
+    if (at === undefined) return missingProblem(id, passed, index, byId, own);
+    const name = byId.get(id)?.name ?? id;
     const state = passed.get(id);
     if (!state || (own !== undefined && at > own)) {
       return `Refers to ${name}, which comes later in the timeline.`;
@@ -815,6 +1015,67 @@ function dependencyProblem(
     if (state.state === 'failed') return `Needs ${name}, which has an error.`;
   }
   return undefined;
+}
+
+/**
+ * Why a feature this one refers to isn't there. A feature a script makes
+ * (`<script>.f3`) is missing when the script didn't run or no longer makes it,
+ * so the message names the script.
+ */
+function missingProblem(
+  id: FeatureId,
+  passed: ReadonlyMap<FeatureId, Passed>,
+  index: ReadonlyMap<FeatureId, number>,
+  byId: ReadonlyMap<FeatureId, Feature>,
+  own: number | undefined,
+): string {
+  const script = scriptOfGenerated(id, new Set(byId.keys()));
+  const name = script === undefined ? undefined : byId.get(script)?.name;
+  if (script === undefined || name === undefined) {
+    return 'Refers to a feature that no longer exists.';
+  }
+  const state = passed.get(script);
+  const at = index.get(script);
+  if (!state || (own !== undefined && at !== undefined && at > own)) {
+    return `Refers to ${name}, which comes later in the timeline.`;
+  }
+  if (state.state === 'suppressed') return `Needs ${name}, which is suppressed.`;
+  if (state.state === 'failed') return `Needs ${name}, which has an error.`;
+  return `Refers to a feature ${name} no longer makes.`;
+}
+
+/**
+ * A script's status once its features are walked (ADR-0070 §1): an error or a
+ * warning of any of them is the script's, each message naming the feature it
+ * came from ("Script1 › Fillet1: Radius 50 mm is too large…"), and the list of
+ * what it made, with each one's own status, is there for the editor.
+ */
+function scriptStatus(
+  run: { features: readonly Feature[]; log: readonly string[] },
+  features: Readonly<Record<FeatureId, FeatureStatus>>,
+): FeatureStatus {
+  const generated: GeneratedFeatureStatus[] = run.features.map((made) => {
+    const own = features[made.id];
+    return {
+      id: made.id,
+      name: made.name,
+      type: made.type,
+      status: own?.status ?? 'error',
+      ...(own?.message !== undefined && { message: own.message }),
+    };
+  });
+  const script = { generated, log: [...run.log] };
+  const said = (status: 'error' | 'warning') =>
+    generated
+      .filter((g) => g.status === status)
+      .map((g) => `${g.name}: ${g.message ?? (status === 'error' ? 'it has an error.' : '')}`);
+  const errors = said('error');
+  const warnings = said('warning');
+  if (errors.length > 0) {
+    return { status: 'error', message: [...errors, ...warnings].join(' '), script };
+  }
+  if (warnings.length > 0) return { status: 'warning', message: warnings.join(' '), script };
+  return { status: 'ok', script };
 }
 
 /** "extrude" → "Extrude", "sweep-path" → "Sweep path". */

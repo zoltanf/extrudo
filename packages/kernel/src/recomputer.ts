@@ -26,8 +26,10 @@ import {
   isMeshMediaType,
   isPatternReport,
   isScadMediaType,
+  MODEL_MEDIA_TYPES,
   type ModelStore,
   type PatternReport,
+  SCRIPT_TYPE,
   type SketchReport,
 } from '@extrudo/core';
 import type { ScadParametersResult } from '@extrudo/openscad';
@@ -167,6 +169,11 @@ export class Recomputer {
   #meshesEnabled = false;
   /** Whether this kernel has OpenSCAD's compiler (P5-04, ADR-0071 §3); a restart forgets it. */
   #openscadEnabled = false;
+  /**
+   * Whether this kernel has the script runner (P5-02, ADR-0070 §2), or was
+   * asked for it and has none (`false` again after a restart).
+   */
+  #scriptsAsked = false;
   /**
    * What this kernel has, by resource: a font ID, or `file:<attachment ID>`
    * (ADR-0058 §4, ADR-0066 §0). A restart forgets them all, and `#resend` sends
@@ -389,6 +396,7 @@ export class Recomputer {
     // nor the mesh kernel a mesh body needs (ADR-0066 §3).
     this.#resources.clear();
     this.#meshesEnabled = false;
+    this.#scriptsAsked = false;
     this.#openscadEnabled = false;
     this.#schedule();
   }
@@ -413,6 +421,19 @@ export class Recomputer {
         if (!data) continue;
         await this.client.call((api) => api.addFont(id, data));
         this.#resources.add(id);
+      }
+    }
+    // A script needs the runner in the worker (ADR-0070 §2): only now, once per
+    // kernel, so a design without one never loads QuickJS. A kernel started
+    // without a runner refuses, and the script's own status says so.
+    if (!this.#scriptsAsked && !this.#disposed) {
+      if ([...doc.features, ...extra].some((f) => f.type === SCRIPT_TYPE)) {
+        this.#scriptsAsked = true;
+        try {
+          await this.client.call((api) => api.enableScripts());
+        } catch (error) {
+          if (isKernelCrash(error)) throw error;
+        }
       }
     }
     const files = this.#fileSource;
@@ -628,6 +649,14 @@ function importFiles(doc: ExtrudoDocument, extra: readonly Feature[]): Attachmen
   for (const feature of [...doc.features, ...extra]) {
     const id = importFileOf(feature);
     if (id) out.add(id);
+  }
+  // Generated imports are not stored features: scripts may read any model attachment.
+  if ([...doc.features, ...extra].some((feature) => feature.type === SCRIPT_TYPE)) {
+    for (const [id, attachment] of Object.entries(doc.attachments ?? {})) {
+      if (MODEL_MEDIA_TYPES.includes(attachment.mediaType as (typeof MODEL_MEDIA_TYPES)[number])) {
+        out.add(id as AttachmentId);
+      }
+    }
   }
   return [...out];
 }

@@ -459,6 +459,13 @@ export const TOOLS = {
     category: 'create',
     hint: 'Raise the letters of a sketch, or a whole text, off a flat or round face, or press them into it; on a round one they keep their width.',
   },
+  script: {
+    id: 'script',
+    label: 'Script',
+    icon: 'script',
+    category: 'create',
+    hint: 'Make features with TypeScript or JavaScript, using the design’s parameters.',
+  },
   rib: {
     id: 'rib',
     label: 'Rib',
@@ -789,6 +796,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
           'coil',
           'emboss',
           'rib',
+          'script',
           'box',
           'cylinder',
           'sphere',

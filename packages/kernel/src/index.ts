@@ -8,7 +8,7 @@
 
 /** An OpenSCAD file's customizer variables (P5-04, ADR-0071): the Import dialog's rows. */
 export type { ScadParameter, ScadParametersResult } from '@extrudo/openscad';
-export { spawnBrowserKernel, spawnDebugKernel } from './browser';
+export { connectKernelWorker, spawnBrowserKernel, spawnDebugKernel } from './browser';
 export {
   KernelClient,
   type KernelClientOptions,
@@ -153,6 +153,8 @@ export type {
   BodyAccess,
   BodyResult,
   EvalContext,
+  ExpandContext,
+  Expansion,
   FeatureOutput,
   KernelFeatureDefinition,
   PreviewRequest,
@@ -165,6 +167,15 @@ export type {
   RecomputeStats,
 } from './recompute/types';
 export { type Preview, Recomputer, type RecomputerOptions } from './recomputer';
+export {
+  NO_SCRIPT_HOST,
+  type ScriptHost,
+  type ScriptHostLoader,
+  ScriptRunError,
+  type ScriptRunFailure,
+  type ScriptRunRequest,
+  type ScriptRunResult,
+} from './script-host';
 export {
   type BodyExportMesh,
   ExportCancelledError,

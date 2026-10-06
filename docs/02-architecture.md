@@ -22,7 +22,7 @@
 | Fonts → curves | **opentype.js** | Text tool (Phase 4). |
 | Storage (web) | **OPFS** for project blobs + **IndexedDB** (via `idb`) for the index and metadata | Fast, large quota, works offline. `navigator.storage.persist()`. |
 | Zip | **fflate** | Project files and 3MF are zip containers. |
-| Code editor (Phase 5) | **Monaco** | TypeScript IntelliSense for script features. |
+| Code editor (Phase 5) | **CodeMirror 6** | Lazy Script dialog, TypeScript highlighting, parameter/API completion and inline diagnostics (ADR-0070). |
 | Tests | **Vitest** (unit, kernel-in-Node), **Playwright** (E2E and screenshot tests) | Kernel and solver run in Node, so geometry is testable headless. |
 | Lint / format | **Biome** | One fast tool. |
 | Desktop (Phase 6) | **Electron** (+ electron-builder) | Same Chromium on Linux, Windows and macOS, so WebGL, WASM and OPFS behave the same everywhere. Tauri was rejected: it uses WebKitGTK on Linux, which has weaker WebGL/WASM performance and consistency. |

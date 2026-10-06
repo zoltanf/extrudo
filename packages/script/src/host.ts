@@ -1,0 +1,117 @@
+/**
+ * The runner as the kernel sees it (P5-02 slice 2, ADR-0070 §1-§2): one call
+ * that runs a Script feature's code against the document before it and gives
+ * back the features it made, ready for the engine to evaluate.
+ *
+ * The kernel defines the interface (`ScriptHost` in `@extrudo/kernel`) and
+ * never imports this package; the shapes here are the same by structure, and
+ * whoever starts a kernel (the app's worker entry, the CLI) hands it one of
+ * these. So neither package depends on the other.
+ *
+ * - **IDs** are the API's own counter (ADR-0068 §2) behind the script's ID:
+ *   `<script>.f1`, `<script>.f2`… for features, the plain counter for what
+ *   lives inside one (sketch entities, constraints, dimensions). The counter
+ *   starts afresh every run and is *not* seeded from the document, so a
+ *   feature added before the script never shifts the IDs a later fillet's
+ *   references are built from; the script's own ID keeps them apart from every
+ *   other feature's.
+ * - **Names** are "Script1 › Extrude1": the script's name, then the type's
+ *   label counted within the script.
+ */
+import { CounterIds, Design, type IdKind } from '@extrudo/api';
+import {
+  documentFeatures,
+  type ExtrudoDocument,
+  type Feature,
+  type FeatureId,
+  generatedFeatureId,
+} from '@extrudo/core';
+import { type LoadScriptRunnerOptions, loadScriptRunner, type ScriptRunner } from './runner';
+import type { ScriptFailure, ScriptLanguage } from './types';
+
+/** One run, as the kernel asks for it (`ScriptRunRequest` in `@extrudo/kernel`). */
+export interface ScriptHostRequest {
+  code: string;
+  language: ScriptLanguage;
+  /** The document before the script: the features before it, every parameter. */
+  doc: ExtrudoDocument;
+  featureId: FeatureId;
+  featureName: string;
+  params: Readonly<Record<string, number>>;
+}
+
+/** What a run gives the kernel (`ScriptRunResult` in `@extrudo/kernel`). */
+export type ScriptHostResult =
+  | { ok: true; features: Feature[]; log: string[] }
+  | { ok: false; error: ScriptFailure; log: string[] };
+
+/** The runner behind the kernel's `ScriptHost` interface. */
+export interface ScriptHostAdapter {
+  run(request: ScriptHostRequest): ScriptHostResult;
+}
+
+/** What separates the script's name from a generated feature's own: "Script1 › Extrude1". */
+export const GENERATED_NAME_SEPARATOR = ' › ';
+
+/** The kernel's script host over a runner. */
+export function scriptHost(runner: ScriptRunner): ScriptHostAdapter {
+  return { run: (request) => runScript(runner, request) };
+}
+
+/**
+ * Loads QuickJS and returns the host: what the kernel's `enableScripts` calls
+ * through its loader. `wasmUrl` as for `loadScriptRunner` (the browser's asset).
+ */
+export async function loadScriptHost(
+  options: LoadScriptRunnerOptions = {},
+): Promise<ScriptHostAdapter> {
+  return scriptHost(await loadScriptRunner(options));
+}
+
+/** One run: a design over the document, the code, and the features it added. */
+export function runScript(runner: ScriptRunner, request: ScriptHostRequest): ScriptHostResult {
+  const counter = new CounterIds();
+  const ids = (kind: IdKind): string =>
+    kind === 'feature'
+      ? generatedFeatureId(request.featureId, counter.next(kind))
+      : counter.next(kind);
+  let design: Design;
+  try {
+    // The document's own clock, so nothing of the run depends on when it ran.
+    design = Design.from(request.doc, { ids, now: request.doc.meta.modified });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      error: { message: `The script can't read this design: ${message}` },
+      log: [],
+    };
+  }
+  const result = runner.run({
+    code: request.code,
+    language: request.language,
+    design,
+    featureId: request.featureId,
+    params: request.params,
+  });
+  if (!result.ok) return result;
+  const made = new Set<string>(result.added);
+  const features = design.doc.features.filter((feature) => made.has(feature.id));
+  return { ok: true, features: named(features, request.featureName), log: result.log };
+}
+
+/** The features with the script's names: "Script1 › Extrude1", counted per type within the script. */
+function named(features: readonly Feature[], script: string): Feature[] {
+  const registry = documentFeatures();
+  const counts = new Map<string, number>();
+  return features.map((feature) => {
+    const label = registry.get(feature.type)?.label ?? feature.type;
+    const n = (counts.get(label) ?? 0) + 1;
+    counts.set(label, n);
+    // A plain copy: the design's document is frozen, the engine keeps these.
+    return {
+      ...structuredClone(feature),
+      name: `${script}${GENERATED_NAME_SEPARATOR}${label}${n}`,
+    };
+  });
+}

@@ -74,6 +74,7 @@ export * from './revolve';
 export * from './rib';
 export * from './scale';
 export * from './schema';
+export * from './script';
 export * from './shell';
 export * from './sketch/commands';
 export * from './sketch/curves';
@@ -92,10 +93,12 @@ export {
   type DocumentState,
   type DocumentStore,
   type FeatureStatus,
+  type GeneratedFeatureStatus,
   type ModelState,
   type ModelStats,
   type ModelStore,
   type ReferenceIssue,
+  type ScriptRunStatus,
   type SelectionItem,
   type SelectMode,
   type SessionState,

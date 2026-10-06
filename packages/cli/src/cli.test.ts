@@ -75,7 +75,7 @@ async function extrudo(
 }
 
 describe('extrudo info', () => {
-  it("lists B4's parameters, features and bodies, as text and as JSON", async () => {
+  it("lists B4's parameters, features and bodies, as text and as JSON", SPAWNING, async () => {
     const design = await fixture('b4-box-with-lid');
     const text = await extrudo(['info', design]);
     expect(text.code).toBe(0);

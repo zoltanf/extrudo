@@ -8,6 +8,7 @@ import {
   createDocumentStore,
   createModelStore,
   type ExtrudoDocument,
+  type Feature,
   type FeatureId,
   importInputs,
   type ModelStore,
@@ -64,6 +65,9 @@ function fakeSpawn(options: FakeOptions) {
       },
       enableMeshes: async () => {
         events.push(`meshes:${worker}`);
+      },
+      enableScripts: async () => {
+        events.push(`scripts:${worker}`);
       },
       enableOpenscad: async () => {
         events.push(`openscad:${worker}`);
@@ -288,6 +292,23 @@ describe('Recomputer heap recycling', () => {
     expect(model.getState().status).toBe('ready');
   });
 
+  it('loads the script runner again on the new worker (P5-02)', async () => {
+    // A design with a script: the runner is a WASM of its own in the worker
+    // (ADR-0070 §2), so a replacement needs it again, before its recompute.
+    const script: Feature = {
+      ...testFeature('Script1', 'script'),
+      inputs: { code: { kind: 'code', value: 'design.box({});' } },
+    };
+    const { model, events } = setup(testDocument([script]), {
+      heapRecycleBytes: 1024,
+      heap: (worker) => (worker === 1 ? 4096 : 512),
+    });
+    await until(() => ready(model) && events.filter((e) => e === 'recompute:2').length === 1);
+    expect(events.filter((e) => e.startsWith('scripts:'))).toEqual(['scripts:1', 'scripts:2']);
+    expect(events.indexOf('scripts:1')).toBeLessThan(events.indexOf('recompute:1'));
+    expect(events.lastIndexOf('scripts:2')).toBeLessThan(events.indexOf('recompute:2'));
+  });
+
   it('loads OpenSCAD again on the new worker for a .scad import (ADR-0071 §3)', async () => {
     const file = 's1' as AttachmentId;
     const files: FileSource = {
@@ -316,6 +337,42 @@ describe('Recomputer heap recycling', () => {
     expect(events.filter((e) => e.startsWith('meshes:'))).toEqual([]);
     expect(events.indexOf('openscad:1')).toBeLessThan(events.indexOf('recompute:1'));
     expect(events.lastIndexOf('openscad:2')).toBeLessThan(events.indexOf('recompute:2'));
+  });
+
+  it('resends a script’s model attachments and both loaders on a recycled worker', async () => {
+    const file = 'script-scad' as AttachmentId;
+    const script: Feature = {
+      ...testFeature('Script1', 'script'),
+      inputs: {
+        code: { kind: 'code', value: `design.import({ file: '${file}' });` },
+      },
+    };
+    const { model, events } = setup(
+      {
+        ...testDocument([script]),
+        attachments: {
+          [file]: {
+            name: 'Block',
+            fileName: 'block.scad',
+            mediaType: 'application/x-openscad',
+            sha256: 'e'.repeat(64),
+            size: 9,
+          },
+        },
+      },
+      {
+        heapRecycleBytes: 1024,
+        heap: (worker) => (worker === 1 ? 4096 : 512),
+        files: { bytes: async () => new ArrayBuffer(9) },
+      },
+    );
+    await until(() => ready(model) && events.filter((e) => e === 'recompute:2').length === 1);
+    expect(events.filter((e) => e.startsWith('file:'))).toEqual([`file:${file}`, `file:${file}`]);
+    for (const kind of ['scripts', 'openscad']) {
+      expect(events.filter((e) => e.startsWith(`${kind}:`))).toEqual([`${kind}:1`, `${kind}:2`]);
+      expect(events.indexOf(`${kind}:1`)).toBeLessThan(events.indexOf('recompute:1'));
+      expect(events.indexOf(`${kind}:2`)).toBeLessThan(events.indexOf('recompute:2'));
+    }
   });
 
   it('recycles a real kernel whose heap passes a few MB, with the same result', {

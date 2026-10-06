@@ -67,6 +67,7 @@ export const ICON_NAMES = [
   'coil',
   'emboss',
   'rib',
+  'script',
   'fillet',
   'chamfer',
   'shell',

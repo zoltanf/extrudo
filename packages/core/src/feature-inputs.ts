@@ -8,7 +8,13 @@
  * reference, `true`) and turn them into the stored input (`design.ts`'s
  * `plainInput`, ADR-0068 §3).
  */
-import { ExprInputSchema, type GeomRefKind, RefInputSchema, type UnitKind } from './schema';
+import {
+  CodeInputSchema,
+  ExprInputSchema,
+  type GeomRefKind,
+  RefInputSchema,
+  type UnitKind,
+} from './schema';
 import { z } from './zod';
 
 /**
@@ -66,6 +72,18 @@ export const enumInput = <T extends readonly [string, ...string[]]>(values: T) =
   z
     .strictObject({ kind: z.literal('enum'), value: z.enum(values) })
     .meta({ input: { kind: 'enum' } satisfies EnumInputMeta });
+
+/** A `code` input: the source text itself, at most `max` characters. */
+export interface CodeInputMeta {
+  kind: 'code';
+}
+
+/** A `code` input of at most `max` characters (a Script's program, ADR-0070 §1). */
+export const codeOf = (max: number) =>
+  CodeInputSchema.refine(
+    (input) => input.value.length <= max,
+    `must be at most ${max.toLocaleString('en')} characters`,
+  ).meta({ input: { kind: 'code' } satisfies CodeInputMeta });
 
 function an(unit: UnitKind): string {
   if (unit === 'unitless') return 'a plain number';

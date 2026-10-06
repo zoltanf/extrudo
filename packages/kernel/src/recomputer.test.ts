@@ -67,6 +67,10 @@ function setup(doc: ExtrudoDocument, options: { fonts?: FontSource; files?: File
           events.push('meshes');
           return service.enableMeshes();
         },
+        enableScripts: () => {
+          events.push('scripts');
+          return service.enableScripts();
+        },
         // This kernel has no compiler: the test hears the call and goes on.
         enableOpenscad: async () => {
           events.push('openscad');
@@ -353,6 +357,32 @@ describe('Recomputer', () => {
     edit(second.document, (d) => withExpr(d, 'a', 'size', '12 mm'));
     await until(() => second.events.length > before);
     expect(second.events.slice(before)).not.toContain('meshes');
+  });
+
+  it('asks for the script runner only for a document with a script, once per kernel', {
+    timeout: 60_000,
+  }, async () => {
+    const box = testFeature('a', 'test-box', { size: '10 mm' });
+    const plain = setup(testDocument([box]));
+    await until(() => ready(plain.model));
+    expect(plain.events).not.toContain('scripts');
+
+    // This kernel was started without a runner: it refuses, the Recomputer
+    // carries on, and the script's own status says why (ADR-0070 §2).
+    const script: Feature = {
+      ...testFeature('s', 'script'),
+      inputs: { code: { kind: 'code', value: 'design.box({});' } },
+    };
+    const withScript = setup(testDocument([box, script]));
+    await until(() => ready(withScript.model));
+    expect(withScript.events.filter((e) => e === 'scripts')).toEqual(['scripts']);
+    expect(withScript.events.indexOf('scripts')).toBeLessThan(
+      withScript.events.indexOf('recompute'),
+    );
+    const before = withScript.events.length;
+    edit(withScript.document, (d) => withExpr(d, 'a', 'size', '12 mm'));
+    await until(() => withScript.events.length > before);
+    expect(withScript.events.slice(before)).not.toContain('scripts');
   });
 
   it('loads OpenSCAD once for a document that imports a .scad file (ADR-0071 §3)', {

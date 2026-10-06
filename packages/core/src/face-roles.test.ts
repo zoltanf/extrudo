@@ -27,6 +27,8 @@ const NAMES_NO_FACE: Readonly<Record<string, string>> = {
   draft: 'every face keeps the name it had (ADR-0053)',
   placeOnBed: 'it is a transform, so every face keeps its name (ADR-0048)',
   canvas: 'a canvas is a picture on a plane, not a body (P4-06)',
+  script:
+    'a script names no face itself: the features it generates do, under their own IDs (ADR-0070)',
 };
 
 describe('the face roles of the registry', () => {

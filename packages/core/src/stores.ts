@@ -191,6 +191,34 @@ export interface FeatureStatus {
    * them. Absent when there are none.
    */
   refs?: ReferenceIssue[];
+  /**
+   * A Script feature's run (P5-02, ADR-0070): the features it made, what it
+   * printed and, when it failed, where. Absent for every other feature.
+   */
+  script?: ScriptRunStatus;
+}
+
+/** What a Script feature's run did (`FeatureStatus.script`, ADR-0070). */
+export interface ScriptRunStatus {
+  /** The features it made, in order, with their own status. Empty when the run failed. */
+  generated: GeneratedFeatureStatus[];
+  /** What it printed with `console.log`, at most 200 lines. */
+  log: string[];
+  /** The line of the source the run failed on (1-based), when it failed and the engine could say. */
+  line?: number;
+  /** The column, when the engine gave one. */
+  column?: number;
+}
+
+/** One feature a script made, as its status lists it. */
+export interface GeneratedFeatureStatus {
+  /** `<script>.f3`: the script's ID and the API's own (ADR-0070 §1). */
+  id: FeatureId;
+  /** "Script1 › Extrude1". */
+  name: string;
+  type: string;
+  status: 'ok' | 'warning' | 'error';
+  message?: string;
 }
 
 /**

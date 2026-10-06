@@ -33,6 +33,7 @@ import { removeBodiesFeature } from './remove';
 import { revolveFeature } from './revolve';
 import { ribFeature } from './rib';
 import { scaleFeature } from './scale';
+import { scriptFeature } from './script';
 import { shellFeature } from './shell';
 import { sketchFeature } from './sketch/feature';
 import { splitBodyFeature } from './split-body';
@@ -86,5 +87,7 @@ export function documentFeatures(): FeatureRegistry<FeatureDefinition> {
   // Import (a STEP solid or a mesh body) and Canvas (a picture on a plane),
   // ADR-0066.
   registry.register(importFeature).register(canvasFeature);
+  // Script (P5-02, ADR-0070): code that adds features, run by the kernel.
+  registry.register(scriptFeature as FeatureDefinition);
   return registry;
 }

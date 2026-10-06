@@ -49,8 +49,11 @@ import {
   importFileOf,
   isMeshMediaType,
   isScadMediaType,
+  MODEL_MEDIA_TYPES,
   newBodyNames,
   type ReferenceIssue,
+  SCRIPT_TYPE,
+  type ScriptRunStatus,
   setSketchGeometry,
   updateSketchDimension,
   usedFonts,
@@ -108,6 +111,11 @@ export interface FeatureReport {
   message?: string;
   /** References the kernel couldn't follow exactly (ADR-0033). */
   refs?: ReferenceIssue[];
+  /**
+   * A Script feature's run (P5-02, ADR-0070): the features it made with their
+   * own status, what it printed and the line it failed on.
+   */
+  script?: ScriptRunStatus;
 }
 
 /** A body after a compute: what the app's browser shows and the viewport draws. */
@@ -224,6 +232,7 @@ export class DesignJob {
   #service: KernelService | undefined;
   #sketchSolver: SketchSolver | undefined;
   #meshesEnabled = false;
+  #scriptsEnabled = false;
   #openscadEnabled = false;
   /** What the kernel has already been sent (a font ID, or `file:<id>`). */
   readonly #sent = new Set<string>();
@@ -483,7 +492,11 @@ export class DesignJob {
   /** The kernel, started once per job (ADR-0069 §4: one per process). */
   async #kernel(): Promise<KernelService> {
     if (this.#disposed) throw new HeadlessError('This design job is disposed.');
+    // The script runner (P5-02, ADR-0070 §2): the kernel can't import it, so
+    // the CLI hands it a loader, which runs only for a design with a script —
+    // imported then too, so no other command pays for QuickJS and sucrase.
     this.#service ??= new KernelService(() => loadOcct(), {
+      scripts: async () => (await import('@extrudo/script')).loadScriptHost(),
       // OpenSCAD (P5-04, ADR-0071 §3), loaded only for a design with a `.scad` import.
       openscad: async () => (await import('@extrudo/openscad/node')).createNodeCompiler(),
     });
@@ -606,7 +619,7 @@ export class DesignJob {
    * (ADR-0058 §4, ADR-0066 §0): the bundled fonts from `@extrudo/fonts` and
    * the design's own attachments from the archive, and manifold-3d when one of
    * the files is a mesh — with OpenSCAD's compiler when one is a `.scad` file
-   * (ADR-0071 §3).
+   * (ADR-0071 §3), and the script runner when the design has a script.
    */
   async #sendResources(): Promise<void> {
     const service = await this.#kernel();
@@ -619,9 +632,21 @@ export class DesignJob {
       this.#sent.add(id);
     }
     const files: { id: AttachmentId; mesh: boolean; scad: boolean }[] = [];
+    const ids = new Set<AttachmentId>();
     for (const feature of doc.features) {
       const id = importFileOf(feature);
-      if (!id || this.#sent.has(`file:${id}`)) continue;
+      if (id) ids.add(id);
+    }
+    if (doc.features.some((feature) => feature.type === SCRIPT_TYPE)) {
+      for (const [id, attachment] of Object.entries(doc.attachments ?? {})) {
+        if (
+          MODEL_MEDIA_TYPES.includes(attachment.mediaType as (typeof MODEL_MEDIA_TYPES)[number])
+        ) {
+          ids.add(id as AttachmentId);
+        }
+      }
+    }
+    for (const id of ids) {
       const attachment = doc.attachments?.[id];
       if (!attachment) continue;
       const bytes = this.#attachments.get(attachment.sha256);
@@ -630,6 +655,7 @@ export class DesignJob {
         mesh: isMeshMediaType(attachment.mediaType),
         scad: isScadMediaType(attachment.mediaType),
       });
+      if (this.#sent.has(`file:${id}`)) continue;
       if (!bytes) continue;
       await service.addFile(id, ownBuffer(bytes), attachment.mediaType, attachment.fileName);
       this.#sent.add(`file:${id}`);
@@ -637,6 +663,11 @@ export class DesignJob {
     if (!this.#meshesEnabled && files.some(({ mesh }) => mesh)) {
       await service.enableMeshes();
       this.#meshesEnabled = true;
+    }
+    // QuickJS, for a design with a Script feature (ADR-0070 §2).
+    if (!this.#scriptsEnabled && doc.features.some((f) => f.type === SCRIPT_TYPE)) {
+      await service.enableScripts();
+      this.#scriptsEnabled = true;
     }
     if (!this.#openscadEnabled && files.some(({ scad }) => scad)) {
       await service.enableOpenscad();
@@ -721,6 +752,7 @@ function featureReports(
         status: status?.status ?? 'ok',
         ...(status?.message ? { message: status.message } : {}),
         ...(status?.refs?.length ? { refs: status.refs } : {}),
+        ...(status?.script ? { script: status.script } : {}),
       };
     });
 }

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { headersFor, parseHeaders } from '../apps/web/pwa/headers';
 import { attr, chip, exportModel, objectsOf3mf, primitive, zoomOutTo } from './benchmark-helpers';
-import { clicker, counts, kernelReady, mapping, newSketchOnXY } from './helpers';
+import { clicker, counts, kernelReady, mapping, newSketchOnXY, pickTool } from './helpers';
 import { type StaticHost, startStaticHost } from './static-host';
 
 // The hosted site's headers (apps/web/public/_headers, ADR-0054). `vite preview`, which
@@ -227,6 +227,14 @@ test('nothing in a whole session evaluates a string', async ({ page, request }) 
   await page.keyboard.press('Escape');
   const exported = await exportModel(page, '3MF');
   expect(objectsOf3mf(exported)).toHaveLength(2);
+
+  await page.getByRole('tab', { name: 'Solid' }).click();
+  await pickTool(page, 'Script');
+  const script = page.getByRole('region', { name: 'Script dialog' });
+  await expect(page.getByRole('textbox', { name: 'Script code' })).toBeVisible();
+  await expect(script).toHaveAttribute('data-preview-status', 'ok', { timeout: 30_000 });
+  await expect(script.locator('[data-script-made]')).toHaveText('Made 1 features');
+  await script.getByRole('button', { name: /^Cancel Esc/ }).click();
 
   expect(await policy.violations()).toEqual([]);
   expect(policy.errors).toEqual([]);

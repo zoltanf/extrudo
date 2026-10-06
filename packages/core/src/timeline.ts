@@ -14,6 +14,7 @@ import { CommandError, type DocumentDraft, defineCommand } from './commands';
 import { normalizeGroupsInPlace } from './groups';
 import type { FeatureId } from './ids';
 import type { ExtrudoDocument, Feature, GeomRef, GeomRefKind } from './schema';
+import { scriptOfGenerated } from './script';
 
 /** Characters that separate the plain IDs inside a reference or a persistent name. */
 const SEPARATORS = /[^A-Za-z0-9_.~-]+/;
@@ -54,7 +55,10 @@ export function referencedFeatures(
   const found = new Set<FeatureId>();
   for (const { ref } of storedRefs(feature)) {
     for (const token of ref.id.split(SEPARATORS)) {
-      if (token !== feature.id && ids.has(token)) found.add(token as FeatureId);
+      // A feature a script generated (`<script>.f3`, ADR-0070 §1) is the
+      // script's: its geometry comes and goes with it.
+      const id = scriptOfGenerated(token, ids) ?? token;
+      if (id !== feature.id && ids.has(id)) found.add(id as FeatureId);
     }
   }
   return [...found];

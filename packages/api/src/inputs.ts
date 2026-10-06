@@ -14,6 +14,8 @@
 
 import {
   type BoolInput,
+  type CodeInput,
+  type CodeInputMeta,
   documentFeatures,
   type EnumInput,
   type EnumInputMeta,
@@ -49,7 +51,8 @@ export type InputMeta =
   | RefInputMeta
   | EnumInputMeta
   | { kind: 'file' }
-  | { kind: 'labels' };
+  | { kind: 'labels' }
+  | CodeInputMeta;
 
 /**
  * The plain value a stored input takes: an expression as a string, a number or
@@ -70,7 +73,9 @@ type PlainValue<T> = T extends ExprInput
           ? string
           : T extends LabelsInput
             ? readonly string[]
-            : never;
+            : T extends CodeInput
+              ? string
+              : never;
 
 /**
  * Core's own input type with each input written as the plain value it takes, so
@@ -136,6 +141,9 @@ function plainInput(definition: FeatureDefinition, name: string, value: unknown)
       return Array.isArray(value) && value.every((v) => typeof v === 'string')
         ? { kind: 'labels', labels: [...value] }
         : value;
+    // A Script's source, given as the text (P5-02).
+    case 'code':
+      return typeof value === 'string' ? { kind: 'code', value } : value;
     default:
       return typeof value === 'boolean' ? { kind: 'bool', value } : value;
   }
@@ -148,7 +156,16 @@ function referenceInput(value: unknown): unknown {
 }
 
 /** The kinds core stores an input as (`schema.ts`'s `InputSchema`). */
-const STORED_KINDS = new Set(['expr', 'enum', 'bool', 'ref', 'file', 'labels', 'sketchData']);
+const STORED_KINDS = new Set([
+  'expr',
+  'enum',
+  'bool',
+  'ref',
+  'file',
+  'labels',
+  'sketchData',
+  'code',
+]);
 
 /**
  * Whether a value is already one of core's stored input shapes. A reference is

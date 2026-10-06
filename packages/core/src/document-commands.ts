@@ -17,6 +17,8 @@ import {
   type Parameter,
   type Settings,
 } from './schema';
+import { SCRIPT_TYPE } from './script';
+import { referencedFeatures } from './timeline';
 
 export const renameDocument = defineCommand<{ name: string }>(
   'document.rename',
@@ -311,20 +313,25 @@ export function newBodyNames(
 function featuresReferring(draft: DocumentDraft, id: FeatureId): string[] {
   const prefix = `${id}/`;
   const bodies = `${id}:`;
+  // A script's geometry is its generated features' (ADR-0070 §1): any stored
+  // reference into it — a face's name, an edge's, a body, a profile — uses it.
+  const script = draft.features.find((f) => f.id === id)?.type === SCRIPT_TYPE;
+  const ids = new Set<string>(draft.features.map((f) => f.id));
   return draft.features
     .filter(
       (f) =>
         f.id !== id &&
-        Object.values(f.inputs).some(
-          (input) =>
-            input.kind === 'ref' &&
-            input.refs.some(
-              (ref) =>
-                ref.id === id ||
-                ref.id.startsWith(prefix) ||
-                (ref.kind === 'body' && ref.id.startsWith(bodies)),
-            ),
-        ),
+        ((script && referencedFeatures(f as Feature, ids).includes(id)) ||
+          Object.values(f.inputs).some(
+            (input) =>
+              input.kind === 'ref' &&
+              input.refs.some(
+                (ref) =>
+                  ref.id === id ||
+                  ref.id.startsWith(prefix) ||
+                  (ref.kind === 'body' && ref.id.startsWith(bodies)),
+              ),
+          )),
     )
     .map((f) => f.name);
 }

@@ -360,6 +360,11 @@ export interface FeatureDialogSpec<I extends FeatureInputs = FeatureInputs>
   /** The command that opens the dialog: a toolbar tool's ID, or a command of its own. */
   command: ToolId | DialogCommand;
   fields: readonly DialogField[];
+  /** A code editor needs more space than ordinary feature fields. */
+  wide?: boolean;
+  /** Delay live previews until editing pauses (milliseconds). */
+  previewDelay?: number;
+  initialValues?(ctx: DialogContext): Partial<DialogValues>;
   /**
    * The feature's inputs from the values. Default: one input per shown
    * field, named like it (`ref`, `expr` with the field's unit and a model

@@ -22,6 +22,16 @@ export function spawnDebugKernel(): KernelConnection {
   );
 }
 
+/**
+ * Connects to a kernel worker someone else started: the app's own entry
+ * (`apps/web/src/project/kernelWorker.ts`), which is the kernel's
+ * (`serveKernel`, `@extrudo/kernel/worker`) plus the script runner the kernel
+ * may not import itself (ADR-0070 §2).
+ */
+export function connectKernelWorker(worker: Worker): KernelConnection {
+  return connect(worker);
+}
+
 function connect(worker: Worker): KernelConnection {
   const api = Comlink.wrap<KernelApi>(worker);
   // Callbacks cross the worker boundary as proxies.
@@ -31,6 +41,7 @@ function connect(worker: Worker): KernelConnection {
     addFont: (id, bytes) => api.addFont(id, bytes),
     addFile: (id, bytes, mediaType, fileName) => api.addFile(id, bytes, mediaType, fileName),
     enableMeshes: () => api.enableMeshes(),
+    enableScripts: () => api.enableScripts(),
     enableOpenscad: () => api.enableOpenscad(),
     scadParameters: (id) => api.scadParameters(id),
     recompute: (request, onFeature) =>

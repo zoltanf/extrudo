@@ -36,6 +36,10 @@ const ALLOWED = {
   // kernel is a devDependency only, for the tests that recompute a design
   // headless (`examples.test.ts`).
   '@extrudo/api': ['@extrudo/core', '@extrudo/sketch', '@extrudo/storage', '@extrudo/kernel'],
+  // The script runner (ADR-0070): user code in QuickJS, building features
+  // through @extrudo/api. Nothing of the kernel's: the kernel gets the runner
+  // injected, so this package stays out of its dependency graph.
+  '@extrudo/script': ['@extrudo/api', '@extrudo/core'],
   // The headless CLI (P5-03, ADR-0069): the document API, the kernel's Node
   // entry (OCCT in this thread), the solver, the archive format, the io
   // writers and the bundled fonts. Nothing depends on it.
@@ -45,6 +49,9 @@ const ALLOWED = {
     '@extrudo/fonts',
     '@extrudo/io',
     '@extrudo/kernel',
+    // The script runner, injected into the kernel for a design with a script
+    // (P5-02, ADR-0070 §2): the kernel may not import it itself.
+    '@extrudo/script',
     '@extrudo/openscad',
     '@extrudo/sketch',
     '@extrudo/storage',
@@ -55,6 +62,8 @@ const ALLOWED = {
     '@extrudo/core',
     '@extrudo/sketch',
     '@extrudo/kernel',
+    // Only the project's kernel worker entry imports it (P5-02, ADR-0070 §2).
+    '@extrudo/script',
     '@extrudo/io',
     '@extrudo/storage',
     '@extrudo/fonts',

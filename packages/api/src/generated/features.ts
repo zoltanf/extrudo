@@ -45,6 +45,7 @@ import type {
   RevolveInputs,
   RibInputs,
   ScaleInputs,
+  ScriptInputs,
   ShellInputs,
   SphereInputs,
   SplitBodyInputs,
@@ -100,10 +101,55 @@ export const FEATURE_TYPES = [
   'rib',
   'import',
   'canvas',
+  'script',
 ] as const;
 
 /** A feature type of `FEATURE_TYPES`. */
 export type FeatureType = (typeof FEATURE_TYPES)[number];
+
+/** The generated methods' one-line descriptions, shared with the Script editor. */
+export const FEATURE_METHOD_DESCRIPTIONS: Readonly<Record<string, string>> = {
+  extrude: 'Extrude (create): one feature of the timeline.',
+  revolve: 'Revolve (create): one feature of the timeline.',
+  fillet: 'Fillet (modify): one feature of the timeline.',
+  chamfer: 'Chamfer (modify): one feature of the timeline.',
+  shell: 'Shell (modify): one feature of the timeline.',
+  removeBodies: 'Remove (modify): one feature of the timeline.',
+  box: 'Box (create): one feature of the timeline.',
+  cylinder: 'Cylinder (create): one feature of the timeline.',
+  sphere: 'Sphere (create): one feature of the timeline.',
+  torus: 'Torus (create): one feature of the timeline.',
+  offsetPlane: 'Offset Plane (construct): one feature of the timeline.',
+  planeAtAngle: 'Plane at Angle (construct): one feature of the timeline.',
+  midplane: 'Midplane (construct): one feature of the timeline.',
+  planeThroughPoints: 'Plane Through 3 Points (construct): one feature of the timeline.',
+  tangentPlane: 'Tangent Plane (construct): one feature of the timeline.',
+  axisThroughPoints: 'Axis Through 2 Points (construct): one feature of the timeline.',
+  axisThroughCylinder: 'Axis Through Cylinder (construct): one feature of the timeline.',
+  axisAlongEdge: 'Axis Along Edge (construct): one feature of the timeline.',
+  constructionPoint: 'Point (construct): one feature of the timeline.',
+  combine: 'Combine (modify): one feature of the timeline.',
+  moveBodies: 'Move (modify): one feature of the timeline.',
+  mirror: 'Mirror (modify): one feature of the timeline.',
+  placeOnBed: 'Place on Bed (modify): one feature of the timeline.',
+  rectangularPattern: 'Rectangular Pattern (modify): one feature of the timeline.',
+  circularPattern: 'Circular Pattern (modify): one feature of the timeline.',
+  pathPattern: 'Path Pattern (modify): one feature of the timeline.',
+  hole: 'Hole (create): one feature of the timeline.',
+  offsetFace: 'Offset Face (modify): one feature of the timeline.',
+  splitBody: 'Split Body (modify): one feature of the timeline.',
+  scale: 'Scale (modify): one feature of the timeline.',
+  draft: 'Draft (modify): one feature of the timeline.',
+  sweep: 'Sweep (create): one feature of the timeline.',
+  loft: 'Loft (create): one feature of the timeline.',
+  coil: 'Coil (create): one feature of the timeline.',
+  thread: 'Thread (modify): one feature of the timeline.',
+  emboss: 'Emboss (create): one feature of the timeline.',
+  rib: 'Rib (create): one feature of the timeline.',
+  import: 'Import (create): one feature of the timeline.',
+  canvas: 'Canvas (create): one feature of the timeline.',
+  script: 'Script (create): one feature of the timeline.',
+};
 
 /** The face roles each feature type names its faces with (ADR-0068 §4). */
 export interface FeatureFaceRoles {
@@ -1191,6 +1237,13 @@ export interface FeatureMethods {
    * @param inputs.flip Mirrors the image left to right. Default false.
    */
   canvas(inputs: PlainInputs<CanvasInputs>, options?: FeatureOptions): FeatureHandle<'canvas'>;
+  /**
+   * Script (create): one feature of the timeline.
+   *
+   * @param inputs.code The script's source: TypeScript or JavaScript that adds features through `design`, reading `params`. Required.
+   * @param inputs.language What the source is written in: `ts` (its types are stripped) or `js`. Default ts.
+   */
+  script(inputs: PlainInputs<ScriptInputs>, options?: FeatureOptions): FeatureHandle<'script'>;
 }
 
 /**
@@ -1277,6 +1330,8 @@ export function featureMethods(design: FeatureMethodTarget): FeatureMethods {
       design.add('import', inputs, options) as FeatureHandle<'import'>,
     canvas: (inputs, options?: FeatureOptions) =>
       design.add('canvas', inputs, options) as FeatureHandle<'canvas'>,
+    script: (inputs, options?: FeatureOptions) =>
+      design.add('script', inputs, options) as FeatureHandle<'script'>,
   };
 }
 
@@ -1432,6 +1487,11 @@ export function featureExamples(d: Design): void {
 
   // Canvas.
   d.canvas({ image: plan, plane: d.origin.xy, width: '60 mm' });
+
+  // Script.
+  d.script({
+    code: "for (let i = 0; i < 3; i++) design.cylinder({ diameter: '6 mm', height: '4 mm', x: i * 10 });",
+  });
 
   // Sketch.
   const other = d.sketch(d.origin.yz, (k) => {

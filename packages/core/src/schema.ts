@@ -139,6 +139,16 @@ export const LabelsInputSchema = z.strictObject({
 });
 export type LabelsInput = z.infer<typeof LabelsInputSchema>;
 
+/**
+ * Source code (P5-02, ADR-0070 §1): a Script feature's program, stored as the
+ * text the user wrote. The kernel runs it; nothing else reads it.
+ */
+export const CodeInputSchema = z.strictObject({
+  kind: z.literal('code'),
+  value: z.string(),
+});
+export type CodeInput = z.infer<typeof CodeInputSchema>;
+
 /** One feature input. Every number is an expression; there is no raw-number kind. */
 export const InputSchema = z.discriminatedUnion('kind', [
   ExprInputSchema,
@@ -148,6 +158,7 @@ export const InputSchema = z.discriminatedUnion('kind', [
   SketchDataInputSchema,
   FileInputSchema,
   LabelsInputSchema,
+  CodeInputSchema,
 ]);
 export type Input = z.infer<typeof InputSchema>;
 export type ExprInput = z.infer<typeof ExprInputSchema>;

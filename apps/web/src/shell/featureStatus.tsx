@@ -1,6 +1,10 @@
 import type { Feature, FeatureStatus } from '@extrudo/core';
 import { TriangleAlert, X } from 'lucide-react';
 
+export function scriptChipHint(status?: FeatureStatus): string | undefined {
+  return status?.script ? `made ${status.script.generated.length} features` : undefined;
+}
+
 /** A feature's problem as the timeline and the browser show it: a warning or an error. */
 export interface FeatureProblem {
   status: 'warning' | 'error';

@@ -466,6 +466,7 @@ before something it uses. Expressions do not order features.
 | `sketchData` | `sketch` (SketchData, required) | A sketch's 2D content (section 7). Only the `sketch` feature uses it. |
 | `file` | `id` (attachment ID string, required) | A file of the design itself (P4-06, ADR-0066 §0): the `id` of an `attachments` entry (4.5) whose bytes the kernel reads. A document that names an `id` it doesn't carry, or one of a media type the feature doesn't read, is **damaged** (section 3), like a `text` font the design doesn't carry. |
 | `labels` | `labels` (array of strings, required, may be empty) | Names of a design's own making, with nothing to refer to (P4-12): the instances a pattern leaves out, as position labels matching `m?\d+(xm?\d+)?` (6.16). Only the pattern features use it. |
+| `code` | `value` (string, required) | Source code (P5-02, ADR-0070 §1): a Script's program, as the text the user wrote, at most 100,000 characters. Only the `script` feature uses it (6.30). |
 
 Feature-specific rules below are enforced by the per-type inputs schema (each
 inputs object is strict too: the recompute ignores unknown input names with
@@ -1220,6 +1221,46 @@ may be parameters of the design, and changing one brings the picture with it
 marks two points of a known real distance on the picture (`width × real /
 measured`, to 0.01 mm, as a plain value).
 
+### 6.30 `script`
+
+Code that adds features (P5-02, ADR-0070, FR-PRG-02). The program runs in a
+sandbox (QuickJS compiled to WebAssembly, in the kernel worker or in Node)
+against the document **as it is before the script** — the features before it
+in the timeline and every parameter — and builds features through the document
+API (`@extrudo/api`, ADR-0068): `design.extrude(…)`, `design.sketch(…)`. It may
+only **add** features; removing, moving, renaming or suppressing one, adding or
+changing a parameter, and adding another script are refused.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `code` | `code` | yes | The program: TypeScript or JavaScript, at most 100,000 characters. |
+| `language` | `enum` | no | `ts` (the types are stripped before it runs, and nothing is type-checked) or `js`. Default `ts`. |
+
+**The features it adds are not stored.** A reader that computes the design
+runs the program on every recompute and evaluates what it made right after the
+script, in order, as if those features stood in the timeline there; the code is
+the source, so they can't go stale. The same program over the same document
+and parameter values makes the same features: their IDs are the script's own
+ID, a `.` and the API's counter (`<script>.f1`, `<script>.f2`…; sketch entities,
+constraints and dimensions inside them are numbered by the same counter
+without the prefix), and the counter does not depend on anything else in the
+document. Their names are the script's, `›`, and the type's label counted
+within the script ("Script1 › Extrude1").
+
+**References into a script's geometry** are ordinary references: a later
+feature stores `extrude:<script>.f1:cap:end` for a face, `<script>.f1:0` for a
+body, `<script>.f2/<region>` for a profile of a sketch the script made. Such a
+reference is a dependency on the script itself (the script's ID is the part
+before the last `.`), so the timeline refuses to move that feature before the
+script, and the script can't be deleted while it is used.
+
+What the program may read and do is the sandbox's (ADR-0070 §2): `design`
+(add only), `params` (every parameter's value by name, in mm, degrees or plain
+units, frozen), `console.log`, a `Math.random` seeded from the script's ID and a
+`Date` frozen at 0; two seconds, 64 MB and 1,000 features per run. A program
+that fails, or exceeds a limit, makes nothing: the feature is in error, with the
+line of the source when there is one, and the bodies before it are unchanged.
+
 ---
 
 ## 7. Sketch data (`sketchData`)
@@ -1542,7 +1583,8 @@ UUID (v4, from `crypto.randomUUID()`) when it is created and keeps it for life;
 IDs are never reused. The schema only requires a non-empty string, and readers
 must accept any. IDs of features are used as tokens inside references and
 persistent names, so a hand-written feature ID should use only
-`[A-Za-z0-9_.~-]` and no `/` or `:`. Sketch entity, constraint, dimension and
+`[A-Za-z0-9_.~-]` and no `/` or `:`. A feature a `script` makes has the ID
+`<script>.<n>` (6.30), which is never stored. Sketch entity, constraint, dimension and
 projection IDs share one
 space per sketch (section 7). Body IDs are made by the kernel (`<feature>:<n>`)
 and profile region IDs by the sketch profile detector; a third-party writer

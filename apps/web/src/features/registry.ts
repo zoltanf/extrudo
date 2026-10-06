@@ -28,6 +28,7 @@ import { removeDialog } from './remove';
 import { revolveDialog } from './revolve';
 import { ribDialog } from './rib';
 import { scaleDialog } from './scale';
+import { scriptDialog } from './script';
 import { shellDialog } from './shell';
 import { commandId, type FeatureDialogSpec } from './spec';
 import { splitBodyDialog } from './split-body';
@@ -67,6 +68,7 @@ export function featureDialogs(): FeatureDialogs {
   dialogs.register(embossDialog);
   // Rib (P4-10, ADR-0064 §1).
   dialogs.register(ribDialog);
+  dialogs.register(scriptDialog);
   // Remove: edit which bodies a Remove takes out (P3-17).
   dialogs.register(removeDialog);
   // Import: a STEP file as bodies (P4-06, ADR-0066 §2).

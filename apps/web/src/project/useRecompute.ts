@@ -1,9 +1,10 @@
 import type { DocumentStore, ModelStore } from '@extrudo/core';
-import { type BodyMesh, Recomputer, type SpawnKernel, spawnBrowserKernel } from '@extrudo/kernel';
+import { type BodyMesh, Recomputer, type SpawnKernel } from '@extrudo/kernel';
 import { useEffect, useState } from 'react';
 import { appNotifications } from '../design-system';
 import { fileMediaType, fileName } from '../features/import';
 import { attachmentBytes, fontBytes, usedFonts } from '../sketch/fonts';
+import { spawnProjectKernel } from './spawnKernel';
 
 /** What a replaced kernel worker says in the notification history (P4-12 H4). */
 export const RECYCLED_TEXT = 'The geometry kernel was restarted to free memory.';
@@ -18,12 +19,14 @@ export const RECYCLED_TEXT = 'The geometry kernel was restarted to free memory.'
  * limit is replaced between recomputes (P4-12 H4), which the notification
  * history records, quietly: the view carries on showing the model throughout,
  * and the new worker is sent the fonts and files again (`Recomputer`'s restart
- * path, which mesh bodies need as well for manifold-3d).
+ * path, which mesh bodies need as well for manifold-3d, and scripts for their
+ * runner). The worker is the app's own entry (`kernelWorker.ts`), which adds
+ * the script runner to the kernel (P5-02, ADR-0070 §2).
  */
 export function useRecompute(
   store: DocumentStore,
   model: ModelStore<BodyMesh>,
-  spawn: SpawnKernel = spawnBrowserKernel,
+  spawn: SpawnKernel = spawnProjectKernel,
 ): Recomputer | undefined {
   const [recomputer, setRecomputer] = useState<Recomputer>();
   useEffect(() => {

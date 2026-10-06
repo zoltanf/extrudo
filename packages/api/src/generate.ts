@@ -128,6 +128,14 @@ export function generate(): string {
     `/** A feature type of \`FEATURE_TYPES\`. */`,
     `export type FeatureType = (typeof FEATURE_TYPES)[number];`,
     '',
+    `/** The generated methods' one-line descriptions, shared with the Script editor. */`,
+    `export const FEATURE_METHOD_DESCRIPTIONS: Readonly<Record<string, string>> = {`,
+    ...methods.map(
+      (feature) =>
+        `  ${methodName(feature.type)}: ${JSON.stringify(`${feature.label} (${feature.category}): one feature of the timeline.`)},`,
+    ),
+    `};`,
+    '',
     ...faceRoleTypes(features),
     '',
     `/** What the generated methods need from a design: \`add\`, and nothing else. */`,
@@ -289,7 +297,7 @@ interface JsonProperty {
 /**
  * The reference's type column and reference kinds for one input, read off the
  * stored shape the schema holds: `kind` says what the input is (`expr`, `ref`,
- * `enum`, `bool`, `file`, `labels`, `sketchData`) and the metadata says the unit
+ * `enum`, `bool`, `file`, `labels`, `sketchData`, `code`) and the metadata says the unit
  * and the reference kinds. What a call passes is the plain value of each (ADR-0068 §3).
  */
 function readInput(property: JsonProperty): { type: string; kinds?: string[]; fallback?: string } {
@@ -315,6 +323,9 @@ function readInput(property: JsonProperty): { type: string; kinds?: string[]; fa
       return { type: 'string[]', fallback };
     case 'sketchData':
       return { type: 'SketchData', fallback };
+    // A Script's source (P5-02): the text itself.
+    case 'code':
+      return { type: 'string', fallback };
     default:
       return { type: property.type ?? 'unknown', fallback };
   }

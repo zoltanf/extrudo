@@ -295,8 +295,12 @@ function report(job: DesignJob, result: ComputeResult): string[] {
   }
   lines.push('Features:');
   for (const feature of result.features) {
+    // A script says how many features it made (P5-02, ADR-0070).
+    const made = feature.script
+      ? ` (made ${feature.script.generated.length} ${feature.script.generated.length === 1 ? 'feature' : 'features'})`
+      : '';
     lines.push(
-      `  ${feature.status.padEnd(7)} ${feature.name}${feature.message ? `: ${feature.message}` : ''}`,
+      `  ${feature.status.padEnd(7)} ${feature.name}${made}${feature.message ? `: ${feature.message}` : ''}`,
     );
   }
   lines.push('Bodies:');

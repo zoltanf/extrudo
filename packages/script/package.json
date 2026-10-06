@@ -1,0 +1,23 @@
+{
+  "name": "@extrudo/script",
+  "version": "0.3.0",
+  "private": true,
+  "description": "The script runner: user code in QuickJS, building features through @extrudo/api (ADR-0070). Runs in the kernel worker and in Node.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./browser": "./src/browser.ts",
+    "./methods": "./src/restricted.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@extrudo/api": "workspace:*",
+    "@extrudo/core": "workspace:*",
+    "@jitl/quickjs-wasmfile-release-sync": "^0.31.0",
+    "quickjs-emscripten-core": "^0.31.0",
+    "sucrase": "^3.35.0"
+  }
+}

@@ -1,6 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
-import { kernelReady, openProject } from './helpers';
+import { kernelReady, openProject, pickTool } from './helpers';
 
 // P3-13 (NFR-07): an axe audit of the main screens. Each screen is checked
 // against WCAG 2.1 A and AA; the test fails on any violation not listed in
@@ -85,6 +85,15 @@ for (const theme of ['dark', 'light'] as const) {
         .dblclick();
       await expect(page.getByRole('region', { name: 'Edit Extrude1 dialog' })).toBeVisible();
       await audit(page, `${theme} feature dialog`);
+      await page.getByRole('button', { name: 'Cancel Esc' }).click();
+
+      await pickTool(page, 'Script');
+      await expect(page.getByRole('textbox', { name: 'Script code' })).toBeVisible();
+      await expect(page.getByRole('region', { name: 'Script dialog' })).toHaveAttribute(
+        'data-preview-status',
+        'ok',
+      );
+      await audit(page, `${theme} script editor`);
       await page.getByRole('button', { name: 'Cancel Esc' }).click();
 
       // Parameters.

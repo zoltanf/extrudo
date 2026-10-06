@@ -959,9 +959,13 @@ end to end, faster than in Fusion 360.
   examples as tests, and the reference (`docs/api/`, one page per feature type,
   generated with the methods) published by the landing page's site under
   `/docs/api/`.
-- [ ] **P5-02 Script feature:** Monaco editor, sandboxed worker (no DOM, no
-  network, time and memory limits), reads parameters, outputs bodies and
-  sketches; errors shown inline. FR-PRG-02.
+- [x] **P5-02 Script feature:** editor (CodeMirror 6, not the Monaco the first
+  draft named — ADR-0070 §3), sandboxed worker (no DOM, no network, time and
+  memory limits), reads parameters, outputs bodies and sketches; errors shown
+  inline. FR-PRG-02. **Done 2026-10-05**, all three slices (ADR-0070).
+  QuickJS runs add-only API programs with bounded time/memory; generated features
+  recompute under persistent IDs in the kernel and CLI. The lazy CodeMirror
+  dialog adds completion, inline errors, output and one-step edits; e2e and guide.
 - [x] **P5-03 Headless CLI:** `extrudo export project.extrudo --param w=40
   --format 3mf`. FR-PRG-03. Done 2026-10-05 (ADR-0069) in two slices: the
   library (`@extrudo/cli`: open, parameters and configurations with the

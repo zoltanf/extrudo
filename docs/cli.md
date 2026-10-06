@@ -178,7 +178,11 @@ what the kernel still held as it went, which is 0 when nothing leaked.
 
 The design's attachments come with it: a font the design carries is shaped, a
 STEP file is read as a base body and a mesh file as a mesh body (which loads
-manifold-3d for that design only). The bundled fonts of the app are found in
+manifold-3d for that design only). A design with a Script feature (ADR-0070)
+runs its code in QuickJS, loaded for that design only, and `info` says how many
+features each script made (`--json` lists them, with what the script printed and
+the line it failed on); `--param` changes what a script makes like anything
+else. The bundled fonts of the app are found in
 `packages/fonts`. A design from a newer Extrudo opens with a notice, and one
 with keys this version does not know opens without them — the same leniency the
 app has (ADR-0050).

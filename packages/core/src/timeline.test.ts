@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CommandError } from './commands';
 import { createDocument } from './document';
-import { moveTimelineMarker } from './document-commands';
+import { moveTimelineMarker, removeFeature } from './document-commands';
 import { extrudeInputs } from './extrude';
 import type { ProjectionId } from './ids';
 import type { ExtrudoDocument, Feature, GeomRef } from './schema';
@@ -102,6 +102,73 @@ describe('feature dependencies', () => {
     expect(timelineDependencies(doc).get(fid('E3'))).toEqual([fid('S1')]);
     // Moving the extrude before its sketch is refused, like a profile's.
     expect(moveProblem(doc, fid('E3'), 0)).toContain('uses Sketch1');
+  });
+});
+
+describe('references into a script (P5-02, ADR-0070 §1)', () => {
+  // Sketch1 → Script1, which makes `SC.f1` (an extrude) → Fillet1 on one of its
+  // edges → Extrude2 joining its body and Sketch2 on one of its profiles.
+  const script: Feature = {
+    id: fid('SC'),
+    type: 'script',
+    name: 'Script1',
+    suppressed: false,
+    inputs: { code: { kind: 'code', value: 'design.box({});' } },
+  };
+  const fillet: Feature = {
+    id: fid('F1'),
+    type: 'fillet',
+    name: 'Fillet1',
+    suppressed: false,
+    inputs: {
+      edges: {
+        kind: 'ref',
+        refs: [{ kind: 'edge', id: 'e[extrude:SC.f1:cap:end|extrude:SC.f1:side:l1]' }],
+      },
+      radius: { kind: 'expr', expr: '1 mm' },
+    },
+  };
+  const join = extrude('E2', 'Extrude2', ['S1/r1'], ['SC.f1:0']);
+  const onProfile = sketch('S2', 'Sketch2', { kind: 'profile', id: 'SC.f2/r1' });
+  const doc = (): ExtrudoDocument => ({
+    ...createDocument({ name: 'Script' }),
+    features: [
+      sketch('S1', 'Sketch1', originPlaneRef('origin:xy')),
+      script,
+      fillet,
+      join,
+      onProfile,
+    ],
+    timelineMarker: 5,
+  });
+
+  it("are dependencies on the script: a face's name, a body and a profile", () => {
+    const deps = timelineDependencies(doc());
+    expect(deps.get(fid('F1'))).toEqual(['SC']);
+    expect(deps.get(fid('E2'))?.sort()).toEqual(['S1', 'SC']);
+    expect(deps.get(fid('S2'))).toEqual(['SC']);
+    // A sketch entity's own sub-ID (a text's `<text>.<n>`) is not a feature's.
+    const text = {
+      id: fid('E3'),
+      inputs: extrudeInputs([{ kind: 'sketchEntity', id: 'S1/t9.2' }]),
+    };
+    expect(referencedFeatures(text, new Set(['S1', 'SC', 'E3']))).toEqual(['S1']);
+  });
+
+  it('keep a feature that uses the script after it', () => {
+    expect(moveProblem(doc(), fid('F1'), 0)).toBe(
+      "Can't move Fillet1 before Script1: Fillet1 uses Script1.",
+    );
+    expect(moveProblem(doc(), fid('SC'), 2)).toBe(
+      "Can't move Script1 after Fillet1: Fillet1 uses Script1.",
+    );
+  });
+
+  it('keep the script from being deleted while one is used', () => {
+    const store = createDocumentStore(doc());
+    expect(() => store.getState().dispatch(removeFeature({ id: fid('SC') }))).toThrow(
+      "Can't delete Script1: Fillet1, Extrude2 and Sketch2 use it.",
+    );
   });
 });
 

@@ -52,6 +52,16 @@ build, mirrored the same way (`openscad-<hash>`).
     imports a mesh file (STL, 3MF, OBJ: ADR-0066 §3), from the npm package's
     own build. It runs in the kernel worker and in Node.
 
+  QuickJS, in emscripten-module.wasm
+    The JavaScript engine a Script feature's code runs in, compiled to
+    WebAssembly by the quickjs-emscripten project (0.31.0): the
+    `@jitl/quickjs-wasmfile-release-sync` variant's own build, driven through
+    `quickjs-emscripten-core`. License: MIT.
+    https://bellard.org/quickjs/ and https://github.com/justjake/quickjs-emscripten
+    A separate WASM file, loaded by the kernel worker and by Node only for a
+    design that has a script (P5-02, ADR-0070 §2); the app loads it through the
+    same `'wasm-unsafe-eval'` allowance as the other two.
+
   planegcs (the sketch constraint solver), in planegcs.wasm
     FreeCAD's PlaneGCS, via https://github.com/Salusoft89/planegcs
     License: LGPL-2.1-or-later. We build it ourselves with a small patch
@@ -137,6 +147,9 @@ Regenerate the list with `pnpm licenses list --prod`.
 
   MIT
     react, react-dom, scheduler (Meta Platforms, Inc. and affiliates)
+    quickjs-emscripten-core, @jitl/quickjs-wasmfile-release-sync,
+    @jitl/quickjs-ffi-types (the QuickJS build a script runs in; section 1),
+    sucrase (strips TypeScript to JavaScript for a script, types only)
     three (three.js authors), three-mesh-bvh
     @react-three/fiber, its-fine, react-use-measure, suspend-react (Poimandres)
     zustand, use-sync-external-store

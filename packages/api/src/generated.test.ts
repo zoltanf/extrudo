@@ -223,6 +223,8 @@ describe('the whole registry', () => {
       // document schema checks, so the design needs one before it has any.
       import: { file: { kind: 'file', id: attachment(design, 'part.step', 'model/step') } },
       canvas: { image: { kind: 'file', id: attachment(design, 'plan.png', 'image/png') } },
+      // A Script's source, as the text itself (P5-02).
+      script: { code: 'design.box({});' },
     }) as Record<string, FeatureInputValue>;
 
   /** Adds a file to the design and returns its ID (ADR-0061 §1). */

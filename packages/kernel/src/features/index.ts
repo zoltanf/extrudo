@@ -20,6 +20,7 @@ import { KERNEL_PRIMITIVES } from './primitives';
 import { kernelRevolve } from './revolve';
 import { kernelRib } from './rib';
 import { kernelScale } from './scale';
+import { kernelScript } from './script';
 import { kernelShell } from './shell';
 import { kernelSketch } from './sketch';
 import { kernelSplitBody } from './split-body';
@@ -81,5 +82,7 @@ export function kernelFeatures(): FeatureRegistry<KernelFeatureDefinition> {
   registry.register(kernelImport as unknown as KernelFeatureDefinition);
   // Canvas: a reference image on a plane, drawn by the view (P4-06, ADR-0066 §5).
   registry.register(kernelCanvas as unknown as KernelFeatureDefinition);
+  // Script: code that makes features, run by an injected runner (P5-02, ADR-0070).
+  registry.register(kernelScript as unknown as KernelFeatureDefinition);
   return registry;
 }

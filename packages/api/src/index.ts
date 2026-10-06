@@ -49,9 +49,12 @@ export {
 export { ApiError } from './error';
 export { inferUnit } from './expr';
 export {
+  FEATURE_METHOD_DESCRIPTIONS,
   FEATURE_TYPES,
   type FeatureMethods,
+  type FeatureMethodTarget,
   type FeatureType,
+  featureMethods,
 } from './generated/features';
 export {
   FeatureHandle,
@@ -61,6 +64,13 @@ export {
   ref,
 } from './handles';
 export { CounterIds, type IdFactory, type IdKind } from './ids';
+export type {
+  ApiInputs,
+  ExprValue,
+  FeatureInputValue,
+  InputMeta,
+  RefValue,
+} from './inputs';
 export {
   createdName,
   edgeName,
@@ -83,8 +93,9 @@ export {
   PolygonHandle,
   PolylineHandle,
   RectangleHandle,
+  SketchBuilder,
   type SketchDimensionInput,
-  type SketchEntityHandle,
+  SketchEntityHandle,
   SketchHandle,
   type SketchOptions,
   SlotHandle,

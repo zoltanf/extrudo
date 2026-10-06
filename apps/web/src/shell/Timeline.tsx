@@ -40,7 +40,7 @@ import { formatRenderStats } from '../viewport/renderMeter';
 import type { ViewportStore } from '../viewport/store';
 import { FeatureMenuItems, GroupMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
-import { type FeatureProblem, featureProblem, StatusGlyph } from './featureStatus';
+import { type FeatureProblem, featureProblem, StatusGlyph, scriptChipHint } from './featureStatus';
 import type { GroupActions } from './groupActions';
 import { chipSelection, edgeScrollStep } from './timelineDrag';
 import {
@@ -295,6 +295,7 @@ export function Timeline({
                             count={count}
                             marker={marker}
                             problem={featureProblem(feature, index, marker, statuses)}
+                            scriptStatus={statuses[feature.id]}
                             rolledBack={index >= (markerDrag?.index ?? marker)}
                             dimmed={editIndex >= 0 && index > editIndex}
                             editable={actions.canEdit(feature, index, marker)}
@@ -362,6 +363,7 @@ export function Timeline({
                               count={count}
                               marker={marker}
                               problem={featureProblem(feature, index, marker, statuses)}
+                              scriptStatus={statuses[feature.id]}
                               rolledBack={index >= (markerDrag?.index ?? marker)}
                               dimmed={editIndex >= 0 && index > editIndex}
                               editable={actions.canEdit(feature, index, marker)}
@@ -540,6 +542,7 @@ function Chip({
   count,
   marker,
   problem,
+  scriptStatus,
   rolledBack,
   dimmed,
   editable,
@@ -561,6 +564,7 @@ function Chip({
   marker: number;
   /** The kernel's verdict; only for active features (`featureProblem`). */
   problem: FeatureProblem | undefined;
+  scriptStatus?: FeatureStatus | undefined;
   rolledBack: boolean;
   /** After the feature a dialog edits: drawn like a rolled-back one (not named so). */
   dimmed: boolean;
@@ -597,7 +601,7 @@ function Chip({
     feature.suppressed && 'suppressed',
     problem?.status,
   ].filter(Boolean);
-  const hint = [tool.label, ...states].join(' · ');
+  const hint = [tool.label, ...states, scriptChipHint(scriptStatus)].filter(Boolean).join(' · ');
   const chip = (
     <button
       type="button"

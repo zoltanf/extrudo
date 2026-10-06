@@ -115,6 +115,7 @@ const EXAMPLE_INPUTS: Readonly<Record<string, string>> = {
   revolve: `{ profiles: profile, axis: d.origin.y, angle: '90 deg' }`,
   rib: `{ curve: line, thickness: '3 mm' }`,
   scale: `{ bodies: [body], factor: 1.5 }`,
+  script: `{ code: "for (let i = 0; i < 3; i++) design.cylinder({ diameter: '6 mm', height: '4 mm', x: i * 10 });" }`,
   shell: `{ faces: face, thickness: '2 mm' }`,
   splitBody: `{ bodies: [body], plane: d.origin.yz }`,
   sphere: `{ diameter: '30 mm' }`,

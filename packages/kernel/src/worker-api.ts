@@ -14,6 +14,7 @@ export function workerApi(service: KernelService): KernelApi {
     addFont: (id, bytes) => service.addFont(id, bytes),
     addFile: (id, bytes, mediaType, fileName) => service.addFile(id, bytes, mediaType, fileName),
     enableMeshes: () => service.enableMeshes(),
+    enableScripts: () => service.enableScripts(),
     enableOpenscad: () => service.enableOpenscad(),
     scadParameters: (id) => service.scadParameters(id),
     recompute: async (request, onFeature) => transfer(await service.recompute(request, onFeature)),

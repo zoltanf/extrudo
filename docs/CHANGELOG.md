@@ -4,6 +4,41 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-05 · **P5-02/P5-04 integration:** script-generated OpenSCAD imports
+  use the async preparation hook and the design's model attachments; project
+  workers retain both lazy loaders. Preview timing is generic to all features.
+- 2026-10-05 · **P5-02 (3 of 3) The Script editor in the app** (ADR-0070):
+  Solid › Create › Script opens a wide, lazy CodeMirror dialog with TypeScript
+  or JavaScript, API/parameter completion, inline errors and console output.
+  Preview waits 500 ms after typing; OK waits for it and commits one undo step.
+  Editor undo and keys stay local, Esc then Tab leaves the editor, and both
+  themes meet the axe audit. The timeline chip reports the generated count;
+  ordinary bodies support later fillets and Delete refuses a used script.
+  The script guide and its checked examples are published under `/docs/api/`.
+  P5-02 is complete.
+- 2026-10-05 · **P5-02 (2 of 3) The Script feature in the kernel and the CLI**
+  (ADR-0070 §1-§2): a `script` feature (core: inputs `code`, a new `code` input
+  kind, and `language`) whose program runs on every recompute and whose features
+  the engine evaluates right after it, each under its own cache key, as if they
+  stood in the timeline there — so a parameter that only moves the last one
+  rebuilds only that, and a run whose code, document-before and parameters are
+  the same is taken from a small cache. Generated features are `<script>.f1`,
+  `<script>.f2`… ("Script1 › Hole2"), their faces named by their own evaluators
+  (`hole:<script>.f2:side:wall`), so a fillet after the script refers to an edge
+  of its body like any other, and a reference into a script's geometry is a
+  dependency on the script (the timeline refuses the move, Delete refuses the
+  script). The script's status carries its features' errors and warnings, each
+  naming the feature ("Script1 › Fillet1: Radius 50 mm is too large…"), a failed
+  run's "Line 12: …" with the line kept apart for the editor, what it printed and
+  the list of what it made. The kernel never imports the runner: whoever starts
+  it injects one — the app's own kernel worker entry (`apps/web/src/project/
+  kernelWorker.ts`, QuickJS's WASM a lazy asset, and the worker now a module
+  bundle so the runner's JavaScript is a lazy chunk too) and the CLI in Node —
+  through `KernelApi.enableScripts()`, which the `Recomputer` calls for a design
+  with a script, again after a restart or a heap recycle. `extrudo info`,
+  `export` and `check` compute scripts; `docs/api/examples/script-hole-ring.ts`
+  and `script-shelf.ts` are tests. The runner now depends on
+  `quickjs-emscripten-core` and the release-sync variant only.
 - 2026-10-05 · **P5-04 OpenSCAD import (2 of 2): the app** (ADR-0071): Insert ›
   Import (and the File menu's "Import STEP, mesh or OpenSCAD…") takes `.scad`
   files. The Import dialog lists the file's customizer variables under its
@@ -77,6 +112,25 @@ One line per completed roadmap task, newest first. Dates are absolute.
   handles read a new layout report from the kernel (every instance's centre and
   each series' first and last) rather than repeating the layout maths, and they
   float clear of the instances so the dots stay clickable.
+- 2026-10-05 · **P5-02 (1 of 3) The script runner, `@extrudo/script`** (ADR-0070
+  §1-§2): user code runs in QuickJS compiled to WebAssembly (the release-sync
+  build, loaded lazily and only for a design that has a script), with TypeScript
+  stripped by sucrase — types only, and lines kept, so a runtime error's line is
+  the line in the editor. The sandbox has what ADR-0070 §2 lists and nothing
+  else: `design` (the API's methods over a design it may only add to: every
+  remove, move, rename, suppress, group or parameter call is refused by name with
+  the rule in its message), `params` frozen, `console.log` (200 lines, 100,000
+  characters), a `Math.random` seeded from the script's own feature ID and a
+  `Date` frozen at 0. Limits: 2 s, 64 MB, 1,000 features, 100,000 characters of
+  source — each with its own message. Errors carry a position: sucrase's for a
+  syntax error, QuickJS's stack line for a runtime one, the call's line for an
+  `ApiError`. A handle (`d.box(…)`'s, a sketch's, a rectangle's) comes back as a
+  proxy over the API's own class, so `k.dimension(plate.bottom, '40 mm')` hands
+  it straight back; **every QuickJS handle is disposed** before a run returns,
+  which QuickJS itself checks at `JS_FreeRuntime`. No DOM, no `fetch`, no
+  timers, no module loading, and no `eval` on the host side (ADR-0067). Slices 2
+  (the `script` feature in the kernel) and 3 (the editor dialog, the chip, the
+  e2e) are open.
 - 2026-10-05 · **P4-12 Fillet and chamfer depth: 32 edge sets, a chamfer's
   reference face, radius and distance handles** (ADR-0038 and ADR-0043
   amendments): `FILLET_MAX_SETS` and `CHAMFER_MAX_SETS` go from 8 to 32 (a

@@ -50,6 +50,7 @@ describe('KernelClient', () => {
       addFont: async () => {},
       addFile: async () => {},
       enableMeshes: async () => {},
+      enableScripts: async () => {},
       enableOpenscad: async () => {},
       scadParameters: async () => ({ ok: true, parameters: [] }),
       debugTestPart: () => new Promise(() => {}),
@@ -84,6 +85,7 @@ describe('KernelClient', () => {
       addFont: async () => {},
       addFile: async () => {},
       enableMeshes: async () => {},
+      enableScripts: async () => {},
       enableOpenscad: async () => {},
       scadParameters: async () => ({ ok: true, parameters: [] }),
       debugTestPart: async () => {

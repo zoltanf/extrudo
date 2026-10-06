@@ -273,6 +273,7 @@ export function viewPreview(open: OpenDialog | undefined): ViewPreview | undefin
  * newer one is on its way, OK may run).
  */
 export function canCommit(open: OpenDialog): boolean {
+  if (open.spec.previewDelay && open.preview.pending) return false;
   const refused = open.preview.status?.status === 'error' && !open.preview.pending;
   return open.checked.first === undefined && Object.keys(open.typing).length === 0 && !refused;
 }
@@ -294,6 +295,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
   /** Bumped per dialog, so late kernel answers for an older one are dropped. */
   let generation = 0;
   let previewSequence = 0;
+  let previewTimer: ReturnType<typeof setTimeout> | undefined;
   /** The draft and document of the last preview asked for. */
   let previewed: { draft: string; doc: unknown } | undefined;
 
@@ -399,32 +401,46 @@ export function createDialogController(options: DialogControllerOptions): Dialog
   const requestPreview = (draft: Feature, index: number, base: boolean) => {
     const sequence = ++previewSequence;
     const mine = generation;
-    kernel
-      ?.preview(draft, index, base ? { base } : {})
-      .then((result) => {
-        const open = get();
-        if (!open || mine !== generation || sequence !== previewSequence || !result) return;
-        const status = draftStatus(result, draft.id);
-        const style = open.spec.previewStyle?.(open.values) ?? 'new';
-        const bodies = result.base ?? dialogBodies(open, model.getState().bodies);
-        const drawing =
-          status?.status === 'error' ? open.preview.drawing : previewDrawing(result, bodies, style);
-        const pattern = result.pattern;
-        state.setState({
-          open: {
-            ...open,
-            preview: {
-              drawing,
-              status,
-              pending: false,
-              ...(pattern && { pattern }),
-              ...(!pattern && open.preview.pattern && { pattern: open.preview.pattern }),
+    clearTimeout(previewTimer);
+    const run = () => {
+      const started = performance.now();
+      kernel
+        ?.preview(draft, index, base ? { base } : {})
+        .then((result) => {
+          const open = get();
+          if (!open || mine !== generation || sequence !== previewSequence || !result) return;
+          performance.measure('extrudo-preview', {
+            start: started,
+            end: performance.now(),
+            detail: { type: draft.type },
+          });
+          const status = draftStatus(result, draft.id);
+          const style = open.spec.previewStyle?.(open.values) ?? 'new';
+          const bodies = result.base ?? dialogBodies(open, model.getState().bodies);
+          const drawing =
+            status?.status === 'error'
+              ? open.preview.drawing
+              : previewDrawing(result, bodies, style);
+          const pattern = result.pattern;
+          state.setState({
+            open: {
+              ...open,
+              preview: {
+                drawing,
+                status,
+                pending: false,
+                ...(pattern && { pattern }),
+                ...(!pattern && open.preview.pattern && { pattern: open.preview.pattern }),
+              },
+              ...(result.base && { base: result.base }),
             },
-            ...(result.base && { base: result.base }),
-          },
-        });
-      })
-      .catch(() => {});
+          });
+        })
+        .catch(() => {});
+    };
+    const delay = get()?.spec.previewDelay ?? dialogs.get(draft.type)?.previewDelay ?? 0;
+    if (delay) previewTimer = setTimeout(run, delay);
+    else run();
   };
 
   /** Applies a change the user made to `field` (which `spec.propose` then leaves alone). */
@@ -596,6 +612,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
   };
 
   const close = () => {
+    clearTimeout(previewTimer);
     generation++;
     previewSequence++;
     previewed = undefined;
@@ -638,6 +655,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       // The fields the picked selection can fill, with the document behind them
       // (a mesh's `units` is shown from the file it imports).
       const startCtx = context({ mode: 'create', id: newId<FeatureId>() });
+      values = mergeValues(values, spec.initialValues?.(startCtx) ?? {});
       const fields = shownFields(spec, values, startCtx).filter(
         (f): f is SelectionField => f.kind === 'selection',
       );

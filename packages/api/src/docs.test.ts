@@ -31,7 +31,7 @@ const ROOT = dirname(dirname(dirname(dirname(fileURLToPath(import.meta.url)))));
 const CHECK_DIR = join(ROOT, 'packages/api/.docs-check');
 
 /** The hand-written pages: no generator writes these, so they are read as they are. */
-const WRITTEN = ['README.md', 'sketch.md', 'references.md'] as const;
+const WRITTEN = ['README.md', 'sketch.md', 'references.md', 'scripts.md'] as const;
 
 describe('the generated pages', () => {
   const pages = docPages();
