@@ -1,7 +1,8 @@
 /**
  * The revolve dialog (P2-07, ADR-0029, FR-FT-02): profiles or flat faces,
  * an axis (an origin axis, a sketch line or a straight edge), one side /
- * symmetric / two sides by an angle (a whole turn by default), flip; new
+ * symmetric / two sides by an angle (a whole turn by default) or one side up
+ * to a face, a body or a plane (P4-12), flip; new
  * body, join, cut or intersect with automatic or picked bodies. Fields are
  * named like the feature's inputs (`RevolveInputs`), so the framework's
  * default mapping turns them into inputs and back; hidden fields make no
@@ -16,6 +17,7 @@ import {
   type GeomRef,
   parseSketchEntityRefId,
   REVOLVE_AXIS_KINDS,
+  REVOLVE_OBJECT_KINDS,
   REVOLVE_PROFILE_KINDS,
   type RevolveOperation,
   readSketch,
@@ -41,6 +43,11 @@ const DIRECTIONS = [
   { value: 'two-sides', label: 'Two sides' },
 ] as const;
 
+const EXTENTS = [
+  { value: 'angle', label: 'Angle' },
+  { value: 'to-object', label: 'To object' },
+] as const;
+
 const OPERATIONS = [
   { value: 'new-body', label: 'New body' },
   { value: 'join', label: 'Join' },
@@ -55,7 +62,9 @@ const PREVIEW_STYLE: Record<RevolveOperation, PreviewToolStyle> = {
   intersect: 'intersect',
 };
 
-const twoSides = (v: DialogValues) => v.choices.direction === 'two-sides';
+/** Turned up to an object (P4-12): one side, no angles. */
+const toObject = (v: DialogValues) => v.choices.extent === 'to-object';
+const twoSides = (v: DialogValues) => !toObject(v) && v.choices.direction === 'two-sides';
 
 export const revolveDialog = defineFeatureDialog({
   ...revolveFeature,
@@ -80,12 +89,25 @@ export const revolveDialog = defineFeatureDialog({
       prompt: 'Pick an axis',
       hint: 'A sketch line, a straight edge or an origin axis, in the profiles’ plane.',
     },
+    { kind: 'choice', name: 'extent', label: 'Extent', options: EXTENTS, default: 'angle' },
+    {
+      kind: 'selection',
+      name: 'toObject',
+      label: 'To object',
+      accepts: REVOLVE_OBJECT_KINDS,
+      max: 1,
+      prompt: 'Pick a face, a body or a plane',
+      curvedFaces: true,
+      hint: 'The revolve turns one side until it first meets it.',
+      shown: toObject,
+    },
     {
       kind: 'choice',
       name: 'direction',
       label: 'Direction',
       options: DIRECTIONS,
       default: 'one-side',
+      shown: (v) => !toObject(v),
     },
     {
       kind: 'expression',
@@ -94,6 +116,7 @@ export const revolveDialog = defineFeatureDialog({
       unit: 'angle',
       default: FULL_TURN,
       hint: '360° is a whole turn. Negative turns the other way. Symmetric: the whole angle.',
+      shown: (v) => !toObject(v),
     },
     {
       kind: 'expression',
@@ -176,6 +199,7 @@ export function revolveTravel(
   values: DialogValues,
   ctx: Pick<ManipulatorContext, 'value'> & Partial<DialogContext>,
 ): Travel | undefined {
+  if (toObject(values)) return undefined;
   if (values.choices.direction === 'symmetric' || twoSides(values)) return 'both';
   const angle = ctx.value('angle');
   if (angle === undefined || angle === 0) return undefined;
@@ -227,7 +251,7 @@ export function revolveFrame(
  */
 export function revolveManipulators(values: DialogValues, ctx: ManipulatorContext): Manipulator[] {
   const frame = revolveFrame(values, ctx);
-  if (!frame) return [];
+  if (!frame || toObject(values)) return [];
   const { axis, zero } = frame;
   const arc = (field: string, about: Vec3, scaleBy = 1): Manipulator => ({
     kind: 'angle',

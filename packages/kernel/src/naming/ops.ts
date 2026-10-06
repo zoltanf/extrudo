@@ -108,12 +108,21 @@ export interface RevolveOptions extends SweepSource {
   axis: Axis;
   /** Radians; |angle| ≥ 2π is a full revolution (no caps). */
   angle: number;
+  /** Other roles in the names (`SweepNaming.roles`). */
+  roles?: SweepRoles;
 }
 
 /** Revolves a profile; names as for `namedPrism` (a full revolution has no caps). */
 export function namedRevolve(kernel: Kernel, options: RevolveOptions): NamedShape {
   const result = kernel.revolve(options.shape, options.axis, options.angle);
-  return nameSwept(kernel, result, options.op ?? 'revolve', options.feature, options.edgeSources);
+  return nameSwept(
+    kernel,
+    result,
+    options.op ?? 'revolve',
+    options.feature,
+    options.edgeSources,
+    options.roles,
+  );
 }
 
 export interface SweepAlongOptions extends SweepSource {

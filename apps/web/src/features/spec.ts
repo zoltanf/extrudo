@@ -94,6 +94,12 @@ export interface SelectionField extends FieldBase {
    * survives editing the string. The view offers the text, not its curves.
    */
   wholeTexts?: boolean;
+  /**
+   * A field that takes planes picks faces through the plane picker, which
+   * offers flat faces only (Create Sketch's rule); with this, curved faces
+   * too (P4-12: To object of an extrude or a revolve).
+   */
+  curvedFaces?: boolean;
   /** What a pick is called, singular and plural, where the kinds don't say ("point", "points"). */
   noun?: readonly [string, string];
 }

@@ -1,10 +1,19 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { clicker, kernelReady, openProject, projector, sketchOnXY } from './helpers';
+import {
+  clicker,
+  kernelReady,
+  newSketchOnXY,
+  openProject,
+  pickTool,
+  projector,
+  sketchOnXY,
+} from './helpers';
 
 // P2-06: Extrude in a real project (ADR-0028). A plate with a hole is
 // sketched, extruded from its pre-selected profile, then its top face is
 // press-pulled out (join) and in (cut, previewed red); undo, redo and
 // editing reopen the dialog. The Wall bracket template computes a body.
+// P4-12: an extrude up to a cylinder's curved wall, with an offset.
 
 test.use({ viewport: { width: 1440, height: 900 } });
 // Three extrudes, undo, redo and an edit, each waiting for the kernel: about 22 s alone,
@@ -273,4 +282,86 @@ test('the Wall bracket template computes its bracket; its cut edits through all'
   await kernelReady(page);
   await expect(chip(page, 'Extrude2')).toHaveAccessibleName('Extrude2');
   await expect(viewport).toHaveAttribute('data-bodies', 'Bracket:12:40,80,60');
+});
+
+test('extrudes up to a cylinder’s curved wall, then 2 mm past it', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  // A Ø30 cylinder lying along Y (on XZ, which grows towards −Y) above the
+  // origin: its axis at x = 0, z = 30, from y = 15 to −15.
+  await settled(viewport);
+  const home = await projector(viewport);
+  const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
+  await pickTool(page, 'Cylinder');
+  const cylinder = page.getByRole('region', { name: 'Cylinder dialog' });
+  const plane = home([half * 0.6, 0, half * 0.6]);
+  await page.mouse.move(plane.x, plane.y);
+  await page.mouse.click(plane.x, plane.y);
+  await expect(cylinder.getByRole('button', { name: 'Plane', exact: true })).toHaveText('XZ plane');
+  for (const [name, value] of [
+    ['X', '0 mm'],
+    ['Y', '30 mm'],
+    ['Offset', '-15 mm'],
+    ['Diameter', '30 mm'],
+    ['Height', '30 mm'],
+  ]) {
+    await cylinder.getByRole('textbox', { name, exact: true }).fill(value as string);
+  }
+  await expect(cylinder).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await cylinder.getByRole('button', { name: 'OK' }).click();
+  await expect(cylinder).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:3:30,30,30');
+
+  // A 20 × 20 square under it on XY.
+  const at = await newSketchOnXY(page);
+  const click = clicker(page, at);
+  await page.keyboard.press('r');
+  await click(-10, -10);
+  await click(10, 10);
+  await page.keyboard.press('Escape');
+  await expect(prompt(page)).toHaveCount(0);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await expect(chip(page, 'Sketch1')).toBeVisible();
+
+  // From below (Shift+3) the square is in front of the cylinder: pick it, then E.
+  await page.keyboard.press('Shift+3');
+  await page.waitForTimeout(300);
+  await settled(viewport);
+  let below = await projector(viewport);
+  const square = below([5, 5, 0]);
+  await page.mouse.move(square.x, square.y);
+  await page.mouse.click(square.x, square.y);
+  await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+  await page.keyboard.press('e');
+  const dialog = page.getByRole('region', { name: 'Extrude dialog' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('combobox', { name: 'Extent' }).selectOption('to-object');
+  const object = dialog.getByRole('button', { name: 'To object', exact: true });
+  await object.click();
+  // The wall beside the square, seen from below: (−12, 4, 30 − √(225 − 144)),
+  // off the XZ plane's square (on the +X side the taper's heads-up box covers it). A field that takes planes picks through the
+  // plane picker (no `data-model-hover`), curved faces included for To object.
+  below = await projector(viewport);
+  const wall = below([-12, 4, 21]);
+  await page.mouse.move(wall.x, wall.y, { steps: 3 });
+  await page.mouse.click(wall.x, wall.y);
+  await expect(object).toHaveText('1 face');
+  await expect(dialog.getByRole('textbox', { name: 'Offset', exact: true })).toHaveValue('0 mm');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+  // It ends on the wall: highest at the square's sides x = ±10, 30 − √(225 − 100) ≈ 18.8.
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:3:30,30,30 Body2:\d+:20,20,18\.8$/);
+
+  // 2 mm past the wall, along the extrude.
+  await chip(page, 'Extrude1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Extrude1 dialog' });
+  await edit.getByRole('textbox', { name: 'Offset', exact: true }).fill('2 mm');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:3:30,30,30 Body2:\d+:20,20,20\.8$/);
 });

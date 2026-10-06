@@ -36,6 +36,17 @@ export const REVOLVE_TYPE = 'revolve';
 export const REVOLVE_DIRECTIONS = ['one-side', 'symmetric', 'two-sides'] as const;
 export type RevolveDirection = (typeof REVOLVE_DIRECTIONS)[number];
 
+/**
+ * - `angle`: by `angle` (and `angle2`).
+ * - `to-object`: one side, turned until it first meets a face, a body or a
+ *   plane (`toObject`, P4-12); the angles are ignored.
+ */
+export const REVOLVE_EXTENTS = ['angle', 'to-object'] as const;
+export type RevolveExtent = (typeof REVOLVE_EXTENTS)[number];
+
+/** What a revolve can turn up to (P4-12): a face (flat or curved), a body, an origin or construction plane. */
+export const REVOLVE_OBJECT_KINDS: readonly GeomRefKind[] = ['face', 'body', 'plane'];
+
 /** The body operations (`BODY_OPERATIONS`): new body, join, cut, intersect. */
 export const REVOLVE_OPERATIONS = BODY_OPERATIONS;
 export type RevolveOperation = BodyOperation;
@@ -68,6 +79,18 @@ export const RevolveInputsSchema = z.strictObject({
   direction: enumInput(REVOLVE_DIRECTIONS)
     .optional()
     .describe('How the revolve goes round: one-side, symmetric or two-sides. Default one-side.'),
+  /** Default `angle`; `to-object` turns one side up to `toObject` (P4-12). */
+  extent: enumInput(REVOLVE_EXTENTS)
+    .optional()
+    .describe(
+      'How far it turns: angle, or to-object (one side, until it first meets toObject). Default angle.',
+    ),
+  /** The object for `to-object`. */
+  toObject: refsOf(REVOLVE_OBJECT_KINDS, 1)
+    .optional()
+    .describe(
+      'The face (flat or curved), body or plane the revolve turns up to, where it first meets it; read only for to-object.',
+    ),
   /**
    * Side 1's angle (the whole angle when symmetric), default 360°: a full
    * turn has no end faces. Negative turns the other way.
@@ -117,6 +140,10 @@ export interface RevolveSettings {
   profiles: GeomRef[];
   axis: GeomRef | undefined;
   direction: RevolveDirection;
+  /** Default `angle`. */
+  extent: RevolveExtent;
+  /** The object of `to-object`. */
+  toObject?: GeomRef;
   /** The `expr` input holding side 1's angle; none means the default full turn. */
   angle?: 'angle';
   /** Two sides only: the `expr` input holding side 2's angle; none means 0. */
@@ -134,6 +161,8 @@ export function revolveSettings(inputs: RevolveInputs): RevolveSettings {
     profiles: inputs.profiles?.refs ?? [],
     axis: inputs.axis?.refs[0],
     direction,
+    extent: inputs.extent?.value ?? 'angle',
+    ...(inputs.toObject?.refs[0] ? { toObject: inputs.toObject.refs[0] } : {}),
     ...(inputs.angle ? { angle: 'angle' as const } : {}),
     ...(direction === 'two-sides' && inputs.angle2 ? { angle2: 'angle2' as const } : {}),
     flip: inputs.flip?.value ?? false,
@@ -144,6 +173,8 @@ export function revolveSettings(inputs: RevolveInputs): RevolveSettings {
 
 export interface RevolveInputOptions {
   direction?: RevolveDirection;
+  extent?: RevolveExtent;
+  toObject?: GeomRef;
   /** An angle expression: `'90 deg'`, `'sweep / 2'`. */
   angle?: string;
   angle2?: string;
@@ -168,6 +199,8 @@ export function revolveInputs(
   const o = options;
   if (axis) inputs.axis = refs([axis]);
   if (o.direction) inputs.direction = { kind: 'enum', value: o.direction };
+  if (o.extent) inputs.extent = { kind: 'enum', value: o.extent };
+  if (o.toObject) inputs.toObject = refs([o.toObject]);
   if (o.angle !== undefined) inputs.angle = expr(o.angle);
   if (o.angle2 !== undefined) inputs.angle2 = expr(o.angle2);
   if (o.flip !== undefined) inputs.flip = { kind: 'bool', value: o.flip };

@@ -33,6 +33,7 @@ export interface FacadeBinding {
   offsetFaces(shape: number, distance: number): number;
   tangentFaces(shape: number, face: number): number;
   boolean(op: number, a: number, b: number, simplify: boolean): number;
+  extendFace(shape: number, face: number, size: number): number;
   transform(shape: number): number;
   scale(shape: number): number;
   draft(

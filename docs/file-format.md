@@ -520,11 +520,13 @@ Every input is optional in the schema; a useful extrude has `profiles` and
 | `direction` | `enum` | `one-side`, `symmetric`, `two-sides` | `one-side`. Symmetric is centred on the plane and `distance` is the whole length; two-sides uses side 2 inputs too |
 | `extent` | `enum` | `distance`, `to-object`, `through-all` | `distance` (side 1) |
 | `distance` | `expr` length | | Side 1's length; negative goes the other way |
-| `toObject` | `ref` | At most one ref of kind `face`, `vertex` or `plane` | Side 1's target for `to-object` |
+| `toObject` | `ref` | At most one ref of kind `face` (flat or curved), `body`, `vertex` or `plane` | Side 1's target for `to-object`: the sweep ends where it first meets the face's surface (extended past the face) or the body |
+| `offset` | `expr` length | | Side 1's offset from `toObject`, default 0: the target is moved along the sweep by it, so positive ends past it and negative short of it. Read only for `to-object` |
 | `taper` | `expr` angle | | Side 1's taper, default 0. Positive widens along the sweep, negative narrows |
 | `extent2` | `enum` | as `extent` | Side 2 of `two-sides` |
 | `distance2` | `expr` length | | Side 2's length |
 | `toObject2` | `ref` | as `toObject` | Side 2's target |
+| `offset2` | `expr` length | | Side 2's offset from `toObject2` |
 | `taper2` | `expr` angle | | Side 2's taper |
 | `flip` | `bool` | | Reverses the direction, default false |
 | `operation` | `enum` | section 6.3 | `new-body` |
@@ -540,6 +542,8 @@ for extrude; a useful revolve has `profiles` and `axis`.
 | `profiles` | `ref` | refs of kind `profile`, `face` or `sketchEntity`. A `sketchEntity` ref names a text (`<sketch>/<textId>`) and means all of that text's letters (section 8, ADR-0058 §5) | none: fails until picked |
 | `axis` | `ref` | At most one ref of kind `axis` (`origin:x`, `origin:y`, `origin:z`), `sketchEntity` (`<sketch>/<line>`) or `edge` (a straight edge) | none: fails until picked. Must lie in the profiles' plane |
 | `direction` | `enum` | `one-side`, `symmetric`, `two-sides` | `one-side` |
+| `extent` | `enum` | `angle`, `to-object` | `angle`. `to-object` turns one side (`direction` must be `one-side`) until it first meets `toObject`; the angles are ignored |
+| `toObject` | `ref` | At most one ref of kind `face` (flat or curved), `body` or `plane` | The target for `to-object` |
 | `angle` | `expr` angle | | Side 1 (the whole angle when symmetric); default a full turn, `360 deg` (no end faces). Right-handed about the axis. Negative turns the other way |
 | `angle2` | `expr` angle | | Side 2 of `two-sides`, the other way round; default 0 |
 | `flip` | `bool` | | Turns side 1 the other way, default false |

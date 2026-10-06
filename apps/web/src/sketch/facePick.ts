@@ -30,7 +30,8 @@ export type SketchTarget =
 
 /**
  * The origin plane or flat face under the pointer, whichever is nearer
- * along the pick ray; hidden faces and curved faces don't count. Origin
+ * along the pick ray; hidden faces and curved faces don't count (curved
+ * ones do with `curved`, for a dialog's To object, P4-12). Origin
  * planes are the squares the view draws around the origin; construction
  * planes (`scene.planes`, P3-05) are the squares drawn around their anchors.
  */
@@ -38,6 +39,7 @@ export function sketchTargetAt(
   scene: PickScene,
   camera: PickCamera,
   at: readonly [number, number],
+  curved = false,
 ): SketchTarget | undefined {
   if (camera.width <= 0 || camera.height <= 0) return undefined;
   const hit = pickStack(scene, camera, at, FACES_ONLY).find(
@@ -46,7 +48,7 @@ export function sketchTargetAt(
   const topology = hit && readTopology(hit.item);
   const mesh = topology && scene.bodies.find((b) => b.id === topology.body)?.mesh;
   const face =
-    hit && topology && mesh && isFlatFace(mesh, topology.index)
+    hit && topology && mesh && (curved || isFlatFace(mesh, topology.index))
       ? { item: hit.item, depth: hit.depth }
       : undefined;
   const plane = originPlaneAt(camera, at, scene.planes);

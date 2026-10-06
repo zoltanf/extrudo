@@ -18,6 +18,7 @@ import { explicitBodies, type OperationWords, operate } from './operation';
 import { lineOf } from './references';
 import type { SketchOutputData } from './sketch';
 import { type Base, centroidOf, PARALLEL_EPS, type Plane, partsOf, uniteParts } from './sources';
+import { trimSweep, trimTarget } from './to-object';
 import { add, dot, length, scale, sub, unit } from './vec';
 
 /**
@@ -34,8 +35,10 @@ export interface RevolveOutputData {
    * tip), side 2 the other way.
    */
   axis: Axis;
-  /** How far each side turns, in degrees: side 1 about `axis`, side 2 against it. */
+  /** How far each side turns, in degrees: side 1 about `axis`, side 2 against it (0, 0 for to-object). */
   angles: [number, number];
+  /** Turned up to an object (P4-12): `angles` don't say where it ends. */
+  toObject?: boolean;
   /** A whole turn: no end faces. */
   full: boolean;
 }
@@ -82,13 +85,17 @@ function evaluateRevolve(ctx: EvalContext<RevolveInputs>): FeatureOutput {
   const turnAxis: Axis = settings.flip
     ? { origin: axis.origin, direction: scale(axis.direction, -1) }
     : axis;
-  const turn = anglesOf(ctx, settings);
-  const tool = sweep(ctx, scope, base.source, turnAxis, turn);
+  const toObject = settings.extent === 'to-object';
+  const turn = toObject ? undefined : anglesOf(ctx, settings);
+  const tool = turn
+    ? sweep(ctx, scope, base.source, turnAxis, turn)
+    : sweepToObject(ctx, scope, settings, base, turnAxis);
   const data: RevolveOutputData = {
     origin: centroidOf(ctx, base.source.shape),
     axis: turnAxis,
-    angles: turn.angles,
-    full: turn.full,
+    angles: turn?.angles ?? [0, 0],
+    full: turn?.full ?? false,
+    ...(toObject ? { toObject } : {}),
   };
   const participants = explicitBodies(ctx, settings, WORDS);
   const warnings: string[] = [];
@@ -318,6 +325,59 @@ function sweep(
   });
   scope.track(tool.shape);
   return tool;
+}
+
+/** How far short of a whole turn a revolve to an object sweeps (radians): its far cap must not touch the profile. */
+const TO_OBJECT_GAP = radians(0.5);
+
+/**
+ * A revolve up to an object (P4-12, ADR-0029's amendment): one side, swept
+ * from the profile almost a whole turn (`TO_OBJECT_GAP` short, so the far
+ * cap stays clear of the profile), then cut back where it first meets the
+ * face's extended surface, the body or the plane (`trimSweep`): the faces
+ * it makes there are `revolve:<id>:cap:end`.
+ */
+function sweepToObject(
+  ctx: EvalContext<RevolveInputs>,
+  scope: ShapeScope,
+  settings: RevolveSettings,
+  base: Base,
+  axis: Axis,
+): NamedShape {
+  const { kernel, feature } = ctx;
+  if (settings.direction !== 'one-side') {
+    throw new KernelError(
+      'A revolve to an object turns one side. Set the direction to One side, or turn by an angle.',
+    );
+  }
+  if (!settings.toObject) throw new KernelError('Pick an object to revolve to.');
+  const tool = namedRevolve(kernel, {
+    feature: feature.id,
+    ...base.source,
+    axis,
+    angle: 2 * Math.PI - TO_OBJECT_GAP,
+    roles: { end: 'cap:far' },
+  });
+  scope.track(tool.shape);
+  // Big enough to cross the whole ring and every body.
+  let reach = length(sub(kernel.measure(tool.shape).bbox.max, kernel.measure(tool.shape).bbox.min));
+  for (const body of ctx.bodies.values()) {
+    const { min, max } = kernel.measure(body).bbox;
+    reach = Math.max(reach, length(sub(max, axis.origin)), length(sub(min, axis.origin)));
+  }
+  const target = trimTarget(
+    ctx,
+    scope,
+    settings.toObject,
+    2 * reach + 10,
+    'Revolve to object',
+    'revolve',
+  );
+  return trimSweep(ctx, scope, tool, target, base.source.shape, {
+    op: 'revolve',
+    role: 'cap:end',
+    far: 'cap:far',
+  });
 }
 
 /** The source turned about the axis by `angle` radians, with each edge's source carried along. */

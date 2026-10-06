@@ -25,6 +25,7 @@ describe('revolve inputs', () => {
       profiles: [profile],
       axis: yAxis,
       direction: 'one-side',
+      extent: 'angle',
       flip: false,
       operation: 'new-body',
       bodies: [],
@@ -49,6 +50,7 @@ describe('revolve inputs', () => {
       profiles: all.profiles?.refs,
       axis: line,
       direction: 'two-sides',
+      extent: 'angle',
       angle: 'angle',
       angle2: 'angle2',
       flip: true,
@@ -58,6 +60,16 @@ describe('revolve inputs', () => {
     const symmetric = revolveSettings({ ...all, direction: { kind: 'enum', value: 'symmetric' } });
     expect(symmetric.angle).toBe('angle');
     expect(symmetric.angle2).toBeUndefined();
+    // P4-12: to an object, which the settings carry.
+    const to = revolveInputs([profile], line, {
+      extent: 'to-object',
+      toObject: { kind: 'body', id: 'B:0' },
+    });
+    expect(RevolveInputsSchema.safeParse(to).success).toBe(true);
+    expect(revolveSettings(to)).toMatchObject({
+      extent: 'to-object',
+      toObject: { kind: 'body', id: 'B:0' },
+    });
     // A straight body edge is an axis too.
     const edge = revolveInputs([profile], { kind: 'edge', id: 'e[a|b]' });
     expect(RevolveInputsSchema.safeParse(edge).success).toBe(true);

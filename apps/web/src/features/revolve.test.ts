@@ -144,6 +144,7 @@ describe('the revolve dialog', () => {
     expect(inputs).toEqual({
       ...revolveInputs([profile], line, {
         direction: 'one-side',
+        extent: 'angle',
         angle: '90 deg',
         flip: false,
         operation: 'new-body',
@@ -157,6 +158,19 @@ describe('the revolve dialog', () => {
     );
     expect(two.angle2).toEqual({ kind: 'expr', expr: '90 deg', unit: 'angle' });
     expect(two.bodies).toBeUndefined();
+    // To an object (P4-12): one side, no angles, the object instead.
+    const block: GeomRef = { kind: 'body', id: 'B:0' };
+    const to = inputsFor(
+      revolveDialog,
+      values({
+        refs: { profiles: [profile], axis: [Y], toObject: [block] },
+        choices: { extent: 'to-object', direction: 'two-sides' },
+      }),
+      ctx,
+    );
+    expect(Object.keys(to).sort()).toEqual(
+      ['profiles', 'axis', 'extent', 'toObject', 'flip', 'operation'].sort(),
+    );
   });
 
   it('wants a straight sketch line for the axis', () => {

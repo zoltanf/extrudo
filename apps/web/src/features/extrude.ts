@@ -1,7 +1,8 @@
 /**
  * The extrude dialog (P2-06, ADR-0028, FR-FT-01): profiles or flat faces,
- * one side / symmetric / two sides, each side to a distance, an object or
- * through all, with a taper; flip; new body, join, cut or intersect with
+ * one side / symmetric / two sides, each side to a distance, an object (a
+ * face, flat or curved, a body, a vertex or a plane, with an offset: P4-12)
+ * or through all, with a taper; flip; new body, join, cut or intersect with
  * automatic or picked bodies. Fields are named like the feature's inputs
  * (`ExtrudeInputs`), so the framework's default mapping turns them into
  * inputs and back; hidden fields make no input (side 2 while one-sided).
@@ -97,7 +98,17 @@ export const extrudeDialog = defineFeatureDialog({
       label: 'To object',
       accepts: EXTRUDE_OBJECT_KINDS,
       max: 1,
-      prompt: 'Pick a flat face or a vertex',
+      prompt: 'Pick a face, a body or a vertex',
+      curvedFaces: true,
+      shown: (v) => extentOf(v, 1) === 'to-object',
+    },
+    {
+      kind: 'expression',
+      name: 'offset',
+      label: 'Offset',
+      unit: 'length',
+      default: '0 mm',
+      hint: 'How far past the object the extrude ends, along it. Negative stops short.',
       shown: (v) => extentOf(v, 1) === 'to-object',
     },
     {
@@ -131,7 +142,17 @@ export const extrudeDialog = defineFeatureDialog({
       label: 'To object 2',
       accepts: EXTRUDE_OBJECT_KINDS,
       max: 1,
-      prompt: 'Pick a flat face or a vertex',
+      prompt: 'Pick a face, a body or a vertex',
+      curvedFaces: true,
+      shown: (v) => twoSides(v) && extentOf(v, 2) === 'to-object',
+    },
+    {
+      kind: 'expression',
+      name: 'offset2',
+      label: 'Offset 2',
+      unit: 'length',
+      default: '0 mm',
+      hint: 'How far past the object the extrude ends, along it. Negative stops short.',
       shown: (v) => twoSides(v) && extentOf(v, 2) === 'to-object',
     },
     {

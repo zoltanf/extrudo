@@ -235,11 +235,13 @@ export interface FeatureMethods {
    * @param inputs.direction How the sweep leaves the plane: one-side, symmetric or two-sides. Default one-side.
    * @param inputs.extent Side 1's extent: distance, to-object or through-all. Default distance.
    * @param inputs.distance Side 1's length (the whole length when symmetric); a length.
-   * @param inputs.toObject The flat face, vertex or plane side 1 stops at.
+   * @param inputs.toObject The face (flat or curved), body, vertex or plane side 1 stops at, where the sweep first meets it.
+   * @param inputs.offset How far past side 1's object the extrude ends, along the sweep; a length. Negative stops short. Default 0; read only for to-object.
    * @param inputs.taper Side 1's taper; an angle. Positive widens the sweep, the default 0° keeps the section's size.
    * @param inputs.extent2 Side 2's extent, like side 1. Default distance.
    * @param inputs.distance2 Side 2's length; a length.
-   * @param inputs.toObject2 The flat face, vertex or plane side 2 stops at.
+   * @param inputs.toObject2 The face, body, vertex or plane side 2 stops at.
+   * @param inputs.offset2 How far past side 2's object it ends; a length. Default 0.
    * @param inputs.taper2 Side 2's taper; an angle.
    * @param inputs.flip Sweep side 1 against the plane's normal. Default false.
    * @param inputs.operation New body, join, cut or intersect. Default new-body.
@@ -260,6 +262,8 @@ export interface FeatureMethods {
    * @param inputs.profiles Profiles and flat faces to revolve, all in one plane.
    * @param inputs.axis The axis to revolve about, which lies in the profiles' plane.
    * @param inputs.direction How the revolve goes round: one-side, symmetric or two-sides. Default one-side.
+   * @param inputs.extent How far it turns: angle, or to-object (one side, until it first meets toObject). Default angle.
+   * @param inputs.toObject The face (flat or curved), body or plane the revolve turns up to, where it first meets it; read only for to-object.
    * @param inputs.angle Side 1's angle (the whole angle when symmetric); an angle. Default 360°, a full turn with no end faces.
    * @param inputs.angle2 Side 2's angle, the other way round; an angle. Default 0°.
    * @param inputs.flip Turn side 1 the other way round the axis. Default false.

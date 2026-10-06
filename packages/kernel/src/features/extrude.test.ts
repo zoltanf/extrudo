@@ -18,6 +18,7 @@ import {
   type FeatureStatus,
   type GeomRef,
   originPlaneRef,
+  primitiveInputs,
   type SketchData,
   sketchInputs,
 } from '@extrudo/core';
@@ -955,6 +956,57 @@ describe('extrude', { timeout: 120_000 }, () => {
                 }),
               ),
             };
+          }
+        }
+      }
+    }
+    // P4-12: to a curved face and to a body, with an offset. A Ø20 cylinder
+    // lying along Y above the circle (axis at x = 10, z = 30).
+    const cylinder: Feature = {
+      ...testFeature('C', 'cylinder'),
+      inputs: primitiveInputs('cylinder', {
+        plane: originPlaneRef('origin:xz'),
+        numbers: { diameter: '20 mm', height: '60 mm', x: '10 mm', y: '30 mm', offset: '-40 mm' },
+      }),
+    };
+    const curved = [...base.features, cylinder, c.feature];
+    const lying = ok(await run(testDocument(curved)));
+    const wall = refTo(lying, 'face', 'cylinder:C:side:wall');
+    const targets: [string, GeomRef][] = [
+      ['curved face', wall],
+      ['body', { kind: 'body', id: 'C:0' }],
+    ];
+    for (const [target, toObject] of targets) {
+      for (const operation of operations) {
+        for (const taper of ['0 deg', '5 deg']) {
+          for (const offset of ['0 mm', '2 mm']) {
+            const key = `to-object ${target} ${operation} taper ${taper} offset ${offset}`;
+            const result = await runWithShapes(
+              testDocument([
+                ...curved,
+                extrude('E', [pick], { extent: 'to-object', toObject, offset, taper, operation }),
+              ]),
+            );
+            const s = status(result, 'E');
+            table[key] =
+              s.status === 'error'
+                ? { error: s.message }
+                : {
+                    ...(s.status === 'warning' ? { warning: s.message } : {}),
+                    bodies: Object.fromEntries(
+                      result.bodies.map((body) => {
+                        const m = measure(result, body.id);
+                        return [
+                          body.id,
+                          {
+                            volume: round(m.volume, 2),
+                            faces: m.faces,
+                            extrudeFaces: m.names.filter((n) => n.includes(':E:')).sort(),
+                          },
+                        ];
+                      }),
+                    ),
+                  };
           }
         }
       }

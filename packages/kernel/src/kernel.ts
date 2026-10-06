@@ -437,6 +437,8 @@ export interface HeapUsage {
 
 const KIND_CODE: Record<SubShapeKind, number> = { face: 0, edge: 1, vertex: 2 };
 const BOOLEAN_CODE = { fuse: 0, cut: 1, common: 2 } as const;
+/** The facade's boolean code for a split (`Kernel.split`). */
+const SPLIT_CODE = 3;
 /** The facade's sub-shape kind code for solids (count, subShape). */
 const SOLID_CODE = 3;
 
@@ -747,6 +749,31 @@ export class Kernel {
     }
     const code = BOOLEAN_CODE[op];
     return this.#withHistory(this.#facade.boolean(code, target, tool, options.simplify ?? false));
+  }
+
+  /**
+   * `target` cut into pieces by `tool` (OCCT's splitter; P4-12, ADR-0028's
+   * amendment): the result holds only the target's pieces, and `tool` may be
+   * a face (`extendFace`) as well as a solid. History: input 0 is the
+   * target, 1 the tool, whose faces are *modified* into the pieces' new
+   * faces where it cut them. B-rep only.
+   */
+  split(target: ShapeHandle, tool: ShapeHandle): OperationResult {
+    this.#solid(target, 'Extrude to object');
+    this.#solid(tool, 'Extrude to object');
+    return this.#withHistory(this.#facade.boolean(SPLIT_CODE, target, tool, false));
+  }
+
+  /**
+   * The surface under face `face` of `shape` as a new face, bounded far past
+   * the face (P4-12, ADR-0028's amendment): a closed direction (a cylinder's
+   * or a sphere's turn) whole, an open one grown by `size` mm each way (short
+   * of a cone's tip), a B-spline or Bézier surface extended by `size` along
+   * its tangents. Splitting by it cuts wherever the surface crosses.
+   */
+  extendFace(shape: ShapeHandle, face: number, size: number): ShapeHandle {
+    this.#solid(shape, 'Extrude to object');
+    return this.#check(this.#facade.extendFace(shape, face, size));
   }
 
   /**

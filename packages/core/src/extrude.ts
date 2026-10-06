@@ -37,7 +37,8 @@ export type ExtrudeDirection = (typeof EXTRUDE_DIRECTIONS)[number];
 
 /**
  * - `distance`: a length (negative goes the other way).
- * - `to-object`: up to a flat face, a vertex or a plane (`toObject`).
+ * - `to-object`: up to a face (flat or curved), a body, a vertex or a plane
+ *   (`toObject`), moved along the sweep by `offset` (P4-12).
  * - `through-all`: just past every body in the way (the participants', or
  *   all bodies').
  */
@@ -54,8 +55,12 @@ export type ExtrudeOperation = BodyOperation;
  * ink region of the text, so it survives editing the string).
  */
 export const EXTRUDE_PROFILE_KINDS: readonly GeomRefKind[] = ['profile', 'face', 'sketchEntity'];
-/** What an extrude can go up to: a flat face, a vertex, an origin or construction plane. */
-export const EXTRUDE_OBJECT_KINDS: readonly GeomRefKind[] = ['face', 'vertex', 'plane'];
+/**
+ * What an extrude can go up to: a face (flat or, since P4-12, curved), a body
+ * (P4-12: the sweep stops where it first meets it), a vertex, an origin or
+ * construction plane.
+ */
+export const EXTRUDE_OBJECT_KINDS: readonly GeomRefKind[] = ['face', 'body', 'vertex', 'plane'];
 
 export const ExtrudeInputsSchema = z.strictObject({
   /** Profiles and flat faces, all in one plane. Missing or empty: the feature fails until some are picked. */
@@ -79,7 +84,18 @@ export const ExtrudeInputsSchema = z.strictObject({
   /** Side 1's object for `to-object`. */
   toObject: refsOf(EXTRUDE_OBJECT_KINDS, 1)
     .optional()
-    .describe('The flat face, vertex or plane side 1 stops at.'),
+    .describe(
+      'The face (flat or curved), body, vertex or plane side 1 stops at, where the sweep first meets it.',
+    ),
+  /**
+   * Side 1's offset from its object for `to-object` (P4-12), default 0: the
+   * object is moved along the sweep by it, so positive goes past it.
+   */
+  offset: exprOf('length')
+    .optional()
+    .describe(
+      "How far past side 1's object the extrude ends, along the sweep; a length. Negative stops short. Default 0; read only for to-object.",
+    ),
   /** Side 1's taper in degrees, default 0: positive widens along the sweep, negative narrows. */
   taper: exprOf('angle')
     .optional()
@@ -93,7 +109,10 @@ export const ExtrudeInputsSchema = z.strictObject({
   distance2: exprOf('length').optional().describe("Side 2's length; a length."),
   toObject2: refsOf(EXTRUDE_OBJECT_KINDS, 1)
     .optional()
-    .describe('The flat face, vertex or plane side 2 stops at.'),
+    .describe('The face, body, vertex or plane side 2 stops at.'),
+  offset2: exprOf('length')
+    .optional()
+    .describe("How far past side 2's object it ends; a length. Default 0."),
   taper2: exprOf('angle').optional().describe("Side 2's taper; an angle."),
   /** Reverses the direction (side 1 against the normal). Default false. */
   flip: BoolInputSchema.optional().describe(
@@ -143,8 +162,20 @@ export const extrudeFeature: FeatureDefinition<ExtrudeInputs> = {
 
 /** The input names of each side, in `ExtrudeInputs`. */
 export const EXTRUDE_SIDE_INPUTS = [
-  { extent: 'extent', distance: 'distance', toObject: 'toObject', taper: 'taper' },
-  { extent: 'extent2', distance: 'distance2', toObject: 'toObject2', taper: 'taper2' },
+  {
+    extent: 'extent',
+    distance: 'distance',
+    toObject: 'toObject',
+    offset: 'offset',
+    taper: 'taper',
+  },
+  {
+    extent: 'extent2',
+    distance: 'distance2',
+    toObject: 'toObject2',
+    offset: 'offset2',
+    taper: 'taper2',
+  },
 ] as const;
 
 export interface ExtrudeSide {
@@ -152,6 +183,8 @@ export interface ExtrudeSide {
   /** The `expr` input holding its distance, if there is one. */
   distance?: 'distance' | 'distance2';
   toObject?: GeomRef;
+  /** The `expr` input holding its offset from `toObject`, if there is one (none means 0). */
+  offset?: 'offset' | 'offset2';
   /** The `expr` input holding its taper, if there is one (none means 0). */
   taper?: 'taper' | 'taper2';
 }
@@ -178,6 +211,7 @@ export function extrudeSettings(inputs: ExtrudeInputs): ExtrudeSettings {
       extent: inputs[names.extent]?.value ?? 'distance',
       ...(inputs[names.distance] ? { distance: names.distance } : {}),
       ...(toObject ? { toObject } : {}),
+      ...(inputs[names.offset] ? { offset: names.offset } : {}),
       ...(inputs[names.taper] ? { taper: names.taper } : {}),
     };
   };
@@ -197,11 +231,14 @@ export interface ExtrudeInputOptions {
   /** An expression: `'10 mm'`, `'wall * 5'`. */
   distance?: string;
   toObject?: GeomRef;
+  /** A length expression: how far past `toObject` (`'2 mm'`). */
+  offset?: string;
   /** An angle expression: `'5 deg'`. */
   taper?: string;
   extent2?: ExtrudeExtent;
   distance2?: string;
   toObject2?: GeomRef;
+  offset2?: string;
   taper2?: string;
   flip?: boolean;
   operation?: ExtrudeOperation;
@@ -225,10 +262,12 @@ export function extrudeInputs(
   if (o.extent) inputs.extent = { kind: 'enum', value: o.extent };
   if (o.distance !== undefined) inputs.distance = expr(o.distance, 'length');
   if (o.toObject) inputs.toObject = refs([o.toObject]);
+  if (o.offset !== undefined) inputs.offset = expr(o.offset, 'length');
   if (o.taper !== undefined) inputs.taper = expr(o.taper, 'angle');
   if (o.extent2) inputs.extent2 = { kind: 'enum', value: o.extent2 };
   if (o.distance2 !== undefined) inputs.distance2 = expr(o.distance2, 'length');
   if (o.toObject2) inputs.toObject2 = refs([o.toObject2]);
+  if (o.offset2 !== undefined) inputs.offset2 = expr(o.offset2, 'length');
   if (o.taper2 !== undefined) inputs.taper2 = expr(o.taper2, 'angle');
   if (o.flip !== undefined) inputs.flip = { kind: 'bool', value: o.flip };
   if (o.operation) inputs.operation = { kind: 'enum', value: o.operation };

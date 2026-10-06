@@ -710,6 +710,44 @@ describe('revolve', { timeout: 120_000 }, () => {
         }
       }
     }
+    // P4-12: one side up to the YZ plane, or to the block (whose top the
+    // profile's upper part passes, which says so).
+    const targets: [string, GeomRef][] = [
+      ['YZ plane', originPlaneRef('origin:yz')],
+      ['body', { kind: 'body', id: 'B:0' }],
+    ];
+    for (const [target, toObject] of targets) {
+      for (const operation of operations) {
+        for (const flip of [false, true]) {
+          const options: RevolveInputOptions = { extent: 'to-object', toObject, flip, operation };
+          const key = `to-object ${target} ${operation}${flip ? ' flipped' : ''}`;
+          const result = await runWithShapes(
+            testDocument([...features, revolve('V', [pick], originAxisRef('origin:z'), options)]),
+          );
+          const st = status(result, 'V');
+          table[key] =
+            st.status === 'error'
+              ? { error: st.message }
+              : {
+                  ...(st.status === 'warning' ? { warning: st.message } : {}),
+                  bodies: Object.fromEntries(
+                    result.bodies.map((body) => {
+                      const m = measure(result, body.id);
+                      return [
+                        body.id,
+                        {
+                          volume: round(m.volume, 2),
+                          faces: m.faces,
+                          valid: m.valid,
+                          revolveFaces: m.names.filter((n) => n.includes(':V:')).sort(),
+                        },
+                      ];
+                    }),
+                  ),
+                };
+        }
+      }
+    }
     await expect(`${JSON.stringify(table, null, 1)}\n`).toMatchFileSnapshot(
       './golden/revolve-options.json',
     );

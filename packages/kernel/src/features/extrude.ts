@@ -15,6 +15,7 @@ import { splitSolids } from './bodies';
 import { explicitBodies, type OperationWords, operate } from './operation';
 import { planeOf } from './references';
 import { type Base, baseOf, centroidOf, PARALLEL_EPS, type Plane } from './sources';
+import { movedTarget, type TrimTarget, trimSweep, trimTarget } from './to-object';
 import { add, corners, degrees, dot, length, perpendicular, scale, sub } from './vec';
 
 /**
@@ -36,6 +37,9 @@ export interface ExtrudeOutputData {
   tapers: [number, number];
 }
 
+/** The far caps' roles of sides cut back by an object, until `trimSweep` checks them. */
+const FAR = ['cap:far', 'cap:far2'] as const;
+
 /** Lengths (mm) at or below which an extrude has none. */
 const LENGTH_EPS = 1e-6;
 
@@ -52,6 +56,11 @@ interface Side {
   taper: number;
   /** An inclined plane the side ends on; its normal points away from the profile. */
   trim?: Plane;
+  /**
+   * A curved face's surface or a body the side ends on where it first meets
+   * it (P4-12), already moved by the offset: the sweep is cut back by it.
+   */
+  trimBy?: TrimTarget;
   /** Where it ends on the line through the profile's centroid (for `ExtrudeOutputData`). */
   reach: number;
 }
@@ -83,8 +92,12 @@ function evaluateExtrude(ctx: EvalContext<ExtrudeInputs>): FeatureOutput {
   const n = settings.flip ? scale(base.plane.normal, -1) : base.plane.normal;
   const origin = centroidOf(ctx, base.source.shape);
   const participants = explicitBodies(ctx, settings, WORDS);
-  const sides = resolveSides(ctx, settings, base, n, origin, participants);
-  const tool = sweep(ctx, scope, base.source, n, sides, settings.direction);
+  const sides = resolveSides(ctx, scope, settings, base, n, origin, participants);
+  const tool = sweep(ctx, scope, base, n, sides, settings.direction);
+  for (const side of sides) {
+    // Where a side cut back by an object ends: the far side of what is left.
+    if (side.trimBy) side.reach = extentAlong(ctx, tool.shape, base.plane.point, side.along);
+  }
   const data: ExtrudeOutputData = {
     origin,
     direction: n,
@@ -108,6 +121,7 @@ const reachOf = (side: Side | undefined, along: Vec3) =>
 
 function resolveSides(
   ctx: EvalContext<ExtrudeInputs>,
+  scope: ShapeScope,
   settings: ExtrudeSettings,
   base: Base,
   n: Vec3,
@@ -118,7 +132,7 @@ function resolveSides(
   const through = (along: Vec3) => throughAll(ctx, base, along, participants);
   switch (settings.direction) {
     case 'one-side':
-      return [resolveSide(ctx, first, base, n, origin, through, true)];
+      return [resolveSide(ctx, scope, first, base, n, origin, through, true)];
     case 'symmetric': {
       const taper = taperOf(ctx, first);
       let half: number;
@@ -137,9 +151,10 @@ function resolveSides(
     }
     case 'two-sides': {
       if (!second) throw new Error('two-sides without side 2');
-      const one = resolveSide(ctx, first, base, n, origin, through, false);
-      const two = resolveSide(ctx, second, base, scale(n, -1), origin, through, false);
-      if (!one.trim && !two.trim && one.length + two.length <= LENGTH_EPS) {
+      const one = resolveSide(ctx, scope, first, base, n, origin, through, false);
+      const two = resolveSide(ctx, scope, second, base, scale(n, -1), origin, through, false);
+      const trimmed = (side: Side) => side.trim || side.trimBy;
+      if (!trimmed(one) && !trimmed(two) && one.length + two.length <= LENGTH_EPS) {
         throw new KernelError(
           'The two sides cancel each other out, so the extrude has no length. Change a distance.',
         );
@@ -155,6 +170,7 @@ function resolveSides(
  */
 function resolveSide(
   ctx: EvalContext<ExtrudeInputs>,
+  scope: ShapeScope,
   side: ExtrudeSide,
   base: Base,
   along: Vec3,
@@ -175,7 +191,11 @@ function resolveSide(
     }
     case 'to-object': {
       if (!side.toObject) throw new KernelError('Pick an object to extrude to.');
+      const offset = offsetOf(ctx, side);
       const target = objectPlane(ctx, side.toObject, along);
+      if (!target) {
+        return objectSide(ctx, scope, base, side.toObject, along, taper, offset, mayFlip);
+      }
       const facing = dot(target.normal, along);
       if (Math.abs(facing) < PARALLEL_EPS) {
         throw new KernelError(
@@ -184,15 +204,18 @@ function resolveSide(
       }
       if (Math.abs(Math.abs(facing) - 1) <= PARALLEL_EPS * 1e3) {
         // Parallel to the profile: an exact distance.
-        const length = dot(sub(target.point, base.plane.point), along);
-        if (Math.abs(length) <= LENGTH_EPS) {
+        const at = dot(sub(target.point, base.plane.point), along);
+        if (Math.abs(at) <= LENGTH_EPS) {
           throw new KernelError(
             "That object lies in the profile's plane, so there is nothing to extrude. Pick another object.",
           );
         }
+        // The offset goes on in the direction the side travels.
+        const length = at + Math.sign(at) * offset;
+        if (length * Math.sign(at) <= LENGTH_EPS) throw offsetTooShort();
         return { along, length, taper, reach: length };
       }
-      return inclinedSide(ctx, base, along, origin, target, taper, mayFlip);
+      return inclinedSide(ctx, base, along, origin, target, taper, offset, mayFlip);
     }
   }
 }
@@ -206,11 +229,13 @@ function inclinedSide(
   base: Base,
   along: Vec3,
   origin: Vec3,
-  target: Plane,
+  object: Plane,
   taper: number,
+  offset: number,
   mayFlip: boolean,
 ): Side {
   let u = along;
+  let target = object;
   // How far along u each corner of the profile's box meets the plane.
   const reachAt = (p: Vec3, dir: Vec3) =>
     dot(sub(target.point, p), target.normal) / dot(dir, target.normal);
@@ -219,6 +244,12 @@ function inclinedSide(
   if (mayFlip && ts.every((t) => t < -LENGTH_EPS)) {
     u = scale(u, -1);
     ts = ts.map((t) => -t);
+  }
+  if (offset !== 0 && ts.every((t) => t > LENGTH_EPS)) {
+    // Moved along the sweep: past the object for a positive offset.
+    target = { point: add(target.point, scale(u, offset)), normal: target.normal };
+    ts = corners(bbox.min, bbox.max).map((p) => reachAt(p, u));
+    if (!ts.every((t) => t > LENGTH_EPS)) throw offsetTooShort();
   }
   if (!ts.every((t) => t > LENGTH_EPS)) {
     throw new KernelError(
@@ -249,8 +280,17 @@ function inclinedSide(
   };
 }
 
-/** The plane an extrude goes up to: a flat face's, an origin plane, or one through a vertex square to the extrude. */
-function objectPlane(ctx: EvalContext<ExtrudeInputs>, ref: GeomRef, along: Vec3): Plane {
+/**
+ * The plane an extrude goes up to: a flat face's, an origin plane, or one
+ * through a vertex square to the extrude; undefined for a curved face or a
+ * body, which `objectSide` cuts the sweep back by.
+ */
+function objectPlane(
+  ctx: EvalContext<ExtrudeInputs>,
+  ref: GeomRef,
+  along: Vec3,
+): Plane | undefined {
+  if (ref.kind === 'body') return undefined;
   if (ref.kind === 'plane') {
     const frame = originPlane(ref.id)?.frame ?? planeOf(ctx, ref, 'the plane to extrude to').frame;
     return { point: frame.origin, normal: frame.normal };
@@ -264,13 +304,78 @@ function objectPlane(ctx: EvalContext<ExtrudeInputs>, ref: GeomRef, along: Vec3)
     return { point: vertex.point, normal: along };
   }
   const face = description.faces[hit.index];
-  if (hit.kind !== 'face' || !face || face.type !== 'plane' || !face.direction) {
+  if (hit.kind !== 'face' || !face) {
     throw new KernelError(
-      'Can only extrude up to a flat face, a vertex or a plane. Pick another object.',
+      'Can only extrude up to a face, a body, a vertex or a plane. Pick another object.',
     );
   }
+  if (face.type !== 'plane' || !face.direction) return undefined;
   return { point: face.centroid, normal: face.direction };
 }
+
+/**
+ * A side ending on a curved face or a body (P4-12, ADR-0028's amendment):
+ * swept past the object everywhere, then cut back where it first meets the
+ * face's extended surface or the body (`trimBy`, in `sweep`). With
+ * `mayFlip` (one side), an object wholly behind the profile turns the side
+ * round, as for planes.
+ */
+function objectSide(
+  ctx: EvalContext<ExtrudeInputs>,
+  scope: ShapeScope,
+  base: Base,
+  ref: GeomRef,
+  along: Vec3,
+  taper: number,
+  offset: number,
+  mayFlip: boolean,
+): Side {
+  const { kernel } = ctx;
+  // Far enough to reach past every body and the profile from anywhere among them.
+  let lo = kernel.measure(base.source.shape).bbox.min;
+  let hi = kernel.measure(base.source.shape).bbox.max;
+  for (const body of ctx.bodies.values()) {
+    const { bbox } = kernel.measure(body);
+    lo = [Math.min(lo[0], bbox.min[0]), Math.min(lo[1], bbox.min[1]), Math.min(lo[2], bbox.min[2])];
+    hi = [Math.max(hi[0], bbox.max[0]), Math.max(hi[1], bbox.max[1]), Math.max(hi[2], bbox.max[2])];
+  }
+  const size = length(sub(hi, lo)) + Math.abs(offset) + 10;
+  const object = trimTarget(ctx, scope, ref, size, 'Extrude to object', 'extrude');
+  const farAlong = (shape: ShapeHandle, u: Vec3) => extentAlong(ctx, shape, base.plane.point, u);
+  let u = along;
+  if (farAlong(object.tool, u) <= LENGTH_EPS) {
+    if (!mayFlip) {
+      throw new KernelError(
+        'That object lies behind the profile on this side. Pick one in front of it, or use one side.',
+      );
+    }
+    u = scale(u, -1);
+    if (farAlong(object.tool, u) <= LENGTH_EPS) {
+      throw new KernelError("That object lies in the profile's plane. Pick another object.");
+    }
+  }
+  const trimBy = movedTarget(ctx, scope, object, scale(u, offset));
+  const far = farAlong(trimBy.tool, u);
+  if (far <= LENGTH_EPS) throw offsetTooShort();
+  const sweepLength = far + Math.max(1, 0.05 * far);
+  return { along: u, length: sweepLength, taper, trimBy, reach: far };
+}
+
+/** How far past `point` along unit `u` a shape's box reaches (mm; negative: wholly behind). */
+function extentAlong(ctx: EvalContext, shape: ShapeHandle, point: Vec3, u: Vec3): number {
+  const { bbox } = ctx.kernel.measure(shape);
+  return Math.max(...corners(bbox.min, bbox.max).map((c) => dot(sub(c, point), u)));
+}
+
+/** A side's offset from its object in mm (0 without one). */
+function offsetOf(ctx: EvalContext<ExtrudeInputs>, side: ExtrudeSide): number {
+  return side.offset ? ctx.value(side.offset) : 0;
+}
+
+const offsetTooShort = () =>
+  new KernelError(
+    'With this offset the extrude would end at or behind the profile. Use a smaller negative offset.',
+  );
 
 /** How far past the profile's plane the bodies reach along `along` (0 if none do), plus a margin. */
 function throughAll(
@@ -326,17 +431,21 @@ function taperOf(ctx: EvalContext<ExtrudeInputs>, side: ExtrudeSide): number {
  * each side away from the profile's plane, so a tapered two-sided extrude
  * is two prisms from the plane, fused: side 2's sides are `side2:<source>`
  * and its far cap `cap:start`. Sides ending on an inclined plane are
- * trimmed there; the trimmed end is `cap:end` (side 2: `cap:start`).
+ * trimmed there; the trimmed end is `cap:end` (side 2: `cap:start`). Sides
+ * ending on a curved face or a body are swept long, their far caps named
+ * `cap:far` (`cap:far2`) for the miss check, and cut back by the object
+ * (`trimSweep`), whose faces make `cap:end` (`cap:start`).
  */
 function sweep(
   ctx: EvalContext<ExtrudeInputs>,
   scope: ShapeScope,
-  source: SweepSource,
+  base: Base,
   n: Vec3,
   sides: Side[],
   direction: ExtrudeSettings['direction'],
 ): NamedShape {
   const { kernel, feature } = ctx;
+  const source = base.source;
   const prism = (
     options: Omit<Parameters<typeof namedPrism>[1], 'feature' | keyof SweepSource>,
   ) => {
@@ -345,24 +454,39 @@ function sweep(
     return made;
   };
   const [one, two] = sides as [Side, Side?];
+  // The far caps of sides to be cut back by an object (`trimSweep`'s miss check).
+  const end = one.trimBy ? FAR[0] : 'cap:end';
   let tool: NamedShape;
   if (!two || direction === 'one-side') {
-    tool = prism({ vector: scale(one.along, one.length), taper: one.taper });
+    tool = prism({
+      vector: scale(one.along, one.length),
+      taper: one.taper,
+      ...(one.trimBy ? { roles: { end } } : {}),
+    });
   } else if (one.taper === 0 && two.taper === 0) {
     // From −side 2 to side 1 along n, in one sweep.
     const hi = one.length * dot(one.along, n);
     const lo = -two.length * dot(two.along, scale(n, -1));
-    tool = prism({ vector: scale(n, hi - lo), shift: scale(n, lo) });
+    const roles = { start: two.trimBy ? FAR[1] : 'cap:start', end };
+    tool = prism({
+      vector: scale(n, hi - lo),
+      shift: scale(n, lo),
+      ...(one.trimBy || two.trimBy ? { roles } : {}),
+    });
   } else {
     if (one.length < -LENGTH_EPS || two.length < -LENGTH_EPS) {
       throw new KernelError(
         'With a taper, both sides have to reach out from the profile. Enter positive distances.',
       );
     }
-    const second = { start: 'cap:plane', end: 'cap:start', side: 'side2' };
+    const second = { start: 'cap:plane', end: two.trimBy ? FAR[1] : 'cap:start', side: 'side2' };
     const a =
       one.length > LENGTH_EPS
-        ? prism({ vector: scale(one.along, one.length), taper: one.taper })
+        ? prism({
+            vector: scale(one.along, one.length),
+            taper: one.taper,
+            ...(one.trimBy ? { roles: { end } } : {}),
+          })
         : undefined;
     const b =
       two.length > LENGTH_EPS
@@ -384,6 +508,14 @@ function sweep(
     }
   }
   sides.forEach((side, i) => {
+    if (side.trimBy) {
+      tool = trimSweep(ctx, scope, tool, side.trimBy, source.shape, {
+        op: 'extrude',
+        role: i === 0 ? 'cap:end' : 'cap:start',
+        far: FAR[i] as string,
+      });
+      return;
+    }
     if (!side.trim) return;
     const box = trimmer(ctx, scope, tool.shape, side.trim, i === 0 ? 'cap:end' : 'cap:start');
     tool = namedBoolean(kernel, 'common', tool, box, { feature: feature.id, op: 'extrude' });

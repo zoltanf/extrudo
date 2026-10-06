@@ -24,11 +24,13 @@ a valid feature.
 | `direction` | `'one-side' \| 'symmetric' \| 'two-sides'` | default `one-side` | How the sweep leaves the plane: one-side, symmetric or two-sides. |
 | `extent` | `'distance' \| 'to-object' \| 'through-all'` | default `distance` | Side 1's extent: distance, to-object or through-all. |
 | `distance` | `string \| number \| ParameterHandle` | optional | Side 1's length (the whole length when symmetric); a length. |
-| `toObject` | `GeomRef \| GeomRef[]` (`face`, `vertex`, `plane`) | optional | The flat face, vertex or plane side 1 stops at. |
+| `toObject` | `GeomRef \| GeomRef[]` (`face`, `body`, `vertex`, `plane`) | optional | The face (flat or curved), body, vertex or plane side 1 stops at, where the sweep first meets it. |
+| `offset` | `string \| number \| ParameterHandle` | default `0; read only for to-object` | How far past side 1's object the extrude ends, along the sweep; a length. Negative stops short. |
 | `taper` | `string \| number \| ParameterHandle` | optional | Side 1's taper; an angle. Positive widens the sweep, the default 0° keeps the section's size. |
 | `extent2` | `'distance' \| 'to-object' \| 'through-all'` | default `distance` | Side 2's extent, like side 1. |
 | `distance2` | `string \| number \| ParameterHandle` | optional | Side 2's length; a length. |
-| `toObject2` | `GeomRef \| GeomRef[]` (`face`, `vertex`, `plane`) | optional | The flat face, vertex or plane side 2 stops at. |
+| `toObject2` | `GeomRef \| GeomRef[]` (`face`, `body`, `vertex`, `plane`) | optional | The face, body, vertex or plane side 2 stops at. |
+| `offset2` | `string \| number \| ParameterHandle` | default `0` | How far past side 2's object it ends; a length. |
 | `taper2` | `string \| number \| ParameterHandle` | optional | Side 2's taper; an angle. |
 | `flip` | `boolean` | default `false` | Sweep side 1 against the plane's normal. |
 | `operation` | `'new-body' \| 'join' \| 'cut' \| 'intersect'` | default `new-body` | New body, join, cut or intersect. |

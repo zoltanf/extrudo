@@ -206,6 +206,8 @@ export interface PlanePicker {
    * (`sketchTargetAt`). Items are session face items.
    */
   faces?: {
+    /** Curved faces count too (P4-12: an extrude's To object), not only flat ones. */
+    curved?: boolean;
     onHover(item: SelectionItem | undefined): void;
     /** `at`: where the click met the face, world mm. */
     onPick(item: SelectionItem, at?: Vec3): void;
@@ -1083,6 +1085,7 @@ function useSketchTargetInput(
         { ...all, sketches: [], planes: made.planes },
         { view, projection, width: p.width, height: p.height },
         [p.x, p.y],
+        pickerRef.current?.faces?.curved === true,
       );
     };
     const hover = (t: ReturnType<typeof target>) => {

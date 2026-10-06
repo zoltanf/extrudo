@@ -245,6 +245,7 @@ describe('the extrude dialog', () => {
         'taper',
         'extent2',
         'toObject2',
+        'offset2',
         'taper2',
         'flip',
         'operation',

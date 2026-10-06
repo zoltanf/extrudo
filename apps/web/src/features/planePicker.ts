@@ -51,6 +51,7 @@ export function dialogPlanePicker(
     onPick: (plane, at) => controller.pickAt({ kind: 'plane', id: plane }, at),
     ...(field.accepts.includes('face') && {
       faces: {
+        ...(field.curvedFaces && { curved: true }),
         onHover: (item: SelectionItem | undefined) => select.onHover(item),
         onPick: (item: SelectionItem, at?: Vec3) => controller.pickAt(item, at),
       },

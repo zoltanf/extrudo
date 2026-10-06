@@ -870,9 +870,10 @@ end to end, faster than in Fusion 360.
   - Construction: point on path, point through two edges, plane along a
     path, midplane of non-parallel planes, tangent planes on tori and
     free-form faces, planes in box selection (ADR-0040).
-  - Extrude to object on curved faces and bodies, with an offset; revolve
-    "to"; taper on ellipse and spline sides; symmetric half-length
-    (ADR-0028, -0029).
+  - ~~Extrude to object on curved faces and bodies, with an offset; revolve
+    "to"~~; taper on ellipse and spline sides; symmetric half-length
+    (ADR-0028, -0029; the first two done 2026-10-06, the taper and the
+    half-length stay open).
   - Silhouettes of spheres, tori and free-form faces (HLR); projecting
     vertices and bodies, an "include" mode; Intersect and Slice
     (ADR-0031).

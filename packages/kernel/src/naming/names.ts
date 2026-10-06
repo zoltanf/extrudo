@@ -233,6 +233,16 @@ export interface HistoryNaming {
  * no history at all `op:feature:new`.
  */
 export function propagateNames(naming: HistoryNaming): TopoNames {
+  return deriveNames(propagatedFaceNames(naming), naming.result);
+}
+
+/**
+ * The face names `propagateNames` gives, per result face, before pieces
+ * sharing a name are numbered: for an operation whose result is cut down
+ * afterwards (P4-12's `trimSweep` keeps some pieces of a split), so the
+ * numbering counts only what is kept.
+ */
+export function propagatedFaceNames(naming: HistoryNaming): string[] {
   const { op, feature, inputs, history, result } = naming;
   const kept: { input: number; name: string }[][] = result.faces.map(() => []);
   const generated: string[][] = result.faces.map(() => []);
@@ -262,7 +272,7 @@ export function propagateNames(naming: HistoryNaming): TopoNames {
     const from = (generated[i] as string[]).sort()[0];
     return from ?? createdName(op, feature, 'new');
   });
-  return deriveNames(raw, result);
+  return raw;
 }
 
 /**

@@ -66,6 +66,14 @@ describe('sketchTargetAt', () => {
     const scene: PickScene = { bodies: [{ id: B, mesh }], sketches: [], occluding: true };
     const top = cameraFrom([0, 0, 1], { target: [60, 60, 0], size: 40 });
     expect(sketchTargetAt(scene, top, topViewPx(top, 60, 60))).toBeUndefined();
+    // Over the bent top face: not a target, so the XY plane under it is; a
+    // dialog's To object takes the curved face itself (P4-12).
+    const over = cameraFrom([0, 0, 1], { target: [5, 5, 0], size: 40 });
+    expect(sketchTargetAt(scene, over, topViewPx(over, 6, 6))).toMatchObject({ kind: 'plane' });
+    expect(sketchTargetAt(scene, over, topViewPx(over, 6, 6), true)).toMatchObject({
+      kind: 'face',
+      item: { kind: 'face', id: 'b:1' },
+    });
   });
 });
 

@@ -232,7 +232,12 @@ one command. ADR-0028 (P2-06) added extrude: `packages/core/src/extrude.ts`
 (optional inputs with shared defaults, `extrudeSettings`/`extrudeInputs`),
 the evaluator `packages/kernel/src/features/extrude.ts` (profiles unioned
 before the sweep, taper through `DraftAngle` in the facade `prism`,
-to-object trim, through all, participants by `distance`, one body per
+to-object trim (**P4-12**: a curved face or a body too — the sweep is cut
+back where it first meets the face's surface extended past it, facade
+`extendFace` + boolean op 3 `Kernel.split`, or the body, `cut`; the pieces
+touching the profile stay, `trimSweep` in `features/to-object.ts`, shared
+with revolve; `offset`/`offset2` move the target along the sweep; the new
+ends are `cap:end`, a mesh target is refused), through all, participants by `distance`, one body per
 solid, `previewTools`) and the dialog `apps/web/src/features/extrude.ts`
 (fields named like the inputs; per-side arrows, symmetric at half
 length, taper arcs; press-pull through the spec's `propose` hook: join
@@ -245,6 +250,8 @@ axis `{kind:'axis', id:'origin:x|y|z'}` (`ORIGIN_AXES`, `originAxisRef`
 in `sketch/planes.ts`), a sketch line (`<sketch>/<line>`, placed by
 `SketchOutputData.frame` and `.lines`) or a straight edge; the axis
 must lie in the profiles' plane; 360° is a whole turn (no caps);
+**P4-12**: `extent: 'to-object'` + `toObject` (face, body or plane) turns
+one side until it first meets it, no offset;
 symmetric and two-sided are one sweep from a rotated start; side 1
 turns right-handed about the axis. Extrude's body operations and
 sources moved to `features/operation.ts` and `sources.ts` (shared
@@ -341,11 +348,12 @@ files into `dist/sw.js` and versions it; registration in
 manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
 also found that the kernel uses no raw OCCT bindings, so the build's
-binding list is now just `ExtrudoFacade` (built by CI: WASM 18.76 MB raw,
+binding list is now just `ExtrudoFacade` (built by CI: WASM 18.77 MB raw,
 6.07 MB gzip, 4.25 MB brotli, after P4-04/P4-05/P4-10's facade methods,
-P4-12's `DYNAMIC_EXECUTION: 0` and P4-12 §H3's `integrateVolume`; the
+P4-12's `DYNAMIC_EXECUTION: 0`, P4-12 §H3's `integrateVolume` and P4-12's
+split boolean and `extendFace` (about 10 kB); the
 15.76 MB / 3.69 MB brotli of ADR-0037 was P2-15's; OCCT input hash
-`19f2c939f2a8` (release `occt-19f2c939f2a8`); **don't
+`b0c67ba5be7c` (release `occt-b0c67ba5be7c`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
@@ -2030,7 +2038,14 @@ them. Notes further down that name a machine apply to that machine only.
   4173); give each checkout its own, or `reuseExistingServer` tests
   another checkout's build. A new worktree needs the WASM `dist` folders
   (copy them, or `pnpm wasm` once CI has published the release).
-- **Extrude e2e** (`e2e/extrude.spec.ts`): the Viewport region's
+- **Extrude e2e** (`e2e/extrude.spec.ts`; P4-12 adds the textbox "Offset"
+  (`exact`, "0 mm") under "To object", whose prompt is "Pick a face, a body
+  or a vertex", and a test extruding a square on XY up to a Ø30 cylinder
+  lying on XZ above it, picked from below with Shift+3: `Body2:<n>:20,20,18.8`,
+  20.8 with Offset 2 mm; To object takes planes, so it picks through the plane
+  picker — no `data-model-hover`, just click — and its `curvedFaces` flag lets
+  a curved face in; mind the Taper heads-up box beside the profile, which
+  takes a click on it): the Viewport region's
   `data-bodies` lists drawn bodies as `name:faces:x,y,z` (bbox size in
   mm, e.g. "Body1:7:60,40,15"). The dialog is the region "Extrude
   dialog" / "Edit Extrude1 dialog", its operation the combobox

@@ -4,6 +4,16 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 Extrude and revolve to an object** (ADR-0028 and
+  ADR-0029 amendments): Extrude's To object takes a curved face (a cylinder, a
+  sphere, a fillet's round, a free-form face) or a whole body as well as a flat
+  face, a vertex or a plane, and stops where the sweep first meets it (the
+  face's surface extended past the face, or the body), with an Offset that
+  moves the end along the sweep (positive past the object, negative short of
+  it). Revolve gets an Extent, Angle or To object: one side turns until it
+  first meets a face, a body or a plane. The new ends are `cap:end`; mesh
+  bodies are refused as targets. Two new facade calls (a split boolean and
+  `extendFace`).
 - 2026-10-06 · **P5-05 (2 of 2) Macro recording in the app** (ADR-0073 §4):
   Solid › Create › Record Macro and Stop Macro (and Ctrl+K) — the status bar shows
   a red dot and the count while recording; Stop opens the Macro dialog with the

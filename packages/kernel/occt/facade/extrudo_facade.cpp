@@ -28,6 +28,11 @@
 #include <BRepAlgoAPI_Common.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
 #include <BRepAlgoAPI_Fuse.hxx>
+#include <BRepAlgoAPI_Splitter.hxx>
+#include <GeomLib.hxx>
+#include <Geom_BoundedSurface.hxx>
+#include <Geom_BezierSurface.hxx>
+#include <Geom_RectangularTrimmedSurface.hxx>
 #include <BRepAdaptor_Curve.hxx>
 #include <BRepAdaptor_Surface.hxx>
 #include <BRepBndLib.hxx>
@@ -696,7 +701,9 @@ public:
   }
 
   /**
-   * Boolean of two shapes: op 0 = fuse, 1 = cut (a − b), 2 = common. With
+   * Boolean of two shapes: op 0 = fuse, 1 = cut (a − b), 2 = common, 3 =
+   * split (a cut into pieces by b, which may be a face; the result is a's
+   * pieces, b's own parts left out: P4-12, ADR-0028's amendment). With
    * `simplify`, faces and edges that lie on one surface or curve are merged
    * afterwards (ShapeUpgrade_UnifySameDomain through SimplifyResult), and
    * the history accounts for it. Records history for inputs 0 and 1.
@@ -720,11 +727,94 @@ public:
           BRepAlgoAPI_Common builder;
           return finishBoolean(builder, *shapeA, *shapeB, simplify);
         }
+        case 3: {
+          BRepAlgoAPI_Splitter builder;
+          return finishBoolean(builder, *shapeA, *shapeB, simplify);
+        }
         default:
           return fail("Boolean failed: unknown operation.");
       }
     } catch (...) {
       return failFromException("Boolean failed");
+    }
+  }
+
+  /**
+   * The surface under face `face` of `shape` as a face of its own, bounded
+   * far past the face (P4-12, ADR-0028's amendment): a split by it cuts a
+   * sweep wherever the surface, not only the face, crosses it. A closed
+   * direction (a cylinder's or sphere's turn, a torus) is taken whole; an
+   * open one (a plane, a cylinder's length) is grown by `size` mm on both
+   * sides, stopping at the surface's own bounds and short of a cone's tip;
+   * a B-spline or Bézier surface is extended by `size` along its tangents
+   * (GeomLib::ExtendSurfByLength, C1), or kept as it is where that fails.
+   * The face keeps the original's orientation. No history.
+   */
+  int extendFace(int shape, int face, double size) {
+    beginOp();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return fail("Unknown shape.");
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      if (face < 0 || face >= faces.Extent()) return fail("Face index out of range.");
+      const TopoDS_Face original = TopoDS::Face(faces(face + 1));
+      Handle(Geom_Surface) surface = BRep_Tool::Surface(original);
+      if (surface.IsNull()) return fail("This face has no surface to extend.");
+      while (surface->IsKind(STANDARD_TYPE(Geom_RectangularTrimmedSurface))) {
+        surface = Handle(Geom_RectangularTrimmedSurface)::DownCast(surface)->BasisSurface();
+      }
+      double u0, u1, v0, v1;
+      BRepTools::UVBounds(original, u0, u1, v0, v1);
+      const bool spline = surface->IsKind(STANDARD_TYPE(Geom_BSplineSurface)) ||
+                          surface->IsKind(STANDARD_TYPE(Geom_BezierSurface));
+      if (spline) {
+        Handle(Geom_BoundedSurface) grown = Handle(Geom_BoundedSurface)::DownCast(surface->Copy());
+        for (const bool inU : {true, false}) {
+          for (const bool after : {false, true}) {
+            try {
+              GeomLib::ExtendSurfByLength(grown, size, 1, inU, after);
+            } catch (...) {
+              // Keep what was extended so far.
+            }
+          }
+        }
+        surface = grown;
+        surface->Bounds(u0, u1, v0, v1);
+      } else {
+        double su0, su1, sv0, sv1;
+        surface->Bounds(su0, su1, sv0, sv1);
+        const double faceV0 = v0, faceV1 = v1;
+        if (surface->IsUPeriodic()) {
+          u0 = su0;
+          u1 = su0 + surface->UPeriod();
+        } else {
+          u0 = std::max(su0, u0 - size);
+          u1 = std::min(su1, u1 + size);
+        }
+        if (surface->IsVPeriodic()) {
+          v0 = sv0;
+          v1 = sv0 + surface->VPeriod();
+        } else {
+          v0 = std::max(sv0, v0 - size);
+          v1 = std::min(sv1, v1 + size);
+        }
+        Handle(Geom_ConicalSurface) cone = Handle(Geom_ConicalSurface)::DownCast(surface);
+        if (!cone.IsNull()) {
+          // V runs along the cone's side; its tip is where the radius reaches 0.
+          const double tip = -cone->RefRadius() / std::sin(cone->SemiAngle());
+          const double margin = 1e-3 * std::max(1.0, std::abs(tip));
+          if (tip <= faceV0) v0 = std::max(v0, tip + margin);
+          else if (tip >= faceV1) v1 = std::min(v1, tip - margin);
+        }
+      }
+      BRepBuilderAPI_MakeFace maker(surface, u0, u1, v0, v1, Precision::Confusion());
+      if (!maker.IsDone()) return fail("Couldn't extend this face.");
+      TopoDS_Face extended = maker.Face();
+      if (original.Orientation() == TopAbs_REVERSED) extended.Reverse();
+      return store(extended);
+    } catch (...) {
+      return failFromException("Couldn't extend this face");
     }
   }
 

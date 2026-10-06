@@ -120,7 +120,7 @@ union sweeps as the user sees it: one face per outer curve.
   end is named like any end. An object that cuts through the profile, that
   lies behind a side of a two-sided extrude, or that the extrude runs
   alongside is refused with its own message. Curved faces and bodies as
-  objects are not supported yet.
+  objects: see the P4-12 amendment at the end.
 
 ### 4. Taper: `BRepOffsetAPI_DraftAngle` in the facade
 
@@ -359,8 +359,8 @@ kernel (one body, 40 × 80 × 60 mm, 10 faces).
 
 ## Open
 
-- To-object on curved faces and bodies (Fusion's "to object" on a body),
-  and an offset from the object.
+- ~~To-object on curved faces and bodies (Fusion's "to object" on a body),
+  and an offset from the object.~~ Done in P4-12 (the amendment at the end).
 - Taper on ellipse and spline sides.
 - ~~A cut that splits a body stays one body with several solids (P2-08
   decides whether it becomes several).~~ Done in P2-08: one body per solid
@@ -376,3 +376,118 @@ kernel (one body, 40 × 80 × 60 mm, 10 faces).
   yet); faces and vertices work.
 - The press-pull rule for profiles sketched on a body's face (P2-09):
   done, and unified with revolve's, in ADR-0051.
+
+## Amendment (P4-12, 2026-10-06): to object on curved faces and bodies, with an offset
+
+The Open list's first item. Decided before the code:
+
+1. **To object takes any face of a B-rep body and any B-rep body** (kinds
+   `face`, `body`, `vertex`, `plane`). Flat faces, vertices and planes keep
+   §3's exact paths. A **curved face** (a cylinder, a sphere, a fillet's
+   round, a B-spline) and a **body** are reached by sweeping long — past
+   the target's box along the side, plus 5 % (at least 1 mm) — and cutting
+   the sweep back: by the face's surface **extended** past the face
+   (facade `extendFace`: a closed direction whole, an open one grown by the
+   bodies' box diagonal, short of a cone's tip; a B-spline or Bézier
+   extended along its tangents, C1), through a **split** (facade boolean op
+   3, `BRepAlgoAPI_Splitter`, `Kernel.split`), or by the body itself (a
+   `cut`). The pieces that touch the profile stay; whatever lies past the
+   first surface along the sweep is a piece of its own, so **the first hit
+   is where the extrude stops**, whatever shape the target has. One side
+   turns round for a target wholly behind the profile, as for planes.
+2. **`offset` and `offset2`** (optional `expr` lengths, default 0, read
+   only for `to-object`): the target is **moved along the sweep** by the
+   offset (a translation of the extended face or the body, or of §3's
+   plane), so positive ends past the surface and negative short of it, by
+   exactly the offset at every point of the profile. This is a change from
+   the plan's "offset the body" (`MakeOffsetShape`): a normal offset of a
+   body fails on some bodies and doesn't move a curved surface by the
+   offset along the sweep, while a translation is exact, can't fail, and is
+   what "goes 2 mm past the object" means for an extrusion. A flat face
+   gets the same rule (its plane moved along the sweep).
+3. **Names:** the faces the target makes are `extrude:<id>:cap:end`
+   (`cap:start` on side 2; `#n` for several), through `withHistory` of the
+   split or cut, the target's faces named with that role first, so a later
+   fillet on the end's edge resolves. Walls keep their sketch-curve names.
+   The long sweep's far cap is named `cap:far` (`cap:far2`) only until the
+   cut: if a kept piece still has it, part of the profile passed the
+   target, and the extrude fails: "E doesn't reach that body along its
+   direction." when nothing met it, "Part of the profile passes beside that
+   body…" when some did, "E starts inside that body…" when nothing is left
+   between the profile and it. The kernel doesn't know body names, so the
+   message says "that body" / "that face".
+4. **Mesh bodies** are refused as targets with `meshBodyMessage('Extrude to
+   object')` (ADR-0066 §4): the cut needs a B-rep.
+5. **The preview** is the trimmed sweep (`previewTools` are the tool
+   `operate` gets, as before). The dialog's Offset field shows with To
+   object (and Offset 2 with To object 2); the object field's prompt is
+   "Pick a face, a body or a vertex", and a body is picked from its browser
+   row. A field that takes planes picks faces through the plane picker,
+   which took flat faces only (Create Sketch's rule); the selection field's
+   new `curvedFaces` flag (`spec.ts`, passed on as `PlanePicker.faces.curved`
+   to `sketchTargetAt`) lets To object take a curved face there too. The
+   e2e test found that: a cylinder's wall couldn't be clicked into the
+   field at all.
+6. **Facade:** `boolean(op = 3)` (a split; a's pieces only, history for both
+   inputs, the tool's faces *modified* into the pieces' new faces) and
+   `extendFace(shape, face, size)`; `prism` is unchanged.
+
+Rejected: a **half-space solid** from the extended face
+(`BRepPrimAPI_MakeHalfSpace`): infinite solids in booleans are fragile, and
+the splitter needs none. **Keeping the old box trim for every face**: a box
+can only stand for a plane. **Fusion-style "extend the face only when
+asked"**: a curved face is always extended here, since the surface beyond
+the face is where most sweeps meet it (a profile wider than a fillet's
+round).
+
+### Results (P4-12)
+
+- **Native harness** (`spikes/p4-12-extrude-to/`, `run.sh`, in the pinned
+  image; volumes against the exact integral of the profile's column under
+  the surface):
+
+  | Case | Volume (mm³) | Exact | Rel. error | Time |
+  |---|---|---|---|---|
+  | 10 × 10 onto a Ø40 cylinder's wall from outside, face | 1021.0331 | 1021.0331 | 1e-16 | 123 ms (first, cold) |
+  | the same, the cylinder as a body | 1021.0331 | 1021.0331 | 1e-16 | 33 ms |
+  | the wall, offset +2 (face) | 1221.0331 | 1221.0331 | 2e-16 | 33 ms |
+  | the body, offset −2 | 821.0331 | 821.0331 | 3e-16 | 30 ms |
+  | the wall from inside (the profile inside the cylinder) | 1978.9669 | 1978.9669 | 0 | 25 ms |
+  | a Ø40 sphere, face / body | 2042.2963 | 2042.2963 | 5e-9 (the integral's) | 62 / 46 ms |
+  | a 10 mm fillet's round, face / body | 1295.0109 | 1295.0109 | 2e-16 | 20 ms |
+  | a box body, offset 0 / +2 / −2 | 3000 / 3200 / 2800 | exact | 0 | 18 ms |
+  | a B-spline patch of the cylinder covering the profile | 1021.0331 | 1021.0331 | 1e-10 | 161 ms |
+  | a B-spline patch narrower than the profile (extended, C1) | 1019.6336 | (the cylinder's 1021.0331) | −0.14 % | 131 ms |
+  | a body and a face the sweep misses | the whole sweep reaches its far cap | — | — | 11 ms |
+
+  The split records the tool face's images as *modified* (three pieces of
+  the cylinder's wall where the sweep enters and leaves it), which is what
+  names the new end.
+- **In the kernel** (`features/extrude-to.test.ts`, strict leaks): the same
+  cases through the engine, with a Ø40 cylinder standing beside a profile on
+  XZ, a sphere, a fillet's round (a target behind the profile, so the side
+  turns round), a box body with offsets 0, +2, −2 (2800, 3000, 3200 mm³, the
+  difference exactly area × 2), a miss and a partial miss (their messages),
+  an offset back past the profile, two sides with side 2 to a body (and
+  `offset2`), join/cut/intersect with the trimmed sweep, the end named
+  `cap:end` with a 1 mm fillet on its edge, and a mesh body refused. The
+  golden table adds 32 rows (a Ø20 cylinder lying above the block, as a face
+  and as a body, every operation, taper 0 and 5°, offset 0 and 2 mm); every
+  earlier row is unchanged, since flat faces keep their exact paths.
+- **Names, found on the way:** the split's whole result numbers faces across
+  every piece, so the kept piece's end came out `cap:end#2`. The names are
+  now numbered on the kept pieces only (`propagatedFaceNames`, the raw names
+  `propagateNames` numbers), and the target's own faces are all the role
+  unnumbered.
+- **A curved face is extended by the bodies' box diagonal.** A B-spline is
+  extended along its tangents, which is not the surface it came from (−0.14 %
+  above, where the profile reaches 2 mm past a patch): a sweep that mostly
+  meets the face itself is exact, one that only meets the extension is
+  approximate. A face whose surface can't be extended keeps its own bounds,
+  and a profile that passes it then says "Part of the profile passes
+  beside…".
+- **Cut with automatic bodies imprints a body the tool only touches**, as it
+  always did for a flat to-object face: the target gets its contact face
+  split (golden rows "to-object … cut"). Pick the bodies to cut to avoid it.
+- **Left out:** taper on ellipse and spline sides and the symmetric
+  half-length stay in P4-12's list; to-object on a mesh body (refused).

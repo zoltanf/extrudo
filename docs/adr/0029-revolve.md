@@ -303,3 +303,40 @@ reading nearest the last one, within ±360°) instead of wrapping at
   hides them again. The planes stay as the browser sets them (Create Sketch
   and plane fields have their own picker).
 
+
+## Amendment (P4-12, 2026-10-06): revolve to an object
+
+- **`extent`** (`angle`, the default, or `to-object`) and **`toObject`**
+  (one `face`, flat or curved, `body` or `plane`), named like extrude's.
+  `to-object` turns **one side** (another direction is refused: "A revolve
+  to an object turns one side…"), the way Flip says, and ignores the
+  angles. The sweep starts at the profile and turns `360° − 0.5°`, so its
+  far cap stays clear of the profile, and is cut back by the target exactly
+  as ADR-0028's amendment cuts an extrude (`trimSweep` in
+  `kernel/src/features/to-object.ts`, shared): the face's extended surface
+  or the plane (a face as wide as the ring and the bodies) through a split,
+  a body through a cut, the pieces touching the profile kept, so it stops
+  where the turn first meets the target. The faces it makes there are
+  `revolve:<id>:cap:end`; `cap:start` stays at the profile. A turn that
+  never meets the target fails with "V doesn't reach that body along its
+  direction.", one partly passing it with "Part of the profile passes
+  beside…". Mesh targets are refused like extrude's.
+- **No offset** for a revolve (an angle past the object): left out until
+  someone asks; ADR-0028's offset is a length along a straight sweep.
+- **The dialog** gets Extent (Angle, To object) after Axis; with To object
+  it shows the To object field and hides Direction, Angle and Angle 2 (so
+  they make no input) and draws no angle arcs; its operation proposal is
+  left to the user, as for extrude's to-object.
+- `RevolveOutputData.toObject` is true for it; its `angles` are 0.
+
+### Results (P4-12)
+
+- `features/extrude-to.test.ts`: a 10 × 10 profile on XZ from x = 10 turned
+  about Z up to the YZ plane, to a box filling x < 0 as a body and as its
+  flat face, and flipped (the other way round to the same body) is the
+  quarter ring, 2356.19 mm³, to 1e-9 in every case; two sides are refused;
+  a body the turn never meets says so. The golden table adds 16 rows (the
+  YZ plane and the block as a body, every operation, flipped or not); the
+  block rows are "Part of the profile passes beside that body", since the
+  square rises above the block. The engine, names and messages are
+  extrude's (`trimSweep`), so ADR-0028's amendment holds for both.
