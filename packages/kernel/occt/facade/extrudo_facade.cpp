@@ -4762,8 +4762,13 @@ private:
       toolList.Append(tools);
       cut.SetArguments(arguments);
       cut.SetTools(toolList);
+      cut.SetRunParallel(false);
       cut.Build();
       if (!cut.IsDone() || cut.HasErrors()) return false;
+      // A plug's faces lie on the cavity's own planes where it meets a square
+      // neighbour and half a wall into the cavity: merged back, so the cavity's
+      // faces stay whole (the history accounts for it).
+      cut.SimplifyResult();
       result = asSolid(cut.Shape());
       return !result.IsNull();
     } catch (...) {

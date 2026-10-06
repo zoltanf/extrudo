@@ -199,7 +199,7 @@ describe('shell with a thickness per face', { timeout: 120_000 }, () => {
     expect(m.valid).toBe(true);
     expect(m.faces).toBe(11);
     expect(m.volume).toBeCloseTo(VOLUME - (W - 4) * (D - 4) * (H - 4), 2);
-    expect(m.bbox.min.map((x) => Math.round(x * 10) / 10)).toEqual([0, 0, 0]);
+    expect(m.bbox.min.map((x) => Math.round(x * 10) / 10 + 0)).toEqual([0, 0, 0]);
     const names = faceNames(result);
     expect(names).toContain(floor);
     expect(names).toContain(`shell:S:inner:(${floor})`);
@@ -226,8 +226,8 @@ describe('shell with a thickness per face', { timeout: 120_000 }, () => {
     expect(m.valid).toBe(true);
     expect(m.faces).toBe(11);
     expect(m.volume).toBeCloseTo((W + 4) * (D + 4) * (H + 4) - VOLUME, 2);
-    expect(m.bbox.min.map((x) => Math.round(x * 10) / 10)).toEqual([-2, -2, -4]);
-    expect(m.bbox.max.map((x) => Math.round(x * 10) / 10)).toEqual([W + 2, D + 2, H]);
+    expect(m.bbox.min.map((x) => Math.round(x * 10) / 10 + 0)).toEqual([-2, -2, -4]);
+    expect(m.bbox.max.map((x) => Math.round(x * 10) / 10 + 0)).toEqual([W + 2, D + 2, H]);
     const names = faceNames(result);
     // Outside the offset faces are the outer skin and keep the names.
     expect(names).toContain(floor);
@@ -287,8 +287,10 @@ describe('shell with a thickness per face', { timeout: 120_000 }, () => {
 
   it('a body with rounded vertical edges, a thicker floor', async () => {
     const { features, first, lines } = await roundedBlock('vertical');
+    // References read from the last recompute's meshes, so all of them before the shells run.
     const top = refTo(first, 'face', cap);
     const bottom = refTo(first, 'face', floor);
+    const front = refTo(first, 'face', side(lines.bottom));
     ok(
       await runWithShapes(
         testDocument([
@@ -301,7 +303,6 @@ describe('shell with a thickness per face', { timeout: 120_000 }, () => {
     expect(m.valid).toBe(true);
     expect(m.volume).toBeCloseTo(roundedArea(0, 5) * H - roundedArea(2, 3) * (H - 4), 1);
     // A side runs smoothly into the rounds and the other sides: the whole ring takes 3 mm.
-    const front = refTo(first, 'face', side(lines.bottom));
     ok(
       await runWithShapes(
         testDocument([

@@ -283,6 +283,11 @@ static int table() {
     const int oTop = faceAt(one, 10, 11.5, 20);
     const int oFloor = faceAt(one, 10, 10, 0);
     const double outerOne = 8000 - 20 * 9 * (1 - PI / 4);
+    {
+      const int v = body("vert3");
+      row("vertical edges r3, side x = 0 removed, 2 (plug)", v, {faceAt(v, 0, 10, 10)}, {}, 2, false,
+          (400 - 36 + 9 * PI) * 20 - (256 - 4 + PI) * 16 - 14 * 16 * 2);
+    }
     row("one top edge r3, top removed, 1 (plug)", one, {oTop}, {}, 1, false,
         outerOne - (18 * 18 * 18 - 18 * 4 * (1 - PI / 4)) - 18 * 16 * 1);
     row("one top edge r3, top removed, 1, floor 4 (plug)", one, {oTop}, {{oFloor, 4}}, 1, false,
