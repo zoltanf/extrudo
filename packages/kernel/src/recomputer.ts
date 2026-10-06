@@ -90,8 +90,12 @@ export interface RecomputerOptions {
 /**
  * Heap top over which the kernel worker is thrown away and replaced between
  * recomputes (P4-12 H4). The heap of a long session grows about 11 MB per 100
- * recomputes of a revolve document (ADR-0050 §6), and a worker that reaches the
- * browser's limit dies; ending the worker frees it all at once.
+ * recomputes of a revolve document (ADR-0050 §6; 2026-10-06: 12 MB per 100 in
+ * 400, 10.7 in 1200, all of it in `mesh`), and a worker that reaches the
+ * browser's limit dies; ending the worker frees it all at once. 1 GiB is about
+ * 8,500 such recomputes and well under the browser ceiling; a lower limit was
+ * rejected because the cold recompute B9 pays is 8 s (heap-bound probe), so
+ * recycling heavy documents more often would pause them for no safety gain.
  */
 export const HEAP_RECYCLE_BYTES = 1024 * 1024 * 1024;
 

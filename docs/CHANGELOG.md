@@ -3,6 +3,7 @@
 One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
+
 - 2026-10-06 · **P6-07 Auto-project** (ADR-0074, FR-SK-17): while a drawing,
   constraint or dimension tool runs, the view offers the shown bodies' edges
   and vertices under the pointer (behind the sketch's own geometry, vertices
@@ -14,6 +15,16 @@ One line per completed roadmap task, newest first. Dates are absolute.
   (on) and its palette checkbox and `toggleAutoProject` command turn it off;
   `viewport.autoProjectFace` (off) also projects a flat face's outline when a
   sketch starts on it. No file-format or kernel change.
+- 2026-10-06 · **P4-12 warm-cache heap growth closed (ADR-0050 §6)**: the
+  growth (10.7 MB per 100 recomputes of the revolve document) is `mesh` alone
+  and is mimalloc fragmentation of the mesher's transient
+  `NCollection_IncAllocator` blocks on **fresh** shapes, not a leak. The native
+  harness `spikes/p4-12-heap-growth` and the app's WASM rule out
+  `BRepTools::Clean`, meshing a copy, dlmalloc, the mimalloc options and a
+  block-size patch; it stays bounded by the worker recycle (ADR-0067 §H4, 1 GiB,
+  kept after measuring a 8 s cold recompute for B9). `HEAP_ATTRIBUTE=1` works
+  again, the warm-cache probe checks 20 MB per 100 recomputes, and
+  `mesh-golden.test.ts` fingerprints every fixture body's display mesh.
 - 2026-10-06 · **P4-12 Emboss on cones, spheres and free-form faces**
   (ADR-0060's amendment): a cone takes letters wrapped round it like a
   cylinder (the facade's new `wrapOnCone`, the cylinder's exact map with the

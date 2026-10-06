@@ -342,3 +342,93 @@ localised), and a mitigation outside the allocator: recycling the kernel
 worker when the heap top passes a limit (NFR-03 already restarts it after a
 crash). At about 11 MB per 100 recomputes of this unusual document a session of
 a thousand edits costs about 110 MB, against a 2 GB limit.
+
+## Amendment (P4-12 heap item, 2026-10-06)
+
+**§6: the warm-cache heap growth is mesher fragmentation under mimalloc; no
+cure was found, and it stays bounded by ADR-0067 §H4's worker recycle.** The
+findings, all on the Ubuntu machine (described below the table), with the
+harness in `spikes/p4-12-heap-growth/` and the app's own WASM as the second
+probe.
+
+**Reproduced, and attributed to `mesh` again.** `HEAP_RUNS=1200 pnpm vitest run
+packages/kernel/src/memory.test.ts -t "warm cache"` takes the revolve
+document's heap top 35.5 → 163.9 MB (10.7 MB per 100 recomputes), live shapes
+constant at 424. `HEAP_ATTRIBUTE=1 HEAP_RUNS=400` (whose wrapper had recursed
+through `heap()`/`stats()`; it now skips both) attributes **all** of it to one
+call: `mesh: 48 MB in 3/800`, every other `Kernel` call 0 bytes. The 16 MB steps
+are `ALLOW_MEMORY_GROWTH`'s linear-memory granularity, not a request of that
+size.
+
+**The native harness.** `harness.cpp` builds the document's bodies per round as
+the evaluator does (a block, a revolved groove cut, a revolved ring joined, the
+angle changing), meshes them (the facade's `mesh`), and keeps a rolling cache of
+256 shapes, evicting the rest — the memory test's picture. It probes
+`heapTop()` (`sbrk(0)`) and reports growth after the cache warms. Built in the
+pinned opencascade.js image in seconds, so cures were tried without a CI build.
+Post-warm growth, 3,000 rounds, mimalloc unless noted:
+
+| variant | growth | heap top after |
+|---|---|---|
+| one revolve (`MINIMAL=1`) | **+16.06 MB / 2,744 rounds** (5.85 MB/1000) | 42.29 MB |
+| one revolve, `NOMESH=1` (build + evict, no mesh) | 0 | 26.22 MB |
+| one revolve, `BRepTools::Clean` after meshing | 0 | 26.22 MB |
+| one revolve, mesh a `BRepBuilderAPI_Copy` | 0 | 26.22 MB |
+| one revolve, `mi_collect(true)` each round | 0 (the step moved before the warm window) | 42.29 MB |
+| one revolve, dlmalloc | 0 (same) | 42.29 MB |
+| the full document, fresh shapes | 0 in three runs | 42.29 MB |
+| the full document, one shape re-meshed 1,200 × | 0 | 26.22 MB |
+
+The harness needs the one-revolve variant to reproduce; the full document is
+flat in it (the app's WASM is the ground truth and always grows). What the
+table says regardless: **the growth needs fresh shapes going through
+`BRepMesh_IncrementalMesh` while the cache holds live triangulations.** No mesh,
+or meshing an already-meshed shape (`BRepMesh` skips it), is flat; building,
+evicting and releasing without meshing is flat. It is not a shape leak (live
+shapes are constant) nor a plain one-off (the fuzzer's B2/B3 step once and then
+stay flat for 10,000 edits).
+
+**The allocation found.** The mesher creates a transient
+`NCollection_IncAllocator` per stage with `IMeshData::MEMORY_BLOCK_SIZE_HUGE`
+first blocks (512 KB on this platform, grown ×8/×4/×2/×1.5 every five blocks up
+to 12 MB) and frees every block in `clean()` when the mesh ends. Under mimalloc
+the freed pages are not reused for the next mesh because the cached shapes'
+long-lived triangulations are interleaved with them, so a later mesh's block
+request is served from a fresh segment or a new WASM page: fragmentation of the
+linear heap, not a leak. That is why clearing the cache each run is flat and why
+the rate grows with how many distinct shapes the cache holds.
+
+**Cures tried, none flat:**
+- **`BRepTools::Clean` after meshing** and **meshing a copy** keep the harness
+  at its lower top (they stop the retained triangulation from being what
+  fragmentation splits around), but the CI build of `Clean` (ADR-0050's original
+  `occt-b94d334d702d`) still grew — 3 jumps in 1,200 instead of 4 — and the
+  copy variant in the app would still run the mesher on every fresh shape, so
+  neither is a cure. Rejected.
+- **dlmalloc** grew at the same rate (smoothly instead of in 16 MB steps; the
+  original measurement) and is about 30 % slower. Rejected.
+- **mimalloc options** through the facade (`mi_option_set` for
+  `purge_delay` = 0, `page_full_retain` = 0, `arena_eager_commit` = 0, and
+  `mi_collect(true)` after each mesh) shifted a step across the warm window but
+  did not change the total; all the options exist in the toolchain's mimalloc
+  (emscripten 6.0.5). Rejected.
+- **OCCT's mesher block size** (`IMeshData::MEMORY_BLOCK_SIZE_HUGE`) cannot be
+  patched: `@libcascade/toolchain` has no source-patch hook (planegcs has
+  `planegcs.patch`, OCCT does not), so it needs a forked image. Not tried.
+- `CleanModel` is already `true` in `IMeshTools_Parameters` and the mesher's
+  model is discarded each `Perform`; there was nothing to turn on.
+
+**Bounded.** `HEAP_RECYCLE_BYTES` stays 1 GiB (ADR-0067 §H4): at the measured
+10.7 MB per 100 it is about 8,500 recomputes of even this document, well under
+the browser ceiling. A lower default was rejected after measuring the cold
+recompute a recycled worker pays for every fixture (`HEAP_BOUND=1 pnpm vitest
+run packages/kernel/src/heap-bound`): B1 6 ms, B2 22, B3 27, B4 72, B5 266, B6
+68, B7 983, B8 307, P4-01 1901 and **B9 8047 ms** — the ADR's own "under 2 s for
+every fixture" is false for B9, so recycling heavy documents sooner would pause
+them for no safety gain.
+
+**Kept as a guard.** The warm-cache probe now reports MB per 100 recomputes and
+fails over 20 (twice the measured rate), and `mesh-golden.test.ts` fingerprints
+every fixture body's display mesh (nodes, triangles, the first 100 positions)
+so a future meshing change shows exactly what it moved; a cure that changes not
+one number would be the one to keep.

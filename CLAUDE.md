@@ -2295,18 +2295,27 @@ them. Notes further down that name a machine apply to that machine only.
   meant for the profile in sketch-mode tests; use "Select other…" or
   click off the axis. The revolve golden table updates with `pnpm
   vitest run -u packages/kernel/src/features/revolve`.
-- **WASM heap growth with a warm cache** (P2-07): a worker that reaches the
-  browser's limit is now replaced between recomputes (P4-12 §H4,
+- **WASM heap growth with a warm cache** (P2-07, closed 2026-10-06): a worker
+  that reaches the browser's limit is replaced between recomputes (P4-12 §H4,
   `Recomputer`'s `heapRecycleBytes`, 1 GiB by default), which frees the whole
-  heap but recomputes cold; the growth itself is still unfixed. OCCT 8's booleans and
-  mesher ask for blocks of up to 16 MB, so with cached shapes alive the
-  heap top steps up 16 MB about every 350 recomputes of a revolve
-  document (not levelling off in 1200); each op alone stays flat, and
-  clearing the cache each run is flat, so it looks like fragmentation.
-  Memory tests of big booleans clear the engine each run and warm up
-  through every value first. To find which op grows, wrap
-  `Kernel.prototype` methods and log `heapTop` jumps (done in P3-17:
-  `HEAP_ATTRIBUTE=1`; it is `mesh`). Unmeasured in a real long session.
+  heap but recomputes cold.  The growth itself is **mesher fragmentation under
+  mimalloc**, not a leak: the revolve document's top moves 10.7 MB per 100
+  recomputes, all of it in `mesh` (`HEAP_ATTRIBUTE=1`, which now skips
+  `heap`/`stats` or it recurses), and it needs **fresh** shapes going through
+  `BRepMesh_IncrementalMesh` while the cache holds live triangulations (no mesh,
+  or re-meshing one shape, is flat). The mesher's transient
+  `NCollection_IncAllocator` blocks are freed each mesh but not reused, because
+  the cached triangulations are interleaved with them. `spikes/p4-12-heap-growth`
+  (facade `#include`d, `heapTop()`; `run.sh`/`sweep.sh`/`sweep-minimal.sh`,
+  `NOMESH`/`MODE=same`/`CLEAN`/`COPY`/`MI`) reproduces and tried the cures:
+  `BRepTools::Clean`, meshing a copy, dlmalloc and the mimalloc options
+  (`mi_collect`, `purge_delay`, `page_full_retain`) — none flat; OCCT's
+  `MEMORY_BLOCK_SIZE_HUGE` can't be patched (no toolchain hook). It stays
+  bounded by the recycle (1 GiB, ~8,500 recomputes; a lower default was
+  rejected because a cold B9 recompute is 8 s, `HEAP_BOUND=1 … heap-bound`).
+  The warm-cache probe checks 20 MB/100 and `mesh-golden.test.ts` fingerprints
+  every fixture body's mesh. Memory tests of big booleans clear the engine each
+  run and warm up through every value first.
 - **Primitives e2e** (`e2e/primitives.spec.ts`): the dialogs are the
   regions "Box dialog"… (from `pickTool(page, 'Box')`), the Plane field
   the button "Plane" ("XY plane", "XZ plane", "1 face"). While Plane is the
@@ -2874,11 +2883,16 @@ them. Notes further down that name a machine apply to that machine only.
   for one fixture (a slow one on its own), `FUZZ_HEAP=n` for heap samples. Warm-cache heap of the revolve document: `HEAP_RUNS=n
   … memory.test.ts -t "warm cache"` (about 0.3 s a run; `HEAP_MAX_ENTRIES`,
   `HEAP_ONLY=G|R|F|GF|RF|GR`): it grows about 11 MB per 100 recomputes with
-  all three revolves, not with any subset (ADR-0050 §6, P4-12 backlog):
-  `HEAP_ATTRIBUTE=1` prints which `Kernel` call grew the top, and it is
-  `mesh` alone (a `BRepTools::Clean` after meshing didn't cure it). **Our OCCT
-  build already links mimalloc** (the toolchain default); `MALLOC:
-  'dlmalloc'` in `libcascade.config.ts` builds (grows smoothly, 30 % slower). Silhouette
+  all three revolves, not with any subset (ADR-0050 §6's 2026-10-06 amendment,
+  the item closed): `HEAP_ATTRIBUTE=1` prints which `Kernel` call grew the top,
+  and it is `mesh` alone, on **fresh** shapes (`spikes/p4-12-heap-growth` is
+  the harness; `NOMESH`/`MODE=same` are flat). Cold recompute times per fixture:
+  `HEAP_BOUND=1 … kernel/src/heap-bound`, and the display mesh's fingerprint:
+  `pnpm vitest run -u packages/kernel/src/mesh-golden`. **Our OCCT
+  build already links mimalloc** (the toolchain default); cures tried and
+  rejected are in the ADR (dlmalloc grows smoothly at the same rate and is 30 %
+  slower; `BRepTools::Clean`, meshing a copy and the mimalloc options don't
+  cure it). Silhouette
   cost: `BENCH=1 … viewport/silhouette.test.ts`; booleans of many tools:
   `BENCH=1 … kernel/src/boolean-bench.test.ts`. A native OCCT harness for
   such experiments builds in the image by its digest (the tag shows as

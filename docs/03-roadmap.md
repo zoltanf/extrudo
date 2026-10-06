@@ -960,19 +960,21 @@ end to end, faster than in Fusion 360.
     surface makes OCCT's fixed-order integral wrong (and keeps the cheap form
     where the bound is worse, a prism wall), so a wrap's volume is exact to
     1e-5 relative where it was 1-3 % out.
-  - WASM heap growth with a warm cache (ADR-0029, ADR-0050 §6): about 11 MB
-    per 100 recomputes of the revolve document with all three revolves.
-    Attributed in P3-17 to `mesh` alone (`HEAP_ATTRIBUTE=1`, 4 jumps of
-    16 MB in 1200 calls, every other call flat); cleaning the triangulation
-    after meshing (`BRepTools::Clean`, built in CI) gave 3 jumps instead of
-    4, so it isn't the cure. Ideas left: patch OCCT's mesher block size
-    (`IMeshData::MEMORY_BLOCK_SIZE_HUGE`, 1 MB), a dlmalloc build with
-    `heapTop` inside `mesh()`. ~~Recycling the kernel worker when the heap top
-    passes a limit~~ **Done 2026-10-05** (ADR-0067 §H4): `KernelApi.heap()`
-    after every recompute, and the `Recomputer` replaces the worker between
-    recomputes over `HEAP_RECYCLE_BYTES` (1 GiB) with no dialog open, keeping
-    the model on screen and noting it in the history. The growth itself is
-    still unfixed, as the two ideas above are.
+  - ~~WASM heap growth with a warm cache (ADR-0029, ADR-0050 §6): about 11 MB
+    per 100 recomputes of the revolve document with all three revolves.~~
+    **Closed 2026-10-06** (ADR-0050's amendment): attributed again to `mesh`
+    alone (`HEAP_ATTRIBUTE=1`, now skipping `heap`/`stats` so the wrapper doesn't
+    recurse) — 48 MB in 3/800 calls, every other call 0. The native harness
+    `spikes/p4-12-heap-growth` shows the growth needs **fresh** shapes going
+    through `BRepMesh_IncrementalMesh` while the cache holds live
+    triangulations (`NOMESH=1` and re-meshing one shape are flat), and that it is
+    mimalloc fragmentation of the mesher's transient `NCollection_IncAllocator`
+    blocks, not a leak. No cure: `BRepTools::Clean`, meshing a copy, dlmalloc and
+    the mimalloc options (`mi_collect`, `purge_delay`, `page_full_retain`) were
+    measured, none flat; OCCT's block size can't be patched (no toolchain hook).
+    **Bounded** by ADR-0067 §H4's recycle (1 GiB, about 8,500 recomputes; a
+    lower default rejected because B9's cold recompute is 8 s), and guarded by
+    the warm-cache probe's 20 MB/100 limit and `mesh-golden.test.ts`.
   - ~~Patterns: colour classes made joins slower than fusing the instances
     (3.9 s against 2.1 s for overlapping bosses); a cheaper join of many
     interfering copies~~ **done 2026-10-06** (ADR-0047's amendment): a pattern's

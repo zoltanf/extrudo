@@ -61,6 +61,14 @@ const REBUILDS = 1000;
 const OFFSET_REBUILDS = 300;
 /** Allowed heap growth over the whole run: fragmentation noise, not a leak. */
 const LIMIT_BYTES = 256 * 1024;
+/**
+ * The warm-cache probe's own bound (P4-12 heap item): the revolve document's
+ * heap top moved 12 MB per 100 recomputes in 400 (35.5 → 67.6 MB) and 10.7 MB
+ * per 100 in 1200 (35.5 → 163.9 MB), all of it in `mesh` (`HEAP_ATTRIBUTE=1`).
+ * The 16 MB steps are `ALLOW_MEMORY_GROWTH`'s granularity, so the rate is
+ * checked with margin. The recycle (ADR-0067 §H4) bounds the absolute top.
+ */
+const WARM_GROWTH_PER_100_MB = 20;
 
 let oc: OcctModule;
 let kernel: Kernel;
@@ -1030,6 +1038,8 @@ describe.runIf(HEAP_RUNS > 0)('heap with a warm cache', () => {
     const engine = new RecomputeEngine(kernel, testFeatures().registry, { maxEntries });
     const doc = revolveDocument();
     const samples: string[] = [];
+    const tops: number[] = [];
+    const mb = (bytes: number) => Math.round(bytes / 2 ** 17) / 8;
     // `HEAP_ATTRIBUTE=1`: which `Kernel` call moves the heap top (P3-17). Each call's growth
     // is its own, less what the calls inside it grew; a jump is a call that grew the top.
     const growth = new Map<string, { bytes: number; jumps: number; calls: number }>();
@@ -1039,7 +1049,14 @@ describe.runIf(HEAP_RUNS > 0)('heap with a warm cache', () => {
       const inner: number[] = [0];
       for (const name of Object.getOwnPropertyNames(proto)) {
         const fn = proto[name];
-        if (name === 'constructor' || name === 'stats' || typeof fn !== 'function') continue;
+        if (
+          name === 'constructor' ||
+          name === 'stats' ||
+          name === 'heap' ||
+          typeof fn !== 'function'
+        ) {
+          continue;
+        }
         originals.set(name, fn);
         proto[name] = function (this: Kernel, ...args: unknown[]) {
           const before = this.stats().heapTop;
@@ -1081,19 +1098,31 @@ describe.runIf(HEAP_RUNS > 0)('heap with a warm cache', () => {
       if (result.status !== 'done') throw new Error('not done');
       if ((i + 1) % 100 === 0) {
         const { heapTop, heapBytes, liveShapes } = kernel.stats();
-        const mb = (bytes: number) => Math.round(bytes / 2 ** 17) / 8;
         samples.push(`top ${mb(heapTop)} MB, memory ${mb(heapBytes)} MB, ${liveShapes} shapes`);
+        tops.push(mb(heapTop));
       }
     }
     engine.clear();
     const proto = Object.getPrototypeOf(kernel) as Record<string, unknown>;
     for (const [name, fn] of originals) proto[name] = fn;
+    // The measured rate, not the absolute top: a change that makes the mesher
+    // grow faster shows here, while the recycle bounds the top in the app.
+    const first = tops[0];
+    const last = tops[tops.length - 1];
+    const growthPer100 =
+      first === undefined || last === undefined ? 0 : ((last - first) * 100) / (HEAP_RUNS - 100);
     const attribution = [...growth]
       .filter(([, g]) => g.bytes > 0)
       .sort((a, b) => b[1].bytes - a[1].bytes)
       .map(([name, g]) => `${name}: ${Math.round(g.bytes / 2 ** 20)} MB in ${g.jumps}/${g.calls}`);
     expect
-      .soft({ maxEntries, 'every 100 runs': samples, ...(attribution.length && { attribution }) })
+      .soft({
+        maxEntries,
+        'every 100 runs': samples,
+        'MB per 100 recomputes': Number(growthPer100.toFixed(2)),
+        ...(attribution.length && { attribution }),
+      })
       .toBeUndefined();
+    if (tops.length > 1) expect(growthPer100).toBeLessThan(WARM_GROWTH_PER_100_MB);
   });
 });
