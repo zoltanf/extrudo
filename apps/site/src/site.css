@@ -576,6 +576,13 @@ h1 {
   white-space: nowrap;
 }
 
+h2 {
+  font-size: clamp(1.6rem, 3.5vw, 2.2rem);
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  margin: 0 0 24px;
+}
+
 .walkthrough[data-enhanced] {
   padding-top: 8px;
   text-align: center;
@@ -972,13 +979,6 @@ h1 {
   border: 1px solid var(--x-line);
   box-shadow: var(--x-shadow);
   background: var(--x-panel);
-}
-
-h2 {
-  font-size: clamp(1.6rem, 3.5vw, 2.2rem);
-  letter-spacing: -0.02em;
-  font-weight: 600;
-  margin: 0 0 24px;
 }
 
 .features {

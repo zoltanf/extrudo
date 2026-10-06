@@ -46,6 +46,15 @@ export interface Archive extends LoadResult {
   damagedAttachments: string[];
 }
 
+/**
+ * The mtime stamped into every zip entry. fflate would use the current time,
+ * so the same design saved twice could give different bytes when the clock
+ * ticks between the two builds — which the download-vs-linked-file test saw
+ * and which would make the linked folder's conflict check (ADR-0065 §3,
+ * which compares the file's modification time) see a spurious change.
+ */
+const ARCHIVE_MTIME = new Date('2024-01-01T00:00:00Z');
+
 const MANIFEST = 'manifest.json';
 const DOCUMENT = 'document.json';
 const THUMBNAIL = 'thumbnail.png';
@@ -73,22 +82,27 @@ export function writeArchive(
     units: doc.settings.units,
   };
   const json = (value: unknown) => strToU8(`${JSON.stringify(value, null, 2)}\n`);
-  return zipSync({
-    [MANIFEST]: json(manifest),
-    [DOCUMENT]: json(doc),
-    // PNG is already compressed.
-    ...(thumbnail ? { [THUMBNAIL]: [thumbnail, { level: 0 }] } : {}),
-    ...(versions.length > 0
-      ? {
-          [VERSION_INDEX]: json(writeVersionIndex(versions.map((v) => v.summary))),
-          ...Object.fromEntries(versions.map((v) => [versionFile(v.summary.number), json(v.doc)])),
-        }
-      : {}),
-    // Fonts are already compressed, so they are stored, not deflated.
-    ...Object.fromEntries(
-      [...attachments].map(([sha256, bytes]) => [attachmentFile(sha256), [bytes, { level: 0 }]]),
-    ),
-  });
+  return zipSync(
+    {
+      [MANIFEST]: json(manifest),
+      [DOCUMENT]: json(doc),
+      // PNG is already compressed.
+      ...(thumbnail ? { [THUMBNAIL]: [thumbnail, { level: 0 }] } : {}),
+      ...(versions.length > 0
+        ? {
+            [VERSION_INDEX]: json(writeVersionIndex(versions.map((v) => v.summary))),
+            ...Object.fromEntries(
+              versions.map((v) => [versionFile(v.summary.number), json(v.doc)]),
+            ),
+          }
+        : {}),
+      // Fonts are already compressed, so they are stored, not deflated.
+      ...Object.fromEntries(
+        [...attachments].map(([sha256, bytes]) => [attachmentFile(sha256), [bytes, { level: 0 }]]),
+      ),
+    },
+    { mtime: ARCHIVE_MTIME },
+  );
 }
 
 /**

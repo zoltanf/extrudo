@@ -7,7 +7,7 @@ import {
   FORMAT_VERSION,
 } from '@extrudo/core';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import v0 from '../../core/fixtures/v0-bracket.json' with { type: 'json' };
 import { attachmentNotices, readArchive, writeArchive } from './archive';
 import { sha256Hex } from './sha256';
@@ -40,6 +40,18 @@ describe('.extrudo archives', () => {
     expect(archive.migrated).toBe(false);
     expect(archive.thumbnail).toEqual(new Uint8Array([7]));
     expect(readArchive(writeArchive(d)).thumbnail).toBeUndefined();
+  });
+
+  it('builds the same bytes however far apart in time (fixed entry mtime)', () => {
+    vi.useFakeTimers();
+    try {
+      const d = doc();
+      const before = writeArchive(d);
+      vi.setSystemTime(new Date('2026-10-06T12:34:56.789Z'));
+      expect(writeArchive(d)).toEqual(before);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('migrates old documents on the way in', () => {

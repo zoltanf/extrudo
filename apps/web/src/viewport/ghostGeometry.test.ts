@@ -8,12 +8,13 @@ import {
   planeBasis,
 } from './ghostGeometry';
 
-const points = (s: number[]) => {
-  const out: number[][] = [];
-  for (let i = 0; i < s.length; i += 3) out.push(s.slice(i, i + 3));
+type V3 = [number, number, number];
+const points = (s: number[]): V3[] => {
+  const out: V3[] = [];
+  for (let i = 0; i + 2 < s.length; i += 3) out.push(s.slice(i, i + 3) as V3);
   return out;
 };
-const dist = (a: number[], b: number[]) => Math.hypot(a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!);
+const dist = (a: V3, b: V3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 
 describe('ghostSegments', () => {
   it('draws a plane face as a square of side √area square to its normal', () => {
@@ -21,12 +22,12 @@ describe('ghostSegments', () => {
     expect(s).toHaveLength(4 * 6);
     const p = points(s);
     for (let i = 0; i < p.length; i += 2) {
-      expect(dist(p[i]!, p[i + 1]!)).toBeCloseTo(20, 9);
-      expect(p[i]![2]).toBeCloseTo(3, 9);
+      expect(dist(p[i] as V3, p[i + 1] as V3)).toBeCloseTo(20, 9);
+      expect((p[i] as V3)[2]).toBeCloseTo(3, 9);
     }
     // Centred on `at`.
-    const cx = p.filter((_, i) => i % 2 === 0).reduce((a, q) => a + q[0]!, 0) / 4;
-    const cy = p.filter((_, i) => i % 2 === 0).reduce((a, q) => a + q[1]!, 0) / 4;
+    const cx = p.filter((_, i) => i % 2 === 0).reduce((a, q) => a + q[0], 0) / 4;
+    const cy = p.filter((_, i) => i % 2 === 0).reduce((a, q) => a + q[1], 0) / 4;
     expect([cx, cy]).toEqual([expect.closeTo(1, 9), expect.closeTo(2, 9)]);
   });
 
@@ -38,7 +39,7 @@ describe('ghostSegments', () => {
     expect(s).toHaveLength(GHOST_CIRCLE_SEGMENTS * 6);
     for (const q of points(s)) {
       expect(q[0]).toBeCloseTo(0, 9);
-      expect(Math.hypot(q[1]!, q[2]! - 5)).toBeCloseTo(5, 9);
+      expect(Math.hypot(q[1], q[2] - 5)).toBeCloseTo(5, 9);
     }
   });
 
@@ -52,7 +53,7 @@ describe('ghostSegments', () => {
       { type: 'circle', at: [0, 0, 0], dir: [0, 0, 1], size: 2 * Math.PI * 3 },
       'edge',
     );
-    for (const q of points(s)) expect(Math.hypot(q[0]!, q[1]!)).toBeCloseTo(3, 9);
+    for (const q of points(s)) expect(Math.hypot(q[0], q[1])).toBeCloseTo(3, 9);
   });
 
   it('draws any other edge as a segment along its direction', () => {

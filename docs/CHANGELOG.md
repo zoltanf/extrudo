@@ -24,6 +24,11 @@ One line per completed roadmap task, newest first. Dates are absolute.
   kernel as lines and arcs, so it knows no angles; `THREAD_PRESETS` gains a
   Trapezoidal group and PCO-1881. `autoThread` stays ISO coarse; another
   profile without a size is refused.
+- 2026-10-06 · **Deterministic archive bytes**: `.extrudo` files stamp every
+  zip entry with a fixed mtime (2024-01-01) instead of the save time, so the
+  same design always writes the same file — the linked folder's conflict check
+  (ADR-0065 §3) can no longer see a spurious change, and the download and
+  linked-file bytes are byte-identical (the flaky test is fixed).
 - 2026-10-06 · **P4-12 Project: silhouettes of every surface, vertices and
   bodies, Intersect and Include** (ADR-0031's amendment): a projected sphere is
   its exact outline circle, a torus or a free-form face its outline through

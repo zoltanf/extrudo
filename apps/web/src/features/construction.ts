@@ -222,7 +222,7 @@ function offsetManipulators(values: DialogValues, ctx: ManipulatorContext): Mani
 function pathManipulators(values: DialogValues, ctx: ManipulatorContext): Manipulator[] {
   const report = ctx.draftConstruction;
   const along = report?.kind === 'point' || report?.kind === 'plane' ? report.path : undefined;
-  if (!along || !along.straight) return [];
+  if (!along?.straight) return [];
   const byLength = values.choices.by === 'length';
   return [
     {

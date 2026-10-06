@@ -57,7 +57,8 @@ function square(at: V3, dir: V3, side: number): Segments {
   const h = side / 2;
   const corner = (a: number, b: number): V3 => add(add(at, u, a * h), v, b * h);
   const c = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)] as const;
-  return c.flatMap((p, i) => [...p, ...c[(i + 1) % 4]!]);
+  // `(i + 1) % 4` always lands in the four corners.
+  return c.flatMap((p, i) => [...p, ...(c[(i + 1) % 4] as V3)]);
 }
 
 /** Three axis-aligned segments `length` long through `at`. */

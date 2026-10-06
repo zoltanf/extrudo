@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   autoThread,
+  type ProfileSegment,
   THREAD_PRESETS,
   THREAD_PROFILE_NAMES,
   ThreadInputsSchema,
@@ -139,11 +140,11 @@ describe('thread profiles', () => {
       const [want0, want1] = flanks[profile] as [number, number];
       const segments = shape.segments;
       const start = (i: number) =>
-        (i === 0 ? segments[segments.length - 1] : segments[i - 1])!.to as [number, number];
+        ((i === 0 ? segments[segments.length - 1] : segments[i - 1]) as ProfileSegment).to;
       const at = (source: string) => {
         const i = segments.findIndex((s) => s.source === source && s.kind === 'line');
         if (i < 0) throw new Error(`${profile} has no ${source}`);
-        const to = segments[i]!.to as [number, number];
+        const to = (segments[i] as ProfileSegment).to;
         const from = start(i);
         return (Math.atan2(Math.abs(to[0] - from[0]), Math.abs(from[1] - to[1])) * 180) / Math.PI;
       };
