@@ -298,5 +298,151 @@
    "shell:S:round:(e[extrude:B:cap:start|fillet:R:from:(e[extrude:B:side:l2|extrude:B:side:l5])])",
    "shell:S:round:(e[extrude:B:cap:start|fillet:R:from:(e[extrude:B:side:l5|extrude:B:side:l8])])"
   ]
+ },
+ "top removed 2, floor 4": {
+  "volume": 9024,
+  "faces": 11,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:cap:end)"
+  ]
+ },
+ "top removed outside 2, floor 4": {
+  "volume": 11904,
+  "faces": 11,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:cap:end)"
+  ]
+ },
+ "top removed 2, floor 4, front 3": {
+  "volume": 9600,
+  "faces": 11,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:rim:(extrude:B:cap:end)"
+  ]
+ },
+ "top removed 2, floor 25 too thick": {
+  "error": "Walls of 2 mm, 25 mm are too thick for this body (max ≈ 1.5 mm, 19 mm, all scaled together). Try thinner walls."
+ },
+ "closed 2, top 5": {
+  "volume": 11832,
+  "faces": 12,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:end)",
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)"
+  ]
+ },
+ "rounded, top removed 2, floor 4": {
+  "volume": 8718.41,
+  "faces": 19,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l2)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l2]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l8]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l2|extrude:B:side:l5]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l5|extrude:B:side:l8]))",
+   "shell:S:rim:(extrude:B:cap:end)"
+  ]
+ },
+ "rounded, front removed 2 (plug)": {
+  "volume": 7758.41,
+  "faces": 22,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:end)",
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l2]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l8]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l2|extrude:B:side:l5]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l5|extrude:B:side:l8]))",
+   "shell:S:rim:(extrude:B:side:l2)#1",
+   "shell:S:rim:(extrude:B:side:l2)#2",
+   "shell:S:rim:(extrude:B:side:l2)#3",
+   "shell:S:rim:(extrude:B:side:l2)#4"
+  ]
+ },
+ "rounded, front removed outside 2 (plug)": {
+  "volume": 9881.34,
+  "faces": 36,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:end)",
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l2]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l8]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l2|extrude:B:side:l5]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l5|extrude:B:side:l8]))",
+   "shell:S:rim:(extrude:B:side:l2)#1",
+   "shell:S:rim:(extrude:B:side:l2)#2",
+   "shell:S:round:(e[extrude:B:cap:end|extrude:B:side:l11])",
+   "shell:S:round:(e[extrude:B:cap:end|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:cap:end|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:cap:end|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:cap:end|fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l2])])",
+   "shell:S:round:(e[extrude:B:cap:end|fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l8])])",
+   "shell:S:round:(e[extrude:B:cap:end|fillet:R:from:(e[extrude:B:side:l2|extrude:B:side:l5])])",
+   "shell:S:round:(e[extrude:B:cap:end|fillet:R:from:(e[extrude:B:side:l5|extrude:B:side:l8])])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l11])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l2])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l5])",
+   "shell:S:round:(e[extrude:B:cap:start|extrude:B:side:l8])",
+   "shell:S:round:(e[extrude:B:cap:start|fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l2])])",
+   "shell:S:round:(e[extrude:B:cap:start|fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l8])])",
+   "shell:S:round:(e[extrude:B:cap:start|fillet:R:from:(e[extrude:B:side:l2|extrude:B:side:l5])])",
+   "shell:S:round:(e[extrude:B:cap:start|fillet:R:from:(e[extrude:B:side:l5|extrude:B:side:l8])])"
+  ]
+ },
+ "rounded, front removed 2, floor 4 (plug)": {
+  "volume": 9734.96,
+  "faces": 22,
+  "valid": true,
+  "shellFaces": [
+   "shell:S:inner:(extrude:B:cap:end)",
+   "shell:S:inner:(extrude:B:cap:start)",
+   "shell:S:inner:(extrude:B:side:l11)",
+   "shell:S:inner:(extrude:B:side:l5)",
+   "shell:S:inner:(extrude:B:side:l8)",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l2]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l11|extrude:B:side:l8]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l2|extrude:B:side:l5]))",
+   "shell:S:inner:(fillet:R:from:(e[extrude:B:side:l5|extrude:B:side:l8]))",
+   "shell:S:rim:(extrude:B:side:l2)#1",
+   "shell:S:rim:(extrude:B:side:l2)#2",
+   "shell:S:rim:(extrude:B:side:l2)#3",
+   "shell:S:rim:(extrude:B:side:l2)#4"
+  ]
  }
 }

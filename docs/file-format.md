@@ -748,6 +748,8 @@ Hollows bodies with walls of a given thickness (P3-03).
 | `bodies` | `ref` | no | Refs of kind `body` (body IDs): bodies to hollow closed, with no opening. Bodies of the picked faces are shelled anyway |
 | `thickness` | `expr` | yes | Length, greater than 0 when the kernel evaluates it (not checked by the schema) |
 | `direction` | `enum` | no | `inside` (default) or `outside` |
+| `wallFaces`, `wallFaces2`, `wallFaces3`, `wallFaces4`, `wallFaces5`, `wallFaces6`, `wallFaces7`, `wallFaces8` | `ref` | no | Refs of kind `face`: wall set *n*, faces of the shelled bodies whose walls get the set's own thickness (P4-12). A set with no faces does nothing |
+| `wallThickness`, `wallThickness2`, `wallThickness3`, `wallThickness4`, `wallThickness5`, `wallThickness6`, `wallThickness7`, `wallThickness8` | `expr` (length) | no | Wall set *n*'s thickness, greater than 0; needed once the set has faces |
 
 At least one face or body is needed (the kernel reports it otherwise). Each
 body with faces picked is shelled with those faces removed; a body without
@@ -759,8 +761,17 @@ the shell makes are named `shell:<feature id>:inner:(<face name>)` (the
 cavity), `shell:<feature id>:rim:(<removed face name>)` (around an opening)
 and `shell:<feature id>:round:(<edge or vertex name>)` (a rounded join). A
 removed face that runs smoothly into a neighbour (next to a fillet) is
-refused. No new keys: a shell is a feature with `ref`, `expr` and `enum`
-inputs like the others.
+opened as a plug when it is flat, its other edges meet their neighbours
+square and it shares no edge with another removed face (P4-12), and refused
+otherwise. **Wall sets** (P4-12): a face of a wall set gets that set's
+thickness instead of `thickness`, and so do the faces that run smoothly
+into it (a fillet's round and the faces beyond it); a face in two sets,
+a removed face in a set and a face of a body the shell doesn't hollow are
+errors, and so are two sets that reach one smooth chain with different
+thicknesses. A shell with wall sets joins its walls sharp (no rounded
+joins), so outside its corners stay square; one without them computes as
+before. No new keys: a shell is a feature with `ref`, `expr` and `enum`
+inputs like the others, and a document without wall sets is unchanged.
 
 ### 6.15 `placeOnBed`
 

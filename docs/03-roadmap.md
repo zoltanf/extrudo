@@ -863,7 +863,11 @@ end to end, faster than in Fusion 360.
     chamfer's face directions are done** (2026-10-05, the amendments' second
     part). Still open: a chamfer's handles on curved faces or edges (they keep
     the single bisector handle) and a handle for a chamfer's Angle.
-  - Shell: a thickness per face; removing faces next to a fillet (ADR-0046).
+  - Shell: ~~a thickness per face~~; ~~removing faces next to a fillet~~
+    (ADR-0046's amendment; done 2026-10-06: wall sets, and a flat face next to
+    a fillet opened as a plug. Still open: an opening through a curved face
+    or past a slanted neighbour next to a fillet, two touching removed faces
+    next to one, round joins with wall sets).
   - Primitives: ~~position handles and a click point as the centre~~, torus
     placement options, ~~a box from two corners~~ (ADR-0032; done 2026-10-06,
     the torus options stay open).

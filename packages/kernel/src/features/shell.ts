@@ -4,9 +4,16 @@ import {
   type ShellInputs,
   shellFeature,
   shellSettings,
+  shellWallThicknessKey,
 } from '@extrudo/core';
 import type { HistoryRecord } from '../history';
-import { KernelError, type ShapeHandle, ShellError, type ShellProblem } from '../kernel';
+import {
+  KernelError,
+  type ShapeHandle,
+  ShellError,
+  type ShellProblem,
+  type ShellWall,
+} from '../kernel';
 import type { ShapeDescription } from '../naming/description';
 import { deriveNames, namesOf, type TopoNames } from '../naming/names';
 import { LostReferenceError } from '../naming/resolve';
@@ -26,6 +33,16 @@ import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../rec
  * thickness that works ("A 12 mm wall is too thick for this body (max ≈
  * 9.9 mm)"), or plain words for the causes OCCT can't get past (fillets and
  * tangent faces). The kernel finds the number (facade `shell`).
+ *
+ * A flat face that runs smoothly into a fillet can be removed since P4-12:
+ * the facade hollows the body closed and cuts the opening out as a plug
+ * (ADR-0046's amendment); its rim is named like any rim.
+ *
+ * **Wall sets** (P4-12, ADR-0046's amendment) give faces a thickness of
+ * their own: each set's faces are resolved like the removed ones, must
+ * belong to a shelled body, not be removed and not be in two sets; the
+ * facade's `shellFaces` builds those bodies (sharp joins), every other body
+ * goes through `shell` as before.
  *
  * The faces of the result are named by `nameShell`.
  */
@@ -66,15 +83,60 @@ function evaluateShell(ctx: EvalContext<ShellInputs>): FeatureOutput {
     if (!removed.has(id)) removed.set(id, []);
   }
 
+  // Wall sets: faces of the shelled bodies with a thickness of their own.
+  const walls = new Map<BodyId, ShellWall[]>();
+  const wallSetOf = new Map<string, number>();
+  for (const set of settings.walls) {
+    const key = shellWallThicknessKey(set.n);
+    if (ctx.inputs[key] === undefined) {
+      throw new KernelError(`Wall set ${set.n} has faces but no thickness. Enter its thickness.`);
+    }
+    const value = ctx.value(key);
+    if (!(value > 0)) {
+      throw new KernelError(
+        `Wall set ${set.n}'s thickness is ${formatLength(value)}. Enter a thickness greater than 0.`,
+      );
+    }
+    for (const ref of set.faces) {
+      const hit = ctx.resolve(ref, { label: `a face of wall set ${set.n}` });
+      const faces = removed.get(hit.body);
+      if (faces === undefined) {
+        throw new KernelError(
+          `Wall set ${set.n} has a face of a body this shell doesn't hollow. Pick faces of the shelled body, or add its body to the shell.`,
+        );
+      }
+      if (faces.includes(hit.index)) {
+        throw new KernelError(
+          `Face ${hit.index + 1} is removed, so it has no wall: take it out of wall set ${set.n}.`,
+        );
+      }
+      const faceKey = `${hit.body}/${hit.index}`;
+      const other = wallSetOf.get(faceKey);
+      if (other !== undefined && other !== set.n) {
+        throw new KernelError(
+          `Face ${hit.index + 1} is in wall sets ${other} and ${set.n}. A face takes one thickness: take it out of one set.`,
+        );
+      }
+      if (other !== undefined) continue;
+      wallSetOf.set(faceKey, set.n);
+      const list = walls.get(hit.body) ?? [];
+      list.push({ face: hit.index, thickness: value });
+      walls.set(hit.body, list);
+    }
+  }
+
   using scope = kernel.scope();
   const shelled = new Map<BodyId, { shape: ShapeHandle; table: TopoNames }>();
   for (const [body, faces] of removed) {
     const shape = ctx.bodies.get(body) as ShapeHandle;
+    const own = walls.get(body) ?? [];
     let result: ReturnType<typeof kernel.shell>;
     try {
-      result = kernel.shell(shape, faces, thickness, settings.direction);
+      result = kernel.shell(shape, faces, thickness, settings.direction, own);
     } catch (error) {
-      if (error instanceof ShellError) throw new KernelError(shellMessage(error, thickness, faces));
+      if (error instanceof ShellError) {
+        throw new KernelError(shellMessage(error, thickness, faces, own));
+      }
       throw error;
     }
     scope.track(result.shape);
@@ -176,8 +238,11 @@ export function shellMessage(
   error: ShellError,
   thickness: number,
   removed: readonly number[],
+  walls: readonly ShellWall[] = [],
 ): string {
-  const sentences = error.problems.map((problem) => problemMessage(problem, thickness, removed));
+  const sentences = error.problems.map((problem) =>
+    problemMessage(problem, thickness, removed, walls),
+  );
   return [...new Set(sentences)].join(' ');
 }
 
@@ -185,6 +250,7 @@ function problemMessage(
   problem: ShellProblem,
   thickness: number,
   removed: readonly number[],
+  walls: readonly ShellWall[],
 ): string {
   switch (problem.kind) {
     case 'too-thick':
@@ -200,7 +266,24 @@ function problemMessage(
     case 'not-solid':
       return 'A shell needs a solid body.';
     case 'tangent':
-      return `Face ${problem.face + 1} can't be removed: it runs smoothly into the faces next to it (a fillet or another tangent face), so there is no edge to open the wall at. Pick a flat face that meets its neighbours at an edge, or shell before rounding the edges.`;
+      return `Face ${problem.face + 1} can't be removed: it runs smoothly into the faces next to it (a fillet or another tangent face), and an opening there needs a flat face whose other edges meet their neighbours square, apart from the other removed faces. Pick a face like that, or shell before rounding the edges.`;
+    case 'walls-too-thick': {
+      // Every thickness scaled together: say what each would have to be.
+      const asked = [...new Set([thickness, ...walls.map((wall) => wall.thickness)])];
+      const list = asked.map((t) => formatLength(t)).join(', ');
+      const max = asked.map((t) => `${formatLength(floorTo2(t * problem.factor))}`).join(', ');
+      return problem.factor > 0
+        ? `Walls of ${list} are too thick for this body (max ≈ ${max}, all scaled together). Try thinner walls.`
+        : `Walls of ${list} are too thick for this body. Try thinner walls.`;
+    }
+    case 'sharp-chain':
+      return "This body has rounded edges that meet at a sharp corner (two fillets meeting where the third edge isn't rounded), and walls of their own thickness can't be built on such a body without corrupting OCCT's memory. Give every wall the same thickness, shell before rounding the edges, or round all the edges at the corner so they blend.";
+    case 'wall-removed':
+      return `Face ${problem.face + 1} is removed, so it has no wall: take it out of its wall set.`;
+    case 'wall-twice':
+      return `Face ${problem.face + 1} is given two wall thicknesses. A face takes one thickness: take it out of one set.`;
+    case 'wall-chain':
+      return `Face ${problem.face + 1} runs smoothly into a face with another wall thickness (through a fillet or a tangent face), and faces that run into each other take one thickness. Give them the same thickness, or put them in one set.`;
     case 'other':
       return "The shell couldn't be built. Try a thinner wall or other faces.";
   }

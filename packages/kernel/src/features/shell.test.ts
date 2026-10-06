@@ -412,18 +412,42 @@ describe('shell', { timeout: 120_000 }, () => {
     expect(status(failed, 'S').message).toMatch(/is too thick for this body \(max ≈ (9\.\d|10)/);
   });
 
-  it('a face that runs into a fillet can’t be removed, and it says why', async () => {
+  it('a flat face next to a fillet opens through a plug; a rounded face can’t be removed', async () => {
     const { base, features } = await roundedBlock();
     const first = ok(await run(testDocument(features)));
+    // References read from the last recompute's meshes, so all of them before the shells run.
     const front = refTo(first, 'face', side(base.lines.bottom));
-    const failed = await run(testDocument([...features, shell('S', [front], '2 mm')]));
+    const corner = faceNames(first).find((n) => n.startsWith('fillet:R:'));
+    if (!corner) throw new Error('no rounded face');
+    const roundRef = refTo(first, 'face', corner);
+    const top = refTo(first, 'face', cap);
+    // P4-12: the front runs smoothly into the rounded corners and meets the top and the
+    // floor square, so the body is hollowed closed and the opening cut out as a plug.
+    const opened = ok(
+      await runWithShapes(testDocument([...features, shell('S', [front], '2 mm')])),
+    );
+    const m = measure('B:0');
+    expect(m.valid).toBe(true);
+    const area = (inset: number, r: number) =>
+      (BOX.w - 2 * inset) * (BOX.d - 2 * inset) - 4 * r * r * (1 - Math.PI / 4);
+    // The block less its cavity less the front wall between the rounds: 30 × 2 × 16 mm.
+    expect(m.volume).toBeCloseTo(area(0, 5) * BOX.h - area(2, 3) * (BOX.h - 4) - 30 * 2 * 16, 1);
+    const names = faceNames(opened);
+    expect(names).not.toContain(side(base.lines.bottom));
+    expect(
+      names.filter((n) => n.startsWith(`shell:S:rim:(${side(base.lines.bottom)})`)).length,
+    ).toBe(4);
+    expect(names).toContain(cap);
+    expect(names).toContain(`shell:S:inner:(${cap})`);
+    expect(new Set(names).size).toBe(names.length);
+    // A rounded corner's face runs smoothly into both sides: there is no flat outline to open.
+    const failed = await run(testDocument([...features, shell('S', [roundRef], '2 mm')]));
     const st = status(failed, 'S');
     expect(st.status).toBe('error');
     expect(st.message).toMatch(
       /^Face \d+ can't be removed: it runs smoothly into the faces next to it \(a fillet or another tangent face\)/,
     );
-    // The top meets the rounded corners at a crease, so it can go.
-    const top = refTo(first, 'face', cap);
+    // The top meets the rounded corners at a crease, so it goes the usual way.
     const fine = await run(testDocument([...features, shell('S', [top], '2 mm')]));
     expect(status(fine, 'S').status).toBe('ok');
   });
@@ -475,6 +499,8 @@ describe('shell', { timeout: 120_000 }, () => {
     const rounded = await roundedBlock();
     const roundedFirst = ok(await run(testDocument(rounded.features)));
     const roundedTop = refTo(roundedFirst, 'face', cap);
+    const roundedFront = refTo(roundedFirst, 'face', side(rounded.base.lines.bottom));
+    const roundedFloor = refTo(roundedFirst, 'face', floor);
     type Case = {
       features: Feature[];
       shell: Parameters<typeof shell> extends [string, ...infer A] ? A : never;
@@ -525,6 +551,56 @@ describe('shell', { timeout: 120_000 }, () => {
       'rounded, top removed outside 2': {
         features: rounded.features,
         shell: [[roundedTop], '2 mm', { direction: 'outside' }],
+      },
+      // P4-12 (ADR-0046's amendment): a thickness per face, and openings cut as plugs.
+      'top removed 2, floor 4': {
+        features: base.features,
+        shell: [[top], '2 mm', { walls: [{ faces: [bottom], thickness: '4 mm' }] }],
+      },
+      'top removed outside 2, floor 4': {
+        features: base.features,
+        shell: [
+          [top],
+          '2 mm',
+          { direction: 'outside', walls: [{ faces: [bottom], thickness: '4 mm' }] },
+        ],
+      },
+      'top removed 2, floor 4, front 3': {
+        features: base.features,
+        shell: [
+          [top],
+          '2 mm',
+          {
+            walls: [
+              { faces: [bottom], thickness: '4 mm' },
+              { faces: [front], thickness: '3 mm' },
+            ],
+          },
+        ],
+      },
+      'top removed 2, floor 25 too thick': {
+        features: base.features,
+        shell: [[top], '2 mm', { walls: [{ faces: [bottom], thickness: '25 mm' }] }],
+      },
+      'closed 2, top 5': {
+        features: base.features,
+        shell: [[], '2 mm', { bodies: ['B:0'], walls: [{ faces: [top], thickness: '5 mm' }] }],
+      },
+      'rounded, top removed 2, floor 4': {
+        features: rounded.features,
+        shell: [[roundedTop], '2 mm', { walls: [{ faces: [roundedFloor], thickness: '4 mm' }] }],
+      },
+      'rounded, front removed 2 (plug)': {
+        features: rounded.features,
+        shell: [[roundedFront], '2 mm'],
+      },
+      'rounded, front removed outside 2 (plug)': {
+        features: rounded.features,
+        shell: [[roundedFront], '2 mm', { direction: 'outside' }],
+      },
+      'rounded, front removed 2, floor 4 (plug)': {
+        features: rounded.features,
+        shell: [[roundedFront], '2 mm', { walls: [{ faces: [roundedFloor], thickness: '4 mm' }] }],
       },
     };
     const table: Record<string, unknown> = {};

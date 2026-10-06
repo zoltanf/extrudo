@@ -357,12 +357,13 @@ files into `dist/sw.js` and versions it; registration in
 manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
 also found that the kernel uses no raw OCCT bindings, so the build's
-binding list is now just `ExtrudoFacade` (built by CI: WASM 18.77 MB raw,
-6.07 MB gzip, 4.25 MB brotli, after P4-04/P4-05/P4-10's facade methods,
-P4-12's `DYNAMIC_EXECUTION: 0`, P4-12 §H3's `integrateVolume` and P4-12's
-split boolean and `extendFace` (about 10 kB); the
-15.76 MB / 3.69 MB brotli of ADR-0037 was P2-15's; OCCT input hash
-`b0c67ba5be7c` (release `occt-b0c67ba5be7c`); **don't
+binding list is now just `ExtrudoFacade` (built by CI: WASM 18.80 MB raw,
+6.13 MB gzip, 4.26 MB brotli (Node's zlib at its best settings), after
+P4-04/P4-05/P4-10's facade methods, P4-12's `DYNAMIC_EXECUTION: 0`, P4-12
+§H3's `integrateVolume`, P4-12's split boolean and `extendFace` (about 10 kB)
+and P4-12's `shellFaces`, `pushWall`/`clearWalls` and the shell's plugs (about
+30 kB); the 15.76 MB / 3.69 MB brotli of ADR-0037 was P2-15's; OCCT input hash
+`2b4714e5b37a` (release `occt-2b4714e5b37a`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
@@ -573,12 +574,30 @@ facade's `shell(shape, thickness, outside)` (`MakeThickSolid` on the stack
 and **on a copy of the body**; a result must pass
 `BRepCheck_Analyzer`, a positive volume and **a minimum distance from the
 offset faces to their originals of at least the thickness**, because OCCT
-builds valid junk for a wall thicker than a curved face's radius; a removed
-face tangent to a neighbour is **refused before OCCT runs** since OCCT
-corrupts the wasm heap there, `touchesTangentFace`; with no removed face OCCT
-returns only the skin, so the solid with a void is assembled by hand; on
-failure the thickness is bisected: `[status, value]` read through
+builds valid junk for a wall thicker than a curved face's radius; with no
+removed face OCCT returns only the skin, so the solid with a void is assembled
+by hand; on failure the thickness is bisected: `[status, value]` read through
 `Kernel.shell`'s `ShellError.problems`). The Shell tile has no default key.
+**P4-12 (ADR-0046's amendment)** added **wall sets** — `wallFaces`/`wallThickness`
+… `wallFaces8`/`wallThickness8` (`SHELL_MAX_WALLS`, `shellWallSets`; the
+dialog's "Wall faces"/"Wall thickness", set n + 1 shown once set n has faces,
+`tangentChain`) — built by the facade's **`shellFaces`** (walls staged with
+`clearWalls()`/`pushWall(face, thickness)`; `BRepOffset_MakeOffset` with
+`SetOffsetOnFace`, **sharp joins**, because round joins spread a face's offset
+over every diverging edge; a smooth chain takes one thickness, two sets in one
+chain are refused, and a body with a sharp edge inside a smooth chain is
+refused before OCCT runs, ADR-0051's trap); `Kernel.shell(…, walls)` calls it
+only when there are walls, so a shell without sets computes as before. And a
+removed face that runs smoothly into a neighbour (`touchesTangentFace`) is no
+longer refused when it is **flat, its other edges meet their neighbours square
+and it touches no other removed face** (`openingRoute`, `pluggable`): the body
+is hollowed closed and the opening cut as a **plug** (`buildPlugged`: the
+face's prism in common with the cavity moved out by two walls; history through
+`recordPlugged`, the plug's faces are the rim). The old refusal's heap trap
+didn't reproduce in about 3,000 unguarded builds (mimalloc `-O3` and
+`emmalloc-memvalidate` too); OCCT simply never builds those openings, so
+the faces plugs can't open stay refused (status 6). Native harness:
+`spikes/p4-12-shell-faces/` (`run.sh`, `run.sh sweep`, `run.sh sweep2`).
 ADR-0048 (P3-10) added the 3D-print aids (`apps/web/src/print/`, no
 facade or schema-version change): **Place on Bed is its own feature
 `placeOnBed`** (`core/src/place-on-bed.ts`, kernel `features/place-on-bed.ts`,
@@ -2340,9 +2359,14 @@ them. Notes further down that name a machine apply to that machine only.
   the 20 mm cube says "(max ≈ 9.9 mm)". Kernel-side, the golden table is
   `pnpm vitest run -u packages/kernel/src/features/shell`. A shell that fails
   is diagnosed by rebuilding it (7 builds, about 80 ms for a box); a removed
-  face next to a fillet is refused without running OCCT (its offset traps the
-  wasm heap: a `RuntimeError: memory access out of bounds` that can show up
-  calls later, so never let a probe reach it).
+  face next to a fillet that a plug can't open (curved, a slanted neighbour,
+  touching another removed face) is refused without running OCCT. **P4-12's
+  wall sets:** the button "Wall faces" (`exact`, prompt "Pick faces for
+  another thickness") and, once it has faces, the textbox "Wall thickness"
+  (`exact`, default "4 mm"), then "Wall faces 2"…; the spec picks the cube's
+  floor for it from below (Shift+3, world (0, 0, 0)): `Body1:11:20,20,20`
+  still, and the 3MF's volume is exact (`solidFacts`): 3904 mm³ at 4 mm, 4416
+  at 6 mm.
 - **Facade checks with Docker on the Ubuntu machine** (since 2026-09-29;
   `sg docker -c '…'` until the shell has the group): `em++
   -fsyntax-only` and the native harness both run in

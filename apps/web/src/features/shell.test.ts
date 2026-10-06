@@ -18,11 +18,11 @@ describe('the shell dialog', () => {
 
   it('shows the Body field while no face is picked, or while a body is', () => {
     const empty = defaultValues(shellDialog);
-    expect(names(empty)).toEqual(['faces', 'bodies', 'thickness', 'direction']);
+    expect(names(empty)).toEqual(['faces', 'bodies', 'thickness', 'direction', 'wallFaces']);
     const withFace = mergeValues(empty, { refs: { faces: [faceRef(1)] } });
-    expect(names(withFace)).toEqual(['faces', 'thickness', 'direction']);
+    expect(names(withFace)).toEqual(['faces', 'thickness', 'direction', 'wallFaces']);
     const withBody = mergeValues(withFace, { refs: { bodies: [{ kind: 'body', id: BOX }] } });
-    expect(names(withBody)).toEqual(['faces', 'bodies', 'thickness', 'direction']);
+    expect(names(withBody)).toEqual(['faces', 'bodies', 'thickness', 'direction', 'wallFaces']);
   });
 
   it('needs a face or a body, and then makes valid inputs the kernel reads', async () => {
@@ -79,5 +79,60 @@ describe('the shell dialog', () => {
     expect(values?.exprs.thickness).toBe('3 mm');
     expect(values?.choices.direction).toBe('outside');
     expect(values?.refs.faces?.map((r) => r.id)).toEqual([FACE_IDS[1]]);
+  });
+
+  it('a wall set: its thickness and the next set show once it has faces (P4-12)', async () => {
+    const t = setupDialogs([shellDialog]);
+    t.controller.start('shell');
+    t.controller.select.onClick(faceItem(1), false);
+    await settle();
+    t.controller.pickInto('wallFaces');
+    t.controller.select.onClick(faceItem(2), false);
+    await settle();
+    const values = t.open()?.values as DialogValues;
+    expect(names(values)).toEqual([
+      'faces',
+      'thickness',
+      'direction',
+      'wallFaces',
+      'wallThickness',
+      'wallFaces2',
+    ]);
+    t.controller.setExpr('wallThickness', '5 mm');
+    const inputs = t.open()?.draft.inputs ?? {};
+    expect(Object.keys(inputs).sort()).toEqual([
+      'direction',
+      'faces',
+      'thickness',
+      'wallFaces',
+      'wallThickness',
+    ]);
+    expect(ShellInputsSchema.safeParse(inputs).success).toBe(true);
+    const settings = shellSettings(inputs as never);
+    expect(settings.walls.map((w) => [w.n, w.faces.map((r) => r.id)])).toEqual([
+      [1, [FACE_IDS[2]]],
+    ]);
+    expect(t.controller.ok()).toBe(true);
+    // Edited, the set comes back with its thickness.
+    const id = t.store.getState().doc.features.at(-1)?.id;
+    t.controller.edit(id as never);
+    expect(t.open()?.values.refs.wallFaces?.map((r) => r.id)).toEqual([FACE_IDS[2]]);
+    expect(t.open()?.values.exprs.wallThickness).toBe('5 mm');
+  });
+
+  it('names a removed face in a wall set, and a face in two sets', () => {
+    const base = mergeValues(defaultValues(shellDialog), { refs: { faces: [faceRef(1)] } });
+    const removedToo = mergeValues(base, { refs: { wallFaces: [faceRef(1)] } });
+    expect(shellDialog.validate?.(removedToo, {} as never)).toEqual({
+      field: 'wallFaces',
+      message: 'A removed face has no wall: take it out of this set.',
+    });
+    const twice = mergeValues(base, {
+      refs: { wallFaces: [faceRef(2)], wallFaces2: [faceRef(3), faceRef(2)] },
+    });
+    expect(shellDialog.validate?.(twice, {} as never)).toEqual({
+      field: 'wallFaces2',
+      message: 'This face is in wall set 1 too. A face takes one thickness.',
+    });
   });
 });

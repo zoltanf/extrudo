@@ -30,6 +30,9 @@ export interface FacadeBinding {
   tangentChain(shape: number, edge: number): number;
   chamfer(shape: number): number;
   shell(shape: number, thickness: number, outside: boolean): number;
+  clearWalls(): void;
+  pushWall(face: number, thickness: number): void;
+  shellFaces(shape: number, thickness: number, outside: boolean): number;
   offsetFaces(shape: number, distance: number): number;
   tangentFaces(shape: number, face: number): number;
   boolean(op: number, a: number, b: number, simplify: boolean): number;

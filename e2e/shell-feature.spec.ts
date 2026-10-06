@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { exportModel, objectsOf3mf, solidFacts, solidTab } from './benchmark-helpers';
 import { kernelReady, openProject, pickTool, projector } from './helpers';
 
 // P3-03: Shell (ADR-0046, FR-FT-06, FR-UX-06). Faces are picked in the view
@@ -171,4 +172,73 @@ test('a body picked with no face is hollowed closed: a sealed void', async ({ pa
   await kernelReady(page);
   // The same 20 mm cube from outside, with a 14 mm cube of nothing inside: 12 faces.
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:12:20,20,20');
+});
+
+/** The one body's volume in mm³, from a 3MF export (flat faces: exact up to rounding). */
+async function exportedVolume(page: Page) {
+  const objects = objectsOf3mf(await exportModel(page, '3MF'));
+  await solidTab(page);
+  expect(objects).toHaveLength(1);
+  const mesh = objects[0]?.mesh;
+  if (!mesh) throw new Error('no mesh');
+  return solidFacts(mesh).volume;
+}
+
+test('a wall set gives the floor its own thickness; editing it from the chip changes it', async ({
+  page,
+}) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await cube(page);
+  const at = await settledProjector(viewport);
+
+  await clickTop(page, at);
+  await startShell(page);
+  const dialog = page.getByRole('region', { name: 'Shell dialog' });
+  const wallFaces = dialog.getByRole('button', { name: 'Wall faces', exact: true });
+  await expect(wallFaces).toHaveText('Pick faces for another thickness');
+  // The thickness of a set shows once it has faces.
+  await expect(dialog.getByRole('textbox', { name: 'Wall thickness', exact: true })).toHaveCount(0);
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+
+  // The floor, picked from below (Shift+3) while Wall faces is the pick field.
+  await wallFaces.click();
+  await page.keyboard.press('Shift+3');
+  const below = await settledProjector(viewport);
+  const { x, y } = below([0, 0, 0]);
+  await page.mouse.move(x, y);
+  await expect.poll(() => viewport.getAttribute('data-model-hover')).toMatch(/^face:/);
+  await page.mouse.click(x, y);
+  await expect(wallFaces).toHaveText('1 face');
+  const wall = dialog.getByRole('textbox', { name: 'Wall thickness', exact: true });
+  await expect(wall).toHaveValue('4 mm');
+  await expect(dialog.getByRole('button', { name: 'Faces to remove', exact: true })).toHaveText(
+    '1 face',
+  );
+  // A second set offers itself once the first has faces.
+  await expect(dialog.getByRole('button', { name: 'Wall faces 2', exact: true })).toBeVisible();
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await expect(dialog).toHaveAttribute('data-dialog-valid', 'true');
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+
+  // The faces of the plain shell; the cavity 16 × 16 × 16 mm, from z = 4 up.
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:11:20,20,20');
+  expect(await exportedVolume(page)).toBeCloseTo(8000 - 16 * 16 * 16, 1);
+
+  await chip(page, 'Shell1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Shell1 dialog' });
+  await expect(edit.getByRole('button', { name: 'Wall faces', exact: true })).toHaveText('1 face');
+  const editWall = edit.getByRole('textbox', { name: 'Wall thickness', exact: true });
+  await expect(editWall).toHaveValue('4 mm');
+  await editWall.fill('6 mm');
+  await editWall.blur();
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:11:20,20,20');
+  expect(await exportedVolume(page)).toBeCloseTo(8000 - 16 * 16 * 14, 1);
 });

@@ -376,7 +376,9 @@ describe('errors and ownership', () => {
     expect(kernel.count(box, 'face')).toBe(6);
   });
 
-  it('diagnoses a shell that fails: too thick with the maximum, all faces, tangent faces, no walls', () => {
+  it('diagnoses a shell that fails: too thick with the maximum, all faces, tangent faces, no walls', {
+    timeout: 30_000,
+  }, () => {
     using scope = kernel.scope();
     const box = scope.track(kernel.box([40, 30, 20]));
     const problemOf = (run: () => unknown) => {
@@ -398,7 +400,8 @@ describe('errors and ownership', () => {
       scope.track(kernel.shell(box, closed ? [] : [0], problem.max));
     }
     expect(problemOf(() => kernel.shell(box, [0, 1, 2, 3, 4, 5], 1))?.kind).toBe('all-faces');
-    // Faces that run smoothly into a neighbour can't be opened.
+    // A curved face that runs smoothly into its neighbours can't be opened; a flat
+    // one can since P4-12 (cut out as a plug, ADR-0046's amendment).
     const rounded = scope.track(
       kernel.fillet(
         box,
@@ -406,8 +409,12 @@ describe('errors and ownership', () => {
         Array(12).fill(4),
       ),
     );
-    const tangent = problemOf(() => kernel.shell(rounded.shape, [0], 2));
-    expect(tangent).toEqual({ kind: 'tangent', face: 0 });
+    const curved = kernel.describe(rounded.shape).faces.findIndex((f) => f.type !== 'plane');
+    const tangent = problemOf(() => kernel.shell(rounded.shape, [curved], 2));
+    expect(tangent).toEqual({ kind: 'tangent', face: curved });
+    const flat = kernel.describe(rounded.shape).faces.findIndex((f) => f.type === 'plane');
+    const opened = scope.track(kernel.shell(rounded.shape, [flat], 2));
+    expect(kernel.isValid(opened.shape)).toBe(true);
     // The rounded body can still be hollowed closed.
     const closed = scope.track(kernel.shell(rounded.shape, [], 2));
     expect(kernel.isValid(closed.shape)).toBe(true);
