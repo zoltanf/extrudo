@@ -4,15 +4,23 @@ import { describe, expect, it } from 'vitest';
 import { boxMesh } from '../selection/testing';
 import {
   arrowBase,
+  boxClips,
+  boxFaceCentre,
+  boxSummary,
   CLIP_EPS,
   clipDistance,
   clipSummary,
+  clipsSummary,
+  defaultBox,
+  dragBoxFace,
   isClipped,
+  isClippedAny,
   middleOffset,
   type SectionState,
   sectionClip,
   sectionFrame,
   sectionSummary,
+  sectionsSummary,
 } from './clip';
 import { lengthExpression, planeName } from './useSection';
 
@@ -140,5 +148,88 @@ describe('summaries and names', () => {
     expect(lengthExpression(12.5, { units: 'mm', precision: 2 })).toBe('12.5 mm');
     expect(lengthExpression(25.4, { units: 'in', precision: 3 })).toBe('1 in');
     expect(lengthExpression(-30, { units: 'mm', precision: 2 })).toBe('-30 mm');
+  });
+});
+
+describe('several planes and a box (P4-12)', () => {
+  const xy = { origin: [0, 0, 0] as const, normal: [0, 0, 1] as const };
+  const yz = { origin: [0, 0, 0] as const, normal: [1, 0, 0] as const };
+
+  it('clips what any plane cuts away: the kept part is the intersection', () => {
+    const clips = [sectionClip(xy, 30, false), sectionClip(yz, 20, false)];
+    expect(isClippedAny(clips, 10, 0, 10)).toBe(false);
+    expect(isClippedAny(clips, 10, 0, 40)).toBe(true);
+    expect(isClippedAny(clips, 30, 0, 10)).toBe(true);
+    expect(isClippedAny(clips, 30, 0, 40)).toBe(true);
+    expect(isClippedAny([], 30, 0, 40)).toBe(false);
+    expect(isClippedAny(undefined, 30, 0, 40)).toBe(false);
+    // Three planes: one more cut.
+    const three = [...clips, sectionClip({ origin: [0, 0, 0], normal: [0, 1, 0] }, 5, true)];
+    expect(isClippedAny(three, 10, 0, 10)).toBe(true);
+    expect(isClippedAny(three, 10, 6, 10)).toBe(false);
+  });
+
+  it('lists every plane in the order added', () => {
+    const clips = [sectionClip(xy, 30, false), sectionClip(yz, 20, false)];
+    expect(clipsSummary(clips)).toBe('0,0,30:0,0,1;20,0,0:1,0,0');
+    expect(clipsSummary([])).toBeUndefined();
+    const plane = originPlaneRef('origin:xy');
+    const states: SectionState[] = [
+      { plane, offset: '30 mm', flip: false, on: true },
+      { plane: originPlaneRef('origin:yz'), offset: '20 mm', flip: true, on: false },
+    ];
+    expect(sectionsSummary(states.slice(0, 1))).toBe('origin:xy offset=30 mm on');
+    expect(sectionsSummary(states)).toBe(
+      'origin:xy offset=30 mm on;origin:yz offset=20 mm flipped off',
+    );
+    expect(sectionsSummary([])).toBeUndefined();
+  });
+
+  it('makes a box of six planes, each facing out', () => {
+    const box = { center: [10, 0, 5] as const, half: [4, 3, 2] as const };
+    const clips = boxClips(box);
+    expect(clips.map((c) => `${c.origin}:${c.normal}`)).toEqual([
+      '14,0,5:1,0,0',
+      '6,0,5:-1,0,0',
+      '10,3,5:0,1,0',
+      '10,-3,5:0,-1,0',
+      '10,0,7:0,0,1',
+      '10,0,3:0,0,-1',
+    ]);
+    expect(isClippedAny(clips, 10, 0, 5)).toBe(false);
+    for (const p of [
+      [15, 0, 5],
+      [5, 0, 5],
+      [10, 4, 5],
+      [10, -4, 5],
+      [10, 0, 8],
+      [10, 0, 2],
+    ] as const)
+      expect(isClippedAny(clips, p[0], p[1], p[2])).toBe(true);
+    expect(boxSummary(box, true)).toBe('box=10,0,5:4,3,2 on');
+    expect(sectionsSummary([], { box, on: false })).toBe('box=10,0,5:4,3,2 off');
+    expect(boxFaceCentre(box, '-y')).toEqual([10, -3, 5]);
+  });
+
+  it('starts the box at the shown bounds grown 5 %', () => {
+    const box = defaultBox({ min: [0, -40, 0], max: [40, 40, 60] });
+    expect(box.center).toEqual([20, 0, 30]);
+    expect(box.half[0]).toBeCloseTo(21);
+    expect(box.half[1]).toBeCloseTo(42);
+    expect(box.half[2]).toBeCloseTo(31.5);
+  });
+
+  it('drags a face and keeps the opposite one', () => {
+    const box = { center: [0, 0, 0] as const, half: [10, 10, 10] as const };
+    const moved = dragBoxFace(box, '+x', 4);
+    expect(moved.center).toEqual([-3, 0, 0]);
+    expect(moved.half).toEqual([7, 10, 10]);
+    const back = dragBoxFace(box, '-z', -14);
+    expect(back.center[2]).toBe(-2);
+    expect(back.half[2]).toBe(12);
+    // A face can't cross the opposite one: the box keeps a sliver.
+    const squeezed = dragBoxFace(box, '+y', -50);
+    expect(squeezed.half[1]).toBeGreaterThan(0);
+    expect(squeezed.center[1] - squeezed.half[1]).toBeCloseTo(-10);
   });
 });

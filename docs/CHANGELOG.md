@@ -4,6 +4,14 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 Section analysis: several planes and a section box**
+  (ADR-0045's amendment): the Section Analysis panel lists up to three planes
+  as rows (offset, Flip, Show, Change, Remove, "Add plane"), each with its own
+  arrow, and cuts the view by all of them with a cap per plane drawn only where
+  the others keep the cut; "Box" cuts at six planes from a centre and
+  half-sizes (default the shown bodies' box grown 5 %), with a handle on every
+  face and the box's edges drawn as a wire. View state only; named views and
+  the hatch per material stay open.
 - 2026-10-06 · **Landing page: dark only, a parametric toy in the hero, and a pinned
   scroll stage that deals the nine pictures over each other with the app's timeline
   under it; a Changelog link in the nav** (ADR-0057 amendment).

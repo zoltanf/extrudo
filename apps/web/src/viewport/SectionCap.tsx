@@ -12,15 +12,16 @@ import {
   Mesh,
   MeshBasicMaterial,
   NotEqualStencilFunc,
-  type Plane,
   PlaneGeometry,
   ReplaceStencilOp,
   ShaderMaterial,
   type StencilOp,
   Vector3,
+  Vector4,
 } from 'three';
 import type { SectionClip } from '../section/clip';
 import { boundsOf } from './bodyGeometry';
+import { planeOf } from './clipPlanes';
 import type { Rgba } from './colors';
 
 /** Hatch lines are this many CSS px apart. */
@@ -39,10 +40,39 @@ const linear = (c: Rgba): Color => new Color().setRGB(c.r, c.g, c.b, 'srgb');
  * (`order`…`order + 2`), which keeps the passes of different bodies apart.
  */
 export function SectionCap({
+  clips,
+  order,
+  ...rest
+}: {
+  faces: BufferGeometry;
+  mesh: BodyMesh;
+  /** Every section plane: a cap per plane, drawn only where the others keep the cut. */
+  clips: readonly SectionClip[];
+  fill: Rgba;
+  hatch: Rgba;
+  /** The first render order of this body's caps (three per plane). */
+  order: number;
+}) {
+  return clips.map((clip, i) => (
+    <PlaneCap
+      // biome-ignore lint/suspicious/noArrayIndexKey: the planes have no identity beyond their place.
+      key={i}
+      clip={clip}
+      others={clips.filter((_, j) => j !== i)}
+      order={order + 3 * i}
+      {...rest}
+    />
+  ));
+}
+
+/** The most planes the cap shader tests besides its own (a box's other five). */
+const MAX_OTHERS = 5;
+
+function PlaneCap({
   faces,
   mesh,
   clip,
-  planes,
+  others,
   fill,
   hatch,
   order,
@@ -50,12 +80,15 @@ export function SectionCap({
   faces: BufferGeometry;
   mesh: BodyMesh;
   clip: SectionClip;
-  /** The clipping plane in three.js terms, kept in step with `clip`. */
-  planes: Plane[];
+  /** The other planes: the cap is drawn only on their kept sides. */
+  others: readonly SectionClip[];
   fill: Rgba;
   hatch: Rgba;
   order: number;
 }) {
+  // The stencil passes clip by this plane alone: the count of faces behind it says whether the
+  // plane's point is inside the solid, and another plane's clipping would break that count.
+  const planes = useMemo(() => [planeOf(clip)], [clip]);
   const stencil = useMemo(() => {
     const pass = (side: typeof BackSide | typeof FrontSide, op: StencilOp) =>
       new MeshBasicMaterial({
@@ -79,6 +112,8 @@ export function SectionCap({
       uFill: { value: new Color() },
       uHatch: { value: new Color() },
       uPitch: { value: HATCH_PITCH_PX },
+      uCount: { value: 0 },
+      uOthers: { value: Array.from({ length: MAX_OTHERS }, () => new Vector4()) },
     };
     const material = new ShaderMaterial({
       uniforms,
@@ -95,7 +130,9 @@ export function SectionCap({
       stencilZFail: ReplaceStencilOp,
       stencilZPass: ReplaceStencilOp,
       vertexShader: /* glsl */ `
+        varying vec3 vWorld;
         void main() {
+          vWorld = (modelMatrix * vec4(position, 1.0)).xyz;
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
         }
       `,
@@ -103,7 +140,15 @@ export function SectionCap({
         uniform vec3 uFill;
         uniform vec3 uHatch;
         uniform float uPitch;
+        uniform float uCount;
+        uniform vec4 uOthers[${MAX_OTHERS}];
+        varying vec3 vWorld;
         void main() {
+          // The other planes' removed sides carry no cap: x = n·p - d is positive there.
+          for (int i = 0; i < ${MAX_OTHERS}; i++) {
+            if (float(i) >= uCount) break;
+            if (dot(uOthers[i].xyz, vWorld) - uOthers[i].w > 1e-6) discard;
+          }
           float d = (gl_FragCoord.x + gl_FragCoord.y) / (uPitch * 1.41421356);
           float edge = fwidth(d);
           // fract(d) runs 0…1 across a period; a line is where it is near either end.
@@ -146,6 +191,16 @@ export function SectionCap({
     cap.quad.visible = true;
   } else cap.quad.visible = false;
   cap.quad.renderOrder = order + 2;
+  cap.uniforms.uCount.value = Math.min(others.length, MAX_OTHERS);
+  others.slice(0, MAX_OTHERS).forEach((other, k) => {
+    const [nx, ny, nz] = other.normal;
+    cap.uniforms.uOthers.value[k]?.set(
+      nx,
+      ny,
+      nz,
+      nx * other.origin[0] + ny * other.origin[1] + nz * other.origin[2],
+    );
+  });
   cap.uniforms.uFill.value.copy(linear(fill));
   cap.uniforms.uHatch.value.copy(linear(hatch));
   stencil.back.clippingPlanes = planes;

@@ -2,7 +2,7 @@ import { type ExtrudoDocument, formatQuantity, LENGTH } from '@extrudo/core';
 import type { Vec3 } from '@extrudo/kernel';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
-import { isClipped, type SectionClip } from '../section/clip';
+import { isClippedAny, type SectionClip } from '../section/clip';
 import { viewProject } from '../viewport/camera';
 import type { ViewportStore } from '../viewport/store';
 import type { ThinSpot } from './thickness';
@@ -12,7 +12,7 @@ export interface ThicknessOverlayProps {
   viewport: ViewportStore;
   settings: ExtrudoDocument['settings'];
   /** The analysis' section clip, if any: a clipped-away spot is not marked. */
-  clip?: SectionClip;
+  clip?: readonly SectionClip[];
 }
 
 type Screen = readonly [number, number];
@@ -48,7 +48,8 @@ export function ThicknessOverlay({ spot, viewport, settings, clip }: ThicknessOv
     const ndc = viewProject(view, projection, width / height, p);
     return ndc && [((ndc[0] + 1) / 2) * width, ((1 - ndc[1]) / 2) * height];
   };
-  const hidden = clip !== undefined && isClipped(clip, spot.point[0], spot.point[1], spot.point[2]);
+  const hidden =
+    clip !== undefined && isClippedAny(clip, spot.point[0], spot.point[1], spot.point[2]);
   const at = hidden ? undefined : toScreen(spot.point as Vec3);
   const label = formatQuantity(spot.value, LENGTH, { ...settings, precision: 2 });
 

@@ -8,8 +8,7 @@ import {
   Color,
   GreaterDepth,
   type Material,
-  Plane,
-  Vector3,
+  type Plane,
 } from 'three';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
@@ -25,6 +24,7 @@ import {
   vertexPositions,
 } from '../selection/highlight';
 import { boundsOf, edgeSegments } from './bodyGeometry';
+import { clipPlanes } from './clipPlanes';
 import { capColors, type Rgba } from './colors';
 import { createDotMaterial } from './dots';
 import { createOverhangShading } from './overhangShading';
@@ -68,7 +68,7 @@ export interface BodiesProps {
   /** Silhouette segments drawn per body, after each change (tests read the total). */
   onSilhouettes?(body: BodyId, segments: number): void;
   /** A section analysis (P3-09): what lies on the clip's side is not drawn, and the cut is capped. */
-  section?: { clip: SectionClip; color: Rgba; hatch: Rgba };
+  section?: { clips: readonly SectionClip[]; color: Rgba; hatch: Rgba };
   /** An overhang analysis (P3-10, ADR-0048): the faces it flags are shaded in `color`. */
   overhang?: { view: OverhangView; color: Rgba };
   /**
@@ -78,19 +78,10 @@ export interface BodiesProps {
   thickness?: { thin: Record<BodyId, Float32Array>; color: Rgba };
 }
 
-/** The clipping plane as three.js keeps it: it keeps what lies on its normal's side. */
-export function clipPlanes(clip: SectionClip | undefined): Plane[] | undefined {
-  if (!clip) return undefined;
-  const n = new Vector3(-clip.normal[0], -clip.normal[1], -clip.normal[2]);
-  return [
-    new Plane(
-      n,
-      clip.normal[0] * clip.origin[0] +
-        clip.normal[1] * clip.origin[1] +
-        clip.normal[2] * clip.origin[2],
-    ),
-  ];
-}
+export { clipPlanes };
+
+/** The most planes a section has (a box's six), which bounds the render orders per body. */
+const CAP_SLOTS = 6;
 
 const NO_SELECTION: readonly SelectionItem[] = [];
 
@@ -116,8 +107,8 @@ export function Bodies({
   );
   const bounds = useMemo(() => boundsOf(shown.map(([, mesh]) => mesh)), [shown]);
   useEffect(() => onBounds(bounds), [bounds, onBounds]);
-  const clip = section?.clip;
-  const planes = useMemo(() => clipPlanes(clip), [clip]);
+  const clips = section?.clips;
+  const planes = useMemo(() => clipPlanes(clips), [clips]);
 
   return shown.map(([id, mesh], index) => (
     <Body
@@ -133,7 +124,8 @@ export function Bodies({
       onSilhouettes={onSilhouettes}
       {...(overhang && { overhang })}
       {...(thickness && { thickness: { thin: thickness.thin[id], color: thickness.color } })}
-      {...(section && planes && { section: { ...section, planes, order: 10 + 3 * index } })}
+      {...(section &&
+        planes && { section: { ...section, planes, order: 10 + 3 * CAP_SLOTS * index } })}
     />
   ));
 }
@@ -167,7 +159,13 @@ function Body({
   accent: Rgba;
   marks: BodyHighlight;
   onSilhouettes?(body: BodyId, segments: number): void;
-  section?: { clip: SectionClip; color: Rgba; hatch: Rgba; planes: Plane[]; order: number };
+  section?: {
+    clips: readonly SectionClip[];
+    color: Rgba;
+    hatch: Rgba;
+    planes: Plane[];
+    order: number;
+  };
   overhang?: { view: OverhangView; color: Rgba };
   /** The wall-thickness check (P5-06): per-node thin flags, shaded in `color`. */
   thickness?: { thin: Float32Array | undefined; color: Rgba };
@@ -263,8 +261,7 @@ function Body({
         <SectionCap
           faces={faces}
           mesh={mesh}
-          clip={section.clip}
-          planes={section.planes}
+          clips={section.clips}
           {...capColors(body, section.color, section.hatch)}
           order={section.order}
         />

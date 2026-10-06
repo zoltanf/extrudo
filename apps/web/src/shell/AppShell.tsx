@@ -463,17 +463,36 @@ export function AppShell({
     meshes: bodies,
     active: printing,
   });
-  const sectionPlane = section.state
-    ? planeName(section.state.plane, {
-        construction: (id) => doc.features.find((f) => f.id === id)?.name,
-        faceBody: (face) => {
-          const found = (Object.entries(bodies) as [BodyId, BodyMesh][]).find(([, mesh]) =>
-            mesh.faceIds?.includes(face),
-          );
-          return found && bodyName(found[0]);
-        },
-      })
-    : 'Plane';
+  const sectionPlane = (index: number) => {
+    const plane = section.rows[index]?.state.plane;
+    return plane
+      ? planeName(plane, {
+          construction: (id) => doc.features.find((f) => f.id === id)?.name,
+          faceBody: (face) => {
+            const found = (Object.entries(bodies) as [BodyId, BodyMesh][]).find(([, mesh]) =>
+              mesh.faceIds?.includes(face),
+            );
+            return found && bodyName(found[0]);
+          },
+        })
+      : 'Plane';
+  };
+  const sectionOn = section.box ? section.box.state.on : section.rows.some((r) => r.state.on);
+  const sectionEntry =
+    section.rows.length > 0 || section.box
+      ? {
+          label: section.box
+            ? 'Section · Box'
+            : section.rows.length > 1
+              ? `Section · ${section.rows.length} planes`
+              : `Section · ${sectionPlane(0)}`,
+          on: sectionOn,
+          active: sectioning,
+          onToggle: () => section.setAllOn(!sectionOn),
+          onEdit: () => openSection(),
+          onRemove: section.removeAll,
+        }
+      : undefined;
   bodyListRef.current = bodyList;
   const bodyActions = useMemo(
     () => ({
@@ -1454,16 +1473,7 @@ export function AppShell({
                 : undefined
             }
             onHoverBody={(id) => modelSelect?.onHover(id ? { kind: 'body', id } : undefined)}
-            {...(section.state && {
-              section: {
-                label: `Section · ${sectionPlane}`,
-                on: section.state.on,
-                active: sectioning,
-                onToggle: () => section.setOn(!section.state?.on),
-                onEdit: openSection,
-                onRemove: section.remove,
-              },
-            })}
+            {...(sectionEntry && { section: sectionEntry })}
             {...(overhang.state && {
               overhang: {
                 label: `Overhangs · ${overhang.downLabel} · ${
@@ -1545,7 +1555,10 @@ export function AppShell({
             modelSelect={modelSelect}
             preview={preview}
             viewMenu={viewMenu}
-            sectionClip={section.clip}
+            sectionClips={section.clips}
+            {...(section.box?.value && {
+              sectionBox: { box: section.box.value, on: section.box.state.on },
+            })}
             {...(overhang.summary !== undefined && {
               overhang: { view: overhang.view, summary: overhang.summary },
             })}
@@ -1566,7 +1579,7 @@ export function AppShell({
                 spot={thickness.spot}
                 viewport={viewport}
                 settings={doc.settings}
-                {...(section.clip && { clip: section.clip })}
+                {...(section.clips.length > 0 && { clip: section.clips })}
               />
             )}
             {sectioning && (

@@ -28,7 +28,7 @@ import { isEditable, useShortcuts } from '../commands/shortcuts';
 import { type MarkingEntry, MarkingMenu, MenuItem, MenuLabel, PointMenu } from '../design-system';
 import { previewSummary, type ViewPreview } from '../features/preview';
 import type { OverhangView } from '../print/overhang';
-import { clipSummary, type SectionClip, sectionSummary } from '../section/clip';
+import { clipsSummary, type SectionBox, type SectionClip, sectionsSummary } from '../section/clip';
 import { combineFilters } from '../selection/filter';
 import { itemLabel, type LabelContext, selectionKey } from '../selection/items';
 import {
@@ -68,6 +68,7 @@ import {
   usePointerInput,
 } from './pointer';
 import { createRenderMeter } from './renderMeter';
+import { SectionBoxWire } from './SectionBoxWire';
 import { Sketches } from './Sketches';
 import {
   type SketchDrawing,
@@ -132,10 +133,13 @@ export interface ViewportProps {
    */
   viewMenu?: ViewMenu;
   /**
-   * The section analysis' clipping plane while it is on (P3-09, ADR-0045): bodies and their
-   * edges are clipped and capped, and picking ignores what is clipped away.
+   * The section analysis' clipping planes while they are on (P3-09, ADR-0045; several and a
+   * box since P4-12): bodies and their edges are clipped by all of them and capped, and picking
+   * ignores what is clipped away.
    */
-  sectionClip?: SectionClip;
+  sectionClips?: readonly SectionClip[];
+  /** The section box in mm (P4-12) and whether it clips: its edges are drawn as a wire. */
+  sectionBox?: { box: SectionBox; on: boolean };
   /**
    * The overhang analysis (P3-10, ADR-0048): `view` is what the bodies are shaded with (absent
    * while it is off), `summary` the counts for `data-overhang`.
@@ -294,7 +298,8 @@ export function Viewport({
   canvases = NO_CANVASES,
   calibration = NO_CALIBRATION,
   viewMenu,
-  sectionClip,
+  sectionClips,
+  sectionBox,
   overhang,
   thickness,
 }: ViewportProps) {
@@ -304,6 +309,7 @@ export function Viewport({
   const tool = useStore(viewport, (s) => s.tool);
   const projection = useStore(viewport, (s) => s.projection);
   const sectionState = useStore(viewport, (s) => s.section);
+  const sectionClip = sectionClips && sectionClips.length > 0 ? sectionClips : undefined;
   const [dragging, setDragging] = useState<NavAction>();
   const [ready, setReady] = useState(false);
 
@@ -450,8 +456,8 @@ export function Viewport({
       data-body-appearance={appearanceKey}
       data-construction={constructionSummary(drawnConstruction)}
       data-canvases={canvasSummary(drawnCanvases, pixels)}
-      data-section={sectionSummary(sectionState)}
-      data-section-clip={clipSummary(sectionClip)}
+      data-section={sectionsSummary(sectionState, sectionBox)}
+      data-section-clip={clipsSummary(sectionClip)}
       data-overhang={overhang?.summary}
       data-thickness={thickness?.summary}
       data-preview={previewSummary(preview)}
@@ -490,6 +496,7 @@ export function Viewport({
             canvases={drawnCanvases}
             calibration={calibration}
             sectionClip={sectionClip}
+            sectionBox={sectionBox?.on ? sectionBox.box : undefined}
             overhang={overhang?.view}
             thin={thickness?.thin}
             onSilhouettes={onSilhouettes}
@@ -605,6 +612,7 @@ function Scene({
   canvases,
   calibration,
   sectionClip,
+  sectionBox,
   overhang,
   thin,
   onSilhouettes,
@@ -623,7 +631,8 @@ function Scene({
   construction: readonly ConstructionDrawing[];
   canvases: readonly CanvasDrawing[];
   calibration: readonly (readonly number[])[];
-  sectionClip: SectionClip | undefined;
+  sectionClip: readonly SectionClip[] | undefined;
+  sectionBox: SectionBox | undefined;
   overhang: OverhangView | undefined;
   /** The wall-thickness check's per-node flags per body (P5-06), while it shades. */
   thin: Record<BodyId, Float32Array> | undefined;
@@ -739,11 +748,12 @@ function Scene({
         {...(overhang && { overhang: { view: overhang, color: colors.overhang } })}
         {...(thin && { thickness: { thin, color: colors.thickness } })}
         {...(sectionClip && {
-          section: { clip: sectionClip, color: colors.section, hatch: colors.sectionHatch },
+          section: { clips: sectionClip, color: colors.section, hatch: colors.sectionHatch },
         })}
       />
       {/* Canvases lie on the model (P4-06): under the bodies and the sketches. */}
       <Canvases items={canvases} />
+      {sectionBox && <SectionBoxWire box={sectionBox} color={colors.section} />}
       <CalibrationMarks points={calibration} color={{ ...colors.preselect, a: 1 }} />
       <PreviewShapes preview={preview} colors={colors} planes={previewPlanes} />
       <Sketches
@@ -962,7 +972,7 @@ interface ModelScene {
   sketches: readonly SketchDrawing[];
   construction: readonly ConstructionDrawing[];
   /** The section's clipping plane while it is on (P3-09). */
-  clip?: SectionClip | undefined;
+  clip?: readonly SectionClip[] | undefined;
 }
 
 /** "Select other…": the stacked items under the pointer, and where the menu opens (client px). */

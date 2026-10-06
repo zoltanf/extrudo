@@ -15,7 +15,7 @@ const plain: PickScene = { bodies: [{ id: B, mesh: cube }], sketches: [], occlud
 /** The cube cut at z = 5, everything above removed. */
 const removeAbove: SectionClip = { origin: [0, 0, 5], normal: [0, 0, 1] };
 const removeBelow: SectionClip = { origin: [0, 0, 5], normal: [0, 0, -1] };
-const cut = (clip: SectionClip): PickScene => ({ ...plain, clip });
+const cut = (...clip: SectionClip[]): PickScene => ({ ...plain, clip });
 
 const only = (...kinds: (keyof SelectionFilter)[]): SelectionFilter =>
   Object.fromEntries(
@@ -131,5 +131,38 @@ describe('picking under a section', () => {
     // The four top edges are clipped away; the four vertical ones are cut but drawn.
     expect(ids(only('edges'), cut(removeAbove))).toHaveLength(8);
     expect(ids(only('bodies'), cut(removeAbove))).toEqual(['b']);
+  });
+
+  describe('several planes (P4-12)', () => {
+    // z above 7 and x beyond 5 are cut away: a corner of the cube is gone.
+    const high: SectionClip = { origin: [0, 0, 7], normal: [0, 0, 1] };
+    const right: SectionClip = { origin: [5, 0, 0], normal: [1, 0, 0] };
+    const corner = cut(high, right);
+
+    it('is visible inside every kept side and clipped outside any', () => {
+      // The front face (y = 0) where z <= 7 and x <= 5 is kept.
+      expect(pickTop(corner, iso, at([2, 0, 3]), DEFAULT_FILTER)).toEqual({
+        kind: 'face',
+        id: 'b:2',
+      });
+      // Outside one plane only: above 7 at x = 2, beyond x = 5 at z = 3.
+      expect(pickTop(cut(high, right), iso, at([3, 0, 9]), DEFAULT_FILTER)).toBeUndefined();
+      expect(pickTop(cut(right), iso, at([8, 0, 3]), DEFAULT_FILTER)?.id).not.toBe('b:2');
+    });
+
+    it('never picks the faces both planes cut away', () => {
+      const stack = pickStack(corner, iso, at([8, 0, 9]), DEFAULT_FILTER);
+      expect(stack.some((hit) => hit.item.id === 'b:1' || hit.item.id === 'b:5')).toBe(false);
+    });
+
+    it('occludes what lies behind either plane’s cap', () => {
+      // From the left face's point (0, 7, 1) the ray runs through the corner that is cut away
+      // and crosses x = 5 inside the cube at z = 6, which the other plane keeps: that cap
+      // covers the face, so it is listed only for "Select other…".
+      const stack = pickStack(corner, iso, at([0, 7, 1]), DEFAULT_FILTER);
+      const left = stack.find((hit) => hit.item.id === 'b:4');
+      expect(left?.occluded).toBe(true);
+      expect(pickTop(corner, iso, at([0, 7, 1]), DEFAULT_FILTER)).toBeUndefined();
+    });
   });
 });

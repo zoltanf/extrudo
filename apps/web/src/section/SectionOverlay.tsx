@@ -4,7 +4,7 @@ import { useStore } from 'zustand';
 import { along, distanceAlong, draggedExpression, type Ray } from '../features/manipulate';
 import { viewProject, viewRay, worldPerPixel } from '../viewport/camera';
 import type { ViewportStore } from '../viewport/store';
-import { arrowBase } from './clip';
+import { arrowBase, BOX_FACES, type BoxFace, boxFaceAxis, boxFaceCentre } from './clip';
 import type { SectionTool } from './useSection';
 
 export interface SectionOverlayProps {
@@ -44,7 +44,7 @@ export function SectionOverlay({ tool, viewport, settings }: SectionOverlayProps
   }, []);
 
   const { width, height } = size;
-  const { state, frame, offset } = tool;
+  const { rows, box } = tool;
   const aspect = width / Math.max(1, height);
   const toScreen = (p: Vec3): Screen | undefined => {
     if (width === 0 || height === 0) return undefined;
@@ -59,96 +59,153 @@ export function SectionOverlay({ tool, viewport, settings }: SectionOverlayProps
     };
   };
 
-  // The arrow stands where the middle of the model projects onto the plane (offset 0).
-  const base = frame && arrowBase(frame, bounds?.center ?? frame.origin);
-  const normal = frame?.normal;
-  const shown = state?.on && frame !== undefined && base && normal && offset !== undefined;
-  const handle = shown ? along(base, normal, offset) : undefined;
-  const handleAt = handle && toScreen(handle);
-  const baseAt = base && toScreen(base);
-  // The arrowhead points to the side that is cut away.
-  const removed: Vec3 | undefined =
-    normal && (state?.flip ? [-normal[0], -normal[1], -normal[2]] : normal);
-  const tip =
-    handle &&
-    removed &&
-    toScreen(along(handle, removed, ARROW_PX * worldPerPixel(view, projection, height, handle)));
-
-  const drag = useRef<{ grab: number; pointer: number }>(undefined);
+  // One handle at a time is dragged: its key, how far the grab was from the value, the pointer.
+  const drag = useRef<{ key: string; grab: number; pointer: number }>(undefined);
   const local = (event: ReactPointerEvent) => {
     const r = layer.current?.getBoundingClientRect();
     return [event.clientX - (r?.left ?? 0), event.clientY - (r?.top ?? 0)] as const;
   };
-  const measure = (event: ReactPointerEvent) => {
-    if (!base || !normal) return undefined;
+  const measure = (event: ReactPointerEvent, base: Vec3, normal: Vec3) => {
     const [x, y] = local(event);
     return distanceAlong(base, normal, rayAt(x, y));
   };
-  const onDown = (event: ReactPointerEvent<SVGElement>) => {
-    if (event.button !== 0 || offset === undefined) return;
-    event.stopPropagation();
-    event.preventDefault();
-    const at = measure(event);
-    if (at === undefined) return;
-    (event.currentTarget as Element).setPointerCapture(event.pointerId);
-    drag.current = { grab: offset - at, pointer: event.pointerId };
-  };
-  const onMove = (event: ReactPointerEvent<SVGElement>) => {
-    const d = drag.current;
-    if (!d || d.pointer !== event.pointerId || !handle) return;
-    const at = measure(event);
-    if (at === undefined) return;
-    const perPixel = worldPerPixel(view, projection, height, handle);
-    tool.setOffset(draggedExpression(at + d.grab, 'length', settings, perPixel));
-  };
-  const onUp = (event: ReactPointerEvent<SVGElement>) => {
-    if (drag.current?.pointer === event.pointerId) drag.current = undefined;
-  };
+
+  /** A handle on the line through `base` along `normal`, standing `value` mm along it. */
+  interface Track {
+    key: string;
+    /** The `data-section-handle` value. */
+    id: string;
+    base: Vec3;
+    normal: Vec3;
+    value: number;
+    /** The side that is cut away: the arrowhead points along it. */
+    removed: Vec3 | undefined;
+    set(value: number, perPixel: number): void;
+  }
+  const tracks: Track[] = [];
+  rows.forEach((row, i) => {
+    const { state, frame, offset } = row;
+    if (!state.on || !frame || offset === undefined) return;
+    const n = frame.normal;
+    tracks.push({
+      key: `p${i}`,
+      id: String(i),
+      // The arrow stands where the middle of the model projects onto the plane (offset 0).
+      base: arrowBase(frame, bounds?.center ?? frame.origin),
+      normal: n,
+      value: offset,
+      removed: state.flip ? [-n[0], -n[1], -n[2]] : n,
+      set: (value, perPixel) =>
+        tool.setOffset(i, draggedExpression(value, 'length', settings, perPixel)),
+    });
+  });
+  if (box?.state.on && box.value) {
+    const value = box.value;
+    for (const face of BOX_FACES) {
+      const { axis, sign } = boxFaceAxis(face);
+      const normal: [number, number, number] = [0, 0, 0];
+      normal[axis] = 1;
+      const at = boxFaceCentre(value, face);
+      // The line runs along the face's axis through the face's centre; the value is the coordinate.
+      tracks.push({
+        key: `b${face}`,
+        id: `box:${face}`,
+        base: [
+          at[0] - normal[0] * at[axis],
+          at[1] - normal[1] * at[axis],
+          at[2] - normal[2] * at[axis],
+        ],
+        normal,
+        value: at[axis],
+        removed: [normal[0] * sign, normal[1] * sign, normal[2] * sign],
+        set: (coordinate, perPixel) => tool.dragBoxFace(face as BoxFace, coordinate, perPixel),
+      });
+    }
+  }
 
   const color = 'var(--x-cat-inspect)';
-  const tipText = tip ? `${Math.round(tip[0])},${Math.round(tip[1])}` : undefined;
+  const shown = tracks.flatMap((track) => {
+    const handle = along(track.base, track.normal, track.value);
+    const handleAt = toScreen(handle);
+    const baseAt = toScreen(track.base);
+    if (!handleAt || !baseAt) return [];
+    const tip =
+      track.removed &&
+      toScreen(
+        along(handle, track.removed, ARROW_PX * worldPerPixel(view, projection, height, handle)),
+      );
+    return [{ track, handle, handleAt, baseAt, tip }];
+  });
+  const tipText = shown
+    .map(({ tip }) => (tip ? `${Math.round(tip[0])},${Math.round(tip[1])}` : ''))
+    .join(';');
   return (
     <div
       ref={layer}
       className="pointer-events-none absolute inset-0 z-[4] overflow-hidden"
-      data-section-arrow={tipText}
+      data-section-arrow={tipText || undefined}
     >
-      {width > 0 && handleAt && baseAt && (
+      {width > 0 && shown.length > 0 && (
         <svg
           className="absolute inset-0 h-full w-full"
           width={width}
           height={height}
           aria-hidden="true"
         >
-          <line
-            x1={baseAt[0]}
-            y1={baseAt[1]}
-            x2={handleAt[0]}
-            y2={handleAt[1]}
-            stroke={color}
-            strokeWidth={1.5}
-            strokeDasharray="4 3"
-            opacity={0.8}
-          />
-          <circle cx={baseAt[0]} cy={baseAt[1]} r={2.5} fill={color} opacity={0.8} />
-          {tip && <Arrow from={handleAt} to={tip} color={color} />}
-          <circle
-            data-section-handle=""
-            data-view-passthrough=""
-            cx={Math.round(handleAt[0] * 10) / 10}
-            cy={Math.round(handleAt[1] * 10) / 10}
-            r={7}
-            fill="var(--x-raised)"
-            stroke={color}
-            strokeWidth={2}
-            style={{ pointerEvents: 'auto', cursor: 'grab' }}
-            onPointerDown={onDown}
-            onPointerMove={onMove}
-            onPointerUp={onUp}
-            onPointerCancel={onUp}
-          >
-            <title>Drag to move the cut</title>
-          </circle>
+          {shown.map(({ track, handle, handleAt, baseAt, tip }) => {
+            const onDown = (event: ReactPointerEvent<SVGElement>) => {
+              if (event.button !== 0) return;
+              event.stopPropagation();
+              event.preventDefault();
+              const at = measure(event, track.base, track.normal);
+              if (at === undefined) return;
+              (event.currentTarget as Element).setPointerCapture(event.pointerId);
+              drag.current = { key: track.key, grab: track.value - at, pointer: event.pointerId };
+            };
+            const onMove = (event: ReactPointerEvent<SVGElement>) => {
+              const d = drag.current;
+              if (!d || d.key !== track.key || d.pointer !== event.pointerId) return;
+              const at = measure(event, track.base, track.normal);
+              if (at === undefined) return;
+              track.set(at + d.grab, worldPerPixel(view, projection, height, handle));
+            };
+            const onUp = (event: ReactPointerEvent<SVGElement>) => {
+              if (drag.current?.pointer === event.pointerId) drag.current = undefined;
+            };
+            return (
+              <g key={track.key}>
+                <line
+                  x1={baseAt[0]}
+                  y1={baseAt[1]}
+                  x2={handleAt[0]}
+                  y2={handleAt[1]}
+                  stroke={color}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                  opacity={0.8}
+                />
+                <circle cx={baseAt[0]} cy={baseAt[1]} r={2.5} fill={color} opacity={0.8} />
+                {tip && <Arrow from={handleAt} to={tip} color={color} />}
+                <circle
+                  data-section-handle={track.id}
+                  data-view-passthrough=""
+                  cx={Math.round(handleAt[0] * 10) / 10}
+                  cy={Math.round(handleAt[1] * 10) / 10}
+                  r={7}
+                  fill="var(--x-raised)"
+                  stroke={color}
+                  strokeWidth={2}
+                  style={{ pointerEvents: 'auto', cursor: 'grab' }}
+                  onPointerDown={onDown}
+                  onPointerMove={onMove}
+                  onPointerUp={onUp}
+                  onPointerCancel={onUp}
+                >
+                  <title>Drag to move the cut</title>
+                </circle>
+              </g>
+            );
+          })}
         </svg>
       )}
     </div>

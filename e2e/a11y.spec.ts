@@ -143,7 +143,16 @@ for (const theme of ['dark', 'light'] as const) {
       const section = page.getByRole('region', { name: 'Section Analysis' });
       await expect(section).toBeVisible();
       await audit(page, `${theme} section`);
-      await section.getByRole('button', { name: /^Done/ }).click();
+      // Two plane rows, then the box (P4-12).
+      await section.getByRole('button', { name: 'XY plane' }).click();
+      await section.getByRole('button', { name: 'Add plane', exact: true }).click();
+      await section.getByRole('button', { name: 'YZ plane' }).click();
+      await expect(section.locator('[data-section-index]')).toHaveCount(2);
+      await audit(page, `${theme} section rows`);
+      await section.getByRole('button', { name: 'Box', exact: true }).click();
+      await expect(section).toHaveAttribute('data-section-mode', 'box');
+      await audit(page, `${theme} section box`);
+      await section.getByRole('button', { name: 'Remove', exact: true }).click();
       await page
         .getByRole('tablist', { name: 'Toolbar tabs' })
         .getByRole('tab', { name: '3D Print' })

@@ -8,7 +8,7 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { Preferences } from '../platform';
 import type { OverhangState } from '../print/overhang';
 import type { ThicknessState } from '../print/thickness';
-import type { SectionState } from '../section/clip';
+import { MAX_SECTIONS, type SectionBoxState, type SectionState } from '../section/clip';
 import { DEFAULT_FILTER, type FilterKind, type SelectionFilter } from '../selection/filter';
 import {
   easeCamera,
@@ -152,11 +152,17 @@ export interface ViewportState extends ViewportSettings {
    */
   pickAxes: boolean;
   /**
-   * The section analysis (P3-09, ADR-0045): a clipping plane over the model. View state for
-   * the open project: not in the document, not undoable, not a preference; it survives
-   * recomputes and lasts until it is removed or the project closes.
+   * The section analysis (P3-09, ADR-0045): up to three clipping planes over the model, in the
+   * order added (P4-12). View state for the open project: not in the document, not undoable,
+   * not a preference; it survives recomputes and lasts until it is removed or the project
+   * closes. Empty for none.
    */
-  section: SectionState | undefined;
+  section: readonly SectionState[];
+  /**
+   * The section box (P4-12): six planes as one object. Exclusive with `section`'s planes
+   * (starting one removes the other).
+   */
+  sectionBox: SectionBoxState | undefined;
   /**
    * The overhang analysis (P3-10, ADR-0048): faces steeper than an angle shaded in the view.
    * View state like the section: not in the document, not undoable, lasts while the project is
@@ -203,10 +209,21 @@ export interface ViewportState extends ViewportSettings {
   setSelectionFilter(kind: FilterKind, on: boolean): void;
   resetSelectionFilter(): void;
   setFieldFilter(filter: SelectionFilter | undefined): void;
-  /** Starts, replaces or (`undefined`) removes the section. */
-  setSection(section: SectionState | undefined): void;
-  /** Changes part of the section; nothing while there is none. */
-  updateSection(patch: Partial<SectionState>): void;
+  /**
+   * Replaces the planes: one state is a list of one, `undefined` removes them all. The box goes
+   * when planes are set.
+   */
+  setSection(section: SectionState | readonly SectionState[] | undefined): void;
+  /** Adds a plane (nothing past `MAX_SECTIONS`, nothing beside a box). */
+  addSection(section: SectionState): void;
+  /** Changes part of plane `index` (the first by default); nothing while there is none. */
+  updateSection(patch: Partial<SectionState>, index?: number): void;
+  /** Removes plane `index`. */
+  removeSection(index: number): void;
+  /** Starts, replaces or (`undefined`) removes the section box; planes go when it starts. */
+  setSectionBox(box: SectionBoxState | undefined): void;
+  /** Changes part of the box; nothing while there is none. */
+  updateSectionBox(patch: Partial<SectionBoxState>): void;
   /** Starts, replaces or (`undefined`) removes the overhang analysis. */
   setOverhang(overhang: OverhangState | undefined): void;
   /** Changes part of the overhang analysis; nothing while there is none. */
@@ -274,7 +291,8 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       selectionFilter: DEFAULT_FILTER,
       fieldFilter: undefined,
       pickAxes: false,
-      section: undefined,
+      section: [],
+      sectionBox: undefined,
       overhang: undefined,
       thickness: undefined,
 
@@ -368,11 +386,31 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         if (pickAxes !== get().pickAxes) set({ pickAxes });
       },
       setSection(section) {
-        set({ section });
+        const list = section === undefined ? [] : 'plane' in section ? [section] : section;
+        set({ section: list.slice(0, MAX_SECTIONS), sectionBox: undefined });
       },
-      updateSection(patch) {
+      addSection(section) {
+        const { section: current, sectionBox } = get();
+        if (sectionBox || current.length >= MAX_SECTIONS) return;
+        set({ section: [...current, section] });
+      },
+      updateSection(patch, index = 0) {
         const current = get().section;
-        if (current) set({ section: { ...current, ...patch } });
+        const found = current[index];
+        if (found)
+          set({ section: current.map((s, i) => (i === index ? { ...found, ...patch } : s)) });
+      },
+      removeSection(index) {
+        const current = get().section;
+        if (index >= 0 && index < current.length)
+          set({ section: current.filter((_, i) => i !== index) });
+      },
+      setSectionBox(sectionBox) {
+        set({ sectionBox, section: [] });
+      },
+      updateSectionBox(patch) {
+        const current = get().sectionBox;
+        if (current) set({ sectionBox: { ...current, ...patch } });
       },
       setOverhang(overhang) {
         set({ overhang });

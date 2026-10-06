@@ -202,3 +202,88 @@ own curves, points and profiles stay unclipped, as the grid does: they are
 drawing aids on their plane, while projected curves stand for the model's
 edges.
 
+
+## Amendment (P4-12, 2026-10-06): several planes and a section box
+
+Still view state, no kernel, facade, schema or file-format change.
+
+**Several planes.** `viewport.section` is a list of up to three
+`SectionState`s (`MAX_SECTIONS`), each with its own plane, offset, flip and
+`on`; `setSection` still takes one state (or `undefined`), which it reads as a
+list of one, so a caller of the old shape keeps working. The view is clipped
+by the **intersection** of the kept half-spaces: the model is cut by all of
+them, a corner cut away. `SectionClip` stays one plane; the view, the pick
+scene and the thickness mark take a `readonly SectionClip[]`, and a point is
+clipped when it is outside **any** of them (`isClippedAny`).
+
+**Caps.** One stencil cap per plane and body. The stencil passes of plane *i*
+clip only by plane *i* (the count of faces behind the plane decides whether the
+plane's point is inside the solid; clipping those faces by another plane would
+break the count), and the cap's quad discards the fragments the **other**
+planes cut away, so a cap is drawn only where the cut lies on the kept side of
+all the others. Picking agrees: `capDepth` looks at every plane, a plane
+covers a ray only where the crossing point is kept by the others, and what
+lies behind any cap is occluded.
+
+**The panel** lists the sections as rows (plane, offset, Flip, an eye, Remove)
+and has "Add plane" (disabled at three); Change on a row re-picks its plane.
+Each row has its own arrow, `[data-section-handle="<n>"]`. `data-section` and
+`data-section-clip` list every section in the order added, separated by `;`
+(a single section reads exactly as before). The browser's Analysis row reads
+"Section · 2 planes".
+
+**The section box** is a fourth mode, "Box": a box in world axes from a centre
+and three half-sizes (six expressions), by default the shown bodies' bounding
+box grown 5 %. It is six clips in one object (+x, −x, +y, −y, +z, −z), with
+its own state (`viewport.sectionBox`) beside the list; **a box excludes
+planes** (it counts as six against the limit of three), and starting one
+removes the planes, adding a plane removes the box. The panel says so. Each
+face has a `distance` handle on its centre (`[data-section-handle="box:+x"]`
+…): dragging it moves that face, the opposite one stays, so centre and
+half-size both change. The box's edges are drawn as a thin wire (view
+geometry, never picked), and every face the box cuts is capped.
+`data-section` reads `box=cx,cy,cz:hx,hy,hz on` (mm, the values as
+evaluated); `data-section-clip` lists the six planes.
+
+**Section Here** (a selected flat face, or a face picked from the view while
+no row is being changed) adds a plane, or replaces the only one as before;
+at the limit it replaces the last; with a box it replaces the box.
+
+**Stays deferred:** saving sections with named views (the views don't exist
+yet) and a hatch per material.
+
+### Results (P4-12)
+
+- **Tests.** Clip maths (`section/clip.test.ts`: the intersection of two and
+  three planes, the box's six clips and summaries, the default box, dragging a
+  face), the store (`viewport/store.test.ts`: a list of up to three, edits and
+  removals by index, a box and planes exclude each other) and picking
+  (`selection/pick-section.test.ts`: a point inside every kept side is visible,
+  outside any is clipped, what lies behind a cap is occluded). E2E in
+  `e2e/section.spec.ts`: two planes on the Wall bracket (XY at 30 mm and YZ at
+  20 mm: the cut-away wall and foot can't be picked, the rest can; the second
+  row's handle, Flip and Remove belong to their row) and the box (default size,
+  a face handle dragged with the opposite face fixed, a field edited, off, and a
+  plane replacing it); `e2e/a11y.spec.ts` audits the rows and the box in both
+  themes.
+- **Decisions the brief left open.** Several planes live in `viewport.section`
+  as a list and the box in its own `viewport.sectionBox`, so the old single
+  state is simply a list of one. The per-row Remove button appears from the
+  second row on (with one row the footer's "Remove" is the same thing, and
+  the single-plane tests keep their names); with several rows the footer reads
+  "Remove all". The box's half-sizes must be more than zero (the field refuses
+  the rest); a dragged face keeps `MIN_BOX_HALF` (5 µm). `data-section`
+  prints the box's values as evaluated (mm), not as expressions.
+  The box's wire is drawn only while the box is on. A face handle of the box is
+  `[data-section-handle="box:+x"]` (… `-x`, `+y`, `-y`, `+z`, `-z`); a plane's is
+  its row number. `data-section-arrow` lists the arrowheads of every drawn handle,
+  separated by `;`, in the order the handles are drawn.
+- **Rejected.** Clipping the stencil passes by every plane (the parity of faces
+  behind a plane would no longer say whether the plane's point is inside the
+  solid); a cap per plane clipped by three.js's own clipping chunks (the cap
+  shader tests the other planes itself with a uniform array, which needs no
+  `clipping: true` plumbing in a `ShaderMaterial`).
+- **Limits.** A face is "clipped" for picking when every node is cut away by
+  some plane, so a face cut in two by different planes with no node of its own
+  on a kept side is not offered even where a sliver remains. Caps where planes
+  meet are exact only to the stencil's pixel; to check by hand in both themes.

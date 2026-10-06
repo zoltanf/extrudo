@@ -172,28 +172,61 @@ describe('selection filter', () => {
 
 describe('section analysis', () => {
   const plane = { kind: 'plane', id: 'origin:xy' } as const;
+  const yz = { kind: 'plane', id: 'origin:yz' } as const;
 
   it('is view state: none at first, edited in parts, kept when turned off, never a preference', () => {
     const { store, preferences } = setup();
-    expect(store.getState().section).toBeUndefined();
+    expect(store.getState().section).toEqual([]);
     // Nothing to edit yet.
     store.getState().updateSection({ on: false });
-    expect(store.getState().section).toBeUndefined();
+    expect(store.getState().section).toEqual([]);
 
+    // One state is read as a list of one.
     store.getState().setSection({ plane, offset: '20 mm', flip: false, on: true });
     store.getState().updateSection({ flip: true });
     store.getState().updateSection({ offset: '5 mm' });
-    expect(store.getState().section).toEqual({ plane, offset: '5 mm', flip: true, on: true });
+    expect(store.getState().section).toEqual([{ plane, offset: '5 mm', flip: true, on: true }]);
 
     // Off and on again picks up where it was.
     store.getState().updateSection({ on: false });
-    expect(store.getState().section).toEqual({ plane, offset: '5 mm', flip: true, on: false });
+    expect(store.getState().section[0]).toEqual({ plane, offset: '5 mm', flip: true, on: false });
     store.getState().updateSection({ on: true });
-    expect(store.getState().section?.offset).toBe('5 mm');
+    expect(store.getState().section[0]?.offset).toBe('5 mm');
 
     expect(JSON.stringify(preferences.get('viewport', {}))).not.toContain('offset');
     store.getState().setSection(undefined);
-    expect(store.getState().section).toBeUndefined();
+    expect(store.getState().section).toEqual([]);
+  });
+
+  it('holds up to three planes, edited and removed by index', () => {
+    const { store } = setup();
+    const state = (offset: string) => ({ plane, offset, flip: false, on: true });
+    for (const offset of ['1 mm', '2 mm', '3 mm', '4 mm'])
+      store.getState().addSection(state(offset));
+    expect(store.getState().section.map((s) => s.offset)).toEqual(['1 mm', '2 mm', '3 mm']);
+    store.getState().updateSection({ offset: '9 mm' }, 1);
+    store.getState().updateSection({ flip: true }, 7);
+    expect(store.getState().section.map((s) => s.offset)).toEqual(['1 mm', '9 mm', '3 mm']);
+    store.getState().removeSection(0);
+    expect(store.getState().section.map((s) => s.offset)).toEqual(['9 mm', '3 mm']);
+    store.getState().setSection([state('a'), { ...state('b'), plane: yz }]);
+    expect(store.getState().section).toHaveLength(2);
+  });
+
+  it('keeps the box and the planes apart', () => {
+    const { store } = setup();
+    const box = { center: ['0', '0', '0'], half: ['5', '5', '5'], on: true } as const;
+    store.getState().addSection({ plane, offset: '1 mm', flip: false, on: true });
+    store.getState().setSectionBox(box);
+    expect(store.getState().section).toEqual([]);
+    // A box takes no plane beside it.
+    store.getState().addSection({ plane, offset: '1 mm', flip: false, on: true });
+    expect(store.getState().section).toEqual([]);
+    store.getState().updateSectionBox({ on: false });
+    expect(store.getState().sectionBox?.on).toBe(false);
+    // Setting planes removes the box.
+    store.getState().setSection({ plane, offset: '1 mm', flip: false, on: true });
+    expect(store.getState().sectionBox).toBeUndefined();
   });
 
   it('is not touched by the camera or the display settings', () => {

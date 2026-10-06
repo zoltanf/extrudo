@@ -513,7 +513,24 @@ so a new pick path must go through `pickStack`/`pickBox`. The tool is
 Solid › Inspect › Section Analysis (`Shift+S`, session tool `section`,
 panel `SectionPanel`, arrow `SectionOverlay`), the browser has an
 Analysis folder while a section exists, and a selected flat face takes it
-at once ("Section Here" in the context list).
+at once ("Section Here" in the context list). **P4-12 (ADR-0045's amendment)
+made it several planes and a box**: `viewport.section` is a **list** of up to
+three `SectionState`s (`MAX_SECTIONS`; `setSection` still takes one state, read as
+a list of one, plus `addSection`/`updateSection(patch, index)`/`removeSection`)
+and `viewport.sectionBox` (`SectionBoxState`: centre and half-size expressions)
+is exclusive with them (a box counts as six planes; setting one clears the
+other). `useSection` gives `rows` (a plane's state, frame, offset, clip), `box`
+(values in mm) and `clips` (a `readonly SectionClip[]`: every plane, or the box's
+six from `boxClips`); **the view, `PickScene.clip` and the thickness mark take
+the list** (`isClippedAny`: outside any plane is clipped), `capDepth` finds a
+cap per plane only where the other planes keep the crossing, and `SectionCap`
+draws **one cap per plane**: its stencil passes clip by that plane alone (the
+count of faces behind the plane decides "inside the solid") and its quad
+shader discards what the other planes cut (a uniform array). The panel lists
+rows (plane, Offset, Flip, Show, Change, Remove from the second row) with "Add
+plane" and "Box"; `SectionOverlay` has one handle per drawn plane or box face;
+`SectionBoxWire` draws the box's edges. Section Here adds a plane (replaces
+the only one, the last at the limit, a box).
 ADR-0046 (P3-03) added shell: `packages/core/src/shell.ts` (inputs `faces`,
 `bodies` (bodies hollowed closed), `thickness`, `direction` inside/outside:
 `shellSettings`, `shellInputs`), the evaluator
@@ -2499,9 +2516,23 @@ them. Notes further down that name a machine apply to that machine only.
   still "Select other…" (`model-select.spec.ts`).
 - **Section analysis e2e** (`e2e/section.spec.ts`): the Viewport region's
   `data-section` ("origin:xy offset=30 mm on", "… flipped on", "… off",
-  "face:<id> offset=… on"; absent with no section) and `data-section-clip`
-  (the plane while it clips: `0,0,30:0,0,1` = origin, then the unit normal
-  of the **removed** side; absent while off and in sketch mode). The panel
+  "face:<id> offset=… on"; absent with no section; **several sections joined by
+  `;` in the order added**, a box `box=cx,cy,cz:hx,hy,hz on` in mm as evaluated)
+  and `data-section-clip` (the plane while it clips: `0,0,30:0,0,1` = origin,
+  then the unit normal of the **removed** side; absent while off and in sketch
+  mode; one entry per plane joined by `;`, the box's six in the order +x −x +y −y
+  +z −z). **P4-12:** each plane is a `fieldset` `[data-section-index="<n>"]`
+  (legend "Plane 2") holding its own "Offset", "Flip", "Show section", "Change"
+  and, from two rows on, "Remove" (`exact: true`: the footer reads "Remove", or
+  "Remove all" with several rows); the buttons "Add plane" (`exact`) and "Box"
+  (`exact`) switch the choosing state, the panel has `data-section-mode`
+  (`planes`/`box`), the box's textboxes are "Centre X/Y/Z" and "Half-size X/Y/Z"
+  (`exact`), handles are `[data-section-handle="0"|"1"|"2"|"box:+x"…]` and
+  `[data-section-arrow]` (on the overlay's div) lists every arrowhead `x,y;x,y`
+  in drawing order (drag a handle along the line to its arrowhead to grow the
+  cut; the spec's `dragHandle` does it). **Esc closes the panel**: don't press
+  it between clicks. The browser row reads "Section · 2 planes" or "Section ·
+  Box". The panel
   is the region "Section Analysis" (`data-section-state` `choosing`, `lost`,
   `on`, `off`; buttons "XY plane"…, "Change", "Done", "Remove"; textbox
   "Offset" with `exact: true`; checkboxes "Flip" and "Show section"); the
