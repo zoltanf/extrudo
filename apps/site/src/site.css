@@ -3,6 +3,32 @@
 
 @import "./tokens.css";
 
+/* The landing page is dark in every system theme: the pictures are the dark app.
+   tokens.css follows the system setting for the API docs, which share it, so the
+   dark values are put back here, one selector stronger than its light block
+   (docs/05-brand.md). */
+:root:root {
+  color-scheme: dark;
+  --x-bg: #1b1f27;
+  --x-panel: #20252f;
+  --x-raised: #282e3a;
+  --x-line: #343b4a;
+  --x-ink: #e9edf3;
+  --x-muted: #939cad;
+  --x-accent: #ffb23e;
+  --x-on-accent: #15171c;
+  --x-accent-soft: rgb(255 178 62 / 16%);
+  --x-sketch: #5aa9ff;
+  --x-link: var(--x-sketch);
+  --x-glow-muted: #c8cfdb;
+  --x-glow-link: #a4cfff;
+  --x-logo-top: #ffc76a;
+  --x-logo-side: #e0922a;
+  --x-logo-sketch: #5aa9ff;
+  --x-logo-sketch-fill: rgb(90 169 255 / 16%);
+  --x-shadow: 0 24px 60px -24px rgb(0 0 0 / 70%);
+}
+
 *,
 *::before,
 *::after {
@@ -20,9 +46,17 @@ html {
 }
 
 body {
+  position: relative;
   margin: 0;
+  overflow-x: hidden;
+  /* A blue and an amber glow over the dark glow, and the dark behind it all. */
   background:
-    var(--x-glow) no-repeat,
+    radial-gradient(60% 100% at 12% 0%, rgb(90 169 255 / 16%), transparent 70%) 0 0 / 100% 900px
+    no-repeat,
+    radial-gradient(50% 90% at 92% 6%, rgb(255 178 62 / 11%), transparent 70%) 0 0 / 100% 900px
+    no-repeat,
+    radial-gradient(90% 100% at 50% 0%, #3a4766 0%, #262d3b 45%, #1b1f27 80%) 0 0 / 100% 1100px
+    no-repeat,
     var(--x-bg);
   color: var(--x-ink);
   font:
@@ -172,6 +206,7 @@ a:focus-visible {
 }
 
 .hero {
+  position: relative;
   text-align: center;
   padding: 56px 0 32px;
 }
@@ -180,14 +215,80 @@ h1 {
   margin: 0 auto;
   max-width: 16em;
   font-size: clamp(2.1rem, 5.5vw, 3.6rem);
-  line-height: 1.08;
+  line-height: 1.22;
   letter-spacing: -0.03em;
   font-weight: 600;
 }
 
+.hl-sketch,
+.hl-solid {
+  white-space: nowrap;
+}
+
+.hl-solid {
+  color: var(--x-accent);
+}
+
+.hl-sketch {
+  position: relative;
+}
+
+/* "Parametric CAD" is underlined the way a sketch dimension is: dashed, with a dot
+   inside each end, exactly as wide as the words. */
+.hl-sketch::after,
+.hl-sketch::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+
+.hl-sketch::after {
+  bottom: -0.1em;
+  height: 3px;
+  background: repeating-linear-gradient(90deg, var(--x-sketch) 0 11px, transparent 11px 19px);
+}
+
+.hl-sketch::before {
+  bottom: calc(-0.1em - 3.5px);
+  height: 10px;
+  background:
+    radial-gradient(circle 5px at 5px 50%, var(--x-sketch) 96%, transparent) no-repeat,
+    radial-gradient(circle 5px at calc(100% - 5px) 50%, var(--x-sketch) 96%, transparent) no-repeat;
+}
+
+/* The desktop app's announcement, under the headline. */
+.soon {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 0;
+  padding: 5px 14px 5px 5px;
+  border-radius: 999px;
+  border: 1px dashed rgb(90 169 255 / 55%);
+  background: rgb(90 169 255 / 9%);
+  color: var(--x-glow-muted);
+  font-size: 0.92rem;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.soon b {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--x-sketch);
+  color: #10141b;
+  font:
+    600 0.7rem ui-monospace,
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .lead {
   max-width: 36em;
-  margin: 20px auto 0;
+  margin: 14px auto 0;
   color: var(--x-glow-muted);
   font-size: 1.2rem;
 }
@@ -205,8 +306,228 @@ h1 {
 .edge-note a {
   color: var(--x-glow-link);
 }
+/* The hero's toy and the section labels. */
+.hero-text {
+  min-width: 0;
+}
 
-/* The scroll walkthrough (ADR-0057 amendment). Without JavaScript it is a plain
+.toy {
+  margin: 36px 0 0;
+}
+
+.toy svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* The toy needs a script to move, so without one it isn't shown and the hero is
+   the centred text alone. */
+@media (scripting: none) {
+  .toy {
+    display: none;
+  }
+}
+
+@media (min-width: 960px) and (scripting: enabled) {
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 500px);
+    gap: 32px;
+    align-items: center;
+    text-align: left;
+    padding-top: 40px;
+  }
+
+  .hero h1 {
+    margin-left: 0;
+    font-size: clamp(2.1rem, 4.3vw, 3.4rem);
+  }
+
+  .hero .lead {
+    margin-left: 0;
+  }
+
+  .toy {
+    margin: 0;
+  }
+}
+
+.toy-panel {
+  margin: -8px auto 0;
+  max-width: 420px;
+  padding: 12px 16px 14px;
+  border-radius: 14px;
+  background: rgb(40 46 58 / 85%);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--x-line);
+  box-shadow: 0 14px 30px -16px rgb(0 0 0 / 60%);
+  text-align: left;
+}
+
+.toy-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.toy-title svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  color: #ff8a78;
+}
+
+.toy-title output {
+  margin-left: auto;
+  color: var(--x-glow-muted);
+  font:
+    400 0.8rem ui-monospace,
+    monospace;
+}
+
+.toy-row {
+  display: grid;
+  grid-template-columns: 56px 1fr 62px;
+  align-items: center;
+  gap: 12px;
+  font:
+    400 0.85rem ui-monospace,
+    "JetBrains Mono",
+    monospace;
+}
+
+.toy-row + .toy-row {
+  margin-top: 4px;
+}
+
+.toy-row output {
+  text-align: right;
+  color: var(--x-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.toy-row span {
+  color: var(--x-sketch);
+}
+
+.toy-row input {
+  width: 100%;
+  accent-color: var(--x-accent);
+  cursor: grab;
+}
+
+.toy-note {
+  margin: 10px 0 0;
+  text-align: center;
+  color: var(--x-glow-muted);
+  font-size: 0.85rem;
+}
+
+/* A section's label, drawn as a dimension. */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  color: var(--x-sketch);
+  font:
+    600 0.75rem / 1 ui-monospace,
+    "JetBrains Mono",
+    monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.eyebrow::before,
+.eyebrow::after {
+  content: "";
+  width: 40px;
+  height: 11px;
+  background: linear-gradient(var(--x-sketch), var(--x-sketch)) center / 100% 1.5px no-repeat;
+}
+
+.eyebrow::before {
+  border-left: 1.5px solid var(--x-sketch);
+}
+
+.eyebrow::after {
+  border-right: 1.5px solid var(--x-sketch);
+}
+
+/* The decorative doodles beside the hero, where there is room for them. */
+.doodle {
+  display: none;
+}
+
+@media (min-width: 1380px) {
+  .doodle {
+    display: block;
+    position: absolute;
+    pointer-events: none;
+  }
+}
+
+.doodle.a {
+  left: -150px;
+  top: 40px;
+}
+
+.doodle.b {
+  right: -140px;
+  bottom: 10px;
+}
+
+/* The icon sprite (index.html): symbols only, nothing to see. */
+.sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.sprite .f {
+  fill: currentColor;
+  fill-opacity: 0.22;
+}
+
+/* The app's category colours, for the cards' icons and the timeline's chips. */
+.cat-sketch {
+  --cat: #7c9bff;
+}
+
+.cat-solid {
+  --cat: #3dd6a3;
+}
+
+.cat-param {
+  --cat: #ff8a78;
+}
+
+.cat-print {
+  --cat: #ffc93c;
+}
+
+.cat-home {
+  --cat: #3cc7d4;
+}
+
+.cat-open {
+  --cat: #ff7eb6;
+}
+
+.cat-neutral {
+  --cat: #939cad;
+}
+
+/* The scroll stage (ADR-0057 amendment). Without JavaScript the steps are a plain
    list: each step's picture above its caption, 48 px apart. */
 .walkthrough {
   padding: 72px 0 24px;
@@ -243,169 +564,404 @@ h1 {
   color: var(--x-glow-muted);
 }
 
-/* The step counter: a badge on the picture's bottom-right corner, over the app's
-   status bar, so the stage is just the picture. The pictures are always the dark
-   app, so the badge is dark in both themes. */
-.walkthrough-counter {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  z-index: 3;
-  margin: 0;
-  padding: 2px 10px;
-  border-radius: 999px;
-  background: rgb(15 17 22 / 85%);
-  color: #e9edf3;
-  font-size: 0.85rem;
-}
-
-/* Enhanced: the stage shows one picture at a time. The steps keep their own
-   pictures for screen readers, clipped out of sight rather than removed. */
-.walkthrough[data-enhanced] .step img.shot {
+/* Enhanced: the list is for screen readers (it has the pictures' alt texts), and
+   the pinned stage is what is seen. */
+.sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
   margin: -1px;
-  padding: 0;
   overflow: hidden;
-  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
   white-space: nowrap;
-  border: 0;
 }
 
-.walkthrough[data-enhanced] .stage-pictures {
+.walkthrough[data-enhanced] {
+  padding-top: 8px;
+  text-align: center;
+}
+
+.walkthrough[data-enhanced] h2 {
+  margin-bottom: 8px;
+}
+
+.walkthrough[data-enhanced] .walkthrough-lead {
+  margin-bottom: 0;
+}
+
+.scrolly-track {
+  height: calc(var(--steps) * 80vh + 100vh);
+}
+
+.scrolly-pin {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  height: 100vh;
+}
+
+@supports (height: 100svh) {
+  .scrolly-pin {
+    height: 100svh;
+  }
+}
+
+/* The app's window, leaning back below the hero (--tilt, set by the scroll). */
+.hero-shot {
+  position: relative;
+  isolation: isolate;
+  width: min(100%, 1040px, calc((100vh - 300px) * 1.6));
+  margin: 0 auto;
+  perspective: 1600px;
+}
+
+.hero-shot::before {
+  content: "";
+  position: absolute;
+  inset: 10% 2% -6%;
+  z-index: -1;
+  background: linear-gradient(90deg, rgb(90 169 255 / 50%), rgb(255 178 62 / 45%));
+  filter: blur(80px);
+}
+
+.frame {
+  transform: rotateX(calc(var(--tilt, 0) * 1deg)) scale(calc(1 - var(--tilt, 0) * 0.004));
+  transform-origin: 50% 100%;
+  border-radius: 16px;
+  border: 1px solid #4a5670;
+  overflow: hidden;
+  box-shadow:
+    0 40px 90px -30px rgb(0 0 0 / 80%),
+    0 0 0 6px rgb(255 255 255 / 3%);
+  /* The app's own dark background: a frame drawn before a picture would not flash light. */
+  background: #1b1f27;
+}
+
+.frame-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 14px;
+  background: #14171d;
+  border-bottom: 1px solid #2a303c;
+}
+
+.frame-bar i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3a4252;
+}
+
+.frame-bar b {
+  margin: 0 auto;
+  padding: 2px 44px;
+  border-radius: 999px;
+  background: #20252f;
+  color: #939cad;
+  font:
+    400 0.75rem ui-monospace,
+    monospace;
+  transform: translateX(-22px);
+}
+
+.deck {
   position: relative;
   aspect-ratio: 1440 / 900;
-  border-radius: 14px;
-  border: 1px solid var(--x-line);
-  box-shadow: var(--x-shadow);
-  /* The app's own dark background, in both themes: the pictures are the dark app,
-     so even a frame drawn before a picture would not flash light. */
-  background: #1b1f27;
   overflow: hidden;
+  background: #1b1f27;
 }
 
-/* Every picture stays drawn, stacked: the current one on top, the one it replaces
-   right under it, the rest below. Only the incoming picture is clipped, by its
-   sweep. (Hiding the others with a clip made Chrome stop drawing them, and a fast
-   scroll then uncovered a picture it had not drawn yet: the light stage showed.) */
-.walkthrough[data-enhanced] .stage-pictures img.shot {
+.deck img {
   position: absolute;
   inset: 0;
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-  z-index: 0;
+  transform-origin: 0 100%;
+  box-shadow: 0 -30px 60px rgb(0 0 0 / 60%);
+  will-change: transform;
 }
 
-.walkthrough[data-enhanced] .stage-pictures img.shot[data-leaving] {
-  z-index: 1;
+.caption-area {
+  width: 100%;
+  max-width: 620px;
 }
 
-.walkthrough[data-enhanced] .stage-pictures img.shot[data-active] {
-  z-index: 2;
+.walkthrough-counter {
+  margin: 0;
+  color: var(--x-accent);
+  font:
+    600 0.75rem ui-monospace,
+    monospace;
+  letter-spacing: 0.08em;
 }
 
-/* The sweep: up from the bottom edge going forward, down from the top edge going
-   back (walkthrough.ts sets `data-direction`); not on the first paint. */
-.walkthrough[data-enhanced] .stage-pictures[data-ready] img.shot[data-active] {
-  animation: walkthrough-sweep-up 0.6s cubic-bezier(0.65, 0, 0.35, 1) both;
+.captions {
+  display: grid;
 }
 
-.walkthrough[data-enhanced]
-  .stage-pictures[data-ready][data-direction="back"]
-  img.shot[data-active] {
-  animation-name: walkthrough-sweep-down;
+.caption {
+  grid-area: 1 / 1;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(10px);
 }
 
-@keyframes walkthrough-sweep-up {
-  from {
-    clip-path: inset(100% 0 0 0);
+.caption[data-active] {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+}
+
+.caption h3 {
+  margin: 2px 0 4px;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.caption p {
+  margin: 0;
+  color: var(--x-glow-muted);
+}
+
+/* The app's timeline: a chip per feature and the amber marker after the current one. */
+.rail {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 12px;
+  background: rgb(32 37 47 / 85%);
+  border: 1px solid var(--x-line);
+}
+
+.chip {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: clamp(20px, calc((100vw - 56px) / 9 - 8px), 34px);
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: 9px;
+  border: 1.5px solid transparent;
+  background: color-mix(in srgb, var(--cat) 16%, var(--x-bg));
+  color: var(--cat);
+  opacity: 0.35;
+  cursor: pointer;
+}
+
+.chip[data-done] {
+  opacity: 1;
+}
+
+.chip[data-active] {
+  border-color: var(--cat);
+  transform: translateY(-3px);
+}
+
+.chip svg,
+.card-icon svg {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chip svg {
+  width: 62%;
+  height: 62%;
+}
+
+.marker {
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 3px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--x-accent);
+  box-shadow: 0 0 10px var(--x-accent);
+}
+
+/* The cards' icons: the app's own two-tone icons in its category colours. */
+.card-icon {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  margin-bottom: 14px;
+  border-radius: 12px;
+  color: var(--cat);
+  background: color-mix(in srgb, var(--cat) 16%, transparent);
+}
+
+.card-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+/* Motion: all of it is off under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .mark-top,
+  .mark-side {
+    animation: extrude-in 0.8s 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
-  to {
-    clip-path: inset(0);
-  }
-}
 
-@keyframes walkthrough-sweep-down {
-  from {
-    clip-path: inset(0 0 100% 0);
+  .mark-sketch {
+    animation: sketch-in 0.9s both;
   }
-  to {
-    clip-path: inset(0);
+
+  .brand:hover .mark-top,
+  .brand:hover .mark-side {
+    animation: extrude-again 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .hl-sketch::after,
+  .hl-sketch::before {
+    animation: draw 0.9s 0.3s cubic-bezier(0.65, 0, 0.35, 1) both;
+  }
+
+  .doodle {
+    animation: float 7s ease-in-out infinite alternate;
+  }
+
+  .doodle.b {
+    animation-delay: -3s;
+  }
+
+  .button {
+    transition:
+      transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .button.big span {
+    transition: transform 140ms;
+  }
+
+  html.js .cards li:not(.in),
+  html.js .templates:not(.in) {
+    opacity: 0;
+  }
+
+  html.js .cards li.in,
+  html.js .templates.in {
+    animation: reveal 0.6s calc(var(--i, 0) * 70ms) cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+
+  .caption {
+    transition:
+      opacity 0.3s,
+      transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1),
+      visibility 0s 0.3s;
+  }
+
+  .caption[data-active] {
+    transition-delay: 0s;
+  }
+
+  .chip {
+    transition:
+      opacity 0.2s,
+      transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1),
+      border-color 0.2s;
+  }
+
+  .card-icon {
+    transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .cards li:hover .card-icon {
+    transform: rotate(-7deg) scale(1.1);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .walkthrough[data-enhanced] .stage-pictures[data-ready] img.shot[data-active] {
-    animation: none;
+  .frame {
+    transform: none;
   }
 }
 
-@media (min-width: 900px) {
-  .walkthrough[data-enhanced] {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 300px;
-    gap: 40px;
-  }
-
-  .walkthrough[data-enhanced] h2,
-  .walkthrough[data-enhanced] .walkthrough-lead {
-    grid-column: 1 / -1;
-  }
-
-  .walkthrough[data-enhanced] .stage {
-    position: sticky;
-    top: 12vh;
-    align-self: start;
-    grid-column: 1;
-  }
-
-  .walkthrough[data-enhanced] .steps {
-    grid-column: 2;
-  }
-
-  .walkthrough[data-enhanced] .step {
-    display: flex;
-    align-items: center;
-    min-height: 70vh;
-    margin: 0;
-  }
-
-  .walkthrough[data-enhanced] .step:first-child {
-    padding-top: 12vh;
-  }
-
-  .walkthrough[data-enhanced] .step:last-child {
-    padding-bottom: 12vh;
+@keyframes extrude-in {
+  from {
+    transform: translate(-14px, 14px);
+    opacity: 0;
   }
 }
 
-@media (max-width: 899px) {
-  /* Pinned flush to the top, so nothing scrolls into view above the picture and
-     it needs no backdrop of its own. */
-  .walkthrough[data-enhanced] .stage {
-    position: sticky;
-    top: 0;
-    z-index: 1;
+@keyframes extrude-again {
+  from {
+    transform: translate(-14px, 14px);
+    opacity: 0;
   }
+}
 
-  .walkthrough[data-enhanced] .step {
-    display: flex;
-    align-items: center;
-    margin: 0 0 45vh;
-    padding: 14px;
-    background: var(--x-panel);
-    border: 1px solid var(--x-line);
-    border-radius: 14px;
+@keyframes sketch-in {
+  from {
+    stroke-dasharray: 0 112;
+    fill-opacity: 0;
   }
+  to {
+    stroke-dasharray: 3.2 2.6;
+  }
+}
 
-  .walkthrough[data-enhanced] .step:last-child {
-    margin-bottom: 0;
+@keyframes draw {
+  from {
+    clip-path: inset(-4px 100% -4px -6px);
   }
+  to {
+    clip-path: inset(-4px -6px);
+  }
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+}
+
+@keyframes float {
+  to {
+    transform: translateY(-14px) rotate(3deg);
+  }
+}
+
+/* The buttons are little solids: they stand out and press in. */
+.button {
+  box-shadow: 3px 3px 0 #b06f1c;
+}
+
+.button.big {
+  box-shadow: 5px 5px 0 #b06f1c;
+}
+
+.button:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 5px 5px 0 #b06f1c;
+}
+
+.button.big:hover {
+  transform: translate(-3px, -3px);
+  box-shadow: 8px 8px 0 #b06f1c;
+}
+
+.button:active,
+.button.big:active {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 #b06f1c;
+}
+
+.button.big:hover span {
+  transform: translateX(4px);
 }
 
 .shot {
@@ -439,27 +995,47 @@ h2 {
 }
 
 .cards li {
-  padding: 20px 22px;
-  border-radius: 14px;
-  background: var(--x-panel);
+  position: relative;
+  padding: 22px;
+  border-radius: 16px;
+  background: linear-gradient(
+    155deg,
+    color-mix(in srgb, var(--cat) 11%, var(--x-panel)),
+    var(--x-panel) 60%
+  );
   border: 1px solid var(--x-line);
+  transition:
+    transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 200ms,
+    box-shadow 200ms;
+}
+
+.cards li:hover {
+  transform: translateY(-5px);
+  border-color: color-mix(in srgb, var(--cat) 60%, var(--x-line));
+  box-shadow: 0 22px 44px -26px var(--cat);
+}
+
+.cards li:nth-child(2) {
+  --i: 1;
+}
+.cards li:nth-child(3) {
+  --i: 2;
+}
+.cards li:nth-child(4) {
+  --i: 3;
+}
+.cards li:nth-child(5) {
+  --i: 4;
+}
+.cards li:nth-child(6) {
+  --i: 5;
 }
 
 .cards h3 {
   margin: 0 0 8px;
   font-size: 1.1rem;
   font-weight: 600;
-}
-
-.cards h3::before {
-  content: "";
-  display: inline-block;
-  width: 0.5em;
-  height: 0.5em;
-  margin-right: 0.5em;
-  border-radius: 2px;
-  background: var(--x-accent);
-  vertical-align: 0.1em;
 }
 
 .cards p {

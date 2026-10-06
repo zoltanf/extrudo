@@ -4,6 +4,9 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **Landing page: dark only, a parametric toy in the hero, and a pinned
+  scroll stage that deals the nine pictures over each other with the app's timeline
+  under it; a Changelog link in the nav** (ADR-0057 amendment).
 - 2026-10-06 · **P4-12 Extrude and revolve to an object** (ADR-0028 and
   ADR-0029 amendments): Extrude's To object takes a curved face (a cylinder, a
   sphere, a fillet's round, a free-form face) or a whole body as well as a flat

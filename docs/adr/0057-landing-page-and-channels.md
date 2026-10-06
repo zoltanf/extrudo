@@ -280,3 +280,74 @@ unchanged.
 - `e2e/site.spec.ts` checks the list without JavaScript, the stage following
   the scroll (desktop and phone width), reduced motion, and that every picture
   comes from the build; the contrast and axe tests cover the captions.
+
+## Amendment 2026-10-05: dark-only, the toy, the scroll stage
+
+### What
+
+The owner approved a prototype (`prototype.html`, now removed) and it became the
+page:
+
+- **Dark in every system theme.** `meta color-scheme` is `dark`, and `site.css`
+  puts the dark values back with `:root:root` (one selector stronger than
+  `tokens.css`'s light block). `tokens.css` is untouched, because the API docs
+  share it and **keep following the system theme**. The body background is the
+  dark glow with a blue and an amber blob; the toy, cards and pill are built
+  for it.
+- **Static markup.** The headline's two spans, the "Soon" pill (the desktop app
+  is coming), the section labels, the cards' icons (an inline SVG sprite of the
+  app's own icons, referenced with `<use>`), their category colours
+  (`.cat-*` classes) and the doodles are in `index.html`. The site's policy
+  allows no inline styles, so nothing in the HTML or its scripts writes a
+  `style` attribute; scripts only write through the CSSOM
+  (`style.setProperty`, `el.style.transform`), which `style-src 'self'` allows.
+  The top nav has a **Changelog** link between Features and GitHub.
+- **The parametric toy** (`toy-model.ts` pure, `toy.ts` DOM): an isometric tray
+  from width, height and fillet, with the weight Print Info would give it. Its
+  markup, with the default tray drawn and the weight written, is in the page
+  (the build injects `trayMarkup(DEFAULTS)`, so there is no flash and no layout
+  jump); `toy.ts` redraws as a slider moves. The sliders are named ("width",
+  "height", "fillet radius") with a `aria-valuetext`; the idle "breathing"
+  stops on the first pointer, key or `input` event, pauses off screen, and never
+  runs under reduced motion. Without scripting (`@media (scripting: none)`) the
+  toy is hidden and the hero is the centred text.
+- **The scroll stage replaces the sticky side-by-side walkthrough.** The app's
+  window (a browser frame) leans back below the hero and stands up as it pins;
+  the scroll position deals the nine pictures over each other like a deck; the
+  caption sits under it, and the app's timeline under that (a chip per step,
+  the amber marker between the chips, a chip jumps to its step). The list of
+  nine figures stays in the HTML, **visually hidden but read by screen readers**
+  (it has the alt texts); the stage is `aria-hidden`. `data-active-step`,
+  `aria-current="step"`, `[data-walkthrough-stage]`, `img[data-step]` with
+  `data-active` and `[data-walkthrough-counter]` ("Step n of 9") keep the
+  old vocabulary. Pictures are fetched and decoded when the section is within a
+  screen of the viewport, and **the deck never deals past the first picture
+  that isn't decoded** (Chrome paints an undecoded picture's area empty). Under
+  reduced motion there is no tilt and no scrubbing: the picture swaps at once.
+- **Motion** (blueprint grid, the logo's sketch-then-extrude, the dashed
+  underline, solid buttons that press in, scroll reveals) is plain CSS and off
+  under `prefers-reduced-motion`; reveals hide content only under
+  `html.js` and `no-preference`, so it is visible without scripting.
+
+### Rejected
+
+- **Keeping the light theme.** The nine pictures are the dark app: in a light
+  page they were dark rectangles, and every colour (the amber headline, the
+  glow, the cards) was designed on dark. Two themes also doubled the contrast
+  work. The docs pages keep both.
+- **A separate hero screenshot.** The first picture of the stage is the empty
+  app and the stage already sits under the hero, tilted: a second picture would
+  show the same window twice.
+- **Building the toy and cards at runtime** (the prototype did). Content in the
+  HTML is there without a script, for crawlers and for reduced-motion readers.
+- **A `style` attribute for the card colours.** The policy forbids it; classes do it.
+
+### Consequences
+
+- `e2e/site.spec.ts` checks the stage on desktop and phone, the plain list
+  without JavaScript, reduced motion, every picture from the build, the toy
+  (keyboard and mouse), its breathing, the Changelog link, the Soon pill, that
+  the page is dark under a light system theme and the docs are not, and keeps
+  the contrast measurement and the axe audit under both system themes.
+- The contrast test hides the headline's dashed underline while it measures:
+  it hangs into the next line's text box without touching a glyph.

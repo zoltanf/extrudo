@@ -29,11 +29,20 @@ test.afterEach(async () => {
 const heading = (page: Page) =>
   page.getByRole('heading', { name: 'Parametric CAD for 3D printing, in your browser.' });
 
-/** Scrolls a walkthrough step to the middle of the viewport (the line the observer watches). */
-function scrollToStep(page: Page, n: number) {
-  return page.evaluate(
-    `document.querySelector('li.step[data-step="${n}"]').scrollIntoView({ block: 'center' })`,
-  );
+/**
+ * Scrolls to where step `n`'s picture rests on the pinned stage (ADR-0057
+ * amendment, 2026-10-05): the track is `n - 0.4` stretches long and each step's
+ * picture rests for the first 0.4 of its stretch. `extra` moves on from there, in
+ * steps (3.75 is three quarters of the way from step 4 to step 5).
+ */
+function scrollToStep(page: Page, n: number, extra = 0.2) {
+  return page.evaluate(`(() => {
+    const track = document.querySelector('.scrolly-track');
+    const pin = track.querySelector('.scrolly-pin');
+    const span = track.offsetHeight - pin.offsetHeight;
+    const top = scrollY + track.getBoundingClientRect().top;
+    scrollTo({ top: top + (${n - 1} + ${extra}) / (9 - 0.4) * span, behavior: 'instant' });
+  })()`);
 }
 
 /** A computed style property of the first element matching `selector`, as a string. */
@@ -44,25 +53,23 @@ function computed(page: Page, selector: string, property: string) {
 }
 
 /**
- * The stage's stack (ADR-0057 amendment): every picture stays drawn and the
- * active one sits on top by `z-index`, so this reads which pictures are marked
- * active, the highest `z-index` and which picture that belongs to.
+ * The deck: which pictures are marked active, and the transform of the active one
+ * (`none` while it rests, a matrix while it is being dealt in).
  */
-function stageStack(page: Page) {
+function deck(page: Page) {
   return page.evaluate(`(() => {
     const images = Array.from(document.querySelectorAll('[data-walkthrough-stage] img[data-step]'));
-    const z = (image) => Number(getComputedStyle(image).zIndex);
-    const top = Math.max(...images.map(z));
+    const active = images.filter((image) => image.hasAttribute('data-active'));
     return {
-      active: images.filter((image) => image.hasAttribute('data-active')).map((image) => image.dataset.step),
-      top: images.filter((image) => z(image) === top).map((image) => image.dataset.step),
+      active: active.map((image) => image.dataset.step),
+      transform: active[0] ? getComputedStyle(active[0]).transform : null,
     };
-  })()`) as Promise<{ active: string[]; top: string[] }>;
+  })()`) as Promise<{ active: string[]; transform: string | null }>;
 }
 
-/** Asserts that step `n` is the one picture marked active and the top of the stack. */
-async function expectOnTop(page: Page, n: number) {
-  await expect.poll(() => stageStack(page)).toEqual({ active: [String(n)], top: [String(n)] });
+/** Asserts that step `n` is the one picture marked active and that it rests. */
+async function expectResting(page: Page, n: number) {
+  await expect.poll(() => deck(page)).toEqual({ active: [String(n)], transform: 'none' });
 }
 
 /**
@@ -111,7 +118,7 @@ test('the landing page leads to the app, shows the walkthrough and keeps to its 
     'href',
     'https://edge.extrudo.org/',
   );
-  // The walkthrough shows the app itself: its first picture is in the build, not a placeholder.
+  // The stage shows the app itself: its first picture is in the build, not a placeholder.
   const first = page.locator('[data-walkthrough-stage] img[data-step="1"]');
   await expect(first).toBeVisible();
   await expect
@@ -130,8 +137,9 @@ test('the landing page leads to the app, shows the walkthrough and keeps to its 
   expect(errors).toEqual([]);
 });
 
-test('the walkthrough follows the scroll', async ({ page }) => {
-  // ADR-0057 amendment: the nine pictures change as the captions cross the viewport's middle.
+test('the scroll stage follows the scroll', async ({ page }) => {
+  // ADR-0057 amendment: the app's window is pinned and the scroll position deals the
+  // nine pictures over each other; the list of figures stays for screen readers.
   await page.goto(`${host.url}/`);
   const section = page.locator('[data-walkthrough]');
   await expect(section).toHaveAttribute('data-enhanced', '');
@@ -143,33 +151,74 @@ test('the walkthrough follows the scroll', async ({ page }) => {
     await expect(step.locator('h3')).not.toBeEmpty();
     await expect(step.locator('img.shot')).toHaveAttribute('alt', /./);
   }
+  // The list is out of sight but not out of the accessibility tree; the stage is the
+  // other way round.
+  const box = await section.locator('ol.steps').boundingBox();
+  expect(box?.width ?? 99).toBeLessThanOrEqual(1);
+  await expect(section.locator('[data-walkthrough-stage]')).toHaveAttribute('aria-hidden', 'true');
+  await expect(section.locator('[data-walkthrough-stage] .chip')).toHaveCount(9);
+  expect(
+    await page.evaluate(
+      `Array.from(document.querySelectorAll('[data-walkthrough-stage] .chip')).every((chip) => chip.tabIndex === -1)`,
+    ),
+  ).toBe(true);
+  // The window leans back below the hero and stands up once it is pinned.
+  await expect.poll(() => computed(page, '.hero-shot', '--tilt')).toBe('12');
+  await expect(page.locator('.scrolly-pin')).toBeVisible();
   for (const n of [1, 4, 9]) {
     await scrollToStep(page, n);
     await expect.poll(() => section.getAttribute('data-active-step')).toBe(String(n));
     await expect(section.locator('[data-walkthrough-counter]')).toHaveText(`Step ${n} of 9`);
     await expect(section.locator('li.step[aria-current="step"]')).toHaveCount(1);
     await expect(steps.nth(n - 1)).toHaveAttribute('aria-current', 'step');
-    await expectOnTop(page, n);
+    await expectResting(page, n);
+    await expect(section.locator('.caption[data-active] h3')).toHaveText(
+      (await steps
+        .nth(n - 1)
+        .locator('h3')
+        .textContent()) ?? '',
+    );
+    await expect(section.locator('.chip[data-active]')).toHaveCount(1);
+    await expect.poll(() => computed(page, '.hero-shot', '--tilt')).toBe('0');
   }
+  // The picture is dealt in with the scroll: a quarter of the way to step 5 it is
+  // still on its way, and scrolling back deals it away again.
+  await scrollToStep(page, 4, 0.85);
+  await expect.poll(async () => (await deck(page)).active).toEqual(['5']);
+  expect((await deck(page)).transform).not.toBe('none');
+  await scrollToStep(page, 4);
+  await expectResting(page, 4);
+  // A chip of the timeline jumps to its step.
+  await section.locator('[data-walkthrough-stage] .chip').nth(6).click();
+  await expect.poll(() => section.getAttribute('data-active-step')).toBe('7');
+  await expectResting(page, 7);
 });
 
-test('the walkthrough works on a phone', async ({ page }) => {
+test('the scroll stage works on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto(`${host.url}/`);
   const section = page.locator('[data-walkthrough]');
   await expect(section).toHaveAttribute('data-enhanced', '');
-  // The stage sticks at the top and the captions scroll under it.
-  await expect.poll(() => computed(page, '[data-walkthrough-stage]', 'position')).toBe('sticky');
+  // The stage sticks to the screen; the timeline fits it and the page doesn't scroll sideways.
+  await expect.poll(() => computed(page, '.scrolly-pin', 'position')).toBe('sticky');
   for (const n of [1, 5, 9]) {
     await scrollToStep(page, n);
     await expect.poll(() => section.getAttribute('data-active-step')).toBe(String(n));
     await expect(section.locator('[data-walkthrough-counter]')).toHaveText(`Step ${n} of 9`);
     await expect(section.locator('li.step[aria-current="step"]')).toHaveCount(1);
-    await expectOnTop(page, n);
+    await expectResting(page, n);
+    const rail = await section.locator('.rail').boundingBox();
+    expect(rail?.x ?? -1).toBeGreaterThanOrEqual(0);
+    expect((rail?.x ?? 0) + (rail?.width ?? 999)).toBeLessThanOrEqual(375);
+    const frame = await section.locator('.hero-shot').boundingBox();
+    expect((frame?.x ?? 0) + (frame?.width ?? 999)).toBeLessThanOrEqual(375);
   }
+  expect(await page.evaluate('document.documentElement.scrollWidth')).toBeLessThanOrEqual(375);
+  await section.locator('.chip').nth(2).click();
+  await expect.poll(() => section.getAttribute('data-active-step')).toBe('3');
 });
 
-test('the walkthrough is a plain list without JavaScript', async ({ browser }) => {
+test('the steps are a plain list without JavaScript', async ({ browser }) => {
   const context = await browser.newContext({
     javaScriptEnabled: false,
     viewport: { width: 1280, height: 860 },
@@ -187,73 +236,151 @@ test('the walkthrough is a plain list without JavaScript', async ({ browser }) =
     const box = await shots.nth(n).boundingBox();
     expect(box?.height ?? 0).toBeGreaterThan(100);
   }
+  // The hero is the text alone (the toy needs a script), and the cards are all there.
+  await expect(heading(page)).toBeVisible();
+  await expect(page.locator('[data-toy]')).toBeHidden();
+  await expect(page.locator('.cards li').first()).toBeVisible();
+  expect(await computed(page, '.cards li', 'opacity')).toBe('1');
   await context.close();
 });
 
-test('the walkthrough sweeps between pictures, and not under reduced motion', async ({ page }) => {
-  // ADR-0057 amendment: the incoming picture is revealed by a clip-path sweep (up going
-  // forward, down going back), which starts once the stage is `data-ready`; the first
-  // paint has none. Reduced motion swaps the pictures without it.
-  const active = '[data-walkthrough-stage] img[data-active]';
-  const ready = '[data-walkthrough-stage] [data-ready]';
+test('the stage deals no partial pictures and does not tilt under reduced motion', async ({
+  page,
+}) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto(`${host.url}/`);
-  await expect(page.locator('[data-walkthrough]')).toHaveAttribute('data-enhanced', '');
-  await expect(page.locator(ready)).toHaveCount(1);
-  await expect.poll(() => computed(page, active, 'animation-name')).toBe('none');
-  await expect.poll(() => computed(page, active, 'animation-duration')).toBe('0s');
-  // The swap still happens.
-  await scrollToStep(page, 4);
-  await expectOnTop(page, 4);
-  await expect.poll(() => computed(page, active, 'animation-name')).toBe('none');
-
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.reload();
-  await expect(page.locator('[data-walkthrough]')).toHaveAttribute('data-enhanced', '');
-  await expect(page.locator(ready)).toHaveCount(1);
-  await expect.poll(() => computed(page, active, 'animation-name')).toBe('walkthrough-sweep-up');
-  await expect.poll(() => computed(page, active, 'animation-duration')).toBe('0.6s');
-  // Going forward sweeps up, going back sweeps down.
-  const pictures = page.locator('[data-walkthrough-stage] .stage-pictures');
-  await scrollToStep(page, 4);
-  await expectOnTop(page, 4);
-  await expect(pictures).toHaveAttribute('data-direction', 'forward');
-  await scrollToStep(page, 1);
-  await expectOnTop(page, 1);
-  await expect(pictures).toHaveAttribute('data-direction', 'back');
-  await expect.poll(() => computed(page, active, 'animation-name')).toBe('walkthrough-sweep-down');
-});
-
-test('every walkthrough picture comes from the build', async ({ page }) => {
   await page.goto(`${host.url}/`);
   const section = page.locator('[data-walkthrough]');
   await expect(section).toHaveAttribute('data-enhanced', '');
-  for (let n = 1; n <= 9; n++) {
-    await scrollToStep(page, n);
-    await expect.poll(() => section.getAttribute('data-active-step')).toBe(String(n));
-  }
-  // Lazy pictures load as their step is reached; give them a moment.
+  await expect.poll(() => computed(page, '.hero-shot', '--tilt')).toBe('0');
+  expect(await computed(page, '.frame', 'transform')).toBe('none');
+  // The picture swaps at once: three quarters of the way to step 5 it already rests
+  // there, where the scrubbing deck would still be dealing it.
+  await scrollToStep(page, 4, 0.85);
+  await expectResting(page, 5);
+  await scrollToStep(page, 4, 0.3);
+  await expectResting(page, 4);
   await expect
-    .poll(
-      () =>
-        page.evaluate(
-          `Array.from(document.querySelectorAll('[data-walkthrough] img.shot')).every((img) => img.naturalWidth > 0)`,
-        ),
-      { timeout: 15_000 },
-    )
-    .toBe(true);
+    .poll(() => computed(page, '.caption[data-active]', 'transition-duration'))
+    .toBe('0s');
+});
+
+test('every stage picture comes from the build', async ({ page }) => {
+  await page.goto(`${host.url}/`);
+  const section = page.locator('[data-walkthrough]');
+  await expect(section).toHaveAttribute('data-enhanced', '');
+  // Reaching the last step needs every picture decoded, since the deck never deals
+  // past one that isn't ready.
+  await scrollToStep(page, 9);
+  await expect.poll(() => section.getAttribute('data-active-step'), { timeout: 15_000 }).toBe('9');
   const sources = (await page.evaluate(`(() => {
     const out = [];
-    for (const img of document.querySelectorAll('[data-walkthrough] img.shot')) {
+    for (const img of document.querySelectorAll('[data-walkthrough-stage] img[data-step]')) {
       out.push({ src: img.currentSrc, width: img.naturalWidth });
     }
     return out;
   })()`)) as { src: string; width: number }[];
-  expect(sources).toHaveLength(18);
+  expect(sources).toHaveLength(9);
   for (const { src, width } of sources) {
     expect(src.startsWith(`${host.url}/assets/`)).toBe(true);
     expect(width).toBeGreaterThan(0);
   }
+});
+
+test('the toy redraws the tray and the weight as a slider moves', async ({ page }) => {
+  const policy = await watchPolicy(page);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto(`${host.url}/`);
+  const drawing = page.locator('[data-toy-drawing]');
+  const weight = page.locator('[data-toy-weight]');
+  // The default tray is in the page, drawn, before the script has a say.
+  await expect(drawing).toContainText('width 80');
+  await expect(weight).toHaveText(/^≈ \d+\.\d g of PLA$/);
+  const before = await drawing.innerHTML();
+  const grams = async () => Number(/[\d.]+/.exec((await weight.textContent()) ?? '')?.[0]);
+  const light = await grams();
+
+  // The sliders have names, and the keyboard moves them.
+  const width = page.getByRole('slider', { name: 'width' });
+  await expect(page.getByRole('slider', { name: 'height' })).toBeVisible();
+  await expect(page.getByRole('slider', { name: 'fillet radius' })).toBeVisible();
+  await width.focus();
+  await page.keyboard.press('End');
+  await expect(width).toHaveValue('120');
+  await expect(drawing).toContainText('width 120');
+  await expect(width).toHaveAttribute('aria-valuetext', '120 mm');
+  expect(await drawing.innerHTML()).not.toBe(before);
+  expect(await grams()).toBeGreaterThan(light);
+
+  // A drag along the fillet slider's track changes the radius label and the weight.
+  const fillet = page.getByRole('slider', { name: 'fillet radius' });
+  const box = await fillet.boundingBox();
+  if (!box) throw new Error('no fillet slider');
+  const mid = await grams();
+  await page.mouse.move(box.x + box.width * 0.33, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  expect(Number(await fillet.inputValue())).toBeGreaterThan(14);
+  await expect(drawing).toContainText(`R${await fillet.inputValue()}`);
+  expect(await grams()).toBeLessThan(mid);
+  expect(policy.errors).toEqual([]);
+  expect(await policy.violations()).toEqual([]);
+});
+
+test('the toy breathes until it is touched, and not under reduced motion', async ({ page }) => {
+  const width = page.getByRole('slider', { name: 'width' });
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto(`${host.url}/`);
+  await expect.poll(() => width.inputValue()).not.toBe('80');
+  // The first touch stops it.
+  await width.focus();
+  await page.keyboard.press('Home');
+  await expect(width).toHaveValue('40');
+  await page.waitForTimeout(700);
+  await expect(width).toHaveValue('40');
+
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.reload();
+  await expect(width).toHaveValue('80');
+  await page.waitForTimeout(1200);
+  await expect(width).toHaveValue('80');
+});
+
+test('the page has a Changelog link and says the desktop app is coming', async ({ page }) => {
+  await page.goto(`${host.url}/`);
+  const nav = page.getByRole('navigation', { name: 'Site' });
+  await expect(nav.getByRole('link')).toHaveText([
+    'Features',
+    'Changelog',
+    'GitHub',
+    'Open Extrudo',
+  ]);
+  await expect(nav.getByRole('link', { name: 'Changelog' })).toHaveAttribute(
+    'href',
+    'https://github.com/zoltanf/extrudo/blob/main/docs/CHANGELOG.md',
+  );
+  await expect(page.locator('.soon')).toContainText(
+    'Coming to a computer near you: a full offline app for Linux, macOS and Windows.',
+  );
+  await expect(page.locator('.soon b')).toHaveText('Soon');
+  // The headline keeps its exact words, in its two highlighted spans.
+  await expect(page.locator('h1 .hl-sketch')).toHaveText('Parametric CAD');
+  await expect(page.locator('h1 .hl-solid')).toHaveText('3D printing');
+});
+
+test('the landing page is dark under a light system theme, the docs are not', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto(`${host.url}/`);
+  await expect(heading(page)).toBeVisible();
+  await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute('content', 'dark');
+  expect(await computed(page, ':root', 'color-scheme')).toBe('dark');
+  expect(await computed(page, 'body', 'color')).toBe('rgb(233, 237, 243)');
+  expect(await computed(page, ':root', '--x-bg')).toBe('#1b1f27');
+  // The API docs share the tokens and keep following the system.
+  await page.goto(`${host.url}/docs/api/`);
+  expect(await computed(page, ':root', 'color-scheme')).toBe('light');
+  await page.emulateMedia({ colorScheme: 'dark' });
+  expect(await computed(page, ':root', 'color-scheme')).toBe('dark');
 });
 
 test("Cloudflare Web Analytics runs under the landing page's content policy", async ({ page }) => {
@@ -509,7 +636,9 @@ const TEXT_BOXES = `(() => {
       if (Number.isFinite(o)) opacity *= o;
       if (opacity === 0) break;
     }
-    out.push({ text: text.slice(0, 48), colour: style.color, rects,
+    // SVG text (the toy's labels) is painted with fill, not color.
+    const colour = element instanceof SVGElement ? style.fill : style.color;
+    out.push({ text: text.slice(0, 48), colour, rects,
       opacity,
       large: size >= 24 || (bold && size >= 18.66) });
   }
@@ -520,10 +649,14 @@ const TEXT_BOXES = `(() => {
 // text. Through the CSSOM, which the site's content policy allows (an injected <style>
 // would not be).
 const HIDE_TEXT = `(() => {
+  // The headline's dashed underline hangs below "Parametric CAD" into the box of the
+  // next line's text (it never touches a glyph there), so it is left out of the picture.
+  document.styleSheets[0].insertRule('.hl-sketch::before, .hl-sketch::after { display: none !important }');
   for (const element of document.querySelectorAll('*')) {
     element.style.setProperty('color', 'transparent', 'important');
     element.style.setProperty('-webkit-text-fill-color', 'transparent', 'important');
     element.style.setProperty('text-shadow', 'none', 'important');
+    if (element instanceof SVGTextElement) element.style.setProperty('fill', 'transparent', 'important');
   }
 })()`;
 
@@ -578,7 +711,8 @@ test('every text on the landing page meets WCAG AA contrast against what is pain
   // judging it (see the audit below), and that is where the hero and the nav sit. So
   // this measures the real pixels: every glyph made transparent, a screenshot, and each
   // text's own colour against the lightest and the darkest pixel behind its line boxes.
-  // AA is 4.5:1, or 3:1 for large text (24 px, or 18.66 px bold).
+  // AA is 4.5:1, or 3:1 for large text (24 px, or 18.66 px bold). The page is dark
+  // under both system themes (ADR-0057 amendment, 2026-10-05), and both are measured.
   test.setTimeout(90_000);
   const failures: {
     scheme: string;
@@ -641,8 +775,10 @@ test('every text on the landing page meets WCAG AA contrast against what is pain
   expect(failures, 'text under WCAG AA contrast against its painted background').toEqual([]);
 });
 
-test('the landing page passes an axe audit in both themes', async ({ page }) => {
-  // NFR-07, like e2e/a11y.spec.ts for the app: WCAG 2.1 A and AA, both colour schemes.
+test('the landing page passes an axe audit under both system themes', async ({ page }) => {
+  // NFR-07, like e2e/a11y.spec.ts for the app: WCAG 2.1 A and AA. The page is dark
+  // whatever the system theme (ADR-0057 amendment, 2026-10-05); both schemes are
+  // emulated to prove it.
   // This is a net for the rules axe can judge; it deliberately does **not** judge text
   // over the body's gradient (`--x-glow`), which it reports as *incomplete* instead of
   // passing or failing, so the measurement of every text against its painted

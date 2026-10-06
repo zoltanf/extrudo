@@ -81,12 +81,14 @@ Names map 1:1 to CSS custom properties (`--x-*`) in
 | `on-accent` | `#15171C` | `#15171C` | Text on accent (dark in both themes: white on light amber fails contrast) |
 | `accent-soft` | amber at 16% | amber at 14% | Active tool background, selected rows |
 | `sketch` | `#5AA9FF` | `#2F86F0` | Sketch geometry (under-constrained), sketch profiles, info |
-| `link` (landing page) | `#5AA9FF` | `#1A6AD0` | Text links on the landing page; the light `sketch` blue is 3.6:1 on white, under WCAG AA for text |
-| `glow-muted` (landing page) | `#C8CFDB` | = `muted` | Grey text on the hero's glow (nav links, the intro, the latest-build note): 4.7:1 even at the glow's brightest point, where `muted` is 2.9:1 |
-| `glow-link` (landing page) | `#A4CFFF` | = `link` | Links on the hero's glow: 4.6:1 at its brightest point, where `sketch` is 3.1:1 |
+| `link` (landing page, API docs) | `#5AA9FF` | `#1A6AD0` | Text links on the landing page; the light `sketch` blue is 3.6:1 on white, under WCAG AA for text |
+| `glow-muted` (landing page, API docs) | `#C8CFDB` | = `muted` | Grey text on the hero's glow (nav links, the intro, the latest-build note): 4.7:1 even at the glow's brightest point, where `muted` is 2.9:1 |
+| `glow-link` (landing page, API docs) | `#A4CFFF` | = `link` | Links on the hero's glow: 4.6:1 at its brightest point, where `sketch` is 3.1:1 |
 | `success` | `#3DD68C` | `#1B9E5E` | Saved, OK status, feature ✓ |
 | `warning` | `#F2C14E` | `#B7791F` | Feature ⚠, fallback reference |
 | `error` | `#FF6B6B` | `#D93D3D` | Feature ✕, conflicts, destructive actions |
+
+**The landing page is dark only** (ADR-0057 amendment, 2026-10-05): its pictures are the dark app, so it ignores the system theme and uses the dark column. The light values of `link`, `glow-muted` and `glow-link` (and of every token in `apps/site/src/tokens.css`) now serve the API docs pages only, which still follow the system theme.
 
 ### 3.3 Tool categories (icons, timeline chips)
 

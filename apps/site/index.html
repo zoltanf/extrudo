@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark light" />
+    <meta name="color-scheme" content="dark" />
     <title>Extrudo: parametric CAD for 3D printing, in your browser</title>
     <meta
       name="description"
@@ -30,6 +30,19 @@
     <script type="module" src="/src/main.ts"></script>
   </head>
   <body>
+    <svg class="sprite" aria-hidden="true" focusable="false">
+      <symbol id="i-sketch" viewBox="0 0 24 24"><rect x="3" y="8" width="13" height="13" rx="2.5" stroke-dasharray="3 2.6" /><path class="f" d="M12.6 17.4 13.5 13.6 19.7 4.9A1.7 1.7 0 0 1 22.1 4.5 1.7 1.7 0 0 1 22.5 6.9L16.3 15.6Z" /></symbol>
+      <symbol id="i-extrude" viewBox="0 0 24 24"><path class="f" d="M4 14.5 12 10.5 20 14.5 12 18.5Z" /><path d="M4 14.5V18.5L12 22.5 20 18.5V14.5M12 18.5V22.5" /><path d="M12 2.5V8.5M9 5.5 12 2.5 15 5.5" /></symbol>
+      <symbol id="i-customizer" viewBox="0 0 24 24"><path d="M3.5 6.5H20.5M3.5 12H20.5M3.5 17.5H20.5" /><circle class="f" cx="8" cy="6.5" r="2.4" /><circle class="f" cx="15.5" cy="12" r="2.4" /><circle class="f" cx="11" cy="17.5" r="2.4" /></symbol>
+      <symbol id="i-print" viewBox="0 0 24 24"><rect class="f" x="7" y="3" width="10" height="8" rx="1.5" /><path d="M12 13V17M10 15 12 17 14 15" /><path d="M3 20.5H21" /></symbol>
+      <symbol id="i-home" viewBox="0 0 24 24"><path class="f" d="M4 11 12 4l8 7v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5Z" /><path d="M9.5 21v-6h5v6" /></symbol>
+      <symbol id="i-open" viewBox="0 0 24 24"><path d="M8 7 3 12l5 5M16 7l5 5-5 5" /><circle class="f" cx="12" cy="12" r="2.6" /></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></symbol>
+      <symbol id="i-sketch-plane" viewBox="0 0 24 24"><rect class="f" x="3.5" y="6" width="17" height="12" rx="1" /><path d="M12 12 20.5 6" stroke-dasharray="3 2.6" /><circle cx="12" cy="12" r="1.6" /></symbol>
+      <symbol id="i-shell" viewBox="0 0 24 24"><path class="f" d="M3 8 12 4 21 8V17L12 21 3 17Z" /><path d="M7 9.5 12 7.3 17 9.5V15.3L12 17.5 7 15.3Z" /></symbol>
+      <symbol id="i-pattern" viewBox="0 0 24 24"><rect class="f" x="3" y="3" width="7.5" height="7.5" rx="1.6" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" stroke-dasharray="2.4 2" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" stroke-dasharray="2.4 2" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" stroke-dasharray="2.4 2" /></symbol>
+      <symbol id="i-fillet" viewBox="0 0 24 24"><path class="f" d="M4 4H20V12.5A7.5 7.5 0 0 1 12.5 20H4Z" /><path d="M20 16V20H16" stroke-dasharray="1.6 2.2" /></symbol>
+    </svg>
     <a class="skip" href="#main">Skip to content</a>
     <header class="top">
       <a class="brand" href="/" aria-label="Extrudo home">
@@ -46,6 +59,7 @@
       </a>
       <nav aria-label="Site">
         <a href="#features">Features</a>
+        <a href="https://github.com/zoltanf/extrudo/blob/main/docs/CHANGELOG.md">Changelog</a>
         <a href="https://github.com/zoltanf/extrudo">GitHub</a>
         <a class="button small" href="__APP_URL__/">Open Extrudo</a>
       </nav>
@@ -53,27 +67,63 @@
 
     <main id="main">
       <section class="hero" aria-labelledby="hero-title">
-        <h1 id="hero-title">Parametric CAD for 3D printing, in your browser.</h1>
-        <p class="lead">
-          Sketch a profile, pull it into a solid, round the edges, and change one number to watch
-          the whole part follow. Free and open source. Nothing to install, no account.
-        </p>
-        <p class="actions">
-          <a class="button big" href="__APP_URL__/" data-open-app>Open Extrudo <span aria-hidden="true">→</span></a>
-        </p>
-        <p class="edge-note">
-          Want the newest features before they're released?
-          <a href="__EDGE_URL__/">Try the latest build</a>. It changes daily and can break.
-        </p>
+        <div class="hero-text">
+          <h1 id="hero-title"><span class="hl-sketch">Parametric CAD</span> for <span class="hl-solid">3D printing</span>, in your browser.</h1>
+          <p class="soon">
+            <b>Soon</b> Coming to a computer near you: a full offline app for Linux, macOS and
+            Windows.
+          </p>
+          <p class="lead">
+            Sketch a profile, pull it into a solid, round the edges, and change one number to watch
+            the whole part follow. Free and open source. Nothing to install, no account.
+          </p>
+          <p class="actions">
+            <a class="button big" href="__APP_URL__/" data-open-app>Open Extrudo <span aria-hidden="true">→</span></a>
+          </p>
+          <p class="edge-note">
+            Want the newest features before they're released?
+            <a href="__EDGE_URL__/">Try the latest build</a>. It changes daily and can break.
+          </p>
+        </div>
+        <figure class="toy" data-toy>
+          <svg viewBox="0 0 540 400" role="img" aria-label="A tray that follows the sliders below">
+            <defs>
+              <filter id="toy-blur" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9" /></filter>
+              <radialGradient id="toy-fade-g"><stop offset=".35" stop-color="#fff" /><stop offset="1" stop-color="#000" /></radialGradient>
+              <mask id="toy-fade"><rect width="540" height="400" fill="url(#toy-fade-g)" /></mask>
+            </defs>
+            <g data-toy-drawing fill="none">__TOY_DRAWING__</g>
+          </svg>
+          <div class="toy-panel">
+            <p class="toy-title">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-customizer" /></svg>
+              Customizer <output data-toy-weight aria-live="off">__TOY_WEIGHT__</output>
+            </p>
+            <label class="toy-row"><span aria-hidden="true">width</span><input type="range" min="40" max="120" value="80" data-p="width" aria-label="width" aria-valuetext="80 mm" /><output aria-live="off">80 mm</output></label>
+            <label class="toy-row"><span aria-hidden="true">height</span><input type="range" min="8" max="50" value="28" data-p="height" aria-label="height" aria-valuetext="28 mm" /><output aria-live="off">28 mm</output></label>
+            <label class="toy-row"><span aria-hidden="true">fillet</span><input type="range" min="0" max="24" value="8" data-p="fillet" aria-label="fillet radius" aria-valuetext="8 mm" /><output aria-live="off">8 mm</output></label>
+          </div>
+          <figcaption class="toy-note">Design once, use parameters for unlimited variations (example of a solid)</figcaption>
+        </figure>
+        <svg class="doodle a" width="120" height="120" viewBox="0 0 120 120" aria-hidden="true" fill="none" stroke="#5aa9ff" stroke-width="2">
+          <circle cx="56" cy="60" r="38" stroke-dasharray="6 5" fill="#5aa9ff" fill-opacity=".08" />
+          <path d="M50 60h12M56 54v12" /><path d="M18 60h-8M94 60h16" stroke-width="1.5" />
+          <text x="84" y="26" fill="#5aa9ff" stroke="none" font-family="ui-monospace,monospace" font-size="13">Ø24</text>
+        </svg>
+        <svg class="doodle b" width="110" height="110" viewBox="0 0 64 64" aria-hidden="true">
+          <path fill="#ffc76a" d="M10 24 24 10H52L38 24Z" /><path fill="#e0922a" d="M38 24 52 10V38L38 52Z" />
+          <rect x="10" y="24" width="28" height="28" rx="1" fill="#f0a640" />
+        </svg>
       </section>
 
       <section class="walkthrough" data-walkthrough aria-labelledby="walkthrough-title">
+        <p class="eyebrow">9 steps</p>
         <h2 id="walkthrough-title">A box for a circuit board, step by step</h2>
         <p class="walkthrough-lead">
           Scroll through a real session: every picture is the app itself.
         </p>
         <ol class="steps">
-          <li class="step" data-step="1">
+          <li class="step" data-step="1" data-icon="plus">
             <figure>
               <img
                 class="shot"
@@ -95,7 +145,7 @@
               </figcaption>
             </figure>
           </li>
-          <li class="step" data-step="2">
+          <li class="step" data-step="2" data-icon="sketch-plane">
             <figure>
               <img
                 class="shot"
@@ -117,7 +167,7 @@
               </figcaption>
             </figure>
           </li>
-          <li class="step" data-step="3">
+          <li class="step" data-step="3" data-icon="extrude">
             <figure>
               <img
                 class="shot"
@@ -139,7 +189,7 @@
               </figcaption>
             </figure>
           </li>
-          <li class="step" data-step="4">
+          <li class="step" data-step="4" data-icon="shell">
             <figure>
               <img
                 class="shot"
@@ -161,7 +211,7 @@
               </figcaption>
             </figure>
           </li>
-          <li class="step" data-step="5">
+          <li class="step" data-step="5" data-icon="sketch">
             <figure>
               <img
                 class="shot"
@@ -183,7 +233,7 @@
               </figcaption>
             </figure>
           </li>
-          <li class="step" data-step="6">
+          <li class="step" data-step="6" data-icon="extrude">
             <figure>
               <img
                 class="shot"
@@ -202,7 +252,7 @@
               </figcaption>
             </figure>
           </li>
-          <li class="step" data-step="7">
+          <li class="step" data-step="7" data-icon="pattern">
             <figure>
               <img
                 class="shot"
@@ -224,7 +274,7 @@
               </figcaption>
             </figure>
           </li>
-          <li class="step" data-step="8">
+          <li class="step" data-step="8" data-icon="fillet">
             <figure>
               <img
                 class="shot"
@@ -246,7 +296,7 @@
               </figcaption>
             </figure>
           </li>
-          <li class="step" data-step="9">
+          <li class="step" data-step="9" data-icon="customizer">
             <figure>
               <img
                 class="shot"
@@ -272,9 +322,11 @@
       </section>
 
       <section id="features" class="features" aria-labelledby="features-title">
+        <p class="eyebrow">Features</p>
         <h2 id="features-title">What it does</h2>
         <ul class="cards">
-          <li>
+          <li class="cat-sketch">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sketch" /></svg></span>
             <h3>Sketch with constraints</h3>
             <p>
               Lines, arcs, circles, slots and splines snap into place with automatic constraints and
@@ -282,7 +334,8 @@
               something contradicts.
             </p>
           </li>
-          <li>
+          <li class="cat-solid">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-extrude" /></svg></span>
             <h3>Real solids</h3>
             <p>
               Extrude, revolve, fillet, chamfer, shell, holes and patterns on exact geometry: real
@@ -290,7 +343,8 @@
               the printer.
             </p>
           </li>
-          <li>
+          <li class="cat-param">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-customizer" /></svg></span>
             <h3>Parameters everywhere</h3>
             <p>
               Every number takes an expression with units, like <code>wall * 1.5 + 2 mm</code>.
@@ -298,7 +352,8 @@
               go.
             </p>
           </li>
-          <li>
+          <li class="cat-print">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-print" /></svg></span>
             <h3>Made for printing</h3>
             <p>
               Lay a face flat on the bed, see overhangs, get the weight and filament length, and
@@ -306,14 +361,16 @@
               started.
             </p>
           </li>
-          <li>
+          <li class="cat-home">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-home" /></svg></span>
             <h3>Yours, offline too</h3>
             <p>
               Designs stay on your own machine. It works offline once it has loaded, and you can
               install it from the browser's menu like an app.
             </p>
           </li>
-          <li>
+          <li class="cat-open">
+            <span class="card-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-open" /></svg></span>
             <h3>Free and open source</h3>
             <p>
               GPL-3.0, built in the open. The <code>.extrudo</code> file format is documented and
@@ -325,6 +382,7 @@
 
       <section class="templates" aria-labelledby="templates-title">
         <div class="templates-text">
+          <p class="eyebrow">Get started</p>
           <h2 id="templates-title">Start from a template, or take the tour</h2>
           <p>
             A five-step tour walks you through your first part: a sketch, a dimension, an extrude

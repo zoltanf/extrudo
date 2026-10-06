@@ -819,7 +819,17 @@ app's old service worker** at extrudo.org (skipWaiting, delete caches,
 unregister, reload; handles the old app's `SKIP_WAITING`), and `#/<route>` links
 go on to the app. The walkthrough's nine pictures
 (`apps/site/src/images/walkthrough/`) are recorded from the real app
-(`pnpm demos -g walkthrough`, `e2e/record-assets.spec.ts`).
+(`pnpm demos -g walkthrough`, `e2e/record-assets.spec.ts`). **The amendment of
+2026-10-05 made the landing page dark only** (`site.css` re-declares the dark
+tokens with `:root:root`; `tokens.css` and the API docs still follow the system
+theme), put its content in `index.html` (no runtime DOM building; **no `style`
+attribute anywhere**: category colours are `.cat-*` classes, icons an SVG sprite
+used with `<use>`, scripts write only through the CSSOM), added **the parametric
+toy** in the hero (`toy-model.ts` pure and unit-tested, `toy.ts`; the build writes
+the default tray into the page) and **a pinned scroll stage** instead of the sticky
+side-by-side walkthrough (`walkthrough.ts`: the app's window tilted below the
+hero, the scroll deals the nine pictures like a deck, a timeline rail of chips with
+the amber marker; the `ol` of figures stays, visually hidden, for screen readers).
 ADR-0055 (P4-01) added **Sweep, Loft and Coil** (core `sweep.ts`, `loft.ts`,
 `coil.ts`; kernel `features/sweep.ts`, `loft.ts`, `coil.ts`; dialogs of the
 same names in Solid › Create's menu, no keys; all three patternable). The
@@ -2313,14 +2323,28 @@ them. Notes further down that name a machine apply to that machine only.
   (`pnpm build`): the specs read `apps/web/dist`.
 - **Landing page e2e** (`e2e/site.spec.ts`, ADR-0057): serves `apps/site/dist`
   (fresh `pnpm build` builds it with the app) through `startStaticHost`; the
-  heading "Parametric CAD for 3D printing, in your browser.", links "Open Extrudo"
-  (`[data-open-app]`, `https://app.extrudo.org/`) and "Try the latest build", the
-  walkthrough. `[data-walkthrough]` gains `data-enhanced` when `walkthrough.ts`
-  runs; it builds `[data-walkthrough-stage] img[data-step][data-active]`, a
-  `[data-walkthrough-counter]` ("Step n of 9") and a `.progress span`, from the
-  `li.step[data-step]` list, and sets `data-active-step` (`aria-current="step"`)
-  as each step crosses the viewport's middle; a test drives it with
-  `scrollIntoView({ block: 'center' })`. `StaticHost.serve(dir)` switches the host's build
+  heading "Parametric CAD for 3D printing, in your browser." (spans `.hl-sketch`
+  and `.hl-solid`), the nav's links (Features, Changelog, GitHub, Open Extrudo),
+  the `.soon` pill, links "Open Extrudo" (`[data-open-app]`,
+  `https://app.extrudo.org/`) and "Try the latest build", the scroll stage.
+  `[data-walkthrough]` gains `data-enhanced` when `walkthrough.ts` runs; it builds
+  `.scrolly-track` > `[data-walkthrough-stage]` (the pinned, `aria-hidden` stage:
+  `img[data-step]` with `data-active` on the current one, `.caption[data-active]`,
+  `[data-walkthrough-counter]` "Step n of 9", `.chip`s with `data-active`/`data-done`
+  and the `.marker`) from the `li.step[data-step]` list, which stays as a
+  visually hidden `ol` (width 1 px) with `aria-current="step"` on the current item
+  and `data-active-step` on the section. **A test drives the scroll position**: the
+  track is `n - 0.4` stretches long and a step's picture rests for the first 0.4 of
+  its stretch (`scrollToStep(page, n, extra)` in the spec scrolls with
+  `behavior: 'instant'`, since the page has `scroll-behavior: smooth`); a resting
+  picture's computed `transform` is `none`, a half-dealt one's a matrix; the
+  stage's `--tilt` is 12 below the hero and 0 pinned or under reduced motion; a
+  chip's click scrolls to its step. The deck never deals past a picture that
+  isn't decoded, so reaching step 9 proves all nine loaded. **The toy** is
+  `[data-toy]` (`[data-toy-drawing]`, `[data-toy-weight]`, sliders named "width",
+  "height", "fillet radius"; hidden without scripting): the tests use the keyboard
+  (End/Home) and a mouse drag, and the breathing stops on the first `input`.
+  `StaticHost.serve(dir)` switches the host's build
   (the app first, its worker installed, then the site): the retiring `sw.js`
   sometimes waits behind the open tab, and the old app's update toast (Reload)
   sends `SKIP_WAITING`; the spec takes that path when the page didn't switch by
@@ -2334,9 +2358,15 @@ them. Notes further down that name a machine apply to that machine only.
   behind it" makes every glyph transparent (through the CSSOM: the policy refuses
   an injected `<style>`), screenshots the page and reads the pixels behind each
   text box in a blank page of its own (a data-URL image on a canvas, 2 px inside
-  the box, the 2nd/98th luminance percentile), in both themes at 1280 and 375 px:
-  axe calls text over the body's gradient *incomplete*. Text on the hero's glow
-  takes `--x-glow-muted`/`--x-glow-link` (`apps/site/src/tokens.css`).
+  the box, the 2nd/98th luminance percentile), under both system themes at 1280
+  and 375 px (the page is dark in both): axe calls text over the body's gradient
+  *incomplete*. SVG text (the toy's labels) is read by `fill`, and the headline's
+  dashed underline is hidden for the measurement (it hangs into the next line's
+  box). Text on the hero's glow takes `--x-glow-muted`/`--x-glow-link`
+  (`apps/site/src/tokens.css`); **a hidden caption is `visibility: hidden`, not
+  just `opacity: 0`**, or the test (which counts any translucent text as a failure)
+  reports it. "The landing page is dark under a light system theme, the docs are
+  not" proves the split.
   **Docs site e2e** (ADR-0068 §6, the same spec): the footer's "API docs" link
   (`[data-api-docs]`, `/docs/api/`), the docs index's sidebar (`nav[aria-label="API
   docs"]`, with a "Create" group) and a feature page's inputs table (`table th`:
