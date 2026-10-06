@@ -283,7 +283,15 @@ face; default XY) + `x`/`y` in its sketch frame + `offset` (+ a box's
 `namedRevolve` (names like `box:<id>:side:front`, `cylinder:<id>:side:wall`,
 `sphere:<id>:side:surface`), no facade primitives. A dialog whose pick
 field accepts `plane` gets Create Sketch's plane-or-face picker
-(`features/planePicker.ts`) instead of the model selection. ADR-0034
+(`features/planePicker.ts`) instead of the model selection. **P4-12's
+amendment (2026-10-06)** gave every primitive dialog **position handles**
+(`positionManipulators`: X from the plane's origin along its X, Y from there
+along its Y to the centre, Offset along the normal up to the base; after the
+size handles in `data-manipulators`), a **click-to-place** (`placeAt`:
+`primitivePlaceAt`, X and Y from the click in the plane's frame, as the
+hole's) and the Box's **Two corners** button (`features/primitiveCorners.tsx`,
+a `spec.extra`; its marks are `cornersStore`, drawn through the view's
+calibration marks): torus placement options stay deferred. ADR-0034
 (P2-12) added export: facade `exportMesh` (meshes a
 `BRepBuilderAPI_Copy` at the export's deflection, so the display
 triangulation is untouched, and welds nodes through each edge's
@@ -2040,7 +2048,16 @@ them. Notes further down that name a machine apply to that machine only.
   `data-model-selection`/`-hover` are absent; click origin planes at world
   points with x ≥ 0, y ≤ 0, z ≥ 0 inside the square (view size × 0.16) in
   the home view, where no other plane is in front, and faces the same way.
-  The kernel golden table updates with `pnpm vitest run -u
+  **P4-12:** that click also sets X and Y to the point (a face click lands within
+  about a millimetre of the projected point: don't assert tighter), the dialogs'
+  handles are `[data-manipulator-handle="x"|"y"|"offset"]` (`cx`/`cy` in view px;
+  heads that meet are lifted 14 px by the overlay, so a head can sit 14 px off
+  where its value says), and the Box's **"Two corners"** button carries
+  `[data-corners]` (`off`, `0`, `1`: the corners marked); the next two clicks on
+  the plane set X, Y, Length and Width (the height stays; a turned box goes back
+  to 0°) and disarm; Esc with focus in the dialog disarms. The right side of the
+  home view is under the dialog: pick points with a negative y of about
+  −0.2 h or more. The kernel golden table updates with `pnpm vitest run -u
   packages/kernel/src/features/primitives`.
 - **Export e2e** (`e2e/export-3d.spec.ts`): the dialog is `dialog`
   "Export model"; bodies are checkboxes by name, formats radios

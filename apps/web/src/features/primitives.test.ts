@@ -13,14 +13,17 @@ import {
   type Vec3,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { dialogPlanePick, dialogPlanePicker } from './planePicker';
+import { armCorners, corners, disarmCorners, footprintOf } from './primitiveCorners';
 import {
   boxDialog,
   PRIMITIVE_DIALOGS,
   placementFrame,
+  positionManipulators,
   primitiveFrame,
   primitiveManipulators,
+  primitivePlaceAt,
   proposePrimitive,
   sphereDialog,
   torusDialog,
@@ -281,19 +284,148 @@ describe('where a primitive sits and its handles', () => {
       'distance:width',
       'distance:height',
       'angle:rotation',
+      'distance:x',
+      'distance:y',
+      'distance:offset',
     ]);
     expect(box[0]).toMatchObject({ direction: [1, 0, 0], scale: 0.5 });
     expect(box[2]).toMatchObject({ direction: [0, -1, 0] });
     expect(box[3]).toMatchObject({ axis: [0, -1, 0], zero: [1, 0, 0] });
     const torus = on('torus', { diameter: 40 });
-    expect(torus.map((m) => m.field)).toEqual(['diameter', 'tube']);
+    expect(torus.map((m) => m.field)).toEqual(['diameter', 'tube', 'x', 'y', 'offset']);
     expect((torus[1] as { origin: Vec3 }).origin).toEqual([20, 0, 0]);
-    expect(on('sphere', {}).map((m) => m.field)).toEqual(['diameter']);
-    expect(on('cylinder', {}).map((m) => m.field)).toEqual(['diameter', 'height']);
+    expect(on('sphere', {}).map((m) => m.field)).toEqual(['diameter', 'x', 'y', 'offset']);
+    expect(on('cylinder', {}).map((m) => m.field)).toEqual([
+      'diameter',
+      'height',
+      'x',
+      'y',
+      'offset',
+    ]);
     // No plane, no handles.
     expect(
       primitiveManipulators('box', values('box', { refs: { plane: [] } }), withValues()),
     ).toEqual([]);
+  });
+});
+
+describe('the position handles', () => {
+  const distance = (m: unknown) =>
+    m as { field: string; origin: Vec3; direction: Vec3; lift?: number };
+
+  it('walk from the plane’s origin to a box’s base centre on XY', () => {
+    const xy = placementFrame(originPlaneRef('origin:xy'), { bodies });
+    if (!xy) throw new Error('no frame');
+    const [mx, my, mo] = positionManipulators(
+      'box',
+      xy,
+      withValues({ x: 10, y: -5, offset: 3 }),
+    ).map(distance);
+    expect([mx?.field, my?.field, mo?.field]).toEqual(['x', 'y', 'offset']);
+    expect(mx && [round(mx.origin), round(mx.direction)]).toEqual([
+      [0, 0, 0],
+      [1, 0, 0],
+    ]);
+    expect(my && [round(my.origin), round(my.direction)]).toEqual([
+      [10, 0, 0],
+      [0, 1, 0],
+    ]);
+    expect(mo && [round(mo.origin), round(mo.direction)]).toEqual([
+      [10, -5, 0],
+      [0, 0, 1],
+    ]);
+    expect([mx?.lift, my?.lift, mo?.lift]).toEqual([undefined, undefined, undefined]);
+  });
+
+  it('follow a tilted plane’s frame', () => {
+    const s = Math.SQRT1_2;
+    const tilted = {
+      origin: [0, 0, 5] as Vec3,
+      x: [1, 0, 0] as Vec3,
+      y: [0, s, s] as Vec3,
+      normal: [0, -s, s] as Vec3,
+    };
+    const [mx, my, mo] = positionManipulators(
+      'box',
+      tilted,
+      withValues({ x: 2, y: 10, offset: 4 }),
+    ).map(distance);
+    const r = Math.round(Math.SQRT1_2 * 1000) / 1000;
+    expect(mx && round(mx.direction)).toEqual([1, 0, 0]);
+    expect(my && round(my.origin)).toEqual([2, 0, 5]);
+    expect(my && round(my.direction)).toEqual([0, r, r]);
+    expect(mo && round(mo.origin)).toEqual([2, 7.071, 12.071]);
+    expect(mo && round(mo.direction)).toEqual([0, -r, r]);
+  });
+
+  it('lift a head that lands on an earlier one', () => {
+    const xy = placementFrame(originPlaneRef('origin:xy'), { bodies });
+    if (!xy) throw new Error('no frame');
+    const lifts = positionManipulators('box', xy, withValues({})).map((m) => distance(m).lift);
+    // At the origin all three heads meet: 0, one lift, two lifts.
+    expect(lifts).toEqual([undefined, 14, 28]);
+    const apart = positionManipulators('box', xy, withValues({ x: 5, y: 5, offset: 5 }));
+    expect(apart.map((m) => distance(m).lift)).toEqual([undefined, undefined, undefined]);
+  });
+});
+
+describe('placing by a click', () => {
+  const ctx = withValues({});
+  afterEach(disarmCorners);
+
+  it('puts a world point on the plane into X and Y in the plane’s frame', () => {
+    const placed = primitivePlaceAt(
+      'cylinder',
+      [12.5, 3, 7],
+      values('cylinder', { refs: { plane: [XZ] } }),
+      ctx,
+    );
+    // The XZ plane's X is world X and its Y is world Z.
+    expect(placed).toEqual({ exprs: { x: '12.5 mm', y: '7 mm' } });
+    expect(
+      primitivePlaceAt('box', [1, 1, 1], values('box', { refs: { plane: [] } }), ctx),
+    ).toBeUndefined();
+  });
+
+  it('takes two clicks as a box’s corners while armed, then disarms', () => {
+    const box = values('box', { refs: { plane: [XZ] } });
+    armCorners('d1');
+    expect(primitivePlaceAt('box', [10, 0, 5], box, ctx)).toBeUndefined();
+    expect(corners().points).toHaveLength(1);
+    expect(primitivePlaceAt('box', [-10, 0, -5], box, withValues({ rotation: 30 }))).toEqual({
+      exprs: { x: '0 mm', y: '0 mm', length: '20 mm', width: '10 mm', rotation: '0 deg' },
+    });
+    expect(corners().dialog).toBeUndefined();
+  });
+});
+
+describe('the two-corner maths', () => {
+  const xy = {
+    origin: [0, 0, 0] as Vec3,
+    x: [1, 0, 0] as Vec3,
+    y: [0, 1, 0] as Vec3,
+    normal: [0, 0, 1] as Vec3,
+  };
+
+  it('gives the centre and the sides in either order', () => {
+    const want = { footprint: { x: 15, y: 5, length: 10, width: 20 } };
+    expect(footprintOf([10, -5, 0], [20, 15, 0], xy)).toEqual(want);
+    expect(footprintOf([20, 15, 0], [10, -5, 0], xy)).toEqual(want);
+    expect(footprintOf([20, -5, 0], [10, 15, 0], xy)).toEqual(want);
+  });
+
+  it('works in the plane’s frame and rounds to 0.01 mm', () => {
+    const xz = placementFrame(XZ, { bodies });
+    if (!xz) throw new Error('no frame');
+    expect(footprintOf([0.004, 0, 0], [10.136, 0, 3.337], xz)).toEqual({
+      footprint: { x: 5.07, y: 1.67, length: 10.13, width: 3.34 },
+    });
+  });
+
+  it('refuses two corners that share a side', () => {
+    const refused = footprintOf([1, 1, 0], [9, 1, 0], xy);
+    expect(refused).toEqual({ error: expect.stringContaining('opposite corners') });
+    expect(footprintOf([1, 1, 0], [1.004, 5, 0], xy)).toHaveProperty('error');
   });
 });
 

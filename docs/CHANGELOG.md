@@ -4,6 +4,11 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 Primitives: placement** (ADR-0032 amendment): every
+  primitive dialog has X, Y and Offset handles beside the size handles, a click
+  on the picked plane or face puts the primitive there, and the Box has a "Two
+  corners" button (two clicks on its plane set centre, length and width). Torus
+  placement options stay open.
 - 2026-10-05 · **P5-06 Wall-thickness check** (ADR-0072, FR-3DP-07): walls
   thinner than a minimum are found before exporting. Thickness is measured on
   the display mesh, per triangle, by a ray from its centroid along the inward

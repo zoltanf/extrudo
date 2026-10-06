@@ -37,6 +37,7 @@ import type { ToolId } from '../shell/tools';
 import { isFlatFace } from '../sketch/facePick';
 import { faceFrame } from './geometry';
 import { cross } from './manipulate';
+import { BoxCorners, corners, markCorner } from './primitiveCorners';
 import {
   type DialogContext,
   type DialogField,
@@ -148,6 +149,12 @@ function primitiveDialog(type: PrimitiveType): FeatureDialogSpec {
     },
     propose: (values, ctx) => proposePrimitive(type, values, ctx),
     manipulators: (values, ctx) => primitiveManipulators(type, values, ctx),
+    placeAt: (world, values, ctx) => primitivePlaceAt(type, world, values, ctx),
+    // While a box's two corners are being picked the clicks are the corners, not planes.
+    ...(type === 'box' && {
+      placeAtOnly: () => corners().dialog !== undefined,
+      extra: BoxCorners,
+    }),
     previewStyle: (values) =>
       PREVIEW_STYLE[(values.choices.operation ?? 'new-body') as BodyOperation] ?? 'new',
   });
@@ -214,10 +221,17 @@ export function primitiveFrame(
   return { frame: { origin, x, y: cross(plane.normal, x), normal: plane.normal }, plane };
 }
 
+/** How far apart (px) handles that land on one spot are drawn. */
+const HANDLE_LIFT = 14;
+
 /**
  * Arrows for the sizes (a box's length and width and every diameter from
  * the centre, reaching half the size; heights along the normal from the
- * base) and a box's rotation arc about the normal.
+ * base), a box's rotation arc about the normal, then the position handles
+ * (P4-12): X along the plane's X from the plane's origin, Y along its Y from
+ * there to the centre, Offset along the normal from the plane up to the
+ * primitive's base (so the chain's last head is the base centre). A head
+ * that lands where an earlier position head is gets `lift`.
  */
 export function primitiveManipulators(
   type: PrimitiveType,
@@ -235,23 +249,97 @@ export function primitiveManipulators(
     direction,
     ...(reach !== 1 && { scale: reach }),
   });
+  let sizes: Manipulator[];
   switch (type) {
     case 'box':
-      return [
+      sizes = [
         arrow('length', x, origin, 0.5),
         arrow('width', y, origin, 0.5),
         arrow('height', normal),
         { kind: 'angle', field: 'rotation', origin, axis: normal, zero: plane.x },
       ];
+      break;
     case 'cylinder':
-      return [arrow('diameter', x, origin, 0.5), arrow('height', normal)];
+      sizes = [arrow('diameter', x, origin, 0.5), arrow('height', normal)];
+      break;
     case 'sphere':
-      return [arrow('diameter', x, origin, 0.5)];
+      sizes = [arrow('diameter', x, origin, 0.5)];
+      break;
     case 'torus': {
       const ring = along(origin, x, numberValue(type, ctx, 'diameter') / 2);
-      return [arrow('diameter', x, origin, 0.5), arrow('tube', x, ring, 0.5)];
+      sizes = [arrow('diameter', x, origin, 0.5), arrow('tube', x, ring, 0.5)];
+      break;
     }
   }
+  return [...sizes, ...positionManipulators(type, plane, ctx)];
+}
+
+/** The X, Y and Offset arrows of a primitive on `plane` (see `primitiveManipulators`). */
+export function positionManipulators(
+  type: PrimitiveType,
+  plane: SketchFrame,
+  ctx: Pick<ManipulatorContext, 'value'>,
+): Manipulator[] {
+  const v = (name: string) => numberValue(type, ctx, name);
+  const start = plane.origin;
+  const foot = along(start, plane.x, v('x'));
+  const centre = along(foot, plane.y, v('y'));
+  const specs: [string, Vec3, Vec3, number][] = [
+    ['x', start, plane.x, v('x')],
+    ['y', foot, plane.y, v('y')],
+    ['offset', centre, plane.normal, v('offset')],
+  ];
+  const heads: Vec3[] = [];
+  return specs.map(([field, origin, direction, value]) => {
+    const head = along(origin, direction, value);
+    const stacked = heads.filter((h) => dist(h, head) < 1e-3).length;
+    heads.push(head);
+    return {
+      kind: 'distance',
+      field,
+      origin,
+      direction,
+      ...(stacked > 0 && { lift: HANDLE_LIFT * stacked }),
+    };
+  });
+}
+
+/**
+ * A click on the plane or face the dialog's Plane field picks places the
+ * primitive there (as a hole's, ADR-0049): X and Y become the point in the
+ * plane's frame. While a box's two corners are being picked the click is a
+ * corner instead, and the second one sets the box's centre and footprint
+ * (a turned box is put back to 0°, which is what the sides are measured on).
+ */
+export function primitivePlaceAt(
+  type: PrimitiveType,
+  world: Vec3,
+  values: DialogValues,
+  ctx: Pick<ManipulatorContext, 'bodies' | 'construction' | 'value'>,
+): Partial<DialogValues> | undefined {
+  const frame = placementFrame(values.refs.plane?.[0], ctx);
+  if (!frame) return undefined;
+  if (type === 'box' && corners().dialog !== undefined) {
+    const f = markCorner(world, frame);
+    if (!f) return undefined;
+    const turned = (ctx.value('rotation') ?? 0) !== 0;
+    return {
+      exprs: {
+        x: mm2(f.x),
+        y: mm2(f.y),
+        length: mm2(f.length),
+        width: mm2(f.width),
+        ...(turned && { rotation: '0 deg' }),
+      },
+    };
+  }
+  const [x, y] = worldToSketch(frame, world);
+  return { exprs: { x: mm(x), y: mm(y) } };
+}
+
+/** A length as an expression of two decimals at most: "12.5 mm". */
+function mm2(value: number): string {
+  return `${value} mm`;
 }
 
 /**
@@ -300,6 +388,7 @@ function mm(value: number): string {
 
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const scale = (v: Vec3, s: number): Vec3 => [v[0] * s, v[1] * s, v[2] * s];
+const dist = (a: Vec3, b: Vec3) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 const along = (o: Vec3, d: Vec3, t: number): Vec3 => add(o, scale(d, t));
 
 function unit(v: Vec3): Vec3 {

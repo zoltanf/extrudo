@@ -172,11 +172,51 @@ for an origin plane.
 
 ## Open
 
-- Position handles (drag the centre in the plane), and a click point on
-  the face as the centre instead of the face's centroid.
+- ~~Position handles (drag the centre in the plane), and a click point on
+  the face as the centre instead of the face's centroid.~~ Done 2026-10-06
+  (amendment below).
 - ~~Construction planes (P3-05) as `plane` references with frames.~~ Done in
   P3-05 (`planeOf`, ADR-0040).
 - The dialog's Plane field keeps the origin planes on screen while it is
   the pick field, even after a plane is picked.
-- Fusion's torus position option (inside / on centre / outside) and a box
-  from two corners.
+- Fusion's torus position option (inside / on centre / outside) — still open
+  (a box from two corners: done, amendment below).
+
+## Amendment 2026-10-06: placement by handle and click (P4-12)
+
+No kernel, facade, schema or file-format change; all in `apps/web/src/features/`.
+
+- **Position handles.** `positionManipulators` (in `primitives.ts`) appends
+  three `distance` arrows to every type's handles: `x` from the plane's origin
+  along the plane's sketch-frame X, `y` from there (the foot at X) along the
+  frame's Y, and `offset` from the centre point on the plane up the normal.
+  A `distance` arrow's value is the distance from its origin, so the chain is
+  how all three can stay ordinary arrows with no new manipulator kind; the
+  chain's last head is the primitive's base centre, where the size arrows
+  start. The frame is `placementFrame` (origin plane, construction plane or the
+  face's sketch frame), so a tilted plane works. A head that lands on an
+  earlier one of the three gets `lift` (14 px, 28 for a third); the overlay's own
+  near-head lift covers the size heads. The sizes' handles are unchanged and
+  come first in `data-manipulators`.
+- **Click to place.** `placeAt` on every primitive spec (`primitivePlaceAt`):
+  the click on the picked plane or face sets X and Y to the point in the plane's
+  frame (three decimals, as the hole's) and, as for the hole, the click adds the
+  plane rather than toggling it. A face click no longer centres the primitive on
+  the face's centroid; the centre is still what is proposed when a face is
+  picked some other way (selected before the tool, the pick field's own button).
+- **A box from two corners.** The Box dialog's "Two corners" button
+  (`primitiveCorners.tsx`, `spec.extra`; its state `cornersStore`, like the
+  canvas's calibration) arms the next two clicks on the box's plane: they stay
+  out of the plane field (`placeAtOnly`) and set X and Y (the centre), Length
+  and Width, as `N mm` strings to 0.01 mm (an unambiguous unit, as Calibrate
+  writes `width`). The first corner is drawn with the calibration marks
+  (`[data-corners]` = `off`, `0`, `1`); the second disarms. Height stays; **a
+  turned box is put back to 0°** (the sides are measured on the plane's own
+  axes), and a pair that doesn't differ by 0.01 mm in both directions makes no
+  box: the panel says why and waits for a new first corner. Esc with focus in
+  the dialog disarms (not the dialog); the button toggles too.
+- **Rejected:** a delta-based move arrow (a `distance` handle writes the
+  distance from its own origin, and a new manipulator kind is more machinery
+  than a chain of three arrows needs).
+- **Still deferred:** the torus placement options (inside / on centre /
+  outside), the roadmap bullet keeps them.

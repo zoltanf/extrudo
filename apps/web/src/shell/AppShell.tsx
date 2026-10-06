@@ -51,6 +51,7 @@ import { pickImportFile } from '../features/import';
 import { pickName } from '../features/pickName';
 import { dialogPlanePick, dialogPlanePicker } from '../features/planePicker';
 import { PRESS_PULL, PRESS_PULL_PROMPT, pressPullTarget } from '../features/pressPull';
+import { cornersStore } from '../features/primitiveCorners';
 import { type FeatureDialogs, featureDialogs, specForCommand } from '../features/registry';
 import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs';
 import { analyticItem } from '../measure/analytic';
@@ -1119,7 +1120,10 @@ export function AppShell({
     };
   }, []);
   // The two points a canvas calibration marked, drawn in the view (ADR-0066 §5).
-  const calibration = useStore(calibrationStore, (s) => s.points);
+  const calibrationPoints = useStore(calibrationStore, (s) => s.points);
+  // A box's first corner is marked the same way (P4-12); only one of the two is ever running.
+  const cornerPoints = useStore(cornersStore, (s) => s.points);
+  const calibration = calibrationPoints.length > 0 ? calibrationPoints : cornerPoints;
   // An open feature dialog's picks are what the view shows selected (a revolve's axis line,
   // the bodies in the browser).
   const shownSelection = dialogItems ?? selection;

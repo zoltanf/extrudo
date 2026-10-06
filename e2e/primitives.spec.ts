@@ -75,6 +75,23 @@ async function clickAt(
   await page.mouse.click(x, y);
 }
 
+/** A dialog's number field as a plain number (mm), read blurred. */
+async function numberOf(dialog: Locator, name: string) {
+  const field = dialog.getByRole('textbox', { name, exact: true });
+  await field.blur();
+  return Number((await field.inputValue()).replace(/[^\d.-]/g, ''));
+}
+
+/** A manipulator handle's centre in page px. */
+async function handle(viewport: Locator, field: string) {
+  const circle = viewport.locator(`[data-manipulator-handle="${field}"]`);
+  const box = await viewport.boundingBox();
+  return {
+    x: (box?.x ?? 0) + Number(await circle.getAttribute('cx')),
+    y: (box?.y ?? 0) + Number(await circle.getAttribute('cy')),
+  };
+}
+
 test('places a box, a cylinder, a sphere and a torus on the origin planes', async ({ page }) => {
   const viewport = await openProject(page);
   await kernelReady(page);
@@ -116,7 +133,7 @@ test('places a box, a cylinder, a sphere and a torus on the origin planes', asyn
   await expect(viewport).toHaveAttribute('data-preview', 'new');
   await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
     'data-manipulators',
-    'distance:length distance:width distance:height angle:rotation',
+    'distance:length distance:width distance:height angle:rotation distance:x distance:y distance:offset',
   );
   await box.getByRole('textbox', { name: 'Length' }).fill('40 mm');
   await page.screenshot({ path: test.info().outputPath('box-preview.png') });
@@ -155,7 +172,11 @@ test('sits on a body’s face, joins and cuts, and follows the face when the bod
   const plane = cylinder.getByRole('button', { name: 'Plane', exact: true });
   await expect(plane).toHaveText('1 face');
   await expect(cylinder.getByRole('combobox', { name: 'Operation' })).toHaveValue('join');
-  await expect(cylinder.getByRole('textbox', { name: 'X', exact: true })).toHaveValue('0 mm');
+  // The click places the cylinder where it was made (P4-12), not at the face's centre.
+  // (A face click lands within a millimetre of the projected point in this view.)
+  await expect.poll(async () => Math.abs((await numberOf(cylinder, 'X')) - 5)).toBeLessThan(1.5);
+  await cylinder.getByRole('textbox', { name: 'X', exact: true }).fill('0 mm');
+  await cylinder.getByRole('textbox', { name: 'Y', exact: true }).fill('0 mm');
   await cylinder.getByRole('textbox', { name: 'Diameter' }).fill('10 mm');
   await cylinder.getByRole('textbox', { name: 'Height' }).fill('10 mm');
   await expect(viewport).toHaveAttribute('data-preview', 'join', { timeout: 15_000 });
@@ -215,4 +236,95 @@ test('sits on a body’s face, joins and cuts, and follows the face when the bod
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:13:20,20,45');
   await page.keyboard.press('Control+z');
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:13:20,20,30');
+});
+
+test('a click on the picked plane places the primitive, and the X handle drags it', async ({
+  page,
+}) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  const at = await settledProjector(viewport);
+  const h = await planeHalf(viewport);
+
+  const box = await start(page, 'Box');
+  // The plane field is picking: a click on the XY plane's square sets X and Y to that point.
+  await clickAt(page, at, [h * 0.5, -h * 0.5, 0]);
+  await expect(box.getByRole('button', { name: 'Plane', exact: true })).toHaveText('XY plane');
+  await expect.poll(() => numberOf(box, 'X')).toBeCloseTo(h * 0.5, 0);
+  expect(await numberOf(box, 'Y')).toBeCloseTo(-h * 0.5, 0);
+  await expect(box).toHaveAttribute('data-preview-status', 'ok');
+
+  // The position handles are listed with the size handles.
+  await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
+    'data-manipulators',
+    /distance:x distance:y distance:offset/,
+  );
+  // Drag the X handle 20 mm along the plane's X: the field follows (it snaps, so a little off).
+  const head = await handle(viewport, 'x');
+  const from = at([h * 0.5, 0, 0]);
+  const to = at([h * 0.5 + 20, 0, 0]);
+  // A head that lands on another is lifted off it, 14 px up (the overlay does that).
+  expect(Math.hypot(head.x - from.x, head.y - from.y)).toBeLessThan(20);
+  await page.mouse.move(head.x, head.y);
+  await page.mouse.down();
+  await page.mouse.move((head.x + to.x) / 2, (head.y + to.y) / 2, { steps: 4 });
+  await page.mouse.move(to.x, to.y, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(() => numberOf(box, 'X')).toBeCloseTo(h * 0.5 + 20, 0);
+  await expect(box).toHaveAttribute('data-preview-status', 'ok');
+  await ok(page, box);
+  const body = ((await viewport.getAttribute('data-bodies')) ?? '').split(' ').pop();
+  expect(body).toMatch(/:20,20,20$/);
+  // Clicking the view while the dialog is closed does nothing new.
+  await page.keyboard.press('Control+z');
+  await expect(chip(page, 'Box1')).toHaveCount(0);
+});
+
+test('a box from two corners: the next two clicks on its plane, Esc disarms', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  const at = await settledProjector(viewport);
+  const h = await planeHalf(viewport);
+
+  const box = await start(page, 'Box');
+  const button = box.getByRole('button', { name: /^(Two corners|Picking corners)/ });
+  const state = box.locator('[data-corners]');
+  await expect(state).toHaveAttribute('data-corners', 'off');
+
+  // Esc disarms it and leaves the dialog open.
+  await button.click();
+  await expect(state).toHaveAttribute('data-corners', '0');
+  await clickAt(page, at, [h * 0.2, -h * 0.2, 0]);
+  await expect(state).toHaveAttribute('data-corners', '1');
+  await button.focus();
+  await page.keyboard.press('Escape');
+  await expect(state).toHaveAttribute('data-corners', 'off');
+  await expect(box).toBeVisible();
+
+  // Armed again: two corners, opposite, in the order that is not lower-left first.
+  const a = [h * 0.5, -h * 0.5] as const;
+  const b = [h * 0.2, -h * 0.2] as const;
+  await box.getByRole('textbox', { name: 'Height', exact: true }).fill('7 mm');
+  await button.click();
+  await clickAt(page, at, [a[0], a[1], 0]);
+  await expect(state).toHaveAttribute('data-corners', '1');
+  await clickAt(page, at, [b[0], b[1], 0]);
+  await expect(state).toHaveAttribute('data-corners', 'off');
+  const tol = 0;
+  await expect.poll(() => numberOf(box, 'Length')).toBeCloseTo(Math.abs(a[0] - b[0]), tol);
+  expect(await numberOf(box, 'Width')).toBeCloseTo(Math.abs(a[1] - b[1]), tol);
+  expect(await numberOf(box, 'X')).toBeCloseTo((a[0] + b[0]) / 2, tol);
+  expect(await numberOf(box, 'Y')).toBeCloseTo((a[1] + b[1]) / 2, tol);
+  // The height stays what it was; the plane stays XY.
+  expect(await numberOf(box, 'Height')).toBe(7);
+  await expect(box.getByRole('button', { name: 'Plane', exact: true })).toHaveText('XY plane');
+  await expect(box).toHaveAttribute('data-preview-status', 'ok');
+  const length = await numberOf(box, 'Length');
+  const width = await numberOf(box, 'Width');
+  await ok(page, box);
+  const size = ((await viewport.getAttribute('data-bodies')) ?? '').split(' ').pop() ?? '';
+  const [sx, sy, sz] = size.split(':')[2]?.split(',').map(Number) ?? [];
+  expect(sx).toBeCloseTo(length, 1);
+  expect(sy).toBeCloseTo(width, 1);
+  expect(sz).toBe(7);
 });

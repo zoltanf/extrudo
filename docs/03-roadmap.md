@@ -864,8 +864,9 @@ end to end, faster than in Fusion 360.
     part). Still open: a chamfer's handles on curved faces or edges (they keep
     the single bisector handle) and a handle for a chamfer's Angle.
   - Shell: a thickness per face; removing faces next to a fillet (ADR-0046).
-  - Primitives: position handles and a click point as the centre, torus
-    placement options, a box from two corners (ADR-0032).
+  - Primitives: ~~position handles and a click point as the centre~~, torus
+    placement options, ~~a box from two corners~~ (ADR-0032; done 2026-10-06,
+    the torus options stay open).
   - Construction: point on path, point through two edges, plane along a
     path, midplane of non-parallel planes, tangent planes on tori and
     free-form faces, planes in box selection (ADR-0040).
