@@ -52,6 +52,10 @@
 #include <BRepOffsetAPI_ThruSections.hxx>
 #include <BRepOffset_MakeOffset.hxx>
 #include <BRepOffset_MakeSimpleOffset.hxx>
+#include <GeomAPI_ProjectPointOnSurf.hxx>
+#include <IntCurvesFace_Intersector.hxx>
+#include <BndLib_Add2dCurve.hxx>
+#include <Bnd_Box2d.hxx>
 #include <ShapeFix_Solid.hxx>
 #include <BRepBuilderAPI_MakeSolid.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
@@ -99,6 +103,8 @@
 #include <BRepPrimAPI_MakeCylinder.hxx>
 #include <BRepPrimAPI_MakePrism.hxx>
 #include <BRepPrimAPI_MakeRevol.hxx>
+#include <BRepPrimAPI_MakeSphere.hxx>
+#include <BRepPrimAPI_MakeTorus.hxx>
 #include <BRepSweep_Revol.hxx>
 #include <BRep_Builder.hxx>
 #include <BRep_Tool.hxx>
@@ -3120,6 +3126,433 @@ public:
   int wrapOnCylinder(int face, double ox, double oy, double oz, double ax, double ay, double az, double rx,
                      double ry, double rz, double radius, double px, double py, double pz, double sx, double sy,
                      double sz, double depth, bool outward) {
+    return wrapOn(face, ox, oy, oz, ax, ay, az, rx, ry, rz, radius, 0, px, py, pz, sx, sy, sz, depth, outward);
+  }
+
+  /**
+   * Wraps the planar face `face` around a cone (P4-12, ADR-0060's amendment):
+   * wrapOnCylinder() with the cylinder of radius `radius` replaced by the cone
+   * through the same circle -- centre (ox, oy, oz), axis (ax, ay, az),
+   * reference (rx, ry, rz) -- whose radius grows by tan(halfAngle) per
+   * millimetre along the axis (a negative half-angle narrows it). The map is
+   * the cylinder's: a sketch point (s, z) lands at the cone's (u, v) =
+   * (s / radius, z + lift), u the angle from the reference and v the distance
+   * along the generator, so a line stays a line, a circle an ellipse in (u, v)
+   * and a B-spline is mapped pole by pole; widths are exact on the circle the
+   * frame names and scale with the radius above and below it. The far cap lies
+   * on the cone offset by `depth` along its normal, the walls along that
+   * normal, so the depth is measured square to the surface. History as
+   * wrapOnCylinder(). Returns the solid's handle, or 0 with lastError().
+   */
+  int wrapOnCone(int face, double ox, double oy, double oz, double ax, double ay, double az, double rx, double ry,
+                 double rz, double radius, double halfAngle, double px, double py, double pz, double sx, double sy,
+                 double sz, double depth, bool outward) {
+    beginOp();
+    if (!(std::abs(halfAngle) > 1e-9) || !(std::abs(halfAngle) < M_PI / 2 - 1e-6)) {
+      return fail("Emboss failed: the cone's half-angle must lie between 0 and 90 degrees.");
+    }
+    return wrapOn(face, ox, oy, oz, ax, ay, az, rx, ry, rz, radius, halfAngle, px, py, pz, sx, sy, sz, depth,
+                  outward);
+  }
+
+  /**
+   * What an emboss needs of a conical face `face` of `shape` (P4-12,
+   * ADR-0060's amendment), in geometryNumbers: [ox, oy, oz, dx, dy, dz,
+   * radius, halfAngle, inside]. (ox, oy, oz) is a point of the axis, which runs
+   * along (dx, dy, dz) (canonical sign); the cone's radius there is `radius`
+   * and grows by tan(halfAngle) per millimetre along (dx, dy, dz) (a negative
+   * half-angle narrows it). `inside` is 1 when the face's material lies
+   * outside the cone (a countersink's wall, a funnel's inside), 0 for a
+   * spike's or a frustum's outside. Returns 9, or -1 (not a cone, unknown
+   * shape).
+   */
+  int coneFace(int shape, int face) {
+    beginOp();
+    geometry_.clear();
+    const TopoDS_Shape* s = find(shape);
+    if (s == nullptr) return failCurve("Unknown shape.");
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+      TopExp::MapShapes(*s, TopAbs_FACE, faces);
+      if (face < 0 || face >= faces.Extent()) return failCurve("Face index out of range.");
+      const TopoDS_Face f = TopoDS::Face(faces(face + 1));
+      BRepAdaptor_Surface surface(f);
+      if (surface.GetType() != GeomAbs_Cone) return failCurve("The face isn't conical.");
+      const gp_Cone cone = surface.Cone();
+      const gp_Pnt origin = cone.Location();
+      const gp_Dir axis = cone.Axis().Direction();
+      const gp_Dir out = canonical(axis);
+      const double flip = out.Dot(axis) < 0 ? -1.0 : 1.0;
+      double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+      BRepTools::UVBounds(f, u0, u1, v0, v1);
+      BRepLProp_SLProps props(surface, (u0 + u1) / 2, (v0 + v1) / 2, 1, Precision::Confusion());
+      if (!props.IsNormalDefined()) return failCurve("The face has no normal.");
+      gp_Dir normal = props.Normal();
+      if (f.Orientation() == TopAbs_REVERSED) normal.Reverse();
+      const gp_Vec toMid(origin, props.Value());
+      const gp_Vec radial = toMid - gp_Vec(axis) * toMid.Dot(gp_Vec(axis));
+      const bool inside = gp_Vec(normal).Dot(radial) < 0;
+      pushPoint(origin);
+      pushDir(out);
+      geometry_.insert(geometry_.end(), {cone.RefRadius(), flip * cone.SemiAngle(), inside ? 1.0 : 0.0});
+      return static_cast<int>(geometry_.size());
+    } catch (...) {
+      failFromException("Cone face failed");
+      return -1;
+    }
+  }
+
+  /**
+   * Projects the planar face `profile` onto face `face` of `shape` along the
+   * profile's plane normal (P4-12, ADR-0060's amendment: spheres, tori and
+   * free-form faces, where no map keeps lengths) and returns the solid an
+   * emboss joins or a deboss cuts: the part of the profile's prism between
+   * the face and the face offset by `depth` along its outward normal
+   * (`outward`) or against it. The offset is OCCT's simple offset of a copy of
+   * the face (a sphere's is the concentric sphere, exactly).
+   *
+   * The profiles travel from the side of the sketch the face looks at (the
+   * nearest hit of the line through the profile's centre where the face looks
+   * back at the sketch), and every sample of the profile's outline has to meet
+   * the face, where it looks back, and the offset face: anything else reaches
+   * past the face's edge or its silhouette as seen from the sketch, and is
+   * refused with lastError() "The profiles reach past the face's edge as seen
+   * from the sketch."; a profile whose line misses the face is "The profiles
+   * don't touch the face.".
+   *
+   * History for input 0 (the profile): first (4) for the pieces of the face,
+   * last (5) for the offset face's, generated (1) from each edge for its wall.
+   */
+  int projectOnFace(int profileHandle, int shape, int face, double depth, bool outward) {
+    beginOp();
+    TopoDS_Face profile;
+    if (const char* why = singleProfile(profileHandle, profile)) return fail(why);
+    const TopoDS_Shape* body = find(shape);
+    if (body == nullptr) return fail("Emboss failed: unknown shape.");
+    if (!(depth > Precision::Confusion())) return fail("Emboss failed: the depth must be greater than 0.");
+    try {
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> bodyFaces;
+      TopExp::MapShapes(*body, TopAbs_FACE, bodyFaces);
+      if (face < 0 || face >= bodyFaces.Extent()) return fail("Emboss failed: face index out of range.");
+      const TopoDS_Face target = TopoDS::Face(bodyFaces(face + 1));
+      BRepAdaptor_Surface carried(profile);
+      if (carried.GetType() != GeomAbs_Plane) return fail("Emboss failed: the profile isn't flat.");
+      const gp_Dir n = carried.Plane().Axis().Direction();
+
+      // The face's outward normal at (u, v): its surface's, turned for a reversed face.
+      BRepAdaptor_Surface surface(target);
+      const bool reversed = target.Orientation() == TopAbs_REVERSED;
+      const auto outwardAt = [&](double u, double v, gp_Vec& normal) {
+        gp_Pnt at;
+        gp_Vec du, dv;
+        surface.D1(u, v, at, du, dv);
+        normal = du.Crossed(dv);
+        if (normal.Magnitude() <= 1e-12) return false;
+        normal.Normalize();
+        if (reversed) normal.Reverse();
+        return true;
+      };
+
+      // Which way the profiles travel: along the line through their centre, the hit
+      // nearest the sketch where the face looks back at it.
+      GProp_GProps areaProps;
+      BRepGProp::SurfaceProperties(profile, areaProps);
+      const gp_Pnt middle = areaProps.CentreOfMass();
+      const double tol = Precision::Confusion();
+      IntCurvesFace_Intersector onFace(target, tol);
+      onFace.Perform(gp_Lin(middle, n), -RealLast(), RealLast());
+      double nearest = RealLast();
+      double sense = 0;
+      for (int i = 1; onFace.IsDone() && i <= onFace.NbPnt(); ++i) {
+        gp_Vec normal;
+        if (!outwardAt(onFace.UParameter(i), onFace.VParameter(i), normal)) continue;
+        const double w = onFace.WParameter(i);
+        const double towards = w >= 0 ? 1.0 : -1.0;  // from the sketch to the hit
+        if (!(normal.Dot(gp_Vec(n)) * towards < 0)) continue;
+        if (std::abs(w) < nearest) {
+          nearest = std::abs(w);
+          sense = towards;
+        }
+      }
+      // The line through a ring's centre may miss it (a letter O): any sample of the
+      // outline will do then.
+      std::vector<gp_Pnt> samples;
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> profileEdges;
+      TopExp::MapShapes(profile, TopAbs_EDGE, profileEdges);
+      for (int e = 1; e <= profileEdges.Extent(); ++e) {
+        BRepAdaptor_Curve curve(TopoDS::Edge(profileEdges(e)));
+        const int steps = curve.GetType() == GeomAbs_Line ? 2 : 12;
+        for (int k = 0; k < steps; ++k) {
+          samples.push_back(curve.Value(curve.FirstParameter() +
+                                        (curve.LastParameter() - curve.FirstParameter()) * k / steps));
+        }
+      }
+      for (size_t k = 0; sense == 0 && k < samples.size(); ++k) {
+        onFace.Perform(gp_Lin(samples[k], n), -RealLast(), RealLast());
+        for (int i = 1; onFace.IsDone() && i <= onFace.NbPnt(); ++i) {
+          gp_Vec normal;
+          if (!outwardAt(onFace.UParameter(i), onFace.VParameter(i), normal)) continue;
+          const double towards = onFace.WParameter(i) >= 0 ? 1.0 : -1.0;
+          if (normal.Dot(gp_Vec(n)) * towards < 0) sense = towards;
+        }
+      }
+      if (sense == 0) return fail("The profiles don't touch the face.");
+      const gp_Dir d = sense > 0 ? n : n.Reversed();
+      const gp_Vec along(d);
+
+      // The thick piece of the face: the face, the face moved `depth` along (or against)
+      // its outward normal, and the walls between them along the normal.
+      TopoDS_Solid shell;
+      TopoDS_Face skin;
+      TopoDS_Face farFace;
+      if (const char* why = thickPiece(target, surface, d, depth, outward, shell, skin, farFace)) return fail(why);
+      IntCurvesFace_Intersector onFar(farFace, tol);
+
+      // Every sample's first hit, coming from behind the sketch, must be on the face
+      // where it looks back, and the sample must meet the offset face too.
+      const char* past = "The profiles reach past the face's edge as seen from the sketch.";
+      for (const gp_Pnt& p : samples) {
+        onFace.Perform(gp_Lin(p, d), -RealLast(), RealLast());
+        if (!onFace.IsDone() || onFace.NbPnt() == 0) return fail(past);
+        int first = 0;
+        for (int i = 1; i <= onFace.NbPnt(); ++i) {
+          if (first == 0 || onFace.WParameter(i) < onFace.WParameter(first)) first = i;
+        }
+        gp_Vec normal;
+        if (!outwardAt(onFace.UParameter(first), onFace.VParameter(first), normal)) return fail(past);
+        if (!(normal.Dot(along) < -1e-3)) return fail(past);
+        onFar.Perform(gp_Lin(p, d), -RealLast(), RealLast());
+        if (!onFar.IsDone() || onFar.NbPnt() == 0) return fail(past);
+      }
+
+      // The prism: the profile moved back along d behind the thick piece, swept through it.
+      Bnd_Box box;
+      BRepBndLib::Add(shell, box);
+      BRepBndLib::Add(profile, box);
+      double x0, y0, z0, x1, y1, z1;
+      box.Get(x0, y0, z0, x1, y1, z1);
+      const gp_Pnt origin = carried.Plane().Location();
+      double low = RealLast();
+      double high = -RealLast();
+      for (int c = 0; c < 8; ++c) {
+        const gp_Pnt corner(c & 1 ? x1 : x0, c & 2 ? y1 : y0, c & 4 ? z1 : z0);
+        const double t = gp_Vec(origin, corner).Dot(along);
+        low = std::min(low, t);
+        high = std::max(high, t);
+      }
+      const double margin = 1 + 1e-3 * (high - low);
+      gp_Trsf back;
+      back.SetTranslation(along * (low - margin));
+      BRepBuilderAPI_Transform moved(profile, back, true);
+      if (!moved.IsDone()) return fail("Emboss failed: couldn't move the profile.");
+      BRepPrimAPI_MakePrism prism(moved.Shape(), along * (high - low + 2 * margin), true);
+      if (!prism.IsDone()) return fail("Emboss failed: couldn't sweep the profile.");
+
+      BRepAlgoAPI_Common common(prism.Shape(), shell);
+      common.Build();
+      if (!common.IsDone() || common.HasErrors()) return fail("Emboss failed: couldn't cut the profile to the face.");
+      const TopoDS_Shape cut = common.Shape();
+      const auto imagesOf = [&common](const TopoDS_Shape& s) {
+        std::vector<TopoDS_Shape> out;
+        const NCollection_List<TopoDS_Shape>& modified = common.Modified(s);
+        for (NCollection_List<TopoDS_Shape>::Iterator it(modified); it.More(); it.Next()) out.push_back(it.Value());
+        if (out.empty() && !common.IsDeleted(s)) out.push_back(s);
+        return out;
+      };
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> onSkin;
+      for (const TopoDS_Shape& piece : imagesOf(skin)) onSkin.Add(piece);
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> onFarFace;
+      for (const TopoDS_Shape& piece : imagesOf(farFace)) onFarFace.Add(piece);
+
+      // Keep the solids that stand on the face where it looks at the sketch: a closed
+      // face (a whole sphere) gives its far side's piece too, which isn't the emboss.
+      const auto facing = [&](const TopoDS_Face& piece) {
+        GProp_GProps props;
+        BRepGProp::SurfaceProperties(piece, props);
+        GeomAPI_ProjectPointOnSurf foot(props.CentreOfMass(), BRep_Tool::Surface(target));
+        if (!foot.IsDone() || foot.NbPoints() == 0) return 0;
+        double u = 0, v = 0;
+        foot.LowerDistanceParameters(u, v);
+        gp_Vec normal;
+        if (!outwardAt(u, v, normal)) return 0;
+        return normal.Dot(along) < 0 ? 1 : -1;
+      };
+      BRep_Builder builder;
+      TopoDS_Compound kept;
+      builder.MakeCompound(kept);
+      int count = 0;
+      TopoDS_Solid only;
+      for (TopExp_Explorer solid(cut, TopAbs_SOLID); solid.More(); solid.Next()) {
+        int front = 0;
+        int backs = 0;
+        for (TopExp_Explorer e(solid.Current(), TopAbs_FACE); e.More(); e.Next()) {
+          if (!onSkin.Contains(e.Current())) continue;
+          const int looks = facing(TopoDS::Face(e.Current()));
+          if (looks > 0) ++front;
+          if (looks < 0) ++backs;
+        }
+        if (front == 0) continue;
+        if (backs > 0) return fail(past);
+        // Only the face, its offset and the prism's walls may bound it: a wall of the
+        // thick piece or an end of the prism means the profile reaches past the face.
+        for (TopExp_Explorer e(solid.Current(), TopAbs_FACE); e.More(); e.Next()) {
+          if (onSkin.Contains(e.Current()) || onFarFace.Contains(e.Current())) continue;
+          bool wall = false;
+          for (int k = 1; k <= profileEdges.Extent() && !wall; ++k) {
+            const TopoDS_Shape side = prism.Generated(moved.ModifiedShape(profileEdges(k))).IsEmpty()
+                                          ? TopoDS_Shape()
+                                          : prism.Generated(moved.ModifiedShape(profileEdges(k))).First();
+            if (side.IsNull()) continue;
+            for (const TopoDS_Shape& piece : imagesOf(side)) wall = wall || piece.IsSame(e.Current());
+          }
+          if (!wall) return fail(past);
+        }
+        builder.Add(kept, solid.Current());
+        only = TopoDS::Solid(solid.Current());
+        ++count;
+      }
+      if (count == 0) return fail("The profiles don't touch the face.");
+      const TopoDS_Shape result = count == 1 ? TopoDS_Shape(only) : TopoDS_Shape(kept);
+      if (!BRepCheck_Analyzer(result).IsValid()) return fail("Emboss failed: the projected solid isn't sound.");
+      if (!(exactVolume(result) > 0)) return fail("Emboss failed: the projected solid has no volume.");
+
+      // History for input 0 (the profile as passed in).
+      NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> resultFaces;
+      TopExp::MapShapes(result, TopAbs_FACE, resultFaces);
+      std::vector<TopoDS_Shape> starts;
+      for (int k = 1; k <= onSkin.Extent(); ++k) starts.push_back(onSkin(k));
+      std::vector<TopoDS_Shape> ends;
+      for (int k = 1; k <= onFarFace.Extent(); ++k) ends.push_back(onFarFace(k));
+      recordFaces(0, 0, 0, 4, starts, resultFaces);
+      recordFaces(0, 0, 0, 5, ends, resultFaces);
+      for (int k = 1; k <= profileEdges.Extent(); ++k) {
+        const NCollection_List<TopoDS_Shape>& made = prism.Generated(moved.ModifiedShape(profileEdges(k)));
+        std::vector<TopoDS_Shape> walls;
+        for (NCollection_List<TopoDS_Shape>::Iterator it(made); it.More(); it.Next()) {
+          if (it.Value().ShapeType() != TopAbs_FACE) continue;
+          for (const TopoDS_Shape& piece : imagesOf(it.Value())) walls.push_back(piece);
+        }
+        recordFaces(0, 1, k - 1, 1, walls, resultFaces);
+      }
+      return store(result);
+    } catch (...) {
+      return failFromException("Emboss failed");
+    }
+  }
+
+private:
+  /**
+   * The solid between face `target` and its offset by `depth` along its
+   * outward normal (`outward`) or against it, for projectOnFace(): `skin` is
+   * the face of it on the target's surface, `farFace` the offset one. A sphere
+   * or a torus (a whole one is a closed face OCCT's offset can't take) is the
+   * shell between two concentric spheres or two tori of the same centre circle,
+   * exactly; any other face is OCCT's simple offset of a copy of it. Returns
+   * the reason it can't be built, or nullptr.
+   */
+  const char* thickPiece(const TopoDS_Face& target, const BRepAdaptor_Surface& surface, const gp_Dir& d, double depth,
+                         bool outward, TopoDS_Solid& shell, TopoDS_Face& skin, TopoDS_Face& farFace) {
+    const GeomAbs_SurfaceType type = surface.GetType();
+    if (type == GeomAbs_Sphere || type == GeomAbs_Torus) {
+      // Whether the outward normal points away from the centre (a ball, a ring's
+      // outside) or towards it (a spherical hollow), from the middle of the face.
+      double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
+      BRepTools::UVBounds(target, u0, u1, v0, v1);
+      gp_Pnt at;
+      gp_Vec du, dv;
+      surface.D1((u0 + u1) / 2, (v0 + v1) / 2, at, du, dv);
+      gp_Vec normal = du.Crossed(dv);
+      if (target.Orientation() == TopAbs_REVERSED) normal.Reverse();
+      gp_Pnt centre;
+      double r = 0;
+      gp_Ax2 place;
+      double major = 0;
+      if (type == GeomAbs_Sphere) {
+        const gp_Sphere sphere = surface.Sphere();
+        centre = sphere.Location();
+        r = sphere.Radius();
+        // The seam along d, the poles square to it: both on the side of the sphere away
+        // from the sketch or on its outline, never through the letters.
+        const gp_Dir side = std::abs(d.Z()) < 0.9 ? gp_Dir(0, 0, 1) : gp_Dir(1, 0, 0);
+        place = gp_Ax2(centre, d.Crossed(side), d);
+      } else {
+        const gp_Torus torus = surface.Torus();
+        place = torus.Position().Ax2();
+        // The seam round the axis on the far side from the sketch, where it can be.
+        const gp_Vec across = gp_Vec(d) - gp_Vec(place.Direction()) * gp_Vec(d).Dot(gp_Vec(place.Direction()));
+        if (across.Magnitude() > 1e-6) place.SetXDirection(gp_Dir(across));
+        major = torus.MajorRadius();
+        r = torus.MinorRadius();
+        // The tube's centre nearest the point: on the centre circle, below it.
+        gp_Vec flat(torus.Location(), at);
+        const gp_Vec axis(place.Direction());
+        flat -= axis * flat.Dot(axis);
+        if (flat.Magnitude() <= Precision::Confusion()) return "Emboss failed: the torus has no tube here.";
+        centre = torus.Location().Translated(flat.Normalized() * major);
+      }
+      const double away = normal.Dot(gp_Vec(centre, at)) > 0 ? 1.0 : -1.0;
+      const double other = r + (outward ? depth : -depth) * away;
+      if (!(other > Precision::Confusion())) return "Emboss failed: the depth is bigger than the face's radius.";
+      const auto shellOf = [&](double radius) -> TopoDS_Shell {
+        if (type == GeomAbs_Sphere) return BRepPrimAPI_MakeSphere(place, radius).Shell();
+        return BRepPrimAPI_MakeTorus(place, major, radius).Shell();
+      };
+      const TopoDS_Shell own = shellOf(r);
+      const TopoDS_Shell moved = shellOf(other);
+      BRep_Builder builder;
+      builder.MakeSolid(shell);
+      builder.Add(shell, other > r ? moved : own);
+      builder.Add(shell, other > r ? own.Reversed() : moved.Reversed());
+      for (TopExp_Explorer e(own, TopAbs_FACE); e.More(); e.Next()) skin = TopoDS::Face(e.Current());
+      for (TopExp_Explorer e(moved, TopAbs_FACE); e.More(); e.Next()) farFace = TopoDS::Face(e.Current());
+      if (skin.IsNull() || farFace.IsNull()) return "Emboss failed: couldn't offset the face.";
+      return nullptr;
+    }
+    skin = TopoDS::Face(BRepBuilderAPI_Copy(target).Shape());
+    BRepOffset_MakeSimpleOffset thick(skin, outward ? depth : -depth);
+    thick.SetBuildSolidFlag(true);
+    thick.Perform();
+    if (!thick.IsDone()) return "Emboss failed: couldn't offset the face.";
+    for (TopExp_Explorer solid(thick.GetResultShape(), TopAbs_SOLID); solid.More(); solid.Next()) {
+      shell = TopoDS::Solid(solid.Current());
+    }
+    if (shell.IsNull()) return "Emboss failed: the offset face didn't make a solid.";
+    BRepLib::OrientClosedSolid(shell);
+    const TopoDS_Shape far = thick.Generated(skin);
+    for (TopExp_Explorer e(far, TopAbs_FACE); e.More(); e.Next()) farFace = TopoDS::Face(e.Current());
+    if (farFace.IsNull()) return "Emboss failed: the offset lost the face.";
+    return nullptr;
+  }
+
+  /**
+   * The profile `handle` names as one flat face whose loops all close, or the
+   * reason it isn't one (wrapOn(), projectOnFace()).
+   */
+  const char* singleProfile(int handle, TopoDS_Face& profile) {
+    const TopoDS_Shape* input = find(handle);
+    if (input == nullptr) return "Emboss failed: unknown face.";
+    int faces = 0;
+    for (TopExp_Explorer e(*input, TopAbs_FACE); e.More(); e.Next()) {
+      profile = TopoDS::Face(e.Current());
+      ++faces;
+    }
+    if (faces != 1) return "Emboss failed: the profile isn't a single face.";
+    if (!BRep_Tool::IsClosed(BRepTools::OuterWire(profile))) {
+      return "Emboss failed: the profile's outline doesn't close up.";
+    }
+    for (TopExp_Explorer w(profile, TopAbs_WIRE); w.More(); w.Next()) {
+      if (!BRep_Tool::IsClosed(TopoDS::Wire(w.Current()))) return "Emboss failed: a hole of the profile doesn't close up.";
+    }
+    return nullptr;
+  }
+
+  /**
+   * wrapOnCylinder() (halfAngle 0) and wrapOnCone(): the profile wrapped onto
+   * the cylinder or the cone through the circle of `radius` the frame names.
+   */
+  int wrapOn(int face, double ox, double oy, double oz, double ax, double ay, double az, double rx, double ry,
+             double rz, double radius, double halfAngle, double px, double py, double pz, double sx, double sy,
+             double sz, double depth, bool outward) {
     beginOp();
     const TopoDS_Shape* input = find(face);
     if (input == nullptr) return fail("Emboss failed: unknown face.");
@@ -3142,8 +3575,11 @@ public:
     }
     if (!(radius > Precision::Confusion())) return fail("Emboss failed: the cylinder's radius must be greater than 0.");
     if (!(depth > Precision::Confusion())) return fail("Emboss failed: the depth must be greater than 0.");
+    // A cone's radius varies over the profile: its own check follows the mapping below.
     const double far = outward ? radius + depth : radius - depth;
-    if (!(far > Precision::Confusion())) return fail("Emboss failed: the depth is bigger than the radius.");
+    if (halfAngle == 0 && !(far > Precision::Confusion())) {
+      return fail("Emboss failed: the depth is bigger than the radius.");
+    }
     if (gp_Vec(ax, ay, az).Magnitude() <= Precision::Confusion() ||
         gp_Vec(rx, ry, rz).Magnitude() <= Precision::Confusion() ||
         gp_Vec(sx, sy, sz).Magnitude() <= Precision::Confusion()) {
@@ -3186,9 +3622,6 @@ public:
           if (index < 0) return fail("Emboss failed: an edge of the profile isn't one of its own.");
           const Wrapped on = frame.wrap(edge.Current(), profile);
           if (on.curve.IsNull()) return fail("Emboss failed: couldn't map a curve of the profile onto the cylinder.");
-          if (on.round > M_PI + 1e-9) {
-            return fail("Emboss failed: the profiles are longer than half way round the cylinder.");
-          }
           mine.push_back(static_cast<int>(sourceEdges.size()));
           sourceEdges.push_back(edge.Current());
           edgeAt.push_back(index);
@@ -3196,6 +3629,31 @@ public:
         }
         if (mine.empty()) return fail("Emboss failed: a loop of the profile has no edges.");
         loopEdges.push_back(std::move(mine));
+      }
+
+      // How far round and along the profile runs in (u, v): a wrap may go almost the
+      // whole way round (P4-12), and on a cone it may not reach the tip.
+      Bnd_Box2d reach;
+      for (const Wrapped& on : wrapped) {
+        BndLib_Add2dCurve::AddOptimal(on.curve, on.from, on.to, 0, reach);
+      }
+      double uLow = 0, vLow = 0, uHigh = 0, vHigh = 0;
+      reach.Get(uLow, vLow, uHigh, vHigh);
+      const double sine = std::sin(halfAngle);
+      const double cosine = std::cos(halfAngle);
+      // The smallest radius the profile reaches, on the face and on the far cap.
+      const double nearest = std::min(radius + vLow * sine, radius + vHigh * sine);
+      const double farthest = outward ? nearest + depth * cosine : nearest - depth * cosine;
+      if (halfAngle != 0 && !(nearest > Precision::Confusion())) {
+        return fail("The profiles reach past the cone's tip.");
+      }
+      if (halfAngle != 0 && !(farthest > Precision::Confusion())) {
+        return fail("Emboss failed: the depth reaches past the cone's axis.");
+      }
+      // Short of a whole turn by a hundredth of a millimetre where the profile is
+      // narrowest round, so its two ends never meet.
+      if (uHigh - uLow > 2 * M_PI - 0.01 / std::max(nearest, Precision::Confusion())) {
+        return fail("The profile is wider than the face's circumference.");
       }
 
       // How far apart two points may lie and still be one corner: a millionth of the
@@ -3208,7 +3666,12 @@ public:
                                                                 (z1 - z0) * (z1 - z0)));
 
       // Every edge of every loop, wrapped onto the near cylinder.
-      Handle(Geom_Surface) inner = new Geom_CylindricalSurface(gp_Ax3(origin, axis, rdir), radius);
+      Handle(Geom_Surface) inner;
+      if (halfAngle == 0) {
+        inner = new Geom_CylindricalSurface(gp_Ax3(origin, axis, rdir), radius);
+      } else {
+        inner = new Geom_ConicalSurface(gp_Ax3(origin, axis, rdir), halfAngle, radius);
+      }
       std::vector<TopoDS_Edge> innerEdges(sourceEdges.size());
       for (size_t i = 0; i < sourceEdges.size(); ++i) {
         BRepBuilderAPI_MakeEdge made(wrapped[i].curve, inner, wrapped[i].from, wrapped[i].to);
