@@ -255,6 +255,56 @@ static int table() {
     row("L, end removed, 2 (sharp inner corner)", l, {faceAt(l, 5, 10, 40)}, {{faceAt(l, 25, 10, 10), 2}}, 2, false,
         40 * 20 * 10 + 10 * 20 * 30 - (6 * 38 + 30 * 6) * 16);
   }
+  // Openings at faces that run smoothly into their neighbours: plugs (shell() and shellFaces()).
+  {
+    const auto rounded = [](double a, double r) {
+      return std::pow(a - 2 * r, 3) + 6 * (a - 2 * r) * (a - 2 * r) * r + 3 * PI * r * r * (a - 2 * r) + 4.0 / 3 * PI * r * r * r;
+    };
+    const int round = body("round3");
+    const int rTop = faceAt(round, 10, 10, 20);
+    for (double t : {0.5, 2.0, 2.9}) {
+      char name[64];
+      std::snprintf(name, sizeof name, "all edges r3, top removed, %g (plug)", t);
+      row(name, round, {rTop}, {}, t, false, rounded(20, 3) - rounded(20 - 2 * t, 3 - t) - 14 * 14 * t);
+    }
+    row("all edges r3, top removed, outside 2 (plug)", round, {rTop}, {}, 2, true,
+        rounded(24, 5) - rounded(20, 3) - 14 * 14 * 2);
+    {
+      // Plain shell() through the plug route.
+      f.clearArgs();
+      f.pushArg(rTop);
+      const int r = f.shell(round, 2, false);
+      const double exact = rounded(20, 3) - rounded(16, 1) - 14 * 14 * 2;
+      std::printf("| %-44s | %10.3f | %10.3f | %s\n", "shell(): all edges r3, top removed, 2", r ? volume(r) : -1.0, exact,
+                  r && std::abs(volume(r) - exact) < 1e-6 * exact ? "ok" : "FAIL");
+      if (!(r && std::abs(volume(r) - exact) < 1e-6 * exact)) ++failures;
+    }
+    const int one = body("one3");
+    const int oTop = faceAt(one, 10, 11.5, 20);
+    const int oFloor = faceAt(one, 10, 10, 0);
+    const double outerOne = 8000 - 20 * 9 * (1 - PI / 4);
+    row("one top edge r3, top removed, 1 (plug)", one, {oTop}, {}, 1, false,
+        outerOne - (18 * 18 * 18 - 18 * 4 * (1 - PI / 4)) - 18 * 16 * 1);
+    row("one top edge r3, top removed, 1, floor 4 (plug)", one, {oTop}, {{oFloor, 4}}, 1, false,
+        outerOne - (18 * 18 * 15 - 18 * 4 * (1 - PI / 4)) - 18 * 16 * 1);
+    refusal("one top edge r3, top and back removed (they touch)", one, {oTop, faceAt(one, 10, 20, 10)}, {}, 1, 6);
+    const int cylr = body("cylr2");
+    int cylrTop = -1;
+    {
+      FaceMap fs = facesOf(cylr);
+      for (int i = 1; i <= fs.Extent(); ++i) {
+        if (BRepAdaptor_Surface(TopoDS::Face(fs(i))).GetType() == GeomAbs_Plane && centreOf(fs(i)).Z() > 19) cylrTop = i - 1;
+      }
+    }
+    // A cylinder r10 h20 with its top edge rounded r2, the top (r8) removed, 1 mm walls.
+    // Pappus: the rounded corner's cross-section r²(1 − π/4) at r(10 − 3π)/(3(4 − π)) from the corner.
+    const auto ring = [](double radius, double r) {
+      const double c = r * (10 - 3 * PI) / (3 * (4 - PI));
+      return 2 * PI * (radius - c) * r * r * (1 - PI / 4);
+    };
+    row("cylinder, top edge r2, top removed, 1 (plug)", cylr, {cylrTop}, {}, 1, false,
+        (PI * 100 * 20 - ring(10, 2)) - (PI * 81 * 18 - ring(9, 1)) - PI * 64 * 1);
+  }
   // A thickness too large: the floor deeper than the box.
   row("box, top removed, 2 mm, floor 25 mm (too thick)", box, {top}, {{floor, 25}}, 2, false, 0);
   refusal("a wall that is the removed face", box, {top}, {{top, 4}}, 2, 8);
@@ -262,10 +312,53 @@ static int table() {
   refusal("top edges rounded (sharp edge in a chain)", body("top3"), {faceAt(body("top3"), 10, 10, 0)},
           {{faceAt(body("top3"), 10, 0, 10), 3}}, 2, 7);
   {
+    // A curved face that runs into its neighbours still can't be opened.
     const int round = body("round3");
-    refusal("all edges r3, top removed", round, {faceAt(round, 10, 10, 20)}, {}, 2, 6);
+    refusal("all edges r3, a rounded edge's face removed", round, {1}, {}, 2, 6);
   }
   if (probe) {
+    {
+      const int round = body("round3");
+      const TopoDS_Shape copy = BRepBuilderAPI_Copy(*f.find(round), true, false).Shape();
+      FaceMap fs;
+      TopExp::MapShapes(copy, TopAbs_FACE, fs);
+      {
+        BRepOffset_MakeOffset thick;
+        thick.Initialize(copy, 2, 1e-3, BRepOffset_Skin, false, false, GeomAbs_Arc, false, false);
+        thick.MakeOffsetShape();
+        const TopoDS_Shape skin = thick.Shape();
+        const TopoDS_Shape hollow = ExtrudoFacade::hollowSolid(copy, skin, true);
+        std::printf("dbg outside: skin type %d, hollow valid %d vol %.3f\n", skin.ShapeType(), BRepCheck_Analyzer(hollow).IsValid(), ExtrudoFacade::exactVolume(hollow));
+        const TopoDS_Face face = TopoDS::Face(fs(11));
+        gp_Dir n = BRepAdaptor_Surface(face).Plane().Axis().Direction();
+        if (face.Orientation() == TopAbs_REVERSED) n.Reverse();
+        std::printf("dbg n %.2f %.2f %.2f\n", n.X(), n.Y(), n.Z());
+        const TopoDS_Shape base = ExtrudoFacade::shifted(face, 0, 0, -1);
+        BRepPrimAPI_MakePrism prism(base, gp_Vec(n) * 4, false, true);
+        std::printf("dbg prism done %d vol %.3f\n", prism.IsDone(), ExtrudoFacade::exactVolume(prism.Shape()));
+        BRepAlgoAPI_Common plug(prism.Shape(), ExtrudoFacade::shifted(copy, 0, 0, 4));
+        std::printf("dbg plug done %d solid %d vol %.3f errors %d\n", plug.IsDone(), TopExp_Explorer(plug.Shape(), TopAbs_SOLID).More() ? 1 : 0, ExtrudoFacade::exactVolume(plug.Shape()), plug.HasErrors());
+        BRepAlgoAPI_Cut cut(hollow, plug.Shape());
+        std::printf("dbg cut done %d errors %d type %d vol %.3f\n", cut.IsDone(), cut.HasErrors(), cut.Shape().ShapeType(), ExtrudoFacade::exactVolume(cut.Shape()));
+        int solids = 0;
+        for (TopExp_Explorer it(cut.Shape(), TopAbs_SOLID); it.More(); it.Next()) ++solids;
+        std::printf("dbg solids %d\n", solids);
+      }
+      for (bool sharp : {false, true}) {
+        for (bool outside : {false, true}) {
+          BRepOffset_MakeOffset thick;
+          BRepAlgoAPI_Cut cut;
+          TopoDS_Shape result;
+          std::vector<TopoDS_Shape> plugs;
+          std::vector<double> perFace(fs.Extent(), 2.0);
+          const bool built = ExtrudoFacade::buildPlugged(thick, cut, copy, fs, {10}, perFace, 2, 1, outside, sharp, result, plugs);
+          const bool good = built && ExtrudoFacade::shellFacesGood(thick, copy, fs, {10}, perFace, 1, result, outside);
+          std::printf("plug sharp %d outside %d: built %d (offset done %d, error %d), good %d, valid %d, volume %.3f\n", sharp, outside, built,
+                      thick.IsDone(), static_cast<int>(thick.Error()), good, built ? BRepCheck_Analyzer(result).IsValid() : 0,
+                      built ? ExtrudoFacade::exactVolume(result) : 0.0);
+        }
+      }
+    }
     joins("box top removed in 2, floor 4", box, {top}, {{floor, 4}}, 2, false, 3904);
     joins("box top removed out 2, floor 4", box, {top}, {{floor, 4}}, 2, true, 24 * 24 * 24 - 8000);
     joins("box top removed out 2 (no walls)", box, {top}, {}, 2, true, 24 * 24 * 22 - 8000);
@@ -345,7 +438,112 @@ static int trap(const std::string& name, int face, double t, bool raw) {
   return 0;
 }
 
+/**
+ * shell() without its refusal of tangent faces: a build, its check and, when
+ * it fails, the bisection's seven probes, as a preview would run them.
+ */
+static void unguarded(const std::string& name, int face, double t) {
+  const int shape = body(name);
+  const TopoDS_Shape& input = *f.find(shape);
+  const std::vector<int> removed{face};
+  const TopoDS_Shape copy = BRepBuilderAPI_Copy(input, true, false).Shape();
+  FaceMap faces;
+  TopExp::MapShapes(copy, TopAbs_FACE, faces);
+  bool good = false;
+  {
+    BRepOffsetAPI_MakeThickSolid builder;
+    TopoDS_Shape result;
+    good = ExtrudoFacade::buildShell(builder, copy, faces, removed, t, false, result) &&
+           ExtrudoFacade::shellIsGood(builder, copy, faces, removed, result, t, false);
+  }
+  double largest = -1;
+  if (!good) {
+    largest = ExtrudoFacade::largestThatWorks(
+        [&](double x) { return ExtrudoFacade::shellWorks(input, removed, x, false); }, t);
+  }
+  std::printf("%s face %d t %g unguarded: %s (largest %g)\n", name.c_str(), face, t, good ? "good" : "refused", largest);
+  f.release(shape);
+}
+
+/**
+ * The other route for a face that runs smoothly into its neighbours: hollow
+ * the body closed (no face removed, which OCCT builds on rounded bodies),
+ * then cut the opening as the flat face swept into the wall. Prints the
+ * volume against `exact` (0: not known).
+ */
+static void plug(const std::string& name, int face, double t, double exact) {
+  const int shape = body(name);
+  f.clearArgs();
+  const int closed = f.shell(shape, t, false);
+  if (closed == 0) {
+    std::printf("%s face %d t %g plug: closed shell failed: %s\n", name.c_str(), face, t, f.lastError_.c_str());
+    return;
+  }
+  FaceMap faces = facesOf(shape);
+  const TopoDS_Face picked = TopoDS::Face(faces(face + 1));
+  BRepAdaptor_Surface surface(picked);
+  if (surface.GetType() != GeomAbs_Plane) {
+    std::printf("%s face %d plug: not flat\n", name.c_str(), face);
+    return;
+  }
+  gp_Dir n = surface.Plane().Axis().Direction();
+  if (picked.Orientation() == TopAbs_REVERSED) n.Reverse();
+  const int cutter = f.store(picked);
+  // From 0.5 mm outside the face to 0.5 mm past the wall's inner side.
+  const double over = 0.5;
+  const int prism = f.prism(cutter, n.X() * over, n.Y() * over, n.Z() * over, -n.X() * (t + 2 * over),
+                            -n.Y() * (t + 2 * over), -n.Z() * (t + 2 * over), 0);
+  const auto start = std::chrono::steady_clock::now();
+  const int cut = prism ? f.boolean(1, closed, prism, true) : 0;
+  const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+  if (cut == 0) {
+    std::printf("%s face %d t %g plug: cut failed: %s\n", name.c_str(), face, t, f.lastError_.c_str());
+    return;
+  }
+  const double v = volume(cut);
+  std::printf("%s face %d t %g plug: valid %d, volume %.3f (exact %.3f, %.1e), %d faces, %.0f ms\n", name.c_str(),
+              face, t, BRepCheck_Analyzer(*f.find(cut)).IsValid(), v, exact,
+              exact > 0 ? std::abs(v - exact) / exact : 0.0, facesOf(cut).Extent(), ms);
+}
+
+/** Many raw shells in one process (as a preview session would run them): body:face:t triples. */
+static int sequence(int argc, char** argv) {
+  for (int i = 2; i < argc; ++i) {
+    std::string spec = argv[i];
+    const size_t a = spec.find(':');
+    const size_t b = spec.find(':', a + 1);
+    std::printf("[%d] ", i - 1);
+    const std::string name = spec.substr(0, a);
+    const int face = std::atoi(spec.substr(a + 1, b - a - 1).c_str());
+    const double t = std::atof(spec.substr(b + 1).c_str());
+    if (std::strcmp(argv[1], "useq") == 0) unguarded(name, face, t);
+    else trap(name, face, t, true);
+    std::fflush(stdout);
+  }
+  return 0;
+}
+
 int main(int argc, char** argv) {
+  if (argc >= 2 && std::strcmp(argv[1], "plug") == 0) {
+    const auto rounded = [](double a, double r) {
+      return std::pow(a - 2 * r, 3) + 6 * (a - 2 * r) * (a - 2 * r) * r + 3 * PI * r * r * (a - 2 * r) +
+             4.0 / 3 * PI * r * r * r;
+    };
+    for (double t : {0.5, 1.0, 2.0, 2.9}) {
+      // round3's top (face 10): the outer rounded box less the inner one less the plug.
+      plug("round3", 10, t, rounded(20, 3) - rounded(20 - 2 * t, 3 - t) - (14 * 14 * t));
+      plug("round3", 8, t, rounded(20, 3) - rounded(20 - 2 * t, 3 - t) - (14 * 14 * t));
+      plug("round3", 0, t, rounded(20, 3) - rounded(20 - 2 * t, 3 - t) - (14 * 14 * t));
+    }
+    for (double t : {1.0, 2.0, 4.0}) plug("round5", 10, t, rounded(20, 5) - rounded(20 - 2 * t, 5 - t) - 100 * t);
+    for (double t : {1.0, 2.0}) {
+      plug("one3", 4, t, 0);
+      plug("cylr2", 3, t, 0);
+      plug("vert3", 0, t, 0);
+    }
+    return 0;
+  }
+  if (argc >= 2 && (std::strcmp(argv[1], "seq") == 0 || std::strcmp(argv[1], "useq") == 0)) return sequence(argc, argv);
   if (argc >= 5 && std::strcmp(argv[1], "trap") == 0) {
     return trap(argv[2], std::atoi(argv[3]), std::atof(argv[4]), argc >= 6 && std::strcmp(argv[5], "raw") == 0);
   }

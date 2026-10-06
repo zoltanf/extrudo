@@ -13,14 +13,16 @@ OPT="${OPT:--O1}"
 EXTRA=""
 if [ -n "${DEBUG:-}" ]; then EXTRA="$EXTRA -g2"; fi
 if [ -n "${SAFE:-}" ]; then EXTRA="$EXTRA -sSAFE_HEAP=1"; fi
+if [ -n "${MALLOC:-}" ]; then EXTRA="$EXTRA -sMALLOC=$MALLOC"; fi
+if [ -n "${BUILD:-}" ]; then OUT="build/$BUILD.cjs"; else OUT="build/harness.cjs"; fi
 LIBS="TKDESTEP TKXSBase TKDE TKBO TKBool TKFillet TKOffset TKPrim TKShHealing TKTopAlgo TKGeomAlgo TKBRep TKGeomBase TKG3d TKG2d TKMath TKernel TKMesh"
 LINK=""
 for lib in $LIBS; do LINK="$LINK /opencascade.js/build/occt-libraries/lib$lib.a"; done
 mkdir -p "$ROOT/spikes/p4-12-shell-faces/build"
-RUN="node build/harness.cjs $*"
+RUN="node $OUT $*"
 if [ "${1:-}" = "sweep" ]; then RUN="sh sweep.sh"; fi
 docker run --rm --user 0 -v "$ROOT:/w" -w /w/spikes/p4-12-shell-faces --entrypoint sh "$IMAGE" -c "
   em++ -std=c++17 $OPT $EXTRA -fwasm-exceptions -I/opencascade.js/build/occt-includes harness.cpp \
     -sALLOW_MEMORY_GROWTH -sENVIRONMENT=node -sERROR_ON_UNDEFINED_SYMBOLS=0 -sSTACK_SIZE=5MB \
-    $LINK -o build/harness.cjs 2>&1 | grep -v 'warning:' | grep -E 'error|undefined' ;
+    $LINK -o $OUT 2>&1 | grep -v 'warning:' | grep -E 'error|undefined' ;
   $RUN"
