@@ -3,7 +3,7 @@ title: Rectangular Pattern
 type: rectangularPattern
 section: Features
 category: modify
-order: 24
+order: 28
 ---
 
 # Rectangular Pattern

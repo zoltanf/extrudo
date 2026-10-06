@@ -1,17 +1,17 @@
 ---
-title: Offset Face
-type: offsetFace
+title: Point at Intersection
+type: pointAtIntersection
 section: Features
-category: modify
-order: 32
+category: construct
+order: 21
 ---
 
-# Offset Face
+# Point at Intersection
 
-`d.offsetFace(inputs, options?): FeatureHandle<'offsetFace'>`
+`d.pointAtIntersection(inputs?, options?): FeatureHandle<'pointAtIntersection'>`
 
-One feature of the timeline, in the **modify** category. Its name follows
-the app's (`Offset Face1`, then `Offset Face2`, …); `options.name` gives it
+One feature of the timeline, in the **construct** category. Its name follows
+the app's (`Point at Intersection1`, then `Point at Intersection2`, …); `options.name` gives it
 another, `options.id` its ID and `options.index` its place in the timeline. Inputs the
 table calls optional keep the default it names, so a call with none of them still makes
 a valid feature.
@@ -20,8 +20,7 @@ a valid feature.
 
 | Input | Type | Required or default | What it does |
 | --- | --- | --- | --- |
-| `faces` | `GeomRef \| GeomRef[]` (`face`) | **required** | The faces to move along their outward normal. |
-| `distance` | `string \| number \| ParameterHandle` | **required** | How far; a length. Positive grows the body outwards, negative closes it in. |
+| `entities` | `GeomRef \| GeomRef[]` (`edge`, `plane`, `face`) | optional | Two edges, an edge and a plane or flat face, or three planes: they meet at the point. |
 
 ## Faces
 
@@ -60,8 +59,8 @@ const body = plate.body();
 const step = 'att-part.step'; // an attachment of the design
 const plan = 'att-plan.png';
 
-// Offset Face.
-d.offsetFace({ faces: face, distance: '2 mm' });
+// Point at Intersection.
+d.pointAtIntersection({ entities: [d.origin.xy, d.origin.yz, d.origin.xz] });
 ```
 
 ## See also

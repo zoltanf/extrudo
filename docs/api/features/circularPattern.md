@@ -3,7 +3,7 @@ title: Circular Pattern
 type: circularPattern
 section: Features
 category: modify
-order: 25
+order: 29
 ---
 
 # Circular Pattern

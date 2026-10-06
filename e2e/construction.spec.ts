@@ -1,4 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
+import { clickEdge, clickWhere, primitive } from './benchmark-helpers';
 import { clicker, kernelReady, mapping, newSketchOnXY, openProject, projector } from './helpers';
 
 // P3-05: construction geometry (ADR-0040, FR-FT-13). An offset plane is
@@ -253,3 +254,168 @@ async function constructionId(page: Page): Promise<string> {
   if (!id) throw new Error('no construction row');
   return id;
 }
+
+/** A manipulator handle's centre in page px. */
+async function handleAt(viewport: Locator, field: string) {
+  const circle = viewport.locator(`[data-manipulator-handle="${field}"]`);
+  const box = await viewport.boundingBox();
+  const cx = Number(await circle.getAttribute('cx'));
+  const cy = Number(await circle.getAttribute('cy'));
+  return { x: (box?.x ?? 0) + cx, y: (box?.y ?? 0) + cy };
+}
+
+/** Presses on a handle and drags it by a page-pixel offset. */
+async function dragHandle(page: Page, from: { x: number; y: number }, dx: number, dy: number) {
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + dx / 2, from.y + dy / 2, { steps: 4 });
+  await page.mouse.move(from.x + dx, from.y + dy, { steps: 4 });
+  await page.mouse.up();
+}
+
+// P4-12: the construction backlog. A point on a box edge with its handle, a
+// plane along a sketch line, an angled midplane from two faces, and a box
+// selection that takes a construction plane.
+
+test('a point on a box edge, dragged along the edge with its handle', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Box', { Length: '40 mm', Width: '20 mm', Height: '10 mm' });
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:40,20,10');
+  await page.keyboard.press('Shift+1');
+  const at = await settledProjector(viewport);
+
+  const dialog = await startConstruction(page, 'Point on Path');
+  // The bottom front edge runs along X at y = −10, z = 0: its midpoint is the origin.
+  await clickEdge(page, at, [0, -10, 0]);
+  await expect(viewport).toHaveAttribute('data-construction', /Point_on_Path1:point:0,-10,0$/, {
+    timeout: 15_000,
+  });
+
+  // The handle sits on the edge; dragging it along the edge changes Position.
+  const field = dialog.getByRole('textbox', { name: 'Position', exact: true });
+  await expect(field).toHaveValue('0.5');
+  const from = await handleAt(viewport, 'position');
+  const a0 = at([-15, -10, 0]);
+  const a1 = at([15, -10, 0]);
+  await dragHandle(page, from, (a1.x - a0.x) * 0.5, (a1.y - a0.y) * 0.5);
+  await field.blur();
+  const moved = Number(await field.inputValue());
+  expect(moved).not.toBe(0.5);
+  expect(moved).toBeGreaterThanOrEqual(0);
+  expect(moved).toBeLessThanOrEqual(1);
+  await expect(viewport).toHaveAttribute('data-construction', /Point_on_Path1:point:/);
+  await ok(page, dialog);
+  await expect(viewport).toHaveAttribute('data-construction', /Point_on_Path1:point:/);
+});
+
+test('a plane along a sketch arc is square to its tangent', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  const map = await newSketchOnXY(page);
+  const click = clicker(page, map);
+  // A 3-point arc from (0, 0) over (20, 20) to (40, 0): a half circle of radius 20
+  // centred at (20, 0), its middle at (20, 20).
+  await page.keyboard.press('a');
+  await click(0, 0);
+  await click(40, 0);
+  await click(20, 20);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+
+  await page.keyboard.press('Shift+1');
+  const at = await settledProjector(viewport);
+  const dialog = await startConstruction(page, 'Plane Along Path');
+  // The arc's middle is its top, (20, 20): the plane is x = 20 and its normal is
+  // the tangent there (±X).
+  await clickWhere(page, at, [20, 20, 0], /^sketchEntity:/);
+  await expect(viewport).toHaveAttribute(
+    'data-construction',
+    /preview:Plane_Along_Path1:plane:20,0,0:(-?1,0,0)$/,
+    { timeout: 15_000 },
+  );
+  await ok(page, dialog);
+  await expect(viewport).toHaveAttribute(
+    'data-construction',
+    /Plane_Along_Path1:plane:20,0,0:(-?1,0,0)$/,
+  );
+});
+
+test('a point at an intersection picks two edges in the view (M1)', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  // A 20 mm cube, x and y ±10, z 0…20.
+  await primitive(page, 'Box', { Length: '20 mm', Width: '20 mm', Height: '20 mm' });
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:20,20,20');
+  await page.keyboard.press('Shift+1');
+  const at = await settledProjector(viewport);
+
+  const dialog = await startConstruction(page, 'Point at Intersection');
+  // The top-front edge (along X at y = −10, z = 20) and the front-right vertical
+  // edge (x = 10, y = −10) meet at (10, −10, 20). The field takes edges, so the
+  // model picker picks them (before M1 the plane picker made an edge unpickable).
+  await clickEdge(page, at, [0, -10, 20]);
+  await clickEdge(page, at, [10, -10, 10]);
+  await expect(dialog.getByRole('button', { name: 'Entities', exact: true })).toHaveText('2 edges');
+  await expect(viewport).toHaveAttribute(
+    'data-construction',
+    /preview:Point_at_Intersection1:point:10,-10,20$/,
+    { timeout: 15_000 },
+  );
+  await ok(page, dialog);
+  await expect(viewport).toHaveAttribute(
+    'data-construction',
+    'Point_at_Intersection1:point:10,-10,20',
+  );
+});
+
+test('an angled midplane bisects two faces at 45°', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Box', { Length: '40 mm', Width: '20 mm', Height: '20 mm' });
+  await page.keyboard.press('Shift+1');
+  const at = await settledProjector(viewport);
+
+  const dialog = await startConstruction(page, 'Angled Midplane');
+  // A Plane field picks like Create Sketch (no `data-model-hover`): click the faces.
+  await clickAt(page, at, [0, -10, 10]); // front, normal −Y
+  await clickAt(page, at, [0, 0, 20]); // top, normal +Z
+  await expect(viewport).toHaveAttribute(
+    'data-construction',
+    /preview:Angled_Midplane1:plane:[^:]*:0,-0\.707,0\.707$/,
+    { timeout: 15_000 },
+  );
+  await ok(page, dialog);
+  await expect(viewport).toHaveAttribute(
+    'data-construction',
+    /Angled_Midplane1:plane:[^:]*:0,-0\.707,0\.707/,
+  );
+});
+
+test('a box selection takes a construction plane', async ({ page }) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  const at0 = await settledProjector(viewport);
+  const halfPlane = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
+
+  const plane = await startConstruction(page, 'Offset Plane');
+  await clickAt(page, at0, [halfPlane * 0.5, -halfPlane * 0.5, 0]);
+  await expect(plane.getByRole('button', { name: 'Plane', exact: true })).toHaveText('XY plane');
+  await plane.getByRole('textbox', { name: 'Distance' }).fill('30 mm');
+  await ok(page, plane);
+  const id = await constructionId(page);
+
+  // The top view: the plane's square lies face-on around the origin.
+  await page.keyboard.press('Shift+2');
+  const at = await settledProjector(viewport);
+  const span = halfPlane * 1.2;
+  const from = at([-span, -span, 30]);
+  const to = at([span, span, 30]);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 8 });
+  await page.mouse.up();
+  await expect(viewport).toHaveAttribute('data-model-selection', new RegExp(`plane:${id}`));
+});

@@ -70,6 +70,10 @@ The planes, axes and points other features build on.
 - [Axis Through Cylinder](axisThroughCylinder.md) — `d.axisThroughCylinder(inputs?, options?)`
 - [Axis Along Edge](axisAlongEdge.md) — `d.axisAlongEdge(inputs?, options?)`
 - [Point](constructionPoint.md) — `d.constructionPoint(inputs?, options?)`
+- [Point on Path](pointOnPath.md) — `d.pointOnPath(inputs?, options?)`
+- [Point at Intersection](pointAtIntersection.md) — `d.pointAtIntersection(inputs?, options?)`
+- [Plane Along Path](planeAlongPath.md) — `d.planeAlongPath(inputs?, options?)`
+- [Angled Midplane](midplaneAngled.md) — `d.midplaneAngled(inputs?, options?)`
 
 ## See also
 

@@ -21,12 +21,18 @@ import {
   type ExtrudoDocument,
   type FeatureDefinition,
   type GeomRef,
+  INTERSECTION_SOURCE_KINDS,
   LINE_SOURCE_KINDS,
+  MIDPLANE_ANGLED_TYPE,
   MIDPLANE_TYPE,
   OFFSET_PLANE_TYPE,
+  PATH_SOURCE_KINDS,
+  PLANE_ALONG_PATH_TYPE,
   PLANE_AT_ANGLE_TYPE,
   PLANE_SOURCE_KINDS,
   PLANE_THROUGH_POINTS_TYPE,
+  POINT_AT_INTERSECTION_TYPE,
+  POINT_ON_PATH_TYPE,
   POINT_SOURCE_KINDS,
   parseSketchEntityRefId,
   readSketch,
@@ -58,7 +64,7 @@ const selection = (
 const expression = (
   name: string,
   label: string,
-  unit: 'length' | 'angle',
+  unit: 'length' | 'angle' | 'unitless',
   value: string,
   hint?: string,
 ): DialogField => ({
@@ -69,6 +75,52 @@ const expression = (
   default: value,
   ...(hint && { hint }),
 });
+
+const choice = (
+  name: string,
+  label: string,
+  options: readonly { value: string; label: string }[],
+  value: string,
+  hint?: string,
+): DialogField => ({ kind: 'choice', name, label, options, default: value, ...(hint && { hint }) });
+
+const toggle = (name: string, label: string, value: boolean, hint?: string): DialogField => ({
+  kind: 'toggle',
+  name,
+  label,
+  default: value,
+  ...(hint && { hint }),
+});
+
+/** The shared fields of a point or plane along a path (P4-12). */
+function pathFields(noun: string): DialogField[] {
+  return [
+    selection('path', 'Path', PATH_SOURCE_KINDS, {
+      min: 1,
+      prompt: 'Pick sketch curves or edges',
+      hint: `The sketch curves and edges the ${noun} follows, chained end to end.`,
+    }),
+    choice(
+      'by',
+      'By',
+      [
+        { value: 'position', label: 'Position' },
+        { value: 'length', label: 'Length' },
+      ],
+      'position',
+      'A fraction of the path, or a length from its start.',
+    ),
+    {
+      ...expression('position', 'Position', 'unitless', '0.5', 'A fraction from 0 to 1.'),
+      shown: (values) => values.choices.by !== 'length',
+    },
+    {
+      ...expression('distance', 'Distance', 'length', '20 mm', 'A length from the path’s start.'),
+      shown: (values) => values.choices.by === 'length',
+    },
+    toggle('flip', 'Flip', false, 'Measure from the other end of the path.'),
+  ];
+}
 
 const planeHint = 'An origin plane, a construction plane or a flat face.';
 
@@ -162,6 +214,27 @@ function offsetManipulators(values: DialogValues, ctx: ManipulatorContext): Mani
   return [{ kind: 'distance', field: 'distance', origin: base.anchor, direction: base.normal }];
 }
 
+/**
+ * The handle along a path (P4-12): from the path's start, along its direction,
+ * to the value. Only a straight path shows one, so the handle's own line is the
+ * path; the draft's report says where the path starts and how long it is.
+ */
+function pathManipulators(values: DialogValues, ctx: ManipulatorContext): Manipulator[] {
+  const report = ctx.draftConstruction;
+  const along = report?.kind === 'point' || report?.kind === 'plane' ? report.path : undefined;
+  if (!along || !along.straight) return [];
+  const byLength = values.choices.by === 'length';
+  return [
+    {
+      kind: 'distance',
+      field: byLength ? 'distance' : 'position',
+      origin: along.from,
+      direction: along.tangent,
+      scale: byLength ? 1 : along.length,
+    },
+  ];
+}
+
 /** The angle arc about the line, from where the plane's normal is at 0°. */
 function angleManipulators(values: DialogValues, ctx: ManipulatorContext): Manipulator[] {
   const ref = values.refs.axis?.[0];
@@ -252,6 +325,12 @@ export const tangentPlaneDialog = construction(
       prompt: 'Automatic',
       hint: 'Where round the face it touches: where the face’s normal is closest to the plane’s normal.',
     }),
+    selection('point', 'Nearest point', POINT_SOURCE_KINDS, {
+      min: 0,
+      max: 1,
+      prompt: 'Automatic',
+      hint: 'Touch the face nearest this point. A torus and a free-form face need it.',
+    }),
     expression(
       'angle',
       'Angle',
@@ -259,6 +338,22 @@ export const tangentPlaneDialog = construction(
       '0 deg',
       'Turns the touching point about the face’s axis. A sphere ignores it.',
     ),
+    {
+      // A free-form face's touching point comes from a fine mesh, not the
+      // analytic surface: say so rather than dropping the report's `basis`
+      // (P4-12 review L6).
+      kind: 'info',
+      name: 'basis',
+      label: 'Tangent',
+      shown: (_values, ctx) =>
+        ctx?.draftConstruction?.kind === 'plane' && ctx.draftConstruction.basis === 'mesh',
+      text: (_values, ctx) => {
+        const report = ctx.draftConstruction;
+        return report?.kind === 'plane' && report.basis === 'mesh'
+          ? 'Tangent read from the display mesh.'
+          : '';
+      },
+    },
   ],
   { validate: curvedFace('face', 'Pick a curved face: a flat face is its own plane.') },
 );
@@ -308,7 +403,34 @@ export const constructionPointDialog = construction(CONSTRUCTION_POINT_TYPE, [
   expression('z', 'Z', 'length', '0 mm', 'Moves the point along the world Z axis.'),
 ]);
 
-/** The nine construction dialogs, for the registry. */
+export const pointOnPathDialog = construction(POINT_ON_PATH_TYPE, pathFields('point'), {
+  manipulators: pathManipulators,
+});
+
+export const planeAlongPathDialog = construction(PLANE_ALONG_PATH_TYPE, pathFields('plane'), {
+  manipulators: pathManipulators,
+});
+
+export const pointAtIntersectionDialog = construction(POINT_AT_INTERSECTION_TYPE, [
+  selection('entities', 'Entities', INTERSECTION_SOURCE_KINDS, {
+    min: 2,
+    max: 3,
+    prompt: 'Pick two edges, an edge and a plane, or three planes',
+    hint: 'Two edges, an edge and a plane or flat face, or three planes: they meet at the point.',
+  }),
+]);
+
+export const midplaneAngledDialog = construction(MIDPLANE_ANGLED_TYPE, [
+  selection('planes', 'Planes', PLANE_SOURCE_KINDS, {
+    min: 2,
+    max: 2,
+    prompt: 'Pick two planes or faces at an angle',
+    hint: 'Two non-parallel planes or flat faces: the plane that bisects them.',
+  }),
+  toggle('flip', 'Flip', false, 'Take the other bisector.'),
+]);
+
+/** The thirteen construction dialogs, for the registry. */
 export const CONSTRUCTION_DIALOGS = [
   offsetPlaneDialog,
   planeAtAngleDialog,
@@ -319,4 +441,8 @@ export const CONSTRUCTION_DIALOGS = [
   axisThroughCylinderDialog,
   axisAlongEdgeDialog,
   constructionPointDialog,
+  pointOnPathDialog,
+  pointAtIntersectionDialog,
+  planeAlongPathDialog,
+  midplaneAngledDialog,
 ] as const;

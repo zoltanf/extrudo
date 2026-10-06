@@ -10,10 +10,17 @@ import type { PlanePicker } from '../viewport/Viewport';
 import type { DialogController, OpenDialog } from './dialog';
 import type { SelectionField } from './spec';
 
-/** The open dialog's pick field, when it takes planes. */
+/** The open dialog's pick field, when it takes planes (and not edges, M1). */
 function planeField(open: OpenDialog | undefined): SelectionField | undefined {
   const field = open?.spec.fields.find((f) => f.name === open.pickField);
-  return field?.kind === 'selection' && field.accepts.includes('plane') ? field : undefined;
+  // A field that also takes edges keeps the model picker: an edge can't be
+  // picked through `sketchTargetAt`, which offers planes and faces alone (a
+  // `pointAtIntersection`'s two edges would be unpickable, P4-12 review M1).
+  return field?.kind === 'selection' &&
+    field.accepts.includes('plane') &&
+    !field.accepts.includes('edge')
+    ? field
+    : undefined;
 }
 
 /**

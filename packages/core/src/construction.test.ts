@@ -11,9 +11,13 @@ import {
   isConstructionRef,
   isConstructionReport,
   isConstructionType,
+  MidplaneAngledInputsSchema,
   MidplaneInputsSchema,
   OffsetPlaneInputsSchema,
+  PlaneAlongPathInputsSchema,
   PlaneThroughPointsInputsSchema,
+  PointAtIntersectionInputsSchema,
+  PointOnPathInputsSchema,
   TangentPlaneInputsSchema,
   usesBodies,
 } from './construction';
@@ -57,8 +61,8 @@ function timeline(): ExtrudoDocument {
 }
 
 describe('construction feature types', () => {
-  it('nine types in the Construct category, each with a label and an icon', () => {
-    expect(CONSTRUCTION_TYPES).toHaveLength(9);
+  it('thirteen types in the Construct category, each with a label and an icon', () => {
+    expect(CONSTRUCTION_TYPES).toHaveLength(13);
     for (const type of CONSTRUCTION_TYPES) {
       const feature = CONSTRUCTION_FEATURES[type];
       expect(feature).toMatchObject({ type, category: 'construct' });
@@ -81,6 +85,10 @@ describe('construction feature types', () => {
       'axis',
       'axis',
       'point',
+      'point',
+      'point',
+      'plane',
+      'plane',
     ]);
     expect(constructionRef({ id: fid('F'), type: 'offsetPlane' })).toEqual({
       kind: 'plane',
@@ -92,6 +100,22 @@ describe('construction feature types', () => {
     });
     expect(constructionRef({ id: fid('F'), type: 'constructionPoint' })).toEqual({
       kind: 'point',
+      id: 'F',
+    });
+    expect(constructionRef({ id: fid('F'), type: 'pointOnPath' })).toEqual({
+      kind: 'point',
+      id: 'F',
+    });
+    expect(constructionRef({ id: fid('F'), type: 'pointAtIntersection' })).toEqual({
+      kind: 'point',
+      id: 'F',
+    });
+    expect(constructionRef({ id: fid('F'), type: 'planeAlongPath' })).toEqual({
+      kind: 'plane',
+      id: 'F',
+    });
+    expect(constructionRef({ id: fid('F'), type: 'midplaneAngled' })).toEqual({
+      kind: 'plane',
       id: 'F',
     });
     expect(constructionRef({ id: fid('F'), type: 'extrude' })).toBeUndefined();
@@ -124,6 +148,44 @@ describe('construction inputs', () => {
       ok(PlaneThroughPointsInputsSchema, { points: refs(p('a'), p('b'), p('c'), p('d')) }),
     ).toBe(false);
     expect(ok(TangentPlaneInputsSchema, { face: refs(XY) })).toBe(false);
+    // P4-12's variants.
+    expect(ok(PointOnPathInputsSchema, { path: refs({ kind: 'sketchEntity', id: 'S/l1' }) })).toBe(
+      true,
+    );
+    expect(ok(PointOnPathInputsSchema, { path: refs({ kind: 'edge', id: 'e' }) })).toBe(true);
+    expect(ok(PointOnPathInputsSchema, { path: refs({ kind: 'face', id: 'f' }) })).toBe(false);
+    expect(ok(PlaneAlongPathInputsSchema, { path: refs({ kind: 'edge', id: 'e' }) })).toBe(true);
+    expect(
+      ok(PointAtIntersectionInputsSchema, {
+        entities: refs({ kind: 'edge', id: 'a' }, { kind: 'edge', id: 'b' }),
+      }),
+    ).toBe(true);
+    expect(
+      ok(PointAtIntersectionInputsSchema, {
+        entities: refs(XY, { kind: 'plane', id: 'origin:yz' }, { kind: 'plane', id: 'origin:xz' }),
+      }),
+    ).toBe(true);
+    expect(
+      ok(PointAtIntersectionInputsSchema, {
+        entities: refs({ kind: 'edge', id: 'a' }, XY, { kind: 'plane', id: 'origin:yz' }, XY),
+      }),
+    ).toBe(false);
+    expect(ok(MidplaneAngledInputsSchema, { planes: refs(XY, { kind: 'face', id: 'f' }) })).toBe(
+      true,
+    );
+    expect(ok(MidplaneAngledInputsSchema, { planes: refs(XY, XY, XY) })).toBe(false);
+    expect(
+      ok(TangentPlaneInputsSchema, {
+        face: refs({ kind: 'face', id: 'f' }),
+        point: refs(p('a')),
+      }),
+    ).toBe(true);
+    expect(
+      ok(TangentPlaneInputsSchema, {
+        face: refs({ kind: 'face', id: 'f' }),
+        point: refs({ kind: 'face', id: 'g' }),
+      }),
+    ).toBe(false);
     // Numbers are expressions of their unit.
     expect(
       ok(OffsetPlaneInputsSchema, { distance: { kind: 'expr', expr: '5', unit: 'angle' } }),
@@ -186,6 +248,29 @@ describe('construction features in the timeline', () => {
     expect(deps.get(fid('OP1'))).toEqual([]);
     expect(deps.get(fid('OP2'))).toEqual([fid('OP1')]);
     expect(deps.get(fid('S1'))).toEqual([fid('OP2')]);
+  });
+
+  it('P4-12’s variants depend on the features they name too', () => {
+    const angled: Feature = {
+      id: fid('M'),
+      type: 'midplaneAngled',
+      name: 'Angled Midplane1',
+      suppressed: false,
+      inputs: {
+        planes: { kind: 'ref', refs: [XY, { kind: 'plane', id: 'OP1' }] },
+        flip: { kind: 'bool', value: false },
+      },
+    };
+    const doc: ExtrudoDocument = {
+      ...createDocument({ name: 'Angled' }),
+      features: [plane('OP1', 'Offset Plane1', XY), angled],
+      timelineMarker: 2,
+    };
+    expect(timelineDependencies(doc).get(fid('M'))).toEqual([fid('OP1')]);
+    const store = createDocumentStore(doc);
+    expect(() => store.getState().dispatch(removeFeature({ id: fid('OP1') }))).toThrow(
+      /Angled Midplane1 uses it/,
+    );
   });
 
   it('refuse a move that breaks the order, both ways', () => {

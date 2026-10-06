@@ -131,3 +131,202 @@ everything had to come from what the kernel already reports.
 - The kernel reports a plane's square as an anchor only: a plane through
   far-apart references is drawn near the middle, not around them.
 - Tangent planes on tori and free-form faces, and an angle for spheres.
+
+## Amendment, 2026-10-06 — P4-12's construction backlog
+
+- **Status:** Accepted, 2026-10-06
+- **Task:** P4-12 ("more construction geometry"): point on path, point through
+  two edges, plane along a path, midplane of non-parallel planes, tangent
+  planes on tori and free-form faces, planes in box selection.
+- **Builds on:** this ADR, ADR-0047 (`pathFromRefs`), ADR-0018 (`pickBox`),
+  ADR-0026 (the view's picking), ADR-0068 (the API generator).
+- **Code:** `packages/core/src/construction.ts`,
+  `packages/kernel/src/features/construction.ts`,
+  `apps/web/src/features/construction.ts`, `apps/web/src/selection/pick.ts`,
+  `e2e/construction.spec.ts`.
+- **No facade change.** Everything comes from `describe`, `surfaceGeometry`,
+  `edgeGeometry`, `closestPoints` and a fine mesh of a face (0.01 mm
+  deflection), as in the original.
+
+### Decisions
+
+1. **Four new feature types** join the nine, one per tool, category
+   `construct`, type equal to the tool ID (`pointOnPath`, `pointAtIntersection`,
+   `planeAlongPath`, `midplaneAngled`). They make no body, use the same
+   `constructionRef` (`{ kind: 'plane' | 'axis' | 'point', id: <feature> }`),
+   dependency rules, `ConstructionReport`, view drawing/picking and browser
+   folder. Two make a point, two a plane, so `constructionKindOf` just maps
+   them.
+2. **A path is the path pattern's.** `pointOnPath` and `planeAlongPath` take a
+   `path` of sketch curves and edges in any order (`pathFromRefs`, ADR-0047),
+   a `by` enum (`position`, a fraction of the path, default, or `length`), a
+   `position` (unitless, default 0.5) or a `distance` (a length), and `flip`
+   to measure from the far end. The kernel samples the path's polyline by arc
+   length (`Path.at`), exactly the maths the path pattern has. A
+   `planeAlongPath` plane's normal is the path's tangent there and its frame
+   follows `faceSketchFrame` (decision 4 of the original), so the Sweep tool's
+   sections can be sketched on it and the sweep places them where they were
+   drawn.
+3. **`pointAtIntersection`** takes `entities`, up to three references of kind
+   `edge`, `plane` or `face`, and reads what they are:
+   - two edges: the facade's `closestPoints` on the two **edge sub-shapes**
+     (`Kernel.subShape`, in a `kernel.scope()` so they are released), the
+     midpoint of the closest points; more than 1e-3 mm apart is an error
+     naming the distance ("The two edges don't meet (0.8 mm apart).");
+   - an edge and a plane/face: the edge's exact geometry crossed with the
+     plane (`planeOf`): a line's ends, a circle's or an ellipse's analytic
+     crossing (one `acos`), and a dense polyline (360 samples) for anything
+     else; an error when it never crosses and when it lies in the plane;
+   - three planes or flat faces: solved in TypeScript (the normals' triple
+     product), an error when they share a line or a plane.
+   Any other mix is an error saying what to pick.
+4. **`midplaneAngled`** bisects two **non-parallel** planes or flat faces:
+   the plane through their intersection line whose normal is `n1 + n2`
+   (normalised), or the other bisector with `flip`. The two normals are
+   **sorted by `(x, y, z)` before `±`**, so the same pair gives the same plane
+   whichever face was picked first (the point is symmetric already). Parallel
+   planes are refused with the existing Midplane's name in the message
+   ("These planes are parallel. Use Midplane."), and the original `midplane`
+   stays for the parallel case. The intersection line is found in TypeScript
+   (a point on both planes).
+5. **`tangentPlane` gained an optional `point`** (a construction point or a
+   vertex): the touching point is then the face point nearest it, and the plane
+   is square to the surface normal there. A **torus** is exact (the tube's
+   centre circle from `surfaceGeometry`'s major radius and axis, then the
+   nearest point along the tube's radial direction; a target on the centre
+   circle itself takes the outward one); a **free-form** face (or any surface
+   `surfaceGeometry` can't place) falls back to **the nearest point of a fine
+   mesh of the face (0.01 mm deflection)**, using the nearest triangle's
+   outward normal, and says so with `basis: 'mesh'` in the report. Cylinders
+   and spheres also get their nearest point; a cone keeps the
+   reference-plane/angle rule (its nearest point is not worth the geometry)
+   and **warns** that the point is ignored. Without `point`, every surface
+   behaves exactly as before.
+6. **`ConstructionReport`'s plane gained an optional `basis: 'surface' |
+   'mesh'`** (how a tangent plane found its point; absent means the analytic
+   surface). It is report-only; nothing stores it and `tidy` keeps it.
+7. **Box selection.** `pickBox` gains a `construction` kind, **last** in
+   `BOX_ORDER`, taking construction planes (the drawn square, projected),
+   axes (the drawn line) and points (their dot) whose screen geometry lies in
+   the box; a window needs the whole square inside, a crossing a touch. It is
+   off unless the selection filter allows `construction`, so a box round a
+   body still takes the body.
+8. **Menu, keys and docs.** The four tools are in Construct's `more` menu (the
+   existing three tiles keep their keys); no new keys. `docs/file-format.md`
+   §6.31 and the tangent-plane row, and the API's example calls, are
+   regenerated with `pnpm api:generate`. The icons reuse `point`,
+   `plane-angle` and `midplane` (no new icon files).
+
+### Rejected approaches
+
+- **A facade call for the nearest point on a free-form face.** A mesh normal
+  is what the ADR's deferred item asked for and needs no build; `surfaceGeometry`
+  gives no parameter for a B-spline.
+- **Turning `midplane` into one type for both cases.** The parallel case is
+  well-defined and common; a second type keeps each error message precise and
+  leaves every existing file unchanged.
+- **A new path reader for construction.** `pathFromRefs` already chains
+  curves and edges and is tested by the path pattern.
+- **Box-selecting axes and points under `sketches`.** They are model
+  construction geometry, so they belong to `construction` with the planes.
+
+## Results
+
+- **Kernel** (`packages/kernel/src/features/construction-more.test.ts`, real
+  OCCT, `strictLeaks`): 12 tests pass — a point on a box edge at 0.25 and 7 mm,
+  a two-edge chain across the corner, a plane along a sketch arc at its middle
+  (anchor on the arc, normal the tangent to 1e-9), a sweep whose profile is
+  sketched on a plane along the path (π·9·60 mm³, tessellation), two box edges
+  meeting at their corner, two skew edges refused with "40 mm apart", three
+  faces of a box at (0, 0, 0), an edge and a plane, an angled midplane at 45°
+  and its flip, parallel planes refused pointing at Midplane, a tangent plane on
+  a torus (`basis: 'surface'`, the outer equator) and on an extruded spline's
+  free-form face (`basis: 'mesh'`, unit normal).
+- **Core** (`packages/core/src/construction.test.ts`): 13 tests pass, including
+  the thirteen types and kinds, the new schemas' reference kinds and counts, and
+  a timeline dependency (and delete refusal) through a `midplaneAngled`'s plane.
+- **App**: `apps/web/src/features/construction.test.ts` 10 tests (field/input
+  round trip for all thirteen, and the path handle's distance manipulator);
+  `apps/web/src/selection/pick.test.ts` 27 tests (a crossing box takes a plane,
+  axis and point; off with the construction filter). The `DialogOverlay`
+  manipulator memo needed the preview's `drawing` in its dependencies — without
+  it the path handle never appeared (found in the e2e).
+- **API**: `pnpm api:generate` wrote the four methods and pages;
+  `generated.test.ts` and `docs.test.ts` (26 tests) pass with the new
+  `EXAMPLE_INPUTS`.
+- **E2E** (`e2e/construction.spec.ts`, `--repeat-each=2`): 12 passed. A Point on
+  Path on a Box's bottom front edge reads the midpoint and its `position` handle
+  drags along the edge; a Plane Along Path on a sketch line reads
+  `plane:20,0,0:1,0,0`; an Angled Midplane of a Box's front and top faces reads
+  normal `0,-0.707,0.707`; a window box in the top view selects the Offset
+  Plane (`data-model-selection` `plane:<id>`).
+- **No facade change**: the OCCT input hash is untouched.
+- **`pnpm check` passed**: 284 test files passed, 3 skipped (287); 3,568 tests
+  passed, 7 skipped (3,575); typecheck, Biome, the boundaries, the license
+  allow-list and the libcascade symbol check all clean. `pnpm build` built the
+  app and the site (the site's docs page count grew by four).
+
+### Review fixes (2026-10-06)
+
+A review of this amendment (`2dfd610`) found one UI defect and several geometry
+and wording issues; all are fixed here, each with a test.
+
+- **M1 — `pointAtIntersection` couldn't be picked in the view.** Its `entities`
+  field takes `edge | plane | face`, and `planeField` treated any field that
+  accepts a plane as a plane-only field, so `dialogPlanePick` turned the model
+  picker off and `sketchTargetAt` offered planes and faces alone: the two-edge
+  and edge-and-plane cases were clickable only by pre-selection. `planeField`
+  now leaves a field that also accepts an `edge` to the model picker
+  (`apps/web/src/features/planePicker.ts`). Tested in
+  `apps/web/src/features/construction.test.ts` ("a field that also takes edges
+  keeps the model picker") and in the e2e, which picks two edges of a Box in the
+  view and reads their shared corner. (The Wall bracket's 2.4 mm wall puts its
+  parallel edges within a pixel of each other in the home view, so their picks
+  are unreliable; the Box exercises the same view-picking path.)
+- **M2 — an edge crossed with a plane was interpolated on a 24-sample chord.**
+  `edgeMeetsPlane` now crosses a line at its exact ends and a circle or an
+  ellipse analytically (one `acos`; the conic's own `first`/`last` restrict it
+  to the arc), and only falls back to a 360-sample polyline for other edges
+  (`packages/kernel/src/features/construction.ts`). A Ø100 rim crossed by a
+  plane is exact to 1 µm, where the chord was ~0.5 mm off (a test in
+  `construction-more.test.ts` checks `x² + y² = 2500`).
+- **M3 — a free-form tangent plane touched at a triangle's centroid.** It now
+  finds the nearest point of every triangle (projected and clamped into it),
+  chooses the triangle by that distance and takes its outward normal
+  (`closestOnTriangle`). The test asserts the touching point is the nearest
+  sampled point of the mesh (within 0.05 mm) and that the normal points from the
+  body towards a target just outside it; with the centroid rule the test fails
+  by 0.16 mm.
+- **L1 — `midplaneAngled` depended on pick order.** The two normals are sorted
+  by `(x, y, z)` before `±`, so both orders give the same bisector; tested both
+  ways.
+- **L2 — the sphere's degenerate guard tested a unit vector's length.** It now
+  measures the real offset and falls back to the surface direction when the
+  target is at the centre.
+- **L3 — the torus's 0.5 mm threshold.** The exact nearest point is used (tube
+  circle, then the tube's radial direction); a target 0.4 mm above the tube
+  circle touches (15, 0, 3) instead of (18, 0, 0).
+- **L4 — a cone ignored a `point` silently.** It warns that the nearest-point
+  rule doesn't apply yet and keeps the angle rule.
+- **L5 — two tolerances.** "Lies in the plane" and "meets" both use `MEET`
+  (1e-3 mm); tested with an edge in a plane and one parallel below it.
+- **L6 — `basis` was written and read by nothing.** The Tangent Plane dialog
+  shows an info line, "Tangent read from the display mesh.", while the report's
+  basis is `mesh`.
+- **L7 — a wrong section number.** The ADR pointed at "§6.31–6.34"; the file
+  format has one section, 6.31, for all four types.
+- **L8 — wording.** The face is read from **a fine mesh of it (0.01 mm
+  deflection, `MESH_BOOLEAN_DEFLECTION`), not the view's coarser display
+  tessellation**; an earlier commit message called it "the view's own
+  deflection", which was wrong. The ADR and `docs/file-format.md` now say so.
+- **L9 — the doc test.** `PATH_POSITIONS` joined the file-format doc test's
+  choices list, so the `by` values are checked.
+- **L10 — origin axes in a crossing box.** `pickBox`'s `construction` kind skips
+  `origin:*` axes (they are picked by a click, never by a box), with a unit
+  test.
+- **Test gaps.** `construction-more.test.ts` gained a closed path, a fraction or
+  length past either end, parallel edges, three planes with a parallel pair, a
+  vertical plane-along-path (frame follows `faceSketchFrame`), a torus inside
+  the ring and near the tube circle, and the review tests above; the e2e's Plane
+  Along Path now uses an arc, as the brief asked.
+

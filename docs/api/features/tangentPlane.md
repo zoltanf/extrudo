@@ -23,6 +23,7 @@ a valid feature.
 | `face` | `GeomRef \| GeomRef[]` (`face`) | optional | The cylindrical, conical or spherical face to touch. |
 | `plane` | `GeomRef \| GeomRef[]` (`plane`, `face`) | optional | The plane that says where round the face it touches: it touches where the face's normal is closest to this one. Without one, a fixed direction square to the face's axis. |
 | `angle` | `string \| number \| ParameterHandle` | default `0 deg` | Turns the touching point about the face's axis; an angle. |
+| `point` | `GeomRef \| GeomRef[]` (`point`, `vertex`) | optional | Touch the face nearest this point (a point or a vertex). Without it, the reference plane and angle decide. |
 
 ## Faces
 

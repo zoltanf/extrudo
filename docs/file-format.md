@@ -655,11 +655,13 @@ feature with `ref`, `enum`, `expr` and `bool` inputs like the others.
 
 ### 6.10 Construction features
 
-Nine feature types (category construct) make no body: each makes a plane, an
+Thirteen feature types (category construct) make no body: each makes a plane, an
 axis or a point that later features refer to (section 8: a reference of kind
 `plane`, `axis` or `point` whose `id` is the *feature's ID*). Every input is
 optional in the schema (a missing pick is an error the kernel reports), and
-every reference input takes at most the count shown.
+every reference input takes at most the count shown. The nine original types
+are here; P4-12's four (`pointOnPath`, `planeAlongPath`, `pointAtIntersection`
+and `midplaneAngled`) and the `tangentPlane` `point` are in 6.31.
 
 | Type | Makes | Inputs |
 |---|---|---|
@@ -667,7 +669,7 @@ every reference input takes at most the count shown.
 | `planeAtAngle` | plane | `axis` (`ref`, one of kind `axis`, `edge` or `sketchEntity`: the line the plane turns about); `plane` (`ref`, one `plane` or `face`: where the angle counts from; without it 0 deg is the plane through the line whose normal is as vertical as possible); `angle` (`expr` angle, default 0, right-handed about the line) |
 | `midplane` | plane | `planes` (`ref`, two of kind `plane` or `face`, parallel): the plane halfway between |
 | `planeThroughPoints` | plane | `points` (`ref`, three of kind `point` or `vertex`, not on one line); the normal follows their order (right-handed) |
-| `tangentPlane` | plane | `face` (`ref`, one `face`: cylindrical, conical or spherical); `plane` (`ref`, one `plane` or `face`: says where round the face it touches, by its normal); `angle` (`expr` angle, default 0: turns the touching point about the face's axis) |
+| `tangentPlane` | plane | `face` (`ref`, one `face`: cylindrical, conical or spherical); `plane` (`ref`, one `plane` or `face`: says where round the face it touches, by its normal); `angle` (`expr` angle, default 0: turns the touching point about the face's axis); `point` (`ref`, one `point` or `vertex`: touch the face nearest it — a torus or a free-form face, 6.31) |
 | `axisThroughPoints` | axis | `points` (`ref`, two different points of kind `point` or `vertex`): from the first to the second |
 | `axisThroughCylinder` | axis | `face` (`ref`, one `face`: cylindrical, conical, toroidal or of revolution): the face's own axis |
 | `axisAlongEdge` | axis | `edge` (`ref`, one of kind `edge` or `sketchEntity`): a straight edge or sketch line, or a circular edge's axis through its centre |
@@ -1264,6 +1266,40 @@ units, frozen), `console.log`, a `Math.random` seeded from the script's ID and a
 `Date` frozen at 0; two seconds, 64 MB and 1,000 features per run. A program
 that fails, or exceeds a limit, makes nothing: the feature is in error, with the
 line of the source when there is one, and the bodies before it are unchanged.
+
+### 6.31 `pointOnPath`, `planeAlongPath`, `pointAtIntersection`, `midplaneAngled`
+
+More construction geometry (P4-12, ADR-0040's amendment). Like the nine in 6.10,
+each makes a plane or a point that later features refer to by its own ID; they
+make no body and are computed in the kernel from what the references name.
+
+`pointOnPath` and `planeAlongPath` place a point, or a plane square to the
+path, at a place along a path of sketch curves and edges (chained end to end
+like a `pathPattern`'s, 6.16). The plane's frame follows a sketch-on-face one,
+so a sketch drawn on it (a sweep's section) lies in it.
+
+| Type | Makes | Inputs |
+|---|---|---|
+| `pointOnPath` | point | `path` (`ref`, any number of kind `sketchEntity` or `edge`, chained end to end); `by` (`enum`, `position` (default) or `length`: how the place is measured); `position` (`expr` unitless, default 0.5: a fraction of the path); `distance` (`expr` length, only with `by` = `length`: a length from the path's start); `flip` (`bool`, default false: measure from the other end) |
+| `planeAlongPath` | plane | the same `path`, `by`, `position`, `distance` and `flip`; the plane is square to the path's tangent at that place |
+
+`pointAtIntersection` takes `entities` (`ref`, up to three of kind `edge`,
+`plane` or `face`) and reads what they are: two edges, an edge and a plane or
+flat face, or three planes or flat faces. Two edges meet within 1 µm (their
+closest points through the kernel); an edge crosses the plane of a plane or flat
+face; three planes are solved for their one common point. Any other mix, or
+references that don't meet, is an error.
+
+`midplaneAngled` takes `planes` (`ref`, two of kind `plane` or `face`) and
+`flip` (`bool`, default false). The two planes must not be parallel (that is
+what `midplane` is for); the result is the plane through their intersection
+line that bisects them, `flip` taking the other bisector.
+
+`tangentPlane`'s `point` (6.10) is where a tangent plane touches a face
+surfaceGeometry can't place analytically: a torus (the tube's nearest point) or
+a free-form face (the nearest triangle of a fine mesh of the face, 0.01 mm
+deflection, whose outward normal the plane takes), the plane square to the
+surface there.
 
 ---
 

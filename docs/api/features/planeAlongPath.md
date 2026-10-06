@@ -1,17 +1,17 @@
 ---
-title: Offset Face
-type: offsetFace
+title: Plane Along Path
+type: planeAlongPath
 section: Features
-category: modify
-order: 32
+category: construct
+order: 22
 ---
 
-# Offset Face
+# Plane Along Path
 
-`d.offsetFace(inputs, options?): FeatureHandle<'offsetFace'>`
+`d.planeAlongPath(inputs?, options?): FeatureHandle<'planeAlongPath'>`
 
-One feature of the timeline, in the **modify** category. Its name follows
-the app's (`Offset Face1`, then `Offset Face2`, …); `options.name` gives it
+One feature of the timeline, in the **construct** category. Its name follows
+the app's (`Plane Along Path1`, then `Plane Along Path2`, …); `options.name` gives it
 another, `options.id` its ID and `options.index` its place in the timeline. Inputs the
 table calls optional keep the default it names, so a call with none of them still makes
 a valid feature.
@@ -20,8 +20,11 @@ a valid feature.
 
 | Input | Type | Required or default | What it does |
 | --- | --- | --- | --- |
-| `faces` | `GeomRef \| GeomRef[]` (`face`) | **required** | The faces to move along their outward normal. |
-| `distance` | `string \| number \| ParameterHandle` | **required** | How far; a length. Positive grows the body outwards, negative closes it in. |
+| `path` | `GeomRef \| GeomRef[]` (`sketchEntity`, `edge`) | optional | The sketch curves and edges to follow, chained end to end. |
+| `by` | `'position' \| 'length'` | default `position` | How the place along the path is measured: a fraction of it, or a length from its start. |
+| `position` | `string \| number \| ParameterHandle` | optional | How far along the path, a fraction from 0 (its start) to 1 (its end). Default 0.5. |
+| `distance` | `string \| number \| ParameterHandle` | optional | How far along the path, a length from its start. Only when By is Length. |
+| `flip` | `boolean` | default `false` | Measure from the other end of the path. |
 
 ## Faces
 
@@ -60,8 +63,8 @@ const body = plate.body();
 const step = 'att-part.step'; // an attachment of the design
 const plan = 'att-plan.png';
 
-// Offset Face.
-d.offsetFace({ faces: face, distance: '2 mm' });
+// Plane Along Path.
+d.planeAlongPath({ path: line });
 ```
 
 ## See also

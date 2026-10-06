@@ -3,7 +3,7 @@ title: Combine
 type: combine
 section: Features
 category: modify
-order: 20
+order: 24
 ---
 
 # Combine

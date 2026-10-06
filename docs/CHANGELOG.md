@@ -4,6 +4,15 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-06 · **P4-12 construction geometry** (ADR-0040's amendment): four
+  new construction types — Point on Path and Plane Along Path (a fraction or a
+  length along a path of sketch curves and edges, with a distance handle along a
+  straight path), Point at Intersection (two edges, an edge and a plane, or
+  three planes) and Angled Midplane (the bisector of two non-parallel planes) —
+  plus a `point` on Tangent Plane that reaches tori and free-form faces (the
+  latter from a fine mesh of the face, `basis: 'mesh'`) and box selection that
+  takes construction planes, axes and points (origin axes excepted). Everything
+  is computed in TypeScript from the existing kernel reports; no facade change.
 - 2026-10-06 · **P4-12 Section analysis: several planes and a section box**
   (ADR-0045's amendment): the Section Analysis panel lists up to three planes
   as rows (offset, Flip, Show, Change, Remove, "Add plane"), each with its own

@@ -3,7 +3,7 @@ title: Path Pattern
 type: pathPattern
 section: Features
 category: modify
-order: 26
+order: 30
 ---
 
 # Path Pattern

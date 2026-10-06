@@ -867,9 +867,19 @@ end to end, faster than in Fusion 360.
   - Primitives: ~~position handles and a click point as the centre~~, torus
     placement options, ~~a box from two corners~~ (ADR-0032; done 2026-10-06,
     the torus options stay open).
-  - Construction: point on path, point through two edges, plane along a
+  - ~~Construction: point on path, point through two edges, plane along a
     path, midplane of non-parallel planes, tangent planes on tori and
-    free-form faces, planes in box selection (ADR-0040).
+    free-form faces, planes in box selection~~ **done 2026-10-06**
+    (ADR-0040's amendment): four new types — `pointOnPath` and `planeAlongPath`
+    (a fraction or a length along a path of sketch curves and edges,
+    `pathFromRefs`), `pointAtIntersection` (two edges, an edge and a plane, or
+    three planes) and `midplaneAngled` (the bisector of two non-parallel
+    planes) — plus a `point` on `tangentPlane` (a torus analytically, a
+    free-form face from a fine mesh of it, `basis: 'mesh'` in the report) and
+    `pickBox` taking construction planes, axes and points under the
+    construction filter (origin axes excepted). No facade change. Still open: a
+    point at the intersection of two curved faces, and a cone's nearest
+    tangency point.
   - ~~Extrude to object on curved faces and bodies, with an offset; revolve
     "to"~~; taper on ellipse and spline sides; symmetric half-length
     (ADR-0028, -0029; the first two done 2026-10-06, the taper and the

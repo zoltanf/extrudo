@@ -31,6 +31,7 @@ import type {
   HoleInputs,
   ImportInputs,
   LoftInputs,
+  MidplaneAngledInputs,
   MidplaneInputs,
   MirrorInputs,
   MoveInputs,
@@ -38,8 +39,11 @@ import type {
   OffsetPlaneInputs,
   PathPatternInputs,
   PlaceOnBedInputs,
+  PlaneAlongPathInputs,
   PlaneAtAngleInputs,
   PlaneThroughPointsInputs,
+  PointAtIntersectionInputs,
+  PointOnPathInputs,
   RectangularPatternInputs,
   RemoveInputs,
   RevolveInputs,
@@ -81,6 +85,10 @@ export const FEATURE_TYPES = [
   'axisThroughCylinder',
   'axisAlongEdge',
   'constructionPoint',
+  'pointOnPath',
+  'pointAtIntersection',
+  'planeAlongPath',
+  'midplaneAngled',
   'combine',
   'move',
   'mirror',
@@ -128,6 +136,10 @@ export const FEATURE_METHOD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   axisThroughCylinder: 'Axis Through Cylinder (construct): one feature of the timeline.',
   axisAlongEdge: 'Axis Along Edge (construct): one feature of the timeline.',
   constructionPoint: 'Point (construct): one feature of the timeline.',
+  pointOnPath: 'Point on Path (construct): one feature of the timeline.',
+  pointAtIntersection: 'Point at Intersection (construct): one feature of the timeline.',
+  planeAlongPath: 'Plane Along Path (construct): one feature of the timeline.',
+  midplaneAngled: 'Angled Midplane (construct): one feature of the timeline.',
   combine: 'Combine (modify): one feature of the timeline.',
   moveBodies: 'Move (modify): one feature of the timeline.',
   mirror: 'Mirror (modify): one feature of the timeline.',
@@ -788,6 +800,7 @@ export interface FeatureMethods {
    * @param inputs.face The cylindrical, conical or spherical face to touch.
    * @param inputs.plane The plane that says where round the face it touches: it touches where the face's normal is closest to this one. Without one, a fixed direction square to the face's axis.
    * @param inputs.angle Turns the touching point about the face's axis; an angle. Default 0 deg.
+   * @param inputs.point Touch the face nearest this point (a point or a vertex). Without it, the reference plane and angle decide.
    */
   tangentPlane(
     inputs?: PlainInputs<TangentPlaneInputs>,
@@ -832,6 +845,51 @@ export interface FeatureMethods {
     inputs?: PlainInputs<ConstructionPointInputs>,
     options?: FeatureOptions,
   ): FeatureHandle<'constructionPoint'>;
+  /**
+   * Point on Path (construct): one feature of the timeline.
+   *
+   * @param inputs.path The sketch curves and edges to follow, chained end to end.
+   * @param inputs.by How the place along the path is measured: a fraction of it, or a length from its start. Default position.
+   * @param inputs.position How far along the path, a fraction from 0 (its start) to 1 (its end). Default 0.5.
+   * @param inputs.distance How far along the path, a length from its start. Only when By is Length.
+   * @param inputs.flip Measure from the other end of the path. Default false.
+   */
+  pointOnPath(
+    inputs?: PlainInputs<PointOnPathInputs>,
+    options?: FeatureOptions,
+  ): FeatureHandle<'pointOnPath'>;
+  /**
+   * Point at Intersection (construct): one feature of the timeline.
+   *
+   * @param inputs.entities Two edges, an edge and a plane or flat face, or three planes: they meet at the point.
+   */
+  pointAtIntersection(
+    inputs?: PlainInputs<PointAtIntersectionInputs>,
+    options?: FeatureOptions,
+  ): FeatureHandle<'pointAtIntersection'>;
+  /**
+   * Plane Along Path (construct): one feature of the timeline.
+   *
+   * @param inputs.path The sketch curves and edges to follow, chained end to end.
+   * @param inputs.by How the place along the path is measured: a fraction of it, or a length from its start. Default position.
+   * @param inputs.position How far along the path, a fraction from 0 (its start) to 1 (its end). Default 0.5.
+   * @param inputs.distance How far along the path, a length from its start. Only when By is Length.
+   * @param inputs.flip Measure from the other end of the path. Default false.
+   */
+  planeAlongPath(
+    inputs?: PlainInputs<PlaneAlongPathInputs>,
+    options?: FeatureOptions,
+  ): FeatureHandle<'planeAlongPath'>;
+  /**
+   * Angled Midplane (construct): one feature of the timeline.
+   *
+   * @param inputs.planes Two planes or flat faces that meet at an angle.
+   * @param inputs.flip Take the other bisector. Default false.
+   */
+  midplaneAngled(
+    inputs?: PlainInputs<MidplaneAngledInputs>,
+    options?: FeatureOptions,
+  ): FeatureHandle<'midplaneAngled'>;
   /**
    * Combine (modify): one feature of the timeline.
    *
@@ -1294,6 +1352,14 @@ export function featureMethods(design: FeatureMethodTarget): FeatureMethods {
       design.add('axisAlongEdge', inputs, options) as FeatureHandle<'axisAlongEdge'>,
     constructionPoint: (inputs = {}, options?: FeatureOptions) =>
       design.add('constructionPoint', inputs, options) as FeatureHandle<'constructionPoint'>,
+    pointOnPath: (inputs = {}, options?: FeatureOptions) =>
+      design.add('pointOnPath', inputs, options) as FeatureHandle<'pointOnPath'>,
+    pointAtIntersection: (inputs = {}, options?: FeatureOptions) =>
+      design.add('pointAtIntersection', inputs, options) as FeatureHandle<'pointAtIntersection'>,
+    planeAlongPath: (inputs = {}, options?: FeatureOptions) =>
+      design.add('planeAlongPath', inputs, options) as FeatureHandle<'planeAlongPath'>,
+    midplaneAngled: (inputs = {}, options?: FeatureOptions) =>
+      design.add('midplaneAngled', inputs, options) as FeatureHandle<'midplaneAngled'>,
     combine: (inputs, options?: FeatureOptions) =>
       design.add('combine', inputs, options) as FeatureHandle<'combine'>,
     moveBodies: (inputs, options?: FeatureOptions) =>
@@ -1425,6 +1491,18 @@ export function featureExamples(d: Design): void {
 
   // Point.
   d.constructionPoint({ x: '10 mm', y: '20 mm', z: '5 mm' });
+
+  // Point on Path.
+  d.pointOnPath({ path: line, position: 0.5 });
+
+  // Point at Intersection.
+  d.pointAtIntersection({ entities: [d.origin.xy, d.origin.yz, d.origin.xz] });
+
+  // Plane Along Path.
+  d.planeAlongPath({ path: line });
+
+  // Angled Midplane.
+  d.midplaneAngled({ planes: [d.origin.xy, d.origin.yz] });
 
   // Combine.
   d.combine({ target: body, tools: [shaft.body()], operation: 'join' });

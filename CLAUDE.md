@@ -10,7 +10,7 @@ from the same codebase.
 steps). CI runs on every push and pull request, on GitHub-hosted runners (a
 self-hosted backup exists, off by default: `docs/deploy.md`).
 
-**Status (2026-10-05):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
+**Status (2026-10-06):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
@@ -28,10 +28,13 @@ analysis), P3-10 (3D-print aids), P3-11 (marking menu, context menus),
 P3-12 (onboarding), P3-13 (hardening), P3-14 (benchmarks B4 to B7), P3-15
 (public release prep, ADR-0054: done except the owner's release steps),
 P3-16 (notification history) and P3-17 (polish, both parts) are done: **Phase 3 is
-complete** (version 0.3.0). Phase 5 has started: P5-01 is **done** (the public document API, `packages/api`,
-its generated reference and the site's `/docs/api/` pages, ADR-0068) and P5-03 is
-**done** (the headless CLI, `packages/cli` and the `extrudo` command, ADR-0069) and P5-04 is
-**done** (OpenSCAD import, `packages/openscad`, both slices, ADR-0071) and P5-05 is **done** (macro recording: the emitter and the app's Record, Stop and Macro dialog, ADR-0073). Phase 4: P4-01 (sweep, loft, coil), P4-02
+complete** (version 0.3.0). Phase 5 is **complete**: P5-01 (the public document
+API, `packages/api`, its generated reference and the site's `/docs/api/` pages,
+ADR-0068), P5-02 (the Script feature, the QuickJS sandbox and the app's editor,
+ADR-0070), P5-03 (the headless CLI, `packages/cli` and the `extrudo` command,
+ADR-0069), P5-04 (OpenSCAD import, `packages/openscad`, both slices, ADR-0071),
+P5-05 (macro recording: the emitter and the app's Record, Stop and Macro dialog,
+ADR-0073) and P5-06 (the wall-thickness check, ADR-0072). Phase 4: P4-01 (sweep, loft, coil), P4-02
 (modeled threads), P4-03 (sketch text, bundled fonts), P4-03b (user fonts
 as attachments), P4-04 (emboss, deboss), P4-05 (control-point splines,
 conics), P4-07 (customizer, configurations), P4-08 (print tolerance,
@@ -43,7 +46,8 @@ thread adapter), B8 (the name tag) and B10 (the cable chain link) — and P4-06
 manifold-3d booleans, canvas images) is **done** on 2026-10-05, all five slices
 (ADR-0066). **Phase 4 is therefore complete apart from P4-12's backlog**, of
 which the hardening (ADR-0067), Print Info's walls/infill/cost, fillet and
-chamfer depth and the pattern skip list and handles are done (2026-10-05).
+chamfer depth, the pattern skip list and handles, primitives placement and the
+**construction backlog (ADR-0040's amendment, 2026-10-06)** are done.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -435,7 +439,22 @@ reads it with `planeOf`/`lineOf`/`pointOf`** (`features/references.ts`);
 in the app use `planeFrame(ref, construction)` / `sketchFrame(…, construction)`.
 The view draws them (`viewport/Construction.tsx`, steady size) and picks them
 (`PickScene.planes/points/axes`; planes also in `sketchTargetAt`);
-the browser has a Construction folder.
+the browser has a Construction folder. **P4-12 (2026-10-06) added four more
+types and box selection**: `pointOnPath` and `planeAlongPath` (a `by`
+`position`/`length`, `position`/`distance`, `flip`, along a path of sketch
+curves and edges through `pathFromRefs`; the plane's normal is the path's
+tangent and its frame follows `faceSketchFrame`, so a Sweep section can be
+sketched on it), `pointAtIntersection` (`entities`, up to three of
+`edge`/`plane`/`face`: two edges through `closestPoints` of their edge
+sub-shapes, an edge crossed with a plane, or three planes solved in
+TypeScript) and `midplaneAngled` (`planes`, two non-parallel, `flip`; parallel
+ones are refused pointing at `midplane`). `tangentPlane` gained a `point`: the
+face point nearest it (a torus analytically, a free-form face from its display
+mesh, `basis: 'mesh'` in the report); a point/plane report also carries
+`path` (`from`/`tangent`/`length`/`straight`) so the app draws a distance
+handle from the path's start along a straight path. `pickBox` takes
+construction planes/axes/points as a `construction` kind last in `BOX_ORDER`.
+No facade change.
 ADR-0042 (P3-11) added the right-click marking menu:
 `design-system/MarkingMenu.tsx` draws eight wedges and a list (pure
 geometry in `marking.ts`); **a wedge is a command ID** in the two tables in
@@ -1603,17 +1622,15 @@ recorded one is always inside the run, so only an expression outside it (a user
 parameter reading a recorded sketch's `d1`) refuses a Replace in the UI.
 
 Next (tasks may run in parallel on separate branches and worktrees, merged to
-main one at a time): **P5-01 is done** (all three slices, ADR-0068), **P5-03 is
-done** (both slices, ADR-0069: the headless library and the `extrudo` binary)
-and **P5-02 is done** (all three slices, ADR-0070: the runner, the feature in
-core/kernel/CLI, and the lazy CodeMirror dialog, chip, e2e and guide).
-**P5-04 is done** too (OpenSCAD import, ADR-0071), and **P5-05**
-(macro recording, both slices, ADR-0073). Next is
-P5-06 (wall-thickness check), according
-to `docs/03-roadmap.md`; **P4-06 is done** (all five slices, ADR-0066) and
-P4-12's hardening part (ADR-0067 H1 to
-H5) is on main, so **Phase 4 is complete apart from P4-12's backlog** (exact
-rational conics in the kernel, closed splines, trimming and offsetting
+main one at a time): **Phase 5 is complete** — P5-01 (all three slices,
+ADR-0068), P5-02 (all three slices, ADR-0070), P5-03 (both slices, ADR-0069),
+P5-04 (OpenSCAD import, ADR-0071), P5-05 (macro recording, both slices,
+ADR-0073) and P5-06 (wall-thickness, ADR-0072). Next is **P4-12's remaining
+backlog** and then **Phase 6** (desktop), according to `docs/03-roadmap.md`;
+**P4-06 is done** (all five slices, ADR-0066), P4-12's hardening part (ADR-0067
+H1 to H5) is on main and its **construction backlog is done (ADR-0040's
+amendment, 2026-10-06)**, so **Phase 4 is complete apart from P4-12's backlog**
+(exact rational conics in the kernel, closed splines, trimming and offsetting
 splines — ADR-0063's Deferred; and the modelling depth items P4-12 lists);
 onward in `docs/03-roadmap.md`. The repository is public (2026-10-04); the
 first public release is **v0.4.0** (no v0.3.0 tag): the owner does the slicer
@@ -1653,8 +1670,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for the v0.4.0 release |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0070: the Script feature (QuickJS sandbox, `@extrudo/script`). ADR-0073: macro recording (the document-to-script emitter, `@extrudo/api`; Record, Stop and the Macro dialog in the app) ADR-0072: wall-thickness check |
-| `docs/adr/0071-openscad-import.md` | OpenSCAD import: `.scad` attachments as mesh bodies, `@extrudo/openscad`, async preparation and runtime WASM caching. |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0070: the Script feature (QuickJS sandbox, `@extrudo/script`). ADR-0071: OpenSCAD import (`.scad` attachments as mesh bodies, `@extrudo/openscad`, async preparation and runtime WASM caching). ADR-0072: wall-thickness check. ADR-0073: macro recording (the document-to-script emitter, `@extrudo/api`; Record, Stop and the Macro dialog in the app) |
 
 
 ## Stack summary
@@ -2215,7 +2231,14 @@ them. Notes further down that name a machine apply to that machine only.
   sketch**, so `data-sketch-frames` is empty until "Show Sketch1". A
   construction axis lying on an origin axis loses the pick to the origin
   one: offset it. `sketchOnXY` opens a *new* project; use `newSketchOnXY`
-  in an open one.
+  in an open one. **P4-12** adds four tests: a Point on Path on a Box primitive'
+  bottom front edge (its `data-construction` reads the midpoint; the
+  `[data-manipulator-handle="position"]` handle drags along the edge — blur the
+  Position field before reading it), a Plane Along Path on a sketch line
+  (`plane:20,0,0:1,0,0`), an Angled Midplane of a Box's front and top faces
+  (normal `0,-0.707,0.707`), and a box selection in the top view that takes the
+  Offset Plane's square (`data-model-selection` lists `plane:<id>`; a window
+  excludes the longer origin axes).
 - **Versions e2e** (`e2e/versions.spec.ts`): Ctrl+S opens the dialog
   "Versions" with the textbox "Description" focused; the list is
   "Saved versions" (items carry `data-version`), buttons "Restore V1",

@@ -3,7 +3,7 @@ title: Place on Bed
 type: placeOnBed
 section: Features
 category: modify
-order: 23
+order: 27
 ---
 
 # Place on Bed

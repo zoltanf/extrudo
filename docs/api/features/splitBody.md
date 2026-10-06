@@ -3,7 +3,7 @@ title: Split Body
 type: splitBody
 section: Features
 category: modify
-order: 29
+order: 33
 ---
 
 # Split Body

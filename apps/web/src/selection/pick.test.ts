@@ -288,6 +288,49 @@ describe('pickBox', () => {
   it('returns nothing for an empty box', () => {
     expect(pickBox(scene, top, px(30, 30), px(40, 40), DEFAULT_FILTER)).toEqual([]);
   });
+
+  it('takes construction planes, axes and points (P4-12)', () => {
+    const frame: SketchFrame = {
+      origin: [5, 5, 5],
+      x: [1, 0, 0],
+      y: [0, 1, 0],
+      normal: [0, 0, 1],
+    };
+    const withConstruction: PickScene = {
+      ...scene,
+      planes: [{ id: 'P1', frame, anchor: [5, 5, 5], half: 20 }],
+      axes: [{ id: 'A1', origin: [5, 5, 5], direction: [1, 0, 0], half: 100 }],
+      points: [{ id: 'PT1', at: [5, 5, 5] }],
+    };
+    // A crossing box (right to left) over the middle.
+    const chosen = pickBox(withConstruction, top, px(35, 35), px(-25, -25), only('construction'));
+    expect(chosen.map((i) => i.id).sort()).toEqual(['A1', 'P1', 'PT1']);
+    // With the construction filter off, no construction item is taken.
+    expect(
+      pickBox(withConstruction, top, px(35, 35), px(-25, -25), without('construction')).some(
+        (i) => i.kind === 'plane' || i.kind === 'axis' || i.kind === 'point',
+      ),
+    ).toBe(false);
+  });
+
+  it('never box-selects the origin axes (P4-12 review L10)', () => {
+    const withOrigin: PickScene = {
+      ...scene,
+      planes: [],
+      points: [],
+      // A long origin axis across the whole view: it would swallow any crossing box.
+      axes: [{ id: 'origin:x', origin: [5, 5, 5], direction: [1, 0, 0], half: 100 }],
+    };
+    expect(pickBox(withOrigin, top, px(35, 35), px(-25, -25), only('construction'))).toEqual([]);
+    // A construction axis in the same place still comes along.
+    const construction: PickScene = {
+      ...withOrigin,
+      axes: [{ id: 'A1', origin: [5, 5, 5], direction: [1, 0, 0], half: 100 }],
+    };
+    expect(pickBox(construction, top, px(35, 35), px(-25, -25), only('construction'))).toEqual([
+      { kind: 'axis', id: 'A1' },
+    ]);
+  });
 });
 
 describe('geometry helpers', () => {

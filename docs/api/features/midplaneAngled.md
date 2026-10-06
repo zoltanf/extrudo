@@ -1,17 +1,17 @@
 ---
-title: Offset Face
-type: offsetFace
+title: Angled Midplane
+type: midplaneAngled
 section: Features
-category: modify
-order: 32
+category: construct
+order: 23
 ---
 
-# Offset Face
+# Angled Midplane
 
-`d.offsetFace(inputs, options?): FeatureHandle<'offsetFace'>`
+`d.midplaneAngled(inputs?, options?): FeatureHandle<'midplaneAngled'>`
 
-One feature of the timeline, in the **modify** category. Its name follows
-the app's (`Offset Face1`, then `Offset Face2`, …); `options.name` gives it
+One feature of the timeline, in the **construct** category. Its name follows
+the app's (`Angled Midplane1`, then `Angled Midplane2`, …); `options.name` gives it
 another, `options.id` its ID and `options.index` its place in the timeline. Inputs the
 table calls optional keep the default it names, so a call with none of them still makes
 a valid feature.
@@ -20,8 +20,8 @@ a valid feature.
 
 | Input | Type | Required or default | What it does |
 | --- | --- | --- | --- |
-| `faces` | `GeomRef \| GeomRef[]` (`face`) | **required** | The faces to move along their outward normal. |
-| `distance` | `string \| number \| ParameterHandle` | **required** | How far; a length. Positive grows the body outwards, negative closes it in. |
+| `planes` | `GeomRef \| GeomRef[]` (`plane`, `face`) | optional | Two planes or flat faces that meet at an angle. |
+| `flip` | `boolean` | default `false` | Take the other bisector. |
 
 ## Faces
 
@@ -60,8 +60,8 @@ const body = plate.body();
 const step = 'att-part.step'; // an attachment of the design
 const plan = 'att-plan.png';
 
-// Offset Face.
-d.offsetFace({ faces: face, distance: '2 mm' });
+// Angled Midplane.
+d.midplaneAngled({ planes: [d.origin.xy, d.origin.yz] });
 ```
 
 ## See also

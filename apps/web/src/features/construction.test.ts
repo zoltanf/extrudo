@@ -1,6 +1,7 @@
 import {
   CONSTRUCTION_FEATURES,
   CONSTRUCTION_TYPES,
+  type ConstructionReport,
   type ConstructionReports,
   type FeatureId,
   type GeomRef,
@@ -15,6 +16,8 @@ import {
   offsetPlaneDialog,
   planeAnchor,
   planeAtAngleDialog,
+  pointAtIntersectionDialog,
+  pointOnPathDialog,
   squareTo,
   tangentPlaneDialog,
 } from './construction';
@@ -50,9 +53,9 @@ const values = (spec: (typeof CONSTRUCTION_DIALOGS)[number], over: Partial<Dialo
   mergeValues(defaultValues(spec), over);
 
 describe('the construction dialogs', () => {
-  it('are the app’s dialogs for the nine construction tools', () => {
+  it('are the app’s dialogs for the thirteen construction tools', () => {
     const dialogs = featureDialogs();
-    expect(CONSTRUCTION_DIALOGS).toHaveLength(9);
+    expect(CONSTRUCTION_DIALOGS).toHaveLength(13);
     for (const type of CONSTRUCTION_TYPES) {
       const spec = specForCommand(dialogs, type);
       expect(spec?.type).toBe(type);
@@ -62,18 +65,21 @@ describe('the construction dialogs', () => {
   });
 
   it('name their fields like the feature inputs, so the schema accepts what they make', () => {
+    const point = (id: string): GeomRef => ({ kind: 'point', id });
     const picks: Record<string, Record<string, GeomRef[]>> = {
       offsetPlane: { plane: [XY] },
       planeAtAngle: { axis: [{ kind: 'axis', id: 'origin:x' }] },
       midplane: { planes: [XY, OP] },
-      planeThroughPoints: {
-        points: [1, 2, 3].map((n): GeomRef => ({ kind: 'point', id: `P${n}` })),
-      },
+      planeThroughPoints: { points: [point('P1'), point('P2'), point('P3')] },
       tangentPlane: { face: [TOP] },
-      axisThroughPoints: { points: [1, 2].map((n): GeomRef => ({ kind: 'point', id: `P${n}` })) },
+      axisThroughPoints: { points: [point('P1'), point('P2')] },
       axisThroughCylinder: { face: [TOP] },
       axisAlongEdge: { edge: [{ kind: 'edge', id: 'e' }] },
       constructionPoint: {},
+      pointOnPath: { path: [{ kind: 'sketchEntity', id: 'S/l1' }] },
+      planeAlongPath: { path: [{ kind: 'edge', id: 'e' }] },
+      pointAtIntersection: { entities: [{ kind: 'edge', id: 'e' }, XY] },
+      midplaneAngled: { planes: [XY, OP] },
     };
     for (const spec of CONSTRUCTION_DIALOGS) {
       const v = values(spec, { refs: picks[spec.type] ?? {} });
@@ -174,6 +180,32 @@ describe('the construction dialogs', () => {
     expect(face?.normal).toEqual([0, 0, 1]);
     expect(face?.anchor[2]).toBeCloseTo(10);
   });
+
+  it('a point on a straight path draws a distance handle from the path start (P4-12)', () => {
+    const report: ConstructionReport = {
+      kind: 'point',
+      point: [20, 0, 0],
+      path: { from: [0, 0, 0], tangent: [1, 0, 0], length: 40, straight: true },
+    };
+    const handles = pointOnPathDialog.manipulators?.(values(pointOnPathDialog), {
+      ...ctx(),
+      draftConstruction: report,
+    });
+    expect(handles).toEqual([
+      { kind: 'distance', field: 'position', origin: [0, 0, 0], direction: [1, 0, 0], scale: 40 },
+    ]);
+    // A curved path shows no handle: a straight arrow would lie about it.
+    expect(
+      pointOnPathDialog.manipulators?.(values(pointOnPathDialog), {
+        ...ctx(),
+        draftConstruction: {
+          kind: 'point',
+          point: [20, 0, 0],
+          path: { from: [0, 0, 0], tangent: [1, 0, 0], length: 40, straight: false },
+        },
+      }),
+    ).toEqual([]);
+  });
 });
 
 describe('picking planes into a construction dialog', () => {
@@ -207,5 +239,39 @@ describe('picking planes into a construction dialog', () => {
       'origin:xy',
       'OP',
     ]);
+  });
+
+  it('a field that also takes edges keeps the model picker (P4-12 review M1)', () => {
+    const t = setupDialogs([pointAtIntersectionDialog]);
+    t.controller.start('pointAtIntersection');
+    expect(t.open()?.pickField).toBe('entities');
+    // The plane picker would offer planes and faces alone, so an edge could
+    // never be picked; the model picker handles all three kinds.
+    expect(dialogPlanePick(t.controller, t.open())).toBe(false);
+    expect(dialogPlanePicker(t.controller, t.open(), t.session, undefined)).toBeUndefined();
+  });
+});
+
+describe('the tangent plane reports its basis (P4-12 review L6)', () => {
+  const field = tangentPlaneDialog.fields.find((f) => f.name === 'basis');
+  const report = (basis: 'surface' | 'mesh'): ConstructionReport => ({
+    kind: 'plane',
+    frame: { origin: [0, 0, 10], x: [1, 0, 0], y: [0, 1, 0], normal: [0, 0, 1] },
+    anchor: [0, 0, 10],
+    basis,
+  });
+  const withReport = (basis: 'surface' | 'mesh') => ({
+    ...ctx(),
+    draftConstruction: report(basis),
+  });
+
+  it('is an info field that says when the tangent came from a mesh', () => {
+    expect(field?.kind).toBe('info');
+    if (field?.kind !== 'info') throw new Error('no basis field');
+    const v = values(tangentPlaneDialog);
+    expect(field.shown?.(v, withReport('mesh'))).toBe(true);
+    expect(field.text(v, withReport('mesh'))).toBe('Tangent read from the display mesh.');
+    // An analytic surface shows nothing.
+    expect(field.shown?.(v, withReport('surface'))).toBe(false);
   });
 });

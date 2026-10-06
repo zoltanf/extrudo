@@ -86,11 +86,18 @@ export function DialogOverlay({ controller, viewport, settings, bodies }: Dialog
     return () => observer.disconnect();
   }, []);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: manipulators follow the values, their evaluation, the bodies and the layout the last preview reported (P4-12's dots and count handles).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: manipulators follow the values, their evaluation, the bodies and the layout the last preview reported (P4-12's dots, count handles and path reports).
   const manipulators = useMemo(() => {
     const ctx = controller.context();
     return open && ctx ? (open.spec.manipulators?.(open.values, ctx) ?? []) : [];
-  }, [controller, open?.values, open?.expressions, open?.preview?.pattern, bodies]);
+  }, [
+    controller,
+    open?.values,
+    open?.expressions,
+    open?.preview?.pattern,
+    open?.preview?.drawing,
+    bodies,
+  ]);
 
   // The last value of each field that evaluated, so an arrow stays put while its text is invalid.
   const last = useRef(new Map<string, number>());

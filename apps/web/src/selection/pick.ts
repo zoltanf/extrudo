@@ -888,6 +888,7 @@ export const BOX_ORDER: readonly FilterKind[] = [
   'vertices',
   'profiles',
   'sketches',
+  'construction',
 ];
 
 /**
@@ -1015,6 +1016,50 @@ export function pickBox(
         }
         return out;
       }),
+    construction: () => {
+      const out: SelectionItem[] = [];
+      const world = (o: readonly [number, number, number], x: number, y: number, z: number) =>
+        project(o[0] + x, o[1] + y, o[2] + z);
+      // A plane: its drawn square, as a closed outline.
+      for (const plane of scene.planes ?? []) {
+        const { frame, anchor, half } = plane;
+        const corner = (u: number, v: number) =>
+          world(
+            anchor,
+            frame.x[0] * u + frame.y[0] * v,
+            frame.x[1] * u + frame.y[1] * v,
+            frame.x[2] * u + frame.y[2] * v,
+          );
+        const square = [
+          corner(-half, -half),
+          corner(half, -half),
+          corner(half, half),
+          corner(-half, half),
+        ];
+        if (polylineIn([...square, square[0]], r, mode)) {
+          out.push({ kind: 'plane', id: plane.id });
+        }
+      }
+      // An axis: its drawn line. Origin axes are picked by a click, never by a
+      // box (they are long and would swallow every crossing box), so skip them
+      // (P4-12 review L10).
+      for (const axis of scene.axes ?? []) {
+        if (axis.id.startsWith('origin:')) continue;
+        const end = (k: number) =>
+          project(
+            axis.origin[0] + k * axis.half * axis.direction[0],
+            axis.origin[1] + k * axis.half * axis.direction[1],
+            axis.origin[2] + k * axis.half * axis.direction[2],
+          );
+        if (polylineIn([end(-1), end(1)], r, mode)) out.push({ kind: 'axis', id: axis.id });
+      }
+      // A point: its dot.
+      for (const point of scene.points ?? []) {
+        const s = project(...point.at);
+        if (s && inside(r, s)) out.push({ kind: 'point', id: point.id });
+      }
+      return out;
+    },
   };
   for (const kind of BOX_ORDER) {
     if (!filter[kind]) continue;

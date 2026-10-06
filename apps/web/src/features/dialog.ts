@@ -309,12 +309,14 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     const bodies = dialogBodies(open, model.getState().bodies);
     const { sketches, construction } = model.getState();
     const pattern = open.preview?.pattern;
+    const draftConstruction = open.preview?.drawing?.construction;
     return {
       doc,
       bodies,
       sketches,
       construction,
       ...(pattern && { pattern }),
+      ...(draftConstruction && { draftConstruction }),
       ...(feature && { feature }),
     };
   };

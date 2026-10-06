@@ -18,6 +18,7 @@
 import type {
   BodyId,
   Command,
+  ConstructionReport,
   ConstructionReports,
   ExtrudoDocument,
   Feature,
@@ -187,6 +188,12 @@ export interface DialogContext {
    * go. Absent for anything else, and while the first preview is on its way.
    */
   pattern?: PatternReport;
+  /**
+   * The draft's own construction report (P4-12: a point or plane along a
+   * path, which carries the path's start, direction and length). Absent for
+   * anything else and while the first preview is on its way.
+   */
+  draftConstruction?: ConstructionReport;
 }
 
 export interface ManipulatorContext extends DialogContext {
