@@ -4,6 +4,7 @@ import {
   type Command,
   CommandError,
   type DocumentStore,
+  type Feature,
   type FeatureId,
   formatQuantity,
   type GeomRef,
@@ -11,6 +12,7 @@ import {
   isFeatureVisible,
   LENGTH,
   type ModelStore,
+  pluginFileOf,
   readSketch,
   redefineSketchPlane,
   type SelectionItem,
@@ -34,6 +36,7 @@ import { isEditable, useShortcuts } from '../commands/shortcuts';
 import { CustomizerPanel } from '../customizer/CustomizerPanel';
 import { CUSTOMIZER_TOOL, useCustomizer } from '../customizer/useCustomizer';
 import {
+  type IconName,
   type NotificationStore,
   type Toast,
   type ToastOptions,
@@ -79,14 +82,21 @@ import { useTutorial } from '../onboarding/useTutorial';
 import { ViewportHint } from '../onboarding/ViewportHint';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
+import {
+  pluginFeatureEntries,
+  preparePluginAttachment,
+  specForPluginFeature,
+} from '../plugins/featureSpecs';
 import { PluginsDialog } from '../plugins/PluginsDialog';
-import { createPluginsStore, designPlugins } from '../plugins/plugins';
+import { createPluginsStore, type DesignPlugin, designPlugins } from '../plugins/plugins';
 import {
   type PluginCommand,
   type PluginCommandKernel,
   pluginCommands,
   runPluginCommand,
 } from '../plugins/runCommand';
+import { updatePluginInDesign } from '../plugins/update';
+import { useDesignPluginFiles } from '../plugins/useDesignPluginFiles';
 import { OverhangPanel } from '../print/OverhangPanel';
 import { PrintInfoPanel } from '../print/PrintInfoPanel';
 import { ThicknessOverlay } from '../print/ThicknessOverlay';
@@ -271,6 +281,34 @@ export function AppShell({
   useEffect(() => void plugins.getState().refresh(), [plugins]);
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const installedPlugins = useStore(plugins, (s) => s.installed);
+  // The custom features of the enabled plugins (ADR-0077 §6): a second, dynamic registry of
+  // dialogs beside `dialogs`, and the plugin files the design carries (a stored feature's
+  // dialog is generated from the design's own copy).
+  const pluginFeatures = useMemo(() => pluginFeatureEntries(installedPlugins), [installedPlugins]);
+  const designPluginFiles = useDesignPluginFiles(store);
+  const pluginHint = useCallback(
+    (feature: Feature) => {
+      const id = pluginFileOf(feature);
+      const manifest = id && designPluginFiles.files.get(id)?.manifest;
+      return manifest ? `${manifest.name} ${manifest.version}` : undefined;
+    },
+    [designPluginFiles.files],
+  );
+  // The Create menu's "Plugins" items: one per custom feature (run like the Ctrl+K command).
+  const pluginItems = useMemo(
+    () =>
+      pluginFeatures.map(({ command, spec, plugin }) => ({
+        id: command,
+        label: spec.label,
+        icon: spec.icon as IconName,
+        hint: `${plugin.name} ${plugin.version}`,
+      })),
+    [pluginFeatures],
+  );
+  const pluginSpecFor = useCallback(
+    (feature: Feature) => specForPluginFeature(feature, designPluginFiles.files),
+    [designPluginFiles.files],
+  );
   // A plugin command (ADR-0077 §5) runs in the kernel worker on the model selection; what it
   // made goes in at the marker as one undo step. A ref, so the command list stays stable.
   const runPluginRef = useRef<(command: PluginCommand) => void>(() => {});
@@ -286,6 +324,25 @@ export function AppShell({
           }))
         : [],
     [installedPlugins, kernel],
+  );
+  // "Update to <version>" (slice 3): the installed file replaces the design's older copy.
+  const updatePlugin = useCallback(
+    async (entry: DesignPlugin) => {
+      const installed = plugins
+        .getState()
+        .installed?.find((p) => p.plugin.id === entry.manifest.id);
+      if (!installed) return `${entry.manifest.name} is not installed.`;
+      const outcome = await updatePluginInDesign({
+        plugin: installed.plugin,
+        bytes: await platform.plugins.bytes(installed.plugin.id),
+        store,
+        projects: platform.projects,
+      }).catch((error: unknown) => ({
+        message: error instanceof Error ? error.message : String(error),
+      }));
+      return outcome.message;
+    },
+    [plugins, platform, store],
   );
   const inDesign = useCallback(
     () =>
@@ -442,6 +499,7 @@ export function AppShell({
     model,
     viewport,
     dialogs,
+    specFor: pluginSpecFor,
     kernel,
     notify,
   });
@@ -620,7 +678,7 @@ export function AppShell({
   }, [dialogs, canSlicer]);
   const dialogCommands = useMemo(
     () =>
-      dialogs.list().flatMap((spec) => {
+      [...dialogs.list(), ...pluginFeatures.map((entry) => entry.spec)].flatMap((spec) => {
         const c = spec.command;
         if (typeof c === 'string') return [];
         return [
@@ -635,7 +693,7 @@ export function AppShell({
           },
         ];
       }),
-    [dialogs],
+    [dialogs, pluginFeatures],
   );
   // A dialog stops a nav tool, like any command.
   useEffect(() => {
@@ -1006,6 +1064,32 @@ export function AppShell({
       setLastTool(PRESS_PULL);
       return;
     }
+    // P6-03: a plugin's custom feature (ADR-0077 §6) puts its file with the design first
+    // (bytes before the record that names them), then opens its generated dialog.
+    const pluginFeature = pluginFeatures.find((entry) => entry.command === tool);
+    if (pluginFeature) {
+      if (mode !== 'model') return;
+      if (picking) cancelCreateSketch(stores);
+      if (measuring || sectioning || printing || overhanging || thickening || customizing) {
+        session.getState().setTool(undefined);
+      }
+      dialog?.cancel();
+      void platform.plugins
+        .bytes(pluginFeature.plugin.id)
+        .then((bytes) =>
+          preparePluginAttachment({
+            plugin: pluginFeature.plugin,
+            bytes,
+            doc: store.getState().doc,
+            projects: platform.projects,
+          }),
+        )
+        .then(() => dialog?.startSpec(pluginFeature.spec))
+        .catch((error: unknown) =>
+          notify('error', error instanceof Error ? error.message : String(error)),
+        );
+      return;
+    }
     if (isRepeatable(tool)) setLastTool(tool);
     // P5-05: Record and Stop (ADR-0073 §4): the document is the record, so recording is only
     // where the timeline stood, and Stop writes what was added after it.
@@ -1280,7 +1364,7 @@ export function AppShell({
           if (picking) cancelCreateSketch(stores);
           return dialog?.edit(id) ?? false;
         },
-        hasDialog: (type) => dialogs.get(type) !== undefined,
+        hasDialog: (type) => dialogs.get(type) !== undefined || type === 'plugin',
         fixFeature: (id, issues) => {
           if (picking) cancelCreateSketch(stores);
           return dialog?.edit(id, { fix: issues }) ?? false;
@@ -1608,6 +1692,7 @@ export function AppShell({
         onRun={run}
         ready={ready}
         hidden={macroHidden}
+        pluginItems={pluginItems}
       />
       {/* The view fills the area; the browser floats over its left edge (glass, like the nav
           bar), so showing, hiding or resizing it never resizes the view. Overlays anchored to
@@ -1925,6 +2010,7 @@ export function AppShell({
         model={model}
         session={session}
         editing={dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined}
+        pluginHint={pluginHint}
         macro={macro}
         selectionSize={
           measured.measurement?.bbox && sizeText(measured.measurement.bbox, doc.settings)
@@ -1994,6 +2080,7 @@ export function AppShell({
         plugins={plugins}
         files={platform.files}
         inDesign={inDesign}
+        onUpdate={updatePlugin}
       />
     </div>
   );

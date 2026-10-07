@@ -79,6 +79,8 @@ export interface TimelineProps {
    * comes later, and holds the marker and the chips still.
    */
   editing?: FeatureId;
+  /** The plugin a plugin feature comes from, for its chip's tooltip (P6-03 slice 3). */
+  pluginHint?(feature: Feature): string | undefined;
   /** The size of the box around the selection ("40.00 × 80.00 × 60.00 mm", P2-13). */
   selectionSize?: string | undefined;
   /** The macro recorder (P5-05): while it records, the status bar says so. */
@@ -166,6 +168,7 @@ export function Timeline({
   model,
   session,
   editing,
+  pluginHint,
   selectionSize,
   macro,
 }: TimelineProps) {
@@ -302,6 +305,7 @@ export function Timeline({
                             marker={marker}
                             problem={featureProblem(feature, index, marker, statuses)}
                             scriptStatus={statuses[feature.id]}
+                            pluginHint={pluginHint?.(feature)}
                             rolledBack={index >= (markerDrag?.index ?? marker)}
                             dimmed={editIndex >= 0 && index > editIndex}
                             editable={actions.canEdit(feature, index, marker)}
@@ -370,6 +374,7 @@ export function Timeline({
                               marker={marker}
                               problem={featureProblem(feature, index, marker, statuses)}
                               scriptStatus={statuses[feature.id]}
+                              pluginHint={pluginHint?.(feature)}
                               rolledBack={index >= (markerDrag?.index ?? marker)}
                               dimmed={editIndex >= 0 && index > editIndex}
                               editable={actions.canEdit(feature, index, marker)}
@@ -551,6 +556,7 @@ function Chip({
   marker,
   problem,
   scriptStatus,
+  pluginHint,
   rolledBack,
   dimmed,
   editable,
@@ -573,6 +579,8 @@ function Chip({
   /** The kernel's verdict; only for active features (`featureProblem`). */
   problem: FeatureProblem | undefined;
   scriptStatus?: FeatureStatus | undefined;
+  /** "Name plate 1.0.0": the plugin a plugin feature comes from (P6-03 slice 3). */
+  pluginHint?: string | undefined;
   rolledBack: boolean;
   /** After the feature a dialog edits: drawn like a rolled-back one (not named so). */
   dimmed: boolean;
@@ -609,7 +617,9 @@ function Chip({
     feature.suppressed && 'suppressed',
     problem?.status,
   ].filter(Boolean);
-  const hint = [tool.label, ...states, scriptChipHint(scriptStatus)].filter(Boolean).join(' · ');
+  const hint = [tool.label, pluginHint, ...states, scriptChipHint(scriptStatus)]
+    .filter(Boolean)
+    .join(' · ');
   const chip = (
     <button
       type="button"

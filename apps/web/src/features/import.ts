@@ -39,6 +39,7 @@ import {
 import { type ProjectStore, sha256Hex } from '@extrudo/storage';
 import { createStore } from 'zustand/vanilla';
 import type { FileAccess } from '../platform';
+import { pendingPluginById } from '../plugins/pending';
 import { putAttachmentBytes } from '../sketch/fonts';
 import { ScadOverrides } from './ScadOverrides';
 import { overrideInputs, overrideIssue, overrideValues } from './scadRows';
@@ -148,6 +149,8 @@ export function importedFile(ctx: DialogContext): PendingImport | undefined {
 export function fileMediaType(id: AttachmentId, doc: ExtrudoDocument): string | undefined {
   const pending = pendingImport();
   if (pending?.id === id) return pending.attachment.mediaType;
+  const plugin = pendingPluginById(id);
+  if (plugin) return plugin.attachment.mediaType;
   return doc.attachments?.[id]?.mediaType;
 }
 
@@ -159,6 +162,8 @@ export function fileMediaType(id: AttachmentId, doc: ExtrudoDocument): string | 
 export function fileName(id: AttachmentId, doc: ExtrudoDocument): string | undefined {
   const pending = pendingImport();
   if (pending?.id === id) return pending.attachment.fileName;
+  const plugin = pendingPluginById(id);
+  if (plugin) return plugin.attachment.fileName;
   return doc.attachments?.[id]?.fileName;
 }
 

@@ -32,6 +32,7 @@ describe('the docs pages', () => {
     expect(paths.filter((path) => !path.startsWith('features/'))).toEqual([
       'README.md',
       'emit.md',
+      'plugins.md',
       'references.md',
       'scripts.md',
       'sketch.md',
@@ -98,6 +99,7 @@ describe('the sidebar', () => {
         { title: 'References', url: '/docs/api/references/' },
         { title: 'Scripts', url: '/docs/api/scripts/' },
         { title: 'Macros', url: '/docs/api/emit/' },
+        { title: 'Plugins', url: '/docs/api/plugins/' },
       ],
     });
   });

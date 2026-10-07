@@ -30,6 +30,7 @@ const markup = (over: Partial<PluginsListProps> = {}) =>
         busy={false}
         onInstall={vi.fn()}
         onInstallFromDesign={vi.fn()}
+        onUpdate={vi.fn()}
         onEnabled={vi.fn()}
         onRemove={vi.fn()}
         {...over}
@@ -86,5 +87,21 @@ describe('the Plugins dialog', () => {
     expect(html).toContain('In this design, not installed');
     expect(html).toContain('aria-label="Install Other"');
     expect(markup()).not.toContain('In this design');
+  });
+
+  it('offers Update to <version> for an older copy of an installed plugin', () => {
+    const file = readPluginFile(pluginBytes('1.0.0'));
+    const plugin: DesignPlugin = {
+      attachment: 'x' as DesignPlugin['attachment'],
+      manifest: file.manifest,
+      bytes: new Uint8Array(),
+      update: { version: '1.2.0' },
+    };
+    const html = markup({ inDesign: [plugin] });
+    expect(html).toContain('aria-label="Update Tiny to 1.2.0"');
+    expect(html).toContain('Update to 1.2.0');
+    expect(html).not.toContain('aria-label="Install Tiny"');
+    expect(html).toContain('installed: 1.2.0');
+    expect(html).not.toContain('not installed');
   });
 });

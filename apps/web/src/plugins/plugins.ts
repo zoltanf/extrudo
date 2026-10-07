@@ -34,6 +34,8 @@ export interface DesignPlugin {
   attachment: AttachmentId;
   manifest: PluginManifest;
   bytes: Uint8Array;
+  /** Set when a newer version is installed: the dialog offers "Update to <version>". */
+  update?: { version: string };
 }
 
 export interface PluginsState {
@@ -129,7 +131,9 @@ export function enabledPlugins(installed: readonly PluginEntry[] | undefined): P
  * The plugins a design carries that aren't installed (ADR-0077 §4's "Install
  * from this design"): every `plugin` feature's attachment, read with
  * `readPluginFile` and compared by the manifest's id with what is installed.
- * One entry per plugin, its newest version when the design has several; a file
+ * An installed plugin whose version is older than the installed one is listed too, with
+ * `update` ("Update to <version>", slice 3). One entry per plugin, its newest version when
+ * the design has several; a file
  * that can't be read is left out (the feature itself says why).
  */
 export async function designPlugins(
@@ -138,7 +142,6 @@ export async function designPlugins(
   read: (id: AttachmentId) => Promise<ArrayBuffer | Uint8Array | undefined>,
 ): Promise<DesignPlugin[]> {
   const ids = [...new Set(doc.features.map(pluginFileOf).filter((id): id is AttachmentId => !!id))];
-  const have = new Set(installed.map((plugin) => plugin.id));
   const found = new Map<string, DesignPlugin>();
   for (const attachment of ids) {
     const data = await read(attachment);
@@ -150,10 +153,19 @@ export async function designPlugins(
     } catch {
       continue;
     }
-    if (have.has(manifest.id)) continue;
+    const installedVersion = installed.find((plugin) => plugin.id === manifest.id)?.version;
+    // Installed: only an older copy in the design is listed, with its update.
+    if (installedVersion !== undefined && compareSemver(manifest.version, installedVersion) >= 0) {
+      continue;
+    }
     const other = found.get(manifest.id);
     if (other && compareSemver(other.manifest.version, manifest.version) >= 0) continue;
-    found.set(manifest.id, { attachment, manifest, bytes });
+    found.set(manifest.id, {
+      attachment,
+      manifest,
+      bytes,
+      ...(installedVersion !== undefined && { update: { version: installedVersion } }),
+    });
   }
   return [...found.values()];
 }

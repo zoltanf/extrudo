@@ -2,7 +2,7 @@ import { ChevronDown } from 'lucide-react';
 import { type ButtonHTMLAttributes, forwardRef, useEffect, useState } from 'react';
 import { keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
-import { Menu, MenuItem, MenuLabel, ToolIcon, Tooltip } from '../design-system';
+import { type IconName, Menu, MenuItem, MenuLabel, ToolIcon, Tooltip } from '../design-system';
 import { ToolDemo } from '../onboarding/ToolDemo';
 import { isToolReady } from './commands';
 import { type TabId, TOOLS, type Tool, type ToolId, visibleTabs } from './tools';
@@ -18,10 +18,31 @@ export interface ToolbarProps {
   ready?: ReadonlySet<string>;
   /** Tools left out of the menus for now (Record Macro while recording, Stop Macro otherwise). */
   hidden?: ReadonlySet<string>;
+  /**
+   * Custom features of the enabled plugins (P6-03 slice 3, ADR-0077 §6): listed under a
+   * "Plugins" label at the end of the Create menu and run through `onRunPlugin` by `id`.
+   */
+  pluginItems?: readonly PluginItem[];
+}
+
+export interface PluginItem {
+  /** The feature's command ID. */
+  id: string;
+  label: string;
+  icon: IconName;
+  /** "Name plate 1.0.0": which plugin offers it. */
+  hint: string;
 }
 
 /** Tabs and tool groups (UI spec §2). */
-export function Toolbar({ mode = 'model', activeTool, onRun, ready, hidden }: ToolbarProps) {
+export function Toolbar({
+  mode = 'model',
+  activeTool,
+  onRun,
+  ready,
+  hidden,
+  pluginItems,
+}: ToolbarProps) {
   const home: TabId = mode === 'sketch' ? 'sketch' : 'solid';
   const [tab, setTab] = useState<TabId>(home);
   // Entering or leaving a sketch brings its tab forward.
@@ -125,6 +146,20 @@ export function Toolbar({ mode = 'model', activeTool, onRun, ready, hidden }: To
                       </MenuItem>
                     );
                   })}
+                {group.label === 'Create' && pluginItems && pluginItems.length > 0 && (
+                  <>
+                    <MenuLabel>Plugins</MenuLabel>
+                    {pluginItems.map((item) => (
+                      <MenuItem
+                        key={item.id}
+                        icon={<ToolIcon name={item.icon} category="create" size={16} />}
+                        onSelect={() => onRun(item.id as ToolId)}
+                      >
+                        {item.label}
+                      </MenuItem>
+                    ))}
+                  </>
+                )}
               </Menu>
             </fieldset>
           </div>

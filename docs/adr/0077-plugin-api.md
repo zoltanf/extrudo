@@ -467,3 +467,65 @@ of a command runs on the UI thread.
   (the example's "Three holes" through the worker's path with the real sandbox,
   re-minted with no `cmd.` left, computed to the plate's volume less three holes).
   e2e: `e2e/plugins.spec.ts`.
+
+### Slice 3: custom features in the app (2026-10-07)
+
+- **Generated specs** (`apps/web/src/plugins/featureSpecs.ts`, pure): `pluginFeatureSpec(
+  plugin, file, feature)` builds one `FeatureDialogSpec` per manifest feature —
+  `type: 'plugin'`, `command: { id: 'plugin:<plugin>:feature:<type>', group: 'Plugins ›
+  <name>', category: 'create' }` (not a toolbar tool), label and icon from the manifest
+  (an unknown icon name falls back to the Script's). Fields: `expr` → an expression field
+  (unit `none` is `unitless`, `default` as text, `min`/`max` only as the hint "Between 1
+  and 99.", not enforced), `bool` → toggle, `enum` → choice, `ref` → selection with
+  `accepts`, `min` 1 and `max` 1 unless `multiple`; plus a read-only info line "Plugin:
+  <name> <version>" (field name `_plugin`, so it can't clash with an input). `toInputs`
+  maps field `<name>` to `in:<name>` through the default mapping and adds `plugin` (the
+  attachment) and `handler`; `fromInputs` reads them back; `validate` refuses an empty
+  required `ref` ("Pick the plane."); `previewStyle` is `new`.
+- **The dynamic registry:** `featureDialogs()` stays the static registry. The controller
+  gained `startSpec(spec)` (what `start(type)` does for a registered type) and a
+  `specFor(feature)` option, which `edit` asks when the registry has no dialog for the
+  feature's type. In `AppShell`, `pluginFeatureEntries(installed)` lists the enabled
+  plugins' features (the Ctrl+K commands, the Create menu, `run` of a plugin command ID)
+  and `specForPluginFeature(feature, files)` builds a stored feature's dialog from **the
+  design's own copy** of the file (`useDesignPluginFiles`: every `plugin` feature's
+  attachment read once through `attachmentBytes` and `readPluginFile`), by the feature's
+  `handler`; no copy read yet, or a handler the copy lacks, is no dialog (the feature's
+  own error says why). Timeline/browser `hasDialog` is true for type `plugin`.
+- **The attachment:** running a plugin feature's command first calls
+  `preparePluginAttachment` — the installed file's bytes (`Platform.plugins.bytes`), the
+  design's attachment with the same SHA-256 and media type if it has one, else a new ID
+  with the bytes written (`projects.writeAttachment`) and cached (`putAttachmentBytes`)
+  **before** the dialog opens — and keeps the result in the session's
+  `pendingPluginStore` (`plugins/pending.ts`, split out so `features/import.ts`'s
+  `fileMediaType`/`fileName` — the `Recomputer`'s hooks — can answer for a file the
+  document doesn't name yet). The spec's `commitWith` adds the record
+  (`application/x-extrudo-plugin`, name "<plugin name> <version>", file name
+  `<id>.extrudo-plugin`) in the same transaction as the feature, only for a new feature
+  whose attachment isn't in the document, and spends the pending file.
+- **Where it shows:** Ctrl+K lists the features in "Plugins › <name>" (they join
+  `dialogCommands`); the Create menu appends a "Plugins" label and one item each
+  (`Toolbar`'s new `pluginItems` prop — no change to `shell/tools.ts` or the marking menu);
+  the chip's tooltip adds "<plugin name> <version>" (`Timeline`'s `pluginHint`), its name is
+  the manifest label numbered by the app ("Name plate1").
+- **Update to <version>:** `designPlugins` also lists a design's copy that is **older**
+  than the installed version, with `update: { version }`; the Plugins dialog shows
+  "Update to 1.2.0" for it. `updatePluginInDesign` (`plugins/update.ts`) stores the
+  installed file as an attachment (reused if the design has it), then in one transaction
+  adds its record and sets the `plugin` input of **every** feature whose copy has that
+  manifest id; old attachments stay for the next version save's collection.
+- **Tests:** `featureSpecs.test.ts` (every kind, defaults, the `toInputs`/`fromInputs`
+  round trip, validation, OK adding the record and the feature as one undo step, editing
+  from the design's copy without a second record, `preparePluginAttachment`, the enabled
+  plugins' list), `plugins.test.ts` and `PluginsDialog.test.tsx` (the update entries and
+  the button), `update.test.ts` (two features, one undo step, the bytes first, nothing to
+  do), and `e2e/plugins.spec.ts`'s third test (Create menu, Ctrl+K "name plate", Width
+  50 mm, XY plane, OK: `Body1:…:50,20,3`, chip "Name plate1", one attachment in the
+  exported archive, none after Ctrl+Z).
+- **Deviations from the brief:** the attachment is prepared when the command runs rather
+  than in the dialog (the preview needs the bytes before OK, and the dialog's spec is
+  synchronous); the update lists installed plugins' older copies in the same "In this
+  design" list instead of a list of its own; the desktop's native menu has no Plugins menu
+  (the Create menu and Ctrl+K are the places). Not done: a Plugins entry in the marking
+  menu (untouched, as the brief says).
+

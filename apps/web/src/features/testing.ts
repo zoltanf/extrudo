@@ -20,7 +20,7 @@ import type { BodyMesh, Preview, PreviewToolStyle } from '@extrudo/kernel';
 import { edgeName } from '@extrudo/kernel';
 import type { ToastOptions } from '../design-system';
 import { boxMesh } from '../selection/testing';
-import { createDialogController, type DialogKernel } from './dialog';
+import { createDialogController, type DialogControllerOptions, type DialogKernel } from './dialog';
 import { faceFrame } from './geometry';
 import { defineFeatureDialog, type FeatureDialogSpec } from './spec';
 import { defaultFromInputs, defaultInputs } from './values';
@@ -204,7 +204,10 @@ export function fakeKernel(): FakeKernel {
 }
 
 /** A document with a box feature (whose body the model store holds) and the stores. */
-export function setupDialogs(specs: FeatureDialogSpec[] = [fakeSpec]) {
+export function setupDialogs(
+  specs: FeatureDialogSpec[] = [fakeSpec],
+  extra: { specFor?: DialogControllerOptions['specFor'] } = {},
+) {
   const doc = createDocument();
   const box: Feature = {
     id: 'box' as FeatureId,
@@ -229,6 +232,7 @@ export function setupDialogs(specs: FeatureDialogSpec[] = [fakeSpec]) {
     session,
     model,
     dialogs,
+    ...extra,
     kernel,
     notify: (tone, text, options) => {
       messages.push(`${tone}: ${text}`);

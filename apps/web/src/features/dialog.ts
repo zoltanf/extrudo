@@ -189,6 +189,11 @@ export interface DialogControllerOptions {
   session: SessionStore;
   model: ModelStore<BodyMesh>;
   dialogs: FeatureDialogs;
+  /**
+   * Specs that depend on the document (a plugin feature's, ADR-0077 §6): the dialog of a
+   * stored feature the static registry has none for. Read when a feature is edited.
+   */
+  specFor?(feature: Feature): FeatureDialogSpec | undefined;
   /** Absent until the kernel exists (tests without one get no previews). */
   kernel?: DialogKernel;
   notify?(tone: 'info' | 'error', text: string, options?: ToastOptions): void;
@@ -198,6 +203,8 @@ export interface DialogController {
   readonly state: StoreApi<DialogState>;
   /** Opens the dialog of a feature type for a new feature. Returns false if there is none. */
   start(type: string): boolean;
+  /** Opens a given spec's dialog for a new feature (a plugin's, which the registry lacks). */
+  startSpec(spec: FeatureDialogSpec): boolean;
   /**
    * Opens an existing feature's dialog. Returns false if its type has none.
    * With `fix` (P2-11, "Fix References"), the references the kernel lost
@@ -290,7 +297,7 @@ export function commitProblem(open: OpenDialog): string | undefined {
 }
 
 export function createDialogController(options: DialogControllerOptions): DialogController {
-  const { store, session, model, dialogs, kernel } = options;
+  const { store, session, model, dialogs, kernel, specFor } = options;
   const notify = options.notify ?? (() => {});
   const state = createStore<DialogState>()(() => ({ open: undefined }));
   const get = () => state.getState().open;
@@ -648,76 +655,89 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     else refresh(current);
   });
 
+  const startSpec = (spec: FeatureDialogSpec): boolean => {
+    const doc = store.getState().doc;
+    const { bodies } = model.getState();
+    let values = defaultValues(spec);
+    // Pre-selection (UI spec §3.3): the selection fills the first field that takes it;
+    // what that field doesn't take goes on to the next fields that take it (a profile and
+    // an axis selected before Revolve, P2-07). Each item fills one field.
+    const selection = session.getState().selection;
+    // The fields the picked selection can fill, with the document behind them
+    // (a mesh's `units` is shown from the file it imports).
+    const startCtx = context({ mode: 'create', id: newId<FeatureId>() });
+    values = mergeValues(values, spec.initialValues?.(startCtx) ?? {});
+    const fields = shownFields(spec, values, startCtx).filter(
+      (f): f is SelectionField => f.kind === 'selection',
+    );
+    const used: SelectionItem[] = [];
+    const chained: { field: string; item: SelectionItem }[] = [];
+    for (const target of fields) {
+      const refs: GeomRef[] = [];
+      for (const item of selection) {
+        if (refs.length >= (target.max ?? Number.POSITIVE_INFINITY)) break;
+        if (used.includes(item) || !takesPreSelected(target, item, doc)) continue;
+        const ref = itemRef(item, bodies);
+        if (ref && !refs.some((r) => r.kind === ref.kind && r.id === ref.id)) {
+          refs.push(ref);
+          used.push(item);
+          if (target.tangentChain) chained.push({ field: target.name, item });
+        }
+      }
+      if (refs.length > 0) values = { ...values, refs: { ...values.refs, [target.name]: refs } };
+    }
+    open({
+      spec,
+      mode: 'create',
+      id: newId<FeatureId>(),
+      name: nextFeatureName(doc, spec.label),
+      values,
+      paramNames: {},
+      pickField: firstPickField(spec, values, startCtx),
+      chosen: [],
+      ...blank,
+    });
+    for (const item of used) fingerprint(item);
+    for (const { field, item } of chained) followChain(field, item, 'add');
+    return true;
+  };
+
+  const editSpec = (
+    spec: FeatureDialogSpec,
+    feature: Feature,
+    options: { fix?: readonly ReferenceIssue[] },
+  ): boolean => {
+    const id = feature.id;
+    let values = valuesFor(spec, feature, context({ mode: 'edit', id }));
+    const fixed = options.fix ? fixReferences(spec, values, options.fix) : undefined;
+    if (fixed) values = fixed.values;
+    open({
+      spec,
+      mode: 'edit',
+      id,
+      name: feature.name,
+      values,
+      paramNames: storedParameterNames(feature),
+      pickField: fixed?.fields[0] ?? firstPickField(spec, values, context({ mode: 'edit', id })),
+      chosen: undefined,
+      ...blank,
+      ...(fixed && { note: fixNote(feature.name, spec, fixed) }),
+    });
+    return true;
+  };
+
   return {
     state,
     start(type) {
       const spec = dialogs.get(type);
-      if (!spec) return false;
-      const doc = store.getState().doc;
-      const { bodies } = model.getState();
-      let values = defaultValues(spec);
-      // Pre-selection (UI spec §3.3): the selection fills the first field that takes it;
-      // what that field doesn't take goes on to the next fields that take it (a profile and
-      // an axis selected before Revolve, P2-07). Each item fills one field.
-      const selection = session.getState().selection;
-      // The fields the picked selection can fill, with the document behind them
-      // (a mesh's `units` is shown from the file it imports).
-      const startCtx = context({ mode: 'create', id: newId<FeatureId>() });
-      values = mergeValues(values, spec.initialValues?.(startCtx) ?? {});
-      const fields = shownFields(spec, values, startCtx).filter(
-        (f): f is SelectionField => f.kind === 'selection',
-      );
-      const used: SelectionItem[] = [];
-      const chained: { field: string; item: SelectionItem }[] = [];
-      for (const target of fields) {
-        const refs: GeomRef[] = [];
-        for (const item of selection) {
-          if (refs.length >= (target.max ?? Number.POSITIVE_INFINITY)) break;
-          if (used.includes(item) || !takesPreSelected(target, item, doc)) continue;
-          const ref = itemRef(item, bodies);
-          if (ref && !refs.some((r) => r.kind === ref.kind && r.id === ref.id)) {
-            refs.push(ref);
-            used.push(item);
-            if (target.tangentChain) chained.push({ field: target.name, item });
-          }
-        }
-        if (refs.length > 0) values = { ...values, refs: { ...values.refs, [target.name]: refs } };
-      }
-      open({
-        spec,
-        mode: 'create',
-        id: newId<FeatureId>(),
-        name: nextFeatureName(doc, spec.label),
-        values,
-        paramNames: {},
-        pickField: firstPickField(spec, values, startCtx),
-        chosen: [],
-        ...blank,
-      });
-      for (const item of used) fingerprint(item);
-      for (const { field, item } of chained) followChain(field, item, 'add');
-      return true;
+      return spec ? startSpec(spec) : false;
     },
+    startSpec,
     edit(id, options = {}) {
       const feature = store.getState().doc.features.find((f) => f.id === id);
-      const spec = feature && dialogs.get(feature.type);
+      const spec = feature && (dialogs.get(feature.type) ?? specFor?.(feature));
       if (!feature || !spec) return false;
-      let values = valuesFor(spec, feature, context({ mode: 'edit', id }));
-      const fixed = options.fix ? fixReferences(spec, values, options.fix) : undefined;
-      if (fixed) values = fixed.values;
-      open({
-        spec,
-        mode: 'edit',
-        id,
-        name: feature.name,
-        values,
-        paramNames: storedParameterNames(feature),
-        pickField: fixed?.fields[0] ?? firstPickField(spec, values, context({ mode: 'edit', id })),
-        chosen: undefined,
-        ...blank,
-        ...(fixed && { note: fixNote(feature.name, spec, fixed) }),
-      });
-      return true;
+      return editSpec(spec, feature, options);
     },
     setRefs,
     setExpr: (field, expr) =>

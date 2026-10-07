@@ -15,6 +15,8 @@ export interface PluginsListProps {
   busy: boolean;
   onInstall(): void;
   onInstallFromDesign(plugin: DesignPlugin): void;
+  /** Points the design's features of an older copy at the installed version (slice 3). */
+  onUpdate(plugin: DesignPlugin): void;
   onEnabled(id: string, enabled: boolean): void;
   onRemove(entry: PluginEntry): void;
 }
@@ -38,6 +40,7 @@ export function PluginsList({
   busy,
   onInstall,
   onInstallFromDesign,
+  onUpdate,
   onEnabled,
   onRemove,
 }: PluginsListProps) {
@@ -82,7 +85,9 @@ export function PluginsList({
       {inDesign.length > 0 && (
         <>
           <h3 className="mt-5 mb-1.5 text-xs font-semibold tracking-wide text-muted uppercase">
-            In this design, not installed
+            {inDesign.every((plugin) => !plugin.update)
+              ? 'In this design, not installed'
+              : 'In this design'}
           </h3>
           <ul aria-label="In this design" className="flex flex-col divide-y divide-line">
             {inDesign.map((plugin) => (
@@ -97,16 +102,28 @@ export function PluginsList({
                     <span className="text-muted">{plugin.manifest.version}</span>
                   </span>
                   <span className="truncate text-xs text-muted">
-                    In this design, not installed · {plugin.manifest.description}
+                    {plugin.update
+                      ? `In this design, an older copy · installed: ${plugin.update.version}`
+                      : `In this design, not installed · ${plugin.manifest.description}`}
                   </span>
                 </div>
-                <Button
-                  aria-label={`Install ${plugin.manifest.name}`}
-                  disabled={busy}
-                  onClick={() => onInstallFromDesign(plugin)}
-                >
-                  <Download size={14} /> Install
-                </Button>
+                {plugin.update ? (
+                  <Button
+                    aria-label={`Update ${plugin.manifest.name} to ${plugin.update.version}`}
+                    disabled={busy}
+                    onClick={() => onUpdate(plugin)}
+                  >
+                    <Download size={14} /> Update to {plugin.update.version}
+                  </Button>
+                ) : (
+                  <Button
+                    aria-label={`Install ${plugin.manifest.name}`}
+                    disabled={busy}
+                    onClick={() => onInstallFromDesign(plugin)}
+                  >
+                    <Download size={14} /> Install
+                  </Button>
+                )}
               </li>
             ))}
           </ul>
@@ -227,6 +244,8 @@ export interface PluginsDialogProps {
   files: FileAccess;
   /** The plugins the open design carries that aren't installed, asked when the dialog opens. */
   inDesign(): Promise<DesignPlugin[]>;
+  /** "Update to <version>": points the design's features at the installed file (one undo step). */
+  onUpdate(plugin: DesignPlugin): Promise<string>;
 }
 
 /**
@@ -240,6 +259,7 @@ export function PluginsDialog({
   plugins,
   files,
   inDesign,
+  onUpdate,
 }: PluginsDialogProps) {
   const installed = useStore(plugins, (s) => s.installed);
   const status = useStore(plugins, (s) => s.status);
@@ -297,6 +317,14 @@ export function PluginsDialog({
         }
         onInstallFromDesign={(plugin) =>
           void run(() => plugins.getState().install(plugin.bytes, 'from this design'))
+        }
+        onUpdate={(plugin) =>
+          void run(async () => {
+            const message = await onUpdate(plugin);
+            plugins.setState({ status: message, refused: false });
+            // The design's copy changed: ask again what it carries.
+            setDesign(await inDesign().catch(() => []));
+          })
         }
         onEnabled={(id, enabled) => void run(() => plugins.getState().setEnabled(id, enabled))}
         onRemove={setRemoving}

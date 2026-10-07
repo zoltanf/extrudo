@@ -4,7 +4,7 @@
  * (like the sketch tool host), and the pick field's selection filter in the
  * viewport store.
  */
-import type { BodyId, DocumentStore, ModelStore, SessionStore } from '@extrudo/core';
+import type { BodyId, DocumentStore, Feature, ModelStore, SessionStore } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
@@ -21,7 +21,7 @@ import {
 } from './dialog';
 import { fieldFilter, refItems } from './refs';
 import type { FeatureDialogs } from './registry';
-import type { DialogField } from './spec';
+import type { DialogField, FeatureDialogSpec } from './spec';
 import { shownFields } from './values';
 
 const CLOSED = createStore<DialogState>()(() => ({ open: undefined }));
@@ -32,6 +32,8 @@ export interface FeatureDialogsOptions {
   model: ModelStore<BodyMesh>;
   viewport: ViewportStore;
   dialogs: FeatureDialogs;
+  /** The dialog of a stored feature the registry has none for (a plugin's, ADR-0077 §6). */
+  specFor?(feature: Feature): FeatureDialogSpec | undefined;
   /** The project's `Recomputer`; may arrive after the first render. */
   kernel: DialogKernel | undefined;
   notify(tone: 'info' | 'error', text: string, options?: ToastOptions): void;
@@ -43,6 +45,7 @@ export function useFeatureDialogs({
   model,
   viewport,
   dialogs,
+  specFor,
   kernel,
   notify,
 }: FeatureDialogsOptions): {
@@ -52,6 +55,8 @@ export function useFeatureDialogs({
   // The kernel and notify may change; the controller reaches the latest through refs.
   const kernelRef = useRef(kernel);
   kernelRef.current = kernel;
+  const specForRef = useRef(specFor);
+  specForRef.current = specFor;
   const notifyRef = useRef(notify);
   notifyRef.current = notify;
   const [controller, setController] = useState<DialogController>();
@@ -61,6 +66,7 @@ export function useFeatureDialogs({
       session,
       model,
       dialogs,
+      specFor: (feature) => specForRef.current?.(feature),
       kernel: {
         preview: (draft, index, options) =>
           kernelRef.current?.preview(draft, index, options) ?? Promise.resolve(undefined),

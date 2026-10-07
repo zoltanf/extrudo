@@ -90,10 +90,21 @@ describe('designPlugins', () => {
     expect(found[0]?.bytes).toEqual(files.get(b));
   });
 
+  it('lists an older copy of an installed plugin with the version to update to', async () => {
+    const { store } = setup();
+    const installed = [await store.install(pluginBytes('1.3.0'))];
+    const files = new Map([[a, pluginBytes('1.0.0')]]);
+    const found = await designPlugins(docWith([a]), installed, async (id) => files.get(id));
+    expect(found.map((p) => [p.manifest.version, p.update])).toEqual([
+      ['1.0.0', { version: '1.3.0' }],
+    ]);
+  });
+
   it('leaves out one that is installed, a missing file and a damaged one', async () => {
     const { store } = setup();
     const installed = [await store.install(pluginBytes('0.1.0'))];
     const files = new Map([[a, pluginBytes('1.0.0')]]);
+    // An installed version older or equal to the design's copy: nothing to say.
     expect(await designPlugins(docWith([a]), installed, async (id) => files.get(id))).toEqual([]);
     expect(await designPlugins(docWith([a]), [], async () => undefined)).toEqual([]);
     expect(await designPlugins(docWith([a]), [], async () => new Uint8Array([9]))).toEqual([]);

@@ -412,6 +412,15 @@ a right-click without movement, as Onshape's context menu does.
   Editor undo changes text, OK adds or edits one document undo step. The Script
   stays one timeline chip, with its generated count in the tooltip; bodies are
   ordinary browser entries and may be picked by later features.
+- **Plugins (P6-03, ADR-0077):** File › Plugins… (Ctrl+K "Plugins…") installs, enables
+  and removes `.extrudo-plugin` files and lists a design's plugins that aren't installed
+  (Install) or are older than the installed version (Update to <version>, one undo
+  step). An enabled plugin's custom features are the last items of Solid › Create ▾
+  under a "Plugins" label and in Ctrl+K as "Plugins › <name>" (no keys); each opens a
+  dialog generated from its manifest (expression, checkbox, dropdown and pick fields, a
+  line "Plugin: <name> <version>"), and OK adds the feature and the plugin file together.
+  Its chip is the label numbered ("Name plate1"), with the plugin and version in the
+  tooltip. Its commands (one-offs) are in Ctrl+K only.
 - **Record Macro and Stop Macro (P5-05, ADR-0073):** Solid › Create ▾ after Script
   (no keys; Ctrl+K finds them). The menu offers Record while idle and Stop while
   recording; the status bar shows a red dot and "Recording macro · N features".

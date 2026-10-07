@@ -4,6 +4,11 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P6-03 plugin API, slice 3** (ADR-0077): an enabled plugin's custom features get
+  a dialog generated from the manifest (Ctrl+K, a "Plugins" section in the Create menu), OK
+  adds the feature and the plugin file to the design as one undo step, a stored feature opens
+  from the design's own copy, and the Plugins dialog offers "Update to <version>";
+  `docs/plugins.md` and `docs/api/plugins.md`.
 - 2026-10-07 · **Multi-start threads** (P4-12, ADR-0056's second amendment): a `starts` input (2–8) cuts that many helices with a lead of starts × pitch, one tooth per start in one boolean, faces `s<j>.`; the Thread dialog has a Starts field; file format §6.33.
 - 2026-10-07 · **P6-03 plugin API, slice 2** (ADR-0077): installed plugins in a
   `PluginStore` (`plugins/<id>/plugin.extrudo-plugin` + `plugins/index.json`; OPFS
