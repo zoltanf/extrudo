@@ -593,6 +593,13 @@ interface ProjectStore {
   main process; the renderer reaches it through a typed preload bridge whose
   channels live in one `apps/desktop/src/shared/ipc.ts`. Native menus, recent
   files and `.extrudo` file associations are later slices.
+- **Installed plugins (P6-03 slice 2, ADR-0077 §4)** are the person's, not a
+  design's, so they are in no `.extrudo` file and `docs/file-format.md` doesn't
+  describe them: `PluginStore` (`@extrudo/storage`'s `createPluginStore`) keeps
+  `plugins/<id>/plugin.extrudo-plugin` and `plugins/index.json` beside
+  `projects/` in the same files (OPFS on the web, `userData/plugins` on the
+  desktop through the `plugin:call` channel); a design that uses a plugin
+  feature carries its own copy as an attachment (§6.32 of the file format).
 
 ### 6.2 `.extrudo` file (zip)
 

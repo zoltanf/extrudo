@@ -72,6 +72,36 @@ describe('buildCommands', () => {
     expect(byId(ctx).has('exportScript')).toBe(false);
   });
 
+  it("offers Plugins… in the File group, and the enabled plugins' commands in the model only (P6-03)", () => {
+    const plugins = vi.fn();
+    const ctx = context('model');
+    const run = vi.fn();
+    const command = {
+      id: 'plugin:name-plate:three-holes',
+      label: 'Three holes',
+      hint: 'Cuts three holes',
+      group: 'Plugins › Name plate',
+      run,
+    };
+    const model = byId({ ...ctx, file: { ...ctx.file, plugins }, plugins: [command] });
+    expect(model.get('plugins')).toMatchObject({ label: 'Plugins…', group: 'File', keys: [] });
+    model.get('plugins')?.run();
+    expect(plugins).toHaveBeenCalled();
+    const offered = model.get('plugin:name-plate:three-holes');
+    expect(offered).toMatchObject({
+      label: 'Three holes',
+      group: 'Plugins › Name plate',
+      keys: [],
+    });
+    expect(offered?.keywords).toContain('Cuts three holes');
+    offered?.run();
+    expect(run).toHaveBeenCalled();
+    // A plugin's commands are the model's: a sketch doesn't list them.
+    const sketch = byId({ ...context('sketch'), plugins: [command] });
+    expect(sketch.has('plugin:name-plate:three-holes')).toBe(false);
+    expect(byId(ctx).has('plugins')).toBe(false);
+  });
+
   it('offers Save Version on Ctrl+S and Version History in both modes (P2-14)', () => {
     for (const mode of ['model', 'sketch'] as const) {
       const commands = byId(context(mode));

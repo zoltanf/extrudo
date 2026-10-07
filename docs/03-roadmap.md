@@ -1097,7 +1097,10 @@ end to end, faster than in Fusion 360.
   *Slice 1 done 2026-10-07* (ADR-0077: the manifest, the `.extrudo-plugin` file,
   the `plugin` feature and file format §6.32, `ScriptRunner.runPlugin`, the
   kernel's `expand`, the CLI; the example plugin `examples/plugins/name-plate/`).
-  Slices 2 (installed plugins, commands) and 3 (custom features in the app) to do.
+  *Slice 2 done 2026-10-07* (the `PluginStore` on the web and the desktop, the
+  `plugin:call` channel, the Plugins dialog with "Install from this design",
+  plugin commands run in the worker and inserted as one undo step).
+  Slice 3 (custom features in the app) to do.
 - [ ] **P6-04 i18n** (community translations).
 - [ ] **P6-05 Components and simple assemblies** (multiple components, as-built
   joints), if demand warrants.

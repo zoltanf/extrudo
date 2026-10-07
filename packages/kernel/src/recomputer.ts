@@ -34,6 +34,7 @@ import {
   type ModelStore,
   makesFeatures,
   type PatternReport,
+  PLUGIN_MEDIA_TYPE,
   pluginFileOf,
   type SketchReport,
 } from '@extrudo/core';
@@ -48,6 +49,7 @@ import type { SmoothKind, SubShapeKind } from './history';
 import type { Inspection, InspectTarget } from './inspect';
 import type { BodyMesh, MeshOptions } from './mesh';
 import type { StepBody } from './model-export';
+import { type PluginCommandResult, pluginCommandFileId } from './plugin-command';
 import type { BodyResult, PreviewToolMesh, RecomputeResult } from './recompute/types';
 import { type BodyExportMesh, type ExportProgress, isKernelCrash } from './service';
 
@@ -504,6 +506,62 @@ export class Recomputer {
       return await this.client.call((api) => api.scadParameters(id));
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /**
+   * Runs an installed plugin's command in the worker (P6-03 slice 2, ADR-0077
+   * §5) on the document up to the timeline marker. The plugin's file goes to
+   * the worker first, once per kernel under `plugin:<id>@<version>` like any
+   * resource, so a restarted or recycled worker (`#resend` forgets them all)
+   * gets it again with the next command. A crash or a refusal is a failed
+   * result, worded, never a throw.
+   */
+  async runPluginCommand(request: {
+    plugin: { id: string; name: string; version: string };
+    /** The installed file's bytes, asked only when this kernel doesn't have them yet. */
+    bytes(): Promise<Uint8Array>;
+    commandId: string;
+    selection: readonly GeomRef[];
+  }): Promise<PluginCommandResult> {
+    const { id, name, version } = request.plugin;
+    const fileId = pluginCommandFileId(id, version);
+    const key = `file:${fileId}`;
+    try {
+      if (!this.#resources.has(key)) {
+        const bytes = await request.bytes();
+        const data = new Uint8Array(bytes.byteLength);
+        data.set(bytes);
+        await this.client.call((api) =>
+          api.addFile(
+            fileId as AttachmentId,
+            data.buffer,
+            PLUGIN_MEDIA_TYPE,
+            `${id}.extrudo-plugin`,
+          ),
+        );
+        this.#resources.add(key);
+      }
+      const full = this.#document.getState().doc;
+      const marker = full.timelineMarker;
+      const doc: ExtrudoDocument = {
+        ...full,
+        features: full.features.slice(0, marker),
+        timelineMarker: marker,
+        // A group may name features past the marker; a command can't group anyway.
+        groups: [],
+      };
+      return await this.client.call((api) =>
+        api.runPluginCommand({
+          fileId,
+          commandId: request.commandId,
+          doc,
+          selection: request.selection,
+        }),
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { ok: false, error: { message: `${name} ${version}: ${message}` }, log: [] };
     }
   }
 

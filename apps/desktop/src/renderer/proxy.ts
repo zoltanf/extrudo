@@ -9,13 +9,16 @@
  */
 import type { ExtrudoDocument } from '@extrudo/core';
 import type {
+  InstalledPlugin,
   LinkedFile,
+  PluginFile,
+  PluginStore,
   ProjectId,
   ProjectStore,
   ProjectSummary,
   VersionSummary,
 } from '@extrudo/storage';
-import type { ExtrudoApi, Noticed, StoreMethod } from '../shared/ipc';
+import type { ExtrudoApi, Noticed, PluginMethod, StoreMethod } from '../shared/ipc';
 import { unwrap } from './errors';
 
 export function createStoreProxy(api: ExtrudoApi): ProjectStore {
@@ -71,5 +74,24 @@ export function createStoreProxy(api: ExtrudoApi): ProjectStore {
       for (const message of notices) options?.onNotice?.(message);
       return value;
     },
+  };
+}
+
+/**
+ * The `PluginStore` proxy (P6-03 slice 2, ADR-0077 §4): the installed plugins
+ * live in main (`userData/plugins`); every method crosses `plugin:call` with
+ * plain arguments and answers (bytes are `Uint8Array`s, a read file plain
+ * data), and a refusal comes back as its class (`unwrap`).
+ */
+export function createPluginProxy(api: ExtrudoApi): PluginStore {
+  const call = async <T>(method: PluginMethod, ...args: unknown[]): Promise<T> =>
+    unwrap<T>((await api.plugins.call(method, args)) as T);
+  return {
+    list: () => call<InstalledPlugin[]>('list'),
+    install: (bytes: Uint8Array) => call<InstalledPlugin>('install', bytes),
+    remove: (id: string) => call<void>('remove', id),
+    setEnabled: (id: string, enabled: boolean) => call<InstalledPlugin>('setEnabled', id, enabled),
+    bytes: (id: string) => call<Uint8Array>('bytes', id),
+    read: (id: string) => call<PluginFile>('read', id),
   };
 }

@@ -79,6 +79,14 @@ import { useTutorial } from '../onboarding/useTutorial';
 import { ViewportHint } from '../onboarding/ViewportHint';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
+import { PluginsDialog } from '../plugins/PluginsDialog';
+import { createPluginsStore, designPlugins } from '../plugins/plugins';
+import {
+  type PluginCommand,
+  type PluginCommandKernel,
+  pluginCommands,
+  runPluginCommand,
+} from '../plugins/runCommand';
 import { OverhangPanel } from '../print/OverhangPanel';
 import { PrintInfoPanel } from '../print/PrintInfoPanel';
 import { ThicknessOverlay } from '../print/ThicknessOverlay';
@@ -95,12 +103,12 @@ import { navigate, projectHref } from '../routes';
 import { SectionOverlay } from '../section/SectionOverlay';
 import { SectionPanel } from '../section/SectionPanel';
 import { planeName, SECTION_TOOL, useSection } from '../section/useSection';
-import { readTopology, sketchEntityIdsIn } from '../selection/items';
+import { readTopology, selectionRefs, sketchEntityIdsIn } from '../selection/items';
 import { useModelSelection } from '../selection/useModelSelection';
 import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
-import { fontsStore } from '../sketch/fonts';
+import { attachmentBytes, fontsStore } from '../sketch/fonts';
 import { sketchFrame } from '../sketch/frame';
 import { useHostState } from '../sketch/hostState';
 import { importDrawingStore } from '../sketch/importDraft';
@@ -208,7 +216,7 @@ export interface AppShellProps {
   /** Feature dialogs (P2-05): the app's registry unless a debug page brings its own. */
   dialogs?: FeatureDialogs;
   /** The project's kernel (its `Recomputer`): dialog previews, references, export, measuring. */
-  kernel?: DialogKernel & ModelExporter & MeasureKernel;
+  kernel?: DialogKernel & ModelExporter & MeasureKernel & Partial<PluginCommandKernel>;
 }
 
 /** The app's feature dialogs (`features/registry.ts`). */
@@ -257,6 +265,37 @@ export function AppShell({
   const [exportRequest, setExportRequest] = useState<ExportRequest>();
   const [modelExport, setModelExport] = useState<ModelExportRequest>();
   const [versionsOpen, setVersionsOpen] = useState(false);
+  // The person's installed plugins (P6-03 slice 2, ADR-0077 §4): session state over the
+  // platform's store, read once here and again after every change the dialog makes.
+  const plugins = useMemo(() => createPluginsStore(platform.plugins), [platform]);
+  useEffect(() => void plugins.getState().refresh(), [plugins]);
+  const [pluginsOpen, setPluginsOpen] = useState(false);
+  const installedPlugins = useStore(plugins, (s) => s.installed);
+  // A plugin command (ADR-0077 §5) runs in the kernel worker on the model selection; what it
+  // made goes in at the marker as one undo step. A ref, so the command list stays stable.
+  const runPluginRef = useRef<(command: PluginCommand) => void>(() => {});
+  const pluginEntries = useMemo(
+    () =>
+      kernel?.runPluginCommand
+        ? pluginCommands(installedPlugins).map((command) => ({
+            id: command.id,
+            label: command.label,
+            group: command.group,
+            ...(command.hint !== undefined && { hint: command.hint }),
+            run: () => runPluginRef.current(command),
+          }))
+        : [],
+    [installedPlugins, kernel],
+  );
+  const inDesign = useCallback(
+    () =>
+      designPlugins(
+        store.getState().doc,
+        (plugins.getState().installed ?? []).map((entry) => entry.plugin),
+        attachmentBytes,
+      ),
+    [store, plugins],
+  );
   // Macro recording (P5-05, ADR-0073 §4): session state, and what Stop wrote for its dialog.
   const macro = useMemo(() => createMacroStore(), []);
   const recording = useStore(macro, (s) => s.recording);
@@ -280,6 +319,7 @@ export function AppShell({
       exportScript: () => exportScriptRef.current(),
       saveVersion: () => setVersionsOpen(true),
       versionHistory: () => setVersionsOpen(true),
+      plugins: () => setPluginsOpen(true),
     }),
     [file],
   );
@@ -742,6 +782,7 @@ export function AppShell({
         },
         ready,
         dialogCommands,
+        plugins: pluginEntries,
         ...(toasts?.history && {
           notifications: { open: () => toasts.history?.getState().setOpen(true) },
         }),
@@ -756,6 +797,7 @@ export function AppShell({
       dialog,
       ready,
       dialogCommands,
+      pluginEntries,
       drawing,
       remove,
       dialogOpen,
@@ -1127,6 +1169,21 @@ export function AppShell({
   };
   runRef.current = run;
   startTutorialRef.current = startTutorial;
+  // P6-03: a plugin command (ADR-0077 §5). An open dialog or panel ends first, so the
+  // features land at the marker as the timeline shows it.
+  runPluginRef.current = (command) => {
+    if (mode !== 'model' || !kernel?.runPluginCommand) return;
+    if (picking) cancelCreateSketch(stores);
+    dialog?.cancel();
+    const selected = selectionRefs(session.getState().selection, model.getState().bodies);
+    void runPluginCommand({
+      command,
+      kernel: kernel as PluginCommandKernel,
+      plugins: platform.plugins,
+      store,
+      selection: selected,
+    }).then((outcome) => notify(outcome.ok ? 'success' : 'error', outcome.message));
+  };
   // The browser's own right-click menu stays out of the app while a project is open.
   useEffect(() => {
     window.addEventListener('contextmenu', keepNativeMenuOut);
@@ -1930,6 +1987,13 @@ export function AppShell({
         notify={notify}
         beforeRestore={endTransaction}
         onOpenCopy={(id) => navigate(projectHref(id))}
+      />
+      <PluginsDialog
+        open={pluginsOpen}
+        onOpenChange={setPluginsOpen}
+        plugins={plugins}
+        files={platform.files}
+        inDesign={inDesign}
       />
     </div>
   );

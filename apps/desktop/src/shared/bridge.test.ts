@@ -61,6 +61,17 @@ describe('preload bridge (ADR-0075 §1)', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('invokes a plugin store method through plugin:call and refuses another (P6-03)', async () => {
+    const { ipc, calls } = fakeIpc({ [CHANNELS.pluginCall]: () => [] });
+    const api = createApi(ipc);
+    await expect(api.plugins.call('setEnabled', ['tiny', false])).resolves.toEqual([]);
+    expect(calls).toEqual([
+      { channel: 'extrudo:plugin:call', args: ['setEnabled', ['tiny', false]], kind: 'invoke' },
+    ]);
+    await expect(api.plugins.call('save' as never, [])).rejects.toThrow('Unknown plugin method');
+    expect(calls).toHaveLength(1);
+  });
+
   it('writes the rescue copy synchronously and reads the list synchronously', () => {
     const { ipc, calls } = fakeIpc({
       [CHANNELS.rescuePut]: () => true,

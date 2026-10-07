@@ -11,6 +11,7 @@ import {
   CHANNELS,
   type ExtrudoApi,
   type FolderEntry,
+  isPluginMethod,
   isStoreMethod,
   type OpenedFile,
   type RecentEntry,
@@ -46,6 +47,12 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
         isStoreMethod(method)
           ? ipc.invoke(CHANNELS.storeCall, method, args)
           : Promise.reject(new Error(`Unknown store method: ${String(method)}`)),
+    },
+    plugins: {
+      call: (method, args) =>
+        isPluginMethod(method)
+          ? ipc.invoke(CHANNELS.pluginCall, method, args)
+          : Promise.reject(new Error(`Unknown plugin method: ${String(method)}`)),
     },
     files: {
       download: (bytes, name) => ipc.invoke(CHANNELS.fileDownload, bytes, name) as Promise<void>,

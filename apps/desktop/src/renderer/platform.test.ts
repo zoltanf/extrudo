@@ -17,6 +17,7 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
   const api: ExtrudoApi = {
     prefs: { read: async () => ({ theme: 'dark' }), write: () => {} },
     store: { call: async () => undefined },
+    plugins: { call: async () => undefined },
     files: {
       download: async () => {},
       pick: async () => undefined,
@@ -172,6 +173,7 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
       'installedSlicers',
       'menus',
       'openInSlicer',
+      'plugins',
       'preferences',
       'projects',
       'rescue',

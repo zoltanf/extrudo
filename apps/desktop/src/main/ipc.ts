@@ -6,15 +6,16 @@
  * are thin.
  */
 import { basename } from 'node:path';
-import type { ProjectStore } from '@extrudo/storage';
+import type { PluginStore, ProjectStore } from '@extrudo/storage';
 import type { MenuModel } from '@extrudo/web/menu-model';
 import { type BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron';
 import { type ErrorEnvelope, serializeError } from '../shared/errors';
-import { CHANNELS, isStoreMethod, type StoreMethod } from '../shared/ipc';
+import { CHANNELS, isPluginMethod, isStoreMethod, type StoreMethod } from '../shared/ipc';
 import { isMenuModel } from '../shared/menuModel';
 import type { DialogFiles } from './dialogs';
 import type { ExternalFiles } from './externalFiles';
 import type { Folders } from './folders';
+import { pluginCall } from './plugin-call';
 import type { PreferencesFile } from './preferences';
 import type { RecentFile } from './recent';
 import type { RescueFile } from './rescue';
@@ -37,6 +38,8 @@ async function guarded<T>(run: () => T | Promise<T>): Promise<T | ErrorEnvelope>
 export interface IpcDependencies {
   preferences: PreferencesFile;
   store: ProjectStore;
+  /** The installed plugins, under `userData/plugins` (P6-03 slice 2). */
+  plugins: PluginStore;
   files: DialogFiles;
   rescue: RescueFile;
   folders: Folders;
@@ -72,6 +75,15 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     isStoreMethod(method)
       ? storeCall(deps.store, method as StoreMethod, args)
       : Promise.reject(new Error(`Unknown store method: ${method}`)),
+  );
+
+  // The installed plugins (P6-03 slice 2): the whitelist is checked again here,
+  // and `pluginCall` checks each method's arguments and returns errors as data.
+  ipcMain.handle(CHANNELS.pluginCall, (_event, method: unknown, args: unknown) =>
+    guarded(() => {
+      if (!isPluginMethod(method)) throw new Error(`Unknown plugin method: ${String(method)}`);
+      return pluginCall(deps.plugins, method, Array.isArray(args) ? args : []);
+    }),
   );
 
   ipcMain.handle(CHANNELS.fileDownload, (_event, bytes: Uint8Array, name: string) =>

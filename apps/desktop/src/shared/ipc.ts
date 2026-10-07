@@ -17,6 +17,8 @@ export const CHANNELS = {
   prefsRead: 'extrudo:prefs:read',
   prefsWrite: 'extrudo:prefs:write',
   storeCall: 'extrudo:store:call',
+  // The installed plugins (P6-03 slice 2, ADR-0077 §4): one channel, a whitelist.
+  pluginCall: 'extrudo:plugin:call',
   fileDownload: 'extrudo:file:download',
   filePick: 'extrudo:file:pick',
   fileSaveAs: 'extrudo:file:save-as',
@@ -91,6 +93,18 @@ export type StoreMethod = (typeof STORE_METHODS)[number];
 
 export const isStoreMethod = (method: unknown): method is StoreMethod =>
   typeof method === 'string' && (STORE_METHODS as readonly string[]).includes(method);
+
+/**
+ * Every `PluginStore` method the renderer may invoke (P6-03 slice 2), through
+ * the one channel `plugin:call`. The store lives in main, under
+ * `userData/plugins`.
+ */
+export const PLUGIN_METHODS = ['list', 'install', 'remove', 'setEnabled', 'bytes', 'read'] as const;
+
+export type PluginMethod = (typeof PLUGIN_METHODS)[number];
+
+export const isPluginMethod = (method: unknown): method is PluginMethod =>
+  typeof method === 'string' && (PLUGIN_METHODS as readonly string[]).includes(method);
 
 export type Persistence = 'persistent' | 'best-effort' | 'unsupported';
 export type FolderPermission = 'granted' | 'prompt' | 'denied';
@@ -176,6 +190,9 @@ export interface ExtrudoApi {
   };
   readonly store: {
     call(method: StoreMethod, args: unknown[]): Promise<unknown>;
+  };
+  readonly plugins: {
+    call(method: PluginMethod, args: unknown[]): Promise<unknown>;
   };
   readonly files: {
     download(bytes: Uint8Array, name: string): Promise<void>;

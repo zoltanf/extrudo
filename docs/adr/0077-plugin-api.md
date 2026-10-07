@@ -357,3 +357,113 @@ of a command runs on the UI thread.
   `@extrudo/script`'s); the kernel depends on `@extrudo/storage` for
   `@extrudo/storage/plugin` only (`check-boundaries.mjs` says so); the
   `NO_SCRIPT_HOST` text now reads "Scripts and plugins can't run here: …".
+
+### Slice 2: installed plugins and plugin commands (2026-10-07)
+
+- **The store** is `@extrudo/storage`'s `PluginStore` (`plugins.ts`):
+  `createPluginStore(files, index?)` over the `FileStore` the projects use, files
+  at `plugins/<id>/plugin.extrudo-plugin` and the index `plugins/index.json`
+  (`{ next, plugins: [{ id, name, version, enabled, installedAt, sha256 }] }`,
+  `next` counting installs). `install(bytes)` reads the file with `readPluginFile`
+  (the manifest is the check; its error is the refusal), refuses the same version
+  ("Tiny 1.0.0 is already installed; this file is the same version, 1.0.0.") and an
+  older one ("Tiny 1.2.0 is installed, which is newer than this file's 1.1.9.") by
+  core's new `compareSemver` (SemVer 2.0 precedence), replaces an older version
+  keeping whether it was enabled, and writes the bytes before the index; `remove`
+  drops the index entry before the folder. `bytes`/`read` check the bytes against
+  the index's SHA-256 ("… is damaged: install it again."). The index goes through
+  a `PluginIndexFile`: a `FileStore` file on the web (OPFS swaps a file in on
+  `close()`), `@extrudo/storage/node`'s `nodePluginIndex` on the desktop — the
+  project index's temp-file-fsync-rename, now shared as `writeAtomic`.
+  `createNodePluginStore(userData)` keeps both under `userData/plugins`. Tests:
+  `plugins.test.ts` (install, upgrade, same and older version, remove, enable and
+  disable, a corrupt file and a bad manifest storing nothing, damaged bytes, the
+  index across a reload and a damaged index, two installs at once) and
+  `node/node-plugin-store.test.ts` (a temp directory; a failed rename keeps the old
+  index).
+- **The platform seam:** `Platform.plugins: PluginStore` is required.
+  `webPlatform()` builds it over `BrowserProjectStore.files` (newly exposed: OPFS,
+  or IndexedDB without it); `desktopPlatform()` over `createPluginProxy(api)`
+  (`renderer/proxy.ts`). The desktop adds **one channel, `plugin:call`
+  (`extrudo:plugin:call`)** and **`PLUGIN_METHODS = ['list', 'install', 'remove',
+  'setEnabled', 'bytes', 'read']`** in `shared/ipc.ts` (`isPluginMethod`,
+  `ExtrudoApi.plugins.call`); the preload's bridge refuses another method before
+  `invoke`, and main's handler checks the whitelist again and runs
+  `main/plugin-call.ts`'s `pluginCall`, which checks every argument (an ID a
+  string, `enabled` a boolean, a file a `Uint8Array`) and returns errors as data;
+  the renderer rebuilds `PluginStoreError`, `PluginFileError` and
+  `PluginManifestError`. Tests: `shared/bridge.test.ts`, `main/plugin-call.test.ts`,
+  `renderer/proxy.test.ts`, `renderer/platform.test.ts`.
+- **The Plugins dialog** (`apps/web/src/plugins/PluginsDialog.tsx`, the `dialog`
+  "Plugins"; the command `plugins` "Plugins…" in File, the File menu and Ctrl+K, no
+  key). Its session state is `createPluginsStore(platform.plugins)`
+  (`plugins/plugins.ts`: the list with each file read, refreshed after every change,
+  the status line's text and whether it was a refusal), made once per `AppShell`.
+  Install… picks a `.extrudo-plugin` file; a refusal is the status line "Plugins
+  status" (`data-refused`), since a toast would sit behind the modal dialog. A row
+  has the name, version, description, the checkbox "Enabled: <name>" (visible label
+  "Enabled") and Remove, which asks in the `alertdialog` "Remove <name>?"; its
+  Details (`<details>`) show the author and license, the commands and features with
+  their labels and hints, and the README and LICENSE **as plain text** in `<pre>`
+  inside sections labelled "README of <name>" / "License of <name>" (no Markdown,
+  no HTML: a `<script>` in a README is shown escaped, which the test checks).
+  **"Install from this design"** is `designPlugins(doc, installed, read)`: every
+  `plugin` feature's attachment, read through `attachmentBytes` and
+  `readPluginFile`, compared by the manifest's `id`, one entry per plugin at its
+  newest version; the list "In this design" shows them as "In this design, not
+  installed" with **Install** (`Install <name>`), which installs the attachment's
+  bytes. Tests: `plugins.test.ts`, `PluginsDialog.test.tsx` (static markup).
+- **Commands:** `CommandContext.plugins?: readonly PluginCommandEntry[]` (`id`
+  `plugin:<plugin>:<command>`, `label`, `hint`, `group` "Plugins › <name>", `run`),
+  listed by `buildCommands` **in model mode only**, with no key; `AppShell` builds
+  them from the enabled plugins' manifests (`pluginCommands`) whenever the list
+  changes, and only where its kernel can run them. Running one is
+  `plugins/runCommand.ts`'s `runPluginCommand`: the project's **`Recomputer.
+  runPluginCommand`** sends the plugin's bytes with `addFile` under
+  **`plugin:<id>@<version>`** (media type `application/x-extrudo-plugin`) once per
+  kernel — the key is in the `Recomputer`'s resource set, so `#resend` makes a
+  restarted or recycled worker get it with the next command — then calls the new
+  **`KernelApi.runPluginCommand({ fileId, commandId, doc, selection, params? })`**
+  with the document **up to the timeline marker** (groups dropped) and the session
+  selection as `selectionRefs` gives it. The worker (`KernelService.
+  runPluginCommand` → `plugin-command.ts`'s `runPluginCommand`) loads the runner
+  like `enableScripts()`, reads the file with `readPluginFile`, runs
+  `ScriptHost.runPlugin` with `handler: { kind: 'command' }`, the owner ID `cmd`
+  and the command's label as the name, computes `params` from the document when
+  they aren't given, checks the IDs with the Script's `checkedGenerated`, and
+  answers a `ScriptRunResult` — **a failure is data, never a throw**, worded
+  "Tiny 1.2.0, main.ts line 3: …" (a crash or a missing runner too; the app prefixes
+  the plugin's name when the words lack it). Nothing is cached.
+- **The insert re-mints** (`insertCommandFeatures`): core's new **`remintFeatures(
+  features, doc, ids)`** (`remint.ts`) gives each feature the ID the caller made
+  with `newId()`, the name the app would ("Three holes › Sketch1" → the next
+  "Sketch<n>", through `nextFeatureName`), and rewrites **every token** of every
+  stored reference that is one of the old IDs — `ref` inputs and a sketch's
+  projections, so `cmd.f1/<region>`, `extrude:cmd.f2:cap:end`, `e[…|…]` edges and
+  `{kind:'feature'}` refs all follow, in the token grammar `timeline.ts` reads
+  dependencies with (so `cmd.f10` is never `cmd.f1` + "0"); then one transaction
+  named "<plugin name>: <command label>" inserts them at the marker (each
+  `insertFeature` lands at the marker, which moves past it, so they keep their
+  order before any rolled-back feature). A refused insert cancels the transaction.
+  The outcome is a toast: "Name plate: Three holes: added 2 features.", or the
+  failure.
+- **Deviations from the brief:** the rewrite is a pure pass before the insert, not
+  `replaceReferences` — that command matches a reference by its exact ID and kind
+  and refuses a feature none of whose references change, while a command's
+  references embed the generated IDs inside face and edge names and every one must
+  change, so `remintFeatures` rewrites tokens the way `timeline.ts` reads them; the
+  re-minted features also get the app's own names, since the brief's "ordinary
+  features" shouldn't carry "Three holes › " for ever. The dialog is a `dialog`
+  named "Plugins" (the Versions dialog's pattern), not a `region`. Plugin commands
+  are not in the desktop's native menu: `menuModel` lists its fixed menus, and a
+  "Plugins" menu is left for slice 3 with the features. Tests: core
+  `remint.test.ts` (fake features referring to each other and to the design), web
+  `runCommand.test.ts` (the insert at a rolled-back marker as one named step, undo,
+  the kernel asked with the selection, failures), `shell/commands.test.ts` (the
+  File command, the group, model only), kernel `recomputer.test.ts` (the file once
+  per kernel, again after a restart, the document cut at the marker) and
+  `service-plugin-command.test.ts` (a fake host: the request, the wording, the
+  refusals, the service without a runner), and `packages/cli/src/plugins.test.ts`
+  (the example's "Three holes" through the worker's path with the real sandbox,
+  re-minted with no `cmd.` left, computed to the plate's volume less three holes).
+  e2e: `e2e/plugins.spec.ts`.

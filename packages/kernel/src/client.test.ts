@@ -53,6 +53,7 @@ describe('KernelClient', () => {
       enableScripts: async () => {},
       enableOpenscad: async () => {},
       scadParameters: async () => ({ ok: true, parameters: [] }),
+      runPluginCommand: async () => ({ ok: true, features: [], log: [] }),
       debugTestPart: () => new Promise(() => {}),
       debugCrash: async () => {},
       stats: async () => ({ liveShapes: 0, heapTop: 0, heapBytes: 0 }),
@@ -88,6 +89,7 @@ describe('KernelClient', () => {
       enableScripts: async () => {},
       enableOpenscad: async () => {},
       scadParameters: async () => ({ ok: true, parameters: [] }),
+      runPluginCommand: async () => ({ ok: true, features: [], log: [] }),
       debugTestPart: async () => {
         throw new KernelCrashError('boom');
       },

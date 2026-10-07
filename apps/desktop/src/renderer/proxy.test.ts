@@ -1,13 +1,26 @@
 import type { DocumentId, ExtrudoDocument } from '@extrudo/core';
-import { ArchiveError, ProjectNotFoundError, StorageError } from '@extrudo/storage';
+import {
+  ArchiveError,
+  PluginFileError,
+  PluginStoreError,
+  ProjectNotFoundError,
+  StorageError,
+} from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import type { ExtrudoApi, Noticed } from '../shared/ipc';
-import { createStoreProxy } from './proxy';
+import { createPluginProxy, createStoreProxy } from './proxy';
 
 /** A fake bridge that records store calls and answers from a map. */
 function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
   const calls: { method: string; args: unknown[] }[] = [];
+  const pluginCalls: { method: string; args: unknown[] }[] = [];
   const api: ExtrudoApi = {
+    plugins: {
+      call: async (method, args) => {
+        pluginCalls.push({ method, args });
+        return answers[`plugin:${method}`];
+      },
+    },
     prefs: { read: async () => ({}), write: () => {} },
     store: {
       call: async (method, args) => {
@@ -66,7 +79,7 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
       openRelease: () => {},
     },
   };
-  return { api, calls };
+  return { api, calls, pluginCalls };
 }
 
 const id = '00000000-0000-4000-8000-000000000001' as DocumentId;
@@ -187,5 +200,46 @@ describe('the store proxy (ADR-0075 §3)', () => {
     ];
     for (const method of expected)
       expect(typeof store[method as keyof typeof store]).toBe('function');
+  });
+});
+
+describe('the plugin store proxy (P6-03 slice 2)', () => {
+  it('passes each method and its arguments through plugin:call', async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    const { api, pluginCalls } = fakeApi({
+      'plugin:list': [{ id: 'tiny' }],
+      'plugin:install': { id: 'tiny', version: '1.0.0' },
+      'plugin:bytes': bytes,
+      'plugin:read': { manifest: { id: 'tiny' }, code: '', language: 'ts' },
+    });
+    const plugins = createPluginProxy(api);
+    expect(await plugins.list()).toEqual([{ id: 'tiny' }]);
+    expect(await plugins.install(bytes)).toEqual({ id: 'tiny', version: '1.0.0' });
+    await plugins.setEnabled('tiny', false);
+    await plugins.remove('tiny');
+    expect(await plugins.bytes('tiny')).toBe(bytes);
+    expect((await plugins.read('tiny')).manifest.id).toBe('tiny');
+    expect(pluginCalls).toEqual([
+      { method: 'list', args: [] },
+      { method: 'install', args: [bytes] },
+      { method: 'setEnabled', args: ['tiny', false] },
+      { method: 'remove', args: ['tiny'] },
+      { method: 'bytes', args: ['tiny'] },
+      { method: 'read', args: ['tiny'] },
+    ]);
+  });
+
+  it("rebuilds the store's and the reader's refusals as their classes", async () => {
+    const refused = (name: string, message: string) =>
+      createPluginProxy(fakeApi({ 'plugin:install': { error: { name, message } } }).api);
+    const same = 'Tiny 1.0.0 is already installed; this file is the same version, 1.0.0.';
+    await expect(refused('PluginStoreError', same).install(new Uint8Array())).rejects.toThrow(
+      new PluginStoreError(same),
+    );
+    await expect(
+      refused('PluginFileError', "This isn't a plugin file: it isn't a zip archive.").install(
+        new Uint8Array(),
+      ),
+    ).rejects.toBeInstanceOf(PluginFileError);
   });
 });

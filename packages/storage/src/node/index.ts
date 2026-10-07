@@ -10,10 +10,17 @@
  * never pulls in `node:fs`.
  */
 import { join } from 'node:path';
+import {
+  createPluginStore,
+  PLUGINS_DIR,
+  type PluginStore,
+  type PluginStoreOptions,
+} from '../plugins';
 import { createProjectStore, localLock, type ProjectStoreOptions } from '../project-store';
 import type { ProjectStore } from '../types';
 import { nodeFiles } from './fs-files';
 import { nodeIndex } from './fs-index';
+import { nodePluginIndex } from './plugin-index';
 
 export type NodeProjectStoreOptions = Partial<ProjectStoreOptions>;
 
@@ -31,5 +38,19 @@ export function createNodeProjectStore(
   });
 }
 
+/**
+ * The desktop's installed plugins (P6-03 slice 2): files under
+ * `<dir>/plugins/<id>/…` and the index `<dir>/plugins/index.json`, written
+ * atomically. `dir` is `userData`, so the plugins sit beside the projects.
+ */
+export function createNodePluginStore(dir: string, options: PluginStoreOptions = {}): PluginStore {
+  return createPluginStore(
+    nodeFiles(dir),
+    nodePluginIndex(join(dir, PLUGINS_DIR, 'index.json')),
+    options,
+  );
+}
+
 export { nodeFiles } from './fs-files';
-export { nodeIndex } from './fs-index';
+export { nodeIndex, writeAtomic } from './fs-index';
+export { nodePluginIndex } from './plugin-index';

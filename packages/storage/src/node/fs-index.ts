@@ -69,27 +69,12 @@ export function nodeIndex(path: string, options: NodeIndexOptions = {}): Project
     return map;
   };
 
-  const commit = async (summaries: ProjectSummary[]): Promise<void> => {
-    await mkdir(dirname(path), { recursive: true });
-    const temp = `${path}.${process.pid}.tmp`;
-    await writeFile(temp, `${JSON.stringify({ projects: summaries }, null, 2)}\n`, 'utf8');
-    // Flush the temp file before the rename: the rename is the commit, and a
-    // power loss must never leave it pointing at a partial file (P6-01 review).
-    const handle = await open(temp, 'r');
-    try {
-      await handle.sync();
-    } finally {
-      await handle.close();
-    }
-    await options.beforeRename?.();
-    try {
-      await rename(temp, path);
-    } catch (error) {
-      // A failed rename must not leave the temp file behind for ever.
-      await rm(temp, { force: true });
-      throw error;
-    }
-  };
+  const commit = (summaries: ProjectSummary[]): Promise<void> =>
+    writeAtomic(
+      path,
+      `${JSON.stringify({ projects: summaries }, null, 2)}\n`,
+      options.beforeRename,
+    );
 
   return {
     async all() {
@@ -116,4 +101,35 @@ export function nodeIndex(path: string, options: NodeIndexOptions = {}): Project
       });
     },
   };
+}
+
+/**
+ * Writes `text` to `path` atomically: a temp file beside it, flushed, renamed
+ * over it (P6-01's review). Shared by the project index and the plugin index
+ * (P6-03 slice 2).
+ */
+export async function writeAtomic(
+  path: string,
+  text: string,
+  beforeRename?: () => void | Promise<void>,
+): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  const temp = `${path}.${process.pid}.tmp`;
+  await writeFile(temp, text, 'utf8');
+  // Flush the temp file before the rename: the rename is the commit, and a
+  // power loss must never leave it pointing at a partial file (P6-01 review).
+  const handle = await open(temp, 'r');
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await beforeRename?.();
+  try {
+    await rename(temp, path);
+  } catch (error) {
+    // A failed rename must not leave the temp file behind for ever.
+    await rm(temp, { force: true });
+    throw error;
+  }
 }

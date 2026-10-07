@@ -31,6 +31,7 @@ import {
 } from './recompute/testing';
 import type { RecomputeRequest } from './recompute/types';
 import { type FileSource, type FontSource, Recomputer } from './recomputer';
+import { NO_SCRIPT_HOST } from './script-host';
 import { KernelService } from './service';
 
 const until = async (condition: () => boolean, ms = 20_000) => {
@@ -81,6 +82,12 @@ function setup(doc: ExtrudoDocument, options: { fonts?: FontSource; files?: File
             ok: true as const,
             parameters: [{ name: 'width', type: 'number', initial: 40 }],
           };
+        },
+        runPluginCommand: (request) => {
+          events.push(
+            `command:${request.fileId}:${request.commandId}:${request.doc.features.map((f) => f.id).join(',')}:${request.selection.map((r) => r.id).join(',')}`,
+          );
+          return service.runPluginCommand(request);
         },
         recompute: (request, onFeature) => {
           requests.push(request);
@@ -383,6 +390,46 @@ describe('Recomputer', () => {
     edit(withScript.document, (d) => withExpr(d, 'a', 'size', '12 mm'));
     await until(() => withScript.events.length > before);
     expect(withScript.events.slice(before)).not.toContain('scripts');
+  });
+
+  it("runs a plugin command on the features before the marker, sending the plugin's file once per kernel", {
+    timeout: 60_000,
+  }, async () => {
+    const doc = {
+      ...testDocument([
+        testFeature('a', 'test-box', { size: '10 mm' }),
+        testFeature('b', 'test-box', { size: '20 mm' }),
+      ]),
+      timelineMarker: 1,
+    };
+    const { model, events, spawned } = setup(doc);
+    await until(() => ready(model));
+    let asked = 0;
+    const request = {
+      plugin: { id: 'tiny', name: 'Tiny', version: '1.0.0' },
+      bytes: async () => {
+        asked++;
+        return new Uint8Array([1, 2, 3]);
+      },
+      commandId: 'box',
+      selection: [{ kind: 'body', id: 'a:0' }] as GeomRef[],
+    };
+    // This kernel has no script runner: the command fails as data, worded.
+    const first = await recomputer?.runPluginCommand(request);
+    expect(first).toEqual({ ok: false, error: { message: NO_SCRIPT_HOST }, log: [] });
+    await recomputer?.runPluginCommand(request);
+    expect(events.filter((e) => e.startsWith('file:') || e.startsWith('command:'))).toEqual([
+      'file:plugin:tiny@1.0.0:application/x-extrudo-plugin:tiny.extrudo-plugin:3',
+      'command:plugin:tiny@1.0.0:box:a:a:0',
+      'command:plugin:tiny@1.0.0:box:a:a:0',
+    ]);
+    expect(asked).toBe(1);
+    // A new kernel has none of it: the next command sends the file again.
+    await recomputer?.client.restart();
+    await until(() => spawned() >= 2);
+    await recomputer?.runPluginCommand(request);
+    expect(asked).toBe(2);
+    expect(events.filter((e) => e.startsWith('file:plugin:'))).toHaveLength(2);
   });
 
   it('loads OpenSCAD once for a document that imports a .scad file (ADR-0071 §3)', {

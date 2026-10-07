@@ -17,6 +17,7 @@ export function workerApi(service: KernelService): KernelApi {
     enableScripts: () => service.enableScripts(),
     enableOpenscad: () => service.enableOpenscad(),
     scadParameters: (id) => service.scadParameters(id),
+    runPluginCommand: (request) => service.runPluginCommand(request),
     recompute: async (request, onFeature) => transfer(await service.recompute(request, onFeature)),
     preview: async (request, onFeature) => transfer(await service.preview(request, onFeature)),
     endPreview: () => service.endPreview(),

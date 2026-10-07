@@ -2,6 +2,7 @@
 // else of a plugin file is read, and refused with the place and the reason.
 import { describe, expect, it } from 'vitest';
 import {
+  compareSemver,
   type PluginManifest,
   PluginManifestError,
   parsePluginManifest,
@@ -121,5 +122,33 @@ describe('parsePluginManifest', () => {
   it('names a command and a plugin file the way the app does', () => {
     expect(pluginCommandId('name-plate', 'three-holes')).toBe('plugin:name-plate:three-holes');
     expect(pluginFileName({ id: 'name-plate' })).toBe('name-plate.extrudo-plugin');
+  });
+});
+
+describe('compareSemver', () => {
+  it('orders versions by SemVer precedence', () => {
+    const ordered = [
+      '0.9.0',
+      '1.0.0-alpha',
+      '1.0.0-alpha.1',
+      '1.0.0-alpha.beta',
+      '1.0.0-beta',
+      '1.0.0-beta.2',
+      '1.0.0-beta.11',
+      '1.0.0-rc.1',
+      '1.0.0',
+      '1.0.1',
+      '1.2.0',
+      '1.10.0',
+      '2.0.0',
+    ];
+    for (let i = 0; i < ordered.length; i++) {
+      for (let j = 0; j < ordered.length; j++) {
+        const a = ordered[i] as string;
+        const b = ordered[j] as string;
+        expect(Math.sign(compareSemver(a, b)), `${a} vs ${b}`).toBe(Math.sign(i - j));
+      }
+    }
+    expect(compareSemver('1.0.0+build.1', '1.0.0+build.2')).toBe(0);
   });
 });

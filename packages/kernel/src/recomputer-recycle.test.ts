@@ -73,6 +73,7 @@ function fakeSpawn(options: FakeOptions) {
         events.push(`openscad:${worker}`);
       },
       scadParameters: async () => ({ ok: true, parameters: [] }),
+      runPluginCommand: async () => ({ ok: true, features: [], log: [] }),
       recompute: async (_request: RecomputeRequest) => {
         requests++;
         events.push(`recompute:${worker}`);

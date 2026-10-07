@@ -34,6 +34,17 @@ export {
   writePluginFile,
 } from './plugin-file';
 export {
+  createPluginStore,
+  fileStoreIndex,
+  type InstalledPlugin,
+  PLUGINS_DIR,
+  type PluginIndexFile,
+  type PluginStore,
+  PluginStoreError,
+  type PluginStoreOptions,
+  pluginPath,
+} from './plugins';
+export {
   createProjectStore,
   memoryProjectStore,
   type ProjectStoreOptions,

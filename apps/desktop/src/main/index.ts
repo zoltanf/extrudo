@@ -13,7 +13,7 @@
  */
 import { readFile, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { createNodeProjectStore } from '@extrudo/storage/node';
+import { createNodePluginStore, createNodeProjectStore } from '@extrudo/storage/node';
 import type { MenuModel } from '@extrudo/web/menu-model';
 import { app, BrowserWindow, dialog, Menu, type OpenDialogOptions, session, shell } from 'electron';
 import { autoUpdater } from 'electron-updater';
@@ -65,6 +65,8 @@ function main(): void {
   const store = createNodeProjectStore(join(userData, 'projects'), {
     appVersion: app.getVersion(),
   });
+  // Installed plugins beside the projects (P6-03 slice 2): `userData/plugins`.
+  const plugins = createNodePluginStore(userData);
   const preferences = createPreferencesFile(join(userData, 'preferences.json'));
   const rescue = createRescueFile(join(userData, 'rescue.json'));
   const folders = createFolders(join(userData, 'linked-folder.json'));
@@ -232,6 +234,7 @@ function main(): void {
     registerIpcHandlers({
       preferences,
       store,
+      plugins,
       files: createDialogFiles(getWindow),
       rescue,
       folders,

@@ -4,6 +4,14 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P6-03 plugin API, slice 2** (ADR-0077): installed plugins in a
+  `PluginStore` (`plugins/<id>/plugin.extrudo-plugin` + `plugins/index.json`; OPFS
+  on the web, `userData/plugins` through the desktop's `plugin:call` channel), the
+  Plugins dialog (File › Plugins…, Ctrl+K: Install…, Enabled, Remove, the README as
+  plain text, "In this design, not installed" with Install), and plugin commands in
+  Ctrl+K ("Plugins › <name>") that run in the kernel worker
+  (`KernelApi.runPluginCommand`) and land at the marker as one undo step, re-minted
+  (`remintFeatures`).
 - 2026-10-07 · **P6-03 plugin API, slice 1** (ADR-0077): core's `PluginManifest`
   (strict, refused with its place: "plugin.json › features[0] › inputs[2] › kind:
   expected one of expr, bool, enum, ref") and the `plugin` feature (`plugin`,

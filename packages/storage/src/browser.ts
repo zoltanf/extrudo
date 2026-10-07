@@ -12,6 +12,11 @@ export interface BrowserProjectStore extends ProjectStore {
    * ADR-0065 §3). From the same connection, so the database is opened once.
    */
   readonly handles: HandleStore;
+  /**
+   * The files under the store (OPFS, or IndexedDB), for what else the app keeps
+   * beside projects: the installed plugins (P6-03 slice 2, `plugins/…`).
+   */
+  readonly files: FileStore;
 }
 
 /** `createBrowserProjectStore` takes the database upgrade callbacks (`OpenOptions`). */
@@ -49,7 +54,7 @@ export async function createBrowserProjectStore(
     lock: webLock(),
     appVersion: options.appVersion,
   });
-  return Object.assign(store, { backend, handles: idbHandles(db) });
+  return Object.assign(store, { backend, handles: idbHandles(db), files });
 }
 
 /**

@@ -23,7 +23,7 @@ import { recoverRescued } from '@extrudo/web/platform/rescue';
 import type { ExtrudoApi, FolderEntry } from '../shared/ipc';
 import { unwrap } from './errors';
 import { desktopMenus } from './menus';
-import { createStoreProxy } from './proxy';
+import { createPluginProxy, createStoreProxy } from './proxy';
 import { desktopUpdates } from './updates';
 
 /** The preference map, read once; the boot and `desktopPlatform` share it. */
@@ -167,6 +167,7 @@ export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise
   return {
     preferences,
     projects,
+    plugins: createPluginProxy(api),
     storage: desktopStorage(api),
     files: desktopFiles(api),
     rescue,

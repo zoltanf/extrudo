@@ -12,6 +12,7 @@ import {
   Import,
   Menu as MenuIcon,
   PanelsTopLeft,
+  Puzzle,
   Redo2,
   Save,
   Search,
@@ -72,6 +73,8 @@ export interface FileActions {
   saveToLinkedFolder?(): void;
   /** Opens a new design with the tutorial running (P3-12), for a design that isn't empty. */
   startTutorial?(): void;
+  /** Opens the Plugins dialog: install, enable, remove (P6-03 slice 2, ADR-0077 §6). */
+  plugins?(): void;
 }
 
 export interface AppBarProps {
@@ -166,6 +169,11 @@ export function AppBar({
         {file.saveToLinkedFolder && (
           <MenuItem icon={<FolderSync size={14} />} onSelect={file.saveToLinkedFolder}>
             Save to Linked Folder
+          </MenuItem>
+        )}
+        {file.plugins && (
+          <MenuItem icon={<Puzzle size={14} />} onSelect={file.plugins}>
+            Plugins…
           </MenuItem>
         )}
         <MenuSeparator />

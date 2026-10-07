@@ -71,6 +71,7 @@ export * from './plugin';
 export * from './plugin-feature';
 export * from './primitives';
 export { documentFeatures } from './registry';
+export * from './remint';
 export * from './remove';
 export * from './revolve';
 export * from './rib';

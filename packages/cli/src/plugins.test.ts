@@ -18,8 +18,9 @@ import {
   type FeatureId,
   type FeatureStatus,
   PLUGIN_MEDIA_TYPE,
+  remintFeatures,
 } from '@extrudo/core';
-import { Kernel, type RecomputeResult } from '@extrudo/kernel';
+import { Kernel, type RecomputeResult, runPluginCommand } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { loadScriptHost, PLUGIN_REFUSAL_RULE, type ScriptHostAdapter } from '@extrudo/script';
 import { sha256Hex, writeArchive, writePluginFile } from '@extrudo/storage';
@@ -196,6 +197,65 @@ describe('the example plugin, headless', () => {
     if (shape === undefined) throw new Error('No body.');
     const holes = 3 * Math.PI * 2 ** 2 * 3;
     expect(kernel.properties(shape).volume).toBeCloseTo(roundedArea(60, 20) * 3 - holes, 6);
+  });
+});
+
+describe("a plugin's command, as the app runs it (P6-03 slice 2)", () => {
+  it('runs in the worker on the selection, and its re-minted features cut the plate', async () => {
+    const bytes = pluginBytes();
+    const d = designWith(bytes);
+    const plate = d.plugin({
+      plugin: PLUGIN,
+      handler: 'name-plate',
+      inputs: { plane: d.origin.xy },
+    });
+    const before = d.toJSON();
+    // What `KernelService.runPluginCommand` does with the file the app sent.
+    const run = runPluginCommand(
+      host,
+      { bytes, mediaType: PLUGIN_MEDIA_TYPE },
+      {
+        fileId: 'plugin:name-plate@1.0.0',
+        commandId: 'three-holes',
+        doc: before,
+        selection: [{ kind: 'body', id: `${plate.id}.f2:0` }],
+      },
+    );
+    if (!run.ok) throw new Error(run.error.message);
+    // What the app's one-transaction insert stores: fresh IDs, the app's names.
+    const ids = ['c0ffee01', 'c0ffee02'] as FeatureId[];
+    const features = remintFeatures(run.features, before, ids);
+    expect(features.map((f) => [f.id, f.name])).toEqual([
+      ['c0ffee01', 'Sketch1'],
+      ['c0ffee02', 'Extrude1'],
+    ]);
+    expect(JSON.stringify(features)).not.toContain('cmd.');
+    const doc: ExtrudoDocument = {
+      ...before,
+      features: [...before.features, ...features],
+      timelineMarker: before.features.length + features.length,
+    };
+    const result = await compute(engineOf(new Map([[PLUGIN, bytes]])), doc);
+    expect(Object.values(result.features).every((s) => s.status === 'ok')).toBe(true);
+    const shape = result.bodies[0] && engines.at(-1)?.latestBody(result.bodies[0].id);
+    if (shape === undefined) throw new Error('No body.');
+    const holes = 3 * Math.PI * 2 ** 2 * 3;
+    expect(kernel.properties(shape).volume).toBeCloseTo(roundedArea(60, 20) * 3 - holes, 6);
+  });
+
+  it("words a handler's failure with the plugin, its version and the line in main.ts", () => {
+    const code =
+      "export const commands = {\n  'three-holes': () => {\n    throw new Error('no');\n  },\n};\n";
+    const bytes = pluginBytes(MANIFEST(), code);
+    const run = runPluginCommand(
+      host,
+      { bytes, mediaType: PLUGIN_MEDIA_TYPE },
+      { fileId: 'x', commandId: 'three-holes', doc: designWith(bytes).toJSON(), selection: [] },
+    );
+    expect(run).toMatchObject({
+      ok: false,
+      error: { message: 'Name plate 1.0.0, main.ts line 3: Error: no', line: 3 },
+    });
   });
 });
 

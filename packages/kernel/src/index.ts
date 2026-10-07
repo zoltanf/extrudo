@@ -155,6 +155,13 @@ export type {
   PlanarFrame,
   PlanarLoopEdge,
 } from './planar';
+export {
+  PLUGIN_COMMAND_OWNER,
+  type PluginCommandRequest,
+  type PluginCommandResult,
+  pluginCommandFileId,
+  runPluginCommand,
+} from './plugin-command';
 export type {
   BodyAccess,
   BodyResult,

@@ -7,7 +7,12 @@
  * export in a slicer is optional and desktop-only (`openInSlicer`, ADR-0062);
  * native dialogs come later.
  */
-import { createBrowserProjectStore, type ProjectStore } from '@extrudo/storage';
+import {
+  createBrowserProjectStore,
+  createPluginStore,
+  type PluginStore,
+  type ProjectStore,
+} from '@extrudo/storage';
 import { appNotifications } from '../design-system/notifications';
 import { saveEverything } from '../project/autosave';
 import type { MenuModel } from '../shell/menuModel';
@@ -79,6 +84,12 @@ export interface DesktopMenus {
 export interface Platform {
   preferences: Preferences;
   projects: ProjectStore;
+  /**
+   * The person's installed plugins (P6-03 slice 2, ADR-0077 §4): `plugins/`
+   * beside `projects/` in OPFS (or IndexedDB) on the web, `userData/plugins`
+   * through the bridge on the desktop. Never part of a design.
+   */
+  plugins: PluginStore;
   storage: StorageAccess;
   files: FileAccess;
   rescue: RescueStore;
@@ -165,6 +176,8 @@ export async function webPlatform(): Promise<Platform> {
   return {
     preferences: webPreferences(),
     projects,
+    // Beside the projects, over the same files (OPFS, or IndexedDB without it).
+    plugins: createPluginStore(opened.files),
     storage: webStorage(),
     files: webFiles(),
     rescue,

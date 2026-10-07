@@ -8,6 +8,11 @@ import { loadManifold, type ManifoldLoadOptions } from './manifold';
 import type { ExportMesh, MeshOptions } from './mesh';
 import type { StepBody } from './model-export';
 import type { OcctModule } from './occt/types';
+import {
+  type PluginCommandRequest,
+  type PluginCommandResult,
+  runPluginCommand,
+} from './plugin-command';
 import { type EngineOptions, RecomputeEngine, yieldToEvents } from './recompute/engine';
 import type {
   ImportedFile,
@@ -84,6 +89,14 @@ export interface KernelApi {
    * worker lacks, or one OpenSCAD can't read, is `{ ok: false, error }`.
    */
   scadParameters(id: AttachmentId): Promise<ScadParametersResult>;
+  /**
+   * Runs an installed plugin's command (P6-03 slice 2, ADR-0077 §5): the
+   * plugin's file must have been sent with `addFile` under `request.fileId`;
+   * loads the script runner like `enableScripts()` and gives back the features
+   * the handler added, or why it couldn't (a failure is data, never a throw:
+   * the app words it in a toast). Nothing is stored or cached.
+   */
+  runPluginCommand(request: PluginCommandRequest): Promise<PluginCommandResult>;
   /**
    * Recomputes the document (ADR-0024). A newer call cancels a running one
    * between features. `onFeature` hears of each feature before it is
@@ -309,6 +322,21 @@ export class KernelService implements KernelApi {
       this.#scripts = undefined;
       throw error;
     }
+  }
+
+  async runPluginCommand(request: PluginCommandRequest): Promise<PluginCommandResult> {
+    try {
+      await this.enableScripts();
+    } catch (error) {
+      return {
+        ok: false,
+        error: { message: error instanceof Error ? error.message : String(error) },
+        log: [],
+      };
+    }
+    const host = this.#scriptHost;
+    if (!host) return { ok: false, error: { message: NO_SCRIPT_HOST }, log: [] };
+    return runPluginCommand(host, this.#files.get(request.fileId as AttachmentId), request);
   }
 
   async enableOpenscad(): Promise<void> {

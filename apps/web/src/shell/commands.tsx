@@ -21,6 +21,7 @@ import {
   Moon,
   PanelBottom,
   PanelLeft,
+  Puzzle,
   Redo2,
   Repeat2,
   Save,
@@ -93,6 +94,21 @@ export interface CommandContext {
   ready?: ReadonlySet<string>;
   /** Commands of feature dialogs without a toolbar tool (a debug page's), in model mode. */
   dialogCommands?: readonly AppCommand[];
+  /**
+   * The enabled plugins' commands (P6-03 slice 2, ADR-0077 §5): `plugin:<plugin>:<command>`
+   * in the group "Plugins › <plugin name>", model mode only; a disabled plugin's are absent.
+   * A plugin never binds a key.
+   */
+  plugins?: readonly PluginCommandEntry[];
+}
+
+/** A plugin command as the shell offers it (`plugins/runCommand.ts` builds them). */
+export interface PluginCommandEntry {
+  id: string;
+  label: string;
+  hint?: string;
+  group: string;
+  run(): void;
 }
 
 const icon = (Icon: typeof Box) => <Icon size={16} strokeWidth={1.75} />;
@@ -187,6 +203,19 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     }
   }
   if (ctx.mode === 'model') for (const command of ctx.dialogCommands ?? []) add(command);
+  if (ctx.mode === 'model') {
+    for (const command of ctx.plugins ?? []) {
+      add({
+        id: command.id,
+        label: command.label,
+        group: command.group,
+        keys: [],
+        keywords: `${command.group} plugin ${command.hint ?? ''}`,
+        icon: icon(Puzzle),
+        run: command.run,
+      });
+    }
+  }
   plain('undo', 'Undo', 'Edit', ctx.undo, { icon: icon(Undo2) });
   plain('redo', 'Redo', 'Edit', ctx.redo, { icon: icon(Redo2) });
   // Repeat last (P3-11): the last tool again, when this mode offers it and it can run.
@@ -291,6 +320,13 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     plain('saveToLinkedFolder', 'Save to Linked Folder', 'File', ctx.file.saveToLinkedFolder, {
       icon: icon(FolderSync),
       keywords: 'File folder disk sync save project extrudo linked external',
+    });
+  }
+
+  if (ctx.file.plugins) {
+    plain('plugins', 'Plugins…', 'File', ctx.file.plugins, {
+      icon: icon(Puzzle),
+      keywords: 'File plugins extensions add-ons install enable remove extrudo-plugin',
     });
   }
 

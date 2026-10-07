@@ -44,6 +44,7 @@ function connect(worker: Worker): KernelConnection {
     enableScripts: () => api.enableScripts(),
     enableOpenscad: () => api.enableOpenscad(),
     scadParameters: (id) => api.scadParameters(id),
+    runPluginCommand: (request) => api.runPluginCommand(request),
     recompute: (request, onFeature) =>
       api.recompute(request, onFeature && Comlink.proxy(onFeature)),
     preview: (request, onFeature) => api.preview(request, onFeature && Comlink.proxy(onFeature)),

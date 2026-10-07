@@ -6,10 +6,12 @@
  * folder's wording keep working. Only the class names are registered here; an
  * unknown one becomes a plain `Error` that keeps its name and message.
  */
-import { DocumentLoadError, type DocumentLoadErrorCode } from '@extrudo/core';
+import { DocumentLoadError, type DocumentLoadErrorCode, PluginManifestError } from '@extrudo/core';
 import {
   ArchiveError,
   type ArchiveErrorCode,
+  PluginFileError,
+  PluginStoreError,
   ProjectNotFoundError,
   StorageError,
 } from '@extrudo/storage';
@@ -34,6 +36,16 @@ export function deserializeError(data: SerializedError): Error {
       break;
     case 'LinkedFileError':
       error = new LinkedFileError(data.message);
+      break;
+    // The plugin store's refusals (P6-03 slice 2): the message is the whole text.
+    case 'PluginStoreError':
+      error = new PluginStoreError(data.message);
+      break;
+    case 'PluginFileError':
+      error = new PluginFileError(data.message);
+      break;
+    case 'PluginManifestError':
+      error = new PluginManifestError([], typeof data.reason === 'string' ? data.reason : '');
       break;
     default:
       error = new Error(data.message);
