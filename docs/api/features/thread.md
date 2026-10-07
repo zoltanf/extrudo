@@ -28,6 +28,7 @@ a valid feature.
 | `offset` | `string \| number \| ParameterHandle` | default `0` | From the face's end to where the thread starts; a length. |
 | `flip` | `boolean` | default `false` | Start from the face's other end. |
 | `hand` | `'right' \| 'left'` | default `right` | Right- or left-handed. |
+| `starts` | `string \| number \| ParameterHandle` | optional | How many helices start round the face: 1 (the default), or 2–8 for a multi-start thread whose lead is starts × pitch. |
 | `profile` | `'iso' \| 'trapezoidal' \| 'buttress' \| 'bottle'` | optional | The tooth profile: iso (the default, 60°), trapezoidal (Tr), buttress (DIN 513) or bottle (PCO-1881). |
 | `loadFlank` | `'start' \| 'end'` | default `end` | Buttress only: the end the steep 3° load flank faces, start or end. |
 | `tolerance` | `string \| number \| ParameterHandle` | optional | Radial clearance on this part; a length. Default 0.1 mm. |
@@ -40,7 +41,7 @@ a valid feature.
 | `cap:start` | The face the sweep starts at: the profile in its own place. |
 | `cap:end` | The face the sweep ends at. |
 | `side:<curve>` | A wall, one per edge of the profile: the sketch curve it came from, or the body edge it was swept from. |
-| `side:<piece>` | One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1`, prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn. |
+| `side:<piece>` | One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1`, prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn. A multi-start thread (`starts` above 1) puts `s<j>.` after that prefix for each start's tooth faces: `f0.s1.crest`. |
 
 `handle.face(role)` builds a reference to one of them and `handle.faceName(role)` its
 persistent name.

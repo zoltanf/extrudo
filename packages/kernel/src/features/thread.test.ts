@@ -369,6 +369,8 @@ describe('thread sections', () => {
       x: [1, 0, 0] as const,
       internal: false,
       pitch: 1.25,
+      starts: 1,
+      leadLength: 1.25,
       profile: 'iso' as const,
       loadFlank: 'end' as const,
       radii,
@@ -926,6 +928,18 @@ describe('thread', { timeout: 300_000 }, () => {
           faces: [wall('C')],
           numbers: { diameter: '27.43 mm', pitch: '2.7 mm' },
           profile: 'bottle',
+        },
+      ],
+      ['M6 two starts', 6, { faces: [wall('C')], starts: '2' }],
+      [
+        'Ø6 × 0.75 left, three starts, 4 mm',
+        6,
+        {
+          faces: [wall('C')],
+          hand: 'left',
+          starts: '3',
+          extent: 'length',
+          numbers: { diameter: '6 mm', pitch: '0.75 mm', length: '4 mm' },
         },
       ],
     ];

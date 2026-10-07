@@ -334,7 +334,11 @@ export function toolSet(
 const fused = (tool: NamedShape): ToolSet => ({ ...tool, passes: [tool], interferes: false });
 
 /** Shapes as one compound with their names (a lone shape is returned as it is). */
-function compoundOf(ctx: EvalContext, scope: ShapeScope, parts: readonly NamedShape[]): NamedShape {
+export function compoundOf(
+  ctx: EvalContext,
+  scope: ShapeScope,
+  parts: readonly NamedShape[],
+): NamedShape {
   const { kernel } = ctx;
   if (parts.length === 1) return parts[0] as NamedShape;
   const compound = kernel.compound(parts.map((f) => f.shape));

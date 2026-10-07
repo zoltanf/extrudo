@@ -155,5 +155,62 @@
       "thread:T:side:f0.lead1",
       "thread:T:side:f0.root"
     ]
+  },
+  "M6 two starts": {
+    "valid": true,
+    "volume": 104.1,
+    "faces": 31,
+    "bbox": [
+      -2.9,
+      -2.9,
+      0,
+      2.9,
+      2.9,
+      5
+    ],
+    "designation": "M6, 2 starts",
+    "turns": 2.5,
+    "names": [
+      "thread:T:cap:start",
+      "thread:T:side:f0.lead0",
+      "thread:T:side:f0.lead1",
+      "thread:T:side:f0.root",
+      "thread:T:side:f0.s0.crest",
+      "thread:T:side:f0.s0.flank0",
+      "thread:T:side:f0.s0.flank1",
+      "thread:T:side:f0.s1.crest",
+      "thread:T:side:f0.s1.flank0",
+      "thread:T:side:f0.s1.flank1"
+    ]
+  },
+  "Ø6 × 0.75 left, three starts, 4 mm": {
+    "valid": true,
+    "volume": 117.1,
+    "faces": 35,
+    "bbox": [
+      -3,
+      -3,
+      0,
+      3,
+      3,
+      5
+    ],
+    "designation": "Ø6 × 0.75, 3 starts",
+    "turns": 1.778,
+    "names": [
+      "thread:T:cap:start",
+      "thread:T:side:f0.end1",
+      "thread:T:side:f0.lead0",
+      "thread:T:side:f0.root",
+      "thread:T:side:f0.s0.crest",
+      "thread:T:side:f0.s0.flank0",
+      "thread:T:side:f0.s0.flank1",
+      "thread:T:side:f0.s1.crest",
+      "thread:T:side:f0.s1.flank0",
+      "thread:T:side:f0.s1.flank1",
+      "thread:T:side:f0.s2.crest",
+      "thread:T:side:f0.s2.flank0",
+      "thread:T:side:f0.s2.flank1"
+    ]
   }
 }

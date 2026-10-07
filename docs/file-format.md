@@ -1096,6 +1096,7 @@ repeat it as a feature (6.16). No new keys.
 | `hand` | `enum` | no | `right` (default) or `left` |
 | `profile` | `enum` | no | `iso` (default: ISO 68-1, 60°), `trapezoidal` (ISO 2901 / DIN 103 Tr), `buttress` (DIN 513 S) or `bottle` (the PCO-1881 finish, a rounded trapezoid) |
 | `loadFlank` | `enum` | no | Buttress only: `start` or `end` (default), the end the steep 3° load flank faces |
+| `starts` | `expr` | no | Unitless, 1 (default, never stored) to 8: helices round the face, lead = `starts × pitch` (6.33) |
 | `tolerance` | `expr` | no | Length, default 0.1 mm, not negative: the print clearance. The whole profile moves this far radially into the part's material, so an external thread's diameters shrink by twice it and an internal one's grow by twice it |
 | `chamfer` | `bool` | no | Default `true`: a 45° lead-in where the thread runs out of an open end of the face (a shaft's end, a hole's mouth; not a shoulder or a hole's floor) |
 
@@ -1367,6 +1368,21 @@ limits) plus its inputs as plain values (an `expr` as its number in mm, degrees
 or plain units; a `ref` as `{ kind, id, fingerprint? }` with a face, edge or
 vertex resolved to the name it has before this feature; a `multiple` one as a
 list).
+
+### 6.33 `thread`'s `starts`
+
+A multi-start thread (P4-12, ADR-0056's second amendment): `starts` helices
+round the face, a lead of `starts × pitch`, the way a soda-bottle finish or a
+fast lead screw is cut. One new optional input of `thread` (6.25); no other key
+changes.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `starts` | `expr` | no | Unitless, a whole number from 1 to 8 (default 1; the kernel refuses anything else). **Stored only when it isn't 1**, so a single-start thread's file is what it was. The tooth profile keeps `pitch` (crest to crest along the axis); the lead is `starts × pitch`, so `starts: 2` at M20 × 2.5 advances 5 mm a turn. The 150-turn limit counts the turns of one helix |
+
+With more than one start each start's tooth faces carry `s<j>.` in their
+role: `thread:<id>:side:f0.s1.crest` (the lead-in and end faces are unchanged;
+with one start the names are exactly as before).
 
 ---
 

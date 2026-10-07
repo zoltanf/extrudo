@@ -23,7 +23,8 @@
  * between their flanks. `chamfer` (default on) gives the thread a 45°
  * lead-in where it runs out of an open end (a shaft's end, a hole's mouth),
  * so its first turn starts whole and prints. `hand` is `right` (default) or
- * `left`.
+ * `left`. `starts` (default 1, stored only when more) cuts that many helices
+ * with a lead of `starts × pitch` (P4-12, ADR-0056's second amendment).
  */
 
 import { SWEEP_FACE_ROLES } from './face-roles';
@@ -161,6 +162,12 @@ export const ThreadInputsSchema = z.strictObject({
   flip: BoolInputSchema.optional().describe("Start from the face's other end. Default false."),
   /** Default `right`. */
   hand: enumInput(THREAD_HANDS).optional().describe('Right- or left-handed. Default right.'),
+  /** A whole number from 1 to 8; default 1. */
+  starts: exprOf('unitless')
+    .optional()
+    .describe(
+      'How many helices start round the face: 1 (the default), or 2–8 for a multi-start thread whose lead is starts × pitch.',
+    ),
   /** Default `iso`. */
   profile: enumInput(THREAD_PROFILE_NAMES)
     .optional()
@@ -191,7 +198,7 @@ export const threadFeature: FeatureDefinition<ThreadInputs> = {
     {
       pattern: 'side:<piece>',
       description:
-        "One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1`, prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn.",
+        "One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1`, prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn. A multi-start thread (`starts` above 1) puts `s<j>.` after that prefix for each start's tooth faces: `f0.s1.crest`.",
     },
   ],
 };
@@ -209,6 +216,16 @@ export interface ThreadSettings {
   exprs: ReadonlySet<string>;
   /** No size given: the kernel picks the ISO coarse thread that fits each face. */
   auto: boolean;
+  /**
+   * The starts as typed, when the expression is a plain number (else 1: the
+   * kernel evaluates the expression itself, parameters included).
+   */
+  starts: number;
+}
+
+function plainStarts(expr: string | undefined): number {
+  const n = expr === undefined ? 1 : Number(expr);
+  return Number.isFinite(n) ? n : 1;
 }
 
 /** Reads a thread's (valid) inputs with their defaults. */
@@ -227,6 +244,7 @@ export function threadSettings(inputs: ThreadInputs): ThreadSettings {
     loadFlank: inputs.loadFlank?.value ?? 'end',
     exprs,
     auto: !exprs.has('diameter') && !exprs.has('pitch'),
+    starts: plainStarts(inputs.starts?.expr),
   };
 }
 
@@ -240,6 +258,8 @@ export interface ThreadInputOptions {
   chamfer?: boolean;
   profile?: ThreadProfileName;
   loadFlank?: ThreadLoadFlank;
+  /** The starts as an expression (`'2'`, `'n'`); absent or `'1'` is a single start. */
+  starts?: string;
 }
 
 /** A thread's inputs from plain options (tests, scripts; the dialog builds the same shape). */
@@ -259,6 +279,9 @@ export function threadInputs(options: ThreadInputOptions): ThreadInputs {
   if (options.chamfer !== undefined) inputs.chamfer = { kind: 'bool', value: options.chamfer };
   if (options.profile) inputs.profile = { kind: 'enum', value: options.profile };
   if (options.loadFlank) inputs.loadFlank = { kind: 'enum', value: options.loadFlank };
+  if (options.starts !== undefined) {
+    inputs.starts = { kind: 'expr', expr: options.starts, unit: 'unitless' } satisfies ExprInput;
+  }
   return inputs as ThreadInputs;
 }
 

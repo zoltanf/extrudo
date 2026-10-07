@@ -1010,7 +1010,7 @@ stages so it knows no angles; `threadRadii(profile, …)` places the depth and
 face: the tooth swept by the facade's `threadSweep` (one helix edge per turn: one
 long edge broke the boolean), lead-ins where the facade's `threadFace` says an
 end is open; it always cuts, so it is patternable. Faces
-`thread:<id>:side:f<k>.crest|flank0|flank1|root|end0|end1|lead0|lead1`. About
+`thread:<id>:side:f<k>.crest|flank0|flank1|root|end0|end1|lead0|lead1`. **P4-12 (ADR-0056's second amendment, 2026-10-07)** added **multi-start threads**: an optional `starts` input (unitless `expr`, 1 to 8, stored only when not 1) makes the helix's lead `starts × pitch` while the tooth keeps `pitch`; each piece has one tooth per start (the same section a pitch higher, faces `f<k>.s<j>.<role>`), the teeth one compound cut in one boolean, and `MAX_TURNS` counts turns per helix. About
 0.1 s per turn (booleans); **the facade's booleans used to build twice** (fixed
 in `finishBoolean`). Native harness: `spikes/p4-02-harness/`.
 ADR-0058 (P4-03) added **sketch text**: the `text` sketch entity (`core/src/sketch/schema.ts`,
@@ -3297,7 +3297,8 @@ them. Notes further down that name a machine apply to that machine only.
   "Size" (values `auto`, `m8`, `m16x1.5`, `unc-1q4-20`…, `custom`; Diameter and
   Pitch exist only off `auto`), "Profile" (values `iso` default, `trapezoidal`,
   `buttress`, `bottle`) and, only for `buttress`, "Load flank" (`start`/`end`),
-  "Extent", "Hand", textboxes "Length", "Offset",
+  "Extent", "Hand", textboxes "Length", "Offset", "Starts" (`exact`, unitless, "1"; 2 gives the same
+  `19.8,19.8,20` with more faces),
   "Tolerance" (`exact`), checkboxes "From the other end", "Lead-in chamfer". A
   thread takes seconds to preview (wait up to 60 s). The default Ø20 cylinder
   threaded to fit is `Body1:<n>:19.8,19.8,20` (M20 less twice the tolerance);

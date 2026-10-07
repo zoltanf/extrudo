@@ -22,6 +22,22 @@ describe('the thread dialog', () => {
     expect(values.toggles).toMatchObject({ flip: false, chamfer: true });
   });
 
+  it('stores starts only when they aren’t 1', async () => {
+    const t = setupDialogs([threadDialog]);
+    t.controller.start('thread');
+    t.controller.setRefs('faces', [SHAFT]);
+    await settle();
+    expect(defaultValues(threadDialog).exprs.starts).toBe('1');
+    expect(t.open()?.draft.inputs.starts).toBeUndefined();
+    t.controller.setExpr('starts', '2');
+    await settle();
+    expect(t.open()?.draft.inputs.starts).toMatchObject({ kind: 'expr', expr: '2' });
+    expect(threadSettings(t.open()?.draft.inputs as never).starts).toBe(2);
+    t.controller.setExpr('starts', '1');
+    await settle();
+    expect(t.open()?.draft.inputs.starts).toBeUndefined();
+  });
+
   it('stores no size for "fit the face", and the preset’s numbers for a preset', async () => {
     const t = setupDialogs([threadDialog]);
     t.controller.start('thread');

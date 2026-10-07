@@ -2,7 +2,7 @@
  * The thread dialog (P4-02, ADR-0056, FR-FT-15): the round faces to thread
  * (a shaft's for an external thread, a hole's wall for an internal one: the
  * kernel tells which), the size, how much of the face, the hand, the print
- * tolerance and the lead-in chamfer.
+ * tolerance, the starts and the lead-in chamfer.
  *
  * Fields are named like the feature's inputs, so the framework's default
  * mapping turns them into inputs and back; **Size is the one field that
@@ -242,6 +242,14 @@ export const threadDialog: FeatureDialogSpec = defineFeatureDialog({
       options: THREAD_HANDS.map((value) => ({ value, label: HAND_LABELS[value] })),
       default: 'right',
     },
+    {
+      kind: 'expression',
+      name: 'starts',
+      label: 'Starts',
+      unit: 'unitless',
+      default: '1',
+      hint: 'How many helices start round the face, 1 to 8. The lead is starts × pitch, so a 2-start thread advances twice as far a turn.',
+    },
     numberField('tolerance'),
     {
       kind: 'toggle',
@@ -254,6 +262,11 @@ export const threadDialog: FeatureDialogSpec = defineFeatureDialog({
   // Size isn't an input: the stored inputs are the plain diameter and pitch, or neither.
   toInputs(values) {
     const { preset: _preset, ...inputs } = defaultInputs(threadDialog, values);
+    // One start is the default and is never stored.
+    const starts = inputs.starts;
+    if (starts?.kind === 'expr' && (starts.expr.trim() === '' || Number(starts.expr) === 1)) {
+      delete inputs.starts;
+    }
     return inputs;
   },
   fromInputs(inputs) {

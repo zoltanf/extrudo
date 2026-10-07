@@ -18,6 +18,11 @@
  * - the tool is ring − tooth: cut from the body (`operate`), it leaves the
  *   tooth standing and takes the rest of the band away.
  *
+ * **Starts** (P4-12, ADR-0056's second amendment): with `starts` above 1 the
+ * helix's lead is `starts × pitch` and each piece has one tooth per start,
+ * the same section a pitch higher (the same as turned by 360° / starts), the
+ * teeth one compound cut in one boolean; their faces are `f<k>.s<j>.<role>`.
+ *
  * Faces: `thread:<id>:side:<source>`, sources `f<k>.root`, `f<k>.flank0`,
  * `f<k>.crest`, `f<k>.flank1` (one per turn, `#n`), `f<k>.end0|end1` (the
  * flat steps where a thread stops inside a face), `f<k>.lead0|lead1` (the
@@ -44,7 +49,7 @@ import type { PlanarCurve, PlanarFrame } from '../planar';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
 import { splitSolids } from './bodies';
 import { type OperationWords, operate } from './operation';
-import { mergeTools } from './pattern';
+import { compoundOf, mergeTools } from './pattern';
 import { planarFace } from './primitives';
 import { cross, dot, scale } from './vec';
 
@@ -70,7 +75,12 @@ export interface ThreadNumbers {
   length: number;
   offset: number;
   tolerance: number;
+  /** Helices round the face, 1 to `MAX_STARTS`; absent is 1. */
+  starts?: number;
 }
+
+/** Most starts a thread may have (ADR-0056's second amendment). */
+export const MAX_STARTS = 8;
 
 /** One threaded face, as the output's `data` lists it. */
 export interface ThreadOutputFace {
@@ -80,13 +90,17 @@ export interface ThreadOutputFace {
   /** Nominal (major) diameter and pitch, mm. */
   diameter: number;
   pitch: number;
-  /** "M8", "1/4-20 UNC", or "Ø8 × 1.25" for a custom size. */
+  /** Helices round the face, and the lead length (starts × pitch, mm; `lead` below is the lead-ins). */
+  starts: number;
+  leadLength: number;
+  /** "M8", "1/4-20 UNC", or "Ø8 × 1.25" for a custom size; ", 2 starts" with more than one. */
   designation: string;
   /** The face's diameter. */
   face: number;
   /** Where the thread runs along the face's axis (from its origin), mm. */
   from: number;
   to: number;
+  /** Turns of one helix (the thread's length over its lead). */
   turns: number;
   /** Whether each end got a lead-in. */
   lead: [boolean, boolean];
@@ -148,6 +162,13 @@ function numbersOf(ctx: EvalContext, settings: ThreadSettings): ThreadNumbers {
   }
   if (!(n.offset >= 0)) throw new KernelError("The offset can't be negative.");
   if (!(n.tolerance >= 0)) throw new KernelError("The tolerance can't be negative.");
+  if (settings.exprs.has('starts')) {
+    const starts = ctx.value('starts');
+    if (!Number.isInteger(starts) || starts < 1 || starts > MAX_STARTS) {
+      throw new KernelError(`Starts must be a whole number from 1 to ${MAX_STARTS}.`);
+    }
+    n.starts = starts;
+  }
   return n;
 }
 
@@ -176,7 +197,12 @@ export interface ThreadPlan {
   /** A unit vector square to the axis: the half-plane the sections are drawn in. */
   x: Vec3;
   internal: boolean;
+  /** Crest to crest along the axis: the tooth's own pitch. */
   pitch: number;
+  /** Helices round the face. */
+  starts: number;
+  /** How far one helix advances in a turn: `starts × pitch`. */
+  leadLength: number;
   profile: ThreadProfileName;
   /** Buttress only: which side the steep load flank faces. */
   loadFlank: ThreadLoadFlank;
@@ -226,7 +252,10 @@ export function planThread(
     pitch = preset.pitch;
   }
   const radii = threadRadii(settings.profile, diameter, pitch, n.tolerance, internal);
-  const name = designation(diameter, pitch, settings.profile);
+  const starts = n.starts ?? 1;
+  const leadLength = starts * pitch;
+  const name =
+    designation(diameter, pitch, settings.profile) + (starts > 1 ? `, ${starts} starts` : '');
   const r = face.radius;
   if (internal) {
     if (r >= radii.root - EPS) {
@@ -264,15 +293,15 @@ export function planThread(
       `The thread runs ${mm(start + length)} from the face's end, but the face is only ${mm(span)} long. Make it shorter or reduce the offset.`,
     );
   }
-  if (length < pitch - EPS) {
+  if (length < leadLength - EPS) {
     throw new KernelError(
-      `The thread is ${mm(length)} long, shorter than one turn (${mm(pitch)}). Make it longer.`,
+      `The thread is ${mm(length)} long, shorter than one turn (${mm(leadLength)}). Make it longer.`,
     );
   }
-  const turns = length / pitch;
+  const turns = length / leadLength;
   if (turns > MAX_TURNS) {
     throw new KernelError(
-      `The thread would have ${Math.ceil(turns)} turns; up to ${MAX_TURNS} can be modeled. Make it shorter or the pitch larger.`,
+      `The thread would have ${Math.ceil(turns)} turns${starts > 1 ? ' per start' : ''}; up to ${MAX_TURNS} can be modeled. Make it shorter or the pitch larger.`,
     );
   }
   // Measured from the face's lower end along its axis, or (flip) its upper end.
@@ -286,6 +315,8 @@ export function planThread(
     x: squareTo(face.axis.direction),
     internal,
     pitch,
+    starts,
+    leadLength,
     profile: settings.profile,
     loadFlank: settings.loadFlank,
     radii,
@@ -299,6 +330,8 @@ export function planThread(
       profile: settings.profile,
       diameter,
       pitch,
+      starts,
+      leadLength,
       designation: name,
       face: 2 * r,
       from,
@@ -548,7 +581,7 @@ export function buildTool(
   // The tooth runs from a pitch before the thread to a pitch after it. A
   // shaft's tooth is centred on `from` (a pitch before), a hole's half a pitch
   // on, so a screw and a nut whose threads start at the same plane mesh.
-  const turns = (plan.to - plan.from) / plan.pitch + 2;
+  const turns = (plan.to - plan.from) / plan.leadLength + 2;
   const centre = plan.from - (plan.internal ? 0.5 : 1) * plan.pitch;
   // Both lead-ins in one cut: they are apart, so they go in as one compound.
   const leads = ([0, 1] as const)
@@ -564,15 +597,30 @@ export function buildTool(
     // and is released with its own scope as soon as it has been cut out: the
     // running tool only ever meets one piece's worth of faces.
     using gone = ctx.kernel.scope();
-    let tooth = namedThreadSweep(kernel, {
-      feature: ctx.feature.id,
-      ...face(ctx, scope, plan, toothSection(plan, centre + piece.from * plan.pitch), prefix),
-      axis: plan.axis,
-      pitch: plan.pitch,
-      turns: piece.turns,
-      left: plan.left,
+    // One tooth per start: shifting a tooth a pitch along the axis is turning
+    // it by 360° / starts, so every start is the same sweep, a pitch higher.
+    const teeth = Array.from({ length: plan.starts }, (_, j) => {
+      const at = centre + piece.from * plan.leadLength + j * plan.pitch;
+      const start = namedThreadSweep(kernel, {
+        feature: ctx.feature.id,
+        ...face(
+          ctx,
+          scope,
+          plan,
+          toothSection(plan, at),
+          plan.starts > 1 ? `${prefix}s${j}.` : prefix,
+        ),
+        axis: plan.axis,
+        pitch: plan.leadLength,
+        turns: piece.turns,
+        left: plan.left,
+      });
+      gone.track(start.shape);
+      return start;
     });
-    gone.track(tooth.shape);
+    // The teeth never touch (a root flat lies between), so they are one
+    // compound, a valid argument: one cut per piece whatever the starts.
+    let tooth = compoundOf(ctx, gone, teeth);
     // The lead-ins cut the first and the last piece's ends back.
     if (lead && (k === 0 || k === pieces.length - 1)) {
       tooth = namedBoolean(kernel, 'cut', tooth, lead, options);

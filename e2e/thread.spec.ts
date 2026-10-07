@@ -173,6 +173,36 @@ test('threads a cylinder with the trapezoidal Tr 20 × 4 profile', async ({ page
   await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:19\.8,19\.8,20$/);
 });
 
+test('cuts a two-start thread: the same size across the crests, more faces', async ({ page }) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Cylinder', {});
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:3:20,20,20');
+  const at = await settledProjector(viewport);
+
+  const s = Math.SQRT1_2 * 10;
+  await clickFace(page, at, [s, -s, 10]);
+  const dialog = await openThread(page);
+  await dialog.getByRole('combobox', { name: 'Size' }).selectOption('m20');
+  await expect(dialog.getByRole('textbox', { name: 'Starts', exact: true })).toHaveValue('1');
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await ok(page, dialog);
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:19\.8,19\.8,20$/);
+  const faces = Number((await viewport.getAttribute('data-bodies'))?.split(':')[1]);
+
+  // Two starts: a lead of 5 mm, a tooth per start; the crests are as wide.
+  await chip(page, 'Thread1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Thread1 dialog' });
+  await expect(edit).toBeVisible();
+  await edit.getByRole('textbox', { name: 'Starts', exact: true }).fill('2');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await ok(page, edit);
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:19\.8,19\.8,20$/);
+  const twoStart = Number((await viewport.getAttribute('data-bodies'))?.split(':')[1]);
+  expect(twoStart).toBeGreaterThan(faces);
+});
+
 test('threads a bore with the PCO-1881 bottle profile', async ({ page }) => {
   const viewport = viewportOf(page);
   await openProject(page);

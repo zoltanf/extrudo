@@ -267,3 +267,50 @@ another profile is not that preset and not stored. `autoThread` (Size
 "Enter a diameter and pitch for a <profile> thread." The dialog gets a
 Profile select after Size and, only for buttress, a Load flank select; no
 handles. Multi-start and tapered (pipe) threads stay deferred.
+
+
+## Second amendment (2026-10-07): multi-start threads
+
+P4-12. A thread may have `starts` helices (2, 3, … 8), the way a soda-bottle
+finish or a fast lead screw is cut: the lead (how far one helix advances in a
+turn) is `starts × pitch`, while the tooth keeps its profile and `pitch`
+(crest to crest along the axis).
+
+- **Input.** `starts`, an optional unitless `expr` like a pattern's `count` (so
+  a parameter can drive it), default 1, **stored only when it isn't 1**
+  (a single-start file is what it was; `docs/file-format.md` §6.33). The kernel
+  refuses anything but a whole number from 1 to 8 ("Starts must be a whole
+  number from 1 to 8.").
+- **Geometry.** No facade change: `threadSweep`'s `pitch` argument is the
+  helix's lead, so every sweep passes `starts × pitch`. Shifting a tooth one
+  pitch along the axis is the same as turning it by 360° / starts, so start `j`
+  of a piece is the **same section placed `j × pitch` higher**
+  (`centre + piece.from × lead + j × pitch`). The teeth of one piece never
+  touch (a root flat lies between them), so they are **one compound** (not
+  `mergeTools`, which would fuse heavy teeth whose boxes overlap) cut in one
+  boolean; the lead-ins still cut the first and last piece's teeth back. The
+  turns of a helix are `length / lead + 2`, and `MAX_TURNS` (150) counts them
+  **per helix** ("… turns per start …"), so a long thin thread that is over
+  the limit at one start builds at two. `starts = 1` goes through exactly the
+  same calls as before (the golden table's rows are unchanged).
+- **Names.** With one start nothing changes. With more, each start's tooth
+  faces carry `s<j>.` inside the role: `thread:<id>:side:f0.s1.crest`, `….flank0`,
+  `….flank1`, per turn `#n` as before; `root`, the end steps and lead-ins keep
+  their names.
+- **Report.** `ThreadOutputFace.starts` and `.leadLength` (mm; `lead` was
+  already the lead-ins' flags); `turns` is per helix; the designation appends
+  ", 2 starts". The dialog has a **Starts** textbox after Hand.
+
+**Rejected.** A `lead` input instead of `starts`: a lead that isn't a multiple
+of the pitch has no meaning for a tooth (the teeth would not tile the lead),
+and a whole number of starts is how the standards name it. A different tooth
+per start: nothing a printed part needs, and it would break the identity with
+turning a tooth by 360° / starts.
+
+**Results.** On the default Ø20 × 20 cylinder at M20 × 2.5 (kernel
+`thread-starts.test.ts`): the removed volume is 1071.79 mm³ at one start,
+1072.16 mm³ at two (+0.03 %) and 1091.37 mm³ at three (+1.83 %: fewer whole
+turns for the lead-ins to cut); 39 faces at one start, 43 at two (8 and 9
+crest faces: two helices of half the turns each, so about as many crest faces
+in all, not twice as many). A 4 mm × 40 mm thread at 0.25 mm pitch (160 turns
+at one start, refused) builds at two starts in 34.8 s (2 × 80 turns).

@@ -1193,6 +1193,7 @@ export interface FeatureMethods {
    * @param inputs.offset From the face's end to where the thread starts; a length. Default 0.
    * @param inputs.flip Start from the face's other end. Default false.
    * @param inputs.hand Right- or left-handed. Default right.
+   * @param inputs.starts How many helices start round the face: 1 (the default), or 2–8 for a multi-start thread whose lead is starts × pitch.
    * @param inputs.profile The tooth profile: iso (the default, 60°), trapezoidal (Tr), buttress (DIN 513) or bottle (PCO-1881).
    * @param inputs.loadFlank Buttress only: the end the steep 3° load flank faces, start or end. Default end.
    * @param inputs.tolerance Radial clearance on this part; a length. Default 0.1 mm.
@@ -1202,7 +1203,7 @@ export interface FeatureMethods {
    * - `cap:start` — The face the sweep starts at: the profile in its own place.
    * - `cap:end` — The face the sweep ends at.
    * - `side:<curve>` — A wall, one per edge of the profile: the sketch curve it came from, or the body edge it was swept from.
-   * - `side:<piece>` — One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1`, prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn.
+   * - `side:<piece>` — One piece of the thread: `root`, `crest`, `flank0`, `flank1`, `end0`, `end1` or `lead0`, `lead1`, prefixed with the face's place in the input (`f0`, `f1`, ...) and numbered per turn. A multi-start thread (`starts` above 1) puts `s<j>.` after that prefix for each start's tooth faces: `f0.s1.crest`.
    */
   thread(inputs: PlainInputs<ThreadInputs>, options?: FeatureOptions): FeatureHandle<'thread'>;
   /**
