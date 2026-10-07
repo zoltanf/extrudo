@@ -3,6 +3,7 @@ import {
   addToSketch,
   type GeomRef,
   type ProjectionId,
+  removeFromSketch,
   type SketchData,
   type SketchEntityId,
 } from '@extrudo/core';
@@ -273,7 +274,7 @@ describe('auto-project through the host (P6-07)', () => {
     x: [1, 0, 0] as [number, number, number],
     y: [0, 1, 0] as [number, number, number],
   };
-  const model = { ref, point: [5, 0] as [number, number], kind: 'vertex' as const };
+  const model = { ref, point: [5, 0] as [number, number], kind: 'vertex' as const, straight: true };
   const report = (id: string) => ({
     frame,
     projections: {
@@ -325,6 +326,39 @@ describe('auto-project through the host (P6-07)', () => {
       Object.values(t.data().constraints).some((c) => c.type === 'coincident' && c.b === projected),
     ).toBe(true);
   });
+
+  it('pins the pending constraint to the step that added the projection (gap 1)', async () => {
+    const t = await setup();
+    t.host.click({ ...at(5, 0.1), model });
+    t.host.click(at(20, 0.3)); // line 1 + its projection, in one step
+    const pid = Object.keys(t.data().projections ?? {})[0] as ProjectionId;
+    // A second line lands in its own step before the kernel reports the projection.
+    t.store.getState().dispatch(
+      addToSketch({
+        feature: t.id,
+        entities: {
+          q0: { type: 'point', x: 0, y: 10 },
+          q1: { type: 'point', x: 10, y: 10 },
+          l2: { type: 'line', start: 'q0', end: 'q1', construction: false },
+        } as never,
+      }),
+    );
+    t.host.syncProjections({ [t.id]: report(pid) });
+    const projected = t.data().projections?.[pid]?.curves.vertex as SketchEntityId;
+    // The coincident joins line 1's step: one undo takes only the second line,
+    // and the projection entity stays.
+    t.store.getState().undo();
+    expect(t.byType('line')).toHaveLength(1);
+    expect(t.data().entities[projected]).toBeDefined();
+    expect(
+      Object.values(t.data().constraints).some((c) => c.type === 'coincident' && c.b === projected),
+    ).toBe(true);
+    // A second undo takes line 1, the projection record and the constraint.
+    t.store.getState().undo();
+    expect(t.byType('line')).toHaveLength(0);
+    expect(t.data().constraints).toEqual({});
+    expect(t.data().projections ?? {}).toEqual({});
+  });
 });
 
 describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', () => {
@@ -336,15 +370,48 @@ describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', ()
     x: [1, 0, 0] as [number, number, number],
     y: [0, 1, 0] as [number, number, number],
   };
-  const vertex = { ref: vertexRef, point: [5, 0] as [number, number], kind: 'vertex' as const };
+  const vertex = {
+    ref: vertexRef,
+    point: [5, 0] as [number, number],
+    kind: 'vertex' as const,
+    straight: true,
+  };
   const edge = (at: [number, number]): ModelSnap => ({
     ref: edgeRef,
     point: at,
     kind: 'edge',
+    straight: true,
     line: [
       [at[0], at[1] - 2],
       [at[0], at[1] + 2],
     ],
+  });
+  /** Another snap on the same edge (a second point of one edit). */
+  const e2 = (at: [number, number]): ModelSnap => ({
+    ref: edgeRef,
+    point: at,
+    kind: 'edge',
+    straight: true,
+    line: [
+      [0, at[1]],
+      [20, at[1]],
+    ],
+  });
+  const bothReport = (id: string) => ({
+    frame,
+    projections: {
+      [id]: {
+        curves: {
+          vertex: { type: 'point' as const, at: [5, 0] as [number, number] },
+          // Far from the vertex, so a new snap at (5,0) sees the model, not this curve.
+          edge: {
+            type: 'line' as const,
+            a: [0, 100] as [number, number],
+            b: [20, 100] as [number, number],
+          },
+        },
+      },
+    },
   });
   const vertexReport = (id: string) => ({
     frame,
@@ -461,6 +528,7 @@ describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', ()
       ref: { kind: 'edge', id: 'e1' },
       point: [10, 0],
       kind: 'edge',
+      straight: true,
       line: [
         [0, 0],
         [20, 0],
@@ -470,6 +538,7 @@ describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', ()
       ref: { kind: 'edge', id: 'e2' },
       point: [10, 10],
       kind: 'edge',
+      straight: true,
       line: [
         [0, 10],
         [20, 10],
@@ -502,5 +571,95 @@ describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', ()
     expect(t.host.state.getState().tool?.preview().picked).toEqual(['a']);
     expect(t.data().constraints).toEqual({});
     expect(t.data().projections ?? {}).toEqual({});
+  });
+
+  it('makes one projection for two points on the same ref (gap 2)', async () => {
+    const t = await setup();
+    const a = edge([5, 0]);
+    const b = e2([15, 0]);
+    t.host.click({ ...at(5, 0.1), model: a });
+    t.host.click({ ...at(15, 0.1), model: b });
+    const projections = t.data().projections ?? {};
+    const pids = Object.keys(projections) as ProjectionId[];
+    // One projection for the ref; two deferred constraints wait for it.
+    expect(pids).toHaveLength(1);
+    t.host.syncProjections({ [t.id]: edgeReport(pids[0] as string, [0, 0], [20, 0]) });
+    const projected = t.data().projections?.[pids[0] as ProjectionId]?.curves.edge;
+    expect(typeof projected).toBe('string');
+    expect(
+      Object.values(t.data().constraints).filter(
+        (c) => c.type === 'pointOnCurve' && c.curve === projected,
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('revives a projection curve the user deleted when the ref is snapped again (gap 3)', async () => {
+    const t = await setup();
+    const pid = 'proj' as ProjectionId;
+    t.store.getState().dispatch(addProjection({ feature: t.id, id: pid, ref: vertexRef }));
+    t.host.syncProjections({ [t.id]: bothReport(pid) });
+    const projected = t.data().projections?.[pid]?.curves.vertex as SketchEntityId;
+    // The user deletes the projected point; the edge curve keeps the record alive.
+    t.store.getState().dispatch(removeFromSketch({ feature: t.id, entities: [projected] }));
+    expect(t.data().projections?.[pid]?.curves.vertex).toBeNull();
+    // Snapping to the same vertex again revives it.
+    t.host.click({ ...at(5, 0.1), model: vertex });
+    t.host.click(at(20, 0.3));
+    expect(t.data().projections?.[pid]?.curves.vertex).toBeUndefined();
+    // The next report re-adds the curve and the constraint holds.
+    t.host.syncProjections({ [t.id]: bothReport(pid) });
+    const again = t.data().projections?.[pid]?.curves.vertex;
+    expect(typeof again).toBe('string');
+    expect(
+      Object.values(t.data().constraints).some((c) => c.type === 'coincident' && c.b === again),
+    ).toBe(true);
+  });
+
+  it('drops a pending edit whose projection the report marks lost (gap 4)', async () => {
+    const t = await setup({ tool: 'parallel' });
+    drawLine(t, 'a');
+    t.host.click(at(10, 0.2));
+    t.host.click({ ...at(10, 5.1), model: edge([10, 5]) });
+    const pid = Object.keys(t.data().projections ?? {})[0] as string;
+    // A report with no curves for it (lost) drops the pending.
+    t.host.syncProjections({ [t.id]: { frame, projections: { [pid]: { lost: true } } } });
+    // A later report must not revive the edit.
+    t.host.syncProjections({ [t.id]: edgeReport(pid, [0, 10], [20, 14]) });
+    expect(t.data().constraints).toEqual({});
+  });
+
+  it('drops the pendings on dispose', async () => {
+    const t = await setup({ tool: 'parallel' });
+    drawLine(t, 'a');
+    t.host.click(at(10, 0.2));
+    t.host.click({ ...at(10, 5.1), model: edge([10, 5]) });
+    const pid = Object.keys(t.data().projections ?? {})[0] as string;
+    t.host.dispose();
+    t.host.syncProjections({ [t.id]: edgeReport(pid, [0, 10], [20, 14]) });
+    expect(t.data().constraints).toEqual({});
+  });
+
+  it('a forced curved pending resolves to a message, not a throw (gap 5)', async () => {
+    const t = await setup({ tool: 'collinear' });
+    drawLine(t, 'a');
+    t.host.click(at(10, 0.2));
+    // The pick lies about the edge being straight, so a pending is made; the
+    // report then says the edge is an arc.
+    t.host.click({ ...at(10, 5.1), model: edge([10, 5]) });
+    const pid = Object.keys(t.data().projections ?? {})[0] as ProjectionId;
+    expect(() =>
+      t.host.syncProjections({
+        [t.id]: {
+          frame,
+          projections: {
+            [pid]: {
+              curves: { edge: { type: 'arc', center: [10, 0], start: [0, 0], end: [20, 0] } },
+            },
+          },
+        },
+      }),
+    ).not.toThrow();
+    expect(t.host.state.getState().error).toBe("Couldn't hold Collinear on the body geometry.");
+    expect(t.data().constraints).toEqual({});
   });
 });

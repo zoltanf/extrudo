@@ -71,6 +71,7 @@ import {
   radiusOf,
   newId as randomId,
   readSketch,
+  reviveProjectionCurve,
   type SelectionItem,
   type SessionStore,
   type SketchConstraint,
@@ -343,6 +344,8 @@ interface PendingModelConstraint {
   projection: ProjectionId;
   point: SketchEntityId;
   kind: 'vertex' | 'edge';
+  /** The undo step that added the projection (P6-07): its constraint joins it there. */
+  step?: number;
 }
 
 /**
@@ -360,6 +363,8 @@ interface PendingModelEdit {
   editDimension?: DimensionId;
   /** Where a dimension's label goes, for re-measuring once the geometry lands. */
   cursor?: Vec2;
+  /** The undo step that added the projections (P6-07): the edit joins it there. */
+  step?: number;
 }
 
 export function createToolHost(options: ToolHostOptions): ToolHost {
@@ -420,11 +425,13 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
 
   /**
    * Solves a sketch as it is now and stores what moved, in the latest undo
-   * step. `before` is the sketch before its projections moved: the solve
-   * goes from there in steps (`solveGradually`), so geometry held at a
-   * distance from a projected edge stays on its side when the edge moves far.
+   * step — or, with `step`, in the step a projection came from, so the
+   * follow-on solve is undone with it (P6-07). `before` is the sketch before
+   * its projections moved: the solve goes from there in steps
+   * (`solveGradually`), so geometry held at a distance from a projected edge
+   * stays on its side when the edge moves far.
    */
-  const settleProjections = (id: FeatureId, before?: SketchData) => {
+  const settleProjections = (id: FeatureId, before?: SketchData, step?: number) => {
     if (!solver) {
       if (!unsettled.has(id)) unsettled.set(id, before);
       ensureSolver();
@@ -451,7 +458,9 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       if (e?.type === 'circle' && e.radius !== radius) radii[key as SketchEntityId] = radius;
     }
     if (Object.keys(points).length + Object.keys(radii).length === 0) return;
-    store.getState().amend(setSketchGeometry({ feature: id, points, radii }));
+    const command = setSketchGeometry({ feature: id, points, radii });
+    if (step !== undefined) store.getState().amendInto(step, command);
+    else store.getState().amend(command);
   };
 
   const bump = (patch: Partial<ToolHostState> = {}) =>
@@ -484,6 +493,13 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       // The sketch's own geometry always wins, even one the tool wouldn't accept.
       if (pickEntity(data, cursor, tolerance)) return undefined;
       if (Math.hypot(snap.point[0] - cursor[0], snap.point[1] - cursor[1]) > tolerance) {
+        return undefined;
+      }
+      // A curved edge's stand-in would be a line, so a picking tool must not
+      // take it (P6-07 slice 2's review): a drawing tool still places a point
+      // on it through `infer`, which the exact curve supports.
+      if (snap.kind === 'edge' && !snap.straight) {
+        state.setState({ error: 'Pick a straight edge, or project the edge first (P).' });
         return undefined;
       }
       const key = snap.kind === 'vertex' ? 'vertex' : 'edge';
@@ -629,14 +645,21 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     // already-projected ref is used at once; a new one waits for the kernel's
     // report (`syncProjections`).
     const newProjections: { id: ProjectionId; ref: GeomRef }[] = [];
+    /** Refs whose curve the user deleted: the new snap revives the record (P6-07). */
+    const revived: { id: ProjectionId; key: string }[] = [];
     const deferredModels: PendingModelConstraint[] = [];
     const pickBindings: PendingModelEdit['bindings'] = [];
     const substitute = new Map<SketchEntityId, SketchEntityId>();
+    /** The projection a ref got in this commit: a second attachment reuses it. */
+    const minted = new Map<string, ProjectionId>();
     for (const m of edit.models ?? []) {
       const key = m.kind === 'vertex' ? 'vertex' : 'edge';
       const existing = projectionFor(sketch.data, m.ref);
       const deleted =
         existing !== undefined && key in existing[1].curves && existing[1].curves[key] === null;
+      // The user's new action revives a curve they deleted: the `null` entry goes
+      // so the kernel's next report re-adds the entity (P6-07).
+      if (deleted && existing) revived.push({ id: existing[0], key });
       const projected = deleted ? undefined : existing?.[1].curves[key];
       if (typeof projected === 'string') {
         if (m.placeholder) substitute.set(m.placeholder, projected);
@@ -650,8 +673,9 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         }
         continue;
       }
-      const id = existing ? existing[0] : (newId() as ProjectionId);
-      if (!existing) newProjections.push({ id, ref: m.ref });
+      const id = existing?.[0] ?? minted.get(refKey(m.ref)) ?? (newId() as ProjectionId);
+      if (!existing && !minted.has(refKey(m.ref))) newProjections.push({ id, ref: m.ref });
+      minted.set(refKey(m.ref), id);
       if (m.placeholder) {
         pickBindings.push({ placeholder: m.placeholder, projection: id, kind: m.kind });
       } else if (m.point) {
@@ -839,6 +863,10 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         editing:
           edit.editDimension && edit.editDimension in dimensions ? edit.editDimension : undefined,
       });
+      // The step that added the geometry: the projection records, the revived
+      // records and the pending constraints follow from it, not from whatever
+      // step the user makes next (P6-07).
+      const step = store.getState().lastStepId();
       // The projection records join the step that added the geometry (P6-07).
       for (const entry of newProjections) {
         try {
@@ -850,7 +878,17 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           console.warn('[sketch] could not auto-project:', error);
         }
       }
-      pendingModels.push(...deferredModels);
+      for (const entry of revived) {
+        try {
+          store
+            .getState()
+            .amend(reviveProjectionCurve({ feature: sketch.id, id: entry.id, key: entry.key }));
+        } catch (error) {
+          if (!(error instanceof CommandError)) throw error;
+          console.warn('[sketch] could not revive an auto-projected curve:', error);
+        }
+      }
+      pendingModels.push(...deferredModels.map((pending) => ({ ...pending, step })));
       if (pickBindings.length > 0) {
         pendingEdits.push({
           feature: sketch.id,
@@ -859,6 +897,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           dimensions: pendingDimensions,
           editDimension: edit.editDimension,
           cursor: edit.cursor,
+          step,
         });
       }
     }
@@ -1029,18 +1068,42 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   };
 
   /**
+   * Writes a command into the undo step a pending came from (P6-07), or drops
+   * it when that step is gone. A `CommandError` is the usual refusal message;
+   * any other throw (a solver that rejects a constraint the mapped geometry
+   * makes nonsense) is caught too, so it never leaves `syncProjections`.
+   */
+  const writePending = (step: number | undefined, command: Command<unknown>): boolean => {
+    try {
+      if (step === undefined) {
+        store.getState().amend(command);
+        return true;
+      }
+      return store.getState().amendInto(step, command);
+    } catch (error) {
+      console.warn('[sketch] could not hold geometry on an auto-projected curve:', error);
+      return false;
+    }
+  };
+
+  /**
    * Holds the points placed on auto-projected geometry (P6-07) once the kernel
    * has reported its curves: the constraint joins the step that added the
-   * projection, and a solver that refuses it drops it with a message. Does
-   * nothing while a projection's curve isn't there yet.
+   * projection, and a solver that refuses it drops it with a message. A
+   * projection that is missing or reported lost, a feature that is gone or a
+   * step that is gone drops the pending.
    */
-  const resolvePendingModels = (feature: FeatureId, data: SketchData | undefined) => {
+  const resolvePendingModels = (
+    feature: FeatureId,
+    data: SketchData | undefined,
+    report: SketchReport | undefined,
+  ) => {
     if (!data || pendingModels.length === 0) return;
     for (let i = pendingModels.length - 1; i >= 0; i--) {
       const pending = pendingModels[i] as PendingModelConstraint;
       if (pending.feature !== feature) continue;
       const projection = data.projections?.[pending.projection];
-      if (!projection) {
+      if (!projection || report?.projections?.[pending.projection]?.lost) {
         pendingModels.splice(i, 1);
         continue;
       }
@@ -1054,23 +1117,29 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         pending.kind === 'vertex'
           ? { type: 'coincident', a: pending.point, b: curve }
           : { type: 'pointOnCurve', point: pending.point, curve };
-      const trial: SketchData = {
-        entities: data.entities,
-        constraints: { ...data.constraints, [cid]: constraint },
-        dimensions: data.dimensions,
-      };
-      const trialValues = dimensionValues(trial, evaluateParameters(store.getState().doc), feature);
-      if (solver && !solver.check(trial, trialValues, cid).accepted) {
+      try {
+        const trial: SketchData = {
+          entities: data.entities,
+          constraints: { ...data.constraints, [cid]: constraint },
+          dimensions: data.dimensions,
+        };
+        const trialValues = dimensionValues(
+          trial,
+          evaluateParameters(store.getState().doc),
+          feature,
+        );
+        if (solver && !solver.check(trial, trialValues, cid).accepted) {
+          state.setState({
+            error: 'The sketch already holds the point where auto-project would put it.',
+          });
+          continue;
+        }
+        writePending(pending.step, addToSketch({ feature, constraints: { [cid]: constraint } }));
+      } catch (error) {
+        console.warn('[sketch] could not hold a point to an auto-projected curve:', error);
         state.setState({
           error: 'The sketch already holds the point where auto-project would put it.',
         });
-        continue;
-      }
-      try {
-        store.getState().amend(addToSketch({ feature, constraints: { [cid]: constraint } }));
-      } catch (error) {
-        if (!(error instanceof CommandError)) throw error;
-        console.warn('[sketch] could not hold a point to an auto-projected curve:', error);
       }
     }
   };
@@ -1081,21 +1150,23 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
    * placeholder is replaced by its projection's curve, the constraint is
    * test-solved, the dimension is measured and labelled, and both join the
    * step that added the projection. A projection whose curve isn't there yet
-   * keeps waiting; a lost or deleted one drops the edit.
+   * keeps waiting; a missing, lost, deleted or step-gone one drops the edit.
+   * Any throw from the solve or the write is a refusal with a message, so it
+   * never leaves `syncProjections`.
    */
-  const resolvePendingEdits = (feature: FeatureId, data: SketchData | undefined) => {
+  const resolvePendingEdits = (
+    feature: FeatureId,
+    data: SketchData | undefined,
+    report: SketchReport | undefined,
+  ) => {
     if (!data || pendingEdits.length === 0) return;
-    const { doc } = store.getState();
-    const evaluation = evaluateParameters(doc);
-    const settings = doc.settings;
     for (let i = pendingEdits.length - 1; i >= 0; i--) {
       const pending = pendingEdits[i] as PendingModelEdit;
       if (pending.feature !== feature) continue;
-      const map = new Map<SketchEntityId, SketchEntityId>();
       let status: 'ok' | 'waiting' | 'drop' = 'ok';
       for (const binding of pending.bindings) {
         const projection = data.projections?.[binding.projection];
-        if (!projection) {
+        if (!projection || report?.projections?.[binding.projection]?.lost) {
           status = 'drop';
           break;
         }
@@ -1108,83 +1179,130 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
           status = 'drop';
           break;
         }
-        map.set(binding.placeholder, curve);
       }
       if (status === 'waiting') continue;
       pendingEdits.splice(i, 1);
       if (status === 'drop') continue;
-      const mapRef = (id: SketchEntityId) => map.get(id) ?? id;
-
-      const constraints: Record<ConstraintId, SketchConstraint> = {};
-      for (const [id, c] of Object.entries(pending.constraints)) {
-        const mapped = mapConstraint(c, mapRef);
-        const trial: SketchData = {
-          entities: data.entities,
-          constraints: { ...data.constraints, ...constraints, [id]: mapped },
-          dimensions: data.dimensions,
-        };
-        const values = dimensionValues(trial, evaluation, feature);
-        const result = solver?.check(trial, values, id as ConstraintId);
-        if (result && !result.accepted) {
-          const label = CONSTRAINT_LABELS[c.type];
-          state.setState({
-            error: result.redundant.includes(id as ConstraintId)
-              ? `${label} isn't needed: the sketch already holds it.`
-              : `${label} would conflict with the sketch's other constraints.`,
-          });
-          continue;
-        }
-        constraints[id as ConstraintId] = mapped;
-      }
-
-      const dimensions: Record<DimensionId, SketchDimension> = {};
-      let next = Number(nextModelParameterName(store.getState().doc).slice(1));
-      for (const { id, shape } of pending.dimensions) {
-        const mapped = mapDimension(shape, mapRef);
-        const view: SketchData = {
-          entities: data.entities,
-          constraints: { ...data.constraints, ...constraints },
-          dimensions: { ...data.dimensions, ...dimensions },
-        };
-        const value = measureDimension(view, mapped);
-        if (value === undefined) continue;
-        const factor = mapped.type === 'angle' ? 1 : (UNITS[settings.units]?.factor ?? 1);
-        const expr = String(Number((value / factor).toFixed(settings.precision)) + 0);
-        const withExpr = { ...mapped, expr } as SketchDimension;
-        const label = pending.cursor && labelOffset(view, withExpr, pending.cursor);
-        const dimension = label ? { ...withExpr, label } : withExpr;
-        const trial: SketchData = {
-          entities: data.entities,
-          constraints: { ...data.constraints, ...constraints },
-          dimensions: { ...data.dimensions, ...dimensions, [id]: dimension },
-        };
-        const values = dimensionValues(trial, evaluation, feature);
-        const result = solver?.check(trial, values, id);
-        if (result && !result.accepted) {
-          state.setState({
-            error: `${DIMENSION_LABELS[shape.type]} would over-constrain the sketch.`,
-          });
-          continue;
-        }
-        dimensions[id] =
-          !dimension.driven && dimension.paramName === undefined
-            ? ({ ...dimension, paramName: `d${next++}` } as SketchDimension)
-            : dimension;
-      }
-
-      if (Object.keys(constraints).length === 0 && Object.keys(dimensions).length === 0) continue;
       try {
-        store.getState().amend(addToSketch({ feature, constraints, dimensions }));
-        if (pending.editDimension && pending.editDimension in dimensions) {
-          if (session.getState().activeSketchId === feature) {
-            state.setState({ editing: pending.editDimension });
-          }
-        }
+        resolveEdit(feature, data, pending);
       } catch (error) {
-        if (!(error instanceof CommandError)) throw error;
+        const first = Object.values(pending.constraints)[0];
+        const label = first
+          ? CONSTRAINT_LABELS[first.type]
+          : pending.dimensions[0]
+            ? DIMENSION_LABELS[pending.dimensions[0].shape.type]
+            : 'that';
         console.warn('[sketch] could not apply an auto-projected pick:', error);
+        state.setState({ error: `Couldn't hold ${label} on the body geometry.` });
       }
     }
+  };
+
+  /** The body of `resolvePendingEdits` for one pending edit, once its bindings resolved. */
+  const resolveEdit = (feature: FeatureId, data: SketchData, pending: PendingModelEdit) => {
+    const { doc } = store.getState();
+    const evaluation = evaluateParameters(doc);
+    const settings = doc.settings;
+    const map = new Map<SketchEntityId, SketchEntityId>();
+    for (const binding of pending.bindings) {
+      const curve =
+        data.projections?.[binding.projection]?.curves[
+          binding.kind === 'vertex' ? 'vertex' : 'edge'
+        ];
+      if (curve === undefined || curve === null) return;
+      map.set(binding.placeholder, curve);
+    }
+    const mapRef = (id: SketchEntityId) => map.get(id) ?? id;
+
+    const constraints: Record<ConstraintId, SketchConstraint> = {};
+    for (const [id, c] of Object.entries(pending.constraints)) {
+      const mapped = mapConstraint(c, mapRef);
+      const trial: SketchData = {
+        entities: data.entities,
+        constraints: { ...data.constraints, ...constraints, [id]: mapped },
+        dimensions: data.dimensions,
+      };
+      const values = dimensionValues(trial, evaluation, feature);
+      const result = solver?.check(trial, values, id as ConstraintId);
+      if (result && !result.accepted) {
+        const label = CONSTRAINT_LABELS[c.type];
+        state.setState({
+          error: result.redundant.includes(id as ConstraintId)
+            ? `${label} isn't needed: the sketch already holds it.`
+            : `${label} would conflict with the sketch's other constraints.`,
+        });
+        continue;
+      }
+      constraints[id as ConstraintId] = mapped;
+    }
+
+    const dimensions: Record<DimensionId, SketchDimension> = {};
+    let next = Number(nextModelParameterName(store.getState().doc).slice(1));
+    for (const { id, shape } of pending.dimensions) {
+      const mapped = mapDimension(shape, mapRef);
+      const view: SketchData = {
+        entities: data.entities,
+        constraints: { ...data.constraints, ...constraints },
+        dimensions: { ...data.dimensions, ...dimensions },
+      };
+      const value = measureDimension(view, mapped);
+      if (value === undefined) continue;
+      const factor = mapped.type === 'angle' ? 1 : (UNITS[settings.units]?.factor ?? 1);
+      const expr = String(Number((value / factor).toFixed(settings.precision)) + 0);
+      const withExpr = { ...mapped, expr } as SketchDimension;
+      const label = pending.cursor && labelOffset(view, withExpr, pending.cursor);
+      const dimension = label ? { ...withExpr, label } : withExpr;
+      const trial: SketchData = {
+        entities: data.entities,
+        constraints: { ...data.constraints, ...constraints },
+        dimensions: { ...data.dimensions, ...dimensions, [id]: dimension },
+      };
+      const values = dimensionValues(trial, evaluation, feature);
+      const result = solver?.check(trial, values, id);
+      if (result && !result.accepted) {
+        state.setState({
+          error: `${DIMENSION_LABELS[shape.type]} would over-constrain the sketch.`,
+        });
+        continue;
+      }
+      dimensions[id] =
+        !dimension.driven && dimension.paramName === undefined
+          ? ({ ...dimension, paramName: `d${next++}` } as SketchDimension)
+          : dimension;
+    }
+
+    if (Object.keys(constraints).length === 0 && Object.keys(dimensions).length === 0) return;
+    const written = writePending(pending.step, addToSketch({ feature, constraints, dimensions }));
+    if (written && pending.editDimension && pending.editDimension in dimensions) {
+      if (session.getState().activeSketchId === feature) {
+        state.setState({ editing: pending.editDimension });
+      }
+    }
+  };
+
+  /** The projection IDs a pending waits on. */
+  const pendingProjections = (
+    pending: PendingModelConstraint | PendingModelEdit,
+  ): ProjectionId[] =>
+    'projection' in pending ? [pending.projection] : pending.bindings.map((b) => b.projection);
+
+  /**
+   * The earliest step among a feature's pendings whose projection is in `ids`
+   * (P6-07): the projected entities and the follow-on solve join that step, so
+   * undoing it takes the geometry the projection brought with it.
+   */
+  const featurePendingStep = (
+    feature: FeatureId,
+    ids: Iterable<ProjectionId>,
+  ): number | undefined => {
+    const set = new Set(ids);
+    let found: number | undefined;
+    for (const pending of [...pendingModels, ...pendingEdits]) {
+      if (pending.feature !== feature || pending.step === undefined) continue;
+      if (!pendingProjections(pending).some((id) => set.has(id))) continue;
+      if (found === undefined || pending.step < found) found = pending.step;
+    }
+    return found;
   };
 
   const host: ToolHost = {
@@ -1455,48 +1573,86 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       const was = committing;
       committing = true;
       try {
+        const present = new Set(store.getState().doc.features.map((f) => f.id));
+        // A pending whose feature is gone, or whose step was undone, is dropped
+        // (P6-07); a waiting curve would otherwise be held forever.
+        const lists: (PendingModelConstraint[] | PendingModelEdit[])[] = [
+          pendingModels,
+          pendingEdits,
+        ];
+        for (const list of lists) {
+          for (let i = list.length - 1; i >= 0; i--) {
+            const pending = list[i] as PendingModelConstraint | PendingModelEdit;
+            if (
+              !present.has(pending.feature) ||
+              (pending.step !== undefined && !store.getState().hasStep(pending.step))
+            ) {
+              list.splice(i, 1);
+            }
+          }
+        }
         for (const feature of store.getState().doc.features) {
           const view = readSketch(feature);
           const report = reports[feature.id];
-          if (!view?.data.projections || !report) continue;
-          // An include (P4-12, "Keep linked" off): its curves become plain entities, the
-          // record goes, and the step that added it is named for what it brought.
-          for (const [id, include] of Object.entries(includedCurves(view.data, report, newId))) {
-            try {
-              const command = includeProjection({
-                feature: feature.id,
-                id: id as ProjectionId,
-                entities: include.entities,
-              });
-              store
-                .getState()
-                .amend(
-                  include.count > 0 ? { ...command, label: includeLabel(include.count) } : command,
-                  { relabel: include.count > 0 },
-                );
-            } catch (error) {
-              if (!(error instanceof CommandError)) throw error;
-              console.warn(`[sketch] couldn't include into ${feature.name}:`, error);
+          let change: ReturnType<typeof projectionSync>;
+          let base: SketchData | undefined;
+          let pendingStep: number | undefined;
+          if (view?.data.projections && report) {
+            // An include (P4-12, "Keep linked" off): its curves become plain entities, the
+            // record goes, and the step that added it is named for what it brought.
+            for (const [id, include] of Object.entries(includedCurves(view.data, report, newId))) {
+              try {
+                const command = includeProjection({
+                  feature: feature.id,
+                  id: id as ProjectionId,
+                  entities: include.entities,
+                });
+                store
+                  .getState()
+                  .amend(
+                    include.count > 0
+                      ? { ...command, label: includeLabel(include.count) }
+                      : command,
+                    { relabel: include.count > 0 },
+                  );
+              } catch (error) {
+                if (!(error instanceof CommandError)) throw error;
+                console.warn(`[sketch] couldn't include into ${feature.name}:`, error);
+              }
             }
-          }
-          const current = readSketch(
-            store.getState().doc.features.find((f) => f.id === feature.id) ?? feature,
-          );
-          if (!current?.data.projections) continue;
-          const change = projectionSync(current.data, report, newId);
-          if (!change) continue;
-          try {
-            store.getState().amend(syncProjections({ feature: feature.id, ...change }));
-            const updated = readSketch(
+            const current = readSketch(
               store.getState().doc.features.find((f) => f.id === feature.id) ?? feature,
             );
-            resolvePendingModels(feature.id, updated?.data);
-            resolvePendingEdits(feature.id, updated?.data);
-            settleProjections(feature.id, current.data);
-          } catch (error) {
-            if (!(error instanceof CommandError)) throw error;
-            console.warn(`[sketch] couldn't update the projections of ${feature.name}:`, error);
+            if (current?.data.projections) {
+              base = current.data;
+              change = projectionSync(current.data, report, newId);
+              if (change) {
+                pendingStep = featurePendingStep(
+                  feature.id,
+                  Object.keys(change.curves) as ProjectionId[],
+                );
+                try {
+                  const command = syncProjections({ feature: feature.id, ...change });
+                  if (pendingStep !== undefined) store.getState().amendInto(pendingStep, command);
+                  else store.getState().amend(command);
+                } catch (error) {
+                  if (!(error instanceof CommandError)) throw error;
+                  console.warn(
+                    `[sketch] couldn't update the projections of ${feature.name}:`,
+                    error,
+                  );
+                }
+              }
+            }
           }
+          const updated = readSketch(
+            store.getState().doc.features.find((f) => f.id === feature.id) ?? feature,
+          );
+          // Resolve on every report, not only a change: a pending for a missing,
+          // lost or gone projection has to drop even when nothing moved (P6-07).
+          resolvePendingModels(feature.id, updated?.data, report);
+          resolvePendingEdits(feature.id, updated?.data, report);
+          if (change) settleProjections(feature.id, base, pendingStep);
         }
       } finally {
         committing = was;
@@ -1505,6 +1661,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     },
     dispose() {
       disposed = true;
+      pendingModels.length = 0;
+      pendingEdits.length = 0;
       unsubscribeSession();
       unsubscribeStore();
       solver?.dispose();
@@ -1593,6 +1751,11 @@ function changedSketch(data: SketchData, edit: SketchEdit): SketchData {
   for (const id of edit.remove?.constraints ?? []) delete constraints[id];
   for (const id of edit.remove?.dimensions ?? []) delete dimensions[id];
   return { entities, constraints, dimensions };
+}
+
+/** A `GeomRef`'s identity, for de-duplicating projections within one commit (P6-07). */
+function refKey(ref: GeomRef): string {
+  return `${ref.kind}:${ref.id}`;
 }
 
 /**

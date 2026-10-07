@@ -78,7 +78,7 @@ export function modelSnapAt(
   if (!ref || !mesh) return undefined;
   if (topology.kind === 'vertex') {
     const point = vertexPoint(mesh, topology.index, frame);
-    return point ? { ref, point, kind: 'vertex' } : undefined;
+    return point ? { ref, point, kind: 'vertex', straight: true } : undefined;
   }
   const edge = edgePoint(mesh, topology.index, frame, cursor);
   return edge ? { ref, kind: 'edge', ...edge } : undefined;
@@ -104,7 +104,7 @@ function edgePoint(
   index: number,
   frame: SketchFrame,
   cursor: Vec2,
-): { point: Vec2; line?: readonly [Vec2, Vec2] } | undefined {
+): { point: Vec2; straight: boolean; line?: readonly [Vec2, Vec2] } | undefined {
   const first = mesh.edgeRanges[2 * index] ?? 0;
   const count = mesh.edgeRanges[2 * index + 1] ?? 0;
   if (count <= 0) return undefined;
@@ -130,7 +130,33 @@ function edgePoint(
       best = q;
     }
   }
+  const straight = count <= 2 || isStraight(project, first, count);
   const line: readonly [Vec2, Vec2] | undefined =
     count >= 2 ? [project(first), project(first + count - 1)] : undefined;
-  return line ? { point: best, line } : { point: best };
+  return line ? { point: best, straight, line } : { point: best, straight };
+}
+
+/**
+ * Whether an edge's display polyline is straight (P6-07 slice 2's review): with
+ * two points it is, else every interior point lies within 1e-6 × the chord's
+ * length of the chord. A cylinder's rim is a many-point polyline whose interior
+ * points stand well off the chord, so it is curved.
+ */
+function isStraight(project: (i: number) => Vec2, first: number, count: number): boolean {
+  const a = project(first);
+  const b = project(first + count - 1);
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const length = Math.hypot(dx, dy);
+  const tolerance = 1e-6 * length;
+  for (let i = first + 1; i < first + count - 1; i++) {
+    const q = project(i);
+    // The distance from q to the line through a and b (a degenerate chord keeps the ends).
+    const distance =
+      length === 0
+        ? Math.hypot(q[0] - a[0], q[1] - a[1])
+        : Math.abs((q[0] - a[0]) * dy - (q[1] - a[1]) * dx) / length;
+    if (distance > tolerance) return false;
+  }
+  return true;
 }

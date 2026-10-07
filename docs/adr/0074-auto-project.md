@@ -98,11 +98,13 @@ commit:
   of the placed point on the projected curve. `ToolHost.syncProjections`
   resolves it when the kernel's report lands: it finds the projected entity
   by the projection's source key (`vertex`/`edge`), test-solves the
-  constraint with `SketchSolver.check`, and — if the solver accepts — amends
-  it into the same undo step before solving the sketch; a refused constraint
-  is dropped with the usual message. The prefixed pending list is session
-  state (it never enters the document), so a projection whose report hasn't
-  arrived keeps waiting and one that is lost is skipped.
+  constraint with `SketchSolver.check`, and — if the solver accepts — joins
+  it to the step that added the projection (by step id, see the 2026-10-07
+  amendment below) before solving the sketch; a refused constraint is dropped
+  with the usual message. The prefixed pending list is session state (it
+  never enters the document), so a projection whose report hasn't arrived
+  keeps waiting, and one that is missing or has a projection report marked
+  lost (or whose feature or step is gone) is dropped.
 
 Nothing is projected for a hover that isn't committed.
 
@@ -271,3 +273,77 @@ the stand-in lines at pick time.
   its projection away.
 - No kernel, document-schema or file-format change; the projections are
   slice 1's records.
+
+## Amendment, 2026-10-07: the review's findings
+
+A post-merge review of both slices found four defects, fixed here.
+
+### The step a pending joins, by identity
+
+`store.amend` joined the *latest* undo step, so a projection's constraint that
+landed after the user's next action (a second line, a Box) joined that step:
+undoing the later action took the earlier line's constraint with it. Every
+recorded step now has an id (`UndoHistory.stepId`, a counter); a step is
+joined by identity (`UndoHistory.amendInto(stepId, entry)`,
+`DocumentState.amendInto`/`lastStepId`/`hasStep`). `ToolHost` records the step
+id at commit (after the `addToSketch` dispatch and the `addProjection` amend)
+in every `PendingModelConstraint`/`PendingModelEdit`, and resolves through
+`amendInto`. The projected entities, the follow-on solve and the pending all
+join that step, so undoing it takes the whole projection with it; a `false`
+return (the step was undone or branched away) drops the pending silently. An
+amend into a *past* step applies its patches to the current document (the
+constraint is added now); undoing that past step later removes it, which is
+the semantics wanted.
+
+### Curved body edges
+
+The chord stand-in typed a curved edge as a line, and the resolved constraint
+then named an arc as a line — `mapSketch` could throw out of
+`syncProjections`, or build a meaningless equation. `ModelSnap` gained
+`straight` (an edge's display polyline is straight when it has two points or
+every interior point lies within 1e-6 × the chord of the chord). A picking
+tool's `pickModel` now refuses a curved edge and shows "Pick a straight edge,
+or project the edge first (P)." in its usual hint path; none of the thirteen
+constraint tools or Dimension takes a curved edge today, so all refuse it.
+Curved edges stay snappable for *placing points*: a drawing tool's `infer`
+still offers them and `pointOnCurve` holds the point on the exact reported
+curve. `resolvePendingModels`/`resolvePendingEdits` wrap the test-solve and
+the write in try/catch, so any throw (a mapping that meets an arc) becomes the
+host's error ("Couldn't hold \<label\> on the body geometry.") and never
+leaves `syncProjections`. **Deferred:** `tangent`/`smooth` to a model edge:
+the reversal can't be computed before the curve exists.
+
+### One projection per ref, re-snaps, and lost sources
+
+- Two `ModelAttachment`s of the same ref in one commit minted two projection
+  IDs; the second `addProjection` was refused and its side lost. The commit
+  now consults the projections it is minting, so one ref gets one projection
+  and both points get their constraint.
+- A new snap to a ref whose curve the user deleted (`curves[key] === null`)
+  did nothing. The user's new action now revives it: a core
+  `reviveProjectionCurve` command drops the `null` entry (amended into the
+  commit's step), so `projectionSync` re-adds the entity from the next report
+  and the pending resolves as usual.
+- `resolvePendingModels`/`resolvePendingEdits` ran only when `projectionSync`
+  returned a change, so a lost, undone or deleted projection left its pending
+  waiting forever. They now run on every `syncProjections` call and drop a
+  pending whose projection is missing or reported `lost`, whose feature is
+  gone, or whose step is gone; `dispose()` clears both lists.
+
+### The picker's cost
+
+A benchmark (`apps/web/src/sketch/autoProject-bench.test.ts`, `BENCH=1`)
+measures `modelSnapAt` over the B5 fixture's bodies: **0.120 ms per move over
+2000 moves (192 hits)** on the Ubuntu machine. That is well under 2 ms, so the
+per-move model pick is *not* coalesced to one per animation frame; a future
+model much heavier than B5 would raise this before that would be needed.
+
+### Results
+
+- `pnpm vitest run packages/core/src/history packages/core/src/sketch
+  packages/web/src/sketch packages/sketch/src/inference` passes: the history
+  `amendInto`/`hasStep` tests, the host tests for the step pinning, one
+  projection per ref, the revive path, a lost pending and dispose, and the
+  curved-edge refusal.
+- `e2e/auto-project.spec.ts` adds a Line end snapping to a cylinder's rim
+  (a curved edge), which projects the circle and holds the point on it.

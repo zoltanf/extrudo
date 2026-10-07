@@ -418,6 +418,7 @@ describe('Dimension tool with body geometry (P6-07 slice 2)', () => {
     ref: { kind: 'edge', id: `e${y}` },
     point: [10, y],
     kind: 'edge',
+    straight: true,
     line: [
       [0, y],
       [20, y],
@@ -437,7 +438,12 @@ describe('Dimension tool with body geometry (P6-07 slice 2)', () => {
   it('takes a body vertex as the second point of a distance', async () => {
     const t = await setup({ tool: DIMENSION_TOOL });
     draw(t, { p: pt(0, 0) });
-    const vertex: ModelSnap = { ref: { kind: 'vertex', id: 'v' }, point: [10, 0], kind: 'vertex' };
+    const vertex: ModelSnap = {
+      ref: { kind: 'vertex', id: 'v' },
+      point: [10, 0],
+      kind: 'vertex',
+      straight: true,
+    };
     t.host.click(at(0, 0.1));
     t.host.click({ ...at(10, 0.1), model: vertex });
     t.host.click(at(5, 5)); // place the label

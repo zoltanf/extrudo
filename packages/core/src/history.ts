@@ -14,6 +14,12 @@ export interface HistoryEntry {
   label: string;
   patches: Patch[];
   inversePatches: Patch[];
+  /**
+   * The step's identity, assigned by `record` (P6-07). `lastStepId` and
+   * `amendInto` find a step by it, so a change that follows from a past step
+   * (an auto-projected constraint) can join that step, not the latest one.
+   */
+  id?: number;
 }
 
 interface Level {
@@ -30,6 +36,8 @@ export interface HistoryOptions {
 export class UndoHistory {
   readonly #limit: number;
   readonly #levels: Level[] = [{ label: '', undo: [], redo: [] }];
+  /** The next step id (P6-07): never reused, so a stale pending can't hit a new step. */
+  #nextId = 1;
 
   constructor(options: HistoryOptions = {}) {
     this.#limit = options.limit ?? 500;
@@ -44,7 +52,7 @@ export class UndoHistory {
   record(entry: HistoryEntry): void {
     if (entry.patches.length === 0) return;
     const level = this.#top;
-    level.undo.push(entry);
+    level.undo.push({ ...entry, id: this.#nextId++ });
     level.redo.length = 0;
     if (this.#levels.length === 1 && level.undo.length > this.#limit) level.undo.shift();
   }
@@ -65,12 +73,49 @@ export class UndoHistory {
     for (let i = this.#levels.length - 1; i >= 0; i--) {
       const last = this.#levels[i]?.undo.at(-1);
       if (!last) continue;
-      if (relabel) last.label = entry.label;
-      last.patches = [...last.patches, ...entry.patches];
-      last.inversePatches = [...entry.inversePatches, ...last.inversePatches];
+      this.#join(last, entry, relabel);
       return true;
     }
     return false;
+  }
+
+  /**
+   * Adds a change that has already been applied to the step `stepId`, wherever
+   * it is in the undo stack (P6-07): an auto-projected constraint follows from
+   * the step that added the projection, which may no longer be the latest one
+   * (the user drew on). Patches are appended, inverse patches prepended, as
+   * `amend` does. Returns false when the step no longer exists — it was undone,
+   * or a new branch dropped it — so the caller can drop what followed from it.
+   */
+  amendInto(stepId: number, entry: HistoryEntry, relabel = false): boolean {
+    if (entry.patches.length === 0) return this.hasStep(stepId);
+    for (const level of this.#levels) {
+      const step = level.undo.find((e) => e.id === stepId);
+      if (!step) continue;
+      this.#join(step, entry, relabel);
+      return true;
+    }
+    return false;
+  }
+
+  /** The latest step's id, as `amend` would join (P6-07), or undefined with no step. */
+  get lastStepId(): number | undefined {
+    for (let i = this.#levels.length - 1; i >= 0; i--) {
+      const last = this.#levels[i]?.undo.at(-1);
+      if (last) return last.id;
+    }
+    return undefined;
+  }
+
+  /** Whether a step with this id is still in an undo stack (P6-07). */
+  hasStep(stepId: number): boolean {
+    return this.#levels.some((level) => level.undo.some((e) => e.id === stepId));
+  }
+
+  #join(step: HistoryEntry, entry: HistoryEntry, relabel: boolean): void {
+    if (relabel) step.label = entry.label;
+    step.patches = [...step.patches, ...entry.patches];
+    step.inversePatches = [...entry.inversePatches, ...step.inversePatches];
   }
 
   get canUndo(): boolean {

@@ -301,6 +301,7 @@ describe('constraint tools pick body geometry (P6-07 slice 2)', () => {
     ref: { kind: 'edge', id: 'e' },
     point: [10, 5],
     kind: 'edge',
+    straight: true,
     line: [
       [0, 5],
       [20, 5],
@@ -310,6 +311,7 @@ describe('constraint tools pick body geometry (P6-07 slice 2)', () => {
     ref: { kind: 'vertex', id: `v[${x},${y}]` },
     point: [x, y],
     kind: 'vertex',
+    straight: true,
   });
 
   it('accepts a body edge where it accepts a line, and refuses a body vertex', async () => {
@@ -339,6 +341,28 @@ describe('constraint tools pick body geometry (P6-07 slice 2)', () => {
     expect(t.host.state.getState().tool?.preview().modelHover).toMatchObject({ kind: 'vertex' });
     t.host.click({ ...at(5, 0.1), model: vertexAt(5, 0) });
     expect(Object.keys(t.data().projections ?? {})).toHaveLength(1);
+    expect(t.data().constraints).toEqual({});
+  });
+
+  it('refuses a curved body edge with a message and makes no pending (gap 5)', async () => {
+    const curved: ModelSnap = {
+      ref: { kind: 'edge', id: 'arc' },
+      point: [10, 5],
+      kind: 'edge',
+      straight: false,
+      line: [
+        [0, 5],
+        [20, 5],
+      ],
+    };
+    const t = await setup({ tool: 'parallel' });
+    draw(t, { a0: pt(0, 0), a1: pt(20, 0), a: line('a0', 'a1') });
+    t.host.click(at(10, 0.2)); // first pick: the sketch line
+    t.host.click({ ...at(10, 5.1), model: curved });
+    expect(t.host.state.getState().error).toBe(
+      'Pick a straight edge, or project the edge first (P).',
+    );
+    expect(Object.keys(t.data().projections ?? {})).toHaveLength(0);
     expect(t.data().constraints).toEqual({});
   });
 });

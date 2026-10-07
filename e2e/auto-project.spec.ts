@@ -248,3 +248,46 @@ test('a Dimension from a sketch point to a Box vertex projects it', async ({ pag
   await page.keyboard.press('Control+z');
   await expect.poll(() => attr(viewport, 'data-sketch-projected')).toBe('');
 });
+
+// The review's gap 7: a curved body edge is still snappable for placing a
+// point (the exact curve supports it), unlike a picking tool's straight-edge
+// rule. A Line end on a cylinder's rim projects the circle.
+test('a Line end snapping to a cylinder rim projects the curved edge', async ({ page }) => {
+  await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Cylinder', { Diameter: '40 mm', Height: '20 mm' });
+  const viewport = viewportOf(page);
+  await page.keyboard.press('Shift+1');
+  await settled(viewport);
+  const world = await projector(viewport);
+  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  const top = world([0, 0, 20]); // the cylinder's top face
+  await page.mouse.move(top.x, top.y);
+  await page.mouse.click(top.x, top.y);
+  await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
+  const sketch = await openSketch(page);
+  const fitted = await mapping(viewport);
+  await zoomOutTo(page, fitted(0, 0), 150);
+  const at = await mapping(viewport);
+  await page.keyboard.press('l');
+  // A point on the rim, away from the seam vertex at (20,0): the curved edge wins.
+  const angle = (17 * Math.PI) / 180;
+  const rim = at(20 * Math.cos(angle), 20 * Math.sin(angle));
+  await page.mouse.move(rim.x, rim.y);
+  await page.mouse.click(rim.x, rim.y);
+  const end = at(5, 5);
+  await page.mouse.move(end.x, end.y);
+  await page.mouse.click(end.x, end.y);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+
+  // The curved edge is projected and the point is held on it.
+  await expect
+    .poll(async () => (await counts(page)).constraints, { timeout: 60_000 })
+    .toBeGreaterThanOrEqual(1);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+  await expect
+    .poll(() => attr(viewport, 'data-sketch-projected'), { timeout: 60_000 })
+    .toContain(`${sketch}:curves=1`);
+});

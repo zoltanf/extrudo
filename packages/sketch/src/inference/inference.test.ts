@@ -228,7 +228,12 @@ describe('infer with a model target (auto-project, P6-07)', () => {
   it('a model vertex beats the grid and loses to a sketch point', () => {
     const b = new SketchBuilder();
     const p = b.point(0.5, 0);
-    const model = { ref: vertexRef, point: [2, 0] as Vec2, kind: 'vertex' as const };
+    const model = {
+      ref: vertexRef,
+      point: [2, 0] as Vec2,
+      kind: 'vertex' as const,
+      straight: true,
+    };
     // The model vertex (2,0) is under the cursor; the grid would give (0,0).
     const far = infer(b.sketch, [2.2, 0.1], { tolerance: TOL, grid: 10, model });
     expect(far.point).toEqual([2, 0]);
@@ -240,7 +245,7 @@ describe('infer with a model target (auto-project, P6-07)', () => {
 
   it('a model edge gives an on-curve snap with the ref', () => {
     const b = new SketchBuilder();
-    const model = { ref: edgeRef, point: [5, 5] as Vec2, kind: 'edge' as const };
+    const model = { ref: edgeRef, point: [5, 5] as Vec2, kind: 'edge' as const, straight: true };
     const r = infer(b.sketch, [5.4, 5.2], { tolerance: TOL, model });
     expect(r.point).toEqual([5, 5]);
     expect(r.snap).toMatchObject({ kind: 'onCurve', ids: [], model: edgeRef });

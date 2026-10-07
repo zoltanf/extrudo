@@ -167,6 +167,35 @@ describe('transactions', () => {
     expect(history.canUndo).toBe(false);
   });
 
+  it('amendInto joins the step by id even after later steps', () => {
+    const history = new UndoHistory();
+    const start = sampleDocument();
+    let doc = run(history, start, renameDocument({ name: 'A' }));
+    const first = history.lastStepId as number;
+    doc = run(history, doc, renameDocument({ name: 'B' }));
+    expect(history.lastStepId).not.toBe(first);
+    const amended = applyCommand(doc, renameFeature({ id: fid('f1'), name: 'Named' }));
+    expect(history.amendInto(first, { label: 'Name', ...amended })).toBe(true);
+    doc = amended.doc;
+    // Undoing B leaves the first rename and the amendment; undoing A takes A only.
+    doc = history.undo(doc);
+    expect([doc.name, doc.features[0]?.name]).toEqual(['A', 'Named']);
+    doc = history.undo(doc);
+    expect(doc).toEqual(start);
+    expect(history.hasStep(first)).toBe(false);
+  });
+
+  it('amendInto and hasStep report false once the step is undone or branched away', () => {
+    const history = new UndoHistory();
+    let doc = run(history, sampleDocument(), renameDocument({ name: 'A' }));
+    const step = history.lastStepId as number;
+    expect(history.hasStep(step)).toBe(true);
+    doc = history.undo(doc);
+    expect(history.hasStep(step)).toBe(false);
+    const amended = applyCommand(doc, renameDocument({ name: 'C' }));
+    expect(history.amendInto(step, { label: 'Name', ...amended })).toBe(false);
+  });
+
   it('clear drops everything, open transactions included', () => {
     const history = new UndoHistory();
     const doc = run(history, sampleDocument(), renameDocument({ name: 'A' }));

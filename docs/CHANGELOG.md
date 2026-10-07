@@ -4,6 +4,18 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P6-07 Auto-project review fixes** (ADR-0074's 2026-10-07
+  amendment): a pending constraint joins the step that added its projection by
+  step id (`UndoHistory.stepId`/`amendInto`/`hasStep`, `DocumentState.amendInto`/
+  `lastStepId`), so undoing a later action no longer takes an earlier line's
+  constraint with it; a picking tool refuses a curved body edge ("Pick a
+  straight edge, or project the edge first (P).", `ModelSnap.straight`) and
+  `resolvePending*` catch any throw as a refusal; one ref gets one projection
+  per commit, a fresh snap revives a deleted curve (`reviveProjectionCurve`),
+  and a pending whose projection is missing/lost or whose feature or step is
+  gone is dropped on every `syncProjections` (`dispose` clears them). The
+  picker costs 0.120 ms per move on B5, so no rAF coalescing. No facade, kernel
+  or schema change.
 - 2026-10-07 · **P4-12 Taper cap match fix** (ADR-0028's amendment): a
   tapered loft's caps are found by the point-to-plane distance of the face's
   plane, not by comparing the planes' origin points — a plane's `Location()`

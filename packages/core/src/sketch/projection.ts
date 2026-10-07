@@ -154,6 +154,24 @@ export const addProjection = defineCommand<{
 });
 
 /**
+ * Revives a projected curve the user deleted (P6-07): a `null` entry in a
+ * projection's curve map means "the user deleted it, don't bring it back", so
+ * a fresh snap to that source would otherwise be ignored. Dropping the entry
+ * lets `projectionSync` re-add the entity from the kernel's next report, so
+ * the snap's constraint can hold. Amended into the step that made the snap.
+ */
+export const reviveProjectionCurve = defineCommand<{
+  feature: FeatureId;
+  id: ProjectionId;
+  key: string;
+}>('sketch.revive', 'Revive projection', (draft, { feature, id, key }) => {
+  const data = sketchDraft(draft, feature);
+  const projection = data.projections?.[id];
+  if (!projection) throw new CommandError('That projection is gone.');
+  if (projection.curves[key] === null) delete projection.curves[key];
+});
+
+/**
  * The plain entities an include (`linked: false`) becomes once the kernel
  * has reported its curves (P4-12): every reported curve as a new entity, in
  * key order, with no record and nothing holding it. `undefined` while the

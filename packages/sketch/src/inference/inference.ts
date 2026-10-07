@@ -71,6 +71,13 @@ export interface ModelSnap {
   point: Vec2;
   kind: 'vertex' | 'edge';
   /**
+   * Whether an edge's display polyline is straight (P6-07 slice 2's review):
+   * a picking tool may only type a straight edge as a line, so a curved edge
+   * is offered for placing points but refused by the constraint and dimension
+   * tools. Always true for a vertex.
+   */
+  straight: boolean;
+  /**
    * An edge's display polyline's two ends, in sketch coordinates (P6-07
    * slice 2): a picking tool builds a stand-in line from them so it can tell
    * a length from an angle before the kernel reports the exact curve. Absent

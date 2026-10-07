@@ -41,6 +41,20 @@ export interface DocumentState {
    * takes the command's label.
    */
   amend<P>(command: Command<P>, options?: { relabel?: boolean }): void;
+  /**
+   * Applies a command as part of the step `stepId` instead of a step of its
+   * own (`UndoHistory.amendInto`, P6-07): for a change that follows from a past
+   * step whose id the caller kept, such as an auto-projected constraint. The
+   * patches apply to the current document (the change is made now); undoing
+   * that past step later takes it along. Returns false when the step no longer
+   * exists, so the caller can drop what followed from it. Throws like
+   * `dispatch`.
+   */
+  amendInto<P>(stepId: number, command: Command<P>, options?: { relabel?: boolean }): boolean;
+  /** The latest step's id, as `amend` would join, or undefined with no step (P6-07). */
+  lastStepId(): number | undefined;
+  /** Whether a step with this id is still in an undo stack (P6-07). */
+  hasStep(stepId: number): boolean;
   undo(): void;
   redo(): void;
   beginTransaction(label: string): void;
@@ -78,6 +92,23 @@ export function createDocumentStore(
       if (patches.length === 0) return;
       history.amend({ label: command.label, patches, inversePatches }, options?.relabel);
       set({ doc, ...historyState() });
+    },
+    amendInto(stepId, command, options) {
+      const { doc, patches, inversePatches } = applyCommand(get().doc, command);
+      if (patches.length === 0) return history.hasStep(stepId);
+      const joined = history.amendInto(
+        stepId,
+        { label: command.label, patches, inversePatches },
+        options?.relabel,
+      );
+      if (joined) set({ doc, ...historyState() });
+      return joined;
+    },
+    lastStepId() {
+      return history.lastStepId;
+    },
+    hasStep(stepId) {
+      return history.hasStep(stepId);
     },
     undo() {
       set({ doc: history.undo(get().doc), ...historyState() });
