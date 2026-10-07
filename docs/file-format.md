@@ -280,7 +280,7 @@ exist so far: a font (a sketch `text` entity's `attachment:<id>`), a model an
 |---|---|---|---|
 | `name` | string | yes | 1 to 200 characters. What the user sees, e.g. `Comic Neue Bold`. |
 | `fileName` | string | yes | 1 to 255 characters. The name of the file it was added from, so an export can offer it back. |
-| `mediaType` | one of `font/ttf`, `font/otf`, `font/woff`, `model/step`, `model/stl`, `model/3mf`, `model/obj`, `application/x-openscad`, `image/png`, `image/jpeg`, `image/webp` | yes | How the bytes are to be read. WOFF2 is not accepted: the font shaper can't read it, so such a file is refused. A reader must take the type from the file **name's extension**, never from the browser's `File.type` (empty for most of these): `.ttf`, `.otf`, `.woff`, `.step`/`.stp`, `.stl`, `.3mf`, `.obj`, `.scad`, `.png`, `.jpg`/`.jpeg`, `.webp` (case apart). `application/x-openscad` (P5-04, ADR-0071) is an OpenSCAD source file, UTF-8 text. |
+| `mediaType` | one of `font/ttf`, `font/otf`, `font/woff`, `model/step`, `model/stl`, `model/3mf`, `model/obj`, `application/x-openscad`, `image/png`, `image/jpeg`, `image/webp`, `application/x-extrudo-plugin` | yes | How the bytes are to be read. WOFF2 is not accepted: the font shaper can't read it, so such a file is refused. A reader must take the type from the file **name's extension**, never from the browser's `File.type` (empty for most of these): `.ttf`, `.otf`, `.woff`, `.step`/`.stp`, `.stl`, `.3mf`, `.obj`, `.scad`, `.png`, `.jpg`/`.jpeg`, `.webp`, `.extrudo-plugin` (case apart). `application/x-openscad` (P5-04, ADR-0071) is an OpenSCAD source file, UTF-8 text. `application/x-extrudo-plugin` (P6-03, ADR-0077) is a plugin file, a zip of its manifest and module, carried by a design whose `plugin` features use it (section 6.32). |
 | `sha256` | string | yes | Exactly 64 lower case hex digits: the SHA-256 of the bytes, which is the name of the file in the container and in storage. |
 | `size` | integer | yes | At least 1. The file's size in bytes, used for the storage limits (one file at most 25 MB, all of a design at most 100 MB; raised in P4-06 for imported models, ADR-0066 §0). |
 
@@ -1329,6 +1329,44 @@ surfaceGeometry can't place analytically: a torus (the tube's nearest point) or
 a free-form face (the nearest triangle of a fine mesh of the face, 0.01 mm
 deflection, whose outward normal the plane takes), the plane square to the
 surface there.
+
+### 6.32 `plugin`
+
+A plugin's custom feature (P6-03, ADR-0077). A plugin is a `.extrudo-plugin`
+file — a zip of `plugin.json` (its manifest: ID, name, version, the commands and
+custom features it offers and each feature's inputs), its module (`main.ts` or
+`main.js`) and optionally `README.md` and `LICENSE` — and a design that uses one
+of its features **carries the file** as an attachment of media type
+`application/x-extrudo-plugin` (section 4.5; its record's `name` is the plugin's
+name and version, "Name plate 1.0.0", its `fileName` `<plugin id>.extrudo-plugin`),
+so the design opens where the plugin isn't installed. Like a `script` (6.30) it
+**makes features**: the reader runs the module's handler for this feature in the
+script sandbox against the document as it is before the feature, and evaluates
+what it added right after it.
+
+| Input | Kind | Required | Rule |
+|---|---|---|---|
+| `plugin` | `file` | yes | The plugin file: an attachment of this design whose media type is `application/x-extrudo-plugin`. |
+| `handler` | `enum` | yes | Which of the plugin's custom features this is: a `type` its manifest lists under `features` (lower case letters, digits and dashes, `name-plate`). Its values come from the manifest, so the schema checks only the form. |
+| `in:<name>` | `expr`, `bool`, `enum` or `ref` | per manifest | The plugin's own inputs, one per input of the manifest's feature, under its `name` (an identifier) prefixed `in:` (`in:width`), in the stored form of the manifest's `kind`. An `expr` carries the manifest's `unit` (`length`; `angle`; `none` is stored as `unitless`), so parameters and dimensions drive it as they drive an extrude; a `ref` is a reference with its fingerprint (section 8) of a kind the manifest's `accepts` lists, one unless the input is `multiple`; an `enum` value is one of its `options`. An input the feature lacks takes the manifest's `default`. |
+
+A key that neither is `plugin` or `handler` nor starts with `in:` is an unknown
+input (the recompute leaves it out with a warning, section 6), and an `in:` key of any other kind is invalid. What the
+manifest says is checked when the feature is computed, not when the file is
+read: a handler the manifest doesn't list, an input of the wrong kind or unit,
+a missing required reference or an input the manifest lacks makes the feature
+an error that names it, and so does a plugin file that isn't in the design or
+can't be read.
+
+**The features it adds are not stored**, exactly as a script's (6.30): their
+IDs are the feature's own ID, a `.` and the API's counter (`<feature>.f1`…),
+their names the feature's name, `›` and the type's label counted within the run
+("Name plate1 › Extrude1"), and a reference into them is a dependency on the
+plugin feature. The handler gets the sandbox a script gets (add only, the same
+limits) plus its inputs as plain values (an `expr` as its number in mm, degrees
+or plain units; a `ref` as `{ kind, id, fingerprint? }` with a face, edge or
+vertex resolved to the name it has before this feature; a `multiple` one as a
+list).
 
 ---
 

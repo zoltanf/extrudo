@@ -32,8 +32,9 @@ import {
   isScadMediaType,
   MODEL_MEDIA_TYPES,
   type ModelStore,
+  makesFeatures,
   type PatternReport,
-  SCRIPT_TYPE,
+  pluginFileOf,
   type SketchReport,
 } from '@extrudo/core';
 import type { ScadParametersResult } from '@extrudo/openscad';
@@ -442,7 +443,8 @@ export class Recomputer {
     // kernel, so a design without one never loads QuickJS. A kernel started
     // without a runner refuses, and the script's own status says so.
     if (!this.#scriptsAsked && !this.#disposed) {
-      if ([...doc.features, ...extra].some((f) => f.type === SCRIPT_TYPE)) {
+      // A plugin feature runs in the same sandbox (ADR-0077 §4).
+      if ([...doc.features, ...extra].some((f) => makesFeatures(f.type))) {
         this.#scriptsAsked = true;
         try {
           await this.client.call((api) => api.enableScripts());
@@ -670,9 +672,13 @@ function importFiles(doc: ExtrudoDocument, extra: readonly Feature[]): Attachmen
   for (const feature of [...doc.features, ...extra]) {
     const id = importFileOf(feature);
     if (id) out.add(id);
+    // A plugin feature's plugin file, which the kernel runs (ADR-0077 §4).
+    const plugin = pluginFileOf(feature);
+    if (plugin) out.add(plugin);
   }
-  // Generated imports are not stored features: scripts may read any model attachment.
-  if ([...doc.features, ...extra].some((feature) => feature.type === SCRIPT_TYPE)) {
+  // Generated imports are not stored features: scripts and plugin features may
+  // read any model attachment.
+  if ([...doc.features, ...extra].some((feature) => makesFeatures(feature.type))) {
     for (const [id, attachment] of Object.entries(doc.attachments ?? {})) {
       if (MODEL_MEDIA_TYPES.includes(attachment.mediaType as (typeof MODEL_MEDIA_TYPES)[number])) {
         out.add(id as AttachmentId);

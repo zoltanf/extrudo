@@ -15,12 +15,16 @@ const ALLOWED = {
   // (ADR-0066 §3), and the export tests check meshes with it.
   // openscad: the compile protocol's types, and the worker entry's lazy
   // `import()` of its browser compiler (ADR-0071 §3).
+  // storage: only `@extrudo/storage/plugin`, the plugin file reader (fflate and
+  // core), which the plugin feature runs a design's copy of a plugin with
+  // (ADR-0077 §3).
   '@extrudo/kernel': [
     '@extrudo/core',
     '@extrudo/sketch',
     '@extrudo/io',
     '@extrudo/fonts',
     '@extrudo/openscad',
+    '@extrudo/storage',
   ],
   // OpenSCAD in WebAssembly (P5-04, ADR-0071): nothing internal at run time;
   // its tests read the 3MFs it writes with io.

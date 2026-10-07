@@ -18,6 +18,7 @@
     "@extrudo/io": "workspace:*",
     "@extrudo/openscad": "workspace:*",
     "@extrudo/sketch": "workspace:*",
+    "@extrudo/storage": "workspace:*",
     "comlink": "^4.4.2",
     "manifold-3d": "3.5.4"
   },

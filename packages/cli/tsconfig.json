@@ -10,5 +10,7 @@
     // name, as a user writes it.
     "paths": { "@extrudo/api": ["../api/src/index.ts"] }
   },
-  "include": ["src"]
+  // The example plugin's module (ADR-0077) is typechecked here too:
+  // `plugins.test.ts` packs and runs it.
+  "include": ["src", "../../examples/plugins/**/*.ts"]
 }

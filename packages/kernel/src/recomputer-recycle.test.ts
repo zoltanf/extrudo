@@ -375,6 +375,43 @@ describe('Recomputer heap recycling', () => {
     }
   });
 
+  it("sends a plugin feature's plugin file and the runner to each worker (ADR-0077 §4)", async () => {
+    const file = 'name-plate' as AttachmentId;
+    const plugin: Feature = {
+      ...testFeature('Name plate1', 'plugin'),
+      inputs: {
+        plugin: { kind: 'file', id: file },
+        handler: { kind: 'enum', value: 'name-plate' },
+      },
+    };
+    const { model, events } = setup(
+      {
+        ...testDocument([plugin]),
+        attachments: {
+          [file]: {
+            name: 'Name plate 1.0.0',
+            fileName: 'name-plate.extrudo-plugin',
+            mediaType: 'application/x-extrudo-plugin',
+            sha256: 'f'.repeat(64),
+            size: 9,
+          },
+        },
+      },
+      {
+        heapRecycleBytes: 1024,
+        heap: (worker) => (worker === 1 ? 4096 : 512),
+        files: { bytes: async () => new ArrayBuffer(9) },
+      },
+    );
+    await until(() => ready(model) && events.filter((e) => e === 'recompute:2').length === 1);
+    expect(events.filter((e) => e.startsWith('file:'))).toEqual([`file:${file}`, `file:${file}`]);
+    expect(events.filter((e) => e.startsWith('scripts:'))).toEqual(['scripts:1', 'scripts:2']);
+    expect(events.indexOf(`file:${file}`)).toBeLessThan(events.indexOf('recompute:1'));
+    expect(events.indexOf('scripts:2')).toBeLessThan(events.indexOf('recompute:2'));
+    // A plugin file is no mesh: manifold-3d stays out.
+    expect(events.filter((e) => e.startsWith('meshes:'))).toEqual([]);
+  });
+
   it('recycles a real kernel whose heap passes a few MB, with the same result', {
     timeout: 120_000,
   }, async () => {

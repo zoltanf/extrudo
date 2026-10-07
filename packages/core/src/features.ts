@@ -29,6 +29,27 @@ export interface FeatureDefinition<I extends FeatureInputs = FeatureInputs> {
    * left out for a feature that makes no body, or names no face of its own.
    */
   faceRoles?: readonly FaceRole[];
+  /**
+   * A feature whose inputs core can't list (a plugin feature's, ADR-0077 §3):
+   * keys starting `prefix`, which the document API takes as one object named
+   * `name`. Left out for every feature whose schema lists its inputs.
+   */
+  openInputs?: OpenInputs;
+}
+
+/**
+ * What a call through the document API names a feature's open-ended inputs by
+ * (ADR-0068, ADR-0077 §3): `d.plugin({ plugin, handler, inputs: { width: '60 mm' } })`
+ * stores `in:width`. The API's generator and `storedInputs` read this, so the
+ * one open-ended feature type needs no case of its own there.
+ */
+export interface OpenInputs {
+  /** The name of the object a call gives them in. */
+  name: string;
+  /** What each of its keys is stored under. */
+  prefix: string;
+  /** What the object holds, for the API's doc comment and reference page. */
+  description: string;
 }
 
 export interface FeatureIssue {

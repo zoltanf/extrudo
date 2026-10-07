@@ -100,6 +100,7 @@ const EXAMPLE_INPUTS: Readonly<Record<string, string>> = {
   fillet: `{ edges: edge, radius: '2 mm' }`,
   hole: `{ plane: d.origin.xy, x: '10 mm', y: '10 mm', diameter: '4 mm', extent: 'through' }`,
   import: `{ file: step }`,
+  plugin: `{ plugin: 'att-name-plate', handler: 'name-plate', inputs: { width: '60 mm', rounded: true, plane: d.origin.xy } }`,
   loft: `{ sections }`,
   midplane: `{ planes: [d.origin.xy, d.origin.yz] }`,
   midplaneAngled: `{ planes: [d.origin.xy, d.origin.yz] }`,

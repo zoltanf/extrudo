@@ -67,6 +67,8 @@ export * from './move';
 export * from './offset-face';
 export * from './pattern';
 export * from './place-on-bed';
+export * from './plugin';
+export * from './plugin-feature';
 export * from './primitives';
 export { documentFeatures } from './registry';
 export * from './remove';

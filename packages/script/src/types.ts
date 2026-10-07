@@ -54,6 +54,42 @@ export interface ScriptRequest {
   limits?: Partial<ScriptLimits>;
 }
 
+/** Which handler of a plugin's module a run calls (ADR-0077 §2). */
+export interface PluginHandler {
+  /** A command (`exports.commands[name]`) or a custom feature (`exports.features[name]`). */
+  kind: 'command' | 'feature';
+  /** The command's ID or the feature's type, as the manifest lists it. */
+  name: string;
+}
+
+/**
+ * One run of a plugin's handler (ADR-0077 §2): the module is evaluated afresh,
+ * the handler picked from its exports and called with the restricted `design`
+ * and, for a feature, its inputs. Nothing survives between two runs.
+ */
+export interface PluginRequest {
+  /** The module's source (`main.ts` or `main.js`). */
+  code: string;
+  language: ScriptLanguage;
+  handler: PluginHandler;
+  /** The design the handler adds to, as a script's (`ScriptRequest.design`). */
+  design: Design;
+  /** The plugin feature's or the command's own ID, which seeds `Math.random`. */
+  featureId: string;
+  /** What `ctx.params` holds; the design's own parameter values by default. */
+  params?: Readonly<Record<string, number>>;
+  /**
+   * A feature's inputs as plain values, by their manifest names: an `expr` as
+   * its number, a `bool`, an `enum`'s value, a `ref` as `{ kind, id,
+   * fingerprint? }` (or a list of them). Frozen in the sandbox.
+   */
+  inputs?: Readonly<Record<string, unknown>>;
+  /** A command's model selection, as the references a script would pass (`ctx.selection`). */
+  selection?: readonly unknown[];
+  /** Overrides for the limits; `code` defaults to the plugin's 200,000 characters. */
+  limits?: Partial<ScriptLimits>;
+}
+
 /** What went wrong, and where in the script: 1-based lines, as the editor counts. */
 export interface ScriptFailure {
   /** What to show, worded for the user (no stack, no QuickJS names). */

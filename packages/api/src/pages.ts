@@ -213,6 +213,14 @@ function inputTable(inputs: readonly InputDoc[]): string {
 /** The faces section: the roles, then how to build a reference from one. */
 function faceSection(feature: FeatureDoc): string[] {
   // A script's faces are its generated features' (P5-02, ADR-0070 §1).
+  // A plugin feature's likewise, under the plugin feature's ID (P6-03, ADR-0077 §3).
+  if (feature.type === 'plugin') {
+    return [
+      "A plugin feature names no face itself: each feature its plugin's handler makes names",
+      "its own, under its own ID — the plugin feature's ID, a dot and the API's",
+      "(`extrude:<feature>.f1:cap:end`) — and the roles its own page lists, as a script's do.",
+    ];
+  }
   if (feature.type === 'script') {
     return [
       'A script names no face itself: each feature its code makes names its own, under',

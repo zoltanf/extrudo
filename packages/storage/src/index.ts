@@ -25,6 +25,15 @@ export {
   type ProjectIndex,
 } from './idb';
 export {
+  MAX_PLUGIN_BYTES,
+  MAX_PLUGIN_UNPACKED_BYTES,
+  type PluginFile,
+  PluginFileError,
+  type PluginSource,
+  readPluginFile,
+  writePluginFile,
+} from './plugin-file';
+export {
   createProjectStore,
   memoryProjectStore,
   type ProjectStoreOptions,

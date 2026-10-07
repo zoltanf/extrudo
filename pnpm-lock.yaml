@@ -385,6 +385,10 @@ importers:
       '@extrudo/storage':
         specifier: workspace:*
         version: link:../storage
+    devDependencies:
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
 
   packages/core:
     dependencies:
@@ -420,6 +424,9 @@ importers:
       '@extrudo/sketch':
         specifier: workspace:*
         version: link:../sketch
+      '@extrudo/storage':
+        specifier: workspace:*
+        version: link:../storage
       comlink:
         specifier: ^4.4.2
         version: 4.4.2

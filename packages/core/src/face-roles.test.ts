@@ -29,6 +29,8 @@ const NAMES_NO_FACE: Readonly<Record<string, string>> = {
   canvas: 'a canvas is a picture on a plane, not a body (P4-06)',
   script:
     'a script names no face itself: the features it generates do, under their own IDs (ADR-0070)',
+  plugin:
+    "a plugin feature names no face itself: its handler's features do, under their own IDs (ADR-0077)",
 };
 
 describe('the face roles of the registry', () => {

@@ -70,6 +70,8 @@ export type {
   ExprValue,
   FeatureInputValue,
   InputMeta,
+  OpenInputValue,
+  OpenInputValues,
   RefValue,
 } from './inputs';
 export {

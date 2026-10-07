@@ -8,6 +8,7 @@ import { isReservedName } from './expr/evaluate';
 import { mentions, parameterNames, renameReferences } from './expr/parameters';
 import { dropFeatureFromGroups, normalizeGroupsInPlace } from './groups';
 import type { BodyId, FeatureId, ParameterId } from './ids';
+import { makesFeatures } from './plugin-feature';
 import {
   type BodyMeta,
   type ExtrudoDocument,
@@ -17,7 +18,6 @@ import {
   type Parameter,
   type Settings,
 } from './schema';
-import { SCRIPT_TYPE } from './script';
 import { referencedFeatures } from './timeline';
 
 export const renameDocument = defineCommand<{ name: string }>(
@@ -313,9 +313,11 @@ export function newBodyNames(
 function featuresReferring(draft: DocumentDraft, id: FeatureId): string[] {
   const prefix = `${id}/`;
   const bodies = `${id}:`;
-  // A script's geometry is its generated features' (ADR-0070 §1): any stored
-  // reference into it — a face's name, an edge's, a body, a profile — uses it.
-  const script = draft.features.find((f) => f.id === id)?.type === SCRIPT_TYPE;
+  // A script's geometry is its generated features' (ADR-0070 §1), and a
+  // plugin feature's (ADR-0077 §3): any stored reference into it — a face's
+  // name, an edge's, a body, a profile — uses it.
+  const type = draft.features.find((f) => f.id === id)?.type;
+  const script = type !== undefined && makesFeatures(type);
   const ids = new Set<string>(draft.features.map((f) => f.id));
   return draft.features
     .filter(

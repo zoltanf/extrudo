@@ -50,9 +50,10 @@ import {
   isMeshMediaType,
   isScadMediaType,
   MODEL_MEDIA_TYPES,
+  makesFeatures,
   newBodyNames,
+  pluginFileOf,
   type ReferenceIssue,
-  SCRIPT_TYPE,
   type ScriptRunStatus,
   setSketchGeometry,
   updateSketchDimension,
@@ -644,10 +645,11 @@ export class DesignJob {
     const files: { id: AttachmentId; mesh: boolean; scad: boolean }[] = [];
     const ids = new Set<AttachmentId>();
     for (const feature of doc.features) {
-      const id = importFileOf(feature);
+      const id = importFileOf(feature) ?? pluginFileOf(feature);
       if (id) ids.add(id);
     }
-    if (doc.features.some((feature) => feature.type === SCRIPT_TYPE)) {
+    // What a script or a plugin feature makes may import any model file.
+    if (doc.features.some((feature) => makesFeatures(feature.type))) {
       for (const [id, attachment] of Object.entries(doc.attachments ?? {})) {
         if (
           MODEL_MEDIA_TYPES.includes(attachment.mediaType as (typeof MODEL_MEDIA_TYPES)[number])
@@ -674,8 +676,8 @@ export class DesignJob {
       await service.enableMeshes();
       this.#meshesEnabled = true;
     }
-    // QuickJS, for a design with a Script feature (ADR-0070 §2).
-    if (!this.#scriptsEnabled && doc.features.some((f) => f.type === SCRIPT_TYPE)) {
+    // QuickJS, for a design with a Script or a plugin feature (ADR-0070 §2, ADR-0077 §4).
+    if (!this.#scriptsEnabled && doc.features.some((f) => makesFeatures(f.type))) {
       await service.enableScripts();
       this.#scriptsEnabled = true;
     }

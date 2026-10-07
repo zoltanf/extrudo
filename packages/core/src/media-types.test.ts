@@ -8,6 +8,7 @@ import {
   FILE_INPUT_MEDIA_TYPES,
   isMeshMediaType,
   isModelMediaType,
+  isPluginMediaType,
   isScadMediaType,
   MEDIA_TYPES,
   mediaTypeOf,
@@ -41,7 +42,7 @@ describe('mediaTypeOf', () => {
   });
 
   it('knows which types are models, meshes and STEP', () => {
-    expect(MEDIA_TYPES).toHaveLength(11);
+    expect(MEDIA_TYPES).toHaveLength(12);
     expect(isModelMediaType('model/step')).toBe(true);
     expect(isModelMediaType('model/3mf')).toBe(true);
     expect(isModelMediaType('image/png')).toBe(false);
@@ -58,6 +59,13 @@ describe('mediaTypeOf', () => {
     expect(isMeshMediaType('application/x-openscad')).toBe(true);
     expect(isScadMediaType('application/x-openscad')).toBe(true);
     expect(isScadMediaType('model/stl')).toBe(false);
+    // A plugin file (ADR-0077 §4) is carried by a design, never imported.
+    expect(mediaTypeOf('name-plate.extrudo-plugin')).toBe('application/x-extrudo-plugin');
+    expect(isPluginMediaType('application/x-extrudo-plugin')).toBe(true);
+    expect(isModelMediaType('application/x-extrudo-plugin')).toBe(false);
+    expect(isMeshMediaType('application/x-extrudo-plugin')).toBe(false);
+    expect(FILE_INPUT_MEDIA_TYPES.plugin).toEqual(['application/x-extrudo-plugin']);
+    expect(FILE_INPUT_MEDIA_TYPES.import).not.toContain('application/x-extrudo-plugin');
   });
 
   it('has the media types the attachment schema accepts', () => {

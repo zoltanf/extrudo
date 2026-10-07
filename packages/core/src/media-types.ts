@@ -22,6 +22,7 @@ export const MEDIA_TYPES = [
   'image/png',
   'image/jpeg',
   'image/webp',
+  'application/x-extrudo-plugin',
 ] as const;
 
 export type MediaType = (typeof MEDIA_TYPES)[number];
@@ -40,6 +41,13 @@ export const MODEL_MEDIA_TYPES: readonly MediaType[] = [
 
 /** An OpenSCAD source file (P5-04, ADR-0071). */
 export const SCAD_MEDIA_TYPE = 'application/x-openscad' satisfies MediaType;
+
+/**
+ * A plugin file (P6-03, ADR-0077 §4): a design that uses a plugin feature
+ * carries the plugin, so it opens where the plugin isn't installed. Not a model
+ * file: an `import` never reads one.
+ */
+export const PLUGIN_MEDIA_TYPE = 'application/x-extrudo-plugin' satisfies MediaType;
 
 /** The media types a canvas image may have (ADR-0066 §5). */
 export const IMAGE_MEDIA_TYPES: readonly MediaType[] = ['image/png', 'image/jpeg', 'image/webp'];
@@ -64,6 +72,7 @@ const BY_EXTENSION: Readonly<Record<string, MediaType>> = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
   webp: 'image/webp',
+  'extrudo-plugin': 'application/x-extrudo-plugin',
 };
 
 /**
@@ -98,6 +107,11 @@ export function isMeshMediaType(mediaType: string | undefined): boolean {
   return mediaType !== undefined && isModelMediaType(mediaType) && mediaType !== 'model/step';
 }
 
+/** Whether a media type is a plugin file (ADR-0077 §4). */
+export function isPluginMediaType(mediaType: string | undefined): boolean {
+  return mediaType === PLUGIN_MEDIA_TYPE;
+}
+
 /** Whether a media type is an OpenSCAD file, which the kernel compiles first (ADR-0071). */
 export function isScadMediaType(mediaType: string | undefined): boolean {
   return mediaType === SCAD_MEDIA_TYPE;
@@ -120,6 +134,7 @@ export function modelKind(mediaType: string | undefined): ModelKind | undefined 
 export const FILE_INPUT_MEDIA_TYPES: Readonly<Record<string, readonly MediaType[]>> = {
   import: MODEL_MEDIA_TYPES,
   canvas: IMAGE_MEDIA_TYPES,
+  plugin: [PLUGIN_MEDIA_TYPE],
 };
 
 /** A file name without its extension: what a file with no name of its own is called. */

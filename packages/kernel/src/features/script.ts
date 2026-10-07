@@ -7,7 +7,10 @@
  * features make anywhere else.
  */
 import {
+  type Feature,
+  type FeatureId,
   GENERATED_SEPARATOR,
+  PLUGIN_TYPE,
   SCRIPT_TYPE,
   type ScriptInputs,
   scriptFeature,
@@ -33,25 +36,44 @@ export const kernelScript: KernelFeatureDefinition<ScriptInputs> = {
       params: ctx.params,
     });
     if (!result.ok) throw new ScriptRunError(result.error, result.log);
-    // The runner is trusted to keep these rules, and checked anyway: a wrong ID
-    // would collide with a stored feature's, or be read back as another script's.
-    const prefix = `${ctx.feature.id}${GENERATED_SEPARATOR}`;
-    const seen = new Set<string>();
-    for (const feature of result.features) {
-      if (!feature.id.startsWith(prefix) || seen.has(feature.id)) {
-        throw new ScriptRunError({
-          message: `The script made a feature with the ID ${feature.id}.`,
-        });
-      }
-      if (feature.type === SCRIPT_TYPE) {
-        throw new ScriptRunError({ message: "A script can't add a script." });
-      }
-      seen.add(feature.id);
-    }
-    return { features: result.features, log: result.log };
+    return {
+      features: checkedGenerated(ctx.feature.id, result.features, 'script'),
+      log: result.log,
+    };
   },
   evaluate() {
     // The engine expands a script instead (see the module comment).
     throw new Error('A script is expanded, not evaluated.');
   },
 };
+
+/**
+ * The features a run made, once checked: the runner is trusted to keep these
+ * rules, and checked anyway — a wrong ID would collide with a stored
+ * feature's, or be read back as another script's, and a script or plugin
+ * feature among them could only run another one there, which nothing could
+ * store or edit. Shared by the Script and the plugin feature (ADR-0077 §3).
+ */
+export function checkedGenerated(
+  owner: FeatureId,
+  features: readonly Feature[],
+  what: 'script' | 'plugin',
+): readonly Feature[] {
+  const prefix = `${owner}${GENERATED_SEPARATOR}`;
+  const seen = new Set<string>();
+  for (const feature of features) {
+    if (!feature.id.startsWith(prefix) || seen.has(feature.id)) {
+      throw new ScriptRunError({
+        message: `The ${what} made a feature with the ID ${feature.id}.`,
+      });
+    }
+    if (feature.type === SCRIPT_TYPE) {
+      throw new ScriptRunError({ message: `A ${what} can't add a script.` });
+    }
+    if (feature.type === PLUGIN_TYPE) {
+      throw new ScriptRunError({ message: `A ${what} can't add a plugin feature.` });
+    }
+    seen.add(feature.id);
+  }
+  return features;
+}

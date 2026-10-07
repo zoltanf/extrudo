@@ -225,6 +225,15 @@ describe('the whole registry', () => {
       canvas: { image: { kind: 'file', id: attachment(design, 'plan.png', 'image/png') } },
       // A Script's source, as the text itself (P5-02).
       script: { code: 'design.box({});' },
+      // A plugin feature's file and handler (P6-03, ADR-0077 §3).
+      plugin: {
+        plugin: {
+          kind: 'file',
+          id: attachment(design, 'name-plate.extrudo-plugin', 'application/x-extrudo-plugin'),
+        },
+        handler: 'name-plate',
+        inputs: { width: '60 mm', count: 3, tilt: '5 deg', rounded: true, plane: design.origin.xy },
+      },
     }) as Record<string, FeatureInputValue>;
 
   /** Adds a file to the design and returns its ID (ADR-0061 §1). */
@@ -268,6 +277,16 @@ describe('the whole registry', () => {
       expect(result?.success, type).toBe(true);
     }
     expect(design.validate()).toEqual([]);
+    // A plugin feature's own inputs, stored under `in:` with their kinds read
+    // off the values (ADR-0077 §3).
+    expect(byType.get('plugin')).toMatchObject({
+      'in:width': { kind: 'expr', expr: '60 mm', unit: 'length' },
+      'in:count': { kind: 'expr', expr: '3', unit: 'unitless' },
+      'in:tilt': { kind: 'expr', expr: '5 deg', unit: 'angle' },
+      'in:rounded': { kind: 'bool', value: true },
+      'in:plane': { kind: 'ref', refs: [{ kind: 'plane', id: 'origin:xy' }] },
+    });
+    expect(byType.get('plugin')).not.toHaveProperty('inputs');
   });
 
   it('keeps the document valid through every call', () => {

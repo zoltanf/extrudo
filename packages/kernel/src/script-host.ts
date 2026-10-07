@@ -45,17 +45,46 @@ export type ScriptRunResult =
   | { ok: true; features: Feature[]; log: string[] }
   | { ok: false; error: ScriptRunFailure; log: string[] };
 
-/** Runs scripts. Synchronous: the engine runs a script between two features. */
+/**
+ * One run of a plugin's handler (P6-03, ADR-0077 §2-§3): the module as the
+ * plugin file holds it, which handler, and a feature's inputs as the plain
+ * values the handler reads. IDs and names are a script's (`<feature>.f1`,
+ * "Name plate1 › Extrude1").
+ */
+export interface PluginRunRequest {
+  /** The module's source, `main.ts` or `main.js`. */
+  code: string;
+  language: 'ts' | 'js';
+  /** A command (`exports.commands[name]`) or a custom feature (`exports.features[name]`). */
+  handler: { kind: 'command' | 'feature'; name: string };
+  /** The document before the feature. */
+  doc: ExtrudoDocument;
+  featureId: FeatureId;
+  featureName: string;
+  params: Readonly<Record<string, number>>;
+  /**
+   * A feature's inputs by their manifest names: an `expr` as its number (mm,
+   * degrees or plain), a `bool`, an `enum`'s value, a `ref` as `{ kind, id,
+   * fingerprint? }` with a face, edge or vertex resolved to its current name,
+   * or a list of them for a `multiple` input.
+   */
+  inputs?: Readonly<Record<string, unknown>>;
+  /** A command's model selection, as references. */
+  selection?: readonly unknown[];
+}
+
+/** Runs scripts and plugins' handlers. Synchronous: the engine runs one between two features. */
 export interface ScriptHost {
   run(request: ScriptRunRequest): ScriptRunResult;
+  runPlugin(request: PluginRunRequest): ScriptRunResult;
 }
 
 /** Loads a script host, once, when a design first needs one (`KernelApi.enableScripts`). */
 export type ScriptHostLoader = () => Promise<ScriptHost>;
 
-/** What a script's status says when nobody gave the kernel a runner. */
+/** What a script's or a plugin feature's status says when nobody gave the kernel a runner. */
 export const NO_SCRIPT_HOST =
-  "Scripts can't run here: this Extrudo was started without the script runner.";
+  "Scripts and plugins can't run here: this Extrudo was started without the script runner.";
 
 /**
  * A Script feature that couldn't run, or whose output the engine refused: the
@@ -68,9 +97,19 @@ export class ScriptRunError extends KernelError {
   readonly line: number | undefined;
   readonly column: number | undefined;
   readonly log: readonly string[];
-  constructor(failure: ScriptRunFailure, log: readonly string[] = []) {
+  /**
+   * `where` names the code for a plugin (ADR-0077 §2: "the plugin's name and
+   * the line in main.ts"): "Name plate 1.0.0, main.ts line 12: …".
+   */
+  constructor(failure: ScriptRunFailure, log: readonly string[] = [], where?: string) {
     super(
-      failure.line === undefined ? failure.message : `Line ${failure.line}: ${failure.message}`,
+      where === undefined
+        ? failure.line === undefined
+          ? failure.message
+          : `Line ${failure.line}: ${failure.message}`
+        : failure.line === undefined
+          ? `${where}: ${failure.message}`
+          : `${where} line ${failure.line}: ${failure.message}`,
     );
     this.line = failure.line;
     this.column = failure.column;

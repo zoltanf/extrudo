@@ -28,6 +28,7 @@ import { moveBodiesFeature } from './move';
 import { offsetFaceFeature } from './offset-face';
 import { circularPatternFeature, pathPatternFeature, rectangularPatternFeature } from './pattern';
 import { placeOnBedFeature } from './place-on-bed';
+import { pluginFeature } from './plugin-feature';
 import { PRIMITIVE_FEATURES, PRIMITIVE_TYPES } from './primitives';
 import { removeBodiesFeature } from './remove';
 import { revolveFeature } from './revolve';
@@ -89,5 +90,7 @@ export function documentFeatures(): FeatureRegistry<FeatureDefinition> {
   registry.register(importFeature).register(canvasFeature);
   // Script (P5-02, ADR-0070): code that adds features, run by the kernel.
   registry.register(scriptFeature as FeatureDefinition);
+  // A plugin's custom feature (P6-03, ADR-0077 §3): a Script packaged with inputs.
+  registry.register(pluginFeature as unknown as FeatureDefinition);
   return registry;
 }

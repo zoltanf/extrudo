@@ -25,7 +25,7 @@ import {
   type ParameterLike,
   ref,
 } from '@extrudo/api';
-import { SCRIPT_TYPE } from '@extrudo/core';
+import { PLUGIN_TYPE, SCRIPT_TYPE } from '@extrudo/core';
 import { featureCountMessage, ScriptError } from './limits';
 
 /**
@@ -33,6 +33,9 @@ import { featureCountMessage, ScriptError } from './limits';
  * "A script can only add features: `design.remove()` would delete a feature."
  */
 export const REFUSAL_RULE = 'A script can only add features';
+
+/** The same rule for a plugin's handler (ADR-0077 §2): "A plugin can only add features: …". */
+export const PLUGIN_REFUSAL_RULE = 'A plugin can only add features';
 
 /**
  * Why each method of `Design` a script cannot call is refused. Every one of
@@ -56,6 +59,13 @@ export const REFUSED_METHODS: Readonly<Record<string, string>> = {
 
 /** What `design.script(…)` or `design.add('script', …)` inside a script says. */
 export const SCRIPT_IN_SCRIPT = "A script can't add a script.";
+
+/**
+ * What `design.plugin(…)` inside a script or a plugin says: a plugin feature
+ * inside a script is ADR-0077's Deferred, and its file would have to be one of
+ * the design's attachments, which nothing in the sandbox can add.
+ */
+export const PLUGIN_IN_SCRIPT = "A script or a plugin can't add a plugin feature.";
 
 /** The names of the API's own generated feature methods (ADR-0068 §3). */
 const GENERATED: readonly string[] = Object.keys(
@@ -83,7 +93,7 @@ export const SCRIPT_METHODS: readonly string[] = [
 
 /** The editor and sandbox share this list; refused calls and nested scripts stay out. */
 export const ALLOWED_SCRIPT_METHODS = SCRIPT_METHODS.filter(
-  (name) => !(name in REFUSED_METHODS) && name !== SCRIPT_TYPE,
+  (name) => !(name in REFUSED_METHODS) && name !== SCRIPT_TYPE && name !== PLUGIN_TYPE,
 );
 
 /** Generated API descriptions, carried beside the allowed names for completion. */
@@ -113,7 +123,11 @@ export class ScriptDesign {
   readonly #added: FeatureId[] = [];
   readonly #calls: Map<string, (...args: unknown[]) => unknown>;
 
-  constructor(design: Design, featureLimit: number) {
+  /**
+   * `rule` is what a refusal starts with: a script's (`REFUSAL_RULE`) by
+   * default, a plugin's (`PLUGIN_REFUSAL_RULE`) for a plugin's handler.
+   */
+  constructor(design: Design, featureLimit: number, rule: string = REFUSAL_RULE) {
     this.#design = design;
     this.#limit = featureLimit;
     this.origin = design.origin;
@@ -145,7 +159,7 @@ export class ScriptDesign {
       ...Object.entries(generated),
       // Everything else the API has is refused by name.
       ...Object.entries(REFUSED_METHODS).map(
-        ([name, reason]) => [name, () => refused(name, reason)] as [string, () => never],
+        ([name, reason]) => [name, () => refused(rule, name, reason)] as [string, () => never],
       ),
     ]);
   }
@@ -195,6 +209,9 @@ export class ScriptDesign {
     if (method === 'add' && String(first) === SCRIPT_TYPE) {
       throw new ApiError(SCRIPT_IN_SCRIPT);
     }
+    if (method === 'add' && String(first) === PLUGIN_TYPE) {
+      throw new ApiError(PLUGIN_IN_SCRIPT);
+    }
     if (this.#added.length >= this.#limit) {
       throw new ScriptError(featureCountMessage(this.#limit));
     }
@@ -215,6 +232,6 @@ export class ScriptDesign {
 }
 
 /** The message a refused call throws: the rule, then what it would have done. */
-function refused(name: string, reason: string): never {
-  throw new ApiError(`${REFUSAL_RULE}: design.${name}() ${reason}.`);
+function refused(rule: string, name: string, reason: string): never {
+  throw new ApiError(`${rule}: design.${name}() ${reason}.`);
 }

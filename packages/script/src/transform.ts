@@ -24,6 +24,26 @@ export function compileScript(code: string, language: ScriptLanguage): string {
   }
 }
 
+/**
+ * A plugin's module (ADR-0077 §2) as QuickJS will run it: its types stripped as
+ * a script's are, and its `export`s turned into assignments to an `exports`
+ * object by sucrase's `imports` transform, which keeps every line too (its own
+ * preamble goes on the first). The runner gives the module that object and
+ * reads `exports.commands` and `exports.features` back.
+ *
+ * An `import` in the module becomes a `require()`, which the sandbox doesn't
+ * have: a plugin is one file, like a script.
+ */
+export function compileModule(code: string, language: ScriptLanguage): string {
+  try {
+    const transforms: ('typescript' | 'imports')[] =
+      language === 'ts' ? ['typescript', 'imports'] : ['imports'];
+    return transform(code, { transforms }).code;
+  } catch (error) {
+    throw syntaxError(error);
+  }
+}
+
 /** The source, once its length has been checked (ADR-0070 §1's `code` input). */
 export function checkCodeLength(code: string, limit: number): void {
   if (code.length > limit) throw new ScriptError(codeLengthMessage(limit));

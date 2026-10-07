@@ -100,6 +100,19 @@ export interface ExpandContext<I extends FeatureInputs = FeatureInputs> {
   params: Readonly<Record<string, number>>;
   /** The script runner, when the kernel has one (`KernelApi.enableScripts`). */
   scripts: ScriptHost | undefined;
+  /**
+   * What a plugin feature reads besides (P6-03, ADR-0077 §3): its expression
+   * inputs' values, the design's files (its plugin file), and its references
+   * resolved among the bodies before it — a guess warns, a reference that
+   * can't be found throws `LostReferenceError`, so Fix References offers it.
+   */
+  value(input: string): number;
+  file(id: AttachmentId): Uint8Array;
+  fileType(id: AttachmentId): string;
+  fileName(id: AttachmentId): string;
+  resolve(ref: GeomRef, options?: ResolveOptions): ResolvedRef;
+  /** Adds a warning to the feature's status. */
+  warn(message: string): void;
 }
 
 /** What `expand` gives back. */

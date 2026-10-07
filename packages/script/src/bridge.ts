@@ -189,6 +189,25 @@ export class Bridge {
     return this.#keep(this.#ctx.newObject());
   }
 
+  /**
+   * The value at a path of properties (`exports.features['name-plate']`), kept
+   * by the run, or `undefined` where a step is missing or not an object.
+   */
+  property(object: QuickJSHandle, path: readonly string[]): QuickJSHandle | undefined {
+    let at = object;
+    for (const key of path) {
+      const type = this.#ctx.typeof(at);
+      if (type !== 'object' && type !== 'function') return undefined;
+      try {
+        at = this.#keep(this.#ctx.getProp(at, key));
+      } catch {
+        // `null` is an object to `typeof`, and has no properties to read.
+        return undefined;
+      }
+    }
+    return at;
+  }
+
   /** Sets one property of an object we made. */
   set(object: QuickJSHandle, key: string, value: QuickJSHandle): void {
     this.#ctx.setProp(object, key, value);
@@ -205,6 +224,28 @@ export class Bridge {
         return object;
       }),
     );
+  }
+
+  /**
+   * Plain data as a QuickJS value frozen all the way down (`Object.freeze` on
+   * every object and array in it), for what a handler reads and must not change:
+   * a plugin's `inputs` and `ctx` (ADR-0077 §2). A handle is published as its
+   * proxy, unfrozen, as `toValue` would.
+   */
+  freezeDeep(value: unknown): QuickJSHandle {
+    if (value === null || typeof value !== 'object' || isHandle(value)) return this.toValue(value);
+    const ctx = this.#ctx;
+    if (Array.isArray(value)) {
+      const array = this.#keep(ctx.newArray());
+      for (const [index, item] of value.entries()) ctx.setProp(array, index, this.freezeDeep(item));
+      return this.freeze(array);
+    }
+    const object = this.#keep(ctx.newObject());
+    for (const [key, own] of Object.entries(value as Record<string, unknown>)) {
+      if (own === undefined) continue;
+      ctx.setProp(object, key, this.freezeDeep(own));
+    }
+    return this.freeze(object);
   }
 
   /** A value as a short line of text, for `console.log`. */

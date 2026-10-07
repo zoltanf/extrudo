@@ -1,0 +1,43 @@
+{
+  "id": "name-plate",
+  "name": "Name plate",
+  "version": "1.0.0",
+  "description": "A plate with rounded corners on any plane, and a command that drills three holes.",
+  "author": "The Extrudo contributors",
+  "license": "MIT",
+  "main": "main.ts",
+  "commands": [
+    {
+      "id": "three-holes",
+      "label": "Three holes",
+      "hint": "Cuts three Ø4 mm holes through everything along the X axis."
+    }
+  ],
+  "features": [
+    {
+      "type": "name-plate",
+      "label": "Name plate",
+      "hint": "A plate with rounded corners, centred on a plane's origin.",
+      "icon": "box",
+      "inputs": [
+        { "name": "width", "label": "Width", "kind": "expr", "unit": "length", "default": "60 mm" },
+        {
+          "name": "height",
+          "label": "Height",
+          "kind": "expr",
+          "unit": "length",
+          "default": "20 mm"
+        },
+        {
+          "name": "thickness",
+          "label": "Thickness",
+          "kind": "expr",
+          "unit": "length",
+          "default": "3 mm"
+        },
+        { "name": "rounded", "label": "Rounded corners", "kind": "bool", "default": true },
+        { "name": "plane", "label": "Plane", "kind": "ref", "accepts": ["plane"] }
+      ]
+    }
+  ]
+}

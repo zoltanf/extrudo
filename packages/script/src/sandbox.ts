@@ -19,18 +19,26 @@ import { SCRIPT_METHODS, type ScriptDesign } from './restricted';
 import type { ScriptRequest } from './types';
 import { parameterValues } from './values';
 
-/** Puts the globals in place. Every handle is the bridge's to dispose. */
+/**
+ * Puts the globals in place. Every handle is the bridge's to dispose.
+ *
+ * A plugin's module (ADR-0077 §2) gets no global `design` or `params`: its
+ * handlers are given both as arguments (`plugin: true`), so the module itself
+ * is a set of functions and nothing it does at load time touches the design.
+ */
 export function giveGlobals(
   ctx: QuickJSContext,
   bridge: Bridge,
   script: ScriptDesign,
-  request: ScriptRequest,
+  request: Pick<ScriptRequest, 'design' | 'params' | 'featureId'>,
   log: ScriptLog,
+  options: { plugin?: boolean } = {},
 ): void {
   const global = ctx.global;
-  bridge.set(global, 'design', designObject(ctx, bridge, script));
-  const params = request.params ?? parameterValues(request.design.doc);
-  bridge.set(global, 'params', bridge.freeze(bridge.toValue(params)));
+  if (!options.plugin) {
+    bridge.set(global, 'design', designObject(ctx, bridge, script));
+    bridge.set(global, 'params', bridge.freezeDeep(paramsOf(request)));
+  }
   bridge.set(global, 'console', consoleObject(bridge, log));
   const random = seededRandom(request.featureId);
   const math = ctx.getProp(global, 'Math');
@@ -98,13 +106,24 @@ function giveFrozenDate(ctx: QuickJSContext): void {
   result.value.dispose();
 }
 
+/** The parameter values a run reads: the caller's, else the design's own. */
+export function paramsOf(
+  request: Pick<ScriptRequest, 'design' | 'params'>,
+): Readonly<Record<string, number>> {
+  return request.params ?? parameterValues(request.design.doc);
+}
+
 /**
  * `design`: one QuickJS function per name in `SCRIPT_METHODS`, each marshalling
  * its arguments as JSON to the host's restricted design. Two names are not plain
  * calls: `origin` is a value, as on `Design`, and `sketch` takes a function,
  * which is run here rather than marshalled.
  */
-function designObject(ctx: QuickJSContext, bridge: Bridge, script: ScriptDesign): QuickJSHandle {
+export function designObject(
+  ctx: QuickJSContext,
+  bridge: Bridge,
+  script: ScriptDesign,
+): QuickJSHandle {
   const object = bridge.newObject();
   for (const name of SCRIPT_METHODS) {
     if (name === 'origin') {

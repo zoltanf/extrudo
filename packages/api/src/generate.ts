@@ -81,6 +81,11 @@ export interface FeatureDoc {
   inputs: InputDoc[];
   /** The face roles the kernel names this feature's faces with (ADR-0068 §4). */
   faceRoles: InputDoc[];
+  /**
+   * The name of the object a call gives open-ended inputs in (a plugin
+   * feature's `inputs`, ADR-0077 §3), for a type that has them.
+   */
+  open?: string;
 }
 
 /** The text of `generated/features.ts`, as Biome wants it on disk. */
@@ -117,7 +122,7 @@ export function generate(): string {
     // needs no fixing afterwards.
     `import type { Design, FeatureOptions } from '../design';`,
     `import type { FeatureHandle } from '../handles';`,
-    `import type { FeatureInputValue, PlainInputs } from '../inputs';`,
+    `import type { FeatureInputValue, OpenInputValues, PlainInputs } from '../inputs';`,
     `import type { LineHandle } from '../sketch';`,
     '',
     `/** Every feature type \`Design.add\` takes, in the registry's order. */`,
@@ -266,11 +271,23 @@ function readFeature(definition: FeatureDefinition): FeatureDoc {
       ...readInput(property),
     };
   });
+  // Open-ended inputs (a plugin feature's own, ADR-0077 §3) are one object of
+  // the call, which the schema doesn't list: they get a row of their own.
+  const open = definition.openInputs;
+  if (open) {
+    inputs.push({
+      name: open.name,
+      required: false,
+      description: open.description,
+      type: 'Record<string, OpenInputValue>',
+    });
+  }
   return {
     type: definition.type,
     label: definition.label,
     category: definition.category,
     inputs,
+    ...(open && { open: open.name }),
     faceRoles: (definition.faceRoles ?? []).map((role) => ({
       name: role.pattern,
       required: true,
@@ -401,8 +418,17 @@ function methodDeclaration(feature: FeatureDoc): string[] {
       ? [`   *`, `   * The faces it makes, as \`handle.face(role)\` takes them:`, ...roles]
       : []),
     `   */`,
-    `  ${methodName(feature.type)}(${parameters}: PlainInputs<${inputTypeName(feature.type)}>, options?: FeatureOptions): FeatureHandle<'${feature.type}'>;`,
+    `  ${methodName(feature.type)}(${parameters}: ${inputsType(feature)}, options?: FeatureOptions): FeatureHandle<'${feature.type}'>;`,
   ];
+}
+
+/**
+ * The type of a method's inputs: core's own in plain form, and for a type with
+ * open-ended inputs the object that holds them (`inputs?: OpenInputValues`).
+ */
+function inputsType(feature: FeatureDoc): string {
+  const plain = `PlainInputs<${inputTypeName(feature.type)}>`;
+  return feature.open ? `${plain} & { ${feature.open}?: OpenInputValues }` : plain;
 }
 
 /** The method's own parameters, with the default for a feature that needs none. */

@@ -27,7 +27,7 @@ import {
   generatedFeatureId,
 } from '@extrudo/core';
 import { type LoadScriptRunnerOptions, loadScriptRunner, type ScriptRunner } from './runner';
-import type { ScriptFailure, ScriptLanguage } from './types';
+import type { PluginHandler, ScriptFailure, ScriptLanguage, ScriptResult } from './types';
 
 /** One run, as the kernel asks for it (`ScriptRunRequest` in `@extrudo/kernel`). */
 export interface ScriptHostRequest {
@@ -40,6 +40,28 @@ export interface ScriptHostRequest {
   params: Readonly<Record<string, number>>;
 }
 
+/**
+ * One run of a plugin's handler, as the kernel asks for it (`PluginRunRequest`
+ * in `@extrudo/kernel`, ADR-0077 §2-§3): the module's source as the plugin file
+ * holds it, the handler, and what a script's run has besides.
+ */
+export interface PluginHostRequest {
+  code: string;
+  language: ScriptLanguage;
+  handler: PluginHandler;
+  /** The document before the feature (or, for a command, the design as it is). */
+  doc: ExtrudoDocument;
+  /** The plugin feature's ID (a command's caller picks one): generated IDs start with it. */
+  featureId: FeatureId;
+  /** Its name ("Name plate1"): generated features are named "Name plate1 › Extrude1". */
+  featureName: string;
+  params: Readonly<Record<string, number>>;
+  /** A feature's inputs as plain values, by their manifest names. */
+  inputs?: Readonly<Record<string, unknown>>;
+  /** A command's model selection. */
+  selection?: readonly unknown[];
+}
+
 /** What a run gives the kernel (`ScriptRunResult` in `@extrudo/kernel`). */
 export type ScriptHostResult =
   | { ok: true; features: Feature[]; log: string[] }
@@ -48,6 +70,7 @@ export type ScriptHostResult =
 /** The runner behind the kernel's `ScriptHost` interface. */
 export interface ScriptHostAdapter {
   run(request: ScriptHostRequest): ScriptHostResult;
+  runPlugin(request: PluginHostRequest): ScriptHostResult;
 }
 
 /** What separates the script's name from a generated feature's own: "Script1 › Extrude1". */
@@ -55,7 +78,10 @@ export const GENERATED_NAME_SEPARATOR = ' › ';
 
 /** The kernel's script host over a runner. */
 export function scriptHost(runner: ScriptRunner): ScriptHostAdapter {
-  return { run: (request) => runScript(runner, request) };
+  return {
+    run: (request) => runScript(runner, request),
+    runPlugin: (request) => runPlugin(runner, request),
+  };
 }
 
 /**
@@ -70,6 +96,46 @@ export async function loadScriptHost(
 
 /** One run: a design over the document, the code, and the features it added. */
 export function runScript(runner: ScriptRunner, request: ScriptHostRequest): ScriptHostResult {
+  return generate(request, 'script', (design) =>
+    runner.run({
+      code: request.code,
+      language: request.language,
+      design,
+      featureId: request.featureId,
+      params: request.params,
+    }),
+  );
+}
+
+/**
+ * One run of a plugin's handler (ADR-0077 §2): the same design, IDs and names
+ * as a script's run, and the handler called by `ScriptRunner.runPlugin`.
+ */
+export function runPlugin(runner: ScriptRunner, request: PluginHostRequest): ScriptHostResult {
+  return generate(request, 'plugin', (design) =>
+    runner.runPlugin({
+      code: request.code,
+      language: request.language,
+      handler: request.handler,
+      design,
+      featureId: request.featureId,
+      params: request.params,
+      ...(request.inputs !== undefined && { inputs: request.inputs }),
+      ...(request.selection !== undefined && { selection: request.selection }),
+    }),
+  );
+}
+
+/**
+ * A run of either kind: a design over the document whose feature IDs are the
+ * API's counter behind the feature's ID, the run, and the features it added,
+ * named after the feature.
+ */
+function generate(
+  request: { doc: ExtrudoDocument; featureId: FeatureId; featureName: string },
+  what: 'script' | 'plugin',
+  run: (design: Design) => ScriptResult,
+): ScriptHostResult {
   const counter = new CounterIds();
   const ids = (kind: IdKind): string =>
     kind === 'feature'
@@ -83,17 +149,11 @@ export function runScript(runner: ScriptRunner, request: ScriptHostRequest): Scr
     const message = error instanceof Error ? error.message : String(error);
     return {
       ok: false,
-      error: { message: `The script can't read this design: ${message}` },
+      error: { message: `The ${what} can't read this design: ${message}` },
       log: [],
     };
   }
-  const result = runner.run({
-    code: request.code,
-    language: request.language,
-    design,
-    featureId: request.featureId,
-    params: request.params,
-  });
+  const result = run(design);
   if (!result.ok) return result;
   const made = new Set<string>(result.added);
   const features = design.doc.features.filter((feature) => made.has(feature.id));

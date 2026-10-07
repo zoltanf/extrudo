@@ -4,6 +4,18 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P6-03 plugin API, slice 1** (ADR-0077): core's `PluginManifest`
+  (strict, refused with its place: "plugin.json › features[0] › inputs[2] › kind:
+  expected one of expr, bool, enum, ref") and the `plugin` feature (`plugin`,
+  `handler`, `in:<name>` inputs; file format §6.32), `.extrudo-plugin` files
+  through `@extrudo/storage`'s `readPluginFile` (1 MB, no path outside the root) as
+  attachments of type `application/x-extrudo-plugin`, `d.plugin({ plugin, handler,
+  inputs })` in the API, `ScriptRunner.runPlugin` (the module's exports through
+  sucrase's `imports` transform, the restricted design, frozen inputs and ctx, "A
+  plugin can only add features"), the kernel's `expand` for it (manifest-checked
+  inputs, resolved references, Fix References for a lost one), the `Recomputer`'s
+  and the CLI's resource sending, and the example plugin
+  `examples/plugins/name-plate/` run headless in `packages/cli`.
 - 2026-10-07 · **WebGL fallback** (ADR-0076): the 3D view draws in the browser's software
   WebGL where there is no hardware (dpr 1, no antialiasing, a status bar "Software rendering"
   and a one-time toast), shows "Extrudo can't draw the 3D view in this browser" where there is

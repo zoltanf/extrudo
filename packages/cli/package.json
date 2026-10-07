@@ -25,5 +25,8 @@
     "@extrudo/openscad": "workspace:*",
     "@extrudo/sketch": "workspace:*",
     "@extrudo/storage": "workspace:*"
+  },
+  "devDependencies": {
+    "fflate": "^0.8.3"
   }
 }

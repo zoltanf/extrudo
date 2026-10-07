@@ -42,6 +42,7 @@ import type {
   PlaneAlongPathInputs,
   PlaneAtAngleInputs,
   PlaneThroughPointsInputs,
+  PluginInputs,
   PointAtIntersectionInputs,
   PointOnPathInputs,
   RectangularPatternInputs,
@@ -60,7 +61,7 @@ import type {
 } from '@extrudo/core';
 import type { Design, FeatureOptions } from '../design';
 import type { FeatureHandle } from '../handles';
-import type { FeatureInputValue, PlainInputs } from '../inputs';
+import type { FeatureInputValue, OpenInputValues, PlainInputs } from '../inputs';
 import type { LineHandle } from '../sketch';
 
 /** Every feature type `Design.add` takes, in the registry's order. */
@@ -110,6 +111,7 @@ export const FEATURE_TYPES = [
   'import',
   'canvas',
   'script',
+  'plugin',
 ] as const;
 
 /** A feature type of `FEATURE_TYPES`. */
@@ -161,6 +163,7 @@ export const FEATURE_METHOD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   import: 'Import (create): one feature of the timeline.',
   canvas: 'Canvas (create): one feature of the timeline.',
   script: 'Script (create): one feature of the timeline.',
+  plugin: 'Plugin feature (create): one feature of the timeline.',
 };
 
 /** The face roles each feature type names its faces with (ADR-0068 §4). */
@@ -1328,6 +1331,17 @@ export interface FeatureMethods {
    * @param inputs.language What the source is written in: `ts` (its types are stripped) or `js`. Default ts.
    */
   script(inputs: PlainInputs<ScriptInputs>, options?: FeatureOptions): FeatureHandle<'script'>;
+  /**
+   * Plugin feature (create): one feature of the timeline.
+   *
+   * @param inputs.plugin The plugin file: an attachment of this design with the media type `application/x-extrudo-plugin`. The design carries its own copy, so it opens where the plugin isn't installed. Required.
+   * @param inputs.handler Which of the plugin's custom features this is: a `type` its manifest lists under `features` (`name-plate`). Required.
+   * @param inputs.inputs The plugin's own inputs by their manifest names: an expression as a string (its unit read off it, a length unless it ends in an angle unit) or a parameter handle, a plain number as a number, a toggle as a boolean, references as one or a list, and a choice as `{ kind: 'enum', value }`. Stored as `in:<name>`.
+   */
+  plugin(
+    inputs: PlainInputs<PluginInputs> & { inputs?: OpenInputValues },
+    options?: FeatureOptions,
+  ): FeatureHandle<'plugin'>;
 }
 
 /**
@@ -1424,6 +1438,8 @@ export function featureMethods(design: FeatureMethodTarget): FeatureMethods {
       design.add('canvas', inputs, options) as FeatureHandle<'canvas'>,
     script: (inputs, options?: FeatureOptions) =>
       design.add('script', inputs, options) as FeatureHandle<'script'>,
+    plugin: (inputs, options?: FeatureOptions) =>
+      design.add('plugin', inputs, options) as FeatureHandle<'plugin'>,
   };
 }
 
@@ -1595,6 +1611,13 @@ export function featureExamples(d: Design): void {
   // Script.
   d.script({
     code: "for (let i = 0; i < 3; i++) design.cylinder({ diameter: '6 mm', height: '4 mm', x: i * 10 });",
+  });
+
+  // Plugin feature.
+  d.plugin({
+    plugin: 'att-name-plate',
+    handler: 'name-plate',
+    inputs: { width: '60 mm', rounded: true, plane: d.origin.xy },
   });
 
   // Sketch.

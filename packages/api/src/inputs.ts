@@ -28,8 +28,10 @@ import {
   type LabelsInput,
   type RefInput,
   type RefInputMeta,
+  type UnitKind,
   z,
 } from '@extrudo/core';
+import { inferUnit } from './expr';
 import { ParameterHandle } from './handles';
 
 /**
@@ -91,11 +93,40 @@ export type PlainInputs<I extends FeatureInputs> = {
   [K in keyof I]: PlainValue<NonNullable<I[K]>> | NonNullable<I[K]>;
 };
 
+/**
+ * One open-ended input (a plugin feature's own, ADR-0077 §3), which no schema
+ * types: an expression as a string (its unit read off it: a length unless it
+ * ends in an angle unit) or a parameter handle (its own unit), a plain number
+ * as a number, an expression of a stated unit as `{ expr, unit }`, a toggle as
+ * a boolean, references as one or a list, and anything else (a choice:
+ * `{ kind: 'enum', value }`) in its stored form.
+ */
+export type OpenInputValue =
+  | string
+  | number
+  | boolean
+  | ParameterHandle
+  | { expr: string; unit: UnitKind }
+  | RefValue
+  | ExprInput
+  | BoolInput
+  | EnumInput
+  | RefInput;
+
+/** The object of open-ended inputs a call gives (`inputs: { width: '60 mm' }`). */
+export type OpenInputValues = Readonly<Record<string, OpenInputValue>>;
+
 /** Any feature's inputs in plain form, which is what `add` takes as well. */
 export type ApiInputs = PlainInputs<FeatureInputs>;
 
+/**
+ * Inputs with an object of open-ended ones among them (a plugin feature's
+ * `inputs`, ADR-0077 §3), which `storedInputs` spreads under their prefix.
+ */
+export type OpenApiInputs = Readonly<Record<string, ApiInputs[string] | OpenInputValues>>;
+
 /** Inputs as a call gives them: the plain form, or a stored input as it is. */
-export type FeatureInputValue = FeatureInputs | ApiInputs;
+export type FeatureInputValue = FeatureInputs | ApiInputs | OpenApiInputs;
 
 /**
  * A call's inputs as stored inputs: the stored ones unchanged, the plain ones
@@ -107,10 +138,41 @@ export function storedInputs(type: string, inputs: FeatureInputValue): FeatureIn
   const given = compact(inputs);
   if (!definition) return given;
   const stored: Record<string, unknown> = {};
+  const open = definition.openInputs;
   for (const [name, value] of Object.entries(given)) {
+    // A plugin feature's own inputs, given as one object (ADR-0077 §3): each
+    // is stored under the prefix, and its kind read off the value itself.
+    if (open && name === open.name && isPlainObject(value)) {
+      for (const [own, input] of Object.entries(value)) {
+        if (input === undefined) continue;
+        stored[`${open.prefix}${own}`] = isStoredInput(input) ? input : openInput(input);
+      }
+      continue;
+    }
     stored[name] = isStoredInput(value) ? value : plainInput(definition, name, value);
   }
   return stored as FeatureInputs;
+}
+
+/**
+ * An open-ended input's plain value as a stored input (`OpenInputValue`): no
+ * schema says what it is, so the value does. A string is an expression whose
+ * unit is read off it, a number a plain number, a boolean a toggle.
+ */
+function openInput(value: unknown): unknown {
+  if (value instanceof ParameterHandle) return { kind: 'expr', expr: value.name, unit: value.unit };
+  if (typeof value === 'string') return { kind: 'expr', expr: value, unit: inferUnit(value) };
+  if (typeof value === 'number') return { kind: 'expr', expr: String(value), unit: 'unitless' };
+  if (typeof value === 'boolean') return { kind: 'bool', value };
+  if (isPlainExpr(value) && typeof (value as { unit?: unknown }).unit === 'string') {
+    const { expr, unit } = value as { expr: string; unit: UnitKind };
+    return { kind: 'expr', expr, unit };
+  }
+  return referenceInput(value);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**

@@ -37,7 +37,12 @@ import type { MeshOptions } from '../mesh';
 import type { ShapeDescription } from '../naming/description';
 import { fingerprintOf } from '../naming/fingerprint';
 import { namesOf, positionalNames, type TopoNames } from '../naming/names';
-import { LostReferenceError, resolveRef } from '../naming/resolve';
+import {
+  LostReferenceError,
+  type ResolvedRef,
+  type ResolveOptions,
+  resolveRef,
+} from '../naming/resolve';
 import { type ScriptHost, ScriptRunError } from '../script-host';
 import { hashOf } from './hash';
 import {
@@ -96,6 +101,8 @@ type ScriptRun =
       log: readonly string[];
       /** The generated features' expression inputs, evaluated with them in the document. */
       inputs: ReadonlyMap<FeatureId, ReadonlyMap<string, EvaluateResult>>;
+      /** What the feature itself warned about (a plugin feature's guessed reference). */
+      warnings: readonly string[];
     }
   | {
       ok: false;
@@ -325,7 +332,7 @@ export class RecomputeEngine {
     /** Each script that ran, and what it made. */
     const scriptRuns = new Map<
       FeatureId,
-      { features: readonly Feature[]; log: readonly string[] }
+      { features: readonly Feature[]; log: readonly string[]; warnings: readonly string[] }
     >();
     const passed = new Map<FeatureId, Passed>();
     const features: Record<FeatureId, FeatureStatus> = {};
@@ -393,12 +400,21 @@ export class RecomputeEngine {
           fail("A script can't add a script.");
           continue;
         }
-        const run = this.#expand(definition, feature, parsed.data, doc, parameters, () => {
-          // A trap in the runner's own WASM ends the worker like an OCCT one;
-          // the app then holds the script as the feature that crashed it.
-          onFeature?.(feature.id);
-          evaluated.push(feature.id);
-        });
+        const run = this.#expand(
+          definition,
+          feature,
+          parsed.data,
+          doc,
+          parameters,
+          values,
+          bodies,
+          () => {
+            // A trap in the runner's own WASM ends the worker like an OCCT one;
+            // the app then holds the script as the feature that crashed it.
+            onFeature?.(feature.id);
+            evaluated.push(feature.id);
+          },
+        );
         if (!run.ok) {
           features[feature.id] = run.status;
           passed.set(feature.id, { state: 'failed' });
@@ -595,6 +611,8 @@ export class RecomputeEngine {
     inputs: Feature['inputs'],
     doc: ExtrudoDocument,
     parameters: ParameterEvaluation,
+    values: Record<string, number>,
+    bodies: ReadonlyMap<BodyId, ShapeHandle>,
     starting: () => void,
   ): ScriptRun {
     const own = doc.features.findIndex((f) => f.id === feature.id);
@@ -621,6 +639,9 @@ export class RecomputeEngine {
       before.attachments,
       before.features,
       params,
+      // A plugin feature's expression inputs (ADR-0077 §3); its references
+      // resolve among bodies the document before it decides, which is above.
+      values,
     );
     const known = this.#runs.get(key);
     if (known) {
@@ -629,6 +650,7 @@ export class RecomputeEngine {
       return known;
     }
     starting();
+    const references = this.#references(feature, bodies);
     let run: ScriptRun;
     try {
       // biome-ignore lint/style/noNonNullAssertion: only called for a definition with `expand`.
@@ -638,6 +660,14 @@ export class RecomputeEngine {
         doc: before,
         params,
         scripts: this.#options.scripts?.(),
+        value(input) {
+          const value = values[input];
+          if (value === undefined) throw new Error(`${feature.name} has no expression "${input}".`);
+          return value;
+        },
+        ...this.#files(doc),
+        resolve: references.resolve,
+        warn: (message) => references.warnings.push(message),
       });
       // Their expressions are evaluated with them in the document: a sketch's
       // named dimensions are parameters, and the features use them.
@@ -646,23 +676,33 @@ export class RecomputeEngine {
         features: [...before.features, ...expansion.features],
         timelineMarker: before.features.length + expansion.features.length,
       });
-      const values = new Map<FeatureId, ReadonlyMap<string, EvaluateResult>>();
+      const evaluated = new Map<FeatureId, ReadonlyMap<string, EvaluateResult>>();
       for (const made of expansion.features) {
         const found = evaluation.inputs.get(made.id);
-        if (found) values.set(made.id, found);
+        if (found) evaluated.set(made.id, found);
       }
-      run = { ok: true, key, features: expansion.features, log: expansion.log, inputs: values };
+      run = {
+        ok: true,
+        key,
+        features: expansion.features,
+        log: expansion.log,
+        inputs: evaluated,
+        warnings: [...new Set(references.warnings)],
+      };
     } catch (error) {
       if (error instanceof WebAssembly.RuntimeError) throw error;
+      if (error instanceof LostReferenceError) references.note(error.ref, 'lost');
       if (!(error instanceof KernelError)) console.error(error);
       const message = error instanceof Error ? error.message : String(error);
       const failure = error instanceof ScriptRunError ? error : undefined;
       run = {
         ok: false,
-        answer: failure !== undefined,
+        // A lost reference is the document's answer too: the same inputs lose it again.
+        answer: failure !== undefined || error instanceof LostReferenceError,
         status: {
           status: 'error',
           message: error instanceof KernelError ? message : `Internal error: ${message}`,
+          ...(references.issues.size > 0 && { refs: [...references.issues.values()] }),
           script: {
             generated: [],
             log: [...(failure?.log ?? [])],
@@ -698,20 +738,7 @@ export class RecomputeEngine {
     prepared?: Prepared,
   ): Entry {
     const kernel = this.#kernel;
-    const warnings: string[] = [];
-    // References it lost or guessed (ADR-0033), by kind and ID; a loss outranks a guess.
-    const issues = new Map<string, ReferenceIssue>();
-    const note = (ref: GeomRef, state: ReferenceIssue['state'], now?: GeomRef) => {
-      const key = `${ref.kind} ${ref.id}`;
-      if (issues.get(key)?.state === 'lost') return;
-      issues.set(key, { ref: { kind: ref.kind, id: ref.id }, state, ...(now && { now }) });
-    };
-    const bodyNames = (id: BodyId): TopoNames => {
-      const shape = bodies.get(id);
-      const names = shape === undefined ? undefined : this.#names.get(shape);
-      if (!names) throw new Error(`${feature.name} has no body ${id} before it.`);
-      return names;
-    };
+    const { warnings, issues, note, names: bodyNames, resolve } = this.#references(feature, bodies);
     const describe = (shape: ShapeHandle) => this.#describe(shape);
     const files = this.#files(doc);
     const ctx: EvalContext = {
@@ -721,35 +748,7 @@ export class RecomputeEngine {
       bodies,
       names: bodyNames,
       describe,
-      resolve(ref, options) {
-        const named = [...bodies].map(([id, shape]) => ({ id, shape, names: bodyNames(id) }));
-        let resolved: ReturnType<typeof resolveRef>;
-        try {
-          resolved = resolveRef(ref, named, describe, options);
-        } catch (error) {
-          if (error instanceof LostReferenceError) note(error.ref, 'lost');
-          throw error;
-        }
-        if (resolved.warning) {
-          warnings.push(resolved.warning);
-          // What it took instead, as a reference that would resolve exactly ("Keep closest match").
-          const now: GeomRef | undefined =
-            resolved.id === ref.id
-              ? undefined
-              : {
-                  kind: resolved.kind,
-                  id: resolved.id,
-                  fingerprint: fingerprintOf(
-                    describe(resolved.shape),
-                    bodyNames(resolved.body),
-                    resolved.kind,
-                    resolved.index,
-                  ),
-                };
-          note(ref, 'guessed', now);
-        }
-        return resolved;
-      },
+      resolve,
       warn(message) {
         warnings.push(message);
       },
@@ -818,6 +817,60 @@ export class RecomputeEngine {
     const entry: Entry = { key, status, output, handles };
     this.#entries.set(key, entry);
     return entry;
+  }
+
+  /**
+   * How a feature resolves its face, edge and vertex references among the
+   * bodies before it (ADR-0005), and what it collects doing so: the warnings of
+   * a guess and the references it lost or guessed (ADR-0033), by kind and ID —
+   * a loss outranks a guess. An evaluator's `resolve` and a plugin feature's
+   * (`expand`, ADR-0077 §3) are this one.
+   */
+  #references(feature: Feature, bodies: ReadonlyMap<BodyId, ShapeHandle>) {
+    const warnings: string[] = [];
+    const issues = new Map<string, ReferenceIssue>();
+    const note = (ref: GeomRef, state: ReferenceIssue['state'], now?: GeomRef) => {
+      const key = `${ref.kind} ${ref.id}`;
+      if (issues.get(key)?.state === 'lost') return;
+      issues.set(key, { ref: { kind: ref.kind, id: ref.id }, state, ...(now && { now }) });
+    };
+    const names = (id: BodyId): TopoNames => {
+      const shape = bodies.get(id);
+      const found = shape === undefined ? undefined : this.#names.get(shape);
+      if (!found) throw new Error(`${feature.name} has no body ${id} before it.`);
+      return found;
+    };
+    const describe = (shape: ShapeHandle) => this.#describe(shape);
+    const resolve = (ref: GeomRef, options?: ResolveOptions): ResolvedRef => {
+      const named = [...bodies].map(([id, shape]) => ({ id, shape, names: names(id) }));
+      let resolved: ReturnType<typeof resolveRef>;
+      try {
+        resolved = resolveRef(ref, named, describe, options);
+      } catch (error) {
+        if (error instanceof LostReferenceError) note(error.ref, 'lost');
+        throw error;
+      }
+      if (resolved.warning) {
+        warnings.push(resolved.warning);
+        // What it took instead, as a reference that would resolve exactly ("Keep closest match").
+        const now: GeomRef | undefined =
+          resolved.id === ref.id
+            ? undefined
+            : {
+                kind: resolved.kind,
+                id: resolved.id,
+                fingerprint: fingerprintOf(
+                  describe(resolved.shape),
+                  names(resolved.body),
+                  resolved.kind,
+                  resolved.index,
+                ),
+              };
+        note(ref, 'guessed', now);
+      }
+      return resolved;
+    };
+    return { warnings, issues, note, names, resolve };
   }
 
   /**
@@ -1051,7 +1104,7 @@ function missingProblem(
  * what it made, with each one's own status, is there for the editor.
  */
 function scriptStatus(
-  run: { features: readonly Feature[]; log: readonly string[] },
+  run: { features: readonly Feature[]; log: readonly string[]; warnings?: readonly string[] },
   features: Readonly<Record<FeatureId, FeatureStatus>>,
 ): FeatureStatus {
   const generated: GeneratedFeatureStatus[] = run.features.map((made) => {
@@ -1070,7 +1123,8 @@ function scriptStatus(
       .filter((g) => g.status === status)
       .map((g) => `${g.name}: ${g.message ?? (status === 'error' ? 'it has an error.' : '')}`);
   const errors = said('error');
-  const warnings = said('warning');
+  // The feature's own first (a plugin feature's guessed reference), then its features'.
+  const warnings = [...(run.warnings ?? []), ...said('warning')];
   if (errors.length > 0) {
     return { status: 'error', message: [...errors, ...warnings].join(' '), script };
   }

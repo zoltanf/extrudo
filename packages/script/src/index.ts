@@ -26,6 +26,8 @@ export { Bridge, HANDLE_CLASSES } from './bridge';
 export {
   GENERATED_NAME_SEPARATOR,
   loadScriptHost,
+  type PluginHostRequest,
+  runPlugin,
   runScript,
   type ScriptHostAdapter,
   type ScriptHostRequest,
@@ -47,6 +49,8 @@ export {
 export { ScriptLog } from './log';
 export { seededRandom } from './random';
 export {
+  PLUGIN_IN_SCRIPT,
+  PLUGIN_REFUSAL_RULE,
   REFUSAL_RULE,
   REFUSED_METHODS,
   SCRIPT_IN_SCRIPT,
@@ -56,9 +60,13 @@ export {
 export {
   type LoadScriptRunnerOptions,
   loadScriptRunner,
+  missingHandlerMessage,
+  PLUGIN_CODE_LIMIT,
   ScriptRunner,
 } from './runner';
 export type {
+  PluginHandler,
+  PluginRequest,
   ScriptFailure,
   ScriptLanguage,
   ScriptLimits,
