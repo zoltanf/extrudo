@@ -344,6 +344,9 @@ function reportFiles(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>):
     if (!allowed) continue;
     for (const [name, input] of Object.entries(feature.inputs)) {
       if (input.kind !== 'file') continue;
+      // A plugin's own `in:` inputs are the feature's business (ADR-0077): a
+      // foreign kind there is that feature's error, never the document's.
+      if (feature.type === 'plugin' && name.startsWith('in:')) continue;
       const attachment = doc.attachments?.[input.id];
       if (!attachment) {
         ctx.addIssue({

@@ -61,9 +61,7 @@ describe('the plugin feature', () => {
       ...feature.inputs,
       'in:source': { kind: 'code', value: 'x' },
     });
-    expect(code.error?.issues[0]?.message).toBe(
-      'must be an expr, bool, enum or ref input, not code',
-    );
+    expect(code.error?.issues[0]?.message).toBe("has a kind this plugin can't take");
     const badName = PluginInputsSchema.safeParse({
       ...feature.inputs,
       'in:2x': feature.inputs['in:rounded'],

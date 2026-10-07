@@ -234,6 +234,12 @@ export function pluginFeatureSpec(
       }
       return undefined;
     },
+    // A cancelled dialog forgets the pending file. The bytes `preparePluginAttachment`
+    // wrote to the project store stay there, like Update to <version>'s: the next
+    // version save collects what no document names (ADR-0061 §4).
+    onCancel() {
+      clearPendingPlugin(plugin.id);
+    },
     // The plugin file, in the same undo step as the first feature that names it.
     commitWith(_values: DialogValues, ctx: DialogContext): readonly Command<unknown>[] {
       if (ctx.feature) return [];

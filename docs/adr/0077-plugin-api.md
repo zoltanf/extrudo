@@ -529,3 +529,48 @@ of a command runs on the UI thread.
   (the Create menu and Ctrl+K are the places). Not done: a Plugins entry in the marking
   menu (untouched, as the brief says).
 
+## Results: slice 4 (the review)
+
+A review of slices 1–3 found the sandbox boundary sound (no escape through
+globals, prototypes, marshalling, sucrase's `imports` transform, limits or the
+schema) and two unsound pre-checks, one lenient-reading hole, some hardening and
+documentation drift. What changed:
+
+- **Zip inflation is bounded by what comes out, not by what the header says**
+  (`readPluginFile`). `unzipSync` was filtered on `originalSize`, which bounds
+  memory but not CPU: a header that says 100 bytes over an entry that inflates to
+  64 MB burnt seconds on the UI thread. The reader now drives fflate's streaming
+  `Unzip` (`UnzipInflate` and `UnzipPassThrough` registered) and pushes the
+  compressed bytes **1 kB at a time** with `final` on the last: fflate inflates
+  whatever one `push` gives it in a single call, so a single push of the whole
+  buffer would still expand everything before `ondata` could count it, while a
+  1 kB push expands to about 1 MB at most. `ondata` counts the real bytes and
+  throws `PluginFileError` ("more than 4 MB unpacked") the moment the total passes
+  4 MB. Also refused: more than 64 entries, an entry name with a NUL or any
+  control character, `README.md` or `LICENSE` over 256 kB. Measured: the 64 MB
+  lying zip is refused in about 23 ms.
+- **A foreign `in:` input is the feature's error, never the document's.**
+  `reportFiles` looks at a plugin feature's `plugin` input only; the feature's
+  schema words an `in:` key of a kind outside `expr`/`bool`/`enum`/`ref` as "has a
+  kind this plugin can't take", which the engine shows as the feature's error
+  ("Invalid inputs: in:x has a kind this plugin can't take"). A document with
+  `file`, `labels`, `code` or `sketchData` there opens. File format §6.32 says so.
+- **Desktop:** `plugin:call`'s `install` refuses bytes over `MAX_PLUGIN_BYTES`
+  in main, before the store sees them.
+- **Manifest strings** the UI shows (`name`, `description`, `author`, labels,
+  hints, enum options) are refused, not stripped, when they hold a C0/C1 control
+  character (a tab is allowed) or a bidi override or isolate.
+- **A cancelled plugin dialog** forgets its pending file (`FeatureDialogSpec.onCancel`,
+  called by the controller's `cancel` and `dispose`, not when another dialog
+  replaces it or on OK). The bytes already written to the project store stay for
+  the next version save's collection (ADR-0061 §4).
+- **`checkedGenerated` compares with the document's own feature IDs**; a plugin
+  can't replace `Date` or `Math.random` (identity checked at the end of the run:
+  two property reads and two comparisons, no measurable cost).
+- Docs: `ctx.selection`, the complete limits, the closed `ref.accepts` list, the
+  caps and the ID rule. Tests for each, plus `ctx.selection` and the 2 s / 64 MB /
+  1,000-feature limits through `runPlugin`, and `throw null`, `throw {}` and
+  `throw 'x'`.
+- Not changed (the review judged them not worth it): `read` shipping a plugin's
+  code on every list refresh, the filesystem path in a Node error's message, the
+  crash-window orphan folder.

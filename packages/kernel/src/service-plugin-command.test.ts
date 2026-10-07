@@ -106,6 +106,21 @@ describe('runPluginCommand', () => {
   });
 });
 
+describe('a generated ID that collides with the document', () => {
+  it('is refused, like a stray one, when a stored feature already has it', () => {
+    const { host } = fakeHost(() => ({ ok: true, features: [generated('cmd.f1')], log: [] }));
+    const taken = {
+      ...doc,
+      features: [...doc.features, generated('cmd.f1')],
+    };
+    expect(runPluginCommand(host, file, { ...request, doc: taken })).toMatchObject({
+      ok: false,
+      error: { message: 'Tiny 1.2.0: The plugin made a feature with the ID cmd.f1.' },
+    });
+    expect(runPluginCommand(host, file, request)).toMatchObject({ ok: true });
+  });
+});
+
 describe('KernelService.runPluginCommand', () => {
   it('says so, as data, when the kernel was started without a runner', async () => {
     const service = new KernelService(() => loadOcct());

@@ -2017,7 +2017,7 @@ written and cached **before** the dialog opens; `plugins/pending.ts` holds it an
 `commitWith` adds the record in the feature's undo step. "Update to <version>" is
 `designPlugins`' `update` entry and `updatePluginInDesign` (`plugins/update.ts`, one
 undo step over every feature of that plugin). `docs/plugins.md` is the guide,
-`docs/api/plugins.md` the API page.
+`docs/api/plugins.md` the API page. **Slice 4 (the review's fixes)** bounds the file reader: `readPluginFile` inflates through fflate's streaming `Unzip` in 1 kB pushes and throws once the *real* output passes 4 MB (a header's `originalSize` is never trusted), at most 64 entries, no control characters in names, README/LICENSE 256 kB; manifest strings refuse control and bidi characters; main caps `install`'s bytes at 1 MB; a foreign `in:` kind is the feature's error (`reportFiles` ignores `in:`), generated IDs may not collide with the document's, and a plugin that replaces `Date`/`Math.random` is refused at the end of its run.
 
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): **Phase 5 is complete** — P5-01 (all three slices,

@@ -905,10 +905,12 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       return true;
     },
     cancel() {
+      get()?.spec.onCancel?.();
       if (get()) close();
     },
     dispose() {
       unsubscribe();
+      get()?.spec.onCancel?.();
       if (get()) close();
     },
   };

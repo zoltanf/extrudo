@@ -7,7 +7,7 @@
  * throw comes back as `{ error: … }` data like `store-call.ts`'s, so the
  * renderer rebuilds the class and the reader's words survive.
  */
-import type { PluginStore } from '@extrudo/storage';
+import { MAX_PLUGIN_BYTES, PluginFileError, type PluginStore } from '@extrudo/storage';
 import { type ErrorEnvelope, serializeError } from '../shared/errors';
 import { isPluginMethod, type PluginMethod } from '../shared/ipc';
 
@@ -40,6 +40,11 @@ async function runPluginCall(
     case 'install': {
       const bytes = args[0];
       if (!(bytes instanceof Uint8Array)) throw new TypeError('A plugin file must be bytes.');
+      // The reader's 1 MB, here too: the store never sees more, and a renderer
+      // can't make main hold a larger file than the reader would take.
+      if (bytes.byteLength > MAX_PLUGIN_BYTES) {
+        throw new PluginFileError('This plugin file is larger than 1 MB.');
+      }
       return store.install(bytes);
     }
     case 'remove':

@@ -1352,7 +1352,8 @@ what it added right after it.
 | `in:<name>` | `expr`, `bool`, `enum` or `ref` | per manifest | The plugin's own inputs, one per input of the manifest's feature, under its `name` (an identifier) prefixed `in:` (`in:width`), in the stored form of the manifest's `kind`. An `expr` carries the manifest's `unit` (`length`; `angle`; `none` is stored as `unitless`), so parameters and dimensions drive it as they drive an extrude; a `ref` is a reference with its fingerprint (section 8) of a kind the manifest's `accepts` lists, one unless the input is `multiple`; an `enum` value is one of its `options`. An input the feature lacks takes the manifest's `default`. |
 
 A key that neither is `plugin` or `handler` nor starts with `in:` is an unknown
-input (the recompute leaves it out with a warning, section 6), and an `in:` key of any other kind is invalid. What the
+input (the recompute leaves it out with a warning, section 6), and an `in:` key of any other stored kind (`file`, `labels`, `code`, `sketchData`) is
+that feature's error, "in:x has a kind this plugin can't take"; the document still opens. What the
 manifest says is checked when the feature is computed, not when the file is
 read: a handler the manifest doesn't list, an input of the wrong kind or unit,
 a missing required reference or an input the manifest lacks makes the feature

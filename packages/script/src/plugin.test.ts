@@ -40,6 +40,17 @@ export const features = {
   nested: (design: any) => design.add('plugin', {}),
   sneaky: (_design: any, inputs: any) => { inputs.width = 1; },
   later: async (design: any) => { design.box({}); },
+  sees: (_design: any, _inputs: any, ctx: any) => { console.log(JSON.stringify(ctx.selection)); },
+  spin: () => { while (true) {} },
+  hog: () => { const big = new Array(20_000_000); big.fill(1); },
+  many: (design: any) => {
+    for (let i = 0; i < 1001; i++) design.box({ length: '1 mm', width: '1 mm', height: '1 mm' });
+  },
+  nothing: () => { throw null; },
+  empty: () => { throw {}; },
+  text: () => { throw 'x'; },
+  swapDate: () => { (globalThis as any).Date = class {}; },
+  swapRandom: () => { Math.random = () => 4; },
 };
 `;
 
@@ -169,6 +180,54 @@ describe('ScriptRunner.runPlugin', () => {
       call({
         handler: { kind: 'feature', name: i % 2 ? 'plate' : 'broken' },
         inputs: { width: i },
+      });
+    }
+  });
+
+  it('hands a command the selection in ctx', () => {
+    const selection = [{ kind: 'body', id: 'f1:0' }];
+    const result = call({
+      handler: { kind: 'feature', name: 'sees' },
+      selection,
+    });
+    expect(result).toMatchObject({ ok: true, log: [JSON.stringify(selection)] });
+  });
+
+  it('holds a plugin to the two second, 64 MB and 1,000 feature limits', () => {
+    const started = performance.now();
+    const loop = call({ handler: { kind: 'feature', name: 'spin' }, limits: { timeMs: 2_000 } });
+    expect(loop).toMatchObject({
+      ok: false,
+      error: { message: 'The script ran longer than 2 s.' },
+    });
+    expect(performance.now() - started).toBeLessThan(5_000);
+    expect(call({ handler: { kind: 'feature', name: 'hog' } })).toMatchObject({
+      ok: false,
+      error: { message: 'The script used more than 64 MB of memory.' },
+    });
+    const d = design();
+    expect(
+      call({ handler: { kind: 'feature', name: 'many' }, design: d, limits: { timeMs: 120_000 } }),
+    ).toMatchObject({
+      ok: false,
+      error: { message: 'The script added more than 1,000 features.' },
+    });
+    expect(d.doc.features).toHaveLength(1_000);
+  });
+
+  it('gives a message, never a crash, for throw null, throw {} and throw "x"', () => {
+    for (const name of ['nothing', 'empty', 'text']) {
+      const result = call({ handler: { kind: 'feature', name } });
+      expect(result.ok, name).toBe(false);
+      if (!result.ok) expect(result.error.message.length, name).toBeGreaterThan(0);
+    }
+  });
+
+  it('refuses a module that replaces Date or Math.random', () => {
+    for (const name of ['swapDate', 'swapRandom']) {
+      expect(call({ handler: { kind: 'feature', name } }), name).toMatchObject({
+        ok: false,
+        error: { message: "A plugin can't replace Date or Math.random." },
       });
     }
   });

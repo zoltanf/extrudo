@@ -10,6 +10,9 @@ import {
   pluginFileName,
 } from './plugin';
 
+// biome-ignore lint/suspicious/noExplicitAny: a test pokes at manifest JSON by path
+type Loose = any;
+
 /** The example plugin's manifest, as `examples/plugins/name-plate/plugin.json` has it. */
 function manifest(): Record<string, unknown> {
   return {
@@ -117,6 +120,81 @@ describe('parsePluginManifest', () => {
     expect(refusal(twice)).toBe(
       'plugin.json › commands[1] › id: "a" is used by an earlier command',
     );
+  });
+
+  it('refuses control characters and bidi overrides in every string the UI shows', () => {
+    const bad = ['a\u0000b', 'a\u001b[31mb', 'a\u0085b', 'a\u202eb', 'a\u2066b', 'a\nb'];
+    const places: [string, (m: Loose, v: string) => void, string][] = [
+      [
+        'name',
+        (m, v) => {
+          m.name = v;
+        },
+        'plugin.json › name',
+      ],
+      [
+        'description',
+        (m, v) => {
+          m.description = v;
+        },
+        'plugin.json › description',
+      ],
+      [
+        'author',
+        (m, v) => {
+          m.author = v;
+        },
+        'plugin.json › author',
+      ],
+      [
+        'command label',
+        (m, v) => {
+          m.commands[0].label = v;
+        },
+        'plugin.json › commands[0] › label',
+      ],
+      [
+        'command hint',
+        (m, v) => {
+          m.commands[0].hint = v;
+        },
+        'plugin.json › commands[0] › hint',
+      ],
+      [
+        'feature label',
+        (m, v) => {
+          m.features[0].label = v;
+        },
+        'plugin.json › features[0] › label',
+      ],
+      [
+        'feature hint',
+        (m, v) => {
+          m.features[0].hint = v;
+        },
+        'plugin.json › features[0] › hint',
+      ],
+      [
+        'input label',
+        (m, v) => {
+          m.features[0].inputs[0].label = v;
+        },
+        'plugin.json › features[0] › inputs[0] › label',
+      ],
+    ];
+    for (const [what, set, path] of places) {
+      for (const value of bad) {
+        const m = manifest() as Loose;
+        set(m, value);
+        expect(() => parsePluginManifest(m), `${what} ${JSON.stringify(value)}`).toThrow(path);
+      }
+    }
+    const m = manifest() as Loose;
+    m.features[0].inputs.push({ name: 'mode', label: 'Mode', kind: 'enum', options: ['a\u202eb'] });
+    expect(() => parsePluginManifest(m)).toThrow('must not contain control or bidirectional');
+    const ok = manifest() as Loose;
+    ok.description = 'Tabs\tare fine, and so is ünïcödé ✓';
+    expect(parsePluginManifest(ok).description).toContain('ünïcödé');
   });
 
   it('names a command and a plugin file the way the app does', () => {

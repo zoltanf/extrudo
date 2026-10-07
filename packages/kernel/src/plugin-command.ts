@@ -90,7 +90,9 @@ export function runPluginCommand(
   try {
     return {
       ok: true,
-      features: [...checkedGenerated(PLUGIN_COMMAND_OWNER, result.features, 'plugin')],
+      features: [
+        ...checkedGenerated(PLUGIN_COMMAND_OWNER, result.features, 'plugin', request.doc.features),
+      ],
       log: result.log,
     };
   } catch (error) {

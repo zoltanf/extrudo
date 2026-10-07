@@ -206,6 +206,18 @@ describe('adding a plugin feature', () => {
     expect(pendingFor('kit')).toBeUndefined();
   });
 
+  it('forgets the pending file when the dialog is cancelled, and keeps it on OK elsewhere', async () => {
+    const t = setupDialogs([], {});
+    pendingPluginStoreSet(attachmentId);
+    t.controller.startSpec(spec);
+    await settle();
+    expect(pendingFor('kit')).toBeDefined();
+    t.controller.cancel();
+    expect(t.open()).toBeUndefined();
+    expect(pendingFor('kit')).toBeUndefined();
+    expect(t.store.getState().doc.attachments).toBeUndefined();
+  });
+
   it("opens a stored feature from the design's own copy of the file", async () => {
     const small = {
       type: 'widget',

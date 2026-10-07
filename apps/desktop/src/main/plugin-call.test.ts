@@ -30,6 +30,15 @@ describe('pluginCall', () => {
     expect(await pluginCall(store, 'remove', ['tiny'])).toBeUndefined();
   });
 
+  it('refuses a file over 1 MB before the store sees it', async () => {
+    const store = createPluginStore(memoryFiles());
+    const big = new Uint8Array(1024 * 1024 + 1);
+    expect(await pluginCall(store, 'install', [big])).toEqual({
+      error: { name: 'PluginFileError', message: 'This plugin file is larger than 1 MB.' },
+    });
+    expect(await pluginCall(store, 'list', [])).toEqual([]);
+  });
+
   it('refuses another method and wrong arguments, as error data', async () => {
     const store = createPluginStore(memoryFiles());
     expect(await pluginCall(store, 'eval' as never, [])).toEqual({

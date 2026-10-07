@@ -37,7 +37,7 @@ export const kernelScript: KernelFeatureDefinition<ScriptInputs> = {
     });
     if (!result.ok) throw new ScriptRunError(result.error, result.log);
     return {
-      features: checkedGenerated(ctx.feature.id, result.features, 'script'),
+      features: checkedGenerated(ctx.feature.id, result.features, 'script', ctx.doc.features),
       log: result.log,
     };
   },
@@ -58,9 +58,12 @@ export function checkedGenerated(
   owner: FeatureId,
   features: readonly Feature[],
   what: 'script' | 'plugin',
+  existing: readonly Feature[],
 ): readonly Feature[] {
   const prefix = `${owner}${GENERATED_SEPARATOR}`;
-  const seen = new Set<string>();
+  // A hand-made document may name a feature `<owner>.f1` itself: a generated
+  // one with that ID would collide with it in the engine's walk.
+  const seen = new Set<string>(existing.map((feature) => feature.id));
   for (const feature of features) {
     if (!feature.id.startsWith(prefix) || seen.has(feature.id)) {
       throw new ScriptRunError({

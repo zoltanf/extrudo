@@ -53,6 +53,8 @@ interface Inputs {
 
 interface PluginContext {
   params: Readonly<Record<string, number>>;
+  /** A command only: the selection's references, as `design.ref(kind, id)` takes them. */
+  selection?: readonly GeomRef[];
 }
 
 const features = {

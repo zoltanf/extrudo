@@ -100,7 +100,9 @@ export const PluginInputsSchema = z
         ctx.addIssue({
           code: 'custom',
           path: [key],
-          message: `must be an expr, bool, enum or ref input, not ${(input as Input).kind}`,
+          // The engine words a schema issue as the feature's error ("Invalid inputs: …"); the
+          // document itself still opens (ADR-0050).
+          message: "has a kind this plugin can't take",
         });
       }
     }

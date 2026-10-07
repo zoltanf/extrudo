@@ -64,7 +64,7 @@ export const kernelPlugin: KernelFeatureDefinition<PluginInputs> = {
     if (!result.ok)
       throw new ScriptRunError(result.error, result.log, `${what}, ${file.manifest.main}`);
     return {
-      features: checkedGenerated(ctx.feature.id, result.features, 'plugin'),
+      features: checkedGenerated(ctx.feature.id, result.features, 'plugin', ctx.doc.features),
       log: result.log,
     };
   },

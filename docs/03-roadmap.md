@@ -1098,14 +1098,16 @@ end to end, faster than in Fusion 360.
   when it exists — write the exported bytes to a temporary file and launch
   PrusaSlicer, OrcaSlicer, Bambu Studio or Cura with it. The browser build
   leaves it out (a slicer can't fetch a `blob:` URL). FR-3DP-06.
-- [ ] **P6-03 Plugin API** (custom features and commands; sandboxed).
+- [x] **P6-03 Plugin API** (custom features and commands; sandboxed).
   *Slice 1 done 2026-10-07* (ADR-0077: the manifest, the `.extrudo-plugin` file,
   the `plugin` feature and file format §6.32, `ScriptRunner.runPlugin`, the
   kernel's `expand`, the CLI; the example plugin `examples/plugins/name-plate/`).
   *Slice 2 done 2026-10-07* (the `PluginStore` on the web and the desktop, the
   `plugin:call` channel, the Plugins dialog with "Install from this design",
   plugin commands run in the worker and inserted as one undo step).
-  Slice 3 (custom features in the app) to do.
+  *Slice 3 done 2026-10-07* (custom features in the app: dialogs generated from
+  the manifest, "Update to <version>"). *Slice 4 done 2026-10-07* (the review's
+  fixes: bounded inflation, a foreign `in:` input, manifest strings, docs, tests).
 - [ ] **P6-04 i18n** (community translations).
 - [ ] **P6-05 Components and simple assemblies** (multiple components, as-built
   joints), if demand warrants.

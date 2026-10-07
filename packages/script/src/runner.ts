@@ -171,6 +171,18 @@ export class ScriptRunner {
     };
     try {
       giveGlobals(ctx, bridge, plugin, request, log, { plugin: true });
+      // The sandbox's `Date` and `Math.random` are what keeps a run repeatable
+      // (the run cache relies on it): a module that swaps one is refused below.
+      const date = bridge.property(ctx.global, ['Date']);
+      const random = bridge.property(ctx.global, ['Math', 'random']);
+      const replaced = () =>
+        [
+          [date, ['Date']],
+          [random, ['Math', 'random']],
+        ].some(([was, path]) => {
+          const now = bridge.property(ctx.global, path as string[]);
+          return was === undefined || now === undefined || !ctx.sameValue(was as never, now);
+        });
       const exports = bridge.newObject();
       bridge.set(ctx.global, 'exports', exports);
       // As a script's: one line down, strict, and never a module load.
@@ -212,6 +224,13 @@ export class ScriptRunner {
         runtime.hasPendingJob() ||
         settled.type === 'rejected' ||
         (settled.type === 'fulfilled' && !settled.notAPromise);
+      if (replaced()) {
+        return {
+          ok: false,
+          error: { message: "A plugin can't replace Date or Math.random." },
+          log: log.out(),
+        };
+      }
       return asynchronous
         ? { ok: false, error: { message: ASYNC_MESSAGE }, log: log.out() }
         : { ok: true, added: [...plugin.added], log: log.out() };

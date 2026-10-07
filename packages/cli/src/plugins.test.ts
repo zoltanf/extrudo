@@ -17,6 +17,7 @@ import {
   type ExtrudoDocument,
   type FeatureId,
   type FeatureStatus,
+  loadDocument,
   PLUGIN_MEDIA_TYPE,
   remintFeatures,
 } from '@extrudo/core';
@@ -159,6 +160,31 @@ describe('the example plugin, headless', () => {
     // 60 × 20 × 3 mm from the manifest's defaults, on the XY plane.
     expect(kernel.properties(shape).volume).toBeCloseTo(3600, 6);
     expect(result.bodies[0]?.mesh?.faceIds).toHaveLength(6);
+  });
+
+  it('opens a design whose plugin feature has an in: input of a foreign kind, and fails only that feature', async () => {
+    const bytes = pluginBytes();
+    const foreign: Record<string, unknown> = {
+      file: { kind: 'file', id: 'gone' },
+      labels: { kind: 'labels', labels: ['2'] },
+      code: { kind: 'code', value: 'x' },
+      sketchData: {
+        kind: 'sketchData',
+        sketch: { entities: {}, constraints: {}, dimensions: {} },
+      },
+    };
+    for (const [kind, input] of Object.entries(foreign)) {
+      const d = designWith(bytes);
+      d.plugin({ plugin: PLUGIN, handler: 'name-plate', inputs: { rounded: false } });
+      const raw = JSON.parse(JSON.stringify(d.toJSON()));
+      raw.features.at(-1).inputs['in:x'] = input;
+      const { doc } = loadDocument(raw);
+      const engine = engineOf(new Map([[PLUGIN, bytes]]));
+      const result = await compute(engine, doc);
+      const status = lastStatus(doc, result);
+      expect(status?.status, kind).toBe('error');
+      expect(status?.message, kind).toBe("Invalid inputs: in:x has a kind this plugin can't take");
+    }
   });
 
   it('runs the command through runPlugin, and its features cut the plate', async () => {

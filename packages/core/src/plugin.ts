@@ -49,8 +49,22 @@ export const PLUGIN_REF_KINDS = GeomRefKindSchema.options.filter(
   (kind): kind is Exclude<GeomRefKind, 'feature'> => kind !== 'feature',
 );
 
-const label = z.string().trim().min(1).max(60);
-const hint = z.string().max(200);
+/**
+ * A control character (other than a tab) or a bidi override or isolate: what
+ * could make a label in the Plugins dialog, the Create menu or Ctrl+K read as
+ * something else. Refused, not stripped: the file is the author's.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: that is the check
+const UNSAFE_TEXT = /[\u0000-\u0008\u000a-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/;
+
+/** A string the UI shows: no control characters, no bidi overrides. */
+const shown = (text: z.ZodString) =>
+  text.refine((value) => !UNSAFE_TEXT.test(value), {
+    message: 'must not contain control or bidirectional-override characters',
+  });
+
+const label = shown(z.string().trim().min(1).max(60));
+const hint = shown(z.string().max(200));
 const inputBase = {
   name: z.string().regex(PLUGIN_INPUT_NAME, 'must be an identifier like width or hole_count'),
   label,
@@ -77,7 +91,10 @@ const EnumPluginInput = z
   .strictObject({
     ...inputBase,
     kind: z.literal('enum'),
-    options: z.array(z.string().min(1).max(60)).min(1).max(50),
+    options: z
+      .array(shown(z.string().min(1).max(60)))
+      .min(1)
+      .max(50),
     default: z.string().optional(),
   })
   .refine((input) => input.default === undefined || input.options.includes(input.default), {
@@ -133,10 +150,10 @@ export type PluginFeature = z.infer<typeof PluginFeatureSchema>;
 export const PluginManifestSchema = z
   .strictObject({
     id: z.string().regex(PLUGIN_ID, 'must be lower case letters, digits and dashes, 2 to 64'),
-    name: z.string().trim().min(1).max(80),
+    name: shown(z.string().trim().min(1).max(80)),
     version: z.string().regex(SEMVER, 'must be a version like 1.0.0'),
-    description: z.string().max(500),
-    author: z.string().max(200),
+    description: shown(z.string().max(500)),
+    author: shown(z.string().max(200)),
     license: z.string().regex(SPDX, 'must be an SPDX license like MIT or GPL-3.0-or-later'),
     main: z.enum(PLUGIN_MAINS),
     commands: z.array(PluginCommandSchema).max(100).default([]),

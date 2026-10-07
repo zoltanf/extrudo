@@ -84,4 +84,69 @@ describe('readPluginFile', () => {
       "This isn't a plugin file: it isn't a zip archive.",
     );
   });
+
+  it('counts what really inflates, whatever the headers claim', () => {
+    const honest = zipSync(
+      {
+        'plugin.json': strToU8(JSON.stringify(MANIFEST)),
+        'main.ts': strToU8(CODE),
+        'padding.bin': new Uint8Array(64 * 1024 * 1024),
+      },
+      { level: 9 },
+    );
+    const lying = honest.slice();
+    const view = new DataView(lying.buffer);
+    // Overwrite the uncompressed-size fields of padding.bin: local header +22, central +24.
+    let patched = 0;
+    for (let at = 0; at + 30 < lying.length; at += 1) {
+      const local = view.getUint32(at, true) === 0x04034b50;
+      const central = view.getUint32(at, true) === 0x02014b50;
+      if (!local && !central) continue;
+      const nameAt = at + (local ? 30 : 46);
+      const nameLength = view.getUint16(at + (local ? 26 : 28), true);
+      const name = new TextDecoder().decode(lying.subarray(nameAt, nameAt + nameLength));
+      if (name !== 'padding.bin') continue;
+      view.setUint32(at + (local ? 22 : 24), 100, true);
+      patched += 1;
+    }
+    expect(patched).toBe(2);
+    expect(lying.byteLength).toBeLessThan(1024 * 1024);
+    const start = performance.now();
+    expect(() => readPluginFile(lying)).toThrow('This plugin file holds more than 4 MB unpacked.');
+    const ms = performance.now() - start;
+    console.log(`lying zip refused in ${ms.toFixed(1)} ms`);
+    expect(ms).toBeLessThan(200);
+  });
+
+  it('refuses more than 64 entries and names with control characters', () => {
+    const many: Record<string, Uint8Array> = {
+      'plugin.json': strToU8(JSON.stringify(MANIFEST)),
+      'main.ts': strToU8(CODE),
+    };
+    for (let i = 0; i < 63; i += 1) many[`f${i}.txt`] = strToU8('x');
+    expect(() => readPluginFile(zipSync(many))).toThrow('more than 64 entries');
+    const nul = zipSync({
+      'plugin.json': strToU8(JSON.stringify(MANIFEST)),
+      'main.ts': strToU8(CODE),
+      'a\u0000b': strToU8('x'),
+    });
+    expect(() => readPluginFile(nul)).toThrow('has an entry outside its folder');
+  });
+
+  it('caps README.md and LICENSE at 256 kB', () => {
+    for (const key of ['readme', 'license'] as const) {
+      const big = writePluginFile({
+        manifest: MANIFEST,
+        code: CODE,
+        [key]: 'x'.repeat(256 * 1024 + 1),
+      });
+      expect(() => readPluginFile(big)).toThrow(/is larger than 256 kB/);
+    }
+    const fine = writePluginFile({
+      manifest: MANIFEST,
+      code: CODE,
+      readme: 'x'.repeat(256 * 1024),
+    });
+    expect(readPluginFile(fine).readme?.length).toBe(256 * 1024);
+  });
 });

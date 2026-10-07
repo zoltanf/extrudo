@@ -10,8 +10,16 @@ working example is `examples/plugins/name-plate/` in the repository.
 A plugin runs in the same QuickJS sandbox as a [Script](api/scripts.md): no DOM,
 network, file access, timers or modules. It can **only add features**
 (`design.remove`, `move`, `rename`, `suppress`, `group` and the parameter calls
-are refused). Limits per run: 2 seconds, 64 MB, 1,000 generated features,
-200,000 characters of source.
+are refused). Limits per run: 2 seconds, 64 MB of memory, 1,000 generated
+features, 200 `console.log` lines, 100,000 characters of output and 200,000
+characters of source (a module longer than that is refused when the file is
+read). The file itself is at most 1 MB packed and 4 MB unpacked, with at most 64
+entries; `README.md` and `LICENSE` are at most 256 kB each. A manifest holds at
+most 100 commands and 100 features, and a feature at most 32 inputs. Every string
+the app shows (`name`, `description`, `author`, labels, hints, enum options) is
+refused if it holds a control character (a tab is fine) or a bidirectional
+override. A module may not replace `Date` or `Math.random`: the run is refused
+at its end.
 
 ## The manifest
 
@@ -54,7 +62,7 @@ lacks is refused with its place (`plugin.json › features[0] › inputs[2] › 
 
 | Key | Meaning |
 |---|---|
-| `id` | Lower case letters, digits, dashes (2 to 64). Identifies the plugin across versions. |
+| `id` | A lower case letter first, then lower case letters, digits and dashes (2 to 64). Identifies the plugin across versions. |
 | `version` | A semantic version (`1.2.0`). The app installs a newer one over an older one and refuses the same or an older one. |
 | `license` | An SPDX expression (`MIT`, `GPL-3.0-or-later`). |
 | `main` | `main.ts` (types stripped, not checked) or `main.js`. |
@@ -68,7 +76,7 @@ lacks is refused with its place (`plugin.json › features[0] › inputs[2] › 
 | `expr` | `unit` (`length`, `angle` or `none`), `default` (an expression or a number), `min`, `max` | An expression field with the unit; a model parameter (`d7`). `min`/`max` appear as the hint "Between 1 and 99." — they are not enforced. | A number: millimetres, degrees or a plain number. |
 | `bool` | `default` | A checkbox | `true` or `false` |
 | `enum` | `options[]`, `default` (one of the options) | A dropdown | The option's text |
-| `ref` | `accepts[]` (`face`, `edge`, `vertex`, `plane`, `axis`, `point`, `profile`, `body`, …), `multiple` | A pick field; the view only takes what `accepts` lists. Required: OK stays disabled until something is picked. | A reference (`GeomRef`), or an array of them when `multiple` |
+| `ref` | `accepts[]` (any of the reference kinds except `feature`: `face`, `edge`, `vertex`, `plane`, `axis`, `point`, `profile`, `body`, `sketchEntity` …; the list is closed), `multiple` | A pick field; the view only takes what `accepts` lists. Required: OK stays disabled until something is picked. | A reference (`GeomRef`), or an array of them when `multiple` |
 
 An input is stored in the design as `in:<name>` (`in:width`), so an expression
 can be driven by a parameter, and a reference is named and fingerprinted like any
@@ -93,6 +101,8 @@ interface NamePlateInputs {
 
 interface PluginContext {
   params: Readonly<Record<string, number>>;
+  /** A command only: what was selected when it ran. */
+  selection?: readonly GeomRef[];
 }
 
 export const features = {
@@ -123,7 +133,9 @@ export const commands = {
 (The example's real `main.ts` also rounds the corners with four arcs; see the
 file.) `design` is the [document API](api/README.md) restricted to adds, `inputs`
 and `ctx` are frozen deeply, `ctx.params` holds the document's parameter values
-(millimetres, degrees, plain numbers). A handler that throws, or a feature that
+(millimetres, degrees, plain numbers) and, for a command, `ctx.selection` the
+references that were selected when it ran, in the kernel's reference grammar —
+the objects `design.ref(kind, id)` takes (`{ kind: 'body', id: 'f1:0' }`). A handler that throws, or a feature that
 comes out invalid, is the plugin feature's error: "Name plate 1.0.0, main.ts line 3: …".
 A failed run makes nothing, and a handler that adds a feature the next time the
 inputs change is run again — handlers must be **deterministic** (`Math.random`

@@ -482,6 +482,12 @@ export interface FeatureDialogSpec<I extends FeatureInputs = FeatureInputs>
    * opened (ADR-0061 §2), so nothing here is asynchronous.
    */
   commitWith?(values: DialogValues, ctx: DialogContext): readonly Command<unknown>[];
+  /**
+   * The dialog was cancelled (or its project closed) without committing: let
+   * go of what it prepared before opening. Not called when another dialog
+   * replaces this one, nor on OK.
+   */
+  onCancel?(): void;
 }
 
 /** Defines a spec with its input type checked. */

@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P6-03 plugin API, slice 4: the review's fixes** (ADR-0077): a plugin zip is inflated as a stream and refused past 4 MB of real output (a lying header costs ~20 ms), a foreign `in:` input fails its feature and not the document, install's bytes are capped in desktop main, manifest strings refuse control and bidi characters, README/LICENSE capped at 256 kB, a cancelled plugin dialog forgets its pending file, generated IDs may not collide with the design's, a plugin can't replace `Date`/`Math.random`; docs and tests; P6-03 ticked.
 - 2026-10-07 · **P6-03 plugin API, slice 3** (ADR-0077): an enabled plugin's custom features get
   a dialog generated from the manifest (Ctrl+K, a "Plugins" section in the Create menu), OK
   adds the feature and the plugin file to the design as one undo step, a stored feature opens
