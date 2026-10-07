@@ -3301,5 +3301,71 @@
     ]
    }
   }
+ },
+ "ellipse taper 0 deg": {
+  "volume": 12566.37,
+  "faces": 3,
+  "extrudeFaces": [
+   "extrude:E:cap:end",
+   "extrude:E:cap:start",
+   "extrude:E:side:e3"
+  ]
+ },
+ "ellipse taper 5 deg": {
+  "volume": 14325.75,
+  "faces": 6,
+  "extrudeFaces": [
+   "extrude:E:cap:end",
+   "extrude:E:cap:start",
+   "extrude:E:side:e3#1",
+   "extrude:E:side:e3#2",
+   "extrude:E:side:e3#3",
+   "extrude:E:side:e3#4"
+  ]
+ },
+ "ellipse taper -5 deg": {
+  "volume": 10935.24,
+  "faces": 6,
+  "extrudeFaces": [
+   "extrude:E:cap:end",
+   "extrude:E:cap:start",
+   "extrude:E:side:e3#1",
+   "extrude:E:side:e3#2",
+   "extrude:E:side:e3#3",
+   "extrude:E:side:e3#4"
+  ]
+ },
+ "spline taper 0 deg": {
+  "volume": 20384.43,
+  "faces": 3,
+  "extrudeFaces": [
+   "extrude:E:cap:end",
+   "extrude:E:cap:start",
+   "extrude:E:side:s8"
+  ]
+ },
+ "spline taper 5 deg": {
+  "volume": 22439.28,
+  "faces": 6,
+  "extrudeFaces": [
+   "extrude:E:cap:end",
+   "extrude:E:cap:start",
+   "extrude:E:side:s8#1",
+   "extrude:E:side:s8#2",
+   "extrude:E:side:s8#3",
+   "extrude:E:side:s8#4"
+  ]
+ },
+ "spline taper -5 deg": {
+  "volume": 18460,
+  "faces": 6,
+  "extrudeFaces": [
+   "extrude:E:cap:end",
+   "extrude:E:cap:start",
+   "extrude:E:side:s8#1",
+   "extrude:E:side:s8#2",
+   "extrude:E:side:s8#3",
+   "extrude:E:side:s8#4"
+  ]
  }
 }
