@@ -5,6 +5,7 @@ import {
   loftSettings,
   originPlaneRef,
   SweepInputsSchema,
+  type SweepReport,
   sweepSettings,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
@@ -74,6 +75,45 @@ describe('the sweep dialog', () => {
     expect(t.open()?.values.choices.operation).toBe('join');
     t.controller.setRefs('profiles', [profile('S/r1')]);
     expect(t.open()?.values.choices.operation).toBe('new-body');
+  });
+
+  it('says where the profile sits against the path’s start, once a preview has (P4-12)', () => {
+    expect(sweepDialog.fields.map((f) => f.name)).toEqual([
+      'profiles',
+      'path',
+      'placement',
+      'orientation',
+      'twist',
+      'scale',
+      'operation',
+      'bodies',
+    ]);
+    const field = sweepDialog.fields.find((f) => f.name === 'placement');
+    if (field?.kind !== 'info') throw new Error('no placement line');
+    const values = { refs: {}, exprs: {}, choices: {}, toggles: {} } as never;
+    const ctx = (report?: SweepReport) =>
+      ({
+        doc: { settings: { units: 'mm', precision: 2 } },
+        bodies: {},
+        ...(report && { draftSweep: report }),
+      }) as never;
+    // Hidden until the first preview reports; empty then, too (an edit dialog
+    // that is still previewing).
+    expect(field.shown?.(values, ctx())).toBe(false);
+    expect(field.text(values, ctx())).toBe('');
+    const on = { kind: 'sweep' as const, offset: 0, limit: 0.5, pathLength: 40 };
+    const off = { kind: 'sweep' as const, offset: 6.2, limit: 0.5, pathLength: 40 };
+    expect(field.shown?.(values, ctx(on))).toBe(true);
+    expect(field.text(values, ctx(on))).toBe("Profile on the path's start.");
+    expect(field.text(values, ctx(off))).toBe(
+      "Profile 6.2 mm from the path's start: the sweep carries it where it is drawn.",
+    );
+    // The distance is in the document's unit.
+    const cm = ctx({ kind: 'sweep', offset: 60, limit: 0.5, pathLength: 40 });
+    (cm as unknown as { doc: { settings: { units: string } } }).doc.settings.units = 'cm';
+    expect(field.text(values, cm)).toBe(
+      "Profile 6.0 cm from the path's start: the sweep carries it where it is drawn.",
+    );
   });
 });
 

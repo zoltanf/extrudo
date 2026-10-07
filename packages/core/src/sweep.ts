@@ -128,6 +128,25 @@ export interface SweepInputOptions {
  * the same shape). Expressions get their unit; `paramName`s are left to the
  * caller, as for any feature.
  */
+/**
+ * What a sweep reports (`FeatureOutput.report`, P4-12, ADR-0067 §H5's
+ * follow-up): how far the profile's centre sits from the path's start line
+ * (`offset`), the distance that is allowed before the sweep warns
+ * (`limit`, `PROFILE_PLACEMENT` of `pathLength`), and the path's length the
+ * limit came from — the dialog's read-only placement line reads them.
+ * All in mm.
+ */
+export interface SweepReport {
+  kind: 'sweep';
+  offset: number;
+  limit: number;
+  pathLength: number;
+}
+
+export function isSweepReport(report: unknown): report is SweepReport {
+  return (report as { kind?: unknown } | null | undefined)?.kind === 'sweep';
+}
+
 export function sweepInputs(
   profiles: GeomRef[],
   path: GeomRef[],

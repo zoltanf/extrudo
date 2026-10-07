@@ -995,7 +995,13 @@ it lands exactly where its sketch drew it, so a sweep **warns** when its
 centroid is more than max(1 % of the path's length, 0.5 mm) from the path's
 start line (`PROFILE_PLACEMENT`, `placementOffset` in `features/sweep.ts`:
 measured across the path, so a section drawn anywhere along it is fine and only
-its offset is wrong — B10 got 6 mm walls instead of 3).
+its offset is wrong — B10 got 6 mm walls instead of 3). **The placement line
+(ADR-0055's amendment, 2026-10-07)**: the evaluator also reports a
+`SweepReport` (`{ kind: 'sweep', offset, limit, pathLength }` through
+`Preview.sweep` as the emboss report travels) and the dialog's read-only
+Placement line (`[data-info="placement"]`) says "Profile on the path's
+start." or "Profile 6.2 mm from the path's start: the sweep carries it where
+it is drawn." before OK.
 Names: `sweep|loft|coil:<id>:cap:start|end`, `side:<source>` (`#n` per path
 piece; a loft side after its earliest section's edge, `nameLoft`). `helixSweep`
 (`features/coil.ts`: frame, radius, pitch, turns, taper, hand, any section
@@ -3388,7 +3394,10 @@ them. Notes further down that name a machine apply to that machine only.
   "Closed". Coil: button "Plane" ("XY plane"), comboboxes "Type", "Direction",
   "Section", "Section position", textboxes "Diameter", "Revolutions", "Height",
   "Pitch" (the one the type doesn't use is absent), "Taper angle", "Section
-  size", `data-manipulators="distance:diameter distance:height"`. The default
+  size", `data-manipulators="distance:diameter distance:height"`. The Sweep
+  dialog's read-only Placement line is `[data-info="placement"]`
+  ("Profile on the path's start." or "Profile 31.6 mm from the path's start:
+  the sweep carries it where it is drawn."). The default
   coil is `Body1:7:22,22,22` (a face per turn; the wire is centred on the start height, half of
   it below the plane). The spec's profile is a circle at (40, 0) beside a Box
   cube, swept along the cube's edge at (10, −10, 10): the profile need not

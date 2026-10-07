@@ -4,6 +4,7 @@ import {
   parseSketchEntityRefId,
   type SketchEntityId,
   type SweepInputs,
+  type SweepReport,
   sweepFeature,
   sweepSettings,
 } from '@extrudo/core';
@@ -80,13 +81,17 @@ function evaluateSweep(ctx: EvalContext<SweepInputs>): FeatureOutput {
   });
   const participants = explicitBodies(ctx, settings, WORDS);
   const warnings: string[] = [];
-  placementWarning(ctx, base.source.shape, path, warnings);
+  const placement = placementReport(ctx, base.source.shape, path, warnings);
   const result = splitSolids(
     ctx,
     scope,
     operate(ctx, scope, settings, tool, participants, warnings, WORDS),
   );
-  return { ...result, ...(warnings.length ? { warnings } : {}) };
+  return {
+    ...result,
+    ...(warnings.length ? { warnings } : {}),
+    ...(placement && { report: placement }),
+  };
 }
 
 /**
@@ -141,20 +146,30 @@ function pathStart(
   return best > 1e-9 ? { point, tangent } : undefined;
 }
 
-function placementWarning(
+/**
+ * Measures the placement and warns when it is off (P4-12, ADR-0067 §H5):
+ * the numbers go out again as the feature's `SweepReport` (the dialog's
+ * placement line), so the person sees them before OK. Undefined when the
+ * profile or the path can't be measured; the warning's wording and
+ * threshold are unchanged.
+ */
+function placementReport(
   ctx: EvalContext,
   profile: ShapeHandle,
   path: ShapeHandle,
   warnings: string[],
-): void {
+): SweepReport | undefined {
   const offset = placementOffset(ctx, profile, path);
-  if (offset === undefined) return;
+  if (offset === undefined) return undefined;
   const { length: pathLength } = ctx.kernel.properties(path);
-  if (offset <= PROFILE_PLACEMENT(pathLength)) return;
-  const d = Math.round(offset * 10) / 10;
-  warnings.push(
-    `The profile is swept where it is drawn, ${d} mm from the path's start: draw it centred on the path's start to sweep it around the path.`,
-  );
+  const limit = PROFILE_PLACEMENT(pathLength);
+  if (offset > limit) {
+    const d = Math.round(offset * 10) / 10;
+    warnings.push(
+      `The profile is swept where it is drawn, ${d} mm from the path's start: draw it centred on the path's start to sweep it around the path.`,
+    );
+  }
+  return { kind: 'sweep', offset, limit, pathLength };
 }
 
 /**

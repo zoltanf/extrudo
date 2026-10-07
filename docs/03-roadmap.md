@@ -921,8 +921,11 @@ end to end, faster than in Fusion 360.
   - ~~Sweep: say where a profile lands~~ **done in ADR-0067 §H5 (P4-12,
     2026-10-05): the sweep warns** when its profile is drawn more than max(1 %
     of the path's length, 0.5 mm) from the path's start line, naming the
-    distance. Still open: an edit dialog that reads where the profile will
-    sit.
+    distance. ~~Still open: an edit dialog that reads where the profile will
+    sit.~~ **done 2026-10-07** (ADR-0055's amendment): the evaluator reports a
+    `SweepReport` (`offset`, `limit`, `pathLength`) and the Sweep dialog's
+    read-only Placement line says "on the path's start" or the distance the
+    sweep carries it, before OK.
   - ~~Print Info: support volume, infill, cost per kg~~ (ADR-0048). **Done
     2026-10-05** for infill and cost (ADR-0048's P4-12 amendment): the panel
     estimates a print from each body's exact volume *and* area —

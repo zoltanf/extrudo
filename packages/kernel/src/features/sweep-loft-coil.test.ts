@@ -24,6 +24,7 @@ import {
   rectangularPatternInputs,
   type SketchData,
   type SweepInputOptions,
+  type SweepReport,
   sketchInputs,
   sweepInputs,
 } from '@extrudo/core';
@@ -329,7 +330,8 @@ describe('sweep', { timeout: 120_000 }, () => {
     // A disc on XY swept along a line on XZ: the profile is placed exactly
     // where its sketch drew it, so how far its centre sits from the path's
     // start line is what decides the sweep (B10's link came out with 6 mm
-    // walls for a section drawn off the path's centreline).
+    // walls for a section drawn off the path's centreline). The same numbers
+    // go out as the feature's `SweepReport`, for the dialog's placement line.
     const d = disc(4);
     const b = new SketchBuilder();
     // The line the disc sits on, and one 20 mm away from it, both up Z.
@@ -344,6 +346,13 @@ describe('sweep', { timeout: 120_000 }, () => {
       ]),
     );
     expect(status(on, 'W').status).toBe('ok');
+    // The disc's centre on the path's start line: offset 0, the limit of a
+    // 40 mm path half a millimetre.
+    const onReport = seen.get('W')?.report as SweepReport | undefined;
+    expect(onReport?.kind).toBe('sweep');
+    close(onReport?.offset ?? -1, 0);
+    expect(onReport?.limit).toBe(0.5);
+    close(onReport?.pathLength ?? -1, 40);
     // 20 mm away: the same body, and a warning naming the distance.
     const off = await runWithShapes([
       d.feature,
@@ -355,6 +364,28 @@ describe('sweep', { timeout: 120_000 }, () => {
     expect(s.message).toBe(
       "The profile is swept where it is drawn, 20 mm from the path's start: draw it centred on the path's start to sweep it around the path.",
     );
+    const offReport = seen.get('W')?.report as SweepReport | undefined;
+    expect(offReport?.kind).toBe('sweep');
+    close(offReport?.offset ?? -1, 20);
+    expect(offReport?.limit).toBe(0.5);
+    // Drawn 6 mm off: over the limit, warned, reported.
+    const six = new SketchBuilder();
+    const offsetLine = six.line(6, 0, 6, 40).id;
+    const mid = await runWithShapes([
+      d.feature,
+      sketch('Q', six.sketch, XZ),
+      sweep('W', [profile('S', d.data)], [entity('Q', offsetLine)]),
+    ]);
+    const sm = status(mid, 'W');
+    expect(sm.status).toBe('warning');
+    expect(sm.message).toBe(
+      "The profile is swept where it is drawn, 6 mm from the path's start: draw it centred on the path's start to sweep it around the path.",
+    );
+    const midReport = seen.get('W')?.report as SweepReport | undefined;
+    expect(midReport?.kind).toBe('sweep');
+    close(midReport?.offset ?? -1, 6);
+    expect(midReport?.limit).toBe(0.5);
+    close(midReport?.pathLength ?? -1, 40);
     const centre = measure(off, 'W:0');
     expect(centre.valid).toBe(true);
     close(centre.volume, Math.PI * 16 * 40);

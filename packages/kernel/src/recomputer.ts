@@ -30,6 +30,7 @@ import {
   isMeshMediaType,
   isPatternReport,
   isScadMediaType,
+  isSweepReport,
   MODEL_MEDIA_TYPES,
   type ModelStore,
   makesFeatures,
@@ -37,6 +38,7 @@ import {
   PLUGIN_MEDIA_TYPE,
   pluginFileOf,
   type SketchReport,
+  type SweepReport,
 } from '@extrudo/core';
 import type { ScadParametersResult } from '@extrudo/openscad';
 import {
@@ -152,6 +154,12 @@ export interface Preview {
    * computed (P4-12, ADR-0060's amendment): moved, wrapped or projected.
    */
   emboss?: EmbossReport;
+  /**
+   * Where the draft's profile sits against the path's start when it is a
+   * sweep that computed (P4-12, ADR-0067 §H5's follow-up): the dialog's
+   * placement line.
+   */
+  sweep?: SweepReport;
 }
 
 export class Recomputer {
@@ -307,6 +315,7 @@ export class Recomputer {
             ...(isCanvasReport(own) && { canvas: own }),
             ...(isPatternReport(own) && { pattern: own }),
             ...(isEmbossReport(own) && { emboss: own }),
+            ...(isSweepReport(own) && { sweep: own }),
           });
         } catch {
           resolve(undefined);

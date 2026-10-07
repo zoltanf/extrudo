@@ -10,11 +10,19 @@
  *
  * Faces of a body propose **join**, profiles a new body, until the user
  * picks an operation (`proposeSweep`, the rule extrude and revolve share).
+ *
+ * The read-only "Placement" line says where the profile sits against the
+ * path's start (P4-12, ADR-0067 §H5's follow-up), from the preview's
+ * `SweepReport` — before OK, where the warning only comes after it.
  */
 import {
   type BodyOperation,
+  formatQuantity,
+  LENGTH,
+  type Settings,
   SWEEP_PATH_KINDS,
   SWEEP_PROFILE_KINDS,
+  type SweepReport,
   sweepFeature,
 } from '@extrudo/core';
 import type { PreviewToolStyle } from '@extrudo/kernel';
@@ -66,6 +74,17 @@ export function operationFields(noun: string): DialogField[] {
 export const previewStyleOf = (values: DialogValues): PreviewToolStyle =>
   PREVIEW_STYLE[(values.choices.operation ?? 'new-body') as BodyOperation] ?? 'new';
 
+/**
+ * The placement line's text (P4-12, ADR-0067 §H5's follow-up), from the
+ * preview's `SweepReport`: on the path, or how far off it the section will
+ * be swept. The distance is one decimal in the document's unit.
+ */
+export function sweepPlacementText(report: SweepReport, settings: Settings): string {
+  if (report.offset <= report.limit) return "Profile on the path's start.";
+  const d = formatQuantity(report.offset, LENGTH, { ...settings, precision: 1 });
+  return `Profile ${d} from the path's start: the sweep carries it where it is drawn.`;
+}
+
 export const sweepDialog = defineFeatureDialog({
   ...sweepFeature,
   command: 'sweep',
@@ -86,6 +105,14 @@ export const sweepDialog = defineFeatureDialog({
       prompt: 'Pick the path',
       tangentChain: true,
       hint: 'Sketch curves or edges that join end to end. The profile travels from the end nearer to it.',
+    },
+    {
+      kind: 'info',
+      name: 'placement',
+      label: 'Placement',
+      shown: (_values, ctx) => ctx?.draftSweep !== undefined,
+      text: (_values, ctx) =>
+        ctx.draftSweep ? sweepPlacementText(ctx.draftSweep, ctx.doc.settings) : '',
     },
     {
       kind: 'choice',

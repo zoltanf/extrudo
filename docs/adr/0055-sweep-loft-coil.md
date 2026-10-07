@@ -220,3 +220,19 @@ and the laws it pulls in. The precache is 6.03 MB brotli, about 1 s at 50 Mbit
 - A sweep whose profile is a closed sketch curve rather than a region, guide
   rails for a sweep, and a coil of the "spiral" kind (flat).
 - Loft sections with holes.
+
+## Amendment (2026-10-07): the placement line
+
+The sweep's placement is shown before OK, not only warned about after it: the
+evaluator returns a `SweepReport` — `{ kind: 'sweep', offset, limit,
+pathLength }`, in mm, the offset `placementOffset` measured and the limit
+`PROFILE_PLACEMENT` gave — through `FeatureOutput.report`, carried to the app
+the way the emboss report is (`Preview.sweep`, the dialog context's
+`draftSweep`). The Sweep dialog's read-only Placement line, after the Path
+field (`[data-info="placement"]`), reads it: "Profile on the path's start."
+while the offset is within the limit, else "Profile 6.2 mm from the path's
+start: the sweep carries it where it is drawn." (one decimal, the document's
+unit, through core's `formatQuantity`). No handle: putting the profile on the
+path's start line is the sketch's job, and the report says exactly what the
+§H5 warning already says — whose wording and threshold are unchanged. No
+facade, schema or file-format change.

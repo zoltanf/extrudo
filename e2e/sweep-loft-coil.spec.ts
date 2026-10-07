@@ -62,10 +62,14 @@ test('sweeps a circle along an edge of a box, then undoes it', async ({ page }) 
   await expect(dialog.getByRole('combobox', { name: 'Operation' })).toHaveValue('new-body');
   await expect(viewport).toHaveAttribute('data-preview', 'new', { timeout: 15_000 });
   // The circle is 31.6 mm off the edge it is swept along, which is what the
-  // sweep warns about (P4-12, ADR-0067 §H5).
+  // sweep warns about (P4-12, ADR-0067 §H5) — and the placement line says it
+  // before OK (ADR-0055's amendment): the section is swept where it is drawn.
   await expect(dialog.getByRole('status', { name: 'Feature status' })).toContainText(
     "swept where it is drawn, 31.6 mm from the path's start",
     { timeout: 15_000 },
+  );
+  await expect(dialog.locator('[data-info="placement"]')).toHaveText(
+    "Profile 31.6 mm from the path's start: the sweep carries it where it is drawn.",
   );
   await page.screenshot({ path: test.info().outputPath('sweep-preview.png') });
   await ok(page, dialog);
