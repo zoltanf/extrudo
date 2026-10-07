@@ -7,6 +7,13 @@ export interface FileAccess {
   download(file: Blob, name: string): void;
   /** Lets the user pick one file; `undefined` if they cancel. `accept` as for <input>. */
   pick(accept: string): Promise<File | undefined>;
+  /**
+   * Desktop only (P6-01 slice 2): "Save As…" writes to a path the user chooses
+   * and answers where it went, so the design can be linked to that file. The
+   * browser has no path to give and leaves this out; the native File menu's
+   * Save As… is offered only when it exists.
+   */
+  saveAs?(file: Blob, name: string): Promise<{ path: string; modified: number } | undefined>;
 }
 
 /**

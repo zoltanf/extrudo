@@ -63,10 +63,14 @@ try {
 
 const port = Number(process.env.SMOKE_PORT ?? 9333);
 const url = `http://127.0.0.1:${port}`;
+/** An `.extrudo` file to hand the app on the command line (the association/argv path). */
+const openPath = process.env.SMOKE_OPEN;
 
 /** Starts Electron and returns the child process. */
 function launch() {
-  return spawn(electronPath, ['.', `--remote-debugging-port=${port}`], {
+  const args = ['.', `--remote-debugging-port=${port}`];
+  if (openPath) args.push(openPath);
+  return spawn(electronPath, args, {
     cwd: appDir,
     stdio: 'inherit',
     env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1' },
@@ -93,18 +97,29 @@ try {
   const context = browser.contexts()[0] ?? (await browser.newContext());
   const page = context.pages()[0] ?? (await context.newPage());
 
-  // The home screen: open a new design.
-  await page.getByRole('button', { name: /^New design/ }).click({ timeout: 30_000 });
-  // The kernel worker's first recompute.
+  // The home screen: open a new design, or wait for the one the association
+  // opened (SMOKE_OPEN). The kernel worker's first recompute is the readiness
+  // signal either way.
+  if (!openPath) {
+    await page.getByRole('button', { name: /^New design/ }).click({ timeout: 30_000 });
+  }
   await page.waitForSelector('[data-model-status="ready"]', { timeout: 90_000 });
   const status = await page.getAttribute('[data-model-status]', 'data-model-status');
+  if (openPath) {
+    // The project route proves the file was imported and opened, not just read.
+    await page.waitForURL(/#\/p\//, { timeout: 30_000 });
+  }
   // The autosave's own word: it saves automatically after an edit.
   await page
     .locator('[role="status"][aria-label="Save status"]', { hasText: 'Saved' })
     .waitFor({ timeout: 30_000 });
 
   console.log(`smoke: model status = ${status}`);
-  console.log('smoke: home screen opened a design, kernel ready, project Saved');
+  console.log(
+    openPath
+      ? `smoke: opened ${openPath} through the association, kernel ready, project Saved`
+      : 'smoke: home screen opened a design, kernel ready, project Saved',
+  );
   console.log('smoke: OK');
 } catch (error) {
   console.error(`smoke: could not drive the app: ${error.message}`);

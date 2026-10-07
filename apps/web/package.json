@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/entry/desktop.tsx",
     "./notifications": "./src/design-system/notifications.ts",
+    "./menu-model": "./src/shell/menuModel.ts",
     "./platform/folders": "./src/platform/folders.ts",
     "./platform/rescue": "./src/platform/rescue.ts"
   },

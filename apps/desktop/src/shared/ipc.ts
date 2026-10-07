@@ -10,12 +10,15 @@
  * copy is the one synchronous call (`sendSync`): it must be written while the
  * page is going away, when an async write would not finish.
  */
+import type { MenuModel } from '@extrudo/web/menu-model';
+
 export const CHANNELS = {
   prefsRead: 'extrudo:prefs:read',
   prefsWrite: 'extrudo:prefs:write',
   storeCall: 'extrudo:store:call',
   fileDownload: 'extrudo:file:download',
   filePick: 'extrudo:file:pick',
+  fileSaveAs: 'extrudo:file:save-as',
   storagePersistence: 'extrudo:storage:persistence',
   storageRequest: 'extrudo:storage:request',
   rescuePut: 'extrudo:rescue:put',
@@ -29,6 +32,22 @@ export const CHANNELS = {
   folderList: 'extrudo:folders:list',
   folderRead: 'extrudo:folders:read',
   folderWrite: 'extrudo:folders:write',
+  // Menus, the file association and recent files (P6-01 slice 2, ADR-0075 §2).
+  menuSet: 'extrudo:menu:set',
+  menuRun: 'extrudo:menu:run',
+  menuReset: 'extrudo:menu:reset',
+  menuListening: 'extrudo:menu:listening',
+  fileOpenPath: 'extrudo:file:open-path',
+  // Writing back to a file main itself handed out (P6-01 slice 2, finding 3).
+  fileWritePath: 'extrudo:file:write-path',
+  fileStatPath: 'extrudo:file:stat-path',
+  fileReadPath: 'extrudo:file:read-path',
+  recentList: 'extrudo:recent:list',
+  recentClear: 'extrudo:recent:clear',
+  recentRemove: 'extrudo:recent:remove',
+  recentChanged: 'extrudo:recent:changed',
+  appReady: 'extrudo:app:ready',
+  appQuit: 'extrudo:app:quit',
 } as const;
 
 export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS];
@@ -86,6 +105,32 @@ export interface Noticed<T> {
   notices: string[];
 }
 
+/** A recent file, as the native Open Recent submenu lists it (P6-01 slice 2). */
+export interface RecentEntry {
+  path: string;
+  name: string;
+}
+
+/** A `.extrudo` file main read and hands to the renderer to import. */
+export interface OpenedFile {
+  path: string;
+  name: string;
+  bytes: Uint8Array;
+  /** The file's mtime, ms since the epoch: what the project is linked to. */
+  modified: number;
+  /**
+   * Set when main refused to read the file (over the size cap, or not a
+   * `.extrudo`): the renderer says so instead of importing. `bytes` is empty.
+   */
+  error?: string;
+}
+
+/** Where "Save As…" wrote, and that file's mtime. */
+export interface SavedFile {
+  path: string;
+  modified: number;
+}
+
 /**
  * The API `contextBridge.exposeInMainWorld('extrudo', …)` publishes. The
  * renderer's `desktopPlatform()` is written against exactly this.
@@ -102,6 +147,43 @@ export interface ExtrudoApi {
   readonly files: {
     download(bytes: Uint8Array, name: string): Promise<void>;
     pick(accept: string): Promise<PickedFile | undefined>;
+    /** "Save As…": a save dialog, the bytes written, and where (P6-01 slice 2). */
+    saveAs(bytes: Uint8Array, name: string): Promise<SavedFile | undefined>;
+  };
+  readonly menus: {
+    /** Replaces the application menu; main builds Open Recent from its own list. */
+    set(model: MenuModel[]): void;
+    /** Returns to a bare desktop menu (a project page unmounting). */
+    reset(): void;
+    /** Whether a project page has registered its `onRun` handler (a document is open). */
+    listening(active: boolean): void;
+    /** Registers the one handler for a clicked item; call `offRun` first to replace it. */
+    onRun(handler: (id: string) => void): void;
+    offRun(): void;
+    /** Registers the one handler for a file the app was asked to open. */
+    onOpenFile(handler: (file: OpenedFile) => void): void;
+    offOpenFile(): void;
+  };
+  readonly recent: {
+    list(): Promise<RecentEntry[]>;
+    clear(): Promise<void>;
+    /** Drops a path main handed out: the renderer couldn't import it (corrupt). */
+    remove(path: string): void;
+    /** Main tells the renderer the list changed, so it can refresh the menu. */
+    onChanged(handler: () => void): void;
+    offChanged(): void;
+  };
+  readonly external: {
+    /** Writes back to a path main issued this session; refuses any other. */
+    write(path: string, bytes: Uint8Array): Promise<{ modified: number }>;
+    stat(path: string): Promise<{ modified: number } | undefined>;
+    read(path: string): Promise<{ bytes: Uint8Array; modified: number }>;
+  };
+  readonly app: {
+    /** The renderer's menu/open-file handlers are registered; main may deliver. */
+    ready(): void;
+    /** Main quits; the renderer has saved everything first. */
+    quit(): void;
   };
   readonly storage: {
     persistence(): Promise<Persistence>;

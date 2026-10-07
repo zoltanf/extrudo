@@ -2,7 +2,7 @@ import { createDocument, createDocumentStore, renameDocument } from '@extrudo/co
 import { memoryProjectStore, readArchive, writeArchive } from '@extrudo/storage';
 import { describe, expect, it } from 'vitest';
 import type { ToastOptions } from '../design-system';
-import type { FolderFile, LinkedFolders } from '../platform';
+import type { ExternalFiles, FolderFile, LinkedFolders } from '../platform';
 import { createLinkedProject, type LinkedProject } from './linkedFolder';
 
 /** A folder of files in a Map, with the clock the File System Access API gives. */
@@ -186,5 +186,89 @@ describe('a linked project (P4-09, ADR-0065 §3)', () => {
       tone: 'error',
       text: 'Extrudo may not write to Designs yet. Reconnect it on the home screen.',
     });
+  });
+});
+
+describe('an external-linked project (P6-01 slice 2, finding 3)', () => {
+  const path = '/models/Bracket.extrudo';
+
+  async function externalSetup() {
+    const projects = memoryProjectStore();
+    const store = createDocumentStore(createDocument({ name: 'Bracket' }));
+    await projects.save(store.getState().doc);
+    const disk = new Map<string, { bytes: Uint8Array; modified: number }>();
+    disk.set(path, { bytes: writeArchive(createDocument({ name: 'Bracket' })), modified: 500 });
+    await projects.link(store.getState().doc.id, { file: path, modified: 500, external: true });
+    const externalFiles: ExternalFiles = {
+      stat: async (file) =>
+        disk.has(file) ? { modified: disk.get(file)?.modified as number } : undefined,
+      write: async (file, bytes) => {
+        const modified = (disk.get(file)?.modified ?? 0) + 1_000;
+        disk.set(file, { bytes, modified });
+        return { modified };
+      },
+      read: async (file) => disk.get(file) as { bytes: Uint8Array; modified: number },
+    };
+    const notifications: { tone: string; text: string; options?: ToastOptions }[] = [];
+    const restored: { doc: unknown; label: string }[] = [];
+    let clock = 1_000;
+    const project: LinkedProject = createLinkedProject({
+      folders: fakeFolder().folders,
+      externalFiles,
+      projects,
+      store,
+      autosave: { flush: async () => {} },
+      notify: (tone, text, options) => notifications.push({ tone, text, options }),
+      restore: async (doc, label) => {
+        restored.push({ doc, label });
+      },
+      now: () => clock,
+    });
+    return {
+      disk,
+      projects,
+      store,
+      project,
+      notifications,
+      restored,
+      passThrottle: () => {
+        clock += 20_000;
+      },
+    };
+  }
+
+  it('writes back through the external path, not the linked folder', async () => {
+    const t = await externalSetup();
+    t.store.getState().dispatch(renameDocument({ name: 'Wall hook' }));
+    await t.projects.save(t.store.getState().doc);
+    t.passThrottle();
+    await t.project.afterSave();
+    expect(t.notifications).toEqual([]);
+    expect(readArchive(t.disk.get(path)?.bytes ?? new Uint8Array()).doc.name).toBe('Wall hook');
+    expect((await t.projects.get(t.store.getState().doc.id))?.linked).toEqual({
+      file: path,
+      modified: 1_500,
+      external: true,
+    });
+  });
+
+  it('sees a changed file as a conflict and loads it back from disk', async () => {
+    const t = await externalSetup();
+    t.store.getState().dispatch(renameDocument({ name: 'Mine' }));
+    await t.projects.save(t.store.getState().doc);
+    t.disk.set(path, {
+      bytes: writeArchive(createDocument({ name: 'From disk' })),
+      modified: 9_999,
+    });
+    t.passThrottle();
+    await t.project.afterSave();
+    const toast = t.notifications.at(-1);
+    expect(toast?.text).toBe(`${path} changed on disk.`);
+    const actions = toast?.options?.actions ?? [];
+    expect(actions.map((a) => a.label)).toEqual(['Load from disk', 'Overwrite']);
+    actions[0]?.run();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(t.restored).toHaveLength(1);
+    expect(t.restored[0]?.doc).toMatchObject({ name: 'From disk' });
   });
 });

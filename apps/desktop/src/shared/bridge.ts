@@ -3,18 +3,36 @@
  * (P6-01, ADR-0075 §1). Kept apart from `preload/index.ts` so the tests can
  * pass a fake `ipcRenderer` and prove the channel wiring — that a store call
  * refuses an unknown method, that the preference map is read once through
- * `invoke`, and that only the rescue copy and its list are `sendSync`.
+ * `invoke`, that only the rescue copy and its list are `sendSync`, and that the
+ * menu/recent/open-file listeners register and unregister (P6-01 slice 2).
  */
-import { CHANNELS, type ExtrudoApi, type FolderEntry, isStoreMethod } from './ipc';
+import {
+  CHANNELS,
+  type ExtrudoApi,
+  type FolderEntry,
+  isStoreMethod,
+  type OpenedFile,
+  type RecentEntry,
+  type SavedFile,
+} from './ipc';
 
 /** The slice of Electron's `ipcRenderer` this bridge needs. */
 export interface IpcRendererLike {
   invoke(channel: string, ...args: unknown[]): Promise<unknown>;
   send(channel: string, ...args: unknown[]): void;
   sendSync(channel: string, ...args: unknown[]): unknown;
+  on(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
+  removeListener(channel: string, listener: (event: unknown, ...args: unknown[]) => void): unknown;
 }
 
+/** A `RecentEntry`-shaped row; the renderer's `Platform` type is structural. */
 export function createApi(ipc: IpcRendererLike): ExtrudoApi {
+  // One listener per event: `onRun` replaces the previous one, so a page that
+  // registers again (a new AppShell) doesn't leave a stale handler behind.
+  let runListener: ((event: unknown, id: unknown) => void) | undefined;
+  let openListener: ((event: unknown, file: unknown) => void) | undefined;
+  let changedListener: ((event: unknown) => void) | undefined;
+
   return {
     prefs: {
       read: () => ipc.invoke(CHANNELS.prefsRead) as Promise<Record<string, unknown>>,
@@ -32,6 +50,8 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
         ipc.invoke(CHANNELS.filePick, accept) as Promise<unknown> as Promise<
           { name: string; bytes: Uint8Array } | undefined
         >,
+      saveAs: (bytes, name) =>
+        ipc.invoke(CHANNELS.fileSaveAs, bytes, name) as Promise<SavedFile | undefined>,
     },
     storage: {
       persistence: () => ipc.invoke(CHANNELS.storagePersistence) as Promise<'persistent'>,
@@ -55,6 +75,58 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
         ipc.invoke(CHANNELS.folderRead, name) as Promise<{ bytes: Uint8Array; modified: number }>,
       write: (name, bytes) =>
         ipc.invoke(CHANNELS.folderWrite, name, bytes) as Promise<{ modified: number }>,
+    },
+    menus: {
+      set: (model) => ipc.send(CHANNELS.menuSet, model),
+      reset: () => ipc.send(CHANNELS.menuReset),
+      listening: (active) => ipc.send(CHANNELS.menuListening, active),
+      onRun: (handler) => {
+        if (runListener) ipc.removeListener(CHANNELS.menuRun, runListener);
+        runListener = (_event, id) => handler(id as string);
+        ipc.on(CHANNELS.menuRun, runListener);
+      },
+      offRun: () => {
+        if (runListener) ipc.removeListener(CHANNELS.menuRun, runListener);
+        runListener = undefined;
+      },
+      onOpenFile: (handler) => {
+        if (openListener) ipc.removeListener(CHANNELS.fileOpenPath, openListener);
+        openListener = (_event, file) => handler(file as OpenedFile);
+        ipc.on(CHANNELS.fileOpenPath, openListener);
+      },
+      offOpenFile: () => {
+        if (openListener) ipc.removeListener(CHANNELS.fileOpenPath, openListener);
+        openListener = undefined;
+      },
+    },
+    external: {
+      write: (path, bytes) =>
+        ipc.invoke(CHANNELS.fileWritePath, path, bytes) as Promise<{ modified: number }>,
+      stat: (path) =>
+        ipc.invoke(CHANNELS.fileStatPath, path) as Promise<{ modified: number } | undefined>,
+      read: (path) =>
+        ipc.invoke(CHANNELS.fileReadPath, path) as Promise<{
+          bytes: Uint8Array;
+          modified: number;
+        }>,
+    },
+    recent: {
+      list: () => ipc.invoke(CHANNELS.recentList) as Promise<RecentEntry[]>,
+      clear: () => ipc.invoke(CHANNELS.recentClear) as Promise<void>,
+      remove: (path) => ipc.send(CHANNELS.recentRemove, path),
+      onChanged: (handler) => {
+        if (changedListener) ipc.removeListener(CHANNELS.recentChanged, changedListener);
+        changedListener = () => handler();
+        ipc.on(CHANNELS.recentChanged, changedListener);
+      },
+      offChanged: () => {
+        if (changedListener) ipc.removeListener(CHANNELS.recentChanged, changedListener);
+        changedListener = undefined;
+      },
+    },
+    app: {
+      ready: () => ipc.send(CHANNELS.appReady),
+      quit: () => ipc.send(CHANNELS.appQuit),
     },
   };
 }

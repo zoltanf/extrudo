@@ -1,0 +1,46 @@
+# electron-builder configuration (P6-01, ADR-0075 §2/§5).
+#
+# This is data only for now: the packaging slice (P6-01 slice 5) adds the
+# scripts that run `electron-builder` and the signing/notarisation. It pins the
+# app's identity and, in particular, the `.extrudo` file association the OS
+# registers — which is why the association lives here and not in the menu code.
+#
+# Deferred to slice 5: the build scripts, per-platform targets
+# (AppImage/deb, NSIS, dmg), signing, auto-update and the icons' icns/ico
+# conversions. The PNG icons here are the web app's own (apps/web/public).
+appId: org.extrudo.desktop
+productName: Extrudo
+copyright: Copyright © Extrudo contributors
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+
+# The `.extrudo` document, registered with the OS. The extension is the one
+# `@extrudo/core` declares (FILE_EXTENSION).
+fileAssociations:
+  - ext: extrudo
+    name: Extrudo Design
+    description: Extrudo parametric design
+    role: Editor
+    icon: ../web/public/icon-512.png
+
+linux:
+  category: Graphics
+  icon: ../web/public
+  target:
+    - AppImage
+    - deb
+
+win:
+  icon: ../web/public/icon-512.png
+  target:
+    - nsis
+
+mac:
+  icon: ../web/public/icon-512.png
+  category: public.app-category.graphics-design

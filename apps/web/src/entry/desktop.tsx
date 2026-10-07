@@ -16,6 +16,7 @@ import { StartupError } from '../StartupError';
 export function bootDesktop(
   createPlatform: () => Promise<Platform>,
   preferences: Preferences,
+  onPlatform?: (platform: Platform) => void,
 ): void {
   const root = document.getElementById('root');
   if (!root) throw new Error('Missing #root element');
@@ -32,14 +33,19 @@ export function bootDesktop(
   );
 
   createPlatform().then(
-    (platform) =>
+    (platform) => {
+      // The desktop entry registers the native menu's open-file handler here,
+      // before the app mounts, and then tells main the renderer is listening
+      // (a file the association opened before this is queued in main).
+      onPlatform?.(platform);
       reactRoot.render(
         <StrictMode>
           <TooltipProvider>
             <App platform={platform} />
           </TooltipProvider>
         </StrictMode>,
-      ),
+      );
+    },
     (error: unknown) => reactRoot.render(<StartupError error={error} />),
   );
 }

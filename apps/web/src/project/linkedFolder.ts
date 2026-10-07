@@ -13,7 +13,7 @@
 import type { DocumentStore, ExtrudoDocument } from '@extrudo/core';
 import { type LinkedFile, type ProjectStore, readArchive } from '@extrudo/storage';
 import type { ToastOptions } from '../design-system';
-import type { FolderLink, LinkedFolders } from '../platform';
+import type { ExternalFiles, FolderLink, LinkedFolders } from '../platform';
 import { describeError } from './actions';
 import type { Autosaver } from './autosave';
 import {
@@ -29,6 +29,12 @@ import { endBeforeRestore } from './restoreGuard';
 export interface LinkedContext {
   /** The folder this browser has linked (ADR-0065 §3). */
   folders: LinkedFolders;
+  /**
+   * Where an `external` link writes (P6-01 slice 2, finding 3). Desktop only;
+   * an external link with no `externalFiles` (the web) reads as "not in the
+   * linked folder", as it did before.
+   */
+  externalFiles?: ExternalFiles;
   projects: ProjectStore;
   store: DocumentStore;
   /** The browser's own save, flushed before the file is written so the two agree. */
@@ -92,21 +98,48 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
     })
     .catch(() => {});
 
+  /** Whether the current link is to a real path main issued (P6-01 slice 2). */
+  const isExternal = () => link?.external === true;
+
+  /** The file's time on disk: an external path through main, else the folder. */
   const onDisk = async (name: string): Promise<number | undefined> => {
+    if (isExternal()) {
+      const external = ctx.externalFiles;
+      // The web has no path write-back: an external link reads as gone.
+      if (!external) return undefined;
+      return (await external.stat(name))?.modified;
+    }
     const folder = await writable(ctx.folders);
     return (await folder.list()).find((f) => f.name === name)?.modified;
+  };
+
+  /** The file's bytes: an external path through main, else the folder. */
+  const readFile = async (name: string): Promise<{ bytes: Uint8Array; modified: number }> => {
+    if (isExternal()) {
+      const external = ctx.externalFiles;
+      if (!external) throw new Error(`${name} isn't in the linked folder any more.`);
+      return external.read(name);
+    }
+    return writable(ctx.folders).then((folder) => folder.read(name));
   };
 
   const sync = createLinkSync({
     link: () => link,
     saveLink: async (next) => {
-      link = next;
-      await ctx.projects.link(id, next);
+      // The external flag is the link's, not the write's: carry it through.
+      link = next && isExternal() ? { ...next, external: true } : next;
+      await ctx.projects.link(id, link);
     },
     onDisk,
     archive: () => ctx.projects.archiveBytes(id),
-    write: async (name, bytes) =>
-      (await writable(ctx.folders)).write(name, bytes).then((w) => w.modified),
+    write: async (name, bytes) => {
+      if (isExternal()) {
+        const external = ctx.externalFiles;
+        if (!external) throw new Error(`${name} isn't in the linked folder any more.`);
+        return (await external.write(name, bytes)).modified;
+      }
+      return (await writable(ctx.folders)).write(name, bytes).then((w) => w.modified);
+    },
     // Every outcome, including the one a trailing write gives ten seconds
     // later: a conflict the user never hears about is data they can lose.
     report: say,
@@ -141,7 +174,7 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
     if (!current || !applies()) return;
     conflict = undefined;
     try {
-      const { bytes } = await writable(ctx.folders).then((folder) => folder.read(current.file));
+      const { bytes } = await readFile(current.file);
       const archive = readArchive(bytes);
       // The bytes before the document that names them (ADR-0061 §2).
       for (const [sha256, file] of archive.attachments) {
@@ -165,7 +198,11 @@ export function createLinkedProject(ctx: LinkedContext): LinkedProject {
     conflict = undefined;
     // The file as it is on disk is what we take over, so the write doesn't see
     // its own change as someone else's.
-    link = { file: current.file, modified: current.onDisk };
+    link = {
+      file: current.file,
+      modified: current.onDisk,
+      ...(link?.external ? { external: true as const } : {}),
+    };
     await ctx.projects.link(id, link);
     await sync.flush();
   };

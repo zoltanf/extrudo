@@ -5,7 +5,7 @@
  * web's `<input accept>` syntax (".svg,.dxf" or "application/zip"), turned into
  * dialog filters.
  */
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, stat, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import {
   type BrowserWindow,
@@ -17,6 +17,8 @@ import {
 export interface DialogFiles {
   download(bytes: Uint8Array, name: string): Promise<void>;
   pick(accept: string): Promise<{ name: string; bytes: Uint8Array } | undefined>;
+  /** "Save As…": a save dialog, the bytes written there, and where (P6-01 slice 2). */
+  saveAs(bytes: Uint8Array, name: string): Promise<{ path: string; modified: number } | undefined>;
 }
 
 const EXTENSION = /^\.[a-z0-9]+$/i;
@@ -50,6 +52,20 @@ export function createDialogFiles(getWindow: () => BrowserWindow | null): Dialog
       const path = result.filePaths[0];
       if (result.canceled || !path) return undefined;
       return { name: basename(path), bytes: new Uint8Array(await readFile(path)) };
+    },
+    async saveAs(bytes, name) {
+      const options: SaveDialogOptions = {
+        defaultPath: basename(name),
+        filters: [{ name: 'Extrudo', extensions: ['extrudo'] }],
+      };
+      const win = getWindow();
+      const result = win
+        ? await dialog.showSaveDialog(win, options)
+        : await dialog.showSaveDialog(options);
+      if (result.canceled || !result.filePath) return undefined;
+      await writeFile(result.filePath, bytes);
+      const info = await stat(result.filePath);
+      return { path: result.filePath, modified: info.mtimeMs };
     },
   };
 }

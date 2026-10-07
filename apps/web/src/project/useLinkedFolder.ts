@@ -42,6 +42,7 @@ export function useLinkedFolder(props: LinkedFolderProps): LinkedFolderHandle {
       folders && autosave
         ? createLinkedProject({
             folders,
+            externalFiles: platform.externalFiles,
             projects: platform.projects,
             store,
             autosave,

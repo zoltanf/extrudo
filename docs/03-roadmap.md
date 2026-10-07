@@ -1061,8 +1061,16 @@ end to end, faster than in Fusion 360.
   renderer, the renderer the web app's own UI, `app://` + the web's CSP/COOP/
   COEP, one typed preload bridge), the Node-fs store (`@extrudo/storage/node`,
   atomic index, per-process lock) and `desktopPlatform` (preferences, native
-  dialogs, synchronous rescue, linked folders; no slicer yet). Remaining:
-  native menus, file association, recent files, auto-update and packaging.
+  dialogs, synchronous rescue, linked folders; no slicer yet). *Slice 2 done
+  2026-10-07 (ADR-0075's amendment; review fixes the same day):* the native menus
+  from the command registry (`menuModel` over `menu:set`/`menu:run`; every
+  model item shows its accelerator with `registerAccelerator: false`, while the
+  three desktop File entries — Open…, Save As…, Quit — register theirs), the
+  `.extrudo` association and `argv`/`open-file` handling, and recent files
+  (`userData/recent.json`, the Open Recent submenu; Open…/Save As…/Quit). A
+  project opened from a path or Save-As'd is linked as an external file and
+  written back through paths main issued. Remaining: auto-update and packaging
+  (slice 5 carries `electron-builder.yml`'s association into a real install).
 - [ ] **P6-02 Slicer launch** on desktop (detect installed slicers): implement the
   platform's `openInSlicer` (ADR-0062), which the Export dialog already offers
   when it exists — write the exported bytes to a temporary file and launch

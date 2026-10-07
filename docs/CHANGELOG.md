@@ -4,6 +4,41 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P6-01 Electron app, slice 2 review fixes** (ADR-0075's
+  amendment): closed the review's high, medium and low findings. Open Recent is
+  built from main's own list (the renderer can no longer send a path);
+  `menu:set` passes the model through `shift/menuModel.ts`'s `isMenuModel` in
+  main, only the Window roles `minimize`/`zoom`/`front` are accepted (anything
+  else becomes a disabled label) and every model item sets
+  `registerAccelerator: false`; a project opened from a path (Open…, the
+  association, Open Recent) or Save-As'd is linked as an **external file**
+  (`LinkedFile.external`, the index only) and written back through paths main
+  issued this session (`file:write-path`/`file:stat-path`/`file:read-path`,
+  refused otherwise), with a second open of the same path reusing the linked
+  project. Quit quits directly on the home screen (main tracks a live
+  `menu:listening`), the macOS app menu is built item by item so its Quit saves
+  first, `desktopMenus.reset` cancels its debounce and drops the model, the
+  menu effect resets only on unmount, `second-instance` pushes its path before
+  the window check, `open-file`/argv accept `.extrudo` only and a read is
+  capped at 100 MB, Clear Recent clears the OS list, a failed import removes
+  the path (`recent:remove`), `file:save-as` is guarded, and `recent.ts`'s
+  writer `fsync`s and cleans up. No kernel or schema change; no web *behaviour*
+  change (`apps/web` gained the `ExternalFiles`/`MenuModel` seams and the
+  external-link branch only).
+- 2026-10-07 · **P6-01 Electron app, slice 2 — native menus, the `.extrudo`
+  association and recent files** (ADR-0075's amendment): the application menu is
+  a projection of the command registry (`apps/web/src/shell/menuModel.ts`'s
+  pure `menuModel`/`toAccelerator`, sent over `menu:set`; main builds
+  `Menu.buildFromTemplate` with `registerAccelerator: false` so the web keys
+  still run, and a clicked id returns over `menu:run`), with desktop-only File
+  entries (Open…, Open Recent, Save As…, Quit with `saveEverything()` first);
+  main handles the OS association and argv, queuing a path until the renderer
+  says `app:ready`, and hands the bytes over `file:open-path`, which the
+  renderer imports and links to its file as a linked-folder file is; a
+  `userData/recent.json` list (`main/recent.ts`) fills the Open Recent submenu
+  (`recent:list`/`recent:clear`/`recent:changed`). `electron-builder.yml`
+  carries the `.extrudo` association as data for the packaging slice. No
+  kernel or schema change; no web *behaviour* change.
 - 2026-10-07 · **P6-07 Auto-project review fixes** (ADR-0074's 2026-10-07
   amendment): a pending constraint joins the step that added its projection by
   step id (`UndoHistory.stepId`/`amendInto`/`hasStep`, `DocumentState.amendInto`/

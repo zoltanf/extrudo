@@ -11,7 +11,8 @@ import {
   ProjectNotFoundError,
   type ProjectSummary,
 } from '@extrudo/storage';
-import { type Platform, safeFileName } from '../platform';
+import { type OpenedFile, type Platform, safeFileName } from '../platform';
+import { navigate, projectHref } from '../routes';
 import { APP_VERSION } from '../version';
 
 /**
@@ -74,6 +75,44 @@ export async function exportProject(platform: Platform, id: ProjectId, name: str
   const fileName = safeFileName(name, FILE_EXTENSION);
   platform.files.download(file, fileName);
   return fileName;
+}
+
+/**
+ * Opens a `.extrudo` file the desktop app was handed (Open…, an association,
+ * argv or the Open Recent list; P6-01 slice 2). Main already read the bytes;
+ * the project is imported and linked to that file, as a linked-folder file is
+ * (ADR-0065 §3), then opened. Leaves the notices for the project's page, the
+ * way `importProject` does.
+ */
+export async function openExternalFile(
+  platform: Platform,
+  file: OpenedFile,
+): Promise<ProjectSummary> {
+  // A file already linked to a project opens that project rather than importing
+  // a second copy (P6-01 slice 2, finding 3): the desktop links an opened path
+  // `external`, so a second open (a re-launch, a double-click) navigates to it.
+  const existing = (await platform.projects.list()).find(
+    (summary) => !summary.trashed && summary.linked?.external && summary.linked.file === file.path,
+  );
+  if (existing) {
+    navigate(projectHref(existing.id));
+    return existing;
+  }
+  const notices: string[] = [];
+  const summary = await platform.projects.importFile(
+    new Blob([file.bytes as Uint8Array<ArrayBuffer>]),
+    {
+      onNotice: (message) => notices.push(message),
+    },
+  );
+  await platform.projects.link(summary.id, {
+    file: file.path,
+    modified: file.modified,
+    external: true,
+  });
+  for (const notice of notices) noteOnOpen(summary.id, notice);
+  navigate(projectHref(summary.id));
+  return summary;
 }
 
 /** A plain-language message for a storage or file error (UI spec §8). */

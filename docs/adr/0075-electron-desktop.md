@@ -249,3 +249,157 @@ launch. It is documented as needing a display.
   was rewritten to the flow above; **it still cannot be run here** (headless,
   no `xvfb-run`, no Electron binary).
 
+## Amendment: slice 2 — native menus, the `.extrudo` association and recent files (2026-10-07)
+
+Slice 2 makes the desktop build a real application, not a window on the web
+UI: the application menu is the command registry, a `.extrudo` opens the app,
+and the recent-files list is the OS's.
+
+**The menus are a projection of `buildCommands`, not a second list.** The pure
+`menuModel(commands, mode, { mac })` (`apps/web/src/shell/menuModel.ts`)
+groups the same commands the palette uses into File, Edit, View (Panels and
+Theme folded in), one menu per visible tab (Solid/Sketch, Insert, 3D Print),
+the macOS Window menu and Help; a command with `unavailable` is a disabled
+item. `toAccelerator` turns a `keymap.ts` key string into Electron's grammar
+(`Mod+K` → `CmdOrCtrl+K`), and every item that has one sets it with
+**`registerAccelerator: false`** so the web's own keydown handler still runs
+the command and nothing double-fires. The shell sends the model over
+`menu:set` (debounced in the renderer adapter) whenever the mode or the
+availability changes, and `menu:reset` (a project page unmounting) returns to
+a bare desktop menu. Main's `menuTemplate.ts` builds `Menu.buildFromTemplate`
+with a mocked click for the tests; `index.ts` sets it. A clicked item sends
+`menu:run` with the command id, and the shell runs it through the same
+`command.run()` the palette uses.
+
+**The desktop-only File entries live in main, not the model.** `Open…` opens
+the native dialog and reads the file; `Open Recent` is main's list; `Save As…`
+and `Quit` send `desktop:saveAs`/`desktop:quit` to the renderer (only it holds
+the document). `Quit` runs `saveEverything()` first and only then confirms, the
+way the update toast's Reload does (ADR-0054). The web File menu is unchanged.
+
+**The association, argv and recent all come down one path.** `main/openPaths.ts`
+holds a queue: a macOS `open-file`, a `second-instance` argv or the first
+launch's argv is a path; it waits there until the renderer sends `app:ready`
+(the renderer registers its handler in `bootDesktop`'s new `onPlatform` hook
+before mounting). Main reads the bytes and sends `file:open-path`; the renderer
+imports them (`openExternalFile` in `project/actions.ts`), **links the project
+to that path** as a linked-folder file is (ADR-0065 §3) and opens it. A path
+that can't be read is dropped from the recent list.
+
+**Recent files are main's** (`main/recent.ts`, `userData/recent.json`, at most
+10, deduplicated, missing files dropped when listed) and are also given to the
+OS through `app.addRecentDocument`. `menu:set` carries the list so the Open
+Recent submenu is built with the menu; `recent:list`/`recent:clear` and a
+`recent:changed` event keep the renderer's copy fresh, and `recent:list` is
+what `apps/web/src/platform/types`' `RecentEntry` names.
+
+**Decisions the brief left open** (recorded rather than silent):
+
+- **`Open…` is main-side.** The brief lists it with `importFile`; main has the
+  store, so it picks and reads the file and lets the renderer import the bytes
+  (which is also what the association does). The model's own "Import .extrudo…"
+  command is untouched.
+- **A new `file:save-as` channel.** "Save As…" needs the chosen path, which the
+  existing `file:download` (fire-and-forget) has no way to return;
+  `DialogFiles.saveAs` writes and answers `{ path, modified }`, and main records
+  it in the recent list. `Platform.files.saveAs` is optional, so the browser
+  File menu is unchanged.
+- **`app:ready` and `menu:reset`.** Deliver-before-listening would silently
+  lose an association open and a stale project menu on the home screen; both
+  are closed with one message each rather than a timing guess.
+- **`electron-builder.yml` is data only** (app id `org.extrudo.desktop`,
+  product name "Extrudo", the `.extrudo` `fileAssociations`, the web icons).
+  The build scripts, per-platform targets, signing and auto-update are slice 5.
+
+**No web, kernel, schema or file-format change.** `Platform.menus` and
+`FileAccess.saveAs` are optional; `apps/web/dist` behaves exactly as before,
+which is why the hosting and PWA e2e specs need no change.
+
+### Amendment Results
+
+- **Unit tests** (2026-10-07): `apps/desktop` runs with the bridge, the platform,
+  the recent store, the open queue, the menu template and the menu adapter
+  mocked (no Electron binary); `apps/web` gains `menuModel.test.ts`, which walks
+  the real keymap and checks every accelerator against Electron's grammar. The
+  focused run: `Test Files 15 passed (15)`, `Tests 58 passed (58)`.
+- **`pnpm check`** (2026-10-07): `Test Files 312 passed | 5 skipped (317)`,
+  `Tests 3816 passed | 9 skipped (3825)`; `Package boundaries OK (13 packages)`;
+  `License check: 172 production packages, all on the allow-list.`
+- **Builds**: `pnpm build` (web + site) and
+  `pnpm --filter @extrudo/desktop build` both write their output
+  (`out/main/index.cjs`, `out/preload/index.cjs`, `out/renderer/`).
+- **The web is unchanged**: `e2e/hosting.spec.ts` and `e2e/pwa.spec.ts` against
+  the fresh build — `13 passed (37.7s)`.
+- **CI**: run `37568089309` on `f392e8c` and `37569618109` on the merge head
+  `8c1af34` both completed success.
+- **What to check by hand on a machine with a display:** run
+  `pnpm --filter @extrudo/desktop dev`; the application menu's accelerators
+  (shown, but the web's own keys still run), File › Open… and Open Recent, File ›
+  Save As… linking the project, and opening a `.extrudo` by double-click (the OS
+  registration is slice 5). `SMOKE_OPEN=<file.extrudo> xvfb-run -a node
+  apps/desktop/scripts/smoke.mjs` exercises the association path.
+
+### Amendment review fixes (2026-10-07, slice 2)
+
+A review of `5b0c2cf` found a set of defects; all were closed on `p6-01-s2`.
+
+**The channel list, complete.** `shared/ipc.ts` is still the one contract. The
+menu/association/recent channels are `menu:set` (the model only), `menu:run`,
+`menu:reset`, **`menu:listening`** (the shell's `onRun` handler is live, so
+main knows Save As…/Quit's behaviour), `file:open-path` (main→renderer, with an
+`error` for a refused file), `recent:list`/`recent:clear`/**`recent:remove`**/
+`recent:changed`, `app:ready`, `app:quit`, and the external-file write-back
+**`file:write-path`**, **`file:stat-path`** and **`file:read-path`**. The
+`desktop:saveAs`/`desktop:quit` ids are defined once in
+`@extrudo/web/menu-model` and imported by main and the shell.
+
+**Open Recent is main's, never the renderer's.** `menu:set` carries no recent
+list; `applyMenu` builds the submenu from `recent.list()`. A compromised
+renderer can no longer name an arbitrary path for main to `readFile`.
+
+**The model is validated and roles whitelisted.** `shared/menuModel.ts`'s
+`isMenuModel` checks the depth-2 shape (string labels/ids, boolean `enabled`,
+accelerators in Electron's grammar) in main before `Menu.buildFromTemplate`,
+and a malformed model is ignored with one `console.warn` rather than thrown
+from `ipcMain.on`. `menuTemplate.ts` accepts `role` only from
+`minimize`/`zoom`/`front`; anything else (`quit`, `toggleDevTools`) becomes a
+plain disabled label, and every model-derived item sets
+`registerAccelerator: false` so an allowed role's default accelerator never
+registers. The three desktop File entries — Open… (`CmdOrCtrl+O`), Save As…
+(`CmdOrCtrl+Shift+S`) and Quit (`CmdOrCtrl+Q`) — are the only accelerators
+registered; every other accelerator is shown and left to the web's keydown
+handling. On macOS the app menu is built item by item (About, Services, Hide,
+Hide Others, Unhide, Quit) rather than `role: 'appMenu'`, whose raw Quit would
+bypass `saveEverything()`; File has no second Quit there, and Cmd+Q routes
+through the same save-then-quit handler.
+
+**External-file links.** A project opened from a path (Open…, the association,
+Open Recent) or Save-As'd is linked with `LinkedFile.external: true` and
+`file` an absolute path — the project index only, no document or file-format
+change. Main records every path it issued this session (`deliverOpen`,
+`savedFile`) and `file:write-path`/`file:stat-path`/`file:read-path` refuse any
+other with a `StorageError`, so a compromised renderer still reads and writes
+nothing it wasn't handed. `linkedFolder.ts` dispatches an `external` link to
+`Platform.externalFiles` (`write`/`stat`/`read`) with the same conflict rule,
+throttle and Load-from-disk/Overwrite toast as a linked folder; the web has no
+`externalFiles`, so an external link there reads as "not in the linked folder".
+A second open of the same path navigates to the linked project rather than
+importing a copy, and Save As… replaces the link and names the chosen basename.
+
+**The other findings.** `desktopMenus.reset()` cancels the debounce and drops
+the model; the shell sets on change and resets only on unmount (no flash of the
+bare menu). `second-instance` pushes its path before the window check;
+`open-file` and argv accept `.extrudo` names only, and `deliverOpen` stats the
+file first and refuses anything over 100 MB with a message. Clear Recent calls
+`app.clearRecentDocuments()`; a failed import drops its path (`recent:remove`);
+`file:save-as` is wrapped in `guarded`; `recent.ts`'s writer `fsync`s and cleans
+up a failed rename like slice 1's writers.
+
+**Tests.** `isMenuModel`/`isElectronAccelerator`, the role whitelist,
+`registerAccelerator`, Save As…'s enabled state and the macOS app menu
+(`menuTemplate.test.ts`, `shared/menuModel.test.ts`); `createExternalFiles`'s
+guard and read/write/stat (`externalFiles.test.ts`); the bridge's new channels
+(`bridge.test.ts`); `openExternalFile` import/link/reuse and the external
+write-back with its conflict rule (`actions.test.ts`, `linkedFolder.test.ts`);
+`isExtrudoPath` (`openPaths.test.ts`).
+

@@ -59,6 +59,12 @@ export interface FileActions {
   /** Opens the Versions dialog (P2-14). */
   versionHistory?(): void;
   /**
+   * Desktop only (P6-01 slice 2): "Save As…" writes the design to a path the
+   * user chooses and links the project to it. The web File menu leaves it out;
+   * the native menu offers it when `platform.files.saveAs` exists.
+   */
+  saveAs?(): void;
+  /**
    * Writes this design into the linked folder as `<name>.extrudo` and links
    * the two (P4-09, ADR-0065 §3). Present only where a folder is linked and
    * this project isn't linked yet.

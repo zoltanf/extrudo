@@ -7,6 +7,7 @@
 
 import type { ProjectId } from '@extrudo/storage';
 import type {
+  ExternalFiles,
   FileAccess,
   FolderFile,
   FolderLink,
@@ -21,6 +22,7 @@ import { appNotifications } from '@extrudo/web/notifications';
 import { recoverRescued } from '@extrudo/web/platform/rescue';
 import type { ExtrudoApi, FolderEntry } from '../shared/ipc';
 import { unwrap } from './errors';
+import { desktopMenus } from './menus';
 import { createStoreProxy } from './proxy';
 
 /** The preference map, read once; the boot and `desktopPlatform` share it. */
@@ -68,6 +70,10 @@ export function desktopFiles(api: ExtrudoApi): FileAccess {
     async pick(accept) {
       const picked = await api.files.pick(accept);
       return picked ? new File([picked.bytes as Uint8Array<ArrayBuffer>], picked.name) : undefined;
+    },
+    async saveAs(file, name) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      return unwrap(await api.files.saveAs(bytes, name));
     },
   };
 }
@@ -133,6 +139,15 @@ export function desktopFolders(api: ExtrudoApi): LinkedFolders {
   };
 }
 
+/** Writing back to a path main issued this session (P6-01 slice 2, finding 3). */
+export function desktopExternalFiles(api: ExtrudoApi): ExternalFiles {
+  return {
+    write: async (path, bytes) => unwrap(await api.external.write(path, bytes)),
+    stat: async (path) => unwrap(await api.external.stat(path)),
+    read: async (path) => unwrap(await api.external.read(path)),
+  };
+}
+
 export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise<Platform> {
   const preferences = await desktopPreferences(api);
   const projects = createStoreProxy(api);
@@ -145,5 +160,7 @@ export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise
     files: desktopFiles(api),
     rescue,
     folders: desktopFolders(api),
+    externalFiles: desktopExternalFiles(api),
+    menus: desktopMenus(api),
   };
 }

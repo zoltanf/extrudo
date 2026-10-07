@@ -7,12 +7,16 @@
  */
 import { basename } from 'node:path';
 import type { ProjectStore } from '@extrudo/storage';
+import type { MenuModel } from '@extrudo/web/menu-model';
 import { type BrowserWindow, dialog, ipcMain, type OpenDialogOptions } from 'electron';
 import { type ErrorEnvelope, serializeError } from '../shared/errors';
 import { CHANNELS, isStoreMethod, type StoreMethod } from '../shared/ipc';
+import { isMenuModel } from '../shared/menuModel';
 import type { DialogFiles } from './dialogs';
+import type { ExternalFiles } from './externalFiles';
 import type { Folders } from './folders';
 import type { PreferencesFile } from './preferences';
+import type { RecentFile } from './recent';
 import type { RescueFile } from './rescue';
 import { storeCall } from './store-call';
 
@@ -35,6 +39,18 @@ export interface IpcDependencies {
   files: DialogFiles;
   rescue: RescueFile;
   folders: Folders;
+  /** Writing back to a path main itself issued this session (finding 3). */
+  externalFiles: ExternalFiles;
+  /** The native application menu: the renderer's model, and the desktop default. */
+  menu: { set(model: MenuModel[]): void; reset(): void; setListening(active: boolean): void };
+  /** The recent-files list; `savedFile` records a Save As… and tells the renderer. */
+  recent: RecentFile;
+  savedFile(path: string): void;
+  recentChanged(): void;
+  /** The renderer's menu/open-file handlers are registered; deliver what waited. */
+  rendererReady(): void;
+  /** Save-then-quit asked from the native menu; the renderer confirmed. */
+  quit(): void;
   getWindow: () => BrowserWindow | null;
 }
 
@@ -57,6 +73,15 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     deps.files.download(bytes, name),
   );
   ipcMain.handle(CHANNELS.filePick, (_event, accept: string) => deps.files.pick(accept));
+  // Through `guarded`: a failed write must cross as `describeError`'s wording,
+  // not Electron's "Error invoking remote method…" (finding 6).
+  ipcMain.handle(CHANNELS.fileSaveAs, (_event, bytes: Uint8Array, name: string) =>
+    guarded(async () => {
+      const result = await deps.files.saveAs(bytes, name);
+      if (result) deps.savedFile(result.path);
+      return result;
+    }),
+  );
 
   ipcMain.handle(CHANNELS.storagePersistence, () => 'persistent');
   ipcMain.handle(CHANNELS.storageRequest, () => 'persistent');
@@ -96,4 +121,45 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   ipcMain.handle(CHANNELS.folderWrite, (_event, name: string, bytes: Uint8Array) =>
     guarded(() => deps.folders.write(name, bytes)),
   );
+
+  // Menus, the file association and recent files (P6-01 slice 2, ADR-0075 §2).
+  // The model is validated before it reaches `Menu.buildFromTemplate`: a
+  // malformed one is ignored with one warning rather than thrown from
+  // `ipcMain.on`, which has no `try/catch` in main (finding 2).
+  ipcMain.on(CHANNELS.menuSet, (_event, model: unknown) => {
+    if (!isMenuModel(model)) {
+      console.warn('Ignoring a malformed menu model from the renderer.');
+      return;
+    }
+    deps.menu.set(model);
+  });
+  ipcMain.on(CHANNELS.menuReset, () => deps.menu.reset());
+  ipcMain.on(CHANNELS.menuListening, (_event, active: unknown) =>
+    deps.menu.setListening(active === true),
+  );
+  ipcMain.handle(CHANNELS.recentList, () => deps.recent.list());
+  ipcMain.handle(CHANNELS.recentClear, () => {
+    deps.recent.clear();
+    deps.recentChanged();
+  });
+  // A path whose import failed leaves the list (finding 6): a corrupt file
+  // must not stay to fail again on the next click.
+  ipcMain.on(CHANNELS.recentRemove, (_event, path: unknown) => {
+    if (typeof path !== 'string') return;
+    deps.recent.remove(path);
+    deps.recentChanged();
+  });
+  // Writing back to an opened/Save-As'd file. `externalFiles` refuses a path
+  // main didn't issue, so a compromised renderer can't reach another file.
+  ipcMain.handle(CHANNELS.fileWritePath, (_event, path: string, bytes: Uint8Array) =>
+    guarded(() => deps.externalFiles.write(path, bytes)),
+  );
+  ipcMain.handle(CHANNELS.fileStatPath, (_event, path: string) =>
+    guarded(() => deps.externalFiles.stat(path)),
+  );
+  ipcMain.handle(CHANNELS.fileReadPath, (_event, path: string) =>
+    guarded(() => deps.externalFiles.read(path)),
+  );
+  ipcMain.on(CHANNELS.appReady, () => deps.rendererReady());
+  ipcMain.on(CHANNELS.appQuit, () => deps.quit());
 }

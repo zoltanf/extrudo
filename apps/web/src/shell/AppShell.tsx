@@ -87,7 +87,7 @@ import { OVERHANG_TOOL, PRINT_INFO_TOOL, useOverhang, usePrintInfo } from '../pr
 import { THICKNESS_TOOL, useThickness } from '../print/useThickness';
 import { TOLERANCE_TOOL, useTolerance } from '../print/useTolerance';
 import { WallThicknessPanel } from '../print/WallThicknessPanel';
-import type { Autosaver } from '../project/autosave';
+import { type Autosaver, saveEverything } from '../project/autosave';
 import { setRestoreGuard } from '../project/restoreGuard';
 import { VersionsDialog } from '../project/VersionsDialog';
 import type { VersionContext } from '../project/versions';
@@ -151,6 +151,7 @@ import {
 } from './commands';
 import { createFeatureActions } from './featureActions';
 import { createGroupActions } from './groupActions';
+import { menuModel, QUIT_ID, SAVE_AS_ID } from './menuModel';
 import { Splitter, usePanel } from './panels';
 import { watchRecomputeErrors } from './recomputeErrors';
 import { Timeline } from './Timeline';
@@ -799,6 +800,53 @@ export function AppShell({
     setRecent((r) => [command.id, ...r.filter((id) => id !== command.id)].slice(0, RECENT));
     command.run();
   };
+
+  // The native application menu (P6-01 slice 2, ADR-0075 §2). Desktop only:
+  // `platform.menus` is absent in the browser, so nothing here runs on the web.
+  // The model is a projection of the same command list the palette uses. `set`
+  // on change, but `reset` only when the shell unmounts: a selection change
+  // must not flash the bare File menu (finding 5).
+  useEffect(() => {
+    const menus = platform.menus;
+    if (!menus) return;
+    const mac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
+    menus.set(menuModel(commands, mode, { mac }));
+  }, [platform.menus, commands, mode]);
+  useEffect(() => {
+    const menus = platform.menus;
+    if (!menus) return;
+    return () => menus.reset();
+  }, [platform.menus]);
+  useEffect(() => {
+    const menus = platform.menus;
+    if (!menus) return;
+    // Tell main a project page is listening: with none, File › Quit quits
+    // directly and Save As… is disabled (finding 4).
+    menus.listening(true);
+    const off = menus.onRun((id) => {
+      if (id === SAVE_AS_ID) {
+        fileActions.saveAs?.();
+        return;
+      }
+      if (id === QUIT_ID) {
+        void (async () => {
+          // Save before quitting, as the update toast's Reload does (ADR-0054).
+          if (!(await saveEverything())) {
+            notify('error', "Couldn't save before quitting. Your latest changes are still open.");
+            return;
+          }
+          menus.quit();
+        })();
+        return;
+      }
+      const command = commands.find((c) => c.id === id && !c.unavailable);
+      command?.run();
+    });
+    return () => {
+      menus.listening(false);
+      off();
+    };
+  }, [platform.menus, commands, fileActions, notify]);
 
   const shortcuts = useMemo(
     () => [

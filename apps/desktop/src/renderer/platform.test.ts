@@ -13,7 +13,11 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
   const api: ExtrudoApi = {
     prefs: { read: async () => ({ theme: 'dark' }), write: () => {} },
     store: { call: async () => undefined },
-    files: { download: async () => {}, pick: async () => undefined },
+    files: {
+      download: async () => {},
+      pick: async () => undefined,
+      saveAs: async () => undefined,
+    },
     storage: {
       persistence: async () => 'persistent',
       requestPersistence: async () => 'persistent',
@@ -29,6 +33,28 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
       read: async () => ({ bytes: new Uint8Array([1]), modified: 3 }),
       write: async () => ({ modified: 4 }),
     },
+    menus: {
+      set: () => {},
+      reset: () => {},
+      listening: () => {},
+      onRun: () => {},
+      offRun: () => {},
+      onOpenFile: () => {},
+      offOpenFile: () => {},
+    },
+    external: {
+      write: async () => ({ modified: 1 }),
+      stat: async () => undefined,
+      read: async () => ({ bytes: new Uint8Array(), modified: 1 }),
+    },
+    recent: {
+      list: async () => [],
+      clear: async () => {},
+      remove: () => {},
+      onChanged: () => {},
+      offChanged: () => {},
+    },
+    app: { ready: () => {}, quit: () => {} },
     ...overrides,
   };
   return api;
@@ -58,6 +84,7 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
           saved.push({ bytes, name });
         },
         pick: async () => ({ name: 'part.svg', bytes: new Uint8Array([1, 2]) }),
+        saveAs: async () => undefined,
       },
     });
     const files = desktopFiles(api);
@@ -67,6 +94,24 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
     files.download(new Blob([new Uint8Array([9])]), 'out.3mf');
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(saved).toEqual([{ bytes: new Uint8Array([9]), name: 'out.3mf' }]);
+  });
+
+  it('saves a Blob as with a path through the bridge (P6-01 slice 2)', async () => {
+    const calls: { bytes: Uint8Array; name: string }[] = [];
+    const api = fakeApi({
+      files: {
+        download: async () => {},
+        pick: async () => undefined,
+        saveAs: async (bytes, name) => {
+          calls.push({ bytes, name });
+          return { path: '/tmp/Bracket.extrudo', modified: 42 };
+        },
+      },
+    });
+    const files = desktopFiles(api);
+    const result = await files.saveAs?.(new Blob([new Uint8Array([7, 8])]), 'Bracket.extrudo');
+    expect(calls).toEqual([{ bytes: new Uint8Array([7, 8]), name: 'Bracket.extrudo' }]);
+    expect(result).toEqual({ path: '/tmp/Bracket.extrudo', modified: 42 });
   });
 
   it('writes rescue copies synchronously and parses them back at startup', () => {
@@ -109,8 +154,10 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
   it('assembles the whole Platform, recovering no rescue copies', async () => {
     const platform = await desktopPlatform(fakeApi());
     expect(Object.keys(platform).sort()).toEqual([
+      'externalFiles',
       'files',
       'folders',
+      'menus',
       'preferences',
       'projects',
       'rescue',

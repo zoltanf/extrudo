@@ -21,10 +21,20 @@ export const MAX_ATTACHMENTS_BYTES = 100 * 1024 * 1024;
  * nowhere in an `.extrudo` file.
  */
 export interface LinkedFile {
-  /** The file's name in the folder, `<project name>.extrudo`. */
+  /**
+   * The file's name in the linked folder (`<project name>.extrudo`), or — when
+   * `external` is `true` — the absolute path of a file the desktop app was
+   * handed (Open…, an association or Save As…; P6-01 slice 2).
+   */
   file: string;
   /** When we last wrote (or read) it, ms since the epoch; the conflict check (ADR-0065 §3). */
   modified: number;
+  /**
+   * The link is to a real path main issued this session, not a file in the
+   * linked folder (P6-01 slice 2). Only the desktop app writes these, through
+   * the paths main handed out; the browser never sees one.
+   */
+  external?: true;
 }
 
 /** What the home screen shows about a project, without loading it. */
@@ -173,8 +183,8 @@ export class StorageError extends Error {
   override readonly name = 'StorageError';
   /** The id that was refused, as it arrived. */
   readonly id: string;
-  constructor(id: string) {
-    super(`${id || 'An empty string'} isn't a valid project ID.`);
+  constructor(id: string, message?: string) {
+    super(message ?? `${id || 'An empty string'} isn't a valid project ID.`);
     this.id = id;
   }
 }

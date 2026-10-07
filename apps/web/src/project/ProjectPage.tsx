@@ -4,13 +4,14 @@ import {
   createSessionStore,
   type DocumentStore,
   type ExtrudoDocument,
+  FILE_EXTENSION,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import type { ProjectId } from '@extrudo/storage';
 import { useEffect, useMemo, useState } from 'react';
 import { Button, LogoMark, useToasts } from '../design-system';
 import { requestTutorial } from '../onboarding/state';
-import type { Platform } from '../platform';
+import { type Platform, safeFileName } from '../platform';
 import { HOME_HREF, navigate, projectHref } from '../routes';
 import type { FileActions } from '../shell/AppBar';
 import { AppShell } from '../shell/AppShell';
@@ -162,6 +163,28 @@ function ProjectEditor({
           .then((summary) => summary && navigate(projectHref(summary.id)))
           .catch((error: unknown) => push('error', `Import failed: ${describeError(error)}`));
       },
+      // Desktop only (P6-01 slice 2): "Save As…" to a path the user picks, then
+      // link the design to that file, the way a linked folder does (ADR-0065 §3).
+      ...(platform.files.saveAs && {
+        saveAs: () => {
+          const saveAs = platform.files.saveAs;
+          if (!saveAs) return;
+          (async () => {
+            await autosave?.flush();
+            const fileName = safeFileName(store.getState().doc.name, FILE_EXTENSION);
+            const bytes = await platform.projects.exportFile(doc.id);
+            const result = await saveAs(bytes, fileName);
+            if (!result) return;
+            await platform.projects.link(doc.id, {
+              file: result.path,
+              modified: result.modified,
+              external: true,
+            });
+            const chosen = result.path.split(/[\\/]/).pop() ?? fileName;
+            push('success', `Saved ${chosen}.`);
+          })().catch((error: unknown) => push('error', describeError(error)));
+        },
+      }),
       // Only where a folder is linked and this project isn't linked yet (P4-09).
       ...(linkNow && { saveToLinkedFolder: linkNow }),
     }),

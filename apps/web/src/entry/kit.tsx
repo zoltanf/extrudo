@@ -12,15 +12,19 @@ export {
   TooltipProvider,
 } from '../design-system';
 export type {
+  DesktopMenus,
+  ExternalFiles,
   FileAccess,
   FolderFile,
   FolderLink,
   FolderPermission,
   LinkedFolders,
+  OpenedFile,
   OpenInSlicer,
   Persistence,
   Platform,
   Preferences,
+  RecentEntry,
   RescueStore,
   StorageAccess,
 } from '../platform';
@@ -33,4 +37,5 @@ export {
   recoverRescued,
   safeFileName,
 } from '../platform';
+export { openExternalFile } from '../project/actions';
 export { StartupError } from '../StartupError';

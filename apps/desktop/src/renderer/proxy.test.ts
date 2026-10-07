@@ -18,6 +18,7 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
     files: {
       download: async () => {},
       pick: async () => undefined,
+      saveAs: async () => undefined,
     },
     storage: {
       persistence: async () => 'persistent',
@@ -34,6 +35,28 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
       read: async () => ({ bytes: new Uint8Array(), modified: 0 }),
       write: async () => ({ modified: 0 }),
     },
+    menus: {
+      set: () => {},
+      reset: () => {},
+      listening: () => {},
+      onRun: () => {},
+      offRun: () => {},
+      onOpenFile: () => {},
+      offOpenFile: () => {},
+    },
+    external: {
+      write: async () => ({ modified: 0 }),
+      stat: async () => undefined,
+      read: async () => ({ bytes: new Uint8Array(), modified: 0 }),
+    },
+    recent: {
+      list: async () => [],
+      clear: async () => {},
+      remove: () => {},
+      onChanged: () => {},
+      offChanged: () => {},
+    },
+    app: { ready: () => {}, quit: () => {} },
   };
   return { api, calls };
 }

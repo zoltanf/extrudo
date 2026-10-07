@@ -5,6 +5,7 @@ import { CHANNELS } from '../shared/ipc';
 /** A fake `ipcRenderer` that records calls and answers the sync ones from a map. */
 function fakeIpc(answers: Record<string, (...args: unknown[]) => unknown> = {}) {
   const calls: { channel: string; args: unknown[]; kind: 'invoke' | 'send' | 'sendSync' }[] = [];
+  const listeners = new Map<string, ((event: unknown, ...args: unknown[]) => void)[]>();
   const ipc: IpcRendererLike = {
     async invoke(channel, ...args) {
       calls.push({ channel, args, kind: 'invoke' });
@@ -17,8 +18,20 @@ function fakeIpc(answers: Record<string, (...args: unknown[]) => unknown> = {}) 
       calls.push({ channel, args, kind: 'sendSync' });
       return answers[channel]?.(...args);
     },
+    on(channel, listener) {
+      listeners.set(channel, [...(listeners.get(channel) ?? []), listener]);
+    },
+    removeListener(channel, listener) {
+      listeners.set(
+        channel,
+        (listeners.get(channel) ?? []).filter((l) => l !== listener),
+      );
+    },
   };
-  return { ipc, calls };
+  const emit = (channel: string, ...args: unknown[]) => {
+    for (const listener of listeners.get(channel) ?? []) listener({}, ...args);
+  };
+  return { ipc, calls, emit, listeners };
 }
 
 describe('preload bridge (ADR-0075 §1)', () => {
@@ -79,6 +92,90 @@ describe('preload bridge (ADR-0075 §1)', () => {
       CHANNELS.storagePersistence,
       CHANNELS.foldersCurrent,
       CHANNELS.folderWrite,
+    ]);
+  });
+
+  it('sends the menu model, registers the menu/open-file handlers and unregisters them', () => {
+    const { ipc, calls, emit, listeners } = fakeIpc();
+    const api = createApi(ipc);
+    api.menus.set([{ label: 'File', items: [] }]);
+    api.menus.listening(true);
+    api.menus.reset();
+    expect(calls).toEqual([
+      {
+        channel: CHANNELS.menuSet,
+        args: [[{ label: 'File', items: [] }]],
+        kind: 'send',
+      },
+      { channel: CHANNELS.menuListening, args: [true], kind: 'send' },
+      { channel: CHANNELS.menuReset, args: [], kind: 'send' },
+    ]);
+
+    const ran: string[] = [];
+    const opened: string[] = [];
+    api.menus.onRun((id) => ran.push(id));
+    api.menus.onOpenFile((file) => opened.push(file.path));
+    emit(CHANNELS.menuRun, 'extrude');
+    emit(CHANNELS.fileOpenPath, {
+      path: '/b.extrudo',
+      name: 'b.extrudo',
+      bytes: new Uint8Array(),
+      modified: 1,
+    });
+    expect(ran).toEqual(['extrude']);
+    expect(opened).toEqual(['/b.extrudo']);
+    api.menus.offRun();
+    api.menus.offOpenFile();
+    emit(CHANNELS.menuRun, 'ignored');
+    expect(ran).toEqual(['extrude']);
+    expect(listeners.get(CHANNELS.menuRun)).toHaveLength(0);
+  });
+
+  it('lists and clears recent files, and subscribe to a changed event (P6-01 slice 2)', async () => {
+    const { ipc, calls, emit } = fakeIpc({
+      [CHANNELS.recentList]: () => [{ path: '/a.extrudo', name: 'a.extrudo' }],
+      [CHANNELS.recentClear]: () => undefined,
+    });
+    const api = createApi(ipc);
+    expect(await api.recent.list()).toEqual([{ path: '/a.extrudo', name: 'a.extrudo' }]);
+    await api.recent.clear();
+    api.recent.remove('/b.extrudo');
+    let changes = 0;
+    api.recent.onChanged(() => changes++);
+    emit(CHANNELS.recentChanged);
+    api.recent.offChanged();
+    emit(CHANNELS.recentChanged);
+    expect(changes).toBe(1);
+    api.app.ready();
+    api.app.quit();
+    expect(calls.map((c) => c.channel)).toEqual([
+      CHANNELS.recentList,
+      CHANNELS.recentClear,
+      CHANNELS.recentRemove,
+      CHANNELS.appReady,
+      CHANNELS.appQuit,
+    ]);
+  });
+
+  it('routes the external-file write, stat and read channels', async () => {
+    const { ipc, calls } = fakeIpc({
+      [CHANNELS.fileWritePath]: () => ({ modified: 7 }),
+      [CHANNELS.fileStatPath]: () => ({ modified: 8 }),
+      [CHANNELS.fileReadPath]: () => ({ bytes: new Uint8Array([1]), modified: 9 }),
+    });
+    const api = createApi(ipc);
+    expect(await api.external.write('/tmp/a.extrudo', new Uint8Array([1]))).toEqual({
+      modified: 7,
+    });
+    expect(await api.external.stat('/tmp/a.extrudo')).toEqual({ modified: 8 });
+    expect(await api.external.read('/tmp/a.extrudo')).toEqual({
+      bytes: new Uint8Array([1]),
+      modified: 9,
+    });
+    expect(calls.map((c) => c.channel)).toEqual([
+      CHANNELS.fileWritePath,
+      CHANNELS.fileStatPath,
+      CHANNELS.fileReadPath,
     ]);
   });
 });
