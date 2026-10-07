@@ -14,6 +14,7 @@ import { selectionSummary } from '../selection/items';
 import { useModelSelection } from '../selection/useModelSelection';
 import { createViewportStore } from '../viewport/store';
 import { Viewport } from '../viewport/Viewport';
+import { ViewportBoundary } from '../viewport/ViewportBoundary';
 
 const TEST_BODY = 'test-part' as BodyId;
 const META: Record<BodyId, BodyMeta> = { [TEST_BODY]: { name: 'Test part', visible: true } };
@@ -117,14 +118,16 @@ export function KernelDebug({ platform }: { platform: Platform }) {
         <output aria-label="Selection">{selectionSummary(selection) || 'Nothing selected'}</output>
       </header>
       <div className="stage" data-testid="kernel-stage">
-        <Viewport
-          viewport={viewport}
-          bodies={bodies}
-          meta={META}
-          hover={hover}
-          selection={selection}
-          modelSelect={modelSelect}
-        />
+        <ViewportBoundary>
+          <Viewport
+            viewport={viewport}
+            bodies={bodies}
+            meta={META}
+            hover={hover}
+            selection={selection}
+            modelSelect={modelSelect}
+          />
+        </ViewportBoundary>
       </div>
     </main>
   );

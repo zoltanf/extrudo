@@ -15,6 +15,7 @@ import { type Platform, safeFileName } from '../platform';
 import { HOME_HREF, navigate, projectHref } from '../routes';
 import type { FileActions } from '../shell/AppBar';
 import { AppShell } from '../shell/AppShell';
+import { useSoftwareNotice } from '../shell/useSoftwareNotice';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
 import { useDocumentFonts, useFontAttachments } from '../sketch/fonts';
 import { createViewportStore, type ViewportStore } from '../viewport/store';
@@ -117,6 +118,7 @@ function ProjectEditor({
   const autosave = useAutosave(store, viewport, platform);
   const { toasts, push, dismiss, notifications } = useToasts();
   useUpdateNotice(push, platform);
+  useSoftwareNotice(push, platform);
   // The linked folder (P4-09, ADR-0065 §3): a file on disk this project is
   // written back to, and the command that links one for the first time.
   const linked = useLinkedFolder({

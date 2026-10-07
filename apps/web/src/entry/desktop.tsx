@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from '../App';
 import { applyInitialTheme, ToastsOnly, TooltipProvider } from '../design-system';
 import type { Platform, Preferences } from '../platform';
+import { RootBoundary } from '../RootBoundary';
 import { StartupError } from '../StartupError';
 
 export function bootDesktop(
@@ -40,9 +41,11 @@ export function bootDesktop(
       onPlatform?.(platform);
       reactRoot.render(
         <StrictMode>
-          <TooltipProvider>
-            <App platform={platform} />
-          </TooltipProvider>
+          <RootBoundary>
+            <TooltipProvider>
+              <App platform={platform} />
+            </TooltipProvider>
+          </RootBoundary>
         </StrictMode>,
       );
     },

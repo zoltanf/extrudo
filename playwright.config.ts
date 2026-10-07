@@ -28,6 +28,18 @@ export default defineConfig({
     // The production build registers a service worker that precaches 20 MB of
     // WASM; only e2e/pwa.spec.ts wants it.
     serviceWorkers: 'block',
+    // The e2e browser draws WebGL in software (SwiftShader), so every spec would
+    // get the "Software rendering" toast (ADR-0076). The preference is stored the
+    // way platform/preferences.ts does: key `extrudo.<key>`, JSON value.
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: `http://127.0.0.1:${PORT}`,
+          localStorage: [{ name: 'extrudo.render.softwareNotice', value: '"dismissed"' }],
+        },
+      ],
+    },
   },
   projects: [
     {

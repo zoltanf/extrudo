@@ -138,6 +138,7 @@ import { ghostsOf } from '../viewport/ghostGeometry';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
+import { ViewportBoundary } from '../viewport/ViewportBoundary';
 import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
 import { bodyEntries, bodyMetaOf, createBodyActions, followBodyNames } from './bodies';
@@ -1632,136 +1633,138 @@ export function AppShell({
             />
           )}
         </div>
-        <Suspense
-          fallback={
-            <section
-              aria-label="Viewport"
-              aria-busy="true"
-              className="min-w-0 flex-1"
-              style={{ background: 'var(--x-viewport-glow)' }}
-            />
-          }
-        >
-          <Viewport
-            viewport={viewport}
-            bodies={shownBodies}
-            meta={bodyMeta}
-            sketches={sketches}
-            sketchPlane={sketchPlane}
-            planePicker={planePicker}
-            construction={constructionDrawings}
-            ghosts={ghosts}
-            canvases={canvasList}
-            calibration={calibration}
-            sketchInput={sketchInput}
-            commandRunning={drawing || picking || projecting || measuring || section.choosing}
-            onStopCommand={stopCommand}
-            hover={hover}
-            selection={dialogItems ?? selection}
-            modelSelect={modelSelect}
-            preview={preview}
-            viewMenu={viewMenu}
-            sectionClips={section.clips}
-            {...(section.box?.value && {
-              sectionBox: { box: section.box.value, on: section.box.state.on },
-            })}
-            {...(overhang.summary !== undefined && {
-              overhang: { view: overhang.view, summary: overhang.summary },
-            })}
-            {...(thickness.summary !== undefined && {
-              thickness: { thin: thickness.shading, summary: thickness.summary },
-            })}
+        <ViewportBoundary>
+          <Suspense
+            fallback={
+              <section
+                aria-label="Viewport"
+                aria-busy="true"
+                className="min-w-0 flex-1"
+                style={{ background: 'var(--x-viewport-glow)' }}
+              />
+            }
           >
-            {dialogOpen && dialog && (
-              <DialogOverlay
-                controller={dialog}
-                viewport={viewport}
-                settings={doc.settings}
-                bodies={shownBodies}
-              />
-            )}
-            {thickness.spot && (
-              <ThicknessOverlay
-                spot={thickness.spot}
-                viewport={viewport}
-                settings={doc.settings}
-                {...(section.clips.length > 0 && { clip: section.clips })}
-              />
-            )}
-            {sectioning && (
-              <SectionOverlay tool={section} viewport={viewport} settings={doc.settings} />
-            )}
-            {measuring && measured.measurement?.pair && (
-              <MeasureOverlay
-                pair={measured.measurement.pair}
-                viewport={viewport}
-                settings={doc.settings}
-              />
-            )}
-            {showConstraints && tools && activeSketchId && sketchPlane && (
-              <tools.Glyphs
-                store={store}
-                session={session}
-                viewport={viewport}
-                sketchId={activeSketchId}
-                frame={sketchPlane}
-                interactive={!drawing}
-                over={status?.over}
-                onDelete={remove}
-              />
-            )}
-            {showDimensions && tools && activeSketchId && sketchPlane && (
-              <tools.Labels
-                store={store}
-                session={session}
-                viewport={viewport}
-                host={tools.host}
-                sketchId={activeSketchId}
-                frame={sketchPlane}
-                interactive={!drawing}
-                notify={notify}
-                onDelete={remove}
-              />
-            )}
-            {!drawing && tools && activeSketchId && sketchPlane && (
-              <tools.Selection
-                store={store}
-                session={session}
-                viewport={viewport}
-                sketchId={activeSketchId}
-                frame={sketchPlane}
-              />
-            )}
-            {mode === 'sketch' && activeSketch && !drawing && (
-              <SelectionPanel
-                store={store}
-                session={session}
-                host={host}
-                onDelete={remove}
-                fonts={fontPicker}
-                notify={notify}
-              />
-            )}
-            {/* The Text tool's panel (P4-03): it takes the selection panel's place. */}
-            {mode === 'sketch' && activeTool === 'text' && textOpen && (
-              <TextPanel store={store} host={host} fonts={fontPicker} notify={notify} />
-            )}
-            {/* The Import Drawing tool's panel (P4-06), likewise. */}
-            {mode === 'sketch' && activeTool === IMPORT_DRAWING_TOOL && importOpen && (
-              <ImportDrawingPanel store={store} host={host} />
-            )}
-            {drawing && tools && activeSketchId && sketchPlane && (
-              <tools.Overlay
-                host={tools.host}
-                store={store}
-                viewport={viewport}
-                sketchId={activeSketchId}
-                frame={sketchPlane}
-              />
-            )}
-          </Viewport>
-          {appearancePopover}
-        </Suspense>
+            <Viewport
+              viewport={viewport}
+              bodies={shownBodies}
+              meta={bodyMeta}
+              sketches={sketches}
+              sketchPlane={sketchPlane}
+              planePicker={planePicker}
+              construction={constructionDrawings}
+              ghosts={ghosts}
+              canvases={canvasList}
+              calibration={calibration}
+              sketchInput={sketchInput}
+              commandRunning={drawing || picking || projecting || measuring || section.choosing}
+              onStopCommand={stopCommand}
+              hover={hover}
+              selection={dialogItems ?? selection}
+              modelSelect={modelSelect}
+              preview={preview}
+              viewMenu={viewMenu}
+              sectionClips={section.clips}
+              {...(section.box?.value && {
+                sectionBox: { box: section.box.value, on: section.box.state.on },
+              })}
+              {...(overhang.summary !== undefined && {
+                overhang: { view: overhang.view, summary: overhang.summary },
+              })}
+              {...(thickness.summary !== undefined && {
+                thickness: { thin: thickness.shading, summary: thickness.summary },
+              })}
+            >
+              {dialogOpen && dialog && (
+                <DialogOverlay
+                  controller={dialog}
+                  viewport={viewport}
+                  settings={doc.settings}
+                  bodies={shownBodies}
+                />
+              )}
+              {thickness.spot && (
+                <ThicknessOverlay
+                  spot={thickness.spot}
+                  viewport={viewport}
+                  settings={doc.settings}
+                  {...(section.clips.length > 0 && { clip: section.clips })}
+                />
+              )}
+              {sectioning && (
+                <SectionOverlay tool={section} viewport={viewport} settings={doc.settings} />
+              )}
+              {measuring && measured.measurement?.pair && (
+                <MeasureOverlay
+                  pair={measured.measurement.pair}
+                  viewport={viewport}
+                  settings={doc.settings}
+                />
+              )}
+              {showConstraints && tools && activeSketchId && sketchPlane && (
+                <tools.Glyphs
+                  store={store}
+                  session={session}
+                  viewport={viewport}
+                  sketchId={activeSketchId}
+                  frame={sketchPlane}
+                  interactive={!drawing}
+                  over={status?.over}
+                  onDelete={remove}
+                />
+              )}
+              {showDimensions && tools && activeSketchId && sketchPlane && (
+                <tools.Labels
+                  store={store}
+                  session={session}
+                  viewport={viewport}
+                  host={tools.host}
+                  sketchId={activeSketchId}
+                  frame={sketchPlane}
+                  interactive={!drawing}
+                  notify={notify}
+                  onDelete={remove}
+                />
+              )}
+              {!drawing && tools && activeSketchId && sketchPlane && (
+                <tools.Selection
+                  store={store}
+                  session={session}
+                  viewport={viewport}
+                  sketchId={activeSketchId}
+                  frame={sketchPlane}
+                />
+              )}
+              {mode === 'sketch' && activeSketch && !drawing && (
+                <SelectionPanel
+                  store={store}
+                  session={session}
+                  host={host}
+                  onDelete={remove}
+                  fonts={fontPicker}
+                  notify={notify}
+                />
+              )}
+              {/* The Text tool's panel (P4-03): it takes the selection panel's place. */}
+              {mode === 'sketch' && activeTool === 'text' && textOpen && (
+                <TextPanel store={store} host={host} fonts={fontPicker} notify={notify} />
+              )}
+              {/* The Import Drawing tool's panel (P4-06), likewise. */}
+              {mode === 'sketch' && activeTool === IMPORT_DRAWING_TOOL && importOpen && (
+                <ImportDrawingPanel store={store} host={host} />
+              )}
+              {drawing && tools && activeSketchId && sketchPlane && (
+                <tools.Overlay
+                  host={tools.host}
+                  store={store}
+                  viewport={viewport}
+                  sketchId={activeSketchId}
+                  frame={sketchPlane}
+                />
+              )}
+            </Viewport>
+            {appearancePopover}
+          </Suspense>
+        </ViewportBoundary>
         {picking && (
           <PlanePrompt
             session={session}

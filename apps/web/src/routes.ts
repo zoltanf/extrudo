@@ -1,7 +1,8 @@
 /**
  * Hash routes (Electron-safe, architecture §8): `#/` home, `#/p/<id>` a
- * project, `#/debug/kernel`, `#/debug/solver` and `#/debug/dialog` the debug
- * pages.
+ * project, `#/debug/kernel`, `#/debug/solver`, `#/debug/dialog` and
+ * `#/debug/crash` (throws on render, for the root error boundary's e2e test,
+ * ADR-0076) the debug pages.
  */
 import { useSyncExternalStore } from 'react';
 
@@ -11,6 +12,7 @@ export type Route =
   | { page: 'debug-kernel' }
   | { page: 'debug-solver' }
   | { page: 'debug-dialog' }
+  | { page: 'debug-crash' }
   | { page: 'not-found'; hash: string };
 
 export const HOME_HREF = '#/';
@@ -22,6 +24,7 @@ export function parseRoute(hash: string): Route {
   if (path === '/debug/kernel') return { page: 'debug-kernel' };
   if (path === '/debug/solver') return { page: 'debug-solver' };
   if (path === '/debug/dialog') return { page: 'debug-dialog' };
+  if (path === '/debug/crash') return { page: 'debug-crash' };
   const project = /^\/p\/([^/]+)$/.exec(path);
   if (project?.[1]) return { page: 'project', id: decodeURIComponent(project[1]) };
   return { page: 'not-found', hash };

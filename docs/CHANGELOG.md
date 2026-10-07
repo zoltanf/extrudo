@@ -4,6 +4,12 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **WebGL fallback** (ADR-0076): the 3D view draws in the browser's software
+  WebGL where there is no hardware (dpr 1, no antialiasing, a status bar "Software rendering"
+  and a one-time toast), shows "Extrudo can't draw the 3D view in this browser" where there is
+  no WebGL 2 (the rest of the app keeps working), recovers from a lost context, and error
+  boundaries around the view and the root replace the blank page; the desktop app allows
+  SwiftShader and has `--software-rendering`.
 - 2026-10-07 · **P4-12 Exact conics in the kernel** (ADR-0063's amendment): a sketch
   conic reaches OCCT as its rational quadratic through the facade's new `sketchConic`,
   so extruded conics measure exactly (the cubic route was 4e-7 to 7.5e-6 out) and STEP

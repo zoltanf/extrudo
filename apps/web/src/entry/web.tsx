@@ -9,6 +9,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from '../App';
 import { applyInitialTheme, ToastsOnly, TooltipProvider } from '../design-system';
 import { registerServiceWorker, webPlatform, webPreferences } from '../platform';
+import { RootBoundary } from '../RootBoundary';
 import { StartupError } from '../StartupError';
 
 const root = document.getElementById('root');
@@ -33,9 +34,11 @@ webPlatform().then(
   (platform) =>
     reactRoot.render(
       <StrictMode>
-        <TooltipProvider>
-          <App platform={platform} />
-        </TooltipProvider>
+        <RootBoundary>
+          <TooltipProvider>
+            <App platform={platform} />
+          </TooltipProvider>
+        </RootBoundary>
       </StrictMode>,
     ),
   (error: unknown) => reactRoot.render(<StartupError error={error} />),

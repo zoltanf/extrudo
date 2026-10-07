@@ -29,12 +29,23 @@ import { createOpenQueue, extrudoPathFromArgv, isExtrudoPath } from './openPaths
 import { createPreferencesFile } from './preferences';
 import { APP_URL, handleAppProtocol, registerAppScheme } from './protocol';
 import { createRecentFile } from './recent';
+import { renderingPlan } from './rendering';
 import { createRescueFile } from './rescue';
 import { nodeSlicerService } from './slicerService';
 import { createUpdates, type UpdaterLike } from './updates';
 
 // Before `app.whenReady()`: a privileged scheme cannot be registered later.
 registerAppScheme();
+
+// GPU switches, before `ready` (ADR-0076 §7).
+{
+  const plan = renderingPlan(process.argv, process.env);
+  for (const { name, value } of plan.switches) {
+    if (value === undefined) app.commandLine.appendSwitch(name);
+    else app.commandLine.appendSwitch(name, value);
+  }
+  if (plan.disableHardwareAcceleration) app.disableHardwareAcceleration();
+}
 
 // A throwaway data directory for the packaged-app smoke test (and nothing
 // else): it must be set before the single-instance lock, which lives in it.

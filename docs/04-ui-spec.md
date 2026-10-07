@@ -651,3 +651,31 @@ Plain language, with the fix if we know it:
 - ⚠ "Extrude 3 lost its target face after you edited Sketch 1. We picked the
   closest match." [Review] [Pick again]
 - ✕ "Parameter `wall` refers to itself: wall → lid_gap → wall."
+
+### 8.1 Graphics problems (ADR-0076)
+
+- **Software rendering** (the browser draws 3D without the graphics card): the
+  status bar says "Software rendering" and a one-time toast says "Your browser
+  draws 3D without the graphics card, so the view may be slow. Turn on
+  hardware acceleration in your browser's settings, or update your graphics
+  driver." [Don't show again].
+- **No WebGL 2**: the view area shows "Extrudo can't draw the 3D view in this
+  browser" with what to try (hardware acceleration: Chrome and Edge, Settings ›
+  System › "Use graphics acceleration when available"; Firefox, Settings ›
+  Performance; chrome://gpu to see why; software drawing in a VM; a driver
+  update; another browser), "Your design is safe…" and [Try again]. In a
+  Chromium-based desktop browser the panel leads with "Open a window that draws
+  in software": a ready-to-copy command (`[data-swiftshader-command]`, Copy)
+  that starts a separate profile with `--enable-unsafe-swiftshader
+  --use-angle=swiftshader --app=<this site>`, then "Then open Extrudo in that
+  window. The view will be slower than with a graphics card.", why it is a
+  separate window (the setting lets websites run graphics code on the
+  processor, which Chrome keeps off by default for safety) and that designs are
+  per profile (File › Export .extrudo here, File › Import .extrudo… there). Brave, Opera, Vivaldi and other Chromium browsers get the flags and a separate `--user-data-dir` instead of a command (`[data-swiftshader-flags]`); the Copy button copies `edge://gpu` on Edge, `chrome://gpu` otherwise. The timeline, browser, parameters, customizer and export keep
+  working.
+- **The view crashed**: "The 3D view stopped working" with the error and
+  [Try again]. **The driver reset** (context lost): "The graphics driver reset
+  the 3D view" with [Reload view]; it clears by itself if the browser restores
+  the context.
+- **Any other crash**: a full page, "Something went wrong", the error text,
+  "Your work is saved" and [Reload] (which saves first). Never a white page.

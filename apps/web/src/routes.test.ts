@@ -9,6 +9,7 @@ describe('routes', () => {
     ['#/debug/kernel', { page: 'debug-kernel' }],
     ['#/debug/solver', { page: 'debug-solver' }],
     ['#/debug/dialog', { page: 'debug-dialog' }],
+    ['#/debug/crash', { page: 'debug-crash' }],
     ['#/p/abc-123', { page: 'project', id: 'abc-123' }],
     ['#/p/a%20b', { page: 'project', id: 'a b' }],
     ['#/p/', { page: 'not-found', hash: '#/p/' }],

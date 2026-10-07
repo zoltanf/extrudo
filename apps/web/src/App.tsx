@@ -41,6 +41,8 @@ export function App({ platform }: { platform: Platform }) {
           <DialogDebug platform={platform} />
         </Suspense>
       );
+    case 'debug-crash':
+      throw new Error('Crash requested by #/debug/crash.');
     case 'not-found':
       return <Redirect to={HOME_HREF} />;
   }

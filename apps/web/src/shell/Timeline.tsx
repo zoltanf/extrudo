@@ -38,7 +38,9 @@ import { ContextMenu, IconButton, Popover, ToolIcon, Tooltip } from '../design-s
 import { type MacroStore, recordedCount } from '../macro/macro';
 import { selectionSummary } from '../selection/items';
 import { formatRenderStats } from '../viewport/renderMeter';
+import { SoftwareRendering } from '../viewport/SoftwareRendering';
 import type { ViewportStore } from '../viewport/store';
+import { webglSupport } from '../viewport/webglSupport';
 import { FeatureMenuItems, GroupMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
 import { type FeatureProblem, featureProblem, StatusGlyph, scriptChipHint } from './featureStatus';
@@ -412,6 +414,7 @@ export function Timeline({
         {errors > 0 && ` · ${errors} ${errors === 1 ? 'error' : 'errors'}`}
       </output>
       {model && <KernelState model={model} />}
+      {viewport && <SoftwareRendering support={webglSupport()} />}
       {viewport && <RenderRate viewport={viewport} />}
       <IconButton label={collapsed ? 'Show timeline' : 'Hide timeline'} onClick={onToggle}>
         {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}

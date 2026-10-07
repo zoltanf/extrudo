@@ -9,3 +9,8 @@
 [data-kernel-state] {
   visibility: hidden;
 }
+
+/* "Software rendering" (status bar): the e2e browser draws in software (ADR-0076). */
+[data-renderer] {
+  visibility: hidden;
+}

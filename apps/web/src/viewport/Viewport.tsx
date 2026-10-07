@@ -23,10 +23,18 @@ import {
   useState,
 } from 'react';
 import type { DirectionalLight } from 'three';
+import { WebGLRenderer } from 'three';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
-import { type MarkingEntry, MarkingMenu, MenuItem, MenuLabel, PointMenu } from '../design-system';
+import {
+  Button,
+  type MarkingEntry,
+  MarkingMenu,
+  MenuItem,
+  MenuLabel,
+  PointMenu,
+} from '../design-system';
 import { previewSummary, type ViewPreview } from '../features/preview';
 import type { OverhangView } from '../print/overhang';
 import { clipsSummary, type SectionBox, type SectionClip, sectionsSummary } from '../section/clip';
@@ -62,6 +70,7 @@ import { Ghosts } from './Ghosts';
 import { GRID_RADIUS, Grid, XY_FRAME } from './GridPlane';
 import { type Ghost, ghostsSummary } from './ghostGeometry';
 import { NavBar } from './NavBar';
+import { NoWebgl } from './NoWebgl';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
 import { Origin } from './Origin';
 import { PreviewShapes } from './Preview';
@@ -90,6 +99,7 @@ import {
 import { ViewCube } from './ViewCubeView';
 import { namedDirection } from './viewcube';
 import type { ViewMenu, ViewMenuContent, ViewMenuRequest } from './viewMenu';
+import { webglSupport } from './webglSupport';
 
 export interface ViewportProps {
   viewport: ViewportStore;
@@ -292,6 +302,38 @@ const DOUBLE_CLICK_MS = 400;
  * the nav bar. Navigation input is handled here, on the canvas's wrapper,
  * and turned into view changes in the viewport store.
  */
+/**
+ * three.js's renderer with our attributes; creation is retried once without
+ * antialiasing before the failure reaches the error boundary (ADR-0076). The
+ * request never sets `failIfMajorPerformanceCaveat`, so a browser's software
+ * WebGL is used. The stencil buffer stays: section caps need it.
+ */
+function createRenderer(props: Record<string, unknown>, antialias: boolean): WebGLRenderer {
+  const attributes = { ...props, alpha: true, stencil: true };
+  try {
+    return new WebGLRenderer({ ...attributes, antialias });
+  } catch (error) {
+    if (!antialias) throw error;
+    return new WebGLRenderer({ ...attributes, antialias: false });
+  }
+}
+
+/** Shows the overlay while the context is lost; the browser may restore it. */
+function watchContext(
+  canvas: HTMLCanvasElement,
+  setLost: (lost: boolean) => void,
+  invalidate: () => void,
+): void {
+  canvas.addEventListener('webglcontextlost', (event) => {
+    event.preventDefault();
+    setLost(true);
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    setLost(false);
+    invalidate();
+  });
+}
+
 export function Viewport({
   viewport,
   bodies = NO_BODIES,
@@ -326,6 +368,12 @@ export function Viewport({
   const sectionClip = sectionClips && sectionClips.length > 0 ? sectionClips : undefined;
   const [dragging, setDragging] = useState<NavAction>();
   const [ready, setReady] = useState(false);
+  // WebGL 2 or none (ADR-0076); software rendering draws at dpr 1 without antialiasing.
+  const [support, setSupport] = useState(() => webglSupport());
+  const software = support.kind === 'software';
+  // The canvas remounts on "Reload view"; `contextLost` shows the overlay.
+  const [canvasKey, setCanvasKey] = useState(0);
+  const [contextLost, setContextLost] = useState(false);
 
   useShortcuts(
     useMemo(
@@ -511,41 +559,71 @@ export function Viewport({
         className="absolute inset-0 touch-none"
         style={cursor ? { cursor } : undefined}
       >
-        <Canvas
-          frameloop="demand"
-          flat
-          dpr={[1, 2]}
-          // The stencil buffer caps a section analysis' cut (P3-09).
-          gl={{ antialias: true, alpha: true, stencil: true }}
-          // A label needs a role (axe, P3-13): the canvas is a picture of the model.
-          role="img"
-          aria-label="3D view"
-        >
-          <Scene
-            viewport={viewport}
-            colors={colors}
-            bodies={bodies}
-            meta={meta}
-            sketches={sketches}
-            sketchPlane={sketchPlane}
-            planePicker={planePicker}
-            hover={hover}
-            selection={selection}
-            preview={preview}
-            construction={drawnConstruction}
-            canvases={drawnCanvases}
-            calibration={calibration}
-            ghosts={ghosts}
-            sectionClip={sectionClip}
-            sectionBox={sectionBox?.on ? sectionBox.box : undefined}
-            overhang={overhang?.view}
-            thin={thickness?.thin}
-            onSilhouettes={onSilhouettes}
-            onFirstFrame={() => setReady(true)}
-          />
-          <RenderMeterProbe viewport={viewport} />
-        </Canvas>
+        {support.kind === 'none' ? (
+          <NoWebgl onRetry={() => setSupport(webglSupport(true))} detail={support.reason} />
+        ) : (
+          <Canvas
+            key={canvasKey}
+            frameloop="demand"
+            flat
+            dpr={software ? 1 : [1, 2]}
+            // The stencil buffer caps a section analysis' cut (P3-09).
+            gl={(props) => createRenderer(props, !software)}
+            onCreated={({ gl, invalidate }) =>
+              watchContext(gl.domElement, setContextLost, invalidate)
+            }
+            // A label needs a role (axe, P3-13): the canvas is a picture of the model.
+            role="img"
+            aria-label="3D view"
+          >
+            <Scene
+              viewport={viewport}
+              colors={colors}
+              bodies={bodies}
+              meta={meta}
+              sketches={sketches}
+              sketchPlane={sketchPlane}
+              planePicker={planePicker}
+              hover={hover}
+              selection={selection}
+              preview={preview}
+              construction={drawnConstruction}
+              canvases={drawnCanvases}
+              calibration={calibration}
+              ghosts={ghosts}
+              sectionClip={sectionClip}
+              sectionBox={sectionBox?.on ? sectionBox.box : undefined}
+              overhang={overhang?.view}
+              thin={thickness?.thin}
+              onSilhouettes={onSilhouettes}
+              onFirstFrame={() => setReady(true)}
+            />
+            <RenderMeterProbe viewport={viewport} />
+          </Canvas>
+        )}
       </div>
+      {contextLost && (
+        <div
+          role="alert"
+          data-webgl="lost"
+          className="absolute top-1/2 left-1/2 z-10 flex max-w-sm -translate-x-1/2 -translate-y-1/2 flex-col items-start gap-2 rounded-dialog border border-line bg-raised p-4 text-ink"
+        >
+          <p className="font-semibold">The graphics driver reset the 3D view</p>
+          <p className="text-muted">
+            Your design is safe. The view comes back by itself if the browser can restore it;
+            otherwise reload the view.
+          </p>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setContextLost(false);
+              setCanvasKey((k) => k + 1);
+            }}
+          >
+            Reload view
+          </Button>
+        </div>
+      )}
       {children}
       {box && <SelectionBox box={box} />}
       <SelectOtherMenu
