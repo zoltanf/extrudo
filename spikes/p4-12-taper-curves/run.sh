@@ -15,6 +15,8 @@ docker run --rm --user 0 -v "$ROOT:/w" -w /w/spikes/p4-12-taper-curves --entrypo
   rm -f build/harness.cjs build/harness.wasm
   em++ -std=c++17 $OPT -fwasm-exceptions -I/opencascade.js/build/occt-includes harness.cpp \
     -sALLOW_MEMORY_GROWTH -sENVIRONMENT=node -sERROR_ON_UNDEFINED_SYMBOLS=0 -sSTACK_SIZE=8MB \
-    $LINK -o build/harness.cjs 2>&1 | grep -v 'warning:' | grep -E 'error|undefined' && exit 1
+    $LINK -o build/harness.cjs > build/compile.log 2>&1
+  cat build/compile.log
+  grep -E 'error|undefined' build/compile.log && exit 1
   test -f build/harness.cjs || { echo 'the harness did not build' >&2; exit 1; }
   node build/harness.cjs $*"
