@@ -41,6 +41,7 @@ import {
   type SessionStore,
   type SweepReport,
   setFeatureVisibility,
+  type ThreadReport,
   toggleSkip,
   updateFeatureInputs,
   usedSketches,
@@ -130,6 +131,8 @@ export interface DialogPreview {
   pattern?: PatternReport;
   /** The draft's emboss report from the latest preview (P4-12): the method it took. */
   emboss?: EmbossReport;
+  /** The draft's thread report from the latest preview (P4-12): each face's designation. */
+  thread?: ThreadReport;
   /** The draft's sweep report from the latest preview (P4-12): where the profile sits. */
   sweep?: SweepReport;
 }
@@ -324,6 +327,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     const pattern = open.preview?.pattern;
     const draftConstruction = open.preview?.drawing?.construction;
     const draftEmboss = open.preview?.emboss;
+    const draftThread = open.preview?.thread;
     const draftSweep = open.preview?.sweep;
     return {
       doc,
@@ -333,6 +337,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       ...(pattern && { pattern }),
       ...(draftConstruction && { draftConstruction }),
       ...(draftEmboss && { draftEmboss }),
+      ...(draftThread && { draftThread }),
       ...(draftSweep && { draftSweep }),
       ...(feature && { feature }),
     };
@@ -451,6 +456,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
                 ...(pattern && { pattern }),
                 ...(!pattern && open.preview.pattern && { pattern: open.preview.pattern }),
                 ...(result.emboss && { emboss: result.emboss }),
+                ...(result.thread && { thread: result.thread }),
                 ...(result.sweep && { sweep: result.sweep }),
               },
               ...(result.base && { base: result.base }),

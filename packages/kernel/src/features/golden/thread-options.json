@@ -212,5 +212,51 @@
       "thread:T:side:f0.s2.flank0",
       "thread:T:side:f0.s2.flank1"
     ]
+  },
+  "NPT 1/2 on a 1.79° cone": {
+    "valid": true,
+    "volume": 3030.1,
+    "faces": 28,
+    "bbox": [
+      -10.5,
+      -10.51,
+      0,
+      10.53,
+      10.48,
+      10
+    ],
+    "designation": "NPT 1/2",
+    "taper": 1.7899,
+    "turns": 5.512,
+    "names": [
+      "thread:T:side:f0.crest",
+      "thread:T:side:f0.flank0",
+      "thread:T:side:f0.flank1",
+      "thread:T:side:f0.lead0",
+      "thread:T:side:f0.lead1",
+      "thread:T:side:f0.root"
+    ]
+  },
+  "Ø20 × 1.5 on a 5° cone, no lead-in": {
+    "valid": true,
+    "volume": 2414.3,
+    "faces": 28,
+    "bbox": [
+      -10.59,
+      -10.49,
+      0,
+      10.52,
+      10.56,
+      8
+    ],
+    "designation": "Ø20 × 1.5, taper 5°",
+    "taper": 5,
+    "turns": 5.333,
+    "names": [
+      "thread:T:side:f0.crest",
+      "thread:T:side:f0.flank0",
+      "thread:T:side:f0.flank1",
+      "thread:T:side:f0.root"
+    ]
   }
 }

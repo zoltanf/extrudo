@@ -31,6 +31,7 @@ import type {
   PatternReport,
   SketchReport,
   SweepReport,
+  ThreadReport,
   UnitKind,
   Vec3,
 } from '@extrudo/core';
@@ -202,6 +203,8 @@ export interface DialogContext {
    * while the draft fails.
    */
   draftEmboss?: EmbossReport;
+  /** The draft's thread report (P4-12: each face's designation). Absent for anything else and while the draft fails. */
+  draftThread?: ThreadReport;
   /**
    * The draft's sweep report (P4-12, ADR-0067 §H5's follow-up: where the
    * profile sits against the path's start). Absent for anything else and

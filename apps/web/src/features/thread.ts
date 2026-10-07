@@ -61,6 +61,7 @@ const GROUP_LABELS: Record<string, string> = {
   unf: 'UNF',
   trapezoidal: 'Trapezoidal',
   bottle: 'Bottle',
+  npt: 'pipe, tapered',
 };
 
 const size = (v: DialogValues) => v.choices.preset ?? AUTO;
@@ -219,6 +220,13 @@ export const threadDialog: FeatureDialogSpec = defineFeatureDialog({
     },
     numberField('diameter'),
     numberField('pitch'),
+    {
+      kind: 'info',
+      name: 'designation',
+      label: 'Thread',
+      shown: (_values, ctx) => (ctx?.draftThread?.designations.length ?? 0) > 0,
+      text: (_values, ctx) => [...new Set(ctx.draftThread?.designations ?? [])].join(', '),
+    },
     {
       kind: 'choice',
       name: 'extent',

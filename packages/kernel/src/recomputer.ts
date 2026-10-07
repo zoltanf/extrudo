@@ -31,6 +31,7 @@ import {
   isPatternReport,
   isScadMediaType,
   isSweepReport,
+  isThreadReport,
   MODEL_MEDIA_TYPES,
   type ModelStore,
   makesFeatures,
@@ -39,6 +40,7 @@ import {
   pluginFileOf,
   type SketchReport,
   type SweepReport,
+  type ThreadReport,
 } from '@extrudo/core';
 import type { ScadParametersResult } from '@extrudo/openscad';
 import {
@@ -154,6 +156,8 @@ export interface Preview {
    * computed (P4-12, ADR-0060's amendment): moved, wrapped or projected.
    */
   emboss?: EmbossReport;
+  /** The draft's designations when it is a thread that computed (P4-12: "NPT 1/2"). */
+  thread?: ThreadReport;
   /**
    * Where the draft's profile sits against the path's start when it is a
    * sweep that computed (P4-12, ADR-0067 §H5's follow-up): the dialog's
@@ -315,6 +319,7 @@ export class Recomputer {
             ...(isCanvasReport(own) && { canvas: own }),
             ...(isPatternReport(own) && { pattern: own }),
             ...(isEmbossReport(own) && { emboss: own }),
+            ...(isThreadReport(own) && { thread: own }),
             ...(isSweepReport(own) && { sweep: own }),
           });
         } catch {
@@ -631,6 +636,7 @@ export class Recomputer {
       if (isConstructionReport(report)) construction[id] = report;
       else if (isCanvasReport(report)) canvases[id] = report;
       else if (isImportReport(report)) imports[id] = report;
+      else if (isThreadReport(report)) continue;
       else sketches[id] = report;
     }
     const bodies = Object.fromEntries([...meshes].map(([id, { mesh }]) => [id, mesh]));

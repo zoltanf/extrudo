@@ -20,7 +20,7 @@ a valid feature.
 
 | Input | Type | Required or default | What it does |
 | --- | --- | --- | --- |
-| `faces` | `GeomRef \| GeomRef[]` (`face`) | **required** | The cylindrical faces to thread, one thread each. |
+| `faces` | `GeomRef \| GeomRef[]` (`face`) | **required** | The cylindrical or conical faces to thread, one thread each; a cone's thread follows its taper. |
 | `diameter` | `string \| number \| ParameterHandle` | optional | The thread's nominal (major) diameter; a length. With pitch missing too, the ISO coarse thread that fits. |
 | `pitch` | `string \| number \| ParameterHandle` | optional | Crest to crest along the axis; a length. |
 | `extent` | `'full' \| 'length'` | default `full` | Thread the face to its end or to a length. |

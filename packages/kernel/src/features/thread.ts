@@ -23,20 +23,34 @@
  * the same section a pitch higher (the same as turned by 360° / starts), the
  * teeth one compound cut in one boolean; their faces are `f<k>.s<j>.<role>`.
  *
+ * **Tapers** (P4-12, ADR-0056's third amendment): on a conical face the
+ * thread follows the cone. Every radius of the sections is a function of the
+ * axial position (`shiftAt`): the radii `threadRadii` gives hold at the
+ * face's small end (`ThreadPlan.anchor`, where NPT gives its diameter) and
+ * move by `(v − anchor)·tan(taper)` along the axis, so the ring is the cone's
+ * band, the lead-ins follow the slope and the tooth is placed with the radii
+ * the cone has at its centre and swept along a conical helix. A tapered
+ * preset (NPT) fits a cone of its taper without a size (`autoTaperThread`).
+ *
  * Faces: `thread:<id>:side:<source>`, sources `f<k>.root`, `f<k>.flank0`,
  * `f<k>.crest`, `f<k>.flank1` (one per turn, `#n`), `f<k>.end0|end1` (the
  * flat steps where a thread stops inside a face), `f<k>.lead0|lead1` (the
  * lead-in cones), where k is the face's place in the input (`f0`, `f1` …).
  */
 import {
+  autoTaperThread,
   autoThread,
   type BodyId,
+  NPT_TAPER,
+  TAPER_SLACK,
   THREAD_DEFAULTS,
   type ThreadInputs,
   type ThreadLoadFlank,
   type ThreadProfileName,
   type ThreadRadii,
+  type ThreadReport,
   type ThreadSettings,
+  taperDegrees,
   threadFeature,
   threadPresetOf,
   threadProfile,
@@ -93,10 +107,15 @@ export interface ThreadOutputFace {
   /** Helices round the face, and the lead length (starts × pitch, mm; `lead` below is the lead-ins). */
   starts: number;
   leadLength: number;
-  /** "M8", "1/4-20 UNC", or "Ø8 × 1.25" for a custom size; ", 2 starts" with more than one. */
+  /**
+   * "M8", "1/4-20 UNC", "NPT 1/2", or "Ø8 × 1.25" for a custom size (", taper
+   * 1.8°" on a cone); ", 2 starts" with more than one.
+   */
   designation: string;
-  /** The face's diameter. */
+  /** The face's diameter (at its small end on a cone). */
   face: number;
+  /** A cone's half angle in degrees (P4-12), signed along the face's axis; 0 on a cylinder. */
+  taper: number;
   /** Where the thread runs along the face's axis (from its origin), mm. */
   from: number;
   to: number;
@@ -137,7 +156,11 @@ export const kernelThread: KernelFeatureDefinition<ThreadInputs> = {
       operate(ctx, scope, { operation: 'cut', bodies: [] }, tool, [...bodies], warnings, WORDS),
     );
     const data: ThreadOutputData = { faces };
-    return { ...result, data, ...(warnings.length > 0 && { warnings }) };
+    const report: ThreadReport = {
+      kind: 'thread',
+      designations: faces.map((f) => f.designation),
+    };
+    return { ...result, data, report, ...(warnings.length > 0 && { warnings }) };
   },
 };
 
@@ -175,18 +198,25 @@ function numbersOf(ctx: EvalContext, settings: ThreadSettings): ThreadNumbers {
 const round = (value: number) => Math.round(value * 1000) / 1000;
 const mm = (value: number) => `${round(value)} mm`;
 
+/**
+ * A thread's name: its preset's label, else its size ("Ø20 × 1.5"). With a
+ * `taper` (radians, P4-12) a preset must be made for that taper (NPT on its
+ * cone) and a custom size says it: "Ø20 × 1.5, taper 1.8°".
+ */
 export function designation(
   diameter: number,
   pitch: number,
   profile: ThreadProfileName = 'iso',
+  taper = 0,
 ): string {
-  const preset = threadPresetOf(diameter, pitch, profile);
+  const preset = threadPresetOf(diameter, pitch, profile, taper);
   if (preset) return preset.label;
   const prefix =
     profile === 'iso'
       ? ''
       : `${profile === 'trapezoidal' ? 'Tr' : profile === 'buttress' ? 'S' : 'PCO'} `;
-  return `${prefix}Ø${round(diameter)} × ${round(pitch)}`;
+  const tapered = Math.abs(taper) > 1e-9 ? `, taper ${taperDegrees(taper)}` : '';
+  return `${prefix}Ø${round(diameter)} × ${round(pitch)}${tapered}`;
 }
 
 // --------------------------------------------------------------- planning
@@ -206,9 +236,17 @@ export interface ThreadPlan {
   profile: ThreadProfileName;
   /** Buttress only: which side the steep load flank faces. */
   loadFlank: ThreadLoadFlank;
+  /** The thread's radii at `anchor` (all of them, on a cylinder). */
   radii: ThreadRadii;
-  /** The face's radius. */
+  /** The face's radius at `anchor`. */
   radius: number;
+  /**
+   * A cone's half angle (radians, P4-12), signed along the axis: every radius
+   * moves by `(v − anchor)·tan(taper)` (`shiftAt`). 0 on a cylinder.
+   */
+  taper: number;
+  /** Where along the axis the radii hold: the face's small end on a cone, `from` on a cylinder. */
+  anchor: number;
   /** The thread's run along the axis, from `axis.origin`. */
   from: number;
   to: number;
@@ -237,26 +275,51 @@ export function planThread(
   }
   const internal = face.inside;
   const what = internal ? 'hole' : 'shaft';
+  // A cone's radii hold at its small end (where NPT gives its diameter).
+  const taper = Math.abs(face.taper ?? 0) > 1e-12 ? (face.taper ?? 0) : 0;
+  const anchor = taper < 0 ? face.to : face.from;
+  const r = face.radius + (anchor - face.from) * Math.tan(taper);
   let { diameter, pitch } = n;
   if (settings.auto) {
     if (settings.profile !== 'iso') {
       throw new KernelError(`Enter a diameter and pitch for a ${settings.profile} thread.`);
     }
-    const preset = autoThread(face.radius, internal);
-    if (!preset) {
-      throw new KernelError(
-        `No standard metric thread fits this ${mm(2 * face.radius)} ${what}. Set the diameter and pitch.`,
-      );
+    if (taper !== 0) {
+      const preset = autoTaperThread(r, taper, internal);
+      if (!preset) {
+        throw new KernelError(
+          Math.abs(Math.abs(taper) - NPT_TAPER) > TAPER_SLACK
+            ? `Enter a diameter and pitch: this cone's taper (${taperDegrees(taper)}) isn't a pipe thread's.`
+            : `No NPT thread fits this ${mm(2 * r)} ${what}. Set the diameter and pitch.`,
+        );
+      }
+      diameter = preset.diameter;
+      pitch = preset.pitch;
+    } else {
+      const preset = autoThread(r, internal);
+      if (!preset) {
+        throw new KernelError(
+          `No standard metric thread fits this ${mm(2 * r)} ${what}. Set the diameter and pitch.`,
+        );
+      }
+      diameter = preset.diameter;
+      pitch = preset.pitch;
     }
-    diameter = preset.diameter;
-    pitch = preset.pitch;
   }
   const radii = threadRadii(settings.profile, diameter, pitch, n.tolerance, internal);
   const starts = n.starts ?? 1;
   const leadLength = starts * pitch;
   const name =
-    designation(diameter, pitch, settings.profile) + (starts > 1 ? `, ${starts} starts` : '');
-  const r = face.radius;
+    designation(diameter, pitch, settings.profile, taper) +
+    (starts > 1 ? `, ${starts} starts` : '');
+  // A tapered preset on a face of another taper (a cylinder included) is still
+  // cut with the face's taper: say so, naming both.
+  const sized = threadPresetOf(diameter, pitch, settings.profile);
+  if (sized?.taper !== undefined && Math.abs(sized.taper - Math.abs(taper)) > TAPER_SLACK) {
+    warnings.push(
+      `${sized.label} is made for a ${taperDegrees(sized.taper)} taper, but this face ${taper === 0 ? 'is a cylinder (0°)' : `tapers ${taperDegrees(taper)}`}: the thread follows the face.`,
+    );
+  }
   if (internal) {
     if (r >= radii.root - EPS) {
       throw new KernelError(
@@ -321,6 +384,8 @@ export function planThread(
     loadFlank: settings.loadFlank,
     radii,
     radius: r,
+    taper,
+    anchor,
     from,
     to,
     lead,
@@ -334,12 +399,19 @@ export function planThread(
       leadLength,
       designation: name,
       face: 2 * r,
+      taper: (taper * 180) / Math.PI,
       from,
       to,
       turns,
       lead,
     },
   };
+}
+
+/** How far a tapered thread's radii have moved at `v` along the axis (0 on a cylinder). */
+export function shiftAt(plan: Partial<Pick<ThreadPlan, 'taper' | 'anchor'>>, v: number): number {
+  const taper = plan.taper ?? 0;
+  return taper === 0 ? 0 : (v - (plan.anchor ?? 0)) * Math.tan(taper);
 }
 
 /** A unit vector square to `d`. */
@@ -368,7 +440,8 @@ export interface Section {
  * the root) and `v = v0 + a`.
  */
 export function toothSection(
-  plan: Pick<ThreadPlan, 'internal' | 'pitch' | 'profile' | 'loadFlank' | 'radii'>,
+  plan: Pick<ThreadPlan, 'internal' | 'pitch' | 'profile' | 'loadFlank' | 'radii'> &
+    Partial<Pick<ThreadPlan, 'taper' | 'anchor'>>,
   v0: number,
 ): Section {
   const { radii, internal } = plan;
@@ -377,10 +450,10 @@ export function toothSection(
     loadFlank: plan.loadFlank,
   });
   const s = internal ? 1 : -1;
-  const place = ([a, r]: readonly [number, number]): [number, number] => [
-    radii.crest + s * r,
-    v0 + a,
-  ];
+  // On a cone, the radii the cone has at the tooth's centre (the sweep then
+  // carries it along the slope).
+  const crest = radii.crest + shiftAt(plan, v0);
+  const place = ([a, r]: readonly [number, number]): [number, number] => [crest + s * r, v0 + a];
   const curves: PlanarCurve[] = [];
   const sources: string[] = [];
   const segments = shape.segments;
@@ -436,13 +509,18 @@ const reach = (plan: Pick<ThreadPlan, 'pitch'>) => 0.1 * plan.pitch + 0.05;
 export function ringSection(plan: ThreadPlan): Section {
   const { radii, internal, from, to } = plan;
   const far = internal
-    ? Math.max(0, Math.min(plan.radius, radii.crest) - reach(plan))
+    ? Math.min(plan.radius, radii.crest) - reach(plan)
     : Math.max(plan.radius, radii.crest) + reach(plan);
+  // On a cone both edges follow its slope: the band is a trapezoid.
+  const at = (u: number, v: number): [number, number] => [
+    internal ? Math.max(0, u + shiftAt(plan, v)) : u + shiftAt(plan, v),
+    v,
+  ];
   const corners: [number, number][] = [
-    [radii.root, from],
-    [far, from],
-    [far, to],
-    [radii.root, to],
+    at(radii.root, from),
+    at(far, from),
+    at(far, to),
+    at(radii.root, to),
   ];
   return {
     curves: corners.map((a, i) => ({
@@ -470,11 +548,16 @@ export function leadSection(plan: ThreadPlan, end: 0 | 1): Section {
   const at = end === 0 ? plan.from : plan.to;
   const into = end === 0 ? 1 : -1; // along v into the thread
   const beyond = at - into * 2 * pitch;
+  // On a cone the lead-in follows the slope: each corner moves with its height.
+  const shifted = (u: number, v: number): [number, number] => [
+    internal ? Math.max(0, u + shiftAt(plan, v)) : u + shiftAt(plan, v),
+    v,
+  ];
   const corners: [number, number][] = [
-    [start, beyond],
-    [start, at],
-    [crestSide, at + into * rise],
-    [crestSide, beyond],
+    shifted(start, beyond),
+    shifted(start, at),
+    shifted(crestSide, at + into * rise),
+    shifted(crestSide, beyond),
   ];
   return {
     curves: corners.map((a, i) => ({
@@ -614,6 +697,7 @@ export function buildTool(
         pitch: plan.leadLength,
         turns: piece.turns,
         left: plan.left,
+        ...(plan.taper !== 0 && { taper: plan.taper }),
       });
       gone.track(start.shape);
       return start;

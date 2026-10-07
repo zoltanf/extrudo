@@ -212,6 +212,8 @@ export interface ThreadSweepOptions extends SweepSource {
   pitch: number;
   turns: number;
   left: boolean;
+  /** A tapered thread's half angle (radians, P4-12); absent or 0 is straight. */
+  taper?: number;
 }
 
 /**
@@ -226,6 +228,7 @@ export function namedThreadSweep(kernel: Kernel, options: ThreadSweepOptions): N
     options.pitch,
     options.turns,
     options.left,
+    options.taper ?? 0,
   );
   return nameSwept(kernel, result, 'thread', options.feature, options.edgeSources);
 }

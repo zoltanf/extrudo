@@ -11,7 +11,8 @@
   the evaluator `packages/kernel/src/features/thread.ts`; the dialog
   `apps/web/src/features/thread.ts` (tool `thread` in Solid › Modify's menu, no
   key); `e2e/thread.spec.ts`; the native harness `spikes/p4-02-harness/`; the
-  file format, `docs/file-format.md` 6.25. **The facade changed** (OCCT input
+  file format, `docs/file-format.md` 6.25. Amended three times (profiles,
+  multi-start, tapered threads on cones: below). **The facade changed** (OCCT input
   hash `86f6c3f92d7a`, release `occt-86f6c3f92d7a`; additive but for the
   boolean fix), no schema-version change, no migration; one new feature type.
 - **Builds on:** ADR-0049 (hole: presets that fill sizes, a feature that always
@@ -314,3 +315,107 @@ turns for the lead-ins to cut); 39 faces at one start, 43 at two (8 and 9
 crest faces: two helices of half the turns each, so about as many crest faces
 in all, not twice as many). A 4 mm × 40 mm thread at 0.25 mm pitch (160 turns
 at one start, refused) builds at two starts in 34.8 s (2 × 80 turns).
+
+
+## Third amendment (2026-10-07): tapered threads on conical faces
+
+P4-12. A thread cut on a **conical** face follows the cone, so an NPT pipe
+thread (1:16 on the diameter) can be modeled. Code: the facade's `threadFace`,
+`threadSweep` and the private `helixWire`; `ThreadFace.taper`,
+`Kernel.threadSweep(…, taper)`, `namedThreadSweep`'s `taper`; core's NPT
+presets, `NPT_TAPER`, `TAPER_SLACK`, `autoTaperThread`, `taperDegrees`,
+`ThreadReport`; `planThread`, `shiftAt` and the sections in
+`packages/kernel/src/features/thread.ts`; the dialog's Thread line; the native
+harness `spikes/p4-12-thread-taper/`. **The facade changed** (OCCT input hash
+`ec62df7eead4`, release `occt-ec62df7eead4`), no schema change, no new input,
+`docs/file-format.md` unchanged.
+
+- **No input decides the taper: the face does.** `threadFace` accepts a
+  `GeomAbs_Cone` as well as a cylinder and returns a fourteenth number, the
+  cone's half angle (radians, signed along the canonical axis it reports:
+  positive when the radius grows along it); `radius` is the radius at the
+  face's lower end (`from`), so the radius at `h` is `radius + (h − from) ·
+  tan(taper)`, and a cylinder's taper is 0. A cone's `v` runs along its
+  generator, so the heights are `v · cos(halfAngle)`; the ends' "open" test
+  and the material side work unchanged. Emboss, which asks `threadFace` first,
+  keeps cones on `coneFace` (`taper === 0` only).
+- **The sweep.** `threadSweep` takes a trailing `taper` (radians; |taper| <
+  90°, and a narrowing cone must not bring the profile to the axis before the
+  end). Its path is the helix through the profile's centre on the **cone** of
+  that half angle (a pitch along the axis is `pitch / cos(taper)` along the
+  generator), still one edge per turn, the profile keeping its angle to the
+  axis (fixed binormal). So every point of the tooth runs on a conical helix of
+  the same taper — to within the frame's small turn as the helix's lead angle
+  changes with the radius (estimated, not measured: under 1e-3 rad over an
+  NPT 1/2 thread, about a micrometre at the tooth). `helix` and `threadSweep` now build their turns
+  through one private `helixWire`, but **each keeps its own construction**: the
+  coil's turns share vertices along one 2D line, the thread's are lines of
+  their own joined by the wire builder. Making them one construction moved a
+  straight thread's volume by about 2e-7 (469.402611 → 469.402521 mm³ on an M8
+  × 12 mm), which a mesh fingerprint or a golden row could see; with the flag
+  the harness's `compare` builds four straight threads bit for bit as main's
+  facade does.
+- **The plan.** On a cone the thread's radii (`threadRadii`) hold at the
+  face's **small end** (`ThreadPlan.anchor`: `from` for a positive taper, `to`
+  for a negative one), where NPT gives its diameter, and every radius in the
+  sections is moved by `shiftAt(v) = (v − anchor) · tan(taper)`: the ring is
+  the cone's band (a trapezoid in (radial, axial)), the lead-ins' corners move
+  with their heights (so their 45° is measured from the cone), and each tooth
+  is drawn with the radii the cone has at its centre and swept along the
+  conical helix; the tolerance stays radial. Starts compose (each start's
+  tooth is a pitch higher with the radius there). On a cylinder `shiftAt` is
+  0, so the sections are exactly what they were.
+- **Presets and fitting.** `THREAD_PRESETS` gains an **NPT** group (`npt-1q8`,
+  `npt-1q4`, `npt-3q8`, `npt-1q2`, `npt-3q4`, `npt-1`): ASME B1.20.1 Table 2's
+  E0 (the pitch diameter at the external thread's small end: 0.36351,
+  0.47739, 0.61201, 0.75843, 0.96768, 1.21363 in) plus h = 0.8 p is the major
+  diameter at the small end, for every size the same rule (`diameter: '0.75843
+  in + 0.8 in / 14'`, `pitch: '1 in / 14'`), and `taper: NPT_TAPER` =
+  atan(1/32) = 1.7899°. `threadPresetOf(…, taper)` matches a preset only when
+  its taper (0 for a straight one) is within `TAPER_SLACK` (0.2°) of the
+  face's either way, so `designation` says "NPT 1/2" on its cone, "Ø20 × 1.5,
+  taper 5°" for a custom size on another one, and an M20 on a cone is "Ø20 ×
+  2.5, taper 1.8°". With no size, a cone within 0.2° of NPT's taper takes the
+  NPT size `autoThread`'s rule fits to its small end (`autoTaperThread`); any
+  other cone is refused: "Enter a diameter and pitch: this cone's taper (5°)
+  isn't a pipe thread's." An NPT size on a cylinder or a cone of another
+  taper is a **warning** naming both angles ("NPT 1/2 is made for a 1.8°
+  taper, but this face is a cylinder (0°): the thread follows the face."), and
+  it is cut with the face's taper.
+- **Report and dialog.** `ThreadOutputFace.taper` (degrees, signed) and `face`
+  (the diameter at the small end); the evaluator reports a `ThreadReport`
+  (`{ kind: 'thread', designations }`), which reaches the dialog as
+  `Preview.thread`/`DialogContext.draftThread` and shows as the read-only
+  **Thread** line (`[data-info="designation"]`) under Pitch. The Size select
+  lists the NPT group ("NPT 1/2 (pipe, tapered)").
+
+**Rejected.** A `taper` input: the face already says it, and an input could
+only disagree with it. A dedicated NPT profile table: NPT's flanks are 60° like
+ISO 68-1's and only its truncation differs (h = 0.8 p against ISO's 5H/8 =
+0.541 p); the ISO basic profile on the NPT cone is what a printed pipe fitting
+needs, so the NPT preset's profile is `iso`. Sharing one helix construction
+between the coil and the thread (above). **Deferred:** BSPT (55° Whitworth
+flanks, a profile of its own), NPTF's dryseal truncation, a taper that changes
+along one face.
+
+**Results.** Native harness (`spikes/p4-12-thread-taper/run.sh`, O1): on a
+cone of r0 = 10 at NPT 1/2's pitch and taper, the eleven turn ends of the
+conical helix lie at r0 + n · P · tan(taper) to 0 mm (exactly) and n · P to
+1.8e-15 mm, and its B-spline stays within 3.3e-6 mm of the cone (its
+tolerance is 1e-5). NPT 1/2 cut into a 20 mm cone (small-end major Ø20.7156)
+is valid, 51 faces, in 3.3 s, and removes 839.239 mm³ against 839.434 mm³ for
+a straight thread at the mean radius (ratio 0.9998); `leaks 300` holds the heap
+top at 36.9 MB from round 50 to round 300. Kernel (`thread-taper.test.ts`, the
+same cone through `revolve` and the engine): both ends are cut down past the
+thread's depth (0.982 mm) by the lead-ins — at the small end the body reaches
+9.2764 mm from the axis where the cone is 10.3578 mm, at the large end 9.9008
+against 10.9828 — the crests stay within 0.08 mm under the cone less the
+tolerance at z = 5, 10 and 15, the height is unchanged, and the removed volume
+is 869.488 mm³ against 869.658 mm³ for the straight thread on the mean
+diameter (−0.02 %). Auto fits NPT 1/2 to the cone from either end, two starts
+build, an internal NPT 1/2 in a hole extruded with a 1.79° taper builds, NPT on
+a Ø20.72 cylinder warns, and a 5° cone with no size is refused. The golden
+table's existing rows are unchanged; two rows are appended (NPT 1/2 on a 10 mm
+cone: 3030.1 mm³, 28 faces; Ø20 × 1.5 on a 5° cone: 2414.3 mm³). The OCCT WASM
+grew by 339 bytes raw and 1.3 kB brotli (20.57 / 6.66 / 4.63 MB, as before at
+two decimals).

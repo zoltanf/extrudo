@@ -426,9 +426,11 @@ brotli; 20.04 / 6.49 / 4.50 MB before) and the taper caps' point-to-plane
 match (2026-10-07, under 0.01 MB) and the taper review's identity pairing
 (2026-10-07, −19 kB raw; 20.52 / 6.62 / 4.60 MB before) and P4-12's exact
 conics (`sketchConic`, the Gauss–Kronrod volume and `GCPnts_AbscissaPoint`:
-+75 kB raw, +34 kB brotli; 20.50 / 6.62 / 4.60 MB before); the 15.76 MB / 3.69 MB brotli
++75 kB raw, +34 kB brotli; 20.50 / 6.62 / 4.60 MB before) and P4-12's tapered
+threads (`threadFace` on cones, `threadSweep`'s taper, `helixWire`: +339 bytes
+raw, +1.3 kB brotli, 20.57 / 6.66 / 4.63 MB unchanged); the 15.76 MB / 3.69 MB brotli
 of ADR-0037 was P2-15's; OCCT input hash
-`cf0bb43b2ade` (release `occt-cf0bb43b2ade`); **don't
+`ec62df7eead4` (release `occt-ec62df7eead4`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
@@ -1027,7 +1029,7 @@ stages so it knows no angles; `threadRadii(profile, …)` places the depth and
 face: the tooth swept by the facade's `threadSweep` (one helix edge per turn: one
 long edge broke the boolean), lead-ins where the facade's `threadFace` says an
 end is open; it always cuts, so it is patternable. Faces
-`thread:<id>:side:f<k>.crest|flank0|flank1|root|end0|end1|lead0|lead1`. **P4-12 (ADR-0056's second amendment, 2026-10-07)** added **multi-start threads**: an optional `starts` input (unitless `expr`, 1 to 8, stored only when not 1) makes the helix's lead `starts × pitch` while the tooth keeps `pitch`; each piece has one tooth per start (the same section a pitch higher, faces `f<k>.s<j>.<role>`), the teeth one compound cut in one boolean, and `MAX_TURNS` counts turns per helix. About
+`thread:<id>:side:f<k>.crest|flank0|flank1|root|end0|end1|lead0|lead1`. **P4-12 (ADR-0056's second amendment, 2026-10-07)** added **multi-start threads**: an optional `starts` input (unitless `expr`, 1 to 8, stored only when not 1) makes the helix's lead `starts × pitch` while the tooth keeps `pitch`; each piece has one tooth per start (the same section a pitch higher, faces `f<k>.s<j>.<role>`), the teeth one compound cut in one boolean, and `MAX_TURNS` counts turns per helix. **Its third amendment (2026-10-07)** added **tapered threads**: no input, the face decides — `threadFace` reads a cone too (`ThreadFace.taper`, the half angle signed along the axis, `radius` at `from`), the radii hold at the cone's small end (`ThreadPlan.anchor`) and every section moves by `shiftAt` with the slope, `threadSweep`'s trailing `taper` sweeps the tooth on a conical helix (`helixWire`, shared with `helix`, each keeping its own construction so straight threads and coils are bit for bit as before), an **NPT** preset group (`npt-1q8` … `npt-1`, `taper: NPT_TAPER`) fits a cone within 0.2° of 1:16 with Size `auto` (`autoTaperThread`), NPT on another taper warns and is cut with the face's, and the report (`ThreadReport`) gives the dialog's Thread line ("NPT 1/2", "Ø20 × 1.5, taper 5°"); BSPT is deferred. Native harness `spikes/p4-12-thread-taper/`. About
 0.1 s per turn (booleans); **the facade's booleans used to build twice** (fixed
 in `finishBoolean`). Native harness: `spikes/p4-02-harness/`.
 ADR-0058 (P4-03) added **sketch text**: the `text` sketch entity (`core/src/sketch/schema.ts`,
@@ -3345,7 +3347,13 @@ them. Notes further down that name a machine apply to that machine only.
   turns OCCT's boolean runs out of memory and traps (ADR-0067 §H2).
   Kernel: `pnpm vitest run -u packages/kernel/src/features/thread` rewrites the
   golden table; `BENCH=1` times threads (`features/thread-bench.test.ts` times
-  B9's `capDia` × 2).
+  B9's `capDia` × 2). P4-12's taper test (ADR-0056's third amendment) drafts a
+  Ø21.97 Cylinder 1.79 deg about XY (Draft, `e2e/draft.spec.ts`'s way: its
+  wall at (0, −10.985, 10), the plane on XY's square), picks the cone's wall at
+  half height and sets Size `npt-1q2` (Pitch reads "1 in / 14"): the dialog's
+  `[data-info="designation"]` reads "NPT 1/2" and `data-bodies` keeps z = 20
+  with x and y at least 0.1 under the drafted cylinder's (whose display box
+  reads 21.9 or 22 across).
 - **Customizer e2e** (`e2e/customizer.spec.ts`, P4-07): the panel is the region
   "Customizer" with `data-customizer-state` (`empty`, `parameters`), rows
   `[data-customizer-row="<name>"]` (`data-out-of-range`), the sliders

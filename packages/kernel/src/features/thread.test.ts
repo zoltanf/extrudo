@@ -331,6 +331,30 @@ function steppedShaft(tall: number): Feature[] {
   ];
 }
 
+/** A cone about Z from a trapezoid in XZ: radius `r0` at z = 0, growing by tan(`taper`) per mm (body `R:0`). */
+function coneShaft(
+  r0: number,
+  taper: number,
+  height: number,
+): { features: Feature[]; side: GeomRef } {
+  const b = new SketchBuilder();
+  const r1 = r0 + height * Math.tan(taper);
+  b.line(0, 0, r0, 0);
+  const slope = b.line(r0, 0, r1, height);
+  b.line(r1, height, 0, height);
+  b.line(0, height, 0, 0);
+  return {
+    features: [
+      sketch('SR', b.sketch, originPlaneRef('origin:xz')),
+      {
+        ...testFeature('R', 'revolve'),
+        inputs: revolveInputs(profileRefs('SR', b.sketch), originAxisRef('origin:z')),
+      },
+    ],
+    side: { kind: 'face', id: `revolve:R:side:${slope.id}` },
+  };
+}
+
 /** The volumes of both bodies of a stepped shaft, added up. */
 function shaftVolume(result: Done): number {
   return measure(result, 'C1:0').volume + measure(result, 'C2:0').volume;
@@ -375,6 +399,8 @@ describe('thread sections', () => {
       loadFlank: 'end' as const,
       radii,
       radius: 4,
+      taper: 0,
+      anchor: 0,
       from: 0,
       to: 10,
       lead: [true, true] as [boolean, boolean],
@@ -753,6 +779,7 @@ describe('thread', { timeout: 300_000 }, () => {
       to: turns * 1.25,
       whole: true,
       open: [false, false],
+      taper: 0,
     });
     expect(planThread(face(MAX_TURNS), settings, numbers, []).report.turns).toBe(MAX_TURNS);
     expect(() => planThread(face(MAX_TURNS + 1), settings, numbers, [])).toThrow(
@@ -956,6 +983,51 @@ describe('thread', { timeout: 300_000 }, () => {
         faces: m.faces,
         bbox: [...m.bbox.min, ...m.bbox.max].map((v) => round(v, 2)),
         designation: face?.designation,
+        turns: round(face?.turns ?? 0, 3),
+        names: threadNames(m.names),
+      };
+    }
+    // P4-12 (ADR-0056's third amendment): tapered threads on revolved cones.
+    const cones: [string, number, number, number, ThreadInputOptions][] = [
+      [
+        'NPT 1/2 on a 1.79° cone',
+        20.715557,
+        Math.atan(1 / 32),
+        10,
+        {
+          faces: [],
+          numbers: { diameter: '0.75843 in + 0.8 in / 14', pitch: '1 in / 14' },
+        },
+      ],
+      [
+        'Ø20 × 1.5 on a 5° cone, no lead-in',
+        20,
+        (5 * Math.PI) / 180,
+        8,
+        {
+          faces: [],
+          numbers: { diameter: '20 mm', pitch: '1.5 mm' },
+          chamfer: false,
+        },
+      ],
+    ];
+    for (const [name, diameter, taper, height, options] of cones) {
+      engine.clear();
+      const c = coneShaft(diameter / 2, taper, height);
+      const result = ok(
+        await runWithShapes(
+          testDocument([...c.features, thread('T', { ...options, faces: [c.side] })]),
+        ),
+      );
+      const m = measure(result, 'R:0');
+      const face = dataOf('T').faces[0];
+      rows[name] = {
+        valid: m.valid,
+        volume: round(m.volume, 1),
+        faces: m.faces,
+        bbox: [...m.bbox.min, ...m.bbox.max].map((v) => round(v, 2)),
+        designation: face?.designation,
+        taper: round(face?.taper ?? 0, 4),
         turns: round(face?.turns ?? 0, 3),
         names: threadNames(m.names),
       };

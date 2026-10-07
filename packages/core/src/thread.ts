@@ -25,6 +25,11 @@
  * so its first turn starts whole and prints. `hand` is `right` (default) or
  * `left`. `starts` (default 1, stored only when more) cuts that many helices
  * with a lead of `starts × pitch` (P4-12, ADR-0056's second amendment).
+ *
+ * **Tapers.** No input decides one: a thread on a conical face follows the
+ * cone (P4-12, ADR-0056's third amendment), so the NPT presets
+ * (`THREAD_PRESETS`' `npt` group, each with its `taper`) are cut on a cone of
+ * 1:16 on the diameter, and fitted to one without a size.
  */
 
 import { SWEEP_FACE_ROLES } from './face-roles';
@@ -41,7 +46,7 @@ import { z } from './zod';
 
 export const THREAD_TYPE = 'thread';
 
-/** Cylindrical faces to thread. */
+/** Cylindrical or conical faces to thread. */
 export const THREAD_FACE_KINDS: readonly GeomRefKind[] = ['face'];
 /** Most faces one thread feature threads. */
 export const MAX_THREAD_FACES = 16;
@@ -136,9 +141,9 @@ export const TOLERANCE_PARAMETER = 'tolerance';
 const optionalLength = () => exprOf('length').optional();
 
 export const ThreadInputsSchema = z.strictObject({
-  /** The cylindrical faces, one thread each. */
+  /** The cylindrical or conical faces, one thread each (a cone's thread is tapered). */
   faces: refsOf(THREAD_FACE_KINDS, MAX_THREAD_FACES).describe(
-    'The cylindrical faces to thread, one thread each. Required.',
+    "The cylindrical or conical faces to thread, one thread each; a cone's thread follows its taper. Required.",
   ),
   /** Nominal (major) diameter; with `pitch` missing too, the ISO coarse thread that fits. */
   diameter: optionalLength().describe(
@@ -562,7 +567,7 @@ export function threadRadii(
 export interface ThreadPreset {
   id: string;
   label: string;
-  group: 'metric' | 'metric-fine' | 'unc' | 'unf' | 'trapezoidal' | 'bottle';
+  group: 'metric' | 'metric-fine' | 'unc' | 'unf' | 'trapezoidal' | 'bottle' | 'npt';
   /** The tooth profile this size belongs to. */
   profile: ThreadProfileName;
   /** mm. */
@@ -571,6 +576,12 @@ export interface ThreadPreset {
   pitch: number;
   /** Expressions for the number fields: `diameter`, `pitch`. */
   exprs: Readonly<Record<string, string>>;
+  /**
+   * A tapered thread's half angle (radians; P4-12): the cone the thread is
+   * made for. `diameter` is then the major diameter at the cone's small end.
+   * Absent for a straight thread.
+   */
+  taper?: number;
 }
 
 /**
@@ -695,6 +706,48 @@ const trapezoidal = ([size, pitch]: readonly [number, number]): ThreadPreset => 
   exprs: { diameter: `${size} mm`, pitch: `${pitch} mm` },
 });
 
+/**
+ * NPT's taper (ASME B1.20.1): 1 in 16 on the diameter, so a half angle of
+ * atan(1/32) = 1.7899°.
+ */
+export const NPT_TAPER = Math.atan(1 / 32);
+
+/** How far a cone's taper may be from a preset's and still be that thread (radians): 0.2°. */
+export const TAPER_SLACK = (0.2 * Math.PI) / 180;
+
+/**
+ * American National Standard taper pipe threads (NPT, ASME B1.20.1, Table 2),
+ * `[size, E0 in inches, threads per inch]`: E0 is the pitch diameter at the
+ * small end of the external thread. The major diameter there is E0 + h, with
+ * h = 0.8 p the truncated thread's height (Table 2's "h"), the same rule for
+ * every size. The pipe's outside diameters (D) are 0.405, 0.540, 0.675,
+ * 0.840, 1.050 and 1.315 in for the six sizes.
+ */
+const NPT: readonly (readonly [string, number, number])[] = [
+  ['1/8', 0.36351, 27],
+  ['1/4', 0.47739, 18],
+  ['3/8', 0.61201, 18],
+  ['1/2', 0.75843, 14],
+  ['3/4', 0.96768, 14],
+  ['1', 1.21363, 11.5],
+];
+
+/**
+ * An NPT preset: the ISO 68-1 basic profile stands for NPT's own (both have
+ * 60° flanks; NPT's flats are truncated a little differently, 0.8 p deep
+ * against ISO's 0.541 p), on the cone of `NPT_TAPER`.
+ */
+const npt = ([name, e0, tpi]: readonly [string, number, number]): ThreadPreset => ({
+  id: `npt-${name.replace('/', 'q')}`,
+  label: `NPT ${name}`,
+  group: 'npt',
+  profile: 'iso',
+  diameter: (e0 + 0.8 / tpi) * 25.4,
+  pitch: 25.4 / tpi,
+  exprs: { diameter: `${e0} in + 0.8 in / ${tpi}`, pitch: `1 in / ${tpi}` },
+  taper: NPT_TAPER,
+});
+
 export const THREAD_PRESETS: readonly ThreadPreset[] = [
   ...METRIC_COARSE.map(metric('metric')),
   ...METRIC_FINE.map(metric('metric-fine')),
@@ -710,6 +763,7 @@ export const THREAD_PRESETS: readonly ThreadPreset[] = [
     pitch: 2.7,
     exprs: { diameter: '27.43 mm', pitch: '2.7 mm' },
   },
+  ...NPT.map(npt),
 ];
 
 /** The preset with this ID. */
@@ -720,19 +774,28 @@ export function threadPreset(id: string): ThreadPreset | undefined {
 /**
  * The preset a diameter, pitch (mm) and profile are, to 0.001 mm; undefined
  * for a custom size. The profile matters: the same diameter and pitch in a
- * different profile is not that preset.
+ * different profile is not that preset. With `taper` (radians, P4-12) the
+ * taper matters too: a preset's own (0 for a straight one) must be within
+ * `TAPER_SLACK` of its size, either way along the axis; without it, any.
  */
 export function threadPresetOf(
   diameter: number,
   pitch: number,
   profile: ThreadProfileName = 'iso',
+  taper?: number,
 ): ThreadPreset | undefined {
   return THREAD_PRESETS.find(
     (p) =>
       p.profile === profile &&
       Math.abs(p.diameter - diameter) < 1e-3 &&
-      Math.abs(p.pitch - pitch) < 1e-3,
+      Math.abs(p.pitch - pitch) < 1e-3 &&
+      (taper === undefined || Math.abs((p.taper ?? 0) - Math.abs(taper)) <= TAPER_SLACK),
   );
+}
+
+/** A taper in degrees as a designation says it: "1.8°". */
+export function taperDegrees(taper: number): string {
+  return `${Number(((Math.abs(taper) * 180) / Math.PI).toFixed(1))}°`;
 }
 
 /**
@@ -742,9 +805,13 @@ export function threadPresetOf(
  * hole's + 0.1 mm and whose major is larger than it (a tap-drill hole finds
  * its thread). Undefined when none fits.
  */
-export function autoThread(radius: number, internal: boolean): ThreadPreset | undefined {
+export function autoThread(
+  radius: number,
+  internal: boolean,
+  group: ThreadPreset['group'] = 'metric',
+): ThreadPreset | undefined {
   const d = 2 * radius;
-  const coarse = THREAD_PRESETS.filter((p) => p.group === 'metric');
+  const coarse = THREAD_PRESETS.filter((p) => p.group === group);
   let best: ThreadPreset | undefined;
   for (const p of coarse) {
     const minor = p.diameter - 2 * ((5 / 8) * (Math.sqrt(3) / 2) * p.pitch);
@@ -754,4 +821,33 @@ export function autoThread(radius: number, internal: boolean): ThreadPreset | un
   // A shaft far thicker than the largest preset isn't a fit.
   if (best && !internal && best.diameter < d * 0.75) return undefined;
   return best;
+}
+
+/**
+ * The NPT thread for a cone (P4-12): the same fit as `autoThread`, by the
+ * cone's radius at its small end, when its half angle is within
+ * `TAPER_SLACK` of `NPT_TAPER`; undefined for any other cone, which needs a
+ * size of its own.
+ */
+export function autoTaperThread(
+  smallRadius: number,
+  taper: number,
+  internal: boolean,
+): ThreadPreset | undefined {
+  if (Math.abs(Math.abs(taper) - NPT_TAPER) > TAPER_SLACK) return undefined;
+  return autoThread(smallRadius, internal, 'npt');
+}
+
+/**
+ * What a thread reports (`FeatureOutput.report`, P4-12): each threaded
+ * face's designation ("M8", "NPT 1/2", "Ø20 × 1.5, taper 1.8°"), in the
+ * order of its faces, for the dialog's Size line.
+ */
+export interface ThreadReport {
+  kind: 'thread';
+  designations: string[];
+}
+
+export function isThreadReport(report: unknown): report is ThreadReport {
+  return (report as { kind?: unknown } | null | undefined)?.kind === 'thread';
 }

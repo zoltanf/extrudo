@@ -917,7 +917,9 @@ end to end, faster than in Fusion 360.
     amendment): a `profile` input picks iso, trapezoidal (Tr), buttress
     (DIN 513 S) or bottle (PCO-1881), one table in core; ~~multi-start~~ (a
     `starts` input, 2026-10-07, ADR-0056's second amendment) done, and
-    tapered threads stay deferred.**
+    ~~tapered threads~~ (2026-10-07, ADR-0056's third amendment: a thread on a
+    conical face follows the cone; NPT 1/8 to 1 presets) done; BSPT (55°)
+    stays deferred.**
   - ~~Sweep: say where a profile lands~~ **done in ADR-0067 §H5 (P4-12,
     2026-10-05): the sweep warns** when its profile is drawn more than max(1 %
     of the path's length, 0.5 mm) from the path's start line, naming the

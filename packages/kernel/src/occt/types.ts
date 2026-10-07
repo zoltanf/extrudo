@@ -250,6 +250,7 @@ export interface FacadeBinding {
     pitch: number,
     turns: number,
     left: boolean,
+    taper: number,
   ): number;
   threadFace(shape: number, face: number): number;
   wrapOnCone(

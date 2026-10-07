@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  autoTaperThread,
   autoThread,
+  NPT_TAPER,
   type ProfileSegment,
   THREAD_PRESETS,
   THREAD_PROFILE_NAMES,
   ThreadInputsSchema,
+  taperDegrees,
   threadInputs,
   threadPreset,
   threadPresetOf,
@@ -219,6 +222,63 @@ describe('thread presets', () => {
     expect(threadPresetOf(20, 4, 'trapezoidal')?.id).toBe('tr20x4');
     expect(threadPresetOf(20, 4, 'iso')).toBeUndefined();
     expect(threadPresetOf(27.43, 2.7, 'bottle')?.id).toBe('pco-1881');
+  });
+
+  it('has the NPT pipe threads, made for a 1:16 cone (P4-12)', () => {
+    const npt = THREAD_PRESETS.filter((p) => p.group === 'npt');
+    expect(npt.map((p) => p.id)).toEqual([
+      'npt-1q8',
+      'npt-1q4',
+      'npt-3q8',
+      'npt-1q2',
+      'npt-3q4',
+      'npt-1',
+    ]);
+    expect(NPT_TAPER).toBeCloseTo((1.7899 * Math.PI) / 180, 5);
+    for (const p of npt) {
+      expect(p.taper).toBe(NPT_TAPER);
+      expect(p.profile).toBe('iso');
+    }
+    // 1/2 NPT: E0 = 0.75843 in, 14 TPI, h = 0.8 p: the major diameter at the
+    // small end is (0.75843 + 0.8 / 14) in.
+    const half = threadPreset('npt-1q2');
+    expect(half).toMatchObject({ label: 'NPT 1/2', pitch: 25.4 / 14 });
+    expect(half?.diameter).toBeCloseTo((0.75843 + 0.8 / 14) * 25.4, 9);
+    expect(half?.exprs).toEqual({ diameter: '0.75843 in + 0.8 in / 14', pitch: '1 in / 14' });
+    expect(threadPreset('npt-1')?.pitch).toBeCloseTo(25.4 / 11.5, 9);
+    // Each size's major at the small end is under the pipe's outside diameter.
+    const od = [0.405, 0.54, 0.675, 0.84, 1.05, 1.315];
+    npt.forEach((p, i) => {
+      expect(p.diameter).toBeLessThan((od[i] as number) * 25.4);
+      expect(p.diameter).toBeGreaterThan((od[i] as number) * 25.4 - 1.5);
+    });
+  });
+
+  it('tells NPT from a straight thread by its taper', () => {
+    const half = threadPreset('npt-1q2') as { diameter: number; pitch: number };
+    // Without a taper, any preset of the size; with one, the preset made for it.
+    expect(threadPresetOf(half.diameter, half.pitch)?.id).toBe('npt-1q2');
+    expect(threadPresetOf(half.diameter, half.pitch, 'iso', NPT_TAPER)?.id).toBe('npt-1q2');
+    expect(threadPresetOf(half.diameter, half.pitch, 'iso', -NPT_TAPER)?.id).toBe('npt-1q2');
+    expect(threadPresetOf(half.diameter, half.pitch, 'iso', 0)).toBeUndefined();
+    expect(threadPresetOf(half.diameter, half.pitch, 'iso', (5 * Math.PI) / 180)).toBeUndefined();
+    // A straight preset isn't the thread of a cone.
+    expect(threadPresetOf(20, 2.5, 'iso', 0)?.id).toBe('m20');
+    expect(threadPresetOf(20, 2.5, 'iso', NPT_TAPER)).toBeUndefined();
+    expect(taperDegrees(NPT_TAPER)).toBe('1.8°');
+    expect(taperDegrees(-(5 * Math.PI) / 180)).toBe('5°');
+  });
+
+  it('fits NPT to a cone of its taper, and nothing to another cone', () => {
+    const half = threadPreset('npt-1q2') as { diameter: number };
+    expect(autoTaperThread(half.diameter / 2, NPT_TAPER, false)?.id).toBe('npt-1q2');
+    expect(autoTaperThread(half.diameter / 2, -NPT_TAPER, false)?.id).toBe('npt-1q2');
+    // Within 0.2° of NPT's 1.79° still fits; 2.1° doesn't.
+    expect(autoTaperThread(half.diameter / 2, (1.95 * Math.PI) / 180, false)?.id).toBe('npt-1q2');
+    expect(autoTaperThread(half.diameter / 2, (2.1 * Math.PI) / 180, false)).toBeUndefined();
+    // A tapped hole at the minor diameter of its small end.
+    const minor = half.diameter - 2 * ((5 / 8) * (Math.sqrt(3) / 2) * (25.4 / 14));
+    expect(autoTaperThread(minor / 2, NPT_TAPER, true)?.id).toBe('npt-1q2');
   });
 
   it('fits a coarse thread to a shaft or a tap-drill hole', () => {

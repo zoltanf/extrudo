@@ -1185,7 +1185,7 @@ export interface FeatureMethods {
   /**
    * Thread (modify): one feature of the timeline.
    *
-   * @param inputs.faces The cylindrical faces to thread, one thread each. Required.
+   * @param inputs.faces The cylindrical or conical faces to thread, one thread each; a cone's thread follows its taper. Required.
    * @param inputs.diameter The thread's nominal (major) diameter; a length. With pitch missing too, the ISO coarse thread that fits.
    * @param inputs.pitch Crest to crest along the axis; a length.
    * @param inputs.extent Thread the face to its end or to a length. Default full.

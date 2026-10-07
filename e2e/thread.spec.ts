@@ -1,11 +1,12 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { ok, primitive } from './benchmark-helpers';
+import { clickAt, ok, primitive } from './benchmark-helpers';
 import { kernelReady, openProject, projector } from './helpers';
 
 // P4-02: Thread (FR-FT-15). A modeled thread on a cylinder's wall, sized to
 // fit (M20 on the default Ø20 cylinder, 0.1 mm tolerance: 19.8 mm across the
 // crests), edited to a size that doesn't fit; and an internal thread in a
-// Hole's wall, sized from the tap-drill hole. Threads take seconds to build.
+// Hole's wall, sized from the tap-drill hole; NPT on a drafted cylinder (P4-12).
+// Threads take seconds to build.
 
 test.use({ viewport: { width: 1440, height: 900 } });
 test.describe.configure({ timeout: 120_000 });
@@ -239,4 +240,64 @@ test('threads a bore with the PCO-1881 bottle profile', async ({ page }) => {
   await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
   // The outside is untouched. About two turns of a 2.7 mm pitch fit in 20 mm.
   await expect(viewport).toHaveAttribute('data-bodies', /^Body1:\d+:40,40,20$/);
+});
+
+// P4-12 (ADR-0056's third amendment): a thread on a cone follows it. The
+// default cylinder made Ø21.97 and drafted 1.79° about XY narrows to NPT 1/2's
+// major diameter at its top (Ø20.72), the small end; NPT 1/2 cut into it keeps
+// the height and takes the crests (and the lead-in at each end) in from the
+// cone, and the dialog's Thread line names it.
+test('cuts NPT 1/2 into a drafted cylinder: the thread follows the cone', async ({ page }) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Cylinder', { Diameter: '21.97 mm' });
+  // The display mesh's box: 21.9 or 22 across, depending on where its facets fall.
+  const cylinderBox = /^Body1:3:(21\.9|22),(21\.9|22),20$/;
+  await expect(viewport).toHaveAttribute('data-bodies', cylinderBox);
+  const at = await settledProjector(viewport);
+  const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
+
+  await page.getByRole('button', { name: 'Modify', exact: true }).click();
+  await page.getByRole('menuitem', { name: /^Draft/ }).click();
+  const draft = page.getByRole('region', { name: 'Draft dialog' });
+  await expect(draft).toBeVisible();
+  await clickFace(page, at, [0, -10.985, 10]);
+  await expect(draft.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
+  await draft.getByRole('button', { name: 'Plane', exact: true }).click();
+  await clickAt(page, at, [half * 0.75, -half * 0.75, 0]);
+  await expect(draft.getByRole('button', { name: 'Plane', exact: true })).toHaveText('XY plane');
+  await draft.getByRole('textbox', { name: 'Angle', exact: true }).fill('1.79 deg');
+  await ok(page, draft);
+  await expect(chip(page, 'Draft1')).toBeVisible();
+  await expect(viewport).toHaveAttribute('data-bodies', cylinderBox);
+  const sizeOf = async () => {
+    const [, faces, size] = ((await viewport.getAttribute('data-bodies')) ?? '').split(':');
+    const [x, y, z] = (size ?? '').split(',').map(Number);
+    return { faces: Number(faces), x: x as number, y: y as number, z };
+  };
+  const cone = await sizeOf();
+
+  // The cone's wall at half height, where its radius is 10.985 − 10 tan 1.79°.
+  const r = (10.985 - 10 * Math.tan((1.79 * Math.PI) / 180)) * Math.SQRT1_2;
+  await clickFace(page, await settledProjector(viewport), [r, -r, 10]);
+  const dialog = await openThread(page);
+  await expect(dialog.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
+  await dialog.getByRole('combobox', { name: 'Size' }).selectOption('npt-1q2');
+  await expect(dialog.getByRole('textbox', { name: 'Pitch', exact: true })).toHaveValue(
+    '1 in / 14',
+  );
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 60_000 });
+  await expect(dialog.locator('[data-info="designation"]')).toContainText('NPT 1/2');
+  await ok(page, dialog);
+  await expect(chip(page, 'Thread1')).toHaveAccessibleName('Thread1');
+  // As tall as before, narrower across: the crests are a tolerance under the
+  // cone and the lead-ins take each end down to the root.
+  await expect(viewport).not.toHaveAttribute('data-bodies', cylinderBox);
+  const threaded = await sizeOf();
+  expect(threaded.faces).toBeGreaterThan(20);
+  expect(threaded.z).toBe(20);
+  expect(threaded.x).toBeLessThanOrEqual(cone.x - 0.1);
+  expect(threaded.y).toBeLessThanOrEqual(cone.y - 0.1);
+  expect(threaded.x).toBeGreaterThan(cone.x - 1);
 });
