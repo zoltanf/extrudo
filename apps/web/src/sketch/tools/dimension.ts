@@ -29,12 +29,14 @@ import {
   UNITS,
   type Vec2,
 } from '@extrudo/core';
-import type { Inference } from '@extrudo/sketch/inference';
+import type { Inference, ModelSnap } from '@extrudo/sketch/inference';
 import { labelOffset } from './dimensionLayout';
 import {
   EMPTY_PREVIEW,
   emptyEdit,
   type HeadsUpField,
+  modelAttachments,
+  modelStandIn,
   type SketchEdit,
   type SketchTool,
   type ToolContext,
@@ -46,6 +48,10 @@ export const DIMENSION_TOOL = 'dimension';
 interface Pick {
   id: SketchEntityId;
   entity: SketchEntity;
+  /** Set when the pick is a body edge or vertex (auto-project, P6-07 slice 2). */
+  model?: ModelSnap;
+  /** The stand-in entities a model pick needs to be measured before it is projected. */
+  synthetic?: Record<SketchEntityId, SketchEntity>;
 }
 
 /** Lines closer to parallel than this (sine of the angle) get a distance, not an angle. */
@@ -55,7 +61,7 @@ export class DimensionTool implements SketchTool {
   readonly id = DIMENSION_TOOL;
   readonly picks = true;
   #picked: Pick[] = [];
-  #hover: SketchEntityId | undefined;
+  #hover: Pick | undefined;
   #cursor: Vec2 | undefined;
 
   constructor(private readonly context: ToolContext) {}
@@ -84,10 +90,9 @@ export class DimensionTool implements SketchTool {
   click(pointer: Inference): SketchEdit | undefined {
     this.#cursor = pointer.cursor;
     if (!this.#placing()) {
-      const id = this.#pickAt(pointer.cursor);
-      const entity = id && this.context.sketch().entities[id];
-      if (id && entity) {
-        this.#picked.push({ id, entity });
+      const pick = this.#pickAt(pointer.cursor);
+      if (pick) {
+        this.#picked.push(pick);
         this.#hover = undefined;
         return undefined;
       }
@@ -95,6 +100,7 @@ export class DimensionTool implements SketchTool {
       if (this.#picked[0]?.entity.type !== 'line') return undefined;
     }
     const dimension = this.#candidate(pointer.cursor);
+    const picks = this.#picked;
     this.#picked = [];
     this.#hover = undefined;
     if (!dimension) return undefined;
@@ -103,6 +109,9 @@ export class DimensionTool implements SketchTool {
     edit.dimensions[id] = dimension;
     edit.verify = [id];
     edit.editDimension = id;
+    edit.cursor = pointer.cursor;
+    const models = modelAttachments(picks);
+    if (models.length > 0) edit.models = models;
     return edit;
   }
 
@@ -124,13 +133,18 @@ export class DimensionTool implements SketchTool {
   }
 
   preview(): ToolPreview {
+    const modelPicked = this.#picked
+      .map((p) => p.model)
+      .filter((m): m is ModelSnap => m !== undefined);
     if (this.#picked.length === 0 && !this.#hover) return EMPTY_PREVIEW;
     const dimension = this.#cursor && this.#candidate(this.#cursor);
     return {
       ...EMPTY_PREVIEW,
       picked: this.#picked.map((p) => p.id),
-      hover: this.#hover,
+      hover: this.#hover?.id,
       dimension,
+      ...(this.#hover?.model && { modelHover: this.#hover.model }),
+      ...(modelPicked.length > 0 && { modelPicked }),
     };
   }
 
@@ -140,28 +154,64 @@ export class DimensionTool implements SketchTool {
     return second !== undefined || first?.entity.type === 'circle' || first?.entity.type === 'arc';
   }
 
-  #pickAt(cursor: Vec2): SketchEntityId | undefined {
+  #pickAt(cursor: Vec2): Pick | undefined {
+    const sketch = this.context.sketch();
     const taken = new Set(this.#picked.map((p) => p.id));
-    const first = this.#picked[0]?.entity.type;
-    return this.context.pick(cursor, (entity, id) => {
+    const firstType = this.#picked[0]?.entity.type;
+    const accept = (entity: SketchEntity, id: SketchEntityId) => {
       if (taken.has(id)) return false;
-      if (!first) return ['point', 'line', 'circle', 'arc'].includes(entity.type);
+      if (!firstType) return ['point', 'line', 'circle', 'arc'].includes(entity.type);
       return entity.type === 'point' || entity.type === 'line';
-    });
+    };
+    const id = this.context.pick(cursor, accept);
+    if (id) {
+      const entity = sketch.entities[id];
+      if (entity) return { id, entity };
+    }
+    // After a sketch line the next click may place the label, so a body edge
+    // or vertex under it must not be taken as a second pick (P6-07 slice 2;
+    // a model edge first pick still takes one, so two body edges can be
+    // dimensioned against each other).
+    const first = this.#picked[0];
+    if (first && first.entity.type === 'line' && !first.model) return undefined;
+    const model = this.context.pickModel(cursor);
+    if (!model) return undefined;
+    if (model.entityId) {
+      const entity = sketch.entities[model.entityId];
+      if (entity && accept(entity, model.entityId)) return { id: model.entityId, entity };
+      return undefined;
+    }
+    const stand = modelStandIn(this.context, model);
+    return accept(stand.entity, stand.id)
+      ? { id: stand.id, entity: stand.entity, model, synthetic: stand.synthetic }
+      : undefined;
+  }
+
+  /** The sketch as the picks see it: their stand-in entities added for measuring. */
+  #view(sketch: SketchData): SketchData {
+    const picks = this.#hover ? [...this.#picked, this.#hover] : this.#picked;
+    const extra: Record<string, SketchEntity> = {};
+    for (const pick of picks) {
+      if (pick.synthetic) Object.assign(extra, pick.synthetic);
+    }
+    return Object.keys(extra).length === 0
+      ? sketch
+      : { ...sketch, entities: { ...sketch.entities, ...extra } };
   }
 
   /** The dimension the picks make with its label at `cursor`, at its measured value. */
   #candidate(cursor: Vec2): SketchDimension | undefined {
     const sketch = this.context.sketch();
-    const shape = this.#shape(sketch, cursor);
+    const view = this.#view(sketch);
+    const shape = this.#shape(view, cursor);
     if (!shape) return undefined;
-    const value = measureDimension(sketch, shape);
+    const value = measureDimension(view, shape);
     if (value === undefined) return undefined;
     const { units, precision } = this.context.settings();
     const factor = shape.type === 'angle' ? 1 : (UNITS[units]?.factor ?? 1);
     const expr = String(Number((value / factor).toFixed(precision)) + 0);
     const dimension = { ...shape, expr };
-    const label = labelOffset(sketch, dimension, cursor);
+    const label = labelOffset(view, dimension, cursor);
     return label ? { ...dimension, label } : dimension;
   }
 
@@ -217,9 +267,7 @@ export class DimensionTool implements SketchTool {
   }
 
   #hoverPick(): Pick | undefined {
-    const id = this.#hover;
-    const entity = id && this.context.sketch().entities[id];
-    return id && entity ? { id, entity } : undefined;
+    return this.#hover;
   }
 }
 

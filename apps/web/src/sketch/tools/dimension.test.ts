@@ -13,6 +13,7 @@ import {
   updateParameter,
   updateSketchDimension,
 } from '@extrudo/core';
+import type { ModelSnap } from '@extrudo/sketch/inference';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DIMENSION_TOOL } from './dimension';
 import { at, disposeHosts, setup } from './testing';
@@ -409,5 +410,38 @@ describe('constraint status (P1-08)', () => {
     ).toThrow(new CommandError('Distance would over-constrain the sketch, so it stays driven.'));
     expect(t.data().dimensions[k]?.driven).toBe(true);
     expect(t.host.state.getState().status?.over).toEqual([]);
+  });
+});
+
+describe('Dimension tool with body geometry (P6-07 slice 2)', () => {
+  const edgeAt = (y: number): ModelSnap => ({
+    ref: { kind: 'edge', id: `e${y}` },
+    point: [10, y],
+    kind: 'edge',
+    line: [
+      [0, y],
+      [20, y],
+    ],
+  });
+
+  it('places a line’s length even when a body edge lies under the label click', async () => {
+    const t = await setup({ tool: DIMENSION_TOOL });
+    draw(t, { a0: pt(0, 0), a1: pt(20, 0), a: line('a0', 'a1') });
+    t.host.click(at(10, 0.2)); // the line
+    // The label goes below it, right under a body edge: it still places.
+    t.host.click({ ...at(10, 6), model: edgeAt(6) });
+    expect(dims(t)).toEqual([expect.objectContaining({ type: 'distance', a: 'a', expr: '20' })]);
+    expect(t.data().projections ?? {}).toEqual({});
+  });
+
+  it('takes a body vertex as the second point of a distance', async () => {
+    const t = await setup({ tool: DIMENSION_TOOL });
+    draw(t, { p: pt(0, 0) });
+    const vertex: ModelSnap = { ref: { kind: 'vertex', id: 'v' }, point: [10, 0], kind: 'vertex' };
+    t.host.click(at(0, 0.1));
+    t.host.click({ ...at(10, 0.1), model: vertex });
+    t.host.click(at(5, 5)); // place the label
+    expect(Object.keys(t.data().projections ?? {})).toHaveLength(1);
+    expect(Object.values(t.data().dimensions)).toHaveLength(0); // pending
   });
 });

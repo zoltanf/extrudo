@@ -5,6 +5,7 @@ import {
   type SketchEntity,
   type SketchEntityId,
 } from '@extrudo/core';
+import type { ModelSnap } from '@extrudo/sketch/inference';
 import { afterEach, describe, expect, it } from 'vitest';
 import { at, disposeHosts, setup } from './testing';
 
@@ -292,5 +293,52 @@ describe('constraint tools', () => {
     expect(t.session.getState().activeTool).toBe('collinear');
     t.host.escape();
     expect(t.session.getState().activeTool).toBeUndefined();
+  });
+});
+
+describe('constraint tools pick body geometry (P6-07 slice 2)', () => {
+  const edge: ModelSnap = {
+    ref: { kind: 'edge', id: 'e' },
+    point: [10, 5],
+    kind: 'edge',
+    line: [
+      [0, 5],
+      [20, 5],
+    ],
+  };
+  const vertexAt = (x: number, y: number): ModelSnap => ({
+    ref: { kind: 'vertex', id: `v[${x},${y}]` },
+    point: [x, y],
+    kind: 'vertex',
+  });
+
+  it('accepts a body edge where it accepts a line, and refuses a body vertex', async () => {
+    const t = await twoLines('parallel');
+    t.host.move({ ...at(10, 5.1), model: edge });
+    expect(t.host.state.getState().tool?.preview().modelHover).toMatchObject({ kind: 'edge' });
+    t.host.click({ ...at(10, 5.1), model: edge }); // first pick: the body edge
+    expect(t.host.state.getState().tool?.preview().modelPicked).toHaveLength(1);
+    t.host.click(at(10, 0.2)); // second pick: the sketch line
+    // The Parallel waits for the projection.
+    expect(Object.keys(t.data().projections ?? {})).toHaveLength(1);
+    expect(t.data().constraints).toEqual({});
+    // A body vertex isn't a line: a fresh first pick refuses it.
+    t.host.move({ ...at(20, 20.1), model: vertexAt(20, 20) });
+    expect(t.host.state.getState().tool?.preview().modelHover).toBeUndefined();
+  });
+
+  it('accepts a body vertex as a point and refuses a body edge for a point pick', async () => {
+    const t = await setup({ tool: 'horizontal' });
+    draw(t, { p: pt(0, 0) });
+    t.host.click(at(0, 0.1)); // first pick: the sketch point
+    // A body edge isn't a point: refused as the second pick.
+    t.host.move({ ...at(10, 5.1), model: edge });
+    expect(t.host.state.getState().tool?.preview().modelHover).toBeUndefined();
+    // A body vertex is a point: offered, and the constraint waits for it.
+    t.host.move({ ...at(5, 0.1), model: vertexAt(5, 0) });
+    expect(t.host.state.getState().tool?.preview().modelHover).toMatchObject({ kind: 'vertex' });
+    t.host.click({ ...at(5, 0.1), model: vertexAt(5, 0) });
+    expect(Object.keys(t.data().projections ?? {})).toHaveLength(1);
+    expect(t.data().constraints).toEqual({});
   });
 });

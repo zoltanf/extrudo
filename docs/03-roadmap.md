@@ -1077,6 +1077,9 @@ end to end, faster than in Fusion 360.
   projection record in the same undo step and is held on the projected
   vertex or curve when the kernel reports it; `viewport.autoProject` (on) and
   `viewport.autoProjectFace` (off) gate it; no file-format or kernel change.
+  Slice 2 (2026-10-06): the constraint and dimension tools pick body geometry
+  directly (`ToolContext.pickModel`), projecting the ref and writing the
+  constraint or dimension against the projected entity in the same undo step.
 
 ---
 

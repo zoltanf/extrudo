@@ -6,6 +6,7 @@ import {
   type SketchData,
   type SketchEntityId,
 } from '@extrudo/core';
+import type { ModelSnap } from '@extrudo/sketch/inference';
 import { afterEach, describe, expect, it } from 'vitest';
 import { TOOLS } from '../../shell/tools';
 import { finishSketch } from '../mode';
@@ -323,5 +324,183 @@ describe('auto-project through the host (P6-07)', () => {
     expect(
       Object.values(t.data().constraints).some((c) => c.type === 'coincident' && c.b === projected),
     ).toBe(true);
+  });
+});
+
+describe('constraint and dimension tools pick body geometry (P6-07 slice 2)', () => {
+  const vertexRef: GeomRef = { kind: 'vertex', id: 'v[face0|face1]' };
+  const edgeRef: GeomRef = { kind: 'edge', id: 'e[face0|face1]' };
+  const frame = {
+    origin: [0, 0, 0] as [number, number, number],
+    normal: [0, 0, 1] as [number, number, number],
+    x: [1, 0, 0] as [number, number, number],
+    y: [0, 1, 0] as [number, number, number],
+  };
+  const vertex = { ref: vertexRef, point: [5, 0] as [number, number], kind: 'vertex' as const };
+  const edge = (at: [number, number]): ModelSnap => ({
+    ref: edgeRef,
+    point: at,
+    kind: 'edge',
+    line: [
+      [at[0], at[1] - 2],
+      [at[0], at[1] + 2],
+    ],
+  });
+  const vertexReport = (id: string) => ({
+    frame,
+    projections: {
+      [id]: { curves: { vertex: { type: 'point' as const, at: [5, 0] as [number, number] } } },
+    },
+  });
+  const edgeReport = (id: string, a: [number, number], b: [number, number]) => ({
+    frame,
+    projections: { [id]: { curves: { edge: { type: 'line' as const, a, b } } } },
+  });
+  const drawPoint = (t: Awaited<ReturnType<typeof setup>>, id: string, x: number, y: number) =>
+    t.store
+      .getState()
+      .dispatch(
+        addToSketch({ feature: t.id, entities: { [id]: { type: 'point', x, y } } as never }),
+      );
+  const drawLine = (t: Awaited<ReturnType<typeof setup>>, id: string) =>
+    t.store.getState().dispatch(
+      addToSketch({
+        feature: t.id,
+        entities: {
+          [`${id}0`]: { type: 'point', x: 0, y: 0 },
+          [`${id}1`]: { type: 'point', x: 20, y: 0 },
+          [id]: { type: 'line', start: `${id}0`, end: `${id}1`, construction: false },
+        } as never,
+      }),
+    );
+
+  it('holds a Coincident between a sketch point and a body vertex, projected later', async () => {
+    const t = await setup({ tool: 'coincident' });
+    drawPoint(t, 'p', 0, 0);
+    t.host.click(at(0, 0));
+    t.host.click({ ...at(5, 0.1), model: vertex });
+    // The vertex isn't projected yet: the projection record is in, the constraint is not.
+    const projections = t.data().projections ?? {};
+    const pid = Object.keys(projections)[0] as ProjectionId;
+    expect(Object.values(t.data().constraints)).toHaveLength(0);
+    // The kernel reports the vertex; the coincident follows in the same step.
+    t.host.syncProjections({ [t.id]: vertexReport(pid) });
+    const projected = t.data().projections?.[pid]?.curves.vertex;
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'coincident', a: 'p', b: projected },
+    ]);
+    // One undo takes the constraint and the projection away together.
+    t.store.getState().undo();
+    expect(t.data().constraints).toEqual({});
+    expect(t.data().projections ?? {}).toEqual({});
+  });
+
+  it('picks an already-projected vertex as an ordinary sketch entity', async () => {
+    const t = await setup({ tool: 'coincident' });
+    drawPoint(t, 'p', 0, 0);
+    t.store
+      .getState()
+      .dispatch(addProjection({ feature: t.id, id: 'proj' as ProjectionId, ref: vertexRef }));
+    t.host.syncProjections({ [t.id]: vertexReport('proj') });
+    const projected = t.data().projections?.['proj' as ProjectionId]?.curves.vertex;
+    expect(projected).toBeTruthy();
+    t.host.click(at(0, 0));
+    t.host.click(at(5, 0.1));
+    // No new projection, and the constraint is in at once.
+    expect(Object.keys(t.data().projections ?? {})).toEqual(['proj']);
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'coincident', a: 'p', b: projected },
+    ]);
+  });
+
+  it('makes a Parallel to a body edge, projected later', async () => {
+    const t = await setup({ tool: 'parallel' });
+    drawLine(t, 'a');
+    t.host.click(at(10, 0.2));
+    t.host.click({ ...at(10, 5.1), model: edge([10, 5]) });
+    const projections = t.data().projections ?? {};
+    const pid = Object.keys(projections)[0] as ProjectionId;
+    t.host.syncProjections({ [t.id]: edgeReport(pid, [0, 10], [20, 14]) });
+    const projected = t.data().projections?.[pid]?.curves.edge;
+    expect(Object.values(t.data().constraints)).toEqual([
+      { type: 'parallel', a: 'a', b: projected },
+    ]);
+    t.store.getState().undo();
+    expect(t.data().constraints).toEqual({});
+    expect(t.data().projections ?? {}).toEqual({});
+  });
+
+  it('measures a Distance from a sketch point to a body vertex', async () => {
+    const t = await setup({ tool: 'dimension' });
+    drawPoint(t, 'p', 0, 0);
+    t.host.click(at(0, 0));
+    t.host.click({ ...at(5, 0.1), model: vertex });
+    t.host.click(at(2.5, 4)); // place the label
+    const projections = t.data().projections ?? {};
+    const pid = Object.keys(projections)[0] as ProjectionId;
+    expect(Object.values(t.data().dimensions)).toHaveLength(0);
+    t.host.syncProjections({ [t.id]: vertexReport(pid) });
+    const projected = t.data().projections?.[pid]?.curves.vertex;
+    expect(Object.values(t.data().dimensions)).toEqual([
+      expect.objectContaining({
+        type: 'distance',
+        a: 'p',
+        b: projected,
+        expr: '5',
+        paramName: 'd1',
+      }),
+    ]);
+    t.store.getState().undo();
+    expect(t.data().dimensions).toEqual({});
+    expect(t.data().projections ?? {}).toEqual({});
+  });
+
+  it('measures a Distance between two body edges', async () => {
+    const t = await setup({ tool: 'dimension' });
+    const e1: ModelSnap = {
+      ref: { kind: 'edge', id: 'e1' },
+      point: [10, 0],
+      kind: 'edge',
+      line: [
+        [0, 0],
+        [20, 0],
+      ],
+    };
+    const e2: ModelSnap = {
+      ref: { kind: 'edge', id: 'e2' },
+      point: [10, 10],
+      kind: 'edge',
+      line: [
+        [0, 10],
+        [20, 10],
+      ],
+    };
+    t.host.click({ ...at(10, 0.1), model: e1 });
+    t.host.click({ ...at(10, 10.1), model: e2 });
+    t.host.click(at(-5, 5)); // place the label
+    const projections = t.data().projections ?? {};
+    const ids = Object.keys(projections) as ProjectionId[];
+    expect(ids).toHaveLength(2);
+    // Report both edges; the distance measures 10.
+    const reports = Object.fromEntries(
+      ids.map((id) => [id, { curves: { edge: { type: 'line', a: [0, 0], b: [20, 0] } } }]),
+    );
+    reports[ids[1] as string] = { curves: { edge: { type: 'line', a: [0, 10], b: [20, 10] } } };
+    t.host.syncProjections({
+      [t.id]: { frame, projections: reports as never },
+    });
+    const [d] = Object.values(t.data().dimensions);
+    expect(d).toMatchObject({ type: 'distance', expr: '10' });
+  });
+
+  it('offers no model pick with the preference off', async () => {
+    const t = await setup({ tool: 'parallel' });
+    drawLine(t, 'a');
+    t.viewport.getState().setAutoProject(false);
+    t.host.click(at(10, 0.2));
+    t.host.click({ ...at(10, 0.2), model: edge([10, 0]) });
+    expect(t.host.state.getState().tool?.preview().picked).toEqual(['a']);
+    expect(t.data().constraints).toEqual({});
+    expect(t.data().projections ?? {}).toEqual({});
   });
 });

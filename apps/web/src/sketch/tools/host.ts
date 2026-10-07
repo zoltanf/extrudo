@@ -49,6 +49,7 @@ import {
   type Command,
   CommandError,
   type ConstraintId,
+  constraintRefs,
   DIMENSION_LABELS,
   type DimensionId,
   type DocumentStore,
@@ -61,6 +62,7 @@ import {
   includedCurves,
   includeLabel,
   includeProjection,
+  measureDimension,
   modifySketch,
   nextModelParameterName,
   type ProjectionId,
@@ -79,6 +81,7 @@ import {
   type SketchReport,
   setSketchGeometry,
   syncProjections,
+  UNITS,
   type Vec2,
 } from '@extrudo/core';
 import type { SketchSolution, SketchSolver } from '@extrudo/sketch';
@@ -110,6 +113,7 @@ import { CONIC_TOOL, ConicTool, SPLINE_CONTROL_TOOL, SplineControlTool } from '.
 import { CONSTRAINT_TOOLS, ConstraintTool } from './constrain';
 import { CHAMFER_TOOL, CornerTool, FILLET_TOOL } from './corner';
 import { DIMENSION_TOOL, DimensionTool } from './dimension';
+import { labelOffset } from './dimensionLayout';
 import { ELLIPSE_TOOL, EllipseTool } from './ellipse';
 import { isSketchTool } from './ids';
 import { IMPORT_DRAWING_TOOL, ImportDrawingTool } from './importDrawing';
@@ -341,6 +345,23 @@ interface PendingModelConstraint {
   kind: 'vertex' | 'edge';
 }
 
+/**
+ * A picking tool's constraint or dimension on body geometry (auto-project,
+ * P6-07 slice 2) that waits for the kernel to report the projected entities:
+ * every `binding` placeholder is replaced by its projection's curve, then the
+ * constraint is test-solved and the dimension measured and written.
+ */
+interface PendingModelEdit {
+  feature: FeatureId;
+  bindings: { placeholder: SketchEntityId; projection: ProjectionId; kind: 'vertex' | 'edge' }[];
+  constraints: Record<ConstraintId, SketchConstraint>;
+  dimensions: { id: DimensionId; shape: SketchDimension }[];
+  /** The Dimension tool's new dimension to open for editing once it lands. */
+  editDimension?: DimensionId;
+  /** Where a dimension's label goes, for re-measuring once the geometry lands. */
+  cursor?: Vec2;
+}
+
 export function createToolHost(options: ToolHostOptions): ToolHost {
   const { store, session, viewport } = options;
   const newId = options.newId ?? (() => randomId());
@@ -377,6 +398,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
    * state only: it never enters the document.
    */
   const pendingModels: PendingModelConstraint[] = [];
+  /** A picking tool's constraint or dimension waiting for a projection (P6-07 slice 2). */
+  const pendingEdits: PendingModelEdit[] = [];
   /**
    * A drag on geometry with no tool (P1-09): points follow the pointer's offset, or, for a
    * drag on a circle's rim, the radius follows the pointer's distance from the centre.
@@ -453,6 +476,21 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     },
     snapDistance: () => SNAP_PIXELS * perPixel,
     model: () => lastModel,
+    pickModel: (cursor) => {
+      const data = activeSketch()?.data;
+      const snap = lastModel;
+      if (!data || !snap || !viewport.getState().autoProject) return undefined;
+      const tolerance = SNAP_PIXELS * perPixel;
+      // The sketch's own geometry always wins, even one the tool wouldn't accept.
+      if (pickEntity(data, cursor, tolerance)) return undefined;
+      if (Math.hypot(snap.point[0] - cursor[0], snap.point[1] - cursor[1]) > tolerance) {
+        return undefined;
+      }
+      const key = snap.kind === 'vertex' ? 'vertex' : 'edge';
+      const existing = projectionFor(data, snap.ref);
+      const curve = existing?.[1].curves[key];
+      return { ...snap, ...(typeof curve === 'string' ? { entityId: curve } : {}) };
+    },
   };
 
   const create = (id: string) => {
@@ -491,8 +529,8 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
   const inferAt = (pointer: PlanePointer, tool: SketchTool): Inference => {
     const data = context.sketch();
     perPixel = pointer.perPixel;
-    lastModel = pointer.model;
-    const model = !tool.picks ? pointer.model : undefined;
+    lastModel = viewport.getState().autoProject ? pointer.model : undefined;
+    const model = !tool.picks ? lastModel : undefined;
     return infer(data, pointer.point, {
       tolerance: SNAP_PIXELS * pointer.perPixel,
       anchor: tool.anchor(),
@@ -585,28 +623,66 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
     const evaluation = evaluateParameters(doc);
 
     // Auto-project (P6-07): a point the tool placed on a body edge or vertex
-    // projects the ref and holds the point on the projected geometry. An
-    // already-projected ref is used at once (its constraint joins the edit); a
-    // new one waits for the kernel's report (`syncProjections`).
+    // projects the ref and holds the point on the projected geometry. A picking
+    // tool (P6-07 slice 2) instead hands a placeholder its constraint or
+    // dimension used; the host replaces it with the projected entity. An
+    // already-projected ref is used at once; a new one waits for the kernel's
+    // report (`syncProjections`).
     const newProjections: { id: ProjectionId; ref: GeomRef }[] = [];
     const deferredModels: PendingModelConstraint[] = [];
+    const pickBindings: PendingModelEdit['bindings'] = [];
+    const substitute = new Map<SketchEntityId, SketchEntityId>();
     for (const m of edit.models ?? []) {
       const key = m.kind === 'vertex' ? 'vertex' : 'edge';
       const existing = projectionFor(sketch.data, m.ref);
-      if (existing && key in existing[1].curves && existing[1].curves[key] === null) continue;
-      const projected = existing?.[1].curves[key];
-      if (projected) {
-        const cid = newId() as ConstraintId;
-        edit.constraints[cid] =
-          m.kind === 'vertex'
-            ? { type: 'coincident', a: m.point, b: projected }
-            : { type: 'pointOnCurve', point: m.point, curve: projected };
-        edit.auto = [...(edit.auto ?? []), cid];
+      const deleted =
+        existing !== undefined && key in existing[1].curves && existing[1].curves[key] === null;
+      const projected = deleted ? undefined : existing?.[1].curves[key];
+      if (typeof projected === 'string') {
+        if (m.placeholder) substitute.set(m.placeholder, projected);
+        if (m.point) {
+          const cid = newId() as ConstraintId;
+          edit.constraints[cid] =
+            m.kind === 'vertex'
+              ? { type: 'coincident', a: m.point, b: projected }
+              : { type: 'pointOnCurve', point: m.point, curve: projected };
+          edit.auto = [...(edit.auto ?? []), cid];
+        }
         continue;
       }
       const id = existing ? existing[0] : (newId() as ProjectionId);
       if (!existing) newProjections.push({ id, ref: m.ref });
-      deferredModels.push({ feature: sketch.id, projection: id, point: m.point, kind: m.kind });
+      if (m.placeholder) {
+        pickBindings.push({ placeholder: m.placeholder, projection: id, kind: m.kind });
+      } else if (m.point) {
+        deferredModels.push({ feature: sketch.id, projection: id, point: m.point, kind: m.kind });
+      }
+    }
+
+    // A constraint or dimension that names an unresolved placeholder is set
+    // aside until the projected entity lands; one whose placeholders all
+    // resolved now is rewritten and goes in as usual.
+    const pendingConstraints: Record<ConstraintId, SketchConstraint> = {};
+    const pendingDimensions: PendingModelEdit['dimensions'] = [];
+    if (substitute.size > 0 || pickBindings.length > 0) {
+      const unresolved = new Set(pickBindings.map((b) => b.placeholder));
+      const map = (id: SketchEntityId) => substitute.get(id) ?? id;
+      for (const [id, c] of Object.entries(edit.constraints)) {
+        if (constraintRefs(c).some((r) => unresolved.has(r))) {
+          pendingConstraints[id as ConstraintId] = c;
+          delete edit.constraints[id as ConstraintId];
+        } else if (substitute.size > 0) {
+          edit.constraints[id as ConstraintId] = mapConstraint(c, map);
+        }
+      }
+      for (const [id, d] of Object.entries(edit.dimensions)) {
+        if (dimensionRefs(d).some((r) => unresolved.has(r))) {
+          pendingDimensions.push({ id: id as DimensionId, shape: d });
+          delete edit.dimensions[id as DimensionId];
+        } else if (substitute.size > 0) {
+          edit.dimensions[id as DimensionId] = mapDimension(d, map);
+        }
+      }
     }
 
     const auto = new Set<string>(edit.auto);
@@ -775,6 +851,16 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
         }
       }
       pendingModels.push(...deferredModels);
+      if (pickBindings.length > 0) {
+        pendingEdits.push({
+          feature: sketch.id,
+          bindings: pickBindings,
+          constraints: pendingConstraints,
+          dimensions: pendingDimensions,
+          editDimension: edit.editDimension,
+          cursor: edit.cursor,
+        });
+      }
     }
   };
 
@@ -985,6 +1071,118 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       } catch (error) {
         if (!(error instanceof CommandError)) throw error;
         console.warn('[sketch] could not hold a point to an auto-projected curve:', error);
+      }
+    }
+  };
+
+  /**
+   * Writes a picking tool's constraint or dimension on body geometry
+   * (P6-07 slice 2) once the kernel reports the projected entities: every
+   * placeholder is replaced by its projection's curve, the constraint is
+   * test-solved, the dimension is measured and labelled, and both join the
+   * step that added the projection. A projection whose curve isn't there yet
+   * keeps waiting; a lost or deleted one drops the edit.
+   */
+  const resolvePendingEdits = (feature: FeatureId, data: SketchData | undefined) => {
+    if (!data || pendingEdits.length === 0) return;
+    const { doc } = store.getState();
+    const evaluation = evaluateParameters(doc);
+    const settings = doc.settings;
+    for (let i = pendingEdits.length - 1; i >= 0; i--) {
+      const pending = pendingEdits[i] as PendingModelEdit;
+      if (pending.feature !== feature) continue;
+      const map = new Map<SketchEntityId, SketchEntityId>();
+      let status: 'ok' | 'waiting' | 'drop' = 'ok';
+      for (const binding of pending.bindings) {
+        const projection = data.projections?.[binding.projection];
+        if (!projection) {
+          status = 'drop';
+          break;
+        }
+        const curve = projection.curves[binding.kind === 'vertex' ? 'vertex' : 'edge'];
+        if (curve === undefined) {
+          status = 'waiting';
+          break;
+        }
+        if (curve === null) {
+          status = 'drop';
+          break;
+        }
+        map.set(binding.placeholder, curve);
+      }
+      if (status === 'waiting') continue;
+      pendingEdits.splice(i, 1);
+      if (status === 'drop') continue;
+      const mapRef = (id: SketchEntityId) => map.get(id) ?? id;
+
+      const constraints: Record<ConstraintId, SketchConstraint> = {};
+      for (const [id, c] of Object.entries(pending.constraints)) {
+        const mapped = mapConstraint(c, mapRef);
+        const trial: SketchData = {
+          entities: data.entities,
+          constraints: { ...data.constraints, ...constraints, [id]: mapped },
+          dimensions: data.dimensions,
+        };
+        const values = dimensionValues(trial, evaluation, feature);
+        const result = solver?.check(trial, values, id as ConstraintId);
+        if (result && !result.accepted) {
+          const label = CONSTRAINT_LABELS[c.type];
+          state.setState({
+            error: result.redundant.includes(id as ConstraintId)
+              ? `${label} isn't needed: the sketch already holds it.`
+              : `${label} would conflict with the sketch's other constraints.`,
+          });
+          continue;
+        }
+        constraints[id as ConstraintId] = mapped;
+      }
+
+      const dimensions: Record<DimensionId, SketchDimension> = {};
+      let next = Number(nextModelParameterName(store.getState().doc).slice(1));
+      for (const { id, shape } of pending.dimensions) {
+        const mapped = mapDimension(shape, mapRef);
+        const view: SketchData = {
+          entities: data.entities,
+          constraints: { ...data.constraints, ...constraints },
+          dimensions: { ...data.dimensions, ...dimensions },
+        };
+        const value = measureDimension(view, mapped);
+        if (value === undefined) continue;
+        const factor = mapped.type === 'angle' ? 1 : (UNITS[settings.units]?.factor ?? 1);
+        const expr = String(Number((value / factor).toFixed(settings.precision)) + 0);
+        const withExpr = { ...mapped, expr } as SketchDimension;
+        const label = pending.cursor && labelOffset(view, withExpr, pending.cursor);
+        const dimension = label ? { ...withExpr, label } : withExpr;
+        const trial: SketchData = {
+          entities: data.entities,
+          constraints: { ...data.constraints, ...constraints },
+          dimensions: { ...data.dimensions, ...dimensions, [id]: dimension },
+        };
+        const values = dimensionValues(trial, evaluation, feature);
+        const result = solver?.check(trial, values, id);
+        if (result && !result.accepted) {
+          state.setState({
+            error: `${DIMENSION_LABELS[shape.type]} would over-constrain the sketch.`,
+          });
+          continue;
+        }
+        dimensions[id] =
+          !dimension.driven && dimension.paramName === undefined
+            ? ({ ...dimension, paramName: `d${next++}` } as SketchDimension)
+            : dimension;
+      }
+
+      if (Object.keys(constraints).length === 0 && Object.keys(dimensions).length === 0) continue;
+      try {
+        store.getState().amend(addToSketch({ feature, constraints, dimensions }));
+        if (pending.editDimension && pending.editDimension in dimensions) {
+          if (session.getState().activeSketchId === feature) {
+            state.setState({ editing: pending.editDimension });
+          }
+        }
+      } catch (error) {
+        if (!(error instanceof CommandError)) throw error;
+        console.warn('[sketch] could not apply an auto-projected pick:', error);
       }
     }
   };
@@ -1293,6 +1491,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
               store.getState().doc.features.find((f) => f.id === feature.id) ?? feature,
             );
             resolvePendingModels(feature.id, updated?.data);
+            resolvePendingEdits(feature.id, updated?.data);
             settleProjections(feature.id, current.data);
           } catch (error) {
             if (!(error instanceof CommandError)) throw error;
@@ -1414,4 +1613,55 @@ function projectionFor(
     }
   }
   return undefined;
+}
+
+/** The entities a dimension refers to, in field order. */
+function dimensionRefs(d: SketchDimension): SketchEntityId[] {
+  switch (d.type) {
+    case 'radius':
+    case 'diameter':
+      return [d.curve];
+    case 'angle':
+      return [d.a, d.b];
+    default:
+      return d.b === undefined ? [d.a] : [d.a, d.b];
+  }
+}
+
+/** A constraint with every entity reference passed through `map` (auto-project, P6-07 slice 2). */
+function mapConstraint(
+  c: SketchConstraint,
+  map: (id: SketchEntityId) => SketchEntityId,
+): SketchConstraint {
+  switch (c.type) {
+    case 'pointOnCurve':
+      return { ...c, point: map(c.point), curve: map(c.curve) };
+    case 'midpoint':
+      return { ...c, point: map(c.point), of: map(c.of) };
+    case 'fix':
+      return { ...c, entity: map(c.entity) };
+    case 'horizontal':
+    case 'vertical':
+      return c.b === undefined ? { ...c, a: map(c.a) } : { ...c, a: map(c.a), b: map(c.b) };
+    case 'symmetric':
+      return { ...c, a: map(c.a), b: map(c.b), axis: map(c.axis) };
+    default:
+      return { ...c, a: map(c.a), b: map(c.b) };
+  }
+}
+
+/** A dimension with every entity reference passed through `map` (auto-project, P6-07 slice 2). */
+function mapDimension(
+  d: SketchDimension,
+  map: (id: SketchEntityId) => SketchEntityId,
+): SketchDimension {
+  switch (d.type) {
+    case 'radius':
+    case 'diameter':
+      return { ...d, curve: map(d.curve) };
+    case 'angle':
+      return { ...d, a: map(d.a), b: map(d.b) };
+    default:
+      return d.b === undefined ? { ...d, a: map(d.a) } : { ...d, a: map(d.a), b: map(d.b) };
+  }
 }

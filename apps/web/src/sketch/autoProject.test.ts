@@ -67,6 +67,9 @@ describe('auto-project model snaps (P6-07)', () => {
     const snap = modelSnapAt(scene, camera, FRAME, at, [5, 0], bodies);
     expect(snap?.kind).toBe('edge');
     expect(snap?.ref.id).toBe('e[face0|face1]');
+    // The nearest point is on the segment, not an endpoint.
+    expect(snap?.point[0]).toBeCloseTo(5, 6);
+    expect(snap?.point[1]).toBeCloseTo(0, 6);
   });
 
   it('offers nothing when the preference is off', () => {

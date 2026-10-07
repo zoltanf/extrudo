@@ -3,7 +3,14 @@
 One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
-
+- 2026-10-06 · **P6-07 Auto-project slice 2** (ADR-0074's amendment): the
+  constraint and dimension tools pick a body edge or vertex directly
+  (`ToolContext.pickModel`), behind the sketch's own geometry: the host
+  projects the ref in the same undo step and writes the constraint or
+  dimension against the projected entity once the kernel reports it (the
+  pending machinery generalised from the two fixed coincident shapes to any
+  constraint or dimension whose side is a projected entity). No
+  file-format, schema or kernel change.
 - 2026-10-06 · **P6-07 Auto-project** (ADR-0074, FR-SK-17): while a drawing,
   constraint or dimension tool runs, the view offers the shown bodies' edges
   and vertices under the pointer (behind the sketch's own geometry, vertices

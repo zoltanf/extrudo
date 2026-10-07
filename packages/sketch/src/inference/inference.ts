@@ -70,12 +70,25 @@ export interface ModelSnap {
   ref: GeomRef;
   point: Vec2;
   kind: 'vertex' | 'edge';
+  /**
+   * An edge's display polyline's two ends, in sketch coordinates (P6-07
+   * slice 2): a picking tool builds a stand-in line from them so it can tell
+   * a length from an angle before the kernel reports the exact curve. Absent
+   * for a vertex and for an edge whose polyline has fewer than two points.
+   */
+  line?: readonly [Vec2, Vec2];
 }
 
 /** A point a drawing tool placed on a model snap, to project in the same edit. */
 export interface ModelAttachment {
-  /** The new point to hold on the projected geometry. */
-  point: SketchEntityId;
+  /** The new point to hold on the projected geometry (a drawing tool). */
+  point?: SketchEntityId;
+  /**
+   * The placeholder entity ID a picking tool used for this geometry in a
+   * constraint or dimension (P6-07 slice 2): the host replaces it with the
+   * projected entity's ID once the kernel reports the curve.
+   */
+  placeholder?: SketchEntityId;
   ref: GeomRef;
   kind: 'vertex' | 'edge';
 }

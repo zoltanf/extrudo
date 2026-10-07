@@ -157,6 +157,7 @@ already reports edges, faces, vertices and bodies (P4-12). `packages/sketch`'s
   picks the projected entity once it exists (a normal fixed sketch entity),
   which is what the on-the-fly projection produces. The essential path
   (a drawing tool placing a point on a body edge or vertex) is complete.
+  **Done in the amendment below (2026-10-06).**
 - **Silhouettes and whole bodies for auto-project**: only edges and vertices,
   as the task says.
 
@@ -185,3 +186,88 @@ already reports edges, faces, vertices and bodies (P4-12). `packages/sketch`'s
   was dropped mid-drag and `sketch-select.spec.ts`'s rim-resize and edge-drag
   tests failed. The handlers now read the latest picker from a ref, so a drag
   survives the sketch changing under it.
+
+## Amendment, 2026-10-06: the constraint and dimension tools pick body geometry
+
+The `Deferred` item above is done. A tool with `picks: true` (the thirteen
+constraint tools and Dimension) now picks a body edge or vertex directly.
+
+### The pick
+
+`ToolContext` gained `pickModel(cursor)`. It returns `undefined` with
+`viewport.autoProject` off, when *any* sketch entity is within the snap
+distance (the sketch's own geometry always wins, even one the tool wouldn't
+accept) or when no `ModelSnap` under the pointer is near the cursor; else a
+`ModelPick` — the `ModelSnap` plus, when the sketch already projects that ref,
+its projected entity's ID. A parallel method (rather than widening
+`ToolContext.pick`'s return type) was chosen because only `constrain.ts` and
+`dimension.ts` call it: the six other `pick` callers (offset, split, corner,
+transform) are untouched.
+
+A model pick the tool's rule accepts becomes a `Pick` whose entity is a
+**stand-in**: a vertex is a point at the snap point, an edge a straight line
+between the display polyline's two ends. `ModelSnap` gained an optional `line`
+for that (exact for a straight edge; the value is measured again from the
+reported curve). `pickModel` returns the projected entity ID when the ref is
+already projected, so the tool then picks it as an ordinary sketch entity and
+nothing below happens.
+
+### What it commits
+
+`ModelAttachment` gained an optional `placeholder` (a drawing tool's
+`point` is unchanged): the picking tool's constraint or dimension names the
+placeholder, and `SketchEdit.cursor` carries where a dimension's label was
+placed. The host, in `commit`:
+
+- projects or reuses each ref as slice 1 does (`addProjection`, `amend`ed into
+  the same step);
+- a placeholder whose curve is already in the sketch is substituted at once,
+  and the constraint or dimension is written like any other;
+- otherwise the constraint or dimension is set aside in a **`PendingModelEdit`**
+  (its whole shape, still holding the placeholders). `syncProjections`
+  substitutes every placeholder with its projection's curve, test-solves the
+  constraint (`check`, the usual refusal message) or measures and re-labels
+  the dimension, and `amend`s both into the step that added the projection.
+  This generalises slice 1's `PendingModelConstraint` (the two fixed
+  `coincident`/`pointOnCurve` shapes) to any constraint or dimension; the
+  mapping is in `mapConstraint`/`mapDimension`.
+
+A dimension between two model edges is allowed: both placeholders are resolved
+before it is written, and its type (length, distance or angle) is chosen from
+the stand-in lines at pick time.
+
+### Still deferred
+
+- Dimension's live preview for a dimension on un-projected geometry: its label
+  and value appear when the curve lands.
+- A dimension whose first pick is a **sketch line**: the next click may place
+  the length, so a body edge or vertex under it is not taken as a second pick
+  (Dimension's `#pickAt`; otherwise an existing line's label click on body
+  geometry, as in benchmark B3, would become a model pick). An angle from a
+  sketch line to a body edge is therefore deferred; a model edge first pick
+  still takes a second model edge, and a sketch point still takes a model
+  edge or vertex.
+- A deferred dimension that would over-constrain the sketch is dropped with a
+  message rather than waiting for the over-constraint dialog (the dialog is
+  for a dimension the tool commits at once).
+- A curved edge's stand-in is a chord, so an edge by itself may be typed as a
+  distance; the value itself is measured from the exact reported curve.
+- Silhouettes and whole bodies, as before.
+
+## Results, slice 2
+
+- `host.test.ts`: a Coincident between a sketch point and a body vertex
+  (projected later and already projected), a Parallel to a body edge, a
+  Distance to a body vertex and one between two body edges; the preference
+  off offers no model pick; one `undo` takes each constraint or dimension with
+  its projection.
+- `constrain.test.ts`: the Parallel tool accepts a body edge where it accepts
+  a line and refuses a vertex; the Horizontal tool accepts a body vertex as a
+  point and refuses an edge.
+- E2E (`e2e/auto-project.spec.ts`, `--repeat-each=2`): Coincident between a
+  sketch point and a Box vertex, Parallel to a Box edge, and a Dimension from
+  a sketch point to a Box vertex; each shows in `data-sketch-summary` and
+  `data-sketch-projected` after the recompute, and one Ctrl+Z takes it and
+  its projection away.
+- No kernel, document-schema or file-format change; the projections are
+  slice 1's records.

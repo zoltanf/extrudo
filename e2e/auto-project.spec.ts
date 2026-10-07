@@ -145,3 +145,106 @@ test('the face-outline preference projects a face a sketch starts on', async ({ 
     .toContain(`${second}:curves=4`);
   await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
 });
+
+/** Draws a Line between two sketch points with inference off, then ends the tool. */
+async function rawLine(page: Page, viewport: Locator, a: [number, number], b: [number, number]) {
+  const at = await mapping(viewport);
+  const p = at(...a);
+  const q = at(...b);
+  await page.keyboard.press('l');
+  await page.keyboard.down('Control');
+  await page.mouse.click(p.x, p.y);
+  await page.mouse.click(q.x, q.y);
+  await page.keyboard.up('Control');
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Escape');
+}
+
+/** Clicks the constraint tool's tile in the Constraints group. */
+function constraintTool(page: Page, name: string) {
+  return page
+    .getByRole('group', { name: 'Constraints' })
+    .getByRole('button', { name, exact: true });
+}
+
+// P6-07 slice 2 (ADR-0074's amendment): the constraint and dimension tools
+// pick a body edge or vertex directly, and the host projects it and writes the
+// constraint or dimension in the same undo step.
+
+test('Coincident between a sketch point and a Box vertex projects it', async ({ page }) => {
+  await box(page);
+  const sketch = await sketchOnTopFace(page);
+  const viewport = viewportOf(page);
+  await rawLine(page, viewport, [5, 0], [5, 10]);
+  await constraintTool(page, 'Coincident').click();
+  const at = await mapping(viewport);
+  const point = at(5, 0);
+  await page.mouse.click(point.x, point.y); // the line's end (a sketch point)
+  const corner = at(20, 20); // the Box's top vertex
+  await page.mouse.move(corner.x, corner.y);
+  await page.mouse.click(corner.x, corner.y);
+
+  // The kernel reports the vertex; the coincidence follows.
+  await expect.poll(async () => (await counts(page)).constraints, { timeout: 60_000 }).toBe(1);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+  await expect
+    .poll(() => attr(viewport, 'data-sketch-projected'))
+    .toBe(`${sketch}:curves=0:x=20..20:y=20..20`);
+
+  // One undo takes the coincidence and the projection away together.
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => attr(viewport, 'data-sketch-projected')).toBe('');
+  await page.keyboard.press('Control+Shift+z');
+  await expect.poll(() => attr(viewport, 'data-sketch-projected')).toContain(`${sketch}:curves=0`);
+});
+
+test('Parallel to a Box edge projects the edge', async ({ page }) => {
+  await box(page);
+  const sketch = await sketchOnTopFace(page);
+  const viewport = viewportOf(page);
+  await rawLine(page, viewport, [0, 0], [10, 0]);
+  await constraintTool(page, 'Parallel').click();
+  const at = await mapping(viewport);
+  const line = at(5, 0);
+  await page.mouse.click(line.x, line.y);
+  const edge = at(0, 20); // the top face's far edge
+  await page.mouse.move(edge.x, edge.y);
+  await page.mouse.click(edge.x, edge.y);
+
+  await expect.poll(async () => (await counts(page)).constraints, { timeout: 60_000 }).toBe(1);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+  await expect
+    .poll(() => attr(viewport, 'data-sketch-projected'), { timeout: 60_000 })
+    .toContain(`${sketch}:curves=1`);
+
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => attr(viewport, 'data-sketch-projected')).toBe('');
+});
+
+test('a Dimension from a sketch point to a Box vertex projects it', async ({ page }) => {
+  await box(page);
+  const sketch = await sketchOnTopFace(page);
+  const viewport = viewportOf(page);
+  await rawLine(page, viewport, [5, 0], [5, 10]);
+  await page.keyboard.press('d');
+  const at = await mapping(viewport);
+  const point = at(5, 0);
+  await page.mouse.click(point.x, point.y); // the line's end
+  const corner = at(20, 20);
+  await page.mouse.move(corner.x, corner.y);
+  await page.mouse.click(corner.x, corner.y);
+  const label = at(12, 12);
+  await page.mouse.click(label.x, label.y); // place the dimension
+
+  await expect.poll(async () => (await counts(page)).dimensions, { timeout: 60_000 }).toBe(1);
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  await kernelReady(page);
+  await expect
+    .poll(() => attr(viewport, 'data-sketch-projected'), { timeout: 60_000 })
+    .toBe(`${sketch}:curves=0:x=20..20:y=20..20`);
+
+  await page.keyboard.press('Control+z');
+  await expect.poll(() => attr(viewport, 'data-sketch-projected')).toBe('');
+});

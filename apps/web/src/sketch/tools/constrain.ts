@@ -17,11 +17,13 @@ import type {
   SketchEntityType,
   Vec2,
 } from '@extrudo/core';
-import { type Inference, tangentReversed } from '@extrudo/sketch/inference';
+import { type Inference, type ModelSnap, tangentReversed } from '@extrudo/sketch/inference';
 import {
   EMPTY_PREVIEW,
   emptyEdit,
   type HeadsUpField,
+  modelAttachments,
+  modelStandIn,
   type SketchEdit,
   type SketchTool,
   type ToolContext,
@@ -49,6 +51,8 @@ export type ConstraintToolId = (typeof CONSTRAINT_TOOLS)[number];
 interface Pick {
   id: SketchEntityId;
   entity: SketchEntity;
+  /** Set when the pick is a body edge or vertex (auto-project, P6-07 slice 2). */
+  model?: ModelSnap;
 }
 
 /** What a tool accepts and makes. */
@@ -218,7 +222,7 @@ export class ConstraintTool implements SketchTool {
   readonly picks = true;
   readonly #rule: Rule;
   #picked: Pick[] = [];
-  #hover: SketchEntityId | undefined;
+  #hover: Pick | undefined;
 
   constructor(
     private readonly context: ToolContext,
@@ -240,18 +244,18 @@ export class ConstraintTool implements SketchTool {
   }
 
   click(pointer: Inference): SketchEdit | undefined {
-    const id = this.#pickAt(pointer.cursor);
-    const entity = id && this.context.sketch().entities[id];
-    if (!id || !entity) return undefined;
-    this.#picked.push({ id, entity });
+    const pick = this.#pickAt(pointer.cursor);
+    if (!pick) return undefined;
+    this.#picked.push(pick);
     const constraint = this.#rule.make(this.#picked, this.context);
     if (!constraint) {
       this.#hover = undefined;
       return undefined;
     }
+    const picks = this.#picked;
     this.#picked = [];
     this.#hover = undefined;
-    return this.#edit(constraint);
+    return this.#edit(constraint, picks);
   }
 
   enter(): undefined {
@@ -271,19 +275,43 @@ export class ConstraintTool implements SketchTool {
   }
 
   preview(): ToolPreview {
+    const modelPicked = this.#picked
+      .map((p) => p.model)
+      .filter((m): m is ModelSnap => m !== undefined);
     if (this.#picked.length === 0 && !this.#hover) return EMPTY_PREVIEW;
-    return { ...EMPTY_PREVIEW, picked: this.#picked.map((p) => p.id), hover: this.#hover };
+    return {
+      ...EMPTY_PREVIEW,
+      picked: this.#picked.map((p) => p.id),
+      hover: this.#hover?.id,
+      ...(this.#hover?.model && { modelHover: this.#hover.model }),
+      ...(modelPicked.length > 0 && { modelPicked }),
+    };
   }
 
-  #pickAt(cursor: Vec2): SketchEntityId | undefined {
+  #pickAt(cursor: Vec2): Pick | undefined {
+    const sketch = this.context.sketch();
     const taken = new Set(this.#picked.map((p) => p.id));
-    return this.context.pick(
-      cursor,
-      (entity, id) => !taken.has(id) && this.#rule.accepts(this.#picked, entity),
-    );
+    const accepted = (entity: SketchEntity) => this.#rule.accepts(this.#picked, entity);
+    const id = this.context.pick(cursor, (entity, id) => !taken.has(id) && accepted(entity));
+    if (id) {
+      const entity = sketch.entities[id];
+      if (entity) return { id, entity };
+    }
+    const model = this.context.pickModel(cursor);
+    if (!model) return undefined;
+    // Already projected: pick the fixed sketch entity like any other.
+    if (model.entityId) {
+      const entity = sketch.entities[model.entityId];
+      if (entity && !taken.has(model.entityId) && accepted(entity)) {
+        return { id: model.entityId, entity };
+      }
+      return undefined;
+    }
+    const stand = modelStandIn(this.context, model);
+    return accepted(stand.entity) ? { id: stand.id, entity: stand.entity, model } : undefined;
   }
 
-  #edit(constraint: SketchConstraint): SketchEdit {
+  #edit(constraint: SketchConstraint, picks: readonly Pick[]): SketchEdit {
     const edit = emptyEdit();
     if (constraint.type === 'fix') {
       const existing = Object.entries(this.context.sketch().constraints).find(
@@ -298,6 +326,8 @@ export class ConstraintTool implements SketchTool {
     const id = this.context.newId() as ConstraintId;
     edit.constraints[id] = constraint;
     edit.verify = [id];
+    const models = modelAttachments(picks);
+    if (models.length > 0) edit.models = models;
     return edit;
   }
 }

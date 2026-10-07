@@ -256,6 +256,22 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
             />
           </g>
         )}
+        {preview?.modelPicked?.map((m, i) => {
+          const p = toScreen(m.point);
+          // biome-ignore lint/suspicious/noArrayIndexKey: model picks in a preview have no identity.
+          return p && <SnapGlyph key={`model${i}`} kind={modelGlyphKind(m.kind)} at={p} />;
+        })}
+        {preview?.modelHover &&
+          (() => {
+            const p = toScreen(preview.modelHover.point);
+            return (
+              p && (
+                <g data-preview="model-hover">
+                  <SnapGlyph kind={modelGlyphKind(preview.modelHover.kind)} at={p} />
+                </g>
+              )
+            );
+          })()}
         {placing && (
           <g data-preview="dimension">
             <DimensionGraphic shape={placing.shape} toScreen={toScreen} color="var(--x-accent)" />
@@ -355,6 +371,11 @@ const SNAP_NAMES: Record<SnapKind, string> = {
   onCurve: 'On curve',
   grid: 'Grid',
 };
+
+/** The snap glyph a model pick draws as (a vertex a point, an edge an on-curve circle). */
+function modelGlyphKind(kind: 'vertex' | 'edge'): SnapKind {
+  return kind === 'vertex' ? 'point' : 'onCurve';
+}
 
 /** A small glyph at the snap point, one shape per kind (UI spec §4). */
 function SnapGlyph({ kind, at: [x, y] }: { kind: SnapKind; at: readonly [number, number] }) {

@@ -76,11 +76,12 @@ export function modelSnapAt(
   const ref = topologyRef(topology, bodies);
   const mesh = bodies[topology.body];
   if (!ref || !mesh) return undefined;
-  const point =
-    topology.kind === 'vertex'
-      ? vertexPoint(mesh, topology.index, frame)
-      : edgePoint(mesh, topology.index, frame, cursor);
-  return point ? { ref, point, kind: topology.kind } : undefined;
+  if (topology.kind === 'vertex') {
+    const point = vertexPoint(mesh, topology.index, frame);
+    return point ? { ref, point, kind: 'vertex' } : undefined;
+  }
+  const edge = edgePoint(mesh, topology.index, frame, cursor);
+  return edge ? { ref, kind: 'edge', ...edge } : undefined;
 }
 
 /** The vertex, in sketch coordinates. */
@@ -90,25 +91,46 @@ function vertexPoint(mesh: BodyMesh, index: number, frame: SketchFrame): Vec2 | 
   return worldToSketch(frame, [v[3 * index] ?? 0, v[3 * index + 1] ?? 0, v[3 * index + 2] ?? 0]);
 }
 
-/** The point of an edge's display polyline nearest `cursor`, in sketch coordinates. */
+/**
+ * An edge's display polyline in sketch coordinates: the point on it nearest
+ * `cursor` and the polyline's two ends (P6-07 slice 2: a picking tool's
+ * stand-in line). Absent when the mesh carries no points for the edge. The
+ * nearest point is on a segment, not only at a vertex: a body edge's
+ * polyline for a straight edge is just its two ends, so a vertex-only search
+ * would put the snap at an endpoint far from the pointer.
+ */
 function edgePoint(
   mesh: BodyMesh,
   index: number,
   frame: SketchFrame,
   cursor: Vec2,
-): Vec2 | undefined {
+): { point: Vec2; line?: readonly [Vec2, Vec2] } | undefined {
   const first = mesh.edgeRanges[2 * index] ?? 0;
   const count = mesh.edgeRanges[2 * index + 1] ?? 0;
+  if (count <= 0) return undefined;
   const p = mesh.edgePoints;
-  let best: Vec2 | undefined;
+  const project = (i: number): Vec2 =>
+    worldToSketch(frame, [p[3 * i] ?? 0, p[3 * i + 1] ?? 0, p[3 * i + 2] ?? 0]);
+  let best = project(first);
   let bestD = Number.POSITIVE_INFINITY;
-  for (let i = first; i < first + count; i++) {
-    const q = worldToSketch(frame, [p[3 * i] ?? 0, p[3 * i + 1] ?? 0, p[3 * i + 2] ?? 0]);
+  for (let i = first; i + 1 < first + count; i++) {
+    const a = project(i);
+    const b = project(i + 1);
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len2 = dx * dx + dy * dy;
+    const t =
+      len2 === 0
+        ? 0
+        : Math.min(1, Math.max(0, ((cursor[0] - a[0]) * dx + (cursor[1] - a[1]) * dy) / len2));
+    const q: Vec2 = [a[0] + t * dx, a[1] + t * dy];
     const d = Math.hypot(q[0] - cursor[0], q[1] - cursor[1]);
     if (d < bestD) {
       bestD = d;
       best = q;
     }
   }
-  return best;
+  const line: readonly [Vec2, Vec2] | undefined =
+    count >= 2 ? [project(first), project(first + count - 1)] : undefined;
+  return line ? { point: best, line } : { point: best };
 }
