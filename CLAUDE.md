@@ -527,7 +527,7 @@ mesh, `basis: 'mesh'` in the report); a point/plane report also carries
 `path` (`from`/`tangent`/`length`/`straight`) so the app draws a distance
 handle from the path's start along a straight path. `pickBox` takes
 construction planes/axes/points as a `construction` kind last in `BOX_ORDER`.
-No facade change.
+No facade change. **2026-10-07 addendum**: `tangentPlane`'s `point` on a cone is the exact foot on the nearest generatrix (the apex past it; a point on the axis warns and follows the angle), and `pointAtIntersection` takes an edge and a **curved** face (`edgeMeetsFace`, closest points within 1 µm); a point where two curved faces and a plane meet stays open (it needs a face-face section the facade lacks).
 ADR-0042 (P3-11) added the right-click marking menu:
 `design-system/MarkingMenu.tsx` draws eight wedges and a list (pure
 geometry in `marking.ts`); **a wedge is a command ID** in the two tables in

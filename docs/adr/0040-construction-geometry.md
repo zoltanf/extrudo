@@ -330,3 +330,26 @@ and wording issues; all are fixed here, each with a test.
   the ring and near the tube circle, and the review tests above; the e2e's Plane
   Along Path now uses an arc, as the brief asked.
 
+
+### Addendum, 2026-10-07
+
+Two items from the amendment's "still open" list, both in TypeScript, no facade change.
+
+- **A cone's nearest tangency point (replaces L4's warning).** With the apex `A`,
+  `opening` the unit axis into the body, `half` the half angle and the target `T`:
+  `d = T − A`, `radial = d − (d·opening) opening`. If `radial` is not zero,
+  `out = radial / |radial|` picks the generatrix `g = cos(half) opening + sin(half) out`;
+  the foot is `A + max(0, d·g) g` (never behind the apex: a point past it touches at
+  the apex) and the normal `cos(half) out − sin(half) opening`, the no-point rule's
+  formula. `T − foot` is then parallel to the normal. Like a cylinder's, the surface
+  is the infinite one, so a target beyond the rim touches past the face. A target on
+  the axis has every generatrix as near: the reference-plane/angle rule decides, with
+  the warning "The point lies on the cone's axis…".
+- **`pointAtIntersection`: an edge and a curved face.** When the face's surface is not
+  a plane, the edge and face sub-shapes go to `closestPoints`; within `MEET` (1 µm)
+  the point is the midpoint of the two, else "The edge doesn't meet the face (… mm
+  apart)." An edge crossing the face twice gives whichever crossing OCCT reports
+  first; an edge lying on the face gives a point on it. Flat faces and planes keep
+  `edgeMeetsPlane`.
+- **Still open:** a point where two curved faces and a plane meet, which needs a
+  face-face section the facade doesn't have.

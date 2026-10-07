@@ -823,7 +823,7 @@ export interface FeatureMethods {
    * @param inputs.face The cylindrical, conical or spherical face to touch.
    * @param inputs.plane The plane that says where round the face it touches: it touches where the face's normal is closest to this one. Without one, a fixed direction square to the face's axis.
    * @param inputs.angle Turns the touching point about the face's axis; an angle. Default 0 deg.
-   * @param inputs.point Touch the face nearest this point (a point or a vertex). Without it, the reference plane and angle decide.
+   * @param inputs.point Touch the face nearest this point (a point or a vertex; a cone too). Without it, the reference plane and angle decide.
    */
   tangentPlane(
     inputs?: PlainInputs<TangentPlaneInputs>,
@@ -884,7 +884,7 @@ export interface FeatureMethods {
   /**
    * Point at Intersection (construct): one feature of the timeline.
    *
-   * @param inputs.entities Two edges, an edge and a plane or flat face, or three planes: they meet at the point.
+   * @param inputs.entities Two edges, an edge and a plane or face, or three planes: they meet at the point.
    */
   pointAtIntersection(
     inputs?: PlainInputs<PointAtIntersectionInputs>,

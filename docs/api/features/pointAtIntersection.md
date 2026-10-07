@@ -20,7 +20,7 @@ a valid feature.
 
 | Input | Type | Required or default | What it does |
 | --- | --- | --- | --- |
-| `entities` | `GeomRef \| GeomRef[]` (`edge`, `plane`, `face`) | optional | Two edges, an edge and a plane or flat face, or three planes: they meet at the point. |
+| `entities` | `GeomRef \| GeomRef[]` (`edge`, `plane`, `face`) | optional | Two edges, an edge and a plane or face, or three planes: they meet at the point. |
 
 ## Faces
 

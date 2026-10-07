@@ -884,9 +884,10 @@ end to end, faster than in Fusion 360.
     planes) — plus a `point` on `tangentPlane` (a torus analytically, a
     free-form face from a fine mesh of it, `basis: 'mesh'` in the report) and
     `pickBox` taking construction planes, axes and points under the
-    construction filter (origin axes excepted). No facade change. Still open: a
-    point at the intersection of two curved faces, and a cone's nearest
-    tangency point.
+    construction filter (origin axes excepted). No facade change. ~~A cone's
+    nearest tangency point~~ and ~~a point where an edge meets a curved face~~
+    are **done 2026-10-07** (ADR-0040's addendum); a point where two curved
+    faces and a plane meet is still open.
   - ~~Extrude to object on curved faces and bodies, with an offset; revolve
     "to"~~; ~~symmetric half-length~~ (ADR-0028, -0029; done 2026-10-06 —
     the first two in the amendment, the half-length as `symmetricMeasure`

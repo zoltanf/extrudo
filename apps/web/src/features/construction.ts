@@ -415,8 +415,8 @@ export const pointAtIntersectionDialog = construction(POINT_AT_INTERSECTION_TYPE
   selection('entities', 'Entities', INTERSECTION_SOURCE_KINDS, {
     min: 2,
     max: 3,
-    prompt: 'Pick two edges, an edge and a plane, or three planes',
-    hint: 'Two edges, an edge and a plane or flat face, or three planes: they meet at the point.',
+    prompt: 'Pick two edges, an edge and a plane or face, or three planes',
+    hint: 'Two edges, an edge and a plane or face, or three planes: they meet at the point.',
   }),
 ]);
 

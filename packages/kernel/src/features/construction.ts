@@ -366,13 +366,28 @@ export const kernelTangentPlane = define(TANGENT_PLANE_TYPE, (ctx) => {
           'surface',
         );
       }
-      case 'cone':
-        // The nearest point of a cone's surface is not worth the geometry yet,
-        // so the reference-plane/angle rule still decides: say so (L4).
+      case 'cone': {
+        // The exact nearest generatrix: the target's radial direction about the
+        // axis picks it, its foot on that line (never behind the apex) is where
+        // the plane touches. The surface is the infinite one, as the cylinder's.
+        const apex = surface.origin;
+        const axis = unit(surface.direction as Vec3);
+        const opening = dot(sub(info.centroid, apex), axis) >= 0 ? axis : scale(axis, -1);
+        const half = Math.abs(surface.halfAngle ?? 0);
+        const d = sub(target, apex);
+        const radial = sub(d, scale(opening, dot(d, opening)));
+        if (length(radial) > EPS) {
+          const out = unit(radial);
+          const generatrix = add(scale(opening, Math.cos(half)), scale(out, Math.sin(half)));
+          const foot = add(apex, scale(generatrix, Math.max(0, dot(d, generatrix))));
+          const normal = unit(sub(scale(out, Math.cos(half)), scale(opening, Math.sin(half))));
+          return plane(foot, normal, foot, 'surface');
+        }
         ctx.warn(
-          "The nearest-point rule doesn't apply to a cone yet: the plane follows the angle.",
+          "The point lies on the cone's axis, so every generatrix is as near: the plane follows the angle.",
         );
         break;
+      }
       default:
         break;
     }
@@ -639,6 +654,26 @@ function edgeMeetsPlane(ctx: EvalContext, edge: GeomRef, planeRef: GeomRef): Vec
   throw new KernelError(NO_PLANE_MEET);
 }
 
+/** Whether a face reference is flat (a curved one goes to `edgeMeetsFace`). */
+function isFlatFace(ctx: EvalContext, face: GeomRef): boolean {
+  const hit = ctx.resolve(face, { label: 'the face' });
+  return ctx.kernel.surfaceGeometry(hit.shape, hit.index).type === 'plane';
+}
+
+/** An edge and a curved face: the facade's closest points of the two sub-shapes, their midpoint. */
+function edgeMeetsFace(ctx: EvalContext, edge: GeomRef, face: GeomRef): Vec3 {
+  using scope = ctx.kernel.scope();
+  const e = ctx.resolve(edge, { label: 'the edge' });
+  const f = ctx.resolve(face, { label: 'the face' });
+  const a = scope.track(ctx.kernel.subShape(e.shape, 'edge', e.index));
+  const b = scope.track(ctx.kernel.subShape(f.shape, 'face', f.index));
+  const { distance, from, to } = ctx.kernel.closestPoints(a, b);
+  if (distance > MEET) {
+    throw new KernelError(`The edge doesn't meet the face (${round2(distance)} mm apart).`);
+  }
+  return scale(add(from, to), 0.5);
+}
+
 /** Three planes or flat faces through one point (Cramer's rule on their normals). */
 function threePlanesMeet(ctx: EvalContext, refs: readonly GeomRef[]): Vec3 {
   const [a, b, c] = refs.map((ref, i) => planeOf(ctx, ref, `plane ${i + 1}`)) as [
@@ -671,12 +706,16 @@ export const kernelPointAtIntersection = define(POINT_AT_INTERSECTION_TYPE, (ctx
     return { kind: 'point', point: edgesMeeting(ctx, refs) };
   }
   if (refs.length === 2 && edges.length === 1 && planes.length === 1) {
-    return { kind: 'point', point: edgeMeetsPlane(ctx, edges[0] as GeomRef, planes[0] as GeomRef) };
+    const only = planes[0] as GeomRef;
+    if (only.kind === 'face' && !isFlatFace(ctx, only)) {
+      return { kind: 'point', point: edgeMeetsFace(ctx, edges[0] as GeomRef, only) };
+    }
+    return { kind: 'point', point: edgeMeetsPlane(ctx, edges[0] as GeomRef, only) };
   }
   if (refs.length === 3 && planes.length === 3) {
     return { kind: 'point', point: threePlanesMeet(ctx, refs) };
   }
-  throw new KernelError('Pick two edges, an edge and a plane, or three planes.');
+  throw new KernelError('Pick two edges, an edge and a plane or face, or three planes.');
 });
 
 /** The bisector of two non-parallel planes or flat faces, through their intersection line (P4-12). */

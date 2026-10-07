@@ -696,32 +696,6 @@ describe('the P4-12 review fixes', { timeout: 120_000 }, () => {
     expect(rounded(p.frame.normal)).toEqual([0, 0, 1]);
   });
 
-  it('warns that a nearest point does nothing on a cone, and keeps the angle rule (L4)', async () => {
-    const b = new SketchBuilder();
-    b.circle(0, 0, 10);
-    const extrude = {
-      ...testFeature('E', 'extrude'),
-      inputs: extrudeInputs([profileOf('S', b.sketch)], { distance: '20 mm', taper: '20 deg' }),
-    };
-    const picked = await withShapes([sketch('S', b.sketch), extrude]);
-    const cone = pick(picked, 'E:0', 'face', (i, shape) => {
-      return kernel.surfaceGeometry(shape, i).type === 'cone';
-    });
-    const point = feature('P', 'constructionPoint', { x: length('30 mm') });
-    const result = await fresh([
-      sketch('S', b.sketch),
-      extrude,
-      point,
-      feature('TP', 'tangentPlane', {
-        face: refs([cone]),
-        point: refs([constructionRef(point) as GeomRef]),
-      }),
-    ]);
-    expect(status(result, 'TP').status).toBe('warning');
-    expect(status(result, 'TP').message).toContain('cone');
-    expect(report('TP', 'plane').kind).toBe('plane');
-  });
-
   it('needs one tolerance: an edge in a plane is refused, a parallel one misses (L5)', async () => {
     const picked = await withShapes(block());
     const alongX = edgeAt(picked, 30, 0, 0);
@@ -838,5 +812,55 @@ describe('the P4-12 test gaps', { timeout: 120_000 }, () => {
     );
     // Inside the ring: the nearest surface point is on the inner wall at radius 12.
     expect(rounded(report('TP', 'plane').anchor)).toEqual([12, 0, 0]);
+  });
+
+  it('meets an edge with a curved face: the first crossing, or an error when apart', async () => {
+    const cylinder = feature(
+      'C',
+      'cylinder',
+      primitiveInputs('cylinder', { numbers: { diameter: '20 mm', height: '20 mm' } }),
+    );
+    const box = (x: string) =>
+      feature(
+        'K',
+        'box',
+        primitiveInputs('box', {
+          numbers: { length: '40 mm', width: '4 mm', height: '10 mm', x },
+        }),
+      );
+    const wall = pick(
+      await withShapes([cylinder]),
+      'C:0',
+      'face',
+      (i, shape) => kernel.surfaceGeometry(shape, i).type === 'cylinder',
+    );
+    const topEdge = async (x: string) => {
+      const picked = await withShapes([cylinder, box(x)]);
+      return pick(picked, 'K:0', 'edge', (i, shape) => {
+        const e = kernel.describe(shape).edges[i];
+        return e?.type === 'line' && near(e.midpoint, Number.parseFloat(x), 2, 10);
+      });
+    };
+    const edge = await topEdge('15 mm');
+    ok(
+      await fresh([
+        cylinder,
+        box('15 mm'),
+        feature('X', 'pointAtIntersection', { entities: refs([edge, wall]) }),
+      ]),
+    );
+    const p = report('X', 'point').point;
+    expect(p[0]).toBeCloseTo(Math.sqrt(96), 3);
+    expect(p[1]).toBeCloseTo(2, 3);
+    expect(p[2]).toBeCloseTo(10, 3);
+
+    const far = await topEdge('60 mm');
+    const apart = await fresh([
+      cylinder,
+      box('60 mm'),
+      feature('X', 'pointAtIntersection', { entities: refs([far, wall]) }),
+    ]);
+    expect(status(apart, 'X').status).toBe('error');
+    expect(status(apart, 'X').message).toContain("doesn't meet the face");
   });
 });

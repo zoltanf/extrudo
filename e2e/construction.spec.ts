@@ -371,6 +371,34 @@ test('a point at an intersection picks two edges in the view (M1)', async ({ pag
   );
 });
 
+test('a point where a box edge meets a cylinder wall (an edge and a curved face)', async ({
+  page,
+}) => {
+  const viewport = await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Cylinder', { Diameter: '20 mm', Height: '20 mm' });
+  await primitive(page, 'Box', { Length: '40 mm', Width: '4 mm', Height: '10 mm', X: '15 mm' });
+  await page.keyboard.press('Shift+1');
+  const at = await settledProjector(viewport);
+
+  const dialog = await startConstruction(page, 'Point at Intersection');
+  // The box's front top edge runs along X at y = −2, z = 10 and crosses the cylinder's
+  // wall at x = √96 ≈ 9.8.
+  await clickEdge(page, at, [15, -2, 10]);
+  await clickWhere(page, at, [10 * 0.707, -10 * 0.707, 15], /^face:/);
+  await expect(dialog.getByRole('button', { name: 'Entities', exact: true })).toHaveText(/edge/);
+  await expect(viewport).toHaveAttribute(
+    'data-construction',
+    /preview:Point_at_Intersection1:point:9\.798,-2,10$/,
+    { timeout: 15_000 },
+  );
+  await ok(page, dialog);
+  await expect(viewport).toHaveAttribute(
+    'data-construction',
+    'Point_at_Intersection1:point:9.798,-2,10',
+  );
+});
+
 test('an angled midplane bisects two faces at 45°', async ({ page }) => {
   const viewport = await openProject(page);
   await kernelReady(page);

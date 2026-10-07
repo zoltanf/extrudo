@@ -309,7 +309,7 @@ export const TangentPlaneInputsSchema = z.strictObject({
   point: refsOf(POINT_SOURCE_KINDS, 1)
     .optional()
     .describe(
-      'Touch the face nearest this point (a point or a vertex). Without it, the reference plane and angle decide.',
+      'Touch the face nearest this point (a point or a vertex; a cone too). Without it, the reference plane and angle decide.',
     ),
 });
 export type TangentPlaneInputs = z.infer<typeof TangentPlaneInputsSchema>;
@@ -365,9 +365,7 @@ export const PointAtIntersectionInputsSchema = z.strictObject({
   /** Two edges, an edge and a plane, or three planes that meet at a point. */
   entities: refsOf(INTERSECTION_SOURCE_KINDS, 3)
     .optional()
-    .describe(
-      'Two edges, an edge and a plane or flat face, or three planes: they meet at the point.',
-    ),
+    .describe('Two edges, an edge and a plane or face, or three planes: they meet at the point.'),
 });
 export type PointAtIntersectionInputs = z.infer<typeof PointAtIntersectionInputsSchema>;
 

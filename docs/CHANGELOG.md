@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P4-12 Construction: a cone's nearest tangency point and an edge meeting a curved face** (ADR-0040's addendum): `tangentPlane` with a `point` on a cone touches the foot of the point on the nearest generatrix (the apex past it; a point on the axis warns and follows the angle), and `pointAtIntersection` takes an edge and a curved face.
 - 2026-10-07 · **Tapered threads** (P4-12, ADR-0056's third amendment): a thread on a conical face follows the cone (the facade's `threadFace` reads cones, `threadSweep` sweeps along a conical helix), an NPT group (1/8 to 1, ASME B1.20.1) in Size fits a 1:16 cone without a size, and the Thread dialog's Thread line names it ("NPT 1/2"); no new input, no file-format change.
 - 2026-10-07 · **P6-03 plugin API, slice 4: the review's fixes** (ADR-0077): a plugin zip is inflated as a stream and refused past 4 MB of real output (a lying header costs ~20 ms), a foreign `in:` input fails its feature and not the document, install's bytes are capped in desktop main, manifest strings refuse control and bidi characters, README/LICENSE capped at 256 kB, a cancelled plugin dialog forgets its pending file, generated IDs may not collide with the design's, a plugin can't replace `Date`/`Math.random`; docs and tests; P6-03 ticked.
 - 2026-10-07 · **P6-03 plugin API, slice 3** (ADR-0077): an enabled plugin's custom features get

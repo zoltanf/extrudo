@@ -431,6 +431,62 @@ describe('construction planes', { timeout: 120_000 }, () => {
     expect(round(dot3(sub3([0, 0, 20], p.frame.origin), p.frame.normal))).toBe(0);
     expect(round(dot3(sub3([0, -10, 0], p.frame.origin), p.frame.normal))).toBe(0);
   });
+
+  it('a point picks the exact nearest generatrix of a cone, clamped at the apex', async () => {
+    const data = new SketchBuilder();
+    data.line(0, 0, 10, 0);
+    data.line(10, 0, 0, 20);
+    data.line(0, 20, 0, 0);
+    const base = [
+      sketch('S', data.sketch, XZ),
+      {
+        ...testFeature('R', 'revolve'),
+        inputs: revolveInputs([profileOf('S', data.sketch)], originAxis('origin:z')),
+      },
+    ];
+    const result = await withShapes(base);
+    const face = pick(
+      result,
+      'R:0',
+      'face',
+      (i, shape) => kernel.surfaceGeometry(shape, i).type === 'cone',
+    );
+    const touch = async (x: number, y: number, z: number) => {
+      const target = point('P', x, y, z);
+      const done = await fresh([
+        ...base,
+        target,
+        feature('T', 'tangentPlane', { face: refs([face]), point: refs([ref(target)]) }),
+      ]);
+      return done;
+    };
+    const s5 = 1 / Math.sqrt(5);
+
+    ok(await touch(12, 0, 10));
+    const p = report('T', 'plane');
+    expect(p.basis).toBe('surface');
+    expect(p.anchor[0]).toBeCloseTo(6.4, 6);
+    expect(p.anchor[1]).toBeCloseTo(0, 6);
+    expect(p.anchor[2]).toBeCloseTo(7.2, 6);
+    expect(p.frame.normal[0]).toBeCloseTo(2 * s5, 6);
+    expect(p.frame.normal[2]).toBeCloseTo(s5, 6);
+    const [g0, g1, g2] = sub3([12, 0, 10], p.anchor) as [number, number, number];
+    const [n0, n1, n2] = p.frame.normal as [number, number, number];
+    const crossed = [g1 * n2 - g2 * n1, g2 * n0 - g0 * n2, g0 * n1 - g1 * n0];
+    expect(Math.hypot(...crossed)).toBeLessThan(1e-7);
+
+    const axis = await touch(0, 0, 30);
+    expect(status(axis, 'T').message).toContain('every generatrix is as near');
+    // The angle rule: the plane still holds the apex.
+    const held = report('T', 'plane');
+    expect(round(dot3(sub3([0, 0, 20], held.frame.origin), held.frame.normal))).toBe(0);
+
+    ok(await touch(5, 0, 40));
+    const past = report('T', 'plane');
+    expect(rounded(past.anchor)).toEqual([0, 0, 20]);
+    expect(past.frame.normal[0]).toBeCloseTo(2 * s5, 6);
+    expect(past.frame.normal[2]).toBeCloseTo(s5, 6);
+  });
 });
 
 // --------------------------------------------------------------------- axes
