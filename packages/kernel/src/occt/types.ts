@@ -149,6 +149,15 @@ export interface FacadeBinding {
   sketchArc(cx: number, cy: number, radius: number, from: number, sweep: number): number;
   sketchEllipse(cx: number, cy: number, a: number, b: number, rotation: number): number;
   sketchSpline(degree: number, poleCount: number): number;
+  sketchConic(
+    x0: number,
+    y0: number,
+    xs: number,
+    ys: number,
+    x1: number,
+    y1: number,
+    rho: number,
+  ): number;
   sketchProfiles(
     ox: number,
     oy: number,
