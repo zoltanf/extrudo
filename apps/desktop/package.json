@@ -24,6 +24,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.0.0",
     "electron-builder": "^26.0.0",
+    "electron-updater": "^6.8.9",
     "electron-vite": "^5.0.0",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.0"

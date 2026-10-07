@@ -15,7 +15,8 @@ import { readFile, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { createNodeProjectStore } from '@extrudo/storage/node';
 import type { MenuModel } from '@extrudo/web/menu-model';
-import { app, BrowserWindow, dialog, Menu, type OpenDialogOptions, session } from 'electron';
+import { app, BrowserWindow, dialog, Menu, type OpenDialogOptions, session, shell } from 'electron';
+import { autoUpdater } from 'electron-updater';
 import { CHANNELS } from '../shared/ipc';
 import { createDialogFiles } from './dialogs';
 import { createExternalFiles, createExternalPaths } from './externalFiles';
@@ -29,6 +30,7 @@ import { createPreferencesFile } from './preferences';
 import { APP_URL, handleAppProtocol, registerAppScheme } from './protocol';
 import { createRecentFile } from './recent';
 import { createRescueFile } from './rescue';
+import { createUpdates, type UpdaterLike } from './updates';
 
 // Before `app.whenReady()`: a privileged scheme cannot be registered later.
 registerAppScheme();
@@ -66,6 +68,18 @@ function main(): void {
   const send = (channel: string, ...args: unknown[]) => window?.webContents.send(channel, ...args);
   const notifyRecentChanged = () => send(CHANNELS.recentChanged);
 
+  // Auto-update (P6-01 slice 4). `autoUpdater` is a lazy getter in
+  // electron-updater, so a dev run (never started) doesn't construct one.
+  const updates = createUpdates({
+    updater: () => autoUpdater as unknown as UpdaterLike,
+    platform: process.platform,
+    isAppImage: Boolean(process.env.APPIMAGE),
+    packaged: app.isPackaged,
+    disabled: Boolean(process.env.EXTRUDO_DISABLE_UPDATES),
+    send: (status) => send(CHANNELS.updateStatus, status),
+    log: console,
+  });
+
   let menuModel: MenuModel[] = [];
   /** Whether a project page has registered its `menu:run` handler (finding 4). */
   let menuListening = false;
@@ -78,6 +92,7 @@ function main(): void {
           handlers: menuHandlers,
           platform: process.platform,
           menuListening,
+          updates: updates.running,
         }),
       ),
     );
@@ -104,6 +119,7 @@ function main(): void {
       if (menuListening) send(CHANNELS.menuRun, QUIT_ID);
       else app.quit();
     },
+    checkForUpdates: () => updates.check(),
   };
 
   /** Opens a `.extrudo` a person picked in the native Open… dialog. */
@@ -231,11 +247,25 @@ function main(): void {
         recentChanged();
       },
       recentChanged: () => recentChanged(),
-      rendererReady: () => openQueue.ready(),
+      rendererReady: () => {
+        openQueue.ready();
+        // A reloaded renderer starts with no update state: say what main knows.
+        if (updates.status.state !== 'idle') send(CHANNELS.updateStatus, updates.status);
+      },
       quit: () => app.quit(),
       getWindow,
+      updates: {
+        check: () => updates.check(),
+        apply: () => updates.apply(),
+        openRelease: () => {
+          const url = updates.releaseUrl();
+          if (url) void shell.openExternal(url);
+        },
+      },
     });
     createWindow();
+    // Before the first menu, so Help › Check for Updates… knows whether it runs.
+    updates.start();
     // The window exists now; a queued open waits for the renderer's `app:ready`.
     openQueue.deliverWith((path) => void deliverOpen(path));
     applyMenu();
@@ -250,6 +280,7 @@ function main(): void {
   });
 
   app.on('before-quit', () => {
+    updates.dispose();
     preferences.flush();
   });
 
@@ -273,6 +304,8 @@ function main(): void {
       },
     });
     window.on('ready-to-show', () => window?.show());
+    // A design stays open for days: focus checks again when the last is old.
+    window.on('focus', () => updates.focused());
     window.on('closed', () => {
       window = null;
     });

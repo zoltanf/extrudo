@@ -52,7 +52,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   const { projects, error, refresh } = useProjects(platform);
   const persistence = usePersistence(platform);
   const { toasts, push, dismiss } = useToasts();
-  useUpdateNotice(push);
+  useUpdateNotice(push, platform);
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('modified');
   const [showTrash, setShowTrash] = useState(false);

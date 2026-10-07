@@ -57,6 +57,13 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
       offChanged: () => {},
     },
     app: { ready: () => {}, quit: () => {} },
+    updates: {
+      onStatus: () => {},
+      offStatus: () => {},
+      check: () => {},
+      apply: () => {},
+      openRelease: () => {},
+    },
   };
   return { api, calls };
 }

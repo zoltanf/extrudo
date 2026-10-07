@@ -10,7 +10,9 @@
     "./notifications": "./src/design-system/notifications.ts",
     "./menu-model": "./src/shell/menuModel.ts",
     "./platform/folders": "./src/platform/folders.ts",
-    "./platform/rescue": "./src/platform/rescue.ts"
+    "./platform/rescue": "./src/platform/rescue.ts",
+    "./platform/updates": "./src/platform/updates.ts",
+    "./platform/updateNotice": "./src/platform/updateNotice.ts"
   },
   "scripts": {
     "dev": "vite",

@@ -29,3 +29,27 @@ downloads the Electron it packs itself), but running the result does.
 compute a new design. `--app <path>` launches a packaged AppImage instead; main
 reads the environment variable `EXTRUDO_USER_DATA` as its data directory, which
 the script points at a temporary directory. Both need a display (`xvfb-run -a`).
+
+## Updates
+
+The packaged app checks the **published** GitHub releases of `zoltanf/extrudo`
+with `electron-updater` (ADR-0075's slice 4 amendment): 10 s after it starts,
+every six hours, when the window gets focus more than an hour after the last
+check, and from Help › Check for Updates…. A draft release is invisible to it,
+so publishing the release is what ships an update. Prereleases are ignored.
+
+| Install | What happens |
+|---|---|
+| Linux AppImage | downloads in the background; "Extrudo 0.5.0 is ready." with **Restart** (saves every open design, then installs and relaunches), or installs on the next quit |
+| Windows (NSIS) | the same |
+| Linux deb | "Extrudo 0.5.0 is available." with **Open the release page**: the package manager owns a deb, so nothing is downloaded |
+| macOS | the same as a deb until the app is signed (slice 5): Squirrel.Mac refuses an unsigned app |
+
+`electron-builder` writes `app-update.yml` into the package from
+`electron-builder.yml`'s `publish` block, and the manifests the updater reads
+(`latest-linux.yml`, `latest.yml` for Windows, `latest-mac.yml`) beside the
+installers; a `v*` tag attaches them to the release with the installers. A dev
+run (`app.isPackaged` false) never checks, and **`EXTRUDO_DISABLE_UPDATES=1`**
+turns the updater off in a packaged app (the smoke test sets it, so CI never
+asks GitHub). A failed check is logged and kept in the notification history
+without a toast.

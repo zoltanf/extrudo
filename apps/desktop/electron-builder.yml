@@ -2,7 +2,9 @@
 #
 # Unsigned installers for Linux, Windows and macOS. The `desktop` workflow runs
 # this on a runner per OS; signing and notarisation are slice 5 (the owner's
-# certificates), auto-update slice 4. The `.extrudo` file association the OS
+# certificates). Auto-update (slice 4) reads the `publish` block below:
+# electron-builder writes it into the package as `app-update.yml` and the
+# `latest*.yml` manifests beside the installers. The `.extrudo` file association the OS
 # registers lives here and not in the menu code.
 appId: org.extrudo.desktop
 productName: Extrudo

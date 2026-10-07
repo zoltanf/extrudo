@@ -62,7 +62,7 @@ cannot reach. Tick them off in order; each box says who and where.
 - [x] Social preview: Settings > General > Social preview > upload
   `apps/web/public/og-image.png`.
 
-## Desktop installers (P6-01 slice 3)
+## Desktop installers and updates (P6-01 slices 3 and 4)
 
 - [ ] After you tag `v0.4.0`, the `desktop` workflow builds the Linux (AppImage,
   deb), Windows (NSIS) and macOS (dmg, zip) installers and attaches them to the
@@ -70,6 +70,14 @@ cannot reach. Tick them off in order; each box says who and where.
   then **publish the release**. Until signing (slice 5) the installers are
   unsigned: macOS users must right-click > Open the app, and Windows shows a
   SmartScreen warning ("More info" > "Run anyway"). Say so in the release notes.
+- [ ] **Publishing the release ships the update** (P6-01 slice 4): installed
+  AppImage and Windows apps download it within six hours (or at once from Help ›
+  Check for Updates…); deb and macOS users get "Extrudo <version> is available."
+  with a link to the release page. Before publishing, check the draft holds
+  `latest-linux.yml`, `latest.yml` and `latest-mac.yml` next to the installers
+  (the updater reads them; without them nobody updates). Only tag a commit whose
+  CI passed on main, and never publish a release you would not want every
+  installed app to take: a published `v*` release is an update.
 
 ## Hosting (docs/deploy.md has the steps)
 

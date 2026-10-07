@@ -25,6 +25,7 @@ import { type RescueStore, recoverRescued, webRescue } from './rescue';
 import type { OpenInSlicer } from './slicer';
 import { type StorageAccess, webStorage } from './storage';
 import { UPDATE_UNSAVED_TEXT } from './updateNotice';
+import { appUpdates, type PlatformUpdates } from './updates';
 
 /** One recent file, as the native Open Recent submenu lists it. */
 export interface RecentEntry {
@@ -111,6 +112,13 @@ export interface Platform {
    * controls only when it exists.
    */
   openInSlicer?: OpenInSlicer;
+  /**
+   * "A new version is ready" (ADR-0054; P6-01 slice 4 made it a platform seam).
+   * The web's is `appUpdates` (the service worker waits, Reload applies it);
+   * the desktop's follows electron-updater in main (Restart installs). Absent:
+   * no update toast.
+   */
+  updates?: PlatformUpdates;
 }
 
 /**
@@ -154,6 +162,7 @@ export async function webPlatform(): Promise<Platform> {
     storage: webStorage(),
     files: webFiles(),
     rescue,
+    updates: appUpdates,
     ...(folders && { folders }),
   };
 }
@@ -187,3 +196,4 @@ export {
   type SlicerId,
 } from './slicer';
 export { type Persistence, type StorageAccess, webStorage } from './storage';
+export type { PlatformUpdates, UpdateState } from './updates';

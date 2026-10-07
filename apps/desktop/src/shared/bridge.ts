@@ -14,6 +14,7 @@ import {
   type OpenedFile,
   type RecentEntry,
   type SavedFile,
+  type UpdateStatus,
 } from './ipc';
 
 /** The slice of Electron's `ipcRenderer` this bridge needs. */
@@ -32,6 +33,7 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
   let runListener: ((event: unknown, id: unknown) => void) | undefined;
   let openListener: ((event: unknown, file: unknown) => void) | undefined;
   let changedListener: ((event: unknown) => void) | undefined;
+  let statusListener: ((event: unknown, status: unknown) => void) | undefined;
 
   return {
     prefs: {
@@ -127,6 +129,20 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
     app: {
       ready: () => ipc.send(CHANNELS.appReady),
       quit: () => ipc.send(CHANNELS.appQuit),
+    },
+    updates: {
+      onStatus: (handler) => {
+        if (statusListener) ipc.removeListener(CHANNELS.updateStatus, statusListener);
+        statusListener = (_event, status) => handler(status as UpdateStatus);
+        ipc.on(CHANNELS.updateStatus, statusListener);
+      },
+      offStatus: () => {
+        if (statusListener) ipc.removeListener(CHANNELS.updateStatus, statusListener);
+        statusListener = undefined;
+      },
+      check: () => ipc.send(CHANNELS.updateCheck),
+      apply: () => ipc.send(CHANNELS.updateApply),
+      openRelease: () => ipc.send(CHANNELS.updateRelease),
     },
   };
 }

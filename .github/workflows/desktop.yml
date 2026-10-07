@@ -3,7 +3,8 @@ name: Desktop
 # Unsigned installers of the Electron app (P6-01 slice 3, ADR-0075's amendment).
 # Never per push: it is three OS runners a build. A `v*` tag builds them and
 # attaches them to a DRAFT GitHub release (the owner publishes it); a manual run
-# only uploads workflow artifacts.
+# only uploads workflow artifacts, the updater's `latest*.yml` manifests among
+# them (P6-01 slice 4: a published release is what electron-updater reads).
 #
 # The WASM downloads need the `occt-<hash>`, `planegcs-<hash>` and
 # `openscad-<hash>` releases of this commit's inputs, which CI's first three jobs
@@ -101,6 +102,7 @@ jobs:
             apps/desktop/release/*.exe
             apps/desktop/release/*.dmg
             apps/desktop/release/*-mac-*.zip
+            apps/desktop/release/latest*.yml
           if-no-files-found: error
           retention-days: 30
 

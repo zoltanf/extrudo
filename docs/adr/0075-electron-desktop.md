@@ -490,3 +490,144 @@ and publishes nothing by itself.
 - **`pnpm check`** (2026-10-07): `Test Files 315 passed | 6 skipped (321)`,
   `Tests 3844 passed | 10 skipped (3854)`; it downloads no Electron binary.
 
+
+## Amendment: slice 4 (2026-10-07): auto-update
+
+Slice 3 put unsigned installers on draft releases; this slice lets an installed
+app find and take the next one.
+
+### Decisions
+
+- **`electron-updater` ^6** (6.8.9), a devDependency like the rest of the
+  desktop's packages: electron-vite bundles it into `out/main/index.cjs`, and
+  its `autoUpdater` stays a lazy getter there, so a dev run never constructs
+  one. It reads **GitHub Releases** of `zoltanf/extrudo`, the provider
+  `electron-builder.yml`'s `publish` block already names; electron-builder
+  writes that block into the package as `app-update.yml` and the manifests
+  (`latest-linux.yml`, `latest.yml`, `latest-mac.yml`) beside the installers.
+  Only **published** `v*` releases count: a draft is invisible to the updater
+  and `allowPrerelease` is false, so the owner's "publish the release" is what
+  ships an update.
+- **Which installs update themselves.** A Linux **AppImage** (detected by
+  `process.env.APPIMAGE`, which the AppImage runtime sets) and Windows **NSIS**
+  download in the background (`autoDownload`) and install when the app quits
+  (`autoInstallOnAppQuit`) or when the person presses Restart. A **deb** belongs
+  to the package manager and Squirrel.Mac refuses an unsigned **macOS** app, so
+  there main only checks (`autoDownload: false`) and reports `notify` with the
+  version and the release page; it never calls `downloadUpdate` or
+  `quitAndInstall`. macOS self-update comes with signing (slice 5).
+- **Main** (`main/updates.ts`): `createUpdates({ updater, platform, isAppImage,
+  packaged, disabled, send, log })` is pure over an injected `UpdaterLike` (the
+  slice of `AppUpdater` it uses; the updater is a factory, called only by
+  `start()`). `start()` runs only when `app.isPackaged` and
+  `EXTRUDO_DISABLE_UPDATES` is unset; it checks 10 s after start, every six
+  hours, and on window focus more than an hour after the last check
+  (`focused()`); `check()` is Help's; `apply()` calls `quitAndInstall()` only in
+  `ready` (otherwise a logged warning and false); `dispose()` on `before-quit`.
+  Every updater error — a rejected `checkForUpdates`, the `error` event, a throw
+  from the factory or from `quitAndInstall` — is caught, logged and reported once
+  as `error`, never thrown.
+- **One status channel.** `update:status` (main → renderer) carries
+  `UpdateStatus` (`shared/ipc.ts`): `{ state: 'idle' | 'checking' | 'available'
+  | 'downloading' | 'ready' | 'notify' | 'error', version?, percent?, message?,
+  url? }`. The renderer asks with `update:check`, `update:apply` and — beyond the
+  brief — **`update:release`**: the notify toast's button can't open a URL in
+  the sandboxed renderer, and passing one to main would let a compromised
+  renderer open any page, so the channel takes no argument and main opens the
+  URL it built itself. **The release page is built from the repository and the
+  tag** (`https://github.com/zoltanf/extrudo/releases/tag/v<version>`), never
+  from a URL in the manifest; a version that isn't plain `x.y.z` gets
+  `/releases/latest`. Main re-sends a non-idle status on `app:ready`, so a
+  reloaded renderer still knows an update is ready.
+- **Help › Check for Updates…** is main's, like File's desktop entries
+  (`menuTemplate.ts`, after the model's own Help items, or a Help menu of its own
+  on the home screen). It is **disabled where the updater doesn't run** (a dev
+  run, `EXTRUDO_DISABLE_UPDATES`). The brief's "disabled on the notify-only
+  platforms with no release page known" doesn't arise: the release page is
+  built from the repository, which is always known, so a check works there too
+  and says what it finds. A manual check answers within a minute: an
+  `update-not-available` in that window is reported with the message "Extrudo is
+  up to date." (shown as a toast); a background check's stays silent. A check
+  while an update is `ready`, `downloading` or `notify` re-reports that state
+  instead of checking again.
+- **The renderer: `Platform.updates`.** The web's update machinery is now a
+  platform seam: `Platform.updates?: PlatformUpdates` (`platform/updates.ts`:
+  `store` with `waiting` and the new optional `version`, `apply()`, and an
+  optional `action` label), which the web's `Updates` (with `watch`) extends.
+  `webPlatform()` sets `appUpdates`; **`useUpdateNotice(push, platform)`** takes
+  the platform as a second argument (the pages have it as a prop; there is no
+  platform context to read it from, so "keeps its signature" became "keeps
+  `push` first") and shows nothing for a platform without `updates`.
+  `showUpdateReady` uses `updates.action` — "Reload" on the web, **"Restart"**
+  on the desktop — and the version when known ("Extrudo 0.5.0 is ready."); a
+  failed save before a restart says "didn't restart". The desktop's
+  `renderer/updates.ts` sets `waiting` from `ready`, sends `update:apply` from
+  `apply()` (after `saveEverything()`, as on the web), shows
+  `showUpdateAvailable` ("Extrudo 0.5.0 is available." + "Open the release
+  page") **once per version per session**, a failed check through
+  `showUpdateError` as a **quiet** notification (history only), and a manual
+  check's message as a toast. `@extrudo/web` exports the two leaf modules
+  (`./platform/updates`, `./platform/updateNotice`) so the desktop renderer
+  needs no zustand of its own.
+- **CI.** `scripts/smoke.mjs` sets `EXTRUDO_DISABLE_UPDATES=1` for both launch
+  modes, so a smoke run never asks GitHub; the `desktop` workflow's artifact
+  upload adds `apps/desktop/release/latest*.yml`, so a manual run proves the
+  manifests are produced. Nothing else in the workflow changed.
+
+### Rejected
+
+- **A custom update server** (Hazel, Nuts, our own feed on Cloudflare): another
+  service to run and secure, when the releases are already on GitHub and
+  electron-updater reads them directly.
+- **Squirrel** (Electron's built-in `autoUpdater` with Squirrel.Windows): we
+  build NSIS, not Squirrel installers (slice 3 set `electron-winstaller: false`),
+  and Squirrel.Mac needs a signed app anyway.
+- **Updating the deb through electron-updater's `DebUpdater`**: it installs with
+  `dpkg -i` behind a `pkexec`/`sudo` root prompt from inside the app, which is
+  the package manager's job and a surprising password prompt; a deb user is told
+  and pointed at the release page instead.
+- **Downloading on macOS before signing**: Squirrel.Mac refuses an unsigned
+  update, so a download would only fail after the bytes arrived.
+
+### Results
+
+- **Unit tests.** `apps/desktop/src/main/updates.test.ts` (fake emitter, fake
+  timers): off in a dev run and with the env var (the factory never called);
+  the updater's settings; the 10 s / 6 h / focus-after-an-hour schedule and
+  `dispose`; checking → available → downloading → ready, `apply` refused before
+  `ready`; a ready update not checked again; a deb and macOS only `notify`, once
+  per version, never `downloadUpdate`/`quitAndInstall`; an AppImage updates
+  itself; "up to date" only for a manual check answered within a minute; every
+  error caught, logged and reported once; the release page from the tag only.
+  `menuTemplate.test.ts` (Help › Check for Updates… after the model's Help
+  items, disabled where the updater doesn't run, present on the home screen),
+  `bridge.test.ts` (the four channels, one status listener),
+  `renderer/platform.test.ts` (`ready` → `waiting`, `apply` → `update:apply`
+  only then, the "Extrudo 0.5.0 is ready." toast with Restart after saving, the
+  notify toast once per version, a quiet error, the manual answer) and
+  `apps/web/src/platform/updateNotice.test.ts` (Reload and Restart labels, the
+  restart wording of a failed save, the notify and error toasts). The focused run
+  `pnpm vitest run apps/desktop apps/web/src/platform apps/web/src/shell`:
+  `Test Files 36 passed (36)`, `Tests 340 passed (340)`.
+- **`pnpm check`** (2026-10-07): `Test Files 316 passed | 6 skipped (322)`,
+  `Tests 3868 passed | 10 skipped (3878)`; `Package boundaries OK (13 packages)`;
+  `License check: 172 production packages, all on the allow-list.`
+- **The web is unchanged**: `e2e/pwa.spec.ts` against a fresh `pnpm build` —
+  `7 passed (15.8s)`, the update toast's Reload among them.
+- **The `desktop` workflow**, manual runs on `p6-01-s4`: run `37584041521` on
+  `80412e0` built all three, and the Linux smoke passed (`Updates are off
+  (EXTRUDO_DISABLE_UPDATES).`, `smoke: OK in 4.4 s`) but then failed removing
+  its data directory with `ENOTEMPTY` while the app was still exiting — the
+  script now removes it after the app is gone and never fails on cleanup. Run
+  `37586304071` on `7e37f29`: Linux, Windows and macOS success, `smoke: OK in
+  3.9 s`. The manifests: `latest-linux.yml` 552 bytes (beside the 139.6 MB
+  AppImage and the 110.5 MB deb), `latest.yml` 347 bytes (Windows, beside the
+  121.9 MB `.exe` and its blockmap) and `latest-mac.yml` 509 bytes (beside the
+  dmg, the zip and their blockmaps), uploaded with the installers (2, 3 and 3
+  files per artifact).
+- **Not tested here: an actual update.** It needs two published releases
+  (installed `vN`, published `vN+1`); the first chance is v0.4.0 → its
+  successor. What to check then: an AppImage and the Windows app show "Extrudo
+  <version> is ready." within a few seconds of Help › Check for Updates…, and
+  Restart relaunches into it; a deb and the macOS app show "is available." with
+  the release page.

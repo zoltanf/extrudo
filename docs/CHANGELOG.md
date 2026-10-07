@@ -4,6 +4,12 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P6-01 Electron app, slice 4: auto-update** (ADR-0075's
+  amendment): `electron-updater` against the published GitHub releases; an
+  AppImage and the Windows installer update themselves ("Extrudo 0.5.0 is
+  ready." with Restart, which saves first), a deb and macOS only point at the
+  release page; `Platform.updates` makes the web's update toast a platform seam;
+  Help › Check for Updates…; `EXTRUDO_DISABLE_UPDATES` for the smoke test.
 - 2026-10-07 · **P4-12 Taper review fixes** (ADR-0028's amendment, "Review
   (2026-10-07)"): `taperLoft` lofts each profile wire to its own offset
   (`MakeOffset::Generated`, not a bounding-box sort that a negative taper

@@ -24,6 +24,7 @@ import type { ExtrudoApi, FolderEntry } from '../shared/ipc';
 import { unwrap } from './errors';
 import { desktopMenus } from './menus';
 import { createStoreProxy } from './proxy';
+import { desktopUpdates } from './updates';
 
 /** The preference map, read once; the boot and `desktopPlatform` share it. */
 let prefsPromise: Promise<Record<string, unknown>> | undefined;
@@ -162,5 +163,6 @@ export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise
     folders: desktopFolders(api),
     externalFiles: desktopExternalFiles(api),
     menus: desktopMenus(api),
+    updates: desktopUpdates(api, appNotifications.getState().push),
   };
 }

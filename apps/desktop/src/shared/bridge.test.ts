@@ -178,4 +178,28 @@ describe('preload bridge (ADR-0075 §1)', () => {
       CHANNELS.fileReadPath,
     ]);
   });
+
+  it('subscribes to update:status once and sends check, apply and release (P6-01 slice 4)', () => {
+    const { ipc, calls, emit, listeners } = fakeIpc();
+    const api = createApi(ipc);
+    const seen: unknown[] = [];
+    api.updates.onStatus((status) => seen.push(status));
+    // A second registration replaces the first rather than doubling it.
+    api.updates.onStatus((status) => seen.push(status));
+    expect(listeners.get(CHANNELS.updateStatus)).toHaveLength(1);
+    emit(CHANNELS.updateStatus, { state: 'ready', version: '0.5.0' });
+    expect(seen).toEqual([{ state: 'ready', version: '0.5.0' }]);
+    api.updates.offStatus();
+    emit(CHANNELS.updateStatus, { state: 'idle' });
+    expect(seen).toHaveLength(1);
+
+    api.updates.check();
+    api.updates.apply();
+    api.updates.openRelease();
+    expect(calls).toEqual([
+      { channel: CHANNELS.updateCheck, args: [], kind: 'send' },
+      { channel: CHANNELS.updateApply, args: [], kind: 'send' },
+      { channel: CHANNELS.updateRelease, args: [], kind: 'send' },
+    ]);
+  });
 });

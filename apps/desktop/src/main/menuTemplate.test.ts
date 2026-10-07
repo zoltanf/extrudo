@@ -2,6 +2,7 @@ import type { MenuItemConstructorOptions } from 'electron';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildMenuTemplate,
+  CHECK_FOR_UPDATES_LABEL,
   type MenuHandlers,
   type MenuTemplateOptions,
   QUIT_ID,
@@ -15,6 +16,7 @@ const handlers = (): MenuHandlers => ({
   clearRecent: vi.fn(),
   saveAs: vi.fn(),
   quit: vi.fn(),
+  checkForUpdates: vi.fn(),
 });
 
 const options = (over: Partial<MenuTemplateOptions> = {}): MenuTemplateOptions => ({
@@ -200,5 +202,29 @@ describe('buildMenuTemplate (P6-01 slice 2)', () => {
     const exportItem = file.find((entry) => entry.label === 'Export');
     if (exportItem?.click) click(exportItem);
     expect(spy.run).not.toHaveBeenCalled();
+  });
+
+  it('adds Help › Check for Updates… after the model Help items (P6-01 slice 4)', () => {
+    const spy = handlers();
+    const withHelp = [...model, { label: 'Help', items: [{ id: 'tutorial', label: 'Tutorial' }] }];
+    const template = buildMenuTemplate(withHelp, options({ handlers: spy, updates: true }));
+    const help = submenu(template.find((m) => m.label === 'Help'));
+    expect(help.map((entry) => entry.label ?? entry.type)).toEqual([
+      'Tutorial',
+      'separator',
+      CHECK_FOR_UPDATES_LABEL,
+    ]);
+    const check = help.at(-1) as MenuItemConstructorOptions;
+    expect(check.enabled).toBe(true);
+    click(check);
+    expect(spy.checkForUpdates).toHaveBeenCalledOnce();
+    expect(spy.run).not.toHaveBeenCalled();
+  });
+
+  it('disables Check for Updates… where the updater does not run, and has it on the home screen', () => {
+    const template = buildMenuTemplate([], options({ menuListening: false }));
+    const help = submenu(template.find((m) => m.label === 'Help'));
+    expect(help.map((entry) => entry.label)).toEqual([CHECK_FOR_UPDATES_LABEL]);
+    expect(help[0]?.enabled).toBe(false);
   });
 });

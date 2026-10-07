@@ -2,8 +2,12 @@ import { describe, expect, it, vi } from 'vitest';
 import { createNotifications } from '../design-system/notifications';
 import {
   reloadForUpdate,
+  showUpdateAvailable,
+  showUpdateError,
   showUpdateReady,
   UPDATE_READY_TEXT,
+  UPDATE_TOAST_MS,
+  UPDATE_UNSAVED_RESTART_TEXT,
   UPDATE_UNSAVED_TEXT,
 } from './updateNotice';
 import { createUpdates } from './updates';
@@ -66,5 +70,48 @@ describe('the update toast', () => {
     expect(action?.available?.()).toBe(false);
     updates.store.setState({ waiting: true });
     expect(action?.available?.()).toBe(true);
+  });
+});
+
+describe('the desktop update toasts (P6-01 slice 4)', () => {
+  it('a platform with a Restart action and a version says both', async () => {
+    const { notifications, deps, apply, saveEverything } = setup();
+    const updates = Object.assign(deps.updates, { action: 'Restart' });
+    updates.store.setState({ waiting: true, version: '0.5.0' });
+    showUpdateReady({ ...deps, updates });
+    const [toast] = notifications.getState().toasts;
+    expect(toast?.text).toBe('Extrudo 0.5.0 is ready.');
+    expect(toast?.action?.label).toBe('Restart');
+    toast?.action?.run();
+    await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+    expect(saveEverything).toHaveBeenCalledBefore(apply);
+  });
+
+  it("a failed save before a restart says it didn't restart", async () => {
+    const { notifications, deps, apply } = setup(false);
+    const updates = Object.assign(deps.updates, { action: 'Restart' });
+    expect(await reloadForUpdate({ ...deps, updates })).toBe(false);
+    expect(apply).not.toHaveBeenCalled();
+    expect(notifications.getState().toasts[0]?.text).toBe(UPDATE_UNSAVED_RESTART_TEXT);
+  });
+
+  it('the notify-only toast names the version and opens the release page', () => {
+    const notifications = createNotifications({ later: () => {} });
+    const openRelease = vi.fn();
+    showUpdateAvailable({ version: '0.5.0', openRelease, push: notifications.getState().push });
+    const [toast] = notifications.getState().toasts;
+    expect(toast?.text).toBe('Extrudo 0.5.0 is available.');
+    expect(toast?.tone).toBe('info');
+    expect(toast?.lifetime).toBe(UPDATE_TOAST_MS);
+    expect(toast?.action?.label).toBe('Open the release page');
+    toast?.action?.run();
+    expect(openRelease).toHaveBeenCalledOnce();
+  });
+
+  it('a failed check goes to the history only', () => {
+    const notifications = createNotifications({ later: () => {} });
+    showUpdateError({ message: 'offline', push: notifications.getState().push });
+    expect(notifications.getState().toasts).toEqual([]);
+    expect(notifications.getState().history[0]?.text).toBe("Couldn't check for updates: offline");
   });
 });

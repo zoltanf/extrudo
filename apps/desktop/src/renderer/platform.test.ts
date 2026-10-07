@@ -1,6 +1,8 @@
 import type { DocumentId, ExtrudoDocument } from '@extrudo/core';
-import { describe, expect, it } from 'vitest';
-import type { ExtrudoApi } from '../shared/ipc';
+import { createNotifications } from '@extrudo/web/notifications';
+import { showUpdateReady, UPDATE_TOAST_MS } from '@extrudo/web/platform/updateNotice';
+import { describe, expect, it, vi } from 'vitest';
+import type { ExtrudoApi, UpdateStatus } from '../shared/ipc';
 import {
   desktopFiles,
   desktopFolders,
@@ -8,6 +10,7 @@ import {
   desktopPreferences,
   desktopRescue,
 } from './platform';
+import { desktopUpdates } from './updates';
 
 function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
   const api: ExtrudoApi = {
@@ -55,6 +58,13 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
       offChanged: () => {},
     },
     app: { ready: () => {}, quit: () => {} },
+    updates: {
+      onStatus: () => {},
+      offStatus: () => {},
+      check: () => {},
+      apply: () => {},
+      openRelease: () => {},
+    },
     ...overrides,
   };
   return api;
@@ -162,7 +172,90 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
       'projects',
       'rescue',
       'storage',
+      'updates',
     ]);
+    expect(platform.updates?.action).toBe('Restart');
     expect(await platform.storage.persistence()).toBe('persistent');
+  });
+
+  describe('updates (P6-01 slice 4)', () => {
+    function setup() {
+      let emit: (status: UpdateStatus) => void = () => {};
+      const apply = vi.fn();
+      const openRelease = vi.fn();
+      const api = fakeApi({
+        updates: {
+          onStatus: (handler) => {
+            emit = handler;
+          },
+          offStatus: () => {},
+          check: () => {},
+          apply,
+          openRelease,
+        },
+      });
+      const notifications = createNotifications({ later: () => {} });
+      const updates = desktopUpdates(api, notifications.getState().push);
+      return { emit: (s: UpdateStatus) => emit(s), apply, openRelease, notifications, updates };
+    }
+
+    it('waits while main says ready, and apply sends update:apply only then', async () => {
+      const { emit, apply, updates } = setup();
+      expect(await updates.apply()).toBe(false);
+      expect(apply).not.toHaveBeenCalled();
+      emit({ state: 'downloading', version: '0.5.0', percent: 50 });
+      expect(updates.store.getState().waiting).toBe(false);
+      emit({ state: 'ready', version: '0.5.0' });
+      expect(updates.store.getState()).toEqual({ waiting: true, version: '0.5.0' });
+      expect(await updates.apply()).toBe(true);
+      expect(apply).toHaveBeenCalledOnce();
+    });
+
+    it('the ready toast says the version and restarts after saving', async () => {
+      const { emit, apply, notifications, updates } = setup();
+      emit({ state: 'ready', version: '0.5.0' });
+      const saveEverything = vi.fn(async () => true);
+      showUpdateReady({ updates, saveEverything, push: notifications.getState().push });
+      const toast = notifications.getState().toasts.at(-1);
+      expect(toast?.text).toBe('Extrudo 0.5.0 is ready.');
+      expect(toast?.action?.label).toBe('Restart');
+      toast?.action?.run();
+      await vi.waitFor(() => expect(apply).toHaveBeenCalledOnce());
+      expect(saveEverything).toHaveBeenCalledBefore(apply);
+    });
+
+    it('shows the notify-only toast once per version, its button asking main for the page', () => {
+      const { emit, openRelease, notifications } = setup();
+      const url = 'https://github.com/zoltanf/extrudo/releases/tag/v0.5.0';
+      emit({ state: 'notify', version: '0.5.0', url });
+      emit({ state: 'notify', version: '0.5.0', url });
+      const toasts = notifications.getState().toasts;
+      expect(toasts.map((t) => t.text)).toEqual(['Extrudo 0.5.0 is available.']);
+      expect(toasts[0]?.lifetime).toBe(UPDATE_TOAST_MS);
+      expect(toasts[0]?.action?.label).toBe('Open the release page');
+      toasts[0]?.action?.run();
+      // Main opens the URL it built; nothing crosses from here.
+      expect(openRelease).toHaveBeenCalledWith();
+      emit({ state: 'notify', version: '0.6.0', url });
+      expect(notifications.getState().toasts.map((t) => t.text)).toEqual([
+        'Extrudo 0.5.0 is available.',
+        'Extrudo 0.6.0 is available.',
+      ]);
+    });
+
+    it('a failed check is a quiet notification; a manual answer is a toast', () => {
+      const { emit, notifications } = setup();
+      emit({ state: 'error', message: 'net::ERR_INTERNET_DISCONNECTED' });
+      expect(notifications.getState().toasts).toEqual([]);
+      expect(notifications.getState().history.map((n) => [n.tone, n.text])).toEqual([
+        ['error', "Couldn't check for updates: net::ERR_INTERNET_DISCONNECTED"],
+      ]);
+      emit({ state: 'idle' });
+      expect(notifications.getState().toasts).toEqual([]);
+      emit({ state: 'idle', message: 'Extrudo is up to date.' });
+      expect(notifications.getState().toasts.map((t) => t.text)).toEqual([
+        'Extrudo is up to date.',
+      ]);
+    });
   });
 });

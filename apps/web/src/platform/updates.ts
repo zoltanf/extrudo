@@ -10,8 +10,10 @@
 import { createStore, type StoreApi } from 'zustand/vanilla';
 
 export interface UpdateState {
-  /** A newer service worker is installed and waiting to take over. */
+  /** A newer version is installed (web: a waiting service worker) or downloaded (desktop). */
   waiting: boolean;
+  /** The waiting version, where the platform knows it (the desktop's updater does). */
+  version?: string;
 }
 
 export type UpdateStore = StoreApi<UpdateState>;
@@ -47,8 +49,24 @@ export interface UpdateEnv {
 /** How often an open page asks the host for a new `sw.js` (the browser itself only does so on navigation). */
 export const UPDATE_CHECK_MS = 60 * 60 * 1000;
 
-export interface Updates {
+/**
+ * What `Platform.updates` offers (P6-01 slice 4): one bit of state and a way to
+ * apply it. The web's is `appUpdates` (a waiting service worker, then a reload);
+ * the desktop's follows electron-updater in main (a downloaded update, then a
+ * restart). The toast's button says which (`action`, "Reload" by default).
+ */
+export interface PlatformUpdates {
   readonly store: UpdateStore;
+  /**
+   * Applies the waiting update. False when nothing waits (the caller then does
+   * nothing). Callers save the design first.
+   */
+  apply(): Promise<boolean>;
+  /** The ready toast's button: "Reload" on the web (the default), "Restart" on the desktop. */
+  readonly action?: string;
+}
+
+export interface Updates extends PlatformUpdates {
   /** Starts watching a registration (called once it exists). */
   watch(registration: RegistrationLike, container: ContainerLike): void;
   /**
@@ -58,8 +76,12 @@ export interface Updates {
   apply(): Promise<boolean>;
 }
 
+/** An update store with nothing waiting (the desktop's follows main's status, P6-01 slice 4). */
+export const createUpdateStore = (): UpdateStore =>
+  createStore<UpdateState>(() => ({ waiting: false }));
+
 export function createUpdates(env: UpdateEnv): Updates {
-  const store = createStore<UpdateState>(() => ({ waiting: false }));
+  const store = createUpdateStore();
   let current: { registration: RegistrationLike; container: ContainerLike } | undefined;
 
   const check = () => {

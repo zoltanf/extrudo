@@ -10,7 +10,8 @@
  * `desktop` workflow builds, P6-01 slice 3): with `--appimage-extract-and-run`
  * (no FUSE needed) and `--no-sandbox` (CI runners forbid the SUID sandbox on an
  * extracted image), software WebGL (SwiftShader), a throwaway data directory (`EXTRUDO_USER_DATA`, read by
- * main before anything else), and it also fails on any renderer console error
+ * main before anything else) and `EXTRUDO_DISABLE_UPDATES=1` (a CI run never
+ * asks GitHub for an update, P6-01 slice 4), and it also fails on any renderer console error
  * or uncaught page error.
  *
  * It needs a display and the Electron binary:
@@ -106,7 +107,13 @@ function launch() {
       // and killing the runner alone would leave the app (and Xvfb) running.
       detached: true,
       stdio: 'inherit',
-      env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1', EXTRUDO_USER_DATA: userData },
+      // No update check against GitHub from a CI run (P6-01 slice 4).
+      env: {
+        ...process.env,
+        ELECTRON_ENABLE_LOGGING: '1',
+        EXTRUDO_USER_DATA: userData,
+        EXTRUDO_DISABLE_UPDATES: '1',
+      },
     });
   }
   const args = ['.', `--remote-debugging-port=${port}`];
@@ -114,7 +121,7 @@ function launch() {
   return spawn(electronPath, args, {
     cwd: appDir,
     stdio: 'inherit',
-    env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1' },
+    env: { ...process.env, ELECTRON_ENABLE_LOGGING: '1', EXTRUDO_DISABLE_UPDATES: '1' },
   });
 }
 
@@ -184,7 +191,6 @@ try {
       process.kill(-child.pid);
     } catch {}
   } else child.kill();
-  if (userData) rmSync(userData, { recursive: true, force: true });
   await new Promise((resolve) => {
     if (child.exitCode !== null) resolve();
     else {
@@ -192,4 +198,14 @@ try {
       setTimeout(resolve, 5_000);
     }
   });
+  // After the app has gone: removing the data directory while it was still
+  // writing failed with ENOTEMPTY (P6-01 slice 4's run), and a cleanup failure
+  // must not turn a passed smoke into a failure.
+  if (userData) {
+    try {
+      rmSync(userData, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    } catch (error) {
+      console.warn(`smoke: left ${userData} behind: ${error.message}`);
+    }
+  }
 }

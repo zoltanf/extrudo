@@ -48,6 +48,11 @@ export const CHANNELS = {
   recentChanged: 'extrudo:recent:changed',
   appReady: 'extrudo:app:ready',
   appQuit: 'extrudo:app:quit',
+  // Auto-update (P6-01 slice 4): main → renderer status, renderer → main asks.
+  updateStatus: 'extrudo:update:status',
+  updateCheck: 'extrudo:update:check',
+  updateApply: 'extrudo:update:apply',
+  updateRelease: 'extrudo:update:release',
 } as const;
 
 export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS];
@@ -131,6 +136,30 @@ export interface SavedFile {
   modified: number;
 }
 
+/** Where the updater is (P6-01 slice 4, ADR-0075's amendment). */
+export type UpdateState =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'ready'
+  | 'notify'
+  | 'error';
+
+/**
+ * What main reports over `update:status`. `notify` is the state of the
+ * platforms that don't update themselves (a deb, macOS until signing): the
+ * version and its release page. `message` is an error's text, or "Extrudo is up
+ * to date." after Help › Check for Updates….
+ */
+export interface UpdateStatus {
+  state: UpdateState;
+  version?: string;
+  percent?: number;
+  message?: string;
+  url?: string;
+}
+
 /**
  * The API `contextBridge.exposeInMainWorld('extrudo', …)` publishes. The
  * renderer's `desktopPlatform()` is written against exactly this.
@@ -184,6 +213,17 @@ export interface ExtrudoApi {
     ready(): void;
     /** Main quits; the renderer has saved everything first. */
     quit(): void;
+  };
+  readonly updates: {
+    /** Registers the one handler for main's `update:status`. */
+    onStatus(handler: (status: UpdateStatus) => void): void;
+    offStatus(): void;
+    /** Asks main to check now (Help › Check for Updates… does it in main). */
+    check(): void;
+    /** Installs a downloaded update; main refuses unless it is `ready`. */
+    apply(): void;
+    /** Opens the release page main itself built for a `notify` update. */
+    openRelease(): void;
   };
   readonly storage: {
     persistence(): Promise<Persistence>;

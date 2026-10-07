@@ -1072,8 +1072,13 @@ end to end, faster than in Fusion 360.
   written back through paths main issued. *Slice 3 done 2026-10-07 (ADR-0075's second amendment):* unsigned
   installers (AppImage/deb, NSIS, dmg/zip) by `electron-builder` in the `desktop`
   workflow (a `v*` tag attaches them to a draft release), the Linux AppImage
-  smoke-tested in CI. Remaining: auto-update (slice 4) and signing and
-  notarisation (slice 5).
+  smoke-tested in CI. *Slice 4 done 2026-10-07 (ADR-0075's third amendment):*
+  auto-update with `electron-updater` against the published GitHub releases (an
+  AppImage and the Windows installer download in the background and install on
+  quit or Restart; a deb and macOS only say a version is out, with its release
+  page), `Platform.updates` as the web's update-toast seam, Help › Check for
+  Updates…. Remaining: signing and notarisation (slice 5), which brings macOS
+  self-update.
 - [ ] **P6-02 Slicer launch** on desktop (detect installed slicers): implement the
   platform's `openInSlicer` (ADR-0062), which the Export dialog already offers
   when it exists — write the exported bytes to a temporary file and launch

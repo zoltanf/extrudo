@@ -39,6 +39,8 @@ export interface MenuHandlers {
   saveAs(): void;
   /** Asks the renderer to save everything, then quit. */
   quit(): void;
+  /** Help › Check for Updates… (P6-01 slice 4): an update check in main. */
+  checkForUpdates(): void;
 }
 
 export interface MenuTemplateOptions {
@@ -50,6 +52,22 @@ export interface MenuTemplateOptions {
    * Save As… is disabled and Quit quits directly (there is nothing to save).
    */
   menuListening: boolean;
+  /**
+   * Whether the updater runs (P6-01 slice 4): a packaged build without
+   * `EXTRUDO_DISABLE_UPDATES`. Check for Updates… is disabled otherwise.
+   */
+  updates?: boolean;
+}
+
+/** Help's desktop-only entry (P6-01 slice 4), after the model's own Help items. */
+export const CHECK_FOR_UPDATES_LABEL = 'Check for Updates…';
+
+function updatesEntry(handlers: MenuHandlers, enabled: boolean): MenuItemConstructorOptions {
+  return {
+    label: CHECK_FOR_UPDATES_LABEL,
+    enabled,
+    click: () => handlers.checkForUpdates(),
+  };
 }
 
 const item = (entry: MenuEntryModel, handlers: MenuHandlers): MenuItemConstructorOptions => {
@@ -162,7 +180,18 @@ export function buildMenuTemplate(
   if (platform === 'darwin') template.push(appMenu(handlers));
 
   let sawFile = false;
+  let sawHelp = false;
+  const updates = updatesEntry(handlers, options.updates === true);
   for (const menu of model) {
+    if (menu.label === 'Help') {
+      sawHelp = true;
+      const items = menu.items.map((entry) => item(entry, handlers));
+      template.push({
+        label: 'Help',
+        submenu: [...items, ...(items.length > 0 ? [{ type: 'separator' as const }] : []), updates],
+      });
+      continue;
+    }
     if (menu.label === 'File') {
       sawFile = true;
       template.push({
@@ -181,5 +210,6 @@ export function buildMenuTemplate(
     // The home screen before any project: still open and quit.
     template.push({ label: 'File', submenu: [...desktop.open, ...desktop.close.slice(1)] });
   }
+  if (!sawHelp) template.push({ label: 'Help', submenu: [updates] });
   return template;
 }

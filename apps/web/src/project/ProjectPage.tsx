@@ -116,7 +116,7 @@ function ProjectEditor({
   );
   const autosave = useAutosave(store, viewport, platform);
   const { toasts, push, dismiss, notifications } = useToasts();
-  useUpdateNotice(push);
+  useUpdateNotice(push, platform);
   // The linked folder (P4-09, ADR-0065 §3): a file on disk this project is
   // written back to, and the command that links one for the first time.
   const linked = useLinkedFolder({

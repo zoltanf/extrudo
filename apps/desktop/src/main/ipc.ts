@@ -52,6 +52,8 @@ export interface IpcDependencies {
   /** Save-then-quit asked from the native menu; the renderer confirmed. */
   quit(): void;
   getWindow: () => BrowserWindow | null;
+  /** Auto-update (P6-01 slice 4): a check, an install, and the release page main built. */
+  updates: { check(): void; apply(): boolean; openRelease(): void };
 }
 
 export function registerIpcHandlers(deps: IpcDependencies): void {
@@ -162,4 +164,12 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   );
   ipcMain.on(CHANNELS.appReady, () => deps.rendererReady());
   ipcMain.on(CHANNELS.appQuit, () => deps.quit());
+
+  // Auto-update (P6-01 slice 4). None of these takes an argument: `apply` is
+  // refused in main unless an update is downloaded (the renderer has saved
+  // first), and the release page is the URL main built from the tag, so the
+  // renderer can't make main open a page of its choosing.
+  ipcMain.on(CHANNELS.updateCheck, () => deps.updates.check());
+  ipcMain.on(CHANNELS.updateApply, () => void deps.updates.apply());
+  ipcMain.on(CHANNELS.updateRelease, () => deps.updates.openRelease());
 }
