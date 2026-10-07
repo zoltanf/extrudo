@@ -631,3 +631,15 @@ app find and take the next one.
   <version> is ready." within a few seconds of Help › Check for Updates…, and
   Restart relaunches into it; a deb and the macOS app show "is available." with
   the release page.
+
+## Amendment: slice 5 (signing and notarisation) deferred (2026-10-07)
+
+The owner decided not to buy an Apple Developer ID or a Windows code-signing
+certificate at this stage: the app has no users yet, and macOS installs are
+meant to go through Homebrew, where signing matters less. The installers the
+`desktop` workflow builds stay unsigned (macOS: right-click › Open; Windows:
+SmartScreen's "Run anyway"), macOS keeps the notify-only update path of slice
+4, and the release checklist says so. The slice comes back when demand
+warrants; nothing in the code assumes either way (`CSC_IDENTITY_AUTO_DISCOVERY`
+and `identity: null` are the only places to change). P6-01 is complete with
+that caveat.

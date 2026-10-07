@@ -67,8 +67,8 @@ cannot reach. Tick them off in order; each box says who and where.
 - [ ] After you tag `v0.4.0`, the `desktop` workflow builds the Linux (AppImage,
   deb), Windows (NSIS) and macOS (dmg, zip) installers and attaches them to the
   **draft** GitHub release it creates. Check the Linux job's smoke test passed,
-  then **publish the release**. Until signing (slice 5) the installers are
-  unsigned: macOS users must right-click > Open the app, and Windows shows a
+  then **publish the release**. The installers are unsigned (signing is
+  deferred until the app has users; owner, 2026-10-07): macOS users must right-click > Open the app, and Windows shows a
   SmartScreen warning ("More info" > "Run anyway"). Say so in the release notes.
 - [ ] **Publishing the release ships the update** (P6-01 slice 4): installed
   AppImage and Windows apps download it within six hours (or at once from Help ›

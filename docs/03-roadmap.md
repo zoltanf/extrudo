@@ -1054,9 +1054,9 @@ end to end, faster than in Fusion 360.
 
 ## Phase 6 — Desktop and community (→ v1.0)
 
-- [ ] **P6-01 Electron app:** electron-vite; the Node-fs `ProjectStore`; native
+- [x] **P6-01 Electron app:** electron-vite; the Node-fs `ProjectStore`; native
   menus from the command registry; `.extrudo` file association; recent files;
-  auto-update; builds for AppImage/deb, Windows and macOS (signing).
+  auto-update; builds for AppImage/deb, Windows and macOS (signing deferred).
   *Slice 1 done 2026-10-07 (ADR-0075):* the shell (electron-vite main/preload/
   renderer, the renderer the web app's own UI, `app://` + the web's CSP/COOP/
   COEP, one typed preload bridge), the Node-fs store (`@extrudo/storage/node`,
@@ -1077,8 +1077,11 @@ end to end, faster than in Fusion 360.
   AppImage and the Windows installer download in the background and install on
   quit or Restart; a deb and macOS only say a version is out, with its release
   page), `Platform.updates` as the web's update-toast seam, Help › Check for
-  Updates…. Remaining: signing and notarisation (slice 5), which brings macOS
-  self-update.
+  Updates…. *Signing and notarisation (slice 5) are deferred (owner,
+  2026-10-07): there are no certificates, and they are not worth buying until
+  the app has users; macOS is meant to be installed through Homebrew. Until
+  then the installers are unsigned and macOS only notifies of updates.* **P6-01
+  is done** with that caveat.
 - [x] **P6-02 Slicer launch** on desktop (detect installed slicers; done 2026-10-07, ADR-0062's amendment: `main/slicers.ts`, the `slicer:*` channels, `Platform.installedSlicers`, the Send to Slicer tile): implement the
   platform's `openInSlicer` (ADR-0062), which the Export dialog already offers
   when it exists — write the exported bytes to a temporary file and launch

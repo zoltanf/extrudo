@@ -60,7 +60,7 @@ so publishing the release is what ships an update. Prereleases are ignored.
 | Linux AppImage | downloads in the background; "Extrudo 0.5.0 is ready." with **Restart** (saves every open design, then installs and relaunches), or installs on the next quit |
 | Windows (NSIS) | the same |
 | Linux deb | "Extrudo 0.5.0 is available." with **Open the release page**: the package manager owns a deb, so nothing is downloaded |
-| macOS | the same as a deb until the app is signed (slice 5): Squirrel.Mac refuses an unsigned app |
+| macOS | the same as a deb: Squirrel.Mac refuses an unsigned app, and signing is deferred until the app has users (owner, 2026-10-07) |
 
 `electron-builder` writes `app-update.yml` into the package from
 `electron-builder.yml`'s `publish` block, and the manifests the updater reads

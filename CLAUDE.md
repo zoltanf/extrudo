@@ -1855,7 +1855,9 @@ run, never per push: three OS runners; a tag attaches the installers to a
 keep: the desktop's workspace packages are `devDependencies` and **`electron`
 stays explicitly external** in main and preload, **no two files may differ only by
 case** (macOS and Windows builds resolve `./Grid` to `grid.ts`), and signing is
-slice 5 (`docs/desktop.md`).
+**deferred** (owner, 2026-10-07: no certificates until the app has users;
+macOS through Homebrew), so the installers stay unsigned and macOS only
+notifies of updates (`docs/desktop.md`).
 **Slice 4 (auto-update)** adds `electron-updater` (a devDependency, bundled into
 `out/main`) against the **published** GitHub releases (a draft is invisible, so
 publishing ships the update; no prereleases). `main/updates.ts`'s
