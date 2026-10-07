@@ -16,7 +16,7 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 import { PLANE_HALF } from '../sketch/facePick';
 import type { Rgba } from './colors';
 import { createDotMaterial } from './dots';
-import { GRID_RADIUS } from './Grid';
+import { GRID_RADIUS } from './GridPlane';
 import type { OriginItem, ViewportStore } from './store';
 
 /**

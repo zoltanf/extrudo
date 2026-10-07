@@ -59,7 +59,7 @@ import {
 } from './constructionGeometry';
 import { navCursor } from './cursors';
 import { Ghosts } from './Ghosts';
-import { GRID_RADIUS, Grid, XY_FRAME } from './Grid';
+import { GRID_RADIUS, Grid, XY_FRAME } from './GridPlane';
 import { type Ghost, ghostsSummary } from './ghostGeometry';
 import { NavBar } from './NavBar';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
@@ -87,7 +87,7 @@ import {
   type ViewportStore,
   type VisualStyle,
 } from './store';
-import { ViewCube } from './ViewCube';
+import { ViewCube } from './ViewCubeView';
 import { namedDirection } from './viewcube';
 import type { ViewMenu, ViewMenuContent, ViewMenuRequest } from './viewMenu';
 

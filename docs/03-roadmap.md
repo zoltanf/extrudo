@@ -1069,8 +1069,11 @@ end to end, faster than in Fusion 360.
   `.extrudo` association and `argv`/`open-file` handling, and recent files
   (`userData/recent.json`, the Open Recent submenu; Open…/Save As…/Quit). A
   project opened from a path or Save-As'd is linked as an external file and
-  written back through paths main issued. Remaining: auto-update and packaging
-  (slice 5 carries `electron-builder.yml`'s association into a real install).
+  written back through paths main issued. *Slice 3 done 2026-10-07 (ADR-0075's second amendment):* unsigned
+  installers (AppImage/deb, NSIS, dmg/zip) by `electron-builder` in the `desktop`
+  workflow (a `v*` tag attaches them to a draft release), the Linux AppImage
+  smoke-tested in CI. Remaining: auto-update (slice 4) and signing and
+  notarisation (slice 5).
 - [ ] **P6-02 Slicer launch** on desktop (detect installed slicers): implement the
   platform's `openInSlicer` (ADR-0062), which the Export dialog already offers
   when it exists — write the exported bytes to a temporary file and launch

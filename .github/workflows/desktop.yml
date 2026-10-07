@@ -1,0 +1,115 @@
+name: Desktop
+
+# Unsigned installers of the Electron app (P6-01 slice 3, ADR-0075's amendment).
+# Never per push: it is three OS runners a build. A `v*` tag builds them and
+# attaches them to a DRAFT GitHub release (the owner publishes it); a manual run
+# only uploads workflow artifacts.
+#
+# The WASM downloads need the `occt-<hash>`, `planegcs-<hash>` and
+# `openscad-<hash>` releases of this commit's inputs, which CI's first three jobs
+# publish: run this after CI has run for the commit (a tag on main always has).
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    # One draft release per tag, made before the three package jobs upload into
+    # it (electron-builder would otherwise race to create it three times).
+    name: Draft release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Create the draft if there is none
+        run: |
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+                 --draft --verify-tag --title "Extrudo ${GITHUB_REF_NAME#v}" \
+                 --notes "Unsigned desktop installers (P6-01 slice 3)."
+
+  package:
+    name: Package (${{ matrix.os }})
+    needs: [draft]
+    # `draft` is skipped on a manual run; the package jobs still go on.
+    if: ${{ !cancelled() && (needs.draft.result == 'success' || needs.draft.result == 'skipped') }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: linux, runner: ubuntu-latest }
+          - { os: win, runner: windows-latest }
+          - { os: mac, runner: macos-latest }
+    env:
+      GH_TOKEN: ${{ github.token }}
+      # No signing yet (slice 5): do not look for a macOS identity.
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v6 # version comes from "packageManager" in package.json
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Download the OCCT, planegcs and OpenSCAD WASM
+        run: pnpm wasm
+
+      # The workspace keeps `electron: false` in allowBuilds, so the binary is
+      # fetched here and only here (the smoke script needs it on Linux).
+      - name: Download Electron's binary
+        run: node apps/desktop/node_modules/electron/install.js
+
+      - name: Build the app
+        run: pnpm --filter @extrudo/desktop build
+
+      - name: Package (workflow artifacts only)
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+        run: pnpm --filter @extrudo/desktop exec electron-builder --${{ matrix.os }} --publish never
+
+      - name: Package and attach to the draft release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: pnpm --filter @extrudo/desktop exec electron-builder --${{ matrix.os }} --publish onTag
+
+      - name: Installers
+        run: ls -l apps/desktop/release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: extrudo-desktop-${{ matrix.os }}
+          path: |
+            apps/desktop/release/*.AppImage
+            apps/desktop/release/*.deb
+            apps/desktop/release/*.exe
+            apps/desktop/release/*.dmg
+            apps/desktop/release/*-mac-*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      # Windows and macOS only build here; their smoke runs come with signing
+      # (slice 5).
+      - name: Smoke-test the AppImage
+        if: ${{ matrix.os == 'linux' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb libgbm1 libasound2t64 libgtk-3-0t64 libnss3
+          chmod +x apps/desktop/release/*.AppImage
+          xvfb-run -a node apps/desktop/scripts/smoke.mjs --app apps/desktop/release/extrudo-*.AppImage

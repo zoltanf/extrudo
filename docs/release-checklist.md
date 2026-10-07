@@ -62,6 +62,15 @@ cannot reach. Tick them off in order; each box says who and where.
 - [x] Social preview: Settings > General > Social preview > upload
   `apps/web/public/og-image.png`.
 
+## Desktop installers (P6-01 slice 3)
+
+- [ ] After you tag `v0.4.0`, the `desktop` workflow builds the Linux (AppImage,
+  deb), Windows (NSIS) and macOS (dmg, zip) installers and attaches them to the
+  **draft** GitHub release it creates. Check the Linux job's smoke test passed,
+  then **publish the release**. Until signing (slice 5) the installers are
+  unsigned: macOS users must right-click > Open the app, and Windows shows a
+  SmartScreen warning ("More info" > "Run anyway"). Say so in the release notes.
+
 ## Hosting (docs/deploy.md has the steps)
 
 - [x] Cloudflare: create the Pages project `extrudo` (Direct Upload). Done

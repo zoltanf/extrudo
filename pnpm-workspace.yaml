@@ -7,3 +7,5 @@ allowBuilds:
   # need it, and CI must not spend the download (ADR-0075 §4). The smoke script
   # says so when the binary is missing.
   electron: false
+  # electron-builder's Squirrel.Windows helper; we build NSIS, not Squirrel.
+  electron-winstaller: false

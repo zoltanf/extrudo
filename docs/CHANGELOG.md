@@ -4,6 +4,12 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P6-01 Electron app, slice 3: packaging, unsigned** (ADR-0075's
+  amendment): `electron-builder` builds AppImage/deb, NSIS and dmg/zip installers
+  in the new `desktop` workflow (a `v*` tag attaches them to a draft release;
+  the Linux AppImage is smoke-tested headless in CI). Fixes found on the way:
+  `electron` was inlined into the main bundle, and two file pairs differing only
+  by case (`Grid`, `ViewCube`) broke macOS and Windows builds.
 - 2026-10-07 · **P6-01 Electron app, slice 2 review fixes** (ADR-0075's
   amendment): closed the review's high, medium and low findings. Open Recent is
   built from main's own list (the renderer can no longer send a path);

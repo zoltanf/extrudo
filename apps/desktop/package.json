@@ -10,19 +10,27 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@extrudo/core": "workspace:*",
-    "@extrudo/storage": "workspace:*",
-    "@extrudo/web": "workspace:*"
+    "test": "vitest run",
+    "package": "electron-vite build && electron-builder --publish never",
+    "package:linux": "electron-vite build && electron-builder --linux --publish never",
+    "package:win": "electron-vite build && electron-builder --win --publish never",
+    "package:mac": "electron-vite build && electron-builder --mac --publish never"
   },
   "devDependencies": {
+    "@extrudo/core": "workspace:*",
+    "@extrudo/storage": "workspace:*",
+    "@extrudo/web": "workspace:*",
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^6.1.1",
     "electron": "^44.0.0",
+    "electron-builder": "^26.0.0",
     "electron-vite": "^5.0.0",
     "tailwindcss": "^4.3.3",
     "vite": "^8.3.0"
+  },
+  "homepage": "https://extrudo.org",
+  "author": {
+    "name": "Extrudo contributors",
+    "email": "conduct@extrudo.org"
   }
 }

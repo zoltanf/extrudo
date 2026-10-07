@@ -206,6 +206,18 @@ GitHub's runners have trouble:
   `ubuntu-latest`) and stop the container. A runner offline for 14 days is
   removed by GitHub; it then needs a new registration token.
 
+## Desktop installers
+
+`.github/workflows/desktop.yml` builds the Electron app's installers with
+`electron-builder` on a Linux, a Windows and a macOS runner (unsigned until
+P6-01 slice 5). It runs only for a `v*` tag, which attaches the installers to a
+draft GitHub release, or by hand (Actions > Desktop > Run workflow), which only
+uploads workflow artifacts (`extrudo-desktop-<os>`, 30 days). It needs the WASM
+releases of the commit's inputs, so run it after CI has run for that commit. The
+Linux job also launches the AppImage under `xvfb-run` and checks that the kernel
+computes. No secrets are needed beyond the built-in `GITHUB_TOKEN`. Local
+packaging: `docs/desktop.md`.
+
 ## Rolling back
 
 Cloudflare keeps every deployment: Workers & Pages > `extrudo` (or

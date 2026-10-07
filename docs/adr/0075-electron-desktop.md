@@ -180,9 +180,13 @@ launch. It is documented as needing a display.
    application menu and its accelerators (ADR-0023).
 3. **`.extrudo` file association and recent files**: `open-file` events, a
    second-instance argument, `app.addRecentDocument`.
-4. **Auto-update**: `electron-updater` against the release channel.
-5. **Packaging**: `electron-builder` for AppImage/deb, Windows and macOS,
-   with signing (and the slicer hand-off, P6-02, beside it).
+3. **Packaging, unsigned** (slice 3, done 2026-10-07): `electron-builder` for
+   AppImage/deb, Windows and macOS in a workflow, the Linux build smoke-run,
+   installers on a draft release.
+4. **Auto-update**: `electron-updater` against those releases (it can only be
+   tested against published builds, which is why packaging came first).
+5. **Signing and notarisation** (the owner's certificates), with the slicer
+   hand-off (P6-02) beside it.
 
 ## Consequences
 
@@ -402,4 +406,87 @@ guard and read/write/stat (`externalFiles.test.ts`); the bridge's new channels
 (`bridge.test.ts`); `openExternalFile` import/link/reuse and the external
 write-back with its conflict rule (`actions.test.ts`, `linkedFolder.test.ts`);
 `isExtrudoPath` (`openPaths.test.ts`).
+
+## Amendment: slice 3 — packaging, unsigned (2026-10-07)
+
+The coordinator reordered the plan: packaging before auto-update, because an
+updater is only testable against published builds. This slice builds installers
+and publishes nothing by itself.
+
+### Decisions
+
+- **`electron-builder` ^26**, configured in `apps/desktop/electron-builder.yml`:
+  `extrudo-<version>-<os>-<arch>.<ext>`; Linux AppImage + deb (MIME type
+  `application/x-extrudo`; electron-builder writes `Exec=… %U` itself and refuses
+  a custom `Exec`, so a double-clicked file reaches argv, where
+  `extrudoPathFromArgv` takes any non-flag `.extrudo`); Windows NSIS (not
+  one-click, per user, directory choosable); macOS dmg + zip (the zip is what the
+  updater needs), `identity: null`. `publish` is the GitHub repository with
+  `releaseType: draft`. The Linux executable is `extrudo` (`executableName`;
+  the scoped package name made it `@extrudodesktop`).
+- **Unsigned first.** The owner's certificates are slice 5. macOS users
+  right-click › Open; Windows shows SmartScreen (`docs/release-checklist.md`).
+  Checked: the built `.exe` has an empty certificate table even though
+  electron-builder logs "signing with signtool.exe".
+- **Draft releases.** A `v*` tag runs `.github/workflows/desktop.yml`: a `draft`
+  job creates the release (so the three OS jobs do not race to create it) and
+  each OS job attaches with `--publish onTag`. A manual run uses `--publish
+  never` and uploads workflow artifacts (`extrudo-desktop-<os>`, 30 days). Never
+  per push: it is three runners a build.
+- **The workspace packages are `devDependencies`** of `apps/desktop`. Everything
+  is bundled by electron-vite, and a `dependencies` entry would make
+  electron-builder try to pack the workspace packages' source into the asar.
+  `electron-vite`'s `externalizeDeps` is off for main and preload and
+  `electron` (and `electron/*`) is **explicitly external**: without that the main
+  bundle inlined `node_modules/electron/index.js` (its `getElectronPath`, which
+  throws inside a packaged app) — a slice 1 defect the smoke test found.
+- **asar.** `asar: true`, nothing unpacked: `app://`'s handler reads with
+  `fs/promises.readFile`, which Electron's asar patch covers, and the WASM
+  (OCCT 20 MB, planegcs, manifold, OpenSCAD) and module workers load through
+  `app://` from inside the archive. The smoke test proves it. `electron-updater`
+  needs nothing unpacked either.
+- **The Linux smoke is part of the packaging job.** `smoke.mjs --app <AppImage>`
+  runs it with `--appimage-extract-and-run` (no FUSE), `--no-sandbox` (a runner
+  forbids the SUID sandbox on an extracted image), SwiftShader WebGL (the runner
+  has no GPU; Chromium blocklists WebGL2 otherwise and the viewport throws), under
+  `xvfb-run -a`, with a throwaway data directory: main reads
+  `EXTRUDO_USER_DATA` and calls `app.setPath('userData', …)` before the
+  single-instance lock (chosen over `XDG_CONFIG_HOME` because it works on every
+  OS). It fails on any renderer console error or uncaught page error. Windows
+  and macOS only build; their smoke comes with signing.
+- **Files that differ only by case** (`viewport/Grid.tsx` and `grid.ts`,
+  `ViewCube.tsx` and `viewcube.ts`) broke the macOS and Windows builds, whose file
+  systems resolve `./Grid` to `grid.ts`. The components are now `GridPlane.tsx`
+  and `ViewCubeView.tsx`.
+- **`pnpm wasm` on Windows runners**: GNU tar (Git Bash) read the absolute
+  `D:\…` archive path as a host name; `scripts/wasm-release.mjs` passes paths
+  relative to the working directory.
+- **`electron-winstaller: false`** in `allowBuilds` (electron-builder's
+  Squirrel.Windows helper; we build NSIS).
+
+### Rejected
+
+- **Signing in this slice**: needs the owner's certificates and secrets.
+- **electron-forge**: the ADR chose electron-builder.
+- **Per-push desktop builds**: three OS runners and ~700 MB of artifacts a push.
+- **`XDG_CONFIG_HOME` for the smoke's data directory**: Linux-only.
+- **`asarUnpack`**: nothing needs it.
+
+### Results
+
+- **The `desktop` workflow** (run `37579895006` on `p6-01-s3`, a manual-style
+  run through the temporary branch trigger; `workflow_dispatch` needs the file on
+  `main`): Linux, Windows and macOS all succeeded. Artifacts: `extrudo-desktop-linux`
+  249 MB (`extrudo-0.3.0-linux-x86_64.AppImage` 139 MB, `extrudo-0.3.0-linux-amd64.deb`
+  110 MB), `extrudo-desktop-win` 122 MB (`extrudo-0.3.0-win-x64.exe`),
+  `extrudo-desktop-mac` 283 MB (`extrudo-0.3.0-mac-arm64.dmg` 142 MB and `.zip`
+  142 MB). The Windows build is unsigned (certificate table empty).
+- **The Linux smoke**: `smoke: model status = ready`, `smoke: home screen opened a
+  design, kernel ready, project Saved`, `smoke: OK in 4.4 s`.
+- **Failures on the way**, each fixed above: the Electron install path in the
+  workflow, tar on Windows, case-colliding files on macOS, `homepage` metadata,
+  `electron` inlined into the main bundle (the first AppImage run crashed in
+  `getElectronPath`), no WebGL on the runner.
+- **`pnpm check`** (2026-10-07): `Test Files 315 passed | 6 skipped (321)`,
+  `Tests 3844 passed | 10 skipped (3854)`; it downloads no Electron binary.
 

@@ -1,5 +1,5 @@
 /**
- * Grid spacing, shared by the grid shader (`Grid.tsx`) and grid snapping
+ * Grid spacing, shared by the grid shader (`GridPlane.tsx`) and grid snapping
  * (P1-02). Levels are powers of ten mm, 1 mm at the finest.
  */
 

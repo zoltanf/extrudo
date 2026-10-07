@@ -33,6 +33,10 @@ import { createRescueFile } from './rescue';
 // Before `app.whenReady()`: a privileged scheme cannot be registered later.
 registerAppScheme();
 
+// A throwaway data directory for the packaged-app smoke test (and nothing
+// else): it must be set before the single-instance lock, which lives in it.
+if (process.env.EXTRUDO_USER_DATA) app.setPath('userData', process.env.EXTRUDO_USER_DATA);
+
 /** A `.extrudo` larger than this is refused before it is read (finding 5). */
 const MAX_OPEN_BYTES = 100 * 1024 * 1024;
 

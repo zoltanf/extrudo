@@ -91,7 +91,9 @@ export async function wasmRelease(spec) {
       }
       rmSync(DIST, { recursive: true, force: true });
       mkdirSync(DIST, { recursive: true });
-      run('tar', ['-xzf', tarball, '-C', DIST]);
+      // A path relative to the working directory: GNU tar (Git Bash on Windows
+      // runners) reads `D:\…` as a host name ("Cannot connect to D").
+      run('tar', ['-xzf', relative(process.cwd(), tarball), '-C', relative(process.cwd(), DIST)]);
       writeFileSync(STAMP, `${hash}\n`);
     } finally {
       rmSync(tmp, { recursive: true, force: true });

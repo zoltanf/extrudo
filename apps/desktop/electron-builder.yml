@@ -1,23 +1,25 @@
-# electron-builder configuration (P6-01, ADR-0075 §2/§5).
+# electron-builder configuration (P6-01, ADR-0075 §2/§5, slice 3).
 #
-# This is data only for now: the packaging slice (P6-01 slice 5) adds the
-# scripts that run `electron-builder` and the signing/notarisation. It pins the
-# app's identity and, in particular, the `.extrudo` file association the OS
-# registers — which is why the association lives here and not in the menu code.
-#
-# Deferred to slice 5: the build scripts, per-platform targets
-# (AppImage/deb, NSIS, dmg), signing, auto-update and the icons' icns/ico
-# conversions. The PNG icons here are the web app's own (apps/web/public).
+# Unsigned installers for Linux, Windows and macOS. The `desktop` workflow runs
+# this on a runner per OS; signing and notarisation are slice 5 (the owner's
+# certificates), auto-update slice 4. The `.extrudo` file association the OS
+# registers lives here and not in the menu code.
 appId: org.extrudo.desktop
 productName: Extrudo
+executableName: extrudo
 copyright: Copyright © Extrudo contributors
+artifactName: extrudo-${version}-${os}-${arch}.${ext}
 
 directories:
   output: release
   buildResources: build
 
+# Everything the app needs is bundled into `out` by electron-vite (the
+# workspace packages are devDependencies), so the archive holds no node_modules.
+asar: true
 files:
   - out/**/*
+  - '!**/*.map'
   - package.json
 
 # The `.extrudo` document, registered with the OS. The extension is the one
@@ -27,20 +29,40 @@ fileAssociations:
     name: Extrudo Design
     description: Extrudo parametric design
     role: Editor
-    icon: ../web/public/icon-512.png
 
 linux:
   category: Graphics
-  icon: ../web/public
+  maintainer: Extrudo contributors <conduct@extrudo.org>
+  vendor: Extrudo
+  synopsis: Parametric CAD for 3D printing
+  description: Open-source parametric CAD with a sketch, features and timeline workflow.
+  mimeTypes:
+    - application/x-extrudo
+  # electron-builder writes `Exec=<binary> %U` itself (it refuses a custom Exec),
+  # so a double-clicked `.extrudo` reaches argv (main/openPaths.ts).
   target:
     - AppImage
     - deb
 
 win:
-  icon: ../web/public/icon-512.png
   target:
     - nsis
 
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+
 mac:
-  icon: ../web/public/icon-512.png
   category: public.app-category.graphics-design
+  # Unsigned until slice 5: no identity lookup, no notarisation.
+  identity: null
+  target:
+    - dmg
+    - zip
+
+publish:
+  provider: github
+  owner: zoltanf
+  repo: extrudo
+  releaseType: draft

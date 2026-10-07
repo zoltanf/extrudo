@@ -1841,6 +1841,16 @@ menu model, the recent store, the open queue, the menu template) run in Node wit
 fake bridge — CI downloads no Electron binary (`pnpm-workspace.yaml`'s
 `allowBuilds` keeps `electron: false`). On a headless machine the smoke script
 needs `xvfb-run -a`.
+**Slice 3 (packaging, unsigned)** adds `electron-builder` (`electron-builder.yml`:
+AppImage + deb, NSIS, dmg + zip, `extrudo-<version>-<os>-<arch>.<ext>`, asar with
+nothing unpacked) and `.github/workflows/desktop.yml` (a `v*` tag or a manual
+run, never per push: three OS runners; a tag attaches the installers to a
+**draft** release; the Linux job smoke-tests the AppImage with `smoke.mjs --app`,
+`EXTRUDO_USER_DATA` being main's throwaway data directory). Rules a change must
+keep: the desktop's workspace packages are `devDependencies` and **`electron`
+stays explicitly external** in main and preload, **no two files may differ only by
+case** (macOS and Windows builds resolve `./Grid` to `grid.ts`), and signing and
+auto-update are slices 5 and 4 (`docs/desktop.md`).
 
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): **Phase 5 is complete** — P5-01 (all three slices,
@@ -1876,6 +1886,7 @@ pnpm api:generate   # rewrite @extrudo/api's generated methods and docs/api page
 pnpm extrudo        # the headless CLI: info, export, set, check (ADR-0069); `pnpm extrudo --help`
 pnpm --filter @extrudo/desktop dev     # the Electron app, renderer with HMR (ADR-0075)
 pnpm --filter @extrudo/desktop build   # main + preload + renderer into apps/desktop/out
+pnpm --filter @extrudo/desktop package   # build + electron-builder for this OS, unsigned, into apps/desktop/release (docs/desktop.md)
 ```
 
 Package dependency rules live in `scripts/check-boundaries.mjs` (run by
@@ -1956,7 +1967,7 @@ them. Notes further down that name a machine apply to that machine only.
 | Inkscape, rsvg-convert | Installed | Not installed |
 | Slicers, FreeCAD | `prusa-slicer`, `orca-slicer`, `freecadcmd` | Not installed |
 | `brotli` CLI | – | Not installed (`scripts/measure-startup.mjs` uses Node's zlib) |
-| Electron desktop (P6-01) | `pnpm --filter @extrudo/desktop dev` runs | Headless: no display and **no `xvfb-run`** (checked 2026-10-07), and `electron`'s binary is not downloaded (`pnpm-workspace.yaml`'s `allowBuilds` keeps `electron: false`), so `apps/desktop/scripts/smoke.mjs` can't run here. The desktop unit tests run in Node without Electron |
+| Electron desktop (P6-01) | `pnpm --filter @extrudo/desktop dev` runs | Headless: no display and **no `xvfb-run`** (checked 2026-10-07), and `electron`'s binary is not downloaded (`pnpm-workspace.yaml`'s `allowBuilds` keeps `electron: false`), so `apps/desktop/scripts/smoke.mjs` can't run here. Packaging and the packaged-app smoke run in CI only (`desktop.yml`, slice 3); `electron-builder --linux --dir` does build here (it downloads its own Electron). The desktop unit tests run in Node without Electron |
 - **Git identity:** check `git config user.email` before committing. The
   Ubuntu machine had none set, so its first commits carried the machine's
   hostname as the author address; set the same name and address as the

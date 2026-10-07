@@ -13,14 +13,25 @@ import { defineConfig } from 'electron-vite';
 export default defineConfig({
   main: {
     build: {
+      // Every package is bundled (they are devDependencies: the installer
+      // carries no node_modules). With the default, electron-vite externalises
+      // by the package's `dependencies` and `electron` itself was inlined.
+      externalizeDeps: false,
       outDir: 'out/main',
-      rollupOptions: { output: { format: 'cjs', entryFileNames: '[name].cjs' } },
+      rollupOptions: {
+        external: ['electron', /^electron\/.+/],
+        output: { format: 'cjs', entryFileNames: '[name].cjs' },
+      },
     },
   },
   preload: {
     build: {
+      externalizeDeps: false,
       outDir: 'out/preload',
-      rollupOptions: { output: { format: 'cjs', entryFileNames: '[name].cjs' } },
+      rollupOptions: {
+        external: ['electron', /^electron\/.+/],
+        output: { format: 'cjs', entryFileNames: '[name].cjs' },
+      },
     },
   },
   renderer: {

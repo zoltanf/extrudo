@@ -45,3 +45,6 @@ spikes/p0-03-solver/planegcs-build/.work/
 .claude/worktrees/
 # P4-12: the native harness builds (spikes/*/build/)
 spikes/*/build/
+
+# Packaged installers (P6-01 slice 3)
+apps/desktop/release/
