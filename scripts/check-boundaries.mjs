@@ -58,6 +58,10 @@ const ALLOWED = {
   ],
   // The landing page: no internal packages (ADR-0057).
   '@extrudo/site': [],
+  // The Electron desktop app (P6-01, ADR-0075 §1): the web app's own UI and
+  // entry, the storage package's Node entry, and the document model. No
+  // kernel code of its own; the renderer runs the web workers unchanged.
+  '@extrudo/desktop': ['@extrudo/web', '@extrudo/storage', '@extrudo/core'],
   '@extrudo/web': [
     // Only the macro dialog imports it, lazily, for the emitter (P5-05, ADR-0073 §4).
     '@extrudo/api',

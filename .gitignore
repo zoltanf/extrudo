@@ -5,6 +5,8 @@ coverage/
 *.tsbuildinfo
 .vite/
 .vitest/
+# The Electron build (P6-01, ADR-0075): main, preload and the renderer.
+apps/desktop/out/
 
 # Playwright
 test-results/

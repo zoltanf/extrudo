@@ -1,0 +1,60 @@
+/**
+ * Builds the exposed `ExtrudoApi` from an `ipcRenderer`-like object
+ * (P6-01, ADR-0075 §1). Kept apart from `preload/index.ts` so the tests can
+ * pass a fake `ipcRenderer` and prove the channel wiring — that a store call
+ * refuses an unknown method, that the preference map is read once through
+ * `invoke`, and that only the rescue copy and its list are `sendSync`.
+ */
+import { CHANNELS, type ExtrudoApi, type FolderEntry, isStoreMethod } from './ipc';
+
+/** The slice of Electron's `ipcRenderer` this bridge needs. */
+export interface IpcRendererLike {
+  invoke(channel: string, ...args: unknown[]): Promise<unknown>;
+  send(channel: string, ...args: unknown[]): void;
+  sendSync(channel: string, ...args: unknown[]): unknown;
+}
+
+export function createApi(ipc: IpcRendererLike): ExtrudoApi {
+  return {
+    prefs: {
+      read: () => ipc.invoke(CHANNELS.prefsRead) as Promise<Record<string, unknown>>,
+      write: (key, value) => ipc.send(CHANNELS.prefsWrite, key, value),
+    },
+    store: {
+      call: (method, args) =>
+        isStoreMethod(method)
+          ? ipc.invoke(CHANNELS.storeCall, method, args)
+          : Promise.reject(new Error(`Unknown store method: ${String(method)}`)),
+    },
+    files: {
+      download: (bytes, name) => ipc.invoke(CHANNELS.fileDownload, bytes, name) as Promise<void>,
+      pick: (accept) =>
+        ipc.invoke(CHANNELS.filePick, accept) as Promise<unknown> as Promise<
+          { name: string; bytes: Uint8Array } | undefined
+        >,
+    },
+    storage: {
+      persistence: () => ipc.invoke(CHANNELS.storagePersistence) as Promise<'persistent'>,
+      requestPersistence: () => ipc.invoke(CHANNELS.storageRequest) as Promise<'persistent'>,
+    },
+    rescue: {
+      put: (id, raw) => ipc.sendSync(CHANNELS.rescuePut, id, raw) === true,
+      clear: (id) => ipc.send(CHANNELS.rescueClear, id),
+      list: () =>
+        (ipc.sendSync(CHANNELS.rescueList) as { id: string; raw: string }[] | undefined) ?? [],
+    },
+    folders: {
+      link: () => ipc.invoke(CHANNELS.foldersLink) as Promise<{ name: string } | undefined>,
+      current: () => ipc.invoke(CHANNELS.foldersCurrent) as Promise<{ name: string } | undefined>,
+      unlink: () => ipc.invoke(CHANNELS.foldersUnlink) as Promise<void>,
+      permission: () =>
+        ipc.invoke(CHANNELS.folderPermission) as ReturnType<ExtrudoApi['folders']['permission']>,
+      request: () => ipc.invoke(CHANNELS.folderRequest) as Promise<boolean>,
+      list: () => ipc.invoke(CHANNELS.folderList) as Promise<FolderEntry[]>,
+      read: (name) =>
+        ipc.invoke(CHANNELS.folderRead, name) as Promise<{ bytes: Uint8Array; modified: number }>,
+      write: (name, bytes) =>
+        ipc.invoke(CHANNELS.folderWrite, name, bytes) as Promise<{ modified: number }>,
+    },
+  };
+}

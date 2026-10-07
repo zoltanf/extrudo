@@ -6,6 +6,11 @@
 @import "tailwindcss";
 @import "./tokens.css";
 
+/* The app's own source, relative to this file, so the Electron renderer
+   (whose Vite root is apps/desktop/src/renderer) scans the same classes the
+   web build does (ADR-0075 §1). */
+@source "../";
+
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @theme inline {

@@ -1,0 +1,28 @@
+{
+  "name": "@extrudo/desktop",
+  "version": "0.3.0",
+  "private": true,
+  "description": "The Extrudo desktop app (Electron): the web app's own UI over a Node-fs ProjectStore (P6-01, ADR-0075).",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "main": "out/main/index.cjs",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@extrudo/core": "workspace:*",
+    "@extrudo/storage": "workspace:*",
+    "@extrudo/web": "workspace:*"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^44.0.0",
+    "electron-vite": "^5.0.0",
+    "tailwindcss": "^4.3.3",
+    "vite": "^8.3.0"
+  }
+}

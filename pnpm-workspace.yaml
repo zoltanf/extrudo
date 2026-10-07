@@ -1,3 +1,9 @@
 packages:
   - apps/*
   - packages/*
+allowBuilds:
+  esbuild: true
+  # Electron's binary is not downloaded: the desktop tests and the build do not
+  # need it, and CI must not spend the download (ADR-0075 §4). The smoke script
+  # says so when the binary is missing.
+  electron: false

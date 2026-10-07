@@ -41,6 +41,7 @@ export {
   ProjectNotFoundError,
   type ProjectStore,
   type ProjectSummary,
+  StorageError,
   type VersionSummary,
 } from './types';
 export type { StoredVersion } from './versions';

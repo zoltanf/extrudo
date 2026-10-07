@@ -161,6 +161,24 @@ export class ProjectNotFoundError extends Error {
   }
 }
 
+/**
+ * A document or version id the store refuses before it builds a path from it
+ * (P6-01, ADR-0075's review): an id becomes `projects/<id>/…` on the real file
+ * system, so a `..` or a separator in it would climb out of the store's
+ * directory. Raised at the store boundary (every backend), so the renderer
+ * cannot turn a `.extrudo`'s document id into an arbitrary read, write or
+ * delete.
+ */
+export class StorageError extends Error {
+  override readonly name = 'StorageError';
+  /** The id that was refused, as it arrived. */
+  readonly id: string;
+  constructor(id: string) {
+    super(`${id || 'An empty string'} isn't a valid project ID.`);
+    this.id = id;
+  }
+}
+
 export type ArchiveErrorCode = 'not-a-zip' | 'not-extrudo' | 'damaged';
 
 /** A file that isn't a readable `.extrudo` archive. The message is for people. */

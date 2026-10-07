@@ -3,7 +3,31 @@
 One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
-
+- 2026-10-07 · **P6-01 Electron app, slice 1 review fixes** (ADR-0075): closed
+  the review's two high findings — every id that becomes a path is validated
+  (`StorageError`/`assertId`, the Node `full()` refuses `..`/absolute/NUL and
+  escapes, `purge` of an unknown id touches nothing) and the window cannot
+  navigate off `app://` (or the dev origin) or open a window/webview, and every
+  permission is denied — plus the lower ones: the CSP/COOP/COEP/`nosniff` set
+  rides on every `app://` Response (`headers.ts`, checked against `_headers`),
+  store/folder errors cross `invoke` as data and are rebuilt, the index queue
+  holds its read-modify-write, the atomic writers `fsync`, preferences are read
+  through `invoke`, `folder:read`/`write` take `.extrudo` names only, a failed
+  download toasts, `RescueFile.flush` is gone, the smoke script is real, and
+  the phantom-test comments have their tests. No facade, kernel or schema
+  change.
+- 2026-10-07 · **P6-01 Electron app, slice 1** (ADR-0075): the desktop shell on
+  electron-vite, whose renderer is the web app's own source with a different
+  entry (`apps/web/src/entry/desktop.tsx`'s `bootDesktop`) and the web app's
+  CSP/COOP/COEP over a custom `app://` protocol; every privileged call goes
+  through one typed preload bridge (`apps/desktop/src/shared/ipc.ts`). The
+  Node-fs `ProjectStore` is `@extrudo/storage/node`'s `createNodeProjectStore`
+  (atomic `index.json`, `FileStore` over `<dir>/projects/<id>/…`), driven from
+  the main process and reached through an IPC proxy. `desktopPlatform()` adds
+  preferences, storage, native file dialogs, a synchronous rescue file and
+  linked folders over the real file system; no slicer launch yet (P6-02).
+  Native menus, file association, recent files, auto-update and packaging are
+  later slices. No facade, kernel or schema change.
 - 2026-10-07 · **P4-12 Taper on ellipse and spline sides** (ADR-0028's
   amendment, FR-FT-01): a profile with an ellipse or B-spline edge is tapered
   by a **ruled loft** between the profile and its 2D offset (`taperLoft` in

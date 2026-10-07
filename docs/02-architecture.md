@@ -586,8 +586,13 @@ interface ProjectStore {
   replaces a file atomically on `close()`. The document is written before the
   index entry, and an attachment's bytes before the document that names it.
 - **Desktop (Phase 6):** the same interface over Node `fs` through Electron IPC.
-  Projects are plain `.extrudo` files in a user folder, with recent-files and
-  file associations.
+  Slice 1 (P6-01, ADR-0075) built it: `@extrudo/storage/node`'s
+  `createNodeProjectStore(dir)` keeps the index at `<dir>/index.json` (written
+  atomically by a temp file and a rename) and the projects at
+  `<dir>/projects/<id>/…` (`dir = userData/projects`). The store runs in the
+  main process; the renderer reaches it through a typed preload bridge whose
+  channels live in one `apps/desktop/src/shared/ipc.ts`. Native menus, recent
+  files and `.extrudo` file associations are later slices.
 
 ### 6.2 `.extrudo` file (zip)
 

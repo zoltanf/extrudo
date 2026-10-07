@@ -1779,6 +1779,41 @@ outline in `createSketchOn` when a sketch starts on it. No file-format or
 kernel change. `data-sketch-projected` now also lists a point-only projected
 vertex (`curves=0`).
 
+ADR-0075 (P6-01, slice 1) added **the Electron desktop app** (`apps/desktop`,
+GPL): electron-vite builds main, preload and renderer, the **renderer being the
+web app's own source** with a different entry (`apps/web/src/entry/desktop.tsx`'s
+`bootDesktop`, exported through `@extrudo/web`; `main.tsx` is the web entry) so
+there is no forked UI. The renderer keeps the web's posture (`contextIsolation`,
+`sandbox`, no `nodeIntegration`), the web's CSP + COOP/COEP + `nosniff` on
+**every `app://` Response** (`HEADERS` in `main/headers.ts`, kept equal to
+`apps/web/public/_headers` by a test; the `webRequest` hook stays as belt and
+braces), no top-level navigation off `app://` (or the dev origin), no new
+windows and no webview (`main/navigation.ts`), and `app://` (a privileged
+standard scheme) serves the packaged `dist` (`.wasm` as `application/wasm`)
+because `file://` breaks module workers and WASM fetches.
+**Every privileged call goes through `shared/ipc.ts`'s channels**: that one file
+lists the channels and the `ProjectStore` method whitelist, `preload/` exposes
+them with `contextBridge`, and main's `ipc.ts` answers them (no `remote`); a
+store or folder error crosses as `{ error: { name, message, … } }` and the
+renderer rebuilds the class (`shared/errors.ts`, `renderer/errors.ts`). The
+Node-fs store is `@extrudo/storage/node`'s `createNodeProjectStore(dir)`
+(`index.json` written atomically by temp + rename + fsync, a `FileStore` over
+`<dir>/projects/<id>/…`, a per-process lock) with `dir = userData/projects`; the
+renderer reaches it through a method-by-method IPC proxy (`renderer/proxy.ts`).
+`desktopPlatform()` adds preferences (a JSON file under `userData`, read once,
+written debounced), storage (persistent), files (native open/save dialogs),
+rescue (a file written synchronously through `sendSync` on `pagehide`), linked
+folders over the real file system, and no `openInSlicer` yet (P6-02). The service
+worker is never registered on desktop. Run it with `pnpm --filter @extrudo/desktop
+dev` (electron-vite dev) or `build` (output under `apps/desktop/out`); packaging,
+native menus (from the command registry), `.extrudo` file association, recent
+files and auto-update are later slices. Unit tests (the Node store, the bridge,
+the proxy, the platform, the `app://` MIME map, the `_headers` parity, the
+navigation rules, preferences, folders, rescue) run in Node with a
+fake bridge — CI downloads no Electron binary (`pnpm-workspace.yaml`'s
+`allowBuilds` keeps `electron: false`). On a headless machine the smoke script
+needs `xvfb-run -a`.
+
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): **Phase 5 is complete** — P5-01 (all three slices,
 ADR-0068), P5-02 (all three slices, ADR-0070), P5-03 (both slices, ADR-0069),
@@ -1811,6 +1846,8 @@ pnpm planegcs build  # build planegcs locally with Docker (~2 min; Arch workstat
 pnpm openscad build  # download OpenSCAD's pinned WASM snapshot into packages/openscad/dist (ADR-0071; no Docker)
 pnpm api:generate   # rewrite @extrudo/api's generated methods and docs/api pages (ADR-0068)
 pnpm extrudo        # the headless CLI: info, export, set, check (ADR-0069); `pnpm extrudo --help`
+pnpm --filter @extrudo/desktop dev     # the Electron app, renderer with HMR (ADR-0075)
+pnpm --filter @extrudo/desktop build   # main + preload + renderer into apps/desktop/out
 ```
 
 Package dependency rules live in `scripts/check-boundaries.mjs` (run by
@@ -1829,8 +1866,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for the v0.4.0 release |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0070: the Script feature (QuickJS sandbox, `@extrudo/script`). ADR-0071: OpenSCAD import (`.scad` attachments as mesh bodies, `@extrudo/openscad`, async preparation and runtime WASM caching). ADR-0072: wall-thickness check. ADR-0073: macro recording (the document-to-script emitter, `@extrudo/api`; Record, Stop and the Macro dialog in the app). ADR-0074: auto-project (a body edge or vertex a sketch tool snaps to is projected into the sketch on the fly; `viewport.autoProject`/`autoProjectFace`; its amendment, 2026-10-06, has the constraint and dimension tools pick body geometry directly) |
-
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0070: the Script feature (QuickJS sandbox, `@extrudo/script`). ADR-0071: OpenSCAD import (`.scad` attachments as mesh bodies, `@extrudo/openscad`, async preparation and runtime WASM caching). ADR-0072: wall-thickness check. ADR-0073: macro recording (the document-to-script emitter, `@extrudo/api`; Record, Stop and the Macro dialog in the app). ADR-0074: auto-project (a body edge or vertex a sketch tool snaps to is projected into the sketch on the fly; `viewport.autoProject`/`autoProjectFace`; its amendment, 2026-10-06, has the constraint and dimension tools pick body geometry directly). ADR-0075: the Electron desktop app (electron-vite main/preload/renderer built from the web app's own source; the `@extrudo/storage/node` store; `desktopPlatform` through one typed preload bridge, `shared/ipc.ts`) |
 
 ## Stack summary
 
@@ -1892,7 +1928,7 @@ them. Notes further down that name a machine apply to that machine only.
 | Inkscape, rsvg-convert | Installed | Not installed |
 | Slicers, FreeCAD | `prusa-slicer`, `orca-slicer`, `freecadcmd` | Not installed |
 | `brotli` CLI | – | Not installed (`scripts/measure-startup.mjs` uses Node's zlib) |
-
+| Electron desktop (P6-01) | `pnpm --filter @extrudo/desktop dev` runs | Headless: no display and **no `xvfb-run`** (checked 2026-10-07), and `electron`'s binary is not downloaded (`pnpm-workspace.yaml`'s `allowBuilds` keeps `electron: false`), so `apps/desktop/scripts/smoke.mjs` can't run here. The desktop unit tests run in Node without Electron |
 - **Git identity:** check `git config user.email` before committing. The
   Ubuntu machine had none set, so its first commits carried the machine's
   hostname as the author address; set the same name and address as the

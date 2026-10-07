@@ -29,6 +29,7 @@ import {
   ProjectNotFoundError,
   type ProjectStore,
   type ProjectSummary,
+  StorageError,
   type VersionSummary,
 } from './types';
 import {
@@ -70,16 +71,59 @@ export function localLock(): <T>(name: string, task: () => Promise<T>) => Promis
   };
 }
 
-const documentPath = (id: ProjectId) => `projects/${id}/document.json`;
-const thumbnailPath = (id: ProjectId) => `projects/${id}/thumbnail.png`;
-const attachmentFolder = (id: ProjectId) => `projects/${id}/attachments`;
+const documentPath = (id: ProjectId) => {
+  assertId(id);
+  return `projects/${id}/document.json`;
+};
+const thumbnailPath = (id: ProjectId) => {
+  assertId(id);
+  return `projects/${id}/thumbnail.png`;
+};
+const attachmentFolder = (id: ProjectId) => {
+  assertId(id);
+  return `projects/${id}/attachments`;
+};
 const attachmentPath = (id: ProjectId, sha256: string) => `${attachmentFolder(id)}/${sha256}`;
-const versionIndexPath = (id: ProjectId) => `projects/${id}/versions/index.json`;
-const versionPath = (id: ProjectId, n: number) => `projects/${id}/versions/${n}.json.gz`;
+const versionIndexPath = (id: ProjectId) => {
+  assertId(id);
+  return `projects/${id}/versions/index.json`;
+};
+const versionPath = (id: ProjectId, n: number) => {
+  assertVersionNumber(n);
+  assertId(id);
+  return `projects/${id}/versions/${n}.json.gz`;
+};
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const MB = 1024 * 1024;
 const megabytes = (bytes: number) => `${Math.ceil((bytes / MB) * 10) / 10} MB`;
+
+/**
+ * The one shape a project id may have (P6-01, ADR-0075's review): `newId()`
+ * makes a UUID, and the store's own tests use short ids like `p1`; both fit.
+ * An id is put straight into `projects/<id>/…`, so anything with a `..`, a
+ * path separator, a NUL or a leading `.` is refused here — every backend (the
+ * Node store and the browser store alike) shares this, so a document id from a
+ * hostile `.extrudo` can never reach the file system.
+ */
+const PROJECT_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
+/** Refuses an id that could climb out of the store's directory. */
+export function assertId(id: ProjectId): void {
+  if (!PROJECT_ID_PATTERN.test(id)) throw new StorageError(id);
+}
+
+/** Refuses a negative or fractional version number before it reaches a path. */
+function assertVersionNumber(number: number): void {
+  if (!Number.isInteger(number) || number < 0) {
+    throw new Error(`"${number}" isn't a version number.`);
+  }
+}
+
+const projectFolder = (id: ProjectId) => {
+  assertId(id);
+  return `projects/${id}`;
+};
 
 /** An index entry without its link (clearing one leaves every other key). */
 const omitLink = ({ linked: _linked, ...summary }: ProjectSummary): ProjectSummary => summary;
@@ -442,10 +486,15 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
       await index.put(summary);
     },
     async purge(id) {
+      // An invalid id is refused first (a `..` is a StorageError), then an
+      // unknown one (ProjectNotFoundError): either way nothing on disk is
+      // touched (P6-01's review).
+      assertId(id);
+      await summaryOf(id);
       // Index first: a crash then leaves an orphan folder, never a listed project without files.
       // The whole folder goes, `attachments/` with it.
       await index.delete(id);
-      await files.remove(`projects/${id}`);
+      await files.remove(projectFolder(id));
     },
     async thumbnail(id) {
       const bytes = await readThumbnail(id);

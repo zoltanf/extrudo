@@ -5,6 +5,12 @@
   "description": "The Extrudo web app (PWA). The Electron build wraps this same bundle.",
   "license": "GPL-3.0-or-later",
   "type": "module",
+  "exports": {
+    ".": "./src/entry/desktop.tsx",
+    "./notifications": "./src/design-system/notifications.ts",
+    "./platform/folders": "./src/platform/folders.ts",
+    "./platform/rescue": "./src/platform/rescue.ts"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",

@@ -1057,6 +1057,12 @@ end to end, faster than in Fusion 360.
 - [ ] **P6-01 Electron app:** electron-vite; the Node-fs `ProjectStore`; native
   menus from the command registry; `.extrudo` file association; recent files;
   auto-update; builds for AppImage/deb, Windows and macOS (signing).
+  *Slice 1 done 2026-10-07 (ADR-0075):* the shell (electron-vite main/preload/
+  renderer, the renderer the web app's own UI, `app://` + the web's CSP/COOP/
+  COEP, one typed preload bridge), the Node-fs store (`@extrudo/storage/node`,
+  atomic index, per-process lock) and `desktopPlatform` (preferences, native
+  dialogs, synchronous rescue, linked folders; no slicer yet). Remaining:
+  native menus, file association, recent files, auto-update and packaging.
 - [ ] **P6-02 Slicer launch** on desktop (detect installed slicers): implement the
   platform's `openInSlicer` (ADR-0062), which the Export dialog already offers
   when it exists — write the exported bytes to a temporary file and launch

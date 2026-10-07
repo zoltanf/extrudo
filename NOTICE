@@ -181,7 +181,24 @@ The full license text of each package is in its own folder under node_modules
 and in the published package.
 
 
-4. Not third-party
+4. Desktop build (redistributed by the packaged app)
+----------------------------------------------------
+
+The Electron desktop app (P6-01, ADR-0075) bundles Electron and its build
+tool. Both are **devDependencies** of `apps/desktop`, so
+`scripts/check-licenses.mjs` (`pnpm licenses list --prod --json`) doesn't see
+them and its allow-list is untouched; they are named here because the packaged
+app redistributes Electron.
+
+  Electron 44 (MIT) and the Chromium/Node runtime it carries
+    https://github.com/electron/electron
+    Electron itself is MIT; its bundled Chromium and Node keep their own
+    licenses, in Electron's own LICENSE and LICENSES.chromium.html.
+  electron-vite 5 (MIT)
+    https://github.com/alex8088/electron-vite
+
+
+5. Not third-party
 ------------------
 
 The Extrudo name, logo, icons, the tool demo clips and the template pictures are
