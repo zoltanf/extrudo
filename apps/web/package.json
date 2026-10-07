@@ -11,6 +11,7 @@
     "./menu-model": "./src/shell/menuModel.ts",
     "./platform/folders": "./src/platform/folders.ts",
     "./platform/rescue": "./src/platform/rescue.ts",
+    "./platform/slicer": "./src/platform/slicer.ts",
     "./platform/updates": "./src/platform/updates.ts",
     "./platform/updateNotice": "./src/platform/updateNotice.ts"
   },

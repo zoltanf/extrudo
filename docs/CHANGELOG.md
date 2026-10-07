@@ -4,6 +4,11 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P6-02 Slicer launch** (ADR-0062's amendment): the desktop app finds
+  installed PrusaSlicer, OrcaSlicer, Bambu Studio and Cura (PATH, flatpak, Program Files,
+  /Applications, or `slicers.paths`), writes the export to a private temp file and starts
+  the slicer on it; the Export dialog disables missing slicers and the Send to Slicer tile
+  works.
 - 2026-10-07 · **P6-01 Electron app, slice 4: auto-update** (ADR-0075's
   amendment): `electron-updater` against the published GitHub releases; an
   AppImage and the Windows installer update themselves ("Extrudo 0.5.0 is

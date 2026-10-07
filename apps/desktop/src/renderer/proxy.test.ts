@@ -56,6 +56,7 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
       onChanged: () => {},
       offChanged: () => {},
     },
+    slicer: { list: async () => [], open: async () => false },
     app: { ready: () => {}, quit: () => {} },
     updates: {
       onStatus: () => {},

@@ -9,6 +9,7 @@ import {
   desktopPlatform,
   desktopPreferences,
   desktopRescue,
+  desktopSlicer,
 } from './platform';
 import { desktopUpdates } from './updates';
 
@@ -57,6 +58,7 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
       onChanged: () => {},
       offChanged: () => {},
     },
+    slicer: { list: async () => [], open: async () => false },
     app: { ready: () => {}, quit: () => {} },
     updates: {
       onStatus: () => {},
@@ -167,7 +169,9 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
       'externalFiles',
       'files',
       'folders',
+      'installedSlicers',
       'menus',
+      'openInSlicer',
       'preferences',
       'projects',
       'rescue',
@@ -257,5 +261,43 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
         'Extrudo is up to date.',
       ]);
     });
+  });
+});
+
+describe('the slicer launch (P6-02)', () => {
+  it('lists only which slicers are installed and passes the file through', async () => {
+    const opened: unknown[][] = [];
+    const slicer = desktopSlicer(
+      fakeApi({
+        slicer: {
+          list: async () => [
+            { id: 'orcaslicer', path: '/usr/bin/orca-slicer' },
+            { id: 'cura', path: '/usr/bin/cura' },
+          ],
+          open: async (...args) => {
+            opened.push(args);
+            return true;
+          },
+        },
+      }),
+    );
+    expect(await slicer.installedSlicers?.()).toEqual(['orcaslicer', 'cura']);
+    const file = { name: 'a.stl', bytes: new Uint8Array([1]), format: 'stl' as const };
+    expect(await slicer.openInSlicer?.(file, 'cura')).toBe(true);
+    expect(opened).toEqual([[file, 'cura']]);
+  });
+
+  it('rebuilds a main-side failure instead of answering false', async () => {
+    const slicer = desktopSlicer(
+      fakeApi({
+        slicer: {
+          list: async () => [],
+          open: async () =>
+            ({ error: { name: 'Error', message: 'The slicer request is malformed.' } }) as never,
+        },
+      }),
+    );
+    const file = { name: 'a.stl', bytes: new Uint8Array([1]), format: 'stl' as const };
+    await expect(slicer.openInSlicer?.(file, 'cura')).rejects.toThrow('malformed');
   });
 });

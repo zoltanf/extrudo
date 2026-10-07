@@ -23,6 +23,23 @@ does not download Electron's binary. `dev` needs it once:
 `node apps/desktop/node_modules/electron/install.js`. `package` does not (electron-builder
 downloads the Electron it packs itself), but running the result does.
 
+## Slicers
+
+"Open in slicer" (the Export dialog and the Send to Slicer tile, ADR-0062's
+amendment) writes the file to `<temp>/extrudo-slicer/<name>` (`app.getPath('temp')`;
+directory mode 0700, emptied when the app quits) and starts the slicer on it.
+It finds PrusaSlicer, OrcaSlicer, Bambu Studio and Cura on `PATH` or as a flatpak
+(Linux), in `Program Files` or `%LOCALAPPDATA%\Programs` (Windows) and in
+`/Applications` (macOS). For a slicer installed elsewhere add its path to
+`preferences.json` in the app's user data directory:
+
+```json
+{ "slicers.paths": { "orcaslicer": "/opt/orca/orca-slicer", "cura": "D:\\Cura\\UltiMaker-Cura.exe" } }
+```
+
+(slicer IDs: `prusaslicer`, `orcaslicer`, `bambustudio`, `cura`; there is no UI
+for it yet). Flatpak slicers get the file through the document portal.
+
 ## Smoke test
 
 `apps/desktop/scripts/smoke.mjs` launches the app and waits for the kernel to

@@ -179,6 +179,21 @@ describe('preload bridge (ADR-0075 §1)', () => {
     ]);
   });
 
+  it('routes the slicer list and open channels (P6-02)', async () => {
+    const file = { name: 'a.3mf', bytes: new Uint8Array([1]), format: '3mf' as const };
+    const { ipc, calls } = fakeIpc({
+      [CHANNELS.slicerList]: () => [{ id: 'cura', path: '/usr/bin/cura' }],
+      [CHANNELS.slicerOpen]: () => true,
+    });
+    const api = createApi(ipc);
+    expect(await api.slicer.list()).toEqual([{ id: 'cura', path: '/usr/bin/cura' }]);
+    expect(await api.slicer.open(file, 'cura')).toBe(true);
+    expect(calls).toEqual([
+      { channel: CHANNELS.slicerList, args: [], kind: 'invoke' },
+      { channel: CHANNELS.slicerOpen, args: [file, 'cura'], kind: 'invoke' },
+    ]);
+  });
+
   it('subscribes to update:status once and sends check, apply and release (P6-01 slice 4)', () => {
     const { ipc, calls, emit, listeners } = fakeIpc();
     const api = createApi(ipc);

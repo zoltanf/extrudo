@@ -149,6 +149,16 @@ export function desktopExternalFiles(api: ExtrudoApi): ExternalFiles {
   };
 }
 
+/** The slicer launch (P6-02): main writes the file and starts the program. */
+export function desktopSlicer(
+  api: ExtrudoApi,
+): Pick<Platform, 'openInSlicer' | 'installedSlicers'> {
+  return {
+    openInSlicer: async (file, slicer) => unwrap(await api.slicer.open(file, slicer)),
+    installedSlicers: async () => (await unwrap(await api.slicer.list())).map(({ id }) => id),
+  };
+}
+
 export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise<Platform> {
   const preferences = await desktopPreferences(api);
   const projects = createStoreProxy(api);
@@ -163,6 +173,7 @@ export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise
     folders: desktopFolders(api),
     externalFiles: desktopExternalFiles(api),
     menus: desktopMenus(api),
+    ...desktopSlicer(api),
     updates: desktopUpdates(api, appNotifications.getState().push),
   };
 }

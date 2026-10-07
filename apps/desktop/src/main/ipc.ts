@@ -18,6 +18,7 @@ import type { Folders } from './folders';
 import type { PreferencesFile } from './preferences';
 import type { RecentFile } from './recent';
 import type { RescueFile } from './rescue';
+import type { SlicerService } from './slicerService';
 import { storeCall } from './store-call';
 
 /**
@@ -51,6 +52,8 @@ export interface IpcDependencies {
   rendererReady(): void;
   /** Save-then-quit asked from the native menu; the renderer confirmed. */
   quit(): void;
+  /** Slicer detection and launch (P6-02). */
+  slicers: SlicerService;
   getWindow: () => BrowserWindow | null;
   /** Auto-update (P6-01 slice 4): a check, an install, and the release page main built. */
   updates: { check(): void; apply(): boolean; openRelease(): void };
@@ -161,6 +164,11 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   );
   ipcMain.handle(CHANNELS.fileReadPath, (_event, path: string) =>
     guarded(() => deps.externalFiles.read(path)),
+  );
+  // Arguments are checked in the service; a malformed one crosses as the error envelope.
+  ipcMain.handle(CHANNELS.slicerList, () => guarded(() => deps.slicers.list()));
+  ipcMain.handle(CHANNELS.slicerOpen, (_event, file: unknown, id: unknown) =>
+    guarded(() => deps.slicers.open(file, id)),
   );
   ipcMain.on(CHANNELS.appReady, () => deps.rendererReady());
   ipcMain.on(CHANNELS.appQuit, () => deps.quit());

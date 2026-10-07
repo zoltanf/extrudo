@@ -43,6 +43,8 @@ import {
 /** Opens the dialog; `bodies` picks them (a body's menu), else the selection or all shown. */
 export interface ModelExportRequest {
   bodies?: readonly BodyId[];
+  /** The Send to Slicer tile (P6-02): the slicer button is the primary action. */
+  slicer?: boolean;
 }
 
 export interface ExportModelDialogProps {
@@ -62,6 +64,11 @@ export interface ExportModelDialogProps {
    * slicer controls at all.
    */
   openInSlicer?: OpenInSlicer;
+  /**
+   * Which slicers are installed (P6-02, desktop only). Asked once when the dialog
+   * opens; the others are disabled. Without it every slicer is offered as before.
+   */
+  installedSlicers?: () => Promise<readonly SlicerId[]>;
   onClose(): void;
   notify?(tone: 'info' | 'error', text: string): void;
 }
@@ -73,6 +80,8 @@ interface Remembered {
   /** Custom deviation and angle, as typed. */
   deviation: string;
   angle: string;
+  /** The slicer last used (P6-02). */
+  slicer?: SlicerId;
 }
 
 const PREFERENCE = 'export.model';
@@ -134,6 +143,7 @@ export function ExportModelForm({
   files,
   preferences,
   openInSlicer,
+  installedSlicers,
   onClose,
   notify = () => {},
 }: ExportModelDialogProps) {
@@ -207,8 +217,21 @@ export function ExportModelForm({
   const [meshed, setMeshed] = useState<{ key: string; result: MeshedBodies }>();
   const [problem, setProblem] = useState<string>();
   const [busy, setBusy] = useState(false);
-  /** Which slicer the hand-off names (the desktop build only, ADR-0062). */
-  const [slicer, setSlicer] = useState<SlicerId>('prusaslicer');
+  // Which slicers are installed (P6-02): asked once per opening; undefined while it runs, and
+  // for a platform that can't say (every slicer is then offered).
+  const [installed, setInstalled] = useState<readonly SlicerId[]>();
+  useEffect(() => {
+    if (!open || !installedSlicers) return;
+    let current = true;
+    installedSlicers().then(
+      (ids) => current && setInstalled(ids),
+      () => current && setInstalled([]),
+    );
+    return () => {
+      current = false;
+    };
+  }, [open, installedSlicers]);
+  const slicer = chooseSlicer(installed, settings.slicer);
   /** Bodies meshed so far of the run for `key` (P3-13). */
   const [progress, setProgress] = useState<{ key: string; done: number; total: number }>();
   const key = JSON.stringify([selected.map((b) => b.id), tessellation]);
@@ -317,10 +340,11 @@ export function ExportModelForm({
   // The slicer hand-off (P4-08, ADR-0062): the same bytes, no download. The dialog stays open
   // so another slicer can be tried.
   const launch = async () => {
-    if (!canExport || !kernel || !openInSlicer) return;
+    if (!canExport || !kernel || !openInSlicer || noSlicer) return;
     setBusy(true);
     try {
       const message = await handToSlicer(openInSlicer, await build(), settings.format, slicer);
+      if (message === undefined) update({ slicer });
       setProblem(message);
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error));
@@ -328,6 +352,9 @@ export function ExportModelForm({
       setBusy(false);
     }
   };
+
+  const noSlicer = installed !== undefined && installed.length === 0;
+  const slicerFirst = request?.slicer === true && openInSlicer !== undefined;
 
   const toggle = (id: BodyId) =>
     setChosen((current) => {
@@ -344,7 +371,8 @@ export function ExportModelForm({
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        void save();
+        if (slicerFirst) void launch();
+        else void save();
       }}
     >
       <fieldset className="flex flex-col gap-1">
@@ -485,35 +513,19 @@ export function ExportModelForm({
       </p>
 
       {openInSlicer && (
-        <div className="flex items-end gap-2">
-          <span className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
-            <span className="text-muted">Slicer</span>
-            <Select
-              aria-label="Slicer"
-              value={slicer}
-              onChange={(event) => setSlicer(event.target.value as SlicerId)}
-            >
-              {SLICERS.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </Select>
-          </span>
-          <Button
-            type="button"
-            disabled={!canExport || busy}
-            title="Hand this file to the slicer without saving it first."
-            onClick={() => void launch()}
-          >
-            Open in slicer
-          </Button>
-        </div>
+        <SlicerRow
+          installed={installed}
+          selected={slicer}
+          onSelect={(id) => update({ slicer: id })}
+          disabled={!canExport || busy || noSlicer}
+          primary={slicerFirst}
+          onLaunch={() => void launch()}
+        />
       )}
 
       <div className="flex justify-end gap-2">
         <Button onClick={onClose}>Cancel</Button>
-        <Button type="submit" variant="primary" disabled={!canExport}>
+        <Button type="submit" variant={slicerFirst ? 'secondary' : 'primary'} disabled={!canExport}>
           Export {settings.format === '3mf' ? '3MF' : settings.format.toUpperCase()}
         </Button>
       </div>
@@ -542,6 +554,80 @@ function MeshingBar({ progress }: { progress?: { done: number; total: number } |
         className={`h-full rounded-full bg-accent ${share === undefined ? 'w-1/3 animate-pulse' : 'transition-[width] duration-(--x-fast)'}`}
         style={share === undefined ? undefined : { width: `${Math.max(4, share * 100)}%` }}
       />
+    </div>
+  );
+}
+
+export const NO_SLICER_HINT =
+  'No slicer found. Install PrusaSlicer, OrcaSlicer, Bambu Studio or Cura.';
+
+/**
+ * The slicer the select shows (P6-02): the remembered one while it is installed, else the
+ * first installed, else PrusaSlicer (the select is then all disabled). While the list is
+ * unknown, or on a platform that can't tell, every slicer counts as installed.
+ */
+export function chooseSlicer(
+  installed: readonly SlicerId[] | undefined,
+  remembered: SlicerId | undefined,
+): SlicerId {
+  const first = SLICERS[0]?.id ?? 'prusaslicer';
+  if (!installed) return remembered ?? first;
+  if (remembered && installed.includes(remembered)) return remembered;
+  return SLICERS.find((option) => installed.includes(option.id))?.id ?? first;
+}
+
+/** The slicer select and its button; `installed` undefined offers every slicer. */
+export function SlicerRow({
+  installed,
+  selected,
+  onSelect,
+  disabled,
+  primary,
+  onLaunch,
+}: {
+  installed: readonly SlicerId[] | undefined;
+  selected: SlicerId;
+  onSelect(id: SlicerId): void;
+  disabled: boolean;
+  primary: boolean;
+  onLaunch(): void;
+}) {
+  const none = installed !== undefined && installed.length === 0;
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-end gap-2">
+        <span className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+          <span className="text-muted">Slicer</span>
+          <Select
+            aria-label="Slicer"
+            value={selected}
+            onChange={(event) => onSelect(event.target.value as SlicerId)}
+          >
+            {SLICERS.map((option) => {
+              const missing = installed !== undefined && !installed.includes(option.id);
+              return (
+                <option key={option.id} value={option.id} disabled={missing}>
+                  {missing ? `${option.label} (not found)` : option.label}
+                </option>
+              );
+            })}
+          </Select>
+        </span>
+        <Button
+          type="button"
+          variant={primary ? 'primary' : 'secondary'}
+          disabled={disabled}
+          title={none ? NO_SLICER_HINT : 'Hand this file to the slicer without saving it first.'}
+          onClick={onLaunch}
+        >
+          Open in slicer
+        </Button>
+      </div>
+      {none && (
+        <p className="text-sm text-muted" data-slicer-hint>
+          {NO_SLICER_HINT}
+        </p>
+      )}
     </div>
   );
 }

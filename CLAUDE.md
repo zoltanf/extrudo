@@ -1097,7 +1097,7 @@ selects list the design's fonts and offer "Add font…"
 anything). The Text tool's anchor click lives in `textDraft.ts`
 (`TextDraft.placedAt`), because adding a font changes the document and the host
 starts a tool afresh on any document change.
-ADR-0062 (P4-08) added **print tolerance**: the document parameter named
+ADR-0062's P6-02 amendment added **the slicer launch on desktop**: `apps/desktop/src/main/slicers.ts` (pure over an injected environment: `findSlicers` per OS, the `slicers.paths` preference override, `openInSlicer` writing `<temp>/extrudo-slicer/<sanitised name>` and spawning detached, true unless ENOENT or a non-zero exit within 1.5 s), channels `slicer:list`/`slicer:open`, `desktopPlatform` setting `openInSlicer` and the new optional `Platform.installedSlicers`, which the Export dialog uses to disable missing slicers; the Send to Slicer tile is ready where `openInSlicer` exists. ADR-0062 (P4-08) added **print tolerance**: the document parameter named
 `tolerance` (`TOLERANCE_PARAMETER`, thread's constant, re-exported from core's
 `tolerance.ts`), set from the 3D Print tab's Tolerance panel (a field, the
 Tight 0.1 / Normal 0.2 / Loose 0.3 mm buttons and a usage count from
@@ -1109,7 +1109,7 @@ whitespace apart), and the dialog's `onChange` takes a `Pick<DialogContext,
 'doc'>` for it. The slicer hand-off is **desktop-only**: `Platform.openInSlicer`
 is optional, the web platform leaves it out and the Export dialog's Slicer
 select and "Open in slicer" button appear only where it exists (the launch is
-Phase 6, P6-02).
+P6-02, above).
 ADR-0063 (P4-05) added **control-point splines and conics**: still one
 `spline` entity, with `mode` (`fit`, absent in P1-05 files, `control` or
 `conic`) and, for a conic, `rho` (0 < rho < 1, and then exactly three points:
@@ -1832,7 +1832,7 @@ a projection of `buildCommands`, sent over `menu:set` and validated in main by
 run, while Open…/Save As…/Quit register theirs; a clicked id returns over
 `menu:run`), opens a `.extrudo` from the OS association, `argv` or the Open
 Recent list (`file:open-path`, delivered after the renderer sends `app:ready`),
-and keeps `userData/recent.json` — main's `recent.ts` fills `recent.json` and
+and keeps `userData/recent.json` — P6-02 adds `slicer:list`/`slicer:open` (`main/slicerService.ts` validates the arguments; `will-quit` empties the temp directory); main's `recent.ts` fills `recent.json` and
 main builds the Open Recent submenu from its own `list()`, never the
 renderer's. A project opened from a path (Open…, the association, Open Recent)
 or Save-As'd is linked as an **external file** (`LinkedFile.external`, the

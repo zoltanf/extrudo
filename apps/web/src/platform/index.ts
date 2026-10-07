@@ -22,7 +22,7 @@ import { type FileAccess, webFiles } from './files';
 import { folderAccess, type LinkedFolders, webFolders } from './folders';
 import { type Preferences, webPreferences } from './preferences';
 import { type RescueStore, recoverRescued, webRescue } from './rescue';
-import type { OpenInSlicer } from './slicer';
+import type { OpenInSlicer, SlicerId } from './slicer';
 import { type StorageAccess, webStorage } from './storage';
 import { UPDATE_UNSAVED_TEXT } from './updateNotice';
 import { appUpdates, type PlatformUpdates } from './updates';
@@ -112,6 +112,12 @@ export interface Platform {
    * controls only when it exists.
    */
   openInSlicer?: OpenInSlicer;
+  /**
+   * Which of the `SLICERS` are installed here (P6-02). Present exactly where
+   * `openInSlicer` is on the desktop: the Export dialog asks once when it opens
+   * and disables the others. Absent on the web.
+   */
+  installedSlicers?: () => Promise<readonly SlicerId[]>;
   /**
    * "A new version is ready" (ADR-0054; P6-01 slice 4 made it a platform seam).
    * The web's is `appUpdates` (the service worker waits, Reload applies it);

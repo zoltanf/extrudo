@@ -1079,7 +1079,7 @@ end to end, faster than in Fusion 360.
   page), `Platform.updates` as the web's update-toast seam, Help › Check for
   Updates…. Remaining: signing and notarisation (slice 5), which brings macOS
   self-update.
-- [ ] **P6-02 Slicer launch** on desktop (detect installed slicers): implement the
+- [x] **P6-02 Slicer launch** on desktop (detect installed slicers; done 2026-10-07, ADR-0062's amendment: `main/slicers.ts`, the `slicer:*` channels, `Platform.installedSlicers`, the Send to Slicer tile): implement the
   platform's `openInSlicer` (ADR-0062), which the Export dialog already offers
   when it exists — write the exported bytes to a temporary file and launch
   PrusaSlicer, OrcaSlicer, Bambu Studio or Cura with it. The browser build

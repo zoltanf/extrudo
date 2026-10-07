@@ -11,7 +11,13 @@ import { memoryPreferences } from '../platform/preferences';
 import type { OpenInSlicer } from '../platform/slicer';
 import { SLICERS } from '../platform/slicer';
 import type { BodyEntry } from '../shell/bodies';
-import { type ExportModelDialogProps, ExportModelForm } from './ExportModelDialog';
+import {
+  chooseSlicer,
+  type ExportModelDialogProps,
+  ExportModelForm,
+  NO_SLICER_HINT,
+  SlicerRow,
+} from './ExportModelDialog';
 import type { ModelExporter } from './modelExport';
 
 /** One body, already computed and meshable: the dialog's ordinary state. */
@@ -68,6 +74,74 @@ describe('the slicer hand-off in the Export dialog (P4-08, ADR-0062)', () => {
     for (const slicer of SLICERS) expect(out).toContain(slicer.label);
     // PrusaSlicer is what it offers first.
     expect(out).toMatch(/<option value="prusaslicer" selected="">PrusaSlicer/);
+  });
+});
+
+describe('the installed slicers in the Export dialog (P6-02)', () => {
+  const row = (
+    installed: Parameters<typeof SlicerRow>[0]['installed'],
+    selected = chooseSlicer(installed, undefined),
+  ) =>
+    renderToStaticMarkup(
+      <SlicerRow
+        installed={installed}
+        selected={selected}
+        onSelect={() => {}}
+        disabled={false}
+        primary={false}
+        onLaunch={() => {}}
+      />,
+    );
+
+  it('lists every slicer enabled while the list is unknown, as the browser-less dialog did', () => {
+    const out = row(undefined);
+    expect(out).not.toContain('(not found)');
+    expect(out).not.toContain('disabled=""');
+    expect(out).toMatch(/<option value="prusaslicer" selected="">PrusaSlicer/);
+  });
+
+  it('disables the missing ones, labels them and preselects the first installed', () => {
+    const out = row(['orcaslicer', 'cura']);
+    expect(out).toMatch(/<option value="prusaslicer" disabled="">PrusaSlicer \(not found\)/);
+    expect(out).toMatch(/<option value="bambustudio" disabled="">Bambu Studio \(not found\)/);
+    expect(out).toMatch(/<option value="orcaslicer" selected="">OrcaSlicer<\/option>/);
+    expect(out).not.toContain('Orca Slicer (not found)');
+    expect(out).not.toContain(NO_SLICER_HINT);
+  });
+
+  it('with none installed disables the button and says what to install', () => {
+    const out = row([]);
+    expect(out).toContain(NO_SLICER_HINT);
+    expect(out).toContain(
+      'No slicer found. Install PrusaSlicer, OrcaSlicer, Bambu Studio or Cura.',
+    );
+    expect(out).toMatch(/<button[^>]*title="No slicer found[^>]*>|<button[^>]*disabled[^>]*>/);
+  });
+
+  it('remembers the last slicer while it is installed', () => {
+    expect(chooseSlicer(['orcaslicer', 'cura'], 'cura')).toBe('cura');
+    expect(chooseSlicer(['orcaslicer'], 'cura')).toBe('orcaslicer');
+    expect(chooseSlicer(undefined, 'cura')).toBe('cura');
+    expect(chooseSlicer([], 'cura')).toBe('prusaslicer');
+  });
+
+  it('keeps the web rendering: no slicer row without openInSlicer, even with a list', () => {
+    const out = html({ installedSlicers: async () => ['cura'] });
+    expect(out).not.toContain('Open in slicer');
+    expect(out).not.toContain('(not found)');
+  });
+
+  it('makes the slicer button primary for the Send to Slicer tile', () => {
+    const openInSlicer: OpenInSlicer = async () => true;
+    const normal = html({ openInSlicer, request: {} });
+    const tile = html({ openInSlicer, request: { slicer: true } });
+    expect(normal).toMatch(/type="submit"[^>]*>Export 3MF/);
+    const primary = (out: string, label: string) =>
+      new RegExp(`bg-accent text-on-accent[^>]*>${label}`).test(out);
+    expect(primary(normal, 'Export 3MF')).toBe(true);
+    expect(primary(normal, 'Open in slicer')).toBe(false);
+    expect(primary(tile, 'Open in slicer')).toBe(true);
+    expect(primary(tile, 'Export 3MF')).toBe(false);
   });
 });
 

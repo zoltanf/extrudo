@@ -565,16 +565,18 @@ export function AppShell({
   });
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
   const preview = useMemo(() => viewPreview(dialogOpen), [dialogOpen]);
-  const ready = useMemo(
-    () =>
-      new Set(
-        dialogs
-          .list()
-          .map((spec) => spec.command)
-          .filter((c): c is ToolId => typeof c === 'string'),
-      ),
-    [dialogs],
-  );
+  const canSlicer = platform.openInSlicer !== undefined;
+  const ready = useMemo(() => {
+    const tools = new Set<string>(
+      dialogs
+        .list()
+        .map((spec) => spec.command)
+        .filter((c): c is ToolId => typeof c === 'string'),
+    );
+    // Send to Slicer (P6-02) is ready where the platform can launch one.
+    if (canSlicer) tools.add('slicer');
+    return tools;
+  }, [dialogs, canSlicer]);
   const dialogCommands = useMemo(
     () =>
       dialogs.list().flatMap((spec) => {
@@ -1021,7 +1023,9 @@ export function AppShell({
       }
     } else if (tool === 'finishSketch') finishSketch(stores);
     else if (tool === 'export') setModelExport({});
-    else if (tool === MEASURE_TOOL) {
+    else if (tool === 'slicer') {
+      if (platform.openInSlicer) setModelExport({ slicer: true });
+    } else if (tool === MEASURE_TOOL) {
       if (mode !== 'model') return;
       if (measuring) session.getState().setTool(undefined);
       else {
@@ -1906,6 +1910,7 @@ export function AppShell({
         files={platform.files}
         preferences={platform.preferences}
         openInSlicer={platform.openInSlicer}
+        installedSlicers={platform.installedSlicers}
         notify={notify}
         onClose={() => setModelExport(undefined)}
       />

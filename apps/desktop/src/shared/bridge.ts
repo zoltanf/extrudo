@@ -6,6 +6,7 @@
  * `invoke`, that only the rescue copy and its list are `sendSync`, and that the
  * menu/recent/open-file listeners register and unregister (P6-01 slice 2).
  */
+import type { SlicerId } from '@extrudo/web/platform/slicer';
 import {
   CHANNELS,
   type ExtrudoApi,
@@ -125,6 +126,10 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
         if (changedListener) ipc.removeListener(CHANNELS.recentChanged, changedListener);
         changedListener = undefined;
       },
+    },
+    slicer: {
+      list: () => ipc.invoke(CHANNELS.slicerList) as Promise<{ id: SlicerId; path: string }[]>,
+      open: (file, id) => ipc.invoke(CHANNELS.slicerOpen, file, id) as Promise<boolean>,
     },
     app: {
       ready: () => ipc.send(CHANNELS.appReady),

@@ -130,7 +130,7 @@ describe('buildCommands', () => {
     expect(ctx.runTool).toHaveBeenCalledWith('tolerance');
   });
 
-  it('says when a tool arrives instead of running it', () => {
+  it('says when a tool arrives instead of running it (Send to Slicer on the web)', () => {
     const ctx = context('model');
     const slicer = byId(ctx).get('slicer');
     expect(slicer?.unavailable).toBe('Arrives with the desktop app.');
@@ -139,7 +139,7 @@ describe('buildCommands', () => {
     expect(ctx.notify).toHaveBeenCalledWith('info', 'Send to Slicer arrives with the desktop app.');
   });
 
-  it('runs a tool a registered feature dialog makes ready (P2-05)', () => {
+  it('runs Send to Slicer where the platform can launch one (P6-02), and a ready tool in general (P2-05)', () => {
     const ctx = context('model', { ready: new Set(['slicer']) });
     const slicer = byId(ctx).get('slicer');
     expect(slicer?.unavailable).toBeUndefined();

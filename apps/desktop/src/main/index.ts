@@ -30,6 +30,7 @@ import { createPreferencesFile } from './preferences';
 import { APP_URL, handleAppProtocol, registerAppScheme } from './protocol';
 import { createRecentFile } from './recent';
 import { createRescueFile } from './rescue';
+import { nodeSlicerService } from './slicerService';
 import { createUpdates, type UpdaterLike } from './updates';
 
 // Before `app.whenReady()`: a privileged scheme cannot be registered later.
@@ -57,6 +58,7 @@ function main(): void {
   const rescue = createRescueFile(join(userData, 'rescue.json'));
   const folders = createFolders(join(userData, 'linked-folder.json'));
   const recent = createRecentFile(join(userData, 'recent.json'));
+  const slicers = nodeSlicerService(app.getPath('temp'), () => preferences.read()['slicers.paths']);
   const openQueue = createOpenQueue();
   // The paths main itself chose this session (deliverOpen, Save As…): the only
   // ones the renderer may read or write back through `file:*path` (finding 3).
@@ -253,6 +255,7 @@ function main(): void {
         if (updates.status.state !== 'idle') send(CHANNELS.updateStatus, updates.status);
       },
       quit: () => app.quit(),
+      slicers,
       getWindow,
       updates: {
         check: () => updates.check(),
@@ -283,6 +286,9 @@ function main(): void {
     updates.dispose();
     preferences.flush();
   });
+
+  // The exported files handed to slicers: removed on the way out, best effort.
+  app.on('will-quit', () => slicers.cleanup());
 
   app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') app.quit();

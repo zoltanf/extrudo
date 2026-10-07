@@ -816,8 +816,7 @@ export const TOOLS = {
     icon: 'send-to-slicer',
     category: 'export',
     hint: 'Open the model in your slicer.',
-    // P4-08 gave the platform its `openInSlicer`; the launch itself is P6-02
-    // with the desktop app (ADR-0062).
+    // Ready where the platform has `openInSlicer`: the desktop app (P6-02, ADR-0062).
     comesWith: 'the desktop app',
   },
 } satisfies Record<string, Tool>;

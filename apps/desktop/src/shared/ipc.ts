@@ -11,6 +11,7 @@
  * page is going away, when an async write would not finish.
  */
 import type { MenuModel } from '@extrudo/web/menu-model';
+import type { SlicerFile, SlicerId } from '@extrudo/web/platform/slicer';
 
 export const CHANNELS = {
   prefsRead: 'extrudo:prefs:read',
@@ -48,6 +49,9 @@ export const CHANNELS = {
   recentChanged: 'extrudo:recent:changed',
   appReady: 'extrudo:app:ready',
   appQuit: 'extrudo:app:quit',
+  // Opening an export in a slicer (P6-02, ADR-0062's amendment).
+  slicerList: 'extrudo:slicer:list',
+  slicerOpen: 'extrudo:slicer:open',
   // Auto-update (P6-01 slice 4): main → renderer status, renderer → main asks.
   updateStatus: 'extrudo:update:status',
   updateCheck: 'extrudo:update:check',
@@ -213,6 +217,12 @@ export interface ExtrudoApi {
     ready(): void;
     /** Main quits; the renderer has saved everything first. */
     quit(): void;
+  };
+  readonly slicer: {
+    /** The slicers main found installed (no paths: the renderer needs only which). */
+    list(): Promise<{ id: SlicerId; path: string }[]>;
+    /** Writes the file to a temp path and starts the slicer on it; true once it took it. */
+    open(file: SlicerFile, id: SlicerId): Promise<boolean>;
   };
   readonly updates: {
     /** Registers the one handler for main's `update:status`. */

@@ -111,3 +111,80 @@ What the implementation settled, and what it cost:
   platform leaves it out, so the Export dialog renders exactly as before in the
   browser; a unit test with a fake platform covers the controls, and `pnpm
   check`, `e2e/export-3d.spec.ts` and the a11y audit agree.
+
+## Amendment: P6-02 (2026-10-07), the launch
+
+The desktop app implements `openInSlicer` (ADR-0075's bridge: channels
+`slicer:list` and `slicer:open`, `apps/desktop/src/main/slicers.ts`,
+`slicerService.ts`) and a new optional `Platform.installedSlicers?: () =>
+Promise<readonly SlicerId[]>`. The web has neither.
+
+### Detection
+
+Pure over an injected environment (`platform`, `env`, `exists`, `glob`, `which`,
+`flatpakInfo`, `spawn`, `tempDir`, `overrides`), so every OS is unit-tested on
+Linux. One entry per slicer, first candidate wins, the override before all:
+
+| | PrusaSlicer | OrcaSlicer | Bambu Studio | Cura |
+|---|---|---|---|---|
+| **Linux** (`PATH`) | `prusa-slicer` | `orca-slicer` | `bambu-studio` | `cura`, `UltiMaker-Cura` |
+| **Linux** (flatpak, `flatpak info <id>`) | `com.prusa3d.PrusaSlicer` | `io.github.softfever.OrcaSlicer` | `com.bambulab.BambuStudio` | `com.ultimaker.cura` |
+| **Windows** (`%ProgramFiles%\…`, then `%LOCALAPPDATA%\Programs\…`) | `Prusa3D\PrusaSlicer\prusa-slicer.exe` | `OrcaSlicer\orca-slicer.exe` | `Bambu Studio\bambu-studio.exe` | `UltiMaker Cura <version>\UltiMaker-Cura.exe` (the directory is globbed, the newest version wins; `Ultimaker Cura` too) |
+| **macOS** (`open -a`) | `/Applications/PrusaSlicer.app` | `OrcaSlicer.app` | `BambuStudio.app` | `UltiMaker Cura.app` |
+
+An **override** is the preference `slicers.paths` (`{ "cura": "/opt/cura/cura" }`,
+slicer ID to a program or, on macOS, an `.app`; no UI yet, edit
+`preferences.json`). It wins over detection and counts as installed when the
+path exists. The list is read afresh at each call, so installing a slicer while
+the app runs needs no restart.
+
+### The launch
+
+The bytes are written to `<temp>/extrudo-slicer/<name>` (replaced per name;
+directory mode 0o700, file 0o600, and a directory that is a link or not ours is
+refused: `/tmp` is shared) and the program is spawned detached with
+`stdio: 'ignore'` and `unref()`. The name is sanitised to a basename (no
+separators, no leading dot, no characters Windows refuses, at most 120
+characters) with the extension forced to the format's; over 500 MB nothing is
+written. The launch resolves **true** unless `spawn` errors (ENOENT) or the
+process exits non-zero within 1.5 s (an `open` that hands over and exits 0
+counts as success); it never throws, and a malformed request from the renderer
+crosses as `guarded`'s error envelope. The directory is emptied on `will-quit`,
+best effort (Windows may still hold a file).
+
+**A flatpak is started with `flatpak run --file-forwarding <id> @@ <file> @@`**
+rather than the plain `flatpak run <id> <file>`: the sandbox has its own `/tmp`,
+and forwarding hands the file over through the document portal.
+
+### The UI
+
+The Export dialog, when `installedSlicers` exists, asks it once when it opens
+and lists all four slicers with the missing ones disabled and labelled "(not
+found)"; the preselection is the slicer remembered in the `export.model`
+preference (`slicer`, written after a successful launch) while it is installed,
+else the first installed one. With none installed the button is disabled with
+the hint "No slicer found. Install PrusaSlicer, OrcaSlicer, Bambu Studio or
+Cura." The toolbar tile **Send to Slicer** is ready where the platform has
+`openInSlicer` and opens the same dialog with its slicer button as the primary
+action (`ModelExportRequest.slicer`); on the web it stays dimmed ("Arrives with
+the desktop app").
+
+### Rejected
+
+- **URL schemes** (`prusaslicer://open?file=…`): they need an http(s) URL, which
+  a local design doesn't have.
+- **A slicer-side plugin** or a bundled importer: each slicer's would be a
+  separate project to keep, for what a file path already does.
+- **Plain `flatpak run <id> <file>`:** the file is invisible inside the sandbox.
+
+### Results
+
+`apps/desktop/src/main/slicers.test.ts` (17 tests: each OS's candidates, the
+override, the newest Cura, the sanitised name, the forced extension, the cap,
+ENOENT, a non-zero exit inside the window, success after it, `open -a` and
+flatpak arguments, the quit cleanup, and the real environment's private
+directory and refused symlink), `slicerService.test.ts`, `shared/bridge.test.ts`,
+`renderer/platform.test.ts`, `ExportModelDialog.test.tsx` (unknown list, missing
+ones disabled, none installed, remembered choice, the web rendering unchanged,
+primary button for the tile) and `commands.test.ts`. Nothing here was run
+against a real slicer: this machine has none, and no Electron binary.
