@@ -198,6 +198,49 @@ export function sectionClip(frame: Frame, offset: number, flip: boolean): Sectio
 }
 
 /**
+ * The sketch slice's clip for an open sketch (P4-12, ADR-0031 §5): the
+ * sketch plane itself, `flip` picking which side goes — +1 removes the side
+ * the plane's normal points to, −1 the other.
+ */
+export function sketchSliceClip(frame: { origin: Vec3; normal: Vec3 }, flip: 1 | -1): SectionClip {
+  const n = frame.normal;
+  return {
+    origin: [frame.origin[0], frame.origin[1], frame.origin[2]],
+    normal: flip === 1 ? [n[0], n[1], n[2]] : [0 - n[0], 0 - n[1], 0 - n[2]],
+  };
+}
+
+/** Which side of `frame` the camera is on, as the slice's flip: +1 on the normal's side. */
+export function sketchSliceFlipFor(frame: { origin: Vec3; normal: Vec3 }, camera: Vec3): 1 | -1 {
+  const d =
+    (camera[0] - frame.origin[0]) * frame.normal[0] +
+    (camera[1] - frame.origin[1]) * frame.normal[1] +
+    (camera[2] - frame.origin[2]) * frame.normal[2];
+  return d >= 0 ? 1 : -1;
+}
+
+/**
+ * One decision step of the sketch slice (P4-12, ADR-0031 §5): the clip to
+ * cut the bodies with while a sketch is open and the Slice preference is on,
+ * and the sign to keep. The removed side is the one the camera is on,
+ * decided when the sketch opens or Slice is turned on (`flip` undefined
+ * then) and kept afterwards — orbiting to the other side must not flip the
+ * cut under the person. A point on the plane itself is kept (`CLIP_EPS`),
+ * so the sketch's own geometry, which lies in this plane, stays whole
+ * without any offset.
+ */
+export function sketchSliceDecision(
+  slice: { origin: Vec3; normal: Vec3 } | undefined,
+  on: boolean,
+  flip: 1 | -1 | undefined,
+  camera: Vec3,
+): { clip: SectionClip | undefined; decided: 1 | -1 | undefined } {
+  if (!slice || !on) return { clip: undefined, decided: undefined };
+  const decided = flip ?? sketchSliceFlipFor(slice, camera);
+  return { clip: sketchSliceClip(slice, decided), decided };
+}
+
+/**
  * The point on the section's plane (at offset 0) that its arrow stands on:
  * the middle of what is shown, projected onto the plane, so the handle is
  * in view whatever the plane.

@@ -559,9 +559,10 @@ a right-click without movement, as Onshape's context menu does.
   EXPORT (the sketch or its profiles as SVG or DXF, P1-13) ·
   **FINISH SKETCH** (big green ✓).
 - **Sketch palette (right panel):** construction toggle, look at, sketch grid,
-  snap, auto-project (and auto-project face outline), slice, show profiles,
-  show points, show dimensions, show constraints, DOF counter ("3 DOF left",
-  "Fully constrained ✓", or "Over-constrained").
+  snap, slice (cuts the bodies away on the camera's side of the sketch plane
+  while the sketch is open), auto-project (and auto-project face outline),
+  show profiles, show points, show dimensions, show constraints, DOF counter
+  ("3 DOF left", "Fully constrained ✓", or "Over-constrained").
 - **Selecting and editing (no tool running):** hover pre-highlights; click
   and box select points and curves; dragging geometry moves it (or the whole
   selection) with a live solve, except that dragging a circle's rim resizes

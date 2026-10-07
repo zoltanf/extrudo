@@ -895,7 +895,8 @@ end to end, faster than in Fusion 360.
     loft from the profile to its 2D offset; the bullet is complete).
   - ~~Silhouettes of spheres, tori and free-form faces (HLR); projecting
     vertices and bodies, an "include" mode; Intersect~~ **done (P4-12,
-    2026-10-06, ADR-0031's amendment)**; Slice stays open (ADR-0031).
+    2026-10-06, ADR-0031's amendment)**; ~~Slice~~ **done 2026-10-07
+    (ADR-0031's §5: the sketch palette's Slice, view state)**.
   - ~~STEP colours (XDE) (ADR-0034; the readers are P4-06)~~ **done (P4-12,
     2026-10-06, ADR-0034's amendment)**: a file's solid and assembly-instance
     colours become the imported bodies' appearance once, and coloured bodies

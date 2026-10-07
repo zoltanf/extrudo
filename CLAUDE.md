@@ -318,7 +318,13 @@ cuts the face or body with the sketch plane (facade `sectionWithPlane`, keys
 which `ToolHost.syncProjections` turns into plain entities (`includedCurves`,
 `includeProjection`) amended into the same step and **relabelled** "Include
 <n> curves" (`DocumentState.amend(command, { relabel })`). `withoutRepeats` drops
-a curve that repeats an earlier one. Slice stays open. Native harness:
+a curve that repeats an earlier one. **The sketch palette's Slice is done
+(2026-10-07, §5 of the P4-12 amendment)**: with a sketch open and the
+`sketch.slice` display setting on, the bodies are clipped at the sketch
+plane, the camera's side removed — view state, one more `SectionClip` in
+`useSection`'s list, last after the person's own planes; the removed side
+is decided once per sketch or Slice turn-on (the session's
+`sketchSliceFlip`) and kept while the camera orbits. Native harness:
 `spikes/p4-12-project/` (`run.sh`, `run.sh leaks 100`). **In the app a sketch's frame comes only from
 `sketchFrame(feature, plane, model.sketches)`** (`sketch/frame.ts`),
 never `planeFrame()` alone. ADR-0032 (P2-10) added the primitives
@@ -622,7 +628,12 @@ the list** (`isClippedAny`: outside any plane is clipped), `capDepth` finds a
 cap per plane only where the other planes keep the crossing, and `SectionCap`
 draws **one cap per plane**: its stencil passes clip by that plane alone (the
 count of faces behind the plane decides "inside the solid") and its quad
-shader discards what the other planes cut (a uniform array). The panel lists
+shader discards what the other planes cut (a uniform array). **The sketch
+palette's Slice (P4-12, ADR-0031 §5) is a fourth clip source**: the open
+sketch's plane, the camera's side removed, appended to `clips` while a sketch
+is open and `viewport.sketchSlice` (the `sketch.slice` preference) is on —
+and with it on, the person's own planes keep clipping in sketch mode too.
+The panel lists
 rows (plane, Offset, Flip, Show, Change, Remove from the second row) with "Add
 plane" and "Box"; `SectionOverlay` has one handle per drawn plane or box face;
 `SectionBoxWire` draws the box's edges. Section Here adds a plane (replaces
@@ -2974,7 +2985,10 @@ them. Notes further down that name a machine apply to that machine only.
   and `data-section-clip` (the plane while it clips: `0,0,30:0,0,1` = origin,
   then the unit normal of the **removed** side; absent while off and in sketch
   mode; one entry per plane joined by `;`, the box's six in the order +x −x +y −y
-  +z −z). **P4-12:** each plane is a `fieldset` `[data-section-index="<n>"]`
+  +z −z; the sketch Slice's clip last while a sketch is open and
+  `sketch.slice` is on, which also brings the person's planes into sketch
+  mode; the region then also carries `data-sketch-slice="on|off"`, absent
+  with no sketch open — `e2e/sketch-slice.spec.ts` walks it). **P4-12:** each plane is a `fieldset` `[data-section-index="<n>"]`
   (legend "Plane 2") holding its own "Offset", "Flip", "Show section", "Change"
   and, from two rows on, "Remove" (`exact: true`: the footer reads "Remove", or
   "Remove all" with several rows); the buttons "Add plane" (`exact`) and "Box"

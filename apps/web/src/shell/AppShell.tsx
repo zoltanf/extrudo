@@ -546,6 +546,16 @@ export function AppShell({
       },
     );
   }, [mode, dialogOpen, selection, inspection, doc, sketchReports, constructionReports, bodyName]);
+  // The sketch slice's plane (P4-12, ADR-0031 §5): the open sketch's frame while
+  // sketch mode is active — the palette's Slice cuts the bodies there.
+  const slice = useMemo(() => {
+    if (mode !== 'sketch' || !activeSketchId) return undefined;
+    const feature = doc.features.find((f) => f.id === activeSketchId);
+    const sketch = feature ? readSketch(feature) : undefined;
+    return feature && sketch
+      ? sketchFrame(feature.id, sketch.plane, sketchReports, constructionReports)
+      : undefined;
+  }, [mode, activeSketchId, doc, sketchReports, constructionReports]);
   // Section analysis (P3-09): a clipping plane over the model, view state kept in the viewport
   // store. The tool's panel and arrow are open while `sectioning`; the section outlasts them.
   const section = useSection({
@@ -558,6 +568,7 @@ export function AppShell({
     notify,
     active: sectioning,
     model: mode === 'model',
+    slice,
     hover,
   });
   // 3D-print aids (P3-10): weight and filament estimates, and the overhang shading (view state

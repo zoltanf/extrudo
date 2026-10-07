@@ -14,6 +14,7 @@ import {
   type GeomRef,
   type SelectionItem,
   type SessionStore,
+  type SketchFrame,
   UNITS,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
@@ -22,6 +23,7 @@ import { useStore } from 'zustand';
 import type { Frame } from '../features/geometry';
 import { draggedExpression, snap } from '../features/manipulate';
 import { readTopology } from '../selection/items';
+import { cameraPosition } from '../viewport/camera';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker } from '../viewport/Viewport';
 import {
@@ -38,6 +40,7 @@ import {
   type SectionState,
   sectionClip,
   sectionFrame,
+  sketchSliceDecision,
 } from './clip';
 
 /** The tool's ID: the session's `activeTool` while its panel is open. */
@@ -61,6 +64,12 @@ export interface SectionOptions {
   active: boolean;
   /** Model mode: a sketch is drawn without the section. */
   model: boolean;
+  /**
+   * The open sketch's frame while sketch mode is active (P4-12, ADR-0031
+   * §5): the palette's Slice cuts the bodies here, after the person's own
+   * planes. Undefined outside sketch mode and while the frame is unknown.
+   */
+  slice?: SketchFrame | undefined;
   /** The session's hover: the plane picker shows the plane under the pointer. */
   hover: SelectionItem | undefined;
 }
@@ -123,6 +132,45 @@ export function lengthExpression(mm: number, settings: ExtrudoDocument['settings
   return `${snap(mm / factor, 0.1)} ${settings.units}`;
 }
 
+/**
+ * A plane's clipping plane: on, with a place and an offset that evaluated —
+ * and wanted: in model mode, or while a sketch's Slice brings the person's
+ * own planes into sketch mode (P4-12).
+ */
+export function rowClip(
+  state: SectionState,
+  frame: Frame | undefined,
+  offset: number | undefined,
+  want: boolean,
+): SectionClip | undefined {
+  return want && state.on && frame && offset !== undefined
+    ? sectionClip(frame, offset, state.flip)
+    : undefined;
+}
+
+/**
+ * The view's clipping planes (P4-12): the person's own on-planes (or the
+ * box's six), and — last, after them — the open sketch's Slice. The slice
+ * also brings the person's own planes into sketch mode, ahead of it; with
+ * the Slice off, a sketch is drawn without the section (ADR-0045).
+ */
+export function clipsWithSlice(
+  model: boolean,
+  sliceClip: SectionClip | undefined,
+  box: SectionBoxRow | undefined,
+  rows: readonly SectionRow[],
+): SectionClip[] {
+  const own =
+    model || sliceClip
+      ? box
+        ? box.state.on && box.value
+          ? boxClips(box.value)
+          : []
+        : rows.flatMap((r) => (r.clip ? [r.clip] : []))
+      : [];
+  return sliceClip ? [...own, sliceClip] : own;
+}
+
 /** A length with up to four decimals, for numbers worked out (a dragged box). */
 function exactExpression(mm: number, settings: ExtrudoDocument['settings']): string {
   const factor = UNITS[settings.units]?.factor ?? 1;
@@ -139,6 +187,7 @@ export function useSection({
   notify,
   active,
   model,
+  slice,
   hover,
 }: SectionOptions): SectionTool {
   const sections = useStore(viewport, (s) => s.section);
@@ -151,6 +200,25 @@ export function useSection({
   useEffect(() => {
     if (!active) setTarget(undefined);
   }, [active]);
+
+  // The sketch slice (P4-12, ADR-0031 §5): while a sketch is open and the
+  // palette's Slice is on, one more clip cuts the bodies at the sketch
+  // plane, the side the camera is on — decided once per sketch or Slice
+  // turn-on and kept while the camera orbits (the sign lives in the
+  // session's `sketchSliceFlip`). With it on, the person's own planes keep
+  // clipping in sketch mode too, ahead of it in the list.
+  const sketchSliceOn = useStore(viewport, (s) => s.sketchSlice);
+  const keptFlip = useStore(session, (s) => s.sketchSliceFlip);
+  const sliceDecision = useMemo(() => {
+    const { view, projection } = viewport.getState();
+    const at = cameraPosition(view, projection);
+    return sketchSliceDecision(slice, sketchSliceOn, keptFlip, [at.x, at.y, at.z]);
+  }, [slice, sketchSliceOn, keptFlip, viewport]);
+  const sliceClip = sliceDecision.clip;
+  useEffect(() => {
+    if (sliceDecision.decided !== keptFlip)
+      session.getState().setSketchSliceFlip(sliceDecision.decided);
+  }, [sliceDecision, keptFlip, session]);
 
   const evaluation = useMemo(() => evaluateParameters(doc), [doc]);
   const evaluate = useCallback(
@@ -177,13 +245,10 @@ export function useSection({
           state,
           frame,
           offset,
-          clip:
-            model && state.on && frame && offset !== undefined
-              ? sectionClip(frame, offset, state.flip)
-              : undefined,
+          clip: rowClip(state, frame, offset, model || sliceClip !== undefined),
         };
       }),
-    [sections, construction, bodies, evaluate, model],
+    [sections, construction, bodies, evaluate, model, sliceClip],
   );
   if (lastOffsets.current.length > sections.length) lastOffsets.current.length = sections.length;
 
@@ -209,11 +274,10 @@ export function useSection({
   }, [boxState, evaluate]);
   if (!boxState) lastBox.current = [];
 
-  const clips = useMemo<SectionClip[]>(() => {
-    if (!model) return [];
-    if (box) return box.state.on && box.value ? boxClips(box.value) : [];
-    return rows.flatMap((r) => (r.clip ? [r.clip] : []));
-  }, [model, box, rows]);
+  const clips = useMemo<SectionClip[]>(
+    () => clipsWithSlice(model, sliceClip, box, rows),
+    [model, sliceClip, box, rows],
+  );
   // The same list while the planes stay put, so nothing downstream redraws for nothing.
   const summary = clipsSummary(clips);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `summary` stands for `clips`.

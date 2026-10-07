@@ -136,13 +136,20 @@ describe('viewport store', () => {
     store.getState().setPreset('blender');
     store.getState().setOrigin('xy', true);
     store.getState().setSketchConstraints(false);
+    store.getState().setSketchSlice(true);
     const again = createViewportStore({ preferences });
     expect(again.getState().sketchConstraints).toBe(false);
+    expect(again.getState().sketchSlice).toBe(true);
     expect(again.getState().projection).toBe('orthographic');
     expect(again.getState().visualStyle).toBe('wireframe');
     expect(again.getState().grid).toBe(false);
     expect(again.getState().preset).toBe('blender');
     expect(again.getState().origin).toEqual({ ...DEFAULT_SETTINGS.origin, xy: true });
+  });
+
+  it('starts the sketch palette’s Slice off (P4-12)', () => {
+    const { store } = setup();
+    expect(store.getState().sketchSlice).toBe(false);
   });
 
   it('fills in settings missing from older preferences', () => {

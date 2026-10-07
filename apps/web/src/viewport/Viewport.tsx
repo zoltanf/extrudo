@@ -365,6 +365,8 @@ export function Viewport({
   const tool = useStore(viewport, (s) => s.tool);
   const projection = useStore(viewport, (s) => s.projection);
   const sectionState = useStore(viewport, (s) => s.section);
+  // The sketch palette's Slice (P4-12): the region says on or off while a sketch is open.
+  const sketchSliceOn = useStore(viewport, (s) => s.sketchSlice);
   const sectionClip = sectionClips && sectionClips.length > 0 ? sectionClips : undefined;
   const [dragging, setDragging] = useState<NavAction>();
   const [ready, setReady] = useState(false);
@@ -546,6 +548,9 @@ export function Viewport({
       data-canvases={canvasSummary(drawnCanvases, pixels)}
       data-section={sectionsSummary(sectionState, sectionBox)}
       data-section-clip={clipsSummary(sectionClip)}
+      data-sketch-slice={
+        sketches.some((s) => s.active) ? (sketchSliceOn ? 'on' : 'off') : undefined
+      }
       data-overhang={overhang?.summary}
       data-thickness={thickness?.summary}
       data-preview={previewSummary(preview)}

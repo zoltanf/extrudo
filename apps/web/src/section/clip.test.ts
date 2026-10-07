@@ -21,6 +21,9 @@ import {
   sectionFrame,
   sectionSummary,
   sectionsSummary,
+  sketchSliceClip,
+  sketchSliceDecision,
+  sketchSliceFlipFor,
 } from './clip';
 import { lengthExpression, planeName } from './useSection';
 
@@ -231,5 +234,46 @@ describe('several planes and a box (P4-12)', () => {
     const squeezed = dragBoxFace(box, '+y', -50);
     expect(squeezed.half[1]).toBeGreaterThan(0);
     expect(squeezed.center[1] - squeezed.half[1]).toBeCloseTo(-10);
+  });
+});
+
+describe('the sketch slice (P4-12)', () => {
+  // A sketch on a face 20 mm up, its normal pointing up.
+  const frame = { origin: [0, 0, 20] as const, normal: [0, 0, 1] as const };
+
+  it('cuts the side the camera is on, and no side when there is nothing to decide', () => {
+    expect(sketchSliceFlipFor(frame, [5, -5, 115])).toBe(1);
+    expect(sketchSliceFlipFor(frame, [5, -5, -115])).toBe(-1);
+    expect(sketchSliceClip(frame, 1)).toEqual({ origin: [0, 0, 20], normal: [0, 0, 1] });
+    expect(sketchSliceClip(frame, -1)).toEqual({ origin: [0, 0, 20], normal: [0, 0, -1] });
+  });
+
+  it('keeps the sketch plane itself whole (the sketch lies in the clip plane)', () => {
+    const clip = sketchSliceClip(frame, 1);
+    expect(isClipped(clip, 0, 0, 20)).toBe(false);
+    expect(isClipped(clip, 0, 0, 20 + CLIP_EPS / 2)).toBe(false);
+    expect(isClipped(clip, 0, 0, 20.001)).toBe(true);
+    expect(isClipped(clip, 0, 0, 19.999)).toBe(false);
+  });
+
+  it('decides the side once and keeps it while the camera moves', () => {
+    const above = sketchSliceDecision(frame, true, undefined, [0, 0, 100]);
+    expect(above.decided).toBe(1);
+    expect(above.clip).toEqual({ origin: [0, 0, 20], normal: [0, 0, 1] });
+    // The camera orbits below: the kept sign says the removed side stays up.
+    const moved = sketchSliceDecision(frame, true, above.decided, [0, 0, -100]);
+    expect(moved.decided).toBe(1);
+    expect(moved.clip).toEqual({ origin: [0, 0, 20], normal: [0, 0, 1] });
+    // Turned off and on again, the camera as it is now decides afresh.
+    const again = sketchSliceDecision(frame, true, undefined, [0, 0, -100]);
+    expect(again.decided).toBe(-1);
+    expect(again.clip).toEqual({ origin: [0, 0, 20], normal: [0, 0, -1] });
+  });
+
+  it('cuts nothing when the sketch is closed or the palette option is off', () => {
+    expect(sketchSliceDecision(undefined, true, 1, [0, 0, 100]).clip).toBeUndefined();
+    expect(sketchSliceDecision(undefined, true, 1, [0, 0, 100]).decided).toBeUndefined();
+    expect(sketchSliceDecision(frame, false, 1, [0, 0, 100]).clip).toBeUndefined();
+    expect(sketchSliceDecision(frame, false, 1, [0, 0, 100]).decided).toBeUndefined();
   });
 });

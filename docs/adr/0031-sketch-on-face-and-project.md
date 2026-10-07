@@ -286,10 +286,12 @@ joins; pushed in, it cuts.
   (Redefine Plane, ADR-0033).
 - Silhouettes of spheres, tori and free-form faces (only cylinders and
   cones now); a sphere's outline is a circle, the others need HLR.
-- Projecting vertices (a point) and whole bodies (their outline); an
-  "include" mode that copies without the link (Fusion's "break link").
-- Intersection curves (Fusion's "Intersect"), and a sketch slice (the
-  palette's Slice) through the bodies.
+- ~~Projecting vertices (a point) and whole bodies (their outline); an
+  "include" mode that copies without the link (Fusion's "break link").~~
+  Done in P4-12 (the amendment below).
+- ~~Intersection curves (Fusion's "Intersect"), and a sketch slice (the
+  palette's Slice) through the bodies.~~ Done in P4-12 (the amendment
+  below; the slice in §5).
 - When a projected face is split by a later edit, keys by edge name change
   and those curves are replaced (their constraints go). Following edges
   through splits by related names, as `ctx.resolve` does, would keep them.
@@ -446,10 +448,37 @@ one command on the host and one undo step, the report coming a recompute later
 as for every projection. A lost source drops the record with nothing added.
 `projectionSync` leaves `linked: false` records alone.
 
-### 5. Slice stays deferred
+### 5. Slice (2026-10-07)
 
-A sketch slice (the palette's Slice, a section view while sketching) is still
-open; section analysis (ADR-0045) covers looking inside meanwhile.
+The palette's Slice is a section view while sketching: while a sketch is
+open and the display setting `sketch.slice` is on (a preference beside
+auto-project's, default off), the bodies are cut away on the camera's side
+of the sketch plane, so a person sketching on a face inside a model sees
+the plane. View state only — nothing in the document, nothing undoable,
+like section analysis (ADR-0045) — and no kernel, facade, schema or
+file-format change.
+
+It is one more `SectionClip` in `useSection`'s list (ADR-0045), after the
+person's own planes, so it is clipped, capped (`SectionCap`) and respected
+by picking exactly as they are; `data-section-clip` lists it last,
+`data-sketch-slice` says on or off while a sketch is open. With it on, the
+person's own sections keep clipping in sketch mode too, ahead of it;
+with it off, a sketch is still drawn without the section. The sketch's own
+geometry, the grid, the origin and its glyphs stay unclipped: they are on
+the clip plane, and a point on the plane is kept (`CLIP_EPS`), so the
+auto-project snap still finds the body edges and vertices in the plane.
+
+**The removed side is the side the camera is on** when the sketch opens or
+Slice is turned on, and then it is frozen (the session's
+`sketchSliceFlip`, reset by entering or leaving a sketch): orbiting to the
+other side must not flip the cut under the person, which would lose the
+very geometry they were sketching against. The next sketch, or toggling
+Slice off and on, decides afresh.
+
+*Rejected: a document setting* — the slice is about the person's view of
+the model while they work, not about the design; like the section
+analysis, it belongs to the session and must not change what the file
+means, what undo holds or what a script sees.
 
 ### Harness results (`spikes/p4-12-project/`, `bash run.sh`, OCCT 8.0.1 in the pinned image)
 

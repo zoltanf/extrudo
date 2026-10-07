@@ -83,6 +83,12 @@ export interface ViewportSettings {
   autoProject: boolean;
   /** Also project a flat face's outline when a sketch starts on it (off by default). */
   autoProjectFace: boolean;
+  /**
+   * Slice (P4-12, ADR-0031 §5): while a sketch is open, cut the bodies away
+   * on the camera's side of the sketch plane. Off by default; a display
+   * setting like the rest of the palette.
+   */
+  sketchSlice: boolean;
 }
 
 export const DEFAULT_SETTINGS: ViewportSettings = {
@@ -101,6 +107,7 @@ export const DEFAULT_SETTINGS: ViewportSettings = {
   snap: true,
   autoProject: true,
   autoProjectFace: false,
+  sketchSlice: false,
 };
 
 /** The part of the scene that "fit" frames. */
@@ -217,6 +224,8 @@ export interface ViewportState extends ViewportSettings {
   setAutoProject(autoProject: boolean): void;
   /** Whether starting a sketch on a face projects the face's outline (P6-07). */
   setAutoProjectFace(autoProjectFace: boolean): void;
+  /** Turns the sketch palette's Slice on or off (P4-12). */
+  setSketchSlice(sketchSlice: boolean): void;
   setSnapshot(snapshot: (() => Promise<Blob | null>) | undefined): void;
   setRenderStats(stats: RenderStats | undefined): void;
   setSelectionFilter(kind: FilterKind, on: boolean): void;
@@ -386,6 +395,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       setAutoProjectFace(autoProjectFace) {
         set({ autoProjectFace });
       },
+      setSketchSlice(sketchSlice) {
+        set({ sketchSlice });
+      },
       setSnapshot(snapshot) {
         set({ snapshot });
       },
@@ -461,7 +473,8 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       s.sketchProfiles !== prev.sketchProfiles ||
       s.snap !== prev.snap ||
       s.autoProject !== prev.autoProject ||
-      s.autoProjectFace !== prev.autoProjectFace
+      s.autoProjectFace !== prev.autoProjectFace ||
+      s.sketchSlice !== prev.sketchSlice
     ) {
       const {
         projection,
@@ -476,6 +489,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         snap,
         autoProject,
         autoProjectFace,
+        sketchSlice,
       } = s;
       preferences.set(PREFERENCES_KEY, {
         projection,
@@ -490,6 +504,7 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
         snap,
         autoProject,
         autoProjectFace,
+        sketchSlice,
       });
     }
   });

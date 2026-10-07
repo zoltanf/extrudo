@@ -9,6 +9,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
   adds the feature and the plugin file to the design as one undo step, a stored feature opens
   from the design's own copy, and the Plugins dialog offers "Update to <version>";
   `docs/plugins.md` and `docs/api/plugins.md`.
+- 2026-10-07 · **Sketch palette Slice** (P4-12, ADR-0031 §5): while a sketch is open and the palette's Slice is on, the bodies are cut away on the camera's side of the sketch plane (view state; the removed side is decided once per sketch and kept while the camera orbits), with a cap and picking like a section plane's.
 - 2026-10-07 · **Multi-start threads** (P4-12, ADR-0056's second amendment): a `starts` input (2–8) cuts that many helices with a lead of starts × pitch, one tooth per start in one boolean, faces `s<j>.`; the Thread dialog has a Starts field; file format §6.33.
 - 2026-10-07 · **P6-03 plugin API, slice 2** (ADR-0077): installed plugins in a
   `PluginStore` (`plugins/<id>/plugin.extrudo-plugin` + `plugins/index.json`; OPFS

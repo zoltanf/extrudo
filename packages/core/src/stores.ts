@@ -154,12 +154,22 @@ export interface SessionState {
   activeTool: string | undefined;
   selection: SelectionItem[];
   hover: SelectionItem | undefined;
+  /**
+   * Which side of the open sketch's plane the Slice removes (P4-12, ADR-0031
+   * §5): +1 or −1 along the plane's normal. Decided when the sketch opens or
+   * Slice is turned on — the side the camera is on then — and kept while the
+   * camera moves, so orbiting to the other side doesn't flip the cut under
+   * the person. Cleared when the sketch opens or closes, so the next one
+   * decides afresh. Session state: not saved.
+   */
+  sketchSliceFlip: 1 | -1 | undefined;
   enterSketch(id: FeatureId): void;
   exitSketch(): void;
   setTool(tool: string | undefined): void;
   select(items: readonly SelectionItem[], mode?: SelectMode): void;
   clearSelection(): void;
   setHover(item: SelectionItem | undefined): void;
+  setSketchSliceFlip(flip: 1 | -1 | undefined): void;
 }
 
 export type SessionStore = StoreApi<SessionState>;
@@ -171,11 +181,24 @@ export function createSessionStore(): SessionStore {
     activeTool: undefined,
     selection: [],
     hover: undefined,
+    sketchSliceFlip: undefined,
     enterSketch(id) {
-      set({ mode: 'sketch', activeSketchId: id, activeTool: undefined, selection: [] });
+      set({
+        mode: 'sketch',
+        activeSketchId: id,
+        activeTool: undefined,
+        selection: [],
+        sketchSliceFlip: undefined,
+      });
     },
     exitSketch() {
-      set({ mode: 'model', activeSketchId: undefined, activeTool: undefined, selection: [] });
+      set({
+        mode: 'model',
+        activeSketchId: undefined,
+        activeTool: undefined,
+        selection: [],
+        sketchSliceFlip: undefined,
+      });
     },
     setTool(tool) {
       set({ activeTool: tool });
@@ -190,6 +213,9 @@ export function createSessionStore(): SessionStore {
       const hover = get().hover;
       if (hover === item || (hover && item && sameItem(hover, item))) return;
       set({ hover: item });
+    },
+    setSketchSliceFlip(sketchSliceFlip) {
+      if (sketchSliceFlip !== get().sketchSliceFlip) set({ sketchSliceFlip });
     },
   }));
 }

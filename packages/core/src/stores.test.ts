@@ -121,6 +121,19 @@ describe('session store', () => {
     expect(store.getState()).toMatchObject({ mode: 'model', activeSketchId: undefined });
   });
 
+  it('resets the Slice side when a sketch opens or closes (P4-12)', () => {
+    const store = createSessionStore();
+    store.getState().enterSketch(fid('f1'));
+    store.getState().setSketchSliceFlip(-1);
+    expect(store.getState().sketchSliceFlip).toBe(-1);
+    // Another sketch opens: the removed side is decided afresh for it.
+    store.getState().enterSketch(fid('f2'));
+    expect(store.getState().sketchSliceFlip).toBeUndefined();
+    store.getState().setSketchSliceFlip(1);
+    store.getState().exitSketch();
+    expect(store.getState().sketchSliceFlip).toBeUndefined();
+  });
+
   it('only notifies when the hovered item really changes', () => {
     const store = createSessionStore();
     const listener = vi.fn();

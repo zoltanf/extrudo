@@ -229,11 +229,6 @@ export interface SketchPaletteProps {
   onFinish(): void;
 }
 
-/** Options that arrive with later tasks, listed so the palette shows its real layout. */
-const LATER: readonly { label: string; comesWith: string }[] = [
-  { label: 'Slice', comesWith: 'P2' },
-];
-
 /** The sketch palette (UI spec §4): sketch options, the DOF counter and Finish Sketch. */
 export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: SketchPaletteProps) {
   const grid = useStore(viewport, (s) => s.grid);
@@ -244,6 +239,7 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
   const snap = useStore(viewport, (s) => s.snap);
   const autoProject = useStore(viewport, (s) => s.autoProject);
   const autoProjectFace = useStore(viewport, (s) => s.autoProjectFace);
+  const slice = useStore(viewport, (s) => s.sketchSlice);
   return (
     <FloatingPanel label="Sketch palette">
       <PanelTitle>
@@ -301,6 +297,15 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
         </li>
         <li>
           <PaletteToggle
+            checked={slice}
+            label="Slice"
+            onChange={(v) => viewport.getState().setSketchSlice(v)}
+          >
+            Slice
+          </PaletteToggle>
+        </li>
+        <li>
+          <PaletteToggle
             checked={autoProject}
             onChange={(v) => viewport.getState().setAutoProject(v)}
           >
@@ -326,16 +331,6 @@ export function SketchPalette({ name, viewport, host, onLookAt, onFinish }: Sket
             </label>
           </Tooltip>
         </li>
-        {LATER.map((option) => (
-          <li key={option.label}>
-            <Tooltip label={option.label} hint={`Arrives with ${option.comesWith}.`} side="left">
-              <label className="flex h-7 items-center gap-2 px-1 text-muted">
-                <input type="checkbox" disabled className="accent-(--x-accent)" />
-                {option.label}
-              </label>
-            </Tooltip>
-          </li>
-        ))}
       </ul>
       <DofCounter host={host} />
       <Button
@@ -1299,10 +1294,13 @@ function ConstructionToggle({ host }: { host: ToolHost }) {
 function PaletteToggle({
   checked,
   onChange,
+  label,
   children,
 }: {
   checked: boolean;
   onChange(checked: boolean): void;
+  /** An explicit accessible name, when the text alone isn't the whole story. */
+  label?: string;
   children: ReactNode;
 }) {
   return (
@@ -1312,6 +1310,7 @@ function PaletteToggle({
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
         className="accent-(--x-accent)"
+        aria-label={label}
       />
       {children}
     </label>

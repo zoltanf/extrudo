@@ -287,3 +287,13 @@ yet) and a hatch per material.
   some plane, so a face cut in two by different planes with no node of its own
   on a kept side is not offered even where a sliver remains. Caps where planes
   meet are exact only to the stencil's pixel; to check by hand in both themes.
+
+## Amendment (2026-10-07, P4-12): a sketch's Slice is a fourth clip source
+
+The sketch palette's Slice (ADR-0031 §5) adds one more `SectionClip` — the
+open sketch's plane, the camera's side removed — to `useSection`'s list
+while a sketch is open and the display setting `sketch.slice` is on, last
+after the person's own planes; everything here (clipping, caps, picking,
+the thickness mark) takes it unchanged. With it on, the person's own
+sections keep clipping in sketch mode too, where before a sketch was drawn
+without the section; with it off, that is unchanged.
