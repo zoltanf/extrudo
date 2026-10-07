@@ -37,11 +37,18 @@ export const MESH_BOOLEAN_DEFLECTION: MeshOptions = {
   angularDeflection: 0.1,
 };
 
-/** A cylindrical face as a thread sees it (`Kernel.threadFace`). */
+/** A cylindrical or conical face as a thread sees it (`Kernel.threadFace`). */
 export interface ThreadFace {
-  /** The cylinder's axis (canonical sign: first non-zero component positive). */
+  /** The face's axis (canonical sign: first non-zero component positive). */
   axis: Axis;
+  /** The radius at `from` (a cylinder's everywhere). */
   radius: number;
+  /**
+   * A cone's half angle (radians, P4-12: tapered threads), signed along
+   * `axis.direction`: the radius at `h` is `radius + (h − from)·tan(taper)`.
+   * 0 for a cylinder.
+   */
+  taper: number;
   /** The face is a hole's wall (material outside it): an internal thread. */
   inside: boolean;
   /** Where the face starts and ends along the axis, from `axis.origin` (mm). */
@@ -1192,7 +1199,9 @@ export class Kernel {
    * `profile` face in a plane through `axis`, on one side of it and shorter
    * along it than `pitch`, carried round the axis as a screw moves: `pitch`
    * mm per turn for `turns` turns, right-handed (counter-clockwise seen
-   * from the axis's tip as it rises) unless `left`. History as for `prism`
+   * from the axis's tip as it rises) unless `left`. A non-zero `taper`
+   * (radians, P4-12) runs it on a cone of that half angle instead: the radius
+   * grows by tan(taper) per mm along `axis.direction`. History as for `prism`
    * (one side face per profile edge and turn).
    */
   threadSweep(
@@ -1201,15 +1210,18 @@ export class Kernel {
     pitch: number,
     turns: number,
     left: boolean,
+    taper = 0,
   ): OperationResult {
     this.#solid(profile, 'Thread');
     const { origin: o, direction: d } = axis;
-    return this.#withHistory(this.#facade.threadSweep(profile, ...o, ...d, pitch, turns, left));
+    return this.#withHistory(
+      this.#facade.threadSweep(profile, ...o, ...d, pitch, turns, left, taper),
+    );
   }
 
   /**
-   * What a thread needs of cylindrical face `face` of `shape` (P4-02), or
-   * undefined when it isn't a cylinder: see `ThreadFace`.
+   * What a thread needs of cylindrical or conical face `face` of `shape`
+   * (P4-02; cones P4-12), or undefined when it is neither: see `ThreadFace`.
    */
   threadFace(shape: ShapeHandle, face: number, operation = 'Thread'): ThreadFace | undefined {
     // `operation` names the feature in a mesh refusal: Emboss asks for the same
@@ -1227,6 +1239,7 @@ export class Kernel {
       to: at(9),
       whole: at(10) === 1,
       open: [at(11) === 1, at(12) === 1],
+      taper: at(13),
     };
   }
 

@@ -2577,46 +2577,14 @@ public:
       const gp_Dir toward(xx, xy, xz);
       if (axis.IsParallel(toward, 1e-9)) return fail("The coil's start direction runs along its axis.");
       const gp_Ax3 frame(gp_Pnt(ox, oy, oz), axis, toward);
-      Handle(Geom_Surface) surface;
-      double rise = pitch;
-      if (std::abs(taper) > 1e-12) {
-        // v runs along the cone's generator: a pitch along the axis is `pitch / cos(taper)` of it.
-        surface = new Geom_ConicalSurface(frame, taper, radius);
-        rise = pitch / std::cos(taper);
-      } else {
-        surface = new Geom_CylindricalSurface(frame, radius);
+      TopoDS_Wire wire;
+      switch (helixWire(frame, radius, pitch, turns, taper, left, 1e-7, true, wire)) {
+        case 1: return fail("Couldn't make the coil's helix.");
+        case 2: return fail("Couldn't build the coil's helix as a 3D curve.");
+        case 3: return fail("Couldn't make a wire of the coil's helix.");
+        default: break;
       }
-      const double turnSign = left ? -1.0 : 1.0;
-      const gp_Dir2d direction(turnSign * 2 * M_PI, rise);
-      Handle(Geom2d_Line) line = new Geom2d_Line(gp_Pnt2d(0, 0), direction);
-      // One edge per turn (the last one the fraction left): a sweep then has a face per turn,
-      // which booleans prune by their boxes; one face for all the turns made a 200-turn cut
-      // take minutes.
-      const double perTurn = std::sqrt(4 * M_PI * M_PI + rise * rise);
-      const double length = turns * perTurn;
-      const int pieces = std::max(1, static_cast<int>(std::ceil(turns - 1e-6)));
-      BRepBuilderAPI_MakeWire wire;
-      TopoDS_Vertex joint;
-      for (int k = 0; k < pieces; ++k) {
-        const double from = k * perTurn;
-        const double to = k + 1 == pieces ? length : (k + 1) * perTurn;
-        const gp_Pnt2d uv = line->Value(to);
-        const TopoDS_Vertex end = BRepBuilderAPI_MakeVertex(surface->Value(uv.X(), uv.Y())).Vertex();
-        if (k == 0) {
-          const gp_Pnt2d start = line->Value(from);
-          joint = BRepBuilderAPI_MakeVertex(surface->Value(start.X(), start.Y())).Vertex();
-        }
-        BRepBuilderAPI_MakeEdge edge(line, surface, joint, end, from, to);
-        if (!edge.IsDone()) return fail("Couldn't make the coil's helix.");
-        TopoDS_Edge piece = edge.Edge();
-        if (!BRepLib::BuildCurves3d(piece, 1e-7, GeomAbs_C2, 14, 200)) {
-          return fail("Couldn't build the coil's helix as a 3D curve.");
-        }
-        wire.Add(piece);
-        if (!wire.IsDone()) return fail("Couldn't make a wire of the coil's helix.");
-        joint = end;
-      }
-      return store(wire.Wire());
+      return store(wire);
     } catch (...) {
       return failFromException("Coil failed");
     }
@@ -2995,22 +2963,29 @@ public:
    * cylinder about the axis, one edge per turn (one long edge needs a
    * B-spline of thousands of poles), and the profile keeps a fixed angle to
    * the axis (MakePipeShell's fixed binormal), so every point of it runs on
-   * its own helix of the same pitch.
+   * its own helix of the same pitch. A non-zero `taper` (radians, P4-12:
+   * tapered threads) puts the path on a cone of that half angle instead
+   * (`helixWire`, as a tapered coil's): the radius grows by tan(taper) per
+   * mm along the axis, so every point of the profile runs on a conical helix
+   * of the same taper (to within the frame's turn as the helix's lead angle
+   * changes with the radius: under a micrometre for a pipe thread).
    *
    * Refused before OCCT runs: a profile that isn't a planar face through the
-   * axis, touches the axis or is as long along the axis as the pitch (the
-   * turns would touch), and more than 2000 turns. The result must pass
+   * axis, touches the axis (at its start or, narrowing, at its end) or is as
+   * long along the axis as the pitch (the turns would touch), more than 2000
+   * turns, and a taper of 90° or more. The result must pass
    * BRepCheck_Analyzer. History for input 0 as for prism: generated (1) side
    * faces per profile edge (one per turn), first (4) and last (5) for the
    * profile face.
    */
   int threadSweep(int profile, double ox, double oy, double oz, double dx, double dy, double dz,
-                  double pitch, double turns, bool left) {
+                  double pitch, double turns, bool left, double taper) {
     beginOp();
     const TopoDS_Shape* input = find(profile);
     if (input == nullptr) return fail("Thread failed: unknown profile shape.");
     if (!(pitch > Precision::Confusion())) return fail("Thread failed: the pitch must be greater than 0.");
     if (!(turns > 1e-6) || turns > 2000) return fail("Thread failed: the number of turns is out of range.");
+    if (!(std::abs(taper) < M_PI / 2 - 1e-3)) return fail("Thread failed: the taper must be between -90° and 90°.");
     if (gp_Vec(dx, dy, dz).Magnitude() <= Precision::Confusion()) return fail("Thread failed: the axis has no direction.");
     try {
       TopExp_Explorer faceAt(*input, TopAbs_FACE);
@@ -3028,7 +3003,9 @@ public:
         hMax = std::max(hMax, h);
         rMin = std::min(rMin, r);
       }
-      if (!(rMin > 1e-4)) return fail("Thread failed: the profile touches the axis.");
+      // A narrowing cone brings the profile nearer the axis turn by turn.
+      const double narrows = std::min(0.0, std::tan(taper) * pitch * turns);
+      if (!(rMin + narrows > 1e-4)) return fail("Thread failed: the profile touches the axis.");
       if (!(hMax - hMin < pitch - 1e-6)) return fail("Thread failed: the profile is as long as the pitch.");
       BRepAdaptor_Surface surface(face);
       if (surface.GetType() != GeomAbs_Plane) return fail("Thread failed: the profile isn't flat.");
@@ -3044,27 +3021,15 @@ public:
       const gp_Vec radial = toCentre - gp_Vec(axis) * hc;
       const double rc = radial.Magnitude();
       const gp_Ax3 frame(origin.Translated(gp_Vec(axis) * hc), axis, gp_Dir(radial));
-      Handle(Geom_Surface) cylinder = new Geom_CylindricalSurface(frame, rc);
-      const double sign = left ? -1.0 : 1.0;
-      const gp_Dir2d along(sign * 2 * M_PI, pitch);
-      const double perTurn = std::sqrt(4 * M_PI * M_PI + pitch * pitch);
-      BRepBuilderAPI_MakeWire spine;
-      const int whole = static_cast<int>(std::floor(turns + 1e-9));
-      const int pieces = whole + (turns - whole > 1e-6 ? 1 : 0);
-      for (int k = 0; k < pieces; ++k) {
-        const double span = std::min(1.0, turns - k);
-        Handle(Geom2d_Line) line = new Geom2d_Line(gp_Pnt2d(sign * 2 * M_PI * k, pitch * k), along);
-        BRepBuilderAPI_MakeEdge edge(line, cylinder, 0, span * perTurn);
-        if (!edge.IsDone()) return fail("Thread failed: couldn't make the helix.");
-        TopoDS_Edge helix = edge.Edge();
-        if (!BRepLib::BuildCurves3d(helix, 1e-5, GeomAbs_C2, 14, 200)) {
-          return fail("Thread failed: couldn't build the helix.");
-        }
-        spine.Add(helix);
-        if (!spine.IsDone()) return fail("Thread failed: couldn't join the helix's turns.");
+      TopoDS_Wire spine;
+      switch (helixWire(frame, rc, pitch, turns, taper, left, 1e-5, false, spine)) {
+        case 1: return fail("Thread failed: couldn't make the helix.");
+        case 2: return fail("Thread failed: couldn't build the helix.");
+        case 3: return fail("Thread failed: couldn't join the helix's turns.");
+        default: break;
       }
 
-      BRepOffsetAPI_MakePipeShell pipe(spine.Wire());
+      BRepOffsetAPI_MakePipeShell pipe(spine);
       pipe.SetMode(axis);
       const TopoDS_Wire outline = BRepTools::OuterWire(face);
       pipe.Add(outline, false, false);
@@ -3113,17 +3078,20 @@ public:
   }
 
   /**
-   * What a thread needs to know of a cylindrical face `face` of `shape`
-   * (P4-02, ADR-0056), in geometryNumbers: [ox, oy, oz, dx, dy, dz, radius,
-   * inside, h0, h1, whole, open0, open1]. The axis runs through (ox, oy, oz)
-   * along (dx, dy, dz) (canonical sign); the face spans h0 to h1 along it
-   * from that point. `inside` is 1 when the face's material lies outside the
+   * What a thread needs to know of a cylindrical or conical face `face` of
+   * `shape` (P4-02, ADR-0056; cones P4-12, its third amendment), in
+   * geometryNumbers: [ox, oy, oz, dx, dy, dz, radius, inside, h0, h1, whole,
+   * open0, open1, taper]. The axis runs through (ox, oy, oz) along (dx, dy,
+   * dz) (canonical sign); the face spans h0 to h1 along it from that point.
+   * `radius` is the face's radius at h0; `taper` is a cone's half angle
+   * (radians), signed along (dx, dy, dz): the radius at h is radius +
+   * (h − h0)·tan(taper). A cylinder's taper is 0. `inside` is 1 when the face's material lies outside the
    * cylinder (a hole's wall: an internal thread), 0 for a shaft. `whole` is 1
    * when the face goes all the way round. `open0` / `open1` say whether the
    * face's edge at h0 / h1 is an outward corner (1: the shaft's end, a hole's
    * mouth, where a thread gets its lead-in chamfer) or not (0: a shoulder,
-   * a hole's floor, a smooth join, or no edge right round). Returns 13, or -1
-   * (not a cylinder, unknown shape).
+   * a hole's floor, a smooth join, or no edge right round). Returns 14, or -1
+   * (not a cylinder or a cone, unknown shape).
    */
   int threadFace(int shape, int face) {
     beginOp();
@@ -3136,10 +3104,17 @@ public:
       if (face < 0 || face >= faces.Extent()) return failCurve("Face index out of range.");
       const TopoDS_Face f = TopoDS::Face(faces(face + 1));
       BRepAdaptor_Surface surface(f);
-      if (surface.GetType() != GeomAbs_Cylinder) return failCurve("The face isn't cylindrical.");
-      const gp_Cylinder cylinder = surface.Cylinder();
-      const gp_Pnt origin = cylinder.Location();
-      const gp_Dir axis = cylinder.Axis().Direction();
+      const GeomAbs_SurfaceType type = surface.GetType();
+      if (type != GeomAbs_Cylinder && type != GeomAbs_Cone) return failCurve("The face isn't cylindrical or conical.");
+      // A cone (P4-12, tapered threads): v runs along its generator, so a height
+      // along the axis is v·cos(halfAngle) and the radius there RefRadius + v·sin.
+      const bool conical = type == GeomAbs_Cone;
+      const gp_Ax1 axis1 = conical ? surface.Cone().Axis() : surface.Cylinder().Axis();
+      const gp_Pnt origin = conical ? surface.Cone().Location() : surface.Cylinder().Location();
+      const double halfAngle = conical ? surface.Cone().SemiAngle() : 0.0;
+      const double refRadius = conical ? surface.Cone().RefRadius() : surface.Cylinder().Radius();
+      const double alongV = std::cos(halfAngle);
+      const gp_Dir axis = axis1.Direction();
       const gp_Dir out = canonical(axis);
       const double flip = out.Dot(axis) < 0 ? -1.0 : 1.0;
       double u0 = 0, u1 = 0, v0 = 0, v1 = 0;
@@ -3204,10 +3179,13 @@ public:
       }
       pushPoint(origin);
       pushDir(out);
-      const double h0 = flip > 0 ? v0 : -v1;
-      const double h1 = flip > 0 ? v1 : -v0;
-      geometry_.insert(geometry_.end(), {cylinder.Radius(), inside ? 1.0 : 0.0, h0, h1, whole ? 1.0 : 0.0,
-                                         flip > 0 ? open[0] : open[1], flip > 0 ? open[1] : open[0]});
+      const double h0 = (flip > 0 ? v0 : -v1) * alongV;
+      const double h1 = (flip > 0 ? v1 : -v0) * alongV;
+      // The radius at the face's lower end along `out`, and the half angle signed along `out`.
+      const double radius = refRadius + (flip > 0 ? v0 : v1) * std::sin(halfAngle);
+      geometry_.insert(geometry_.end(), {radius, inside ? 1.0 : 0.0, h0, h1, whole ? 1.0 : 0.0,
+                                         flip > 0 ? open[0] : open[1], flip > 0 ? open[1] : open[0],
+                                         flip * halfAngle});
       return static_cast<int>(geometry_.size());
     } catch (...) {
       failFromException("Thread face failed");
@@ -3934,6 +3912,76 @@ private:
   }
 
 private:
+  /**
+   * The helix both `helix` (a coil's path) and `threadSweep` (a thread's
+   * spine, P4-12's tapered threads) run along: it starts at `frame`'s origin
+   * + `radius` along its X, turns about its Z for `turns` turns, rising
+   * `pitch` along Z per turn, counter-clockwise seen from Z's tip (clockwise
+   * with `left`), on a cylinder, or with a non-zero `taper` on a cone of that
+   * half angle (the radius grows by tan(taper) per mm of height). One edge
+   * per turn (the last one the fraction left), each edge's 3D B-spline within
+   * `tolerance` of the exact helix. With `shareVertices` the turns are cut
+   * from one line between shared vertices (the coil's way, P4-01); without,
+   * each turn is a line of its own that the wire builder joins (the thread's
+   * way, P4-02). Both are kept as they were, so that a straight thread and a
+   * coil compute exactly as before (the two differ by about 1e-7 of a
+   * thread's volume, which a mesh fingerprint would see).
+   * 0 on success, else what failed: 1 an edge, 2 its 3D curve, 3 the wire.
+   * The caller checks the numbers.
+   */
+  static int helixWire(const gp_Ax3& frame, double radius, double pitch, double turns, double taper, bool left,
+                       double tolerance, bool shareVertices, TopoDS_Wire& out) {
+    Handle(Geom_Surface) surface;
+    double rise = pitch;
+    if (std::abs(taper) > 1e-12) {
+      // v runs along the cone's generator: a pitch along the axis is `pitch / cos(taper)` of it.
+      surface = new Geom_ConicalSurface(frame, taper, radius);
+      rise = pitch / std::cos(taper);
+    } else {
+      surface = new Geom_CylindricalSurface(frame, radius);
+    }
+    const double turnSign = left ? -1.0 : 1.0;
+    const gp_Dir2d direction(turnSign * 2 * M_PI, rise);
+    Handle(Geom2d_Line) line = new Geom2d_Line(gp_Pnt2d(0, 0), direction);
+    // One edge per turn: a sweep then has a face per turn, which booleans prune
+    // by their boxes; one face for all the turns made a 200-turn cut take
+    // minutes, and one long edge needs a B-spline of thousands of poles.
+    const double perTurn = std::sqrt(4 * M_PI * M_PI + rise * rise);
+    const double length = turns * perTurn;
+    const int pieces = std::max(1, static_cast<int>(std::ceil(turns - 1e-6)));
+    BRepBuilderAPI_MakeWire wire;
+    TopoDS_Vertex joint;
+    for (int k = 0; k < pieces; ++k) {
+      const double from = k * perTurn;
+      const double to = k + 1 == pieces ? length : (k + 1) * perTurn;
+      TopoDS_Edge piece;
+      if (shareVertices) {
+        const gp_Pnt2d uv = line->Value(to);
+        const TopoDS_Vertex end = BRepBuilderAPI_MakeVertex(surface->Value(uv.X(), uv.Y())).Vertex();
+        if (k == 0) {
+          const gp_Pnt2d start = line->Value(from);
+          joint = BRepBuilderAPI_MakeVertex(surface->Value(start.X(), start.Y())).Vertex();
+        }
+        BRepBuilderAPI_MakeEdge edge(line, surface, joint, end, from, to);
+        if (!edge.IsDone()) return 1;
+        piece = edge.Edge();
+        joint = end;
+      } else {
+        // A line of its own per turn, from the turn's start, joined by the wire builder.
+        const double span = k + 1 == pieces ? turns - k : 1.0;
+        Handle(Geom2d_Line) own = new Geom2d_Line(gp_Pnt2d(turnSign * 2 * M_PI * k, rise * k), direction);
+        BRepBuilderAPI_MakeEdge edge(own, surface, 0, span * perTurn);
+        if (!edge.IsDone()) return 1;
+        piece = edge.Edge();
+      }
+      if (!BRepLib::BuildCurves3d(piece, tolerance, GeomAbs_C2, 14, 200)) return 2;
+      wire.Add(piece);
+      if (!wire.IsDone()) return 3;
+    }
+    out = wire.Wire();
+    return 0;
+  }
+
   /** One edge of a sketch plane in a cylinder's parameters (P4-04). */
   struct Wrapped {
     Handle(Geom2d_Curve) curve;

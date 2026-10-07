@@ -141,7 +141,9 @@ function evaluateEmboss(ctx: EvalContext<EmbossInputs>): FeatureOutput {
   // A cylinder wraps (ADR-0060 §3), and a cone (P4-12); a flat face takes the
   // profiles moved onto it, and anything else projected onto it.
   // The third argument names the feature in a mesh refusal (ADR-0066 §4).
-  const round = kernel.threadFace(hit.shape, hit.index, 'Emboss');
+  // `threadFace` reads cones too (P4-12's tapered threads): a cone wraps through `coneFace`.
+  const turned = kernel.threadFace(hit.shape, hit.index, 'Emboss');
+  const round = turned && turned.taper === 0 ? turned : undefined;
   const cone = round ? undefined : kernel.coneFace(hit.shape, hit.index, 'Emboss');
   const flat = round || cone ? undefined : flatFaceOf(ctx, hit);
   const method: EmbossMethod = round

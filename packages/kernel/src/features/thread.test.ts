@@ -753,6 +753,7 @@ describe('thread', { timeout: 300_000 }, () => {
       to: turns * 1.25,
       whole: true,
       open: [false, false],
+      taper: 0,
     });
     expect(planThread(face(MAX_TURNS), settings, numbers, []).report.turns).toBe(MAX_TURNS);
     expect(() => planThread(face(MAX_TURNS + 1), settings, numbers, [])).toThrow(
