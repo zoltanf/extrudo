@@ -412,9 +412,10 @@ raw, 0.08 MB brotli; 18.80 / 6.13 / 4.26 MB before) and P4-12's STEP colours
 `projectOnFace`: +26 kB raw, under 0.01 MB brotli; 20.01 / 6.48 / 4.50 MB
 before) and P4-12's taper on ellipse and spline sides (`taperLoft`:
 `BRepOffsetAPI_MakeOffset` and a ruled `ThruSections`: +0.48 MB raw, +0.10 MB
-brotli; 20.04 / 6.49 / 4.50 MB before); the 15.76 MB / 3.69 MB brotli
+brotli; 20.04 / 6.49 / 4.50 MB before) and the taper caps' point-to-plane
+match (2026-10-07, under 0.01 MB); the 15.76 MB / 3.69 MB brotli
 of ADR-0037 was P2-15's; OCCT input hash
-`39332d2e8a3d` (release `occt-39332d2e8a3d`); **don't
+`e6811f0e5181` (release `occt-e6811f0e5181`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI

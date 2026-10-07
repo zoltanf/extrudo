@@ -6062,14 +6062,18 @@ private:
     return TopoDS_Face();
   }
 
-  /** The result faces whose surface is `plane` (the caps of a tapered loft). */
+  /** The result faces whose surface is `plane` (the caps of a tapered loft).
+   * Geometric, not by the planes' origins: a plane's `Location()` is wherever
+   * its surface was built (the profile's plane sits at the sketch origin, a
+   * cap built by `faceFromWires` wherever its outline is), so the match is the
+   * point-to-plane distance of the face's location. */
   static NCollection_List<TopoDS_Shape> facesInPlane(const TopoDS_Shape& result, const gp_Pln& plane) {
     NCollection_List<TopoDS_Shape> out;
     for (TopExp_Explorer f(result, TopAbs_FACE); f.More(); f.Next()) {
       BRepAdaptor_Surface surface(TopoDS::Face(f.Current()), false);
       if (surface.GetType() != GeomAbs_Plane) continue;
       const gp_Pln& pln = surface.Plane();
-      if (pln.Location().Distance(plane.Location()) > Precision::Confusion() * 1000) continue;
+      if (plane.Distance(pln.Location()) > Precision::Confusion() * 1000) continue;
       if (std::abs(pln.Axis().Direction().Dot(plane.Axis().Direction())) < 0.999) continue;
       out.Append(f.Current());
     }

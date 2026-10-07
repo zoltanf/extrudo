@@ -576,3 +576,15 @@ always was. The facade's WASM grows by about 0.48 MB raw (20.04 → 20.52 MB):
 `BRepOffsetAPI_MakeOffset` and `BRepFill_OffsetWire` pull in TKOffset code
 the trimmed build didn't keep (gzip 6.49 → 6.62 MB, brotli 4.50 → 4.60 MB).
 OCCT input hash `39332d2e8a3d` (release `occt-39332d2e8a3d`).
+
+### Results (2026-10-07, cap match)
+
+`facesInPlane` now matches by the **point-to-plane distance** of the face's
+plane, not by comparing the planes' `Location()` points (a plane's location
+is wherever its surface was built), and a probe over the facade (ellipse
+and closed B-spline profiles, at the origin and at (200, 150), on XY and on
+a plane 30 mm up) shows why the old rule had held anyway:
+`BRepLib_FindSurface` reuses the profile's own plane surface from the
+offset wire's pcurves, so every cap's plane location is the profile plane's
+own wherever the profile is drawn, which that plane and its translation by
+the sweep match by construction.

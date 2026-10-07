@@ -3,6 +3,14 @@
 One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
+
+- 2026-10-07 · **P4-12 Taper cap match fix** (ADR-0028's amendment): a
+  tapered loft's caps are found by the point-to-plane distance of the face's
+  plane, not by comparing the planes' origin points — a plane's `Location()`
+  is wherever its surface was built, so the origin-to-origin rule was a
+  coincidence of `BRepLib_FindSurface` reusing the profile's own plane. No
+  schema or file-format change; WASM size unchanged (20.52 MB raw), OCCT
+  input hash `e6811f0e5181`.
 - 2026-10-07 · **P6-01 Electron app, slice 1 review fixes** (ADR-0075): closed
   the review's two high findings — every id that becomes a path is validated
   (`StorageError`/`assertId`, the Node `full()` refuses `..`/absolute/NUL and
