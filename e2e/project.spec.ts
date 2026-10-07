@@ -1,6 +1,14 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { clickAt, primitive, settled, zoomOutTo } from './benchmark-helpers';
-import { counts, kernelReady, mapping, newSketchOnXY, openProject, projector } from './helpers';
+import {
+  counts,
+  kernelReady,
+  mapping,
+  newSketchOnXY,
+  openProject,
+  openSketch,
+  projector,
+} from './helpers';
 
 // P4-12 (ADR-0031's amendment): Project takes a sphere's outline (a silhouette,
 // not just its edges), Intersect (Shift+P) brings in the curves where a body
@@ -25,13 +33,6 @@ const attr = async (el: Locator, name: string) => (await el.getAttribute(name)) 
 const browserRow = (page: Page, name: string) =>
   page.getByRole('complementary', { name: 'Browser' }).getByRole('button', { name, exact: true });
 
-/** The ID of the sketch that is open (the one Create Sketch just made: the last). */
-async function openSketch(viewport: Locator): Promise<string> {
-  await expect.poll(() => attr(viewport, 'data-sketch-frames')).not.toBe('');
-  const frames = (await attr(viewport, 'data-sketch-frames')).split(' ');
-  return (frames.at(-1) ?? '').split(':')[0] ?? '';
-}
-
 /** Hovers sketch point (x, y) of the Top view until the view offers a face, then clicks it. */
 async function clickFace(page: Page, viewport: Locator, x: number, y: number) {
   const at = await mapping(viewport);
@@ -47,7 +48,7 @@ test('projects a sphere below the sketch as its outline: one circle', async ({ p
   await primitive(page, 'Sphere', { Diameter: '20 mm', Offset: '-40 mm' });
   await newSketchOnXY(page);
   await settled(viewport);
-  const sketch = await openSketch(viewport);
+  const sketch = await openSketch(page);
 
   await page.keyboard.press('p');
   const panel = page.getByRole('region', { name: 'Project', exact: true });
@@ -99,7 +100,7 @@ test('Intersect (Shift+P) cuts a cylinder with an angled plane into an ellipse',
   await expect(viewport).toHaveAttribute('data-sketch-frames', /:0,-0\.707,0\.707$/, {
     timeout: 15_000,
   });
-  const sketch = await openSketch(viewport);
+  const sketch = await openSketch(page);
 
   await page.keyboard.press('Shift+P');
   const panel = page.getByRole('region', { name: 'Intersect', exact: true });

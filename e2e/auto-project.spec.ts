@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { primitive, settled, zoomOutTo } from './benchmark-helpers';
-import { counts, kernelReady, mapping, openProject, projector } from './helpers';
+import { counts, kernelReady, mapping, openProject, openSketch, projector } from './helpers';
 
 // P6-07 (ADR-0074): a body edge or vertex a sketch tool snaps to is projected
 // into the sketch on the fly. A Line end that snaps to a Box vertex brings the
@@ -35,14 +35,6 @@ async function box(page: Page) {
   await kernelReady(page);
   await primitive(page, 'Box', { Length: '40 mm', Width: '40 mm', Height: '20 mm' });
   await expect(viewportOf(page)).toHaveAttribute('data-bodies', 'Body1:6:40,40,20');
-}
-
-/** The ID of the open sketch (the last one, which Create Sketch just made). */
-async function openSketch(page: Page): Promise<string> {
-  const viewport = viewportOf(page);
-  await expect.poll(() => attr(viewport, 'data-sketch-frames')).not.toBe('');
-  const frames = (await attr(viewport, 'data-sketch-frames')).split(' ');
-  return (frames.at(-1) ?? '').split(':')[0] ?? '';
 }
 
 /** Create Sketch on the Box's top face (world (0,0,20)): the sketch opens on it. */

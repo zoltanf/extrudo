@@ -3674,7 +3674,12 @@ them. Notes further down that name a machine apply to that machine only.
   The 2026-10-07 review adds a test snapping a Line end to a Ø40 Cylinder's
   **curved** top rim (a point on a curved edge is still allowed): it projects
   the circle (`<id>:curves=1`) and holds the point on it.
-  `--repeat-each=2`.
+  `--repeat-each=2`. `openSketch` (moved to `e2e/helpers.ts`) waits for a
+  sketch id that was not shown before the call — the last `data-sketch-frames`
+  entry can still be an older sketch's while the new one's face pick resolves
+  its kernel reference (`sketchOnFace`), and that wrong id was the face-outline
+  test's CI flake (plane picks are synchronous, so the snapshot already names
+  them and it falls back to the last shown).
 - **Canvas e2e** (`e2e/canvas.spec.ts`, P4-06 slice 5): the picture is a
   200 × 100 PNG **built in the page** with an `OffscreenCanvas` (as a string:
   the e2e specs typecheck without the DOM) and handed to the file chooser as

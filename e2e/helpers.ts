@@ -49,6 +49,43 @@ export async function newSketchOnXY(page: Page) {
   return mapping(viewport);
 }
 
+/**
+ * The ID of the sketch that is open (the one Create Sketch just made). Not
+ * simply the last entry of `data-sketch-frames`: an older sketch can still be
+ * shown, whose frame keeps the attribute non-empty while the new sketch is
+ * still being created (a face pick resolves a kernel reference first, AppShell
+ * `sketchOnFace`) — that wrong id was the face-outline test's CI flake. So:
+ * snapshot the ids shown before the call, wait for one that was not there,
+ * and until `data-sketch-frames` carries that id's frame. When the pick was a
+ * plane (synchronous) the snapshot already names the sketch, and the overlays
+ * — which come up with the commit that lists it — say so.
+ */
+export async function openSketch(page: Page): Promise<string> {
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  const read = async () =>
+    ((await viewport.getAttribute('data-sketches')) ?? '').split(' ').filter(Boolean);
+  const open = (await viewport.locator('[data-sketch-summary]').count()) > 0;
+  const before = await read();
+  let ids = before;
+  let id = '';
+  if (!open) {
+    const deadline = Date.now() + 10_000;
+    while (id === '' && Date.now() < deadline) {
+      await page.waitForTimeout(100);
+      ids = await read();
+      id = ids.find((s) => !before.includes(s)) ?? '';
+    }
+  }
+  if (id === '') id = ids.at(-1) ?? '';
+  await expect
+    .poll(async () => {
+      const frames = ((await viewport.getAttribute('data-sketch-frames')) ?? '').split(' ');
+      return frames.find((entry) => entry.startsWith(`${id}:`)) ?? '';
+    })
+    .not.toBe('');
+  return id;
+}
+
 export async function mapping(viewport: Locator) {
   const box = await viewport.boundingBox();
   if (!box) throw new Error('no viewport');
