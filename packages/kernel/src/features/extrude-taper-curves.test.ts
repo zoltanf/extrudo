@@ -44,10 +44,20 @@ afterAll(() => {
 });
 
 type Done = Extract<RecomputeResult, { status: 'done' }>;
-type Plane = 'origin:xy' | 'origin:xz' | 'origin:yz';
 
-function sketch(id: string, data: SketchData, plane: Plane = 'origin:xy'): Feature {
-  return { ...testFeature(id, 'sketch'), inputs: sketchInputs(originPlaneRef(plane), data) };
+function sketch(id: string, data: SketchData, plane: GeomRef = originPlaneRef('origin:xy')): Feature {
+  return { ...testFeature(id, 'sketch'), inputs: sketchInputs(plane, data) };
+}
+
+/** A construction plane `distance` above `plane` (ADR-0040). */
+function offsetPlane(id: string, plane: GeomRef, distance: string): Feature {
+  return {
+    ...testFeature(id, 'offsetPlane'),
+    inputs: {
+      plane: { kind: 'ref', refs: [plane] },
+      distance: { kind: 'expr', expr: distance, unit: 'length' },
+    },
+  };
 }
 
 /** A reference to the largest profile of `data` in `sketchId`. */
@@ -108,14 +118,34 @@ function measure(result: Done, body: string) {
 const extrudeFaces = (result: Done, body: string) =>
   measure(result, body).names.filter((n) => n.includes(':E:'));
 
+/** The perimeter of an ellipse, by Ramanujan's approximation. */
+function ramanujanPerimeter(a: number, b: number) {
+  const hh = (a - b) ** 2 / (a + b) ** 2;
+  return Math.PI * (a + b) * (1 + (3 * hh) / (10 + Math.sqrt(4 - 3 * hh)));
+}
+
+/** A tapered loft's caps are named like a prism's: status ok, the Steiner
+ * volume, both caps and one `side:` wall face per profile edge. */
+function expectPrismNames(result: Done, ellipseId: string, exact: number) {
+  const s = status(result, 'E');
+  expect(s.status, s.message).toBe('ok');
+  const m = measure(result, 'E:0');
+  expect(rel(m.volume, exact), `${m.volume} vs ${exact}`).toBeLessThan(1e-4);
+  const names = extrudeFaces(result, 'E:0');
+  expect(names).toContain('extrude:E:cap:start');
+  expect(names).toContain('extrude:E:cap:end');
+  expect(names.filter((n) => n.includes(':side:'))).toHaveLength(4);
+  expect(names.some((n) => n.includes(`:side:${ellipseId}`))).toBe(true);
+}
+
 const rel = (got: number, want: number) => Math.abs(got - want) / Math.max(1, Math.abs(want));
 
 // --------------------------------------------------------------- profiles
 
-/** An ellipse of semi-axes a × b on XY. */
-function ellipse(a: number, b: number) {
+/** An ellipse of semi-axes a × b, centred at (cx, cy) (default the origin), on XY. */
+function ellipse(a: number, b: number, cx = 0, cy = 0) {
   const s = new SketchBuilder();
-  const id = s.ellipse(0, 0, a, b).id;
+  const id = s.ellipse(cx, cy, a, b).id;
   return { data: s.sketch, ellipse: id };
 }
 
@@ -181,6 +211,41 @@ describe('extrude taper on curves', { timeout: 120_000 }, () => {
     expect(names).toContain('extrude:E:cap:end');
     expect(names.filter((n) => n.includes(':side:'))).toHaveLength(4);
     expect(names.some((n) => n.includes(`:side:${e.ellipse}`))).toBe(true);
+  });
+
+  it('an ellipse drawn far from the sketch origin keeps its cap names', async () => {
+    const e = ellipse(20, 10, 200, 150);
+    const exact = steinerVolume(
+      Math.PI * 20 * 10,
+      ramanujanPerimeter(20, 10),
+      20,
+      (10 * Math.PI) / 180,
+    );
+    const result = await runWithShapes(
+      testDocument([
+        sketch('S', e.data),
+        extrude('E', [profile('S', e.data)], { distance: '20 mm', taper: '10 deg' }),
+      ]),
+    );
+    expectPrismNames(result, e.ellipse, exact);
+  });
+
+  it('the same taper on a construction plane 30 mm above XY', async () => {
+    const e = ellipse(20, 10, 200, 150);
+    const exact = steinerVolume(
+      Math.PI * 20 * 10,
+      ramanujanPerimeter(20, 10),
+      20,
+      (10 * Math.PI) / 180,
+    );
+    const result = await runWithShapes(
+      testDocument([
+        offsetPlane('OP', originPlaneRef('origin:xy'), '30 mm'),
+        sketch('S', e.data, { kind: 'plane', id: 'OP' }),
+        extrude('E', [profile('S', e.data)], { distance: '20 mm', taper: '10 deg' }),
+      ]),
+    );
+    expectPrismNames(result, e.ellipse, exact);
   });
 
   it('a control spline outline tapered both ways', async () => {
