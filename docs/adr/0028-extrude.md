@@ -529,27 +529,37 @@ cylinders), so the facade takes a new route, `taperLoft`:
   ellipse or B-spline is OCCT's offset curve. The offset wires are moved
   along the sweep by `length`.
 - The solid is a **ruled loft** (`BRepOffsetAPI_ThruSections`, ruled, one
-  wire pair at a time, outer and each hole paired largest first) between
-  the profile and the offset; the two caps (the profile and the offset
-  face) are sewn in (`BRepBuilderAPI_Sewing`) and the shell made a solid
+  wire pair at a time) between the profile and the offset, **each profile
+  wire paired with its own offset**: the offset wire holding the edges
+  `MakeOffset::Generated` gives for its edges (the first version paired
+  them by bounding-box area, largest first, which a negative taper can swap
+  and two equal holes tie: see "Review" below); the two caps (the profile
+  and the offset face) are sewn in (`BRepBuilderAPI_Sewing`) and the shell made a solid
   (`BRepBuilderAPI_MakeSolid`, reversed when the volume is negative).
   `BRepFill_CompatibleWires` turned out to be unnecessary even for the
   closed wires (ThruSections' own `CheckCompatibility` splits the start
   wire where the offset has more edges), as expected.
-- The sides are ruled surfaces between the two outlines. Faces keep a
-  prism's names: `cap:start` the profile, `cap:end` the offset face, each
+- The sides are ruled surfaces between the outline and its offset: exact
+  where `ThruSections` keeps the parameter correspondence between the two
+  (an ellipse's wall matches the Steiner volume to 1e-7), and about 0.07 %
+  off for the harness's B-spline outline, whose rulings join points of
+  slightly different parameter. Faces keep a prism's names: `cap:start` the profile, `cap:end` the offset face, each
   side `side:<sketch curve>` through the loft's `Generated` of the start
   edge (an ellipse or B-spline edge whose offset splits into several faces
   gets `#1`…`#n`). History is recorded as `prism`'s through
   `appendRelation`, so `nameSweep` names it exactly like a `DraftAngle`
   extrude.
 
-**Refusals.** An offset that fails (`!IsDone`, or no wire at all) and one
-whose solid is invalid, crosses itself or has no volume say "The taper is
-too steep for this outline: a side would cross another."; an inward offset
-that leaves fewer wires than the profile has (a hole vanished, which
-`MakeOffset` reports as a plain success) says "The taper closes a hole of
-the profile." A taper that shrinks the outline to nothing is the same too-
+**Refusals.** An offset that fails (`!IsDone`, no wire at all, or an OCCT
+exception from `MakeOffset::Perform` or `ThruSections`), an end cap
+`BRepCheck_Analyzer` rejects, two profile wires whose offsets merged, and a
+solid that is invalid, has no volume or **crosses itself** (the facade's
+`crossesItself`, as sweep and loft use it) say "The taper is too steep for
+this outline: a side would cross another."; an inward offset that splits a
+wire in two (a dumbbell's neck, which `MakeOffset` reports as a plain
+success with more wires) says "The taper pinches the outline in two: use a
+smaller angle or a shorter distance."; one that leaves a hole with no
+offset (it vanished) says "The taper closes a hole of the profile." A taper that shrinks the outline to nothing is the same too-
 steep case. Two-sided and symmetric tapers compose exactly as before (two
 sweeps from the plane), and the dialog's arcs and `extrudeTravel` are
 unchanged. A mesh body, and revolve (which has no taper), are untouched.
@@ -567,8 +577,8 @@ after a 344 kB warm-up).
 |---|---|---|---|
 | circle Ø20, 20 mm, 20° | 11966.784527338 | 11966.784527338 | DraftAngle (unchanged) |
 | ellipse 20 × 10, 20 mm, 10° | 5110.397059 | 5110.396538 | loft (Steiner) |
-| annulus 10/4, 20 mm, ±5° | 6817.056617 | 6817.056617 | loft |
-| spline outline, 20 mm, 5° | 10374.022 | 10381.213 | loft (ruled, 0.07 %) |
+| annulus 10/4, 20 mm, ±5° | 6817.056617 | 6817.056617 | DraftAngle (two circular wires: cylinders) |
+| spline outline, 20 mm, 5° | 10374.022 | 10381.213 | loft (ruled, 0.07 %; harness case 9 since the review) |
 | spline outline + hole, 20 mm, 5° | 10074.236 | 10081.426 | loft (ruled, 0.07 %) |
 
 No `@extrudo/core`, schema or file-format change: `taper` is the input it
@@ -588,3 +598,64 @@ a plane 30 mm up) shows why the old rule had held anyway:
 offset wire's pcurves, so every cap's plane location is the profile plane's
 own wherever the profile is drawn, which that plane and its translation by
 the sweep match by construction.
+
+### Review (2026-10-07)
+
+A post-merge review of `taperLoft` found five defects, all fixed:
+
+- **Pairing by identity.** The wires were paired by sorting both lists by
+  bounding-box area, which a negative taper can reorder (a thin slot of
+  32 mm² and a Ø6 hole of 36 mm² are 107 and 90 mm² after −5° over 20 mm)
+  and two equal holes tie (`std::sort` isn't stable and the two lists come
+  from different explorers). Sewing still closes a mis-paired shell, so the
+  result was a valid solid whose hole tunnels swapped or slanted. Each wire
+  now meets the offset wire its own edges generated
+  (`BRepOffsetAPI_MakeOffset::Generated`, which `BRepFill_OffsetWire` keeps
+  per spine edge and which works in our build: every wire of the harness's
+  cases finds exactly one); a wire with none (a vanished hole), with two (a
+  split) or an offset wire claimed twice (a merge) is a refusal, and the far
+  cap is built from the outer wire's partner and the holes' instead of the
+  largest box. A centroid match was the fallback had `Generated` come back
+  empty; it didn't, so it isn't in the code.
+- **Exceptions.** `MakeOffset::Perform` documents `StdFail_NotDone`, which
+  `prism`'s `catch (...)` reported as "Extrude failed"; it and `ThruSections`
+  are now caught inside `taperLoft` with the "too steep" wording. A sweep of
+  every taper from −60° to 60° in 3° steps on eleven profiles (`run.sh
+  sweep`) never made either throw, so no test reaches that catch.
+- **A split is a refusal**, not only a vanished wire (`after != before`).
+- **The end cap's fallback is checked** with `BRepCheck_Analyzer` like its
+  first try.
+- **"Crosses itself" is checked**: the solid goes through `crossesItself`.
+  It costs about 86 ms of a 106 ms ellipse taper (119 ms on the two-hole
+  case), and it isn't idle: on five-lobed stars at −3° the old facade
+  returned "valid" solids of 572 and 725 mm³ where about 6,000 were due, and
+  those two are now its only refusals the old facade didn't make (the sweep
+  of the stars: 26 results before, 24 now, the other 24 identical).
+
+Also: `prism`'s docstring no longer says ellipse and spline sides can't be
+tapered, `taperSweep`'s unreachable refusal for them is gone, and `run.sh`
+shows the compiler's warnings (the facade has none; the harness's two were
+fixed).
+
+**Results (harness, 2026-10-07).**
+
+| case | got | exact | check |
+|---|---|---|---|
+| two Ø6 holes at (±10, 0) in an ellipse 40 × 20, 20 mm, 5° | 13726.179834 | 13726.180783 | 1e-6; each hole's walls centred on it (0.000 mm) |
+| slot 16 × 2 and Ø6 hole in an ellipse 60 × 30, 20 mm, −5° | 23549.301708 | 23549.300459 | 1e-6; slot walls round (−12, 0), hole round (12, 0) |
+| dumbbell (8 × 7 elliptical lobes, 2 mm neck), 20 mm, −5° | refused | — | "The taper pinches the outline in two…" (+1° builds) |
+| spline outline alone, 20 mm, 5° | 10374.022394 | 10381.212752 | 2e-3 (6.93e-4) |
+
+`run.sh leaks 300` (the ellipse, the spline with a hole, the two holes and
+the refused dumbbell each round): heap top 9.80 → 22.36 MB over the first
+100 rounds, then +0 and +0. The kernel's tests add the same two-hole cases
+(wall faces named from their own circles, boxes centred on them, volumes
+within 1e-3), the dumbbell refusal (arc lobes, so a straight control spline
+on the neck sends it to the loft: fit-spline lobes give a single crossing
+wire there, refused as too steep), the spline outline against Steiner within
+2e-3 at ±8°, a line + arc + spline profile (the arc's wall named from the
+arc, Steiner within 2e-3) and an ellipse 20 × 10 at −20° over 10 mm, which
+builds (OCCT trims the offset's cusps at the major ends). The golden table
+is unchanged. WASM 20.50 MB raw, 6.62 MB gzip, 4.60 MB brotli (20.52 /
+6.62 / 4.60 before: the sorts went, `crossesItself` was already linked);
+OCCT input hash `7d9f1e802bdc` (release `occt-7d9f1e802bdc`).

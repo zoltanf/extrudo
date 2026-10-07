@@ -6,13 +6,16 @@
 #undef private
 
 #include <BRepBuilderAPI_MakePolygon.hxx>
-#include <BRepFill.hxx>
+#include <GC_MakeArcOfCircle.hxx>
+#include <GeomAPI_Interpolate.hxx>
+#include <GC_MakeArcOfEllipse.hxx>
 #include <BRepOffsetAPI_MakeOffset.hxx>
 #include <BRepOffsetAPI_ThruSections.hxx>
 #include <chrono>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <vector>
 
@@ -78,213 +81,6 @@ static int annulusFace(double r, double h) {
   return store(face.Face());
 }
 
-/** A closed wavy B-spline face. */
-static int splineFace(double radius, double wave) {
-  NCollection_Array1<gp_Pnt> points(1, 13);
-  for (int i = 0; i < 13; ++i) {
-    const double a = 2 * M_PI * i / 12;
-    const double r = radius + wave * std::sin(3 * a);
-    points.SetValue(i + 1, gp_Pnt(r * std::cos(a), r * std::sin(a), 0));
-  }
-  GeomAPI_PointsToBSpline spline(points, 3, 8, GeomAbs_C2, 1e-6);
-  return store(BRepBuilderAPI_MakeFace(
-                   BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(spline.Curve()).Edge()).Wire(), true)
-                   .Face());
-}
-
-// ---------------------------------------------------- offset exploration
-
-/** Offsets the wires of `face` by `d` and prints what came back. */
-static void exploreOffset(const char* name, int faceHandle, double d) {
-  const TopoDS_Face& face = TopoDS::Face(*f.find(faceHandle));
-  BRepOffsetAPI_MakeOffset off(face, GeomAbs_Arc);
-  off.Perform(d);
-  std::printf("--- offset %s by %.3f: done=%d\n", name, d, (int)off.IsDone());
-  if (!off.IsDone()) return;
-  const TopoDS_Shape& shape = off.Shape();
-  std::printf("    shape type %d, faces %d, edges %d\n", (int)shape.ShapeType(),
-              off.Shape().IsNull() ? -1 : f.count(store(shape), 0), f.count(store(shape), 1));
-  int wi = 0;
-  for (TopExp_Explorer w(shape, TopAbs_WIRE); w.More(); w.Next(), ++wi) {
-    const TopoDS_Wire& wire = TopoDS::Wire(w.Current());
-    Bnd_Box box;
-    BRepBndLib::Add(wire, box);
-    double x0, y0, z0, x1, y1, z1;
-    box.Get(x0, y0, z0, x1, y1, z1);
-    std::printf("    wire %d: bbox x[%.4f,%.4f] y[%.4f,%.4f] edges %d\n", wi, x0, x1, y0, y1,
-                f.count(store(wire), 1));
-  }
-  // Generated mapping for each edge of the original face.
-  int ei = 0;
-  for (TopExp_Explorer e(face, TopAbs_EDGE); e.More(); e.Next(), ++ei) {
-    const NCollection_List<TopoDS_Shape>& gen = off.Generated(e.Current());
-    int n = 0;
-    for (NCollection_List<TopoDS_Shape>::Iterator it(gen); it.More(); it.Next()) ++n;
-    std::printf("    edge %d -> %d generated\n", ei, n);
-  }
-}
-
-// ---------------------------------------------------- solid strategies
-
-/** The offset of `face` by `d`, moved along `along`, as a shape (compound of wires). */
-static TopoDS_Shape offsetMoved(const TopoDS_Face& face, double d, const gp_Vec& along) {
-  BRepOffsetAPI_MakeOffset off(face, GeomAbs_Arc);
-  off.Perform(d);
-  if (!off.IsDone()) return TopoDS_Shape();
-  gp_Trsf t;
-  t.SetTranslation(along);
-  return off.Shape().Moved(TopLoc_Location(t));
-}
-
-/** A face built from a compound of wires in the plane through `origin` with `normal`. */
-static TopoDS_Face faceOfWires(const TopoDS_Shape& wires, const gp_Pnt& origin, const gp_Dir& normal) {
-  gp_Pln pln(origin, normal);
-  TopoDS_Wire outer;
-  NCollection_List<TopoDS_Shape> holes;
-  double best = -1;
-  for (TopExp_Explorer w(wires, TopAbs_WIRE); w.More(); w.Next()) {
-    Bnd_Box box;
-    BRepBndLib::Add(w.Current(), box);
-    double x0, y0, z0, x1, y1, z1;
-    box.Get(x0, y0, z0, x1, y1, z1);
-    const double a = (x1 - x0) * (y1 - y0);
-    if (a > best) {
-      if (!outer.IsNull()) holes.Append(outer);
-      outer = TopoDS::Wire(w.Current());
-      best = a;
-    } else {
-      holes.Append(w.Current());
-    }
-  }
-  BRepBuilderAPI_MakeFace maker(pln, outer);
-  for (NCollection_List<TopoDS_Shape>::Iterator it(holes); it.More(); it.Next()) {
-    maker.Add(TopoDS::Wire(it.Value()));
-  }
-  return maker.Face();
-}
-
-/** Strategy: ThruSections per wire pair (outer + holes), caps, sewn into a solid. */
-static TopoDS_Shape sewTaper(const TopoDS_Face& base, const gp_Vec& along, double taper) {
-  const double length = along.Magnitude();
-  const double d = length * std::tan(taper);
-  BRepOffsetAPI_MakeOffset off(base, GeomAbs_Arc);
-  off.Perform(d);
-  if (!off.IsDone()) return TopoDS_Shape();
-  gp_Trsf t;
-  t.SetTranslation(along);
-  const TopoDS_Shape offset = off.Shape().Moved(TopLoc_Location(t));
-  const TopoDS_Face endCap = faceOfWires(offset, gp_Pnt(0, 0, length), gp_Dir(0, 0, 1));
-
-  BRepBuilderAPI_Sewing sewing(1e-6);
-  std::vector<TopoDS_Wire> starts, ends;
-  for (TopExp_Explorer w(base, TopAbs_WIRE); w.More(); w.Next()) starts.push_back(TopoDS::Wire(w.Current()));
-  for (TopExp_Explorer ow(offset, TopAbs_WIRE); ow.More(); ow.Next()) ends.push_back(TopoDS::Wire(ow.Current()));
-  const auto bboxArea = [](const TopoDS_Shape& s) {
-    Bnd_Box b;
-    BRepBndLib::Add(s, b);
-    double x0, y0, z0, x1, y1, z1;
-    b.Get(x0, y0, z0, x1, y1, z1);
-    return (x1 - x0) * (y1 - y0);
-  };
-  std::sort(starts.begin(), starts.end(), [&](const TopoDS_Wire& a, const TopoDS_Wire& b) { return bboxArea(a) > bboxArea(b); });
-  std::sort(ends.begin(), ends.end(), [&](const TopoDS_Wire& a, const TopoDS_Wire& b) { return bboxArea(a) > bboxArea(b); });
-  for (size_t i = 0; i < starts.size() && i < ends.size(); ++i) {
-    const TopoDS_Wire& start = starts[i];
-    BRepOffsetAPI_ThruSections loft(false, true, 1e-6);
-    loft.AddWire(start);
-    loft.AddWire(ends[i]);
-    loft.Build();
-    if (!loft.IsDone()) { std::printf("    !! sew ThruSections not done\n"); return TopoDS_Shape(); }
-    for (TopExp_Explorer e(start, TopAbs_EDGE); e.More(); e.Next()) {
-      for (NCollection_List<TopoDS_Shape>::Iterator it(loft.Generated(e.Current())); it.More(); it.Next()) {
-        if (it.Value().ShapeType() == TopAbs_FACE) sewing.Add(it.Value());
-      }
-    }
-  }
-  sewing.Add(base);
-  if (!endCap.IsNull()) sewing.Add(endCap);
-  sewing.Perform();
-  std::printf("    [sew] free edges %d, area(base) %.4f area(end) %.4f\n", sewing.NbFreeEdges(), areaOf(base),
-              endCap.IsNull() ? -1.0 : areaOf(endCap));
-  if (!endCap.IsNull() && !BRepCheck_Analyzer(endCap).IsValid()) std::printf("    [sew] end cap invalid\n");
-  const TopoDS_Shape sewn = sewing.SewedShape();
-  TopoDS_Shell shell;
-  for (TopExp_Explorer e(sewn, TopAbs_SHELL); e.More() && shell.IsNull(); e.Next()) {
-    shell = TopoDS::Shell(e.Current());
-  }
-  if (shell.IsNull()) return sewn;
-  BRepBuilderAPI_MakeSolid mk(shell);
-  TopoDS_Shape solid = mk.Solid();
-  if (volumeOf(solid) < 0) solid.Reverse();
-  return solid;
-}
-
-/** ThruSections between two closed wires, lined up with BRepFill_CompatibleWires first. */
-static TopoDS_Shape pairSolid(const TopoDS_Wire& start, const TopoDS_Wire& end, bool& ok) {
-  NCollection_Sequence<TopoDS_Shape> sections;
-  sections.Append(start);
-  sections.Append(end);
-  BRepFill_CompatibleWires compatible(sections);
-  compatible.Perform();
-  if (!compatible.IsDone()) { ok = false; std::printf("    !! compatible not done\n"); return TopoDS_Shape(); }
-  const NCollection_Sequence<TopoDS_Shape>& lined = compatible.Shape();
-  BRepOffsetAPI_ThruSections loft(true, true, 1e-6);
-  loft.AddWire(TopoDS::Wire(lined(1)));
-  loft.AddWire(TopoDS::Wire(lined(2)));
-  loft.CheckCompatibility(false);
-  loft.Build();
-  ok = loft.IsDone();
-  if (!ok) std::printf("    !! pairSolid ThruSections not done\n");
-  return loft.Shape();
-}
-
-/** Strategy: ThruSections on the outer wire of base and its offset, plus a boolean per hole. */
-static TopoDS_Shape thruTaper(const TopoDS_Face& base, const gp_Vec& along, double taper) {
-  const double length = along.Magnitude();
-  const double d = length * std::tan(taper);
-  BRepOffsetAPI_MakeOffset off(base, GeomAbs_Arc);
-  off.Perform(d);
-  if (!off.IsDone()) return TopoDS_Shape();
-  gp_Trsf t;
-  t.SetTranslation(along);
-  const TopoDS_Shape offset = off.Shape().Moved(TopLoc_Location(t));
-  const TopoDS_Face endCap = faceOfWires(offset, gp_Pnt(0, 0, length), gp_Dir(0, 0, 1));
-
-  bool ok = false;
-  TopoDS_Shape result = pairSolid(BRepTools::OuterWire(base), BRepTools::OuterWire(endCap), ok);
-  if (!ok) return TopoDS_Shape();
-  // Cut each hole's frustum, pairing hole wires by sorted bbox area.
-  std::vector<TopoDS_Wire> starts, ends;
-  for (TopExp_Explorer w(base, TopAbs_WIRE); w.More(); w.Next()) {
-    if (!TopoDS::Wire(w.Current()).IsSame(BRepTools::OuterWire(base))) starts.push_back(TopoDS::Wire(w.Current()));
-  }
-  for (TopExp_Explorer w(endCap, TopAbs_WIRE); w.More(); w.Next()) {
-    if (!TopoDS::Wire(w.Current()).IsSame(BRepTools::OuterWire(endCap))) ends.push_back(TopoDS::Wire(w.Current()));
-  }
-  const auto bboxArea = [](const TopoDS_Shape& s) {
-    Bnd_Box b;
-    BRepBndLib::Add(s, b);
-    double x0, y0, z0, x1, y1, z1;
-    b.Get(x0, y0, z0, x1, y1, z1);
-    return (x1 - x0) * (y1 - y0);
-  };
-  std::sort(starts.begin(), starts.end(), [&](const TopoDS_Wire& a, const TopoDS_Wire& b) { return bboxArea(a) > bboxArea(b); });
-  std::sort(ends.begin(), ends.end(), [&](const TopoDS_Wire& a, const TopoDS_Wire& b) { return bboxArea(a) > bboxArea(b); });
-  for (size_t i = 0; i < starts.size() && i < ends.size(); ++i) {
-    TopoDS_Shape hole = pairSolid(starts[i], ends[i], ok);
-    if (!ok) continue;
-    BRepAlgoAPI_Cut cut(result, hole);
-    if (cut.IsDone()) result = cut.Shape();
-  }
-  return result;
-}
-
-/** Numerically integrate the offset area of the profile over height 0..length. */
-static double ellipseArea(double rx, double ry, double d) {
-  if (rx + d <= 0 || ry + d <= 0) return 0;
-  return M_PI * (rx + d) * (ry + d);
-}
-
 /** A closed wire with one B-spline side: a rectangle whose right side bulges (an open spline). */
 static int splineSideFace() {
   NCollection_Array1<gp_Pnt> pts(1, 4);
@@ -312,87 +108,197 @@ static int splineHoleFace(double hole) {
   return store(maker.Face());
 }
 
-static void refusal(const char* name, int faceHandle, double d) {
+// ---------------------------------------------------- review cases (2026-10-07)
+
+/** A circle wire centred at (cx, cy). */
+static TopoDS_Wire circleWire(double cx, double cy, double r) {
+  return BRepBuilderAPI_MakeWire(
+             BRepBuilderAPI_MakeEdge(gp_Circ(gp_Ax2(gp_Pnt(cx, cy, 0), gp_Dir(0, 0, 1)), r)).Edge())
+      .Wire();
+}
+
+/** A slot (stadium) wire: straight sides 2·half long, round ends of radius r, centred at (cx, cy). */
+static TopoDS_Wire slotWire(double cx, double cy, double half, double r) {
+  const gp_Pnt a(cx - half, cy - r, 0), b(cx + half, cy - r, 0), c(cx + half, cy + r, 0), d(cx - half, cy + r, 0);
+  const gp_Circ right(gp_Ax2(gp_Pnt(cx + half, cy, 0), gp_Dir(0, 0, 1)), r);
+  const gp_Circ left(gp_Ax2(gp_Pnt(cx - half, cy, 0), gp_Dir(0, 0, 1)), r);
+  BRepBuilderAPI_MakeWire wire;
+  wire.Add(BRepBuilderAPI_MakeEdge(a, b).Edge());
+  wire.Add(BRepBuilderAPI_MakeEdge(GC_MakeArcOfCircle(right, b, c, true).Value()).Edge());
+  wire.Add(BRepBuilderAPI_MakeEdge(c, d).Edge());
+  wire.Add(BRepBuilderAPI_MakeEdge(GC_MakeArcOfCircle(left, d, a, true).Value()).Edge());
+  return wire.Wire();
+}
+
+/** An ellipse face (semi-axes rx, ry at the origin) with the given hole wires. */
+static int ellipseWithHoles(double rx, double ry, const std::vector<TopoDS_Wire>& holes) {
+  BRepBuilderAPI_MakeEdge e(gp_Elips(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), rx, ry));
+  BRepBuilderAPI_MakeFace face(BRepBuilderAPI_MakeWire(e.Edge()).Wire(), true);
+  for (const TopoDS_Wire& hole : holes) face.Add(TopoDS::Wire(hole.Reversed()));
+  return store(face.Face());
+}
+
+/** Two elliptical lobes (8 × 7 about (±12, 0)) joined by a neck 2 mm wide. */
+static int dumbbellFace() {
+  const double y = 1, x = 12 - 8 * std::sqrt(1 - y * y / 49);
+  const gp_Elips left(gp_Ax2(gp_Pnt(-12, 0, 0), gp_Dir(0, 0, 1)), 8, 7);
+  const gp_Elips right(gp_Ax2(gp_Pnt(12, 0, 0), gp_Dir(0, 0, 1)), 8, 7);
+  const gp_Pnt lt(-x, y, 0), lb(-x, -y, 0), rb(x, -y, 0), rt(x, y, 0);
+  BRepBuilderAPI_MakeWire wire;
+  wire.Add(BRepBuilderAPI_MakeEdge(GC_MakeArcOfEllipse(left, lt, lb, true).Value()).Edge());
+  wire.Add(BRepBuilderAPI_MakeEdge(lb, rb).Edge());
+  wire.Add(BRepBuilderAPI_MakeEdge(GC_MakeArcOfEllipse(right, rb, rt, true).Value()).Edge());
+  wire.Add(BRepBuilderAPI_MakeEdge(rt, lt).Edge());
+  return store(BRepBuilderAPI_MakeFace(wire.Wire(), true).Face());
+}
+
+/** The index (0-based, as the history counts) of `edge` among the edges of `base`. */
+static int edgeIndexIn(int base, const TopoDS_Shape& edge) {
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+  TopExp::MapShapes(*f.find(base), TopAbs_EDGE, edges);
+  return edges.FindIndex(edge) - 1;
+}
+
+/** The box of the result faces the last operation's history says the base edges `edges` generated. */
+static Bnd_Box wallBox(int result, const std::vector<int>& edges) {
+  NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+  TopExp::MapShapes(*f.find(result), TopAbs_FACE, faces);
+  Bnd_Box box;
+  size_t i = 0;
+  while (i < f.history_.size()) {
+    const int kind = f.history_[i + 1], index = f.history_[i + 2], relation = f.history_[i + 3];
+    const int n = f.history_[i + 4];
+    if (kind == 1 && relation == 1 && std::find(edges.begin(), edges.end(), index) != edges.end()) {
+      for (int k = 0; k < n; ++k) {
+        if (f.history_[i + 5 + 2 * k] == 0) BRepBndLib::AddOptimal(faces(f.history_[i + 6 + 2 * k] + 1), box, false, false);
+      }
+    }
+    i += 5 + 2 * static_cast<size_t>(n);
+  }
+  return box;
+}
+
+/** Checks that the walls the edges of `wire` (in face `base`) generated stand round (cx, cy). */
+static void checkWallAt(const char* what, int base, int result, const TopoDS_Wire& wire, double cx, double cy) {
+  std::vector<int> edges;
+  for (TopExp_Explorer e(wire, TopAbs_EDGE); e.More(); e.Next()) edges.push_back(edgeIndexIn(base, e.Current()));
+  const Bnd_Box box = wallBox(result, edges);
+  if (box.IsVoid()) {
+    check(false, what);
+    return;
+  }
+  double x0, y0, z0, x1, y1, z1;
+  box.Get(x0, y0, z0, x1, y1, z1);
+  const double off = std::hypot((x0 + x1) / 2 - cx, (y0 + y1) / 2 - cy);
+  check(off < 1e-3, what, off, 0);
+}
+
+/** How many offset wires `MakeOffset::Generated` names for each wire of `face`. */
+static void probeGenerated(const char* name, int faceHandle, double d) {
   const TopoDS_Face& face = TopoDS::Face(*f.find(faceHandle));
   BRepOffsetAPI_MakeOffset off(face, GeomAbs_Arc);
   off.Perform(d);
-  bool ok = off.IsDone() && !off.Shape().IsNull();
-  int wires = 0;
-  double area = 0;
-  if (ok) {
-    for (TopExp_Explorer w(off.Shape(), TopAbs_WIRE); w.More(); w.Next()) {
-      ++wires;
-      area += areaOf(BRepBuilderAPI_MakeFace(TopoDS::Wire(w.Current()), false).Face());
+  NCollection_IndexedDataMap<TopoDS_Shape, NCollection_List<TopoDS_Shape>, TopTools_ShapeMapHasher> edgeWires;
+  TopExp::MapShapesAndAncestors(off.Shape(), TopAbs_EDGE, TopAbs_WIRE, edgeWires);
+  std::printf("    Generated %s d=%.3f:", name, d);
+  for (TopExp_Explorer w(face, TopAbs_WIRE); w.More(); w.Next()) {
+    NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher> wires;
+    int generated = 0;
+    for (TopExp_Explorer e(w.Current(), TopAbs_EDGE); e.More(); e.Next()) {
+      for (NCollection_List<TopoDS_Shape>::Iterator it(off.Generated(e.Current())); it.More(); it.Next()) {
+        ++generated;
+        const int at = edgeWires.FindIndex(it.Value());
+        if (at > 0) wires.Add(edgeWires(at).First());
+      }
     }
+    std::printf(" [%d edges -> %d wires]", generated, wires.Extent());
   }
-  std::printf("refusal %-20s d=%7.3f done=%d wires=%d area=%.4f\n", name, d, (int)(ok), wires, area);
+  std::printf("\n");
+}
+
+/** Whether a raw MakeOffset on `face` by `d` throws, fails, or how many wires it gives. */
+static void probeOffset(const char* name, int faceHandle, double d) {
+  const TopoDS_Face& face = TopoDS::Face(*f.find(faceHandle));
+  try {
+    BRepOffsetAPI_MakeOffset off(face, GeomAbs_Arc);
+    off.Perform(d);
+    if (!off.IsDone()) {
+      std::printf("    offset %-14s d=%8.3f: not done\n", name, d);
+      return;
+    }
+    int wires = 0;
+    for (TopExp_Explorer w(off.Shape(), TopAbs_WIRE); w.More(); w.Next()) ++wires;
+    std::printf("    offset %-14s d=%8.3f: %d wires\n", name, d, wires);
+  } catch (const Standard_Failure& e) {
+    std::printf("    offset %-14s d=%8.3f: throws %s\n", name, d, e.what());
+  }
 }
 
 int main(int argc, char** argv) {
   try {
   const bool leaks = argc > 1 && std::strcmp(argv[1], "leaks") == 0;
-  if (argc > 1 && std::strcmp(argv[1], "debug") == 0) {
-    // The kernel's closed control spline (8 points on a radius-30 ring, wave 1)
-    // with a Ø10 circular hole, exactly as the engine builds it.
-    const double P[][2] = {{27.0711, 0.1667},  {27.2377, 7.2377},  {21.7132, 21.7132},
-                           {0, 29},           {-21.7132, 21.7132}, {-30, 0},
-                           {-20.7132, -20.7132}, {0, -31},        {20.7132, -20.7132},
-                           {26.9044, -6.9044}, {27.0711, 0.1667}};
-    const double K[] = {0, 0, 0, 0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1, 1, 1, 1};
-    NCollection_Array1<gp_Pnt> poles(1, 11);
-    for (int i = 0; i < 11; ++i) poles(i + 1) = gp_Pnt(P[i][0], P[i][1], 0);
-    NCollection_Array1<double> distinct(1, 9);
-    NCollection_Array1<int> mults(1, 9);
-    const double keys[9] = {0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1};
-    const int counts[9] = {4, 1, 1, 1, 1, 1, 1, 1, 4};
-    for (int i = 0; i < 9; ++i) {
-      distinct(i + 1) = keys[i];
-      mults(i + 1) = counts[i];
+  if (argc > 1 && std::strcmp(argv[1], "sweep") == 0) {
+    // Every taper from -60° to 60° on eleven profiles (five-lobed stars among
+    // them): prints each refusal. `run.sh sweep [name prefix]`. No profile here
+    // makes MakeOffset or ThruSections throw (2026-10-07).
+    std::vector<std::pair<const char*, int>> shapes = {{"ellipse", ellipseFace(10, 5)},
+                                                        {"spline side", splineSideFace()},
+                                                        {"spline hole", splineHoleFace(3)},
+                                                        {"dumbbell", dumbbellFace()},
+                                                        {"two holes", ellipseWithHoles(20, 10, {circleWire(-10, 0, 3), circleWire(10, 0, 3)})}};
+    for (int wave = 1; wave <= 6; ++wave) {
+      Handle(NCollection_HArray1<gp_Pnt>) pts = new NCollection_HArray1<gp_Pnt>(1, 40);
+      for (int i = 0; i < 40; ++i) {
+        const double a = 2 * M_PI * i / 40, r = 10 + wave * std::sin(5 * a);
+        pts->SetValue(i + 1, gp_Pnt(r * std::cos(a), r * std::sin(a), 0));
+      }
+      GeomAPI_Interpolate sp(pts, true, 1e-7);
+      sp.Perform();
+      static char names[6][16];
+      std::snprintf(names[wave - 1], 16, "star wave %d", wave);
+      shapes.emplace_back(names[wave - 1], store(BRepBuilderAPI_MakeFace(BRepBuilderAPI_MakeWire(BRepBuilderAPI_MakeEdge(sp.Curve()).Edge()).Wire(), true).Face()));
     }
-    Handle(Geom_BSplineCurve) curve = new Geom_BSplineCurve(poles, distinct, mults, 3);
-    BRepBuilderAPI_MakeWire wire(BRepBuilderAPI_MakeEdge(curve).Edge());
-    BRepBuilderAPI_MakeFace face(wire.Wire(), true);
-    BRepBuilderAPI_MakeEdge hole(gp_Circ(gp_Ax2(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)), 5));
-    face.Add(TopoDS::Wire(BRepBuilderAPI_MakeWire(hole.Edge()).Wire().Reversed()));
-    const int h = f.prism(store(face.Face()), 0, 0, 0, 0, 0, 20, 3 * M_PI / 180);
-    std::printf("debug spline-hole: h=%d faces=%d volume=%.4f error='%s'\n", h, faces(h), volumeOf(*f.find(h)),
-                f.lastError_.c_str());
-    // Diagnose the offset itself.
-    const TopoDS_Face base = face.Face();
-    BRepOffsetAPI_MakeOffset off(base, GeomAbs_Arc);
-    off.Perform(20 * std::tan(3 * M_PI / 180));
-    int wires = 0;
-    for (TopExp_Explorer w(off.Shape(), TopAbs_WIRE); w.More(); w.Next()) ++wires;
-    std::printf("debug offset: done=%d shapeNull=%d wires=%d valid=%d crosses=%d\n", (int)off.IsDone(),
-                (int)off.Shape().IsNull(), wires, (int)valid(off.Shape()), (int)ExtrudoFacade::crossesItself(off.Shape()));
-    TopoDS_Face cap = ExtrudoFacade::faceFromWires(off.Shape());
-    int capFaces = 0;
-    if (!cap.IsNull()) for (TopExp_Explorer e(cap, TopAbs_FACE); e.More(); e.Next()) ++capFaces;
-    std::printf("debug endcap: null=%d valid=%d area=%.4f faces=%d\n", (int)cap.IsNull(), (int)valid(cap),
-                cap.IsNull() ? 0.0 : areaOf(cap), capFaces);
-    // Try other cap constructions.
-    TopoDS_Wire outer;
-    NCollection_List<TopoDS_Shape> holes;
-    for (TopExp_Explorer w(off.Shape(), TopAbs_WIRE); w.More(); w.Next()) {
-      if (ExtrudoFacade::wireBoxArea(w.Current()) > 1000) outer = TopoDS::Wire(w.Current());
-      else holes.Append(w.Current());
+    for (const auto& [name, h] : shapes) {
+      for (int deg = -60; deg <= 60; deg += 3) {
+        if (deg == 0) continue;
+        if (argc > 2 && std::strncmp(argv[2], name, std::strlen(argv[2])) != 0) continue;
+        const int r = f.prism(h, 0, 0, 0, 0, 0, 20, deg * M_PI / 180);
+        if (r <= 0) {
+          std::printf("%-12s %4d deg: %s\n", name, deg, f.lastError_.c_str());
+        } else {
+          std::printf("%-12s %4d deg: ok, volume %.1f\n", name, deg, volumeOf(*f.find(r)));
+        }
+      }
     }
-    int oe = 0, he = 0;
-    for (TopExp_Explorer e(outer, TopAbs_EDGE); e.More(); e.Next()) ++oe;
-    for (NCollection_List<TopoDS_Shape>::Iterator it(holes); it.More(); it.Next())
-      for (TopExp_Explorer e(it.Value(), TopAbs_EDGE); e.More(); e.Next()) ++he;
-    std::printf("debug wires: outer edges=%d closed=%d, hole edges=%d\n", oe, (int)outer.Closed(), he);
-    for (int mode = 0; mode < 4; ++mode) {
-      BRepBuilderAPI_MakeFace mk((mode < 2) ? gp_Pln(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)) : gp_Pln(), outer);
-      if (mode >= 2) {
-        BRepBuilderAPI_MakeFace mk2(outer, true);
-        for (NCollection_List<TopoDS_Shape>::Iterator it(holes); it.More(); it.Next())
-          mk2.Add(TopoDS::Wire((mode % 2 == 1) ? TopoDS::Wire(it.Value()).Reversed() : it.Value()));
-        std::printf("debug cap mode %d: faceValid=%d\n", mode, (int)valid(mk2.Face()));
-      } else {
-        for (NCollection_List<TopoDS_Shape>::Iterator it(holes); it.More(); it.Next())
-          mk.Add(TopoDS::Wire((mode % 2 == 1) ? TopoDS::Wire(it.Value()).Reversed() : it.Value()));
-        std::printf("debug cap mode %d: done=%d faceValid=%d\n", mode, (int)mk.IsDone(), (int)valid(mk.Face()));
+    return 0;
+  }
+  if (argc > 1 && std::strcmp(argv[1], "dumbbell2") == 0) {
+    // Dumbbells the sketch can draw: round lobes (arcs) and a 2 mm neck whose
+    // top side is a straight B-spline, so the taper takes the loft.
+    const double x = 12 - std::sqrt(63.0);
+    for (int variant = 0; variant < 3; ++variant) {
+      const gp_Circ left(gp_Ax2(gp_Pnt(-12, 0, 0), gp_Dir(0, 0, 1)), 8), right(gp_Ax2(gp_Pnt(12, 0, 0), gp_Dir(0, 0, 1)), 8);
+      const gp_Pnt lt(-x, 1, 0), lb(-x, -1, 0), rb(x, -1, 0), rt(x, 1, 0);
+      BRepBuilderAPI_MakeWire wire;
+      wire.Add(BRepBuilderAPI_MakeEdge(GC_MakeArcOfCircle(left, lt, lb, true).Value()).Edge());
+      wire.Add(BRepBuilderAPI_MakeEdge(lb, rb).Edge());
+      wire.Add(BRepBuilderAPI_MakeEdge(GC_MakeArcOfCircle(right, rb, rt, true).Value()).Edge());
+      const int n = variant == 0 ? 2 : variant == 1 ? 4 : 3;
+      NCollection_Array1<gp_Pnt> poles(1, n + 1);
+      for (int i = 0; i <= n; ++i) poles(i + 1) = gp_Pnt(x - 2 * x * i / n, variant == 2 && i == 1 ? 1.2 : 1, 0);
+      NCollection_Array1<double> knots(1, 2);
+      knots(1) = 0;
+      knots(2) = 1;
+      NCollection_Array1<int> mults(1, 2);
+      mults(1) = n + 1;
+      mults(2) = n + 1;
+      Handle(Geom_BSplineCurve) top = new Geom_BSplineCurve(poles, knots, mults, n);
+      wire.Add(BRepBuilderAPI_MakeEdge(top).Edge());
+      const int base = store(BRepBuilderAPI_MakeFace(wire.Wire(), true).Face());
+      for (double d : {-1.75, -3.5}) probeOffset("dumbbell2", base, d);
+      for (int deg : {-2, -3, -5, -10}) {
+        const int r = f.prism(base, 0, 0, 0, 0, 0, 20, deg * M_PI / 180);
+        std::printf("dumbbell2 variant %d, %d deg: %s\n", variant, deg, r > 0 ? "ok" : f.lastError_.c_str());
       }
     }
     return 0;
@@ -439,7 +345,7 @@ int main(int argc, char** argv) {
       const TopoDS_Face base = TopoDS::Face(*f.find(splineHoleFace(hole)));
       const double A = areaOf(base) + M_PI * hole * hole;  // the outer wire's region
       GProp_GProps ep;
-      BRepGProp::LinearProperties(base, ep, 1e-12);
+      BRepGProp::LinearProperties(base, ep);
       const double P = ep.Mass() - 2 * M_PI * hole;  // outer perimeter (LinearProperties sums the hole too)
       int steps = 100000;
       double exact = 0;
@@ -474,12 +380,132 @@ int main(int argc, char** argv) {
       f.prism(splineHoleFace(4), 0, 0, 0, 0, 0, 20, 15 * M_PI / 180);
       check(f.lastError_.find("closes a hole") != std::string::npos, f.lastError_.c_str());
     }
+    // 6. Two equal Ø6 holes in an ellipse 40 × 20, +5°: each hole's wall stays
+    // round its own hole (a pairing by box area ties here), Steiner less two cones.
+    {
+      const double rx = 20, ry = 10, L = 20, taper = 5 * M_PI / 180, hole = 3;
+      const double tanT = std::tan(taper);
+      const TopoDS_Wire left = circleWire(-10, 0, hole), right = circleWire(10, 0, hole);
+      const int base = ellipseWithHoles(rx, ry, {left, right});
+      probeGenerated("two holes", base, L * tanT);
+      const double hh = std::pow(rx - ry, 2) / std::pow(rx + ry, 2);
+      const double P = M_PI * (rx + ry) * (1 + 3 * hh / (10 + std::sqrt(4 - 3 * hh)));
+      double exact = 0;
+      const int steps = 100000;
+      for (int i = 0; i < steps; ++i) {
+        const double d = L * (i + 0.5) / steps * tanT;
+        exact += (M_PI * rx * ry + P * d + M_PI * d * d - 2 * M_PI * (hole - d) * (hole - d)) * L / steps;
+      }
+      const int h = f.prism(base, 0, 0, 0, 0, 0, L, taper);
+      check(h > 0 && valid(*f.find(h)), "two holes: valid", h > 0 ? 1 : 0);
+      if (h > 0) {
+        check(near(volumeOf(*f.find(h)), exact, 1e-6), "two holes: volume (Steiner less two cones)",
+              volumeOf(*f.find(h)), exact);
+        // The base's wires as the face holds them (the reversed copies).
+        std::vector<TopoDS_Wire> wires;
+        for (TopExp_Explorer w(*f.find(base), TopAbs_WIRE); w.More(); w.Next()) wires.push_back(TopoDS::Wire(w.Current()));
+        checkWallAt("two holes: wall of the hole at (-10, 0) stays there", base, h, wires[1], -10, 0);
+        checkWallAt("two holes: wall of the hole at (10, 0) stays there", base, h, wires[2], 10, 0);
+        const auto t0 = std::chrono::steady_clock::now();
+        const bool crosses = ExtrudoFacade::crossesItself(*f.find(h));
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        check(!crosses, "two holes: crossesItself is false", ms, 0);
+        std::printf("    crossesItself on the two-hole result: %.1f ms\n", ms);
+      }
+    }
+    // 7. A thin slot and a round hole at -5°: the holes grow, and their box
+    // areas swap ranks (32 vs 36 mm² at the start, 107 vs 90 at the end).
+    {
+      const double rx = 30, ry = 15, L = 20, taper = -5 * M_PI / 180, r = 3, half = 7, sr = 1;
+      const double grow = -std::tan(taper);
+      const TopoDS_Wire slot = slotWire(-12, 0, half, sr), round = circleWire(12, 0, r);
+      const int base = ellipseWithHoles(rx, ry, {slot, round});
+      probeGenerated("slot + hole", base, L * std::tan(taper));
+      const double hh = std::pow(rx - ry, 2) / std::pow(rx + ry, 2);
+      const double P = M_PI * (rx + ry) * (1 + 3 * hh / (10 + std::sqrt(4 - 3 * hh)));
+      const double slotArea = 4 * half * sr + M_PI * sr * sr, slotPerimeter = 4 * half + 2 * M_PI * sr;
+      double exact = 0;
+      const int steps = 100000;
+      for (int i = 0; i < steps; ++i) {
+        const double d = L * (i + 0.5) / steps * grow;
+        const double outer = M_PI * rx * ry - P * d + M_PI * d * d;
+        const double slotNow = slotArea + slotPerimeter * d + M_PI * d * d;
+        exact += (outer - slotNow - M_PI * (r + d) * (r + d)) * L / steps;
+      }
+      const int h = f.prism(base, 0, 0, 0, 0, 0, L, taper);
+      check(h > 0 && valid(*f.find(h)), "slot + hole at -5 deg: valid", h > 0 ? 1 : 0);
+      if (h > 0) {
+        check(near(volumeOf(*f.find(h)), exact, 1e-6), "slot + hole at -5 deg: volume", volumeOf(*f.find(h)),
+              exact);
+        std::vector<TopoDS_Wire> wires;
+        for (TopExp_Explorer w(*f.find(base), TopAbs_WIRE); w.More(); w.Next()) wires.push_back(TopoDS::Wire(w.Current()));
+        checkWallAt("slot + hole: the slot's walls stay round (-12, 0)", base, h, wires[1], -12, 0);
+        checkWallAt("slot + hole: the hole's wall stays round (12, 0)", base, h, wires[2], 12, 0);
+      }
+    }
+    // 8. A dumbbell whose 2 mm neck the inward offset pinches in two.
+    {
+      const int base = dumbbellFace();
+      for (double d : {-0.5, -1.75, -3.5}) probeOffset("dumbbell", base, d);
+      const int ok = f.prism(base, 0, 0, 0, 0, 0, 20, 1 * M_PI / 180);
+      check(ok > 0, "dumbbell at +1 deg: ok", ok > 0 ? 1 : 0);
+      const int h = f.prism(base, 0, 0, 0, 0, 0, 20, -5 * M_PI / 180);
+      check(h <= 0 && f.lastError_.find("pinches the outline in two") != std::string::npos,
+            ("dumbbell at -5 deg refused: " + f.lastError_).c_str());
+    }
+    // 9. The B-spline-sided outline alone at 5° against the Steiner value.
+    {
+      const double L = 20, taper = 5 * M_PI / 180;
+      const double tanT = std::tan(taper);
+      const int base = splineSideFace();
+      const TopoDS_Shape& face = *f.find(base);
+      GProp_GProps ep;
+      BRepGProp::LinearProperties(face, ep);
+      const double A = areaOf(face), P = ep.Mass();
+      double exact = 0;
+      const int steps = 100000;
+      for (int i = 0; i < steps; ++i) {
+        const double d = L * (i + 0.5) / steps * tanT;
+        exact += (A + P * d + M_PI * d * d) * L / steps;
+      }
+      const auto t0 = std::chrono::steady_clock::now();
+      const int h = f.prism(base, 0, 0, 0, 0, 0, L, taper);
+      const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+      check(h > 0 && valid(*f.find(h)), "spline outline: valid", h > 0 ? 1 : 0);
+      if (h > 0) {
+        const double v = volumeOf(*f.find(h));
+        check(near(v, exact, 2e-3), "spline outline: volume (ruled, within 2e-3)", v, exact);
+        std::printf("    spline outline: relative %.2e, prism %.1f ms\n", std::abs(v - exact) / exact, ms);
+      }
+    }
+    // 10. The ellipse's time with crossesItself in the check, and alone.
+    {
+      const auto t0 = std::chrono::steady_clock::now();
+      const int h = f.prism(ellipseFace(10, 5), 0, 0, 0, 0, 0, 20, 10 * M_PI / 180);
+      const double total = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+      const auto t1 = std::chrono::steady_clock::now();
+      const bool crosses = h > 0 && ExtrudoFacade::crossesItself(*f.find(h));
+      const double alone = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+      check(h > 0 && !crosses, "ellipse: crossesItself is false", alone, total);
+      std::printf("    ellipse prism %.1f ms, of which crossesItself about %.1f ms\n", total, alone);
+    }
+    // 11. Where does a raw offset throw? (the throw path's candidates)
+    {
+      const int ellipse = ellipseFace(10, 5), spline = splineSideFace(), dumbbell = dumbbellFace();
+      for (double d : {-4.9, -5.0, -5.1, -9.9, -10.0, -20.0}) probeOffset("ellipse 10x5", ellipse, d);
+      for (double d : {-9.9, -10.0, -12.0, -100.0}) probeOffset("spline side", spline, d);
+      for (double d : {-7.0, -8.0, -100.0}) probeOffset("dumbbell", dumbbell, d);
+    }
   } else {
     const double start = f.heapTop();
     double last = start;
-    for (int i = 0; i < 300; ++i) {
+    const int rounds = argc > 2 ? std::atoi(argv[2]) : 300;
+    for (int i = 0; i < rounds; ++i) {
       f.prism(ellipseFace(10, 5), 0, 0, 0, 0, 0, 20, 20 * M_PI / 180);
       f.prism(splineHoleFace(3), 0, 0, 0, 0, 0, 20, 5 * M_PI / 180);
+      f.prism(ellipseWithHoles(20, 10, {circleWire(-10, 0, 3), circleWire(10, 0, 3)}), 0, 0, 0, 0, 0, 20,
+              5 * M_PI / 180);
+      f.prism(dumbbellFace(), 0, 0, 0, 0, 0, 20, -5 * M_PI / 180);
       f.releaseAll();
       if ((i + 1) % 100 == 0) {
         const double now = f.heapTop();

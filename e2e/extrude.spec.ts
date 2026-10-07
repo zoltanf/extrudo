@@ -461,4 +461,26 @@ test('tapers an ellipse profile (P4-12: a ruled loft, no more refusal)', async (
   const t = Math.tan((10 * Math.PI) / 180);
   const exact = Math.PI * a * b * 20 + (perimeter * t * 400) / 2 + (Math.PI * t * t * 8000) / 3;
   expect(Math.abs(facts.volume - exact) / exact).toBeLessThan(0.02);
+
+  // The same ellipse narrowed 5°: each side shrinks by 20·tan 5° ≈ 1.75 mm
+  // towards the far cap (36.5 × 16.5), so the box stays the profile's own
+  // 40 × 20; the side faces (more than an untapered extrude's one) and the
+  // volume tell it is tapered.
+  await chip(page, 'Extrude1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Extrude1 dialog' });
+  await expect(edit).toBeVisible();
+  await edit.getByRole('textbox', { name: 'Taper', exact: true }).fill('-5 deg');
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 20_000 });
+  await edit.getByRole('button', { name: 'OK' }).click();
+  await expect(edit).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', /^Body1:(?:[4-9]|\d{2,}):40,20,20$/);
+  const narrowed = objectsOf3mf(await exportModel(page, '3MF'))[0]?.mesh;
+  await solidTab(page);
+  if (!narrowed) throw new Error('no mesh');
+  const n = -Math.tan((5 * Math.PI) / 180);
+  const narrowExact =
+    Math.PI * a * b * 20 + (perimeter * n * 400) / 2 + (Math.PI * n * n * 8000) / 3;
+  const narrowVolume = solidFacts(narrowed).volume;
+  expect(Math.abs(narrowVolume - narrowExact) / narrowExact).toBeLessThan(0.02);
 });

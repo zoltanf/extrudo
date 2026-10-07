@@ -4,6 +4,18 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P4-12 Taper review fixes** (ADR-0028's amendment, "Review
+  (2026-10-07)"): `taperLoft` lofts each profile wire to its own offset
+  (`MakeOffset::Generated`, not a bounding-box sort that a negative taper
+  swaps and two equal holes tie, which slanted hole tunnels silently),
+  refuses an outline the offset pinches in two ("The taper pinches the
+  outline in two…"), catches OCCT's exceptions from the offset and the loft
+  with the "too steep" wording, checks the end cap's fallback face and runs
+  `crossesItself` on the solid (it rejected two junk solids the old code
+  returned). Kernel tests for two equal holes, a slot and a hole at −5°, the
+  dumbbell, spline and mixed outlines against Steiner; e2e narrows the
+  ellipse 5°. Golden table unchanged. WASM 20.50 MB raw (−19 kB), OCCT input
+  hash `7d9f1e802bdc`.
 - 2026-10-07 · **P6-01 Electron app, slice 3: packaging, unsigned** (ADR-0075's
   amendment): `electron-builder` builds AppImage/deb, NSIS and dmg/zip installers
   in the new `desktop` workflow (a `v*` tag attaches them to a draft release;
