@@ -10,7 +10,7 @@ from the same codebase.
 steps). CI runs on every push and pull request, on GitHub-hosted runners (a
 self-hosted backup exists, off by default: `docs/deploy.md`).
 
-**Status (2026-10-06):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
+**Status (2026-10-07):** Phase 0 is done (P0-01 to P0-09); Phase 1 is
 done (P1-01 to P1-15, v0.1 exit met: benchmark B1 passes end to end in
 `e2e/benchmark-b1.spec.ts`). Phase 2 has started: P2-01 (recompute
 engine), P2-02 (sketch → kernel), P2-03 (3D selection), P2-04
@@ -49,7 +49,11 @@ which the hardening (ADR-0067), Print Info's walls/infill/cost, fillet and
 chamfer depth, the pattern skip list and handles, primitives placement and the
 **construction backlog (ADR-0040's amendment, 2026-10-06)** and **Project's
 backlog** (silhouettes of every surface, vertices and bodies, Intersect, Include:
-ADR-0031's amendment, 2026-10-06) are done.
+ADR-0031's amendment, 2026-10-06) are done. Phase 6: P6-01 (the Electron
+desktop app, four slices and the Homebrew cask, ADR-0075), P6-02 (the slicer
+launch), P6-03 (the plugin API, four slices, ADR-0077) and P6-07 (auto-project,
+ADR-0074) are done; P6-04 (i18n), P6-05 (components) and P6-06 (docs site,
+tutorials) are open.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -2022,21 +2026,16 @@ undo step over every feature of that plugin). `docs/plugins.md` is the guide,
 `docs/api/plugins.md` the API page. **Slice 4 (the review's fixes)** bounds the file reader: `readPluginFile` inflates through fflate's streaming `Unzip` in 1 kB pushes and throws once the *real* output passes 4 MB (a header's `originalSize` is never trusted), at most 64 entries, no control characters in names, README/LICENSE 256 kB; manifest strings refuse control and bidi characters; main caps `install`'s bytes at 1 MB; a foreign `in:` kind is the feature's error (`reportFiles` ignores `in:`), generated IDs may not collide with the document's, and a plugin that replaces `Date`/`Math.random` is refused at the end of its run.
 
 Next (tasks may run in parallel on separate branches and worktrees, merged to
-main one at a time): **Phase 5 is complete** — P5-01 (all three slices,
-ADR-0068), P5-02 (all three slices, ADR-0070), P5-03 (both slices, ADR-0069),
-P5-04 (OpenSCAD import, ADR-0071), P5-05 (macro recording, both slices,
-ADR-0073) and P5-06 (wall-thickness, ADR-0072). Next is **P4-12's remaining
-backlog** and then **Phase 6** (desktop), according to `docs/03-roadmap.md`;
-**P4-06 is done** (all five slices, ADR-0066), P4-12's hardening part (ADR-0067
-H1 to H5) is on main and its **construction backlog is done (ADR-0040's
-amendment, 2026-10-06)**, so **Phase 4 is complete apart from P4-12's backlog**
-(the modelling depth items P4-12 lists; ADR-0063's Deferred splines and
-exact conics are done since 2026-10-06/07);
-onward in `docs/03-roadmap.md`. The repository is public (2026-10-04); the
-first public release is **v0.4.0** (no v0.3.0 tag): the owner does the slicer
-check and a fresh look on edge, the agent then bumps the versions to 0.4.0, and
-**the owner tags** (`docs/release-checklist.md`; don't tag yourself). Deeper carried-over items are the
-P4-12 backlog.
+main one at a time): Phases 0, 1, 2, 3 and 5 are complete, Phase 4 is complete
+apart from **P4-12's remaining backlog** (the items `docs/03-roadmap.md` still
+lists as open: a chamfer's handles on curved faces or edges, shell openings
+through curved faces, a point where two curved faces and a plane meet, and the
+rest), and Phase 6 has P6-04 (i18n), P6-05 (components) and P6-06 (docs site,
+tutorials) left. **P6-04 and P6-06 wait for the owner's walk through the UI**
+(owner, 2026-10-07). The repository is public (2026-10-04); the first public
+release is **v0.4.0** (no v0.3.0 tag): the owner does the slicer check and a
+fresh look on edge, the agent then bumps the versions to 0.4.0, and **the owner
+tags** (`docs/release-checklist.md`; don't tag yourself).
 
 ## Commands
 
