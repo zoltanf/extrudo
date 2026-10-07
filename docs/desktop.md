@@ -70,3 +70,22 @@ run (`app.isPackaged` false) never checks, and **`EXTRUDO_DISABLE_UPDATES=1`**
 turns the updater off in a packaged app (the smoke test sets it, so CI never
 asks GitHub). A failed check is logged and kept in the notification history
 without a toast.
+
+## Install on macOS with Homebrew
+
+The macOS build is also a Homebrew cask. The `desktop` workflow's `homebrew`
+job renders `apps/desktop/homebrew/extrudo.rb.template` from the
+`extrudo-<version>-mac-arm64.zip` it just built (the sha256 included; the
+renderer is `apps/desktop/homebrew/render.mjs` and its test pins the output)
+and pushes `Casks/extrudo.rb` to the tap
+[`zoltanf/homebrew-extrudo`](https://github.com/zoltanf/homebrew-extrudo) as
+one commit per release ("Extrudo <version>"). Install:
+
+```sh
+brew install --cask zoltanf/extrudo/extrudo
+```
+
+The app is unsigned (ADR-0075's slice 5 amendment), so the first open is
+right-click › Open. Since the app's own updater only notifies on macOS (the
+table above), **`brew upgrade` is the update path there**. One-time setup and
+the per-release check are in `docs/release-checklist.md`.

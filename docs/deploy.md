@@ -218,6 +218,13 @@ Linux job also launches the AppImage under `xvfb-run` and checks that the kernel
 computes. No secrets are needed beyond the built-in `GITHUB_TOKEN`. Local
 packaging: `docs/desktop.md`.
 
+On a tag a fourth job, `homebrew`, renders the macOS cask from the arm64 zip
+the mac job just built and pushes it to the `zoltanf/homebrew-extrudo` tap
+(ADR-0075's amendment). It needs the `HOMEBREW_TAP_TOKEN` secret (a
+fine-grained PAT with Contents read/write on the tap; `docs/release-checklist.md`)
+and skips itself cleanly without it, so a tag that lacks it still builds all
+the installers. A manual run never runs it.
+
 ## Rolling back
 
 Cloudflare keeps every deployment: Workers & Pages > `extrudo` (or

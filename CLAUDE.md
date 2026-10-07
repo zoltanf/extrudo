@@ -1891,6 +1891,12 @@ side **`Platform.updates?: PlatformUpdates`** (`store` with `waiting`/`version`,
 `appUpdates`, `useUpdateNotice(push, platform)` reads it, and the desktop's
 `renderer/updates.ts` follows `update:status` (Restart, the notify toast once
 per version, a quiet error). The `desktop` workflow uploads `latest*.yml`.
+**The Homebrew cask (P6-01's amendment, 2026-10-07)**: on a tag the `desktop`
+workflow's `homebrew` job renders `apps/desktop/homebrew/extrudo.rb.template`
+from the arm64 mac zip with `render.mjs` and pushes `Casks/extrudo.rb` to the
+`zoltanf/homebrew-extrudo` tap (`HOMEBREW_TAP_TOKEN`, skipped cleanly without
+it), which is macOS's install and update path since the updater only notifies
+there.
 
 ADR-0076 (WebGL fallback) made the app survive a browser without hardware WebGL:
 `viewport/webglSupport.ts` (`detectWebgl(create?)` → `hardware`/`software`/`none`,

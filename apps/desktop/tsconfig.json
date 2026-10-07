@@ -6,5 +6,5 @@
     "allowImportingTsExtensions": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "electron.vite.config.ts", "vitest.config.ts"]
+  "include": ["src", "homebrew", "electron.vite.config.ts", "vitest.config.ts"]
 }

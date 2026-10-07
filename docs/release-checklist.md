@@ -79,6 +79,29 @@ cannot reach. Tick them off in order; each box says who and where.
   CI passed on main, and never publish a release you would not want every
   installed app to take: a published `v*` release is an update.
 
+### Homebrew (P6-01's amendment)
+
+The macOS build is installed and updated through Homebrew (`docs/desktop.md`);
+the cask itself is rendered and pushed by the `desktop` workflow's `homebrew`
+job, never by hand.
+
+- [ ] **One time: create the tap repository.** GitHub > New repository >
+  `zoltanf/homebrew-extrudo` (public), with a README saying it is Extrudo's
+  cask tap and an **empty `Casks/` directory** (commit a `.gitkeep` or a first
+  README line — the job writes `Casks/extrudo.rb` into it). The main repository
+  keeps only the template and the job; nothing there is a cask Homebrew reads.
+- [ ] **One time: add the secret.** GitHub > Settings > Developer settings >
+  Fine-grained tokens: a PAT with **Contents: read/write** on
+  `zoltanf/homebrew-extrudo` only (expiring whenever you like), then
+  `zoltanf/extrudo` > Settings > Secrets and variables > Actions > add
+  **`HOMEBREW_TAP_TOKEN`**. Without the secret the `homebrew` job skips itself
+  cleanly and everything else builds.
+- [ ] **Each release:** the `desktop` workflow's `homebrew` job pushed
+  `Casks/extrudo.rb` to the tap (one commit "Extrudo <version>"; it runs only
+  on the tag). On a Mac, install it fresh or upgrade from the last one:
+  `brew install --cask zoltanf/extrudo/extrudo` (or `brew upgrade`), open the
+  app (right-click › Open the first time), and sketch a box.
+
 ## Hosting (docs/deploy.md has the steps)
 
 - [x] Cloudflare: create the Pages project `extrudo` (Direct Upload). Done

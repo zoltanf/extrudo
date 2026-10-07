@@ -9,6 +9,11 @@ name: Desktop
 # The WASM downloads need the `occt-<hash>`, `planegcs-<hash>` and
 # `openscad-<hash>` releases of this commit's inputs, which CI's first three jobs
 # publish: run this after CI has run for the commit (a tag on main always has).
+#
+# On a tag the `homebrew` job also renders the Homebrew cask from the arm64 mac
+# zip and pushes it to the zoltanf/homebrew-extrudo tap (P6-01, ADR-0075's
+# amendment); it needs the `HOMEBREW_TAP_TOKEN` secret and skips cleanly
+# without it (docs/release-checklist.md).
 on:
   workflow_dispatch:
   push:
@@ -115,3 +120,60 @@ jobs:
           sudo apt-get install -y xvfb libgbm1 libasound2t64 libgtk-3-0t64 libnss3
           chmod +x apps/desktop/release/*.AppImage
           xvfb-run -a node apps/desktop/scripts/smoke.mjs --app apps/desktop/release/extrudo-*.AppImage
+
+  homebrew:
+    # Render the cask from the arm64 mac zip the package jobs just built and
+    # push it to the tap (P6-01, ADR-0075's amendment). Tag runs only — never a
+    # manual dispatch — and skipped cleanly when HOMEBREW_TAP_TOKEN is absent.
+    name: Homebrew cask
+    needs: [package]
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Check the tap token
+        id: token
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -n "$HOMEBREW_TAP_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "HOMEBREW_TAP_TOKEN is not set: the cask is not pushed (docs/release-checklist.md)."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download the mac package artifact
+        if: steps.token.outputs.present == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: extrudo-desktop-mac
+
+      - name: Render and push the cask
+        if: steps.token.outputs.present == 'true'
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          zip=$(ls "extrudo-${version}-mac-arm64.zip" 2>/dev/null || true)
+          if [ -z "$zip" ]; then
+            ls extrudo-*-mac-arm64.zip 2>/dev/null || true
+            echo "The arm64 mac zip for ${version} is not in the extrudo-desktop-mac artifact." >&2
+            exit 1
+          fi
+          sha=$(sha256sum "$zip" | cut -d' ' -f1)
+          node apps/desktop/homebrew/render.mjs "$version" "$sha" > cask.rb
+          git clone --depth 1 "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/zoltanf/homebrew-extrudo.git" tap
+          mkdir -p tap/Casks
+          cp cask.rb tap/Casks/extrudo.rb
+          git -C tap config user.name "Extrudo release bot"
+          git -C tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C tap add Casks/extrudo.rb
+          git -C tap commit -m "Extrudo ${version}"
+          git -C tap push origin HEAD

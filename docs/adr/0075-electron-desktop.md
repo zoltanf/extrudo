@@ -643,3 +643,24 @@ SmartScreen's "Run anyway"), macOS keeps the notify-only update path of slice
 warrants; nothing in the code assumes either way (`CSC_IDENTITY_AUTO_DISCOVERY`
 and `identity: null` are the only places to change). P6-01 is complete with
 that caveat.
+
+### Homebrew (2026-10-07)
+
+That Homebrew path is now real. **The cask lives in a tap,
+`zoltanf/homebrew-extrudo`, and the main repository keeps only the template
+and the job that renders and pushes it** — nothing in the main repository is a
+cask Homebrew reads. `apps/desktop/homebrew/extrudo.rb.template` is the cask
+for the `extrudo-<version>-mac-arm64.zip` the mac package job builds (the
+runner is Apple silicon; an `on_intel` block waits for an Intel zip to exist),
+with `livecheck` on the GitHub releases (`strategy :github_latest`),
+`zap trash:` of the Electron paths (userData `Application Support/Extrudo`
+from the productName, the rest from the appId `org.extrudo.desktop`), and a
+`caveats` block for the unsigned first open. `apps/desktop/homebrew/render.mjs`
+(plain Node, no dependencies) prints the cask for a plain-semver version and a
+64-hex sha256 and refuses anything else; `render.test.ts` pins the output
+byte-exact and the refusals. The `desktop` workflow's `homebrew` job (tag runs
+only, never a manual dispatch) hashes the zip, renders the cask and pushes
+`Casks/extrudo.rb` to the tap as one commit "Extrudo <version>" with the
+`HOMEBREW_TAP_TOKEN` secret; **it skips itself cleanly when the secret is
+absent**, so a tag without it still builds everything else. `brew upgrade` is
+macOS's update path, since the app's own updater only notifies there.
