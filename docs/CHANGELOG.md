@@ -4,6 +4,11 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-07 · **P4-12 Exact conics in the kernel** (ADR-0063's amendment): a sketch
+  conic reaches OCCT as its rational quadratic through the facade's new `sketchConic`,
+  so extruded conics measure exactly (the cubic route was 4e-7 to 7.5e-6 out) and STEP
+  export carries the true curve; volumes, areas and lengths with a rational edge are
+  integrated exactly. The app still draws the cubic; no file change.
 - 2026-10-07 · **P6-02 Slicer launch** (ADR-0062's amendment): the desktop app finds
   installed PrusaSlicer, OrcaSlicer, Bambu Studio and Cura (PATH, flatpak, Program Files,
   /Applications, or `slicers.paths`), writes the export to a private temp file and starts

@@ -19,7 +19,13 @@ export type PlanarCurve =
   /** A full ellipse; `rotation` is the direction of the `a` axis (radians). */
   | { kind: 'ellipse'; center: Vec2; a: number; b: number; rotation: number }
   /** A clamped, non-rational B-spline; `knots` is the full vector (poles + degree + 1). */
-  | { kind: 'spline'; degree: number; poles: readonly Vec2[]; knots: readonly number[] };
+  | { kind: 'spline'; degree: number; poles: readonly Vec2[]; knots: readonly number[] }
+  /**
+   * A sketch conic exactly (P4-12, ADR-0063's amendment): the rational
+   * quadratic Bézier from `start` to `end` whose end tangents point at
+   * `shoulder`, middle weight `rho / (1 − rho)`; 0 < rho < 1.
+   */
+  | { kind: 'conic'; start: Vec2; shoulder: Vec2; end: Vec2; rho: number };
 
 /** Where a plane sits in the world: its origin, X direction and normal (Y = normal × X). */
 export interface PlanarFrame {

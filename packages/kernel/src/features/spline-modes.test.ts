@@ -218,7 +218,10 @@ describe('closed and trimmed splines in the kernel (P4-12)', () => {
   ];
 
   for (const mode of ['fit', 'control'] as const) {
-    it(`extrudes a closed ${mode} spline alone into one solid of its area`, async () => {
+    // The 0.2 µm mesh takes about 3 s, past the default 5 s under a parallel run.
+    it(`extrudes a closed ${mode} spline alone into one solid of its area`, {
+      timeout: 20_000,
+    }, async () => {
       const b = new SketchBuilder();
       const s = b.spline(loop, { mode, closed: true });
       const data = b.sketch;

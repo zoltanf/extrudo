@@ -403,8 +403,8 @@ files into `dist/sw.js` and versions it; registration in
 manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
 also found that the kernel uses no raw OCCT bindings, so the build's
-binding list is now just `ExtrudoFacade` (built by CI: WASM 20.50 MB raw,
-6.62 MB gzip, 4.60 MB brotli (Node's zlib at its best settings), after
+binding list is now just `ExtrudoFacade` (built by CI: WASM 20.57 MB raw,
+6.66 MB gzip, 4.63 MB brotli (Node's zlib at its best settings), after
 P4-04/P4-05/P4-10's facade methods, P4-12's `DYNAMIC_EXECUTION: 0`, P4-12
 §H3's `integrateVolume`, P4-12's split boolean and `extendFace` (about 10 kB)
 and P4-12's `shellFaces`, `pushWall`/`clearWalls` and the shell's plugs (about
@@ -418,9 +418,11 @@ before) and P4-12's taper on ellipse and spline sides (`taperLoft`:
 `BRepOffsetAPI_MakeOffset` and a ruled `ThruSections`: +0.48 MB raw, +0.10 MB
 brotli; 20.04 / 6.49 / 4.50 MB before) and the taper caps' point-to-plane
 match (2026-10-07, under 0.01 MB) and the taper review's identity pairing
-(2026-10-07, −19 kB raw; 20.52 / 6.62 / 4.60 MB before); the 15.76 MB / 3.69 MB brotli
+(2026-10-07, −19 kB raw; 20.52 / 6.62 / 4.60 MB before) and P4-12's exact
+conics (`sketchConic`, the Gauss–Kronrod volume and `GCPnts_AbscissaPoint`:
++75 kB raw, +34 kB brotli; 20.50 / 6.62 / 4.60 MB before); the 15.76 MB / 3.69 MB brotli
 of ADR-0037 was P2-15's; OCCT input hash
-`7d9f1e802bdc` (release `occt-7d9f1e802bdc`); **don't
+`cf0bb43b2ade` (release `occt-cf0bb43b2ade`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI
@@ -1151,6 +1153,19 @@ with them); offset makes a **fit spline** through offset samples checked to
 `OFFSET_TOLERANCE` (1e-3 mm), refused past the tightest bend, a chain with a
 spline getting no dimension and a fixed offset spline. Extend and cutting a
 conic stay refused.
+**P4-12's second amendment (2026-10-07)**: **the conic is exact in the
+kernel** — `planarCurve` stages a `mode: 'conic'` spline as a `PlanarCurve`
+`{ kind: 'conic', start, shoulder, end, rho }` and `Kernel.#stageCurve` sends
+it to the facade's **`sketchConic`** (the rational quadratic Bézier as a
+degree-2 B-spline with weights `(1, rho / (1 − rho), 1)`), in profiles and in
+sweep paths alike; profile IDs are unchanged and **the app still draws, picks
+and detects profiles on the cubic** (`conicSpline`), export keeps its Béziers.
+Because OCCT's fixed Gauss order is not exact on a rational edge, the facade's
+`hasRationalCurve` makes `integrateVolume` use Gauss–Kronrod, `integrateArea`
+go face by face (bounded on a plane with a rational edge) and a rational
+edge's length `GCPnts_AbscissaPoint` (`edgeLength`; `LinearProperties` has no
+error bound); a shape with no rational edge integrates as before. Native
+harness `spikes/p4-12-conics/` (`run.sh`, `run.sh probe`, `run.sh leaks 300`).
 ADR-0064 (P4-10, slice 1) added the **rib**: a thin wall from one sketch
 **line** to the body beside it (a gusset, a web; the stiffening triangle in a
 bracket's corner). Core holds the definition (`curve`, `thickness`, `side`,
@@ -1886,9 +1901,8 @@ backlog** and then **Phase 6** (desktop), according to `docs/03-roadmap.md`;
 **P4-06 is done** (all five slices, ADR-0066), P4-12's hardening part (ADR-0067
 H1 to H5) is on main and its **construction backlog is done (ADR-0040's
 amendment, 2026-10-06)**, so **Phase 4 is complete apart from P4-12's backlog**
-(exact rational conics in the kernel — ADR-0063's Deferred, whose closed
-splines, stored knots, trimming and offsetting are done since 2026-10-06; and
-the modelling depth items P4-12 lists);
+(the modelling depth items P4-12 lists; ADR-0063's Deferred splines and
+exact conics are done since 2026-10-06/07);
 onward in `docs/03-roadmap.md`. The repository is public (2026-10-04); the
 first public release is **v0.4.0** (no v0.3.0 tag): the owner does the slicer
 check and a fresh look on edge, the agent then bumps the versions to 0.4.0, and

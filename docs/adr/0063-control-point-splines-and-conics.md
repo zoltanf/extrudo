@@ -144,7 +144,9 @@ is acceptable. `docs/file-format.md` documents both keys.
 
 - Closed (periodic) splines, end-tangent handles, degree choice, knot
   insertion, converting between fit and control splines (needs stored knots),
-  trimming and offsetting splines, exact rational conics in the kernel.
+  trimming and offsetting splines, exact rational conics in the kernel. P4-12
+  did closed splines, stored knots, trimming, offsetting (the amendment of
+  2026-10-06) and exact conics (2026-10-07).
 
 ## Results
 
@@ -393,3 +395,123 @@ Deviations from the brief: the knot rules live in `sketchIssues`, not a
 crossed once is trimmed away whole, as a circle is (A3); a chain with a spline
 has no driving dimension and its offset spline is fixed (A4); conics can be
 offset (their curve is a B-spline like any other), only cutting them is refused.
+
+## Amendment, 2026-10-07 — P4-12: exact conics in the kernel
+
+The last item of the Deferred list (and of the original Rejected one, "a 1e-6
+mm difference"): a sketch conic reaches OCCT as the **rational quadratic** it
+is, not as `conicSpline`'s cubic within `CONIC_TOLERANCE`. The stored conic
+was always exact (three points and rho), so nothing in the file changes.
+
+### Decision
+
+- **One facade method, `sketchConic(x0, y0, xs, ys, x1, y1, rho)`**, seven
+  doubles in and the staged curve's index out, like `sketchEllipse`: the poles
+  start, shoulder, end with weights `(1, w, 1)`, `w = rho / (1 − rho)` (0.5 the
+  parabola, below an ellipse arc, above a hyperbola arc), as a
+  `Geom_BSplineCurve` of degree 2 with knots `[0, 1]` of multiplicity 3, made
+  into an edge and staged with `addSketchEdge` as `sketchArc` does. A conic arc
+  can't cross itself, so unlike `sketchSpline` it needs no cut at crossings.
+  rho outside (0, 1) is refused ("The conic's rho must lie between 0 and 1.");
+  a shoulder on the chord is the straight curve the cubic route made too. No
+  OCCT type in the signature; `sketchSpline` is unchanged.
+- **`PlanarCurve` gains `{ kind: 'conic', start, shoulder, end, rho }`**, which
+  `Kernel.#stageCurve` sends to `sketchConic`. `planarCurve` in
+  `features/sketch.ts` makes it for a spline with `mode: 'conic'`, a `rho` and
+  three points; every other mode keeps `splineCurve`. One entity is still one
+  staged curve under the same ID, so **profile IDs don't change**
+  (`profileFaceIds` keys by the same curves). There is no second place a conic
+  is staged: the sweep's path (`SketchOutputData.exact`, P4-01) is the same
+  `planarCurve` output and goes through `Kernel.path` → `#stageCurve` too, so a
+  sweep along a conic follows the exact curve. Projection of a conic *edge*
+  (`edgeGeometry`, ADR-0031) samples points as for any B-spline edge and comes
+  back as the fit spline `projectPieces` makes, as before.
+- **Mass properties follow a rational edge** (found by the harness, below).
+  OCCT's fixed Gauss order, which `integrateArea`/`integrateVolume` keep for
+  planes and prisms (ADR-0067 §H3), is exact on lines, circles and polynomial
+  curves but not on a rational one: the face of a hyperbola arc (rho 0.8)
+  measured 1.1e-3 out, its prism 3.5e-4. The bounded integral of §H3 is exact
+  on the face but worse on the prism (5.4e-3 at `MASS_EPS`, 9.9e-5 even at
+  1e-12: the cancellation §H3 describes). So the facade's `hasRationalCurve`
+  (a B-spline or Bézier edge whose curve is rational) changes three things:
+  `integrateVolume` takes **`VolumePropertiesGK`** at `MASS_EPS` for such a
+  shape; `integrateArea` goes **face by face**, the bounded integral on a face
+  that needs it or a plane with a rational edge (a cap), the fixed order
+  elsewhere (exact on the conic's extrusion wall, where the bounded one is
+  7.7e-3 out); and a rational edge's **length** is `GCPnts_AbscissaPoint`'s
+  adaptive arc length (`edgeLength`, `edgesLength`: `properties`' length and
+  `describe`'s fingerprint size), because `BRepGProp::LinearProperties` has
+  no error bound at all — §H3's `integrateLength` had been passing `MASS_EPS`
+  into its `SkipShared` flag, kept as it was. `sketchProfiles`' face areas go
+  through `integrateArea` too. A shape with no rational edge integrates
+  exactly as before.
+
+What changes for the user: an extruded conic's volume and area, Measure's
+values, Print Info's numbers and the profile area are exact (within rounding;
+the tests measure extrudes, other features get the same curve), and a STEP export carries the true conic (a
+`RATIONAL_B_SPLINE_CURVE`); the side is still one face. What does not: the app
+draws, picks and detects profiles on the cubic (`conicSpline`),
+`@extrudo/sketch/export` keeps its Bézier pieces, projections stay fit
+splines; no schema, file-format or API change.
+
+### Rejected
+
+- **Weights through `sketchSpline`** (a staged weight per pole): every caller
+  would stage ones, and the facade would need a rational branch with its own
+  crossing cuts for a curve that only conics need. A method of its own keeps
+  the non-rational path byte-identical.
+- **A conic as an OCCT `Geom_Ellipse`/`Geom_Parabola`/`Geom_Hyperbola`
+  arc**: three branches, each with its own parametrisation to work out from
+  three points and rho, and a parabola branch that flips at rho 0.5 exactly;
+  the rational Bézier is one formula and is what `conicPoint` evaluates.
+- **The bounded integral for every shape with a rational edge** (only
+  widening §H3's `needsTolerance`): exact on the face, 5.4e-3 out on the
+  prism. **Gauss–Kronrod for every volume**: not measured on the shapes §H3
+  measured (letters, wraps), so not changed for them.
+- **Fixing every B-spline edge's length** (`GCPnts_AbscissaPoint` for
+  polynomial ones too): it would move every spline edge's fingerprint and
+  Measure value by up to 1e-6 (the parabola's edge, polynomial since its
+  weights are equal, is 7.8e-7 short with the fixed order) for no user-visible
+  gain; left for a task that wants it.
+
+### Results (2026-10-07)
+
+| File | What |
+|---|---|
+| `packages/kernel/occt/facade/extrudo_facade.cpp` | `sketchConic`; `hasRationalCurve`, `integrateVolume` (GK), `integrateArea` (per face), `integrateLength`, `edgeLength`, `edgesLength`; `sketchProfiles` and `describeEdge` use them |
+| `packages/kernel/src/occt/types.ts`, `planar.ts`, `kernel.ts` | `sketchConic`; `PlanarCurve`'s `conic`; `#stageCurve` |
+| `packages/kernel/src/features/sketch.ts` | `planarCurve`: a conic spline as a `conic` |
+| `packages/kernel/src/features/sketch-conic.test.ts` | the tests below |
+| `spikes/p4-12-conics/` | the native harness (`run.sh`, `run.sh probe`, `run.sh leaks 300`) |
+
+Measured, the conics from (−20, 0) to (20, 0) with the shoulder at (0, 15),
+closed by their chord and extruded 5 mm (exact areas by Gauss–Legendre of the
+rational curve, 400 panels × 5 points; the parabola's is Archimedes' ⅔ ·
+40 · 7.5 = 200 mm²):
+
+| Conic | Exact area (mm²) | Volume, cubic route | Volume, exact route | Profile area, exact route |
+|---|---|---|---|---|
+| rho 0.5 (parabola) | 200 | 2.3e-16 | 0 | 0 |
+| rho 0.3 (ellipse arc) | 129.113589607115 | 4.0e-7 | 8.8e-16 | 2.2e-14 |
+| rho 0.8 (hyperbola arc) | 277.377827179843 | 7.5e-6 | 2.5e-15 | 2.0e-14 |
+
+(relative errors; the cubic route is the cubic staged through `sketchSpline`
+and measured by the same facade, so the parabola — whose cubic is exact — was
+already right.) In the native harness the face area, the prism's volume, its
+whole surface area (2.5e-11 for the hyperbola) and the conic edge's length
+(3e-16) all agree with the quadrature; `run.sh leaks 300` (staging, profiling,
+extruding and releasing the three conics 300 times) leaves the heap top flat
+(+0 bytes over the last 200 rounds). A STEP export of the hyperbola's prism
+reads back to the same volume within 1e-9 and carries
+`RATIONAL_B_SPLINE_CURVE`; a sweep path of it is its exact length (1e-9).
+
+Golden tables: no table or fixture holds a conic; the one row that moved is
+the Scale table's non-uniformly scaled cylinder (factors 1, 2, 1), whose
+circles `BRepBuilderAPI_GTransform` turns into rational B-splines, from
+12566.4 to 12566.37 mm³ — π · 10 · 20 · 20 = 12566.37, so the new rule made it
+exact.
+
+Size: OCCT input hash `cf0bb43b2ade` (release `occt-cf0bb43b2ade`); the WASM
+is 20.57 MB raw, 6.66 MB gzip, 4.63 MB brotli (Node's zlib at its best
+settings; 20.50 / 6.62 / 4.60 MB before: +75 kB raw, +34 kB brotli, mostly
+`GCPnts_AbscissaPoint` and the Gauss–Kronrod integrator).

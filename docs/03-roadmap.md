@@ -991,8 +991,12 @@ end to end, faster than in Fusion 360.
     clamped B-spline that is exactly the loop, a control spline's own `knots`,
     trim and break by knot insertion (a trimmed fit spline becomes a control
     spline), offset as a fit spline checked to 1e-3 mm, alone or in a chain.
-    **Still open: exact rational conics in the kernel** (a facade change),
-    extending a spline, end-tangent handles, degree choice.
+    ~~Exact rational conics in the kernel~~ **done 2026-10-07** (ADR-0063's
+    second amendment): the facade's `sketchConic` stages the rational
+    quadratic, so an extruded conic's volume and area are exact (the cubic
+    route was up to 7.5e-6 out) and STEP carries the true curve; mass
+    properties follow a rational edge. **Still open:** extending a spline,
+    end-tangent handles, degree choice.
   - Content policy: `'unsafe-eval'` dropped from `script-src` in
     `apps/web/public/_headers`. **Done 2026-10-04** (ADR-0067 §H1): both WASM
     builds are made with dynamic execution off (`DYNAMIC_EXECUTION: 0`, beside

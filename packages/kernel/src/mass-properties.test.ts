@@ -126,8 +126,9 @@ describe('mass properties with a tolerance', () => {
   });
 
   it('agrees with a fine tessellation on a conic extruded', () => {
-    // The sketch's conic is a non-rational cubic B-spline (ADR-0063), so the
-    // profile's edge is a B-spline and the body a prism of it.
+    // The sketch's conic reaches OCCT as the rational quadratic it is (P4-12,
+    // ADR-0063's amendment), so the profile's edge is a rational B-spline and
+    // the body a prism of it.
     const b = new SketchBuilder();
     b.spline(
       [

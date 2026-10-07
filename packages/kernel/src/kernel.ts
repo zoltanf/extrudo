@@ -1763,6 +1763,16 @@ export class Kernel {
         }
         for (const knot of curve.knots) f.pushNumber(knot);
         return f.sketchSpline(curve.degree, curve.poles.length);
+      case 'conic':
+        return f.sketchConic(
+          curve.start[0],
+          curve.start[1],
+          curve.shoulder[0],
+          curve.shoulder[1],
+          curve.end[0],
+          curve.end[1],
+          curve.rho,
+        );
     }
   }
 

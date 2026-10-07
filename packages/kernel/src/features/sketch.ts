@@ -79,7 +79,7 @@ export interface SketchOutputData {
   curves?: Record<SketchEntityId, SketchPathCurve>;
   /**
    * Every curve of the sketch, construction ones too, as the kernel stages
-   * it (exact lines, arcs, circles, ellipses and splines), in sketch
+   * it (exact lines, arcs, circles, ellipses, splines and conics), in sketch
    * coordinates: what a sweep's path is made of (P4-01). Placed with `frame`.
    */
   exact?: Record<SketchEntityId, PlanarCurve>;
@@ -545,10 +545,15 @@ function planarCurve(
       return { kind: 'ellipse', center, a, b, rotation };
     }
     case 'spline': {
-      // The entity's own mode (P4-05, ADR-0063): a conic reaches the kernel as
-      // the cubic that stays within a micron of it.
       const points = e.points.map(point);
       if (!points.every((p) => p !== undefined)) return undefined;
+      // A conic reaches OCCT exactly, as the rational quadratic it is (P4-12,
+      // ADR-0063's amendment); the app still draws the cubic of `conicSpline`.
+      if (e.mode === 'conic' && e.rho !== undefined && points.length === 3) {
+        const [start, shoulder, end] = points as [Vec2, Vec2, Vec2];
+        return { kind: 'conic', start, shoulder, end, rho: e.rho };
+      }
+      // Every other mode as its own B-spline (P4-05, ADR-0063).
       const { degree, poles, knots } = splineCurve(e, points as Vec2[]);
       return { kind: 'spline', degree, poles, knots };
     }

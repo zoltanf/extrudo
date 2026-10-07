@@ -66,6 +66,7 @@
 #include <BRepFill_CompatibleWires.hxx>
 #include <BRepFill_TypeOfContact.hxx>
 #include <BRepAdaptor_CompCurve.hxx>
+#include <GCPnts_AbscissaPoint.hxx>
 #include <GCPnts_QuasiUniformAbscissa.hxx>
 #include <GeomAPI_PointsToBSpline.hxx>
 #include <Law_Linear.hxx>
@@ -253,31 +254,104 @@ public:
     return false;
   }
 
+  /**
+   * Whether one of `shape`'s edges is a rational curve: a sketch conic, staged
+   * exactly by sketchConic (P4-12, ADR-0063's amendment), or a rational
+   * B-spline from a STEP file. OCCT's fixed Gauss order is exact on lines,
+   * circles and polynomial curves but not on a rational one (a hyperbola
+   * arc's face area came out 1e-3 out), and the bounded integral of
+   * needsTolerance loses a prism's volume to the cancellation described there
+   * (5e-3 out at MASS_EPS, 1e-4 at 1e-12). Measured in `spikes/p4-12-conics`:
+   * the bounded area and the Gauss–Kronrod volume are exact to 1e-14 on the
+   * face and the prism of all three kinds of conic.
+   */
+  static bool hasRationalCurve(const TopoDS_Shape& shape) {
+    for (TopExp_Explorer edge(shape, TopAbs_EDGE); edge.More(); edge.Next()) {
+      const TopoDS_Edge& e = TopoDS::Edge(edge.Current());
+      if (BRep_Tool::Degenerated(e)) continue;
+      BRepAdaptor_Curve curve(e);
+      const GeomAbs_CurveType type = curve.GetType();
+      if ((type == GeomAbs_BSplineCurve || type == GeomAbs_BezierCurve) && curve.IsRational()) return true;
+    }
+    return false;
+  }
+
   /** A solid's volume, integrated to MASS_EPS where that is the better form. */
   static void integrateVolume(const TopoDS_Shape& shape, GProp_GProps& props) {
-    if (needsTolerance(shape)) {
+    if (hasRationalCurve(shape)) {
+      BRepGProp::VolumePropertiesGK(shape, props, MASS_EPS);
+    } else if (needsTolerance(shape)) {
       BRepGProp::VolumeProperties(shape, props, MASS_EPS, false);
     } else {
       BRepGProp::VolumeProperties(shape, props);
     }
   }
 
-  /** The area of a face or shape, on the same rule as `integrateVolume`. */
+  /**
+   * The area of a face or shape, on the same rule as `integrateVolume`. With a
+   * rational edge it goes face by face: the bounded integral on a face that
+   * needs it or is a plane with a rational edge (a conic profile's cap), the
+   * fixed order elsewhere, which is exact on the extrusion wall of a conic
+   * (where the bounded one is 8e-3 out on a hyperbola arc's).
+   */
   static void integrateArea(const TopoDS_Shape& shape, GProp_GProps& props) {
-    if (needsTolerance(shape)) {
-      BRepGProp::SurfaceProperties(shape, props, MASS_EPS, false);
-    } else {
-      BRepGProp::SurfaceProperties(shape, props);
+    if (!hasRationalCurve(shape)) {
+      if (needsTolerance(shape)) {
+        BRepGProp::SurfaceProperties(shape, props, MASS_EPS, false);
+      } else {
+        BRepGProp::SurfaceProperties(shape, props);
+      }
+      return;
+    }
+    for (TopExp_Explorer face(shape, TopAbs_FACE); face.More(); face.Next()) {
+      GProp_GProps one;
+      BRepAdaptor_Surface surface(TopoDS::Face(face.Current()), false);
+      if (needsTolerance(face.Current()) ||
+          (surface.GetType() == GeomAbs_Plane && hasRationalCurve(face.Current()))) {
+        BRepGProp::SurfaceProperties(face.Current(), one, MASS_EPS, false);
+      } else {
+        BRepGProp::SurfaceProperties(face.Current(), one);
+      }
+      props.Add(one);
     }
   }
 
-  /** The length of edges, on the same rule as `integrateVolume`. */
+  /**
+   * The length properties of edges. OCCT's LinearProperties has no error
+   * bound (it integrates with a fixed order whatever the curve; P4-12 H3's
+   * MASS_EPS reached its `SkipShared` flag, which is kept as it was), so the
+   * length of a rational edge comes from `edgesLength`.
+   */
   static void integrateLength(const TopoDS_Shape& shape, GProp_GProps& props) {
-    if (needsTolerance(shape)) {
-      BRepGProp::LinearProperties(shape, props, MASS_EPS, false);
-    } else {
-      BRepGProp::LinearProperties(shape, props);
+    BRepGProp::LinearProperties(shape, props, needsTolerance(shape));
+  }
+
+  /**
+   * One edge's length: the adaptive arc length for a rational curve, where
+   * LinearProperties' fixed order is 8e-3 out on a hyperbola arc (P4-12,
+   * ADR-0063's amendment), else `fixed`, the length LinearProperties gave.
+   */
+  static double edgeLength(const TopoDS_Edge& edge, double fixed) {
+    if (BRep_Tool::Degenerated(edge)) return fixed;
+    BRepAdaptor_Curve curve(edge);
+    const GeomAbs_CurveType type = curve.GetType();
+    if ((type != GeomAbs_BSplineCurve && type != GeomAbs_BezierCurve) || !curve.IsRational()) return fixed;
+    const double length = GCPnts_AbscissaPoint::Length(curve, 1e-10);
+    return length > 0 ? length : fixed;
+  }
+
+  /** The length of a shape's edges, each counted once, as `edgeLength` gives it. */
+  static double edgesLength(const TopoDS_Shape& shape, const GProp_GProps& props) {
+    if (!hasRationalCurve(shape)) return props.Mass();
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> edges;
+    TopExp::MapShapes(shape, TopAbs_EDGE, edges);
+    double total = 0;
+    for (int i = 1; i <= edges.Extent(); ++i) {
+      GProp_GProps one;
+      BRepGProp::LinearProperties(edges(i), one);
+      total += edgeLength(TopoDS::Edge(edges(i)), one.Mass());
     }
+    return total;
   }
 
   /**
@@ -1637,6 +1711,46 @@ public:
   }
 
   /**
+   * A sketch conic exactly (P4-12, ADR-0063's amendment): the rational
+   * quadratic Bézier with poles start, shoulder, end and weights
+   * (1, rho / (1 − rho), 1), as a degree-2 B-spline with knots [0, 1] of
+   * multiplicity 3. Below rho 0.5 an ellipse arc, 0.5 a parabola, above a
+   * hyperbola arc. A conic arc can't cross itself, so it is one edge; a
+   * shoulder on the chord is the straight curve the cubic route made too.
+   */
+  int sketchConic(double x0, double y0, double xs, double ys, double x1, double y1, double rho) {
+    beginOp();
+    try {
+      if (!(rho > 0 && rho < 1)) return failCurve("The conic's rho must lie between 0 and 1.");
+      const gp_Pnt start(x0, y0, 0);
+      const gp_Pnt shoulder(xs, ys, 0);
+      const gp_Pnt end(x1, y1, 0);
+      if (start.Distance(end) <= Precision::Confusion()) return failCurve("The conic has no length.");
+      NCollection_Array1<gp_Pnt> poles(1, 3);
+      poles(1) = start;
+      poles(2) = shoulder;
+      poles(3) = end;
+      NCollection_Array1<double> weights(1, 3);
+      weights(1) = 1;
+      weights(2) = rho / (1 - rho);
+      weights(3) = 1;
+      NCollection_Array1<double> knots(1, 2);
+      knots(1) = 0;
+      knots(2) = 1;
+      NCollection_Array1<int> mults(1, 2);
+      mults(1) = 3;
+      mults(2) = 3;
+      Handle(Geom_BSplineCurve) curve = new Geom_BSplineCurve(poles, weights, knots, mults, 2);
+      BRepBuilderAPI_MakeEdge builder(curve);
+      if (!builder.IsDone()) return failCurve("Couldn't make an edge from the conic.");
+      return addSketchEdge(builder.Edge());
+    } catch (...) {
+      failFromException("Conic failed");
+      return -1;
+    }
+  }
+
+  /**
    * Splits the staged curves where they cross, touch or end on each other
    * (General Fuse, positions within `fuzzy` mm are one), builds the faces
    * between them and places each in the sketch plane (origin, X direction,
@@ -1781,7 +1895,7 @@ public:
       }
       if (edges && !faces) {
         integrateLength(*s, props);
-        measured_[8] = props.Mass();
+        measured_[8] = edgesLength(*s, props);
       }
       gp_Pnt centre;
       if (solids || faces || edges) {
@@ -4514,7 +4628,7 @@ private:
     const double minArea = fuzzy * fuzzy;
     for (const TopoDS_Face& face : faces) {
       GProp_GProps props;
-      BRepGProp::SurfaceProperties(face, props);
+      integrateArea(face, props);
       if (props.Mass() <= minArea) continue;
       // Wires that touch (share a vertex) are one loop, as in the arrangement:
       // a circle touching the outline from inside is part of the outline,
@@ -6733,7 +6847,7 @@ private:
         if (tangent.Magnitude() <= 1e-12) hasDirection = false;
         else direction = canonical(gp_Dir(tangent));
     }
-    pushNumbers(props.Mass(), middle, hasDirection ? &direction : nullptr);
+    pushNumbers(edgeLength(edge, props.Mass()), middle, hasDirection ? &direction : nullptr);
   }
 
   /** [n, face index × n]: the distinct faces around a sub-shape, as indices into `faces`. */
