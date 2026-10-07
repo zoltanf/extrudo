@@ -18,7 +18,9 @@
  * (`variableSetManipulators`): Radius where the round starts and End radius
  * where it ends, each on the bisector at that end of the tangent chain. **A
  * chamfer of the unequal types** takes its distances along the faces
- * themselves (`faceDirections`, `chamferManipulators`).
+ * themselves (`faceDirections`, `chamferManipulators`), and **a
+ * distance-and-angle set's Angle is an arc** from the reference face's
+ * direction towards the other face's, about the edge itself.
  */
 import type { BodyId, GeomRef, Vec3 } from '@extrudo/core';
 import { type BodyMesh, parseCompound } from '@extrudo/kernel';
@@ -385,7 +387,11 @@ export function faceDirections(
  * The handles of one chamfer set. Equal distances have the bisector handle of
  * every set; the unequal types run **Distance along the reference face** and
  * (two distances) **Second distance along the other one** where `faceDirections`
- * can read them, else Distance keeps the bisector handle.
+ * can read them, else Distance keeps the bisector handle. A distance-and-angle
+ * set **also gets its Angle as an arc** (P4-12): it starts along the reference
+ * face's direction and swings towards the other face's, about the edge itself,
+ * so its head sits on the chamfer face at the set's angle. Where the directions
+ * can't be read, the set keeps its single bisector handle and has no arc.
  */
 export function chamferSetManipulators(
   set: {
@@ -395,10 +401,12 @@ export function chamferSetManipulators(
     mode: string;
     flip: boolean;
     face: GeomRef | undefined;
+    /** The set's angle field (`chamferAngleKey(n)`), written by a distance-and-angle arc. */
+    angle: string;
   },
   values: DialogValues,
   bodies: Readonly<Record<BodyId, BodyMesh>>,
-  style: { distance?: HandleStyle; distanceB?: HandleStyle } = {},
+  style: { distance?: HandleStyle; distanceB?: HandleStyle; angle?: HandleStyle } = {},
 ): Manipulator[] {
   const unequal = set.mode === 'two-distances' || set.mode === 'distance-angle';
   const dirs = unequal
@@ -427,6 +435,25 @@ export function chamferSetManipulators(
       quiet: true,
       ...(style.distanceB?.follows && { follows: style.distanceB.follows }),
     });
+  } else {
+    // The arc turns from `first` (its zero) towards `second`: the axis is the
+    // two directions' cross product — along the edge, signed so the turn to
+    // `second` is positive — and a chamfer face at angle θ lies on the arc at
+    // θ. Left out where the two directions are parallel or opposed, which no
+    // face corner between two flat faces of an edge can be.
+    const across = cross(dirs.first, dirs.second);
+    const length = Math.hypot(...across);
+    if (length > 1e-6) {
+      out.push({
+        kind: 'angle',
+        field: set.angle,
+        origin: dirs.origin,
+        axis: [across[0] / length, across[1] / length, across[2] / length],
+        zero: dirs.first,
+        quiet: true,
+        ...(style.angle?.follows && { follows: style.angle.follows }),
+      });
+    }
   }
   return out;
 }

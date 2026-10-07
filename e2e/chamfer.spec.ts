@@ -482,3 +482,49 @@ test('two distances: Distance runs along the reference face, Second distance alo
   const topTaken = onTop(first) ? 2 : 6;
   expect((await measureTop(page)).area).toBeCloseTo(400 - topTaken * 20, 0);
 });
+
+test('distance and angle: the Angle field gets an arc, which a drag turns', async ({ page }) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await cube(page);
+  const at = await settledProjector(viewport);
+
+  await clickEdge(page, at, [0, -10, 20]);
+  await startChamfer(page);
+  const dialog = page.getByRole('region', { name: 'Chamfer dialog' });
+  await dialog
+    .getByRole('combobox', { name: 'Type', exact: true })
+    .selectOption({ label: 'Distance and angle' });
+  const distance = dialog.getByRole('textbox', { name: 'Distance', exact: true });
+  await distance.fill('2 mm');
+  await distance.blur();
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
+    'data-manipulators',
+    'distance:distance angle:angle',
+  );
+  const angle = dialog.getByRole('textbox', { name: 'Angle', exact: true });
+  await expect(angle).toHaveValue('45 deg');
+
+  // The arc's head stands at the set's angle between the two faces; a small
+  // drag along it (perpendicular to its radius on screen, either way round)
+  // turns the angle. Read the field blurred: it keeps its own text in focus.
+  const middle = at([0, -10, 20]);
+  const head = await handleAt(viewport, 'angle');
+  const r = { x: head.x - middle.x, y: head.y - middle.y };
+  const t = { x: -r.y, y: r.x };
+  const length = Math.hypot(t.x, t.y);
+  await dragBy(page, head, (t.x / length) * 20, (t.y / length) * 20);
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await angle.blur();
+  const value = Number.parseFloat(await angle.inputValue());
+  expect(value, 'Angle after the drag').toBeGreaterThan(10);
+  expect(value).toBeLessThan(80);
+  expect(value).not.toBe(45);
+
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:7:20,20,20');
+});

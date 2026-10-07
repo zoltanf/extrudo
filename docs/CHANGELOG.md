@@ -16,6 +16,12 @@ One line per completed roadmap task, newest first. Dates are absolute.
   inputs, resolved references, Fix References for a lost one), the `Recomputer`'s
   and the CLI's resource sending, and the example plugin
   `examples/plugins/name-plate/` run headless in `packages/cli`.
+- 2026-10-07 · **P4-12 Chamfer Angle handle** (ADR-0043's third amendment): a
+  distance-and-angle set's Angle gets an in-view arc beside its Distance
+  arrow, starting along the reference face's direction and turning towards the
+  other face's about the edge, so the head sits on the chamfer face and a drag
+  writes the angle; none where the two face directions can't be read (the set
+  keeps its single bisector arrow). No kernel, facade or schema change.
 - 2026-10-07 · **WebGL fallback** (ADR-0076): the 3D view draws in the browser's software
   WebGL where there is no hardware (dpr 1, no antialiasing, a status bar "Software rendering"
   and a one-time toast), shows "Extrudo can't draw the 3D view in this browser" where there is

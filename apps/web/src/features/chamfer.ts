@@ -24,7 +24,10 @@
  * picked one, else the kernel's choice, or the other with Flip) across the edge,
  * and for two distances a Second distance arrow along the other face, where both
  * faces are flat and the edge straight (else Distance keeps the bisector arrow
- * and there is no second). The overlay draws the set last focused prominent.
+ * and there is no second). A distance-and-angle set's Angle is an arc from the
+ * reference face's direction towards the other face's, about the edge, which a
+ * drag turns (P4-12, ADR-0043's third amendment). The overlay draws the set
+ * last focused prominent.
  */
 import {
   CHAMFER_EDGE_KINDS,
@@ -152,6 +155,8 @@ export const chamferDialog = defineFeatureDialog({
       if (!hasEdges(values, n)) continue;
       const distance = chamferDistanceKey(n);
       const distanceB = chamferDistanceBKey(n);
+      // Each handle follows the set's other fields: focusing one makes its own
+      // set's handles the prominent ones.
       const follows = [
         chamferEdgesKey(n),
         chamferModeKey(n),
@@ -168,10 +173,22 @@ export const chamferDialog = defineFeatureDialog({
             mode: modeOf(values, n),
             flip: values.toggles[chamferFlipKey(n)] === true,
             face: values.refs[chamferFaceKey(n)]?.[0],
+            angle: chamferAngleKey(n),
           },
           values,
           ctx.bodies,
-          { distance: { follows } },
+          {
+            distance: { follows },
+            angle: {
+              follows: [
+                chamferEdgesKey(n),
+                chamferModeKey(n),
+                chamferFaceKey(n),
+                chamferFlipKey(n),
+                distance,
+              ],
+            },
+          },
         ),
       );
     }

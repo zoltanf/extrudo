@@ -289,6 +289,15 @@ export interface AngleManipulator {
    * wrapping at ±180°.
    */
   fullTurn?: boolean;
+  /**
+   * One of several handles of one dialog (a chamfer set's distance arrow and
+   * its angle arc, P4-12): declared like a distance arrow's. The overlay
+   * draws distance arrows small and faint while they aren't the active one;
+   * an arc's own field always opens the heads-up box on it.
+   */
+  quiet?: boolean;
+  /** Other fields (a set's pick field, its toggles) that make this arc the active one. */
+  follows?: readonly string[];
 }
 
 /**

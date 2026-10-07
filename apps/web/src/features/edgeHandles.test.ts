@@ -234,13 +234,18 @@ describe('a chamfer’s distances along the faces', () => {
         edges: 'edges',
         distance: 'distance',
         distanceB: 'distanceB',
+        angle: 'angle',
         mode,
         flip: over.flip ?? false,
         face: over.face,
       },
       values({ edges: [edgeRef(TOP_FRONT_EDGE)] }),
       bodies,
-    ).map((m) => (m.kind === 'distance' ? { field: m.field, direction: unit(m.direction) } : m));
+    ).map((m) =>
+      m.kind === 'distance'
+        ? { field: m.field, direction: unit(m.direction) }
+        : { field: m.field, kind: m.kind },
+    );
 
   it('gives equal distances the bisector, two distances both face directions', () => {
     expect(set('equal')).toEqual([{ field: 'distance', direction: half([0, 0, 1], [0, -1, 0]) }]);
@@ -248,8 +253,11 @@ describe('a chamfer’s distances along the faces', () => {
       { field: 'distance', direction: [0, 1, 0] },
       { field: 'distanceB', direction: [0, 0, -1] },
     ]);
-    // Distance and angle has no second distance.
-    expect(set('distance-angle')).toEqual([{ field: 'distance', direction: [0, 1, 0] }]);
+    // Distance and angle has no second distance; its arc has its own describe below.
+    expect(set('distance-angle')).toEqual([
+      { field: 'distance', direction: [0, 1, 0] },
+      { field: 'angle', kind: 'angle' },
+    ]);
     expect(set('two-distances', { face: faceRef('front') })[0]).toEqual({
       field: 'distance',
       direction: [0, 0, -1],
@@ -265,10 +273,126 @@ describe('a chamfer’s distances along the faces', () => {
         mode: 'two-distances',
         flip: false,
         face: faceRef('left'),
+        angle: 'angle',
       },
       values({ edges: [edgeRef(TOP_FRONT_EDGE)] }),
       bodies,
     );
     expect(out.map((m) => m.field)).toEqual(['distance']);
+  });
+});
+
+describe('a distance-and-angle set’s angle arc', () => {
+  const cross = (a: readonly number[], b: readonly number[]) => [
+    (a[1] as number) * (b[2] as number) - (a[2] as number) * (b[1] as number),
+    (a[2] as number) * (b[0] as number) - (a[0] as number) * (b[2] as number),
+    (a[0] as number) * (b[1] as number) - (a[1] as number) * (b[0] as number),
+  ];
+  const dot = (a: readonly number[], b: readonly number[]) =>
+    (a[0] as number) * (b[0] as number) +
+    (a[1] as number) * (b[1] as number) +
+    (a[2] as number) * (b[2] as number);
+
+  const set = (mode: string, style: Parameters<typeof chamferSetManipulators>[3] = {}) =>
+    chamferSetManipulators(
+      {
+        edges: 'edges',
+        distance: 'distance',
+        distanceB: 'distanceB',
+        angle: 'angle',
+        mode,
+        flip: false,
+        face: undefined,
+      },
+      values({ edges: [edgeRef(TOP_FRONT_EDGE)] }),
+      bodies,
+      style,
+    );
+
+  it('follows the distance arrow, turning from the reference face towards the other one', () => {
+    const out = set('distance-angle');
+    expect(out.map((m) => m.kind)).toEqual(['distance', 'angle']);
+    const arc = out[1];
+    if (arc?.kind !== 'angle') throw new Error('no arc');
+    expect(arc.field).toBe('angle');
+    expect(round(arc.origin)).toEqual([5, 0, 10]);
+    // The zero is the reference face's direction: across the top face, away
+    // from the edge (the top face is the lower-numbered one here).
+    expect(round(arc.zero)).toEqual([0, 1, 0]);
+    // The axis is along the edge (it runs along x), signed so the swing to the
+    // other face's direction is positive: a quarter turn reaches it.
+    expect(round(arc.axis)).toEqual([-1, 0, 0]);
+    const dirs = faceDirections(bodies, edgeRef(TOP_FRONT_EDGE), undefined, false);
+    const second = (dirs?.second ?? []) as readonly number[];
+    expect(dot(cross(arc.zero, second), arc.axis)).toBeGreaterThan(0);
+    expect(round(cross(arc.axis, arc.zero))).toEqual(round(second));
+  });
+
+  it('gives a two-distance set both arrows and no arc', () => {
+    expect(set('two-distances').map((m) => m.kind)).toEqual(['distance', 'distance']);
+  });
+
+  it('carries the style the dialog passes it, the set’s other fields and not itself', () => {
+    const out = set('distance-angle', {
+      distance: { follows: ['edges', 'mode', 'face', 'flip', 'angle'] },
+      angle: { follows: ['edges', 'mode', 'face', 'flip', 'distance'] },
+    });
+    const arrow = out[0];
+    const arc = out[1];
+    if (arrow?.kind !== 'distance' || arc?.kind !== 'angle') throw new Error('missing handles');
+    expect(arrow.follows).toEqual(['edges', 'mode', 'face', 'flip', 'angle']);
+    expect(arc.follows).toEqual(['edges', 'mode', 'face', 'flip', 'distance']);
+    expect(arc.follows?.includes('angle')).toBe(false);
+  });
+
+  /** The box with its top front edge bent (three polyline points): a curved edge. */
+  const bent = (() => {
+    const points: number[] = [];
+    const ranges: number[] = [];
+    let at = 0;
+    for (let e = 0; e < 12; e++) {
+      const start = mesh.edgeRanges?.[2 * e] ?? 0;
+      const count = mesh.edgeRanges?.[2 * e + 1] ?? 0;
+      const pt = (i: number): [number, number, number] => [
+        mesh.edgePoints?.[3 * i] ?? 0,
+        mesh.edgePoints?.[3 * i + 1] ?? 0,
+        mesh.edgePoints?.[3 * i + 2] ?? 0,
+      ];
+      if (e === TOP_FRONT_EDGE) {
+        ranges.push(at, 3);
+        points.push(0, 0, 10, 5, 0, 12, 10, 0, 10);
+        at += 3;
+        continue;
+      }
+      ranges.push(at, count);
+      for (let i = start; i < start + count; i++) points.push(...pt(i));
+      at += count;
+    }
+    return { ...mesh, edgePoints: new Float32Array(points), edgeRanges: new Uint32Array(ranges) };
+  })();
+
+  it('keeps the single bisector on a curved edge: no pair, no arc', () => {
+    expect(
+      faceDirections({ [BOX]: bent }, edgeRef(TOP_FRONT_EDGE), undefined, false),
+    ).toBeUndefined();
+    const out = chamferSetManipulators(
+      {
+        edges: 'edges',
+        distance: 'distance',
+        distanceB: 'distanceB',
+        angle: 'angle',
+        mode: 'distance-angle',
+        flip: false,
+        face: undefined,
+      },
+      values({ edges: [edgeRef(TOP_FRONT_EDGE)] }),
+      { [BOX]: bent },
+    );
+    expect(out).toHaveLength(1);
+    const only = out[0];
+    if (only?.kind !== 'distance') throw new Error('no bisector');
+    // The handle stands on the bend's middle, on the bisector of the two faces.
+    expect(round(only.origin)).toEqual([5, 0, 12]);
+    expect(round(only.direction)).toEqual(half([0, 0, 1], [0, -1, 0]));
   });
 });

@@ -232,3 +232,31 @@ and angle has the Distance arrow only. `e2e/chamfer.spec.ts` reads the arrows'
 screen positions and then checks them against the kernel by the footprint on the
 top face (the handle on the top face is the one whose value the top face gives
 up).
+
+### Third amendment (2026-10-07): the Angle handle
+
+A distance-and-angle set's Angle gets its own in-view handle beside its
+Distance arrow: an **arc** that starts along the reference face's direction
+(`zero`) and swings towards the other face's, turning about **the edge itself**
+— the axis is the two face directions' cross product, which lies along the
+edge, signed so the turn from the reference face to the other one is positive
+(`cross(zero, second) · axis > 0`). OCCT measures the chamfer angle to the
+reference face, so the chamfer face at angle θ lies on the arc at θ and the
+head sits on it; dragging along the arc writes the angle (whole degrees,
+wrapping at ±180°). The arc is `scale` 1 (the field is the whole angle), no
+`fullTurn`, and carries the set's other fields as its `follows`, like the
+Distance arrow's — `AngleManipulator` gained optional `quiet`/`follows`,
+declared like a distance arrow's (the overlay dims distance arrows today; an
+arc's own field still opens the heads-up box on it).
+
+Where `faceDirections` can't read the two directions — a curved edge or face,
+a face the meshes lack, a reference face that isn't the edge's — the set keeps
+its single bisector handle and gets **no arc**. Equal and two-distance sets
+are unchanged. Tests: `edgeHandles.test.ts` "a distance-and-angle set's angle
+arc" (the zero, the axis and its sign, the arc's `follows`, a bent edge that
+keeps the bisector alone) and `e2e/chamfer.spec.ts` "distance and angle: the
+Angle field gets an arc, which a drag turns".
+
+Rejected: an arc for the equal set's 45°. An equal chamfer's face always lies
+on the bisector of its two faces, so the arc would show a value that only the
+Distance arrow moves — the bisector arrow already stands where that face is.

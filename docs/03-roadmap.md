@@ -861,8 +861,10 @@ end to end, faster than in Fusion 360.
     where that can't be read: a seam, a smooth chain, a face the meshes
     don't have). **Handles for every set, a variable fillet's two ends and a
     chamfer's face directions are done** (2026-10-05, the amendments' second
-    part). Still open: a chamfer's handles on curved faces or edges (they keep
-    the single bisector handle) and a handle for a chamfer's Angle.
+    part), and ~~a handle for a chamfer's Angle~~ is **done 2026-10-07**
+    (ADR-0043's third amendment: an arc from the reference face's direction
+    towards the other face's, about the edge). Still open: a chamfer's handles
+    on curved faces or edges (they keep the single bisector handle).
   - Shell: ~~a thickness per face~~; ~~removing faces next to a fillet~~
     (ADR-0046's amendment; done 2026-10-06: wall sets, and a flat face next to
     a fillet opened as a plug. Still open: an opening through a curved face
