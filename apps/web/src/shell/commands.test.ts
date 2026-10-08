@@ -18,7 +18,6 @@ function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): 
     }),
     viewport: createViewportStore({ preferences: memoryPreferences(), reducedMotion: () => true }),
     browser: { collapsed: false, toggle: vi.fn() },
-    timeline: { collapsed: false, toggle: vi.fn() },
     file: {
       newDesign: vi.fn(),
       home: vi.fn(),
@@ -211,7 +210,7 @@ describe('buildCommands', () => {
   it('names panel toggles by what they do and leaves out the current theme', () => {
     const commands = byId(context('model', { browser: { collapsed: true, toggle: vi.fn() } }));
     expect(commands.get('toggleBrowser')?.label).toBe('Show Browser');
-    expect(commands.get('toggleTimeline')?.label).toBe('Hide Timeline');
+    expect(commands.has('toggleTimeline')).toBe(false);
     expect(commands.has('theme-dark')).toBe(false);
     expect(commands.has('theme-light')).toBe(true);
   });

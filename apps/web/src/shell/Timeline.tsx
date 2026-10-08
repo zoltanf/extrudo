@@ -14,12 +14,10 @@ import {
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import {
-  ChevronDown,
   ChevronFirst,
   ChevronLast,
   ChevronLeft,
   ChevronRight,
-  ChevronUp,
   Folder,
   FolderOpen,
 } from 'lucide-react';
@@ -57,8 +55,6 @@ import { toolForFeature } from './tools';
 
 export interface TimelineProps {
   store: DocumentStore;
-  collapsed: boolean;
-  onToggle(): void;
   /** Name of the sketch being edited. The marker can't move meanwhile (it could roll the sketch back). */
   activeSketch?: string;
   /** Edit, rename, suppress, delete and hover (P1-12). */
@@ -158,8 +154,6 @@ function useEdgeScroll(
  */
 export function Timeline({
   store,
-  collapsed,
-  onToggle,
   activeSketch,
   actions,
   groups,
@@ -238,178 +232,174 @@ export function Timeline({
       aria-label="Timeline"
       className="flex min-h-9 items-center gap-2 border-t border-line bg-panel px-2 py-1"
     >
-      {!collapsed && (
-        <>
-          <fieldset className="m-0 flex border-0 p-0" aria-label="Playback">
-            <IconButton
-              label="Roll back to start"
-              disabled={locked || marker === 0}
-              onClick={() => move(0)}
-            >
-              <ChevronFirst size={16} />
-            </IconButton>
-            <IconButton
-              label="Step back"
-              disabled={locked || stepBack === marker}
-              onClick={() => move(stepBack)}
-            >
-              <ChevronLeft size={16} />
-            </IconButton>
-            <IconButton
-              label="Step forward"
-              disabled={locked || stepForward === marker}
-              onClick={() => move(stepForward)}
-            >
-              <ChevronRight size={16} />
-            </IconButton>
-            <IconButton
-              label="Roll forward to end"
-              disabled={locked || marker === count}
-              onClick={() => move(count)}
-            >
-              <ChevronLast size={16} />
-            </IconButton>
-          </fieldset>
-          {/* px-1 leaves room for the marker's triangle, which is wider than its bar: at the
+      <fieldset className="m-0 flex border-0 p-0" aria-label="Playback">
+        <IconButton
+          label="Roll back to start"
+          disabled={locked || marker === 0}
+          onClick={() => move(0)}
+        >
+          <ChevronFirst size={16} />
+        </IconButton>
+        <IconButton
+          label="Step back"
+          disabled={locked || stepBack === marker}
+          onClick={() => move(stepBack)}
+        >
+          <ChevronLeft size={16} />
+        </IconButton>
+        <IconButton
+          label="Step forward"
+          disabled={locked || stepForward === marker}
+          onClick={() => move(stepForward)}
+        >
+          <ChevronRight size={16} />
+        </IconButton>
+        <IconButton
+          label="Roll forward to end"
+          disabled={locked || marker === count}
+          onClick={() => move(count)}
+        >
+          <ChevronLast size={16} />
+        </IconButton>
+      </fieldset>
+      {/* px-1 leaves room for the marker's triangle, which is wider than its bar: at the
               ends it stuck out and a scrollbar showed with room to spare. */}
-          <ol
-            ref={list}
-            aria-label="Features"
-            data-dragging={chipDrag ? 'chip' : markerDrag !== undefined ? 'marker' : undefined}
-            data-selected-features={live.join(' ') || undefined}
-            data-selected-group={pickedGroup || undefined}
-            className="relative flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 py-1"
-            onClick={(event) => {
-              // A click between chips clears what was picked, and so does Esc on a chip.
-              if (event.target === event.currentTarget) selection.getState().clear();
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape' && (live.length > 0 || pickedGroup))
-                selection.getState().clear();
-            }}
-          >
-            {plan.bands.map((band) => {
-              // A folded group is one chip of its own; an open one a band around its members.
-              if (!band.group) {
-                return (
-                  <Fragment key={band.chips[0]?.id ?? `gap-${band.from}`}>
-                    {band.chips.map((feature, i) => {
-                      const index = band.from + i;
-                      return (
-                        <Fragment key={feature.id}>
-                          {index === shown && markerAt(index)}
-                          <Chip
-                            feature={feature}
-                            index={index}
-                            count={count}
-                            marker={marker}
-                            problem={featureProblem(feature, index, marker, statuses)}
-                            scriptStatus={statuses[feature.id]}
-                            pluginHint={pluginHint?.(feature)}
-                            rolledBack={index >= (markerDrag?.index ?? marker)}
-                            dimmed={editIndex >= 0 && index > editIndex}
-                            editable={actions.canEdit(feature, index, marker)}
-                            actions={actions}
-                            groups={groups}
-                            list={list}
-                            locked={locked}
-                            dragging={chipDrag?.ids.includes(feature.id) ?? false}
-                            onDrag={setChipDrag}
-                            selected={live.includes(feature.id)}
-                            moving={movingWith(feature.id)}
-                            onSelect={select}
-                            // Two chips or more picked: the menu can group them (P4-09).
-                            range={live.length > 1 ? live : undefined}
-                          />
-                        </Fragment>
-                      );
-                    })}
-                  </Fragment>
-                );
-              }
-              const run = band.group;
-              if (run.group.collapsed) {
-                return (
-                  <Fragment key={run.group.id}>
-                    {band.from === shown && markerAt(band.from)}
-                    <GroupChip
-                      run={run}
-                      actions={actions}
-                      groups={groups}
-                      list={list}
-                      locked={locked}
-                      dragging={chipDrag?.ids.includes(run.members[0]?.id as FeatureId) ?? false}
-                      onDrag={setChipDrag}
-                      selected={pickedGroup === run.group.id}
-                      marker={marker}
-                      statuses={statuses}
-                      onPick={(shift) => pickGroup(run, shift)}
-                    />
-                  </Fragment>
-                );
-              }
-              return (
-                <Fragment key={run.group.id}>
-                  {band.from === shown && markerAt(band.from)}
-                  {/* An open group is a band around its members' chips: the marker that
+      <ol
+        ref={list}
+        aria-label="Features"
+        data-dragging={chipDrag ? 'chip' : markerDrag !== undefined ? 'marker' : undefined}
+        data-selected-features={live.join(' ') || undefined}
+        data-selected-group={pickedGroup || undefined}
+        className="relative flex min-w-0 items-center gap-1.5 overflow-x-auto px-1 py-1"
+        onClick={(event) => {
+          // A click between chips clears what was picked, and so does Esc on a chip.
+          if (event.target === event.currentTarget) selection.getState().clear();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape' && (live.length > 0 || pickedGroup))
+            selection.getState().clear();
+        }}
+      >
+        {plan.bands.map((band) => {
+          // A folded group is one chip of its own; an open one a band around its members.
+          if (!band.group) {
+            return (
+              <Fragment key={band.chips[0]?.id ?? `gap-${band.from}`}>
+                {band.chips.map((feature, i) => {
+                  const index = band.from + i;
+                  return (
+                    <Fragment key={feature.id}>
+                      {index === shown && markerAt(index)}
+                      <Chip
+                        feature={feature}
+                        index={index}
+                        count={count}
+                        marker={marker}
+                        problem={featureProblem(feature, index, marker, statuses)}
+                        scriptStatus={statuses[feature.id]}
+                        pluginHint={pluginHint?.(feature)}
+                        rolledBack={index >= (markerDrag?.index ?? marker)}
+                        dimmed={editIndex >= 0 && index > editIndex}
+                        editable={actions.canEdit(feature, index, marker)}
+                        actions={actions}
+                        groups={groups}
+                        list={list}
+                        locked={locked}
+                        dragging={chipDrag?.ids.includes(feature.id) ?? false}
+                        onDrag={setChipDrag}
+                        selected={live.includes(feature.id)}
+                        moving={movingWith(feature.id)}
+                        onSelect={select}
+                        // Two chips or more picked: the menu can group them (P4-09).
+                        range={live.length > 1 ? live : undefined}
+                      />
+                    </Fragment>
+                  );
+                })}
+              </Fragment>
+            );
+          }
+          const run = band.group;
+          if (run.group.collapsed) {
+            return (
+              <Fragment key={run.group.id}>
+                {band.from === shown && markerAt(band.from)}
+                <GroupChip
+                  run={run}
+                  actions={actions}
+                  groups={groups}
+                  list={list}
+                  locked={locked}
+                  dragging={chipDrag?.ids.includes(run.members[0]?.id as FeatureId) ?? false}
+                  onDrag={setChipDrag}
+                  selected={pickedGroup === run.group.id}
+                  marker={marker}
+                  statuses={statuses}
+                  onPick={(shift) => pickGroup(run, shift)}
+                />
+              </Fragment>
+            );
+          }
+          return (
+            <Fragment key={run.group.id}>
+              {band.from === shown && markerAt(band.from)}
+              {/* An open group is a band around its members' chips: the marker that
                       belongs in front of it is a chip of the timeline again, and the members
                       are a list of their own. */}
-                  <li
-                    data-group-band={run.group.id}
-                    className="flex shrink-0 items-center gap-1 rounded-control border border-dashed px-1 py-0.5"
-                    style={{ background: 'color-mix(in srgb, var(--x-accent) 7%, transparent)' }}
-                  >
-                    <GroupLabel run={run} groups={groups} />
-                    <ul className="flex items-center gap-1">
-                      {run.members.map((feature, i) => {
-                        const index = band.from + i;
-                        return (
-                          <Fragment key={feature.id}>
-                            {/* The band's own marker, before the label, is the first member's. */}
-                            {i > 0 && index === shown && markerAt(index)}
-                            <Chip
-                              feature={feature}
-                              index={index}
-                              count={count}
-                              marker={marker}
-                              problem={featureProblem(feature, index, marker, statuses)}
-                              scriptStatus={statuses[feature.id]}
-                              pluginHint={pluginHint?.(feature)}
-                              rolledBack={index >= (markerDrag?.index ?? marker)}
-                              dimmed={editIndex >= 0 && index > editIndex}
-                              editable={actions.canEdit(feature, index, marker)}
-                              actions={actions}
-                              groups={groups}
-                              list={list}
-                              locked={locked}
-                              dragging={chipDrag?.ids.includes(feature.id) ?? false}
-                              onDrag={setChipDrag}
-                              selected={live.includes(feature.id) || pickedGroup === run.group.id}
-                              moving={movingWith(feature.id)}
-                              onSelect={select}
-                              range={live.length > 1 ? live : undefined}
-                            />
-                          </Fragment>
-                        );
-                      })}
-                    </ul>
-                  </li>
-                </Fragment>
-              );
-            })}
-            {shown === count && count > 0 && markerAt(count)}
-            {chipDrag && <DropIndicator drag={chipDrag} />}
-            {markerDrag && markerDrag.index !== marker && (
               <li
-                aria-hidden="true"
-                data-marker-ghost={markerDrag.index}
-                className="pointer-events-none absolute top-1 bottom-1 w-[3px] -translate-x-1/2 rounded-sm bg-accent opacity-70"
-                style={{ left: markerDrag.x }}
-              />
-            )}
-          </ol>
-        </>
-      )}
+                data-group-band={run.group.id}
+                className="flex shrink-0 items-center gap-1 rounded-control border border-dashed px-1 py-0.5"
+                style={{ background: 'color-mix(in srgb, var(--x-accent) 7%, transparent)' }}
+              >
+                <GroupLabel run={run} groups={groups} />
+                <ul className="flex items-center gap-1">
+                  {run.members.map((feature, i) => {
+                    const index = band.from + i;
+                    return (
+                      <Fragment key={feature.id}>
+                        {/* The band's own marker, before the label, is the first member's. */}
+                        {i > 0 && index === shown && markerAt(index)}
+                        <Chip
+                          feature={feature}
+                          index={index}
+                          count={count}
+                          marker={marker}
+                          problem={featureProblem(feature, index, marker, statuses)}
+                          scriptStatus={statuses[feature.id]}
+                          pluginHint={pluginHint?.(feature)}
+                          rolledBack={index >= (markerDrag?.index ?? marker)}
+                          dimmed={editIndex >= 0 && index > editIndex}
+                          editable={actions.canEdit(feature, index, marker)}
+                          actions={actions}
+                          groups={groups}
+                          list={list}
+                          locked={locked}
+                          dragging={chipDrag?.ids.includes(feature.id) ?? false}
+                          onDrag={setChipDrag}
+                          selected={live.includes(feature.id) || pickedGroup === run.group.id}
+                          moving={movingWith(feature.id)}
+                          onSelect={select}
+                          range={live.length > 1 ? live : undefined}
+                        />
+                      </Fragment>
+                    );
+                  })}
+                </ul>
+              </li>
+            </Fragment>
+          );
+        })}
+        {shown === count && count > 0 && markerAt(count)}
+        {chipDrag && <DropIndicator drag={chipDrag} />}
+        {markerDrag && markerDrag.index !== marker && (
+          <li
+            aria-hidden="true"
+            data-marker-ghost={markerDrag.index}
+            className="pointer-events-none absolute top-1 bottom-1 w-[3px] -translate-x-1/2 rounded-sm bg-accent opacity-70"
+            style={{ left: markerDrag.x }}
+          />
+        )}
+      </ol>
       <span className="flex-1" />
       {macro && <MacroRecording macro={macro} store={store} />}
       {session && <SelectionState session={session} store={store} size={selectionSize} />}
@@ -421,9 +411,6 @@ export function Timeline({
       {model && <KernelState model={model} />}
       {viewport && <SoftwareRendering support={webglSupport()} />}
       {viewport && <RenderRate viewport={viewport} />}
-      <IconButton label={collapsed ? 'Show timeline' : 'Hide timeline'} onClick={onToggle}>
-        {collapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-      </IconButton>
     </section>
   );
 }

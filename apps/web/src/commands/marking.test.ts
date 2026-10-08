@@ -18,7 +18,6 @@ function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): 
     }),
     viewport: createViewportStore({ preferences: memoryPreferences(), reducedMotion: () => true }),
     browser: { collapsed: false, toggle: vi.fn() },
-    timeline: { collapsed: false, toggle: vi.fn() },
     file: { newDesign: vi.fn(), home: vi.fn(), exportFile: vi.fn(), importFile: vi.fn() },
     theme: { choice: 'dark', set: vi.fn() },
     ...over,

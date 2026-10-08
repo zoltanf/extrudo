@@ -187,7 +187,10 @@ brief, voice) is in **`05-brand.md`**. In short:
   even if the browser hides them (P3-17).
 - **Timeline (bottom):** playback buttons, feature chips with category colour
   and icon, and a rollback marker (a draggable ▼ handle). The chip tooltip
-  shows the name, type and status message.
+  shows the name, type and status message. The timeline and the status bar
+  share the bottom row and are always shown: there is no Hide timeline
+  button (removed 2026-10-08; it freed almost no space, the status bar
+  staying put).
 - **As built (P2-11, ADR-0033):** the marker is a slider: drag it (a ghost
   shows the gap, chips behind it dim, the model rolls when it is let go,
   one undo step), or focus it and use ←/→, Home and End. Drag a chip to

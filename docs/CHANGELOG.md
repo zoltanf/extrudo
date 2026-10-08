@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-08 · **The timeline is always shown**: the bottom row's Hide timeline button and its command are gone (the owner's UI review).
 - 2026-10-08 · **Opening a design says it is being prepared** (ADR-0078): a notice with an animated cube at the view's top left until the first recompute has finished (and after 800 ms of a later one), and the browser lists the bodies the last session made as pending rows from a per-project model cache (`model-cache.json`, derived, not in the file).
 - 2026-10-07 · **P4-12 Construction: a cone's nearest tangency point and an edge meeting a curved face** (ADR-0040's addendum): `tangentPlane` with a `point` on a cone touches the foot of the point on the nearest generatrix (the apex past it; a point on the axis warns and follows the angle), and `pointAtIntersection` takes an edge and a curved face.
 - 2026-10-07 · **Tapered threads** (P4-12, ADR-0056's third amendment): a thread on a conical face follows the cone (the facade's `threadFace` reads cones, `threadSweep` sweeps along a conical helix), an NPT group (1/8 to 1, ASME B1.20.1) in Size fits a 1:16 cone without a size, and the Thread dialog's Thread line names it ("NPT 1/2"); no new input, no file-format change.

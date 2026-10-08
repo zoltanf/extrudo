@@ -84,7 +84,9 @@ test('the browser panel resizes with the keyboard and the mouse', async ({ page 
   expect(await width()).toBe(330);
 });
 
-test('the browser and the timeline collapse and expand, and remember it', async ({ page }) => {
+test('the browser collapses and expands, and remembers it; the timeline is always shown', async ({
+  page,
+}) => {
   await open(page);
   await page.getByRole('button', { name: 'Hide browser' }).click();
   const browser = page.getByRole('complementary', { name: 'Browser' });
@@ -96,16 +98,17 @@ test('the browser and the timeline collapse and expand, and remember it', async 
   expect(Math.round((await tab.boundingBox())?.width ?? 0)).toBeLessThanOrEqual(32);
   await expect(page.getByRole('button', { name: 'Hide browser' })).toBeHidden();
 
-  await page.getByRole('button', { name: 'Hide timeline' }).click();
-  await expect(page.getByRole('list', { name: 'Features' })).toHaveCount(0);
+  // The timeline has no toggle: the bottom row always shows it and the status bar.
+  await expect(page.getByRole('button', { name: /^(Hide|Show) timeline$/i })).toHaveCount(0);
+  await expect(page.getByRole('slider', { name: 'Timeline marker' })).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole('button', { name: 'Show browser' })).toBeVisible();
   await page.getByRole('button', { name: 'Show browser' }).click();
   await expect.poll(async () => Math.round((await browser.boundingBox())?.width ?? 0)).toBe(248);
   await expect(page.getByRole('button', { name: 'Show browser' })).toBeHidden();
-  await page.getByRole('button', { name: 'Show timeline' }).click();
-  await expect(page.getByRole('list', { name: 'Features' })).toBeVisible();
+  await expect(page.getByRole('button', { name: /^(Hide|Show) timeline$/i })).toHaveCount(0);
+  await expect(page.getByRole('slider', { name: 'Timeline marker' })).toBeVisible();
 });
 
 test('the timeline marker moves with playback, and Ctrl+Z undoes it', async ({ page }) => {

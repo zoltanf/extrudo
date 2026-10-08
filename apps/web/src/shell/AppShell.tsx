@@ -280,7 +280,6 @@ export function AppShell({
 }: AppShellProps) {
   const { choice, setChoice } = useTheme(platform.preferences);
   const browser = usePanel(platform.preferences, { key: 'browser', size: 248, min: 180, max: 480 });
-  const timeline = usePanel(platform.preferences, { key: 'timeline', size: 0, min: 0, max: 0 });
   // The browser floats over the view's left edge: fitting frames the part it leaves open.
   const browserCover = browser.collapsed ? 0 : browser.size;
   useEffect(() => viewport.getState().setCover(browserCover), [viewport, browserCover]);
@@ -858,7 +857,6 @@ export function AppShell({
         ...(m === 'sketch' && { lookAtSketch: () => lookAtSketch(stores) }),
         viewport,
         browser: { collapsed: browser.collapsed, toggle: browser.toggle },
-        timeline: { collapsed: timeline.collapsed, toggle: timeline.toggle },
         file: fileActions,
         theme: { choice, set: setChoice },
         ...(listing
@@ -897,8 +895,6 @@ export function AppShell({
       viewport,
       browser.collapsed,
       browser.toggle,
-      timeline.collapsed,
-      timeline.toggle,
       fileActions,
       choice,
       setChoice,
@@ -2032,8 +2028,6 @@ export function AppShell({
       </main>
       <Timeline
         store={store}
-        collapsed={timeline.collapsed}
-        onToggle={timeline.toggle}
         activeSketch={activeSketch?.name}
         actions={featureActions}
         groups={groups}

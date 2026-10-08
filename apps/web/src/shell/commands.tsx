@@ -19,7 +19,6 @@ import {
   Magnet,
   Maximize,
   Moon,
-  PanelBottom,
   PanelLeft,
   Puzzle,
   Redo2,
@@ -71,7 +70,6 @@ export interface CommandContext {
   lookAtSketch?: () => void;
   viewport: ViewportStore;
   browser: { collapsed: boolean; toggle(): void };
-  timeline: { collapsed: boolean; toggle(): void };
   file: FileActions;
   /** The notification history (P3-16): absent where there are no toasts to open it from. */
   notifications?: { open(): void };
@@ -246,13 +244,6 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     'Panels',
     ctx.browser.toggle,
     { icon: icon(PanelLeft), keywords: 'Panels browser tree' },
-  );
-  plain(
-    'toggleTimeline',
-    ctx.timeline.collapsed ? 'Show Timeline' : 'Hide Timeline',
-    'Panels',
-    ctx.timeline.toggle,
-    { icon: icon(PanelBottom), keywords: 'Panels timeline history' },
   );
   if (ctx.markingMenu) {
     plain(
