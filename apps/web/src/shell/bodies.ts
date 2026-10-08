@@ -44,6 +44,31 @@ export interface BodyEntry {
    * computed.
    */
   mesh?: boolean;
+  /**
+   * Listed from the model cache before the first recompute has finished
+   * (ADR-0078): the body is expected, not computed yet. Its row has no
+   * selection, menu or appearance, only the eye.
+   */
+  pending?: boolean;
+}
+
+/**
+ * The bodies the last finished recompute made (the model cache's IDs), as rows
+ * the browser can list before the kernel has answered (ADR-0078). The name
+ * and look come from the stored `doc.bodies` metadata; an ID with none is
+ * skipped (it never got a name, so there is nothing true to show).
+ */
+export function pendingBodyEntries(
+  doc: Pick<ExtrudoDocument, 'bodies' | 'features'>,
+  ids: readonly string[],
+): BodyEntry[] {
+  const known = (ids as readonly BodyId[]).filter((id) => doc.bodies[id]);
+  return sortBodyIds(doc, known).map((id) => ({
+    id,
+    meta: doc.bodies[id] as BodyMeta,
+    stored: true,
+    pending: true,
+  }));
 }
 
 /** Body IDs in timeline order: the feature that made each, then its number. */

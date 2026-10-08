@@ -57,6 +57,7 @@ export {
   type LoadOptions,
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENTS_BYTES,
+  type ModelCache,
   type ProjectId,
   ProjectNotFoundError,
   type ProjectStore,

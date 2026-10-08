@@ -83,6 +83,8 @@ export const STORE_METHODS = [
   'trash',
   'restore',
   'purge',
+  'readModelCache',
+  'writeModelCache',
   'thumbnail',
   'setThumbnail',
   'exportFile',

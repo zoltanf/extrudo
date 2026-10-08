@@ -44,6 +44,7 @@ import {
   ToolIcon,
   Tooltip,
 } from '../design-system';
+import { ProgressCube } from '../viewport/ModelProgress';
 import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
 import {
   BODY_COLORS,
@@ -409,17 +410,21 @@ export function BrowserPanel({
               {bodies.length === 0 ? (
                 <Leaf muted>No bodies yet</Leaf>
               ) : (
-                bodies.map((body) => (
-                  <BodyLeaf
-                    key={body.id}
-                    body={body}
-                    selected={selectedBodies.has(body.id)}
-                    selection={selectedBodies}
-                    actions={bodyActions}
-                    onPick={onPickBody}
-                    onHover={onHoverBody}
-                  />
-                ))
+                bodies.map((body) =>
+                  body.pending ? (
+                    <PendingBodyLeaf key={body.id} body={body} actions={bodyActions} />
+                  ) : (
+                    <BodyLeaf
+                      key={body.id}
+                      body={body}
+                      selected={selectedBodies.has(body.id)}
+                      selection={selectedBodies}
+                      actions={bodyActions}
+                      onPick={onPickBody}
+                      onHover={onHoverBody}
+                    />
+                  ),
+                )
               )}
             </Folder>
           </ul>
@@ -571,6 +576,35 @@ const NO_STATUSES: Readonly<Record<string, FeatureStatus | undefined>> = {};
  * hides it, Appearance sets its colour and opacity, Delete removes it (the
  * selected bodies, when it is one of them) through a Remove feature.
  */
+/**
+ * A body the last session made, listed before the kernel has computed it
+ * (ADR-0078): the name and colour from the document, the eye (a document
+ * command), and a small cube where the badge would be. No selection, menu or
+ * appearance until the recompute replaces the row.
+ */
+function PendingBodyLeaf({ body, actions }: { body: BodyEntry; actions: BodyActions }) {
+  const { id, meta } = body;
+  return (
+    <Leaf data-body={id} data-body-pending aria-busy="true">
+      <span
+        aria-hidden
+        className="size-2.5 shrink-0 rounded-full border border-line"
+        style={{
+          background: meta.color ?? 'var(--x-body-default)',
+          opacity: Math.max(meta.opacity ?? 1, 0.35),
+        }}
+      />
+      <span className="min-w-0 truncate text-muted">{meta.name}</span>
+      <ProgressCube size={12} />
+      <EyeToggle
+        name={meta.name}
+        visible={meta.visible}
+        onToggle={() => actions.setVisible([id], !meta.visible)}
+      />
+    </Leaf>
+  );
+}
+
 function BodyLeaf({
   body,
   selected,

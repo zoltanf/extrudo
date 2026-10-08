@@ -30,6 +30,7 @@ import {
 } from './actions';
 import { type Autosaver, allSaved, closeAutosaver, createAutosaver } from './autosave';
 import { useLinkedFolder } from './useLinkedFolder';
+import { useModelCache } from './useModelCache';
 import { useRecompute } from './useRecompute';
 
 /** How long a notice about the opened file stays (it is long, and it is in the history after). */
@@ -109,6 +110,7 @@ function ProjectEditor({
   // ADR-0061 §3). Set before the recomputer, which sends fonts to the worker.
   useFontAttachments(doc.id, store, platform.projects);
   const recomputer = useRecompute(store, model);
+  const pendingBodies = useModelCache(doc.id, model, platform);
   // Sketch text draws with the fonts the document uses (P4-03, ADR-0058 §4).
   useDocumentFonts(store);
   const viewport = useMemo(
@@ -206,6 +208,7 @@ function ProjectEditor({
       notify={push}
       toasts={{ toasts, onDismiss: dismiss, history: notifications }}
       kernel={recomputer}
+      pendingBodies={pendingBodies}
     />
   );
 }

@@ -153,13 +153,20 @@ import { canvasDrawings } from '../viewport/canvasGeometry';
 import { forgetCanvasImages } from '../viewport/canvasImages';
 import type { ConstructionDrawing } from '../viewport/constructionGeometry';
 import { ghostsOf } from '../viewport/ghostGeometry';
+import { ModelProgress, useRecomputeFinished } from '../viewport/ModelProgress';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
 import { ViewportBoundary } from '../viewport/ViewportBoundary';
 import { AppBar, type FileActions } from './AppBar';
 import { BROWSER_ID, BrowserPanel } from './BrowserPanel';
-import { bodyEntries, bodyMetaOf, createBodyActions, followBodyNames } from './bodies';
+import {
+  bodyEntries,
+  bodyMetaOf,
+  createBodyActions,
+  followBodyNames,
+  pendingBodyEntries,
+} from './bodies';
 import { CommandSearch, type SearchOpen } from './CommandSearch';
 import { CustomizeMarkingMenu } from './CustomizeMarkingMenu';
 import {
@@ -226,6 +233,11 @@ export interface AppShellProps {
   /** Feature dialogs (P2-05): the app's registry unless a debug page brings its own. */
   dialogs?: FeatureDialogs;
   /** The project's kernel (its `Recomputer`): dialog previews, references, export, measuring. */
+  /**
+   * The live body IDs of the last finished recompute, read from the model
+   * cache (ADR-0078): listed as pending rows until a recompute finishes.
+   */
+  pendingBodies?: readonly string[];
   kernel?: DialogKernel & ModelExporter & MeasureKernel & Partial<PluginCommandKernel>;
 }
 
@@ -261,6 +273,7 @@ export function AppShell({
   file,
   platform,
   notify = () => {},
+  pendingBodies,
   toasts,
   dialogs = APP_DIALOGS,
   kernel,
@@ -507,6 +520,13 @@ export function AppShell({
   // recompute shows them, amended into the undo step that made them.
   useEffect(() => followBodyNames(store, model), [store, model]);
   const bodyList = useMemo(() => bodyEntries(doc, bodies), [doc, bodies]);
+  // Until the first recompute has finished the browser lists the bodies the last one made
+  // (the model cache, ADR-0078) as pending rows; everything else sees only computed bodies.
+  const recomputed = useRecomputeFinished(model);
+  const browserBodies = useMemo(
+    () => (recomputed || !pendingBodies ? bodyList : pendingBodyEntries(doc, pendingBodies)),
+    [recomputed, pendingBodies, bodyList, doc],
+  );
   const bodyMeta = useMemo(() => bodyMetaOf(bodyList), [bodyList]);
   const bodyListRef = useRef(bodyList);
   // Measure and inspect (P2-13): the kernel measures the selected topology, for the status
@@ -612,7 +632,7 @@ export function AppShell({
           onRemove: section.removeAll,
         }
       : undefined;
-  bodyListRef.current = bodyList;
+  bodyListRef.current = browserBodies;
   const bodyActions = useMemo(
     () => ({
       ...createBodyActions({ store, session }, () => bodyListRef.current, notify),
@@ -1722,7 +1742,7 @@ export function AppShell({
             viewport={viewport}
             activeSketchId={activeSketchId}
             actions={featureActions}
-            bodies={bodyList}
+            bodies={browserBodies}
             bodyActions={bodyActions}
             selectedBodies={selectedBodies}
             statuses={featureStatuses}
@@ -1786,6 +1806,7 @@ export function AppShell({
             />
           )}
         </div>
+        <ModelProgress model={model} store={store} collapsed={browser.collapsed} />
         <ViewportBoundary>
           <Suspense
             fallback={

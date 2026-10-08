@@ -124,6 +124,33 @@ describe('ProjectStore', () => {
     await expect(store.rename(d.id, '   ')).rejects.toThrow('needs a name');
   });
 
+  it('keeps a model cache beside the document, and never throws for a bad one (ADR-0078)', async () => {
+    const { store, files } = setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    expect(await store.readModelCache(d.id)).toBeUndefined();
+    await store.writeModelCache(d.id, { version: 1, bodies: ['e1:0', 'e2:0'] });
+    expect(await store.readModelCache(d.id)).toEqual({ version: 1, bodies: ['e1:0', 'e2:0'] });
+    const path = `projects/${d.id}/model-cache.json`;
+    const enc = new TextEncoder();
+    await files.write(path, enc.encode('{not json'));
+    expect(await store.readModelCache(d.id)).toBeUndefined();
+    await files.write(path, enc.encode('{"version":2,"bodies":[]}'));
+    expect(await store.readModelCache(d.id)).toBeUndefined();
+    await files.write(path, enc.encode('{"version":1,"bodies":[1]}'));
+    expect(await store.readModelCache(d.id)).toBeUndefined();
+    // Not part of the file, and gone with the project.
+    await store.writeModelCache(d.id, { version: 1, bodies: ['e1:0'] });
+    expect(
+      Object.keys(unzipSync(new Uint8Array(await (await store.exportFile(d.id)).arrayBuffer()))),
+    ).not.toContain('model-cache.json');
+    await store.purge(d.id);
+    expect(await files.read(path)).toBeUndefined();
+    await expect(store.writeModelCache(d.id, { version: 1, bodies: [] })).rejects.toBeInstanceOf(
+      ProjectNotFoundError,
+    );
+  });
+
   it('duplicates with a new ID and name, copying the thumbnail', async () => {
     const { store } = setup();
     const d = doc('Bracket');

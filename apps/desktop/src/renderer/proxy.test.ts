@@ -193,6 +193,8 @@ describe('the store proxy (ADR-0075 §3)', () => {
       'trash',
       'restore',
       'purge',
+      'readModelCache',
+      'writeModelCache',
       'thumbnail',
       'setThumbnail',
       'exportFile',

@@ -11,6 +11,7 @@ import type { ExtrudoDocument } from '@extrudo/core';
 import type {
   InstalledPlugin,
   LinkedFile,
+  ModelCache,
   PluginFile,
   PluginStore,
   ProjectId,
@@ -57,6 +58,8 @@ export function createStoreProxy(api: ExtrudoApi): ProjectStore {
     trash: (id: ProjectId) => call<void>('trash', id),
     restore: (id: ProjectId) => call<void>('restore', id),
     purge: (id: ProjectId) => call<void>('purge', id),
+    readModelCache: (id: ProjectId) => call<ModelCache | undefined>('readModelCache', id),
+    writeModelCache: (id: ProjectId, cache: ModelCache) => call<void>('writeModelCache', id, cache),
     async thumbnail(id) {
       const bytes = await call<Uint8Array | null>('thumbnail', id);
       return bytes ? new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'image/png' }) : null;

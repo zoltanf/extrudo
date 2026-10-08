@@ -79,6 +79,10 @@ const thumbnailPath = (id: ProjectId) => {
   assertId(id);
   return `projects/${id}/thumbnail.png`;
 };
+const modelCachePath = (id: ProjectId) => {
+  assertId(id);
+  return `projects/${id}/model-cache.json`;
+};
 const attachmentFolder = (id: ProjectId) => {
   assertId(id);
   return `projects/${id}/attachments`;
@@ -495,6 +499,22 @@ export function createProjectStore(options: ProjectStoreOptions): ProjectStore {
       // The whole folder goes, `attachments/` with it.
       await index.delete(id);
       await files.remove(projectFolder(id));
+    },
+    async readModelCache(id) {
+      const bytes = await files.read(modelCachePath(id));
+      if (!bytes) return undefined;
+      try {
+        const raw = JSON.parse(decoder.decode(bytes)) as { version?: unknown; bodies?: unknown };
+        if (raw.version !== 1 || !Array.isArray(raw.bodies)) return undefined;
+        if (!raw.bodies.every((b) => typeof b === 'string')) return undefined;
+        return { version: 1, bodies: raw.bodies as string[] };
+      } catch {
+        return undefined;
+      }
+    },
+    async writeModelCache(id, cache) {
+      await summaryOf(id);
+      await files.write(modelCachePath(id), encoder.encode(JSON.stringify(cache)));
     },
     async thumbnail(id) {
       const bytes = await readThumbnail(id);

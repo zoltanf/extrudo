@@ -130,3 +130,40 @@
     opacity: 1;
   }
 }
+
+/* The cube of the "Preparing your design…" notice (ADR-0078): three faces fill in turn. */
+.x-cube-top {
+  opacity: 0.95;
+}
+
+.x-cube-left {
+  opacity: 0.65;
+}
+
+.x-cube-right {
+  opacity: 0.4;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .x-cube-face {
+    animation: x-cube-fill 1200ms ease-in-out infinite;
+  }
+
+  .x-cube-left {
+    animation-delay: 400ms;
+  }
+
+  .x-cube-right {
+    animation-delay: 800ms;
+  }
+}
+
+@keyframes x-cube-fill {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  35% {
+    opacity: 1;
+  }
+}

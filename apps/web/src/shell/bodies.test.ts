@@ -23,6 +23,7 @@ import {
   importedColors,
   isSwatch,
   parseBodyColor,
+  pendingBodyEntries,
 } from './bodies';
 
 const feature = (id: string): Feature => ({
@@ -235,5 +236,27 @@ describe('custom body colours (P3-17)', () => {
     expect(isSwatch('#5b7cff')).toBe(true);
     expect(isSwatch(undefined)).toBe(true);
     expect(isSwatch('#123456')).toBe(false);
+  });
+});
+
+describe('pendingBodyEntries (ADR-0078)', () => {
+  const doc = {
+    features: [feature('A'), feature('B')],
+    bodies: {
+      [bid('B:0')]: { name: 'Lid', visible: false },
+      [bid('A:0')]: { name: 'Bracket', visible: true, color: '#c81e28' },
+    },
+  };
+  it('lists the cached bodies with their stored metadata, in timeline order', () => {
+    const entries = pendingBodyEntries(doc, ['B:0', 'A:0']);
+    expect(entries.map((e) => [e.id, e.meta.name, e.pending, e.stored])).toEqual([
+      ['A:0', 'Bracket', true, true],
+      ['B:0', 'Lid', true, true],
+    ]);
+    expect(entries[0]?.meta.color).toBe('#c81e28');
+  });
+  it('skips an ID with no stored metadata', () => {
+    expect(pendingBodyEntries(doc, ['A:0', 'Z:9']).map((e) => e.id)).toEqual(['A:0']);
+    expect(pendingBodyEntries(doc, [])).toEqual([]);
   });
 });

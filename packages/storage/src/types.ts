@@ -143,6 +143,14 @@ export interface ProjectStore {
   restore(id: ProjectId): Promise<void>;
   /** Deletes a project for good. */
   purge(id: ProjectId): Promise<void>;
+  /**
+   * The model cache (ADR-0078): the live body IDs of the last finished
+   * recompute, derived data that lives beside the document (never in it, in
+   * the `.extrudo` file or in a version). `undefined` when the file is
+   * missing, unreadable or of another version: never throws for a bad cache.
+   */
+  readModelCache(id: ProjectId): Promise<ModelCache | undefined>;
+  writeModelCache(id: ProjectId, cache: ModelCache): Promise<void>;
   thumbnail(id: ProjectId): Promise<Blob | null>;
   setThumbnail(id: ProjectId, png: Blob): Promise<void>;
   /** The whole project as an `.extrudo` file (FR-PRJ-04), its versions included. */
@@ -153,6 +161,13 @@ export interface ProjectStore {
    * or core's `DocumentLoadError` for files it can't read; `onNotice` as for `load`.
    */
   importFile(file: Blob, options?: LoadOptions): Promise<ProjectSummary>;
+}
+
+/** `projects/<id>/model-cache.json` (ADR-0078). */
+export interface ModelCache {
+  version: 1;
+  /** The live body IDs of the last finished recompute, in browser order. */
+  bodies: string[];
 }
 
 export interface LoadOptions {

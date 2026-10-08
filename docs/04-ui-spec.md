@@ -652,6 +652,18 @@ Analysis (P3-09); Q and J wait for their tools.
   reduced motion the clip doesn't play (its first frame is a still); offline,
   or if the file is missing, the tooltip has its words alone.
 
+### 7.1 Preparing the design (ADR-0078)
+
+- **Progress notice:** at the top left of the view's open part (right of the
+  browser) a small pill with an animated cube says "Preparing your design…"
+  (until the first recompute after opening has finished) or "Updating the model…"
+  (a later recompute that runs longer than 800 ms), with "Computing 6 features"
+  under it. The cube's faces fill in turn; with reduced motion it stands still.
+  No buttons, and it never takes clicks. A failed kernel keeps its own message.
+- **Bodies before they are drawn:** the Bodies folder lists the bodies the last
+  session made at once, as muted rows with a small cube where the count would be;
+  the eye works, selection waits. The first finished recompute replaces them.
+
 ## 8. Error messages
 
 Plain language, with the fix if we know it:

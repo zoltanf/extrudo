@@ -165,6 +165,19 @@ describe('Node-fs ProjectStore', () => {
     expect(await readdir(join(dir, 'projects', withFont.id, 'attachments'))).toEqual([hash]);
   });
 
+  it('writes and reads a model cache, undefined when missing or garbage (ADR-0078)', async () => {
+    const { dir, store } = await setup();
+    const d = doc('Bracket');
+    await store.save(d);
+    expect(await store.readModelCache(d.id)).toBeUndefined();
+    await store.writeModelCache(d.id, { version: 1, bodies: ['e1:0'] });
+    expect(await store.readModelCache(d.id)).toEqual({ version: 1, bodies: ['e1:0'] });
+    await writeFile(join(dir, 'projects', d.id, 'model-cache.json'), 'garbage');
+    expect(await store.readModelCache(d.id)).toBeUndefined();
+    await writeFile(join(dir, 'projects', d.id, 'model-cache.json'), '{"version":9,"bodies":[]}');
+    expect(await store.readModelCache(d.id)).toBeUndefined();
+  });
+
   it('writes and reads a thumbnail, and exports and re-imports the whole project', async () => {
     const { store } = await setup();
     const d = doc('Bracket');
