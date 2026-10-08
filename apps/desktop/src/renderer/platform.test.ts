@@ -27,6 +27,7 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
       persistence: async () => 'persistent',
       requestPersistence: async () => 'persistent',
     },
+    docs: { open: () => {} },
     rescue: { put: () => true, clear: () => {}, list: () => [] },
     folders: {
       link: async () => undefined,
@@ -172,6 +173,7 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
       'folders',
       'installedSlicers',
       'menus',
+      'openDocs',
       'openInSlicer',
       'plugins',
       'preferences',

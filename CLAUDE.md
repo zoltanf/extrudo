@@ -2094,7 +2094,14 @@ S2** added the generated tool reference: `pnpm docs:generate`
 `docs/guide/tools/<id>.md` and the index from `TOOLS`/`TABS`/`keysFor`/
 `DEMO_TOOLS`, **notes between the `<!-- notes -->` markers survive
 regeneration**, and `toolDocs.test.ts` fails with "run pnpm docs:generate" when
-the pages are stale.
+the pages are stale. **Slice S9** put the links in the app: the Help menu's
+four docs items and the `help` command (**F1**, the hovered or focused
+toolbar tile's tool page, else the guide) go through **`Platform.openDocs`
+**(required; `shell/docsLinks.ts` builds the `docsPath` results, `VITE_DOCS_URL`
+overridable at build time), and on the desktop over the channel `docs:open`,
+where **main builds its own URL** from a whitelist and opens it through injected
+`shell.openExternal` — never a URL from the renderer; a tile's tooltip carries
+a muted "F1 for more" line (`Tooltip`'s `footer`, plain text).
 
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): Phases 0, 1, 2, 3 and 5 are complete, Phase 4 is complete
@@ -3863,6 +3870,16 @@ them. Notes further down that name a machine apply to that machine only.
   the cache file in OPFS (`projects/<id>/model-cache.json`, written after the
   recompute, fire and forget) before reloading. Under reduced motion
   `getAnimations({ subtree: true })` on the icon is empty (pass it as a string).
+- **Help links e2e** (`e2e/help-links.spec.ts`, P6-06 S9): the docs host is
+  answered locally with `context.route('https://extrudo.org/**', …)` (no
+  request leaves the machine; `route.abort()` would replace the popup's URL
+  with `chrome-error://chromewebdata/`) and each step takes the popup with
+  `context.waitForEvent('page')` beside the action, then reads `popup.url()`:
+  Help › User Guide → `…/docs/`, F1 on a hovered Extrude tile →
+  `…/docs/tools/extrude/`, F1 with nothing hovered → `…/docs/`, Ctrl+K "Tool
+  Reference" → `…/docs/tools/`; the Extrude tile's tooltip shows "F1 for more"
+  and holds no `a`/`button`. The Help menu's "Tutorials" item also matches a
+  plain 'Tutorial' name, so specs pick the tour's item with `/^Tutorial$/`.
 - **Emboss e2e** (`e2e/emboss.spec.ts`, P4-04): the tool is `emboss` in Create's
   menu (`menuitem` "Emboss", no key); its dialog is the region "Emboss dialog" /
   "Edit Emboss1 dialog" with the buttons "Profiles" and "Face" (`exact: true`:

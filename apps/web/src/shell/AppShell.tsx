@@ -175,6 +175,8 @@ import {
   commandShortcuts,
   DRAWING_IMPORT_UNAVAILABLE,
 } from './commands';
+import type { DocsPage } from './docsLinks';
+import { docsPath } from './docsLinks';
 import { createFeatureActions } from './featureActions';
 import { createGroupActions } from './groupActions';
 import { menuModel, QUIT_ID, SAVE_AS_ID } from './menuModel';
@@ -885,6 +887,7 @@ export function AppShell({
           notifications: { open: () => toasts.history?.getState().setOpen(true) },
         }),
         tutorial: { start: () => startTutorialRef.current() },
+        docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
         macro: { recording: recording !== undefined },
       }),
     [
@@ -913,6 +916,7 @@ export function AppShell({
       lastTool,
       markingStyle.radial,
       markingStyle.toggle,
+      platform,
     ],
   );
   const commands = useMemo(() => commandBuilder(mode, false), [commandBuilder, mode]);
@@ -1704,6 +1708,7 @@ export function AppShell({
         onThemeChange={setChoice}
         onSearch={openSearch}
         onTutorial={startTutorial}
+        onDocs={(page) => platform.openDocs(docsPath(page))}
         viewport={viewport}
         onCustomizeMarking={() => setMarkingDialog(true)}
       />

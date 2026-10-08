@@ -67,6 +67,9 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
       persistence: () => ipc.invoke(CHANNELS.storagePersistence) as Promise<'persistent'>,
       requestPersistence: () => ipc.invoke(CHANNELS.storageRequest) as Promise<'persistent'>,
     },
+    docs: {
+      open: (path) => ipc.send(CHANNELS.docsOpen, path),
+    },
     rescue: {
       put: (id, raw) => ipc.sendSync(CHANNELS.rescuePut, id, raw) === true,
       clear: (id) => ipc.send(CHANNELS.rescueClear, id),

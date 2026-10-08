@@ -60,6 +60,8 @@ export interface IpcDependencies {
   getWindow: () => BrowserWindow | null;
   /** Auto-update (P6-01 slice 4): a check, an install, and the release page main built. */
   updates: { check(): void; apply(): boolean; openRelease(): void };
+  /** The docs pages (P6-06 S9): a whitelisted path, the URL main builds itself. */
+  docs: { open(path: unknown): void };
 }
 
 export function registerIpcHandlers(deps: IpcDependencies): void {
@@ -192,4 +194,8 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
   ipcMain.on(CHANNELS.updateCheck, () => deps.updates.check());
   ipcMain.on(CHANNELS.updateApply, () => void deps.updates.apply());
   ipcMain.on(CHANNELS.updateRelease, () => deps.updates.openRelease());
+
+  // The docs pages (P6-06 S9): the path is matched in `deps.docs`, the URL is
+  // main's own, so the renderer can't make main open a page of its choosing.
+  ipcMain.on(CHANNELS.docsOpen, (_event, path: unknown) => deps.docs.open(path));
 }

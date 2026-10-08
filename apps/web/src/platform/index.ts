@@ -15,6 +15,7 @@ import {
 } from '@extrudo/storage';
 import { appNotifications } from '../design-system/notifications';
 import { saveEverything } from '../project/autosave';
+import { DOCS_URL } from '../shell/docsLinks';
 import type { MenuModel } from '../shell/menuModel';
 import { APP_VERSION } from '../version';
 import {
@@ -136,6 +137,13 @@ export interface Platform {
    * no update toast.
    */
   updates?: PlatformUpdates;
+  /**
+   * Opens a docs page (P6-06 S9, ADR-0080 §5): the Help menu's items and the
+   * tools' F1. `path` is a `docsPath` result (a root-relative path like
+   * `/tools/extrude/`); the platform prefixes the docs address — the web in a
+   * new tab, the desktop over `docs:open` where main builds the URL itself.
+   */
+  openDocs(path: string): void;
 }
 
 /**
@@ -182,6 +190,9 @@ export async function webPlatform(): Promise<Platform> {
     files: webFiles(),
     rescue,
     updates: appUpdates,
+    openDocs: (path) => {
+      window.open(`${DOCS_URL}${path}`, '_blank', 'noopener,noreferrer');
+    },
     ...(folders && { folders }),
   };
 }

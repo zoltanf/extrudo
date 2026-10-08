@@ -7,10 +7,12 @@
  */
 import {
   Bell,
+  BookOpen,
   Box,
   Circle,
   GraduationCap,
   House,
+  ListChecks,
   Magnet,
   Maximize,
   Moon,
@@ -19,10 +21,12 @@ import {
   Redo2,
   Repeat2,
   ScanEye,
+  Shapes,
   Sun,
   SunMoon,
   Trash2,
   Undo2,
+  Wrench,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { keysFor } from '../commands/keymap';
@@ -32,6 +36,8 @@ import { type ThemeChoice, ToolIcon } from '../design-system';
 import type { ViewportStore } from '../viewport/store';
 import { FACES, type FaceName } from '../viewport/viewcube';
 import type { FileActions } from './AppBar';
+import type { DocsPage } from './docsLinks';
+import { toolUnderPointer } from './Toolbar';
 import {
   FILE_COMMANDS,
   type FileCommandId,
@@ -76,6 +82,12 @@ export interface CommandContext {
   notifications?: { open(): void };
   /** The first-run tutorial (P3-12). */
   tutorial?: { start(): void };
+  /**
+   * Opens a docs page (P6-06 S9, ADR-0080 §5) through the platform. The Help
+   * menu's items and the F1 command go through it; absent in tests that don't
+   * build a whole platform.
+   */
+  docs?: { open(page: DocsPage): void };
   /**
    * The last tool run through the commands (P3-11, see `isRepeatable`): "Repeat last" runs
    * it again. Absent until one has run, or when it isn't offered in this mode.
@@ -318,6 +330,43 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     plain('tutorial', 'Tutorial', 'Help', ctx.tutorial.start, {
       icon: icon(GraduationCap),
       keywords: 'Help tutorial tour guide learn first box getting started onboarding',
+    });
+  }
+  if (ctx.docs) {
+    const open = (page: DocsPage) => ctx.docs?.open(page);
+    // F1 (P6-06 S9): the docs page of the tool whose tile was hovered or
+    // focused last, or the user guide when none was.
+    plain(
+      'help',
+      'Help for this tool',
+      'Help',
+      () => {
+        const tool = toolUnderPointer();
+        open(tool ? { tool } : 'guide');
+      },
+      {
+        icon: icon(BookOpen),
+        keywords: 'Help F1 docs tool reference guide learn documentation',
+      },
+    );
+    // The Help menu's four docs items (P6-06 S9); the same commands in Ctrl+K
+    // and the desktop's Help menu. F1 is the `help` command's key alone, so
+    // the desktop Help menu doesn't list it twice.
+    plain('docsGuide', 'User Guide', 'Help', () => open('guide'), {
+      icon: icon(BookOpen),
+      keywords: 'Help docs user guide manual learn documentation',
+    });
+    plain('docsTutorials', 'Tutorials', 'Help', () => open('tutorials'), {
+      icon: icon(ListChecks),
+      keywords: 'Help docs tutorials walkthroughs lessons learn',
+    });
+    plain('docsExamples', 'Examples', 'Help', () => open('examples'), {
+      icon: icon(Shapes),
+      keywords: 'Help docs examples gallery sample models learn',
+    });
+    plain('docsTools', 'Tool Reference', 'Help', () => open('tools'), {
+      icon: icon(Wrench),
+      keywords: 'Help docs tool reference every tool learn',
     });
   }
 

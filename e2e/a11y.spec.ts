@@ -64,7 +64,8 @@ for (const theme of ['dark', 'light'] as const) {
       await audit(page, `${theme} empty design hint`);
 
       await page.getByRole('button', { name: 'Help' }).click();
-      await page.getByRole('menuitem', { name: 'Tutorial' }).click();
+      // "Tutorials" (the docs page) also matches a plain 'Tutorial'.
+      await page.getByRole('menuitem', { name: /^Tutorial$/ }).click();
       await expect(page.getByRole('region', { name: 'Tutorial' })).toBeVisible();
       await audit(page, `${theme} tutorial card`);
       await page.getByRole('button', { name: 'Close tutorial' }).click();

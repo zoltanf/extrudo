@@ -19,6 +19,7 @@ import { app, BrowserWindow, dialog, Menu, type OpenDialogOptions, session, shel
 import { autoUpdater } from 'electron-updater';
 import { CHANNELS } from '../shared/ipc';
 import { createDialogFiles } from './dialogs';
+import { createDocs } from './docs';
 import { createExternalFiles, createExternalPaths } from './externalFiles';
 import { createFolders } from './folders';
 import { HEADERS } from './headers';
@@ -279,6 +280,7 @@ function main(): void {
           if (url) void shell.openExternal(url);
         },
       },
+      docs: createDocs((url) => void shell.openExternal(url)),
     });
     createWindow();
     // Before the first menu, so Help › Check for Updates… knows whether it runs.

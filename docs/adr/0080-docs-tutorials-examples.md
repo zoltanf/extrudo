@@ -111,6 +111,21 @@ hard-coded domain is a bug (ADR-0054). Other `{{…}}` text is left alone.
   through a new `Platform.openExternal` (desktop: limited to
   `https://extrudo.org/docs/` URLs).
 
+**S9 (2026-10-08), what changed from the plan:** the tooltip holds no link —
+**F1 does it** (`keymap.help`). A tooltip closes when the pointer leaves and
+screen readers read it as plain text, so a control inside it was never going to
+work; instead every toolbar tile's tooltip carries a muted "F1 for more" line,
+and F1 opens the hovered (or focused) tile's tool page, else the user guide.
+The links go through `Platform.openDocs(path)` (required; the web opens
+`DOCS_URL + path` in a new tab, `VITE_DOCS_URL` overridable at build time;
+`shell/docsLinks.ts` builds the paths), and on the desktop over the new
+`docs:open` channel, where **main builds its own URL** from a whitelist of
+`docsPath` results and opens it through injected `shell.openExternal` — never a
+URL from the renderer. The Help menu's four items (User Guide, Tutorials,
+Examples, Tool Reference) are commands too (`docsGuide`, `docsTutorials`,
+`docsExamples`, `docsTools`, group "Help"), so Ctrl+K and the desktop's Help
+menu find the same ones.
+
 ## Rejected options
 
 - **Interactive in-app tutorials.** A second tour system to build and keep in

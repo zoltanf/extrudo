@@ -49,6 +49,8 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   measure: ['I'],
   // Section Analysis (P3-09): Fusion has no default for it.
   section: ['Shift+S'],
+  // Help (P6-06 S9): F1 opens the hovered tool's docs page, else the guide.
+  help: ['F1'],
   // View: F6 is Fusion's; Shift+1…7 are ours.
   fit: ['F6'],
   viewHome: ['Shift+1'],

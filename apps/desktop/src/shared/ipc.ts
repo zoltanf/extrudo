@@ -59,6 +59,8 @@ export const CHANNELS = {
   updateCheck: 'extrudo:update:check',
   updateApply: 'extrudo:update:apply',
   updateRelease: 'extrudo:update:release',
+  // The docs pages (P6-06 S9): a `docsPath` result, the URL main builds itself.
+  docsOpen: 'extrudo:docs:open',
 } as const;
 
 export type Channel = (typeof CHANNELS)[keyof typeof CHANNELS];
@@ -257,6 +259,14 @@ export interface ExtrudoApi {
   readonly storage: {
     persistence(): Promise<Persistence>;
     requestPersistence(): Promise<Persistence>;
+  };
+  readonly docs: {
+    /**
+     * Opens a docs page (P6-06 S9): `path` is a `docsPath` result; main
+     * matches it against its own whitelist and builds the URL itself, so the
+     * renderer can't make main open a page of its choosing.
+     */
+    open(path: string): void;
   };
   readonly rescue: {
     /** Keeps the raw document JSON before returning; false if the file couldn't be written. */

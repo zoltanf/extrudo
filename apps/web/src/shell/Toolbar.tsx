@@ -56,6 +56,37 @@ export interface PluginItem {
 }
 
 /**
+ * The tile under the pointer or the focus (P6-06 S9): F1 opens the docs page
+ * of the tool it was on, or the user guide when none was. Module state, read
+ * at the moment F1 runs; the `help` command needs nothing else from React.
+ */
+let hoveredTool: string | undefined;
+
+/** The tool whose toolbar tile was hovered or focused last, if any. */
+export function toolUnderPointer(): string | undefined {
+  return hoveredTool;
+}
+
+/** Sets the tracked tool (the tiles' pointer/focus handlers; exported for tests). */
+export function setHoveredTool(tool: string | undefined): void {
+  hoveredTool = tool;
+}
+
+/** Pointer/focus tracking for one tile: in on enter/focus, out on leave/blur. */
+function trackTool(id: string) {
+  return {
+    onPointerEnter: () => setHoveredTool(id),
+    onPointerLeave: () => {
+      if (toolUnderPointer() === id) setHoveredTool(undefined);
+    },
+    onFocus: () => setHoveredTool(id),
+    onBlur: () => {
+      if (toolUnderPointer() === id) setHoveredTool(undefined);
+    },
+  };
+}
+
+/**
  * The selected toolbar tab: the mode's default (Solid, or Sketch in a sketch),
  * brought forward again whenever a sketch opens or closes.
  */
@@ -302,12 +333,14 @@ export function Toolbar({
                 label={TOOLS.finishSketch.label}
                 hint={TOOLS.finishSketch.hint}
                 demo={<ToolDemo tool="finishSketch" />}
+                footer="F1 for more"
               >
                 <ToolTile
                   data-tool="finishSketch"
                   data-label={TOOLS.finishSketch.label}
                   className="text-ink"
                   onClick={() => onRun('finishSketch')}
+                  {...trackTool('finishSketch')}
                 >
                   <ToolIcon
                     name={TOOLS.finishSketch.icon}
@@ -361,6 +394,7 @@ function ToolButton({
     shortcut,
     hint: unavailable ? `${tool.hint} Arrives with ${tool.comesWith}.` : tool.hint,
     demo: <ToolDemo tool={tool.id} />,
+    footer: 'F1 for more',
   };
   if (compact) {
     return (
@@ -373,6 +407,7 @@ function ToolButton({
           aria-disabled={unavailable || undefined}
           aria-pressed={pressed || undefined}
           onClick={unavailable ? undefined : onRun}
+          {...trackTool(tool.id)}
           className={`grid size-[26px] place-items-center rounded-control transition-colors duration-(--x-fast) hover:bg-accent-soft aria-pressed:bg-accent-soft aria-disabled:cursor-default aria-disabled:hover:bg-transparent ${unavailable ? 'opacity-55' : ''}`}
         >
           <ToolIcon name={tool.icon} category={tool.category} size={18} />
@@ -389,6 +424,7 @@ function ToolButton({
         aria-disabled={unavailable || undefined}
         aria-pressed={pressed || undefined}
         onClick={unavailable ? undefined : onRun}
+        {...trackTool(tool.id)}
         className={unavailable ? 'opacity-55' : ''}
       >
         <ToolIcon name={tool.icon} category={tool.category} />

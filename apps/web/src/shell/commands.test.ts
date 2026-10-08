@@ -3,6 +3,7 @@ import { DEFAULT_KEYMAP } from '../commands/keymap';
 import { memoryPreferences } from '../platform/preferences';
 import { createViewportStore } from '../viewport/store';
 import { buildCommands, type CommandContext, commandShortcuts } from './commands';
+import { setHoveredTool } from './Toolbar';
 
 function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): CommandContext {
   return {
@@ -18,6 +19,7 @@ function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): 
     }),
     viewport: createViewportStore({ preferences: memoryPreferences(), reducedMotion: () => true }),
     browser: { collapsed: false, toggle: vi.fn() },
+    docs: { open: vi.fn() },
     file: {
       newDesign: vi.fn(),
       home: vi.fn(),
@@ -261,6 +263,40 @@ describe('buildCommands', () => {
       command?.run();
     }
     expect(start).toHaveBeenCalledTimes(2);
+  });
+
+  it('opens the docs through the platform: F1, and the four Help items (P6-06 S9)', () => {
+    const open = vi.fn();
+    const model = byId(context('model', { docs: { open } }));
+    // The keymap's only Help key is F1, and it belongs to `help` alone, so the
+    // desktop Help menu never lists it twice.
+    expect(model.get('help')).toMatchObject({ label: 'Help for this tool', group: 'Help' });
+    expect(
+      commandShortcuts(buildCommands(context('model', { docs: { open } }))).filter(
+        (s) => s.keys === 'F1',
+      ),
+    ).toHaveLength(1);
+    model.get('help')?.run();
+    expect(open).toHaveBeenLastCalledWith('guide');
+    for (const id of ['docsGuide', 'docsTutorials', 'docsExamples', 'docsTools'] as const) {
+      expect(model.get(id)).toMatchObject({ group: 'Help', keys: [] });
+    }
+    model.get('docsGuide')?.run();
+    model.get('docsTutorials')?.run();
+    model.get('docsExamples')?.run();
+    model.get('docsTools')?.run();
+    expect(open).toHaveBeenNthCalledWith(2, 'guide');
+    expect(open).toHaveBeenNthCalledWith(3, 'tutorials');
+    expect(open).toHaveBeenNthCalledWith(4, 'examples');
+    expect(open).toHaveBeenNthCalledWith(5, 'tools');
+    // F1 with nothing hovered is the guide; a hovered tile's tool has its page.
+    setHoveredTool(undefined);
+    model.get('help')?.run();
+    expect(open).toHaveBeenLastCalledWith('guide');
+    setHoveredTool('extrude');
+    model.get('help')?.run();
+    expect(open).toHaveBeenLastCalledWith({ tool: 'extrude' });
+    setHoveredTool(undefined);
   });
 
   it('runs each Home tab file command through its file action (ADR-0079)', () => {

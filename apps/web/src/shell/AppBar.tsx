@@ -1,14 +1,18 @@
 import { type DocumentStore, renameDocument } from '@extrudo/core';
 import {
+  BookOpen,
   CircleHelp,
   GraduationCap,
   History,
   LayoutGrid,
+  ListChecks,
   PanelsTopLeft,
   Redo2,
   Search,
   Settings,
+  Shapes,
   Undo2,
+  Wrench,
 } from 'lucide-react';
 import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
@@ -33,6 +37,7 @@ import {
 import type { Autosaver } from '../project/autosave';
 import { HOME_HREF } from '../routes';
 import type { ViewportStore } from '../viewport/store';
+import type { DocsPage } from './docsLinks';
 import { TITLE_GAP, type TitleFit, titleFit } from './titleFit';
 
 /** The design's file actions (the Home tab's commands, ADR-0079); the project page implements them. */
@@ -85,6 +90,8 @@ export interface AppBarProps {
   onCustomizeMarking(): void;
   /** Starts the tutorial (P3-12). */
   onTutorial(): void;
+  /** Opens a docs page (P6-06 S9): the Help menu's items, through the platform. */
+  onDocs(page: DocsPage): void;
 }
 
 /** A command's first key as it reads here ("Ctrl+K"). */
@@ -111,6 +118,7 @@ export function AppBar({
   onThemeChange,
   onSearch,
   onTutorial,
+  onDocs,
   viewport,
   onCustomizeMarking,
 }: AppBarProps) {
@@ -209,6 +217,25 @@ export function AppBar({
           {/* Five steps that build a box (P3-12). */}
           <MenuItem icon={<GraduationCap size={14} />} onSelect={onTutorial}>
             Tutorial
+          </MenuItem>
+          {/* The docs on the landing site (P6-06 S9, ADR-0080 §5). F1 is the
+              help command's key: the hovered tool's page, else the guide. */}
+          <MenuSeparator />
+          <MenuItem
+            icon={<BookOpen size={14} />}
+            shortcut={keyLabel('help')}
+            onSelect={() => onDocs('guide')}
+          >
+            User Guide
+          </MenuItem>
+          <MenuItem icon={<ListChecks size={14} />} onSelect={() => onDocs('tutorials')}>
+            Tutorials
+          </MenuItem>
+          <MenuItem icon={<Shapes size={14} />} onSelect={() => onDocs('examples')}>
+            Examples
+          </MenuItem>
+          <MenuItem icon={<Wrench size={14} />} onSelect={() => onDocs('tools')}>
+            Tool Reference
           </MenuItem>
         </Menu>
       </div>

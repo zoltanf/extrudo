@@ -228,4 +228,12 @@ describe('preload bridge (ADR-0075 §1)', () => {
       { channel: CHANNELS.updateRelease, args: [], kind: 'send' },
     ]);
   });
+
+  it('sends a docs path over docs:open (P6-06 S9)', () => {
+    const { ipc, calls } = fakeIpc();
+    createApi(ipc).docs.open('/tools/extrude/');
+    expect(calls).toEqual([
+      { channel: CHANNELS.docsOpen, args: ['/tools/extrude/'], kind: 'send' },
+    ]);
+  });
 });

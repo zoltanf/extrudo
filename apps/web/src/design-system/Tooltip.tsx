@@ -19,13 +19,19 @@ export interface TooltipProps {
    * the tooltip is open, so whatever it loads (a video) loads on first use.
    */
   demo?: ReactNode;
+  /**
+   * A muted line after the demo (P6-06 S9): the toolbar tiles' "F1 for more".
+   * Plain text — a tooltip closes when the pointer leaves and screen readers
+   * read it as plain text, so it holds no link or button.
+   */
+  footer?: ReactNode;
   side?: 'top' | 'right' | 'bottom' | 'left';
   children: ReactElement;
 }
 
 /**
- * Tool tooltip (UI spec §7): name, shortcut, one sentence, and an optional
- * looping demo (P3-12). Other props (and
+ * Tool tooltip (UI spec §7): name, shortcut, one sentence, an optional
+ * looping demo (P3-12) and an optional footer line (P6-06 S9). Other props (and
  * the ref) go to the child, so an outer Radix trigger (a context menu) can
  * wrap the tooltip.
  */
@@ -34,6 +40,7 @@ export function Tooltip({
   shortcut,
   hint,
   demo,
+  footer,
   side = 'bottom',
   children,
   ...rest
@@ -56,6 +63,7 @@ export function Tooltip({
           </div>
           {hint && <div className="mt-0.5 text-muted">{hint}</div>}
           {demo}
+          {footer && <div className="mt-0.5 text-muted">{footer}</div>}
         </Radix.Content>
       </Radix.Portal>
     </Radix.Root>

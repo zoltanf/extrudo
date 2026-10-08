@@ -38,7 +38,8 @@ test('offers the tour on the home screen once, and Help restarts it', async ({ p
   await page.getByRole('button', { name: 'New design' }).click();
   await expect(page.locator('[data-viewport-hint]')).toBeVisible();
   await page.getByRole('button', { name: 'Help' }).click();
-  await page.getByRole('menuitem', { name: 'Tutorial' }).click();
+  // "Tutorials" (the docs page, P6-06 S9) also matches a plain 'Tutorial'.
+  await page.getByRole('menuitem', { name: /^Tutorial$/ }).click();
   await expect(card(page)).toBeVisible();
   await expect(card(page)).toContainText('Step 1 of 5');
   // The card takes the hint's place, and points at Create Sketch.

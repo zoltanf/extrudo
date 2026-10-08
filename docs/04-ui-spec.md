@@ -670,7 +670,16 @@ Analysis (P3-09); Q and J wait for their tools.
   opens. Create Sketch, Line, Rectangle, Circle, Dimension, Extrude, Revolve,
   Fillet, Shell, Hole, Press Pull and Rectangular Pattern have one. With
   reduced motion the clip doesn't play (its first frame is a still); offline,
-  or if the file is missing, the tooltip has its words alone.
+  or if the file is missing, the tooltip has its words alone. A toolbar tile's
+  tooltip ends with a muted "F1 for more" line (plain text: a tooltip holds no
+  link or button; P6-06 S9).
+- **Help menu and F1 (P6-06 S9):** below Tutorial, four items open the docs on
+  the landing site through `Platform.openDocs` — User Guide (shown with the
+  F1 key), Tutorials, Examples and Tool Reference; they are commands too
+  (`docsGuide`, `docsTutorials`, `docsExamples`, `docsTools`), so Ctrl+K and
+  the desktop's Help menu list the same. **F1** (`keymap.help`) opens the docs
+  page of the tool whose toolbar tile was hovered or focused last, or the user
+  guide when none was.
 
 ### 7.1 Preparing the design (ADR-0078)
 
