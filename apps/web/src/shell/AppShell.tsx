@@ -927,15 +927,15 @@ export function AppShell({
     [markingDialog, commandBuilder],
   );
   const openToolbox = useMemo(
-    () => () =>
+    () => (at?: { x: number; y: number }) =>
       setSearch({
         kind: 'toolbox',
-        at: pointer.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 3 },
+        at: at ?? pointer.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 3 },
       }),
     [],
   );
-  const openSearch = (kind: 'palette' | 'toolbox') =>
-    kind === 'palette' ? setSearch({ kind: 'palette' }) : openToolbox();
+  const openSearch = (kind: 'palette' | 'toolbox', at?: { x: number; y: number }) =>
+    kind === 'palette' ? setSearch({ kind: 'palette' }) : openToolbox(at);
   const runCommand = (command: AppCommand) => {
     setSearch(undefined);
     setRecent((r) => [command.id, ...r.filter((id) => id !== command.id)].slice(0, RECENT));
@@ -1008,7 +1008,7 @@ export function AppShell({
         keys,
         run: () => setSearch({ kind: 'palette' }),
       })),
-      ...keysFor('toolbox').map((keys) => ({ keys, run: openToolbox })),
+      ...keysFor('toolbox').map((keys) => ({ keys, run: () => openToolbox() })),
       ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
       ...(projecting ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }] : []),
       ...(drawing && host
@@ -1704,6 +1704,8 @@ export function AppShell({
         onThemeChange={setChoice}
         onSearch={openSearch}
         onTutorial={startTutorial}
+        viewport={viewport}
+        onCustomizeMarking={() => setMarkingDialog(true)}
       />
       <TutorialCard tutorial={tutorial} />
       <ViewportHint

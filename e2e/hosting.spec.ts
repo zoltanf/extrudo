@@ -157,7 +157,7 @@ test('an OpenSCAD import compiles under the content policy', async ({ page, requ
   await kernelReady(page);
   const chooser = page.waitForEvent('filechooser');
   await selectTab(page, 'Home');
-  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await page.getByRole('button', { name: 'Import Model', exact: true }).click();
   await (await chooser).setFiles('fixtures/imports/customizer-plate.scad');
   const dialog = page.getByRole('region', { name: 'Import dialog' });
   await expect(dialog.locator('[data-scad-overrides]')).toHaveAttribute(

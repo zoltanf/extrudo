@@ -5,6 +5,8 @@ export type ThemeChoice = 'dark' | 'light' | 'system';
 export type Theme = 'dark' | 'light';
 
 const KEY = 'theme';
+/** Follows the system until the person picks one (ADR-0079, round 2). */
+export const DEFAULT_THEME: ThemeChoice = 'system';
 const query = () => globalThis.matchMedia?.('(prefers-color-scheme: light)');
 
 function systemTheme(): Theme {
@@ -23,14 +25,14 @@ export function resolveTheme(choice: ThemeChoice, system: Theme): Theme {
 
 /** Sets `data-theme` on <html> before React renders, so the first paint has the right colours. */
 export function applyInitialTheme(preferences: Preferences): void {
-  const choice = preferences.get<ThemeChoice>(KEY, 'dark');
+  const choice = preferences.get<ThemeChoice>(KEY, DEFAULT_THEME);
   document.documentElement.dataset.theme = resolveTheme(choice, systemTheme());
 }
 
-/** The theme choice (dark by default), stored in preferences and applied to <html>. */
+/** The theme choice (the system's by default), stored in preferences and applied to <html>. */
 export function useTheme(preferences: Preferences) {
   const [choice, setChoiceState] = useState<ThemeChoice>(() =>
-    preferences.get<ThemeChoice>(KEY, 'dark'),
+    preferences.get<ThemeChoice>(KEY, DEFAULT_THEME),
   );
   const system = useSyncExternalStore(subscribeToSystem, systemTheme, () => 'dark' as const);
   const theme = resolveTheme(choice, system);

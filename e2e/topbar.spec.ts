@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { type FitGroup, fitToolbar } from '../apps/web/src/shell/toolbarFit';
-import { openProject, sketchOnXY } from './helpers';
+import { newSketchOnXY, openProject, saveStatus, sketchOnXY } from './helpers';
 
 // The top bar (ADR-0079): one row with the logo, the tabs, undo/redo/search, the
 // design's name and the right-hand buttons; the selected tab's tools in the row below,
@@ -18,7 +18,9 @@ const BASELINE = `(el) => {
   return y;
 }`;
 
-test('the tabs share the wordmark baseline and undo, redo and search line up', async ({ page }) => {
+test('the tabs share the wordmark baseline and undo, redo, toolbox and search line up', async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
   const m = (await page.evaluate(`(() => {
@@ -32,7 +34,7 @@ test('the tabs share the wordmark baseline and undo, redo and search line up', a
     return {
       word: baseline(document.querySelector('[data-topbar-logo] span')),
       tabs: [...document.querySelectorAll('[role=tab][data-tab]')].map(baseline),
-      glyphs: ['Undo', 'Redo', 'Search commands'].map(centre),
+      glyphs: ['Undo', 'Redo', 'Toolbox', 'Search commands'].map(centre),
     };
   })()`)) as { word: number; tabs: number[]; glyphs: number[] };
   console.log(
@@ -62,7 +64,7 @@ test('one top bar: the tabs in order, no File menu, undo, redo and search work',
   // The tabs and the buttons are in one header, the toolbar's tools under it.
   const header = page.locator('header');
   await expect(header.getByRole('tablist', { name: 'Toolbar tabs' })).toBeVisible();
-  for (const name of ['Undo', 'Redo', 'Search commands']) {
+  for (const name of ['Undo', 'Redo', 'Toolbox', 'Search commands']) {
     await expect(header.getByRole('button', { name, exact: true })).toBeVisible();
   }
   const chrome = await page.evaluate(
@@ -180,5 +182,205 @@ test('the toolbar moves tiles into their group menus to fit a narrow window, and
   await expect(toolbar).toHaveAttribute('data-toolbar-fit', '0,0,0,0,0');
   for (const id of wide.groups.flatMap((g) => g.ids)) {
     await expect(page.locator(`#toolbar-groups [data-tool="${id}"]`)).toBeVisible();
+  }
+});
+
+// ---- Round 2 (2026-10-08): Settings, Toolbox, the centred title --------------------------
+
+const header = (page: Page) => page.locator('header');
+const box = async (page: Page, name: string) => {
+  const b = await header(page).getByRole('button', { name, exact: true }).boundingBox();
+  if (!b) throw new Error(`no ${name} button`);
+  return b;
+};
+
+test('the cluster is Undo, Redo, Toolbox, Search; the toolbox opens; no theme button', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openProject(page);
+  const xs: number[] = [];
+  for (const name of ['Undo', 'Redo', 'Toolbox', 'Search commands'])
+    xs.push((await box(page, name)).x);
+  expect([...xs].sort((a, b) => a - b)).toEqual(xs);
+  const ys = await Promise.all(
+    ['Undo', 'Redo', 'Toolbox', 'Search commands'].map(async (n) => {
+      const b = await box(page, n);
+      return b.y + b.height / 2;
+    }),
+  );
+  expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(1);
+  await expect(header(page).getByRole('button', { name: 'Theme', exact: true })).toHaveCount(0);
+  await header(page).getByRole('button', { name: 'Toolbox', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Toolbox' })).toBeVisible();
+});
+
+test('the right side is Version history, Settings, Help', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openProject(page);
+  const history = await box(page, 'Version history');
+  const settings = await box(page, 'Settings');
+  const help = await box(page, 'Help');
+  expect(history.x).toBeLessThan(settings.x);
+  expect(settings.x).toBeLessThan(help.x);
+});
+
+test('Settings holds the general options and the theme', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openProject(page);
+  const settings = header(page).getByRole('button', { name: 'Settings', exact: true });
+  await settings.click();
+  const body = page.getByRole('menuitemcheckbox', { name: 'Auto-project body edges' });
+  const face = page.getByRole('menuitemcheckbox', { name: 'Auto-project face outline' });
+  await expect(body).toBeChecked();
+  await expect(face).not.toBeChecked();
+  await expect(page.getByRole('menuitem', { name: 'Customize Marking Menu…' })).toBeVisible();
+  for (const theme of ['System', 'Light', 'Dark']) {
+    await expect(page.getByRole('menuitemradio', { name: theme })).toBeVisible();
+  }
+  await page.getByRole('menuitemradio', { name: 'Light' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.keyboard.press('Escape');
+
+  // The menu and a sketch's palette share the preferences.
+  await settings.click();
+  await page.getByRole('menuitemcheckbox', { name: 'Auto-project body edges' }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Auto-project face outline' }).click();
+  await page.keyboard.press('Escape');
+  await newSketchOnXY(page);
+  await expect(page.getByRole('checkbox', { name: 'Auto-project', exact: true })).not.toBeChecked();
+  await settings.click();
+  await page.getByRole('menuitemcheckbox', { name: 'Auto-project body edges' }).click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('checkbox', { name: 'Auto-project', exact: true })).toBeChecked();
+  await expect(page.getByRole('checkbox', { name: 'Auto-project face outline' })).toBeChecked();
+
+  await settings.click();
+  await page.getByRole('menuitem', { name: 'Customize Marking Menu…' }).click();
+  await expect(page.getByRole('region', { name: 'Customize Marking Menu' })).toBeVisible();
+});
+
+test.describe('with a light system theme and nothing stored', () => {
+  test.use({ colorScheme: 'light' });
+  test('the default theme is the system one', async ({ page }) => {
+    await openProject(page);
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  });
+});
+
+/** The title group's centre against the middle of the gap between the cluster and the history button. */
+async function titleCentring(page: Page) {
+  const search = await box(page, 'Search commands');
+  const history = await box(page, 'Version history');
+  const group = (await page.locator('[data-title-group]').boundingBox()) as {
+    x: number;
+    width: number;
+  };
+  const gapMiddle = (search.x + search.width + history.x) / 2;
+  return { offset: group.x + group.width / 2 - gapMiddle, group };
+}
+
+test('the title and save state are centred between the cluster and Version history', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openProject(page);
+  await expect(saveStatus(page)).toHaveText('Saved');
+  const { offset } = await titleCentring(page);
+  console.log(`title centring offset at 1440: ${offset.toFixed(2)} px`);
+  expect(Math.abs(offset)).toBeLessThanOrEqual(2);
+});
+
+test('narrow: the save word goes first, then the name is cut with an ellipsis', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openProject(page);
+  const name = 'A rather long design name for a narrow window';
+  await page.getByRole('button', { name: /^Project name/ }).click();
+  await page.getByRole('textbox', { name: 'Project name' }).fill(name);
+  await page.getByRole('button', { name: 'Rename', exact: true }).click();
+  const group = page.locator('[data-title-group]');
+  await expect(group).toHaveAttribute('data-title-fit', 'full');
+  const word = saveStatus(page);
+  const visible = async () => ((await word.boundingBox())?.width ?? 0) > 2;
+  expect(await visible()).toBe(true);
+
+  let sawDot = false;
+  let truncated = false;
+  for (let w = 1400; w >= 700; w -= 20) {
+    await page.setViewportSize({ width: w, height: 900 });
+    await page.waitForTimeout(60);
+    const fit = await group.getAttribute('data-title-fit');
+    if (fit === 'dot') {
+      sawDot = true;
+      expect(await visible()).toBe(false);
+      await expect(saveStatus(page)).toHaveText('Saved');
+    }
+    if (fit === 'truncate') {
+      truncated = true;
+      expect(sawDot).toBe(true);
+      break;
+    }
+  }
+  expect(sawDot && truncated).toBe(true);
+  const nameButton = page.getByRole('button', { name: /^Project name/ });
+  const cut = (await page.evaluate(
+    "(() => { const el = document.querySelector('[data-title-group] button'); return el.scrollWidth > el.clientWidth; })()",
+  )) as boolean;
+  expect(cut).toBe(true);
+  await expect(nameButton).toHaveAttribute('title', name);
+});
+
+// ---- Tiles first (round 2, part 8) -----------------------------------------------------
+
+test('Home and Construct show every tool as a tile at 1440 px, labels on one line', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openProject(page);
+  const toolbar = page.locator('#toolbar-groups');
+  for (const tab of ['Home', 'Construct']) {
+    await page.getByRole('tab', { name: tab }).click();
+    await expect(page.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true');
+    const fit = (await toolbar.getAttribute('data-toolbar-fit')) ?? '';
+    expect(fit.split(',').every((n) => n === '0')).toBe(true);
+    // No tile's label is cut or wraps to a second line.
+    const clipped = await page.evaluate(`(() => {
+      const bad = [];
+      for (const t of document.querySelectorAll('#toolbar-groups button[data-tool]')) {
+        const span = t.querySelector('span');
+        if (!span) continue;
+        if (span.scrollWidth > span.clientWidth + 1 || span.getBoundingClientRect().height > 18)
+          bad.push(t.dataset.tool);
+      }
+      return bad.join(',');
+    })()`);
+    expect(clipped).toBe('');
+    // Home keeps its menu-less Files group; Construct no fixed ▾ menu on Planes.
+    const planes = toolbar.locator('[data-toolbar-group="Planes"] button[aria-haspopup]');
+    if (tab === 'Construct') await expect(planes).toHaveCount(0);
+  }
+  await page.getByRole('tab', { name: 'Home' }).click();
+  const files = (await page.evaluate(
+    `[...document.querySelectorAll('[data-toolbar-group="Files"] button[data-tool]')].map((t) => t.dataset.tool).join(',')`,
+  )) as string;
+  expect(files).toMatch(
+    /^importProject,importBody,importDrawing,canvas,exportProject,export,exportScript(,saveToLinkedFolder)?$/,
+  );
+  for (const name of ['Import Design', 'Import Model', 'Import Drawing', 'Export Model']) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+  }
+  await page.getByRole('tab', { name: 'Construct' }).click();
+  for (const name of ['Plane Through 3 Points', 'Plane Along Path', 'Angled Midplane']) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+  }
+
+  // 900 px: the fit numbers for the two tabs.
+  await page.setViewportSize({ width: 900, height: 900 });
+  for (const tab of ['Home', 'Construct']) {
+    await page.getByRole('tab', { name: tab }).click();
+    await page.waitForTimeout(150);
+    console.log(`fit at 900 px, ${tab}: ${await toolbar.getAttribute('data-toolbar-fit')}`);
   }
 });

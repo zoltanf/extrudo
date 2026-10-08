@@ -42,10 +42,12 @@ for (const theme of ['dark', 'light'] as const) {
   });
 }
 
-test('dark is the default, and the theme choice survives a reload', async ({ page }) => {
+test('the theme follows the (dark) system by default, and the theme choice survives a reload', async ({
+  page,
+}) => {
   await open(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await page.getByRole('button', { name: 'Theme' }).click();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('menuitemradio', { name: 'Light' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await page.reload();

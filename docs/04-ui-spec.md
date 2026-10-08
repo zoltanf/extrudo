@@ -33,7 +33,7 @@ brief, voice) is in **`05-brand.md`**. In short:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ ◆ extrudo. HOME SOLID MODIFY CONSTRUCT INSPECT 3D PRINT │ ⟲ ⟳ 🔍 │  Name • Saved ⚙ ? ◐ │  Top bar
+│ ◆ extrudo. HOME SOLID MODIFY CONSTRUCT INSPECT 3D PRINT │ ⟲ ⟳ ▦ 🔍   Name • Saved   🕘 ⚙ ? │  Top bar
 ├────────────────────────────────────────────────────────────────────────────┤
 │ CREATE  │ PRIMITIVES │ FEATURES │ PATTERN │ PROGRAM                         │  Tool groups
 ├───────────────┬──────────────────────────────────────────────┬─────────────┤
@@ -53,13 +53,16 @@ brief, voice) is in **`05-brand.md`**. In short:
 ```
 
 - **Top bar** (ADR-0079, one row of 40 px): the logo (a link to all designs),
-  the toolbar's tabs, then undo, redo and command search (opens the Ctrl+K
-  palette), then, on the right, the project name (click to rename), the
-  version-history button, the save status, settings, help (menu: Search
-  commands, Toolbox, Tutorial, P3-12) and the theme toggle. The tab labels sit
-  on the wordmark's baseline. There is no File menu: its items are the Home
-  tab. Below 1024 px the wordmark, the save word (not its dot) and some tab
-  padding go and the name truncates, so the bar fits at 760 px.
+  the toolbar's tabs, a separator, then undo, redo, the toolbox (opens at the button)
+  and command search (the Ctrl+K palette). The project name and the save state
+  (a dot and its word) sit together, centred between the search button and the
+  right-hand buttons: version history, settings and help (menu: Search commands,
+  Toolbox, Tutorial, P3-12). Settings holds General (auto-project, Customize
+  Marking Menu…) and the Theme (System by default, Light, Dark). The tab labels
+  sit on the wordmark's baseline. There is no File menu: its items are the Home
+  tab. Below 1024 px the wordmark goes; when the title group doesn't fit, the save
+  word goes first (the dot stays), then the name truncates (ADR-0079, round 2). Tool tiles carry a one-line label that may be long; a tool has a
+  tile whenever there is room, and the ▾ menu holds only what the fit rule moved.
 - **Versions** (P2-14, ADR-0036): Ctrl+S, Home › Save Version or
   Version History, the clock icon beside the project name, or the
   palette open one dialog: a Description field with Save version on top
@@ -712,7 +715,7 @@ Plain language, with the fix if we know it:
   window. The view will be slower than with a graphics card.", why it is a
   separate window (the setting lets websites run graphics code on the
   processor, which Chrome keeps off by default for safety) and that designs are
-  per profile (Home › Export Design here, Home › Files ▾ Import .extrudo… there). Brave, Opera, Vivaldi and other Chromium browsers get the flags and a separate `--user-data-dir` instead of a command (`[data-swiftshader-flags]`); the Copy button copies `edge://gpu` on Edge, `chrome://gpu` otherwise. The timeline, browser, parameters, customizer and export keep
+  per profile (Home › Export Design here, Home › Files › Import Design there). Brave, Opera, Vivaldi and other Chromium browsers get the flags and a separate `--user-data-dir` instead of a command (`[data-swiftshader-flags]`); the Copy button copies `edge://gpu` on Edge, `chrome://gpu` otherwise. The timeline, browser, parameters, customizer and export keep
   working.
 - **The view crashed**: "The 3D view stopped working" with the error and
   [Try again]. **The driver reset** (context lost): "The graphics driver reset

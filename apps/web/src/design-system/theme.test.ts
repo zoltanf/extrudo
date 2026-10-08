@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTheme } from './theme';
+import { DEFAULT_THEME, resolveTheme } from './theme';
 
 describe('resolveTheme', () => {
   it('uses the choice, or the system theme for "system"', () => {
@@ -7,5 +7,11 @@ describe('resolveTheme', () => {
     expect(resolveTheme('light', 'dark')).toBe('light');
     expect(resolveTheme('system', 'light')).toBe('light');
     expect(resolveTheme('system', 'dark')).toBe('dark');
+  });
+});
+
+describe('the default theme', () => {
+  it('follows the system until a choice is stored', () => {
+    expect(DEFAULT_THEME).toBe('system');
   });
 });

@@ -154,3 +154,49 @@ were for its fixed 64 px tiles; the app's tiles are as wide as their labels.
   a tile now on another tab use `pickTool`.
 - Every screenshot baseline's top area changed.
 - No document, kernel or file-format change.
+
+## Round 2, 2026-10-08
+
+The owner's second review (a screen recording on edge), in their words: the default
+theme "should be the same as system", and the theme goes "under the settings menu …
+under the gear icon there could be like general settings and one section with the
+theme … below the general settings. So we save a bit of space"; "add the toolbox …
+next to the search, so first the toolbox and then the search"; "version history should
+move next to the settings"; "this saved label should be next to the title … the title
+should be aligned center between the separator … after the last icon on the left side
+and the version history button … title and then a dot and then saved as a status … the
+saved [label] is gone when there is not enough space and then after that we start to
+collapse the title name itself"; "let's experiment with … removing this right separator
+here after the search icon".
+
+Decisions:
+
+- **The default theme is `system`** (`DEFAULT_THEME` in `design-system/theme.ts`); a stored
+  choice still wins. Playwright reports a light system theme, so `playwright.config.ts`
+  sets `colorScheme: 'dark'` and the app and the baselines render as before; specs that
+  want light use `test.use({ colorScheme })` or a stored choice. The landing page and the
+  API docs are untouched.
+- **The gear is the Settings menu**: General (Auto-project body edges, Auto-project face
+  outline — the same viewport-store state as the sketch palette's checkboxes —, Customize
+  Marking Menu…), then Theme (System, Light, Dark). The top bar's theme button is gone;
+  `ThemeMenu` stays for the home screen.
+- **The cluster is Undo, Redo, Toolbox, Search**; Toolbox (lucide `LayoutGrid`) opens the
+  S toolbox at the button (`onSearch('toolbox', at)`). The right side is Version history,
+  Settings, Help.
+- **The title group** (name, then the save state's dot and word) is centred in the space
+  between the cluster's last button and Version history. `shell/titleFit.ts`'s pure
+  `titleFit(available, nameWidth, statusWidth)` answers `full`, `dot` (the word becomes
+  screen-reader text; the dot's tooltip has it) or `truncate` (the name gets an ellipsis,
+  its `title` is the full name). Natural widths come from a hidden copy measured with a
+  `ResizeObserver`. The wordmark still hides under 1024 px.
+- **The separator after the cluster is removed**; the one between the tabs and the
+  cluster stays.
+- **Tiles first, one-line labels** (the owner: labels stay on one line, may be longer;
+  what has room is a tile, the ▾ menu is for what doesn't fit). Home › Files is now
+  Import Design, Import Model, Import Drawing, Canvas, Export Design, Export Model, Export
+  as Script, Save to Linked Folder (shown only where available) with no fixed `more`;
+  Construct › Planes adds Plane Through 3 Points, Plane Along Path and Angled Midplane as
+  tiles. The tile text is `short` (`importBody`'s full label is "Import STEP, mesh or
+  OpenSCAD…", kept for tooltips and search); tiles never truncate (`whitespace-nowrap`,
+  the fit rule measures real widths). At 1440 px Home and Construct move nothing; at
+  900 px the fit is Home `0,0,4,0,0`, Construct `3,0,0` (Solid `3,1,0,0,0`).

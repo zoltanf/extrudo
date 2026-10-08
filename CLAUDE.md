@@ -1280,7 +1280,7 @@ path, keeping what you had as a version) and "Overwrite" — a toast can carry
 several buttons (`ToastOptions.actions`, with `action` the first of them), both
 with `available()`. Errors (permission lost, file removed) are toasts. The home
 screen's "Linked folder" section opens a file as a project **linked** to it;
-"Save to Linked Folder" (Home › Files ▾, Ctrl+K) links an unlinked one, refusing a
+"Save to Linked Folder" (Home › Files tile, Ctrl+K) links an unlinked one, refusing a
 name that is already in the folder.
 
 ADR-0066 (P4-06, slice 1) added **drawings into a sketch**: `@extrudo/io`
@@ -2067,6 +2067,17 @@ points at a tool's tab when its tile isn't shown (`toolOrTabSelector`). e2e:
 `data-label` — the tool's full name —, another tab's tile, a group menu's item),
 `fileAction(page, label)` runs a Home command, `selectTab(page, name)` selects a tab;
 `e2e/topbar.spec.ts` measures the baselines and the fit.
+**Round 2 (2026-10-08)**: the default theme is `system` (`DEFAULT_THEME`;
+`playwright.config.ts` sets `colorScheme: 'dark'` because Playwright reports a light
+system theme and the baselines are dark), the gear is a **Settings menu**
+(`SettingsMenu` in `AppBar.tsx`: General — Auto-project body edges / face outline on the
+viewport store, Customize Marking Menu… — and Theme; the bar's theme button is gone,
+`ThemeMenu` remains on the home screen), the cluster is **Undo, Redo, Toolbox, Search**
+(Toolbox opens the S toolbox at the button: `onSearch('toolbox', at)`), the right side is
+Version history, Settings, Help, and the name plus the save dot are one `TitleGroup`
+centred between the cluster and Version history; the pure `titleFit`
+(`shell/titleFit.ts`) drops the save word first (`data-title-fit="dot"`), then truncates
+the name (`truncate`, `title` = full name). The separator after the cluster is gone. **Tiles first**: Home › Files has no fixed `more` (Import Design, Import Model — `importBody`, full label "Import STEP, mesh or OpenSCAD…" —, Import Drawing, Canvas, Export Design, Export Model, Export as Script, Save to Linked Folder), Construct › Planes shows all seven planes as tiles, and tile text is `short` on one line (never truncated).
 
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): Phases 0, 1, 2, 3 and 5 are complete, Phase 4 is complete
@@ -2702,7 +2713,7 @@ them. Notes further down that name a machine apply to that machine only.
   `preview:`-prefixed); the browser's Construction rows carry
   `data-construction="<feature id>"` and eyes ("Hide Offset Plane1").
   The tools are the Construct tab's (ADR-0079: Planes, Axes, Points; Plane
-  Through 3 Points, Plane Along Path and Angled Midplane in Planes ▾): run them
+  Through 3 Points, Plane Along Path and Angled Midplane tiles in Planes): run them
   with `pickTool(page, '<full name>')`; its dialogs are the regions
   "Offset Plane dialog", "Axis Through 2 Points dialog"… A plane field
   picks like Create Sketch (click a plane's square, `clickAt` a world
@@ -3589,7 +3600,7 @@ them. Notes further down that name a machine apply to that machine only.
   with `data-linked-folder` (`none`/`needs-permission`/`ready`/`loading`) and
   file cards `[data-linked-file="<name>"]`; "Link a folder…", "Reconnect",
   "Unlink the folder" and "Refresh the linked folder" are its buttons; the
-  project's own command is Home › Files ▾ "Save to Linked Folder" (ADR-0079;
+  project's own command is Home › Files tile "Save to Linked Folder" (ADR-0079;
   `fileAction`, and `hasFileAction` is false once the project is linked) and says "Saved <file> to the linked
   folder.". **The write-back is throttled**, so a test that edits and waits
   must wait 12 s for the trailing write; the file's bytes are read out of OPFS
@@ -3761,8 +3772,8 @@ them. Notes further down that name a machine apply to that machine only.
   and worker-load timings from the performance measures (ADR-0070 slice 3).
 - **Import STEP e2e** (`e2e/import-step.spec.ts`, P4-06 slice 2): the tile is
   `importBody` in the **Home tab** (ADR-0079: `selectTab(page, 'Home')`, then the
-  button "Import", `exact: true`; `data-tool="importBody"`; `fileAction(page,
-  'Import')` runs the same command). It opens the file dialog at
+  button "Import Model", `exact: true`; `data-tool="importBody"`; `fileAction(page,
+  'Import Model')` runs the same command). It opens the file dialog at
   once, so wait for the `filechooser` beside the click and
   `setFiles('fixtures/imports/b3.step')` (B3's two bodies through our own
   `writeStep`). The dialog is the region "Import dialog" / "Edit Import1

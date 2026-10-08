@@ -59,7 +59,7 @@ async function sizes(page: Page) {
 async function importFile(page: Page, file: string): Promise<Locator> {
   const chooser = page.waitForEvent('filechooser');
   await selectTab(page, 'Home');
-  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await page.getByRole('button', { name: 'Import Model', exact: true }).click();
   await (await chooser).setFiles(file);
   const panel = dialog(page);
   await expect(panel).toBeVisible();

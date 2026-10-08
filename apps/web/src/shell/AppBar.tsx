@@ -3,13 +3,14 @@ import {
   CircleHelp,
   GraduationCap,
   History,
+  LayoutGrid,
   PanelsTopLeft,
   Redo2,
   Search,
   Settings,
   Undo2,
 } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
@@ -18,8 +19,10 @@ import {
   IconButton,
   LogoMark,
   Menu,
+  MenuCheckboxItem,
   MenuItem,
   MenuLabel,
+  MenuRadioGroup,
   MenuSeparator,
   Popover,
   TextInput,
@@ -29,7 +32,8 @@ import {
 } from '../design-system';
 import type { Autosaver } from '../project/autosave';
 import { HOME_HREF } from '../routes';
-import { ThemeMenu } from './ThemeMenu';
+import type { ViewportStore } from '../viewport/store';
+import { TITLE_GAP, type TitleFit, titleFit } from './titleFit';
 
 /** The design's file actions (the Home tab's commands, ADR-0079); the project page implements them. */
 export interface FileActions {
@@ -73,8 +77,12 @@ export interface AppBarProps {
   tabs: ReactNode;
   theme: ThemeChoice;
   onThemeChange(theme: ThemeChoice): void;
-  /** Opens command search: the Ctrl+K palette, or the S toolbox at the pointer (P1-14). */
-  onSearch(kind: 'palette' | 'toolbox'): void;
+  /** Opens command search: the Ctrl+K palette, or the S toolbox at a point (P1-14). */
+  onSearch(kind: 'palette' | 'toolbox', at?: { x: number; y: number }): void;
+  /** The view's display settings: Settings › General reads and writes the auto-project ones. */
+  viewport: ViewportStore;
+  /** Opens "Customize Marking Menu…". */
+  onCustomizeMarking(): void;
   /** Starts the tutorial (P3-12). */
   onTutorial(): void;
 }
@@ -89,9 +97,10 @@ const keyLabel = (id: string) => {
 const Separator = () => <div className="mx-1.5 h-5 w-px shrink-0 bg-line" aria-hidden="true" />;
 
 /**
- * The top bar (UI spec §2, ADR-0079): the logo, the toolbar's tabs, undo, redo
- * and command search, then the design's name, its versions and save state, and
- * settings, help and theme. The File menu it once had is the Home tab.
+ * The top bar (UI spec §2, ADR-0079): the logo, the toolbar's tabs, undo, redo,
+ * the toolbox and command search, the design's name and save state centred
+ * between them and the right-hand buttons: version history, settings (with the
+ * theme) and help. The File menu it once had is the Home tab.
  */
 export function AppBar({
   store,
@@ -102,6 +111,8 @@ export function AppBar({
   onThemeChange,
   onSearch,
   onTutorial,
+  viewport,
+  onCustomizeMarking,
 }: AppBarProps) {
   const name = useStore(store, (s) => s.doc.name);
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
@@ -141,36 +152,35 @@ export function AppBar({
         >
           <Redo2 size={18} strokeWidth={1.75} />
         </IconButton>
+        <ToolboxButton onSearch={onSearch} />
         <IconButton
           label="Search commands"
           shortcut={keyLabel('commandPalette')}
-          hint={`Find and run any command by name. ${keyLabel('toolbox')} opens the toolbox at the pointer.`}
+          hint="Find and run any command by name."
           onClick={() => onSearch('palette')}
         >
           <Search size={18} strokeWidth={1.75} />
         </IconButton>
-        <Separator />
       </div>
 
-      <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
-        <ProjectName store={store} name={name} />
+      <TitleGroup store={store} name={name} autosave={autosave} />
+
+      <div className="flex shrink-0 items-center gap-1">
         {file.versionHistory && (
           <IconButton
             label="Version history"
             hint="Saved versions of this design: save one, restore one, or open one as a copy."
             onClick={file.versionHistory}
           >
-            <History size={16} strokeWidth={1.75} />
+            <History size={18} strokeWidth={1.75} />
           </IconButton>
         )}
-        <SaveStatus autosave={autosave} />
-        <div className="w-1 shrink-0" aria-hidden="true" />
-      </div>
-
-      <div className="flex shrink-0 items-center gap-1">
-        <IconButton label="Settings" hint="Arrives with P1." disabled>
-          <Settings size={18} strokeWidth={1.75} />
-        </IconButton>
+        <SettingsMenu
+          viewport={viewport}
+          theme={theme}
+          onThemeChange={onThemeChange}
+          onCustomizeMarking={onCustomizeMarking}
+        />
         <Menu
           label="Help"
           align="end"
@@ -201,11 +211,144 @@ export function AppBar({
             Tutorial
           </MenuItem>
         </Menu>
-        <ThemeMenu theme={theme} onThemeChange={onThemeChange} />
       </div>
     </header>
   );
 }
+
+/** The toolbox opens at the button, so it also opens from the keyboard (ADR-0023). */
+function ToolboxButton({ onSearch }: Pick<AppBarProps, 'onSearch'>) {
+  const ref = useRef<HTMLSpanElement>(null);
+  return (
+    <span ref={ref} className="inline-flex">
+      <IconButton
+        label="Toolbox"
+        shortcut={keyLabel('toolbox')}
+        hint="Your pinned tools and every command, in a box at the button."
+        onClick={() => {
+          const r = ref.current?.getBoundingClientRect();
+          onSearch('toolbox', r && { x: r.left + r.width / 2, y: r.bottom });
+        }}
+      >
+        <LayoutGrid size={18} strokeWidth={1.75} />
+      </IconButton>
+    </span>
+  );
+}
+
+/** The gear: general settings, then the theme below (ADR-0079, round 2). */
+function SettingsMenu({
+  viewport,
+  theme,
+  onThemeChange,
+  onCustomizeMarking,
+}: Pick<AppBarProps, 'viewport' | 'theme' | 'onThemeChange' | 'onCustomizeMarking'>) {
+  const autoProject = useStore(viewport, (s) => s.autoProject);
+  const autoProjectFace = useStore(viewport, (s) => s.autoProjectFace);
+  return (
+    <Menu
+      label="Settings"
+      align="end"
+      trigger={
+        <IconButton label="Settings">
+          <Settings size={18} strokeWidth={1.75} />
+        </IconButton>
+      }
+    >
+      <MenuLabel>General</MenuLabel>
+      <MenuCheckboxItem
+        checked={autoProject}
+        onChange={(v) => viewport.getState().setAutoProject(v)}
+      >
+        Auto-project body edges
+      </MenuCheckboxItem>
+      <MenuCheckboxItem
+        checked={autoProjectFace}
+        onChange={(v) => viewport.getState().setAutoProjectFace(v)}
+      >
+        Auto-project face outline
+      </MenuCheckboxItem>
+      <MenuItem onSelect={onCustomizeMarking}>Customize Marking Menu…</MenuItem>
+      <MenuSeparator />
+      <MenuLabel>Theme</MenuLabel>
+      <MenuRadioGroup
+        value={theme}
+        onChange={onThemeChange}
+        options={[
+          { value: 'system', label: 'System' },
+          { value: 'light', label: 'Light' },
+          { value: 'dark', label: 'Dark' },
+        ]}
+      />
+    </Menu>
+  );
+}
+
+/**
+ * The name, a dot and the save state, centred between the cluster and the right-hand
+ * buttons. When they don't fit, the word goes first (the dot stays), then the name is
+ * cut short. Natural widths come from a hidden copy, so the rule needs no layout loop.
+ */
+function TitleGroup({
+  store,
+  name,
+  autosave,
+}: {
+  store: DocumentStore;
+  name: string;
+  autosave: Autosaver;
+}) {
+  const area = useRef<HTMLDivElement>(null);
+  const nameProbe = useRef<HTMLSpanElement>(null);
+  const statusProbe = useRef<HTMLSpanElement>(null);
+  const [fit, setFit] = useState<TitleFit>('full');
+  useLayoutEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    const measure = () =>
+      setFit(
+        titleFit(
+          el.clientWidth,
+          nameProbe.current?.offsetWidth ?? 0,
+          statusProbe.current?.offsetWidth ?? 0,
+        ),
+      );
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    // The probes change size with the name and the status word.
+    if (nameProbe.current) observer.observe(nameProbe.current);
+    if (statusProbe.current) observer.observe(statusProbe.current);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div ref={area} className="relative flex min-w-0 flex-1 items-center justify-center">
+      <div
+        className="flex min-w-0 max-w-full items-center"
+        style={{ gap: TITLE_GAP }}
+        data-title-fit={fit}
+        data-title-group=""
+      >
+        <ProjectName store={store} name={name} />
+        <SaveStatus autosave={autosave} compact={fit !== 'full'} />
+      </div>
+      {/* Natural widths, never seen. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none invisible absolute left-0 top-0 h-0 overflow-hidden whitespace-nowrap"
+      >
+        <span ref={nameProbe} className={`${NAME_CLASS} inline-block truncate`}>
+          {name}
+        </span>
+        <span ref={statusProbe} className="inline-block">
+          <SaveStatus autosave={autosave} probe />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+const NAME_CLASS = 'max-w-64 px-1.5 py-0.5 font-semibold';
 
 /** The project name; click to rename (one undoable command). */
 function ProjectName({ store, name }: { store: DocumentStore; name: string }) {
@@ -226,8 +369,9 @@ function ProjectName({ store, name }: { store: DocumentStore; name: string }) {
       trigger={
         <button
           type="button"
-          className="min-w-0 max-w-64 truncate rounded-input px-1.5 py-0.5 font-semibold hover:bg-accent-soft"
+          className={`${NAME_CLASS} min-w-0 truncate rounded-input hover:bg-accent-soft`}
           aria-label={`Project name: ${name}. Rename`}
+          title={name}
         >
           {name}
         </button>
@@ -258,10 +402,28 @@ const time = (iso: string) =>
   new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
 /** The save state (FR-PRJ-03): never colour alone, always a word too. */
-function SaveStatus({ autosave }: { autosave: Autosaver }) {
+function SaveStatus({
+  autosave,
+  compact = false,
+  probe = false,
+}: {
+  autosave: Autosaver;
+  /** Only the dot is drawn; the word stays for screen readers and the tooltip. */
+  compact?: boolean;
+  /** The full-width copy the title measures: no tooltip, no role. */
+  probe?: boolean;
+}) {
   const { status, error, savedAt } = useStore(autosave);
   const badge = 'inline-flex items-center gap-1.5 rounded-input px-1.5 py-0.5 text-sm';
   if (status === 'error') {
+    if (probe) {
+      return (
+        <span className={badge}>
+          <span className="size-1.5 rounded-full" />
+          <span>Couldn't save</span>
+        </span>
+      );
+    }
     return (
       <Tooltip label="Couldn't save" hint={`${error ?? 'Unknown error.'} Click to try again.`}>
         <button
@@ -270,7 +432,7 @@ function SaveStatus({ autosave }: { autosave: Autosaver }) {
           className={`${badge} text-error hover:bg-error/10`}
         >
           <span className="size-1.5 rounded-full bg-error" aria-hidden="true" />
-          <span role="status" aria-label="Save status">
+          <span role="status" aria-label="Save status" className={compact ? 'sr-only' : ''}>
             Couldn't save
           </span>
         </button>
@@ -286,12 +448,20 @@ function SaveStatus({ autosave }: { autosave: Autosaver }) {
     saving: { text: 'Saving…', dot: 'bg-accent animate-pulse', hint: 'Saving in this browser.' },
     unsaved: { text: 'Edited', dot: 'bg-muted', hint: 'Saves automatically in a moment.' },
   }[status];
+  if (probe) {
+    return (
+      <span className={`${badge} text-muted`}>
+        <span className="size-1.5 rounded-full" />
+        <span>{view.text}</span>
+      </span>
+    );
+  }
   return (
     <Tooltip label={view.text} hint={view.hint}>
       <span className={`${badge} shrink-0 text-muted`} tabIndex={-1}>
         <span className={`size-1.5 rounded-full ${view.dot}`} aria-hidden="true" />
-        {/* A narrow window keeps the dot; the word stays for screen readers (ADR-0079). */}
-        <span role="status" aria-label="Save status" className="max-lg:sr-only">
+        {/* Narrow: the dot stays, the word stays for screen readers (ADR-0079, round 2). */}
+        <span role="status" aria-label="Save status" className={compact ? 'sr-only' : ''}>
           {view.text}
         </span>
       </span>

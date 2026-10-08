@@ -52,7 +52,7 @@ async function importFile(
 ): Promise<Locator> {
   const chooser = page.waitForEvent('filechooser');
   await selectTab(page, 'Home');
-  await page.getByRole('button', { name: 'Import', exact: true }).click();
+  await page.getByRole('button', { name: 'Import Model', exact: true }).click();
   await (await chooser).setFiles(file);
   const panel = dialog(page);
   await expect(panel).toBeVisible();
@@ -238,7 +238,7 @@ test('the Home tab imports, and the drawing import needs a sketch', async ({ pag
 
   // Home's Import is the same command whatever opened it.
   const chooser = page.waitForEvent('filechooser');
-  await fileAction(page, 'Import');
+  await fileAction(page, 'Import Model');
   await (await chooser).setFiles(STEP_FILE);
   const panel = dialog(page);
   await expect(panel).toBeVisible();

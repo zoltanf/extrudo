@@ -28,6 +28,9 @@ export default defineConfig({
     // The production build registers a service worker that precaches 20 MB of
     // WASM; only e2e/pwa.spec.ts wants it.
     serviceWorkers: 'block',
+    // The app follows the system theme by default (ADR-0079, round 2) and Playwright reports a
+    // light one: pin dark so the app renders, and the baselines look, as they always did.
+    colorScheme: 'dark',
     // The e2e browser draws WebGL in software (SwiftShader), so every spec would
     // get the "Software rendering" toast (ADR-0076). The preference is stored the
     // way platform/preferences.ts does: key `extrudo.<key>`, JSON value.

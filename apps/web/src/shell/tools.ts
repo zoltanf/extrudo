@@ -205,7 +205,7 @@ export const TOOLS = {
   importDrawing: {
     id: 'importDrawing',
     label: 'Import Drawing…',
-    short: 'Import…',
+    short: 'Import Drawing',
     icon: 'insert-svg',
     category: 'sketch',
     hint: 'Bring an SVG or DXF drawing into the sketch as ordinary curves.',
@@ -658,7 +658,7 @@ export const TOOLS = {
   planeThroughPoints: {
     id: 'planeThroughPoints',
     label: 'Plane Through 3 Points',
-    short: '3-Point Plane',
+    short: 'Plane Through 3 Points',
     icon: 'plane-3-points',
     category: 'construct',
     hint: 'A plane through three points.',
@@ -720,7 +720,7 @@ export const TOOLS = {
   planeAlongPath: {
     id: 'planeAlongPath',
     label: 'Plane Along Path',
-    short: 'Path Plane',
+    short: 'Plane Along Path',
     icon: 'plane-angle',
     category: 'construct',
     hint: 'A plane square to a path at a point on it, for a sweep to draw its section on.',
@@ -750,7 +750,8 @@ export const TOOLS = {
   },
   importBody: {
     id: 'importBody',
-    label: 'Import',
+    label: 'Import STEP, mesh or OpenSCAD…',
+    short: 'Import Model',
     icon: 'insert-svg',
     category: 'insert',
     hint: 'Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print.',
@@ -873,6 +874,7 @@ export const TOOLS = {
   importProject: {
     id: 'importProject',
     label: 'Import .extrudo…',
+    short: 'Import Design',
     icon: 'import-design',
     category: 'file',
     hint: 'Open an .extrudo file as a new design.',
@@ -880,6 +882,7 @@ export const TOOLS = {
   saveToLinkedFolder: {
     id: 'saveToLinkedFolder',
     label: 'Save to Linked Folder',
+    short: 'Save to Linked Folder',
     icon: 'linked-folder',
     category: 'file',
     hint: 'Keep this design as an .extrudo file in the linked folder on disk.',
@@ -934,8 +937,16 @@ export const TABS: Tab[] = [
         label: 'Files',
         // P4-06: a model file becomes bodies, a drawing becomes sketch curves, and a
         // picture lies on a plane to trace (ADR-0066).
-        tools: ['importBody', 'importDrawing', 'canvas', 'exportProject', 'export', 'exportScript'],
-        more: ['importProject', 'saveToLinkedFolder'],
+        tools: [
+          'importProject',
+          'importBody',
+          'importDrawing',
+          'canvas',
+          'exportProject',
+          'export',
+          'exportScript',
+          'saveToLinkedFolder',
+        ],
         labels: { export: 'Export Model' },
       },
       // What a design exposes is a few of its parameters (P4-07).
@@ -973,8 +984,15 @@ export const TABS: Tab[] = [
     groups: [
       {
         label: 'Planes',
-        tools: ['offsetPlane', 'planeAtAngle', 'midplane', 'tangentPlane'],
-        more: ['planeThroughPoints', 'planeAlongPath', 'midplaneAngled'],
+        tools: [
+          'offsetPlane',
+          'planeAtAngle',
+          'midplane',
+          'tangentPlane',
+          'planeThroughPoints',
+          'planeAlongPath',
+          'midplaneAngled',
+        ],
       },
       { label: 'Axes', tools: ['axisThroughPoints', 'axisThroughCylinder', 'axisAlongEdge'] },
       { label: 'Points', tools: ['constructionPoint', 'pointOnPath', 'pointAtIntersection'] },
