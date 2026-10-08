@@ -401,6 +401,7 @@ export function AppShell({
   // The Import Drawing tool's panel opens from the file it picked (P4-06).
   const importOpen = useStore(importDrawingStore, (s) => s.open);
   const bodies = useStore(model, (s) => s.bodies);
+  const recomputeFinished = useRecomputeFinished(model);
   const sketchReports = useStore(model, (s) => s.sketches);
   const constructionReports = useStore(model, (s) => s.construction);
   const canvasReports = useStore(model, (s) => s.canvases);
@@ -1759,6 +1760,7 @@ export function AppShell({
             bodyActions={bodyActions}
             selectedBodies={selectedBodies}
             statuses={featureStatuses}
+            recomputeFinished={recomputeFinished}
             onPickBody={
               modelSelect
                 ? (id, toggle) => modelSelect.onClick({ kind: 'body', id }, toggle)

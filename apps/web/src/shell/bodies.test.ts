@@ -16,6 +16,7 @@ import {
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import {
+  bodiesEmptyState,
   bodyEntries,
   bodyMetaOf,
   createBodyActions,
@@ -258,5 +259,14 @@ describe('pendingBodyEntries (ADR-0078)', () => {
   it('skips an ID with no stored metadata', () => {
     expect(pendingBodyEntries(doc, ['A:0', 'Z:9']).map((e) => e.id)).toEqual(['A:0']);
     expect(pendingBodyEntries(doc, [])).toEqual([]);
+  });
+});
+
+describe('bodiesEmptyState', () => {
+  it('computes only before the first recompute, with features and nothing listed', () => {
+    expect(bodiesEmptyState({ listed: 0, finished: false, activeFeatures: 2 })).toBe('computing');
+    expect(bodiesEmptyState({ listed: 0, finished: false, activeFeatures: 0 })).toBe('none');
+    expect(bodiesEmptyState({ listed: 0, finished: true, activeFeatures: 2 })).toBe('none');
+    expect(bodiesEmptyState({ listed: 1, finished: false, activeFeatures: 2 })).toBe('none');
   });
 });

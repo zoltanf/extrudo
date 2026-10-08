@@ -80,3 +80,7 @@ Unit tests: `modelProgress.test.ts`, `modelCache.test.ts`, `pendingBodyEntries`
 in `bodies.test.ts`, the cache round trip in both stores, the proxy's method
 list. `e2e/model-progress.spec.ts` slows the OCCT WASM by 4 s on reload and
 sees the notice and a pending "Bracket" row before `kernelReady`, then neither.
+
+## Amendment, 2026-10-08
+
+With no model cache, the Bodies folder showed "No bodies yet" until the first recompute ended. Now an empty folder with at least one active feature, before any recompute has finished since the page opened, shows a muted "Computing bodies…" with a 12 px cube (`bodiesEmptyState`, `data-bodies-computing`); afterwards it shows what the model has, and later recomputes never bring it back.

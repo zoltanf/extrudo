@@ -65,6 +65,36 @@ test('a reopened design says it is being prepared and lists its bodies before th
   await expect(browserOf(page).getByRole('button', { name: 'Bracket', exact: true })).toBeVisible();
 });
 
+test('with no model cache the folder says the bodies are being computed, not that there are none', async ({
+  page,
+}) => {
+  await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  await cacheWritten(page);
+  const id = page.url().split('#/p/')[1]?.split(/[/?]/)[0] ?? '';
+  await page.evaluate(`(async () => {
+    const root = await navigator.storage.getDirectory();
+    const projects = await root.getDirectoryHandle('projects');
+    const dir = await projects.getDirectoryHandle(${JSON.stringify(id)});
+    await dir.removeEntry('model-cache.json');
+  })()`);
+  await page.route('**/extrudo_occt*.wasm', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    await route.continue();
+  });
+  await page.reload();
+
+  const computing = browserOf(page).locator('[data-bodies-computing]');
+  await expect(computing).toBeVisible();
+  await expect(computing).toContainText('Computing bodies…');
+  await expect(computing).toHaveAttribute('aria-busy', 'true');
+  await expect(browserOf(page).getByText('No bodies yet')).toHaveCount(0);
+
+  await kernelReady(page);
+  await expect(computing).toHaveCount(0);
+  await expect(browserOf(page).getByRole('button', { name: 'Bracket', exact: true })).toBeVisible();
+});
+
 test('a new design has no bodies to list', async ({ page }) => {
   await openProject(page);
   await kernelReady(page);

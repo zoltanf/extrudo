@@ -308,3 +308,15 @@ export function createBodyActions(
     },
   };
 }
+
+/**
+ * What an empty Bodies folder says (ADR-0078's amendment): "computing" while the first recompute
+ * of the page hasn't finished and the design has features to compute, else "none".
+ */
+export function bodiesEmptyState(input: {
+  listed: number;
+  finished: boolean;
+  activeFeatures: number;
+}): 'computing' | 'none' {
+  return input.listed === 0 && !input.finished && input.activeFeatures > 0 ? 'computing' : 'none';
+}

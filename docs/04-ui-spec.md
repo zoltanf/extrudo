@@ -680,6 +680,8 @@ Analysis (P3-09); Q and J wait for their tools.
 - **Bodies before they are drawn:** the Bodies folder lists the bodies the last
   session made at once, as muted rows with a small cube where the count would be;
   the eye works, selection waits. The first finished recompute replaces them.
+  With no cache and features to compute, the folder shows a muted "Computing
+  bodies…" with a small cube instead of "No bodies yet" until that recompute ends.
 
 ## 8. Error messages
 

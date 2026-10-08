@@ -45,12 +45,14 @@ import {
   Tooltip,
 } from '../design-system';
 import { ProgressCube } from '../viewport/ModelProgress';
+import { activeFeatureCount } from '../viewport/modelProgress';
 import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
 import {
   BODY_COLORS,
   BODY_OPACITIES,
   type BodyActions,
   type BodyEntry,
+  bodiesEmptyState,
   isSwatch,
   parseBodyColor,
 } from './bodies';
@@ -98,6 +100,8 @@ export interface BrowserPanelProps {
   thickness?: AnalysisEntry;
   /** The kernel's verdict per feature: rows show ✕ or ⚠ as the timeline's chips do (P3-17). */
   statuses?: Readonly<Record<string, FeatureStatus | undefined>>;
+  /** A recompute has finished since the page opened (default: yes). Until then an empty Bodies folder is "computing" (ADR-0078). */
+  recomputeFinished?: boolean;
 }
 
 /** One row of the Analysis folder: a view analysis with its eye, its panel and its removal. */
@@ -140,6 +144,7 @@ export function BrowserPanel({
   overhang,
   thickness,
   statuses = NO_STATUSES,
+  recomputeFinished = true,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
@@ -408,7 +413,24 @@ export function BrowserPanel({
               }
             >
               {bodies.length === 0 ? (
-                <Leaf muted>No bodies yet</Leaf>
+                bodiesEmptyState({
+                  listed: bodies.length,
+                  finished: recomputeFinished,
+                  activeFeatures: activeFeatureCount(doc),
+                }) === 'computing' ? (
+                  <Leaf muted>
+                    <span
+                      data-bodies-computing
+                      aria-busy="true"
+                      className="inline-flex items-center gap-1.5"
+                    >
+                      <ProgressCube size={12} />
+                      Computing bodies…
+                    </span>
+                  </Leaf>
+                ) : (
+                  <Leaf muted>No bodies yet</Leaf>
+                )
               ) : (
                 bodies.map((body) =>
                   body.pending ? (

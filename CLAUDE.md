@@ -3797,7 +3797,7 @@ them. Notes further down that name a machine apply to that machine only.
   own component under the fields; its clicks stay out of the Plane field
   through `spec.placeAtOnly`) writes `width × real / measured`. `spec.info` is
   slice 2's field kind.
-- **Model progress e2e** (`e2e/model-progress.spec.ts`, ADR-0078): the notice is
+- **Model progress e2e** (`e2e/model-progress.spec.ts`, ADR-0078): with no cache an empty Bodies folder shows `[data-bodies-computing]` ("Computing bodies…", `aria-busy`) until the first recompute; the notice is
   `[data-model-progress="preparing|updating"]` (absent otherwise; text "Preparing
   your design…", "Computing 6 features"), the icon `[data-progress-icon]`, and a
   pending body row `[data-body-pending]` (`aria-busy`) in the browser. To make the
