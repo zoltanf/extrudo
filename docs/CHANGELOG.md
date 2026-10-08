@@ -2,7 +2,7 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
-## v0.4 (Phase 4, in progress)
+## v0.4.0 (2026-10-08)
 
 - 2026-10-08 · **Top bar, round 2** (the owner's second review, ADR-0079's amendment): the theme follows the system by default, the gear is a Settings menu (auto-project, Customize Marking Menu…, and the theme below), a Toolbox button sits before Search, Version history moves next to Settings, and the name with its save dot is centred between the buttons, dropping the save word and then truncating the name as the window narrows.
 - 2026-10-08 · **The Bodies folder says "Computing bodies…" before the first recompute** when nothing is cached, instead of the false "No bodies yet" (ADR-0078's amendment).

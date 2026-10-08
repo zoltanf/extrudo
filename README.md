@@ -27,11 +27,9 @@ inspired by that workflow and shares no code or artwork with any such product.
 
 ![A wall bracket in the 3D view, with its timeline and parameters](docs/images/bracket.png)
 
-> **Status:** version 0.3, "real CAD", is the stable app. Version 0.4 (import,
-> threads, text, sweep and loft, the customizer and more: marked _0.4_ below)
-> is finished on the latest build and being prepared for release. The core
-> modeling workflow is there and tested, but expect rough edges. Things not
-> built yet are listed in [`docs/03-roadmap.md`](docs/03-roadmap.md). Please
+> **Status:** version 0.4 is the stable app. The core modeling workflow is
+> there and tested, but expect rough edges. Things not built yet are listed
+> in [`docs/03-roadmap.md`](docs/03-roadmap.md). Please
 > [report what breaks](https://github.com/zoltanf/extrudo/issues/new/choose).
 
 ## Try it
@@ -48,7 +46,7 @@ splines, with automatic constraints, 13 constraint types and driving
 dimensions. A sketch shows how much freedom is left in it, and refuses
 contradictions with a plain explanation. Trim, extend, fillet, offset, mirror,
 pattern and project from other geometry; export a sketch as SVG or DXF.
-_0.4:_ control-point splines and conics, text in the bundled fonts or your own,
+Control-point splines and conics, text in the bundled fonts or your own,
 and SVG or DXF drawings imported into a sketch.
 
 **Solids.** Extrude (with taper, symmetric, to an object, join, cut), revolve,
@@ -56,14 +54,14 @@ box, cylinder, sphere and torus, fillet and chamfer with a diagnosis when a
 size does not fit, shell, holes (counterbore, countersink, M2 to M8 presets,
 heat-set inserts), combine, move and copy, mirror, rectangular, circular and
 path patterns, split body, scale, draft, press/pull and offset face.
-_0.4:_ sweep, loft and coil, modeled threads (ISO metric, UNC, UNF) that fit
+Sweep, loft and coil, modeled threads (ISO metric, UNC, UNF) that fit
 the hole or shaft they are put on, emboss and deboss onto flat and round faces,
 ribs, variable-radius fillets, up to 32 fillet and chamfer sets with in-view
 handles, and patterns that skip single instances.
 
-**Import** (_0.4_). STEP files as solid bodies; STL, 3MF and OBJ meshes as
+**Import.** STEP files as solid bodies; STL, 3MF and OBJ meshes as
 bodies you can still cut, join, move and split; pictures on a plane to trace
-over. On the latest build: OpenSCAD files (`.scad`), compiled in the browser,
+over. OpenSCAD files (`.scad`), compiled in the browser,
 whose customizer variables can follow your design's parameters.
 
 **Construction geometry.** Offset, angled, mid and three-point planes, tangent
@@ -73,19 +71,19 @@ planes, axes through points, cylinders or edges, and points.
 (`wall * 1.5 + 2 mm`) and named parameters. The design is an ordered timeline:
 roll back, edit, reorder, suppress, and fix references when something it
 pointed at is gone. Faces and edges keep their names through edits (topological
-naming), so changing an early feature rarely breaks a later one. _0.4:_ a
+naming), so changing an early feature rarely breaks a later one. A
 customizer with sliders and named configurations, and timeline groups.
 
 **For printing.** Export STL, 3MF (with colours) and STEP; checked for
 watertightness. Place on Bed, overhang analysis, weight and filament length
 for your material, and section analysis. Measure distances, angles, areas and
-volumes exactly. _0.4:_ one print tolerance that hole presets and threads
+volumes exactly. One print tolerance that hole presets and threads
 follow, and a print estimate with walls, infill and cost.
 
 **Everywhere else.** Version history with restore, a command palette (`Ctrl+K`),
 a right-click marking menu, light and dark themes, a built-in tutorial and
 templates, undo that covers everything, offline use, and an open
-[file format](docs/file-format.md). _0.4:_ a folder on your disk linked to your
+[file format](docs/file-format.md). A folder on your disk linked to your
 designs, in browsers that allow it (Chrome, Edge).
 
 **From code.** [`@extrudo/api`](docs/api/README.md) builds and changes a design
