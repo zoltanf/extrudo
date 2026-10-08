@@ -1,7 +1,7 @@
 {
   "name": "extrudo",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Open-source, browser-based parametric CAD for the 3D-printing community.",
   "license": "GPL-3.0-or-later",
   "type": "module",

@@ -2,6 +2,7 @@
 // Enforces the package dependency rules in docs/02-architecture.md §3:
 // which workspace packages may depend on which. Checks both package.json
 // dependencies and `@extrudo/*` imports in source files.
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
@@ -138,4 +139,38 @@ if (problems.length > 0) {
   console.error(`Package boundary violations:\n${problems.map((p) => `  - ${p}`).join('\n')}`);
   process.exit(1);
 }
+
+// Module paths that differ only by case are one file on macOS and Windows, so
+// `import './ModelProgress'` can resolve to `modelProgress.ts` there (v0.4.0's
+// desktop build failed that way). Compare the stem (the path without its last
+// extension) ignoring case: equal stems that differ in case are an error.
+const MODULE_EXTENSION = /\.(ts|tsx|js|mjs|jsx)$/;
+const trackedModules = execFileSync('git', ['ls-files', '--', 'apps', 'packages'], {
+  cwd: ROOT,
+  encoding: 'utf8',
+})
+  .split('\n')
+  .filter((path) => MODULE_EXTENSION.test(path))
+  .map((path) => path.replace(MODULE_EXTENSION, ''));
+const stemsByLowerCase = new Map();
+for (const stem of trackedModules) {
+  const key = stem.toLowerCase();
+  stemsByLowerCase.set(key, [...(stemsByLowerCase.get(key) ?? []), stem]);
+}
+const caseClashes = [];
+for (const stems of stemsByLowerCase.values()) {
+  const distinct = [...new Set(stems)];
+  for (let i = 0; i < distinct.length; i++) {
+    for (let j = i + 1; j < distinct.length; j++) {
+      caseClashes.push(
+        `Module paths that differ only by case break macOS and Windows builds: ${distinct[i]} <-> ${distinct[j]}`,
+      );
+    }
+  }
+}
+if (caseClashes.length > 0) {
+  console.error(caseClashes.join('\n'));
+  process.exit(1);
+}
+
 console.log(`Package boundaries OK (${workspaceDirs.length} packages).`);

@@ -1,6 +1,6 @@
 {
   "name": "@extrudo/cli",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "The headless CLI (extrudo): open a design, change its parameters, recompute it and export STL, 3MF or STEP in Node (P5-03, ADR-0069).",
   "license": "GPL-3.0-or-later",

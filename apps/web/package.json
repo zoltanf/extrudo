@@ -1,6 +1,6 @@
 {
   "name": "@extrudo/web",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "The Extrudo web app (PWA). The Electron build wraps this same bundle.",
   "license": "GPL-3.0-or-later",

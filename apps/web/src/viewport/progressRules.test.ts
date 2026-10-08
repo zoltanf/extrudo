@@ -5,7 +5,7 @@ import {
   progressMode,
   progressTitle,
   UPDATING_AFTER_MS,
-} from './modelProgress';
+} from './progressRules';
 
 describe('progressMode', () => {
   it('is preparing until a recompute has finished, however short it has run', () => {

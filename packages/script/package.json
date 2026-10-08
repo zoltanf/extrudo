@@ -1,6 +1,6 @@
 {
   "name": "@extrudo/script",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "The script runner: user code in QuickJS, building features through @extrudo/api (ADR-0070). Runs in the kernel worker and in Node.",
   "license": "GPL-3.0-or-later",

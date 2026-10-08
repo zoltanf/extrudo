@@ -45,7 +45,7 @@ import {
   Tooltip,
 } from '../design-system';
 import { ProgressCube } from '../viewport/ModelProgress';
-import { activeFeatureCount } from '../viewport/modelProgress';
+import { activeFeatureCount } from '../viewport/progressRules';
 import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
 import {
   BODY_COLORS,

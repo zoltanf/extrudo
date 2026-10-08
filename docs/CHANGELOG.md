@@ -2,6 +2,10 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+## v0.4.1 (2026-10-08)
+
+- 2026-10-08 · **The desktop app builds on macOS and Windows again**: the progress notice's rules file (`modelProgress.ts`) sat beside its component (`ModelProgress.tsx`), which case-insensitive file systems read as one module; it is `progressRules.ts` now, and `pnpm lint` refuses module paths that differ only by case.
+
 ## v0.4.0 (2026-10-08)
 
 - 2026-10-08 · **Top bar, round 2** (the owner's second review, ADR-0079's amendment): the theme follows the system by default, the gear is a Settings menu (auto-project, Customize Marking Menu…, and the theme below), a Toolbox button sits before Search, Version history moves next to Settings, and the name with its save dot is centred between the buttons, dropping the save word and then truncating the name as the window narrows.

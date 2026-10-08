@@ -1897,7 +1897,7 @@ run, never per push: three OS runners; a tag attaches the installers to a
 `EXTRUDO_USER_DATA` being main's throwaway data directory). Rules a change must
 keep: the desktop's workspace packages are `devDependencies` and **`electron`
 stays explicitly external** in main and preload, **no two files may differ only by
-case** (macOS and Windows builds resolve `./Grid` to `grid.ts`), and signing is
+case** (macOS and Windows builds resolve `./Grid` to `grid.ts`), checked by scripts/check-boundaries.mjs since v0.4.1 (ADR-0078's `modelProgress.ts` beside `ModelProgress.tsx` broke the v0.4.0 desktop build; the rules are `viewport/progressRules.ts`), and signing is
 **deferred** (owner, 2026-10-07: no certificates until the app has users;
 macOS through Homebrew), so the installers stay unsigned and macOS only
 notifies of updates (`docs/desktop.md`).
@@ -2028,7 +2028,7 @@ undo step over every feature of that plugin). `docs/plugins.md` is the guide,
 
 ADR-0078 (2026-10-08) made opening a design say what it is doing: the view's
 top left has a **progress notice** (`viewport/ModelProgress.tsx`, pure rules in
-`modelProgress.ts`; "Preparing your design…" until a recompute has finished,
+`progressRules.ts`; "Preparing your design…" until a recompute has finished,
 "Updating the model…" after 800 ms of a later one, an animated cube, "Computing
 <n> features") and the browser lists the bodies the last session made as
 **pending rows** before the kernel answers. The source is the **model cache**,

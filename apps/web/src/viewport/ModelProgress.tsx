@@ -7,7 +7,7 @@ import {
   progressMode,
   progressTitle,
   UPDATING_AFTER_MS,
-} from './modelProgress';
+} from './progressRules';
 
 /**
  * A recompute has finished since the model store was last reset (ADR-0078).
