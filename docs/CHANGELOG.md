@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## Next
 
+- 2026-10-08 · **Docs site, slice S6 (P6-06, ADR-0080)**: the concept guide's first four pages under `docs/guide/` (the app in five minutes, sketching and constraints, features and the timeline, parameters and expressions) with four pictures recorded by `e2e/guide-shots.spec.ts` (`RECORD_ASSETS=1`, shrunk by `e2e/guide-shots-optimize.py`), and the guide index links them.
 - 2026-10-08 · **The app links to the docs (P6-06 S9, ADR-0080 §5)**: Help › User Guide, Tutorials, Examples and Tool Reference, and **F1** on a hovered or focused toolbar tile (else the user guide), open the landing site's `/docs/` pages through `Platform.openDocs` (`VITE_DOCS_URL`); a tile's tooltip carries a muted "F1 for more", and on the desktop main builds its own URL from a whitelisted path over the `docs:open` channel.
 - 2026-10-08 · **Examples open from a link**: `#/example/<id>` opens a copy of one of eleven example designs, listed under the home screen's More examples… (P6-06).
 - 2026-10-08 · **Tutorials are tests, and tutorial 1 (P6-06 S5, ADR-0080 §4)**: `e2e/tutorials/step.ts` walks a page's steps as `step(slug, actions, check)` and, with `RECORD_ASSETS=1` (`pnpm demos -g tutorials`), saves each step's 256-colour PNG under `docs/guide/tutorials/images/`; `apps/site/src/tutorials.test.ts` fails when a page and its spec disagree; "Your first part: a plate with four holes" (12 steps, B1's flow plus an extrude and an STL export).
