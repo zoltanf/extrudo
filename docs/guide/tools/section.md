@@ -1,0 +1,17 @@
+---
+title: Section Analysis
+section: Tools
+category: Inspect
+order: 61
+---
+
+# Section Analysis
+
+Cut the view through a plane, with the cut filled in. Look inside without changing the model.
+
+| Where | Shortcut |
+|---|---|
+| Inspect › Inspect | Shift+S |
+
+<!-- notes -->
+<!-- /notes -->

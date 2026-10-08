@@ -91,6 +91,23 @@ export interface SidebarSection extends SidebarEntry {
 /** The categories in the order the app's tools are grouped (lower case, core's spelling). */
 const CATEGORY_ORDER = ['sketch', 'create', 'modify', 'construct', 'inspect'];
 
+/**
+ * The Tools sidebar's categories, in the order the app's tabs appear
+ * (`TABS`, ADR-0079): a tool page's `category` is the label of the first tab it
+ * appears in, which `pnpm docs:generate` writes. The site cannot import the app
+ * (ADR-0057), so the order is kept here; `toolDocs.test.ts` and the site's own
+ * tests pin it against the generated pages.
+ */
+const TOOL_CATEGORY_ORDER = [
+  'Home',
+  'Solid',
+  'Modify',
+  'Construct',
+  'Inspect',
+  'Sketch',
+  '3D Print',
+];
+
 const IMAGE_TYPES = ['.png', '.jpg', '.webp', '.svg'];
 const VIDEO_TYPES = ['.webm', '.mp4'];
 /** The only raw HTML a page may hold: a `<video>` with these attributes. */
@@ -181,6 +198,16 @@ export function sidebar(pages: readonly DocPage[]): SidebarSection[] {
       sections.push({ title, entries: [], groups: apiGroups(own) });
       continue;
     }
+    if (title === 'Tools') {
+      // The index page carries no category and is listed first; the rest are
+      // grouped by the tab they first appear in (ADR-0080 §2).
+      sections.push({
+        title,
+        entries: links(own.filter((page) => !page.category)),
+        groups: toolGroups(own),
+      });
+      continue;
+    }
     sections.push({ title, entries: links(own), groups: [] });
   }
   return sections;
@@ -208,6 +235,22 @@ export function apiGroups(pages: readonly DocPage[]): SidebarEntry[] {
       entries: links(features.filter((page) => page.category === category)),
     })),
   ];
+}
+
+/**
+ * The Tools sub-groups: the pages without a category (the index) are listed by
+ * the section itself, and the rest are grouped by the tab they first appear in,
+ * in `TABS` order. Named like the tab, so the sidebar reads `Solid`, `3D Print`.
+ */
+export function toolGroups(pages: readonly DocPage[]): SidebarEntry[] {
+  const categorised = pages.filter((page) => page.category);
+  const categories = [...new Set(categorised.map((page) => page.category ?? ''))].sort(
+    (a, b) => toolRank(a) - toolRank(b),
+  );
+  return categories.map((category) => ({
+    title: category,
+    entries: links(categorised.filter((page) => page.category === category)),
+  }));
 }
 
 function links(pages: readonly DocPage[]): { title: string; url: string }[] {
@@ -542,6 +585,12 @@ function html(text: string): string {
 function categoryRank(category: string): number {
   const index = CATEGORY_ORDER.indexOf(category);
   return index < 0 ? CATEGORY_ORDER.length : index;
+}
+
+/** A Tools sidebar group's place among the app's tabs. */
+function toolRank(category: string): number {
+  const index = TOOL_CATEGORY_ORDER.indexOf(category);
+  return index < 0 ? TOOL_CATEGORY_ORDER.length : index;
 }
 
 /** `path`'s directory, as a path string ('' for the docs root). */

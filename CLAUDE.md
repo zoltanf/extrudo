@@ -2088,7 +2088,13 @@ section, in the API it is still the sub-group). A relative image or `<video>` is
 as a hashed asset and a missing file fails the build (`docs/guide/x.md: missing image …`);
 `demo:<toolId>` is `apps/web/public/demos/<id>.webm`; **the only raw HTML is `<video>`** with
 a fixed attribute list; `{{APP_URL}}`/`{{SITE_URL}}`/`{{EDGE_URL}}` come from `addresses.ts`.
-Tools, examples and tutorials are later slices (the ADR lists S1–S10).
+Tools, examples and tutorials are later slices (the ADR lists S1–S10). **Slice
+S2** added the generated tool reference: `pnpm docs:generate`
+(`scripts/generate-docs.mjs` → `apps/web/src/shell/toolDocs.ts`) writes
+`docs/guide/tools/<id>.md` and the index from `TOOLS`/`TABS`/`keysFor`/
+`DEMO_TOOLS`, **notes between the `<!-- notes -->` markers survive
+regeneration**, and `toolDocs.test.ts` fails with "run pnpm docs:generate" when
+the pages are stale.
 
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): Phases 0, 1, 2, 3 and 5 are complete, Phase 4 is complete
@@ -2115,6 +2121,7 @@ pnpm occt build   # build OCCT locally with Docker (~11 min; Arch workstation on
 pnpm planegcs build  # build planegcs locally with Docker (~2 min; Arch workstation only); see packages/sketch/planegcs/README.md
 pnpm openscad build  # download OpenSCAD's pinned WASM snapshot into packages/openscad/dist (ADR-0071; no Docker)
 pnpm api:generate   # rewrite @extrudo/api's generated methods and docs/api pages (ADR-0068)
+pnpm docs:generate  # rewrite docs/guide/tools/ from the app's tool list (ADR-0080, P6-06 S2)
 pnpm extrudo        # the headless CLI: info, export, set, check (ADR-0069); `pnpm extrudo --help`
 pnpm --filter @extrudo/desktop dev     # the Electron app, renderer with HMR (ADR-0075)
 pnpm --filter @extrudo/desktop build   # main + preload + renderer into apps/desktop/out

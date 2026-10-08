@@ -484,13 +484,13 @@ test('the docs index has the sidebar, and the nav\u2019s Docs link goes there', 
   await expect(page.getByRole('heading', { name: 'Extrudo docs', exact: true })).toBeVisible();
   await expect(page).toHaveTitle('Extrudo docs · Extrudo docs');
 
-  // The sidebar: Guide first, API last, nothing for the sections with no pages yet.
+  // The sidebar: Guide first, Tools and API last, nothing for the sections with no pages yet.
   const sidebar = page.getByRole('navigation', { name: 'Docs' });
   await expect(sidebar.getByRole('link', { name: 'Extrudo docs' })).toHaveAttribute(
     'aria-current',
     'page',
   );
-  await expect(sidebar.getByRole('heading', { level: 2 })).toHaveText(['Guide', 'API']);
+  await expect(sidebar.getByRole('heading', { level: 2 })).toHaveText(['Guide', 'Tools', 'API']);
   await expect(sidebar.getByRole('link', { name: 'References' })).toHaveAttribute(
     'href',
     '/docs/api/references/',
@@ -511,10 +511,8 @@ test('a feature page shows its inputs table, its face roles and its example', as
 
   await page.goto(`${host.url}/docs/api/features/extrude/`);
   await expect(page.getByRole('heading', { name: 'Extrude', exact: true })).toBeVisible();
-  await expect(page.getByRole('link', { name: 'Extrude', exact: true })).toHaveAttribute(
-    'aria-current',
-    'page',
-  );
+  // The page's own sidebar entry is the marked one (the Tools section has an Extrude too).
+  await expect(page.locator('nav[aria-label="Docs"] a[aria-current="page"]')).toHaveText('Extrude');
 
   // The inputs table, with the rows the generator wrote from the schemas.
   const table = page.locator('table').first();
@@ -538,12 +536,55 @@ test('a feature page shows its inputs table, its face roles and its example', as
   expect(await policy.violations()).toEqual([]);
 });
 
+test('the tool reference is generated into the site and carries its demo clip', async ({
+  page,
+}) => {
+  const policy = await watchPolicy(page);
+
+  // The index lists every tool by tab and group: Extrude is under Solid › Create.
+  await page.goto(`${host.url}/docs/tools/`);
+  await expect(
+    page.getByRole('main').getByRole('heading', { name: 'Tools', exact: true }),
+  ).toBeVisible();
+  const sidebar = page.getByRole('navigation', { name: 'Docs' });
+  await expect(sidebar.getByRole('heading', { name: 'Solid' })).toBeVisible();
+  await expect(sidebar.locator('a[href="/docs/tools/extrude/"]')).toHaveText('Extrude');
+  const main = page.getByRole('main');
+  await expect(main.getByRole('heading', { name: 'Solid' })).toBeVisible();
+  await expect(main.getByRole('link', { name: 'Extrude', exact: true })).toHaveAttribute(
+    'href',
+    '/docs/tools/extrude/',
+  );
+
+  // The page: its shortcut and its demo clip, served from the build.
+  await main.getByRole('link', { name: 'Extrude', exact: true }).click();
+  await expect(page).toHaveURL(`${host.url}/docs/tools/extrude/`);
+  await expect(page.getByRole('heading', { name: 'Extrude', exact: true })).toBeVisible();
+  await expect(page.locator('td', { hasText: /^E$/ })).toBeVisible();
+  const video = page.locator('video');
+  await expect(video).toBeVisible();
+  const src = await video.getAttribute('src');
+  expect(src).toMatch(/^\/assets\/extrude-[^/]+\.webm$/);
+  const clip = await page.request.get(`${host.url}${src}`);
+  expect(clip.ok()).toBe(true);
+
+  expect(policy.errors).toEqual([]);
+  expect(await policy.violations()).toEqual([]);
+  expect(await page.evaluate('document.querySelectorAll("script").length')).toBe(0);
+});
+
 test('the docs pass an axe audit in both themes', async ({ page }) => {
   // NFR-07, like the landing page's own audit below: the docs are pages of the
   // site, and their tables and code blocks are as much content as its cards are.
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
-    for (const path of ['/docs/', '/docs/api/', '/docs/api/features/extrude/']) {
+    for (const path of [
+      '/docs/',
+      '/docs/tools/',
+      '/docs/tools/extrude/',
+      '/docs/api/',
+      '/docs/api/features/extrude/',
+    ]) {
       await page.goto(`${host.url}${path}`);
       await expect(page.locator('main h1')).toBeVisible();
       const results = await new AxeBuilder({ page })

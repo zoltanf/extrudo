@@ -223,6 +223,8 @@ describe('collections', () => {
     'guide/tutorials/first.md': page('First'),
     'guide/tutorials/index.md': page('Tutorials'),
     'guide/tools/index.md': page('Tools'),
+    'guide/tools/extrude.md': page('Extrude', 'category: Solid\norder: 1\n'),
+    'guide/tools/line.md': page('Line', 'category: Sketch\norder: 2\n'),
     'api/README.md': page('The API', 'section: Guide\n'),
     'api/features/extrude.md': page('Extrude', 'section: Features\ncategory: create\n'),
   });
@@ -296,6 +298,14 @@ describe('collections', () => {
     it('keeps the API two levels deep', () => {
       const api = sections[4];
       expect(api?.groups.map((group) => group.title)).toEqual(['Getting started', 'Create']);
+    });
+
+    it('groups the tools by the tab they first appear in, in TABS order', () => {
+      const tools = sections[2];
+      // The index is the section's own entry; the pages are grouped by category.
+      expect(tools?.entries.map((entry) => entry.title)).toEqual(['Tools']);
+      expect(tools?.groups.map((group) => group.title)).toEqual(['Solid', 'Sketch']);
+      expect(tools?.groups[0]?.entries.map((entry) => entry.title)).toEqual(['Extrude']);
     });
 
     it('marks the page it is on', () => {
