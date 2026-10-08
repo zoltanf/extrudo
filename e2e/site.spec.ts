@@ -490,7 +490,12 @@ test('the docs index has the sidebar, and the nav\u2019s Docs link goes there', 
     'aria-current',
     'page',
   );
-  await expect(sidebar.getByRole('heading', { level: 2 })).toHaveText(['Guide', 'Tools', 'API']);
+  await expect(sidebar.getByRole('heading', { level: 2 })).toHaveText([
+    'Guide',
+    'Tutorials',
+    'Tools',
+    'API',
+  ]);
   await expect(sidebar.getByRole('link', { name: 'References' })).toHaveAttribute(
     'href',
     '/docs/api/references/',

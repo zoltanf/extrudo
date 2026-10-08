@@ -8,6 +8,7 @@
 //   pnpm demos                  # build the app, then record everything
 //   pnpm demos --skip-build     # the build in apps/web/dist is current
 //   pnpm demos -g "demo: fillet"  # only what matches (a Playwright --grep)
+//   pnpm demos -g tutorials     # the tutorials' pictures, docs/guide/tutorials/images/
 //
 // How it works: `e2e/record-assets.spec.ts` drives the real app in headless
 // Chromium (flows copied from the e2e specs) while `e2e/demo-recorder.ts`
@@ -31,7 +32,13 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const args = process.argv.slice(2);
 const skipBuild = args.includes('--skip-build');
-const passThrough = args.filter((a) => a !== '--skip-build');
+let passThrough = args.filter((a) => a !== '--skip-build');
+// `pnpm demos -g tutorials` records the tutorials' pictures (e2e/tutorials/step.ts,
+// ADR-0080 §4) instead of the onboarding assets; further arguments go to Playwright.
+const grep = passThrough.findIndex((a) => a === '-g' || a === '--grep');
+const tutorials = grep >= 0 && passThrough[grep + 1] === 'tutorials';
+if (tutorials) passThrough = passThrough.filter((_, i) => i !== grep && i !== grep + 1);
+const target = tutorials ? 'e2e/tutorials' : 'e2e/record-assets.spec.ts';
 
 function run(command, commandArgs, env = {}) {
   const result = spawnSync(command, commandArgs, {
@@ -50,11 +57,11 @@ if (!existsSync(`${root}apps/web/dist/index.html`)) {
   console.error('apps/web/dist is missing: run without --skip-build.');
   process.exit(1);
 }
-run(
-  process.execPath,
-  [...playwright, 'test', 'e2e/record-assets.spec.ts', '--workers=1', ...passThrough],
-  { RECORD_ASSETS: '1' },
-);
+run(process.execPath, [...playwright, 'test', target, '--workers=1', ...passThrough], {
+  RECORD_ASSETS: '1',
+});
 console.log(
-  '\nDone. Review apps/web/public/demos/ and apps/web/src/home/templates/ before committing.',
+  tutorials
+    ? '\nDone. Look at every picture in docs/guide/tutorials/images/ before committing.'
+    : '\nDone. Review apps/web/public/demos/ and apps/web/src/home/templates/ before committing.',
 );

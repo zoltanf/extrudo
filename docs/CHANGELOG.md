@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## Next
 
+- 2026-10-08 · **Tutorials are tests, and tutorial 1 (P6-06 S5, ADR-0080 §4)**: `e2e/tutorials/step.ts` walks a page's steps as `step(slug, actions, check)` and, with `RECORD_ASSETS=1` (`pnpm demos -g tutorials`), saves each step's 256-colour PNG under `docs/guide/tutorials/images/`; `apps/site/src/tutorials.test.ts` fails when a page and its spec disagree; "Your first part: a plate with four holes" (12 steps, B1's flow plus an extrude and an STL export).
 - 2026-10-08 · **Docs site, slice S2 (P6-06, ADR-0080)**: `pnpm docs:generate` (`scripts/generate-docs.mjs` → `apps/web/src/shell/toolDocs.ts`) writes a page for each of the 116 ready tools under `docs/guide/tools/` plus the index, from `TOOLS`/`TABS`/`keysFor`/`DEMO_TOOLS`; notes between the `<!-- notes -->` markers survive, `toolDocs.test.ts` fails when the pages are stale, and the docs sidebar groups Tools by the tab each tool first appears in.
 - 2026-10-08 · **Docs site, slice S1 (P6-06, ADR-0080)**: the site's docs are collections under `/docs/` (`docs/guide`, tutorials, tools, `docs/api` at its old addresses) with one sidebar, hashed pictures and clips from relative Markdown references, only `<video>` allowed as raw HTML, a `/docs/` index and a "Docs" link in the landing nav.
 

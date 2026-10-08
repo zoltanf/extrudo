@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { type Download, expect, type Page, test } from '@playwright/test';
-import { exportProject, renameProject } from './benchmark-helpers';
+import { dimension, exportProject, renameProject } from './benchmark-helpers';
 import {
   clicker,
   counts,
@@ -37,7 +37,6 @@ const expression = (page: Page, name: string) =>
 const palette = (page: Page) => page.getByRole('region', { name: 'Sketch palette' });
 const dof = (page: Page) => palette(page).locator('[data-constraint-state]');
 const labels = (page: Page) => page.locator('[data-dimension]');
-const editor = (page: Page) => page.locator('[data-dimension-editor]');
 const toolPrompt = (page: Page) => page.getByRole('status', { name: 'Tool prompt' });
 const exportDialog = (page: Page) => page.getByRole('dialog', { name: 'Export sketch' });
 
@@ -167,15 +166,9 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
 
   // Dimensions: pick, place, and type the expression into the new label's editor.
   await page.keyboard.press('d');
-  const dimension = async (picks: (readonly [number, number])[], expr: string) => {
-    for (const [x, y] of picks) await click(x, y);
-    const value = page.getByRole('textbox', { name: /^Value of d\d+$/ });
-    await expect(value).toBeFocused();
-    await value.fill(expr);
-    await value.press('Enter');
-    await expect(editor(page)).toHaveCount(0);
-  };
   await dimension(
+    page,
+    click,
     [
       [50, 0],
       [50, -10],
@@ -183,6 +176,8 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
     'width',
   );
   await dimension(
+    page,
+    click,
     [
       [0, 40],
       [-10, 40],
@@ -191,6 +186,8 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
   );
   // The hole pattern: the distance between centres, then from the fixed corner.
   await dimension(
+    page,
+    click,
     [
       [20, 20],
       [80, 20],
@@ -199,6 +196,8 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
     'spacing',
   );
   await dimension(
+    page,
+    click,
     [
       [20, 20],
       [20, 60],
@@ -207,6 +206,8 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
     'depth - 2 * margin',
   );
   await dimension(
+    page,
+    click,
     [
       [0, 0],
       [20, 20],
@@ -215,6 +216,8 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
     'margin',
   );
   await dimension(
+    page,
+    click,
     [
       [0, 0],
       [20, 20],
@@ -224,6 +227,8 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
   );
   // Last, the holes' size: they shrink from radius 10 to 3.
   await dimension(
+    page,
+    click,
     [
       [30, 20],
       [40, 35],

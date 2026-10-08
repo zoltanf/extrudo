@@ -150,3 +150,14 @@ hard-coded domain is a bug (ADR-0054). Other `{{…}}` text is left alone.
 | S8 | Tutorials 2–4 (storage box, threaded cap, name tag) |
 | S9 | In-app links: Help items, "Learn more", `Platform.openExternal` |
 | S10 | Review, then tick P6-06, changelog |
+
+**S5 (2026-10-08).** Decisions the plan left open: a tutorial's spec is `step(slug,
+actions, check)` bound to a page by `tutorial(page, name)` (`e2e/tutorials/step.ts`),
+pictures are the **whole 1440 × 900 page** reduced to **256-colour PNGs** by a median cut in
+the browser (a full-colour shot of the gradient view is about 570 kB, the indexed one
+80 to 105 kB; no dependency), toasts dismissed and the pointer parked; the Markdown
+marker is `<!-- step: <slug> -->` before each `###` heading with the picture
+`./images/<name>/<slug>.png` after it; `pnpm demos -g tutorials` records. A tutorial's last
+asserted file (the STL) is checked after its final step, so the picture can show the dialog.
+Links from a tutorial to `../tools/<id>.md` resolve to `/docs/tools/<id>/` whether or not
+the tool page exists (the build does not check): name only tools that have a page.

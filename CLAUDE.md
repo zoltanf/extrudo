@@ -3788,6 +3788,20 @@ them. Notes further down that name a machine apply to that machine only.
   stored fillet. Both hosting's whole-session walk and axe's two-theme dialog
   audit include Script. The first test prints editor-open, request-to-preview
   and worker-load timings from the performance measures (ADR-0070 slice 3).
+- **Tutorials e2e** (`e2e/tutorials/<name>.spec.ts`, ADR-0080 §4, P6-06 S5): a page
+  in `docs/guide/tutorials/<name>.md` has a `<!-- step: <slug> -->` marker, a `###`
+  heading, text and `![alt](./images/<name>/<slug>.png)` per step; the spec does
+  `const { step } = tutorial(page, '<name>')` (`e2e/tutorials/step.ts`) and one
+  `await step('<slug>', actions, check)` per marker, in the same order
+  (`apps/site/src/tutorials.test.ts` checks the pairing, the pictures and names the
+  slug). Without `RECORD_ASSETS` a step only checks; **`pnpm demos -g tutorials`**
+  (`scripts/record-demos.mjs`, `--skip-build` when `dist` is current) runs the folder with
+  `RECORD_ASSETS=1`, which saves the whole 1440 × 900 page, reduced to 256 colours
+  (80-105 kB; full colour was 570 kB), to `docs/guide/tutorials/images/<name>/`. **Look at every picture**, and
+  dismiss toasts before it (the recorder does). The Viewport region leaves the
+  accessibility tree under a modal dialog, so step.ts settles on `[data-camera-size]`.
+  Tutorial 1 (`first-part`) is B1's flow plus an extrude and an STL export; the shared
+  `dimension()` helper lives in `benchmark-helpers.ts`.
 - **Import STEP e2e** (`e2e/import-step.spec.ts`, P4-06 slice 2): the tile is
   `importBody` in the **Home tab** (ADR-0079: `selectTab(page, 'Home')`, then the
   button "Import Model", `exact: true`; `data-tool="importBody"`; `fileAction(page,

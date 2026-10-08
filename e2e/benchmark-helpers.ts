@@ -364,3 +364,21 @@ export async function solidTab(page: Page) {
     .getByRole('tab', { name: 'Solid' })
     .click();
 }
+
+/**
+ * With the Dimension tool running (`d`): picks (sketch mm, through the sketch's `click`),
+ * places the label and types `expr` into its editor (B1, the first-part tutorial).
+ */
+export async function dimension(
+  page: Page,
+  click: (x: number, y: number) => Promise<void>,
+  picks: readonly (readonly [number, number])[],
+  expr: string,
+) {
+  for (const [x, y] of picks) await click(x, y);
+  const value = page.getByRole('textbox', { name: /^Value of d\d+$/ });
+  await expect(value).toBeFocused();
+  await value.fill(expr);
+  await value.press('Enter');
+  await expect(page.locator('[data-dimension-editor]')).toHaveCount(0);
+}
