@@ -21,6 +21,7 @@ export const DEMO_TOOLS: readonly string[] = [
   'extrude',
   'revolve',
   'fillet',
+  'chamfer',
   'shell',
   'hole',
   'pressPull',

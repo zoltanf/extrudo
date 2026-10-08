@@ -924,7 +924,7 @@ under a new ID with its checked-in `home/templates/*.png` as thumbnail).
 `public/demos/<toolId>.webm`, rendered only while the tooltip is open, a still
 under reduced motion, removed on a load error); **demos are not precached**
 (`SKIPPED` in `precache-plugin.ts`, and `sw.js` leaves `/demos/` to the
-network); `DEMO_TOOLS` in `demos.ts` lists the twelve that have one and
+network); `DEMO_TOOLS` in `demos.ts` lists the thirteen that have one and
 `demos.test.ts` checks it against the files (150 kB each). **`pnpm demos`**
 (`scripts/record-demos.mjs` → `e2e/record-assets.spec.ts`, which skips itself
 without `RECORD_ASSETS=1`) records the clips and the template pictures through
@@ -3399,7 +3399,7 @@ them. Notes further down that name a machine apply to that machine only.
   tutorial", "Keep designing"), the ring round the control it points at is
   `[data-tutorial-ring="<tool id>"]`, the empty-design hint `[data-viewport-hint]`.
   Toolbar tiles carry `data-tool`. A tooltip is `getByRole('tooltip')` with a
-  `kbd` and, for the twelve tools with a clip, `video[data-tool-demo="<id>"]`
+  `kbd` and, for the thirteen tools with a clip, `video[data-tool-demo="<id>"]`
   (`data-playing` false under reduced motion). **Radix keeps a tooltip open
   when the pointer jumps away in one move** (its grace area): move with
   `mouse.move(x, y, { steps: 5 })` before expecting it gone. The tour walks

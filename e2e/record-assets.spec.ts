@@ -396,6 +396,28 @@ test('demo: fillet', async ({ page }) => {
   });
 });
 
+test('demo: chamfer', async ({ page }) => {
+  await demoProject(page);
+  await cube(page);
+  const at = await turnView(page, 'Shift+1');
+  const p = pointer(page);
+  await p.jump({ x: 1000, y: 650 });
+  const dialog = page.getByRole('region', { name: 'Chamfer dialog' });
+  await record(page, 'chamfer', async () => {
+    await pickModel(page, p, at, [0, -10, 20], 'edge');
+    await page.getByRole('button', { name: /^Chamfer/ }).click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+    await page.waitForTimeout(320);
+    await typeInto(page, dialog.getByRole('textbox', { name: 'Distance', exact: true }), '3');
+    await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+    await page.waitForTimeout(390);
+    await page.keyboard.press('Enter');
+    await expect(dialog).toBeHidden();
+    await kernelReady(page);
+  });
+});
+
 test('demo: shell', async ({ page }) => {
   await demoProject(page);
   await cube(page);

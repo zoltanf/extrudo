@@ -187,6 +187,13 @@ Style, taken from direction B:
   category colour arrives through `color: var(--x-cat-…)`. `icons.test.ts`
   checks the rules (ADR-0007).
 
+Redrawn 2026-10-08 so neighbours read apart at 18 px: **Fillet** is a block
+with a big round on one corner, the sharp corner it replaces dashed and a
+radius line from the round's centre; **Chamfer** is the same block with a
+straight 45° cut drawn as a filled band (stroke widths stay in CSS) and the
+sharp corner dashed; **Parameters** is a name box, an equals sign and a value
+box, leaving the sliders to **Customizer**.
+
 Initial set, about 60 icons:
 
 | Category | Icons |

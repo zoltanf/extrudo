@@ -125,6 +125,13 @@ test('a toolbar tooltip has the name, the key, a sentence and a looping demo', a
   await expect(tooltip).toHaveCount(0);
   await page.getByRole('button', { name: 'Chamfer' }).hover();
   await expect(tooltip).toContainText('Bevel the selected edges.');
+  await expect(tooltip.locator('video[data-tool-demo="chamfer"]')).toHaveAttribute(
+    'src',
+    /demos\/chamfer\.webm$/,
+  );
+  await page.mouse.move(700, 500, { steps: 5 });
+  await expect(tooltip).toHaveCount(0);
+  await page.getByRole('button', { name: 'Combine', exact: true }).hover();
   await expect(tooltip.locator('video')).toHaveCount(0);
 });
 

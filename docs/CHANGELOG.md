@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-08 · **Icons that say what they do**: Fillet (a big round, the sharp corner dashed, a radius line) and Chamfer (a straight 45° cut, emphasised) no longer read alike, Parameters is a name = value pair (Customizer keeps its sliders), and Chamfer's tooltip has a demo clip (thirteen tools now).
 - 2026-10-08 · **The timeline is always shown**: the bottom row's Hide timeline button and its command are gone (the owner's UI review).
 - 2026-10-08 · **Opening a design says it is being prepared** (ADR-0078): a notice with an animated cube at the view's top left until the first recompute has finished (and after 800 ms of a later one), and the browser lists the bodies the last session made as pending rows from a per-project model cache (`model-cache.json`, derived, not in the file).
 - 2026-10-07 · **P4-12 Construction: a cone's nearest tangency point and an edge meeting a curved face** (ADR-0040's addendum): `tangentPlane` with a `point` on a cone touches the foot of the point on the nearest generatrix (the apex past it; a point on the axis warns and follows the angle), and `pointAtIntersection` takes an edge and a curved face.
