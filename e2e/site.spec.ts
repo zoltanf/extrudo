@@ -352,6 +352,7 @@ test('the page has a Changelog link and says the desktop app is coming', async (
   await expect(nav.getByRole('link')).toHaveText([
     'Features',
     'Changelog',
+    'Docs',
     'GitHub',
     'Open Extrudo',
   ]);
@@ -442,7 +443,7 @@ test('the API docs are built into the site and the footer links to them', async 
   await link.click();
   await expect(page).toHaveURL(`${host.url}/docs/api/`);
   await expect(page.getByRole('heading', { name: 'The Extrudo document API' })).toBeVisible();
-  const sidebar = page.getByRole('navigation', { name: 'API docs' });
+  const sidebar = page.getByRole('navigation', { name: 'Docs' });
   await expect(sidebar.getByRole('link', { name: 'References' })).toHaveAttribute(
     'href',
     '/docs/api/references/',
@@ -459,6 +460,50 @@ test('the API docs are built into the site and the footer links to them', async 
     'href',
     /\/assets\/docs-[^/]+\.css$/,
   );
+});
+
+test('the docs index has the sidebar, and the nav\u2019s Docs link goes there', async ({
+  page,
+}) => {
+  const policy = await watchPolicy(page);
+
+  await page.goto(`${host.url}/`);
+  const nav = page.getByRole('navigation', { name: 'Site' });
+  const docs = nav.getByRole('link', { name: 'Docs', exact: true });
+  await expect(docs).toHaveAttribute('href', '/docs/');
+  // Between Changelog and GitHub.
+  await expect(nav.getByRole('link')).toContainText([
+    'Features',
+    'Changelog',
+    'Docs',
+    'GitHub',
+    'Open Extrudo',
+  ]);
+  await docs.click();
+  await expect(page).toHaveURL(`${host.url}/docs/`);
+  await expect(page.getByRole('heading', { name: 'Extrudo docs', exact: true })).toBeVisible();
+  await expect(page).toHaveTitle('Extrudo docs · Extrudo docs');
+
+  // The sidebar: Guide first, API last, nothing for the sections with no pages yet.
+  const sidebar = page.getByRole('navigation', { name: 'Docs' });
+  await expect(sidebar.getByRole('link', { name: 'Extrudo docs' })).toHaveAttribute(
+    'aria-current',
+    'page',
+  );
+  await expect(sidebar.getByRole('heading', { level: 2 })).toHaveText(['Guide', 'API']);
+  await expect(sidebar.getByRole('link', { name: 'References' })).toHaveAttribute(
+    'href',
+    '/docs/api/references/',
+  );
+  // The link to the API reference from the page's own text is a page too.
+  await expect(page.getByRole('main').getByRole('link', { name: 'API reference' })).toHaveAttribute(
+    'href',
+    '/docs/api/',
+  );
+
+  expect(policy.errors).toEqual([]);
+  expect(await policy.violations()).toEqual([]);
+  expect(await page.evaluate('document.querySelectorAll("script").length')).toBe(0);
 });
 
 test('a feature page shows its inputs table, its face roles and its example', async ({ page }) => {
@@ -493,12 +538,12 @@ test('a feature page shows its inputs table, its face roles and its example', as
   expect(await policy.violations()).toEqual([]);
 });
 
-test('the API docs pass an axe audit in both themes', async ({ page }) => {
+test('the docs pass an axe audit in both themes', async ({ page }) => {
   // NFR-07, like the landing page's own audit below: the docs are pages of the
   // site, and their tables and code blocks are as much content as its cards are.
   for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
-    for (const path of ['/docs/api/', '/docs/api/features/extrude/']) {
+    for (const path of ['/docs/', '/docs/api/', '/docs/api/features/extrude/']) {
       await page.goto(`${host.url}${path}`);
       await expect(page.locator('main h1')).toBeVisible();
       const results = await new AxeBuilder({ page })

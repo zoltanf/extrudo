@@ -2,6 +2,10 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+## Next
+
+- 2026-10-08 · **Docs site, slice S1 (P6-06, ADR-0080)**: the site's docs are collections under `/docs/` (`docs/guide`, tutorials, tools, `docs/api` at its old addresses) with one sidebar, hashed pictures and clips from relative Markdown references, only `<video>` allowed as raw HTML, a `/docs/` index and a "Docs" link in the landing nav.
+
 ## v0.4.1 (2026-10-08)
 
 - 2026-10-08 · **The desktop app builds on macOS and Windows again**: the progress notice's rules file (`modelProgress.ts`) sat beside its component (`ModelProgress.tsx`), which case-insensitive file systems read as one module; it is `progressRules.ts` now, and `pnpm lint` refuses module paths that differ only by case.

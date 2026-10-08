@@ -1,6 +1,6 @@
 /**
- * The build step that turns every Markdown file under `docs/api` into the site's
- * `/docs/api/` pages (ADR-0068 §6).
+ * The build step that turns every Markdown file under the docs collections into the site
+ * `/docs/` pages (ADR-0068 §6, ADR-0080).
  *
  * Everything happens while the site is built: the Markdown becomes HTML, the
  * stylesheet and the two font faces are emitted with hashed names (so the
@@ -15,19 +15,27 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Plugin } from 'vite';
-import { type DocPage, docPages, pageHtml, stylesheet } from './docs';
+import { addresses } from '../addresses';
+import {
+  assetPlaceholder,
+  collectAssets,
+  type DocPage,
+  docPages,
+  pageHtml,
+  stylesheet,
+} from './docs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SITE = dirname(HERE);
 /** The repository root, two levels up from `apps/site`. */
 const ROOT = dirname(dirname(SITE));
 
-/** Where the Markdown lives and where it is published. */
-const DOCS_DIR = join(ROOT, 'docs/api');
+/** Where the Markdown lives; `docs.ts`' collections say where each folder is published. */
+const DOCS_DIR = join(ROOT, 'docs');
 
 /** The one-liner every page's description carries (the site's own, ADR-0057). */
 const DESCRIPTION =
-  'The Extrudo document API: build and change a design from code. Generated from docs/api/.';
+  'Extrudo docs: guides, tutorials, the tool reference and the document API for parametric CAD in the browser.';
 
 /** The bundled font the brand sets its UI in (docs/05-brand.md §4). */
 const FACES = [
@@ -37,13 +45,31 @@ const FACES = [
 
 /** The docs pages, built from the repository's Markdown. */
 export function docsPlugin(): Plugin {
+  /** Placeholder → the emitted file's reference. */
+  const files = new Map<string, string>();
   return {
     name: 'extrudo-site-docs',
     apply: 'build',
     // The pages are assets, so they are collected before the bundle is written.
     async buildStart() {
-      const pages = docPages(DOCS_DIR);
+      const urls = addresses(process.env);
+      let pages: DocPage[];
+      try {
+        // A missing picture or a stray tag fails here, naming the page.
+        pages = docPages(DOCS_DIR, { tokens: urls });
+      } catch (error) {
+        return this.error(error instanceof Error ? error.message : String(error));
+      }
       if (pages.length === 0) this.error(`No Markdown under ${DOCS_DIR}.`);
+
+      // Each picture and clip once, however many pages use it; rollup puts a
+      // content hash in the file name and `generateBundle` fills it in.
+      for (const asset of collectAssets(pages)) {
+        files.set(
+          assetPlaceholder(asset),
+          this.emitFile({ type: 'asset', name: asset.name, source: readFileSync(asset.file) }),
+        );
+      }
 
       // The stylesheet first: the HTML needs its hashed name, and the names are
       // known as soon as the assets are emitted (resolve in generateBundle).
@@ -70,7 +96,7 @@ export function docsPlugin(): Plugin {
           source: pageHtml(page, pages, {
             stylesheet: '__DOCS_ASSET_docs.css__',
             description: DESCRIPTION,
-            siteUrl: '/docs/api/',
+            siteUrl: '/docs/',
           }),
         });
       }
@@ -85,6 +111,9 @@ export function docsPlugin(): Plugin {
       for (const output of Object.values(bundle)) {
         if (output.type !== 'asset' || !output.fileName.endsWith('/index.html')) continue;
         let html = output.source as string;
+        for (const [placeholder, reference] of files) {
+          html = html.replaceAll(placeholder, `/${this.getFileName(reference)}`);
+        }
         for (const [name, url] of names) {
           html = html.replaceAll(`__DOCS_ASSET_${name}__`, url);
         }
@@ -94,8 +123,7 @@ export function docsPlugin(): Plugin {
   };
 }
 
-/** `docs/api/README.md` is `docs/api/index.html`; a page is a directory of its own. */
+/** A page is a directory of its own: `/docs/api/sketch/` is `docs/api/sketch/index.html`. */
 function fileNameFor(page: DocPage): string {
-  const address = page.url.replace(/^\/docs\/api\/?/, '').replace(/\/$/, '');
-  return `docs/api/${address ? `${address}/` : ''}index.html`;
+  return `${page.url.replace(/^\//, '')}index.html`;
 }

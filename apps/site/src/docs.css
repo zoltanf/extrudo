@@ -147,6 +147,13 @@ code {
   font-weight: 600;
 }
 
+.side h3 {
+  margin: 12px 0 4px;
+  font-size: 0.8rem;
+  color: var(--x-ink);
+  font-weight: 600;
+}
+
 .side ul {
   list-style: none;
   margin: 0;
@@ -317,4 +324,12 @@ code {
     padding-bottom: 16px;
     border-bottom: 1px solid var(--x-line);
   }
+}
+
+/* Pictures and clips from the Markdown (ADR-0080 §2). */
+.page img,
+.page video {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
 }
