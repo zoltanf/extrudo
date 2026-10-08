@@ -26,7 +26,7 @@ cannot reach. Tick them off in order; each box says who and where.
   project address `conduct@extrudo.org` (Cloudflare Email Routing forwards it
   to the owner; `docs/deploy.md`) beside GitHub's "Report content". No
   personal address is in the repository.
-- [ ] **Slicer check of the exports** (ADR-0034), on the Arch workstation with
+- [x] **Slicer check of the exports** (ADR-0034), on the Arch workstation with
   the real GUIs: export the Wall bracket and the PCB enclosure from the app
   as 3MF, STL and STEP, and open each in OrcaSlicer and PrusaSlicer (and
   Bambu Studio if you have it). Look for: the model opens without a repair
@@ -34,6 +34,13 @@ cannot reach. Tick them off in order; each box says who and where.
   dimensions right in mm, no "non-manifold" or "open edges" warning, it
   slices, and the STEP opens in FreeCAD with solids and names. Note
   anything odd as an issue.
+  *Done 2026-10-08 by the owner on edge:* 3MF and STL in PrusaSlicer and
+  OrcaSlicer (one multi-part object, bodies as named parts in place, colours
+  kept, no repair prompt, "No errors detected", slices); STEP in FreeCAD
+  (Wall bracket: one valid solid "Bracket", 12 faces, 40 × 80 × 60 mm; PCB
+  enclosure: "Enclosure" 80 × 60 × 25 mm, 25,326 mm³ and "Lid" 80 × 60 × 3 mm,
+  14,214 mm³, both valid, equal to the CLI's numbers; Check Geometry: no
+  errors).
 - [ ] **Look at the app once, fresh.** `pnpm dev` or the CI build in a clean
   browser profile: the tour, a template, a print export, offline after a
   reload.
