@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
+import { ExampleOpener } from './home/ExampleOpener';
 import { HomeScreen } from './home/HomeScreen';
 import type { Platform } from './platform';
 import { ProjectPage } from './project/ProjectPage';
@@ -23,6 +24,8 @@ export function App({ platform }: { platform: Platform }) {
       return <HomeScreen platform={platform} />;
     case 'project':
       return <ProjectPage key={route.id} id={route.id} platform={platform} />;
+    case 'example':
+      return <ExampleOpener key={route.id} id={route.id} platform={platform} />;
     case 'debug-kernel':
       return (
         <Suspense fallback={null}>

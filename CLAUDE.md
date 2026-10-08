@@ -3465,6 +3465,19 @@ them. Notes further down that name a machine apply to that machine only.
   dimension on the bottom side labelled at (0, −16), the profile picked at the
   world origin in the home view, an edge picked at (0, −10, 15) for the fillet.
   `e2e/record-assets.spec.ts` (RECORD_ASSETS=1 only) is the demo recorder.
+- **Examples e2e** (`e2e/examples.spec.ts`, P6-06 S3): the home screen's
+  "More examples…" opens the dialog "Examples" (list "Examples", 11 rows, each
+  with a button "Open the <title> example" that navigates to
+  `#/example/<id>`); the route's opener (`home/ExampleOpener.tsx`) makes the
+  copy and `replaceRoute`s to `#/p/<id>` — Back must not return to
+  `#/example/…` — and an unknown ID lands on home with the alert
+  `There's no example named "<id>".`; while it fetches, the opener's status
+  reads "Opening <title>…". The examples' fixture files are not precached
+  (`SKIPPED` in `pwa/precache-plugin.ts` keeps only the template gallery's
+  three, `TEMPLATE_FIXTURES`; `p4-01-sweep-loft-coil.extrudo` is under the 4 kB
+  `assetsInlineLimit` and inlines as a data URL, so no asset file exists to
+  skip). The B1 plate fixture is the sketch stage only (no extrude, 0 bodies),
+  so the Plate example opens on its sketch, not on a body.
 - **Sweep, loft and coil e2e** (`e2e/sweep-loft-coil.spec.ts`, P4-01): the tools
   are Solid › Create's tiles (`pickTool(page, 'Sweep' | 'Loft')`, `startPrimitive(page,
   'Coil')`); dialogs are the regions "Sweep dialog", "Loft dialog", "Coil dialog"

@@ -14,6 +14,7 @@ import { useMemo, useState } from 'react';
 import {
   Button,
   ConfirmDialog,
+  Dialog,
   IconButton,
   LogoMark,
   Select,
@@ -33,9 +34,10 @@ import {
   exportProject,
   importProject,
 } from '../project/actions';
-import { navigate, projectHref } from '../routes';
+import { exampleHref, navigate, projectHref } from '../routes';
 import { ThemeMenu } from '../shell/ThemeMenu';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
+import { EXAMPLES } from './examples';
 import { TEMPLATES, type Template } from './gallery';
 import { usePersistence, useProjects } from './hooks';
 import { LinkedFolderSection } from './LinkedFolderSection';
@@ -56,6 +58,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<Sort>('modified');
   const [showTrash, setShowTrash] = useState(false);
+  const [showExamples, setShowExamples] = useState(false);
   const [purging, setPurging] = useState<ProjectSummary>();
   const now = new Date();
 
@@ -234,6 +237,11 @@ export function HomeScreen({ platform }: { platform: Platform }) {
                   </li>
                 ))}
               </ul>
+              <div>
+                <Button variant="ghost" onClick={() => setShowExamples(true)}>
+                  More examples…
+                </Button>
+              </div>
             </section>
           )}
 
@@ -327,6 +335,7 @@ export function HomeScreen({ platform }: { platform: Platform }) {
         </div>
       </main>
 
+      <ExamplesDialog open={showExamples} onOpenChange={setShowExamples} />
       <ConfirmDialog
         open={!!purging}
         onOpenChange={(open) => !open && setPurging(undefined)}
@@ -342,6 +351,50 @@ export function HomeScreen({ platform }: { platform: Platform }) {
       />
       <Toasts toasts={toasts} onDismiss={dismiss} />
     </div>
+  );
+}
+
+/**
+ * More examples… (P6-06 S3): the example library, one row per example with
+ * its level and description. Open navigates to `#/example/<id>`, the same
+ * code path a link to the example runs (a copy is made there). No thumbnails
+ * yet — slice S4 records them.
+ */
+function ExamplesDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Examples"
+      description="Each opens as a copy you can edit."
+      size="medium"
+    >
+      <ul aria-label="Examples" className="flex flex-col divide-y divide-line">
+        {EXAMPLES.map((e) => (
+          <li key={e.id} className="flex items-center gap-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">
+                {e.title} <span className="text-xs font-normal text-muted">{e.level}</span>
+              </p>
+              <p className="text-sm text-muted">{e.description}</p>
+            </div>
+            <Button
+              variant="ghost"
+              aria-label={`Open the ${e.title} example`}
+              onClick={() => navigate(exampleHref(e.id))}
+            >
+              Open
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </Dialog>
   );
 }
 

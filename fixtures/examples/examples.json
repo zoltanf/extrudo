@@ -1,0 +1,90 @@
+[
+  {
+    "id": "plate",
+    "title": "Plate with corner holes",
+    "description": "The sketch of a plate whose width, depth and hole spacing are parameters, ready to extrude.",
+    "file": "benchmarks/b1-plate.extrudo",
+    "tags": ["sketch", "constraints", "dimensions", "parameters"],
+    "level": "beginner"
+  },
+  {
+    "id": "storage-box",
+    "title": "Storage box",
+    "description": "An open box cut from a solid, with its walls offset from the outline.",
+    "file": "benchmarks/b2-storage-box.extrudo",
+    "tags": ["extrude", "cut", "sketch on face"],
+    "level": "beginner"
+  },
+  {
+    "id": "phone-stand",
+    "title": "Phone stand",
+    "description": "Two bodies combined into one stand.",
+    "file": "benchmarks/b3-phone-stand.extrudo",
+    "tags": ["extrude", "bodies", "combine"],
+    "level": "beginner"
+  },
+  {
+    "id": "box-with-lid",
+    "title": "Box with a lid",
+    "description": "A box and a lid that fits it, sized by one clearance parameter.",
+    "file": "benchmarks/b4-box-with-lid.extrudo",
+    "tags": ["shell", "fillet", "chamfer", "two bodies"],
+    "level": "intermediate"
+  },
+  {
+    "id": "pcb-enclosure",
+    "title": "PCB enclosure",
+    "description": "Screw posts, countersunk holes and a lid, patterned and mirrored.",
+    "file": "benchmarks/b5-pcb-enclosure.extrudo",
+    "tags": ["hole", "pattern", "mirror", "shell"],
+    "level": "intermediate"
+  },
+  {
+    "id": "wall-hook",
+    "title": "Wall hook",
+    "description": "A hook with a drafted arm and fillets where edges meet.",
+    "file": "benchmarks/b6-wall-hook.extrudo",
+    "tags": ["draft", "fillet"],
+    "level": "intermediate"
+  },
+  {
+    "id": "knurled-knob",
+    "title": "Knurled knob",
+    "description": "A turned knob with a knurl from a circular pattern.",
+    "file": "benchmarks/b7-knurled-knob.extrudo",
+    "tags": ["revolve", "circular pattern", "chamfer"],
+    "level": "intermediate"
+  },
+  {
+    "id": "name-tag",
+    "title": "Name tag",
+    "description": "A key tag with embossed text and rounded corners.",
+    "file": "benchmarks/b8-name-tag.extrudo",
+    "tags": ["text", "emboss", "fillet"],
+    "level": "beginner"
+  },
+  {
+    "id": "bottle-cap",
+    "title": "Threaded bottle cap",
+    "description": "A cap and an adapter with modelled threads that fit.",
+    "file": "benchmarks/b9-bottle-cap.extrudo",
+    "tags": ["thread", "revolve", "shell"],
+    "level": "advanced"
+  },
+  {
+    "id": "chain-link",
+    "title": "Cable chain link",
+    "description": "A swept link patterned into a chain, with a tolerance parameter.",
+    "file": "benchmarks/b10-chain-link.extrudo",
+    "tags": ["sweep", "pattern", "tolerance"],
+    "level": "advanced"
+  },
+  {
+    "id": "sweep-loft-coil",
+    "title": "Sweep, loft and coil",
+    "description": "One of each: a swept tube, a lofted transition and a spring.",
+    "file": "benchmarks/p4-01-sweep-loft-coil.extrudo",
+    "tags": ["sweep", "loft", "coil"],
+    "level": "advanced"
+  }
+]

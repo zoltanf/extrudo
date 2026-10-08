@@ -12,6 +12,18 @@ import type { Plugin } from 'vite';
 /** Cached by the service worker on first use, not at install (ADR-0071 §4). */
 const RUNTIME = /^assets\/openscad-[^/]*\.wasm$/;
 
+/**
+ * The example designs (P6-06 S3) are fetched over the network when one opens,
+ * not precached — but the template gallery (`home/gallery.ts`) imports three
+ * of the same benchmark files, and the templates must open offline, so those
+ * three stay on the precache list. The rule below is a list of the fixture
+ * files to **keep** (`TEMPLATE_FIXTURES`, the ones gallery.ts imports): every
+ * other bundled `benchmarks/` `.extrudo` asset is skipped (the examples' own
+ * b1, b3, b6–b10, p4-01).
+ */
+const TEMPLATE_FIXTURES = ['b2-storage-box', 'b4-box-with-lid', 'b5-pcb-enclosure'];
+const EXAMPLE_ASSETS = new RegExp(`^assets/(?!(${TEMPLATE_FIXTURES.join('|')})-)[^/]*\\.extrudo$`);
+
 const SKIPPED = [
   /(^|\/)debug-worker-/,
   /Debug-[^/]*\.js$/,
@@ -21,6 +33,10 @@ const SKIPPED = [
   // OpenSCAD's 11 MB WASM (ADR-0071 §4): only a design with a `.scad` import
   // fetches it, and the service worker keeps it then (`RUNTIME`).
   RUNTIME,
+  // The example designs (P6-06 S3), except the template gallery's three
+  // (`TEMPLATE_ASSETS`) — those are `import`ed by `home/gallery.ts` and the
+  // templates open offline.
+  EXAMPLE_ASSETS,
   // For the host and for link previews (ADR-0054), never for the app itself.
   /^_headers$/,
   /^og-image\.png$/,
@@ -47,6 +63,16 @@ export function precachePlugin(): Plugin {
     closeBundle() {
       const dir = join(root, outDir);
       const files = listFiles(dir).filter((f) => f !== 'sw.js' && !SKIPPED.some((s) => s.test(f)));
+      // The template fixtures must survive the skip list above (the templates
+      // open offline, ADR-0052): a rename in gallery.ts or a new skip rule
+      // that catches one fails the build here rather than silently.
+      for (const name of TEMPLATE_FIXTURES) {
+        if (!files.some((f) => f.startsWith(`assets/${name}-`) && f.endsWith('.extrudo'))) {
+          throw new Error(
+            `precache: the ${name} fixture isn't in the precache and a template needs it offline`,
+          );
+        }
+      }
       const hashed = files.filter((f) => f.startsWith('assets/'));
       const fixed = files.filter((f) => !f.startsWith('assets/'));
       const version = createHash('sha256');
