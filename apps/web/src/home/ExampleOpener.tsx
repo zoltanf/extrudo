@@ -3,12 +3,12 @@ import { useToasts } from '../design-system';
 import type { Platform } from '../platform';
 import { createProject, describeError } from '../project/actions';
 import { HOME_HREF, projectHref, replaceRoute } from '../routes';
-import { createFromExample, exampleById } from './examples';
+import { createFromExample, exampleById, exampleThumbnail } from './examples';
 
 /**
  * The `#/example/<id>` route (P6-06 S3): copies the example's design into a
- * new project (the way `HomeScreen`'s `startTemplate` opens a template, no
- * thumbnail yet) and replaces the route with the project's, so Back doesn't
+ * new project (the way `HomeScreen`'s `startTemplate` opens a template, with
+ * the example's picture as its card's thumbnail, P6-06 S4) and replaces the route with the project's, so Back doesn't
  * return to the opener. An unknown ID, or a failure to fetch or save, lands
  * on the home screen with a toast instead.
  */
@@ -27,8 +27,8 @@ export function ExampleOpener({ id, platform }: { id: string; platform: Platform
       replaceRoute(HOME_HREF);
       return;
     }
-    createFromExample(example)
-      .then((doc) => createProject(platform, doc, undefined))
+    Promise.all([createFromExample(example), exampleThumbnail(example)])
+      .then(([doc, thumbnail]) => createProject(platform, doc, thumbnail))
       .then((projectId) => replaceRoute(projectHref(projectId)))
       .catch((e: unknown) => {
         push('error', `Couldn't open the ${example.title} example: ${describeError(e)}`);

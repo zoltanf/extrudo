@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Writes the tool reference pages under docs/guide/tools/ from the app's own
-// tool catalogue, key map and demo list (ADR-0080 §2, §4).
+// tool catalogue, key map and demo list (ADR-0080 §2, §4), and the examples
+// gallery page docs/guide/examples.md from the example registry (P6-06 S4).
 //
 //   pnpm docs:generate
 //   pnpm docs:generate --check     # writes nothing; fails when anything is out of date
@@ -21,6 +22,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { examplesPage } from '../apps/web/src/home/examplesDoc.ts';
 import { toolPages } from '../apps/web/src/shell/toolDocs.ts';
 
 /** The repository root, one level up from `scripts/`. */
@@ -43,14 +45,23 @@ const filesInTools = () =>
         .sort()
     : [];
 
+/** The examples gallery page, written from the registry (P6-06 S4). */
+const EXAMPLES_PAGE = 'docs/guide/examples.md';
+const examples = JSON.parse(readFileSync(join(ROOT, 'fixtures/examples/examples.json'), 'utf8'));
+
 const pages = toolPages(onDisk);
+pages.set(EXAMPLES_PAGE, examplesPage(examples));
 
 if (process.argv.includes('--check')) {
   const stale = [];
   for (const [path, text] of pages) {
     if (onDisk(path) !== text) stale.push(path);
   }
-  const known = new Set([...pages.keys()].map((path) => path.slice(TOOLS_DIR.length + 1)));
+  const known = new Set(
+    [...pages.keys()]
+      .filter((path) => path.startsWith(`${TOOLS_DIR}/`))
+      .map((path) => path.slice(TOOLS_DIR.length + 1)),
+  );
   for (const name of filesInTools()) {
     if (!known.has(name)) stale.push(`${TOOLS_DIR}/${name}`);
   }
@@ -58,16 +69,16 @@ if (process.argv.includes('--check')) {
     console.error(`Out of date. Run pnpm docs:generate:\n${stale.map((p) => `  ${p}`).join('\n')}`);
     process.exit(1);
   }
-  console.log(`${pages.size} pages under ${TOOLS_DIR}/ are up to date.`);
+  console.log(`${pages.size} pages under docs/guide/ are up to date.`);
 } else {
   mkdirSync(join(ROOT, TOOLS_DIR), { recursive: true });
   const known = new Set();
   for (const [path, text] of pages) {
     writeFileSync(join(ROOT, path), text);
-    known.add(path.slice(TOOLS_DIR.length + 1));
+    if (path.startsWith(`${TOOLS_DIR}/`)) known.add(path.slice(TOOLS_DIR.length + 1));
   }
   for (const name of filesInTools()) {
     if (!known.has(name)) unlinkSync(join(ROOT, TOOLS_DIR, name));
   }
-  console.log(`Wrote ${pages.size} pages under ${TOOLS_DIR}/.`);
+  console.log(`Wrote ${pages.size} pages under docs/guide/ (tools under ${TOOLS_DIR}/).`);
 }

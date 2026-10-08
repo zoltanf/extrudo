@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
@@ -71,6 +72,46 @@ for (const { id, name } of TEMPLATE_CARDS) {
     if (!thumbnail) throw new Error('the export has no thumbnail');
     await mkdir(THUMBNAILS, { recursive: true });
     await writeFile(join(THUMBNAILS, `${id}.png`), thumbnail);
+  });
+}
+
+// ---- Example pictures (P6-06 S4) ---------------------------------------------
+
+// The examples gallery's pictures (`docs/guide/images/examples/<id>.png`) and
+// the app's More examples… thumbnails. Each is the template thumbnails'
+// treatment: the design's own 256 px snapshot of the view (the square centre
+// of the canvas, transparent), taken from a copy of the example in the home
+// view, fitted to what it draws.
+const EXAMPLE_PICTURES = join(process.cwd(), 'docs', 'guide', 'images', 'examples');
+const EXAMPLES = JSON.parse(
+  readFileSync(join(process.cwd(), 'fixtures', 'examples', 'examples.json'), 'utf8'),
+) as { id: string; title: string }[];
+
+for (const { id, title } of EXAMPLES) {
+  test(`picture of the ${title} example`, async ({ page }) => {
+    await page.goto(`./#/example/${id}`);
+    await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+    await expect(viewportOf(page)).toHaveAttribute('data-ready', 'true');
+    await kernelReady(page);
+    await turnView(page, 'Shift+1');
+    // The picture is the view's centre square, so hide the browser (it covers
+    // the left of the view) and fit what the example draws to the whole view.
+    await page.getByRole('button', { name: 'Hide browser' }).click();
+    await turnView(page, 'F6');
+    // Fit leaves no margin: back off about a fifth, so no edge is cut at the square's sides.
+    const viewport = viewportOf(page);
+    const fitted = Number(await attr(viewport, 'data-camera-size'));
+    const box = await viewport.boundingBox();
+    if (!box) throw new Error('no viewport');
+    await zoomOutTo(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, fitted * 1.2);
+    await settled(viewport);
+    // An edit makes the next save take a fresh picture of the view; exporting flushes it.
+    await renameProject(page, `${title} copy`);
+    const bytes = await exportProject(page, `${id}.extrudo`);
+    const { thumbnail } = readArchive(new Uint8Array(bytes));
+    if (!thumbnail) throw new Error('the export has no thumbnail');
+    await mkdir(EXAMPLE_PICTURES, { recursive: true });
+    await writeFile(join(EXAMPLE_PICTURES, `${id}.png`), thumbnail);
   });
 }
 

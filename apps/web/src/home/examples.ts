@@ -17,6 +17,13 @@ const files = import.meta.glob('../../../../fixtures/benchmarks/*.extrudo', {
   eager: true,
 }) as Record<string, string>;
 
+/** The pictures the examples page shows too (P6-06 S4), recorded by `e2e/record-assets.spec.ts`. */
+const pictures = import.meta.glob('../../../../docs/guide/images/examples/*.png', {
+  query: '?url',
+  import: 'default',
+  eager: true,
+}) as Record<string, string>;
+
 export type ExampleLevel = 'beginner' | 'intermediate' | 'advanced';
 
 export interface Example {
@@ -30,16 +37,36 @@ export interface Example {
   level: ExampleLevel;
   /** The bundled `.extrudo` file's URL. */
   url: string;
+  /** The picture's URL, when one was recorded (`docs/guide/images/examples/<id>.png`). */
+  thumbnail?: string;
 }
 
 export const EXAMPLES: readonly Example[] = data.map((e) => {
   const url = files[`../../../../fixtures/${e.file}`];
   if (url === undefined) throw new Error(`Example ${e.id}: no file ${e.file}`);
-  return { ...e, level: e.level as ExampleLevel, tags: e.tags, url };
+  const thumbnail = pictures[`../../../../docs/guide/images/examples/${e.id}.png`];
+  return {
+    ...e,
+    level: e.level as ExampleLevel,
+    tags: e.tags,
+    url,
+    ...(thumbnail === undefined ? {} : { thumbnail }),
+  };
 });
 
 export function exampleById(id: string): Example | undefined {
   return EXAMPLES.find((e) => e.id === id);
+}
+
+/**
+ * The example's picture for its home-screen card, or `undefined`: a picture
+ * that doesn't load leaves the card without one, never an error.
+ */
+export async function exampleThumbnail(e: Example): Promise<Blob | undefined> {
+  if (e.thumbnail === undefined) return undefined;
+  return fetch(e.thumbnail)
+    .then((r) => (r.ok ? r.blob() : undefined))
+    .catch(() => undefined);
 }
 
 /** The example's design as a fresh copy named like its title. */

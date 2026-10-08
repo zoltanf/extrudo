@@ -356,9 +356,8 @@ export function HomeScreen({ platform }: { platform: Platform }) {
 
 /**
  * More examples… (P6-06 S3): the example library, one row per example with
- * its level and description. Open navigates to `#/example/<id>`, the same
- * code path a link to the example runs (a copy is made there). No thumbnails
- * yet — slice S4 records them.
+ * its picture, level and description. Open navigates to `#/example/<id>`, the
+ * same code path a link to the example runs (a copy is made there).
  */
 function ExamplesDialog({
   open,
@@ -378,6 +377,15 @@ function ExamplesDialog({
       <ul aria-label="Examples" className="flex flex-col divide-y divide-line">
         {EXAMPLES.map((e) => (
           <li key={e.id} className="flex items-center gap-4 py-3">
+            {e.thumbnail && (
+              <img
+                src={e.thumbnail}
+                alt={e.title}
+                className="size-16 shrink-0 rounded-card object-contain"
+                style={{ background: 'var(--x-viewport-glow)' }}
+                draggable={false}
+              />
+            )}
             <div className="min-w-0 flex-1">
               <p className="font-semibold">
                 {e.title} <span className="text-xs font-normal text-muted">{e.level}</span>

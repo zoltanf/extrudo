@@ -1537,7 +1537,7 @@ The landing page's footer links to `/docs/api/`. Rules a change must keep: **a
 docs page needs no internal package** (ADR-0057), so anything the sidebar needs
 comes from the Markdown's front matter (`title`, `section`, `category`, `order`),
 and **the pages are the repository's Markdown**, so a link that names a `.md`
-file is a bug (`docs.test.ts` fails on one). Since ADR-0080 the build serves `/docs/` from `docs/guide/` through collections (`COLLECTIONS` in `docs.ts`, the deepest folder wins; the API's addresses unchanged).
+file is a bug (`docs.test.ts` fails on one). Since ADR-0080 the build serves `/docs/` from `docs/guide/` through collections (`COLLECTIONS` in `docs.ts`, the deepest folder wins; the API's addresses unchanged). The examples page `docs/guide/examples.md` is generated from `fixtures/examples/examples.json` by `pnpm docs:generate`, and its pictures under `docs/guide/images/examples/` are recorded by `e2e/record-assets.spec.ts` (`RECORD_ASSETS=1`, `-g "picture of the"`).
 
 **Examples (slice 2):** `docs/api/examples/*.ts` are tests, run by
 `packages/api/src/examples.test.ts` — the Wall bracket, benchmark B1 (equal to

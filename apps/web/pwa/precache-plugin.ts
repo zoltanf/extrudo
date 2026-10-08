@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import type { Plugin } from 'vite';
 
@@ -7,7 +7,7 @@ import type { Plugin } from 'vite';
  * Files the app never needs offline: the debug pages, the legacy font formats and
  * the tools' demo clips (`demos/`, P3-12: a nicety fetched when a tooltip opens,
  * which the service worker leaves to the network), the host's `_headers` file and
- * the link-preview picture.
+ * the link-preview picture, and the examples' pictures (P6-06 S4, below).
  */
 /** Cached by the service worker on first use, not at install (ADR-0071 §4). */
 const RUNTIME = /^assets\/openscad-[^/]*\.wasm$/;
@@ -62,7 +62,10 @@ export function precachePlugin(): Plugin {
     },
     closeBundle() {
       const dir = join(root, outDir);
-      const files = listFiles(dir).filter((f) => f !== 'sw.js' && !SKIPPED.some((s) => s.test(f)));
+      const pictures = examplePictureAssets(join(root, '..', '..'), dir);
+      const files = listFiles(dir).filter(
+        (f) => f !== 'sw.js' && !SKIPPED.some((s) => s.test(f)) && !pictures.has(f),
+      );
       // The template fixtures must survive the skip list above (the templates
       // open offline, ADR-0052): a rename in gallery.ts or a new skip rule
       // that catches one fails the build here rather than silently.
@@ -106,6 +109,28 @@ export function precachePlugin(): Plugin {
       writeFileSync(join(dir, 'sw.js'), source);
     },
   };
+}
+
+/**
+ * The examples' pictures (P6-06 S4, `docs/guide/images/examples/<id>.png`) are
+ * fetched when the More examples… dialog or the examples page shows them, not
+ * precached. Vite hashes each one into `assets/` under a name that can match a
+ * template thumbnail's (`storage-box`, `box-with-lid`…), so the files are found
+ * by their bytes: a built PNG that is byte-for-byte one of the pictures.
+ */
+function examplePictureAssets(repo: string, dir: string): Set<string> {
+  const picturesDir = join(repo, 'docs', 'guide', 'images', 'examples');
+  if (!existsSync(picturesDir)) return new Set();
+  const pictures = readdirSync(picturesDir)
+    .filter((name) => name.endsWith('.png'))
+    .map((name) => readFileSync(join(picturesDir, name)));
+  const out = new Set<string>();
+  for (const f of listFiles(dir)) {
+    if (!f.startsWith('assets/') || !f.endsWith('.png')) continue;
+    const bytes = readFileSync(join(dir, f));
+    if (pictures.some((p) => p.equals(bytes))) out.add(f);
+  }
+  return out;
 }
 
 function listFiles(dir: string): string[] {

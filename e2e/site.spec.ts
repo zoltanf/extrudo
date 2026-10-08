@@ -484,7 +484,7 @@ test('the docs index has the sidebar, and the nav\u2019s Docs link goes there', 
   await expect(page.getByRole('heading', { name: 'Extrudo docs', exact: true })).toBeVisible();
   await expect(page).toHaveTitle('Extrudo docs · Extrudo docs');
 
-  // The sidebar: Guide first, Tools and API last, nothing for the sections with no pages yet.
+  // The sidebar: Guide first, API last, nothing for the sections with no pages yet.
   const sidebar = page.getByRole('navigation', { name: 'Docs' });
   await expect(sidebar.getByRole('link', { name: 'Extrudo docs' })).toHaveAttribute(
     'aria-current',
@@ -494,6 +494,7 @@ test('the docs index has the sidebar, and the nav\u2019s Docs link goes there', 
     'Guide',
     'Tutorials',
     'Tools',
+    'Examples',
     'API',
   ]);
   await expect(sidebar.getByRole('link', { name: 'References' })).toHaveAttribute(
@@ -539,6 +540,41 @@ test('a feature page shows its inputs table, its face roles and its example', as
 
   expect(policy.errors).toEqual([]);
   expect(await policy.violations()).toEqual([]);
+});
+
+test('the examples page lists the three levels, every example and its picture', async ({
+  page,
+}) => {
+  const policy = await watchPolicy(page);
+  const examples = JSON.parse(readFileSync(resolve('fixtures/examples/examples.json'), 'utf8')) as {
+    id: string;
+  }[];
+
+  await page.goto(`${host.url}/docs/examples/`);
+  const main = page.getByRole('main');
+  await expect(main.getByRole('heading', { name: 'Examples', exact: true })).toBeVisible();
+  for (const level of ['Beginner', 'Intermediate', 'Advanced']) {
+    await expect(main.getByRole('heading', { name: level, exact: true })).toBeVisible();
+  }
+  await expect(main.getByRole('link', { name: 'Open in Extrudo' })).toHaveCount(examples.length);
+  for (const { id } of examples) {
+    await expect(main.locator(`a[href="${APP_URL}/#/example/${id}"]`)).toHaveCount(1);
+  }
+  // Every picture came from the build and loaded. They are lazy: scroll each one in first.
+  const images = main.locator('img');
+  await expect(images).toHaveCount(examples.length);
+  for (const image of await images.all()) await image.scrollIntoViewIfNeeded();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        'Array.from(document.querySelectorAll("main img")).every((i) => i.complete && i.naturalWidth > 0)',
+      ),
+    )
+    .toBe(true);
+
+  expect(policy.errors).toEqual([]);
+  expect(await policy.violations()).toEqual([]);
+  expect(await page.evaluate('document.querySelectorAll("script").length')).toBe(0);
 });
 
 test('the tool reference is generated into the site and carries its demo clip', async ({
