@@ -109,6 +109,15 @@ export const ICON_NAMES = [
   'overhang',
   'wall-thickness',
   'send-to-slicer',
+  'new-design',
+  'all-designs',
+  'save-version',
+  'version-history',
+  'export-design',
+  'import-design',
+  'export-script',
+  'linked-folder',
+  'plugins',
 ] as const;
 
 export type IconName = (typeof ICON_NAMES)[number];
@@ -120,7 +129,9 @@ export type ToolCategory =
   | 'construct'
   | 'inspect'
   | 'insert'
-  | 'export';
+  | 'export'
+  /** The Home tab's file actions (ADR-0079): neutral, like the chrome around them. */
+  | 'file';
 
 /** The markup inside the <svg> element of each source, by icon name. */
 export const ICON_MARKUP: Readonly<Record<string, string>> = Object.fromEntries(

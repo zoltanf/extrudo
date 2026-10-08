@@ -83,9 +83,9 @@ async function hole(page: Page, x: number) {
 }
 
 /** Opens a pattern or mirror dialog from the Create menu or the Transform group. */
-async function openDialog(page: Page, tool: string, region: string, create = true) {
-  if (create) await pickTool(page, tool);
-  else await page.getByRole('button', { name: tool, exact: true }).click();
+async function openDialog(page: Page, tool: string, region: string) {
+  // Patterns are Solid › Pattern's tiles, Mirror is Modify › Transform's (ADR-0079).
+  await pickTool(page, tool);
   const dialog = page.getByRole('region', { name: region });
   await expect(dialog).toBeVisible();
   return dialog;
@@ -322,7 +322,7 @@ test('mirrors a hole to the other side of a plane: Mirror in features mode', asy
   const at = await settledProjector(viewport);
   const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
 
-  const dialog = await openDialog(page, 'Mirror', 'Mirror dialog', false);
+  const dialog = await openDialog(page, 'Mirror', 'Mirror dialog');
   await dialog.getByRole('combobox', { name: 'Mirror' }).selectOption('features');
   await dialog.getByRole('checkbox', { name: /^Cylinder1/ }).check();
   // Copy and Join are about bodies.
@@ -374,13 +374,19 @@ async function viewBox(page: Page) {
  * Drags a handle of the dialog overlay (its `cx`/`cy` are px in the viewport) to
  * the page point `to`, in four steps, the way the app's own gizmo drags read.
  */
-async function dragHandle(page: Page, handle: Locator, to: { x: number; y: number }) {
+async function dragHandle(
+  page: Page,
+  handle: Locator,
+  to: { x: number; y: number },
+  /** Where on the handle to press, from its centre (the heads-up box can cover its lower half). */
+  grab = { x: 0, y: 0 },
+) {
   const { cx, cy } = (await handle.evaluate((el) => ({
     cx: Number(el.getAttribute('cx')),
     cy: Number(el.getAttribute('cy')),
   }))) as { cx: number; cy: number };
   const box = await viewBox(page);
-  const from = { x: box.x + cx, y: box.y + cy };
+  const from = { x: box.x + cx + grab.x, y: box.y + cy + grab.y };
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   for (let k = 1; k <= 4; k++) {
@@ -458,7 +464,12 @@ test('drags a count handle: two spacings make two more instances (P4-12)', async
     await zoomOutTo(page, { x: frame.width / 2, y: frame.height / 2 }, 90);
     at = await settledProjector(viewport);
   }
-  await dragHandle(page, viewport.locator('[data-manipulator-handle="count1"]'), at([40, 0, 10]));
+  // Pressed a little above its centre: in the home view the Distance field's heads-up box
+  // can reach up to the handle's middle.
+  await dragHandle(page, viewport.locator('[data-manipulator-handle="count1"]'), at([40, 0, 10]), {
+    x: 0,
+    y: -4,
+  });
   await expect(dialog.getByRole('textbox', { name: 'Count', exact: true })).toHaveValue('5');
   await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
   // Four copies drawn over the model, and a dot on each.

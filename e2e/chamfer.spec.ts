@@ -103,7 +103,7 @@ async function clickTopFront(
 }
 
 /** Starts the Chamfer tool from the toolbar (it has no key). */
-const startChamfer = (page: Page) => page.getByRole('button', { name: /^Chamfer/ }).click();
+const startChamfer = (page: Page) => pickTool(page, 'Chamfer');
 
 /** Clicks a point of the model in the view; a dialog's pick field takes the click. */
 async function clickWorld(

@@ -21,7 +21,7 @@ import {
   viewportOf,
   zoomOutTo,
 } from './benchmark-helpers';
-import { kernelReady, openProject } from './helpers';
+import { kernelReady, openProject, pickTool } from './helpers';
 
 // P3-08: benchmark B6 (requirements §7) built through the UI: a wall hook. A
 // back plate (`wall` thick, `width` × `height`), an arm (`reach` long, `arm`
@@ -90,8 +90,7 @@ test('B6: a wall hook with a draft and fillets on intersecting edges', async ({ 
 
   // Draft1: the arm's top and its two sides (each one face with the lip's side), about
   // the plate's front face, whose normal (+X) pulls out of the wall.
-  await page.getByRole('button', { name: 'Modify', exact: true }).click();
-  await page.getByRole('menuitem', { name: /^Draft/ }).click();
+  await pickTool(page, 'Draft');
   const draft = page.getByRole('region', { name: 'Draft dialog' });
   await expect(draft).toBeVisible();
   const faces = draft.getByRole('button', { name: 'Faces', exact: true });
@@ -115,7 +114,7 @@ test('B6: a wall hook with a draft and fillets on intersecting edges', async ({ 
 
   // Fillet1: the plate's top edges, which meet at its four top corners, and the inside
   // corner where the arm's (drafted) top leaves the plate.
-  await page.getByRole('button', { name: /^Fillet/ }).click();
+  await pickTool(page, 'Fillet');
   const fillet = page.getByRole('region', { name: 'Fillet dialog' });
   await expect(fillet).toBeVisible();
   const edges = fillet.getByRole('button', { name: 'Edges', exact: true });

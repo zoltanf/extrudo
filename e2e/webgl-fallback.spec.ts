@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openProject } from './helpers';
+import { openProject, pickTool } from './helpers';
 
 // ADR-0076: software rendering where possible, a clear message where not.
 
@@ -37,7 +37,7 @@ test.describe('no WebGL at all', () => {
 
     // The shell is mounted: the timeline and the Parameters dialog work.
     await expect(page.getByRole('status', { name: 'Status', exact: true })).toBeVisible();
-    await page.getByRole('button', { name: /^Parameters/ }).click();
+    await pickTool(page, 'Parameters');
     await expect(page.getByRole('dialog', { name: /Parameters/ })).toBeVisible();
   });
 

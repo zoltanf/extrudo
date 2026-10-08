@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openProject } from './helpers';
+import { openProject, pickTool } from './helpers';
 
 // P1-12: timeline chips and the browser tree. Right-click menus rename,
 // hide, suppress and delete; F2 renames in the browser; the pointer on a
@@ -151,7 +151,7 @@ test('suppress and delete from the menus; not while a sketch is open', async ({ 
 test('two chips fit without a scrollbar, with the marker at either end', async ({ page }) => {
   await openProject(page);
   for (let i = 0; i < 2; i++) {
-    await page.getByRole('button', { name: 'Create Sketch' }).click();
+    await pickTool(page, 'Create Sketch');
     await page
       .getByRole('region', { name: 'Create Sketch' })
       .getByRole('button', { name: 'XY' })

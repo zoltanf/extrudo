@@ -134,7 +134,7 @@ test('B5: a PCB enclosure with screw posts and countersunk lid screws', async ({
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:80,60,25');
   let at = await turnView(page, 'Shift+1');
   await clickWhere(page, at, [0, 0, 25], /^face:/);
-  await page.getByRole('button', { name: /^Shell/ }).click();
+  await pickTool(page, 'Shell');
   const shell = page.getByRole('region', { name: 'Shell dialog' });
   await expect(shell.getByRole('button', { name: 'Faces to remove', exact: true })).toHaveText(
     '1 face',
@@ -213,7 +213,7 @@ test('B5: a PCB enclosure with screw posts and countersunk lid screws', async ({
   // square shows over the open tray: a click there picks it.
   const browser = page.getByRole('complementary', { name: 'Browser' });
   await browser.getByRole('button', { name: 'Hide Body2' }).click();
-  await page.getByRole('button', { name: 'Mirror', exact: true }).click();
+  await pickTool(page, 'Mirror');
   const mirror = page.getByRole('region', { name: 'Mirror dialog' });
   await expect(mirror).toBeVisible();
   await mirror.getByRole('combobox', { name: 'Mirror' }).selectOption('features');

@@ -9,7 +9,7 @@ import {
   turnView,
   viewportOf,
 } from './benchmark-helpers';
-import { clicker, kernelReady, mapping, openProject, pickTool } from './helpers';
+import { clicker, fileAction, kernelReady, mapping, openProject, pickTool } from './helpers';
 
 // P5-05 slice 2 (ADR-0073 §4): Record and Stop, the Macro dialog, Replace and Keep both, and
 // Export Design as Script. The recorded code runs in a Script feature and gives the same body.
@@ -44,7 +44,7 @@ const shapes = async (page: Page) =>
 
 /** A 40 × 20 rectangle on XY with its bottom side dimensioned (so the sketch has d1), finished. */
 async function rectangle(page: Page) {
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XY' })
@@ -71,7 +71,7 @@ async function extrudeProfile(page: Page, distance: string) {
   await expect
     .poll(() => viewportOf(page).getAttribute('data-model-selection'))
     .toMatch(/^profile:/);
-  await page.getByRole('button', { name: /^Extrude/ }).click();
+  await pickTool(page, 'Extrude');
   const extrude = page.getByRole('region', { name: 'Extrude dialog' });
   await expect(extrude).toBeVisible();
   await extrude.getByRole('textbox', { name: 'Distance' }).fill(distance);
@@ -86,18 +86,16 @@ test('records a sketch, an extrude and a fillet, and Replace makes one Script wi
 }) => {
   await pickTool(page, 'Record Macro');
   await expect(recording(page)).toHaveAttribute('data-macro-recording', '0');
-  // Record is gone from the menu and Stop is there.
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: 'Record Macro', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('menuitem', { name: 'Stop Macro', exact: true })).toBeVisible();
-  await page.keyboard.press('Escape');
+  // Record's tile is gone from Solid › Program and Stop's is there.
+  await expect(page.locator('[data-tool="recordMacro"]')).toHaveCount(0);
+  await expect(page.locator('[data-tool="stopMacro"]')).toBeVisible();
 
   await rectangle(page);
   await finishSketch(page);
   await extrudeProfile(page, '15');
   const home = await turnView(page, 'Shift+1');
   await clickEdge(page, home, [0, -10, 15]);
-  await page.getByRole('button', { name: /^Fillet/ }).click();
+  await pickTool(page, 'Fillet');
   const fillet = page.getByRole('region', { name: 'Fillet dialog' });
   await expect(fillet).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
   await fillet.getByRole('button', { name: 'OK' }).click();
@@ -229,10 +227,9 @@ test('Export Design as Script downloads the design with its parameters', async (
   await addParameter(page, 'width', '40 mm');
   await closeParameters(page);
   await primitive(page, 'Box', { Length: 'width' }, 'new-body');
-  await page.getByRole('button', { name: 'File menu' }).click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('menuitem', { name: 'Export design as script…' }).click(),
+    fileAction(page, 'Export Design as Script…'),
   ]);
   expect(download.suggestedFilename()).toMatch(/\.ts$/);
   const text = await (await import('node:fs/promises')).readFile(await download.path(), 'utf8');

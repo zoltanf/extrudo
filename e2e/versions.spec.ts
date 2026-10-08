@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { kernelReady, openProject } from './helpers';
+import { fileAction, kernelReady, openProject } from './helpers';
 
 // P2-14: version history (FR-PRJ-03, ADR-0036). Ctrl+S saves a version with
 // a description; the history lists versions, restores one (one undo step,
@@ -77,8 +77,7 @@ test('saves versions, restores one, and opens one as a copy', async ({ page }) =
   // Versions are stored with the project.
   await page.reload();
   await kernelReady(page);
-  await page.getByRole('button', { name: 'File menu' }).click();
-  await page.getByRole('menuitem', { name: /^Version history/ }).click();
+  await fileAction(page, 'Version History…');
   const items = versionsDialog(page)
     .getByRole('list', { name: 'Saved versions' })
     .getByRole('listitem');

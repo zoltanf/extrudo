@@ -259,7 +259,7 @@ test.describe(() => {
     await page.mouse.move(top.x, top.y);
     await page.mouse.click(top.x, top.y);
     await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^face:/);
-    await page.getByRole('button', { name: 'Create Sketch' }).click();
+    await pickTool(page, 'Create Sketch');
     await expect(chip(page, 'Sketch2')).toBeVisible();
     await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
     await kernelReady(page);

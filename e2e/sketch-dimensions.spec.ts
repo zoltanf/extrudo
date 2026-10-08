@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { clicker, mapping, sketchOnXY } from './helpers';
+import { clicker, mapping, pickTool, sketchOnXY } from './helpers';
 
 // P1-07: the Sketch Dimension tool (D), editing values in place, dragging
 // labels, driven dimensions, and dimensions as parameters.
@@ -124,7 +124,8 @@ test('labels select, drag, edit, turn driven and delete', async ({ page }) => {
   await expect(labels(page)).toHaveCount(1);
 
   // A right-click on a label selects it and opens its menu: Edit Value, Delete (P3-17).
-  await page.mouse.click(10, 10);
+  // A click on the top bar's empty middle (not the logo, which leads home) unselects it.
+  await page.mouse.click((page.viewportSize()?.width ?? 1280) / 2, 20);
   await expect(label).toHaveAttribute('aria-pressed', 'false');
   await label.click({ button: 'right' });
   const menu = page.getByRole('menu', { name: 'Dimension menu' });
@@ -165,7 +166,7 @@ test('a dimension is a parameter: the Parameters dialog edits it, and it takes e
   await page.keyboard.press('Escape');
   await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
 
-  await page.getByRole('button', { name: 'Parameters', exact: true }).click();
+  await pickTool(page, 'Parameters');
   const dialog = page.getByRole('dialog', { name: 'Parameters' });
   const row = dialog.getByRole('row').filter({ hasText: 'd1' });
   await expect(row).toContainText('Sketch1');

@@ -66,7 +66,7 @@ async function clickTop(page: Page, at: (p: [number, number, number]) => { x: nu
 }
 
 /** Starts the Shell tool from the toolbar (it has no key). */
-const startShell = (page: Page) => page.getByRole('button', { name: /^Shell/ }).click();
+const startShell = (page: Page) => pickTool(page, 'Shell');
 
 test('opens the top face: 2 mm walls, live preview, and a wall that is too thick says how thick it may be', async ({
   page,

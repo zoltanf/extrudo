@@ -39,7 +39,7 @@ async function cube(page: Page, x = 0) {
   await kernelReady(page);
 }
 
-/** Selects bodies and opens a dialog from the Transform group. */
+/** Selects bodies and opens a dialog from the Modify tab's Transform group. */
 async function open(
   page: Page,
   tool: string,
@@ -48,7 +48,7 @@ async function open(
   preview = true,
 ): Promise<Locator> {
   await selectBodies(page, bodies);
-  await page.getByRole('button', { name: tool, exact: true }).click();
+  await pickTool(page, tool);
   const region = page.getByRole('region', { name: dialog });
   await expect(region).toBeVisible();
   // A move that moves nothing yet is a warning ("Nothing moves"); a mirror waits for its plane.

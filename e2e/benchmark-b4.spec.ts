@@ -25,7 +25,7 @@ import {
   turnView,
   zoomOutTo,
 } from './benchmark-helpers';
-import { kernelReady, openProject, projector } from './helpers';
+import { kernelReady, openProject, pickTool, projector } from './helpers';
 
 // P3-14: benchmark B4 (requirements §7) built through the UI: a box with a
 // lid that fits, driven by a `clearance` parameter. The box is a Box
@@ -156,8 +156,7 @@ test('B4: a box with a lid that fits, by a clearance parameter', async ({ page }
   // Offset Plane1: the rim's plane, `height` above XY (picked while nothing is in front of it).
   let at = await turnView(page, 'Shift+1');
   const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
-  const construct = page.getByRole('group', { name: 'Construct', exact: true });
-  await construct.getByRole('button', { name: /^Offset Plane/ }).click();
+  await pickTool(page, 'Offset Plane');
   const offset = page.getByRole('region', { name: 'Offset Plane dialog' });
   await expect(offset).toBeVisible();
   await clickAt(page, at, [half * 0.5, -half * 0.5, 0]);
@@ -174,7 +173,7 @@ test('B4: a box with a lid that fits, by a clearance parameter', async ({ page }
   // Shell1: the top face removed, `wall` thick.
   at = await turnView(page, 'Shift+1');
   await clickWhere(page, at, [0, 0, 30], /^face:/);
-  await page.getByRole('button', { name: /^Shell/ }).click();
+  await pickTool(page, 'Shell');
   const shell = page.getByRole('region', { name: 'Shell dialog' });
   await expect(shell.getByRole('button', { name: 'Faces to remove', exact: true })).toHaveText(
     '1 face',
@@ -196,7 +195,7 @@ test('B4: a box with a lid that fits, by a clearance parameter', async ({ page }
     [-30, 0, 0],
   ];
   await clickEdge(page, at, bottom[0] as [number, number, number]);
-  await page.getByRole('button', { name: /^Chamfer/ }).click();
+  await pickTool(page, 'Chamfer');
   const chamfer = page.getByRole('region', { name: 'Chamfer dialog' });
   const edges = chamfer.getByRole('button', { name: 'Edges', exact: true });
   await expect(edges).toHaveText('1 edge');

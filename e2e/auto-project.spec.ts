@@ -1,6 +1,14 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { primitive, settled, zoomOutTo } from './benchmark-helpers';
-import { counts, kernelReady, mapping, openProject, openSketch, projector } from './helpers';
+import {
+  counts,
+  kernelReady,
+  mapping,
+  openProject,
+  openSketch,
+  pickTool,
+  projector,
+} from './helpers';
 
 // P6-07 (ADR-0074): a body edge or vertex a sketch tool snaps to is projected
 // into the sketch on the fly. A Line end that snaps to a Box vertex brings the
@@ -43,7 +51,7 @@ async function sketchOnTopFace(page: Page): Promise<string> {
   await page.keyboard.press('Shift+1');
   await settled(viewport);
   const world = await projector(viewport);
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   const create = page.getByRole('region', { name: 'Create Sketch' });
   await expect(create).toContainText('flat face');
   const top = world([10, 10, 20]);
@@ -126,7 +134,7 @@ test('the face-outline preference projects a face a sketch starts on', async ({ 
   await page.keyboard.press('Shift+1');
   await settled(viewport);
   const world = await projector(viewport);
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   const top = world([10, 10, 20]);
   await page.mouse.move(top.x, top.y);
   await page.mouse.click(top.x, top.y);
@@ -252,7 +260,7 @@ test('a Line end snapping to a cylinder rim projects the curved edge', async ({ 
   await page.keyboard.press('Shift+1');
   await settled(viewport);
   const world = await projector(viewport);
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   const top = world([0, 0, 20]); // the cylinder's top face
   await page.mouse.move(top.x, top.y);
   await page.mouse.click(top.x, top.y);

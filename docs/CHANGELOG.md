@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.4 (Phase 4, in progress)
 
+- 2026-10-08 · **One top bar with the tabs, a Home tab, toolbars that fit the window** (the owner's UI review, ADR-0079): the app bar and the tab row are one 40 px row (logo, tabs, undo/redo/search, the design's name, settings/help/theme), the File menu's items and the Insert tab's tools are the Home tab, Solid splits into Solid, Modify, Construct and Inspect, and a narrow window moves the fullest group's last tiles into its ▾ menu (`fitToolbar`); 147 → 111 px of chrome above the view.
 - 2026-10-08 · **Icons that say what they do**: Fillet (a big round, the sharp corner dashed, a radius line) and Chamfer (a straight 45° cut, emphasised) no longer read alike, Parameters is a name = value pair (Customizer keeps its sliders), and Chamfer's tooltip has a demo clip (thirteen tools now).
 - 2026-10-08 · **The timeline is always shown**: the bottom row's Hide timeline button and its command are gone (the owner's UI review).
 - 2026-10-08 · **Opening a design says it is being prepared** (ADR-0078): a notice with an animated cube at the view's top left until the first recompute has finished (and after 800 ms of a later one), and the browser lists the bodies the last session made as pending rows from a per-project model cache (`model-cache.json`, derived, not in the file).

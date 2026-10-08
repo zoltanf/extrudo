@@ -39,7 +39,7 @@ export async function sketchOnXY(page: Page) {
 /** Starts a sketch on XY in the open project, like `sketchOnXY`. */
 export async function newSketchOnXY(page: Page) {
   const viewport = page.getByRole('region', { name: 'Viewport' });
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XY' })
@@ -116,10 +116,118 @@ export async function counts(page: Page) {
   );
 }
 
-/** Picks a tool from the Create group's menu. */
+/** The toolbar's tabs, in the top bar (ADR-0079). */
+export const toolbarTabs = (page: Page) => page.getByRole('tablist', { name: 'Toolbar tabs' });
+
+/** Selects a toolbar tab by its label ("Home", "Solid", "Modify", "3D Print"…). */
+export async function selectTab(page: Page, name: string) {
+  const tab = toolbarTabs(page).getByRole('tab', { name, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A tile of the selected tab: its accessible name, or the tool's full name (`data-label`). */
+const tileNamed = (page: Page, name: string) =>
+  page
+    .locator('#toolbar-groups button[data-tool]')
+    .and(page.getByRole('button', { name, exact: true }).or(page.locator(`[data-label="${name}"]`)))
+    .first();
+
+/** A group menu's item: its label, then the key it may show ("Text Shift+T"). */
+const menuItemNamed = (page: Page, name: string) =>
+  page.getByRole('menuitem', {
+    name: new RegExp(`^${escapeRegExp(name)}( (Shift\\+|Ctrl\\+|⌘)?[A-Z0-9]{1,3})?$`),
+  });
+
+/**
+ * Runs a toolbar tool by its name wherever it is (ADR-0079): a tile of the
+ * selected tab, else a tile of another visible tab (each tab in order), else an
+ * item of a group's ▾ menu (tools that never have a tile, or tiles a narrow
+ * window moved there).
+ */
 export async function pickTool(page: Page, name: string) {
-  await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await page.getByRole('menuitem', { name, exact: true }).click();
+  const tabs = toolbarTabs(page).getByRole('tab');
+  if ((await tileNamed(page, name).count()) > 0) {
+    await tileNamed(page, name).click();
+    return;
+  }
+  const count = await tabs.count();
+  for (let i = 0; i < count; i++) {
+    const tab = tabs.nth(i);
+    if ((await tab.getAttribute('aria-selected')) === 'true') continue;
+    await tab.click();
+    await expect(tab).toHaveAttribute('aria-selected', 'true');
+    if ((await tileNamed(page, name).count()) > 0) {
+      await tileNamed(page, name).click();
+      return;
+    }
+  }
+  for (let i = 0; i < count; i++) {
+    const tab = tabs.nth(i);
+    await tab.click();
+    await expect(tab).toHaveAttribute('aria-selected', 'true');
+    const triggers = page.locator('#toolbar-groups button[aria-haspopup="menu"]');
+    const menus = await triggers.count();
+    for (let j = 0; j < menus; j++) {
+      await triggers.nth(j).click();
+      const item = menuItemNamed(page, name);
+      await expect(page.getByRole('menu')).toBeVisible();
+      if ((await item.count()) > 0) {
+        await item.first().click();
+        return;
+      }
+      await page.keyboard.press('Escape');
+      await expect(page.getByRole('menu')).toHaveCount(0);
+    }
+  }
+  throw new Error(`No toolbar tool named "${name}"`);
+}
+
+/**
+ * Runs what used to be a File menu item (ADR-0079): a tile of the Home tab, or
+ * an item of its Files ▾ menu. `label` is the command's name ("Export .extrudo",
+ * "Save to Linked Folder", "Plugins…", "Import" for STEP, mesh and OpenSCAD).
+ */
+export async function fileAction(page: Page, label: string) {
+  await selectTab(page, 'Home');
+  const tile = tileNamed(page, label);
+  if ((await tile.count()) > 0) {
+    await tile.click();
+    return;
+  }
+  const triggers = page.locator('#toolbar-groups button[aria-haspopup="menu"]');
+  const menus = await triggers.count();
+  for (let j = 0; j < menus; j++) {
+    await triggers.nth(j).click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    const item = menuItemNamed(page, label);
+    if ((await item.count()) > 0) {
+      await item.first().click();
+      return;
+    }
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+  }
+  throw new Error(`No Home tab command named "${label}"`);
+}
+
+/** Whether the Home tab offers a command (a tile or a Files ▾ menu item). */
+export async function hasFileAction(page: Page, label: string): Promise<boolean> {
+  await selectTab(page, 'Home');
+  if ((await tileNamed(page, label).count()) > 0) return true;
+  const triggers = page.locator('#toolbar-groups button[aria-haspopup="menu"]');
+  const menus = await triggers.count();
+  for (let j = 0; j < menus; j++) {
+    await triggers.nth(j).click();
+    await expect(page.getByRole('menu')).toBeVisible();
+    const found = (await menuItemNamed(page, label).count()) > 0;
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('menu')).toHaveCount(0);
+    if (found) return true;
+  }
+  return false;
 }
 
 type At = Awaited<ReturnType<typeof sketchOnXY>>;

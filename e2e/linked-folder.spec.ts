@@ -6,7 +6,7 @@ import {
   type ParameterId,
 } from '../packages/core/src/index';
 import { readArchive, writeArchive } from '../packages/storage/src/archive';
-import { saveStatus } from './helpers';
+import { fileAction, hasFileAction, saveStatus } from './helpers';
 
 // P4-09, ADR-0065 §3: a folder on disk, linked through the File System Access
 // API. Only Chromium has it, and headless Chromium's real picker needs a
@@ -163,15 +163,12 @@ test('links a folder, saves a design into it, and writes again after an edit', a
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   await rename(page, 'Cable clip');
 
-  await page.getByRole('button', { name: 'File menu' }).click();
-  await page.getByRole('menuitem', { name: 'Save to Linked Folder' }).click();
+  await fileAction(page, 'Save to Linked Folder');
   await expect.poll(() => linkedFiles(page)).toEqual(['Cable clip.extrudo']);
   // The file is the design, exactly as an export would write it.
   expect(readArchive(await readLinked(page, 'Cable clip.extrudo')).doc.name).toBe('Cable clip');
   // Linked projects don't get the command again.
-  await page.getByRole('button', { name: 'File menu' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Save to Linked Folder' })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  expect(await hasFileAction(page, 'Save to Linked Folder')).toBe(false);
 
   // An edit, and the throttled write follows within the 10 s it allows.
   await rename(page, 'Cable clip v2');
@@ -218,9 +215,7 @@ test('opens a file from the folder as a project linked to it', async ({ page }) 
     page.getByRole('button', { name: 'Project name: From the folder. Rename' }),
   ).toBeVisible();
   // The project is linked to the file it came from, so it needs no command.
-  await page.getByRole('button', { name: 'File menu' }).click();
-  await expect(page.getByRole('menuitem', { name: 'Save to Linked Folder' })).toHaveCount(0);
-  await page.keyboard.press('Escape');
+  expect(await hasFileAction(page, 'Save to Linked Folder')).toBe(false);
 });
 
 test('a file that changed on disk is a conflict, and Overwrite wins', async ({ page }) => {
@@ -228,8 +223,7 @@ test('a file that changed on disk is a conflict, and Overwrite wins', async ({ p
   await page.getByRole('button', { name: 'New design' }).click();
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   await rename(page, 'Bracket');
-  await page.getByRole('button', { name: 'File menu' }).click();
-  await page.getByRole('menuitem', { name: 'Save to Linked Folder' }).click();
+  await fileAction(page, 'Save to Linked Folder');
   await expect.poll(() => linkedFiles(page)).toEqual(['Bracket.extrudo']);
 
   // Someone else writes the file, as a synced folder would.
@@ -252,8 +246,7 @@ test('a folder that needs permission again says so, and Reconnect grants it', as
   await page.getByRole('button', { name: 'New design' }).click();
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   await rename(page, 'Latch');
-  await page.getByRole('button', { name: 'File menu' }).click();
-  await page.getByRole('menuitem', { name: 'Save to Linked Folder' }).click();
+  await fileAction(page, 'Save to Linked Folder');
   await expect.poll(() => linkedFiles(page)).toEqual(['Latch.extrudo']);
 
   // The browser asks again after a reload: the handle is still there.
@@ -273,8 +266,7 @@ test('unlinking forgets the folder and the links, and the files stay', async ({ 
   await page.getByRole('button', { name: 'New design' }).click();
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   await rename(page, 'Tab');
-  await page.getByRole('button', { name: 'File menu' }).click();
-  await page.getByRole('menuitem', { name: 'Save to Linked Folder' }).click();
+  await fileAction(page, 'Save to Linked Folder');
 
   await page.getByRole('link', { name: /Extrudo/ }).click();
   await section(page).getByRole('button', { name: 'Unlink the folder' }).click();

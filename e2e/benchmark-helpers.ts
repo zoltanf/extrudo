@@ -9,7 +9,7 @@ import {
   readStl,
   type TriangleMesh,
 } from '../packages/io/src/index';
-import { kernelReady, pickTool, projector } from './helpers';
+import { fileAction, kernelReady, pickTool, projector } from './helpers';
 
 // Shared steps of the benchmark specs (B2, B3: requirements §7): user
 // parameters, sketch views that clear the palette, camera settling, and the
@@ -45,7 +45,7 @@ export async function selectBodies(page: Page, names: readonly string[]) {
 export const attr = async (el: Locator, name: string) => (await el.getAttribute(name)) ?? '';
 
 export async function openParameters(page: Page) {
-  await page.getByRole('button', { name: 'Parameters', exact: true }).click();
+  await pickTool(page, 'Parameters');
   await expect(parameters(page)).toBeVisible();
 }
 
@@ -199,16 +199,15 @@ export async function renameProject(page: Page, name: string) {
 }
 
 /**
- * Exports the design as an `.extrudo` file from the File menu. With
+ * Exports the design as an `.extrudo` file from the Home tab (ADR-0079). With
  * `WRITE_FIXTURES=1` the file is also written to `fixtures/benchmarks/<file>`
  * (the fixtures the kernel tests recompute: `pnpm e2e` with that variable
  * set rewrites them; review the diff).
  */
 export async function exportProject(page: Page, fixture: string): Promise<Buffer> {
-  await page.getByRole('button', { name: 'File menu' }).click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('menuitem', { name: 'Export .extrudo' }).click(),
+    fileAction(page, 'Export .extrudo'),
   ]);
   const bytes = await readFile(await download.path());
   // A zip archive.

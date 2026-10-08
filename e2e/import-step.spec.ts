@@ -1,7 +1,7 @@
 import { writeFile } from 'node:fs/promises';
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { exportModel } from './benchmark-helpers';
-import { kernelReady, openProject } from './helpers';
+import { fileAction, kernelReady, openProject, selectTab } from './helpers';
 
 // P4-06, slice 2: a STEP file as solid bodies (ADR-0066 §0, §2). The Insert
 // tab's Import picks the file, stores its bytes with the design, and opens the
@@ -51,7 +51,7 @@ async function importFile(
   file: string | { name: string; mimeType: string; buffer: Buffer },
 ): Promise<Locator> {
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('tab', { name: 'Insert' }).click();
+  await selectTab(page, 'Home');
   await page.getByRole('button', { name: 'Import', exact: true }).click();
   await (await chooser).setFiles(file);
   const panel = dialog(page);
@@ -132,10 +132,9 @@ test('the file travels with an exported design', async ({ page }, info) => {
   await expect.poll(async () => (await bodies(page)).length, { timeout: 30_000 }).toBe(2);
 
   const file = info.outputPath('imported.extrudo');
-  await page.getByRole('button', { name: 'File menu' }).click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('menuitem', { name: 'Export .extrudo' }).click(),
+    fileAction(page, 'Export .extrudo'),
   ]);
   await download.saveAs(file);
 
@@ -228,19 +227,18 @@ test('a file that is not a STEP file says so and cannot be committed', async ({ 
   expect(await bodies(page)).toEqual([]);
 });
 
-test('the File menu imports, and the drawing import needs a sketch', async ({ page }) => {
+test('the Home tab imports, and the drawing import needs a sketch', async ({ page }) => {
   await openProject(page);
   await kernelReady(page);
 
   // Outside a sketch the drawing import says why it can't run.
-  await page.getByRole('tab', { name: 'Insert' }).click();
+  await selectTab(page, 'Home');
   await page.locator('[data-tool="importDrawing"]').click();
   await expect(page.getByText('Open a sketch to import a drawing into it.')).toBeVisible();
 
-  // The File menu's Import is the same command.
+  // Home's Import is the same command whatever opened it.
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: 'File menu' }).click();
-  await page.getByRole('menuitem', { name: 'Import STEP, mesh or OpenSCAD…' }).click();
+  await fileAction(page, 'Import');
   await (await chooser).setFiles(STEP_FILE);
   const panel = dialog(page);
   await expect(panel).toBeVisible();

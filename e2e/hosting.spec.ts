@@ -3,7 +3,15 @@ import { resolve } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { headersFor, parseHeaders } from '../apps/web/pwa/headers';
 import { attr, chip, exportModel, objectsOf3mf, primitive, zoomOutTo } from './benchmark-helpers';
-import { clicker, counts, kernelReady, mapping, newSketchOnXY, pickTool } from './helpers';
+import {
+  clicker,
+  counts,
+  kernelReady,
+  mapping,
+  newSketchOnXY,
+  pickTool,
+  selectTab,
+} from './helpers';
 import { type StaticHost, startStaticHost } from './static-host';
 
 // The hosted site's headers (apps/web/public/_headers, ADR-0054). `vite preview`, which
@@ -148,7 +156,7 @@ test('an OpenSCAD import compiles under the content policy', async ({ page, requ
   await expect(viewport).toHaveAttribute('data-ready', 'true');
   await kernelReady(page);
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('tab', { name: 'Insert' }).click();
+  await selectTab(page, 'Home');
   await page.getByRole('button', { name: 'Import', exact: true }).click();
   await (await chooser).setFiles('fixtures/imports/customizer-plate.scad');
   const dialog = page.getByRole('region', { name: 'Import dialog' });

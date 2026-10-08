@@ -97,13 +97,7 @@ async function ok(page: Page, dialog: Locator) {
  * dialog: the plane's square is clicked in the view (`plane` names which).
  */
 async function offsetPlane(page: Page, plane: 'XY' | 'XZ', distance: string, viewport: Locator) {
-  const group = page.getByRole('group', { name: 'Construct', exact: true });
-  const tile = group.getByRole('button', { name: /^Offset Plane/ });
-  if (await tile.count()) await tile.click();
-  else {
-    await group.getByRole('button', { name: 'Construct', exact: true }).click();
-    await page.getByRole('menuitem', { name: /^Offset Plane/ }).click();
-  }
+  await pickTool(page, 'Offset Plane');
   const dialog = dialogOf(page, 'Offset Plane');
   await expect(dialog).toBeVisible();
   const at = await settledProjector(viewport);
@@ -130,7 +124,7 @@ async function sketchText(
   at: [number, number],
   height: string,
 ) {
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('group', { name: 'Construction planes' })
@@ -317,8 +311,7 @@ test('wraps a text round a cone (a drafted cylinder), out and in', async ({ page
   const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
 
   // Draft the wall 10° about the XY plane: it narrows towards the top, a cone.
-  await page.getByRole('button', { name: 'Modify', exact: true }).click();
-  await page.getByRole('menuitem', { name: /^Draft/ }).click();
+  await pickTool(page, 'Draft');
   const draft = dialogOf(page, 'Draft');
   await expect(draft).toBeVisible();
   await clickFace(page, at, [0, -10, 10]);
@@ -373,7 +366,7 @@ test('projects a circle onto a sphere, out and in', async ({ page }) => {
 
   // A Ø6 circle on a plane 40 mm above the sphere's centre, over its top.
   await offsetPlane(page, 'XY', '40 mm', viewport);
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('group', { name: 'Construction planes' })

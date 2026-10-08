@@ -1,27 +1,15 @@
 import { type DocumentStore, renameDocument } from '@extrudo/core';
 import {
   CircleHelp,
-  FileCode,
-  FileDown,
-  FilePlus2,
-  FileUp,
-  FolderSync,
   GraduationCap,
   History,
-  House,
-  Import,
-  Menu as MenuIcon,
   PanelsTopLeft,
-  Puzzle,
   Redo2,
-  Save,
   Search,
   Settings,
-  SlidersHorizontal,
   Undo2,
-  Upload,
 } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
@@ -43,7 +31,7 @@ import type { Autosaver } from '../project/autosave';
 import { HOME_HREF } from '../routes';
 import { ThemeMenu } from './ThemeMenu';
 
-/** What the File menu does; the project page implements it. */
+/** The design's file actions (the Home tab's commands, ADR-0079); the project page implements them. */
 export interface FileActions {
   newDesign(): void;
   home(): void;
@@ -61,7 +49,7 @@ export interface FileActions {
   versionHistory?(): void;
   /**
    * Desktop only (P6-01 slice 2): "Save As…" writes the design to a path the
-   * user chooses and links the project to it. The web File menu leaves it out;
+   * user chooses and links the project to it. The web's Home tab leaves it out;
    * the native menu offers it when `platform.files.saveAs` exists.
    */
   saveAs?(): void;
@@ -81,6 +69,8 @@ export interface AppBarProps {
   store: DocumentStore;
   autosave: Autosaver;
   file: FileActions;
+  /** The toolbar's tabs (`ToolbarTabs`), drawn after the logo (ADR-0079). */
+  tabs: ReactNode;
   theme: ThemeChoice;
   onThemeChange(theme: ThemeChoice): void;
   /** Opens command search: the Ctrl+K palette, or the S toolbox at the pointer (P1-14). */
@@ -95,14 +85,19 @@ const keyLabel = (id: string) => {
   return keys && shortcutLabel(keys);
 };
 
+/** A thin divider between the bar's clusters. */
+const Separator = () => <div className="mx-1.5 h-5 w-px shrink-0 bg-line" aria-hidden="true" />;
+
 /**
- * App bar (UI spec §2): file menu, undo/redo, command search, project name
- * and save state, settings, help, theme.
+ * The top bar (UI spec §2, ADR-0079): the logo, the toolbar's tabs, undo, redo
+ * and command search, then the design's name, its versions and save state, and
+ * settings, help and theme. The File menu it once had is the Home tab.
  */
 export function AppBar({
   store,
   autosave,
   file,
+  tabs,
   theme,
   onThemeChange,
   onSearch,
@@ -112,115 +107,52 @@ export function AppBar({
   const { canUndo, canRedo, undoLabel, redoLabel, undo, redo } = useStore(store);
 
   return (
-    <header className="flex h-11 items-center gap-1 border-b border-line bg-bg px-2">
-      <Menu
-        label="File"
-        trigger={
-          <Button variant="ghost" className="gap-1 px-2" aria-label="File menu">
-            <MenuIcon size={16} strokeWidth={1.75} />
-            File
-          </Button>
-        }
-      >
-        <MenuLabel>Project</MenuLabel>
-        <MenuItem icon={<FilePlus2 size={14} />} onSelect={file.newDesign}>
-          New design
-        </MenuItem>
-        <MenuItem icon={<House size={14} />} onSelect={file.home}>
-          All designs
-        </MenuItem>
-        {/* Autosave keeps the design; a version keeps a state of it to come back to (P2-14). */}
-        <MenuItem
-          disabled={!file.saveVersion}
-          icon={<Save size={14} />}
-          shortcut={keyLabel('saveVersion')}
-          onSelect={file.saveVersion}
+    <header className="flex h-10 items-stretch gap-1 border-b border-line bg-bg px-2">
+      <Tooltip label="All designs">
+        <a
+          href={HOME_HREF}
+          data-topbar-logo=""
+          className="flex shrink-0 items-center gap-2 self-center rounded-control px-1 py-0.5 hover:bg-accent-soft"
         >
-          Save version…
-        </MenuItem>
-        {file.versionHistory && (
-          <MenuItem icon={<History size={14} />} onSelect={file.versionHistory}>
-            Version history…
-          </MenuItem>
-        )}
-        <MenuSeparator />
-        <MenuItem icon={<Upload size={14} />} onSelect={file.exportFile}>
-          Export .extrudo
-        </MenuItem>
-        {file.exportModel && (
-          <MenuItem icon={<FileDown size={14} />} onSelect={file.exportModel}>
-            Export 3MF, STL or STEP…
-          </MenuItem>
-        )}
-        {file.exportScript && (
-          <MenuItem icon={<FileCode size={14} />} onSelect={file.exportScript}>
-            Export design as script…
-          </MenuItem>
-        )}
-        {file.importModel && (
-          <MenuItem icon={<FileUp size={14} />} onSelect={file.importModel}>
-            Import STEP, mesh or OpenSCAD…
-          </MenuItem>
-        )}
-        <MenuItem icon={<Import size={14} />} onSelect={file.importFile}>
-          Import .extrudo…
-        </MenuItem>
-        {/* The folder on disk this design is kept in, when one is linked (P4-09). */}
-        {file.saveToLinkedFolder && (
-          <MenuItem icon={<FolderSync size={14} />} onSelect={file.saveToLinkedFolder}>
-            Save to Linked Folder
-          </MenuItem>
-        )}
-        {file.plugins && (
-          <MenuItem icon={<Puzzle size={14} />} onSelect={file.plugins}>
-            Plugins…
-          </MenuItem>
-        )}
-        <MenuSeparator />
-        <MenuItem disabled icon={<SlidersHorizontal size={14} />}>
-          Project settings…
-        </MenuItem>
-      </Menu>
+          <LogoMark size={20} title="Extrudo" />
+          {/* Narrow windows keep the mark only, so the tabs fit (ADR-0079). */}
+          <Wordmark className="text-[16px] max-lg:hidden" />
+        </a>
+      </Tooltip>
+      <div className="w-1.5 shrink-0" aria-hidden="true" />
+      {tabs}
+      <div className="flex shrink-0 items-center">
+        <Separator />
+        <IconButton
+          label="Undo"
+          shortcut={keyLabel('undo')}
+          hint={undoLabel ? `Undo “${undoLabel}”.` : 'Nothing to undo.'}
+          disabled={!canUndo}
+          onClick={undo}
+        >
+          <Undo2 size={18} strokeWidth={1.75} />
+        </IconButton>
+        <IconButton
+          label="Redo"
+          shortcut={keyLabel('redo')}
+          hint={redoLabel ? `Redo “${redoLabel}”.` : 'Nothing to redo.'}
+          disabled={!canRedo}
+          onClick={redo}
+        >
+          <Redo2 size={18} strokeWidth={1.75} />
+        </IconButton>
+        <IconButton
+          label="Search commands"
+          shortcut={keyLabel('commandPalette')}
+          hint={`Find and run any command by name. ${keyLabel('toolbox')} opens the toolbox at the pointer.`}
+          onClick={() => onSearch('palette')}
+        >
+          <Search size={18} strokeWidth={1.75} />
+        </IconButton>
+        <Separator />
+      </div>
 
-      <div className="mx-1 h-5 w-px bg-line" />
-      <IconButton
-        label="Undo"
-        shortcut={keyLabel('undo')}
-        hint={undoLabel ? `Undo “${undoLabel}”.` : 'Nothing to undo.'}
-        disabled={!canUndo}
-        onClick={undo}
-      >
-        <Undo2 size={18} strokeWidth={1.75} />
-      </IconButton>
-      <IconButton
-        label="Redo"
-        shortcut={keyLabel('redo')}
-        hint={redoLabel ? `Redo “${redoLabel}”.` : 'Nothing to redo.'}
-        disabled={!canRedo}
-        onClick={redo}
-      >
-        <Redo2 size={18} strokeWidth={1.75} />
-      </IconButton>
-      <IconButton
-        label="Search commands"
-        shortcut={keyLabel('commandPalette')}
-        hint={`Find and run any command by name. ${keyLabel('toolbox')} opens the toolbox at the pointer.`}
-        onClick={() => onSearch('palette')}
-      >
-        <Search size={18} strokeWidth={1.75} />
-      </IconButton>
-
-      <div className="flex flex-1 items-center justify-center gap-2.5">
-        <Tooltip label="All designs">
-          <a
-            href={HOME_HREF}
-            className="flex items-center gap-2.5 rounded-control px-1 py-0.5 hover:bg-accent-soft"
-          >
-            <LogoMark size={22} title="Extrudo" />
-            <Wordmark className="text-[17px]" />
-          </a>
-        </Tooltip>
-        <span className="text-muted">/</span>
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
         <ProjectName store={store} name={name} />
         {file.versionHistory && (
           <IconButton
@@ -232,42 +164,45 @@ export function AppBar({
           </IconButton>
         )}
         <SaveStatus autosave={autosave} />
+        <div className="w-1 shrink-0" aria-hidden="true" />
       </div>
 
-      <IconButton label="Settings" hint="Arrives with P1." disabled>
-        <Settings size={18} strokeWidth={1.75} />
-      </IconButton>
-      <Menu
-        label="Help"
-        align="end"
-        trigger={
-          <IconButton label="Help">
-            <CircleHelp size={18} strokeWidth={1.75} />
-          </IconButton>
-        }
-      >
-        <MenuLabel>Help</MenuLabel>
-        <MenuItem
-          icon={<Search size={14} />}
-          shortcut={keyLabel('commandPalette')}
-          onSelect={() => onSearch('palette')}
+      <div className="flex shrink-0 items-center gap-1">
+        <IconButton label="Settings" hint="Arrives with P1." disabled>
+          <Settings size={18} strokeWidth={1.75} />
+        </IconButton>
+        <Menu
+          label="Help"
+          align="end"
+          trigger={
+            <IconButton label="Help">
+              <CircleHelp size={18} strokeWidth={1.75} />
+            </IconButton>
+          }
         >
-          Search commands…
-        </MenuItem>
-        <MenuItem
-          icon={<PanelsTopLeft size={14} />}
-          shortcut={keyLabel('toolbox')}
-          onSelect={() => onSearch('toolbox')}
-        >
-          Toolbox…
-        </MenuItem>
-        <MenuSeparator />
-        {/* Five steps that build a box (P3-12). */}
-        <MenuItem icon={<GraduationCap size={14} />} onSelect={onTutorial}>
-          Tutorial
-        </MenuItem>
-      </Menu>
-      <ThemeMenu theme={theme} onThemeChange={onThemeChange} />
+          <MenuLabel>Help</MenuLabel>
+          <MenuItem
+            icon={<Search size={14} />}
+            shortcut={keyLabel('commandPalette')}
+            onSelect={() => onSearch('palette')}
+          >
+            Search commands…
+          </MenuItem>
+          <MenuItem
+            icon={<PanelsTopLeft size={14} />}
+            shortcut={keyLabel('toolbox')}
+            onSelect={() => onSearch('toolbox')}
+          >
+            Toolbox…
+          </MenuItem>
+          <MenuSeparator />
+          {/* Five steps that build a box (P3-12). */}
+          <MenuItem icon={<GraduationCap size={14} />} onSelect={onTutorial}>
+            Tutorial
+          </MenuItem>
+        </Menu>
+        <ThemeMenu theme={theme} onThemeChange={onThemeChange} />
+      </div>
     </header>
   );
 }
@@ -291,7 +226,7 @@ function ProjectName({ store, name }: { store: DocumentStore; name: string }) {
       trigger={
         <button
           type="button"
-          className="rounded-input px-1.5 py-0.5 font-semibold hover:bg-accent-soft"
+          className="min-w-0 max-w-64 truncate rounded-input px-1.5 py-0.5 font-semibold hover:bg-accent-soft"
           aria-label={`Project name: ${name}. Rename`}
         >
           {name}
@@ -353,9 +288,10 @@ function SaveStatus({ autosave }: { autosave: Autosaver }) {
   }[status];
   return (
     <Tooltip label={view.text} hint={view.hint}>
-      <span className={`${badge} text-muted`} tabIndex={-1}>
+      <span className={`${badge} shrink-0 text-muted`} tabIndex={-1}>
         <span className={`size-1.5 rounded-full ${view.dot}`} aria-hidden="true" />
-        <span role="status" aria-label="Save status">
+        {/* A narrow window keeps the dot; the word stays for screen readers (ADR-0079). */}
+        <span role="status" aria-label="Save status" className="max-lg:sr-only">
           {view.text}
         </span>
       </span>

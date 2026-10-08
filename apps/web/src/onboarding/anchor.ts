@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { tabOfTool } from '../shell/tools';
 
 export interface Box {
   left: number;
@@ -9,6 +10,16 @@ export interface Box {
 
 /** The selector of a toolbar tool's button (`data-tool` is on every tile). */
 export const toolSelector = (id: string) => `[data-tool="${id}"]`;
+
+/**
+ * Where a toolbar tool is: its tile, else the tab that holds it (ADR-0079), when
+ * another tab is selected or the tile is in its group's menu. `a || b` means the
+ * first of the two that is on the page (`useTargetBox`).
+ */
+export const toolOrTabSelector = (id: string, mode: 'model' | 'sketch'): string => {
+  const tab = tabOfTool(id, mode);
+  return tab ? `${toolSelector(id)} || [role="tab"][data-tab="${tab}"]` : toolSelector(id);
+};
 
 const same = (a: Box | undefined, b: Box | undefined) =>
   a === b ||
@@ -33,7 +44,12 @@ export function useTargetBox(selector: string | undefined): Box | undefined {
       return;
     }
     const measure = () => {
-      const element = document.querySelector(selector);
+      // `a || b`: the first selector that finds something (CSS has no "else").
+      let element: Element | null = null;
+      for (const part of selector.split(' || ')) {
+        element = document.querySelector(part);
+        if (element) break;
+      }
       const rect = element?.getBoundingClientRect();
       const next =
         rect && rect.width > 0 && rect.height > 0

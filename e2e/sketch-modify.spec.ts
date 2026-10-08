@@ -122,20 +122,15 @@ test('offset a rectangle by a typed distance, and mirror it from the Create menu
   await expect.poll(async () => (await counts(page)).lines).toBe(13);
 });
 
-test('the Modify menu lists every modify tool', async ({ page }) => {
+test('the Modify group has every modify tool, as a tile or in its menu', async ({ page }) => {
   await sketchOnXY(page);
+  const group = page.getByRole('group', { name: 'Modify', exact: true });
+  for (const name of ['Sketch Fillet', 'Trim', 'Offset']) {
+    await expect(group.locator(`button[data-tool][data-label="${name}"]`)).toBeEnabled();
+  }
+  // The menu lists the tools that aren't tiles (ADR-0079).
   await page.getByRole('button', { name: 'Modify', exact: true }).click();
-  for (const name of [
-    'Sketch Fillet',
-    'Trim',
-    'Offset',
-    'Sketch Chamfer',
-    'Extend',
-    'Break',
-    'Move',
-    'Copy',
-    'Sketch Scale',
-  ]) {
+  for (const name of ['Sketch Chamfer', 'Extend', 'Break', 'Move', 'Copy', 'Sketch Scale']) {
     // A menu item's name ends with its shortcut ("Trim T").
     await expect(page.getByRole('menuitem', { name: new RegExp(`^${name}( .)?$`) })).toBeEnabled();
   }

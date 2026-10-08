@@ -1,7 +1,16 @@
 import { readFile } from 'node:fs/promises';
 import { type Download, expect, type Page, test } from '@playwright/test';
 import { exportProject, renameProject } from './benchmark-helpers';
-import { clicker, counts, mapping, newSketchOnXY, openProject, saveStatus } from './helpers';
+import {
+  clicker,
+  counts,
+  mapping,
+  newSketchOnXY,
+  openProject,
+  pickTool,
+  saveStatus,
+  selectTab,
+} from './helpers';
 
 // P1-15: benchmark B1 (requirements §7) built through the UI, the Phase 1
 // exit: a plate with four corner holes, fully constrained, its dimensions
@@ -33,7 +42,7 @@ const toolPrompt = (page: Page) => page.getByRole('status', { name: 'Tool prompt
 const exportDialog = (page: Page) => page.getByRole('dialog', { name: 'Export sketch' });
 
 async function openParameters(page: Page) {
-  await page.getByRole('button', { name: 'Parameters', exact: true }).click();
+  await pickTool(page, 'Parameters');
   await expect(parameters(page)).toBeVisible();
 }
 
@@ -286,7 +295,9 @@ test('B1: a parametric plate with four corner holes', async ({ page }) => {
   // The design as it stands is the benchmark's fixture (fixtures/benchmarks/).
   await exportProject(page, 'b1-plate.extrudo');
 
-  // The export is the plate as the parameters now make it, to the digit.
+  // The export is the plate as the parameters now make it, to the digit (the export of the
+  // design above left the Home tab selected).
+  await selectTab(page, 'Sketch');
   await page
     .getByRole('group', { name: 'Export' })
     .getByRole('button', { name: 'Export', exact: true })

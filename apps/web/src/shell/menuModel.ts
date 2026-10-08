@@ -48,11 +48,18 @@ export interface MenuModelOptions {
   mac?: boolean;
 }
 
-/** The menu a command belongs to: the leading segment of its group ("Solid › Create" → "Solid"). */
+/**
+ * The menu a command belongs to: the leading segment of its group ("Solid › Create" →
+ * "Solid"). The Home tab's commands (ADR-0079) are the native File menu, where a desktop
+ * app keeps a design's files.
+ */
 function topMenu(group: string): string {
   const index = group.indexOf(' › ');
-  return index === -1 ? group : group.slice(0, index);
+  const top = index === -1 ? group : group.slice(0, index);
+  return top === HOME_TAB ? 'File' : top;
 }
+
+const HOME_TAB = 'Home';
 
 /** The sub-group inside a tab menu ("Solid › Create" → "Create"), for separators. */
 function subGroup(group: string): string | undefined {
@@ -117,8 +124,9 @@ const toItem = (command: AppCommand): MenuItemModel => {
 };
 
 /**
- * The menus for the current mode. File, Edit, View (with Panels and Theme
- * folded in), a menu per visible tab (Solid/Sketch, Insert, 3D Print) and Help,
+ * The menus for the current mode. File (the Home tab), Edit, View (with Panels and
+ * Theme folded in), a menu per other visible tab (Solid, Modify, Construct, Inspect or
+ * Sketch, 3D Print) and Help,
  * with the macOS Window menu before Help. Commands a mode hides are absent, and
  * an unavailable command is a disabled item.
  */
@@ -135,7 +143,9 @@ export function menuModel(
     else groups.set(menu, [command]);
   }
 
-  const tabOrder = visibleTabs(mode).map((tab) => tab.label);
+  const tabOrder = visibleTabs(mode)
+    .map((tab) => tab.label)
+    .filter((label) => label !== HOME_TAB);
   const order = ['File', 'Edit', 'View', ...tabOrder, ...(options.mac ? ['Window'] : []), 'Help'];
 
   const menus: MenuModel[] = [];

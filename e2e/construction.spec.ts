@@ -1,6 +1,14 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { clickEdge, clickWhere, primitive } from './benchmark-helpers';
-import { clicker, kernelReady, mapping, newSketchOnXY, openProject, projector } from './helpers';
+import {
+  clicker,
+  kernelReady,
+  mapping,
+  newSketchOnXY,
+  openProject,
+  pickTool,
+  projector,
+} from './helpers';
 
 // P3-05: construction geometry (ADR-0040, FR-FT-13). An offset plane is
 // picked in the view, previews and commits; a sketch lies on it and its
@@ -27,16 +35,9 @@ const chip = (page: Page, name: string) =>
     .getByRole('button', { name: new RegExp(`^${name}`) });
 const prompt = (page: Page) => page.getByRole('status', { name: 'Tool prompt' });
 
-/** Runs a Construct-group tool from its tile or the group's menu, and waits for its dialog. */
-async function startConstruction(page: Page, label: string, tileName = label) {
-  const group = page.getByRole('group', { name: 'Construct', exact: true });
-  const tile = group.getByRole('button', { name: new RegExp(`^${tileName}`) });
-  if (await tile.count()) {
-    await tile.click();
-  } else {
-    await group.getByRole('button', { name: 'Construct', exact: true }).click();
-    await page.getByRole('menuitem', { name: new RegExp(`^${label}`) }).click();
-  }
+/** Runs a Construct tab tool from its tile or its group's menu, and waits for its dialog. */
+async function startConstruction(page: Page, label: string) {
+  await pickTool(page, label);
   const dialog = page.getByRole('region', { name: `${label} dialog` });
   await expect(dialog).toBeVisible();
   return dialog;
@@ -122,7 +123,7 @@ test('an offset plane: picked in the view, previewed, a sketch on it, its extrud
   await expect(viewport).toHaveAttribute('data-construction', /Offset_Plane1/);
 
   // A sketch on it: Create Sketch lists the construction plane beside the origin planes.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('group', { name: 'Construction planes' })
@@ -150,7 +151,7 @@ test('an offset plane: picked in the view, previewed, a sketch on it, its extrud
   await page.mouse.move(inside.x, inside.y);
   await page.mouse.click(inside.x, inside.y);
   await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
-  await page.getByRole('button', { name: 'Extrude', exact: true }).click();
+  await pickTool(page, 'Extrude');
   const extrude = page.getByRole('region', { name: 'Extrude dialog' });
   await extrude.getByRole('textbox', { name: 'Distance' }).fill('8 mm');
   await expect(extrude).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
@@ -202,7 +203,7 @@ test('an axis through two construction points is the axis of a revolve', async (
   await page.keyboard.press('Shift+2');
   await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
   const at = await settledProjector(viewport);
-  const axis = await startConstruction(page, 'Axis Through 2 Points', '2-Point Axis');
+  const axis = await startConstruction(page, 'Axis Through 2 Points');
   await clickAt(page, at, [-10, 0, 0]);
   await clickAt(page, at, [-10, 45, 0]);
   await expect(axis.getByRole('button', { name: 'Points', exact: true })).toHaveText('2 points');
@@ -225,7 +226,7 @@ test('an axis through two construction points is the axis of a revolve', async (
   await page.mouse.move(inside.x, inside.y);
   await page.mouse.click(inside.x, inside.y);
   await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
-  await page.getByRole('button', { name: 'Revolve', exact: true }).click();
+  await pickTool(page, 'Revolve');
   const revolve = page.getByRole('region', { name: 'Revolve dialog' });
   await expect(revolve.getByRole('button', { name: 'Axis', exact: true })).toHaveAttribute(
     'aria-pressed',

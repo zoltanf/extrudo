@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openProject } from './helpers';
+import { openProject, pickTool } from './helpers';
 
 // P0-07: the Parameters dialog, opened from the toolbar (P0-04). Values
 // update live, unit errors and cycles show inline and are never committed,
@@ -20,7 +20,7 @@ test.beforeEach(async ({ page }) => {
   errors = [];
   page.on('pageerror', (err) => errors.push(err.message));
   await openProject(page, 'wall-bracket');
-  await page.getByRole('button', { name: 'Parameters', exact: true }).click();
+  await pickTool(page, 'Parameters');
   await expect(page.getByRole('dialog', { name: 'Parameters' })).toBeVisible();
 });
 

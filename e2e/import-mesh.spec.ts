@@ -11,7 +11,7 @@ import {
   turnView,
   viewportOf,
 } from './benchmark-helpers';
-import { clicker, kernelReady, mapping, openProject } from './helpers';
+import { clicker, kernelReady, mapping, openProject, pickTool, selectTab } from './helpers';
 
 // P4-06, slice 3: mesh bodies (ADR-0066 §3). An STL, 3MF or OBJ the user
 // picks becomes one body of triangles per piece; the browser tags it "Mesh",
@@ -63,7 +63,7 @@ const sizes = async (page: Page) => (await bodies(page)).map((b) => b.size);
 /** The Insert tab's Import tile, then a file through the platform's picker. */
 async function importFile(page: Page, file: string): Promise<Locator> {
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('tab', { name: 'Insert' }).click();
+  await selectTab(page, 'Home');
   await page.getByRole('button', { name: 'Import', exact: true }).click();
   await (await chooser).setFiles(file);
   const panel = dialog(page);
@@ -171,7 +171,7 @@ test('a feature that needs a solid refuses a mesh body with one message', async 
   await solidTab(page);
   // A fillet needs an edge to round, and the body's edges are creases: picking
   // skips them, so the field stays empty and the dialog can't commit.
-  await page.getByRole('button', { name: /^Fillet/ }).click();
+  await pickTool(page, 'Fillet');
   const fillet = page.getByRole('region', { name: 'Fillet dialog' });
   await expect(fillet).toBeVisible();
   await page.mouse.click(x, y);
@@ -187,7 +187,7 @@ test('a feature that needs a solid refuses a mesh body with one message', async 
   // refuses it with the one mesh-body message (ADR-0066 §3).
   await page.mouse.click(x, y);
   await expect(viewportOf(page)).toHaveAttribute('data-model-selection', /^face:/);
-  await page.getByRole('button', { name: /^Shell/ }).click();
+  await pickTool(page, 'Shell');
   const shell = page.getByRole('region', { name: 'Shell dialog' });
   await expect(shell).toBeVisible();
   await expect(shell.getByRole('button', { name: 'Faces to remove', exact: true })).toHaveText(
@@ -261,8 +261,7 @@ async function circleBelow(page: Page) {
   const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
 
   // An offset plane 10 mm below the XY plane, on the cube's own square.
-  const construct = page.getByRole('group', { name: 'Construct', exact: true });
-  await construct.getByRole('button', { name: /^Offset Plane/ }).click();
+  await pickTool(page, 'Offset Plane');
   const plane = page.getByRole('region', { name: 'Offset Plane dialog' });
   await expect(plane).toBeVisible();
   const corner = at([half * 0.5, -half * 0.5, 0]);
@@ -273,7 +272,7 @@ async function circleBelow(page: Page) {
   await expect(chip(page, 'Offset Plane1')).toBeVisible();
 
   // The circle on it, at the cube's centre. The grid would snap a 3 mm radius.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('group', { name: 'Construction planes' })
@@ -369,7 +368,7 @@ test('a box joined to a mesh body becomes one mesh body, and says so', async ({ 
     await page.mouse.move(x, y);
     await page.mouse.click(x, y);
   };
-  await page.getByRole('button', { name: 'Combine', exact: true }).click();
+  await pickTool(page, 'Combine');
   const dialog = page.getByRole('region', { name: 'Combine dialog' });
   await expect(dialog).toBeVisible();
   // The box's top face, clear of the cube, then the cube's own top face.
@@ -411,7 +410,7 @@ test('a mesh body moves, and splits along a plane', async ({ page }) => {
   // Move the cube 10 mm along x: 10…30.
   await solidTab(page);
   await selectBodies(page, ['Body1']);
-  await page.getByRole('button', { name: 'Move', exact: true }).click();
+  await pickTool(page, 'Move');
   const move = page.getByRole('region', { name: 'Move dialog' });
   await expect(move).toBeVisible();
   await move.getByRole('textbox', { name: 'X distance' }).fill('10 mm');
@@ -434,8 +433,7 @@ test('a mesh body moves, and splits along a plane', async ({ page }) => {
   await solidTab(page);
   await selectBodies(page, ['Body1']);
   const at = await turnView(page, 'Shift+1');
-  await page.getByRole('button', { name: 'Modify', exact: true }).click();
-  await page.getByRole('menuitem', { name: /^Split Body/ }).click();
+  await pickTool(page, 'Split Body');
   const split = page.getByRole('region', { name: 'Split Body dialog' });
   await expect(split).toBeVisible();
   await expect(split.getByRole('button', { name: 'Bodies', exact: true })).toHaveText('Body1');

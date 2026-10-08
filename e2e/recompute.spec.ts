@@ -3,7 +3,7 @@
 // unit-tested in packages/kernel (engine.test.ts, recomputer.test.ts); this
 // covers the real worker, Comlink and the status display.
 import { expect, type Page, test } from '@playwright/test';
-import { kernelReady, openProject } from './helpers';
+import { kernelReady, openProject, pickTool } from './helpers';
 
 const kernel = (page: Page) => page.getByRole('status', { name: 'Kernel' });
 const status = (page: Page) => page.getByRole('status', { name: 'Status', exact: true });
@@ -19,7 +19,7 @@ test('the kernel computes a new design, and a sketch in it', async ({ page }) =>
   await kernelReady(page);
   await expect(kernel(page)).toContainText(/computed in [\d.]+ ms/);
 
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XY' })

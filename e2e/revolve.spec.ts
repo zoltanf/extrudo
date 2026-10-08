@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { clicker, kernelReady, sketchOnXY } from './helpers';
+import { clicker, kernelReady, pickTool, sketchOnXY } from './helpers';
 
 // P2-07: Revolve in a real project (ADR-0029). A rectangle beside the Y
 // axis is revolved about the origin axis (pre-selected with the profile) a
@@ -65,7 +65,7 @@ test('revolves a profile about an origin axis a whole turn, then edits it to a q
     .toMatch(/^profile:\S+ axis:origin:y$/);
   await expect(page.locator('output[aria-label="Selection"]')).toContainText('1 profile, 1 axis');
 
-  await page.getByRole('button', { name: 'Revolve', exact: true }).click();
+  await pickTool(page, 'Revolve');
   const dialog = page.getByRole('region', { name: 'Revolve dialog' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole('button', { name: 'Profiles', exact: true })).toHaveText(
@@ -141,7 +141,7 @@ test('revolves about a sketch line picked in the view, symmetric, half a turn', 
   const onAxis = at(0, 45);
   await page.mouse.move(onAxis.x, onAxis.y);
   await expect.poll(() => attr(viewport, 'data-model-hover')).not.toBe('axis:origin:y');
-  await page.getByRole('button', { name: 'Revolve', exact: true }).click();
+  await pickTool(page, 'Revolve');
   const dialog = page.getByRole('region', { name: 'Revolve dialog' });
   const axis = dialog.getByRole('button', { name: 'Axis', exact: true });
   // The axis is the field picks go to now.

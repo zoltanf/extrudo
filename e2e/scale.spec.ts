@@ -35,8 +35,7 @@ test('scales a cube uniformly, then per axis', async ({ page }) => {
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:20,20,20');
 
   await selectBodies(page, ['Body1']);
-  await page.getByRole('button', { name: 'Modify', exact: true }).click();
-  await page.getByRole('menuitem', { name: /^Scale/ }).click();
+  await pickTool(page, 'Scale');
   const dialog = page.getByRole('region', { name: 'Scale dialog' });
   await expect(dialog.getByRole('button', { name: 'Bodies', exact: true })).toHaveText('Body1');
   // A factor of 1 changes nothing: a warning until it is set.

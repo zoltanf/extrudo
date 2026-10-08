@@ -57,8 +57,7 @@ test('splits a cube along the YZ plane into two bodies, then keeps one side', as
   expect(half * 0.75).toBeGreaterThan(11);
 
   await selectBodies(page, ['Body1']);
-  await page.getByRole('button', { name: 'Modify', exact: true }).click();
-  await page.getByRole('menuitem', { name: /^Split Body/ }).click();
+  await pickTool(page, 'Split Body');
   const dialog = page.getByRole('region', { name: 'Split Body dialog' });
   await expect(dialog.getByRole('button', { name: 'Bodies', exact: true })).toHaveText('Body1');
   // The plane is the next field to pick, like Create Sketch's plane.

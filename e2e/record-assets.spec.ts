@@ -341,7 +341,7 @@ test('demo: revolve', async ({ page }) => {
   await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/axis:origin:y/);
   const dialog = page.getByRole('region', { name: 'Revolve dialog' });
   await record(page, 'revolve', async () => {
-    await page.getByRole('button', { name: 'Revolve', exact: true }).click();
+    await pickTool(page, 'Revolve');
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
     await page.waitForTimeout(580);
@@ -427,7 +427,7 @@ test('demo: shell', async ({ page }) => {
   const dialog = page.getByRole('region', { name: 'Shell dialog' });
   await record(page, 'shell', async () => {
     await pickModel(page, p, at, [0, 0, 20], 'face');
-    await page.getByRole('button', { name: /^Shell/ }).click();
+    await pickTool(page, 'Shell');
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
     await page.waitForTimeout(390);
@@ -812,7 +812,7 @@ test("walkthrough: the landing page's steps", async ({ page }) => {
   // Step 4: shell it 2 mm inside, the top face removed: the tray.
   await clickWhere(page, home, [0, 0, 30], /^face:/);
   await expect(viewport).toHaveAttribute('data-model-selection', /^face:/);
-  await page.getByRole('button', { name: /^Shell/ }).click();
+  await pickTool(page, 'Shell');
   const shell = page.getByRole('region', { name: 'Shell dialog' });
   await expect(shell).toBeVisible();
   await expect(shell.getByRole('button', { name: 'Faces to remove', exact: true })).toHaveText(
@@ -826,7 +826,7 @@ test("walkthrough: the landing page's steps", async ({ page }) => {
 
   // Step 5: a sketch on the front wall's outside face (y = -depth/2), a USB slot.
   const front = await frameTight(page);
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await expect(page.getByRole('region', { name: 'Create Sketch' })).toContainText('flat face');
   const frontPoint = front([20, -30, 15]);
   await page.mouse.move(frontPoint.x, frontPoint.y);
@@ -1044,7 +1044,7 @@ test("walkthrough: the landing page's steps", async ({ page }) => {
   const params = page.getByRole('dialog', { name: 'Parameters' });
   await params.getByRole('button', { name: 'Show width in customizer' }).click();
   await closeParameters(page);
-  await page.getByRole('button', { name: 'Customizer', exact: true }).click();
+  await pickTool(page, 'Customizer');
   const customizer = page.getByRole('region', { name: 'Customizer' });
   await expect(customizer).toHaveAttribute('data-customizer-state', 'parameters');
   const widthValue = customizer.getByRole('textbox', { name: 'Expression of width', exact: true });

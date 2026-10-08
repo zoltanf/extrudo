@@ -123,7 +123,7 @@ test('B7: a knurled knob, revolved, chamfered and grooved all round', async ({ p
   await closeParameters(page);
 
   // Sketch1 on XZ (sketch x is world X, sketch y is world Z): the half section, from the origin.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XZ' })
@@ -177,7 +177,7 @@ test('B7: a knurled knob, revolved, chamfered and grooved all round', async ({ p
   await page.mouse.move(inside.x, inside.y);
   await page.mouse.click(inside.x, inside.y);
   await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
-  await page.getByRole('button', { name: 'Revolve', exact: true }).click();
+  await pickTool(page, 'Revolve');
   const revolve = page.getByRole('region', { name: 'Revolve dialog' });
   await expect(revolve.getByRole('button', { name: 'Profiles', exact: true })).toHaveText(
     /^Profile · Sketch\d+$/,
@@ -191,7 +191,7 @@ test('B7: a knurled knob, revolved, chamfered and grooved all round', async ({ p
   let at = await turnView(page, 'Shift+1');
   const toward = 15 / Math.SQRT2;
   await clickEdge(page, at, [toward, -toward, 16]);
-  await page.getByRole('button', { name: /^Chamfer/ }).click();
+  await pickTool(page, 'Chamfer');
   const chamfer = page.getByRole('region', { name: 'Chamfer dialog' });
   await expect(chamfer.getByRole('button', { name: 'Edges', exact: true })).toHaveText('1 edge');
   await fill(chamfer, { Distance: 'bevel' });

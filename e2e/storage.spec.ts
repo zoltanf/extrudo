@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openProject, saveStatus } from './helpers';
+import { fileAction, openProject, pickTool, saveStatus } from './helpers';
 
 // P0-08: projects live in the browser (OPFS + IndexedDB), autosave with a
 // visible state, the home screen, `.extrudo` export and import, and the
@@ -96,10 +96,9 @@ test('export and import round-trip a project as an .extrudo file', async ({ page
   expect(timeline.length).toBeGreaterThan(1);
   const original = page.url();
 
-  await page.getByRole('button', { name: 'File menu' }).click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('menuitem', { name: 'Export .extrudo' }).click(),
+    fileAction(page, 'Export .extrudo'),
   ]);
   expect(download.suggestedFilename()).toBe('Bracket v2.extrudo');
   const file = info.outputPath('Bracket v2.extrudo');
@@ -122,7 +121,7 @@ test('export and import round-trip a project as an .extrudo file', async ({ page
   ).toBeVisible();
   await expect(chips).toHaveCount(timeline.length);
   expect(await chips.allTextContents()).toEqual(timeline);
-  await page.getByRole('button', { name: 'Parameters', exact: true }).click();
+  await pickTool(page, 'Parameters');
   await expect(page.getByRole('textbox', { name: 'Expression of wall', exact: true })).toHaveValue(
     '2.4 mm',
   );

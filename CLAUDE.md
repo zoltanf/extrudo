@@ -372,7 +372,7 @@ takes `{ id, name, color? }` (`StepBody`). `@extrudo/io` has
 `write3mf`/`read3mf` (fflate; colours as `m:colorgroup` with object
 `pid`/`pindex` and per-triangle `pid`/`p1`). The app's
 `apps/web/src/export/` (`ExportModelDialog`, `modelExport.ts`) opens from
-3D Print › Export, the File menu and a body's menu. ADR-0033
+3D Print › Export, Home › Export Model (ADR-0079) and a body's menu. ADR-0033
 (P2-11) added timeline v2 (**P4-12 draws the ghost of lost geometry**: the
 fingerprint stored with a lost or guessed reference becomes dashed
 `--x-error` marks, `viewport/ghostGeometry.ts` pure and `Ghosts.tsx`, for the
@@ -405,7 +405,7 @@ panel and the in-view line. ADR-0036 (P2-14) added versions:
 carry `versions/`), core's `restoreVersion` command (one undo step; ID,
 name and dates stay), `apps/web/src/project/versions.ts` (restore keeps
 the current state as a version first; Open copy makes a new design) and
-`VersionsDialog.tsx` (Ctrl+S, File menu, the clock beside the name).
+`VersionsDialog.tsx` (Ctrl+S, Home › Versions, the clock beside the name).
 ADR-0037 (P2-15) added the offline precache: a hand-written service
 worker (`apps/web/pwa/sw.js`; `pwa/precache-plugin.ts` lists the build's
 files into `dist/sw.js` and versions it; registration in
@@ -600,8 +600,8 @@ are renamed `<op>:<feature>:from:(<name>)`**: with the original's names
 `resolveRef` sees two exact matches and guesses by fingerprint. The gizmo is
 the dialog framework's manipulators (`apps/web/src/features/move.ts`:
 `moveManipulators`, an arrow per axis from its box face and a ring per axis
-at the box centre); the Solid tab has a Transform group (Move `M`, Mirror,
-Combine) and bodies selected before a tool fill its fields in order.
+at the box centre); the Modify tab has a Transform group (Move `M`, Mirror,
+Combine, Split Body, Scale; ADR-0079) and bodies selected before a tool fill its fields in order.
 The marking menu's Move wedge is the `move` command (ADR-0042).
 ADR-0045 (P3-09) added section analysis (`apps/web/src/section/`, no kernel
 or schema change): **the section is view state** (`viewport.section`:
@@ -618,7 +618,7 @@ body by the stencil method in `viewport/SectionCap.tsx` (the canvas asks
 for `stencil: true`), tinted through `capColors`. **`pick.ts` skips what
 is clipped and treats what lies behind a cap as occluded** (`capDepth`),
 so a new pick path must go through `pickStack`/`pickBox`. The tool is
-Solid › Inspect › Section Analysis (`Shift+S`, session tool `section`,
+Inspect › Inspect › Section Analysis (ADR-0079; `Shift+S`, session tool `section`,
 panel `SectionPanel`, arrow `SectionOverlay`), the browser has an
 Analysis folder while a section exists, and a selected flat face takes it
 at once ("Section Here" in the context list). **P4-12 (ADR-0045's amendment)
@@ -739,7 +739,7 @@ on "Measuring…" (ADR-0072's 400,000 was over its own 50 ms at the measured
 ADR-0047 (P3-07) added patterns: `rectangularPattern`, `circularPattern` and
 `pathPattern` (`packages/core/src/pattern.ts`, kernel `features/pattern.ts`,
 `pattern-layout.ts`, `pattern-path.ts`, dialogs `apps/web/src/features/pattern.ts`;
-the tools sit in Solid › Create's menu). The **original counts as an instance**
+the tools are Solid › Pattern's tiles since ADR-0079). The **original counts as an instance**
 (count 3 = two copies). `objects` is `bodies` (copies, or `join` into the
 original) or `features`: the tool a solid feature that joins or cuts made
 (`operate`'s `PreviewTool` now carries its `names`) is copied to every
@@ -876,7 +876,7 @@ of faces did not fall out of Offset Face and stay open.
 ADR-0053 (P3-08, second half; B6 of P3-14) added **Split Body**, **Scale** and
 **Draft** (core `split-body.ts`, `scale.ts`, `draft.ts`; kernel
 `features/split-body.ts`, `scale.ts`, `draft.ts`; dialogs of the same names;
-tools in Solid › Modify's menu, no keys). **Split Body needs no facade
+tools in the Modify tab since ADR-0079: Split Body and Scale in Transform, Draft in Modify; no keys). **Split Body needs no facade
 change**: each side is the `common` of the body and a box on that side of the
 plane (placed by `transform`), the two sides named as one compound so a face
 cut in two is `#1`/`#2` (names stay unique across bodies, which `resolveRef`
@@ -985,7 +985,7 @@ hero, the scroll deals the nine pictures like a deck, a timeline rail of chips w
 the amber marker; the `ol` of figures stays, visually hidden, for screen readers).
 ADR-0055 (P4-01) added **Sweep, Loft and Coil** (core `sweep.ts`, `loft.ts`,
 `coil.ts`; kernel `features/sweep.ts`, `loft.ts`, `coil.ts`; dialogs of the
-same names in Solid › Create's menu, no keys; all three patternable). The
+same names, Solid › Create's tiles since ADR-0079, no keys; all three patternable). The
 facade's `pathSketch` (curves staged with `sketch*`, placed in a frame: paths
 stay exact; the sketch output's `exact` curves feed it), `pathEdge`,
 `pathWire` (chains pieces in any order), `helix` (**one edge per turn**: one edge for all turns made booleans slow and wrong), `sweep` (MakePipeShell per
@@ -1101,8 +1101,8 @@ the face's edge or outline as seen from the sketch); the method is no input but
 an `EmbossReport` (`Preview.emboss`, the dialog's read-only "Method" line). A
 wrap may run up to a whole turn ("The profile is wider than the face's
 circumference."); "tangent to the face" and several faces stay deferred. Native
-harness `spikes/p4-12-emboss-faces/`. The tool is `emboss` in Solid ›
-Create's menu after Coil, no key; `e2e/emboss.spec.ts` covers both kinds of face
+harness `spikes/p4-12-emboss-faces/`. The tool is `emboss`, a tile of Solid ›
+Features (ADR-0079), no key; `e2e/emboss.spec.ts` covers both kinds of face
 in both modes. Native harness: `spikes/p4-04-harness/`.
 ADR-0061 (P4-03b) added **user fonts as attachments**: `doc.attachments` holds
 only what each file *is* (name, file name, media type, SHA-256, size) and the
@@ -1268,7 +1268,7 @@ the document: it is about this browser, not the design, so nothing in
 `docs/file-format.md` changes. **A linked project writes its file after every
 successful autosave**, throttled to once every 10 s with the throttle trailing
 (the newest state goes) and once more when it closes; the bytes are
-`ProjectStore.archiveBytes`, the same builder the File menu's export uses. The
+`ProjectStore.archiveBytes`, the same builder Home › Export Design uses. The
 decisions are pure (`project/linkedSync.ts`: `createLinkSync`), and a save
 inside the throttle only *schedules* the write — which is why the context
 carries `report(outcome)`: a trailing write the caller didn't await still has to
@@ -1280,7 +1280,7 @@ path, keeping what you had as a version) and "Overwrite" — a toast can carry
 several buttons (`ToastOptions.actions`, with `action` the first of them), both
 with `available()`. Errors (permission lost, file removed) are toasts. The home
 screen's "Linked folder" section opens a file as a project **linked** to it;
-"Save to Linked Folder" (File menu, Ctrl+K) links an unlinked one, refusing a
+"Save to Linked Folder" (Home › Files ▾, Ctrl+K) links an unlinked one, refusing a
 name that is already in the folder.
 
 ADR-0066 (P4-06, slice 1) added **drawings into a sketch**: `@extrudo/io`
@@ -1345,8 +1345,9 @@ found through each body's first face name; `ModelState.imports`), and
 `followBodyNames` takes it into `BodyMeta.color` **only when it first names the
 body**, so the user's colour and a later Up change are never repainted. The UI is
 the **Insert tab** (it replaces the `insertSvg` placeholder; `importDrawing`
-joins it and is unavailable outside a sketch): `importBody` / File menu "Import
-STEP or mesh…" writes the bytes **before** the dialog opens, so the preview
+joins it and is unavailable outside a sketch; since ADR-0079 the three are Home ›
+Files' tiles): `importBody` (also the old File menu's "Import
+STEP or mesh…") writes the bytes **before** the dialog opens, so the preview
 finds them, and OK adds the attachment record and the feature in one undo step
 through the dialog framework's `commitWith` hook (a transaction around both).
 The dialog grew a read-only `info` field kind and `shown(values, ctx)` (a
@@ -1715,8 +1716,8 @@ and warnings). Fixtures: `fixtures/imports/*.scad`; tests
 `packages/openscad/src/compiler.test.ts`, `kernel/src/features/import-scad.test.ts`
 (the kernel's program has no Node types, so it loads `@extrudo/openscad/node`
 through a name the checker doesn't follow), the CLI's `headless.test.ts` and
-`cli.test.ts`. **Slice 2** is the app: Insert › Import (and the File menu's
-"Import STEP, mesh or OpenSCAD…") takes `.scad`, and the Import dialog lists the
+`cli.test.ts`. **Slice 2** is the app: Insert › Import (Home › Import since ADR-0079)
+takes `.scad`, and the Import dialog lists the
 file's customizer variables as rows (`features/ScadOverrides.tsx`, the spec's
 `extra`; the pure part `features/scadRows.ts`) from **`KernelApi.scadParameters
 (fileId)`** (`ScadCompiler.parameters`: the list without compiling the model),
@@ -1779,8 +1780,8 @@ page. **A new feature or input kind reaches the emitter through
 marker's index at Record, `base` its length, because new features land at the
 marker; the run is `features[from .. from + length − base)`, and an undo below
 `base` ends it); the status bar's `[data-macro-recording]` counts; the tools
-`recordMacro`/`stopMacro` (Solid › Create's menu; `CommandContext.macro` and
-`ToolbarProps.hidden` show one at a time) and `exportScript` (File menu, Ctrl+K)
+`recordMacro`/`stopMacro` (Solid › Program's tiles since ADR-0079; `CommandContext.macro` and
+`ToolbarProps.hidden` show one at a time) and `exportScript` (Home › Files, Ctrl+K)
 are in `AppShell.run`/`buildCommands`. **Stop** emits through a lazy `@extrudo/api`
 import (the web app depends on it only for this) and opens `MacroDialog` (region
 "Macro", code in `CodeView`, `scriptEditor.tsx`'s read-only editor). **Replace is
@@ -2012,7 +2013,7 @@ naming an old ID rewritten). **Slice 3 (custom features in the app)**:
 feature (`type: 'plugin'`, command `plugin:<plugin>:feature:<type>`, fields from the
 inputs, `toInputs`/`fromInputs` through `in:<name>`, an info line "Plugin: <name>
 <version>"); the static `featureDialogs()` is unchanged and the **dynamic registry** is
-`pluginFeatureEntries(installed)` (Ctrl+K `dialogCommands`, the Create menu's "Plugins"
+`pluginFeatureEntries(installed)` (Ctrl+K `dialogCommands`, Solid › Create ▾'s "Plugins"
 items via `Toolbar`'s `pluginItems`, `run`) plus the controller's `startSpec(spec)` and
 `specFor(feature)` option, which `edit` asks when the registry has none:
 `specForPluginFeature` builds a stored feature's dialog from **the design's own copy**
@@ -2039,6 +2040,33 @@ data, safe to lose**: never in the document, the `.extrudo` file or a version
 on it existing; **the notice never takes pointer events**; pending rows are the
 browser's alone (`pendingBodyEntries`: names from `doc.bodies`, no selection or
 menu), the view and the commands only ever see computed bodies.
+
+ADR-0079 (the owner's UI review, 2026-10-08) made **one top bar with the tabs**:
+`shell/AppBar.tsx` is one 40 px row — the logo, the tabs (`ToolbarTabs`), Undo, Redo
+and Search commands, then the design's name, version history, save state, settings,
+help and theme — and `shell/Toolbar.tsx` the selected tab's groups below it (the tab is
+`useToolbarTab(mode)` in `AppShell`). **The File menu is gone**: its items are the
+**Home** tab's tiles (Design, Versions, Files with Import / Import Drawing / Canvas /
+Export Design / Export Model / Export as Script ▾ Import .extrudo, Save to Linked
+Folder, Parameters with Customizer, Extend with Plugins); the tabs are **Home, Solid
+(Create, Primitives, Features, Pattern, Program), Modify (Modify, Transform), Construct
+(Planes, Axes, Points), Inspect, 3D Print** in the model and **Home, Sketch, 3D Print**
+in a sketch (`visibleTabs`, `defaultTab`, `tabOfTool` in `shell/tools.ts`); there is no
+Insert tab. **Home's file actions are commands, not tools**: `TOOLS` lists them (category
+`file`, token `--x-cat-file`, nine new icons) and `FILE_COMMANDS` names the
+`FileActions` method each runs (`AppShell.run` for a tile, `fileCommand` in
+`buildCommands`), with the old command IDs; an absent method hides the tile and the
+command. Command groups follow the tabs ("Home › Files"), and the **desktop menu maps
+Home to its File menu** (`menuModel`'s `topMenu`). **Toolbars fit the window**: the pure
+`fitToolbar` (`shell/toolbarFit.ts`) moves the last tile of the fullest group (ties: the
+earlier group) into its ▾ until the row fits, never below one tile; the toolbar measures
+tile widths once per set of tiles and refits on resize (`data-toolbar-fit`). **A group's
+▾ lists only what isn't a tile** (moved tiles, `more`, plugin features). The tutorial
+points at a tool's tab when its tile isn't shown (`toolOrTabSelector`). e2e:
+**`pickTool(page, name)` finds a tool anywhere** (a tile by accessible name or its
+`data-label` — the tool's full name —, another tab's tile, a group menu's item),
+`fileAction(page, label)` runs a Home command, `selectTab(page, name)` selects a tab;
+`e2e/topbar.spec.ts` measures the baselines and the fit.
 
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): Phases 0, 1, 2, 3 and 5 are complete, Phase 4 is complete
@@ -2087,7 +2115,7 @@ must never depend on the GPL packages.
 | `docs/file-format.md` | The `.extrudo` file and document JSON, field by field, with an example; a test (`packages/storage/src/file-format-doc.test.ts`) fails when the schema gets a key the doc lacks. **Update it with any schema change.** |
 | `docs/deploy.md`, `docs/release-checklist.md` | How the site is deployed (the owner's one-time Cloudflare steps) and the owner's checklist for the v0.4.0 release |
 | `docs/references.md` | Other open-source projects we looked at, what to borrow from each, and their licenses |
-| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0070: the Script feature (QuickJS sandbox, `@extrudo/script`). ADR-0071: OpenSCAD import (`.scad` attachments as mesh bodies, `@extrudo/openscad`, async preparation and runtime WASM caching). ADR-0072: wall-thickness check. ADR-0073: macro recording (the document-to-script emitter, `@extrudo/api`; Record, Stop and the Macro dialog in the app). ADR-0074: auto-project (a body edge or vertex a sketch tool snaps to is projected into the sketch on the fly; `viewport.autoProject`/`autoProjectFace`; its amendment, 2026-10-06, has the constraint and dimension tools pick body geometry directly; its 2026-10-07 amendment pins a pending to its own undo step, refuses curved edges to picking tools and revives a deleted projection). ADR-0076: WebGL fallback (software rendering notice, no-WebGL panel, error boundaries, context loss, desktop SwiftShader switch). ADR-0075: the Electron desktop app (electron-vite main/preload/renderer built from the web app's own source; the `@extrudo/storage/node` store; `desktopPlatform` through one typed preload bridge, `shared/ipc.ts`; slice 2 adds the native menus from the command registry, the `.extrudo` association and recent files; slice 3 unsigned installers; slice 4 auto-update through `electron-updater` and `Platform.updates`) ADR-0077: the plugin API (`.extrudo-plugin` files: a strict manifest and one module; the `plugin` feature with `in:<name>` inputs, expanded like a Script through `ScriptHost.runPlugin`; the design carries the plugin as an attachment; slice 2 the installed plugins (`PluginStore`, the Plugins dialog) and commands run in the worker; slice 3 the generated dialogs, the Create menu's Plugins items, Update to <version>). ADR-0078: model progress notice and the model cache (pending body rows before the first recompute). |
+| `docs/adr/` | Architecture decision records. ADR-0001: geometry kernel (libcascade). ADR-0002: sketch solver (planegcs). ADR-0003: document model, commands and undo. ADR-0004: expressions, units and parameters. ADR-0007: design system and shell. ADR-0008: viewport, camera and navigation. ADR-0009: project storage, autosave, home screen. ADR-0010: sketch data model and sketch mode. ADR-0011: sketch solver adapter. ADR-0012: sketch tool framework and inference. ADR-0013: basic drawing tools, tangent arcs, construction. ADR-0014: polygons, slots, ellipses, fit-point splines, lazy tool chunk. ADR-0015: constraint tools, glyphs, deleting constraints. ADR-0016: sketch dimensions, dimension parameters, re-solving on value changes. ADR-0017: constraint status, colours, over-constraint dialog. ADR-0018: selection, dragging and deleting in sketch mode. ADR-0019: sketch modify tools. ADR-0020: sketch profile detection. ADR-0021: timeline and browser menus, rename, visibility, hover. ADR-0022: sketch export to SVG and DXF. ADR-0023: command search, keymap and shortcuts. ADR-0024: recompute engine. ADR-0025: sketch to kernel, profile faces. ADR-0005: topological naming. ADR-0026: B-rep rendering and 3D selection. ADR-0027: feature dialog framework. ADR-0028: extrude. ADR-0029: revolve. ADR-0030: bodies. ADR-0031: sketch on face and Project. ADR-0032: primitives. ADR-0033: timeline v2, reorder, fix references. ADR-0034: STL, 3MF and STEP export. ADR-0035: measure and inspect. ADR-0036: version history. ADR-0037: WASM size, startup and the offline precache. ADR-0038: fillet. ADR-0039: benchmarks B2 and B3, fixtures, B4 to B7, B8 to B10. ADR-0040: construction geometry. ADR-0041: notification history. ADR-0042: marking menu and context menus. ADR-0043: chamfer. ADR-0044: combine, move/copy, mirror. ADR-0045: section analysis. ADR-0046: shell. ADR-0047: patterns. ADR-0048: 3D-print aids. ADR-0049: hole. ADR-0050: hardening (fuzzing, lenient reading, version locks, chunked export, NFR-01 numbers, axe). ADR-0051: press/pull, offset face. ADR-0052: onboarding (tutorial, templates, hint, tooltip demos). ADR-0053: split body, scale, draft, benchmark B6. ADR-0054: public release (Cloudflare Pages, headers and CSP, deploy workflow, update toast, community files, audit). ADR-0055: sweep, loft and coil. ADR-0056: modeled threads. ADR-0057: landing page at extrudo.org, the app at app. (stable) and edge. (latest). ADR-0058: sketch text. ADR-0059: customizer and configurations. ADR-0060: emboss and deboss. ADR-0061: user fonts as attachments. ADR-0062: print tolerance and slicer hand-off. ADR-0063: control-point splines and conics. ADR-0064: rib and variable-radius fillet. ADR-0065: timeline groups and linked folders. ADR-0066: import (drawings, STEP, meshes) and canvas images (0006 is reserved). ADR-0067: hardening before Phase 5 (no 'unsafe-eval', threads, mass properties, heap growth, sweep placement). ADR-0068: the public document API (`@extrudo/api`). ADR-0069: the headless CLI (`extrudo`). ADR-0070: the Script feature (QuickJS sandbox, `@extrudo/script`). ADR-0071: OpenSCAD import (`.scad` attachments as mesh bodies, `@extrudo/openscad`, async preparation and runtime WASM caching). ADR-0072: wall-thickness check. ADR-0073: macro recording (the document-to-script emitter, `@extrudo/api`; Record, Stop and the Macro dialog in the app). ADR-0074: auto-project (a body edge or vertex a sketch tool snaps to is projected into the sketch on the fly; `viewport.autoProject`/`autoProjectFace`; its amendment, 2026-10-06, has the constraint and dimension tools pick body geometry directly; its 2026-10-07 amendment pins a pending to its own undo step, refuses curved edges to picking tools and revives a deleted projection). ADR-0076: WebGL fallback (software rendering notice, no-WebGL panel, error boundaries, context loss, desktop SwiftShader switch). ADR-0075: the Electron desktop app (electron-vite main/preload/renderer built from the web app's own source; the `@extrudo/storage/node` store; `desktopPlatform` through one typed preload bridge, `shared/ipc.ts`; slice 2 adds the native menus from the command registry, the `.extrudo` association and recent files; slice 3 unsigned installers; slice 4 auto-update through `electron-updater` and `Platform.updates`) ADR-0077: the plugin API (`.extrudo-plugin` files: a strict manifest and one module; the `plugin` feature with `in:<name>` inputs, expanded like a Script through `ScriptHost.runPlugin`; the design carries the plugin as an attachment; slice 2 the installed plugins (`PluginStore`, the Plugins dialog) and commands run in the worker; slice 3 the generated dialogs, the Create menu's Plugins items, Update to <version>). ADR-0078: model progress notice and the model cache (pending body rows before the first recompute). ADR-0079: one top bar with the tabs, a Home tab instead of the File menu, toolbars that fit the window (the pure `fitToolbar`). |
 
 ## Stack summary
 
@@ -2673,8 +2701,9 @@ them. Notes further down that name a machine apply to that machine only.
   `…:point:<x,y,z>`, spaces in names as `_`, a dialog's preview
   `preview:`-prefixed); the browser's Construction rows carry
   `data-construction="<feature id>"` and eyes ("Hide Offset Plane1").
-  The Construct group's tiles are "Offset Plane", "2-Point Axis" and
-  "Point" (the others sit in its menu); its dialogs are the regions
+  The tools are the Construct tab's (ADR-0079: Planes, Axes, Points; Plane
+  Through 3 Points, Plane Along Path and Angled Midplane in Planes ▾): run them
+  with `pickTool(page, '<full name>')`; its dialogs are the regions
   "Offset Plane dialog", "Axis Through 2 Points dialog"… A plane field
   picks like Create Sketch (click a plane's square, `clickAt` a world
   point with x ≥ 0, y ≤ 0, z = 0 in the home view); the axis and point
@@ -2932,7 +2961,8 @@ them. Notes further down that name a machine apply to that machine only.
   click, `pickAxis` tries points along an origin axis, `extentOf(mesh,
   keep)` measures the nodes that pass a filter (B4's lip and cavity), and
   `solidTab(page)` returns after `exportModel` (which leaves the 3D Print tab
-  open, where the Parameters button isn't). While a Hole's or primitive's
+  open); Parameters is a Home tile since ADR-0079, so `pickTool(page,
+  'Parameters')` finds it from any tab. While a Hole's or primitive's
   Plane field picks, the view has no `data-model-hover`: `clickAt` with a
   short wait instead. Faces seen from below (Shift+3) sit under the dialog
   on the right at the fitted zoom: `zoomOutTo` first. An origin axis behind
@@ -2945,9 +2975,9 @@ them. Notes further down that name a machine apply to that machine only.
   side where it is now. Body rows rename with `renameBody` (F2); the 3MF's
   object names are the body names.
 - **Combine and Move/Mirror e2e** (`e2e/combine.spec.ts`,
-  `e2e/move-mirror.spec.ts`, P3-06): the Transform group's tiles are the
-  buttons "Move", "Mirror" and "Combine" (`exact: true`: a chip "Move1"
-  matches a regex); dialogs are the regions "Combine dialog", "Move dialog",
+  `e2e/move-mirror.spec.ts`, P3-06): the Modify tab's Transform group's tiles
+  are the buttons "Move", "Mirror" and "Combine" (`pickTool(page, 'Combine')`
+  selects the tab; `exact: true`: a chip "Move1" matches a regex); dialogs are the regions "Combine dialog", "Move dialog",
   "Mirror dialog". Select bodies first with `selectBodies(page, ['Body1',
   'Body2'])` (`e2e/benchmark-helpers.ts`: a click, then Shift-clicks on the
   browser rows): the first is the Combine target, the rest its tools, both
@@ -2958,8 +2988,8 @@ them. Notes further down that name a machine apply to that machine only.
   with handles `[data-manipulator-handle="dx"]`; in the home view drag an
   arrow along the projected axis (the value snaps, so 80 px gave 4.6 mm
   there). Positions are read from the 3MF export (`exportModel` +
-  `objectsOf3mf` + `meshBounds`; it opens the 3D Print tab, click "Solid"
-  again). Picking the X axis for Rotate: try points along it until
+  `objectsOf3mf` + `meshBounds`; it opens the 3D Print tab; `pickTool`
+  selects the Modify tab again). Picking the X axis for Rotate: try points along it until
   `data-model-hover` is `axis:origin:x` (the dialog covers the right
   edge). The plane picker for Mirror works as in the primitives spec
   (click a plane's square, `[0, -h·0.6, h·0.6]` for YZ). Kernel tests:
@@ -3111,8 +3141,8 @@ them. Notes further down that name a machine apply to that machine only.
   tessellation short (`toBeCloseTo(v, -2)` for several holes). A hole that only
   touches the body says "The cut doesn't remove anything". Kernel-side, the
   golden table is `pnpm vitest run -u packages/kernel/src/features/hole`.
-- **Pattern e2e** (`e2e/pattern.spec.ts`, P3-07): the tools are in Create's
-  menu (`pickTool(page, 'Rectangular Pattern' | 'Circular Pattern' | 'Path
+- **Pattern e2e** (`e2e/pattern.spec.ts`, P3-07): the tools are Solid ›
+  Pattern's tiles (`pickTool(page, 'Rectangular Pattern' | 'Circular Pattern' | 'Path
   Pattern')`); dialogs are the regions "Rectangular Pattern dialog"…, fields
   the buttons "Direction"/"Axis"/"Path" (`exact: true`) and textboxes "Count",
   "Distance" (`exact`), the combobox "Pattern" (Mirror's is "Mirror") with
@@ -3251,9 +3281,8 @@ them. Notes further down that name a machine apply to that machine only.
 - **Newer files in e2e**: write `projects/<id>/document.json` in OPFS from
   `page.evaluate` (see `storage.spec.ts`) to simulate a newer Extrudo.
 - **Split Body, Scale and Draft e2e** (`e2e/split-body.spec.ts`,
-  `scale.spec.ts`, `draft.spec.ts`, P3-08): the tools are in the Solid tab's
-  Modify menu (`getByRole('button', { name: 'Modify', exact: true })`, then
-  `menuitem` `/^Split Body/`, `/^Scale/`, `/^Draft/`); dialogs are the regions
+  `scale.spec.ts`, `draft.spec.ts`, P3-08): the tools are the Modify tab's tiles
+  (ADR-0079: `pickTool(page, 'Split Body' | 'Scale' | 'Draft')`); dialogs are the regions
   "Split Body dialog", "Scale dialog", "Draft dialog" (and "Edit Split Body1
   dialog"…). Split: buttons "Bodies" and "Plane", combobox "Keep"
   (`both`/`above`/`below`); a cube from the Box tool split by YZ is
@@ -3342,8 +3371,8 @@ them. Notes further down that name a machine apply to that machine only.
   `pitch` in one direction (−5, 25, 55 at 30 mm). Reading the hole's diameter
   after the parameter change: open its chip (double-click) and read the
   expression input's value line, "= 5.60 mm".
-- **Thread e2e** (`e2e/thread.spec.ts`, P4-02): Solid › Modify (`button`
-  "Modify", `exact`) › `menuitem` `/^Thread/`; the dialog is the region "Thread
+- **Thread e2e** (`e2e/thread.spec.ts`, P4-02): Modify › Modify › Thread
+  (`pickTool(page, 'Thread')`, ADR-0079); the dialog is the region "Thread
   dialog" / "Edit Thread1 dialog": button "Faces" (`exact`, "1 face"), combobox
   "Size" (values `auto`, `m8`, `m16x1.5`, `unc-1q4-20`…, `custom`; Diameter and
   Pitch exist only off `auto`), "Profile" (values `iso` default, `trapezoidal`,
@@ -3408,7 +3437,7 @@ them. Notes further down that name a machine apply to that machine only.
   world origin in the home view, an edge picked at (0, −10, 15) for the fillet.
   `e2e/record-assets.spec.ts` (RECORD_ASSETS=1 only) is the demo recorder.
 - **Sweep, loft and coil e2e** (`e2e/sweep-loft-coil.spec.ts`, P4-01): the tools
-  are in Create's menu (`pickTool(page, 'Sweep' | 'Loft')`, `startPrimitive(page,
+  are Solid › Create's tiles (`pickTool(page, 'Sweep' | 'Loft')`, `startPrimitive(page,
   'Coil')`); dialogs are the regions "Sweep dialog", "Loft dialog", "Coil dialog"
   ("Edit Sweep1 dialog"…). Sweep: buttons "Profiles" and "Path" (`exact: true`;
   "1 edge"), combobox "Orientation" (`follow`/`fixed`), textboxes "Twist" and
@@ -3468,8 +3497,7 @@ them. Notes further down that name a machine apply to that machine only.
   buttons "Tight 0.1 mm", "Normal 0.2 mm", "Loose 0.3 mm"; the tile is
   "Tolerance" (`exact`) in the 3D Print tab's Prepare group and **toggles** the
   panel, so close it (Done) before another dialog covers it. The Parameters
-  dialog is on the **Solid** tab, so `solidTab(page)` first (as in the print
-  aids spec); there the row's field is "Expression of tolerance" and its value
+  dialog is a **Home** tile since ADR-0079, so `pickTool(page, 'Parameters')`; there the row's field is "Expression of tolerance" and its value
   shows as "= 0.20 mm" under it. One Ctrl+Z per change (the panel's write is one
   command): the edit, then the parameter. A hole's M3 clearance preset then reads
   `3.4 mm + 2 * tolerance` (counterbore diameter `6 mm + 2 * tolerance`, depth
@@ -3500,8 +3528,8 @@ them. Notes further down that name a machine apply to that machine only.
   fit point after Ctrl+Z selects the **point** (points win the pick); `o` on
   the wave at (−20, 20), the pointer above and `2` makes `splines: 2` with no
   dimension.
-- **Rib e2e** (`e2e/rib.spec.ts`, P4-10): the tool is `rib` in Create's menu
-  after Emboss (`menuitem` "Rib", no key); its dialog is the region "Rib
+- **Rib e2e** (`e2e/rib.spec.ts`, P4-10): the tool is `rib`, a tile of Solid ›
+  Features after Emboss (`pickTool(page, 'Rib')`, no key); its dialog is the region "Rib
   dialog" / "Edit Rib1 dialog" with the button "Line" (`exact: true`: a sketch
   line reads **"Line · Sketch3"**, the sketch it is in), the `Thickness`
   textbox (`exact`), the `Thickness side` combobox (`both`/`one`/`other`) and
@@ -3561,8 +3589,8 @@ them. Notes further down that name a machine apply to that machine only.
   with `data-linked-folder` (`none`/`needs-permission`/`ready`/`loading`) and
   file cards `[data-linked-file="<name>"]`; "Link a folder…", "Reconnect",
   "Unlink the folder" and "Refresh the linked folder" are its buttons; the
-  project's own command is the File menu's "Save to Linked Folder" (it leaves
-  the menu once the project is linked) and says "Saved <file> to the linked
+  project's own command is Home › Files ▾ "Save to Linked Folder" (ADR-0079;
+  `fileAction`, and `hasFileAction` is false once the project is linked) and says "Saved <file> to the linked
   folder.". **The write-back is throttled**, so a test that edits and waits
   must wait 12 s for the trailing write; the file's bytes are read out of OPFS
   and `readArchive`d (check `doc.name`). A conflict is a `role="alert"` toast
@@ -3585,7 +3613,7 @@ them. Notes further down that name a machine apply to that machine only.
   pressed with E, and `data-bodies` gives `40,20,5`; with Scale 2, `80,40,5`;
   and `square-inches.dxf` ($INSUNITS 1) gives 25.4 × 25.4 mm.
 - **Import mesh e2e** (`e2e/import-mesh.spec.ts`, P4-06 slices 3 and 4): the
-  same Insert tab › Import flow with `fixtures/imports/cube.stl` (Units "auto",
+  same Home › Import flow (the old Insert tab's, ADR-0079) with `fixtures/imports/cube.stl` (Units "auto",
   the preview's `data-preview-status="ok"` needs manifold-3d in the worker),
   `two-parts.3mf` (two bodies at ×10 for centimetres, the largest first),
   `bracket-y-up.obj` (read as Z-up, then Up `y` from the chip swaps y and z),
@@ -3616,7 +3644,7 @@ them. Notes further down that name a machine apply to that machine only.
   body **in creation order**, so a mesh target and a solid tool warn about
   nothing.
 - **Import OpenSCAD e2e** (`e2e/import-scad.spec.ts`, P5-04 slice 2): the
-  Insert tab's Import with `fixtures/imports/customizer-plate.scad` (a 40 × 30 ×
+  Home tab's Import (ADR-0079) with `fixtures/imports/customizer-plate.scad` (a 40 × 30 ×
   4 mm plate with two Ø4 holes; groups Size: `width`, `depth` and Holes:
   `holes`, `hole`, plus a string `label` and a boolean `rounded`). The dialog
   "Import dialog" has `[data-info="file"]` ("customizer-plate.scad · 1 kB ·
@@ -3630,8 +3658,8 @@ them. Notes further down that name a machine apply to that machine only.
   (the nested worker, the WASM): wait up to 90 s for `ready` and
   `data-preview-status="ok"`. The body is a mesh body, `Body1:1:40,30,4` in
   `data-bodies`. A typed parameter name (`plateWidth`) shows "= 50.00 mm" under
-  the row; the Customizer's slider on it recompiles each step (the panel is on
-  the Solid tab: `solidTab(page)` after the Insert tab). `syntax-error.scad`
+  the row; the Customizer's slider on it recompiles each step (the Customizer is
+  a Home tile since ADR-0079: `pickTool(page, 'Customizer')`). `syntax-error.scad`
   says "syntax-error.scad, line 4: syntax error." in "Feature status" with OK
   `aria-disabled` (don't click it: Playwright waits for it to be enabled). Three
   tests, 9.3 s, 10.5 s and 3.4 s; `hosting.spec.ts` has the
@@ -3653,8 +3681,8 @@ them. Notes further down that name a machine apply to that machine only.
   recorded body's size and face count, one Ctrl+Z, then Ctrl+Shift+Z; Keep both
   gives "Script2" suppressed (unsuppress from the chip's right-click menu). The
   refusal test records a sketch with a dimension (`d1`) and adds the parameter
-  `twice = d1 * 2`. Export Design as Script is File menu › "Export design as
-  script…". 4 tests, 2.4-9.4 s each.
+  `twice = d1 * 2`. Export Design as Script is Home › "Export as Script" (`fileAction(page,
+  'Export Design as Script…')`, ADR-0079). 4 tests, 2.4-9.4 s each.
 - **WebGL fallback e2e** (`e2e/webgl-fallback.spec.ts`, `webgl-fallback-nogl.spec.ts`,
   ADR-0076): the e2e browser draws in software (SwiftShader), so `playwright.config.ts`
   pre-sets `render.softwareNotice` to `dismissed` through `use.storageState` (key
@@ -3699,7 +3727,7 @@ them. Notes further down that name a machine apply to that machine only.
   200 × 100 PNG **built in the page** with an `OffscreenCanvas` (as a string:
   the e2e specs typecheck without the DOM) and handed to the file chooser as
   `{ name: 'plan.png', mimeType: 'image/png', buffer }`; the tile is the
-  **Insert** tab's button "Canvas" (`exact: true`) and the dialog is "Canvas
+  **Home** tab's button "Canvas" (`exact: true`; the Insert tab's before ADR-0079) and the dialog is "Canvas
   dialog" / "Edit Canvas1 dialog": `[data-info="image"]`, the button "Plane"
   (`exact: true`, "1 face"), the textboxes "X", "Y", "Width", "Rotation" and
   "Opacity" (**all `exact: true`**: "Y" also matches "Opacity"), the checkbox
@@ -3732,9 +3760,9 @@ them. Notes further down that name a machine apply to that machine only.
   audit include Script. The first test prints editor-open, request-to-preview
   and worker-load timings from the performance measures (ADR-0070 slice 3).
 - **Import STEP e2e** (`e2e/import-step.spec.ts`, P4-06 slice 2): the tile is
-  `importBody` in the **Insert tab** (`role="tab"` "Insert", then the button
-  "Import", `exact: true`; `data-tool="importBody"`), and the File menu's
-  "Import STEP or mesh…" runs the same command. It opens the file dialog at
+  `importBody` in the **Home tab** (ADR-0079: `selectTab(page, 'Home')`, then the
+  button "Import", `exact: true`; `data-tool="importBody"`; `fileAction(page,
+  'Import')` runs the same command). It opens the file dialog at
   once, so wait for the `filechooser` beside the click and
   `setFiles('fixtures/imports/b3.step')` (B3's two bodies through our own
   `writeStep`). The dialog is the region "Import dialog" / "Edit Import1

@@ -6,7 +6,7 @@ import {
   primitive,
   viewportOf,
 } from './benchmark-helpers';
-import { kernelReady, openProject } from './helpers';
+import { kernelReady, openProject, pickTool } from './helpers';
 
 // P4-07 (FR-PAR-05 and FR-PAR-06): the Customizer panel. A starred parameter
 // gets a slider, the model follows it, one undo takes the drag back, and named
@@ -37,7 +37,7 @@ const slider = (page: Page, name: string) =>
 
 /** Opens the Customizer panel from the toolbar's Solid › Modify group. */
 async function openCustomizer(page: Page) {
-  await page.getByRole('button', { name: 'Customizer', exact: true }).click();
+  await pickTool(page, 'Customizer');
   await expect(panel(page)).toHaveAttribute('data-customizer-state', /.+/);
 }
 

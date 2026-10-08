@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { meshBounds } from '../packages/io/src/index';
 import { exportModel, objectsOf3mf, primitive, solidTab } from './benchmark-helpers';
-import { kernelReady, openProject, projector } from './helpers';
+import { kernelReady, openProject, pickTool, projector } from './helpers';
 
 // P3-10: the 3D-print aids (FR-3DP-02..04, ADR-0048). Print Info gives a weight, a filament
 // length and a cost from the exact volume, with the walls, infill and price a person prints
@@ -258,7 +258,7 @@ test('Overhang analysis: shading counts follow the angle, the down direction and
   await panel.getByRole('button', { name: 'Done' }).click();
   await expect(panel).toBeHidden();
   await page.getByRole('tab', { name: 'Solid' }).click();
-  await page.getByRole('button', { name: /^Section/ }).click();
+  await pickTool(page, 'Section');
   await page
     .getByRole('region', { name: 'Section Analysis' })
     .getByRole('button', { name: 'XY plane' })

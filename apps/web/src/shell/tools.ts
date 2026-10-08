@@ -504,7 +504,8 @@ export const TOOLS = {
   rectangularPattern: {
     id: 'rectangularPattern',
     label: 'Rectangular Pattern',
-    short: 'Pattern',
+    // The tiles stand in the Pattern group (ADR-0079), which says what they are.
+    short: 'Rectangular',
     icon: 'rectangular-pattern',
     category: 'create',
     hint: 'Copies of bodies, or repeats of features, in a row or a grid.',
@@ -512,6 +513,7 @@ export const TOOLS = {
   circularPattern: {
     id: 'circularPattern',
     label: 'Circular Pattern',
+    short: 'Circular',
     icon: 'circular-pattern',
     category: 'create',
     hint: 'Copies of bodies, or repeats of features, spread round an axis.',
@@ -519,6 +521,7 @@ export const TOOLS = {
   pathPattern: {
     id: 'pathPattern',
     label: 'Path Pattern',
+    short: 'Path',
     icon: 'path-pattern',
     category: 'create',
     hint: 'Copies of bodies, or repeats of features, along sketch curves or edges.',
@@ -819,89 +822,168 @@ export const TOOLS = {
     // Ready where the platform has `openInSlicer`: the desktop app (P6-02, ADR-0062).
     comesWith: 'the desktop app',
   },
+  // The Home tab's file actions (ADR-0079): commands, run through the page's `FileActions`
+  // (`FILE_COMMANDS`), not tools; listed here for their tiles, icons and hints.
+  newDesign: {
+    id: 'newDesign',
+    label: 'New Design',
+    icon: 'new-design',
+    category: 'file',
+    hint: 'Start a new, empty design.',
+  },
+  allDesigns: {
+    id: 'allDesigns',
+    label: 'All Designs',
+    icon: 'all-designs',
+    category: 'file',
+    hint: 'Back to the home screen with every design in this browser.',
+  },
+  saveVersion: {
+    id: 'saveVersion',
+    label: 'Save Version…',
+    short: 'Save Version',
+    icon: 'save-version',
+    category: 'file',
+    hint: 'Keep this state of the design with a description, to come back to later.',
+  },
+  versionHistory: {
+    id: 'versionHistory',
+    label: 'Version History…',
+    short: 'Version History',
+    icon: 'version-history',
+    category: 'file',
+    hint: 'Saved versions of this design: save one, restore one, or open one as a copy.',
+  },
+  exportProject: {
+    id: 'exportProject',
+    label: 'Export .extrudo',
+    short: 'Export Design',
+    icon: 'export-design',
+    category: 'file',
+    hint: 'Download the whole design as an .extrudo file, with its versions and attachments.',
+  },
+  exportScript: {
+    id: 'exportScript',
+    label: 'Export Design as Script…',
+    short: 'Export as Script',
+    icon: 'export-script',
+    category: 'file',
+    hint: 'Download the design as TypeScript that makes it again with the document API.',
+  },
+  importProject: {
+    id: 'importProject',
+    label: 'Import .extrudo…',
+    icon: 'import-design',
+    category: 'file',
+    hint: 'Open an .extrudo file as a new design.',
+  },
+  saveToLinkedFolder: {
+    id: 'saveToLinkedFolder',
+    label: 'Save to Linked Folder',
+    icon: 'linked-folder',
+    category: 'file',
+    hint: 'Keep this design as an .extrudo file in the linked folder on disk.',
+  },
+  plugins: {
+    id: 'plugins',
+    label: 'Plugins…',
+    short: 'Plugins',
+    icon: 'plugins',
+    category: 'file',
+    hint: 'Install, enable and remove plugins: custom features and commands.',
+  },
 } satisfies Record<string, Tool>;
 
 export type ToolId = keyof typeof TOOLS;
 
 export interface ToolGroup {
   label: string;
-  /** Shown as buttons; the group's menu lists these plus `more`. */
+  /** Shown as tiles while they fit (ADR-0079 §3); the group's ▾ menu lists the ones that don't, then `more`. */
   tools: ToolId[];
   more?: ToolId[];
   /** Small icon-only buttons in two rows (UI spec §4: the row of constraint icons). */
   compact?: boolean;
+  /** A tile's label in this group when it differs from the tool's (Home's "Export Model"). */
+  labels?: Partial<Record<ToolId, string>>;
 }
 
-export type TabId = 'solid' | 'sketch' | 'insert' | 'print';
+export type TabId = 'home' | 'solid' | 'modify' | 'construct' | 'inspect' | 'sketch' | 'print';
+
+export interface Tab {
+  id: TabId;
+  label: string;
+  groups: ToolGroup[];
+}
 
 /**
- * Toolbar tabs (UI spec §2). `sketch` shows only while a sketch is open, in
- * place of `solid`; Finish Sketch sits after its groups. Insert and export
- * aren't modelling tools, so they have tabs of their own: Insert (what comes
- * into the design, P4-06), and 3D Print for the model's export (a sketch's
- * export stays in the Sketch tab).
+ * Toolbar tabs (UI spec §2, ADR-0079). Home holds what concerns the design as a
+ * whole (its files, versions, parameters and plugins: the old File menu and the
+ * Insert tab); Solid makes geometry, Modify changes it, Construct and Inspect
+ * have tabs of their own, and 3D Print prepares the model's export. `sketch`
+ * shows only while a sketch is open, in place of Solid, Modify, Construct and
+ * Inspect, whose tools don't apply there; Finish Sketch sits after its groups.
  */
-export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
+export const TABS: Tab[] = [
+  {
+    id: 'home',
+    label: 'Home',
+    groups: [
+      { label: 'Design', tools: ['newDesign', 'allDesigns'] },
+      { label: 'Versions', tools: ['saveVersion', 'versionHistory'] },
+      {
+        label: 'Files',
+        // P4-06: a model file becomes bodies, a drawing becomes sketch curves, and a
+        // picture lies on a plane to trace (ADR-0066).
+        tools: ['importBody', 'importDrawing', 'canvas', 'exportProject', 'export', 'exportScript'],
+        more: ['importProject', 'saveToLinkedFolder'],
+        labels: { export: 'Export Model' },
+      },
+      // What a design exposes is a few of its parameters (P4-07).
+      { label: 'Parameters', tools: ['parameters', 'customizer'] },
+      { label: 'Extend', tools: ['plugins'] },
+    ],
+  },
   {
     id: 'solid',
     label: 'Solid',
     groups: [
-      {
-        label: 'Create',
-        tools: ['sketch', 'extrude', 'revolve'],
-        more: [
-          'sweep',
-          'loft',
-          'coil',
-          'emboss',
-          'rib',
-          'script',
-          'recordMacro',
-          'stopMacro',
-          'box',
-          'cylinder',
-          'sphere',
-          'torus',
-          'hole',
-          'rectangularPattern',
-          'circularPattern',
-          'pathPattern',
-        ],
-      },
+      // The enabled plugins' custom features are listed in Create's menu (P6-03).
+      { label: 'Create', tools: ['sketch', 'extrude', 'revolve', 'sweep', 'loft', 'coil'] },
+      { label: 'Primitives', tools: ['box', 'cylinder', 'sphere', 'torus'] },
+      { label: 'Features', tools: ['hole', 'emboss', 'rib'] },
+      { label: 'Pattern', tools: ['rectangularPattern', 'circularPattern', 'pathPattern'] },
+      // Record and Stop show one at a time (P5-05).
+      { label: 'Program', tools: ['script', 'recordMacro', 'stopMacro'] },
+    ],
+  },
+  {
+    id: 'modify',
+    label: 'Modify',
+    groups: [
       {
         label: 'Modify',
-        // Parameters and the Customizer panel (P4-07) sit together: what a
-        // design exposes is a few of its parameters.
-        tools: [
-          'pressPull',
-          'fillet',
-          'chamfer',
-          'shell',
-          'offsetFace',
-          'parameters',
-          'customizer',
-        ],
-        more: ['thread', 'draft', 'splitBody', 'scale'],
+        tools: ['pressPull', 'fillet', 'chamfer', 'shell', 'offsetFace', 'draft', 'thread'],
       },
-      { label: 'Transform', tools: ['move', 'mirror', 'combine'] },
-      {
-        label: 'Construct',
-        tools: ['offsetPlane', 'axisThroughPoints', 'constructionPoint'],
-        more: [
-          'planeAtAngle',
-          'midplane',
-          'planeThroughPoints',
-          'tangentPlane',
-          'axisThroughCylinder',
-          'axisAlongEdge',
-          'pointOnPath',
-          'pointAtIntersection',
-          'planeAlongPath',
-          'midplaneAngled',
-        ],
-      },
-      { label: 'Inspect', tools: ['measure', 'section'] },
+      { label: 'Transform', tools: ['move', 'mirror', 'combine', 'splitBody', 'scale'] },
     ],
+  },
+  {
+    id: 'construct',
+    label: 'Construct',
+    groups: [
+      {
+        label: 'Planes',
+        tools: ['offsetPlane', 'planeAtAngle', 'midplane', 'tangentPlane'],
+        more: ['planeThroughPoints', 'planeAlongPath', 'midplaneAngled'],
+      },
+      { label: 'Axes', tools: ['axisThroughPoints', 'axisThroughCylinder', 'axisAlongEdge'] },
+      { label: 'Points', tools: ['constructionPoint', 'pointOnPath', 'pointAtIntersection'] },
+    ],
+  },
+  {
+    id: 'inspect',
+    label: 'Inspect',
+    groups: [{ label: 'Inspect', tools: ['measure', 'section'] }],
   },
   {
     id: 'sketch',
@@ -938,7 +1020,7 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
       },
       {
         label: 'Modify',
-        // Parameters too, as in the Solid tab: dimensions use them while sketching.
+        // Parameters too, as in the Home tab: dimensions use them while sketching.
         tools: ['sketchFillet', 'trim', 'sketchOffset', 'parameters'],
         more: ['sketchChamfer', 'extend', 'break', 'sketchMove', 'sketchCopy', 'sketchScale'],
       },
@@ -966,13 +1048,6 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
     ],
   },
   {
-    id: 'insert',
-    label: 'Insert',
-    // P4-06: a model file becomes bodies, a drawing becomes sketch curves, and a
-    // picture lies on a plane to trace (ADR-0066).
-    groups: [{ label: 'Insert', tools: ['importBody', 'importDrawing', 'canvas'] }],
-  },
-  {
     id: 'print',
     label: '3D Print',
     groups: [
@@ -985,10 +1060,49 @@ export const TABS: { id: TabId; label: string; groups: ToolGroup[] }[] = [
   },
 ];
 
-/** The tabs shown in a mode: Sketch replaces Solid while a sketch is open. */
-export function visibleTabs(mode: 'model' | 'sketch') {
-  return TABS.filter((t) => (mode === 'sketch' ? t.id !== 'solid' : t.id !== 'sketch'));
+/** The tabs a sketch replaces with its own (ADR-0079 §2): their tools work on bodies. */
+const MODEL_ONLY: ReadonlySet<TabId> = new Set(['solid', 'modify', 'construct', 'inspect']);
+
+/**
+ * The tabs shown in a mode, in order: Home, Solid, Modify, Construct, Inspect and
+ * 3D Print in the model; Home, Sketch and 3D Print while a sketch is open.
+ */
+export function visibleTabs(mode: 'model' | 'sketch'): Tab[] {
+  return TABS.filter((t) => (mode === 'sketch' ? !MODEL_ONLY.has(t.id) : t.id !== 'sketch'));
 }
+
+/** The tab a mode opens on: Solid in the model, Sketch in a sketch. */
+export function defaultTab(mode: 'model' | 'sketch'): TabId {
+  return mode === 'sketch' ? 'sketch' : 'solid';
+}
+
+/** The first visible tab whose groups list a tool (as a tile or in a menu). */
+export function tabOfTool(id: string, mode: 'model' | 'sketch'): TabId | undefined {
+  return visibleTabs(mode).find((tab) =>
+    tab.groups.some((g) => [...g.tools, ...(g.more ?? [])].includes(id as ToolId)),
+  )?.id;
+}
+
+/**
+ * The Home tab's file commands (ADR-0079): which `FileActions` method each runs.
+ * A command whose method the page leaves out (Save to Linked Folder without a
+ * linked folder) is not offered, as the File menu left the item out.
+ */
+export const FILE_COMMANDS = {
+  newDesign: 'newDesign',
+  allDesigns: 'home',
+  saveVersion: 'saveVersion',
+  versionHistory: 'versionHistory',
+  exportProject: 'exportFile',
+  exportScript: 'exportScript',
+  importProject: 'importFile',
+  saveToLinkedFolder: 'saveToLinkedFolder',
+  plugins: 'plugins',
+} as const satisfies Partial<Record<ToolId, string>>;
+
+export type FileCommandId = keyof typeof FILE_COMMANDS;
+
+export const isFileCommand = (id: string): id is FileCommandId => id in FILE_COMMANDS;
 
 /** The tool that made a feature, for its timeline chip. Unknown types show as a sketch. */
 export function toolForFeature(type: string): Tool {

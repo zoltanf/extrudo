@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { clicker, openProject, sketchOnXY } from './helpers';
+import { clicker, openProject, pickTool, sketchOnXY } from './helpers';
 
 // P0-05: the viewport. The camera state is mirrored on the viewport element
 // as data attributes (direction, up, target, size), so these tests check
@@ -270,7 +270,7 @@ test('one pointer mode at a time: Select, a nav tool with its cursor, or a tool'
   await expect(surface).not.toHaveAttribute('data-cursor');
 
   // Starting a tool ends a nav tool; Select stops the tool.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XY' })
@@ -325,7 +325,7 @@ test("the browser's right-click menu stays out of the view and panels, not text 
   await expect(viewport).not.toHaveAttribute('data-camera-direction', direction);
 
   // Nor over what sits on the view, or the panels beside it, in a sketch.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XY' })

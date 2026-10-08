@@ -8,7 +8,7 @@ import {
   settled,
   solidTab,
 } from './benchmark-helpers';
-import { kernelReady, openProject, projector } from './helpers';
+import { kernelReady, openProject, pickTool, projector } from './helpers';
 
 // P5-06: the wall-thickness check (FR-3DP-07, ADR-0072). Rays from every triangle of the
 // display mesh along its inward normal give the wall's thickness there; what is below the
@@ -85,7 +85,7 @@ async function shellTheCube(page: Page) {
   await page.mouse.click(x, y);
   await expect(view).toHaveAttribute('data-model-selection', /^face:/);
   await solidTab(page);
-  await page.getByRole('button', { name: /^Shell/ }).click();
+  await pickTool(page, 'Shell');
   const dialog = page.getByRole('region', { name: 'Shell dialog' });
   await expect(dialog.getByRole('button', { name: 'Faces to remove', exact: true })).toHaveText(
     '1 face',

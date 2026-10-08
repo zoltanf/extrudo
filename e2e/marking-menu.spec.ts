@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { kernelReady, newSketchOnXY, openProject, projector } from './helpers';
+import { kernelReady, newSketchOnXY, openProject, pickTool, projector } from './helpers';
 
 // P3-11: the right-click marking menu (FR-UX-03, ADR-0042) and the context
 // menus of the other surfaces. A right-click without movement opens a ring of
@@ -462,7 +462,7 @@ test('folders, origin rows, parameter rows and design cards have context menus',
 
   // A user parameter's row in the Parameters dialog: Delete and Undo; text fields keep the
   // browser's menu.
-  await page.getByRole('button', { name: 'Parameters', exact: true }).first().click();
+  await pickTool(page, 'Parameters');
   const dialog = page.getByRole('dialog', { name: 'Parameters' });
   await expect(dialog).toBeVisible();
   const row = dialog.locator('tbody tr').first();
@@ -493,8 +493,7 @@ test('a right-click on a construction plane offers Edit, Hide and Delete', async
   const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
 
   // An offset plane 30 mm above XY, made as the construction spec does.
-  const group = page.getByRole('group', { name: 'Construct', exact: true });
-  await group.getByRole('button', { name: /^Offset Plane/ }).click();
+  await pickTool(page, 'Offset Plane');
   const dialog = page.getByRole('region', { name: 'Offset Plane dialog' });
   const xy = at([half * 0.5, -half * 0.5, 0]);
   await page.mouse.move(xy.x, xy.y);

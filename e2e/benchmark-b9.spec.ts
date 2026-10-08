@@ -133,7 +133,7 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
 
   // Sketch1 on XZ (sketch x is world X, y is world Z): the cap's half section
   // from the origin, `capDia / 2` by `capHeight`.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XZ' })
@@ -177,7 +177,7 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   await page.mouse.move(inside.x, inside.y);
   await page.mouse.click(inside.x, inside.y);
   await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
-  await page.getByRole('button', { name: 'Revolve', exact: true }).click();
+  await pickTool(page, 'Revolve');
   const revolve = page.getByRole('region', { name: 'Revolve dialog' });
   await expect(revolve.getByRole('button', { name: 'Profiles', exact: true })).toHaveText(
     /^Profile · Sketch\d+$/,
@@ -192,7 +192,7 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   await turnView(page, 'Shift+3');
   const below = await projector(viewport);
   await clickWhere(page, below, [0, 0, 0], /^face:/);
-  await page.getByRole('button', { name: /^Shell/ }).click();
+  await pickTool(page, 'Shell');
   const shell = page.getByRole('region', { name: 'Shell dialog' });
   await expect(shell.getByRole('button', { name: 'Faces to remove', exact: true })).toHaveText(
     '1 face',
@@ -209,8 +209,7 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   // below — the bottom view is still the current one — and only the wall
   // itself (a point inside the cup's hollow picks the lid above it).
   await clickWhere(page, below, [-13.5, 0, 6], /^face:/);
-  await page.getByRole('button', { name: 'Modify', exact: true }).click();
-  await page.getByRole('menuitem', { name: /^Thread/ }).click();
+  await pickTool(page, 'Thread');
   const thread = page.getByRole('region', { name: 'Thread dialog' });
   await expect(thread.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await expect(thread.getByRole('combobox', { name: 'Size' })).toHaveValue('auto');
@@ -223,7 +222,7 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
 
   // Sketch2 on XZ below the cap: the adapter's stepped half section, drawn on
   // grid points and dimensioned with the parameters.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XZ' })
@@ -234,7 +233,8 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   // model can be under a floating panel).
   const box = await viewport.boundingBox();
   if (!box) throw new Error('no viewport');
-  await zoomOutTo(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, 80);
+  // Far enough that z = −30 mm clears the nav bar at the view's foot.
+  await zoomOutTo(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, 100);
   const below2 = await projector(viewport);
   const clickBelow = clicker(page, (x, y) => below2([x, 0, y]));
   await hideConstraints();
@@ -318,7 +318,7 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   await page.mouse.move(inStep.x, inStep.y);
   await page.mouse.click(inStep.x, inStep.y);
   await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
-  await page.getByRole('button', { name: 'Revolve', exact: true }).click();
+  await pickTool(page, 'Revolve');
   const revolve2 = page.getByRole('region', { name: 'Revolve dialog' });
   await revolve2.getByRole('combobox', { name: 'Operation' }).selectOption('new-body');
   await pickAxis(page, below2, 'z', [-35, -40, -45, 35, 40, 45]);
@@ -331,8 +331,7 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   // Thread2: both outside walls, sized to fit (M20 on Ø20, M24 on Ø28).
   const front = await turnView(page, 'Shift+4');
   await clickWhere(page, front, [0, -10, -25], /^face:/);
-  await page.getByRole('button', { name: 'Modify', exact: true }).click();
-  await page.getByRole('menuitem', { name: /^Thread/ }).click();
+  await pickTool(page, 'Thread');
   const thread2 = page.getByRole('region', { name: 'Thread dialog' });
   await expect(thread2.getByRole('button', { name: 'Faces', exact: true })).toHaveText('1 face');
   await clickWhere(page, front, [0, -14, -15], /^face:/);

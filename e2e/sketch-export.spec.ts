@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { type Download, expect, type Page, test } from '@playwright/test';
-import { clicker, mapping, openProject, sketchOnXY } from './helpers';
+import { clicker, mapping, openProject, pickTool, sketchOnXY } from './helpers';
 
 // P1-13: a sketch exports to SVG (1 unit = 1 mm, with the size on the root)
 // and DXF R12, as its curves or its profiles: from the Sketch tab's Export
@@ -103,7 +103,7 @@ test('a timeline chip exports its sketch; an open sketch has no profiles to expo
   expect(Number(height)).toBeGreaterThan(0);
 
   // A sketch with only an open line: no profiles, so nothing to export as profiles.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XY' })

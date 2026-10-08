@@ -3,7 +3,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { readArchive } from '../packages/storage/src/archive';
 import { writePluginFile } from '../packages/storage/src/plugin-file';
 import { chip, exportProject, primitive } from './benchmark-helpers';
-import { kernelReady, openProject, projector } from './helpers';
+import { fileAction, kernelReady, openProject, projector, selectTab } from './helpers';
 
 // Installed plugins and plugin commands (P6-03 slice 2, ADR-0077 §4-§5): the
 // example plugin (`examples/plugins/name-plate/`) packed here, installed
@@ -27,8 +27,7 @@ const dialog = (page: Page) => page.getByRole('dialog', { name: 'Plugins' });
 const palette = (page: Page) => page.getByRole('dialog', { name: 'Command palette' });
 
 async function openPlugins(page: Page) {
-  await page.getByRole('button', { name: 'File menu' }).click();
-  await page.getByRole('menuitem', { name: 'Plugins…' }).click();
+  await fileAction(page, 'Plugins…');
   await expect(dialog(page)).toBeVisible();
 }
 
@@ -138,7 +137,8 @@ test("adds a plugin's custom feature, and the design carries the plugin file", a
   await page.keyboard.press('Escape');
   await expect(dialog(page)).toBeHidden();
 
-  // The Create menu lists it under "Plugins".
+  // Solid's Create menu lists it under "Plugins".
+  await selectTab(page, 'Solid');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Name plate' })).toBeVisible();
   await page.keyboard.press('Escape');

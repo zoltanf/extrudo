@@ -7,6 +7,7 @@ import {
   newSketchOnXY,
   openProject,
   openSketch,
+  pickTool,
   projector,
 } from './helpers';
 
@@ -78,9 +79,7 @@ test('Intersect (Shift+P) cuts a cylinder with an angled plane into an ellipse',
   await page.keyboard.press('Shift+1');
   await settled(viewport);
   const at = await projector(viewport);
-  const group = page.getByRole('group', { name: 'Construct', exact: true });
-  await group.getByRole('button', { name: 'Construct', exact: true }).click();
-  await page.getByRole('menuitem', { name: /^Angled Midplane/ }).click();
+  await pickTool(page, 'Angled Midplane');
   const dialog = page.getByRole('region', { name: 'Angled Midplane dialog' });
   await expect(dialog).toBeVisible();
   await clickAt(page, at, [0, -10, 10]); // the box's front, normal −Y
@@ -91,7 +90,7 @@ test('Intersect (Shift+P) cuts a cylinder with an angled plane into an ellipse',
   await kernelReady(page);
   await primitive(page, 'Cylinder', { Diameter: '20 mm', Height: '60 mm', X: '60 mm' });
 
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('group', { name: 'Construction planes' })

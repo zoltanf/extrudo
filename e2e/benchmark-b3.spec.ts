@@ -150,7 +150,7 @@ test('B3: a phone stand of two bodies, combined', async ({ page }) => {
 
   // Sketch2 on YZ (sketch x is world Y, sketch y is world Z): the back rest, a
   // parallelogram leaning back, pinned to the origin by `setback` and `base`.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'YZ' })
@@ -275,9 +275,8 @@ test('B3: a phone stand of two bodies, combined', async ({ page }) => {
   await expect(browser.locator('[data-folder-count]')).toHaveText('2');
 
   // Combine1: the plate is the target, the rest the tool; the rest is used up.
-  const combineTile = page.getByRole('button', { name: 'Combine', exact: true });
   await selectBodies(page, ['Body1', 'Body2']);
-  await combineTile.click();
+  await pickTool(page, 'Combine');
   const combine = page.getByRole('region', { name: 'Combine dialog' });
   await expect(combine).toBeVisible();
   await expect(combine.getByRole('button', { name: 'Target', exact: true })).toContainText('Body1');

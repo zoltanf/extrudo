@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import { primitive } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool } from './helpers';
+import { fileAction, kernelReady, openProject, pickTool } from './helpers';
 
 // P3-13 (NFR-07): an axe audit of the main screens. Each screen is checked
 // against WCAG 2.1 A and AA; the test fails on any violation not listed in
@@ -110,7 +110,7 @@ for (const theme of ['dark', 'light'] as const) {
       await page.getByRole('button', { name: 'Close', exact: true }).click();
 
       // Parameters.
-      await page.getByRole('button', { name: 'Parameters', exact: true }).click();
+      await pickTool(page, 'Parameters');
       await expect(page.getByRole('dialog', { name: 'Parameters' })).toBeVisible();
       await audit(page, `${theme} parameters`);
       await page.keyboard.press('Escape');
@@ -128,8 +128,7 @@ for (const theme of ['dark', 'light'] as const) {
       await page.keyboard.press('Escape');
 
       // Export.
-      await page.getByRole('button', { name: 'File menu' }).click();
-      await page.getByRole('menuitem', { name: /^Export 3MF/ }).click();
+      await fileAction(page, 'Export Model');
       await expect(page.getByRole('dialog', { name: 'Export model' })).toBeVisible();
       await audit(page, `${theme} export`);
       await page.keyboard.press('Escape');

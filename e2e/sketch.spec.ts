@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { kernelReady, openProject, saveStatus } from './helpers';
+import { kernelReady, openProject, pickTool, saveStatus } from './helpers';
 
 // P1-01: the sketch feature and sketch mode. Create Sketch picks an origin
 // plane (in the view or in the prompt), the camera looks at it, the toolbar
@@ -29,7 +29,7 @@ const sketchItem = (page: Page, name: string) =>
     .filter({ hasText: new RegExp(`^${name}`) });
 
 async function createSketch(page: Page) {
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await expect(prompt(page)).toBeVisible();
 }
 

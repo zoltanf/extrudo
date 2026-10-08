@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openProject, sketchOnXY } from './helpers';
+import { openProject, pickTool, sketchOnXY } from './helpers';
 
 // P1-14: the shortcut registry, the Ctrl+K command palette and the S toolbox.
 
@@ -134,13 +134,14 @@ test('shortcuts: tools that come later say so, Shift+digits turn the view', asyn
   await expect(viewport).toHaveAttribute('data-camera-up', '0,0,1');
 
   // The toolbar's tooltips read their keys from the same keymap.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XY' })
     .click();
+  // The group menus list the tools that aren't tiles (ADR-0079), with their keys too.
   await page.getByRole('button', { name: 'Create', exact: true }).click();
-  await expect(page.getByRole('menuitem', { name: /^Line L$/ })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /^Text Shift\+T$/ })).toBeVisible();
 });
 
 test('the app bar opens search: a button by Undo/Redo, and the Help menu', async ({ page }) => {

@@ -1,7 +1,7 @@
 import { X } from 'lucide-react';
 import type { CSSProperties, KeyboardEvent } from 'react';
 import { Button, IconButton } from '../design-system';
-import { type Box, toolSelector, useTargetBox } from './anchor';
+import { type Box, toolOrTabSelector, useTargetBox } from './anchor';
 import { TUTORIAL_FINISH, TUTORIAL_STEPS, textParts } from './tutorial';
 import type { Tutorial } from './useTutorial';
 
@@ -41,7 +41,7 @@ export function StepText({ text }: { text: string }) {
 export function TutorialCard({ tutorial }: { tutorial: Tutorial }) {
   const { open, step, finished, index, facts } = tutorial;
   const target = step?.target(facts);
-  const box = useTargetBox(open && target ? toolSelector(target) : undefined);
+  const box = useTargetBox(open && target ? toolOrTabSelector(target, facts.mode) : undefined);
   if (!open) return null;
 
   const onKeyDown = (event: KeyboardEvent) => {

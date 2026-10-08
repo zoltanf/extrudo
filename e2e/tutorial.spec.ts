@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { chip, clickEdge, turnView, viewportOf } from './benchmark-helpers';
-import { clicker, kernelReady, mapping } from './helpers';
+import { clicker, kernelReady, mapping, pickTool } from './helpers';
 
 // P3-12: the first-run tutorial (ADR-0052). The home screen offers it once;
 // the card follows the real design (a sketch, four lines, a dimension, an
@@ -75,7 +75,7 @@ test('walks the tour: a sketch, a rectangle, a size, an extrude and a fillet', a
   await expect(page.locator('[data-tutorial-ring="sketch"]')).toBeVisible();
 
   // 1. Create Sketch, then a plane: the card moves on by itself.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await expect(card(page)).toContainText('Now click the XY plane');
   await page
     .getByRole('region', { name: 'Create Sketch' })
@@ -115,7 +115,7 @@ test('walks the tour: a sketch, a rectangle, a size, an extrude and a fillet', a
   await page.mouse.move(centre.x, centre.y);
   await page.mouse.click(centre.x, centre.y);
   await expect.poll(() => viewport.getAttribute('data-model-selection')).toMatch(/^profile:/);
-  await page.getByRole('button', { name: /^Extrude/ }).click();
+  await pickTool(page, 'Extrude');
   const dialog = page.getByRole('region', { name: 'Extrude dialog' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('textbox', { name: 'Distance' }).fill('15');
@@ -129,7 +129,7 @@ test('walks the tour: a sketch, a rectangle, a size, an extrude and a fillet', a
   // 5. Round the box's top front edge with a fillet.
   const home = await turnView(page, 'Shift+1');
   await clickEdge(page, home, [0, -10, 15]);
-  await page.getByRole('button', { name: /^Fillet/ }).click();
+  await pickTool(page, 'Fillet');
   const fillet = page.getByRole('region', { name: 'Fillet dialog' });
   await expect(fillet).toBeVisible();
   await expect(fillet).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });

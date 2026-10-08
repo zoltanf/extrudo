@@ -53,25 +53,28 @@ describe('buildCommands', () => {
 
   it('offers Record Macro, then only Stop Macro while recording (P5-05)', () => {
     const idle = byId(context('model'));
-    expect(idle.get('recordMacro')?.group).toBe('Solid › Create');
+    expect(idle.get('recordMacro')?.group).toBe('Solid › Program');
     expect(idle.has('stopMacro')).toBe(false);
     const recording = byId(context('model', { macro: { recording: true } }));
     expect(recording.has('recordMacro')).toBe(false);
-    expect(recording.get('stopMacro')?.group).toBe('Solid › Create');
+    expect(recording.get('stopMacro')?.group).toBe('Solid › Program');
     expect(byId(context('sketch')).has('recordMacro')).toBe(false);
   });
 
-  it('offers Export Design as Script in the File group of the model (P5-05)', () => {
+  it('offers Export Design as Script in the Home tab of the model (P5-05)', () => {
     const exportScript = vi.fn();
     const ctx = context('model');
     const commands = byId({ ...ctx, file: { ...ctx.file, exportScript } });
     commands.get('exportScript')?.run();
-    expect(commands.get('exportScript')?.group).toBe('File');
+    expect(commands.get('exportScript')?.group).toBe('Home › Files');
+    expect(
+      byId({ ...context('sketch'), file: { ...ctx.file, exportScript } }).has('exportScript'),
+    ).toBe(false);
     expect(exportScript).toHaveBeenCalled();
     expect(byId(ctx).has('exportScript')).toBe(false);
   });
 
-  it("offers Plugins… in the File group, and the enabled plugins' commands in the model only (P6-03)", () => {
+  it("offers Plugins… in the Home tab, and the enabled plugins' commands in the model only (P6-03)", () => {
     const plugins = vi.fn();
     const ctx = context('model');
     const run = vi.fn();
@@ -83,7 +86,11 @@ describe('buildCommands', () => {
       run,
     };
     const model = byId({ ...ctx, file: { ...ctx.file, plugins }, plugins: [command] });
-    expect(model.get('plugins')).toMatchObject({ label: 'Plugins…', group: 'File', keys: [] });
+    expect(model.get('plugins')).toMatchObject({
+      label: 'Plugins…',
+      group: 'Home › Extend',
+      keys: [],
+    });
     model.get('plugins')?.run();
     expect(plugins).toHaveBeenCalled();
     const offered = model.get('plugin:name-plate:three-holes');
@@ -104,8 +111,11 @@ describe('buildCommands', () => {
   it('offers Save Version on Ctrl+S and Version History in both modes (P2-14)', () => {
     for (const mode of ['model', 'sketch'] as const) {
       const commands = byId(context(mode));
-      expect(commands.get('saveVersion')).toMatchObject({ group: 'File', keys: ['Mod+S'] });
-      expect(commands.get('versionHistory')?.group).toBe('File');
+      expect(commands.get('saveVersion')).toMatchObject({
+        group: 'Home › Versions',
+        keys: ['Mod+S'],
+      });
+      expect(commands.get('versionHistory')?.group).toBe('Home › Versions');
     }
   });
 
@@ -121,9 +131,13 @@ describe('buildCommands', () => {
     expect(model.get('fillet')?.keys).toEqual(['F']);
     expect(sketch.get('sketchFillet')?.keys).toEqual(['F']);
     expect(sketch.has('fillet')).toBe(false);
-    // Parameters on both tabs, Finish Sketch in a sketch; Delete only where something can be deleted.
-    expect(model.get('parameters')?.group).toBe('Solid › Modify');
-    expect(sketch.get('parameters')?.group).toBe('Sketch › Modify');
+    // Parameters in Home in both modes (and the Sketch tab's Modify), Finish Sketch in a
+    // sketch; Delete only where something can be deleted.
+    expect(model.get('parameters')?.group).toBe('Home › Parameters');
+    expect(sketch.get('parameters')?.group).toBe('Home › Parameters');
+    expect(model.get('fillet')?.group).toBe('Modify › Modify');
+    expect(model.get('offsetPlane')?.group).toBe('Construct › Planes');
+    expect(model.get('measure')?.group).toBe('Inspect › Inspect');
     expect(sketch.has('finishSketch')).toBe(true);
     expect(model.has('delete')).toBe(false);
     expect(sketch.get('delete')?.keys).toEqual(['Delete', 'Backspace']);
@@ -133,12 +147,16 @@ describe('buildCommands', () => {
     const model = byId(context('model'));
     expect(model.get('customizer')).toMatchObject({
       label: 'Customizer',
-      group: 'Solid › Modify',
+      group: 'Home › Parameters',
       keys: [],
     });
     expect(model.get('customizer')?.unavailable).toBeUndefined();
-    // It works on the model only, so it isn't in the Sketch tab.
-    expect(byId(context('sketch')).has('customizer')).toBe(false);
+    // It works on the model only: the Home tab stays in a sketch, and says so (ADR-0079).
+    const ctx = context('sketch');
+    const inSketch = byId(ctx).get('customizer');
+    expect(inSketch?.unavailable).toBe('Finish the sketch to use Customizer.');
+    inSketch?.run();
+    expect(ctx.notify).toHaveBeenCalledWith('info', 'Finish the sketch to use Customizer.');
   });
 
   it('starts tools through the context', () => {
@@ -245,6 +263,29 @@ describe('buildCommands', () => {
     expect(start).toHaveBeenCalledTimes(2);
   });
 
+  it('runs each Home tab file command through its file action (ADR-0079)', () => {
+    const ctx = context('model');
+    const commands = byId(ctx);
+    const pairs = [
+      ['newDesign', 'newDesign'],
+      ['allDesigns', 'home'],
+      ['saveVersion', 'saveVersion'],
+      ['versionHistory', 'versionHistory'],
+      ['exportProject', 'exportFile'],
+      ['importProject', 'importFile'],
+    ] as const;
+    for (const [id, action] of pairs) {
+      expect(commands.get(id)?.group).toMatch(/^Home › /);
+      commands.get(id)?.run();
+      expect(ctx.file[action]).toHaveBeenCalledOnce();
+    }
+    expect(ctx.runTool).not.toHaveBeenCalled();
+    // The Home tab comes first, so a tool on two tabs (Export) is offered as Home's.
+    expect(commands.get('export')?.group).toBe('Home › Files');
+    expect(commands.get('importBody')?.group).toBe('Home › Files');
+    expect(commands.get('canvas')?.group).toBe('Home › Files');
+  });
+
   it('offers Save to Linked Folder only where a folder is linked and the project is not (P4-09)', () => {
     // No folder linked (Firefox, Safari), or this project already is: no command.
     expect(byId(context('model')).has('saveToLinkedFolder')).toBe(false);
@@ -253,7 +294,11 @@ describe('buildCommands', () => {
       file: { ...context('model').file, saveToLinkedFolder },
     });
     const command = byId(ctx).get('saveToLinkedFolder');
-    expect(command).toMatchObject({ label: 'Save to Linked Folder', group: 'File', keys: [] });
+    expect(command).toMatchObject({
+      label: 'Save to Linked Folder',
+      group: 'Home › Files',
+      keys: [],
+    });
     expect(command?.keywords).toContain('folder');
     command?.run();
     expect(saveToLinkedFolder).toHaveBeenCalledOnce();

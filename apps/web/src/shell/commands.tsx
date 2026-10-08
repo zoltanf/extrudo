@@ -9,13 +9,8 @@ import {
   Bell,
   Box,
   Circle,
-  FileCode,
-  FilePlus2,
-  FolderSync,
   GraduationCap,
-  History,
   House,
-  Import,
   Magnet,
   Maximize,
   Moon,
@@ -23,13 +18,11 @@ import {
   Puzzle,
   Redo2,
   Repeat2,
-  Save,
   ScanEye,
   Sun,
   SunMoon,
   Trash2,
   Undo2,
-  Upload,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { keysFor } from '../commands/keymap';
@@ -39,7 +32,15 @@ import { type ThemeChoice, ToolIcon } from '../design-system';
 import type { ViewportStore } from '../viewport/store';
 import { FACES, type FaceName } from '../viewport/viewcube';
 import type { FileActions } from './AppBar';
-import { TOOLS, type Tool, type ToolId, visibleTabs } from './tools';
+import {
+  FILE_COMMANDS,
+  type FileCommandId,
+  isFileCommand,
+  TOOLS,
+  type Tool,
+  type ToolId,
+  visibleTabs,
+} from './tools';
 
 export interface AppCommand extends Searchable {
   /** A tool ID, or a keymap ID such as `undo` or `viewTop`. */
@@ -112,7 +113,7 @@ export interface PluginCommandEntry {
 const icon = (Icon: typeof Box) => <Icon size={16} strokeWidth={1.75} />;
 
 /**
- * Why the Insert tab's drawing import can't run outside a sketch (P4-06): a
+ * Why the Home tab's drawing import can't run outside a sketch (P4-06): a
  * drawing becomes the open sketch's curves, so there is nothing for it to
  * join. The tile is there either way and says this.
  */
@@ -146,6 +147,44 @@ function toolCommand(id: ToolId, group: string, ctx: CommandContext): AppCommand
   };
 }
 
+/** Words search also finds a file command by (ADR-0079), beyond its group and hint. */
+const FILE_KEYWORDS: Record<FileCommandId, string> = {
+  newDesign: 'file create blank',
+  allDesigns: 'file home projects open',
+  saveVersion: 'file save version snapshot history checkpoint',
+  versionHistory: 'file versions restore revert history',
+  exportProject: 'file download save project backup extrudo',
+  exportScript: 'file download code typescript macro api program',
+  importProject: 'file open upload project extrudo',
+  saveToLinkedFolder: 'file folder disk sync save project extrudo linked external',
+  plugins: 'file plugins extensions add-ons install enable remove extrudo-plugin',
+};
+
+/**
+ * A Home tab file command (ADR-0079): runs the page's `FileActions` method, the
+ * one the File menu's item ran. Absent where the page leaves the method out, and
+ * Export as Script in a sketch (a sketch isn't a design of its own).
+ */
+function fileCommand(
+  id: FileCommandId,
+  group: string,
+  ctx: CommandContext,
+): AppCommand | undefined {
+  const action = ctx.file[FILE_COMMANDS[id]];
+  if (!action || (id === 'exportScript' && ctx.mode !== 'model')) return undefined;
+  const tool: Tool = TOOLS[id];
+  return {
+    id,
+    label: tool.label,
+    ...(tool.short && { short: tool.short }),
+    group,
+    keywords: `${group} ${FILE_KEYWORDS[id]} ${tool.hint}`,
+    icon: <ToolIcon name={tool.icon} category={tool.category} size={16} />,
+    keys: keysFor(id),
+    run: () => action(),
+  };
+}
+
 /** The commands offered in this context, in the order an empty search lists them. */
 export function buildCommands(ctx: CommandContext): AppCommand[] {
   const out: AppCommand[] = [];
@@ -168,8 +207,16 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
       for (const id of [...group.tools, ...(group.more ?? [])]) {
         if (id === 'recordMacro' && ctx.macro?.recording) continue;
         if (id === 'stopMacro' && !ctx.macro?.recording) continue;
-        const command = toolCommand(id, `${tab.label} › ${group.label}`, ctx);
-        add(id === 'importDrawing' && ctx.mode !== 'sketch' ? noDrawing(ctx, command) : command);
+        const where = `${tab.label} › ${group.label}`;
+        if (isFileCommand(id)) {
+          const command = fileCommand(id, where, ctx);
+          if (command) add(command);
+          continue;
+        }
+        const command = toolCommand(id, where, ctx);
+        if (id === 'importDrawing' && ctx.mode !== 'sketch') add(noDrawing(ctx, command));
+        else if (MODEL_ONLY.has(id) && ctx.mode === 'sketch') add(modelOnly(ctx, command));
+        else add(command);
       }
     }
     if (tab.id === 'sketch') {
@@ -274,53 +321,6 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     });
   }
 
-  plain('newDesign', 'New Design', 'File', ctx.file.newDesign, { icon: icon(FilePlus2) });
-  plain('allDesigns', 'All Designs', 'File', ctx.file.home, {
-    icon: icon(House),
-    keywords: 'File home projects open',
-  });
-  if (ctx.file.saveVersion) {
-    plain('saveVersion', 'Save Version…', 'File', ctx.file.saveVersion, {
-      icon: icon(Save),
-      keywords: 'File save version snapshot history checkpoint',
-    });
-  }
-  if (ctx.file.versionHistory) {
-    plain('versionHistory', 'Version History…', 'File', ctx.file.versionHistory, {
-      icon: icon(History),
-      keywords: 'File versions restore revert history',
-    });
-  }
-  plain('exportProject', 'Export .extrudo', 'File', ctx.file.exportFile, {
-    icon: icon(Upload),
-    keywords: 'File download save project backup',
-  });
-  if (ctx.mode === 'model' && ctx.file.exportScript) {
-    plain('exportScript', 'Export Design as Script…', 'File', ctx.file.exportScript, {
-      icon: icon(FileCode),
-      keywords: 'File download code typescript macro api program',
-    });
-  }
-  plain('importProject', 'Import .extrudo…', 'File', ctx.file.importFile, {
-    icon: icon(Import),
-    keywords: 'File open upload project',
-  });
-  // A folder on disk this design is kept in, where one is linked and this
-  // project isn't linked yet (P4-09, ADR-0065 §3).
-  if (ctx.file.saveToLinkedFolder) {
-    plain('saveToLinkedFolder', 'Save to Linked Folder', 'File', ctx.file.saveToLinkedFolder, {
-      icon: icon(FolderSync),
-      keywords: 'File folder disk sync save project extrudo linked external',
-    });
-  }
-
-  if (ctx.file.plugins) {
-    plain('plugins', 'Plugins…', 'File', ctx.file.plugins, {
-      icon: icon(Puzzle),
-      keywords: 'File plugins extensions add-ons install enable remove extrudo-plugin',
-    });
-  }
-
   const themes: [ThemeChoice, string, typeof Box][] = [
     ['dark', 'Dark Theme', Moon],
     ['light', 'Light Theme', Sun],
@@ -335,6 +335,18 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     }
   }
   return out;
+}
+
+/**
+ * The Home tab's tools that work on the model (ADR-0079): the tab stays in a sketch,
+ * so they are there, saying why they can't run, like the drawing import outside one.
+ */
+const MODEL_ONLY: ReadonlySet<string> = new Set(['importBody', 'canvas', 'customizer']);
+
+/** A model-only tool in a sketch: the command with the reason it can't run. */
+function modelOnly(ctx: CommandContext, command: AppCommand): AppCommand {
+  const reason = `Finish the sketch to use ${command.label}.`;
+  return { ...command, unavailable: reason, run: () => ctx.notify('info', reason) };
 }
 
 /** The drawing import outside a sketch: the command with the reason it can't run. */

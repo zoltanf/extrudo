@@ -68,8 +68,7 @@ test('drafts two sides of a cube about the XY plane; too steep says how far it m
   const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
   expect(half * 0.75).toBeGreaterThan(11);
 
-  await page.getByRole('button', { name: 'Modify', exact: true }).click();
-  await page.getByRole('menuitem', { name: /^Draft/ }).click();
+  await pickTool(page, 'Draft');
   const dialog = page.getByRole('region', { name: 'Draft dialog' });
   await expect(dialog).toBeVisible();
   // The front (y = -10) and right (x = 10) faces, seen from the view a new design opens with.

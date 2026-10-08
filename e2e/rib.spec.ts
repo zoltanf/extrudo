@@ -101,7 +101,7 @@ async function volume(page: Page) {
 
 /** Draws the rib's line on a new sketch (Sketch3) on the XZ plane, through the bracket. */
 async function ribLine(page: Page, viewport: Locator) {
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XZ' })

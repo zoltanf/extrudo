@@ -1,6 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
 import { viewportOf } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool } from './helpers';
+import { kernelReady, openProject, pickTool, selectTab } from './helpers';
 
 // P3-12: the rest of the onboarding (ADR-0052): the template gallery, the
 // hint over an empty design, and the tool tooltips with their demo clips.
@@ -83,7 +83,7 @@ test('an empty design points at Create Sketch until it has a feature', async ({ 
   await expect(hint).toHaveCSS('pointer-events', 'none');
 
   // Create Sketch waiting for a plane has its own prompt: the hint steps aside.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await expect(hint).toHaveCount(0);
   await page.keyboard.press('Escape');
   await expect(hint).toBeVisible();
@@ -123,6 +123,9 @@ test('a toolbar tooltip has the name, the key, a sentence and a looping demo', a
   // (The pointer travels: a single jump leaves the tooltip's grace area open.)
   await page.mouse.move(700, 500, { steps: 5 });
   await expect(tooltip).toHaveCount(0);
+  await selectTab(page, 'Modify');
+  await page.mouse.move(700, 500, { steps: 5 });
+  await expect(tooltip).toHaveCount(0);
   await page.getByRole('button', { name: 'Chamfer' }).hover();
   await expect(tooltip).toContainText('Bevel the selected edges.');
   await expect(tooltip.locator('video[data-tool-demo="chamfer"]')).toHaveAttribute(
@@ -148,6 +151,7 @@ test('with reduced motion a demo is a still, and it loads only when its tooltip 
   // No clip is fetched until a tooltip asks for it.
   expect(requested).toEqual([]);
 
+  await selectTab(page, 'Modify');
   await page.getByRole('button', { name: 'Fillet' }).hover();
   const video = page.getByRole('tooltip').locator('video[data-tool-demo="fillet"]');
   await expect(video).toHaveAttribute('data-playing', 'false');

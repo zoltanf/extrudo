@@ -1,6 +1,6 @@
 import { expect, type Locator, test } from '@playwright/test';
 import { attr, chip, primitive } from './benchmark-helpers';
-import { kernelReady, openProject, projector } from './helpers';
+import { kernelReady, openProject, pickTool, projector } from './helpers';
 
 // P4-12: the sketch palette's Slice (ADR-0031 §5). While a sketch is open
 // and Slice is on, the bodies are cut away on the camera's side of the
@@ -67,7 +67,7 @@ test('slices the bodies at the sketch plane while the sketch is open', async ({ 
   // Create Sketch on the box's top face (kept side of the person's section).
   const at = await projector(viewport);
   await settled(viewport);
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   const prompt = page.getByRole('region', { name: 'Create Sketch' });
   await expect(prompt).toBeVisible();
   await expect(viewport).not.toHaveAttribute('data-sketch-slice', /./);

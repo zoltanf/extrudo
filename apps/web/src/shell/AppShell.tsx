@@ -181,14 +181,14 @@ import { menuModel, QUIT_ID, SAVE_AS_ID } from './menuModel';
 import { Splitter, usePanel } from './panels';
 import { watchRecomputeErrors } from './recomputeErrors';
 import { Timeline } from './Timeline';
-import { Toolbar } from './Toolbar';
+import { Toolbar, ToolbarTabs, useToolbarTab } from './Toolbar';
 import {
   createTimelineSelectionStore,
   hoveredFeatureIds,
   openGroupAtMarker,
   type TimelineSelectionStore,
 } from './timelineGroups';
-import { TOOLS, type ToolId } from './tools';
+import { FILE_COMMANDS, isFileCommand, TOOLS, type ToolId } from './tools';
 import { useMarkingSlots, useMarkingStyle, useViewMenu } from './viewMenu';
 
 /** The toolbox's pins until the user changes them (P1-14). */
@@ -378,8 +378,8 @@ export function AppShell({
     () => ({ files: platform.files, projects: platform.projects }),
     [platform],
   );
-  // The File menu offers the model's export too (P2-12), versions (P2-14) and
-  // an import (P4-06), which is the Insert tab's tile.
+  // The Home tab's file commands (ADR-0079): the model's export too (P2-12), versions
+  // (P2-14), an import (P4-06), the script export (P5-05) and plugins (P6-03).
   const fileActions = useMemo(
     () => ({
       ...file,
@@ -407,6 +407,8 @@ export function AppShell({
   const featureStatuses = useStore(model, (s) => s.features);
   const doc = useStore(store, (s) => s.doc);
   const mode = useStore(session, (s) => s.mode);
+  // The selected toolbar tab: its tabs are in the top bar, its tools in the row below (ADR-0079).
+  const [toolbarTab, setToolbarTab] = useToolbarTab(mode);
   const activeSketchId = useStore(session, (s) => s.activeSketchId);
   const activeTool = useStore(session, (s) => s.activeTool);
   const hover = useStore(session, (s) => s.hover);
@@ -812,9 +814,17 @@ export function AppShell({
       notify('info', 'Macro recording ended: you undid past where it started.');
     }
   }, [doc, macro, notify]);
+  // Tiles left out: Record or Stop (one at a time), and a Home tab file command the page
+  // doesn't offer here (Save to Linked Folder with no folder; ADR-0079).
   const macroHidden = useMemo<ReadonlySet<string>>(
-    () => new Set([recording ? 'recordMacro' : 'stopMacro']),
-    [recording],
+    () =>
+      new Set([
+        recording ? 'recordMacro' : 'stopMacro',
+        ...Object.entries(FILE_COMMANDS)
+          .filter(([, action]) => !fileActions[action])
+          .map(([id]) => id),
+      ]),
+    [recording, fileActions],
   );
   const [markingDialog, setMarkingDialog] = useState(false);
   // `listing` builds a mode's commands for the Customize Marking Menu dialog: what the mode
@@ -1079,6 +1089,11 @@ export function AppShell({
     session.getState().setTool(THICKNESS_TOOL);
   };
   const run = (tool: ToolId) => {
+    // The Home tab's file commands (ADR-0079) run what the File menu's items ran.
+    if (isFileCommand(tool)) {
+      fileActions[FILE_COMMANDS[tool]]?.();
+      return;
+    }
     // Press Pull (P3-08) runs the tool that fits the selection; Repeat last repeats Press Pull.
     if (tool === PRESS_PULL) {
       if (mode !== 'model') return;
@@ -1683,6 +1698,7 @@ export function AppShell({
         store={store}
         autosave={autosave}
         file={fileActions}
+        tabs={<ToolbarTabs mode={mode} tab={toolbarTab} onTab={setToolbarTab} />}
         theme={choice}
         onThemeChange={setChoice}
         onSearch={openSearch}
@@ -1700,6 +1716,7 @@ export function AppShell({
       />
       <Toolbar
         mode={mode}
+        tab={toolbarTab}
         activeTool={
           picking
             ? 'sketch'

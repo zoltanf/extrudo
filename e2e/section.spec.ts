@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { kernelReady, openProject, projector, saveStatus } from './helpers';
+import { kernelReady, openProject, pickTool, projector, saveStatus } from './helpers';
 
 // P3-09: section analysis (FR-VP-06, ADR-0045). A clipping plane over the model with the cut
 // filled in: view state, kept through recomputes and turned off and on from the browser. The
@@ -74,7 +74,7 @@ test('cuts the view at a plane, follows the arrow and the flip, and ignores what
   await expect(selection).toBeHidden();
 
   // Section Analysis (Inspect, Shift+S): a new section starts by picking its plane.
-  await page.getByRole('button', { name: /^Section/ }).click();
+  await pickTool(page, 'Section');
   const tool = panel(page);
   await expect(tool).toHaveAttribute('data-section-state', 'choosing');
   await tool.getByRole('button', { name: 'XY plane' }).click();
@@ -278,7 +278,7 @@ test('cuts at two planes at once: a corner is gone, each row has its own arrow a
     await page.mouse.click(x, y);
   };
 
-  await page.getByRole('button', { name: /^Section/ }).click();
+  await pickTool(page, 'Section');
   const tool = panel(page);
   await tool.getByRole('button', { name: 'XY plane' }).click();
   await expect(viewport).toHaveAttribute('data-section', 'origin:xy offset=30 mm on');
@@ -343,7 +343,7 @@ test('the section box cuts at six planes, its face handles drag it, and it exclu
 }) => {
   const viewport = await openProject(page, 'wall-bracket');
   await kernelReady(page);
-  await page.getByRole('button', { name: /^Section/ }).click();
+  await pickTool(page, 'Section');
   const tool = panel(page);
   await tool.getByRole('button', { name: 'Box', exact: true }).click();
   await expect(tool).toHaveAttribute('data-section-mode', 'box');
@@ -398,7 +398,7 @@ for (const theme of ['dark', 'light'] as const) {
     await expect(saveStatus(page)).toHaveText('Saved');
     await kernelReady(page);
     // Cut through the middle of the bracket, looking at the L of its side (XZ plane at y = 0).
-    await page.getByRole('button', { name: /^Section/ }).click();
+    await pickTool(page, 'Section');
     await panel(page).getByRole('button', { name: 'XZ plane' }).click();
     await expect(viewport).toHaveAttribute('data-section', 'origin:xz offset=0 mm on');
     await panel(page).getByRole('button', { name: /^Done/ }).click();

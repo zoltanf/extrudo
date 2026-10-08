@@ -41,7 +41,7 @@ async function cube(page: Page, x: number) {
 
 async function openCombine(page: Page, bodies: string[]): Promise<Locator> {
   await selectBodies(page, bodies);
-  await page.getByRole('button', { name: 'Combine', exact: true }).click();
+  await pickTool(page, 'Combine');
   const dialog = page.getByRole('region', { name: 'Combine dialog' });
   await expect(dialog).toBeVisible();
   return dialog;

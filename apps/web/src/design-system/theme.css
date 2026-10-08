@@ -35,6 +35,7 @@
   --color-cat-inspect: var(--x-cat-inspect);
   --color-cat-insert: var(--x-cat-insert);
   --color-cat-export: var(--x-cat-export);
+  --color-cat-file: var(--x-cat-file);
   --color-transparent: transparent;
   --color-current: currentColor;
 

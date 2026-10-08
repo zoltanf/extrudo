@@ -1,10 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { type Download, expect, type Page, test } from '@playwright/test';
 import { checkManifold, meshBounds, read3mf, readStl } from '../packages/io/src/index';
-import { kernelReady, openProject } from './helpers';
+import { fileAction, kernelReady, openProject } from './helpers';
 
 // P2-12: the model exports as 3MF (an object per body, named, in mm), binary
-// STL and STEP AP242 from the 3D Print tab's Export, the File menu or a
+// STL and STEP AP242 from the 3D Print tab's Export, the Home tab or a
 // body's menu. Mesh exports are tessellated in the kernel at a preset or
 // custom resolution; every exported STL here passes the manifold check.
 
@@ -132,7 +132,7 @@ test('the Wall bracket exports as 3MF, STL and STEP', async ({ page }) => {
   expect(text.match(/MANIFOLD_SOLID_BREP/g)).toHaveLength(1);
 });
 
-test('a body menu and the File menu open the export', async ({ page }) => {
+test('a body menu and the Home tab open the export', async ({ page }) => {
   test.setTimeout(60_000);
   await openProject(page, 'wall-bracket');
   await kernelReady(page);
@@ -150,9 +150,8 @@ test('a body menu and the File menu open the export', async ({ page }) => {
   await dialog(page).getByRole('button', { name: 'Cancel' }).click();
   await expect(dialog(page)).toBeHidden();
 
-  // The File menu.
-  await page.getByRole('button', { name: 'File menu' }).click();
-  await page.getByRole('menuitem', { name: 'Export 3MF, STL or STEP…' }).click();
+  // The Home tab's Export Model.
+  await fileAction(page, 'Export Model');
   await expect(dialog(page)).toBeVisible();
   await expect(dialog(page).getByRole('checkbox', { name: 'Bracket' })).toBeChecked();
 });

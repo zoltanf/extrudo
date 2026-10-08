@@ -49,8 +49,9 @@ describe('menuModel (P6-01 slice 2)', () => {
   const commands: AppCommand[] = [
     command('extrude', 'Extrude', 'Solid › Create', ['E']),
     command('extrude2', 'Revolve', 'Solid › Create'),
-    command('fillet', 'Fillet', 'Solid › Modify', ['F']),
-    command('importBody', 'Import', 'Insert › Insert'),
+    command('box', 'Box', 'Solid › Primitives', ['B']),
+    command('fillet', 'Fillet', 'Modify › Modify', ['F']),
+    command('importBody', 'Import', 'Home › Files'),
     command('export', 'Export', '3D Print › Output', [], { unavailable: 'Arrives later.' }),
     command('undo', 'Undo', 'Edit', ['Mod+Z']),
     command('redo', 'Redo', 'Edit', ['Mod+Y'], { unavailable: 'Nothing to redo.' }),
@@ -58,8 +59,8 @@ describe('menuModel (P6-01 slice 2)', () => {
     command('viewTop', 'Top View', 'View', ['Shift+2']),
     command('toggleBrowser', 'Hide Browser', 'Panels'),
     command('theme-light', 'Light Theme', 'Theme'),
-    command('saveVersion', 'Save Version…', 'File', ['Mod+S']),
-    command('exportProject', 'Export .extrudo', 'File'),
+    command('saveVersion', 'Save Version…', 'Home › Versions', ['Mod+S']),
+    command('exportProject', 'Export .extrudo', 'Home › Files'),
     command('tutorial', 'Tutorial', 'Help'),
   ];
 
@@ -70,10 +71,22 @@ describe('menuModel (P6-01 slice 2)', () => {
       'Edit',
       'View',
       'Solid',
-      'Insert',
+      'Modify',
       '3D Print',
       'Help',
     ]);
+  });
+
+  it('makes the Home tab the native File menu (ADR-0079)', () => {
+    const file = menuModel(commands, 'model').find((m) => m.label === 'File');
+    expect(file?.items).toEqual([
+      { id: 'importBody', label: 'Import' },
+      { separator: true },
+      { id: 'saveVersion', label: 'Save Version…', accelerator: 'CmdOrCtrl+S' },
+      { separator: true },
+      { id: 'exportProject', label: 'Export .extrudo' },
+    ]);
+    expect(menuModel(commands, 'model').some((m) => m.label === 'Home')).toBe(false);
   });
 
   it('folds Panels and Theme under View, separated from the view commands', () => {
@@ -94,9 +107,9 @@ describe('menuModel (P6-01 slice 2)', () => {
       { id: 'extrude', label: 'Extrude', accelerator: 'E' },
       { id: 'extrude2', label: 'Revolve' },
       { separator: true },
-      { id: 'fillet', label: 'Fillet', accelerator: 'F' },
+      { id: 'box', label: 'Box', accelerator: 'B' },
     ]);
-    // "Create" and "Modify" are two sub-groups: a separator between them.
+    // "Create" and "Primitives" are two sub-groups: a separator between them.
     expect(solid?.items[2]).toEqual({ separator: true });
     const print = menuModel(commands, 'model').find((m) => m.label === '3D Print');
     expect(print?.items).toEqual([{ id: 'export', label: 'Export', enabled: false }]);

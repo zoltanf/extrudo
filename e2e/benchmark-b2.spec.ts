@@ -20,7 +20,15 @@ import {
   viewportOf,
   zoomOutTo,
 } from './benchmark-helpers';
-import { clicker, kernelReady, mapping, newSketchOnXY, openProject, projector } from './helpers';
+import {
+  clicker,
+  kernelReady,
+  mapping,
+  newSketchOnXY,
+  openProject,
+  pickTool,
+  projector,
+} from './helpers';
 
 // P2-17: benchmark B2 (requirements §7) built through the UI: a parametric
 // storage box cut from a solid. Parameters (width, depth, height, wall,
@@ -130,7 +138,7 @@ test('B2: a parametric storage box, cut from a solid', async ({ page }) => {
 
   // Sketch2 on the top face: its outline projected, then offset inward by `wall`.
   await homeView(page);
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await expect(page.getByRole('region', { name: 'Create Sketch' })).toContainText('flat face');
   const top = (await projector(viewport))([40, 30, 40]);
   await page.mouse.move(top.x, top.y);

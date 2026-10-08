@@ -104,6 +104,7 @@ fill, and the timeline chip background (colour at 16% over `bg`).
 | inspect | `#3CC7D4` | `#0F9DAB` |
 | insert | `#FF7EB6` | `#E0457F` |
 | export / 3D print | `#FFC93C` | `#E59A00` |
+| file (Home tab, ADR-0079) | `#A7B0C2` | `#5B6375` |
 
 ### 3.4 Viewport and model
 
@@ -205,6 +206,7 @@ Initial set, about 60 icons:
 | inspect | measure, section analysis, mass properties, overhang analysis |
 | insert | insert SVG, insert DXF, insert mesh, canvas image, insert STEP |
 | export / 3D print | export STL, export 3MF, export STEP, export SVG, place on bed, send to slicer |
+| file | new design, all designs, save version, version history, export design, import design, export as script, linked folder, plugins (the Home tab, ADR-0079) |
 
 ## 7. Voice
 

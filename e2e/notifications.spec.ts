@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { clicker, kernelReady, openProject, sketchOnXY } from './helpers';
+import { clicker, kernelReady, openProject, pickTool, sketchOnXY } from './helpers';
 
 // P3-16 (ADR-0041): the notification history. A button below the toasts (the
 // view's bottom-right corner) opens the session's earlier notifications: errors
@@ -157,7 +157,7 @@ test("a recompute's first new error goes into the history, with Edit (P3-13)", a
   await expect(bell(page)).toHaveCount(0);
 
   // A width of 0 breaks Extrude1 (and what needs it): one quiet entry, no toast.
-  await page.getByRole('button', { name: 'Parameters', exact: true }).click();
+  await pickTool(page, 'Parameters');
   const parameters = page.getByRole('dialog', { name: 'Parameters' });
   const width = parameters.getByRole('textbox', { name: 'Expression of width', exact: true });
   await width.fill('0 mm');

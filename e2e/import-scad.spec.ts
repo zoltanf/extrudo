@@ -9,7 +9,7 @@ import {
   solidFacts,
   solidTab,
 } from './benchmark-helpers';
-import { kernelReady, openProject } from './helpers';
+import { kernelReady, openProject, pickTool, selectTab } from './helpers';
 
 // P5-04, slice 2: OpenSCAD import in the app (ADR-0071). A `.scad` file picked
 // through Insert › Import is compiled by OpenSCAD's own WASM in a worker of its
@@ -58,7 +58,7 @@ async function sizes(page: Page) {
 /** The Insert tab's Import tile, then a file through the platform's picker. */
 async function importFile(page: Page, file: string): Promise<Locator> {
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('tab', { name: 'Insert' }).click();
+  await selectTab(page, 'Home');
   await page.getByRole('button', { name: 'Import', exact: true }).click();
   await (await chooser).setFiles(file);
   const panel = dialog(page);
@@ -166,7 +166,7 @@ test('a document parameter drives a variable, and the Customizer follows it', as
 
   // The slider: every step recompiles, and the part follows the parameter.
   await solidTab(page);
-  await page.getByRole('button', { name: 'Customizer', exact: true }).click();
+  await pickTool(page, 'Customizer');
   const customizer = page.getByRole('region', { name: 'Customizer' });
   const slider = customizer.locator('[data-customizer-slider="plateWidth"]');
   const box = await slider.boundingBox();

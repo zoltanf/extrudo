@@ -96,7 +96,7 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
     id: 'round',
     title: 'Make it yours',
     text: () =>
-      `Press **Fillet**${key('fillet')}, click a few edges of the box and press OK to round them. Or hollow it out with **Shell**.`,
+      `In the **Modify** tab, press **Fillet**${key('fillet')}, click a few edges of the box and press OK to round them. Or hollow it out with **Shell**.`,
     target: () => 'fillet',
     done: ({ doc }) => featuresOf(doc, FILLET_TYPE, CHAMFER_TYPE, SHELL_TYPE).length > 0,
   },

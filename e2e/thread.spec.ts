@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { clickAt, ok, primitive } from './benchmark-helpers';
-import { kernelReady, openProject, projector } from './helpers';
+import { kernelReady, openProject, pickTool, projector } from './helpers';
 
 // P4-02: Thread (FR-FT-15). A modeled thread on a cylinder's wall, sized to
 // fit (M20 on the default Ø20 cylinder, 0.1 mm tolerance: 19.8 mm across the
@@ -56,8 +56,7 @@ async function clickFace(page: Page, at: At, p: [number, number, number]) {
 }
 
 async function openThread(page: Page) {
-  await page.getByRole('button', { name: 'Modify', exact: true }).click();
-  await page.getByRole('menuitem', { name: /^Thread/ }).click();
+  await pickTool(page, 'Thread');
   const dialog = page.getByRole('region', { name: 'Thread dialog' });
   await expect(dialog).toBeVisible();
   return dialog;
@@ -258,8 +257,7 @@ test('cuts NPT 1/2 into a drafted cylinder: the thread follows the cone', async 
   const at = await settledProjector(viewport);
   const half = Number(await viewport.getAttribute('data-camera-size')) * 0.16;
 
-  await page.getByRole('button', { name: 'Modify', exact: true }).click();
-  await page.getByRole('menuitem', { name: /^Draft/ }).click();
+  await pickTool(page, 'Draft');
   const draft = page.getByRole('region', { name: 'Draft dialog' });
   await expect(draft).toBeVisible();
   await clickFace(page, at, [0, -10.985, 10]);

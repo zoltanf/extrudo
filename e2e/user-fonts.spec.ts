@@ -1,6 +1,6 @@
 import { writeFile } from 'node:fs/promises';
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { clicker, kernelReady, projector, sketchOnXY } from './helpers';
+import { clicker, fileAction, kernelReady, projector, sketchOnXY } from './helpers';
 
 // P4-03b: fonts the user brings to the design (ADR-0061). A font file picked
 // with "Add font…" is stored with the design, so a text shaped with it has its
@@ -176,10 +176,9 @@ test('a font added to the design shapes a text, and travels with the design', as
   for (const body of drawn) expect(body.size[2]).toBe(2);
 
   // The design carries the font: the exported file has it with the document.
-  await page.getByRole('button', { name: 'File menu' }).click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('menuitem', { name: 'Export .extrudo' }).click(),
+    fileAction(page, 'Export .extrudo'),
   ]);
   const file = info.outputPath('with-font.extrudo');
   await download.saveAs(file);

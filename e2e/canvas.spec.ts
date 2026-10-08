@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { kernelReady, openProject, pickTool, projector } from './helpers';
+import { fileAction, kernelReady, openProject, pickTool, projector, selectTab } from './helpers';
 
 // P4-06, slice 5: a canvas (ADR-0066 §5, FR-IO-07). The Insert tab's Canvas
 // picks a picture, stores its bytes with the design and lays it on a plane;
@@ -56,7 +56,7 @@ async function pngBytes(page: Page): Promise<Buffer> {
 /** The Insert tab's Canvas tile, then a picture through the platform's picker. */
 async function pickCanvas(page: Page, bytes: Buffer): Promise<Locator> {
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('tab', { name: 'Insert' }).click();
+  await selectTab(page, 'Home');
   await page.getByRole('button', { name: 'Canvas', exact: true }).click();
   await (await chooser).setFiles({ name: 'plan.png', mimeType: 'image/png', buffer: bytes });
   const panel = dialog(page);
@@ -271,10 +271,7 @@ test('a canvas follows its construction plane when it moves', async ({ page }) =
   // geometry (ADR-0040).
   const settled = await settledProjector(view);
   const half = Number(await view.getAttribute('data-camera-size')) * 0.16;
-  await page
-    .getByRole('group', { name: 'Construct', exact: true })
-    .getByRole('button', { name: 'Offset Plane' })
-    .click();
+  await pickTool(page, 'Offset Plane');
   const planeDialog = page.getByRole('region', { name: 'Offset Plane dialog' });
   await expect(planeDialog).toBeVisible();
   const square = settled([half * 0.5, -half * 0.5, 0]);
@@ -317,10 +314,9 @@ test('the picture travels with an exported design', async ({ page }, info) => {
   await expect.poll(async () => canvasSize(page)).toMatch(/^20x10:0,0,0$/);
 
   const file = info.outputPath('canvas.extrudo');
-  await page.getByRole('button', { name: 'File menu' }).click();
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('menuitem', { name: 'Export .extrudo' }).click(),
+    fileAction(page, 'Export .extrudo'),
   ]);
   await download.saveAs(file);
 

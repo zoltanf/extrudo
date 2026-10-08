@@ -18,7 +18,8 @@ brief, voice) is in **`05-brand.md`**. In short:
   sketch blue for sketch geometry.
 - **Colour by tool category** (icons and timeline chips share it): Sketch =
   blue, Create = green, Modify = coral, Construct = violet, Inspect = teal,
-  Insert = pink, Export/3D Print = yellow. Status colours always pair with a
+  Insert = pink, Export/3D Print = yellow, the Home tab's file actions = neutral
+  grey (`file`, ADR-0079). Status colours always pair with a
   glyph: ✓ ok, ⚠ warning, ✕ error.
 - **Icons:** a custom two-tone set (24 px grid, 1.75 px stroke, 22% fill in
   the category colour). Lucide for generic UI icons.
@@ -32,10 +33,9 @@ brief, voice) is in **`05-brand.md`**. In short:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ ☰ File  │ ⟲ ⟳ │        Project name ▾  • Saved           │ ⚙  ?  ◐ theme  │  App bar
+│ ◆ extrudo. HOME SOLID MODIFY CONSTRUCT INSPECT 3D PRINT │ ⟲ ⟳ 🔍 │  Name • Saved ⚙ ? ◐ │  Top bar
 ├────────────────────────────────────────────────────────────────────────────┤
-│ SOLID │ SKETCH* │ INSERT │ 3D PRINT │                                        │  Tabs
-│ CREATE ▾  │ MODIFY ▾ │ CONSTRUCT ▾ │ INSPECT ▾                                │  Tool groups
+│ CREATE  │ PRIMITIVES │ FEATURES │ PATTERN │ PROGRAM                         │  Tool groups
 ├───────────────┬──────────────────────────────────────────────┬─────────────┤
 │ BROWSER       │                                              │   ┌─────┐   │
 │ ▾ ⚙ Document  │                                              │   │VIEW │   │  ViewCube
@@ -52,13 +52,16 @@ brief, voice) is in **`05-brand.md`**. In short:
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **App bar:** file menu (New, Open, Save version, Export, Import, Project
-  settings), undo/redo, command search (opens the Ctrl+K palette), project
-  name (click to rename, dropdown for version history), save status,
-  settings, help (menu: Search commands, Toolbox, Tutorial, P3-12), theme
-  toggle.
-- **Versions** (P2-14, ADR-0036): Ctrl+S, File › Save version… or
-  Version history…, the clock icon beside the project name, or the
+- **Top bar** (ADR-0079, one row of 40 px): the logo (a link to all designs),
+  the toolbar's tabs, then undo, redo and command search (opens the Ctrl+K
+  palette), then, on the right, the project name (click to rename), the
+  version-history button, the save status, settings, help (menu: Search
+  commands, Toolbox, Tutorial, P3-12) and the theme toggle. The tab labels sit
+  on the wordmark's baseline. There is no File menu: its items are the Home
+  tab. Below 1024 px the wordmark, the save word (not its dot) and some tab
+  padding go and the name truncates, so the bar fits at 760 px.
+- **Versions** (P2-14, ADR-0036): Ctrl+S, Home › Save Version or
+  Version History, the clock icon beside the project name, or the
   palette open one dialog: a Description field with Save version on top
   (Enter saves V<n> and closes; a toast says so), then the saved
   versions newest first (V<n>, description, when, the name if it has
@@ -69,21 +72,32 @@ brief, voice) is in **`05-brand.md`**. In short:
 - **No workspace switcher** (removed 2026-09-27): no second workspace is
   planned, and a one-item dropdown did nothing. The 3D Print tab covers the
   printing "mode".
-- **Tabs:** `SOLID` (default: create, modify, construct, inspect), `SKETCH`
-  (shown only while editing a sketch, replacing SOLID; it keeps its own
-  Export Sketch), `INSERT` (SVG, later images and imports), `3D PRINT` (our
-  addition: export, orientation, overhang, slicer hand-off,
-  mass/filament). Insert and export aren't modelling tools, so they aren't
-  in SOLID.
-- **Export model** (P2-12, ADR-0034): 3D Print › Export, File › "Export
-  3MF, STL or STEP…", or a body's menu (that body). A small dialog: the
+- **Tabs** (ADR-0079): `HOME` (the design as a whole: New Design, All
+  Designs; Save Version, Version History; Files: Import, Import Drawing,
+  Canvas, Export Design, Export Model, Export as Script, and in its menu Import
+  .extrudo and Save to Linked Folder; Parameters, Customizer; Plugins),
+  `SOLID` (default: Create, Primitives, Features, Pattern, Program), `MODIFY`
+  (Modify, Transform), `CONSTRUCT` (Planes, Axes, Points), `INSPECT` (Measure,
+  Section Analysis) and `3D PRINT` (our addition: export, orientation,
+  overhang, slicer hand-off, mass/filament). `SKETCH` shows only while editing
+  a sketch, replacing SOLID, MODIFY, CONSTRUCT and INSPECT (it keeps its own
+  Export Sketch); HOME and 3D PRINT stay, and Home's model-only tools (Import,
+  Canvas, Customizer) say "Finish the sketch to use …" there.
+- **Toolbars fit the window** (ADR-0079 §3): when the selected tab's groups
+  are wider than the window, the group with the most visible tiles moves its
+  last tile to the front of its ▾ menu, one at a time (equally full: the
+  earlier group), until the row fits; a group keeps one tile at least, and
+  widening brings them back. A group's ▾ lists only what isn't a tile (moved
+  tiles, tools that are never tiles, the Create group's plugin features).
+- **Export model** (P2-12, ADR-0034): 3D Print › Export, Home › Export
+  Model, or a body's menu (that body). A small dialog: the
   bodies as checkboxes (the selection's bodies, else every shown body),
   the format (3MF first, "for slicers"; STL; STEP), and for meshes
   Coarse / Medium / Fine or Custom (deviation and angle fields). The
   summary line says what the file holds ("1 body, 620 triangles,
   watertight", or which bodies aren't closed) before Export saves it.
   Format and resolution are remembered.
-- **Measure** (P2-13, ADR-0035): Solid › Inspect or 3D Print › Prepare,
+- **Measure** (P2-13, ADR-0035): Inspect › Measure or 3D Print › Prepare,
   key `I`. A panel where feature dialogs open, pressed like a tool
   (Esc or Close ends it; the selection stays). It measures the model
   selection: a plain click adds until two things are picked, the next
@@ -101,7 +115,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   and with a face or a curve the angle and centre distance only.
   Values are in the document's unit and precision and can be selected
   to copy.
-- **Section Analysis** (P3-09, ADR-0045): Solid › Inspect, `Shift+S`, the
+- **Section Analysis** (P3-09, ADR-0045): Inspect › Section Analysis, `Shift+S`, the
   context list's "Section Here" on a flat face. A panel in the same
   corner as Measure (Esc or Done closes it; the section stays). A new
   section asks for a plane: click an origin plane, a construction plane
@@ -406,7 +420,7 @@ a right-click without movement, as Onshape's context menu does.
   isn't in the profiles' plane, when a profile crosses the axis or the
   profiles lie on both sides of it, and when the angles are 0, beyond a
   whole turn or cancel out.
-- **Script (P5-02, ADR-0070):** Solid › Create ▾ → Script, after Rib (no
+- **Script (P5-02, ADR-0070):** Solid › Program › Script (no
   default key; Ctrl+K finds it). A 560 px draggable dialog with a lazily loaded
   CodeMirror editor, Language (TypeScript/JavaScript), Script output and Made N
   features. A new script starts with a working box. Preview waits 500 ms after
@@ -415,21 +429,21 @@ a right-click without movement, as Onshape's context menu does.
   Editor undo changes text, OK adds or edits one document undo step. The Script
   stays one timeline chip, with its generated count in the tooltip; bodies are
   ordinary browser entries and may be picked by later features.
-- **Plugins (P6-03, ADR-0077):** File › Plugins… (Ctrl+K "Plugins…") installs, enables
+- **Plugins (P6-03, ADR-0077):** Home › Plugins (Ctrl+K "Plugins…") installs, enables
   and removes `.extrudo-plugin` files and lists a design's plugins that aren't installed
   (Install) or are older than the installed version (Update to <version>, one undo
-  step). An enabled plugin's custom features are the last items of Solid › Create ▾
+  step). An enabled plugin's custom features are the items of Solid › Create ▾
   under a "Plugins" label and in Ctrl+K as "Plugins › <name>" (no keys); each opens a
   dialog generated from its manifest (expression, checkbox, dropdown and pick fields, a
   line "Plugin: <name> <version>"), and OK adds the feature and the plugin file together.
   Its chip is the label numbered ("Name plate1"), with the plugin and version in the
   tooltip. Its commands (one-offs) are in Ctrl+K only.
-- **Record Macro and Stop Macro (P5-05, ADR-0073):** Solid › Create ▾ after Script
-  (no keys; Ctrl+K finds them). The menu offers Record while idle and Stop while
+- **Record Macro and Stop Macro (P5-05, ADR-0073):** Solid › Program after Script
+  (no keys; Ctrl+K finds them). The group shows Record while idle and Stop while
   recording; the status bar shows a red dot and "Recording macro · N features".
   Stop opens the Macro dialog (code read only, Copy, Replace with a Script, Keep
-  both, Close). File › Export design as script… downloads `<name>.ts`.
-- **Primitives (P2-10, ADR-0032):** Solid › Create ▾ → Box, Cylinder,
+  both, Close). Home › Export as Script downloads `<name>.ts`.
+- **Primitives (P2-10, ADR-0032):** Solid › Primitives → Box, Cylinder,
   Sphere, Torus (no keys). The dialog opens on the XY plane ("XY plane"
   in **Plane**) with a live preview; while Plane takes picks the origin
   planes show and the nearer of a plane and a flat face under the pointer
@@ -446,7 +460,7 @@ a right-click without movement, as Onshape's context menu does.
   In the view: arrows for each size (from the centre for lengths, widths
   and diameters, from the base for heights, from the ring for the tube)
   and a box's rotation arc.
-- **Hole (P3-04, ADR-0049):** H, or Solid › Create ▾ → Hole. The dialog
+- **Hole (P3-04, ADR-0049):** H, or Solid › Features › Hole. The dialog
   opens like a primitive's (XY plane, live cut preview; a face selected
   first fills Plane and proposes its centre), and **a click on a face or
   plane square while Plane takes picks also puts the hole where you
@@ -461,14 +475,14 @@ a right-click without movement, as Onshape's context menu does.
   the countersink's diameter and angle, and Flip (holes go into a face, down
   from an origin plane). In the view: arrows for the diameter, the blind depth
   and the counterbore or countersink diameter on the first hole.
-- **Press Pull and Offset Face (P3-08, ADR-0051):** Q, Solid › Modify ›
+- **Press Pull and Offset Face (P3-08, ADR-0051):** Q, Modify › Modify ›
   Press Pull, and the marking menu's Press Pull wedge push or pull what is
   selected by opening the dialog that fits it, with the selection in its first
   field: a **face** of a body opens Offset Face, an **edge** Fillet, a
   **sketch profile** Extrude (with several kinds selected a profile wins over
   a face over an edge). With nothing usable selected it says so (a toast:
   select a face, an edge or a profile) and starts nothing. **Offset Face**
-  (Solid › Modify) moves faces along their normals: Faces (any face, flat or
+  (Modify › Modify) moves faces along their normals: Faces (any face, flat or
   curved; picking one also picks the faces that run smoothly into it, since
   they move together, and unpicking takes them out) and Distance (2 mm by
   default: **positive moves the faces out of the body**, so a pad grows and a
@@ -478,8 +492,8 @@ a right-click without movement, as Onshape's context menu does.
   normal (on a point of the surface for a curved face); the preview replaces
   the body. A distance that is too far says how far it may go ("Face 6 can't
   move in by 25 mm: that is too far for this body (max ≈ 19 mm)").
-- **Split Body, Scale and Draft (P3-08, ADR-0053):** in the menu of Solid ›
-  Modify (no default keys; Ctrl+K finds them). **Split Body**: Bodies, Plane
+- **Split Body, Scale and Draft (P3-08, ADR-0053):** Modify › Transform (Split
+  Body, Scale) and Modify › Modify (Draft) (no default keys; Ctrl+K finds them). **Split Body**: Bodies, Plane
   (picked like Create Sketch's plane: an origin or construction plane, or a
   flat face, which cuts along its whole plane) and Keep (Both sides, Above the
   plane, Below the plane; above is where the plane's normal points). Each side
@@ -696,7 +710,7 @@ Plain language, with the fix if we know it:
   window. The view will be slower than with a graphics card.", why it is a
   separate window (the setting lets websites run graphics code on the
   processor, which Chrome keeps off by default for safety) and that designs are
-  per profile (File › Export .extrudo here, File › Import .extrudo… there). Brave, Opera, Vivaldi and other Chromium browsers get the flags and a separate `--user-data-dir` instead of a command (`[data-swiftshader-flags]`); the Copy button copies `edge://gpu` on Edge, `chrome://gpu` otherwise. The timeline, browser, parameters, customizer and export keep
+  per profile (Home › Export Design here, Home › Files ▾ Import .extrudo… there). Brave, Opera, Vivaldi and other Chromium browsers get the flags and a separate `--user-data-dir` instead of a command (`[data-swiftshader-flags]`); the Copy button copies `edge://gpu` on Edge, `chrome://gpu` otherwise. The timeline, browser, parameters, customizer and export keep
   working.
 - **The view crashed**: "The 3D view stopped working" with the error and
   [Try again]. **The driver reset** (context lost): "The graphics driver reset

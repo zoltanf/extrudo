@@ -35,6 +35,7 @@
   --x-cat-inspect: #3cc7d4;
   --x-cat-insert: #ff7eb6;
   --x-cat-export: #ffc93c;
+  --x-cat-file: #a7b0c2;
 
   /* 3.4 Viewport and model */
   --x-body-default: #a7b0c2;
@@ -86,6 +87,7 @@
   --x-cat-inspect: #0f9dab;
   --x-cat-insert: #e0457f;
   --x-cat-export: #e59a00;
+  --x-cat-file: #5b6375;
 
   --x-body-default: #b9c0cd;
   --x-edge: rgb(17 19 24 / 70%);

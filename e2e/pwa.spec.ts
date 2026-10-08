@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
-import { kernelReady, saveStatus } from './helpers';
+import { kernelReady, saveStatus, selectTab } from './helpers';
 import { type StaticHost, startStaticHost } from './static-host';
 
 // The rest of the suite blocks service workers (playwright.config.ts); this
@@ -72,7 +72,7 @@ const openscadCached = (page: Page) =>
 
 async function importScad(page: Page) {
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('tab', { name: 'Insert' }).click();
+  await selectTab(page, 'Home');
   await page.getByRole('button', { name: 'Import', exact: true }).click();
   await (await chooser).setFiles('fixtures/imports/customizer-plate.scad');
   const dialog = page.getByRole('region', { name: 'Import dialog' });

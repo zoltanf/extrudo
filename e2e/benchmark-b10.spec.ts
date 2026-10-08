@@ -137,7 +137,7 @@ test('B10: a cable chain link, swept and patterned', async ({ page }) => {
   // Sketch1 on XZ (sketch x is world X, y is world Z): the walls' centreline, a
   // rounded rectangle from (-(inner + wall) / 2, wall / 2) to
   // ((inner + wall) / 2, inner + wall / 2).
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'XZ' })
@@ -211,7 +211,7 @@ test('B10: a cable chain link, swept and patterned', async ({ page }) => {
   // Fillet the path's four corners, 3 mm: the radius goes into the heads-up
   // box first, so every corner comes out the same size.
   await chip(page, 'Sketch1').dblclick();
-  await page.getByRole('button', { name: 'Fillet', exact: true }).click();
+  await pickTool(page, 'Fillet');
   await expect(toolPrompt(page)).toBeVisible();
   xz = await projector(viewport);
   await clickXZ(0, 0);
@@ -235,7 +235,7 @@ test('B10: a cable chain link, swept and patterned', async ({ page }) => {
   // (ADR-0055: it need not touch the path), so the section is centred on the
   // path's own centreline: it spans the bottom wall, from z = 0 to z = `wall`,
   // and is centred on y = 0.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await page
     .getByRole('region', { name: 'Create Sketch' })
     .getByRole('button', { name: 'YZ' })

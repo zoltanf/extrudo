@@ -1,5 +1,13 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { clicker, kernelReady, mapping, newSketchOnXY, projector, sketchOnXY } from './helpers';
+import {
+  clicker,
+  kernelReady,
+  mapping,
+  newSketchOnXY,
+  pickTool,
+  projector,
+  sketchOnXY,
+} from './helpers';
 
 // P2-09: sketches on faces and the Project tool (ADR-0031). A box is
 // extruded, a sketch is started on its top face, a circle in it is cut into
@@ -98,7 +106,7 @@ test('sketches on a top face, cuts a hole from it, and follows the face', async 
 
   // Create Sketch, then a click on the top face: the sketch lies on it.
   const world = await homeView(page);
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   const create = page.getByRole('region', { name: 'Create Sketch' });
   await expect(create).toContainText('flat face');
   const top = world([15, 10, 15]);

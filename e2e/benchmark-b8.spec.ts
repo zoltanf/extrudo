@@ -197,7 +197,7 @@ test('B8: a name tag with embossed letters', async ({ page }) => {
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:11:60,20,3');
 
   // Sketch1 on the top face: the text, centred on the plate's right half.
-  await page.getByRole('button', { name: 'Create Sketch' }).click();
+  await pickTool(page, 'Create Sketch');
   await expect(page.getByRole('region', { name: 'Create Sketch' })).toContainText('flat face');
   await clickAt(page, at, [15, 0, 3]);
   await expect(chip(page, 'Sketch1')).toBeVisible();
