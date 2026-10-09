@@ -10,6 +10,7 @@ import {
   newSketchOnXY,
   openProject,
   pickTool,
+  selectTab,
 } from './helpers';
 import { indexed } from './indexed-png';
 
@@ -164,6 +165,81 @@ test('the Parameters dialog', async ({ page }) => {
   await expect(dialog).toBeVisible();
   await page.waitForTimeout(800);
   const file = out('parameters', 'dialog');
+  await ensureDir(file);
+  await writeFile(file, await indexed(page, await dialog.screenshot()));
+});
+
+// Part 2 (P6-06 slice S7): bodies, printing and files.
+test('the browser with its folders', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Start from the Box with a lid template' }).click();
+  await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+  await kernelReady(page);
+  await pickTool(page, 'Section Analysis');
+  const panel = page.getByRole('region', { name: 'Section Analysis' });
+  await panel.getByRole('button', { name: 'XY plane' }).click();
+  await panel.getByRole('button', { name: 'Done' }).click();
+  await page.mouse.move(900, 450);
+  await page.waitForTimeout(1500);
+  const browser = page.getByRole('complementary', { name: 'Browser' });
+  const box = await browser.boundingBox();
+  if (!box) throw new Error('no browser');
+  const file = out('bodies', 'browser');
+  await ensureDir(file);
+  await save(page, file, {
+    x: Math.max(0, box.x - 8),
+    y: Math.max(0, box.y - 8),
+    width: box.width + 16,
+    height: Math.min(box.height + 16, 600),
+  });
+});
+
+test('the Export model dialog', async ({ page }) => {
+  await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  await selectTab(page, '3D Print');
+  await page.getByRole('button', { name: 'Export', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Export model' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-export-summary]')).toHaveAttribute(
+    'data-export-summary',
+    /triangles.*watertight/,
+    { timeout: 20_000 },
+  );
+  await page.waitForTimeout(500);
+  const file = out('printing', 'export');
+  await ensureDir(file);
+  await writeFile(file, await indexed(page, await dialog.screenshot()));
+});
+
+test('the Print Info panel', async ({ page }) => {
+  await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  await pickTool(page, 'Print Info');
+  const panel = page.getByRole('region', { name: 'Print Info' });
+  await expect(panel).toHaveAttribute('data-print-state', 'ready', { timeout: 20_000 });
+  await page.waitForTimeout(500);
+  const file = out('printing', 'print-info');
+  await ensureDir(file);
+  await writeFile(file, await indexed(page, await panel.screenshot()));
+});
+
+test('the Versions dialog', async ({ page }) => {
+  await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  const dialog = page.getByRole('dialog', { name: 'Versions' });
+  const texts = ['Bracket as the template made it', 'Before the wall gets thicker'];
+  for (const text of texts) {
+    await page.getByRole('button', { name: 'Version history' }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('textbox', { name: 'Description' }).fill(text);
+    await page.keyboard.press('Enter');
+    await expect(dialog).toBeHidden();
+  }
+  await page.getByRole('button', { name: 'Version history' }).click();
+  await expect(dialog.locator('[data-version]')).toHaveCount(2);
+  await page.waitForTimeout(500);
+  const file = out('files', 'versions');
   await ensureDir(file);
   await writeFile(file, await indexed(page, await dialog.screenshot()));
 });

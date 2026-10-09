@@ -105,7 +105,10 @@ There are four ways to a tool, and you will use all of them:
 - **`S`** opens the toolbox at the top bar: your pinned tools as tiles, and the same search under
   them. `Shift+Enter` on a result pins it.
 
-Every tool has its own page in the [tool reference](./tools/index.md).
+Every tool has its own page in the [tool reference](./tools/index.md). The **Help** menu in the
+top bar links to these pages: **User Guide**, **Tutorials**, **Examples** and **Tool Reference**
+open on the docs site, and **Tutorial** starts the in-app tour. `F1` opens the page of the tool
+under the pointer (hover a toolbar tile first), or the guide when the pointer is over nothing.
 
 ## Undo covers everything
 

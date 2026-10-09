@@ -21,6 +21,13 @@ These pages are the written guide:
   reordering and lost references.
 - [Parameters and expressions](./parameters.md): named values, units, the Customizer and print
   tolerance.
+- [Bodies and the browser](./bodies.md): what a body is, the browser's folders, appearance, and
+  working with several bodies or imported meshes.
+- [Getting it printed](./printing.md): exporting STL, 3MF and STEP, and the checks that help a
+  print succeed.
+- [Files, versions and where your work lives](./files.md): autosave, `.extrudo` files, imports,
+  version history, linked folders, offline use and the examples.
+- [The desktop app](./desktop.md): installing it and what it adds.
 
 There is also a [page for every tool](./tools/index.md). Tutorials and a gallery of examples are
 on their way; they appear in the sidebar as they land.
