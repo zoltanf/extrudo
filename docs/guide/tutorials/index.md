@@ -17,3 +17,6 @@ the app changes.
   an outline, cut a cavity, make the walls a parameter. About 20 minutes.
 - [A name tag](./name-tag.md) — sketch text, emboss it off a face, fillet a thin
   plate, drill a keyring hole, export a 3MF. About 20 minutes.
+- [A threaded bottle cap](./bottle-cap.md) — revolve, shell, modeled threads with
+  automatic sizing, a second body, and parameters that refit every thread. About
+  30 minutes.

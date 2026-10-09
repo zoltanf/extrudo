@@ -1,14 +1,17 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
   addParameter,
   attr,
+  bodies,
   chip,
   clickWhere,
   closeParameters,
+  expectBody,
   expectNoProblems,
   exportModel,
   exportProject,
   fill,
+  hideConstraints,
   objectsOf3mf,
   ok,
   openParameters,
@@ -17,11 +20,11 @@ import {
   renameProject,
   setParameters,
   settled,
+  dimension as sharedDimension,
   solidFacts,
   solidTab,
   toolPrompt,
   turnView,
-  viewportOf,
   zoomOutTo,
 } from './benchmark-helpers';
 import { clicker, kernelReady, openProject, pickTool, projector } from './helpers';
@@ -46,36 +49,6 @@ test.beforeEach(async ({ page }) => {
 test.afterEach(() => {
   expect(errors).toEqual([]);
 });
-
-interface Body {
-  faces: number;
-  /** Size along x, y and z, mm. */
-  size: number[];
-}
-
-/** The bodies the view draws (`data-bodies`: `name:faces:x,y,z`), by name. */
-async function bodies(page: Page): Promise<Record<string, Body>> {
-  const drawn = await attr(viewportOf(page), 'data-bodies');
-  return Object.fromEntries(
-    drawn.split(' ').map((entry) => {
-      const [name, faces, size] = entry.split(':');
-      return [name, { faces: Number(faces), size: (size ?? '').split(',').map(Number) }];
-    }),
-  );
-}
-
-/**
- * The body `name` is `size` mm across (0.5 mm of slack: a thread cut into a
- * wall shaves a few tenths off a size), with `faces` faces where given.
- */
-async function expectBody(page: Page, name: string, size: number[], faces?: number) {
-  const body = (await bodies(page))[name];
-  expect(body, `${name} is not drawn`).toBeDefined();
-  if (faces !== undefined) expect(body?.faces).toBe(faces);
-  for (const [k, want] of size.entries()) {
-    expect(Math.abs((body?.size[k] ?? NaN) - want), `${name} size ${k}`).toBeLessThanOrEqual(0.5);
-  }
-}
 
 /** A cylinder's volume, mm³. */
 const volumeOf = (r: number, height: number) => Math.PI * r * r * height;
@@ -112,24 +85,11 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   await closeParameters(page);
 
   const palette = page.getByRole('region', { name: 'Sketch palette' });
-  const hideConstraints = async () => {
-    const showConstraints = palette.getByRole('checkbox', { name: 'Show constraints' });
-    await showConstraints.uncheck();
-    await showConstraints.blur();
-  };
-  /** Picks entities in the open sketch and types the dimension's expression. */
-  const dimension = async (
+  const dimension = (
     click: (x: number, y: number) => Promise<void>,
     picks: (readonly [number, number])[],
     expr: string,
-  ) => {
-    for (const [x, y] of picks) await click(x, y);
-    const value = page.getByRole('textbox', { name: /^Value of d\d+$/ });
-    await expect(value).toBeFocused();
-    await value.fill(expr);
-    await value.press('Enter');
-    await expect(page.locator('[data-dimension-editor]')).toHaveCount(0);
-  };
+  ) => sharedDimension(page, click, picks, expr);
 
   // Sketch1 on XZ (sketch x is world X, y is world Z): the cap's half section
   // from the origin, `capDia / 2` by `capHeight`.
@@ -141,7 +101,7 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   await settled(viewport);
   const xz = await projector(viewport);
   const clickXZ = clicker(page, (x, y) => xz([x, 0, y]));
-  await hideConstraints();
+  await hideConstraints(page);
   await page.keyboard.press('r');
   await clickXZ(0, 0);
   await clickXZ(20, 20);
@@ -237,7 +197,7 @@ test('B9: a threaded bottle cap and a thread adapter, both revolved', async ({ p
   await zoomOutTo(page, { x: box.x + box.width / 2, y: box.y + box.height / 2 }, 100);
   const below2 = await projector(viewport);
   const clickBelow = clicker(page, (x, y) => below2([x, 0, y]));
-  await hideConstraints();
+  await hideConstraints(page);
   // The origin is no entity: a point there is fixed, and the profile hangs off it.
   await pickTool(page, 'Point');
   await clickBelow(0, 0);

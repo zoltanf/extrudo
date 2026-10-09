@@ -404,6 +404,28 @@ export async function bodies(page: Page): Promise<Record<string, Body>> {
   );
 }
 
+/**
+ * The body `name` is `size` mm across (0.5 mm of slack: a thread cut into a
+ * wall shaves a few tenths off a size), with `faces` faces where given.
+ */
+export async function expectBody(page: Page, name: string, size: number[], faces?: number) {
+  const body = (await bodies(page))[name];
+  expect(body, `${name} is not drawn`).toBeDefined();
+  if (faces !== undefined) expect(body?.faces).toBe(faces);
+  for (const [k, want] of size.entries()) {
+    expect(Math.abs((body?.size[k] ?? NaN) - want), `${name} size ${k}`).toBeLessThanOrEqual(0.5);
+  }
+}
+
+/** Unchecks the sketch palette's "Show constraints" so the symbols don't crowd the view. */
+export async function hideConstraints(page: Page) {
+  const showConstraints = page
+    .getByRole('region', { name: 'Sketch palette' })
+    .getByRole('checkbox', { name: 'Show constraints' });
+  await showConstraints.uncheck();
+  await showConstraints.blur();
+}
+
 export interface Ink {
   x: [number, number];
   y: [number, number];
