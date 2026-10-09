@@ -141,3 +141,13 @@ benchmark test, which reloaded right after an edit).
   by `put` returning false and falls back to the old behaviour.
 - Test: `e2e/storage.spec.ts` "an edit made just before a reload is kept"
   (fails without the recovery).
+
+## Amendment (2026-10-09): thumbnails are framed for themselves
+
+The 256 px thumbnail was the square centre of the canvas, but Fit centres the
+model in the part the browser panel leaves open (`View.shift`), so the square
+cut off the model's right side. The snapshot now renders the scene through a
+camera of its own (`thumbnailView` in `viewport/thumbnailFrame.ts`: the view's
+orientation and projection, aspect 1, no shift, the shown bodies' box centred
+with 12 % empty on each side) into a render target. A design with no bodies
+frames its sketches' box instead; with neither it keeps the canvas's centre crop.

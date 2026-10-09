@@ -116,14 +116,22 @@ export function precachePlugin(): Plugin {
  * fetched when the More examples… dialog or the examples page shows them, not
  * precached. Vite hashes each one into `assets/` under a name that can match a
  * template thumbnail's (`storage-box`, `box-with-lid`…), so the files are found
- * by their bytes: a built PNG that is byte-for-byte one of the pictures.
+ * by their bytes: a built PNG that is byte-for-byte one of the pictures. A
+ * picture that is also a template's thumbnail (same bytes: both are the design's
+ * own snapshot, ADR-0009's amendment of 2026-10-09) is one built file the
+ * templates need offline, so it stays precached.
  */
 function examplePictureAssets(repo: string, dir: string): Set<string> {
   const picturesDir = join(repo, 'docs', 'guide', 'images', 'examples');
   if (!existsSync(picturesDir)) return new Set();
-  const pictures = readdirSync(picturesDir)
-    .filter((name) => name.endsWith('.png'))
-    .map((name) => readFileSync(join(picturesDir, name)));
+  const pngs = (d: string) =>
+    existsSync(d)
+      ? readdirSync(d)
+          .filter((name) => name.endsWith('.png'))
+          .map((name) => readFileSync(join(d, name)))
+      : [];
+  const thumbnails = pngs(join(repo, 'apps', 'web', 'src', 'home', 'templates'));
+  const pictures = pngs(picturesDir).filter((p) => !thumbnails.some((t) => t.equals(p)));
   const out = new Set<string>();
   for (const f of listFiles(dir)) {
     if (!f.startsWith('assets/') || !f.endsWith('.png')) continue;

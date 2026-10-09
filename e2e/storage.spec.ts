@@ -1,5 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
-import { fileAction, openProject, pickTool, saveStatus } from './helpers';
+import { readArchive } from '../packages/storage/src/archive';
+import { exportProject, renameProject } from './benchmark-helpers';
+import { fileAction, kernelReady, openProject, pickTool, saveStatus } from './helpers';
 
 // P0-08: projects live in the browser (OPFS + IndexedDB), autosave with a
 // visible state, the home screen, `.extrudo` export and import, and the
@@ -57,6 +59,42 @@ test('a new design is saved, survives a reload and shows on the home screen', as
   await expect(
     page.getByRole('button', { name: 'Project name: Cable clip. Rename' }),
   ).toBeVisible();
+});
+
+test("a saved design's thumbnail shows the whole model inside a transparent border", async ({
+  page,
+}) => {
+  await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  // An edit makes the next save take a fresh picture; exporting flushes it.
+  await renameProject(page, 'Thumbnail check');
+  const bytes = await exportProject(page, 'thumbnail-check.extrudo');
+  const { thumbnail } = readArchive(new Uint8Array(bytes));
+  if (!thumbnail) throw new Error('the export has no thumbnail');
+  const base64 = Buffer.from(thumbnail).toString('base64');
+  // Pixels in the 4 px border that are not transparent, and in the picture overall.
+  const result = (await page.evaluate(`(async () => {
+    const bin = atob('${base64}');
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0);
+    const { data, width, height } = ctx.getImageData(0, 0, bitmap.width, bitmap.height);
+    let border = 0;
+    let opaque = 0;
+    for (let y = 0; y < height; y++)
+      for (let x = 0; x < width; x++) {
+        if (data[(y * width + x) * 4 + 3] === 0) continue;
+        opaque++;
+        if (x < 4 || y < 4 || x >= width - 4 || y >= height - 4) border++;
+      }
+    return { width, height, border, opaque };
+  })()`)) as { width: number; height: number; border: number; opaque: number };
+  expect(result.width).toBe(256);
+  expect(result.opaque).toBeGreaterThan(2000);
+  expect(result.border).toBe(0);
 });
 
 test('undo is saved too', async ({ page }) => {

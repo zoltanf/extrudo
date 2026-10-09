@@ -16,7 +16,7 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 import { PLANE_HALF } from '../sketch/facePick';
 import type { Rgba } from './colors';
 import { createDotMaterial } from './dots';
-import { GRID_RADIUS } from './GridPlane';
+import { GRID_RADIUS, THUMBNAIL_HIDDEN } from './GridPlane';
 import type { OriginItem, ViewportStore } from './store';
 
 /**
@@ -89,7 +89,7 @@ export function Origin({
   return (
     <>
       {visible.point && <OriginPoint color={point} />}
-      <group ref={axis} visible={visible.z}>
+      <group ref={axis} name={THUMBNAIL_HIDDEN} visible={visible.z}>
         <ZAxis color={axisZ} />
       </group>
       {(Object.entries(axisHighlights) as ['x' | 'y' | 'z', 'hover' | 'selected'][]).map(

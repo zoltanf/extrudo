@@ -122,6 +122,9 @@ export interface GridProps {
   showY: boolean;
 }
 
+/** Scene objects named so are left out of a thumbnail: they run to the picture's edges. */
+export const THUMBNAIL_HIDDEN = 'thumbnail-hidden';
+
 export function Grid({
   store,
   frame = XY_FRAME,
@@ -196,7 +199,13 @@ export function Grid({
   });
 
   return (
-    <mesh ref={mesh} material={material} frustumCulled={false} renderOrder={1}>
+    <mesh
+      ref={mesh}
+      name={THUMBNAIL_HIDDEN}
+      material={material}
+      frustumCulled={false}
+      renderOrder={1}
+    >
       <planeGeometry args={[2, 2]} />
     </mesh>
   );

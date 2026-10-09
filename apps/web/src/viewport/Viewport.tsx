@@ -22,8 +22,14 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { DirectionalLight } from 'three';
-import { WebGLRenderer } from 'three';
+import type { DirectionalLight, Object3D, Scene as ThreeScene } from 'three';
+import {
+  OrthographicCamera,
+  PerspectiveCamera,
+  SRGBColorSpace,
+  WebGLRenderer,
+  WebGLRenderTarget,
+} from 'three';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
@@ -51,11 +57,23 @@ import {
 import { autoProjectSnap } from '../sketch/autoProject';
 import { sketchTargetAt } from '../sketch/facePick';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
+import { applyView } from './applyView';
 import { Bodies, clipPlanes } from './Bodies';
 import { CameraRig } from './CameraRig';
 import { CalibrationMarks, Canvases } from './Canvas';
 import { Construction } from './Construction';
-import { basis, orbit, pan, rayPlane, type View, viewRay, worldPerPixel, zoomAt } from './camera';
+import {
+  basis,
+  FOV,
+  orbit,
+  type Projection,
+  pan,
+  rayPlane,
+  type View,
+  viewRay,
+  worldPerPixel,
+  zoomAt,
+} from './camera';
 import { type CanvasDrawing, canvasSummary } from './canvasGeometry';
 import { canvasPixelsStore } from './canvasImages';
 import { type Rgba, type SceneColors, useSceneColors } from './colors';
@@ -67,7 +85,7 @@ import {
 } from './constructionGeometry';
 import { navCursor } from './cursors';
 import { Ghosts } from './Ghosts';
-import { GRID_RADIUS, Grid, XY_FRAME } from './GridPlane';
+import { GRID_RADIUS, Grid, THUMBNAIL_HIDDEN, XY_FRAME } from './GridPlane';
 import { type Ghost, ghostsSummary } from './ghostGeometry';
 import { NavBar } from './NavBar';
 import { NoWebgl } from './NoWebgl';
@@ -96,6 +114,7 @@ import {
   type ViewportStore,
   type VisualStyle,
 } from './store';
+import { thumbnailView } from './thumbnailFrame';
 import { ViewCube } from './ViewCubeView';
 import { namedDirection } from './viewcube';
 import type { ViewMenu, ViewMenuContent, ViewMenuRequest } from './viewMenu';
@@ -795,17 +814,6 @@ function Scene({
   // Uniforms change during render, which R3F doesn't see: ask for a frame after every render.
   useEffect(() => invalidate());
 
-  useEffect(() => {
-    viewport.getState().setSnapshot(() => {
-      const { gl, scene, camera } = get();
-      // Draw now: without preserveDrawingBuffer the canvas is only readable
-      // in the task that rendered it.
-      gl.render(scene, camera);
-      return thumbnailOf(gl.domElement);
-    });
-    return () => viewport.getState().setSnapshot(undefined);
-  }, [viewport, get]);
-
   // "Fit" frames the bodies and the sketches.
   const [bodyBounds, setBodyBounds] = useState<Bounds>();
   const sketchBounds = useMemo(
@@ -820,6 +828,27 @@ function Scene({
     () => viewport.getState().setBounds(unionBounds(bodyBounds, sketchBounds)),
     [viewport, bodyBounds, sketchBounds],
   );
+
+  // The thumbnail is framed for itself (ADR-0009's amendment, 2026-10-09): bodies,
+  // else the sketches, else the canvas's middle.
+  const thumbnailBox = (bodyBounds?.box ?? sketchBounds?.box) as Bounds['box'];
+  const thumbnailBoxRef = useRef(thumbnailBox);
+  thumbnailBoxRef.current = thumbnailBox;
+  useEffect(() => {
+    viewport.getState().setSnapshot(() => {
+      const { gl, scene, camera } = get();
+      const box = thumbnailBoxRef.current;
+      if (!box) {
+        // Draw now: without preserveDrawingBuffer the canvas is only readable
+        // in the task that rendered it.
+        gl.render(scene, camera);
+        return thumbnailOf(gl.domElement);
+      }
+      const { view, projection } = viewport.getState();
+      return thumbnailFromBox(gl, scene, thumbnailView(view, box, projection), projection);
+    });
+    return () => viewport.getState().setSnapshot(undefined);
+  }, [viewport, get]);
 
   const sketchColors = useMemo(
     () => ({ free: colors.sketch, fixed: colors.sketchFixed, conflict: colors.sketchConflict }),
@@ -972,7 +1001,65 @@ function worldAxis(
 export const THUMBNAIL_SIZE = 256;
 
 /**
- * A square PNG of the canvas, cropped to its centre. The background stays
+ * A square PNG of the scene seen from `view` (aspect 1, no shift) through a
+ * camera of its own, drawn into a render target so the screen is untouched.
+ * The background stays transparent.
+ */
+function thumbnailFromBox(
+  gl: WebGLRenderer,
+  scene: ThreeScene,
+  view: View,
+  projection: Projection,
+): Promise<Blob | null> {
+  const size = THUMBNAIL_SIZE;
+  const out = document.createElement('canvas');
+  out.width = size;
+  out.height = size;
+  const ctx = out.getContext('2d');
+  if (!ctx) return Promise.resolve(null);
+  const camera =
+    projection === 'perspective' ? new PerspectiveCamera(FOV) : new OrthographicCamera();
+  applyView(camera, view, projection, 1);
+  const target = new WebGLRenderTarget(size, size, { samples: 4, stencilBuffer: true });
+  target.texture.colorSpace = SRGBColorSpace;
+  const pixels = new Uint8Array(size * size * 4);
+  const previousTarget = gl.getRenderTarget();
+  const hidden: { object: Object3D; visible: boolean }[] = [];
+  scene.traverse((object) => {
+    if (object.name === THUMBNAIL_HIDDEN) hidden.push({ object, visible: object.visible });
+  });
+  try {
+    for (const { object } of hidden) object.visible = false;
+    gl.setRenderTarget(target);
+    gl.clear();
+    gl.render(scene, camera);
+    gl.readRenderTargetPixels(target, 0, 0, size, size, pixels);
+  } finally {
+    for (const { object, visible } of hidden) object.visible = visible;
+    gl.setRenderTarget(previousTarget);
+    target.dispose();
+  }
+  // Rows come bottom-up and premultiplied; ImageData wants top-down and straight.
+  const image = ctx.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    const from = (size - 1 - y) * size * 4;
+    const to = y * size * 4;
+    for (let x = 0; x < size * 4; x += 4) {
+      const a = pixels[from + x + 3] as number;
+      for (let k = 0; k < 3; k++) {
+        const c = pixels[from + x + k] as number;
+        image.data[to + x + k] =
+          a === 0 || a === 255 ? c : Math.min(255, Math.round((c * 255) / a));
+      }
+      image.data[to + x + 3] = a;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  return new Promise((resolve) => out.toBlob(resolve, 'image/png'));
+}
+
+/**
+ * A square PNG of the canvas, cropped to its centre (a design with nothing to frame). The background stays
  * transparent: the home screen draws the viewport glow behind it, so the
  * thumbnail suits both themes.
  */
