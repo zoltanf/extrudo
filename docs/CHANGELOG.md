@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.5.0 (unreleased)
 
+- 2026-10-09 · **A body's opacity applies when it changes**: a body drawn opaque and then set to see-through kept drawing opaque (three.js bakes `OPAQUE` into the program and R3F never recompiles it), so only some bodies seemed to obey; the face material is now keyed on its transparency mode (ADR-0030's amendment).
 - 2026-10-09 · **Design thumbnails are framed for themselves**: the home card's picture is rendered through its own square camera fitted to the bodies (12 % margin each side; sketches if there are none) instead of the canvas's centre crop, which cut off models Fit had shifted clear of the browser (ADR-0009's amendment); the template and example pictures are re-taken.
 - 2026-10-09 · **The Homebrew cask job runs again**: its `setup-node` no longer looks for pnpm (which the job never installs, so v0.4.1's cask was not pushed), and a manual `desktop` run with `cask_tag` (e.g. `v0.4.1`) pushes the cask for an existing tag from its release's zip.
 - 2026-10-08 · **Docs site, slice S7 (P6-06, ADR-0080)**: the concept guide's second half under `docs/guide/` (bodies and the browser, getting it printed, files and versions, the desktop app) with four pictures from `e2e/guide-shots.spec.ts`; Getting started describes the Help menu's docs links and `F1`.

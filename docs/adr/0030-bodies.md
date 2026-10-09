@@ -264,3 +264,12 @@ name:colour-or-`default`:opacity per drawn body) and `data-silhouettes`
   bodies, as Delete does at once. No new feature type: it is the existing
   `remove`. The preview is the model without the bodies.
 
+**Amendment (2026-10-09): the face material is keyed on its transparency
+mode.** A body drawn opaque and then made see-through stayed opaque: three
+bakes `#define OPAQUE` into the shader program while `transparent` is false,
+`WebGLRenderer` doesn't notice the prop change (it compares `material.version`)
+and R3F never sets `needsUpdate`. `Body`'s `<meshStandardMaterial>` has
+`key={opacity < 1 ? 'see-through' : 'opaque'}`, so a flip builds a new material
+(and back again gets a fresh opaque one with `depthWrite`). Autosave's
+thumbnail (a render target without tone mapping) recompiles every program and
+hid the bug after about a second, so `e2e/bodies.spec.ts` keeps it from drawing.

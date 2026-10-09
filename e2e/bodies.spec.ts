@@ -275,3 +275,67 @@ test('a cut through a plate makes two bodies, named without shifting', async ({ 
   await kernelReady(page);
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:6:40,20,10');
 });
+
+// A body made see-through after it was drawn opaque must really draw see-through
+// (ADR-0030's amendment). three bakes OPAQUE into a material's program while
+// `transparent` is false and doesn't notice the prop changing; only something
+// else that recompiles the programs hides it, and autosave's thumbnail does
+// (it draws into a render target, which has no tone mapping). The spec keeps
+// the thumbnail from drawing, so the material alone has to be right.
+const patchMean = async (page: Page, x: number, y: number, size = 8) => {
+  const png = await page.screenshot({ clip: { x, y, width: size, height: size } });
+  return (await page.evaluate(`(async () => {
+    const bin = atob('${png.toString('base64')}');
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const bmp = await createImageBitmap(new Blob([bytes], { type: 'image/png' }));
+    const g = new OffscreenCanvas(bmp.width, bmp.height).getContext('2d');
+    g.drawImage(bmp, 0, 0);
+    const d = g.getImageData(0, 0, bmp.width, bmp.height).data;
+    let s = 0;
+    for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2];
+    return s / (d.length / 4) / 3;
+  })()`)) as number;
+};
+
+test('a body made see-through after it was drawn opaque draws see-through', async ({ page }) => {
+  await page.addInitScript(`(() => {
+    const getContext = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
+      if (type === '2d' && this.width === 256 && this.height === 256 && !this.isConnected) return null;
+      return getContext.call(this, type, ...rest);
+    };
+  })()`);
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Start from the PCB enclosure template' }).click();
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  await expect(viewport).toHaveAttribute('data-ready', 'true');
+  await kernelReady(page);
+  await expect(viewport).toHaveAttribute('data-bodies', /^Enclosure:\d+:.* Lid:\d+:/);
+
+  // The lid's top face (the lid sits over the enclosure's cavity) in the home view.
+  const lid: [number, number] = [900, 400];
+  const opaque = await patchMean(page, ...lid);
+
+  const setOpacity = async (body: string, label: string, value: string) => {
+    await bodyRow(page, body).click({ button: 'right' });
+    await page.getByRole('menuitem', { name: 'Appearance…' }).click();
+    const panel = page.getByRole('dialog', { name: `${body} appearance` });
+    await panel.getByRole('radio', { name: label }).check();
+    await expect(viewport).toHaveAttribute(
+      'data-body-appearance',
+      new RegExp(`${body}:(#[0-9a-f]{6}|default):${value}`),
+    );
+    await panel.getByRole('radio', { name: label }).focus();
+    await page.keyboard.press('Escape');
+    await expect(panel).toBeHidden();
+    await page.mouse.move(1000, 700);
+  };
+  const distance = async () => Math.abs((await patchMean(page, ...lid)) - opaque);
+
+  await setOpacity('Lid', '50 %', '0.5');
+  await expect.poll(distance, { timeout: 8000 }).toBeGreaterThan(3);
+  // And back: opaque again, the same pixels as at the start.
+  await setOpacity('Lid', 'Opaque', '1');
+  await expect.poll(distance, { timeout: 8000 }).toBeLessThan(1.5);
+});

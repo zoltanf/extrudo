@@ -238,6 +238,9 @@ function Body({
       {showFaces && (
         <mesh geometry={faces}>
           <meshStandardMaterial
+            // three bakes OPAQUE into the program while `transparent` is false and R3F
+            // never sets `needsUpdate`: a new material per mode (ADR-0030's amendment).
+            key={opacity < 1 ? 'see-through' : 'opaque'}
             vertexColors
             roughness={0.62}
             metalness={0.05}
