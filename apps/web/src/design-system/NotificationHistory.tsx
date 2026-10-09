@@ -1,7 +1,7 @@
 import { Bell } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useStore } from 'zustand';
-import { Button, IconButton } from './Button';
+import { Button } from './Button';
 import {
   actionsOf,
   applies,
@@ -13,6 +13,7 @@ import {
   unread,
 } from './notifications';
 import { Popover } from './Popover';
+import { Tooltip } from './Tooltip';
 
 const DOT: Record<ToastTone, string> = {
   info: 'bg-sketch',
@@ -32,19 +33,18 @@ function timeOf(ms: number): string {
 }
 
 /**
- * The button below the toasts and the panel it opens (P3-16, ADR-0041): the
- * session's earlier notifications, newest first, with errors in a group of
- * their own on top. Shown once something has been notified (an empty history
- * has nothing to offer; the command palette opens it any time). Actions stay
- * clickable while they still apply (`ToastAction.available`) and show
- * disabled once they don't.
+ * The bell at the status bar's right edge and the panel it opens (P3-16,
+ * ADR-0041; moved there 2026-10-10): the session's earlier notifications,
+ * newest first, with errors in a group of their own on top. Always drawn, so
+ * the row doesn't jump when the first notice arrives; empty, it is a quiet
+ * bell and the panel says so. Actions stay clickable while they still apply
+ * (`ToastAction.available`) and show disabled once they don't.
  */
 export function NotificationHistory({ store }: { store: NotificationStore }) {
   const history = useStore(store, (s) => s.history);
   const open = useStore(store, (s) => s.open);
   const seen = useStore(store, (s) => s.seen);
   const fresh = useMemo(() => unread({ history, seen }), [history, seen]);
-  if (history.length === 0 && !open) return null;
   const errorWord = fresh.errors === 1 ? 'error' : 'errors';
   const summary =
     fresh.count === 0
@@ -58,24 +58,26 @@ export function NotificationHistory({ store }: { store: NotificationStore }) {
       open={open}
       onOpenChange={(next) => store.getState().setOpen(next)}
       trigger={
-        <IconButton
-          label="Notifications"
-          aria-label={summary}
-          pressed={open}
-          data-unread={fresh.count}
-          data-unread-errors={fresh.errors}
-          className="pointer-events-auto relative border border-line bg-raised text-ink shadow-raised"
-        >
-          <Bell size={16} strokeWidth={1.75} />
-          {fresh.count > 0 && (
-            <span
-              aria-hidden="true"
-              className={`-top-1.5 -right-1.5 absolute grid h-4 min-w-4 place-items-center rounded-full px-1 font-semibold text-[10px] text-on-accent leading-none ${fresh.errors > 0 ? 'bg-error' : 'bg-accent'}`}
-            >
-              {fresh.count}
-            </span>
-          )}
-        </IconButton>
+        <Tooltip label="Notification history">
+          <button
+            type="button"
+            aria-label={summary}
+            aria-pressed={open}
+            data-unread={fresh.count}
+            data-unread-errors={fresh.errors}
+            className={`relative inline-grid size-6 shrink-0 place-items-center rounded-control transition-colors duration-(--x-fast) ease-ui hover:bg-accent-soft hover:text-ink aria-pressed:bg-accent-soft aria-pressed:text-ink ${fresh.count > 0 ? 'text-ink' : 'text-muted'}`}
+          >
+            <Bell size={14} strokeWidth={1.75} />
+            {fresh.count > 0 && (
+              <span
+                aria-hidden="true"
+                className={`-top-1 -right-1 absolute grid h-3.5 min-w-3.5 place-items-center rounded-full px-0.5 font-semibold text-[9px] text-on-accent leading-none ${fresh.errors > 0 ? 'bg-error' : 'bg-accent'}`}
+              >
+                {fresh.count}
+              </span>
+            )}
+          </button>
+        </Tooltip>
       }
     >
       <HistoryPanel store={store} history={history} />
@@ -113,7 +115,9 @@ function HistoryPanel({
         </Button>
       </div>
       {history.length === 0 ? (
-        <p className="py-3 text-muted">Nothing yet. Messages from this session show up here.</p>
+        <p className="py-3 text-muted">
+          No notifications yet. Messages from this session show up here.
+        </p>
       ) : (
         <div className="-mr-1 max-h-80 overflow-y-auto pr-1">
           <Group title="Errors" items={errors} onRun={run} />

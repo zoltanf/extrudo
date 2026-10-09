@@ -229,7 +229,7 @@ export interface AppShellProps {
   toasts?: {
     toasts: Toast[];
     onDismiss(id: number): void;
-    /** The session's notification history (P3-16): a button below the toasts opens it. */
+    /** The session's notification history (P3-16): the status bar's bell opens it. */
     history?: NotificationStore;
   };
   /** Feature dialogs (P2-05): the app's registry unless a debug page brings its own. */
@@ -2096,13 +2096,20 @@ export function AppShell({
               onLookAt={() => lookAtSketch(stores)}
               onFinish={() => finishSketch(stores)}
             />
-            {toasts && <Toasts place="column" {...toasts} />}
+            {toasts && (
+              <Toasts place="column" toasts={toasts.toasts} onDismiss={toasts.onDismiss} />
+            )}
           </PanelColumn>
         )}
         {/* Clear of the open dialog's column: a toast over its OK button swallows the
             click (the "Sketch1 is hidden…" notice lives 12 seconds). */}
         {toasts && !(mode === 'sketch' && activeSketch) && (
-          <Toasts place="view" clearRight={dialogOpen ? DIALOG_COLUMN : undefined} {...toasts} />
+          <Toasts
+            place="view"
+            clearRight={dialogOpen ? DIALOG_COLUMN : undefined}
+            toasts={toasts.toasts}
+            onDismiss={toasts.onDismiss}
+          />
         )}
       </main>
       <Timeline
@@ -2117,6 +2124,7 @@ export function AppShell({
         editing={dialogOpen?.mode === 'edit' ? dialogOpen.id : undefined}
         pluginHint={pluginHint}
         macro={macro}
+        notifications={history}
         selectionSize={
           measured.measurement?.bbox && sizeText(measured.measurement.bbox, doc.settings)
         }

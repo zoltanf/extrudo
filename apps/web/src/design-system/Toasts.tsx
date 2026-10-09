@@ -1,13 +1,6 @@
 import { X } from 'lucide-react';
 import { useStore } from 'zustand';
-import { NotificationHistory } from './NotificationHistory';
-import {
-  actionsOf,
-  appNotifications,
-  type NotificationStore,
-  type Toast,
-  type ToastTone,
-} from './notifications';
+import { actionsOf, appNotifications, type Toast, type ToastTone } from './notifications';
 
 export type { Toast, ToastAction, ToastOptions, ToastTone } from './notifications';
 
@@ -15,7 +8,7 @@ export type { Toast, ToastAction, ToastOptions, ToastTone } from './notification
  * Short messages after an action ("Exported bracket.extrudo."), some with a
  * button ("Sketch2 is hidden… Show"). Errors stay until dismissed. Every
  * message also goes into the session's history (`notifications`, P3-16), which
- * the button beside the toasts opens.
+ * the status bar's bell opens.
  *
  * One store for the page (`appNotifications`): the two screens that call this
  * are the same session, and so is a message the platform pushed before the app
@@ -30,7 +23,7 @@ export function useToasts() {
 /**
  * Just the toast stack, for the window between the page loading and the app
  * opening (where a slow IndexedDB upgrade is explained). It has no history
- * button: there is no app to open one in yet.
+ * bell: there is no app to open one in yet.
  */
 export function ToastsOnly() {
   const toasts = useStore(appNotifications, (s) => s.toasts);
@@ -68,14 +61,11 @@ export function Toasts({
   toasts,
   onDismiss,
   place = 'screen',
-  history,
   clearRight,
 }: {
   toasts: Toast[];
   onDismiss(id: number): void;
   place?: ToastPlace;
-  /** The notification store: a button below the toasts opens its history. */
-  history?: NotificationStore;
   /** Px of the container's right edge the stack keeps clear. */
   clearRight?: number;
 }) {
@@ -118,7 +108,6 @@ export function Toasts({
           </button>
         </div>
       ))}
-      {history && <NotificationHistory store={history} />}
     </div>
   );
 }

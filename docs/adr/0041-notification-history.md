@@ -126,3 +126,19 @@ the shell subscribes to the document store and calls `recheck()` whenever
 does nothing while the panel is closed (opening it reads the predicates
 anyway) or when no action has a predicate, so ordinary edits cost nothing.
 
+
+## Amendment, 2026-10-10: the bell lives in the status bar
+
+The owner asked for the alerts icon and its functionality at the status bar's
+right edge. The bell (`NotificationHistory`, same store, same popover opening
+upwards, aligned to the end) is now the last item of `Timeline`'s bottom row,
+after the render rate, with `shrink-0` so a narrow window never squeezes it.
+`AppShell` passes the store as `Timeline`'s `notifications` prop. It is
+**always drawn** (the row doesn't jump when the first notice arrives): empty
+it is a muted 24 px button with a 14 px icon, named "Notification history",
+`data-unread="0"`, and the panel says "No notifications yet." The badge and
+the error colour are as before. `Toasts` lost its `history` prop and no longer
+draws the bell; the toasts stay in the view's bottom-right corner, or at the
+foot of the sketch palette, and the open dialog's `clearRight` is unchanged.
+The home screen has no status bar and never showed the bell; it stays so. The
+Ctrl+K command opens the same popover, anchored at the status-bar bell.

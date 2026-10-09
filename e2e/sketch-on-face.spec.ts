@@ -162,18 +162,12 @@ test('sketches on a top face, cuts a hole from it, and follows the face', async 
   await expect.poll(() => attr(viewport, 'data-model-hover')).toMatch(/^face:/);
   const toast = page.getByRole('status').filter({ hasText: 'Sketch2 is hidden' });
   await expect(toast).toHaveText(/Sketch2 is hidden: Extrude2 used its profile\./);
-  // Toasts sit in the view's bottom-right corner (ADR-0007 amendment, 2026-09-28), with the
-  // notification history's bell (32 px) in the corner itself and the toasts 8 px above it.
-  const bell = page.getByRole('button', { name: /^Notification history/ });
-  const [view, note, button] = [
-    await viewport.boundingBox(),
-    await toast.boundingBox(),
-    await bell.boundingBox(),
-  ];
-  if (!view || !note || !button) throw new Error('no view, toast or bell');
+  // Toasts sit in the view's bottom-right corner (ADR-0007 amendment, 2026-09-28); the
+  // notification history's bell moved to the status bar (ADR-0041, 2026-10-10).
+  const [view, note] = [await viewport.boundingBox(), await toast.boundingBox()];
+  if (!view || !note) throw new Error('no view or toast');
   expect(view.x + view.width - (note.x + note.width)).toBeCloseTo(12, 0);
-  expect(view.y + view.height - (button.y + button.height)).toBeCloseTo(12, 0);
-  expect(button.y - (note.y + note.height)).toBeCloseTo(8, 0);
+  expect(view.y + view.height - (note.y + note.height)).toBeCloseTo(12, 0);
   await toast.getByRole('button', { name: 'Show' }).click();
   await expect(toast).toBeHidden();
   await expect.poll(() => sketchIds(page)).toContain(faceSketch);

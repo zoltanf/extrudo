@@ -493,9 +493,10 @@ typing only (`e2e/fillet.spec.ts` covers Shift+4).
 ADR-0041 (P3-16) added the notification history: the toasts'
 store (`design-system/notifications.ts`, vanilla Zustand, `useToasts()`
 returns it as `notifications`) records every `push` for the session
-(repeats merged with a count, at most 100), the bell button below the
-toasts (`NotificationHistory.tsx`, drawn once something was notified) and
-the command "Notification History" open a popover with errors grouped on
+(repeats merged with a count, at most 100), the bell at the
+status bar's right edge (`NotificationHistory.tsx`, the last item of
+`Timeline`'s bottom row, always drawn, quiet when empty; moved there
+2026-10-10, `Toasts` no longer renders it) and the command "Notification History" open a popover with errors grouped on
 top; a `ToastAction` may carry `available()` so the history disables a
 stale button. **A new toast action should say whether it still applies.**
 Session only.
@@ -3051,13 +3052,15 @@ them. Notes further down that name a machine apply to that machine only.
   command.
 - **Notification history e2e** (`e2e/notifications.spec.ts`): the bell is the
   button "Notification history…" (its name adds ", 2 new, 1 error"; it carries
-  `data-unread` and `data-unread-errors`, and doesn't exist until something
-  was notified); the panel is `dialog` "Notification history" with regions
+  `data-unread` and `data-unread-errors` (`0` when nothing is new); it is
+  always there, inside the region "Timeline", the status bar row, and the
+  empty panel says "No notifications yet."); the panel is `dialog` "Notification history" with regions
   "Errors" and "Earlier", rows `[data-notification="error|info|success"]`
   (a repeat has `[data-count]`), and a stale action is a disabled button named
-  "Show (no longer applies)". The bell sits in the view's bottom-right
-  corner, under the toasts: dismiss the toasts (`Dismiss`) before clicking
-  near there. Unit tests use `createNotifications({ now, later })` with injected
+  "Show (no longer applies)". The toasts stay in the view's
+  bottom-right corner (12 px from its edges) and no longer cover the bell, so
+  nothing needs dismissing to reach it; blur the bell after Esc closes its
+  panel (focus returns to it) before pressing tool keys. Unit tests use `createNotifications({ now, later })` with injected
   clock and timers; `renderToStaticMarkup` sees only the store's initial state.
 - **Marking menu e2e** (`e2e/marking-menu.spec.ts`; P4-12: Ctrl+K "customize marking" opens the
   region "Customize Marking Menu" with tabs Model/Sketch, wedge buttons

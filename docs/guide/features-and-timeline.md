@@ -97,7 +97,7 @@ change what is computed.
 A fillet remembers which edge it rounds. If you change an earlier step so that the edge is gone,
 the fillet can't do its job. Extrudo tells you in three places: the chip gets a ✕ (or a ⚠ when it
 could carry on, for instance with a reference it had to guess), the status bar counts the errors,
-and the notification history (the bell at the foot of the view) lists them. Hover the chip for the
+and the notification history (the bell at the right end of the status bar) lists them. Hover the chip for the
 message.
 
 For a ⚠, the chip's menu has **Keep Closest Match**, which accepts the edge Extrudo picked and

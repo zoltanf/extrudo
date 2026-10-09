@@ -32,7 +32,15 @@ import {
   useState,
 } from 'react';
 import { useStore } from 'zustand';
-import { ContextMenu, IconButton, Popover, ToolIcon, Tooltip } from '../design-system';
+import {
+  ContextMenu,
+  IconButton,
+  NotificationHistory,
+  type NotificationStore,
+  Popover,
+  ToolIcon,
+  Tooltip,
+} from '../design-system';
 import { type MacroStore, recordedCount } from '../macro/macro';
 import { selectionSummary } from '../selection/items';
 import { formatRenderStats } from '../viewport/renderMeter';
@@ -81,6 +89,8 @@ export interface TimelineProps {
   selectionSize?: string | undefined;
   /** The macro recorder (P5-05): while it records, the status bar says so. */
   macro?: MacroStore;
+  /** The notification store (ADR-0041): its bell is the row's last item. */
+  notifications?: NotificationStore;
 }
 
 /** A chip being dragged to a new place (FR-TL-04). */
@@ -165,6 +175,7 @@ export function Timeline({
   pluginHint,
   selectionSize,
   macro,
+  notifications,
 }: TimelineProps) {
   const doc = useStore(store, (s) => s.doc);
   const statuses = useStore(model ?? NO_MODEL, (s) => s.features);
@@ -411,6 +422,7 @@ export function Timeline({
       {model && <KernelState model={model} />}
       {viewport && <SoftwareRendering support={webglSupport()} />}
       {viewport && <RenderRate viewport={viewport} />}
+      {notifications && <NotificationHistory store={notifications} />}
     </section>
   );
 }

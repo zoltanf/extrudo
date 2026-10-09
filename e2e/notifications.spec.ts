@@ -1,10 +1,10 @@
 import { expect, type Page, test } from '@playwright/test';
 import { clicker, kernelReady, openProject, pickTool, sketchOnXY } from './helpers';
 
-// P3-16 (ADR-0041): the notification history. A button below the toasts (the
-// view's bottom-right corner) opens the session's earlier notifications: errors
-// in a group of their own on top, repeats counted, each action clickable while
-// it still applies and disabled once it doesn't. Ctrl+K finds it too.
+// P3-16 (ADR-0041): the notification history. The bell at the status bar's right
+// edge (always there since 2026-10-10) opens the session's earlier notifications:
+// errors in a group of their own on top, repeats counted, each action clickable
+// while it still applies and disabled once it doesn't. Ctrl+K finds it too.
 
 test.use({ viewport: { width: 1440, height: 900 } });
 test.setTimeout(90_000);
@@ -20,7 +20,10 @@ test.afterEach(() => {
   expect(errors).toEqual([]);
 });
 
-const bell = (page: Page) => page.getByRole('button', { name: /^Notification history/ });
+const bell = (page: Page) =>
+  page
+    .getByRole('region', { name: 'Timeline' })
+    .getByRole('button', { name: /^Notification history/ });
 const history = (page: Page) => page.getByRole('dialog', { name: 'Notification history' });
 const chip = (page: Page, name: string) =>
   page
@@ -40,8 +43,14 @@ test('lists earlier notifications, errors first, with actions that still apply',
   const at = await sketchOnXY(page);
   const viewport = page.getByRole('region', { name: 'Viewport' });
   const click = clicker(page, at);
-  // Nothing was notified yet: no button.
-  await expect(bell(page)).toHaveCount(0);
+  // Nothing was notified yet: the bell is there, quiet, and the panel says so.
+  await expect(bell(page)).toHaveAttribute('data-unread', '0');
+  await expect(bell(page)).toHaveAccessibleName('Notification history');
+  await bell(page).click();
+  await expect(history(page).getByText('No notifications yet.')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(history(page)).toBeHidden();
+  await bell(page).blur();
 
   // A plate, extruded: a toast says Sketch1 is hidden (with Show).
   await page.keyboard.press('r');
@@ -133,11 +142,11 @@ test('lists earlier notifications, errors first, with actions that still apply',
   await bell(page).click();
   await expect(rows.nth(2).getByRole('button', { name: 'Show' })).toBeEnabled();
 
-  // Clear all empties the list; the button leaves once the panel closes.
+  // Clear all empties the list; the bell stays, quiet.
   await panel.getByRole('button', { name: 'Clear all' }).click();
-  await expect(panel.getByText('Nothing yet.')).toBeVisible();
+  await expect(panel.getByText('No notifications yet.')).toBeVisible();
   await page.keyboard.press('Escape');
-  await expect(bell(page)).toHaveCount(0);
+  await expect(bell(page)).toHaveAttribute('data-unread', '0');
 
   // Ctrl+K opens the (empty) history too.
   await page.keyboard.press('Control+k');
@@ -148,13 +157,13 @@ test('lists earlier notifications, errors first, with actions that still apply',
   );
   await page.keyboard.press('Enter');
   await expect(history(page)).toBeVisible();
-  await expect(history(page).getByText('Nothing yet.')).toBeVisible();
+  await expect(history(page).getByText('No notifications yet.')).toBeVisible();
 });
 
 test("a recompute's first new error goes into the history, with Edit (P3-13)", async ({ page }) => {
   await openProject(page, 'wall-bracket');
   await kernelReady(page);
-  await expect(bell(page)).toHaveCount(0);
+  await expect(bell(page)).toHaveAttribute('data-unread', '0');
 
   // A width of 0 breaks Extrude1 (and what needs it): one quiet entry, no toast.
   await pickTool(page, 'Parameters');
