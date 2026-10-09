@@ -32,6 +32,7 @@ import {
   selectTab,
 } from '../helpers';
 import { tutorial } from './step';
+import { MIDDLE, orbitBy, panTo } from './view';
 
 // Tutorial 2, docs/guide/tutorials/name-tag.md: a name tag with raised letters. It is
 // benchmark B8's flow (e2e/benchmark-b8.spec.ts) as a beginner follows it, one `step` per
@@ -128,7 +129,8 @@ test('Tutorial 2: a name tag', async ({ page }) => {
       // The fourth corner is hidden in the home view: turn to the back to reach it.
       at = await turnView(page, 'Shift+5');
       await zoomOutTo(page, at([0, 0, 1.5]), 110);
-      await settled(viewport);
+      // Seen exactly from the back the plate is a line: tip the view down a little.
+      await orbitBy(page, 0, 100);
       at = await projector(viewport);
       await clickEdge(page, at, [-30, 10, 1.5]);
       await expect(edges).toHaveText('4 edges');
@@ -177,6 +179,10 @@ test('Tutorial 2: a name tag', async ({ page }) => {
       const showProfiles = palette.getByRole('checkbox', { name: 'Show profiles' });
       if (!(await showProfiles.isChecked())) await showProfiles.check();
       await showProfiles.blur();
+      // Centre the tag between the browser and the palette, small enough to see all of it.
+      await panTo(page, (await mapping(viewport))(0, 0));
+      await zoomOutTo(page, MIDDLE, 90);
+      await settled(viewport);
     },
     async () => {
       await expect(chip(page, 'Sketch1')).toBeVisible();
@@ -195,6 +201,8 @@ test('Tutorial 2: a name tag', async ({ page }) => {
       await text.getByRole('textbox', { name: 'Text' }).fill('EXTRUDO');
       await text.getByRole('button', { name: 'Center' }).click();
       await text.getByRole('textbox', { name: 'Height' }).fill('8 mm');
+      // Give the preview a moment to catch up with the alignment and the height.
+      await page.waitForTimeout(1000);
     },
     async () => {
       await expect(text).toBeVisible();

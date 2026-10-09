@@ -24,6 +24,7 @@ import {
   selectTab,
 } from '../helpers';
 import { tutorial } from './step';
+import { panTo } from './view';
 
 // Tutorial 1, docs/guide/tutorials/first-part.md: a plate with four holes. It is benchmark
 // B1's flow (e2e/benchmark-b1.spec.ts) followed by an extrude and an STL export, one
@@ -80,7 +81,9 @@ test('Tutorial 1: a plate with four holes', async ({ page }) => {
       const home = await newSketchOnXY(page);
       // Zoom out around the plate's centre so that it clears the palette.
       const centre = home(50, 40);
-      await zoomOutTo(page, centre, 300);
+      await zoomOutTo(page, centre, 240);
+      // The plate sits in the middle of the free part of the view, clear of the palette.
+      await panTo(page, centre);
       click = clicker(page, await mapping(viewport));
       const showConstraints = palette.getByRole('checkbox', { name: 'Show constraints' });
       await showConstraints.uncheck();
@@ -200,7 +203,7 @@ test('Tutorial 1: a plate with four holes', async ({ page }) => {
         [
           [20, 20],
           [20, 60],
-          [12, 40],
+          [50, 40],
         ],
         'depth - 2 * margin',
       );
@@ -229,7 +232,7 @@ test('Tutorial 1: a plate with four holes', async ({ page }) => {
         click,
         [
           [30, 20],
-          [40, 35],
+          [75, 40],
         ],
         'hole',
       );

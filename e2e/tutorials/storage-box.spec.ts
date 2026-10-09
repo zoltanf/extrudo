@@ -29,6 +29,7 @@ import {
   selectTab,
 } from '../helpers';
 import { tutorial } from './step';
+import { MIDDLE, panTo } from './view';
 
 // Tutorial 2, docs/guide/tutorials/storage-box.md: a parametric storage box cut from a
 // solid. It is benchmark B2's flow (e2e/benchmark-b2.spec.ts) without the fixture, one
@@ -90,7 +91,9 @@ test('Tutorial 2: a storage box', async ({ page }) => {
     async () => {
       await closeParameters(page);
       const home = await newSketchOnXY(page);
-      await zoomOutTo(page, home(40, 30), 300);
+      await zoomOutTo(page, home(40, 30), 200);
+      // The block's footprint sits in the middle of the free part of the view, clear of the palette.
+      await panTo(page, home(40, 30));
       click = clicker(page, await mapping(viewport));
       const showConstraints = palette.getByRole('checkbox', { name: 'Show constraints' });
       await showConstraints.uncheck();
@@ -158,12 +161,19 @@ test('Tutorial 2: a storage box', async ({ page }) => {
       await page.mouse.move(inside.x, inside.y);
       await page.mouse.click(inside.x, inside.y);
       await expect.poll(() => attr(viewport, 'data-model-selection')).toMatch(/^profile:/);
+      // Look at it from the corner, so the preview shows a block and not a flat outline.
+      await homeView(page);
       await page.keyboard.press('e');
       await expect(extrudeDialog).toBeVisible();
       await expect(extrudeDialog.getByRole('combobox', { name: 'Operation' })).toHaveValue(
         'new-body',
       );
       await extrudeDialog.getByRole('textbox', { name: 'Distance', exact: true }).fill('height');
+      // The view was fitted to the flat outline: step back and centre, so the 40 mm block fits.
+      await settled(viewport);
+      const block = (await projector(viewport))([40, 30, 20]);
+      await zoomOutTo(page, block, Number(await viewport.getAttribute('data-camera-size')) * 1.5);
+      await panTo(page, (await projector(viewport))([40, 30, 20]));
     },
     async () => {
       await expect(extrudeDialog).toHaveAttribute('data-preview-status', 'ok', {
@@ -179,6 +189,7 @@ test('Tutorial 2: a storage box', async ({ page }) => {
       await extrudeDialog.getByRole('button', { name: 'OK' }).click();
       await expect(extrudeDialog).toBeHidden();
       await kernelReady(page);
+      await homeView(page);
     },
     async () => {
       await expect(chip(page, 'Extrude1')).toBeVisible();
@@ -196,6 +207,12 @@ test('Tutorial 2: a storage box', async ({ page }) => {
       await page.mouse.move(top.x, top.y);
       await page.mouse.click(top.x, top.y);
       await expect(chip(page, 'Sketch2')).toBeVisible();
+      await settled(viewport);
+      // The sketch opens fitted to the face, which then fills the view: centre it and zoom
+      // out until it has margin round it.
+      const faceCentre = (await projector(viewport))([40, 30, 40]);
+      await panTo(page, faceCentre);
+      await zoomOutTo(page, MIDDLE, 150);
       await settled(viewport);
     },
     async () => {
@@ -227,7 +244,7 @@ test('Tutorial 2: a storage box', async ({ page }) => {
   await step(
     'offset',
     async () => {
-      // The face fills the view: zoom out around its middle so that its edges clear the nav bar.
+      // The face is already in the middle with margin; this only guards the nav bar.
       await zoomOutTo(page, world([40, 30, 40]), 150);
       const flat = await projector(viewport);
       onFace = (x: number, y: number) => flat([x, y, 40]);
@@ -277,6 +294,7 @@ test('Tutorial 2: a storage box', async ({ page }) => {
       await cut.getByRole('button', { name: 'OK' }).click();
       await expect(cut).toBeHidden();
       await kernelReady(page);
+      await homeView(page);
     },
     async () => {
       await expect(chip(page, 'Extrude2')).toBeVisible();
@@ -290,6 +308,7 @@ test('Tutorial 2: a storage box', async ({ page }) => {
     async () => {
       await setParameters(page, { width: '100 mm', depth: '70 mm', wall: '4 mm' });
       await kernelReady(page);
+      await homeView(page);
     },
     async () => {
       await expect(viewport).toHaveAttribute('data-bodies', 'Body1:11:100,70,40');

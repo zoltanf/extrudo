@@ -48,7 +48,7 @@ A solid starts as a flat drawing, a *sketch*. Open the **Solid** tab, press
 **Create Sketch** and choose the **XY** plane, the floor of the model. The view
 turns to look straight down on it.
 
-Scroll to zoom out a little so the whole plate will fit. In the **Sketch
+Scroll to zoom out a little so the whole plate will fit, and drag with the right mouse button to move it to the middle, clear of the palette. In the **Sketch
 palette** on the right, switch **Show constraints** off: the little symbols are
 useful later, but they would crowd this tutorial.
 
@@ -108,11 +108,11 @@ Keep the Dimension tool going and add five more, the same way (pick, place the
 label, type, `Enter`):
 
 1. The two bottom hole centres, label below: `spacing`.
-2. The two left hole centres, label to the left: `depth - 2 * margin`. This
+2. The two left hole centres, label in the middle of the plate: `depth - 2 * margin`. This
    centres the holes top to bottom.
 3. The origin and the bottom-left centre, label below: `margin`.
 4. The same two points, label to the left: `margin`.
-5. The bottom-left circle's edge, label outside: `hole`.
+5. The bottom-left circle's edge, label to the right: `hole`.
 
 Press `Esc`. The palette reads **Fully constrained ✓**: every part of the drawing
 is pinned by a number, so nothing is left to chance.

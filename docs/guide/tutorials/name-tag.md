@@ -68,7 +68,7 @@ other two vertical corner edges you can see. The dialog now says **3 edges**.
 ### 4. Bring in the hidden corner
 
 One corner faces away from you in the home view. Press `Shift+5` to look from
-the back, zoom out and click that last vertical edge. The dialog reads
+the back, zoom out, tip the view down a little by dragging with the middle mouse button, and click that last vertical edge. The dialog reads
 **4 edges**.
 
 Type `corner` in **Radius** and press **OK**. All four corners are now rounded,
@@ -98,6 +98,9 @@ The view turns to look straight down on it, and a new sketch starts on the face.
 In the **Sketch palette** on the right, switch **Snap to grid** off: the letters
 go exactly where you put them, not on the grid. Turn **Show profiles** on so a
 click inside a letter takes the whole text later.
+
+Scroll out and drag with the right mouse button until the whole tag sits in the
+middle, clear of the palette and the Text panel that comes next.
 
 ![A new sketch on the plate's top face](./images/name-tag/sketch-face.png)
 

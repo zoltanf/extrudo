@@ -44,7 +44,7 @@ Press `Esc` to close the dialog.
 Open the **Solid** tab, press **Create Sketch** and choose the **XY** plane, the
 floor of the model. The view turns to look straight down on it.
 
-Scroll to zoom out a little so the whole box will fit. In the **Sketch palette**
+Scroll to zoom out a little so the whole box will fit, and drag with the right mouse button to move it to the middle, clear of the palette. In the **Sketch palette**
 on the right, switch **Show constraints** off: the little symbols would crowd
 this tutorial.
 
@@ -78,7 +78,7 @@ rectangle, so the box will follow `width` and `depth` when you change them.
 ### 5. Give the base its height
 
 Press **Finish Sketch**. Click the plate's inside to select its shape and press
-`E` (**Extrude**). Type `height` in **Distance**. The preview shows a solid
+`E` (**Extrude**). Press `Shift+1` to look at it from the corner, then type `height` in **Distance**. The preview shows a solid
 80 × 60 × 40 mm block; the default **Operation** is **New body**, which is what
 you want.
 
@@ -98,7 +98,8 @@ It is 80 × 60 × 40 mm with 6 faces: top, bottom and four sides.
 Now the interesting part: drawing on the solid itself. Press **Create Sketch**
 again, and this time click the **top face** of the block instead of a plane. The
 view turns to look straight down on the face, and `Sketch2` appears in the
-timeline.
+timeline. The face fills the view: scroll out a little and drag with the right
+mouse button until it sits in the middle with room around it.
 
 ![A new sketch started on the top face](./images/storage-box/sketch-on-face.png)
 
@@ -129,7 +130,7 @@ Double-click the dimension under the inner rectangle and type `wall` instead of
 Press **Finish Sketch**. Click between the two rectangles to select the inner
 profile, and press `E` (**Extrude**). Set **Operation** to **Cut**, type
 `-(height - bottom)` in **Distance** and press **OK**. The extrude cuts the
-cavity down to the 4 mm floor. `Body1` now has 11 faces: the six outside, four
+cavity down to the 4 mm floor. Press `Shift+1` to look at the box from the corner. `Body1` now has 11 faces: the six outside, four
 inner walls and the floor.
 
 ![The box with its cavity cut out](./images/storage-box/cut.png)
@@ -138,7 +139,7 @@ inner walls and the floor.
 ### 11. Change a number and watch the walls follow
 
 Open the **Home** tab, press **Parameters** and change `width` to `100 mm`,
-`depth` to `70 mm` and `wall` to `4 mm`. Press `Esc`.
+`depth` to `70 mm` and `wall` to `4 mm`. Press `Esc`, then `Shift+1` to bring the bigger box back into view.
 
 The box is wider and deeper, and the walls are thicker, because the offset
 sketch follows `wall`. The floor stays 4 mm. `Ctrl+Z` undoes the change if you
