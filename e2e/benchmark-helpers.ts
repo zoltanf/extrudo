@@ -382,3 +382,75 @@ export async function dimension(
   await value.press('Enter');
   await expect(page.locator('[data-dimension-editor]')).toHaveCount(0);
 }
+
+// The name tag's shape (B8, the name-tag tutorial): the drawn bodies, the ink
+// bounds of a sketch text, and picking a whole text in the model (P4-03). Shared
+// so the benchmark and the tutorial walk the same code (ADR-0080 §4).
+
+export interface Body {
+  faces: number;
+  /** Size along x, y and z, mm. */
+  size: number[];
+}
+
+/** The bodies the view draws (`data-bodies`: `name:faces:x,y,z`), by name. */
+export async function bodies(page: Page): Promise<Record<string, Body>> {
+  const drawn = await attr(viewportOf(page), 'data-bodies');
+  return Object.fromEntries(
+    drawn.split(' ').map((entry) => {
+      const [name, faces, size] = entry.split(':');
+      return [name, { faces: Number(faces), size: (size ?? '').split(',').map(Number) }];
+    }),
+  );
+}
+
+export interface Ink {
+  x: [number, number];
+  y: [number, number];
+}
+
+/** The drawn text's ink in sketch mm, once its font has arrived (P4-03). */
+export async function ink(page: Page): Promise<Ink> {
+  const viewport = viewportOf(page);
+  await expect.poll(() => attr(viewport, 'data-text-bounds')).toContain('x=');
+  const entry = (await attr(viewport, 'data-text-bounds')).split(' ').find(Boolean) ?? '';
+  const [, xs, ys] = entry.split(':');
+  const range = (v: string | undefined) =>
+    (v?.slice(2) ?? '').split('..').map(Number) as [number, number];
+  return { x: range(xs), y: range(ys) };
+}
+
+/** Sketch-mm points inside a text's ink, a coarse grid from the bottom left. */
+export function inkPoints({ x, y }: Ink): [number, number][] {
+  const [x0, x1] = x;
+  const [y0, y1] = y;
+  const out: [number, number][] = [];
+  for (let v = y0; v < y1; v += 1) {
+    for (let u = x0; u < x1; u += 1) out.push([u, v]);
+  }
+  return out;
+}
+
+/**
+ * A click in the model on a letter of the drawn text, which takes the whole
+ * text (P4-03: one pick per text, however many glyph curves it has).
+ */
+export async function pickText(
+  page: Page,
+  at: At,
+  drawn: Ink,
+  world: (sketch: readonly [number, number]) => readonly [number, number, number],
+) {
+  const viewport = viewportOf(page);
+  for (const [u, v] of inkPoints(drawn)) {
+    const p = at(world([u, v]));
+    await page.mouse.move(p.x, p.y);
+    if (!/^sketchEntity:/.test(await attr(viewport, 'data-model-hover'))) continue;
+    await page.mouse.click(p.x, p.y);
+    await expect
+      .poll(() => attr(viewport, 'data-model-selection'))
+      .toMatch(/^sketchEntity:[^/]+\/[^/]+$/);
+    return;
+  }
+  throw new Error('no letter under the pointer');
+}

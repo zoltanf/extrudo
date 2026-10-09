@@ -1,7 +1,7 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import {
   addParameter,
-  attr,
+  bodies,
   chip,
   clickAt,
   clickEdge,
@@ -10,9 +10,11 @@ import {
   exportModel,
   exportProject,
   fill,
+  ink,
   objectsOf3mf,
   ok,
   openParameters,
+  pickText,
   primitive,
   renameProject,
   setParameters,
@@ -21,7 +23,6 @@ import {
   solidTab,
   toolPrompt,
   turnView,
-  viewportOf,
   zoomOutTo,
 } from './benchmark-helpers';
 import { clicker, kernelReady, mapping, openProject, pickTool, projector } from './helpers';
@@ -47,23 +48,6 @@ test.afterEach(() => {
   expect(errors).toEqual([]);
 });
 
-interface Body {
-  faces: number;
-  /** Size along x, y and z, mm. */
-  size: number[];
-}
-
-/** The bodies the view draws (`data-bodies`: `name:faces:x,y,z`), by name. */
-async function bodies(page: Page): Promise<Record<string, Body>> {
-  const drawn = await attr(viewportOf(page), 'data-bodies');
-  return Object.fromEntries(
-    drawn.split(' ').map((entry) => {
-      const [name, faces, size] = entry.split(':');
-      return [name, { faces: Number(faces), size: (size ?? '').split(',').map(Number) }];
-    }),
-  );
-}
-
 /** The plate's volume: the block less the four rounded corners' fillets, mm³. */
 const plateVolume = (length: number, width: number, thick: number, corner: number) =>
   length * width * thick - 4 * corner ** 2 * (1 - Math.PI / 4) * thick;
@@ -74,59 +58,6 @@ const holeVolume = (thick: number) => Math.PI * 2 * 2 * thick;
 /** The plate less the hole: what the letters are added to. */
 const withoutLetters = (length: number, width: number, thick: number, corner: number) =>
   plateVolume(length, width, thick, corner) - holeVolume(thick);
-
-interface Ink {
-  x: [number, number];
-  y: [number, number];
-}
-
-/** The drawn text's ink in sketch mm, once its font has arrived (P4-03). */
-async function ink(page: Page): Promise<Ink> {
-  const viewport = viewportOf(page);
-  await expect.poll(() => attr(viewport, 'data-text-bounds')).toContain('x=');
-  const entry = (await attr(viewport, 'data-text-bounds')).split(' ').find(Boolean) ?? '';
-  const [, xs, ys] = entry.split(':');
-  const range = (v: string | undefined) =>
-    (v?.slice(2) ?? '').split('..').map(Number) as [number, number];
-  return { x: range(xs), y: range(ys) };
-}
-
-/** Sketch-mm points inside a text's ink, a coarse grid from the bottom left. */
-function inkPoints({ x, y }: Ink): [number, number][] {
-  const [x0, x1] = x;
-  const [y0, y1] = y;
-  const out: [number, number][] = [];
-  for (let v = y0; v < y1; v += 1) {
-    for (let u = x0; u < x1; u += 1) out.push([u, v]);
-  }
-  return out;
-}
-
-type At = (p: readonly [number, number, number]) => { x: number; y: number };
-
-/**
- * A click in the model on a letter of the drawn text, which takes the whole
- * text (P4-03: one pick per text, however many glyph curves it has).
- */
-async function pickText(
-  page: Page,
-  at: At,
-  drawn: Ink,
-  world: (sketch: readonly [number, number]) => readonly [number, number, number],
-) {
-  const viewport = viewportOf(page);
-  for (const [u, v] of inkPoints(drawn)) {
-    const p = at(world([u, v]));
-    await page.mouse.move(p.x, p.y);
-    if (!/^sketchEntity:/.test(await attr(viewport, 'data-model-hover'))) continue;
-    await page.mouse.click(p.x, p.y);
-    await expect
-      .poll(() => attr(viewport, 'data-model-selection'))
-      .toMatch(/^sketchEntity:[^/]+\/[^/]+$/);
-    return;
-  }
-  throw new Error('no letter under the pointer');
-}
 
 test('B8: a name tag with embossed letters', async ({ page }) => {
   // A box, four fillets, a hole, a sketch with a text, an emboss, a parameter
