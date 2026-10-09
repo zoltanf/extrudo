@@ -1,6 +1,7 @@
 name: Desktop
 
-# Unsigned installers of the Electron app (P6-01 slice 3, ADR-0075's amendment).
+# Installers of the Electron app (P6-01 slice 3, ADR-0075's amendment; macOS is
+# ad-hoc signed and checked below, ADR-0075's 2026-10-10 amendment).
 # Never per push: it is three OS runners a build. A `v*` tag builds them and
 # attaches them to a DRAFT GitHub release (the owner publishes it); a manual run
 # only uploads workflow artifacts, the updater's `latest*.yml` manifests among
@@ -73,7 +74,8 @@ jobs:
           - { os: mac, runner: macos-latest }
     env:
       GH_TOKEN: ${{ github.token }}
-      # No signing yet (slice 5): do not look for a macOS identity.
+      # No Apple certificate: do not look for a macOS identity (electron-builder
+      # signs ad hoc through `mac.identity: '-'`).
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     defaults:
       run:
@@ -125,8 +127,44 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # Windows and macOS only build here; their smoke runs come with signing
-      # (slice 5).
+      # macOS: the bundle must carry a valid (ad-hoc) signature, in the zip and
+      # in the dmg, or Apple silicon says "damaged" once it is quarantined.
+      - name: Verify the macOS signature and launch the app
+        if: ${{ matrix.os == 'mac' }}
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/macverify"
+          rm -rf "$work"; mkdir -p "$work/zip" "$work/dmg"
+          zip=$(ls apps/desktop/release/*-mac-*.zip | head -n1)
+          dmg=$(ls apps/desktop/release/*.dmg | head -n1)
+          echo "zip: $zip"; echo "dmg: $dmg"
+          ditto -x -k "$zip" "$work/zip"
+          hdiutil attach -nobrowse -readonly -mountpoint "$work/dmg" "$dmg"
+          trap 'hdiutil detach "$work/dmg" -force || true' EXIT
+          fail=0
+          for app in "$work"/zip/*.app "$work"/dmg/*.app; do
+            echo "::group::$app"
+            codesign --verify --deep --strict --verbose=2 "$app" || fail=1
+            codesign -dv --verbose=2 "$app" 2>&1 | grep -E 'Identifier|Signature|Authority|TeamIdentifier|flags' || true
+            spctl --assess --type execute -vv "$app" 2>&1 || echo "(spctl rejects an ad-hoc app: expected)"
+            echo "::endgroup::"
+          done
+          if [ "$fail" != 0 ]; then echo "codesign verification failed"; exit 1; fi
+          # Launch smoke: the packaged binary must stay up for 15 s.
+          app=$(ls -d "$work"/zip/*.app | head -n1)
+          exe="$app/Contents/MacOS/$(defaults read "$app/Contents/Info" CFBundleExecutable)"
+          data=$(mktemp -d)
+          EXTRUDO_DISABLE_UPDATES=1 EXTRUDO_USER_DATA="$data" "$exe" > "$work/launch.log" 2>&1 &
+          pid=$!
+          sleep 15
+          if kill -0 "$pid" 2>/dev/null; then
+            echo "launch ok: pid $pid still running after 15 s"
+            kill "$pid"; wait "$pid" 2>/dev/null || true
+          else
+            echo "the app exited within 15 s:"; cat "$work/launch.log"; exit 1
+          fi
+
+      # Windows only builds here.
       - name: Smoke-test the AppImage
         if: ${{ matrix.os == 'linux' }}
         run: |

@@ -23,11 +23,11 @@ cask "extrudo" do
 
   caveats do
     <<~EOS
-      Extrudo is not code-signed (ADR-0075's slice 5 amendment: signing is
-      deferred until the app has users), so Gatekeeper blocks the first open:
-      right-click the app in /Applications and choose Open, then confirm. The
-      app's own updater only notifies on macOS, so `brew upgrade` is the
-      update path.
+      Extrudo is signed ad hoc, not with an Apple certificate (ADR-0075:
+      signing is deferred until the app has users), so macOS asks before the
+      first open: open the app, then go to System Settings > Privacy &
+      Security and choose "Open Anyway" next to Extrudo. The app's own updater
+      only notifies on macOS, so `brew upgrade` is the update path.
     EOS
   end
 

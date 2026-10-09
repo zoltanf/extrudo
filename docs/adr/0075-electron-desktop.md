@@ -736,3 +736,44 @@ once the menu is gone, and that a macOS accelerator and the page never both
 fire. The `desktop` workflow's AppImage smoke test (it starts the real app)
 covers that the window still comes up.
 
+### Amendment, 2026-10-10: ad-hoc signing and the macOS icon
+
+v0.4.1's arm64 zip opened with "Extrudo is damaged and can't be opened". The
+cause was `mac.identity: null`: electron-builder skipped signing entirely, then
+edited the bundle (Info.plist, resources), so Electron's own linker signature
+no longer matched, and Apple silicon refuses such a bundle once it carries the
+download quarantine. **The bundle is now signed ad hoc** with `mac.identity:
+'-'`, which electron-builder 26.15 supports explicitly
+(`app-builder-lib/out/mac/MacTargetHelper.js`: `if (qualifier === "-") { …
+identity = new IdentityClass("-", undefined); }`, with the option's own doc
+"`-`: opt in to ad-hoc signing explicitly"). Signing runs in `doSignAfterPack`,
+before the zip and dmg targets, so both carry the signed bundle; no `afterSign`
+hook is needed. `hardenedRuntime` is off (Electron's JIT would need
+entitlements under it) and `gatekeeperAssess` off. There is still no Apple
+certificate and no notarisation (the owner's decision of slice 3), so a
+downloaded copy gets macOS's normal "can't verify" prompt, where System
+Settings › Privacy & Security › **Open Anyway** works, instead of "damaged".
+The `desktop` workflow's macOS job now unzips the zip, mounts the dmg and runs
+`codesign --verify --deep --strict --verbose=2` on each `.app` (failing the
+job), prints `codesign -dv` and `spctl --assess` (rejected is expected for an
+ad-hoc app; not a failure), and launches the app for 15 s with
+`EXTRUDO_DISABLE_UPDATES=1` and a throwaway `EXTRUDO_USER_DATA`. (`smoke.mjs
+--app` is Linux-specific: AppImage flags, `--no-sandbox`.)
+
+**The icon.** `build/icon.png` was a 512 px full-bleed rounded square, which
+macOS shows oversized. `scripts/make-icons.mjs` renders both from
+`docs/brand/extrudo-favicon.svg`: `build/icon.png` 1024 × 1024 full-bleed
+(Windows, Linux) and `build/icon-mac.png` 1024 × 1024 with the square 824 × 824
+centred, corner radius 185 px, transparent margin and no shadow (Apple's grid),
+used through `mac.icon`.
+
+**Homebrew.** The cask needed no change but its caveats text (now: Open
+Anyway). Homebrew applies the quarantine too, and with a valid ad-hoc signature
+"Open Anyway" works as for a direct download; `--no-quarantine` is deprecated
+and not advised.
+
+The first run on the macOS runner also showed that the top-level
+`executableName: extrudo` named the bundle `extrudo.app` (the zip's top-level
+entry), where the cask's `app "Extrudo.app"`, the docs and Finder expect
+`Extrudo.app`; `mac.executableName: Extrudo` fixes that for macOS only (Linux
+keeps `extrudo`).

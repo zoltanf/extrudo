@@ -12,7 +12,7 @@ pnpm --filter @extrudo/desktop package:linux   # also :win and :mac
 
 ## Packaging
 
-`package` writes unsigned installers to `apps/desktop/release/` (gitignored):
+`package` writes installers (macOS ad-hoc signed, nothing notarised) to `apps/desktop/release/` (gitignored):
 AppImage and deb on Linux, an NSIS installer on Windows, a dmg and a zip on
 macOS, named `extrudo-<version>-<os>-<arch>.<ext>`. The configuration is
 `apps/desktop/electron-builder.yml`. On Arch-based systems (Arch, Omarchy,
@@ -63,7 +63,7 @@ so publishing the release is what ships an update. Prereleases are ignored.
 | Linux AppImage | downloads in the background; "Extrudo 0.5.0 is ready." with **Restart** (saves every open design, then installs and relaunches), or installs on the next quit |
 | Windows (NSIS) | the same |
 | Linux deb | "Extrudo 0.5.0 is available." with **Open the release page**: the package manager owns a deb, so nothing is downloaded |
-| macOS | the same as a deb: Squirrel.Mac refuses an unsigned app, and signing is deferred until the app has users (owner, 2026-10-07) |
+| macOS | the same as a deb: Squirrel.Mac refuses an ad-hoc signed app, and a certificate is deferred until the app has users (owner, 2026-10-07) |
 
 `electron-builder` writes `app-update.yml` into the package from
 `electron-builder.yml`'s `publish` block, and the manifests the updater reads
@@ -88,8 +88,11 @@ one commit per release ("Extrudo <version>"). Install:
 brew install --cask zoltanf/extrudo/extrudo
 ```
 
-The app is unsigned (ADR-0075's slice 5 amendment), so the first open is
-right-click › Open. Since the app's own updater only notifies on macOS (the
+The app is signed ad hoc, with no Apple certificate (ADR-0075's amendments), so
+macOS asks before the first open: open the app, and when it says it can't
+verify it, go to **System Settings › Privacy & Security** and choose **Open
+Anyway**. For the v0.4.1 build, which says "damaged", run once in Terminal:
+`xattr -dr com.apple.quarantine /Applications/Extrudo.app`. Since the app's own updater only notifies on macOS (the
 table above), **`brew upgrade` is the update path there**. One-time setup and
 the per-release check are in `docs/release-checklist.md`.
 If a tag's cask was not pushed, `gh workflow run desktop.yml --ref main -f

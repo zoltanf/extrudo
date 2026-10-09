@@ -1,8 +1,8 @@
 # electron-builder configuration (P6-01, ADR-0075 §2/§5, slice 3).
 #
-# Unsigned installers for Linux, Windows and macOS. The `desktop` workflow runs
-# this on a runner per OS; signing and notarisation are slice 5 (the owner's
-# certificates). Auto-update (slice 4) reads the `publish` block below:
+# Installers for Linux, Windows and macOS. The `desktop` workflow runs
+# this on a runner per OS; macOS is ad-hoc signed, there is no Apple
+# certificate or notarisation yet (the owner, ADR-0075). Auto-update (slice 4) reads the `publish` block below:
 # electron-builder writes it into the package as `app-update.yml` and the
 # `latest*.yml` manifests beside the installers. The `.extrudo` file association the OS
 # registers lives here and not in the menu code.
@@ -57,8 +57,21 @@ nsis:
 
 mac:
   category: public.app-category.graphics-design
-  # Unsigned until slice 5: no identity lookup, no notarisation.
-  identity: null
+  # The top-level `executableName: extrudo` (Linux) would also name the bundle
+  # `extrudo.app`; the cask, the docs and Finder expect `Extrudo.app`.
+  executableName: Extrudo
+  # Ad-hoc signed (ADR-0075's 2026-10-10 amendment): no Apple certificate yet,
+  # but `identity: null` left a bundle whose linker signature no longer matched
+  # its edited Info.plist, which Apple silicon reports as "damaged" once it is
+  # quarantined. `-` makes electron-builder sign every Mach-O ad hoc during
+  # packaging, before the zip and dmg are made (MacTargetHelper's
+  # `qualifier === "-"` branch). No notarisation. The hardened runtime would
+  # need entitlements for Electron's JIT, so it stays off.
+  identity: '-'
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  # Apple's icon grid (824 px square inside 1024); the others stay full-bleed.
+  icon: build/icon-mac.png
   target:
     - dmg
     - zip

@@ -35,7 +35,9 @@ brew install --cask zoltanf/extrudo/extrudo
 The installers are not signed yet, so your system may warn you the first time. On Windows,
 choose **More info**, then **Run anyway**. On macOS, if it says the app can't be opened, open
 **System Settings › Privacy & Security** and choose **Open Anyway** next to Extrudo's line. You do
-this once for each install.
+this once for each install. If you still have the 0.4.1 build and macOS says Extrudo "is damaged
+and can't be opened", run `xattr -dr com.apple.quarantine /Applications/Extrudo.app` once in
+Terminal; newer builds show the normal prompt.
 
 ## What is different from the browser
 
