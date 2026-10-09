@@ -2,7 +2,7 @@
 title: Line
 section: Tools
 category: Sketch
-order: 62
+order: 64
 ---
 
 # Line

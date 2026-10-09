@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createRecentFile, MAX_RECENT } from './recent';
+import { createRecentFile, MAX_RECENT, recentPathAt } from './recent';
 
 let dir: string;
 let file: string;
@@ -59,5 +59,28 @@ describe('recent files (P6-01 slice 2)', () => {
     recent.clear();
     expect(recent.list()).toEqual([]);
     expect(createRecentFile(file).list()).toEqual([]);
+  });
+});
+
+describe('recentPathAt (Open Recent as an app command, ADR-0075 2026-10-09)', () => {
+  const list = [
+    { path: '/a/one.extrudo', name: 'one.extrudo' },
+    { path: '/b/two.extrudo', name: 'two.extrudo' },
+  ];
+
+  it('looks the entry up by position and name', () => {
+    expect(recentPathAt(list, 1, 'two.extrudo')).toBe('/b/two.extrudo');
+    expect(recentPathAt(list, 0, 'one.extrudo')).toBe('/a/one.extrudo');
+  });
+
+  it('opens nothing when the list moved or the call is malformed', () => {
+    expect(recentPathAt(list, 0, 'two.extrudo')).toBeUndefined();
+    expect(recentPathAt(list, 2, 'two.extrudo')).toBeUndefined();
+    expect(recentPathAt(list, -1, 'one.extrudo')).toBeUndefined();
+    expect(recentPathAt(list, 0.5, 'one.extrudo')).toBeUndefined();
+    expect(recentPathAt(list, '0', 'one.extrudo')).toBeUndefined();
+    expect(recentPathAt(list, 0, undefined)).toBeUndefined();
+    expect(recentPathAt(list, 0, '/a/one.extrudo')).toBeUndefined();
+    expect(recentPathAt([], 0, 'one.extrudo')).toBeUndefined();
   });
 });

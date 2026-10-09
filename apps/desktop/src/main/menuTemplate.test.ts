@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   buildMenuTemplate,
   CHECK_FOR_UPDATES_LABEL,
+  hasApplicationMenu,
   type MenuHandlers,
   type MenuTemplateOptions,
   QUIT_ID,
@@ -22,7 +23,7 @@ const handlers = (): MenuHandlers => ({
 const options = (over: Partial<MenuTemplateOptions> = {}): MenuTemplateOptions => ({
   recent: [],
   handlers: handlers(),
-  platform: 'linux',
+  platform: 'darwin',
   menuListening: true,
   ...over,
 });
@@ -59,8 +60,6 @@ describe('buildMenuTemplate (P6-01 slice 2)', () => {
       'Export .extrudo',
       'separator',
       'Save As…',
-      'separator',
-      'Quit',
     ]);
     const recentMenu = submenu(file.find((entry) => entry.label === 'Open Recent'));
     expect(recentMenu.map((entry) => entry.label ?? entry.type)).toEqual([
@@ -77,7 +76,8 @@ describe('buildMenuTemplate (P6-01 slice 2)', () => {
     const file = submenu(template.find((m) => m.label === 'File'));
     click(file.find((entry) => entry.label === 'Open…') as MenuItemConstructorOptions);
     click(file.find((entry) => entry.label === 'Save As…') as MenuItemConstructorOptions);
-    click(file.find((entry) => entry.label === 'Quit') as MenuItemConstructorOptions);
+    const appMenu = submenu(template.find((m) => m.label === 'Extrudo'));
+    click(appMenu.find((entry) => entry.label === 'Quit Extrudo') as MenuItemConstructorOptions);
     expect(spy.open).toHaveBeenCalledOnce();
     expect(spy.saveAs).toHaveBeenCalledOnce();
     expect(spy.quit).toHaveBeenCalledOnce();
@@ -150,6 +150,22 @@ describe('buildMenuTemplate (P6-01 slice 2)', () => {
     ]);
   });
 
+  it('builds no menu at all on Windows and Linux (ADR-0075, 2026-10-09)', () => {
+    for (const platform of ['win32', 'linux', 'freebsd'] as const) {
+      expect(hasApplicationMenu(platform)).toBe(false);
+      expect(buildMenuTemplate(model, options({ platform }))).toEqual([]);
+      expect(buildMenuTemplate([], options({ platform, recent }))).toEqual([]);
+    }
+    expect(hasApplicationMenu('darwin')).toBe(true);
+  });
+
+  it('keeps the macOS template: app menu first, Quit only there', () => {
+    const template = buildMenuTemplate(model, options());
+    expect(template[0]?.label).toBe('Extrudo');
+    const labels = template.flatMap((m) => submenu(m).map((entry) => entry.label));
+    expect(labels.filter((label) => label?.startsWith('Quit'))).toEqual(['Quit Extrudo']);
+  });
+
   it('falls back to a bare File menu on the home screen', () => {
     const bare = buildMenuTemplate([], options());
     const file = submenu(bare.find((m) => m.label === 'File'));
@@ -158,8 +174,6 @@ describe('buildMenuTemplate (P6-01 slice 2)', () => {
       'Open Recent',
       'separator',
       'Save As…',
-      'separator',
-      'Quit',
     ]);
   });
 

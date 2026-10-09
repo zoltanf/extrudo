@@ -2,7 +2,7 @@
 title: Symmetric
 section: Tools
 category: Sketch
-order: 110
+order: 112
 ---
 
 # Symmetric

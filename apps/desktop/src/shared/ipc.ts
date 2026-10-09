@@ -41,6 +41,11 @@ export const CHANNELS = {
   menuReset: 'extrudo:menu:reset',
   menuListening: 'extrudo:menu:listening',
   fileOpenPath: 'extrudo:file:open-path',
+  // Open File… and Open Recent as app commands (ADR-0075, 2026-10-09): main shows the
+  // dialog / looks the entry up itself; the renderer never sends a path.
+  fileOpenDialog: 'extrudo:file:open-dialog',
+  recentNames: 'extrudo:recent:names',
+  recentOpen: 'extrudo:recent:open',
   // Writing back to a file main itself handed out (P6-01 slice 2, finding 3).
   fileWritePath: 'extrudo:file:write-path',
   fileStatPath: 'extrudo:file:stat-path',
@@ -180,6 +185,10 @@ export interface UpdateStatus {
   percent?: number;
   message?: string;
   url?: string;
+  /** `info` for a manual check's neutral answer ("no published release yet"); success otherwise. */
+  tone?: 'info';
+  /** A manual check's error: shown, where an automatic one is history only. */
+  manual?: boolean;
 }
 
 /**
@@ -203,6 +212,8 @@ export interface ExtrudoApi {
     pick(accept: string): Promise<PickedFile | undefined>;
     /** "Save As…": a save dialog, the bytes written, and where (P6-01 slice 2). */
     saveAs(bytes: Uint8Array, name: string): Promise<SavedFile | undefined>;
+    /** Open File…: main shows the native dialog and delivers the file like Open Recent does. */
+    openDialog(): void;
   };
   readonly menus: {
     /** Replaces the application menu; main builds Open Recent from its own list. */
@@ -220,6 +231,13 @@ export interface ExtrudoApi {
   };
   readonly recent: {
     list(): Promise<RecentEntry[]>;
+    /** Only the file names, most recent first: what the Design menu lists (no paths). */
+    names(): Promise<string[]>;
+    /**
+     * Opens entry `index` of main's own list; `name` must match it, or main ignores the call
+     * (the list moved). The renderer never names a path.
+     */
+    open(index: number, name: string): void;
     clear(): Promise<void>;
     /** Drops a path main handed out: the renderer couldn't import it (corrupt). */
     remove(path: string): void;

@@ -15,7 +15,10 @@ pnpm --filter @extrudo/desktop package:linux   # also :win and :mac
 `package` writes unsigned installers to `apps/desktop/release/` (gitignored):
 AppImage and deb on Linux, an NSIS installer on Windows, a dmg and a zip on
 macOS, named `extrudo-<version>-<os>-<arch>.<ext>`. The configuration is
-`apps/desktop/electron-builder.yml`. Building for another OS than the one you
+`apps/desktop/electron-builder.yml`. On Arch-based systems (Arch, Omarchy,
+Manjaro) an AppImage needs `fuse2` (`sudo pacman -S fuse2`), or run it with
+`--appimage-extract-and-run`; with the latter, the in-app update may not replace
+the file. Building for another OS than the one you
 are on is not supported; the `desktop` workflow builds all three (`docs/deploy.md`).
 
 The workspace keeps `electron: false` in `pnpm-workspace.yaml`, so `pnpm install`

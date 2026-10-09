@@ -44,6 +44,27 @@ export interface ToolbarProps {
    * "Plugins" label at the end of the Create menu and run through `onRunPlugin` by `id`.
    */
   pluginItems?: readonly PluginItem[];
+  /**
+   * The desktop app's recent files (ADR-0075, 2026-10-09): listed under "Open Recent" in the
+   * Home tab's Design menu, with Clear Recent. Absent on the web.
+   */
+  recentFiles?: RecentFilesMenu;
+}
+
+/** A key per entry: names can repeat (two folders, one file name), so the occurrence joins it. */
+function recentKeys(names: readonly string[]) {
+  const seen = new Map<string, number>();
+  return names.map((name, index) => {
+    const n = (seen.get(name) ?? 0) + 1;
+    seen.set(name, n);
+    return { key: `${name}#${n}`, name, index };
+  });
+}
+
+export interface RecentFilesMenu {
+  names: readonly string[];
+  onOpen(index: number): void;
+  onClear(): void;
 }
 
 export interface PluginItem {
@@ -152,6 +173,7 @@ export function Toolbar({
   ready,
   hidden,
   pluginItems,
+  recentFiles,
 }: ToolbarProps) {
   const tabs = visibleTabs(mode);
   const active = tabs.find((t) => t.id === tab) ?? tabs[0];
@@ -164,7 +186,9 @@ export function Toolbar({
   }));
   const plugins = pluginItems && pluginItems.length > 0 ? pluginItems : undefined;
   const hasMenu = (g: ToolGroup) =>
-    (g.more?.length ?? 0) > 0 || (g.label === 'Create' && !!plugins);
+    (g.more?.length ?? 0) > 0 ||
+    (g.label === 'Create' && !!plugins) ||
+    (g.label === 'Design' && !!recentFiles);
   // The tiles drawn: what is measured once, and redrawn whenever it changes.
   const key = `${active?.id}|${groups.map((g) => `${g.tools.join(',')}${hasMenu(g) ? '▾' : ''}`).join(';')}`;
 
@@ -234,7 +258,10 @@ export function Toolbar({
           const tiles = group.tools.slice(0, group.tools.length - hide);
           const moved = group.tools.slice(group.tools.length - hide);
           const menu = [...moved, ...(group.more ?? [])];
-          const showMenu = menu.length > 0 || (group.label === 'Create' && !!plugins);
+          const showMenu =
+            menu.length > 0 ||
+            (group.label === 'Create' && !!plugins) ||
+            (group.label === 'Design' && !!recentFiles);
           return (
             <div key={group.label} className="flex items-stretch">
               {i > 0 && <div className="mx-1.5 my-1.5 w-px bg-line" aria-hidden="true" />}
@@ -307,6 +334,27 @@ export function Toolbar({
                         </MenuItem>
                       );
                     })}
+                    {group.label === 'Design' && recentFiles && (
+                      <>
+                        <MenuLabel>Open Recent</MenuLabel>
+                        {recentFiles.names.length === 0 && (
+                          <MenuItem disabled onSelect={() => {}}>
+                            No recent files
+                          </MenuItem>
+                        )}
+                        {recentKeys(recentFiles.names).map(({ key, name, index }) => (
+                          <MenuItem key={key} onSelect={() => recentFiles.onOpen(index)}>
+                            {name}
+                          </MenuItem>
+                        ))}
+                        <MenuItem
+                          disabled={recentFiles.names.length === 0}
+                          onSelect={recentFiles.onClear}
+                        >
+                          Clear Recent
+                        </MenuItem>
+                      </>
+                    )}
                     {group.label === 'Create' && plugins && (
                       <>
                         <MenuLabel>Plugins</MenuLabel>

@@ -2,7 +2,7 @@
 title: Path Pattern
 section: Tools
 category: Solid
-order: 31
+order: 33
 ---
 
 # Path Pattern

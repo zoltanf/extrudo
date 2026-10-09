@@ -57,10 +57,12 @@ brief, voice) is in **`05-brand.md`**. In short:
   and command search (the Ctrl+K palette). The project name and the save state
   (a dot and its word) sit together, centred between the search button and the
   right-hand buttons: version history, settings and help (menu: Search commands,
-  Toolbox, Tutorial, P3-12). Settings holds General (auto-project, Customize
-  Marking Menu…) and the Theme (System by default, Light, Dark). The tab labels
+  Toolbox, Tutorial, P3-12). Settings holds General (auto-project, the Radial right-click menu,
+  Customize Marking Menu…) and the Theme (System by default, Light, Dark). The tab labels
   sit on the wordmark's baseline. There is no File menu: its items are the Home
-  tab. Below 1024 px the wordmark goes; when the title group doesn't fit, the save
+  tab (on the desktop app also Open File, Save As and Open Recent, and Help has
+  Check for Updates…); Windows and Linux have no native menu bar either, macOS
+  keeps the system one (ADR-0075). Below 1024 px the wordmark goes; when the title group doesn't fit, the save
   word goes first (the dot stays), then the name truncates (ADR-0079, round 2). Tool tiles carry a one-line label that may be long; a tool has a
   tile whenever there is room, and the ▾ menu holds only what the fit rule moved.
 - **Versions** (P2-14, ADR-0036): Ctrl+S, Home › Save Version or

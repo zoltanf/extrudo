@@ -2,7 +2,7 @@
 title: Extrude
 section: Tools
 category: Solid
-order: 17
+order: 19
 ---
 
 # Extrude

@@ -2,7 +2,7 @@
 title: Import STEP, mesh or OpenSCAD
 section: Tools
 category: Home
-order: 6
+order: 8
 ---
 
 # Import STEP, mesh or OpenSCAD

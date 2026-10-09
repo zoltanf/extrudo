@@ -114,4 +114,28 @@ describe('the desktop update toasts (P6-01 slice 4)', () => {
     expect(notifications.getState().toasts).toEqual([]);
     expect(notifications.getState().history[0]?.text).toBe("Couldn't check for updates: offline");
   });
+
+  it('trims what it is given: the first line, at most 140 characters', () => {
+    const notifications = createNotifications({ later: () => {} });
+    const push = notifications.getState().push;
+    showUpdateError({ message: `HttpError: 406\nHeaders: {\n "server": "GitHub.com"\n}`, push });
+    showUpdateError({ message: 'x'.repeat(400), push });
+    showUpdateError({ push });
+    const texts = notifications.getState().history.map((h) => h.text);
+    expect(texts).toContain("Couldn't check for updates: HttpError: 406");
+    expect(texts).toContain("Couldn't check for updates.");
+    expect(texts.every((t) => !t.includes('Headers') && t.length <= 180)).toBe(true);
+  });
+
+  it('keeps a message that already says it, and shows a manual check’s error', () => {
+    const notifications = createNotifications({ later: () => {} });
+    showUpdateError({
+      message: "Couldn't check for updates: you seem to be offline.",
+      quiet: false,
+      push: notifications.getState().push,
+    });
+    expect(notifications.getState().toasts[0]?.text).toBe(
+      "Couldn't check for updates: you seem to be offline.",
+    );
+  });
 });

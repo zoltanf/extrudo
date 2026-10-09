@@ -7,6 +7,7 @@
 
 import type { ProjectId } from '@extrudo/storage';
 import type {
+  DesktopApp,
   ExternalFiles,
   FileAccess,
   FolderFile,
@@ -159,6 +160,31 @@ export function desktopSlicer(
   };
 }
 
+/**
+ * Whether the platform keeps a native menu bar: macOS only (ADR-0075's 2026-10-09
+ * amendment). Its accelerators run Open…, Save As… and Quit there, so the renderer
+ * binds no second key for them; elsewhere main builds no menu and the keys are ours.
+ */
+export const hasNativeMenu = (navigatorPlatform: string): boolean => /Mac/.test(navigatorPlatform);
+
+/** Open File…, Open Recent and the rest of what only the native menu had (ADR-0075, 2026-10-09). */
+export function desktopApp(
+  api: ExtrudoApi,
+  navigatorPlatform = globalThis.navigator?.platform ?? '',
+): DesktopApp {
+  return {
+    nativeMenu: hasNativeMenu(navigatorPlatform),
+    openFile: () => api.files.openDialog(),
+    recentFiles: async () => (await api.recent.names()).map((name) => ({ name })),
+    openRecent: (index, name) => api.recent.open(index, name),
+    clearRecent: () => api.recent.clear(),
+    onRecentChanged(handler) {
+      api.recent.onChanged(handler);
+      return () => api.recent.offChanged();
+    },
+  };
+}
+
 export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise<Platform> {
   const preferences = await desktopPreferences(api);
   const projects = createStoreProxy(api);
@@ -174,6 +200,7 @@ export async function desktopPlatform(api: ExtrudoApi = window.extrudo): Promise
     folders: desktopFolders(api),
     externalFiles: desktopExternalFiles(api),
     menus: desktopMenus(api),
+    desktop: desktopApp(api),
     ...desktopSlicer(api),
     updates: desktopUpdates(api, appNotifications.getState().push),
     // The docs pages (P6-06 S9): main builds the URL from the whitelisted path.

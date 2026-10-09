@@ -236,4 +236,17 @@ describe('preload bridge (ADR-0075 §1)', () => {
       { channel: CHANNELS.docsOpen, args: ['/tools/extrude/'], kind: 'send' },
     ]);
   });
+
+  it('asks main for Open File…, the recent names and an Open Recent by index and name', async () => {
+    const { ipc, calls } = fakeIpc({ [CHANNELS.recentNames]: () => ['a.extrudo'] });
+    const api = createApi(ipc);
+    api.files.openDialog();
+    expect(await api.recent.names()).toEqual(['a.extrudo']);
+    api.recent.open(0, 'a.extrudo');
+    expect(calls).toEqual([
+      { channel: CHANNELS.fileOpenDialog, args: [], kind: 'send' },
+      { channel: CHANNELS.recentNames, args: [], kind: 'invoke' },
+      { channel: CHANNELS.recentOpen, args: [0, 'a.extrudo'], kind: 'send' },
+    ]);
+  });
 });

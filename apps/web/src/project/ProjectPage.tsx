@@ -167,6 +167,8 @@ function ProjectEditor({
           .then((summary) => summary && navigate(projectHref(summary.id)))
           .catch((error: unknown) => push('error', `Import failed: ${describeError(error)}`));
       },
+      // Desktop only (ADR-0075, 2026-10-09): the Home tab's Open File tile.
+      ...(platform.desktop && { openFile: () => platform.desktop?.openFile() }),
       // Desktop only (P6-01 slice 2): "Save As…" to a path the user picks, then
       // link the design to that file, the way a linked folder does (ADR-0065 §3).
       ...(platform.files.saveAs && {

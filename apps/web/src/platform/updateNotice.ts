@@ -96,7 +96,37 @@ export function showUpdateAvailable({
   });
 }
 
-/** An update check that failed: history only, nobody needs to act (P6-01 slice 4). */
-export function showUpdateError({ message, push }: { message?: string; push: Push }): void {
-  push('error', `Couldn't check for updates${message ? `: ${message}` : '.'}`, { quiet: true });
+/** The longest piece of a failure's own text a toast shows (the first line only). */
+const MAX_FAILURE_LINE = 140;
+const CHECK_FAILED = "Couldn't check for updates";
+
+/**
+ * An update check that failed: history only unless `quiet` is false (a manual
+ * check). The text is trimmed here too, whoever sends it: its first line and
+ * at most 140 characters, so a response's headers or body never reach a person
+ * (ADR-0075's 2026-10-09 amendment). A message that already starts with the
+ * sentence ("Couldn't check for updates: you seem to be offline.") is used as
+ * it is.
+ */
+export function showUpdateError({
+  message,
+  quiet = true,
+  push,
+}: {
+  message?: string;
+  quiet?: boolean;
+  push: Push;
+}): void {
+  const line =
+    message
+      ?.split(/\r?\n/)
+      .map((part) => part.trim())
+      .find((part) => part.length > 0) ?? '';
+  const cut = line.length > MAX_FAILURE_LINE ? `${line.slice(0, MAX_FAILURE_LINE - 1)}…` : line;
+  const text = !cut
+    ? `${CHECK_FAILED}.`
+    : cut.startsWith(CHECK_FAILED)
+      ? cut
+      : `${CHECK_FAILED}: ${cut}`;
+  push('error', text, quiet ? { quiet: true } : {});
 }

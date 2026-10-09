@@ -2,7 +2,7 @@
 title: Sketch Chamfer
 section: Tools
 category: Sketch
-order: 92
+order: 94
 ---
 
 # Sketch Chamfer

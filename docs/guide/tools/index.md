@@ -13,6 +13,8 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 ### Design
 
 - [New Design](./newDesign.md) — Start a new, empty design.
+- [Open File](./openFile.md) — Open an .extrudo file from disk: the design stays linked to that file.
+- [Save As](./saveAs.md) — Save this design as an .extrudo file on disk and keep it linked to that file.
 - [All Designs](./allDesigns.md) — Back to the home screen with every design in this browser.
 
 ### Versions

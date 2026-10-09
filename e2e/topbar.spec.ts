@@ -260,6 +260,56 @@ test('Settings holds the general options and the theme', async ({ page }) => {
   await expect(page.getByRole('region', { name: 'Customize Marking Menu' })).toBeVisible();
 });
 
+test('Settings has the Radial right-click menu, in step with the command', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openProject(page);
+  const settings = header(page).getByRole('button', { name: 'Settings', exact: true });
+  const radial = page.getByRole('menuitemcheckbox', { name: 'Radial right-click menu' });
+  const customize = page.getByRole('menuitem', { name: 'Customize Marking Menu…' });
+
+  await settings.click();
+  await expect(radial).toBeChecked();
+  // It sits just above Customize Marking Menu….
+  const above = (await radial.boundingBox()) as { y: number; height: number };
+  const below = (await customize.boundingBox()) as { y: number };
+  expect(below.y).toBeGreaterThan(above.y);
+  expect(below.y - (above.y + above.height)).toBeLessThan(12);
+
+  // The checkbox changes what the command offers…
+  await radial.click();
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+k');
+  await page.getByRole('combobox', { name: 'Search commands' }).fill('right-click menu');
+  await expect(page.getByRole('option', { name: /^Right-Click Menu: Use the Ring/ })).toBeVisible();
+
+  // …and the command changes the checkbox.
+  await page.getByRole('option', { name: /^Right-Click Menu: Use the Ring/ }).click();
+  await settings.click();
+  await expect(radial).toBeChecked();
+  await page.keyboard.press('Escape');
+});
+
+test('the web build has no desktop-only commands in Home or Help', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openProject(page);
+  await page.getByRole('tab', { name: 'Home' }).click();
+  for (const name of ['Open File', 'Save As', 'Quit']) {
+    await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0);
+  }
+  await header(page).getByRole('button', { name: 'Help', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Tutorials' })).toBeVisible();
+  await expect(page.getByRole('menuitem', { name: /Check for Updates/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await page.keyboard.press('Control+k');
+  const search = page.getByRole('combobox', { name: 'Search commands' });
+  for (const text of ['open file', 'save as', 'quit', 'check for updates']) {
+    await search.fill(text);
+    await expect(
+      page.getByRole('option', { name: /^(Open File|Save As|Quit|Check for Updates)/ }),
+    ).toHaveCount(0);
+  }
+});
+
 test.describe('with a light system theme and nothing stored', () => {
   test.use({ colorScheme: 'light' });
   test('the default theme is the system one', async ({ page }) => {

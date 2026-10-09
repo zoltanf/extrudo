@@ -2,7 +2,7 @@
 title: Plane Along Path
 section: Tools
 category: Construct
-order: 52
+order: 54
 ---
 
 # Plane Along Path

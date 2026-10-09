@@ -2,7 +2,7 @@
 title: Fillet
 section: Tools
 category: Modify
-order: 36
+order: 38
 ---
 
 # Fillet

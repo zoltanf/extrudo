@@ -2,7 +2,7 @@
 title: Print Info
 section: Tools
 category: 3D Print
-order: 113
+order: 115
 ---
 
 # Print Info

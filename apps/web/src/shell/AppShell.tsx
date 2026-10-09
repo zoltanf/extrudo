@@ -179,7 +179,7 @@ import type { DocsPage } from './docsLinks';
 import { docsPath } from './docsLinks';
 import { createFeatureActions } from './featureActions';
 import { createGroupActions } from './groupActions';
-import { menuModel, QUIT_ID, SAVE_AS_ID } from './menuModel';
+import { menuModel, NATIVE_MENU_OWN, QUIT_ID, SAVE_AS_ID } from './menuModel';
 import { Splitter, usePanel } from './panels';
 import { watchRecomputeErrors } from './recomputeErrors';
 import { Timeline } from './Timeline';
@@ -829,6 +829,41 @@ export function AppShell({
       ]),
     [recording, fileActions],
   );
+  // The desktop app's own commands (ADR-0075, 2026-10-09). Quit saves every design first, as
+  // the update toast's Restart does, and refuses when a save failed.
+  const desktop = platform.desktop;
+  const quitApp = useCallback(async () => {
+    if (!(await saveEverything())) {
+      notify('error', "Couldn't save before quitting. Your latest changes are still open.");
+      return;
+    }
+    platform.menus?.quit();
+  }, [platform.menus, notify]);
+  const [recentNames, setRecentNames] = useState<readonly string[]>([]);
+  useEffect(() => {
+    if (!desktop) return;
+    let alive = true;
+    const refresh = () =>
+      void desktop
+        .recentFiles()
+        .then((list) => alive && setRecentNames(list.map((entry) => entry.name)))
+        .catch(() => {});
+    refresh();
+    const off = desktop.onRecentChanged(refresh);
+    return () => {
+      alive = false;
+      off();
+    };
+  }, [desktop]);
+  const recentFiles = useMemo(
+    () =>
+      desktop && {
+        names: recentNames,
+        onOpen: (index: number) => desktop.openRecent(index, recentNames[index] ?? ''),
+        onClear: () => void desktop.clearRecent(),
+      },
+    [desktop, recentNames],
+  );
   const [markingDialog, setMarkingDialog] = useState(false);
   // `listing` builds a mode's commands for the Customize Marking Menu dialog: what the mode
   // offers whatever is selected now (Delete, Repeat last and the construction toggle included).
@@ -889,8 +924,21 @@ export function AppShell({
         tutorial: { start: () => startTutorialRef.current() },
         docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
         macro: { recording: recording !== undefined },
+        ...(desktop &&
+          platform.menus && {
+            desktop: {
+              nativeMenu: desktop.nativeMenu,
+              quit: () => void quitApp(),
+              ...(platform.updates?.check && {
+                checkForUpdates: () => platform.updates?.check?.(),
+              }),
+              clearRecent: () => void desktop.clearRecent(),
+            },
+          }),
       }),
     [
+      desktop,
+      quitApp,
       host,
       notify,
       store,
@@ -955,8 +1003,13 @@ export function AppShell({
     const menus = platform.menus;
     if (!menus) return;
     const mac = /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
-    menus.set(menuModel(commands, mode, { mac }));
-  }, [platform.menus, commands, mode]);
+    // macOS keeps its native menu, whose Open…, Save As…, Check for Updates… and Quit are
+    // main's own: the projection leaves their commands out. Elsewhere main builds no menu.
+    const own = platform.desktop?.nativeMenu
+      ? commands.filter((command) => !NATIVE_MENU_OWN.has(command.id))
+      : commands;
+    menus.set(menuModel(own, mode, { mac }));
+  }, [platform.menus, platform.desktop, commands, mode]);
   useEffect(() => {
     const menus = platform.menus;
     if (!menus) return;
@@ -974,14 +1027,7 @@ export function AppShell({
         return;
       }
       if (id === QUIT_ID) {
-        void (async () => {
-          // Save before quitting, as the update toast's Reload does (ADR-0054).
-          if (!(await saveEverything())) {
-            notify('error', "Couldn't save before quitting. Your latest changes are still open.");
-            return;
-          }
-          menus.quit();
-        })();
+        void quitApp();
         return;
       }
       const command = commands.find((c) => c.id === id && !c.unavailable);
@@ -991,7 +1037,7 @@ export function AppShell({
       menus.listening(false);
       off();
     };
-  }, [platform.menus, commands, fileActions, notify]);
+  }, [platform.menus, commands, fileActions, quitApp]);
 
   const shortcuts = useMemo(
     () => [
@@ -1710,6 +1756,11 @@ export function AppShell({
         onTutorial={startTutorial}
         onDocs={(page) => platform.openDocs(docsPath(page))}
         onHelp={() => commands.find((c) => c.id === 'help')?.run()}
+        {...(platform.updates?.check && { onCheckUpdates: () => platform.updates?.check?.() })}
+        markingRadial={markingStyle.radial}
+        onMarkingRadial={(radial) => {
+          if (radial !== markingStyle.radial) markingStyle.toggle();
+        }}
         viewport={viewport}
         onCustomizeMarking={() => setMarkingDialog(true)}
       />
@@ -1746,6 +1797,7 @@ export function AppShell({
         ready={ready}
         hidden={macroHidden}
         pluginItems={pluginItems}
+        {...(recentFiles && { recentFiles })}
       />
       {/* The view fills the area; the browser floats over its left edge (glass, like the nav
           bar), so showing, hiding or resizing it never resizes the view. Overlays anchored to

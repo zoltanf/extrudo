@@ -24,7 +24,13 @@ import { createExternalFiles, createExternalPaths } from './externalFiles';
 import { createFolders } from './folders';
 import { HEADERS } from './headers';
 import { registerIpcHandlers } from './ipc';
-import { buildMenuTemplate, type MenuHandlers, QUIT_ID, SAVE_AS_ID } from './menuTemplate';
+import {
+  buildMenuTemplate,
+  hasApplicationMenu,
+  type MenuHandlers,
+  QUIT_ID,
+  SAVE_AS_ID,
+} from './menuTemplate';
 import { isAllowedNavigation } from './navigation';
 import { createOpenQueue, extrudoPathFromArgv, isExtrudoPath } from './openPaths';
 import { createPreferencesFile } from './preferences';
@@ -99,7 +105,13 @@ function main(): void {
   let menuModel: MenuModel[] = [];
   /** Whether a project page has registered its `menu:run` handler (finding 4). */
   let menuListening = false;
+  const hasMenu = hasApplicationMenu(process.platform);
   const applyMenu = () => {
+    // Windows and Linux have no application menu (ADR-0075, 2026-10-09).
+    if (!hasMenu) {
+      Menu.setApplicationMenu(null);
+      return;
+    }
     Menu.setApplicationMenu(
       Menu.buildFromTemplate(
         buildMenuTemplate(menuModel, {
@@ -241,6 +253,9 @@ function main(): void {
       folders,
       recent,
       externalFiles,
+      hasMenu,
+      openFileDialog: () => void openDialog(),
+      openRecent: (path) => openQueue.push(path),
       menu: {
         set: (model) => {
           menuModel = model;
@@ -325,6 +340,8 @@ function main(): void {
         nodeIntegration: false,
       },
     });
+    // No menu bar on Windows and Linux, and Alt must not bring one back.
+    if (!hasMenu) window.removeMenu();
     window.on('ready-to-show', () => window?.show());
     // A design stays open for days: focus checks again when the last is old.
     window.on('focus', () => updates.focused());

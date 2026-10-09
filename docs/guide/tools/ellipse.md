@@ -2,7 +2,7 @@
 title: Ellipse
 section: Tools
 category: Sketch
-order: 79
+order: 81
 ---
 
 # Ellipse

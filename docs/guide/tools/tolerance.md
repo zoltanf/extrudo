@@ -2,7 +2,7 @@
 title: Tolerance
 section: Tools
 category: 3D Print
-order: 114
+order: 116
 ---
 
 # Tolerance

@@ -1926,6 +1926,8 @@ from the arm64 mac zip with `render.mjs` and pushes `Casks/extrudo.rb` to the
 it), which is macOS's install and update path since the updater only notifies
 there.
 
+**ADR-0075's amendment (2026-10-09)**: **Windows and Linux have no menu bar** (`hasApplicationMenu`: `buildMenuTemplate` is `[]` off macOS, main sets `Menu.setApplicationMenu(null)`, removes the window's menu and ignores `menu:set`; macOS keeps the native menu). What only the menu had is in the app, desktop only: Open File… (`Ctrl+O`) and Save As… (`Ctrl+Shift+S`) are Home › Design tiles (`openFile` is a `FILE_COMMANDS` entry hidden where `FileActions.openFile` is absent), Open Recent is the Design group's ▾ (`Toolbar`'s `recentFiles`; `recent:names`/`recent:open` take an index and a name, main's `recentPathAt` looks the path up itself), Check for Updates… is in Help (`Platform.updates.check`) and Quit (`Ctrl+Q`) a command that saves first; `Platform.desktop` (`DesktopApp`, `nativeMenu` true on macOS) is the seam, and **on macOS the renderer binds no key for them and `NATIVE_MENU_OWN` keeps their commands out of the menu projection**. `main/updateErrors.ts` classifies a failed update check (`no-release`, `offline`, `other`): an automatic check is silent for the first two, a manual one answers in a sentence, anything else is the error's first line (140 characters), never headers.
+
 ADR-0076 (WebGL fallback) made the app survive a browser without hardware WebGL:
 `viewport/webglSupport.ts` (`detectWebgl(create?)` → `hardware`/`software`/`none`,
 memoised by `webglSupport(refresh?)`, probe contexts lost again); the Canvas never
@@ -2071,7 +2073,7 @@ points at a tool's tab when its tile isn't shown (`toolOrTabSelector`). e2e:
 `playwright.config.ts` sets `colorScheme: 'dark'` because Playwright reports a light
 system theme and the baselines are dark), the gear is a **Settings menu**
 (`SettingsMenu` in `AppBar.tsx`: General — Auto-project body edges / face outline on the
-viewport store, Customize Marking Menu… — and Theme; the bar's theme button is gone,
+viewport store, **Radial right-click menu** (a checkbox on the same state as the `Right-Click Menu: Use a List / Use the Ring` command, `markingStyle`; 2026-10-09), Customize Marking Menu… — and Theme; the bar's theme button is gone,
 `ThemeMenu` remains on the home screen), the cluster is **Undo, Redo, Toolbox, Search**
 (Toolbox opens the S toolbox at the button: `onSearch('toolbox', at)`), the right side is
 Version history, Settings, Help, and the name plus the save dot are one `TitleGroup`

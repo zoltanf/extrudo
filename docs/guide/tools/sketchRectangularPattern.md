@@ -2,7 +2,7 @@
 title: Rectangular Pattern
 section: Tools
 category: Sketch
-order: 87
+order: 89
 ---
 
 # Rectangular Pattern

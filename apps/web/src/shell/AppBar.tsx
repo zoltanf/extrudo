@@ -8,6 +8,7 @@ import {
   ListChecks,
   PanelsTopLeft,
   Redo2,
+  RefreshCw,
   Search,
   Settings,
   Shapes,
@@ -56,6 +57,8 @@ export interface FileActions {
   saveVersion?(): void;
   /** Opens the Versions dialog (P2-14). */
   versionHistory?(): void;
+  /** Desktop only (ADR-0075, 2026-10-09): the native Open… dialog; the file opens as a linked design. */
+  openFile?(): void;
   /**
    * Desktop only (P6-01 slice 2): "Save As…" writes the design to a path the
    * user chooses and links the project to it. The web's Home tab leaves it out;
@@ -94,6 +97,11 @@ export interface AppBarProps {
   onDocs(page: DocsPage): void;
   /** Runs the `help` command: the page of the tool last hovered, else the guide. */
   onHelp(): void;
+  /** Help › Check for Updates… (desktop only, ADR-0075's 2026-10-09 amendment); absent on the web. */
+  onCheckUpdates?(): void;
+  /** Settings › General › Radial right-click menu: the same state as the command that toggles it. */
+  markingRadial: boolean;
+  onMarkingRadial(radial: boolean): void;
 }
 
 /** A command's first key as it reads here ("Ctrl+K"). */
@@ -122,6 +130,9 @@ export function AppBar({
   onTutorial,
   onDocs,
   onHelp,
+  onCheckUpdates,
+  markingRadial,
+  onMarkingRadial,
   viewport,
   onCustomizeMarking,
 }: AppBarProps) {
@@ -191,6 +202,8 @@ export function AppBar({
           theme={theme}
           onThemeChange={onThemeChange}
           onCustomizeMarking={onCustomizeMarking}
+          markingRadial={markingRadial}
+          onMarkingRadial={onMarkingRadial}
         />
         <Menu
           label="Help"
@@ -239,6 +252,14 @@ export function AppBar({
           <MenuItem icon={<Wrench size={14} />} onSelect={() => onDocs('tools')}>
             Tool Reference
           </MenuItem>
+          {onCheckUpdates && (
+            <>
+              <MenuSeparator />
+              <MenuItem icon={<RefreshCw size={14} />} onSelect={onCheckUpdates}>
+                Check for Updates…
+              </MenuItem>
+            </>
+          )}
         </Menu>
       </div>
     </header>
@@ -271,7 +292,17 @@ function SettingsMenu({
   theme,
   onThemeChange,
   onCustomizeMarking,
-}: Pick<AppBarProps, 'viewport' | 'theme' | 'onThemeChange' | 'onCustomizeMarking'>) {
+  markingRadial,
+  onMarkingRadial,
+}: Pick<
+  AppBarProps,
+  | 'viewport'
+  | 'theme'
+  | 'onThemeChange'
+  | 'onCustomizeMarking'
+  | 'markingRadial'
+  | 'onMarkingRadial'
+>) {
   const autoProject = useStore(viewport, (s) => s.autoProject);
   const autoProjectFace = useStore(viewport, (s) => s.autoProjectFace);
   return (
@@ -296,6 +327,10 @@ function SettingsMenu({
         onChange={(v) => viewport.getState().setAutoProjectFace(v)}
       >
         Auto-project face outline
+      </MenuCheckboxItem>
+      {/* The same state as the command "Right-Click Menu: Use a List / Use the Ring". */}
+      <MenuCheckboxItem checked={markingRadial} onChange={onMarkingRadial}>
+        Radial right-click menu
       </MenuCheckboxItem>
       <MenuItem onSelect={onCustomizeMarking}>Customize Marking Menu…</MenuItem>
       <MenuSeparator />

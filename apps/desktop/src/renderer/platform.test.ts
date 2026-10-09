@@ -4,12 +4,14 @@ import { showUpdateReady, UPDATE_TOAST_MS } from '@extrudo/web/platform/updateNo
 import { describe, expect, it, vi } from 'vitest';
 import type { ExtrudoApi, UpdateStatus } from '../shared/ipc';
 import {
+  desktopApp,
   desktopFiles,
   desktopFolders,
   desktopPlatform,
   desktopPreferences,
   desktopRescue,
   desktopSlicer,
+  hasNativeMenu,
 } from './platform';
 import { desktopUpdates } from './updates';
 
@@ -22,6 +24,7 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
       download: async () => {},
       pick: async () => undefined,
       saveAs: async () => undefined,
+      openDialog: () => {},
     },
     storage: {
       persistence: async () => 'persistent',
@@ -55,6 +58,8 @@ function fakeApi(overrides: Partial<ExtrudoApi> = {}) {
     },
     recent: {
       list: async () => [],
+      names: async () => [],
+      open: () => {},
       clear: async () => {},
       remove: () => {},
       onChanged: () => {},
@@ -99,6 +104,7 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
         },
         pick: async () => ({ name: 'part.svg', bytes: new Uint8Array([1, 2]) }),
         saveAs: async () => undefined,
+        openDialog: () => {},
       },
     });
     const files = desktopFiles(api);
@@ -120,6 +126,7 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
           calls.push({ bytes, name });
           return { path: '/tmp/Bracket.extrudo', modified: 42 };
         },
+        openDialog: () => {},
       },
     });
     const files = desktopFiles(api);
@@ -168,6 +175,7 @@ describe('desktopPlatform (ADR-0075 §3)', () => {
   it('assembles the whole Platform, recovering no rescue copies', async () => {
     const platform = await desktopPlatform(fakeApi());
     expect(Object.keys(platform).sort()).toEqual([
+      'desktop',
       'externalFiles',
       'files',
       'folders',
@@ -303,5 +311,76 @@ describe('the slicer launch (P6-02)', () => {
     );
     const file = { name: 'a.stl', bytes: new Uint8Array([1]), format: 'stl' as const };
     await expect(slicer.openInSlicer?.(file, 'cura')).rejects.toThrow('malformed');
+  });
+});
+
+describe('the desktop app commands (ADR-0075, 2026-10-09)', () => {
+  it('keeps the native menu, and so its accelerators, on macOS only', () => {
+    expect(hasNativeMenu('MacIntel')).toBe(true);
+    expect(hasNativeMenu('Linux x86_64')).toBe(false);
+    expect(hasNativeMenu('Win32')).toBe(false);
+  });
+
+  it('opens a file, lists recent names and opens one by index and name — never a path', async () => {
+    const openDialog = vi.fn();
+    const open = vi.fn();
+    const clear = vi.fn(async () => {});
+    const base = fakeApi();
+    const api = fakeApi({
+      files: { ...base.files, openDialog },
+      recent: { ...base.recent, names: async () => ['a.extrudo', 'b.extrudo'], open, clear },
+    });
+    const app = desktopApp(api, 'Linux x86_64');
+    expect(app.nativeMenu).toBe(false);
+    app.openFile();
+    expect(openDialog).toHaveBeenCalledOnce();
+    expect(await app.recentFiles()).toEqual([{ name: 'a.extrudo' }, { name: 'b.extrudo' }]);
+    app.openRecent(1, 'b.extrudo');
+    expect(open).toHaveBeenCalledWith(1, 'b.extrudo');
+    await app.clearRecent();
+    expect(clear).toHaveBeenCalledOnce();
+    expect(desktopApp(api, 'MacIntel').nativeMenu).toBe(true);
+  });
+
+  it('is part of the platform, and so is a manual update check', async () => {
+    const platform = await desktopPlatform(fakeApi());
+    expect(platform.desktop).toBeDefined();
+    expect(platform.updates?.check).toBeTypeOf('function');
+  });
+
+  it('shows a manual check’s answers: the info for no release, the offline error, not an automatic one', () => {
+    const base = fakeApi();
+    let emit: (status: UpdateStatus) => void = () => {};
+    const api = fakeApi({
+      updates: {
+        ...base.updates,
+        onStatus: (handler) => {
+          emit = handler;
+        },
+      },
+    });
+    const notifications = createNotifications({ later: () => {} });
+    desktopUpdates(api, notifications.getState().push);
+    emit({
+      state: 'idle',
+      message: "There's no published release to update to yet.",
+      tone: 'info',
+    });
+    expect(notifications.getState().toasts.at(-1)).toMatchObject({
+      tone: 'info',
+      text: "There's no published release to update to yet.",
+    });
+    emit({
+      state: 'error',
+      message: "Couldn't check for updates: you seem to be offline.",
+      manual: true,
+    });
+    expect(notifications.getState().toasts.at(-1)?.text).toBe(
+      "Couldn't check for updates: you seem to be offline.",
+    );
+    const before = notifications.getState().toasts.length;
+    emit({ state: 'error', message: "Couldn't check for updates. boom" });
+    expect(notifications.getState().toasts).toHaveLength(before);
+    expect(notifications.getState().history[0]?.text).toBe("Couldn't check for updates. boom");
   });
 });

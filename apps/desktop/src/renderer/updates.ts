@@ -44,10 +44,15 @@ export function desktopUpdates(api: ExtrudoApi, push: Push): PlatformUpdates {
         push,
       });
     } else if (status.state === 'error') {
-      showUpdateError({ ...(status.message && { message: status.message }), push });
+      // A manual check's error is shown; an automatic one is history only.
+      showUpdateError({
+        ...(status.message && { message: status.message }),
+        ...(status.manual && { quiet: false }),
+        push,
+      });
     } else if (status.state === 'idle' && status.message) {
       // Only a manual check's answer carries a message ("Extrudo is up to date.").
-      push('success', status.message);
+      push(status.tone === 'info' ? 'info' : 'success', status.message);
     }
   };
   api.updates.onStatus(onStatus);
@@ -55,6 +60,7 @@ export function desktopUpdates(api: ExtrudoApi, push: Push): PlatformUpdates {
   return {
     store,
     action: RESTART_ACTION,
+    check: () => api.updates.check(),
     async apply() {
       if (!store.getState().waiting) return false;
       api.updates.apply();

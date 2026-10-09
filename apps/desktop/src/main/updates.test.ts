@@ -194,26 +194,95 @@ describe('auto-update in main (P6-01 slice 4)', () => {
 
   it('catches, logs and reports every updater error once, and never throws', async () => {
     const { updater, updates, sent, log } = setup();
-    updater.checkForUpdates.mockRejectedValueOnce(new Error('net::ERR_INTERNET_DISCONNECTED'));
+    updater.checkForUpdates.mockRejectedValueOnce(new Error('signature mismatch\nHeaders: {}'));
     updates.start();
     vi.advanceTimersByTime(FIRST_CHECK_MS);
     await vi.waitFor(() => expect(sent).toHaveLength(1));
-    updater.emit('error', new Error('net::ERR_INTERNET_DISCONNECTED'));
-    expect(sent).toEqual([{ state: 'error', message: 'net::ERR_INTERNET_DISCONNECTED' }]);
+    updater.emit('error', new Error('signature mismatch\nHeaders: {}'));
+    expect(sent).toEqual([
+      { state: 'error', message: "Couldn't check for updates. signature mismatch" },
+    ]);
     expect(log.error).toHaveBeenCalledTimes(2);
 
     updater.checkForUpdates.mockImplementationOnce(() => {
       throw new Error('boom');
     });
     expect(() => updates.check()).not.toThrow();
-    expect(sent.at(-1)).toEqual({ state: 'error', message: 'boom' });
+    expect(sent.at(-1)).toEqual({
+      state: 'error',
+      message: "Couldn't check for updates. boom",
+      manual: true,
+    });
 
     updater.emit('update-downloaded', { version: '0.5.0' });
     updater.quitAndInstall.mockImplementationOnce(() => {
       throw new Error('installer missing');
     });
     expect(updates.apply()).toBe(false);
-    expect(sent.at(-1)).toEqual({ state: 'error', message: 'installer missing' });
+    expect(sent.at(-1)).toEqual({
+      state: 'error',
+      message: "Couldn't install the update. installer missing",
+    });
+  });
+
+  describe('a check that finds nothing wrong with the app', () => {
+    const OWNER = new Error(
+      'Cannot parse releases feed: Error: Unable to find latest version on GitHub (https://github.com/zoltanf/extrudo/releases/latest), please ensure a production release exists: HttpError: 406\nHeaders: {}',
+    );
+
+    it('says nothing when an automatic check finds no published release', async () => {
+      const { updater, updates, sent } = setup();
+      updater.checkForUpdates.mockRejectedValueOnce(OWNER);
+      updates.start();
+      vi.advanceTimersByTime(FIRST_CHECK_MS);
+      await vi.waitFor(() => expect(updater.checkForUpdates).toHaveBeenCalled());
+      await Promise.resolve();
+      updater.emit('error', OWNER);
+      expect(sent.filter((s) => s.state === 'error' || s.message)).toEqual([]);
+    });
+
+    it('answers a manual check once, as an info', async () => {
+      const { updater, updates, sent } = setup();
+      updater.checkForUpdates.mockRejectedValueOnce(OWNER);
+      updates.start();
+      updates.check();
+      await Promise.resolve();
+      await Promise.resolve();
+      updater.emit('error', OWNER);
+      expect(sent.filter((s) => s.message)).toEqual([
+        { state: 'idle', message: "There's no published release to update to yet.", tone: 'info' },
+      ]);
+    });
+
+    it('says nothing offline unless asked, then says so', async () => {
+      const { updater, updates, sent } = setup();
+      const offline = new Error('getaddrinfo ENOTFOUND github.com');
+      updater.checkForUpdates.mockRejectedValue(offline);
+      updates.start();
+      vi.advanceTimersByTime(FIRST_CHECK_MS);
+      await vi.waitFor(() => expect(updater.checkForUpdates).toHaveBeenCalledTimes(1));
+      await Promise.resolve();
+      expect(sent.filter((s) => s.state === 'error')).toEqual([]);
+
+      updates.check();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(sent.filter((s) => s.state === 'error')).toEqual([
+        {
+          state: 'error',
+          message: "Couldn't check for updates: you seem to be offline.",
+          manual: true,
+        },
+      ]);
+    });
+
+    it('leaves the checking state when it stays quiet', () => {
+      const { updater, updates, sent } = setup();
+      updates.start();
+      updater.emit('checking-for-update');
+      updater.emit('error', new Error('connect ECONNREFUSED 1.2.3.4:443'));
+      expect(sent.at(-1)).toEqual({ state: 'idle' });
+    });
   });
 
   it('reports a failure to create the updater instead of throwing', () => {
@@ -223,6 +292,8 @@ describe('auto-update in main (P6-01 slice 4)', () => {
       },
     });
     expect(updates.start()).toBe(false);
-    expect(sent).toEqual([{ state: 'error', message: 'no app-update.yml' }]);
+    expect(sent).toEqual([
+      { state: 'error', message: "Couldn't check for updates. no app-update.yml" },
+    ]);
   });
 });

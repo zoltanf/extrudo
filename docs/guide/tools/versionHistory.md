@@ -2,7 +2,7 @@
 title: Version History
 section: Tools
 category: Home
-order: 4
+order: 6
 ---
 
 # Version History

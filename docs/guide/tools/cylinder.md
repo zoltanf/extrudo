@@ -2,7 +2,7 @@
 title: Cylinder
 section: Tools
 category: Solid
-order: 23
+order: 25
 ---
 
 # Cylinder

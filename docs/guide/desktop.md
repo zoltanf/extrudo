@@ -22,6 +22,10 @@ Installers are attached to each release on the project's
 | Windows | An installer (`.exe`) |
 | macOS | A `.dmg`, or a `.zip` |
 
+On Arch-based systems (Arch, Omarchy, Manjaro) an AppImage needs `fuse2`
+(`sudo pacman -S fuse2`), or run it with `--appimage-extract-and-run`; with the
+latter, the in-app update may not be able to replace the file.
+
 On macOS you can also use Homebrew:
 
 ```sh
@@ -37,10 +41,13 @@ this once for each install.
 
 Everything on the other pages of this guide applies. These things are added.
 
-**Native menus.** The window has the menu bar your system expects, built from the same commands
-as the toolbar and `Ctrl+K`. The **Home** tab's actions (new design, versions, import, export)
-are in the **File** menu. **File** also has **Open…**, **Open Recent** (the last ten files)
-and **Save As…**. `Ctrl+Shift+S` saves as, and `Ctrl+O` opens. On a Mac these are `⌘`.
+**Files and the menu.** On a Mac the window has the system menu bar, built from the same
+commands as the toolbar and `Ctrl+K`: the **Home** tab's actions are in its **File** menu, which
+also has **Open…**, **Open Recent** (the last ten files) and **Save As…**. On Windows and Linux
+there is no menu bar: everything is in the top bar. The **Home** tab's **Design** group has
+**Open File** (`Ctrl+O`) and **Save As** (`Ctrl+Shift+S`), its ▾ menu lists **Open Recent** and
+**Clear Recent**, **Help** has **Check for Updates…** and `Ctrl+Q` quits (after saving your
+open designs). On a Mac these keys are `⌘`.
 
 **Opening `.extrudo` files.** Double-click an `.extrudo` file in your file manager and it opens in Extrudo. A design opened this way, or saved with **Save As…**,
 stays linked to that file: every autosave writes the file as well. If the file changed on disk

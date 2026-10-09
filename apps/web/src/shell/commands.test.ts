@@ -3,6 +3,7 @@ import { DEFAULT_KEYMAP } from '../commands/keymap';
 import { memoryPreferences } from '../platform/preferences';
 import { createViewportStore } from '../viewport/store';
 import { buildCommands, type CommandContext, commandShortcuts } from './commands';
+import { menuModel, NATIVE_MENU_OWN } from './menuModel';
 import { releaseTool, setHoveredTool, toolUnderPointer } from './Toolbar';
 
 function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): CommandContext {
@@ -33,7 +34,70 @@ function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): 
   };
 }
 
+/** What the desktop platform adds (ADR-0075, 2026-10-09): Open File…, Save As… and the rest. */
+const DESKTOP = (over: { nativeMenu?: boolean } = {}): Partial<CommandContext> => ({
+  desktop: {
+    nativeMenu: over.nativeMenu ?? false,
+    quit: vi.fn(),
+    checkForUpdates: vi.fn(),
+    clearRecent: vi.fn(),
+  },
+});
+
 const byId = (ctx: CommandContext) => new Map(buildCommands(ctx).map((c) => [c.id, c]));
+
+const withDesktop = (ctx: CommandContext, nativeMenu = false): CommandContext => ({
+  ...ctx,
+  ...DESKTOP({ nativeMenu }),
+  file: { ...ctx.file, openFile: vi.fn(), saveAs: vi.fn() },
+});
+
+describe('the desktop commands (ADR-0075, 2026-10-09)', () => {
+  const names = ['openFile', 'saveAs', 'quit', 'checkForUpdates', 'clearRecent'];
+
+  it('are absent on the web', () => {
+    for (const mode of ['model', 'sketch'] as const) {
+      const web = byId(context(mode));
+      for (const id of names) expect(web.has(id), id).toBe(false);
+    }
+  });
+
+  it('are offered with the desktop platform, with their keys, in the Home tab and Help', () => {
+    const commands = byId(withDesktop(context('model')));
+    expect(commands.get('openFile')).toMatchObject({ group: 'Home › Design', keys: ['Mod+O'] });
+    expect(commands.get('saveAs')).toMatchObject({
+      group: 'Home › Design',
+      keys: ['Mod+Shift+S'],
+    });
+    expect(commands.get('quit')).toMatchObject({ group: 'Home › Design', keys: ['Mod+Q'] });
+    expect(commands.get('checkForUpdates')?.group).toBe('Help');
+    commands.get('quit')?.run();
+    commands.get('openFile')?.run();
+  });
+
+  it('bind their keys once: none of them on macOS, whose menu accelerators run them', () => {
+    const mac = byId(withDesktop(context('model'), true));
+    for (const id of ['openFile', 'saveAs', 'quit']) {
+      expect(mac.get(id)?.keys, id).toEqual([]);
+    }
+    const keys = commandShortcuts(buildCommands(withDesktop(context('model')))).map((s) => s.keys);
+    expect(keys.filter((k, i) => keys.indexOf(k) !== i)).toEqual([]);
+    expect(keys).toEqual(expect.arrayContaining(['Mod+O', 'Mod+Shift+S', 'Mod+Q']));
+  });
+
+  it('are left out of the native menu on macOS: main has items of its own', () => {
+    const commands = buildCommands(withDesktop(context('model'), true));
+    const own = commands.filter((c) => NATIVE_MENU_OWN.has(c.id));
+    expect(own.map((c) => c.id).sort()).toEqual([...names].sort());
+    const model = menuModel(
+      commands.filter((c) => !NATIVE_MENU_OWN.has(c.id)),
+      'model',
+      { mac: true },
+    );
+    const ids = model.flatMap((m) => m.items.flatMap((i) => ('id' in i && i.id ? [i.id] : [])));
+    for (const id of names) expect(ids).not.toContain(id);
+  });
+});
 
 describe('buildCommands', () => {
   it.each(['model', 'sketch'] as const)('gives no key to two commands in %s mode', (mode) => {
@@ -49,6 +113,8 @@ describe('buildCommands', () => {
       // The shell opens these two itself.
       'commandPalette',
       'toolbox',
+      // The desktop app's commands exist only there (ADR-0075, 2026-10-09).
+      ...buildCommands(withDesktop(context('model'))).map((c) => c.id),
     ]);
     expect(Object.keys(DEFAULT_KEYMAP).filter((id) => !ids.has(id))).toEqual([]);
   });

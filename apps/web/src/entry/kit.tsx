@@ -12,6 +12,7 @@ export {
   TooltipProvider,
 } from '../design-system';
 export type {
+  DesktopApp,
   DesktopMenus,
   ExternalFiles,
   FileAccess,
@@ -25,6 +26,7 @@ export type {
   Platform,
   Preferences,
   RecentEntry,
+  RecentListing,
   RescueStore,
   StorageAccess,
 } from '../platform';

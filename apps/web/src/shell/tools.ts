@@ -832,6 +832,22 @@ export const TOOLS = {
     category: 'file',
     hint: 'Start a new, empty design.',
   },
+  openFile: {
+    id: 'openFile',
+    label: 'Open File…',
+    short: 'Open File',
+    icon: 'import-design',
+    category: 'file',
+    hint: 'Open an .extrudo file from disk: the design stays linked to that file.',
+  },
+  saveAs: {
+    id: 'saveAs',
+    label: 'Save As…',
+    short: 'Save As',
+    icon: 'export-design',
+    category: 'file',
+    hint: 'Save this design as an .extrudo file on disk and keep it linked to that file.',
+  },
   allDesigns: {
     id: 'allDesigns',
     label: 'All Designs',
@@ -931,7 +947,7 @@ export const TABS: Tab[] = [
     id: 'home',
     label: 'Home',
     groups: [
-      { label: 'Design', tools: ['newDesign', 'allDesigns'] },
+      { label: 'Design', tools: ['newDesign', 'openFile', 'saveAs', 'allDesigns'] },
       { label: 'Versions', tools: ['saveVersion', 'versionHistory'] },
       {
         label: 'Files',
@@ -1108,6 +1124,9 @@ export function tabOfTool(id: string, mode: 'model' | 'sketch'): TabId | undefin
  */
 export const FILE_COMMANDS = {
   newDesign: 'newDesign',
+  // Desktop only (ADR-0075, 2026-10-09): the page leaves the methods out on the web.
+  openFile: 'openFile',
+  saveAs: 'saveAs',
   allDesigns: 'home',
   saveVersion: 'saveVersion',
   versionHistory: 'versionHistory',

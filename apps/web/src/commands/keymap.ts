@@ -18,6 +18,11 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   delete: ['Delete', 'Backspace'],
   // File (P2-14)
   saveVersion: ['Mod+S'],
+  // The desktop app's own file commands (ADR-0075, 2026-10-09): offered only there. On macOS
+  // the native menu's accelerators run them, so the commands bind no key there.
+  openFile: ['Mod+O'],
+  saveAs: ['Mod+Shift+S'],
+  quit: ['Mod+Q'],
   // Sketch
   line: ['L'],
   rectangle: ['R'],

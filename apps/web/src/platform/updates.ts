@@ -64,6 +64,11 @@ export interface PlatformUpdates {
   apply(): Promise<boolean>;
   /** The ready toast's button: "Reload" on the web (the default), "Restart" on the desktop. */
   readonly action?: string;
+  /**
+   * Help › Check for Updates… (desktop only, P6-01): asks the updater to check now; its
+   * answer arrives as a notification. Absent on the web, whose worker checks itself.
+   */
+  check?(): void;
 }
 
 export interface Updates extends PlatformUpdates {

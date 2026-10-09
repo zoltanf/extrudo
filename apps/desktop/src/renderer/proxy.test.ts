@@ -32,6 +32,7 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
       download: async () => {},
       pick: async () => undefined,
       saveAs: async () => undefined,
+      openDialog: () => {},
     },
     storage: {
       persistence: async () => 'persistent',
@@ -65,6 +66,8 @@ function fakeApi(answers: Partial<Record<string, unknown>> = {}) {
     },
     recent: {
       list: async () => [],
+      names: async () => [],
+      open: () => {},
       clear: async () => {},
       remove: () => {},
       onChanged: () => {},

@@ -17,7 +17,7 @@ import type { ExternalFiles } from './externalFiles';
 import type { Folders } from './folders';
 import { pluginCall } from './plugin-call';
 import type { PreferencesFile } from './preferences';
-import type { RecentFile } from './recent';
+import { type RecentFile, recentPathAt } from './recent';
 import type { RescueFile } from './rescue';
 import type { SlicerService } from './slicerService';
 import { storeCall } from './store-call';
@@ -46,6 +46,8 @@ export interface IpcDependencies {
   /** Writing back to a path main itself issued this session (finding 3). */
   externalFiles: ExternalFiles;
   /** The native application menu: the renderer's model, and the desktop default. */
+  /** Whether this platform has an application menu (macOS only). */
+  hasMenu: boolean;
   menu: { set(model: MenuModel[]): void; reset(): void; setListening(active: boolean): void };
   /** The recent-files list; `savedFile` records a Save As… and tells the renderer. */
   recent: RecentFile;
@@ -53,6 +55,10 @@ export interface IpcDependencies {
   recentChanged(): void;
   /** The renderer's menu/open-file handlers are registered; deliver what waited. */
   rendererReady(): void;
+  /** Open File… (ADR-0075, 2026-10-09): the native dialog, then the usual open path. */
+  openFileDialog(): void;
+  /** Opens a path from main's recent list (already looked up). */
+  openRecent(path: string): void;
   /** Save-then-quit asked from the native menu; the renderer confirmed. */
   quit(): void;
   /** Slicer detection and launch (P6-02). */
@@ -150,6 +156,8 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
       console.warn('Ignoring a malformed menu model from the renderer.');
       return;
     }
+    // Windows and Linux have no application menu (ADR-0075, 2026-10-09): nothing to set.
+    if (!deps.hasMenu) return;
     deps.menu.set(model);
   });
   ipcMain.on(CHANNELS.menuReset, () => deps.menu.reset());
@@ -157,6 +165,12 @@ export function registerIpcHandlers(deps: IpcDependencies): void {
     deps.menu.setListening(active === true),
   );
   ipcMain.handle(CHANNELS.recentList, () => deps.recent.list());
+  ipcMain.on(CHANNELS.fileOpenDialog, () => deps.openFileDialog());
+  ipcMain.handle(CHANNELS.recentNames, () => deps.recent.list().map((entry) => entry.name));
+  ipcMain.on(CHANNELS.recentOpen, (_event, index: unknown, name: unknown) => {
+    const path = recentPathAt(deps.recent.list(), index, name);
+    if (path) deps.openRecent(path);
+  });
   ipcMain.handle(CHANNELS.recentClear, () => {
     deps.recent.clear();
     deps.recentChanged();

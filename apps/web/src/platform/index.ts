@@ -82,7 +82,35 @@ export interface DesktopMenus {
   quit(): void;
 }
 
+/** A recent file as the Open Recent list shows it: main keeps the path, the renderer never sees it. */
+export interface RecentListing {
+  name: string;
+}
+
+/**
+ * The desktop app's own commands (ADR-0075's 2026-10-09 amendment). On Windows and
+ * Linux the native menu is gone, so what only it offered — Open…, Open Recent,
+ * Save As…, Check for Updates…, Quit — is in the app: the Home tab's Open File and
+ * Save As tiles, Open Recent in the Design group's menu, Help › Check for Updates…
+ * and the Quit command. Absent on the web, where none of them exists.
+ */
+export interface DesktopApp {
+  /** True where the native menu stays (macOS): its accelerators run Open, Save As and Quit. */
+  nativeMenu: boolean;
+  /** The native Open… dialog; main reads the file and hands it to `menus.onOpenFile`. */
+  openFile(): void;
+  /** Main's recent files, most recent first. */
+  recentFiles(): Promise<readonly RecentListing[]>;
+  /** Opens entry `index` of main's list; `name` guards against a list that moved. */
+  openRecent(index: number, name: string): void;
+  clearRecent(): Promise<void>;
+  /** Calls back when main's list changed; returns the unsubscribe. */
+  onRecentChanged(handler: () => void): () => void;
+}
+
 export interface Platform {
+  /** The desktop app's own commands; absent on the web. */
+  desktop?: DesktopApp;
   preferences: Preferences;
   projects: ProjectStore;
   /**

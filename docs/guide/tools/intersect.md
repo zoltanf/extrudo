@@ -2,7 +2,7 @@
 title: Intersect
 section: Tools
 category: Sketch
-order: 85
+order: 87
 ---
 
 # Intersect

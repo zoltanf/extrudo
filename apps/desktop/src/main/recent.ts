@@ -122,3 +122,21 @@ export function createRecentFile(file: string): RecentFile {
     },
   };
 }
+
+/**
+ * The path of entry `index` of the list, or undefined (ADR-0075, 2026-10-09). The
+ * renderer asks to open "the third entry, called x.extrudo": main looks it up in its
+ * own list and refuses anything that doesn't fit, so the call can't name a path and a
+ * list that moved between the menu and the click opens nothing instead of the wrong file.
+ */
+export function recentPathAt(
+  list: readonly RecentEntry[],
+  index: unknown,
+  name: unknown,
+): string | undefined {
+  if (typeof index !== 'number' || !Number.isInteger(index) || typeof name !== 'string') {
+    return undefined;
+  }
+  const entry = list[index];
+  return entry && entry.name === name ? entry.path : undefined;
+}

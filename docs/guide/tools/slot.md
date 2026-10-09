@@ -2,7 +2,7 @@
 title: Center to Center Slot
 section: Tools
 category: Sketch
-order: 77
+order: 79
 ---
 
 # Center to Center Slot

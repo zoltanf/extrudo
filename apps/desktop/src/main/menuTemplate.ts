@@ -115,7 +115,7 @@ function openRecentMenu(
 function desktopFileEntries(
   recent: readonly RecentEntry[],
   handlers: MenuHandlers,
-  options: { platform: NodeJS.Platform; menuListening: boolean },
+  options: { menuListening: boolean },
 ): { open: MenuItemConstructorOptions[]; close: MenuItemConstructorOptions[] } {
   const close: MenuItemConstructorOptions[] = [
     { type: 'separator' },
@@ -127,11 +127,7 @@ function desktopFileEntries(
       click: () => handlers.saveAs(),
     },
   ];
-  // On macOS Quit lives in the app menu (built below), so File has none.
-  if (options.platform !== 'darwin') {
-    close.push({ type: 'separator' });
-    close.push({ label: 'Quit', accelerator: 'CmdOrCtrl+Q', click: () => handlers.quit() });
-  }
+  // Quit lives in the macOS app menu (built below), so File has none.
   return {
     open: [
       { label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => handlers.open() },
@@ -166,18 +162,27 @@ function appMenu(handlers: MenuHandlers): MenuItemConstructorOptions {
 }
 
 /**
- * The whole application menu. On macOS the app menu comes first. The File menu
- * gains the desktop entries; every other menu is the renderer's model
- * unchanged.
+ * Whether this platform has an application menu at all (ADR-0075's 2026-10-09
+ * amendment). macOS keeps its menu, which is the system menu bar. On Windows and
+ * Linux there is none: every command is in the app's own top bar, and the five
+ * things only the menu had (Open…, Open Recent, Save As…, Check for Updates…,
+ * Quit) are commands there too. Main sets no menu and ignores `menu:set`.
+ */
+export const hasApplicationMenu = (platform: NodeJS.Platform): boolean => platform === 'darwin';
+
+/**
+ * The whole application menu: macOS only, empty elsewhere. The app menu comes
+ * first. The File menu gains the desktop entries; every other menu is the
+ * renderer's model unchanged.
  */
 export function buildMenuTemplate(
   model: readonly MenuModel[],
   options: MenuTemplateOptions,
 ): MenuItemConstructorOptions[] {
   const { recent, handlers, platform, menuListening } = options;
-  const desktop = desktopFileEntries(recent, handlers, { platform, menuListening });
-  const template: MenuItemConstructorOptions[] = [];
-  if (platform === 'darwin') template.push(appMenu(handlers));
+  if (!hasApplicationMenu(platform)) return [];
+  const desktop = desktopFileEntries(recent, handlers, { menuListening });
+  const template: MenuItemConstructorOptions[] = [appMenu(handlers)];
 
   let sawFile = false;
   let sawHelp = false;

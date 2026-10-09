@@ -198,6 +198,8 @@ function OriginPoint({ color: c }: { color: Rgba }) {
   uniforms.uAlpha.value = c.a * 0.9;
   return (
     <points
+      // Not in the thumbnail: a white dot in every picture (ADR-0009's amendment, 2026-10-09).
+      name={THUMBNAIL_HIDDEN}
       geometry={geometry}
       material={material}
       renderOrder={3}

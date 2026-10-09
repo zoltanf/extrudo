@@ -2,7 +2,7 @@
 title: Offset Plane
 section: Tools
 category: Construct
-order: 47
+order: 49
 ---
 
 # Offset Plane

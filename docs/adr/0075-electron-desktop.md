@@ -664,3 +664,75 @@ only, never a manual dispatch) hashes the zip, renders the cask and pushes
 `HOMEBREW_TAP_TOKEN` secret; **it skips itself cleanly when the secret is
 absent**, so a tag without it still builds everything else. `brew upgrade` is
 macOS's update path, since the app's own updater only notifies there.
+
+### Amendment, 2026-10-09: no menu bar on Windows and Linux
+
+The owner tried the v0.4.1 AppImage on Omarchy and asked for the main menu to
+go on Windows and Linux: every command is in the top bar anyway, and a second,
+native menu above it is only a copy. **macOS keeps its native menu** (it is the
+system menu bar).
+
+**What the menu alone had, now has a home in the app.** Five items were main's
+own and existed nowhere else: Open…, Open Recent, Save As…, Check for Updates…
+and Quit. On the desktop (`Platform.desktop`, `Platform.updates.check`,
+`Platform.files.saveAs`; none of it on the web) they are:
+
+| Item | Where | Key |
+|---|---|---|
+| Open File… | Home › Design tile `openFile` (a `FILE_COMMANDS` entry, hidden where `FileActions.openFile` is absent) | `Ctrl+O` |
+| Save As… | Home › Design tile `saveAs` (the existing `FileActions.saveAs`) | `Ctrl+Shift+S` |
+| Open Recent, Clear Recent | the Design group's ▾ menu (`Toolbar`'s `recentFiles`), plus the command `clearRecent` | – |
+| Check for Updates… | Help menu (`AppBar`'s `onCheckUpdates`) and the command `checkForUpdates` | – |
+| Quit | the command `quit` (group "Home › Design", no tile): saves every design first, then `app:quit` | `Ctrl+Q` |
+
+Open File… is the new channel `file:open-dialog` (no argument: main shows the
+dialog and delivers the file the way the menu's Open… did). Open Recent is
+`recent:names` (file names only, no paths) and `recent:open` with an **index and
+the name**: main looks the entry up in its own list (`recentPathAt`) and ignores
+a call whose name doesn't match, so the renderer never sends a path and a list
+that moved opens nothing instead of the wrong file. Check for Updates… reuses
+`update:check`; Save As… was already a renderer action.
+
+**macOS: one binding, the menu's.** The native menu still has Open…, Open
+Recent, Save As…, Check for Updates… and Quit with their accelerators, so the
+renderer binds **no key** for the three keyed commands there (`CommandContext
+.desktop.nativeMenu`, from `hasNativeMenu(navigator.platform)`), and the
+projection of the command registry into the menu leaves the five command IDs out
+(`NATIVE_MENU_OWN`), so nothing appears twice. The tiles and the palette entries
+stay. Rejected: skipping the menu accelerator on macOS — the menu is the
+platform's convention and its keys show next to the items.
+
+**Windows and Linux: no menu at all.** `buildMenuTemplate` returns `[]` unless
+`hasApplicationMenu(platform)` (macOS); main calls
+`Menu.setApplicationMenu(null)` and `window.removeMenu()`, so Alt brings no bar
+back, and **main ignores `menu:set`** from the renderer there (the renderer
+still sends it; one rule in main is easier to test than two). The roles the menu
+provided (reload, developer tools, zoom) go with it; that is fine for a packaged
+app.
+
+**Update checks that don't cry wolf.** A repository whose only release is a
+draft answers the releases feed with 406 (or 404), and `electron-updater` puts
+the whole response — headers included — in the error's message; the owner saw it
+as an error notification. `main/updateErrors.ts` sorts a failure into
+`no-release` (unable to find latest version, 404/406), `offline` (ENOTFOUND,
+ECONNREFUSED, ETIMEDOUT, `net::ERR_INTERNET_DISCONNECTED`…) and `other`. An
+**automatic** check says nothing for the first two. A **manual** one answers
+"There's no published release to update to yet." as an info and "Couldn't check
+for updates: you seem to be offline." as an error. Anything else is "Couldn't
+check for updates." plus the error's **first line, at most 140 characters**, as a
+quiet notification, never headers or bodies; the first answer to a manual check
+closes its window, so the rejection and the `error` event of one failure say it
+once. `showUpdateError` trims whatever it is given too (first line, 140).
+
+**Also this day:** the AppImage needs FUSE 2, which Arch-based systems (Arch,
+Omarchy, Manjaro) don't install: `docs/desktop.md` and `docs/guide/desktop.md`
+say `sudo pacman -S fuse2` or `--appimage-extract-and-run` (where the in-app
+update may not be able to replace the file).
+
+**Not verified without Electron** (the machine is headless): that
+`Menu.setApplicationMenu(null)` and `removeMenu()` leave no bar and no Alt bar on
+a real Windows or Linux window, that Ctrl+O/Ctrl+Shift+S/Ctrl+Q reach the page
+once the menu is gone, and that a macOS accelerator and the page never both
+fire. The `desktop` workflow's AppImage smoke test (it starts the real app)
+covers that the window still comes up.
+

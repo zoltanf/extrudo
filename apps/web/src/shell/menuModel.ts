@@ -22,6 +22,19 @@ import { visibleTabs } from './tools';
 export const SAVE_AS_ID = 'desktop:saveAs';
 export const QUIT_ID = 'desktop:quit';
 
+/**
+ * The desktop commands the native menu already has items of its own for (macOS keeps its
+ * menu, ADR-0075's 2026-10-09 amendment): Open…, Open Recent, Save As…, Check for Updates…
+ * and Quit are built by main, so the projection leaves these ids out and nothing appears twice.
+ */
+export const NATIVE_MENU_OWN: ReadonlySet<string> = new Set([
+  'openFile',
+  'saveAs',
+  'quit',
+  'checkForUpdates',
+  'clearRecent',
+]);
+
 export interface MenuItemModel {
   /** A command id, or a synthetic desktop id (main maps those to its own work). */
   id?: string;

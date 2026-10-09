@@ -2,7 +2,7 @@
 title: Circular Pattern
 section: Tools
 category: Solid
-order: 30
+order: 32
 ---
 
 # Circular Pattern

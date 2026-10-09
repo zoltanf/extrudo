@@ -17,6 +17,12 @@
  * take the app down.
  */
 import type { UpdateStatus } from '../shared/ipc';
+import {
+  classifyUpdateError,
+  NO_RELEASE_TEXT,
+  OFFLINE_TEXT,
+  otherFailureText,
+} from './updateErrors';
 
 /** The repository the releases live in (`electron-builder.yml`'s `publish`). */
 export const UPDATE_REPOSITORY = 'zoltanf/extrudo';
@@ -113,12 +119,39 @@ export function createUpdates(options: UpdatesOptions): Updates {
     options.send(next);
   };
 
-  const failed = (error: unknown) => {
-    const message = messageOf(error);
-    options.log.error('Update check failed:', message);
-    // `checkForUpdates` rejects *and* the updater emits `error`: say it once.
+  /**
+   * A failed check (ADR-0075's 2026-10-09 amendment). Only a manual check
+   * answers when nothing is wrong with the app itself: no published release
+   * yet and no network are normal states, said in a sentence by Help › Check
+   * for Updates… and not at all by an automatic check. Anything else is
+   * reported as the error's first line. The manual window closes with the
+   * first answer: `checkForUpdates` rejects *and* the updater emits `error`,
+   * and the second report of one failure is an automatic one.
+   */
+  const failed = (error: unknown, what: 'check' | 'install' = 'check') => {
+    const kind = classifyUpdateError(error);
+    options.log.error('Update check failed:', messageOf(error).split('\n')[0]);
+    const manual = now() <= manualUntil;
+    manualUntil = 0;
+    if (kind !== 'other') {
+      if (manual) {
+        report(
+          kind === 'no-release'
+            ? { state: 'idle', message: NO_RELEASE_TEXT, tone: 'info' }
+            : { state: 'error', message: OFFLINE_TEXT, manual: true },
+        );
+      } else if (status.state === 'checking') {
+        // Not "checking" for ever: nothing to say, nothing to wait for.
+        report({ state: 'idle' });
+      }
+      return;
+    }
+    const message = otherFailureText(
+      error,
+      what === 'install' ? "Couldn't install the update." : undefined,
+    );
     if (status.state === 'error' && status.message === message) return;
-    report({ state: 'error', message });
+    report({ state: 'error', message, ...(manual && { manual: true }) });
   };
 
   const runCheck = () => {
@@ -225,7 +258,7 @@ export function createUpdates(options: UpdatesOptions): Updates {
         updater.quitAndInstall();
         return true;
       } catch (error) {
-        failed(error);
+        failed(error, 'install');
         return false;
       }
     },

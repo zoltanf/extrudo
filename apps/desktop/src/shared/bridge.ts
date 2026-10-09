@@ -62,6 +62,7 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
         >,
       saveAs: (bytes, name) =>
         ipc.invoke(CHANNELS.fileSaveAs, bytes, name) as Promise<SavedFile | undefined>,
+      openDialog: () => ipc.send(CHANNELS.fileOpenDialog),
     },
     storage: {
       persistence: () => ipc.invoke(CHANNELS.storagePersistence) as Promise<'persistent'>,
@@ -125,6 +126,8 @@ export function createApi(ipc: IpcRendererLike): ExtrudoApi {
     },
     recent: {
       list: () => ipc.invoke(CHANNELS.recentList) as Promise<RecentEntry[]>,
+      names: () => ipc.invoke(CHANNELS.recentNames) as Promise<string[]>,
+      open: (index, name) => ipc.send(CHANNELS.recentOpen, index, name),
       clear: () => ipc.invoke(CHANNELS.recentClear) as Promise<void>,
       remove: (path) => ipc.send(CHANNELS.recentRemove, path),
       onChanged: (handler) => {

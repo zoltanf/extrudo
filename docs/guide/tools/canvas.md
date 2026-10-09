@@ -2,7 +2,7 @@
 title: Canvas
 section: Tools
 category: Home
-order: 8
+order: 10
 ---
 
 # Canvas

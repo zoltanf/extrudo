@@ -17,8 +17,10 @@ import {
   Maximize,
   Moon,
   PanelLeft,
+  Power,
   Puzzle,
   Redo2,
+  RefreshCw,
   Repeat2,
   ScanEye,
   Shapes,
@@ -113,6 +115,17 @@ export interface CommandContext {
    * A plugin never binds a key.
    */
   plugins?: readonly PluginCommandEntry[];
+  /**
+   * The desktop app's own commands (ADR-0075, 2026-10-09); absent on the web. Quit, Check for
+   * Updates… and Clear Recent live here (Open File… and Save As… are Home tab file commands).
+   * `nativeMenu` is true on macOS, whose menu keeps the accelerators: no key is bound twice.
+   */
+  desktop?: {
+    nativeMenu: boolean;
+    quit(): void;
+    checkForUpdates?(): void;
+    clearRecent?(): void;
+  };
 }
 
 /** A plugin command as the shell offers it (`plugins/runCommand.ts` builds them). */
@@ -164,6 +177,8 @@ function toolCommand(id: ToolId, group: string, ctx: CommandContext): AppCommand
 /** Words search also finds a file command by (ADR-0079), beyond its group and hint. */
 const FILE_KEYWORDS: Record<FileCommandId, string> = {
   newDesign: 'file create blank',
+  openFile: 'file open disk extrudo desktop native dialog',
+  saveAs: 'file save as disk extrudo desktop native dialog link',
   allDesigns: 'file home projects open',
   saveVersion: 'file save version snapshot history checkpoint',
   versionHistory: 'file versions restore revert history',
@@ -194,7 +209,8 @@ function fileCommand(
     group,
     keywords: `${group} ${FILE_KEYWORDS[id]} ${tool.hint}`,
     icon: <ToolIcon name={tool.icon} category={tool.category} size={16} />,
-    keys: keysFor(id),
+    // On macOS the native menu's accelerators run Open… and Save As…: no second binding.
+    keys: ctx.desktop?.nativeMenu && (id === 'openFile' || id === 'saveAs') ? [] : keysFor(id),
     run: () => action(),
   };
 }
@@ -328,6 +344,27 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     });
   }
 
+  if (ctx.desktop) {
+    const { desktop } = ctx;
+    // On macOS the native menu's Quit (Cmd+Q) already runs it.
+    plain('quit', 'Quit', 'Home › Design', desktop.quit, {
+      keys: desktop.nativeMenu ? [] : keysFor('quit'),
+      icon: icon(Power),
+      keywords: 'Home file quit exit close extrudo desktop',
+    });
+    if (desktop.clearRecent) {
+      plain('clearRecent', 'Clear Recent Files', 'Home › Design', desktop.clearRecent, {
+        icon: icon(Trash2),
+        keywords: 'Home file open recent clear forget list desktop',
+      });
+    }
+    if (desktop.checkForUpdates) {
+      plain('checkForUpdates', 'Check for Updates…', 'Help', desktop.checkForUpdates, {
+        icon: icon(RefreshCw),
+        keywords: 'Help update version new release upgrade desktop',
+      });
+    }
+  }
   if (ctx.tutorial) {
     plain('tutorial', 'Tutorial', 'Help', ctx.tutorial.start, {
       icon: icon(GraduationCap),
