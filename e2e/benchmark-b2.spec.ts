@@ -4,6 +4,7 @@ import {
   attr,
   chip,
   closeParameters,
+  dimension,
   expectNoProblems,
   exportModel,
   exportProject,
@@ -88,15 +89,9 @@ test('B2: a parametric storage box, cut from a solid', async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(toolPrompt(page)).toHaveCount(0);
   await page.keyboard.press('d');
-  const dimension = async (picks: (readonly [number, number])[], expr: string) => {
-    for (const [x, y] of picks) await click(x, y);
-    const value = page.getByRole('textbox', { name: /^Value of d\d+$/ });
-    await expect(value).toBeFocused();
-    await value.fill(expr);
-    await value.press('Enter');
-    await expect(page.locator('[data-dimension-editor]')).toHaveCount(0);
-  };
   await dimension(
+    page,
+    click,
     [
       [40, 0],
       [40, -10],
@@ -104,6 +99,8 @@ test('B2: a parametric storage box, cut from a solid', async ({ page }) => {
     'width',
   );
   await dimension(
+    page,
+    click,
     [
       [0, 30],
       [-10, 30],

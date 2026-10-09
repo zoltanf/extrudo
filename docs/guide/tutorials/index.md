@@ -13,5 +13,7 @@ the app changes.
 
 - [Your first part: a plate with four holes](./first-part.md) — sketch, dimension
   with parameters, extrude, change a number, export for printing. About 15 minutes.
+- [A storage box](./storage-box.md) — sketch on a solid's face, project and offset
+  an outline, cut a cavity, make the walls a parameter. About 20 minutes.
 - [A name tag](./name-tag.md) — sketch text, emboss it off a face, fillet a thin
   plate, drill a keyring hole, export a 3MF. About 20 minutes.
