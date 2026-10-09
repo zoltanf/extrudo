@@ -1194,3 +1194,13 @@ don't let Phase 3 features be built without it.
    stroke, B's category colours) and the glowing viewport gradient. The dark
    app background is a lighter graphite than E's near-black, with the **Slate**
    glow (blue-grey). Prototypes and logo SVGs are in `docs/brand/`.
+5. **Importing Fusion 360 designs: deferred (owner, 2026-10-10).** Researched
+   on 2026-10-09; the findings are in `docs/research/fusion-import.md`. STEP
+   export from Fusion works today (exact solids with colours). An editable
+   import would need our own Fusion add-in (MIT) writing a documented file that
+   Extrudo replays through `@extrudo/api` (about seven slices). It waits on the
+   owner's legal check of Autodesk's API terms (§8.3, "internal business use")
+   and a test on a real Fusion install. Reading `.f3d` files directly and
+   Autodesk's cloud conversion were rejected. Small follow-ups that need neither:
+   STEP part names as body names, and a guide page on bringing a Fusion design
+   over.
