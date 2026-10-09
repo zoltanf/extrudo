@@ -89,3 +89,5 @@ The app is unsigned (ADR-0075's slice 5 amendment), so the first open is
 right-click › Open. Since the app's own updater only notifies on macOS (the
 table above), **`brew upgrade` is the update path there**. One-time setup and
 the per-release check are in `docs/release-checklist.md`.
+If a tag's cask was not pushed, `gh workflow run desktop.yml --ref main -f
+cask_tag=v0.4.1` runs only the cask job again, with the zip from that release.

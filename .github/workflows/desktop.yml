@@ -14,8 +14,20 @@ name: Desktop
 # zip and pushes it to the zoltanf/homebrew-extrudo tap (P6-01, ADR-0075's
 # amendment); it needs the `HOMEBREW_TAP_TOKEN` secret and skips cleanly
 # without it (docs/release-checklist.md).
+#
+# Two paths reach that job. The tag path is the one above: the package jobs
+# built the zip in this run. The cask path is a manual run with `cask_tag` set
+# (e.g. `gh workflow run desktop.yml --ref main -f cask_tag=v0.4.1`): it pushes
+# the cask for a tag that already exists, takes the zip from that tag's release
+# and runs nothing else, since `draft` and `package` are skipped on it.
 on:
   workflow_dispatch:
+    inputs:
+      cask_tag:
+        description: "Push the Homebrew cask for this existing tag, e.g. v0.4.1; leave empty for a normal manual run"
+        type: string
+        default: ''
+        required: false
   push:
     tags: ['v*']
 
@@ -30,8 +42,9 @@ jobs:
   draft:
     # One draft release per tag, made before the three package jobs upload into
     # it (electron-builder would otherwise race to create it three times).
+    # Not on the cask path (`cask_tag`): that tag's release already exists.
     name: Draft release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ inputs.cask_tag == '' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -46,8 +59,9 @@ jobs:
   package:
     name: Package (${{ matrix.os }})
     needs: [draft]
-    # `draft` is skipped on a manual run; the package jobs still go on.
-    if: ${{ !cancelled() && (needs.draft.result == 'success' || needs.draft.result == 'skipped') }}
+    # `draft` is skipped on a manual run; the package jobs still go on. Not on
+    # the cask path (`cask_tag`), which only publishes the cask.
+    if: ${{ inputs.cask_tag == '' && !cancelled() && (needs.draft.result == 'success' || needs.draft.result == 'skipped') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
@@ -122,19 +136,44 @@ jobs:
           xvfb-run -a node apps/desktop/scripts/smoke.mjs --app apps/desktop/release/extrudo-*.AppImage
 
   homebrew:
-    # Render the cask from the arm64 mac zip the package jobs just built and
-    # push it to the tap (P6-01, ADR-0075's amendment). Tag runs only — never a
-    # manual dispatch — and skipped cleanly when HOMEBREW_TAP_TOKEN is absent.
+    # Render the cask from the arm64 mac zip and push it to the tap (P6-01,
+    # ADR-0075's amendment). Two paths, both skipped cleanly when
+    # HOMEBREW_TAP_TOKEN is absent:
+    # - tag runs: the zip the package jobs just built (the workflow artifact);
+    # - cask path (`cask_tag` set, a manual run): the zip of that existing tag's
+    #   release, and nothing else runs, since `package` is skipped. `always()`
+    #   lets the job start when `package` is skipped; the conditions then say
+    #   which skip is the cask path and which success is the tag path.
     name: Homebrew cask
     needs: [package]
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    if: ${{ always() && !cancelled() && ((inputs.cask_tag != '' && needs.package.result == 'skipped') || (startsWith(github.ref, 'refs/tags/v') && needs.package.result == 'success')) }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
+      # The job never installs pnpm, so setup-node must not look for it: its
+      # package-manager cache is on by default and fails without pnpm on PATH.
       - uses: actions/setup-node@v5
         with:
           node-version: 24
+          package-manager-cache: false
+
+      - name: Work out the tag and the version
+        id: version
+        env:
+          CASK_TAG: ${{ inputs.cask_tag }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          if [ -n "$CASK_TAG" ]; then
+            if ! [[ "$CASK_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "cask_tag must look like v0.4.1 (x.y.z after a v), got: $CASK_TAG" >&2
+              exit 1
+            fi
+            tag="$CASK_TAG"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
       - name: Check the tap token
         id: token
@@ -148,23 +187,34 @@ jobs:
             echo "present=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download the mac package artifact
-        if: steps.token.outputs.present == 'true'
+      - name: Download the mac package artifact (tag runs)
+        if: ${{ steps.token.outputs.present == 'true' && inputs.cask_tag == '' }}
         uses: actions/download-artifact@v4
         with:
           name: extrudo-desktop-mac
+
+      # The release is the one `draft` made and the package jobs attached to; a
+      # draft is visible to the repository's own token.
+      - name: Download the mac zip from the tag's release (cask path)
+        if: ${{ steps.token.outputs.present == 'true' && inputs.cask_tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "extrudo-${VERSION}-mac-arm64.zip"
 
       - name: Render and push the cask
         if: steps.token.outputs.present == 'true'
         env:
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="$VERSION"
           zip=$(ls "extrudo-${version}-mac-arm64.zip" 2>/dev/null || true)
           if [ -z "$zip" ]; then
             ls extrudo-*-mac-arm64.zip 2>/dev/null || true
-            echo "The arm64 mac zip for ${version} is not in the extrudo-desktop-mac artifact." >&2
+            echo "The arm64 mac zip for ${version} is not in the extrudo-desktop-mac artifact or the release." >&2
             exit 1
           fi
           sha=$(sha256sum "$zip" | cut -d' ' -f1)
@@ -175,5 +225,10 @@ jobs:
           git -C tap config user.name "Extrudo release bot"
           git -C tap config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -C tap add Casks/extrudo.rb
-          git -C tap commit -m "Extrudo ${version}"
-          git -C tap push origin HEAD
+          # A re-run of the cask path for a tag already pushed has nothing new.
+          if git -C tap diff --cached --quiet; then
+            echo "The tap already has this cask: nothing to push."
+          else
+            git -C tap commit -m "Extrudo ${version}"
+            git -C tap push origin HEAD
+          fi

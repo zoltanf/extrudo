@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## v0.5.0 (unreleased)
 
+- 2026-10-09 · **The Homebrew cask job runs again**: its `setup-node` no longer looks for pnpm (which the job never installs, so v0.4.1's cask was not pushed), and a manual `desktop` run with `cask_tag` (e.g. `v0.4.1`) pushes the cask for an existing tag from its release's zip.
 - 2026-10-08 · **Docs site, slice S7 (P6-06, ADR-0080)**: the concept guide's second half under `docs/guide/` (bodies and the browser, getting it printed, files and versions, the desktop app) with four pictures from `e2e/guide-shots.spec.ts`; Getting started describes the Help menu's docs links and `F1`.
 - 2026-10-08 · **Tutorial 2 "A storage box" (P6-06 S8, ADR-0080 §4)**: `docs/guide/tutorials/storage-box.md` and `e2e/tutorials/storage-box.spec.ts` (12 steps, B2's flow) — sketch on the top face of a solid, Project and Offset the outline, cut the cavity, and make the walls follow `wall`.
 - 2026-10-08 · **Tutorial 3, "A name tag" (P6-06 S8, ADR-0080 §4)**: `docs/guide/tutorials/name-tag.md` and `e2e/tutorials/name-tag.spec.ts` walk B8's flow as a beginner follows it — a plate, four fillets (the fourth from the back view), a keyring hole, a sketch text, an emboss and a 3MF export — 11 steps, each a picture; the name tag's body/ink/pick helpers moved into `e2e/benchmark-helpers.ts` so B8 and the tutorial share them.

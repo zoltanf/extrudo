@@ -108,6 +108,9 @@ job, never by hand.
   on the tag). On a Mac, install it fresh or upgrade from the last one:
   `brew install --cask zoltanf/extrudo/extrudo` (or `brew upgrade`), open the
   app (right-click › Open the first time), and sketch a box.
+  If a tag's cask is missing (the job failed), publish it by hand with
+  `gh workflow run desktop.yml --ref main -f cask_tag=v0.4.1`: only the
+  `homebrew` job runs, taking the zip from that tag's release.
 
 ## Hosting (docs/deploy.md has the steps)
 
