@@ -1114,7 +1114,16 @@ end to end, faster than in Fusion 360.
 - [ ] **P6-04 i18n** (community translations).
 - [ ] **P6-05 Components and simple assemblies** (multiple components, as-built
   joints), if demand warrants.
-- [ ] **P6-06 Docs site, tutorials, example library.**
+- [x] **P6-06 Docs site, tutorials, example library.**
+  Done 2026-10-09 (ADR-0080). S1 the docs build: collections under `/docs/`, one
+  sidebar, asset emission, the nav link; S2 the generated tool reference (116
+  pages from the app's tool list); S3-S4 the examples registry, `#/example/<id>`,
+  the home screen's "More examples…" and the gallery page (eleven examples on the
+  site and in the app); S5 the tutorial infrastructure and tutorial 1; S6-S7 the
+  concept guide (eight pages); S8 tutorials 2-4 (storage box, name tag, threaded
+  bottle cap), four tested tutorials in all, each a Playwright spec that checks
+  its page; S9 the in-app links (Help menu, F1, "F1 for more" in tooltips); S10
+  the review's fixes (link schemes, route decoding, F1 in fields).
 - [x] **P6-07 Auto-project** (Fusion's "auto project edges on reference"): a
   body edge or vertex a sketch tool snaps, constrains or dimensions to is
   projected into the sketch on the fly (a P2-09 projection record), with a

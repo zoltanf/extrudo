@@ -66,16 +66,21 @@ describe('the docs pages', () => {
   });
 
   it('link to each other by page, never to a Markdown file', () => {
-    for (const page of pages) {
+    // Every collection's pages (guide, tutorials, tools, examples and the API),
+    // and a /docs/ link has to name a page that exists.
+    const known = new Set(allPages.map((page) => page.url));
+    for (const page of allPages) {
       for (const [, href] of page.html.matchAll(/href="([^"]*)"/g)) {
         const link = href ?? '';
         // A link into the repository keeps its file: that one is read on GitHub.
         if (/^[a-z][a-z0-9+.-]*:/i.test(link)) {
-          expect(link, `${page.path} → ${link}`).toMatch(/^https:/);
+          expect(link, `${page.file} → ${link}`).toMatch(/^(https|mailto):/);
           continue;
         }
-        expect(link, `${page.path} → ${link}`).not.toMatch(/\.md($|#)/);
-        if (link.startsWith('/docs/api/')) expect(addresses).toContain(link);
+        expect(link, `${page.file} → ${link}`).not.toMatch(/\.md($|#)/);
+        if (link.startsWith('/docs/')) {
+          expect(known, `${page.file} → ${link}`).toContain(link.replace(/[#?].*$/, ''));
+        }
       }
     }
   });
@@ -138,13 +143,19 @@ describe('the sidebar', () => {
   });
 });
 
+/** The page-level assertions the content policy needs (ADR-0057): no script, handler or script URL. */
+function expectNoScript(html: string, where = 'the page'): void {
+  expect(html, where).not.toMatch(/<script/i);
+  expect(html, where).not.toMatch(/\son\w+=/i);
+  expect(html, where).not.toMatch(/javascript:/i);
+}
+
 describe('a page document', () => {
   const html = pageHtml(pageAt('features/extrude.md'), allPages, options);
 
   it('carries no script of any kind', () => {
-    expect(html).not.toContain('<script');
-    expect(html).not.toMatch(/\\son\\w+=/);
-    expect(html).not.toContain('javascript:');
+    expectNoScript(html);
+    for (const every of allPages) expectNoScript(pageHtml(every, allPages, options), every.file);
   });
 
   it('has the head a page needs, and no more', () => {
@@ -318,6 +329,51 @@ describe('collections', () => {
   });
 });
 
+describe('links', () => {
+  const built = (href: string) =>
+    docPages(tree({ 'guide/x.md': page('X', '', `[go](${href}) and <${href}>\n`) }));
+
+  it('let relative paths, fragments, https, http and mailto through', () => {
+    for (const href of [
+      './other/',
+      '/docs/tools/',
+      '#top',
+      'https://example.org/a?b=1',
+      'http://example.org/',
+      'mailto:conduct@extrudo.org',
+      'HTTPS://example.org/',
+    ]) {
+      const [only] = built(href);
+      expect(only?.html, href).toContain(`<a href="${href}">`);
+    }
+  });
+
+  it('fail the build for any other scheme, naming the page and the link', () => {
+    for (const href of [
+      'javascript:alert(1)',
+      'JaVaScRiPt:alert(1)',
+      ' javascript:alert(1)',
+      'java\tscript:alert(1)',
+      '\u0001javascript:alert(1)',
+      'data:text/html,<b>x</b>',
+      'vbscript:msgbox(1)',
+      'file:///etc/passwd',
+    ]) {
+      const root = tree({ 'guide/x.md': page('X', '', `[go](<${href}>)\n`) });
+      expect(() => docPages(root), href).toThrow(
+        `docs/guide/x.md: link scheme not allowed: ${href}`,
+      );
+    }
+  });
+
+  it('fail the build for a hostile autolink or reference link', () => {
+    for (const body of ['<javascript:alert(1)>', '[go][a]\n\n[a]: vbscript:x']) {
+      const root = tree({ 'guide/x.md': page('X', '', `${body}\n`) });
+      expect(() => docPages(root), body).toThrow(/link scheme not allowed/);
+    }
+  });
+});
+
 describe('assets', () => {
   it('fail the build for a missing image, naming the page', () => {
     const root = tree({ 'guide/x.md': page('X', '', '![a](./images/x.png)\n') });
@@ -395,6 +451,28 @@ describe('assets', () => {
     for (const html of cases) {
       const root = tree({ 'guide/x.md': page('X', '', `${html}\n`), 'guide/clip.webm': PNG });
       expect(() => docPages(root), html).toThrow(/docs\/guide\/x\.md: /);
+    }
+  });
+
+  it('refuse a raw tag with an event handler, wherever it sits', () => {
+    const cases = [
+      '<img src=x onerror=alert(1)>',
+      '<img src="x.png" onerror="alert(1)">',
+      '<video src="./clip.webm" onplay=alert(1)></video>',
+      '<video src="./clip.webm" ONCLICK="x()"></video>',
+      '[<img src=x onerror=alert(1)>](/docs/)',
+      'text <svg onload=alert(1)> more',
+    ];
+    for (const body of cases) {
+      const root = tree({ 'guide/x.md': page('X', '', `${body}\n`), 'guide/clip.webm': PNG });
+      expect(() => docPages(root), body).toThrow(/docs\/guide\/x\.md: /);
+    }
+  });
+
+  it('refuse link text with HTML in it', () => {
+    for (const body of ['[a <b>bold</b>](/docs/)', '[<span onclick=x()>go</span>](/docs/)']) {
+      const root = tree({ 'guide/x.md': page('X', '', `${body}\n`) });
+      expect(() => docPages(root), body).toThrow(/docs\/guide\/x\.md: raw HTML/);
     }
   });
 

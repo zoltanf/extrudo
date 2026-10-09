@@ -57,7 +57,8 @@ You start on the home screen:
    unit, whether the model is computing, and what your selection measures.
 
 The save state next to the name reads **Saved**, **Saving…**, **Edited** or **Couldn't save**.
-It always has a word as well as a dot.
+It shows a word when there is room; when the bar is narrow it drops to the dot, and the
+word is in the dot's tooltip.
 
 ## Moving the view
 

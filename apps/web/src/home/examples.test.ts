@@ -37,6 +37,16 @@ describe('example registry (P6-06 S3)', () => {
     }
   });
 
+  it('titles and descriptions are plain text: no Markdown or HTML characters', () => {
+    // examplesDoc.ts pastes them into docs/guide/examples.md unescaped.
+    const unsafe = /[[\]`<>(]/;
+    expect(unsafe.test('A [link](x)')).toBe(true);
+    for (const e of EXAMPLES) {
+      expect(e.title, `${e.id} title`).not.toMatch(unsafe);
+      expect(e.description, `${e.id} description`).not.toMatch(unsafe);
+    }
+  });
+
   it('finds an example by its ID and misses unknown ones', () => {
     expect(exampleById('plate')?.title).toBe('Plate with corner holes');
     expect(exampleById('nope')).toBeUndefined();

@@ -24,7 +24,8 @@ export function pageSteps(markdown: string): { slug: string; image: string | und
 
 /** The slugs of a spec's `step('<slug>'` calls, in order. */
 export function specSlugs(source: string): string[] {
-  return [...source.matchAll(/\bstep\(\s*'([^']+)'/g)].map((m) => m[1] as string);
+  // `step(` on its own, not `test.step(` (Playwright's own) or `somestep(`; '…' or "…".
+  return [...source.matchAll(/(?<![.\w])step\(\s*(['"])([^'"]+)\1/g)].map((m) => m[2] as string);
 }
 
 const names = readdirSync(pages)
@@ -76,5 +77,34 @@ describe('the helpers', () => {
       { slug: 'b', image: undefined },
     ]);
     expect(specSlugs("await step(\n 'a',\n x);\nstep('b', y)")).toEqual(['a', 'b']);
+  });
+
+  it('count only the tutorial helper\u2019s step, in either quote', () => {
+    expect(
+      specSlugs(
+        "await test.step('not-a-step', f);\nawait step(\"c\", g);\nawait page.step('x');\nawait substep('y');",
+      ),
+    ).toEqual(['c']);
+  });
+});
+
+/** The numbers the pages are told by (index order, ADR-0080 §4). */
+const NUMBERS: Record<string, number> = {
+  'first-part': 1,
+  'storage-box': 2,
+  'name-tag': 3,
+  'bottle-cap': 4,
+};
+
+describe('the tutorial numbers', () => {
+  it.each(Object.entries(NUMBERS))('%s is tutorial %i in its spec', (name, n) => {
+    const source = readFileSync(join(root, 'e2e', 'tutorials', `${name}.spec.ts`), 'utf8');
+    const numbers = [...source.matchAll(/Tutorial (\d+)/g)].map((m) => Number(m[1]));
+    expect(numbers.length).toBeGreaterThan(0);
+    expect(new Set(numbers)).toEqual(new Set([n]));
+  });
+
+  it('are the whole set of tutorials', () => {
+    expect([...names].sort()).toEqual(Object.keys(NUMBERS).sort());
   });
 });

@@ -22,6 +22,15 @@ export const HOME_HREF = '#/';
 export const projectHref = (id: string) => `#/p/${encodeURIComponent(id)}`;
 export const exampleHref = (id: string) => `#/example/${encodeURIComponent(id)}`;
 
+/** `undefined` for a malformed escape (`%`), which would otherwise throw during render. */
+function decode(part: string): string | undefined {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return undefined;
+  }
+}
+
 export function parseRoute(hash: string): Route {
   const path = hash.replace(/^#/, '') || '/';
   if (path === '/') return { page: 'home' };
@@ -30,9 +39,15 @@ export function parseRoute(hash: string): Route {
   if (path === '/debug/dialog') return { page: 'debug-dialog' };
   if (path === '/debug/crash') return { page: 'debug-crash' };
   const project = /^\/p\/([^/]+)$/.exec(path);
-  if (project?.[1]) return { page: 'project', id: decodeURIComponent(project[1]) };
+  if (project?.[1]) {
+    const decoded = decode(project[1]);
+    return decoded === undefined ? { page: 'not-found', hash } : { page: 'project', id: decoded };
+  }
   const example = /^\/example\/([^/]+)$/.exec(path);
-  if (example?.[1]) return { page: 'example', id: decodeURIComponent(example[1]) };
+  if (example?.[1]) {
+    const decoded = decode(example[1]);
+    return decoded === undefined ? { page: 'not-found', hash } : { page: 'example', id: decoded };
+  }
   return { page: 'not-found', hash };
 }
 

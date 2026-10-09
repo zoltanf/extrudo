@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { openProject } from './helpers';
+import { openProject, pickTool } from './helpers';
 
 // P6-06 S9: the Help menu's docs items and a tool tile's F1 open the landing
 // site's /docs/ pages through `Platform.openDocs`. The external host is
@@ -34,6 +34,19 @@ async function popupUrl(page: Page, step: () => Promise<void>): Promise<string> 
   return popup.url();
 }
 
+test('Help lists User Guide without a key and Help for This Tool with F1 (P6-06 S10)', async ({
+  page,
+}) => {
+  await open(page);
+  await page.getByRole('button', { name: 'Help' }).click();
+  await expect(page.getByRole('menuitem', { name: 'User Guide', exact: true })).toBeVisible();
+  const help = page.getByRole('menuitem', { name: /^Help for This Tool/ });
+  await expect(help).toContainText('F1');
+  const url = await popupUrl(page, () => help.click());
+  // The pointer is on the menu, so no tile is hovered: the guide.
+  expect(url).toBe(`${DOCS}/docs/`);
+});
+
 test('Help › User Guide opens the docs guide in a popup (P6-06 S9)', async ({ page }) => {
   await open(page);
   const url = await popupUrl(page, async () => {
@@ -50,6 +63,20 @@ test('F1 on a hovered tool opens its docs page (P6-06 S9)', async ({ page }) => 
     await page.keyboard.press('F1');
   });
   expect(url).toBe(`${DOCS}/docs/tools/extrude/`);
+});
+
+test('F1 works while a dialog field has focus (P6-06 S10)', async ({ page }) => {
+  await open(page);
+  await pickTool(page, 'Extrude');
+  const field = page.getByRole('region', { name: 'Extrude dialog' }).getByRole('textbox', {
+    name: 'Distance',
+    exact: true,
+  });
+  await field.focus();
+  await page.getByRole('button', { name: 'Revolve' }).hover();
+  await expect(field).toBeFocused();
+  const url = await popupUrl(page, () => page.keyboard.press('F1'));
+  expect(url).toBe(`${DOCS}/docs/tools/revolve/`);
 });
 
 test('F1 with nothing hovered opens the user guide (P6-06 S9)', async ({ page }) => {

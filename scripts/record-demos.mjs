@@ -9,6 +9,7 @@
 //   pnpm demos --skip-build     # the build in apps/web/dist is current
 //   pnpm demos -g "demo: fillet"  # only what matches (a Playwright --grep)
 //   pnpm demos -g tutorials     # the tutorials' pictures, docs/guide/tutorials/images/
+//   pnpm demos -g guide         # the concept guide's pictures, docs/guide/images/
 //
 // How it works: `e2e/record-assets.spec.ts` drives the real app in headless
 // Chromium (flows copied from the e2e specs) while `e2e/demo-recorder.ts`
@@ -36,9 +37,16 @@ let passThrough = args.filter((a) => a !== '--skip-build');
 // `pnpm demos -g tutorials` records the tutorials' pictures (e2e/tutorials/step.ts,
 // ADR-0080 §4) instead of the onboarding assets; further arguments go to Playwright.
 const grep = passThrough.findIndex((a) => a === '-g' || a === '--grep');
-const tutorials = grep >= 0 && passThrough[grep + 1] === 'tutorials';
-if (tutorials) passThrough = passThrough.filter((_, i) => i !== grep && i !== grep + 1);
-const target = tutorials ? 'e2e/tutorials' : 'e2e/record-assets.spec.ts';
+// `-g guide` likewise records the concept guide's pictures (e2e/guide-shots.spec.ts).
+const mode = grep >= 0 ? passThrough[grep + 1] : undefined;
+const tutorials = mode === 'tutorials';
+const guide = mode === 'guide';
+if (tutorials || guide) passThrough = passThrough.filter((_, i) => i !== grep && i !== grep + 1);
+const target = tutorials
+  ? 'e2e/tutorials'
+  : guide
+    ? 'e2e/guide-shots.spec.ts'
+    : 'e2e/record-assets.spec.ts';
 
 function run(command, commandArgs, env = {}) {
   const result = spawnSync(command, commandArgs, {
@@ -63,5 +71,7 @@ run(process.execPath, [...playwright, 'test', target, '--workers=1', ...passThro
 console.log(
   tutorials
     ? '\nDone. Look at every picture in docs/guide/tutorials/images/ before committing.'
-    : '\nDone. Review apps/web/public/demos/ and apps/web/src/home/templates/ before committing.',
+    : guide
+      ? '\nDone. Look at every picture in docs/guide/images/ before committing.'
+      : '\nDone. Review apps/web/public/demos/ and apps/web/src/home/templates/ before committing.',
 );

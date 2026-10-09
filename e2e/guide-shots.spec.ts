@@ -17,7 +17,8 @@ import { indexed } from './indexed-png';
 // The pictures of the concept guide (docs/guide/*.md, P6-06 slice S6), recorded from the
 // real app at 1440 × 900 in the dark theme:
 //
-//   RECORD_ASSETS=1 pnpm exec playwright test e2e/guide-shots.spec.ts
+//   pnpm demos -g guide        (builds, then records; --skip-build when dist is current)
+//   RECORD_ASSETS=1 pnpm exec playwright test e2e/guide-shots.spec.ts   (the same, by hand)
 //
 // It writes into docs/guide/images/<page>/, so it only runs with RECORD_ASSETS=1. Every shot
 // goes through `indexed` (e2e/indexed-png.ts, 256 colours) to stay under about 150 kB.

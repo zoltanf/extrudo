@@ -34,7 +34,7 @@ import {
 import { tutorial } from './step';
 import { MIDDLE, orbitBy, panTo } from './view';
 
-// Tutorial 2, docs/guide/tutorials/name-tag.md: a name tag with raised letters. It is
+// Tutorial 3, docs/guide/tutorials/name-tag.md: a name tag with raised letters. It is
 // benchmark B8's flow (e2e/benchmark-b8.spec.ts) as a beginner follows it, one `step` per
 // heading of the page (ADR-0080 §4): the plate, four fillets (the fourth from the back
 // view), a hole for the ring, a sketch text, an emboss and a 3MF export.
@@ -53,7 +53,7 @@ test.afterEach(() => {
   expect(errors).toEqual([]);
 });
 
-test('Tutorial 2: a name tag', async ({ page }) => {
+test('Tutorial 3: a name tag', async ({ page }) => {
   const { step } = tutorial(page, 'name-tag');
   const viewport = viewportOf(page);
   const palette = page.getByRole('region', { name: 'Sketch palette' });

@@ -3,7 +3,7 @@ import { DEFAULT_KEYMAP } from '../commands/keymap';
 import { memoryPreferences } from '../platform/preferences';
 import { createViewportStore } from '../viewport/store';
 import { buildCommands, type CommandContext, commandShortcuts } from './commands';
-import { setHoveredTool } from './Toolbar';
+import { releaseTool, setHoveredTool, toolUnderPointer } from './Toolbar';
 
 function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): CommandContext {
   return {
@@ -263,6 +263,24 @@ describe('buildCommands', () => {
       command?.run();
     }
     expect(start).toHaveBeenCalledTimes(2);
+  });
+
+  it('F1 works in a text field, since it types nothing (P6-06 S10)', () => {
+    const f1 = commandShortcuts(buildCommands(context('model', { docs: { open: vi.fn() } }))).find(
+      (s) => s.keys === 'F1',
+    );
+    expect(f1?.inFields).toBe(true);
+    // Plain keys still leave a field alone.
+    const keys = commandShortcuts(buildCommands(context('model')));
+    expect(keys.find((s) => s.keys === 'E')?.inFields).toBeFalsy();
+  });
+
+  it('forgets a hovered tool whose tile unmounted, only if it is that tile (P6-06 S10)', () => {
+    setHoveredTool('extrude');
+    releaseTool('fillet');
+    expect(toolUnderPointer()).toBe('extrude');
+    releaseTool('extrude');
+    expect(toolUnderPointer()).toBeUndefined();
   });
 
   it('opens the docs through the platform: F1, and the four Help items (P6-06 S9)', () => {

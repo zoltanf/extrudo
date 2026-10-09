@@ -17,6 +17,10 @@ describe('routes', () => {
     ['#/example/a%20b', { page: 'example', id: 'a b' }],
     ['#/example/', { page: 'not-found', hash: '#/example/' }],
     ['#/example/a/b', { page: 'not-found', hash: '#/example/a/b' }],
+    ['#/p/%', { page: 'not-found', hash: '#/p/%' }],
+    ['#/example/%', { page: 'not-found', hash: '#/example/%' }],
+    ['#/example/%E0%A4%A', { page: 'not-found', hash: '#/example/%E0%A4%A' }],
+    ['#/p/%C3%A9', { page: 'project', id: 'é' }],
     ['#/nowhere', { page: 'not-found', hash: '#/nowhere' }],
   ])('%j', (hash, route) => {
     expect(parseRoute(hash)).toEqual(route);

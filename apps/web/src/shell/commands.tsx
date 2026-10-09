@@ -58,6 +58,8 @@ export interface AppCommand extends Searchable {
   group: string;
   icon?: ReactNode;
   keys: readonly string[];
+  /** Its keys also fire while typing in a field (only for a key that types nothing, like F1). */
+  inFields?: boolean;
   /** Says why it can't run yet ("Arrives with P2-06."); running it says so too. */
   unavailable?: string;
   run(): void;
@@ -346,6 +348,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
       },
       {
         icon: icon(BookOpen),
+        inFields: true,
         keywords: 'Help F1 docs tool reference guide learn documentation',
       },
     );
@@ -414,5 +417,7 @@ export function isToolReady(tool: Pick<Tool, 'id' | 'comesWith'>, ready?: Readon
 
 /** One shortcut per key of every command that has keys. */
 export function commandShortcuts(commands: readonly AppCommand[]): Shortcut[] {
-  return commands.flatMap((command) => command.keys.map((keys) => ({ keys, run: command.run })));
+  return commands.flatMap((command) =>
+    command.keys.map((keys) => ({ keys, run: command.run, inFields: command.inFields })),
+  );
 }

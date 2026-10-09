@@ -92,6 +92,8 @@ export interface AppBarProps {
   onTutorial(): void;
   /** Opens a docs page (P6-06 S9): the Help menu's items, through the platform. */
   onDocs(page: DocsPage): void;
+  /** Runs the `help` command: the page of the tool last hovered, else the guide. */
+  onHelp(): void;
 }
 
 /** A command's first key as it reads here ("Ctrl+K"). */
@@ -119,6 +121,7 @@ export function AppBar({
   onSearch,
   onTutorial,
   onDocs,
+  onHelp,
   viewport,
   onCustomizeMarking,
 }: AppBarProps) {
@@ -219,14 +222,13 @@ export function AppBar({
             Tutorial
           </MenuItem>
           {/* The docs on the landing site (P6-06 S9, ADR-0080 §5). F1 is the
-              help command's key: the hovered tool's page, else the guide. */}
+              help command's key ("Help for This Tool"): the hovered tool's page, else the guide. */}
           <MenuSeparator />
-          <MenuItem
-            icon={<BookOpen size={14} />}
-            shortcut={keyLabel('help')}
-            onSelect={() => onDocs('guide')}
-          >
+          <MenuItem icon={<BookOpen size={14} />} onSelect={() => onDocs('guide')}>
             User Guide
+          </MenuItem>
+          <MenuItem icon={<CircleHelp size={14} />} shortcut={keyLabel('help')} onSelect={onHelp}>
+            Help for This Tool
           </MenuItem>
           <MenuItem icon={<ListChecks size={14} />} onSelect={() => onDocs('tutorials')}>
             Tutorials

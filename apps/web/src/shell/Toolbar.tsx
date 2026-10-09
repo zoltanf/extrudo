@@ -72,17 +72,21 @@ export function setHoveredTool(tool: string | undefined): void {
   hoveredTool = tool;
 }
 
+/**
+ * Forgets `tool` if it is the tracked one. A tile that unmounts while hovered
+ * (a tab switch) sends no pointerleave, so its cleanup calls this (P6-06 S10).
+ */
+export function releaseTool(tool: string): void {
+  if (toolUnderPointer() === tool) setHoveredTool(undefined);
+}
+
 /** Pointer/focus tracking for one tile: in on enter/focus, out on leave/blur. */
 function trackTool(id: string) {
   return {
     onPointerEnter: () => setHoveredTool(id),
-    onPointerLeave: () => {
-      if (toolUnderPointer() === id) setHoveredTool(undefined);
-    },
+    onPointerLeave: () => releaseTool(id),
     onFocus: () => setHoveredTool(id),
-    onBlur: () => {
-      if (toolUnderPointer() === id) setHoveredTool(undefined);
-    },
+    onBlur: () => releaseTool(id),
   };
 }
 
@@ -151,6 +155,8 @@ export function Toolbar({
 }: ToolbarProps) {
   const tabs = visibleTabs(mode);
   const active = tabs.find((t) => t.id === tab) ?? tabs[0];
+  const showsFinish = active?.id === 'sketch';
+  useEffect(() => (showsFinish ? () => releaseTool('finishSketch') : undefined), [showsFinish]);
   const groups: ToolGroup[] = (active?.groups ?? []).map((g) => ({
     ...g,
     tools: g.tools.filter((id) => !hidden?.has(id)),
@@ -389,6 +395,7 @@ function ToolButton({
   compact?: boolean;
 }) {
   const unavailable = !ready;
+  useEffect(() => () => releaseTool(tool.id), [tool.id]);
   const tooltip = {
     label: label ?? tool.label,
     shortcut,

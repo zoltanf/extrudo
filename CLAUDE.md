@@ -52,8 +52,8 @@ backlog** (silhouettes of every surface, vertices and bodies, Intersect, Include
 ADR-0031's amendment, 2026-10-06) are done. Phase 6: P6-01 (the Electron
 desktop app, four slices and the Homebrew cask, ADR-0075), P6-02 (the slicer
 launch), P6-03 (the plugin API, four slices, ADR-0077) and P6-07 (auto-project,
-ADR-0074) are done; P6-04 (i18n), P6-05 (components) and P6-06 (docs site,
-tutorials) are open.
+ADR-0074) and P6-06 (the docs site, tutorials and examples, ADR-0080; done
+2026-10-09) are done; P6-04 (i18n) and P6-05 (components) are open.
 ADR-0001 chose
 our own trimmed libcascade build with a small C++ facade that owns OCCT memory
 (`docs/adr/0001-geometry-kernel.md`); P0-09 built it in `packages/kernel`
@@ -2101,16 +2101,26 @@ toolbar tile's tool page, else the guide) go through **`Platform.openDocs`
 overridable at build time), and on the desktop over the channel `docs:open`,
 where **main builds its own URL** from a whitelist and opens it through injected
 `shell.openExternal` — never a URL from the renderer; a tile's tooltip carries
-a muted "F1 for more" line (`Tooltip`'s `footer`, plain text).
+a muted "F1 for more" line (`Tooltip`'s `footer`, plain text). **Slice S10**
+(the review's fixes, P6-06 closed 2026-10-09): the docs build refuses a link
+whose scheme isn't relative, `#`, https, http or mailto (a `link` renderer in
+`docs.ts`; `<file>: link scheme not allowed: <href>`), the `.md`-link and
+no-script tests walk every collection and hostile fixtures, a malformed `%`
+in `#/p/…` or `#/example/…` is `not-found`, **F1 is `inFields`** (the `help`
+command's `AppCommand.inFields`), a tile that unmounts while hovered releases
+`toolUnderPointer` (`releaseTool`), the Help menu's **Help for This Tool** carries
+F1 (User Guide has no key), the guide's pictures are recorded by `pnpm demos
+-g guide` (`e2e/guide-shots.spec.ts`, like `-g tutorials`) and the tutorials are
+numbered 1 first-part, 2 storage-box, 3 name-tag, 4 bottle-cap.
 
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): Phases 0, 1, 2, 3 and 5 are complete, Phase 4 is complete
 apart from **P4-12's remaining backlog** (the items `docs/03-roadmap.md` still
 lists as open: a chamfer's handles on curved faces or edges, shell openings
 through curved faces, a point where two curved faces and a plane meet, and the
-rest), and Phase 6 has P6-04 (i18n), P6-05 (components) and P6-06 (docs site,
-tutorials) left. **P6-04 and P6-06 wait for the owner's walk through the UI**
-(owner, 2026-10-07). The repository is public (2026-10-04); the first public
+rest), and Phase 6 has P6-04 (i18n) and P6-05 (components) left (P6-06 is done,
+2026-10-09). **P6-04 waits for the owner's walk through the UI** (owner,
+2026-10-07). The repository is public (2026-10-04); the first public
 release is **v0.4.0** (no v0.3.0 tag): the owner does the slicer check and a
 fresh look on edge, the agent then bumps the versions to 0.4.0, and **the owner
 tags** (`docs/release-checklist.md`; don't tag yourself).

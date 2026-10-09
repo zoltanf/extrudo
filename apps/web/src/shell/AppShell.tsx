@@ -1709,6 +1709,7 @@ export function AppShell({
         onSearch={openSearch}
         onTutorial={startTutorial}
         onDocs={(page) => platform.openDocs(docsPath(page))}
+        onHelp={() => commands.find((c) => c.id === 'help')?.run()}
         viewport={viewport}
         onCustomizeMarking={() => setMarkingDialog(true)}
       />

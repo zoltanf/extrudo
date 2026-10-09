@@ -110,6 +110,9 @@ const TOOL_CATEGORY_ORDER = [
 
 const IMAGE_TYPES = ['.png', '.jpg', '.webp', '.svg'];
 const VIDEO_TYPES = ['.webm', '.mp4'];
+/** The schemes a link may have; anything without one is a relative path or a fragment. */
+const LINK_SCHEMES = ['https', 'http', 'mailto'];
+
 /** The only raw HTML a page may hold: a `<video>` with these attributes. */
 const VIDEO_FLAGS = ['muted', 'loop', 'autoplay', 'playsinline', 'controls'];
 const VIDEO_VALUES = ['width', 'height', 'aria-label'];
@@ -533,8 +536,28 @@ function renderer(
       html({ text }) {
         return guarded(() => rawHtml(text));
       },
+      // Marked passes any href through (`javascript:` included), so the scheme is
+      // checked here; autolinks are link tokens and come through this too.
+      link({ href, title, tokens }) {
+        const checked = guarded(() => linkTarget(href));
+        const label = this.parser.parseInline(tokens);
+        if (checked === '') return label;
+        return `<a href="${html(checked)}"${title ? ` title="${html(title)}"` : ''}>${label}</a>`;
+      },
     },
   });
+
+  /** A link's target if its scheme is allowed (relative, `#`, https, http, mailto), else a build failure. */
+  const linkTarget = (href: string): string => {
+    // Browsers ignore whitespace and control characters inside a scheme.
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: that is the point
+    const bare = href.replace(/[\u0000-\u0020\u007f]/g, '').toLowerCase();
+    const scheme = /^([a-z][a-z0-9+.-]*):/.exec(bare)?.[1];
+    if (scheme !== undefined && !LINK_SCHEMES.includes(scheme)) {
+      fail(`link scheme not allowed: ${href}`);
+    }
+    return href;
+  };
 
   /** Runs one renderer step; a failure is kept and the page fails after the parse. */
   function guarded(step: () => string): string {
