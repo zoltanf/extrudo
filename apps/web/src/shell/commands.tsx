@@ -105,6 +105,11 @@ export interface CommandContext {
   repeat?: { id: string };
   /** How many components the design has (P6-05): a joint needs two. */
   componentCount?: number;
+  /**
+   * Joints (P6-05 J3): Check Joint Clearance opens the Clearance panel on the check's joint or
+   * the only one that moves. Model mode only; `unavailable` with no joint to check.
+   */
+  joints?: { checkClearance(): void; unavailable?: string };
   /** Opens the Joint panel on a joint (P6-05 J2): the hovered row's, else the only one. */
   pose?: { run(): void };
   /** Macro recording (P5-05): whether one runs; Record and Stop show accordingly. */
@@ -325,6 +330,13 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
         run: command.run,
       });
     }
+  }
+  if (ctx.mode === 'model' && ctx.joints) {
+    const { checkClearance, unavailable } = ctx.joints;
+    plain('checkJointClearance', 'Check Joint Clearance', 'Solid › Component', checkClearance, {
+      keywords: 'Solid Component joint hinge slider clearance gap collision print in place',
+      ...(unavailable && { unavailable }),
+    });
   }
   if (ctx.mode === 'model' && ctx.components) {
     const c = ctx.components;

@@ -137,6 +137,8 @@ function bind(service: KernelService) {
     exportStep: service.exportStep.bind(service),
     inspect: service.inspect.bind(service),
     resolveJoint: service.resolveJoint.bind(service),
+    checkJoint: service.checkJoint.bind(service),
+    cancelCheck: () => service.cancelCheck(),
     debugTestPart: () => service.debugTestPart(),
     debugCrash: () => service.debugCrash(),
     stats: () => service.stats(),

@@ -213,6 +213,11 @@ export interface ViewportProps {
    * `data-thickness`.
    */
   thickness?: { thin: Record<BodyId, Float32Array> | undefined; summary: string };
+  /**
+   * A joint's clearance check (P6-05 J3, ADR-0081 §4): `summary` for `data-joint-check`, and
+   * the faces of a collision at the pose shown, per body, tinted in the error colour.
+   */
+  jointCheck?: { summary: string; collisions?: Readonly<Record<BodyId, readonly number[]>> };
 }
 
 /**
@@ -415,6 +420,7 @@ export function Viewport({
   sectionBox,
   overhang,
   thickness,
+  jointCheck,
 }: ViewportProps) {
   const section = useRef<HTMLElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -619,6 +625,7 @@ export function Viewport({
       }
       data-overhang={overhang?.summary}
       data-thickness={thickness?.summary}
+      data-joint-check={jointCheck?.summary}
       data-preview={previewSummary(preview)}
       data-preview-dimmed={preview?.dimmed || undefined}
       className="relative isolate min-w-0 flex-1 overflow-hidden"
@@ -701,6 +708,7 @@ export function Viewport({
               sectionBox={sectionBox?.on ? sectionBox.box : undefined}
               overhang={overhang?.view}
               thin={thickness?.thin}
+              collisions={jointCheck?.collisions}
               onSilhouettes={onSilhouettes}
               onFirstFrame={() => setReady(true)}
             />
@@ -848,6 +856,7 @@ function Scene({
   sectionBox,
   overhang,
   thin,
+  collisions,
   onSilhouettes,
   onFirstFrame,
 }: {
@@ -872,6 +881,8 @@ function Scene({
   overhang: OverhangView | undefined;
   /** The wall-thickness check's per-node flags per body (P5-06), while it shades. */
   thin: Record<BodyId, Float32Array> | undefined;
+  /** A clearance check's colliding faces per body (P6-05 J3), at the pose shown. */
+  collisions: Readonly<Record<BodyId, readonly number[]>> | undefined;
   onSilhouettes(body: BodyId, segments: number): void;
   onFirstFrame(): void;
 }) {
@@ -994,6 +1005,7 @@ function Scene({
         {...(posed && { posed })}
         {...(overhang && { overhang: { view: overhang, color: colors.overhang } })}
         {...(thin && { thickness: { thin, color: colors.thickness } })}
+        {...(collisions && { collisions: { faces: collisions, color: colors.thickness } })}
         {...(sectionClip && {
           section: { clips: sectionClip, color: colors.section, hatch: colors.sectionHatch },
         })}

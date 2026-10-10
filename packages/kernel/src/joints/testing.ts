@@ -1,7 +1,8 @@
 /**
  * The print-in-place hinge of P6-05's joint tests (ADR-0081 §4), built with
  * core's own shapes like the benchmark fixtures: component **Base** (a 40 × 20
- * × 4 plate with two knuckles and a Ø6 pin along X at the plates' mid-height)
+ * × 4 plate with two knuckles, bridged to it, and a Ø6 pin along X at the
+ * plates' mid-height)
  * and component **Leaf** (a 40 × 20 × 4 plate `gap` beside the knuckles, with a
  * middle knuckle round the pin through a Ø(6 + 2 × `clearance`) hole), and the
  * joint **Hinge**: revolute, a = the leaf's hole wall, b = the pin's wall, 0 to
@@ -78,8 +79,20 @@ export function hingeDocument(): ExtrudoDocument {
       operation: 'cut',
       bodies: [leafPlate],
     }),
+    // As the leaf's, mirrored: its inner edge 0.5 mm clear of the leaf's knuckle,
+    // so as built nothing touches. The bridges join the outer knuckles to it.
     primitive('BasePlate', 'box', BASE, {
-      numbers: { length: '40 mm', width: '20 mm', height: '4 mm', y: '-14 mm' },
+      numbers: { length: '40 mm', width: '20 mm', height: '4 mm', y: '-15.5 mm' },
+    }),
+    primitive('BaseBridge1', 'box', BASE, {
+      numbers: { length: '13 mm', width: '6 mm', height: '4 mm', x: '-13.5 mm', y: '-3 mm' },
+      operation: 'join',
+      bodies: [basePlate],
+    }),
+    primitive('BaseBridge2', 'box', BASE, {
+      numbers: { length: '13 mm', width: '6 mm', height: '4 mm', x: '13.5 mm', y: '-3 mm' },
+      operation: 'join',
+      bodies: [basePlate],
     }),
     primitive('Knuckle1', 'cylinder', BASE, {
       plane: yz,

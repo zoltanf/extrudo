@@ -6,7 +6,7 @@ import {
   type JointReport,
 } from '@extrudo/core';
 import { X } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Button, ToolIcon } from '../design-system';
 import { DIALOG_COLUMN } from '../features/FeatureDialog';
 import { ExpressionInput } from '../parameters/ExpressionInput';
@@ -23,6 +23,8 @@ export interface JointPanelProps {
   /** Poses the joint; the caller has clamped the value already. */
   onPose(value: number): void;
   onClose(): void;
+  /** The clearance check's section (P6-05 J3), under the pose. */
+  clearance?: ReactNode;
 }
 
 const ICONS = { rigid: 'joint-rigid', revolute: 'joint-revolute', slider: 'joint-slider' } as const;
@@ -33,12 +35,21 @@ const round = (n: number) => Number(n.toFixed(2));
  * The Joint panel (P6-05 J2, ADR-0081 §6): the pose of one joint as a slider and an expression
  * field of the same name ("Angle" or "Travel"), Reset and Done. The pose is view state; closing
  * the panel puts everything back. A joint whose frames disagree (a warning or an error) is not
- * posed: the panel says why instead. J3 adds the clearance check below.
+ * posed: the panel says why instead. The clearance check's section (J3) sits below.
  *
  * Test hooks: region "Joint" (`data-joint-panel` the joint's ID, `data-joint-pose` the value),
  * `[data-pose-limited]` while a typed value was held to a limit.
  */
-export function JointPanel({ doc, joint, report, range, value, onPose, onClose }: JointPanelProps) {
+export function JointPanel({
+  doc,
+  joint,
+  report,
+  range,
+  value,
+  onPose,
+  onClose,
+  clearance,
+}: JointPanelProps) {
   const revolute = joint.type === 'revolute';
   const label = revolute ? 'Angle' : 'Travel';
   const unit = revolute ? 'angle' : 'length';
@@ -119,6 +130,7 @@ export function JointPanel({ doc, joint, report, range, value, onPose, onClose }
             )}
           </>
         )}
+        {clearance && <div className="border-t border-line pt-2.5">{clearance}</div>}
       </div>
       <footer className="flex shrink-0 justify-end gap-2 border-t border-line px-3 py-2">
         <Button

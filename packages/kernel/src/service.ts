@@ -10,6 +10,7 @@ import type { ScadCompiler, ScadParametersResult } from '@extrudo/openscad';
 import { kernelFeatures } from './features';
 import type { SmoothKind, SubShapeKind } from './history';
 import { type Inspection, type InspectTarget, inspectShapes } from './inspect';
+import { checkJoint, type JointCheck, type JointCheckRequest } from './joints/check';
 import { type HeapUsage, Kernel, KernelError, type KernelStats, type ShapeHandle } from './kernel';
 import { loadManifold, type ManifoldLoadOptions } from './manifold';
 import type { ExportMesh, MeshOptions } from './mesh';
@@ -167,6 +168,16 @@ export interface KernelApi {
    * ADR-0081 §4), for the Joint dialog's live readout. Evaluates nothing.
    */
   resolveJoint(joint: Joint): Promise<JointReport>;
+  /**
+   * The clearance check along a joint's motion (P6-05 J3, ADR-0081 §4) on the
+   * bodies of the last finished recompute, held for the run. A newer check,
+   * `cancelCheck()` or a recompute stops it with a
+   * `CancelledError` (`isCheckCancelled`). `onProgress(done, of)` hears the
+   * coarse pass.
+   */
+  checkJoint(request: JointCheckRequest, onProgress?: CheckProgress): Promise<JointCheck>;
+  /** Stops a running `checkJoint`. */
+  cancelCheck(): Promise<void>;
   /** Builds, measures and meshes the P0-02 test part. */
   debugTestPart(): Promise<TestPart>;
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
@@ -186,6 +197,9 @@ export type ExportProgress = (
   done: number,
   total: number,
 ) => boolean | undefined | Promise<boolean | undefined>;
+
+/** Hears how far a clearance check is (it may be async, across the worker). */
+export type CheckProgress = (done: number, of: number) => void | Promise<void>;
 
 /** An export stopped by its `onProgress` (P3-13). */
 export class ExportCancelledError extends Error {
@@ -263,6 +277,8 @@ export class KernelService implements KernelApi {
   /** OpenSCAD's compiler, once a design needs it (ADR-0071 §3). */
   #openscad: Promise<ScadCompiler> | undefined;
   #compiler: ScadCompiler | undefined;
+  /** Bumped by every request that stops a running clearance check. */
+  #checks = 0;
 
   constructor(load: () => Promise<OcctModule>, options: KernelServiceOptions = {}) {
     this.#load = load;
@@ -373,6 +389,7 @@ export class KernelService implements KernelApi {
   }
 
   recompute(request: RecomputeRequest, onFeature?: ProgressListener): Promise<RecomputeResult> {
+    this.#checks++;
     return this.#run(() => this.#engineOf().recompute(request, onFeature));
   }
 
@@ -457,6 +474,44 @@ export class KernelService implements KernelApi {
 
   resolveJoint(joint: Joint): Promise<JointReport> {
     return this.#run(() => this.#engineOf().resolveJoint(joint));
+  }
+
+  checkJoint(request: JointCheckRequest, onProgress?: CheckProgress): Promise<JointCheck> {
+    const generation = ++this.#checks;
+    return this.#run(async (kernel) => {
+      const engine = this.#engineOf();
+      const report = engine.resolveJoint(request.joint);
+      const ids = [...request.moving, ...request.others];
+      const held = engine.hold(ids);
+      try {
+        const bodies = new Map<BodyId, ShapeHandle>();
+        for (const [i, id] of ids.entries()) {
+          const shape = held.shapes[i];
+          if (shape === undefined) {
+            throw new KernelError('A body to check is no longer in the model. Try again.');
+          }
+          bodies.set(id, shape);
+        }
+        return await checkJoint(
+          kernel,
+          bodies,
+          report,
+          request,
+          async () => {
+            await yieldToEvents();
+            return generation === this.#checks;
+          },
+          // Across the worker the callback is a proxy: don't wait for it.
+          onProgress && ((done, of) => void Promise.resolve(onProgress(done, of)).catch(() => {})),
+        );
+      } finally {
+        held.release();
+      }
+    });
+  }
+
+  async cancelCheck(): Promise<void> {
+    this.#checks++;
   }
 
   async debugTestPart(): Promise<TestPart> {

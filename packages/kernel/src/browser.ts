@@ -56,6 +56,9 @@ function connect(worker: Worker): KernelConnection {
     exportStep: (bodies) => api.exportStep(bodies),
     inspect: (targets) => api.inspect(targets),
     resolveJoint: (joint) => api.resolveJoint(joint),
+    checkJoint: (request, onProgress) =>
+      api.checkJoint(request, onProgress && Comlink.proxy(onProgress)),
+    cancelCheck: () => api.cancelCheck(),
     debugTestPart: () => api.debugTestPart(),
     debugCrash: () => api.debugCrash(),
     stats: () => api.stats(),

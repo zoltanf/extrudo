@@ -41,6 +41,14 @@ export {
   unionBox,
 } from './inspect';
 export {
+  CancelledError,
+  isCheckCancelled,
+  type JointCheck,
+  type JointCheckRequest,
+  jointMatrix,
+  refusal as jointCheckRefusal,
+} from './joints/check';
+export {
   type Axis,
   type BooleanOptions,
   ChamferError,
@@ -193,6 +201,7 @@ export {
 } from './script-host';
 export {
   type BodyExportMesh,
+  type CheckProgress,
   ExportCancelledError,
   type ExportProgress,
   isExportCancelled,

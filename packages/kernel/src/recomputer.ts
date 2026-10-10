@@ -53,11 +53,17 @@ import {
 } from './client';
 import type { SmoothKind, SubShapeKind } from './history';
 import type { Inspection, InspectTarget } from './inspect';
+import type { JointCheck, JointCheckRequest } from './joints/check';
 import type { BodyMesh, MeshOptions } from './mesh';
 import type { StepBody } from './model-export';
 import { type PluginCommandResult, pluginCommandFileId } from './plugin-command';
 import type { BodyResult, PreviewToolMesh, RecomputeResult } from './recompute/types';
-import { type BodyExportMesh, type ExportProgress, isKernelCrash } from './service';
+import {
+  type BodyExportMesh,
+  type CheckProgress,
+  type ExportProgress,
+  isKernelCrash,
+} from './service';
 
 export interface RecomputerOptions {
   spawn: SpawnKernel;
@@ -405,6 +411,20 @@ export class Recomputer {
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * The clearance check along a joint's motion on what the model store shows
+   * (P6-05 J3, ADR-0081 §4). The next recompute, a newer check or
+   * `cancelCheck` stops it (rejects with `isCheckCancelled`).
+   */
+  checkJoint(request: JointCheckRequest, onProgress?: CheckProgress): Promise<JointCheck> {
+    return this.client.call((api) => api.checkJoint(request, onProgress));
+  }
+
+  /** Stops a running clearance check. */
+  cancelCheck(): void {
+    this.client.call((api) => api.cancelCheck()).catch(() => {});
   }
 
   /** The dialog closed: drops a pending preview. */

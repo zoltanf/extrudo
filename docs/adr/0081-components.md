@@ -601,6 +601,62 @@ joint type is dropped with a note. Nested Fusion components flatten to one level
 - A posed body is drawn where it isn't: picking it is off and any tool resets
   the pose, so a pose can never leak into a reference.
 
+## Results
+
+### J3: the clearance check (2026-10-10)
+
+Measured on the Ubuntu machine (4 cores), one kernel in Node, `BENCH=1 pnpm
+vitest run packages/kernel/src/joints/check-bench` (median of three):
+
+| Design | Faces (moving + other) | Range | Poses | Time |
+|---|---|---|---|---|
+| The hinge fixture | 11 + 11 | −180…180° | 67 | 1.55 s |
+| The hinge with 22 ribs fused across each plate | 137 + 129 | −180…180° | 67 | 16.3 s |
+
+In the browser (`e2e/joints.spec.ts`, two Playwright workers, the worker's
+WASM): the fixture's 0…90° check takes 2.5–3.0 s from the menu click to the
+result, 0…180° 1.9–2.6 s. A collision's start lands within 0.02° of the angle
+worked out from the fixture's numbers (140.06° against 180° − 2·atan(2/5.5) =
+140.05°).
+
+**The 2 s budget holds for the fixture, not for 100-face bodies.** The time is
+in `BRepExtrema_DistShapeShape`, not in the transformed copies: at 130 faces a
+side one `closestPoints` takes 340–440 ms a pose where the bodies are apart
+(11–45 ms where they touch, as it stops at the first contact), `transform`
+3.5 ms. Two ways round it were measured and rejected:
+
+- **Face pairs from TypeScript**, nearest boxes first, stopping once no box can
+  be nearer than the best gap: slower, because a moved face's box is loose and
+  boxes of a body's faces overlap, so most pairs stay in (3,622 face distances
+  at 26 ms each for one whole turn of a drilled 99-face hinge, 98 s against
+  54 s for whole bodies).
+- **manifold-3d's `minGap` on meshes** of the bodies (meshed once, moved by
+  manifold's transform): 70–170 ms a pose at 0.01 and 0.002 mm deflection, no
+  faster than OCCT at that size and only as exact as the mesh.
+
+The recorded next step is a facade call rather than the transformed copy the
+Decision expected: one that measures many poses of the same pair, keeping
+OCCT's per-face bounding volumes and extrema of the fixed body between calls
+(or `BRepExtrema_ShapeProximity`'s BVH as a first pass), so a pose costs the
+faces near the gap only. Until then a whole turn of a 130-face hinge takes
+about 16 s, with its progress shown and Cancel.
+
+**`common` only where it decides something.** Telling touching from
+interference costs a boolean (60–300 ms at 130 faces), so the check runs one at
+each contact run's middle, at its ends only when the middle merely touches,
+and bisects a collision's boundary next to a free pose on the gap alone (where
+contact starts is where the collision does); a boundary between touching and
+colliding poses still takes a `common` per step while the budget of 12 lasts.
+
+**A flat minimum is reported at the pose nearest as built** (`tightest.over`
+holds the stretch), so its leader can be drawn before the pose preview exists
+and `data-joint-check` reads `at=0` for the fixture.
+
+**The fixture was wrong as built.** J1's base plate (`y` −24…−4) reached into
+the leaf's Ø10 knuckle (to `y` −5), so the hinge collided at 0°. Its plate is
+now the leaf's mirror (`y` −25.5…−5.5) with two bridges joining it to its
+knuckles, 0.5 mm clear of everything on the leaf.
+
 ## Slices
 
 Twelve slices, in `docs/plans/p6-05-components.md`: S1 core model ∥ S2 kernel

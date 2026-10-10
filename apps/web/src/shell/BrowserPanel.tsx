@@ -111,6 +111,8 @@ export interface BrowserPanelProps {
     actions: JointActions;
     /** The pointer on a joint's row (`undefined` when it leaves): the view draws its axis. */
     onHover(id: JointId | undefined): void;
+    /** A revolute's or slider's Check Clearance (P6-05 J3): opens the check and runs it. */
+    onCheckClearance?(id: JointId): void;
   };
   /** The active and the isolated component (session state, P6-05 S4). */
   activeComponent?: ComponentId;
@@ -136,6 +138,8 @@ export interface BrowserPanelProps {
   overhang?: AnalysisEntry;
   /** The wall-thickness check (P5-06), while there is one: a row in the same folder. */
   thickness?: AnalysisEntry;
+  /** A joint's clearance check (P6-05 J3), while there is one: a row in the same folder. */
+  jointCheck?: AnalysisEntry;
   /** The kernel's verdict per feature: rows show ✕ or ⚠ as the timeline's chips do (P3-17). */
   statuses?: Readonly<Record<string, FeatureStatus | undefined>>;
   /** A recompute has finished since the page opened (default: yes). Until then an empty Bodies folder is "computing" (ADR-0078). */
@@ -188,6 +192,7 @@ export function BrowserPanel({
   section,
   overhang,
   thickness,
+  jointCheck,
   statuses = NO_STATUSES,
   recomputeFinished = true,
   viewActions,
@@ -408,15 +413,17 @@ export function BrowserPanel({
                 ))}
               </Folder>
             )}
-            {(section || overhang || thickness) && (
+            {(section || overhang || thickness || jointCheck) && (
               <Folder
                 label="Analysis"
                 icon={<ToolIcon name="section" category="inspect" size={16} />}
                 eye={{
-                  visible: Boolean(section?.on || overhang?.on || thickness?.on),
+                  visible: Boolean(section?.on || overhang?.on || thickness?.on || jointCheck?.on),
                   onToggle: () => {
-                    const on = Boolean(section?.on || overhang?.on || thickness?.on);
-                    for (const entry of [section, overhang, thickness]) {
+                    const on = Boolean(
+                      section?.on || overhang?.on || thickness?.on || jointCheck?.on,
+                    );
+                    for (const entry of [section, overhang, thickness, jointCheck]) {
                       if (entry && entry.on === on) entry.onToggle();
                     }
                   },
@@ -441,6 +448,13 @@ export function BrowserPanel({
                     name="wall thickness"
                     entry={thickness}
                     rowAttribute={{ 'data-thickness-row': thickness.on ? 'on' : 'off' }}
+                  />
+                )}
+                {jointCheck && (
+                  <AnalysisRow
+                    name="clearance"
+                    entry={jointCheck}
+                    rowAttribute={{ 'data-joint-check-row': jointCheck.on ? 'on' : 'off' }}
                   />
                 )}
               </Folder>
@@ -1255,6 +1269,7 @@ function ComponentFolder({
             row={jointRow}
             actions={joints.actions}
             onHover={joints.onHover}
+            {...(joints.onCheckClearance && { onCheckClearance: joints.onCheckClearance })}
           />
         ))}
     </Folder>
@@ -1277,10 +1292,12 @@ function JointLeaf({
   row,
   actions,
   onHover,
+  onCheckClearance,
 }: {
   row: JointRow;
   actions: JointActions;
   onHover(id: JointId | undefined): void;
+  onCheckClearance?(id: JointId): void;
 }) {
   const [renaming, setRenaming] = useState(false);
   const { joint, status, message, refs } = row;
@@ -1381,6 +1398,9 @@ function JointLeaf({
       )}
       {guessed && (
         <MenuItem onSelect={() => actions.keepClosestMatch(joint.id)}>Keep Closest Match</MenuItem>
+      )}
+      {onCheckClearance && joint.type !== 'rigid' && !suppressed && (
+        <MenuItem onSelect={() => onCheckClearance(joint.id)}>Check Clearance</MenuItem>
       )}
       <MenuSeparator />
       <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.remove([joint.id])}>
@@ -1626,6 +1646,7 @@ const ANALYSIS_MENUS: Record<string, string> = {
   section: 'Section',
   overhang: 'Overhang',
   'wall thickness': 'Wall thickness',
+  clearance: 'Clearance',
 };
 
 /** A row of the Analysis folder (P3-09, P3-10, P5-06): name (opens the panel), eye, and a menu. */

@@ -159,6 +159,29 @@ brief, voice) is in **`05-brand.md`**. In short:
   at once); the preview shows the body turned so the face lies on the bed
   (z = 0); a warning says when part of the body would end up below it. Also
   "Place on Bed" in the context list of a flat face.
+- **Joint clearance** (P6-05 J3, ADR-0081 §4). A revolute or slider joint's
+  row has **Check Clearance** (also Ctrl+K "Check Joint Clearance", on the
+  joint being checked or the only joint that moves): it opens the Joint panel
+  (the pose) with its Clearance section under the pose and runs the check at
+  once. The section has "Minimum gap" (an
+  expression field; the design's `tolerance` parameter when it has one, else
+  0.2 mm), a "Check clearance" button that reads "Checking 12 of 36…" with
+  Cancel while it runs, and the result's lines: "Tightest gap 0.30 mm at
+  0°–90°" (a flat minimum is a range), "Tightest gap 0.18 mm at 72°", "Under
+  0.3 mm from 64° to 81°", "Collides from 64.2° to 81.0° (3.2 mm³ at 72°)" and
+  "No collision from 0° to 90°."; each line has **Show**, which poses the joint
+  there. A change to the design after a check
+  says "The design changed: check again." The check samples the motion in the
+  kernel worker (every other body counts, hidden and ghosts too: a clearance is
+  the design's, not the view's). At the pose shown (as built when the joint
+  isn't posed), the tightest gap has a leader between its two closest points
+  with the gap on it when that is the pose it was found at, and the faces of a
+  collision whose range holds that pose are tinted in the error colour. It is
+  view state like the wall-thickness check: closing the Joint panel stops a
+  running check and keeps the result; the browser's Analysis folder has the row
+  "Clearance · Hinge" (click to open the Joint panel on it, eye hides the marks,
+  menu Remove). The section checks one joint at a time: opened on another
+  joint, it starts a new check there.
 - **Tool groups:** each group shows 3–6 most-used tools as buttons plus a
   dropdown with the full list. Users can pin tools to the toolbar.
 - **Browser (left):** collapsible tree with an eye toggle per item and

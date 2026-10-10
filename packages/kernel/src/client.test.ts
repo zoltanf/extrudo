@@ -67,6 +67,8 @@ describe('KernelClient', () => {
       exportStep: async () => '',
       inspect: async () => ({ items: [] }),
       resolveJoint: async () => ({ status: 'ok' }),
+      checkJoint: async () => ({ samples: 0, collisions: [], underMinimum: [] }),
+      cancelCheck: async () => {},
     };
     const client = new KernelClient(() => {
       spawned++;
@@ -106,6 +108,8 @@ describe('KernelClient', () => {
       exportStep: async () => '',
       inspect: async () => ({ items: [] }),
       resolveJoint: async () => ({ status: 'ok' }),
+      checkJoint: async () => ({ samples: 0, collisions: [], underMinimum: [] }),
+      cancelCheck: async () => {},
     };
     const client = new KernelClient(
       () => ({ api: crashing, terminate: () => {}, onFatal: () => {} }),

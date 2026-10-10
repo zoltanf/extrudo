@@ -22,6 +22,7 @@ import type { SectionClip } from '../section/clip';
 import {
   type BodyHighlight,
   bodyHighlight,
+  COLLIDE,
   edgeSegmentsOf,
   type FacePalette,
   paintFaces,
@@ -80,6 +81,8 @@ export interface BodiesProps {
    * triangle is thinner than the minimum), shaded in `color`.
    */
   thickness?: { thin: Record<BodyId, Float32Array>; color: Rgba };
+  /** A joint's clearance check (P6-05 J3): the colliding faces per body, tinted in `color`. */
+  collisions?: { faces: Readonly<Record<BodyId, readonly number[]>>; color: Rgba };
   /**
    * Bodies drawn posed (P6-05 J2): each through its matrix, a view-side look only. A posed
    * body takes no section cap (the cap's quad is placed in world space).
@@ -120,6 +123,7 @@ export function Bodies({
   section,
   overhang,
   thickness,
+  collisions,
   posed,
 }: BodiesProps) {
   const shown = useMemo(
@@ -142,7 +146,8 @@ export function Bodies({
       opacity={meta[id]?.opacity ?? 1}
       edge={edge}
       accent={highlight}
-      marks={bodyHighlight(id, mesh, hover, selection)}
+      marks={withCollisions(bodyHighlight(id, mesh, hover, selection), collisions?.faces[id])}
+      {...(collisions && { error: collisions.color })}
       onSilhouettes={onSilhouettes}
       {...(posed?.[id] && { pose: posed[id] })}
       {...(overhang && { overhang })}
@@ -151,6 +156,15 @@ export function Bodies({
         planes && { section: { ...section, planes, order: 10 + 3 * CAP_SLOTS * index } })}
     />
   ));
+}
+
+/** Marks a check's colliding faces on a body's highlight. */
+function withCollisions(marks: BodyHighlight, faces: readonly number[] | undefined): BodyHighlight {
+  if (!faces) return marks;
+  for (const f of faces) {
+    if (f < marks.faces.length) marks.faces[f] = (marks.faces[f] ?? 0) | COLLIDE;
+  }
+  return marks;
 }
 
 function hex(value: string): Rgba {
@@ -166,6 +180,7 @@ function Body({
   opacity,
   edge,
   accent,
+  error,
   marks,
   onSilhouettes,
   section,
@@ -181,6 +196,8 @@ function Body({
   opacity: number;
   edge: Rgba;
   accent: Rgba;
+  /** The colour colliding faces take (P6-05 J3). */
+  error?: Rgba;
   marks: BodyHighlight;
   onSilhouettes?(body: BodyId, segments: number): void;
   section?: {
@@ -213,7 +230,7 @@ function Body({
     g.setIndex(new BufferAttribute(mesh.indices, 1));
     return g;
   }, [mesh]);
-  useFaceColors(faces, mesh, body, accent, marks.faces);
+  useFaceColors(faces, mesh, body, accent, marks.faces, error);
   useThinFlags(faces, thickness?.thin);
   const edges = useMemo(() => {
     const g = new LineSegmentsGeometry();
@@ -364,12 +381,17 @@ function useFaceColors(
   body: Rgba,
   accent: Rgba,
   states: Uint8Array,
+  error?: Rgba,
 ) {
   const painted = useRef<{ geometry: BufferGeometry; key: string; states: Uint8Array }>(undefined);
   useLayoutEffect(() => {
     const attribute = faces.getAttribute('color') as BufferAttribute;
-    const palette: FacePalette = { base: linear(body), accent: linear(accent) };
-    const key = `${palette.base.join()}/${palette.accent.join()}`;
+    const palette: FacePalette = {
+      base: linear(body),
+      accent: linear(accent),
+      ...(error && { error: linear(error) }),
+    };
+    const key = `${palette.base.join()}/${palette.accent.join()}/${palette.error?.join() ?? ''}`;
     const last = painted.current;
     const previous = last?.geometry === faces && last.key === key ? last.states : undefined;
     const range = paintFaces(attribute.array as Float32Array, mesh, states, palette, previous);
@@ -378,7 +400,7 @@ function useFaceColors(
     attribute.clearUpdateRanges();
     attribute.addUpdateRange(range[0] * 3, range[1] * 3);
     attribute.needsUpdate = true;
-  }, [faces, mesh, body, accent, states]);
+  }, [faces, mesh, body, accent, states, error]);
 }
 
 /** One compiled program for both analysis patches; their settings are uniforms. */

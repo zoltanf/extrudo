@@ -69,6 +69,9 @@ import { PRESS_PULL, PRESS_PULL_PROMPT, pressPullTarget } from '../features/pres
 import { cornersStore } from '../features/primitiveCorners';
 import { type FeatureDialogs, featureDialogs, specForCommand } from '../features/registry';
 import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs';
+import { ClearanceOverlay } from '../joints/ClearanceOverlay';
+import { ClearanceSection } from '../joints/ClearanceSection';
+import { clearanceMarks, defaultMinGap } from '../joints/clearance';
 import { followJointPose } from '../joints/followPose';
 import { JointDialog } from '../joints/JointDialog';
 import { JointPanel } from '../joints/JointPanel';
@@ -76,6 +79,7 @@ import { createJointActions } from '../joints/jointActions';
 import type { JointDialogKernel } from '../joints/jointController';
 import { type JointRow, jointRows, jointsSummary } from '../joints/jointRows';
 import { clampPose, posedBodies, poseMatrix } from '../joints/pose';
+import { type JointCheckKernel, useJointCheck } from '../joints/useJointCheck';
 import { useJointDialog } from '../joints/useJointDialog';
 import { MacroDialog } from '../macro/MacroDialog';
 import {
@@ -272,7 +276,8 @@ export interface AppShellProps {
     ModelExporter &
     MeasureKernel &
     Partial<PluginCommandKernel> &
-    Partial<Pick<JointDialogKernel, 'resolveJoint'>>;
+    Partial<Pick<JointDialogKernel, 'resolveJoint'>> &
+    Partial<JointCheckKernel>;
 }
 
 /** The app's feature dialogs (`features/registry.ts`). */
@@ -535,6 +540,7 @@ export function AppShell({
   // `run` changes every render; commands reach the latest one through a ref.
   const runRef = useRef<(tool: ToolId) => void>(() => {});
   const startTutorialRef = useRef<() => void>(() => {});
+  const openJointCheckRef = useRef<(id?: JointId, run?: boolean) => void>(() => {});
   /** The File menu's Import, which is the Insert tab's tile (P4-06). */
   const startImportRef = useRef<() => void>(() => {});
   /** The File menu's Export Design as Script (P5-05). */
@@ -865,6 +871,23 @@ export function AppShell({
     model: mode === 'model',
     preferences: platform.preferences,
   });
+  // A joint's clearance check (P6-05 J3, ADR-0081 §4): asked of the kernel worker on demand.
+  const jointCheck = useJointCheck({
+    viewport,
+    doc: () => doc,
+    bodies: () => Object.keys(bodies) as BodyId[],
+    componentOf: componentOfBody,
+    kernel:
+      kernel?.checkJoint && kernel.cancelCheck
+        ? {
+            checkJoint: (request, onProgress) =>
+              (kernel.checkJoint as JointCheckKernel['checkJoint'])(request, onProgress),
+            cancelCheck: () => kernel.cancelCheck?.(),
+          }
+        : undefined,
+    open: poseJointId !== undefined,
+  });
+  // Its marks at the pose shown: as built (0) until the pose preview (J2) can show another.
   const dialogItems = useDialogItems(dialogOpen, shownBodies);
   const preview = useMemo(() => viewPreview(dialogOpen), [dialogOpen]);
   const canSlicer = platform.openInSlicer !== undefined;
@@ -1132,6 +1155,14 @@ export function AppShell({
         componentCount: doc.components?.length ?? 0,
         pose: poseCommand,
         ...(m === 'model' && {
+          joints: {
+            checkClearance: () => openJointCheckRef.current(),
+            ...(!(doc.joints ?? []).some((j) => j.type !== 'rigid' && !j.suppressed) && {
+              unavailable: 'Make a revolute or slider joint first.',
+            }),
+          },
+        }),
+        ...(m === 'model' && {
           components: {
             ...(selectedComponent !== undefined &&
               selectedComponentName !== undefined && { selected: { name: selectedComponentName } }),
@@ -1205,6 +1236,7 @@ export function AppShell({
       markingStyle.toggle,
       platform,
       doc.components?.length,
+      doc.joints,
       poseCommand,
     ],
   );
@@ -1382,6 +1414,33 @@ export function AppShell({
     dialog?.cancel();
     session.getState().setTool(OVERHANG_TOOL);
   };
+  /**
+   * Opens the Joint panel (J2) with its Clearance section (P6-05 J3) on a joint: the one asked
+   * for, else the check's, else the only joint that moves. `run` checks it at once (the joint
+   * row's Check Clearance and the command); the browser's Analysis row only opens it.
+   */
+  const openJointCheck = (id?: JointId, run = true) => {
+    if (mode !== 'model') return;
+    const movable = (doc.joints ?? []).filter((j) => j.type !== 'rigid' && !j.suppressed);
+    const joint =
+      id ?? jointCheck.state?.joint ?? (movable.length === 1 ? movable[0]?.id : undefined);
+    if (joint === undefined) {
+      notify(
+        'info',
+        movable.length === 0
+          ? 'Make a revolute or slider joint first.'
+          : "Pick a joint: its row's menu has Check Clearance.",
+      );
+      return;
+    }
+    if (picking) cancelCreateSketch(stores);
+    // The Joint panel and its pose close when a tool runs (J2): end the one that does.
+    session.getState().setTool(undefined);
+    openPose(joint);
+    jointCheck.controller.open(joint);
+    if (run) void jointCheck.controller.start();
+  };
+  openJointCheckRef.current = openJointCheck;
   /** Opens the Wall Thickness panel on the check as it is (the browser's row). */
   const openThickness = () => {
     if (mode !== 'model') return;
@@ -1880,6 +1939,15 @@ export function AppShell({
       text: `Posed: ${mover} at ${value}${joint.type === 'slider' ? ' mm' : '°'} — the design is unchanged.`,
     };
   }, [jointPose, doc, jointReports, componentList, shownBodies]);
+  // The clearance check's marks (P6-05 J3) at the pose shown: its joint's pose, else as built.
+  const { state: checkState, status: checkStatus, result: checkResult } = jointCheck;
+  const checkPose =
+    jointPose && checkState && jointPose.joint === checkState.joint ? jointPose.value : 0;
+  const jointMarks = useMemo(
+    () =>
+      clearanceMarks({ state: checkState, status: checkStatus, result: checkResult }, checkPose),
+    [checkState, checkStatus, checkResult, checkPose],
+  );
   // The handle stands at the moving side's box centre, as built.
   const poseCentre = useMemo(() => {
     if (!poseJoint || poseJoint.type === 'rigid' || !poseReport?.axis) return undefined;
@@ -2190,7 +2258,12 @@ export function AppShell({
             viewActions={viewActions}
             componentActions={componentActions}
             {...(jointActions && {
-              joints: { rows: jointRowsOf, actions: jointActions, onHover: setHoveredJoint },
+              joints: {
+                rows: jointRowsOf,
+                actions: jointActions,
+                onHover: setHoveredJoint,
+                onCheckClearance: (id) => openJointCheck(id),
+              },
             })}
             activeComponent={activeComponent}
             isolatedComponent={isolatedComponent}
@@ -2240,6 +2313,17 @@ export function AppShell({
                 },
               },
             })}
+            {...(jointCheck.state &&
+              jointCheck.joint && {
+                jointCheck: {
+                  label: `Clearance · ${jointCheck.joint.name}`,
+                  on: jointCheck.state.on,
+                  active: poseJointId === jointCheck.state.joint,
+                  onToggle: () => jointCheck.controller.setOn(!jointCheck.state?.on),
+                  onEdit: () => openJointCheck(undefined, false),
+                  onRemove: () => jointCheck.controller.remove(),
+                },
+              })}
             width={browser.size}
             collapsed={browser.collapsed}
             animate={browser.animate}
@@ -2315,6 +2399,12 @@ export function AppShell({
               {...(thickness.summary !== undefined && {
                 thickness: { thin: thickness.shading, summary: thickness.summary },
               })}
+              {...(jointCheck.summary !== undefined && {
+                jointCheck: {
+                  summary: jointCheck.summary,
+                  ...(jointMarks.collisions && { collisions: jointMarks.collisions }),
+                },
+              })}
             >
               {dialogOpen && dialog && (
                 <DialogOverlay
@@ -2322,6 +2412,13 @@ export function AppShell({
                   viewport={viewport}
                   settings={doc.settings}
                   bodies={shownBodies}
+                />
+              )}
+              {jointMarks.leader && (
+                <ClearanceOverlay
+                  {...jointMarks.leader}
+                  viewport={viewport}
+                  settings={doc.settings}
                 />
               )}
               {poseJoint && poseReport?.status === 'ok' && poseCentre && jointPose && (
@@ -2447,6 +2544,23 @@ export function AppShell({
             value={jointPose?.joint === poseJoint.id ? jointPose.value : 0}
             onPose={(value) => viewport.getState().setJointPose({ joint: poseJoint.id, value })}
             onClose={closePose}
+            {...(poseJoint.type !== 'rigid' && {
+              clearance: (
+                <ClearanceSection
+                  key={poseJoint.id}
+                  tool={jointCheck}
+                  joint={poseJoint.id}
+                  defaultMin={defaultMinGap(doc)}
+                  settings={doc.settings}
+                  onShow={(value) =>
+                    viewport.getState().setJointPose({
+                      joint: poseJoint.id,
+                      value: clampPose(poseJoint, poseRange, value),
+                    })
+                  }
+                />
+              ),
+            })}
           />
         )}
         {sectioning && (

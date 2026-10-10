@@ -128,6 +128,98 @@ test('a joint is made, renamed, undone, and its lost frame fixed', async ({ page
   await expect(chip(page, 'Pin')).toBeVisible();
 });
 
+// P6-05 J3 (ADR-0081 §4): the clearance check along the hinge's motion. As built
+// the leaf turns 0…90° about the pin with nothing closer than the pin's 0.3 mm;
+// past about 140° its plate reaches the base's.
+test('the clearance check finds the tightest gap and a collision', async ({ page }) => {
+  test.setTimeout(180_000);
+  await openHinge(page);
+  const viewport = viewportOf(page);
+  const hinge = componentLeaf(page, 'Leaf').locator('[data-joint]');
+  await expect(hinge).toHaveAttribute('data-joint-status', 'ok');
+
+  // The joint row's Check Clearance opens the Joint panel and runs the check at once.
+  const started = Date.now();
+  await hinge.click({ button: 'right' });
+  await menuItem(page, 'Check Clearance').click();
+  const panel = page.getByRole('region', { name: 'Joint', exact: true });
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('region', { name: 'Clearance' })).toBeVisible();
+  await expect(viewport).toHaveAttribute(
+    'data-joint-check',
+    /^joint=Hinge min=0\.2 tightest=0\.3 at=0 collides=none under=none samples=\d+$/,
+    { timeout: 60_000 },
+  );
+  console.log(`[joints] clearance check of the hinge, 0-90°: ${Date.now() - started} ms`);
+  const result = panel.locator('[data-joint-result]');
+  await expect(result).toContainText('Tightest gap 0.30 mm at 0°–90°');
+  await expect(result).toContainText('No collision from 0° to 90°.');
+  // As built is where the gap was found: its leader is drawn.
+  await expect(page.locator('[data-clearance-leader]')).toHaveAttribute(
+    'data-clearance-leader',
+    /^[\d.-]+,[\d.-]+ [\d.-]+,[\d.-]+$/,
+  );
+  await panel.getByRole('button', { name: /^Done/ }).click();
+  await expect(panel).toBeHidden();
+  const row = browserOf(page).locator('[data-joint-check-row]');
+  await expect(row).toHaveText(/Clearance · Hinge/);
+
+  // A wider range is a change to the design: the result is stale until checked again.
+  await hinge.dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Hinge dialog' });
+  await edit.getByRole('textbox', { name: 'Maximum angle' }).fill('180 deg');
+  await expect(edit).toHaveAttribute('data-dialog-valid', 'true');
+  await edit.getByRole('button', { name: /^OK/ }).click();
+  await expect(edit).toBeHidden();
+  await expect(viewport).toHaveAttribute('data-joint-check', / stale$/);
+  await row.getByRole('button', { name: /Clearance · Hinge/ }).click();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByText('The design changed: check again.')).toBeVisible();
+  await expect(page.locator('[data-clearance-leader]')).toHaveCount(0);
+  const again = Date.now();
+  await panel.getByRole('button', { name: 'Check clearance' }).click();
+  await expect(viewport).toHaveAttribute('data-joint-check', /collides=1[34]\d\.\d\.\.180\.0 /, {
+    timeout: 60_000,
+  });
+  console.log(`[joints] clearance check of the hinge, 0-180°: ${Date.now() - again} ms`);
+  const collision = result.locator('[data-joint-result-line="collision"]');
+  await expect(collision).toHaveText(
+    /^Collides from 1[34]\d\.\d° to 180\.0° \([\d.]+ mm³ at [\d.]+°\)/,
+  );
+
+  // Show poses the joint where the line says: inside the collision, then at the tightest
+  // gap just before it, where the leader is drawn between the two closest points.
+  await collision.getByRole('button', { name: /^Show/ }).click();
+  await expect(viewport).toHaveAttribute('data-joint-pose', /^Hinge=(1[4-7]\d(\.\d+)?|180)$/);
+  await expect(page.locator('[data-clearance-leader]')).toHaveCount(0);
+  await result
+    .locator('[data-joint-result-line="tightest"]')
+    .getByRole('button', { name: /^Show/ })
+    .click();
+  await expect(viewport).toHaveAttribute('data-joint-pose', /^Hinge=1[34]\d(\.\d+)?$/);
+  await expect(page.locator('[data-clearance-leader]')).toHaveAttribute(
+    'data-clearance-leader',
+    /^[\d.-]+,[\d.-]+ [\d.-]+,[\d.-]+$/,
+  );
+
+  // A minimum above the pin's clearance: the whole range is under it.
+  const min = panel.getByRole('textbox', { name: 'Minimum gap', exact: true });
+  await min.fill('0.5 mm');
+  await blur(page);
+  await expect(viewport).toHaveAttribute('data-joint-check', / stale$/);
+  await panel.getByRole('button', { name: 'Check clearance' }).click();
+  await expect(viewport).toHaveAttribute(
+    'data-joint-check',
+    /^joint=Hinge min=0\.5 .* under=0\.0\.\./,
+    {
+      timeout: 60_000,
+    },
+  );
+  await expect(result.locator('[data-joint-result-line="under"]')).toHaveText(
+    /^Under 0\.5 mm from 0° to /,
+  );
+});
+
 // P6-05 J2 (ADR-0081 §4, §6): the pose is view state, drawn through a matrix.
 test('a joint is posed in the view, and any tool puts it back', async ({ page }) => {
   test.setTimeout(120_000);
