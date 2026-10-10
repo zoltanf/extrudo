@@ -1113,7 +1113,10 @@ end to end, faster than in Fusion 360.
   fixes: bounded inflation, a foreign `in:` input, manifest strings, docs, tests).
 - [ ] **P6-04 i18n** (community translations).
 - [ ] **P6-05 Components and simple assemblies** (multiple components, as-built
-  joints), if demand warrants.
+  joints), if demand warrants. Designed in
+  [ADR-0081](adr/0081-components.md) (2026-10-10): components as named sets of
+  bodies, placement through the timeline, joints deferred; nine slices in
+  `.claude/handoff/p6-05-slices.md`.
 - [x] **P6-06 Docs site, tutorials, example library.**
   Done 2026-10-09 (ADR-0080). S1 the docs build: collections under `/docs/`, one
   sidebar, asset emission, the nav link; S2 the generated tool reference (116
