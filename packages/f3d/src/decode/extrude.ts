@@ -87,6 +87,8 @@ export interface ProfileOperand {
   sketch: number;
   /** Selected regions; absent: the whole sketch. */
   regions?: ProfileRegion[];
+  /** A text-profile operand's text record: the profile is that text's ink. */
+  text?: number;
 }
 
 export function readProfileOperand(seg: Segment, id: number): ProfileOperand {

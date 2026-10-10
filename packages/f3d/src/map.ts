@@ -68,6 +68,8 @@ interface SketchEntry {
   placement: Placement;
   /** Extrudo curve ID → Fusion curve tag. */
   tags: Map<string, bigint>;
+  /** Fusion text record → Extrudo text entity ID. */
+  texts: Map<number, string>;
   fusion: F3dSketch;
 }
 
@@ -98,6 +100,28 @@ function numberExpression(value: number, unit: string): string {
   if (unit === '' || unit === 'Text') return `${v}`;
   // Lengths are stored in cm.
   return `${Number((value * 10).toPrecision(12))} mm`;
+}
+
+/** Extrudo's bundled fonts this import draws text in (`@extrudo/fonts`), by ID. */
+const FONTS = {
+  sans: { id: 'inter-regular@1', family: 'Inter' },
+  bold: { id: 'inter-bold@1', family: 'Inter Bold' },
+  serif: { id: 'noto-serif-regular@1', family: 'Noto Serif' },
+  mono: { id: 'jetbrains-mono-regular@1', family: 'JetBrains Mono' },
+  stencil: { id: 'allerta-stencil-regular@1', family: 'Allerta Stencil' },
+};
+
+/** Capital height over font size: Arial's, Fusion's usual font (and near most sans faces). */
+const CAP_HEIGHT = 0.716;
+
+/** The bundled font nearest a Fusion font family: Inter unless it is a serif, mono or stencil face. */
+function fontFor(family: string): { id: string; family: string } {
+  const f = family.toLowerCase();
+  if (/mono|courier|consol|menlo/.test(f)) return FONTS.mono;
+  if (/stencil/.test(f)) return FONTS.stencil;
+  if (/times|georgia|garamond|cambria|serif/.test(f) && !/sans/.test(f)) return FONTS.serif;
+  if (/bold|black|heavy/.test(f)) return FONTS.bold;
+  return FONTS.sans;
 }
 
 /** What the new design is stamped with (the app passes a fresh ID and its version). */
@@ -190,7 +214,7 @@ export function f3dToDesign(
     m[3] = (m[3] as number) + cm * (m[2] as number);
     m[7] = (m[7] as number) + cm * (m[6] as number);
     m[11] = (m[11] as number) + cm * (m[10] as number);
-    const placement = placeSketch(d, m, report, name);
+    const placement = placeSketch(d, m, report, name, entry.fusion.texts.length > 0);
     let made: SketchEntry | undefined;
     if (placement) {
       const fusion = { ...entry.fusion, frame: m };
@@ -204,13 +228,14 @@ export function f3dToDesign(
         sketch: fusion,
       };
       const tags = new Map<string, bigint>();
+      const texts = new Map<number, string>();
       const used = profileCurves.get(fusion.id) ?? new Set<string>();
       const handle = d.sketch(
         placement.plane,
-        (k) => drawSketch(k, copy, placement, tags, used, report),
+        (k) => drawSketch(k, copy, placement, { tags, texts }, used, report),
         { name },
       );
-      made = { handle, placement, tags, fusion };
+      made = { handle, placement, tags, texts, fusion };
     }
     moved.set(key, made);
     return made;
@@ -227,7 +252,13 @@ export function f3dToDesign(
     }
     try {
       if (feature.type === 'sketch') {
-        const placement = placeSketch(d, feature.sketch.frame, report, feature.name);
+        const placement = placeSketch(
+          d,
+          feature.sketch.frame,
+          report,
+          feature.name,
+          feature.sketch.texts.length > 0,
+        );
         if (!placement) {
           report.skipped.push({
             name: feature.name,
@@ -237,15 +268,22 @@ export function f3dToDesign(
           continue;
         }
         const tags = new Map<string, bigint>();
+        const texts = new Map<number, string>();
         const used = profileCurves.get(feature.sketch.id) ?? new Set<string>();
         const handle = d.sketch(
           placement.plane,
-          (k) => drawSketch(k, feature, placement, tags, used, report),
+          (k) => drawSketch(k, feature, placement, { tags, texts }, used, report),
           {
             name: feature.name,
           },
         );
-        sketches.set(feature.sketch.id, { handle, placement, tags, fusion: feature.sketch });
+        sketches.set(feature.sketch.id, {
+          handle,
+          placement,
+          tags,
+          texts,
+          fusion: feature.sketch,
+        });
         report.imported.push(feature.name);
       } else if (feature.type === 'extrude') {
         const made = extrude(d, feature, sketches, extrudes, expressionOf, movedSketch, report);
@@ -327,6 +365,8 @@ function placeSketch(
   m: Matrix,
   report: ImportReport,
   name: string,
+  /** Never mirror the sketch (text reads backwards in a mirror): face Fusion's normal instead. */
+  unmirrored = false,
 ): Placement | undefined {
   const X: Vec3 = [m[0] as number, m[4] as number, m[8] as number];
   const Y: Vec3 = [m[1] as number, m[5] as number, m[9] as number];
@@ -367,9 +407,9 @@ function placeSketch(
   for (const p of ORIGIN_PLANES) {
     const n = p.frame.normal as Vec3;
     if (Math.abs(Math.abs(dot(N, n)) - 1) > EPS) continue;
-    const plane = moved({ kind: 'plane', id: p.id }, n, p.label);
-    const origin = scale(n, dot(O, n));
-    return placed(plane, { origin, x: p.frame.x, y: p.frame.y, normal: n });
+    const frame = { origin: scale(n, dot(O, n)), x: p.frame.x, y: p.frame.y, normal: n };
+    if (unmirrored && placed({ kind: 'plane', id: p.id }, frame).mirrored) break;
+    return placed(moved({ kind: 'plane', id: p.id }, n, p.label), frame);
   }
   for (const [axis, a] of ORIGIN_AXES) {
     if (Math.abs(dot(N, a)) > EPS) continue;
@@ -399,15 +439,19 @@ function placeSketch(
   return undefined;
 }
 
-/** Draws a Fusion sketch's curves and points; returns the tags of every curve made. */
+/**
+ * Draws a Fusion sketch's curves, texts and points, noting the Fusion tag of
+ * every curve and the record of every text it makes.
+ */
 function drawSketch(
   k: SketchBuilder,
   feature: F3dSketchFeature,
   placement: Placement,
-  tags: Map<string, bigint>,
+  made: { tags: Map<string, bigint>; texts: Map<number, string> },
   profileCurves: Set<string>,
   report: ImportReport,
 ): void {
+  const { tags } = made;
   const s: F3dSketch = feature.sketch;
   const points = new Map<number, SketchPoint>(s.points.map((p) => [p.id, p]));
   const at = (id: number, fallback: Vec3): Vec2 => {
@@ -511,6 +555,26 @@ function drawSketch(
     }
     if (c.tag !== undefined) tags.set(h.id, c.tag);
     if (c.construction) setConstruction(h.id);
+  }
+  for (const t of s.texts) {
+    // Fusion's height is the font size and its box's bottom edge the
+    // baseline; Extrudo's height is the capitals'. Centred in the box: the
+    // font is Extrudo's own, so the width differs, and centring keeps the
+    // text where it was.
+    const base = [Math.cos(t.angle), Math.sin(t.angle)] as const;
+    const up = [-base[1], base[0]] as const;
+    const u = t.at[0] + (base[0] * t.width) / 2;
+    const v = t.at[1] + (base[1] * t.width) / 2;
+    const cap = t.height * CAP_HEIGHT;
+    const font = fontFor(t.font);
+    const h = k.text(
+      placement.map(u, v),
+      placement.map(u + up[0] * cap, v + up[1] * cap),
+      { text: t.text, font: font.id, align: 'center' },
+      { upright: false },
+    );
+    made.texts.set(t.id, h.id);
+    report.notes.push(`${feature.name}: text "${t.text}" in ${t.font} is drawn in ${font.family}.`);
   }
   // Points on their own (hole centres, reference points), except the
   // projected origin every sketch has.
@@ -740,6 +804,12 @@ function selectProfiles(
     const sketch = sketchOf(operand);
     if (typeof sketch === 'string') return sketch;
     entry ??= sketch;
+    if (operand.text !== undefined) {
+      const text = sketch.texts.get(operand.text);
+      if (!text) return 'its text was not imported';
+      profiles.push({ kind: 'sketchEntity', id: `${sketch.handle.id}/${text}` });
+      continue;
+    }
     const regions = sketch.handle.regions;
     if (!operand.regions) {
       profiles.push(...sketch.handle.profiles());

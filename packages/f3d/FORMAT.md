@@ -67,6 +67,8 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `F0130424…` | Sketch circle or arc | [wrapper ref], centre, normal, x axis, radius, start angle, end angle, ref centre point, [ref end, ref start], flags, owner backlink |
 | `111A78C2…` | Sketch conic (v0) | after the curve ids: f64 rho, `01 00`, then the curve as a spline stores it (u32 degree 2, f64 tolerance, knots, weights 1, rho / (1 − rho), 1, and the start, shoulder and end as poles); a trailer; refs to the shoulder, end and start points. The base level ends in the owner backlink |
 | `D82E012F…` | Sketch spline (v3) | derived level: the curve ids, an 8-byte carrier (all `ff`, or a reference); base level: two helper refs, ref end point, ref start point, `01 00`, u32 degree, f64 fit tolerance, then knots, weights (empty unless rational) and xyz poles, each `u32 n, u32 n, u32 8` and n × 1 or 3 f64; a trailer; owner backlink |
+| `F0B1AFA3…` | Sketch text (v3, v4) | leading block u32 n, n × (ref box line, u32); property block (`txt_tag`, `txt_tag_base`); f64 baseline angle, a byte, 4 bytes, 12 zero bytes, f32 1, wstr font family, f64 font size (cm), 2 bytes, the box corner the baseline starts from (2 f64), zeros (v4: and three bytes), wstr text, the box lines again, a trailer, owner backlink. The box runs along the baseline for the text's advance width and up (90° anticlockwise) for the font size; its bottom edge is the baseline |
+| `EA3B930A…` | Text box line | a sketch-line subclass: a ref to its text, then start and displacement as a line's |
 | `362B7EC3…` | Point incidence | u32 n, n refs to curves, u8, ref point |
 | `44A64366…` | Sketch | its base level's first reference is the placement |
 | `F47A46FB…` | Sketch placement | u8 identity, or 16 f64: the sketch-to-model matrix, row-major |
@@ -74,6 +76,7 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `DD405BC2…` | Extrude | op u32 (1 join, 2 cut, 3 intersect, 4 new body), direction u32 (1 one side, 2 two sides, 3 symmetric), face-extend u32, reversed u8, solid u8, start u8 (0 profile plane, 1 offset, 2 face) — at payload offset 9, 8, 7, 19 or 18 depending on the version |
 | `4BD53E5A…` | Sketch-profile operand | the sketch's record number as decimal UTF-16; record N + 3, when it is `0D57BD2F…`, selects regions |
 | `0D57BD2F…` | Profile regions | see below |
+| `92F9A5F4…` | Entity-profile operand | names its sketch as a sketch-profile operand does, and the entity by a `90055C05…` record reference: a text (`F0B1AFA3…`, or the older `E0618268…`, not read) whose letters are the profile |
 | `5D89B935…` | Operation table | u32 n × (u64 operation id, u64 record), or in newer files u32 n × (u64 operation id, u32 m, m × u64 records); then u32 k, k × u64 and the closing reference. Version 1 has another list in front |
 | `E3849A15…` | Revolve | op u32 (as an extrude's) then u32 2, at payload offset 6 (after an empty property block) or 2; a sketch-profile operand; a geometry operand for the axis; the angles are parameters it owns (`AlongAngle`, …) |
 | `5A1BF548…` | Geometry operand | refers to what it names: a sketch curve (`E2CEFD18…`: u64 0, u64 sketch record, u64 curve tag), an origin axis (`90055C05…`: u64 record), and its geometry in model space (`50AEE8B4…`: a line as start and displacement; `994C518A…`: a point; `CC54ECAD…`: a plane) |

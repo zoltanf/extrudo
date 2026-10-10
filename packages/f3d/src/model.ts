@@ -70,6 +70,7 @@ import {
   sketchSpline,
   type Vec3,
 } from './decode/sketch-geometry';
+import { SKETCH_TEXT, type SketchText, sketchText, TEXT_PROFILE_OPERAND } from './decode/text';
 import { TIMELINE, timeline } from './decode/timeline';
 import { Segment } from './segment';
 
@@ -97,6 +98,7 @@ export interface F3dSketch {
   circulars: SketchCircular[];
   /** Splines and conics. */
   splines: SketchSpline[];
+  texts: SketchText[];
 }
 
 interface FeatureBase {
@@ -311,7 +313,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         placement !== undefined
           ? (tryDecode(`placement #${placement}`, () => readPlacement(seg, placement)) ?? IDENTITY)
           : IDENTITY;
-      s = { id, frame, points: [], lines: [], circulars: [], splines: [] };
+      s = { id, frame, points: [], lines: [], circulars: [], splines: [], texts: [] };
       sketches.set(id, s);
     }
     return s;
@@ -332,6 +334,10 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   for (const id of seg.idsOf(SKETCH_SPLINE)) {
     const c = tryDecode(`spline #${id}`, () => sketchSpline.decode(seg, id));
     if (c?.owner !== undefined) sketchOf(c.owner).splines.push(c);
+  }
+  for (const id of seg.idsOf(SKETCH_TEXT)) {
+    const t = tryDecode(`text #${id}`, () => sketchText.decode(seg, id));
+    if (t?.owner !== undefined) sketchOf(t.owner).texts.push(t);
   }
   for (const id of seg.idsOf(SKETCH_CONIC)) {
     const c = tryDecode(`conic #${id}`, () => sketchConic.decode(seg, id));
@@ -400,9 +406,14 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
       }
       const profiles: ProfileOperand[] = [];
       for (const ref of scope.refs) {
-        if (seg.typeOf(ref)?.guid !== SKETCH_PROFILE_OPERAND) continue;
-        const p = tryDecode(`profile #${ref}`, () => readProfileOperand(seg, ref));
-        if (p) profiles.push(p);
+        const t = seg.typeOf(ref)?.guid;
+        if (t === SKETCH_PROFILE_OPERAND) {
+          const p = tryDecode(`profile #${ref}`, () => readProfileOperand(seg, ref));
+          if (p) profiles.push(p);
+        } else if (t === TEXT_PROFILE_OPERAND) {
+          const p = tryDecode(`text profile #${ref}`, () => readTextOperand(seg, ref));
+          if (p) profiles.push(p);
+        }
       }
       // A face operand's recipe lists the face first, then its neighbours.
       const named: F3dFace[] = [];
@@ -556,6 +567,21 @@ function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
   }
   if (!best) throw new F3dFormatError('no operation table found');
   return best;
+}
+
+/**
+ * A text-profile operand: its sketch, by record number as a sketch-profile
+ * operand names it, and the text, by a record reference (`90055C05…`).
+ */
+function readTextOperand(seg: Segment, id: number): ProfileOperand {
+  const { sketch } = readProfileOperand(seg, id);
+  const f = seg.frame(id);
+  for (const r of refsIn(seg, f.start, f.end))
+    if (seg.typeOf(r)?.guid === RECORD_REF) {
+      const text = readRecordRef(seg, r);
+      if (seg.typeOf(text)?.guid === SKETCH_TEXT) return { id, sketch, text };
+    }
+  throw new F3dFormatError(`Text profile #${id}: no text of this kind.`);
 }
 
 /** The recipes an operand group's edge or face operands point to. */

@@ -5,9 +5,11 @@
  * out of the repository; `corpus.test.ts` reads a folder of them.
  */
 
+import { readFileSync } from 'node:fs';
 import type { SketchData } from '@extrudo/core';
 import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
+import { loadFont } from '@extrudo/sketch/text';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ParameterValue } from './decode/parameters';
 import { f3dToDesign } from './map';
@@ -17,6 +19,10 @@ let kernel: Kernel;
 
 beforeAll(async () => {
   kernel = new Kernel(await loadOcct());
+  loadFont(
+    'inter-regular@1',
+    readFileSync(new URL('../../fonts/fonts/inter-regular.ttf', import.meta.url)),
+  );
 });
 
 afterAll(() => {
@@ -72,6 +78,7 @@ function washer(frame = IDENTITY): F3dDesign {
       lines: [],
       circulars: [outer.circle, inner.circle],
       splines: [],
+      texts: [],
     },
   };
   const extrude: F3dExtrude = {
@@ -377,6 +384,7 @@ describe('f3dToDesign', () => {
           lines: [],
           circulars: [hole.circle],
           splines: [],
+          texts: [],
         },
       },
       {
@@ -405,6 +413,47 @@ describe('f3dToDesign', () => {
     const { report } = f3dToDesign(f3d, 'Washer');
     expect(report.imported).toContain('C-Pattern1');
     expect(await volumes(f3d)).toEqual([expect.closeTo(RING - 4 * Math.PI * 0.5 ** 2 * 0.8, 3)]);
+  });
+
+  it('draws a text in its box, at Fusion size as capital height, and extrudes its letters', async () => {
+    const f3d = washer();
+    // "H" at 10 mm font size in Arial: a box 7.22 mm wide from (20, 0) mm.
+    f3d.features.push(
+      {
+        type: 'sketch',
+        id: 3,
+        kind: 'Sketch',
+        name: 'Sketch2',
+        suppressed: false,
+        parameters: [],
+        sketch: {
+          id: 6,
+          frame: IDENTITY,
+          points: [],
+          lines: [],
+          circulars: [],
+          splines: [],
+          texts: [
+            { id: 50, text: 'H', font: 'Arial', height: 1, angle: 0, at: [2, 0], width: 0.722 },
+          ],
+        },
+      },
+      {
+        ...(f3d.features[1] as F3dExtrude),
+        id: 4,
+        name: 'Extrude2',
+        parameters: [parameter({ name: 'd5', kind: 'AlongDistance', value: 0.2 })],
+        profiles: [{ id: 32, sketch: 6, text: 50 }],
+      },
+    );
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).toContain('Extrude2');
+    expect(report.notes.join('\n')).toContain('text "H" in Arial is drawn in Inter');
+    const [, letter] = await measures(f3d);
+    // Centred in the box, standing on its bottom edge, capitals 7.16 mm high.
+    expect(((letter?.bbox.min[0] ?? 0) + (letter?.bbox.max[0] ?? 0)) / 2).toBeCloseTo(23.61, 0);
+    expect(letter?.bbox.min[1]).toBeCloseTo(0, 1);
+    expect(letter?.bbox.max[1]).toBeCloseTo(7.16, 1);
   });
 
   it("reads Fusion's 180° drill point as flat, and its flip", async () => {
