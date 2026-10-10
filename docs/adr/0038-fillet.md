@@ -304,3 +304,34 @@ the arrow that writes `radius` stands at the end and the one that writes
 `radiusEnd` at the start. Rejected: asking the kernel for the start (a facade or
 report change for something the meshes already say), and keeping a Radius arrow
 at the first edge's middle for a variable set (a radius that isn't there).
+
+## Amendment 2026-10-10: two rounds meeting where one runs over a curve
+
+A design trapped OCCT with `RuntimeError: memory access out of bounds` on a
+three-edge, 10 mm fillet. Run natively with function names (a STEP of the body, the facade in
+a harness), the trap is `TopoDS_Iterator::Next` inside
+`TopOpeBRepBuild_Builder::MergeSolid`, called from `ChFi3d_Builder::Compute`
+after the rounds are computed: OCCT's rebuild of the solid reads a shape that
+isn't there. The cause, rebuilt by hand: the top edge of a step's wall whose
+round reaches down the wall past a rod lying along the step (the wall's
+boundary there is an arc 6.5 mm below the edge), and **another round meeting
+it at a corner**. That round alone builds a valid solid at any radius; with
+any second chain sharing one of its vertices it builds an invalid solid, throws
+inside `TopOpeBRepDS`, or traps, depending on where the rod's seam lies.
+A slanted straight boundary (a ridge instead of the rod) doesn't trap, and
+chains that don't touch it don't matter.
+
+**Decision.** `wallBeside` takes a `curves` flag: a curved boundary edge of
+the flat face (not one that starts at the edge's own ends) counts as a wall at
+its nearest point within the edge's length, sampled at 65 points.
+`addFillets` sets it for a chain that shares a vertex with another chain, so
+`filletRollsOff` refuses those radii before OCCT runs and the diagnosis
+reports what a person can act on: each chain builds alone, so it is status 4,
+"These fillets can't all be built where they meet. Try radii up to about
+6.4 mm, or fewer edges at once." A lone chain is checked as before (straight
+walls only), so the round that works alone still builds.
+
+Test: `kernel.test.ts` "refuses rounds that meet at a corner where one runs
+over a rod, instead of trapping OCCT" (the bar, step and rod by hand; it
+trapped before). Still open: an edge that is an arc, a curved face, and a
+curved boundary crossed by a lone chain go to OCCT unguarded, as before.

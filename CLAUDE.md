@@ -3358,7 +3358,11 @@ them. Notes further down that name a machine apply to that machine only.
   appear in the trace) and sweeping the parameter in separate processes. The
   fillet one is `Geom2dAdaptor_Curve::EvalD1` under `ChFi3d_Builder::StartSol`
   when a round's contact line leaves a face through a wall parallel to the
-  edge; the facade refuses it first (`filletRollsOff`). **Never `scope.keep`
+  edge; the facade refuses it first (`filletRollsOff`). The second one,
+  `memory access out of bounds` in `TopOpeBRepBuild_Builder::MergeSolid` under
+  `ChFi3d_Builder::Compute`, is two rounds meeting at a corner where one runs
+  over a curved boundary of its face (a rod lying on a step); `filletRollsOff`
+  refuses that too, for chains that meet another (ADR-0038's 2026-10-10 amendment). **Never `scope.keep`
   inside a loop or round that can still throw**: keep after the last thing
   that can fail (a later failure leaks what was kept; strict leaks catches it).
 - **Accessibility e2e** (`e2e/a11y.spec.ts`): axe per screen, both themes;

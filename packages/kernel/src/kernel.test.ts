@@ -183,6 +183,50 @@ describe('errors and ownership', () => {
     }
   });
 
+  it('refuses rounds that meet at a corner where one runs over a rod, instead of trapping OCCT', {
+    timeout: 60_000,
+  }, () => {
+    using scope = kernel.scope();
+    // A 20 × 100 × 25 bar stepped down to z = 12.5 from y = 40 on, with a rod of radius 7.5
+    // along the step (axis x = 10, z = 11): its top stands 6 mm proud of the floor, so it
+    // notches the step's wall 6.5 mm below the wall's top edge. The rod is turned half a
+    // turn about its axis, which puts its seam under the floor: the body that trapped.
+    const bar = scope.track(kernel.box([20, 100, 25]));
+    const notch = scope.track(kernel.box([22, 61, 13.5], [-1, 40, 12.5]));
+    const stepped = scope.track(kernel.cut(bar, notch)).shape;
+    const rod = scope.track(kernel.cylinder(7.5, 60, [10, 40, 11], [0, 1, 0]));
+    const turned = scope.track(kernel.transform(rod, [-1, 0, 0, 20, 0, 1, 0, 0, 0, 0, -1, 22]));
+    const above = scope.track(kernel.box([22, 62, 20], [-1, 39, 12.5]));
+    const bump = scope.track(kernel.common(turned.shape, above)).shape;
+    const body = scope.track(kernel.fuse(stepped, bump)).shape;
+    const edgeAt = (at: [number, number, number]) =>
+      kernel
+        .describe(body)
+        .edges.findIndex((e) => e.midpoint.every((v, i) => Math.abs(v - (at[i] as number)) < 1e-6));
+    const wallTop = edgeAt([10, 40, 25]);
+    const sideTop = edgeAt([0, 20, 25]);
+    expect(wallTop).toBeGreaterThanOrEqual(0);
+    expect(sideTop).toBeGreaterThanOrEqual(0);
+    // Alone, a 10 mm round on the wall's top edge reaches 10 mm down the wall and over the rod.
+    expect(kernel.isValid(scope.track(kernel.fillet(body, [wallTop], 10)).shape)).toBe(true);
+    // With the side's top edge rounded too, meeting it at (0, 40, 25), OCCT's rebuild of the
+    // solid trapped ("memory access out of bounds"): refused before OCCT runs.
+    try {
+      kernel.fillet(body, [wallTop, sideTop], 10);
+      expect.unreachable('two 10 mm rounds meeting where one runs over the rod');
+    } catch (error) {
+      expect(error).toBeInstanceOf(FilletError);
+      const [problem] = (error as FilletError).problems;
+      expect(problem?.kind).toBe('together');
+      if (problem?.kind !== 'together') return;
+      // Below 6.5 mm the round stays above the rod.
+      expect(10 * problem.factor).toBeGreaterThan(6);
+      expect(10 * problem.factor).toBeLessThan(6.5);
+      const smaller = scope.track(kernel.fillet(body, [wallTop, sideTop], 10 * problem.factor));
+      expect(kernel.isValid(smaller.shape)).toBe(true);
+    }
+  });
+
   it('rounds a whole chain of tangent edges and refuses two radii on one chain', () => {
     using scope = kernel.scope();
     const plate = scope.track(kernel.box([40, 40, 2]));

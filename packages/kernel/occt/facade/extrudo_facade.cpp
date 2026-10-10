@@ -4930,10 +4930,13 @@ private:
    * boundary edge of the flat face `face` that runs parallel to it on the
    * face's side and overlaps its length (a step or pocket wall, or the
    * face's far side): how far a round can reach into the face before that
-   * wall is in its way. -1 when there is none or it can't be told (the edge
-   * isn't a line, the face isn't flat).
+   * wall is in its way. With `curves`, a curved boundary edge counts too
+   * (a rod lying against the face, a hole): its nearest point within the
+   * edge's length, sampled; a curve that starts at the edge's own ends is
+   * left out, since the round ends there anyway. -1 when there is none or
+   * it can't be told (the edge isn't a line, the face isn't flat).
    */
-  static double wallBeside(const TopoDS_Edge& edge, const TopoDS_Face& face) {
+  static double wallBeside(const TopoDS_Edge& edge, const TopoDS_Face& face, bool curves) {
     try {
       BRepAdaptor_Surface surface(face);
       if (surface.GetType() != GeomAbs_Plane) return -1;
@@ -4963,8 +4966,22 @@ private:
       double nearest = -1;
       for (TopExp_Explorer it(face, TopAbs_EDGE); it.More(); it.Next()) {
         if (it.Current().IsSame(edge)) continue;
-        BRepAdaptor_Curve wall(TopoDS::Edge(it.Current()));
-        if (wall.GetType() != GeomAbs_Line) continue;
+        const TopoDS_Edge& other = TopoDS::Edge(it.Current());
+        BRepAdaptor_Curve wall(other);
+        if (wall.GetType() != GeomAbs_Line) {
+          TopoDS_Vertex shared;
+          if (!curves || BRep_Tool::Degenerated(other) || TopExp::CommonVertex(edge, other, shared)) continue;
+          const double first = wall.FirstParameter();
+          const double last = wall.LastParameter();
+          for (int k = 0; k <= 64; ++k) {
+            const gp_Vec p(origin, wall.Value(first + (last - first) * k / 64.0));
+            const double t = p.Dot(direction);
+            const double distance = p.Dot(inside);
+            if (distance < 1e-6 || t <= start + 1e-3 || t >= start + span - 1e-3) continue;
+            if (nearest < 0 || distance < nearest) nearest = distance;
+          }
+          continue;
+        }
         const gp_Vec p1(origin, wall.Value(wall.FirstParameter()));
         const gp_Vec p2(origin, wall.Value(wall.LastParameter()));
         const gp_Vec run = p2 - p1;
@@ -4998,8 +5015,16 @@ private:
    * `Geom2dAdaptor_Curve::EvalD1`, "null function or function signature
    * mismatch"), and a trap can corrupt the heap, so the radius is refused
    * before OCCT runs. Only straight edges between flat faces are checked.
+   *
+   * `corner` says the edge's chain meets another chain at a vertex (see
+   * addFillets); then a curved boundary counts as a wall too. A round whose
+   * contact line runs over a rod lying against the face (the top edge of a
+   * step's wall, a rod along the step) builds alone, but where another round
+   * meets it at a corner OCCT's rebuild of the solid (TopOpeBRepBuild's
+   * MergeSolid under ChFi3d_Builder::Compute) reads a shape that isn't there
+   * and traps ("memory access out of bounds"), or builds an invalid solid.
    */
-  static bool filletRollsOff(const EdgeFaceMap& edgeFaces, const TopoDS_Edge& edge, double radius) {
+  static bool filletRollsOff(const EdgeFaceMap& edgeFaces, const TopoDS_Edge& edge, double radius, bool corner) {
     const int at = edgeFaces.FindIndex(edge);
     if (at == 0) return false;
     std::vector<TopoDS_Face> around;
@@ -5013,7 +5038,7 @@ private:
     if (turn < 1e-6) return false;
     const double touch = turn > 3.14159 ? 1e9 : radius * std::tan(0.5 * turn);
     for (const TopoDS_Face& face : around) {
-      const double wall = wallBeside(edge, face);
+      const double wall = wallBeside(edge, face, corner);
       if (wall >= 0 && touch >= wall - 1e-6) return true;
     }
     return false;
@@ -5150,7 +5175,25 @@ private:
       builder.Add(radii[first], radii[first + 1], TopoDS::Edge(edges(staged[members[0]] + 1)));
     }
     // Last, so that a chain with two radii or an edge that can't be filleted is reported first.
+    using VertexMap = NCollection_Map<TopoDS_Shape, TopTools_ShapeMapHasher>;
+    std::vector<VertexMap> ends(static_cast<size_t>(builder.NbContours()) + 1);
     for (int contour = 1; contour <= builder.NbContours(); ++contour) {
+      for (int j = 1; j <= builder.NbEdges(contour); ++j) {
+        for (TopExp_Explorer v(builder.Edge(contour, j), TopAbs_VERTEX); v.More(); v.Next()) ends[contour].Add(v.Current());
+      }
+    }
+    // Whether the chain's round meets another chain's at a vertex (a corner).
+    const auto meets = [&](int contour) {
+      for (int other = 1; other <= builder.NbContours(); ++other) {
+        if (other == contour) continue;
+        for (VertexMap::Iterator v(ends[other]); v.More(); v.Next()) {
+          if (ends[contour].Contains(v.Key())) return true;
+        }
+      }
+      return false;
+    };
+    for (int contour = 1; contour <= builder.NbContours(); ++contour) {
+      const bool corner = meets(contour);
       for (size_t i = 0; i < staged.size(); ++i) {
         if (contourOf[i] != contour) continue;
         double widest = 0;
@@ -5158,7 +5201,7 @@ private:
           widest = std::max(widest, radii[perEdge * i + static_cast<size_t>(k)]);
         }
         for (int j = 1; j <= builder.NbEdges(contour); ++j) {
-          if (filletRollsOff(edgeFaces, builder.Edge(contour, j), widest)) return 3;
+          if (filletRollsOff(edgeFaces, builder.Edge(contour, j), widest, corner)) return 3;
         }
         break;
       }
