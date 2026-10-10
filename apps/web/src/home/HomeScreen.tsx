@@ -6,11 +6,13 @@ import {
   Import,
   Plus,
   Search,
+  Settings,
   ShieldAlert,
   Trash2,
   X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { useShortcuts } from '../commands/shortcuts';
 import {
   Button,
   ConfirmDialog,
@@ -35,8 +37,11 @@ import {
   importProject,
 } from '../project/actions';
 import { exampleHref, navigate, projectHref } from '../routes';
+import { preferencesAccess } from '../settings/displaySettings';
+import { SettingsDialog } from '../settings/SettingsDialog';
 import { ThemeMenu } from '../shell/ThemeMenu';
 import { useUpdateNotice } from '../shell/useUpdateNotice';
+import { useMarkingStyle } from '../shell/viewMenu';
 import { EXAMPLES } from './examples';
 import { TEMPLATES, type Template } from './gallery';
 import { usePersistence, useProjects } from './hooks';
@@ -51,6 +56,13 @@ type Sort = 'modified' | 'name';
  */
 export function HomeScreen({ platform }: { platform: Platform }) {
   const { choice, setChoice } = useTheme(platform.preferences);
+  const marking = useMarkingStyle(platform.preferences);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const shortcuts = useMemo(
+    () => [{ keys: 'Mod+,', inFields: true, run: () => setSettingsOpen(true) }],
+    [],
+  );
+  useShortcuts(shortcuts);
   const { projects, error, refresh } = useProjects(platform);
   const persistence = usePersistence(platform);
   const { toasts, push, dismiss } = useToasts();
@@ -140,9 +152,29 @@ export function HomeScreen({ platform }: { platform: Platform }) {
         <Wordmark className="text-[17px]" />
         <div className="flex-1" />
         <StorageBadge persistence={persistence} />
+        <IconButton
+          label="Settings"
+          shortcut="Ctrl+,"
+          hint="Your preferences: theme, navigation, sketch, 3D printing, export."
+          onClick={() => setSettingsOpen(true)}
+        >
+          <Settings size={18} strokeWidth={1.75} />
+        </IconButton>
         <ThemeMenu theme={choice} onThemeChange={setChoice} />
       </header>
 
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        preferences={platform.preferences}
+        display={preferencesAccess(platform.preferences)}
+        theme={choice}
+        onThemeChange={setChoice}
+        markingRadial={marking.radial}
+        onMarkingRadial={marking.toggle}
+        desktop={platform.desktop !== undefined}
+        installedSlicers={platform.installedSlicers}
+      />
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[1180px] flex-col gap-8 px-6 py-8">
           {!showTrash && (

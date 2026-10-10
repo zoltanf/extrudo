@@ -25,7 +25,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
 import type { Preferences } from '../platform';
 import type { ViewportStore } from '../viewport/store';
-import { DEFAULT_PRINT, type MaterialChoice, resolveMaterialChoice } from './material';
+import { DEFAULT_PRINT } from './material';
+import { materialStore } from './materialStore';
 import {
   cachedThickness,
   defaultMinimum,
@@ -58,8 +59,6 @@ const SLICE_MS = 40;
 
 /** Triangles per step inside a slice: the granularity the time box is checked at. */
 const STEP = 2000;
-
-const MATERIAL_PREFERENCE = 'print.material';
 
 export interface ThicknessTool {
   state: ThicknessState | undefined;
@@ -241,9 +240,7 @@ export function useThickness({
 
   /** Two line widths of the `print.material` preference (0.9 mm at the default 0.45). */
   const defaultLineWidth = () => {
-    const choice = resolveMaterialChoice(
-      preferences.get<Partial<MaterialChoice>>(MATERIAL_PREFERENCE, {}),
-    );
+    const choice = materialStore(preferences).get();
     const result = evaluation.evaluate(choice.lineWidth, 'unitless');
     return result.ok ? result.value : DEFAULT_PRINT.lineWidth;
   };

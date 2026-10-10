@@ -11,6 +11,8 @@
 export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   // Search (P1-14)
   commandPalette: ['Mod+K'],
+  // Settings (ADR-0082): the dialog of the person's preferences.
+  openSettings: ['Mod+,'],
   toolbox: ['S'],
   // Edit
   undo: ['Mod+Z'],

@@ -118,6 +118,8 @@ import { planeName, SECTION_TOOL, useSection } from '../section/useSection';
 import { readTopology, selectionRefs, sketchEntityIdsIn } from '../selection/items';
 import { type LookSketch, selectionLookTarget } from '../selection/lookAt';
 import { useModelSelection } from '../selection/useModelSelection';
+import { storeAccess } from '../settings/displaySettings';
+import { SettingsDialog } from '../settings/SettingsDialog';
 import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
 import { type ExportRequest, ExportSketchDialog } from '../sketch/ExportSketchDialog';
@@ -885,6 +887,8 @@ export function AppShell({
     [desktop, recentNames],
   );
   const [markingDialog, setMarkingDialog] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const displayAccess = useMemo(() => storeAccess(viewport), [viewport]);
   // `listing` builds a mode's commands for the Customize Marking Menu dialog: what the mode
   // offers whatever is selected now (Delete, Repeat last and the construction toggle included).
   const commandBuilder = useMemo(
@@ -954,6 +958,7 @@ export function AppShell({
         browser: { collapsed: browser.collapsed, toggle: browser.toggle },
         file: fileActions,
         theme: { choice, set: setChoice },
+        settings: { open: () => setSettingsOpen(true) },
         ...(listing
           ? { repeat: { id: m === 'model' ? 'extrude' : 'line' } }
           : lastTool && { repeat: { id: lastTool } }),
@@ -1822,6 +1827,7 @@ export function AppShell({
         }}
         viewport={viewport}
         onCustomizeMarking={() => setMarkingDialog(true)}
+        onSettings={() => setSettingsOpen(true)}
       />
       <TutorialCard tutorial={tutorial} />
       <ViewportHint
@@ -2202,6 +2208,20 @@ export function AppShell({
         apply={apply}
         open={parametersOpen}
         onOpenChange={setParametersOpen}
+      />
+      <SettingsDialog
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        preferences={platform.preferences}
+        display={displayAccess}
+        doc={doc}
+        theme={choice}
+        onThemeChange={setChoice}
+        markingRadial={markingStyle.radial}
+        onMarkingRadial={markingStyle.toggle}
+        onCustomizeMarking={() => setMarkingDialog(true)}
+        desktop={platform.desktop !== undefined}
+        installedSlicers={platform.installedSlicers}
       />
       <CustomizeMarkingMenu
         open={markingDialog}

@@ -30,6 +30,7 @@ function context(mode: 'model' | 'sketch', over: Partial<CommandContext> = {}): 
       versionHistory: vi.fn(),
     },
     theme: { choice: 'dark', set: vi.fn() },
+    settings: { open: vi.fn() },
     ...over,
   };
 }

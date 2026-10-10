@@ -135,6 +135,15 @@ for (const theme of ['dark', 'light'] as const) {
       await audit(page, `${theme} versions`);
       await page.keyboard.press('Escape');
 
+      // Settings (ADR-0082): the first page and the print settings.
+      await page.keyboard.press('Control+,');
+      await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+      await audit(page, `${theme} settings`);
+      await page.locator('[data-settings-section="printing"]').click();
+      await expect(page.locator('[data-settings-page="printing"]')).toBeVisible();
+      await audit(page, `${theme} settings 3D printing`);
+      await page.keyboard.press('Escape');
+
       // Command palette.
       await page.keyboard.press('Control+k');
       await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();

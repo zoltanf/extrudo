@@ -5,13 +5,16 @@ import { ExpressionInput } from '../parameters/ExpressionInput';
 import { TOOLS } from '../shell/tools';
 import {
   costText,
+  densityExpression,
   FILAMENT_DIAMETERS,
+  isDensityOverridden,
   lengthText,
   MATERIALS,
   type MaterialChoice,
   type PrintField,
   volumeText,
   weightText,
+  withDensity,
 } from './material';
 import type { PrintInfo } from './usePrintAids';
 
@@ -36,6 +39,13 @@ export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): 
   const { choice, estimate } = info;
   const tool = TOOLS.printInfo;
   const set = (change: Partial<MaterialChoice>) => info.setChoice(change);
+  /** A preset's density is the person's own once edited (an override, ADR-0082). */
+  const density =
+    choice.material === 'custom' ? choice.density : densityExpression(choice, choice.material);
+  const setDensity = (expression: string) =>
+    choice.material === 'custom'
+      ? set({ density: expression })
+      : set({ densities: withDensity(choice, choice.material, expression).densities });
   const number = (field: PrintField) => (expression: string) => info.evaluate(field, expression);
   /** A whole count of walls: a decimal one is rounded. */
   const walls = (expression: string, valid: boolean) => {
@@ -80,25 +90,32 @@ export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): 
           >
             {MATERIALS.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.label} · {m.density} g/cm³
+                {m.label} · {densityExpression(choice, m.id)} g/cm³
               </option>
             ))}
             <option value="custom">Custom density</option>
           </Select>
-          {choice.material === 'custom' && (
-            <>
-              <span className="pt-0.5 text-sm text-muted">Density</span>
-              <ExpressionInput
-                label="Density"
-                value={choice.density}
-                evaluate={number('density')}
-                format={(r) => `${r.value} g/cm³`}
-                onCommit={(density) => set({ density })}
-                onDraftChange={(density, valid) => {
-                  if (valid) set({ density });
-                }}
-              />
-            </>
+          <span className="pt-0.5 text-sm text-muted">Density</span>
+          <ExpressionInput
+            label="Density"
+            value={density}
+            evaluate={number('density')}
+            format={(r) => `${r.value} g/cm³`}
+            onCommit={setDensity}
+            onDraftChange={(expression, valid) => {
+              if (valid) setDensity(expression);
+            }}
+          />
+          {choice.material !== 'custom' && isDensityOverridden(choice, choice.material) && (
+            <button
+              type="button"
+              className="col-span-2 justify-self-end text-xs text-muted underline hover:text-ink"
+              onClick={() =>
+                setDensity(String(MATERIALS.find((m) => m.id === choice.material)?.density))
+              }
+            >
+              Reset to {MATERIALS.find((m) => m.id === choice.material)?.density} g/cm³
+            </button>
           )}
           <span className="text-sm text-muted">Filament</span>
           <fieldset className="m-0 flex gap-3 border-0 p-0">

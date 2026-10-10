@@ -30,14 +30,15 @@ import { readTopology } from '../selection/items';
 import type { ViewportStore } from '../viewport/store';
 import {
   checkPrintField,
+  chosenDensityExpression,
   DEFAULT_PRINT,
   type MaterialChoice,
   type PrintEstimate,
   type PrintField,
   presetDensity,
   printEstimate,
-  resolveMaterialChoice,
 } from './material';
+import { materialStore, useMaterialChoice } from './materialStore';
 import {
   analyzeOverhang,
   bedLevel,
@@ -57,8 +58,6 @@ import {
 /** The tools' IDs: the session's `activeTool` while their panel is open. */
 export const PRINT_INFO_TOOL = 'printInfo';
 export const OVERHANG_TOOL = 'overhang';
-
-const MATERIAL_PREFERENCE = 'print.material';
 
 // ---------------------------------------------------------------- print info
 
@@ -109,16 +108,10 @@ export function usePrintInfo({
   meshes,
   active,
 }: PrintInfoOptions): PrintInfo {
-  const [choice, setChoiceState] = useState<MaterialChoice>(() =>
-    resolveMaterialChoice(preferences.get<Partial<MaterialChoice>>(MATERIAL_PREFERENCE, {})),
-  );
+  // One store per preferences, shared with the Settings dialog (ADR-0082).
+  const choice = useMaterialChoice(preferences);
   const setChoice = useCallback(
-    (change: Partial<MaterialChoice>) =>
-      setChoiceState((current) => {
-        const next = { ...current, ...change };
-        preferences.set(MATERIAL_PREFERENCE, next);
-        return next;
-      }),
+    (change: Partial<MaterialChoice>) => materialStore(preferences).set(change),
     [preferences],
   );
 
@@ -142,10 +135,12 @@ export function usePrintInfo({
     [evaluate, choice],
   );
   const density = useMemo(() => {
-    if (choice.material !== 'custom') return presetDensity(choice.material);
-    const result = evaluate('density', choice.density);
+    const result = evaluate('density', chosenDensityExpression(choice));
+    // A preset whose own density doesn't evaluate any more (a deleted parameter) falls back
+    // to the built-in number rather than hiding the weight.
+    if (!result.ok && choice.material !== 'custom') return presetDensity(choice.material);
     return result.ok ? result.value : undefined;
-  }, [choice.material, choice.density, evaluate]);
+  }, [choice, evaluate]);
 
   // The bodies: those selected (a face or an edge picks its body), else every shown one.
   const ids = useMemo(() => initialBodies(bodyList, selection), [bodyList, selection]);

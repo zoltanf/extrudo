@@ -23,6 +23,7 @@ import {
   RefreshCw,
   Repeat2,
   ScanEye,
+  Settings,
   Shapes,
   Sun,
   SunMoon,
@@ -104,6 +105,8 @@ export interface CommandContext {
   /** The right-click menu's style (P3-11): the ring, or one plain list. */
   markingMenu?: { radial: boolean; toggle(): void; customize?: () => void };
   theme: { choice: ThemeChoice; set(choice: ThemeChoice): void };
+  /** Opens the Settings dialog (ADR-0082). */
+  settings?: { open(): void };
   /**
    * Tools that work because a feature dialog is registered for them
    * (P2-05), even while `shell/tools.ts` still names the task that brings them.
@@ -329,6 +332,13 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     ctx.browser.toggle,
     { icon: icon(PanelLeft), keywords: 'Panels browser tree' },
   );
+  if (ctx.settings) {
+    plain('openSettings', 'Settings…', 'Panels', ctx.settings.open, {
+      icon: icon(Settings),
+      inFields: true,
+      keywords: 'Panels settings preferences options theme density material units mouse navigation',
+    });
+  }
   if (ctx.markingMenu) {
     plain(
       'markingMenuStyle',

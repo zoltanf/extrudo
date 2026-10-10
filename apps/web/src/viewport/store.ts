@@ -274,7 +274,7 @@ export interface ViewportStoreOptions {
 
 const PREFERENCES_KEY = 'viewport';
 
-function loadSettings(preferences: Preferences): ViewportSettings {
+export function loadSettings(preferences: Preferences): ViewportSettings {
   const stored = preferences.get<Partial<ViewportSettings>>(PREFERENCES_KEY, {});
   return {
     ...DEFAULT_SETTINGS,

@@ -638,6 +638,17 @@ position (they work on any layout). The keys live in one table,
 sketch (P4-12; Offset Plane on the model); Shift+S is Section
 Analysis (P3-09); Q and J wait for their tools.
 
+### 5.1 Settings (ADR-0082)
+
+Ctrl+, opens the Settings dialog from anywhere (the gear's first item, Ctrl+K
+"Settings…", the home screen's gear). A modal dialog, sections in a list on the
+left and the selected page on the right (below 640 px one column with a select);
+General, View and navigation, Sketch, 3D printing, Export and, on the desktop,
+Desktop. The last section is remembered. Controls are the same state as the
+quick ones elsewhere (gear menu, sketch palette, Print Info, Export dialog), so
+the dialog never disagrees with them; numbers are `<ExpressionInput>`s with a
+per-field Reset when they differ from the default.
+
 ## 6. Home screen
 
 - A grid of project cards with thumbnail, name, modified time, and a hover
@@ -649,6 +660,7 @@ Analysis (P3-09); Q and J wait for their tools.
   benchmark fixtures B2, B4 and B5. A template opens as a new design under its
   own name (a copy, never the template's file) with its picture on the card;
   "Import" (`.extrudo`, STEP, STL, SVG).
+- A gear opens Settings (§5.1) next to the theme menu.
 - Search and sort. A trash view with restore.
 - The storage indicator warns if persistent storage is not granted.
 

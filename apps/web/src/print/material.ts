@@ -32,8 +32,13 @@ export type FilamentDiameter = (typeof FILAMENT_DIAMETERS)[number];
 export interface MaterialChoice {
   /** A preset, or `custom` with the density below. */
   material: MaterialId | 'custom';
-  /** Custom density in g/cm³, as an expression ("1.3"). */
+  /** Custom density in g/cm³, as an expression ("1.24"). */
   density: string;
+  /**
+   * A person's own density per preset (ADR-0082), as expressions: **only overrides**, so a
+   * preset without an entry follows the built-in value in `MATERIALS`.
+   */
+  densities?: Partial<Record<MaterialId, string>>;
   /** Filament diameter, mm. */
   diameter: FilamentDiameter;
   /** Perimeters (a whole count). */
@@ -51,7 +56,7 @@ export const DEFAULT_PRINT = { walls: 2, lineWidth: 0.45, infill: 15, price: 25 
 
 export const DEFAULT_MATERIAL: MaterialChoice = {
   material: 'pla',
-  density: '1.3',
+  density: '1.24',
   diameter: 1.75,
   walls: DEFAULT_PRINT.walls,
   lineWidth: String(DEFAULT_PRINT.lineWidth),
@@ -64,12 +69,61 @@ export const DEFAULT_MATERIAL: MaterialChoice = {
  * existed loads as it did, with those at their defaults.
  */
 export function resolveMaterialChoice(stored?: Partial<MaterialChoice>): MaterialChoice {
-  return { ...DEFAULT_MATERIAL, ...stored };
+  const choice = { ...DEFAULT_MATERIAL, ...stored };
+  // Only well-formed overrides count: an entry for an unknown material or a non-string is dropped.
+  const densities: Partial<Record<MaterialId, string>> = {};
+  const given: unknown = stored?.densities;
+  if (given && typeof given === 'object' && !Array.isArray(given)) {
+    for (const { id } of MATERIALS) {
+      const value = (given as Record<string, unknown>)[id];
+      if (typeof value === 'string' && value.trim() !== '') densities[id] = value;
+    }
+  }
+  if (Object.keys(densities).length > 0) choice.densities = densities;
+  else delete choice.densities;
+  return choice;
 }
 
 /** The density of a preset, g/cm³. */
 export function presetDensity(id: MaterialId): number {
   return (MATERIALS.find((m) => m.id === id) ?? MATERIALS[0]).density;
+}
+
+/** The expression a preset's density has now: the person's override, else the built-in value. */
+export function densityExpression(choice: MaterialChoice, id: MaterialId): string {
+  const own = choice.densities?.[id];
+  return typeof own === 'string' && own.trim() !== '' ? own : String(presetDensity(id));
+}
+
+/** The expression of the density of the chosen material (the custom one's own, or a preset's). */
+export function chosenDensityExpression(choice: MaterialChoice): string {
+  return choice.material === 'custom' ? choice.density : densityExpression(choice, choice.material);
+}
+
+/** Whether a person changed a preset's density (an override that isn't the built-in number). */
+export function isDensityOverridden(choice: MaterialChoice, id: MaterialId): boolean {
+  return choice.densities?.[id] !== undefined;
+}
+
+/**
+ * The choice with a preset's density set to `expression`. Writing the built-in number back
+ * removes the override, so an untouched material keeps following the built-in value.
+ */
+export function withDensity(
+  choice: MaterialChoice,
+  id: MaterialId,
+  expression: string,
+): MaterialChoice {
+  const { densities = {}, ...rest } = choice;
+  const next = { ...densities };
+  if (expression.trim() === String(presetDensity(id))) delete next[id];
+  else next[id] = expression;
+  return Object.keys(next).length > 0 ? { ...rest, densities: next } : rest;
+}
+
+/** The choice with a preset's density back at the built-in value. */
+export function withoutDensity(choice: MaterialChoice, id: MaterialId): MaterialChoice {
+  return withDensity(choice, id, String(presetDensity(id)));
 }
 
 // ------------------------------------------------------------------ the numbers
