@@ -163,6 +163,9 @@
 #include <STEPCAFControl_Writer.hxx>
 #include <Quantity_Color.hxx>
 #include <TDF_Label.hxx>
+#include <TDataStd_Name.hxx>
+#include <TCollection_ExtendedString.hxx>
+#include <TopLoc_Location.hxx>
 #include <TDocStd_Document.hxx>
 #include <XCAFDoc_ColorTool.hxx>
 #include <XCAFDoc_ColorType.hxx>
@@ -2110,13 +2113,30 @@ public:
   }
 
   /**
+   * Groups the shapes of the next writeStep() into assemblies (P6-05,
+   * ADR-0081 §7): one pushStepGroup() per shape, the index of its group or -1
+   * for none, and one pushStepGroupName() per group index, in order (a STEP
+   * string, as pushStepName()'s).
+   */
+  void clearStepGroups() {
+    stepGroups_.clear();
+    stepGroupNames_.clear();
+  }
+  void pushStepGroup(int group) { stepGroups_.push_back(group); }
+  void pushStepGroupName(const char* name) {
+    stepGroupNames_.emplace_back(name == nullptr ? "" : name);
+  }
+
+  /**
    * Writes the shapes staged with clearArgs()/pushArg() as one STEP AP242
    * file in millimetres, each shape a product named by pushStepName() (a
    * missing or empty name leaves OCCT's "Product <n>"). Names are STEP strings: encode
    * non-ASCII characters as \X2\…\X0\ first. When stageStepColor() gave some
    * shape a colour, the file is written through XDE (STEPCAFControl_Writer)
    * with each coloured solid's colour as a styled item; with none it is
-   * STEPControl_Writer's, exactly as before. Read the text with
+   * STEPControl_Writer's, exactly as before. When pushStepGroup() put some
+   * shape in a group, each group is an assembly product of its parts
+   * (writeStepAssembly()). Read the text with
    * exportTextPtr/Size. Returns its length in bytes, or -1.
    */
   int writeStep() {
@@ -2127,6 +2147,7 @@ public:
       for (size_t i = 0; i < args_.size(); ++i) {
         if (find(args_[i]) == nullptr) return failExport("STEP export failed: unknown shape.");
       }
+      if (stepGrouped()) return writeStepAssembly();
       if (stepColored()) return writeStepXde();
       STEPControl_Writer writer;
       int scanned = 0;
@@ -4312,6 +4333,101 @@ private:
     return result;
   }
 
+  /** Whether pushStepGroup() put any staged part in a group that has a name. */
+  bool stepGrouped() const {
+    for (size_t i = 0; i < args_.size() && i < stepGroups_.size(); ++i) {
+      const int g = stepGroups_[i];
+      if (g >= 0 && static_cast<size_t>(g) < stepGroupNames_.size()) return true;
+    }
+    return false;
+  }
+
+  /**
+   * writeStep() with groups (P6-05, ADR-0081 §7): an XCAF document holding
+   * one assembly per group, named after it, whose components are its parts
+   * at identity, and the parts in no group as free shapes. Every label is
+   * named through TDataStd_Name and written with XDE's name mode, so the
+   * names (already STEP strings) reach the products as they are; colours are
+   * the parts' as in writeStepXde(). The groups are transferred in order,
+   * then the loose parts.
+   */
+  int writeStepAssembly() {
+    // Declared first, so the writer (which keeps labels) goes before it.
+    Handle(TDocStd_Document) doc = new TDocStd_Document("BinXCAF");
+    XCAFDoc_DocumentTool::Set(doc->Main(), false);
+    XCAFDoc_DocumentTool::SetLengthUnit(doc, 1, UnitsMethods_LengthUnit_Millimeter);
+    int result = -1;
+    {
+      const Handle(XCAFDoc_ShapeTool) shapes = XCAFDoc_DocumentTool::ShapeTool(doc->Main());
+      const Handle(XCAFDoc_ColorTool) colors = XCAFDoc_DocumentTool::ColorTool(doc->Main());
+      std::vector<TDF_Label> groups;
+      std::vector<bool> used(stepGroupNames_.size(), false);
+      for (size_t i = 0; i < args_.size() && i < stepGroups_.size(); ++i) {
+        const int g = stepGroups_[i];
+        if (g >= 0 && static_cast<size_t>(g) < used.size()) used[g] = true;
+      }
+      for (size_t g = 0; g < stepGroupNames_.size(); ++g) {
+        TDF_Label label;
+        if (used[g]) {
+          label = shapes->NewShape();
+          TDataStd_Name::Set(label, TCollection_ExtendedString(stepGroupNames_[g].c_str()));
+        }
+        groups.push_back(label);
+      }
+      std::vector<TDF_Label> loose;
+      for (size_t i = 0; i < args_.size(); ++i) {
+        const TDF_Label label = shapes->AddShape(*find(args_[i]), false, false);
+        if (3 * i + 2 < stepColors_.size() && stepColors_[3 * i] >= 0) {
+          const Quantity_Color color(clamp01(stepColors_[3 * i]), clamp01(stepColors_[3 * i + 1]),
+                                     clamp01(stepColors_[3 * i + 2]), Quantity_TOC_sRGB);
+          colors->SetColor(label, color, XCAFDoc_ColorSurf);
+        }
+        if (i < stepNames_.size() && !stepNames_[i].empty()) {
+          TDataStd_Name::Set(label, TCollection_ExtendedString(stepNames_[i].c_str()));
+        }
+        const int g = i < stepGroups_.size() ? stepGroups_[i] : -1;
+        if (g >= 0 && static_cast<size_t>(g) < groups.size()) {
+          shapes->AddComponent(groups[g], label, TopLoc_Location());
+        } else {
+          loose.push_back(label);
+        }
+      }
+      shapes->UpdateAssemblies();
+      STEPCAFControl_Writer writer;
+      writer.SetNameMode(true);
+      writer.SetLayerMode(false);
+      writer.SetPropsMode(false);
+      writer.SetMetadataMode(false);
+      writer.SetSHUOMode(false);
+      writer.SetDimTolMode(false);
+      writer.SetMaterialMode(false);
+      bool ok = true;
+      std::vector<TDF_Label> roots;
+      for (const TDF_Label& label : groups) {
+        if (!label.IsNull()) roots.push_back(label);
+      }
+      roots.insert(roots.end(), loose.begin(), loose.end());
+      for (const TDF_Label& label : roots) {
+        if (!writer.Transfer(label, stepParameters())) {
+          ok = false;
+          failExport("STEP export failed: a body couldn't be translated.");
+          break;
+        }
+      }
+      if (ok) {
+        std::ostringstream out;
+        if (writer.WriteStream(out) != IFSelect_RetDone) {
+          failExport("STEP export failed: the file couldn't be written.");
+        } else {
+          exportText_ = out.str();
+          result = static_cast<int>(exportText_.size());
+        }
+      }
+    }
+    doc->Main().Root().ForgetAllAttributes(true);
+    return result;
+  }
+
   static double clamp01(double v) { return v < 0 ? 0 : (v > 1 ? 1 : v); }
 
   /** A label's colour: XCAFDoc_ColorSurf, else XCAFDoc_ColorGen. */
@@ -4366,6 +4482,9 @@ private:
   std::vector<std::string> stepNames_;
   /** Per staged STEP part, [r, g, b] in 0..1 (sRGB), or -1s for none (P4-12). */
   std::vector<double> stepColors_;
+  /** Per staged STEP part, its group's index or -1, and the groups' names (P6-05). */
+  std::vector<int> stepGroups_;
+  std::vector<std::string> stepGroupNames_;
   std::vector<double> numbers_;
   /** Walls staged for shellFaces(): face indices and their thicknesses. */
   std::vector<int> wallFaces_;
