@@ -43,6 +43,7 @@
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepBuilderAPI_GTransform.hxx>
 #include <BRepCheck_Analyzer.hxx>
+#include <BRepClass3d_SolidClassifier.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepFilletAPI_MakeChamfer.hxx>
 #include <BRepFilletAPI_MakeFillet.hxx>
@@ -208,6 +209,8 @@
 #include <cstdlib>
 #include <exception>
 #include <map>
+#include <memory>
+#include <array>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -1244,6 +1247,204 @@ public:
       return -1;
     }
   }
+
+  // ------------------------------------------------------- pose proximity --
+  //
+  // A joint's clearance check (P6-05 J3, ADR-0081's J3 amendment) measures the
+  // same two bodies at many poses of one of them. A session keeps what doesn't
+  // change between poses: every face of both shapes in its own frame with the
+  // box round it, and solid classifiers made the first time a containment
+  // needs one. A pose moves the queries, not the shape: a moving face is
+  // measured through a location (no copy), its box as an oriented box.
+
+  /**
+   * Opens a pose-proximity session for `moving` and `other` (two shapes that
+   * stay alive for it anyway: the session holds its own references), with
+   * `search` the distance in mm beyond which nothing needs an exact answer.
+   * Returns the session's id (> 0), or 0 and lastError().
+   */
+  int proximityOpen(int moving, int other, double search) {
+    beginOp();
+    const TopoDS_Shape* sm = find(moving);
+    const TopoDS_Shape* so = find(other);
+    if (sm == nullptr || so == nullptr) return fail("Proximity failed: unknown shape.");
+    if (!(search > 0)) return fail("Proximity failed: the search distance must be above 0.");
+    try {
+      ProximitySession session;
+      session.search = search;
+      proximityFaces(*sm, session.moving);
+      proximityFaces(*so, session.other);
+      // Several faces may move together (a moving body of many faces), so the
+      // moved triangles are kept per face for the pose that made them.
+      for (ProximityFace& f : session.moving) f.pose = -1;
+      proximitySolids(*sm, session.movingSolids);
+      proximitySolids(*so, session.otherSolids);
+      const int id = nextProximity_++;
+      proximity_.emplace(id, std::move(session));
+      return id;
+    } catch (...) {
+      return failFromException("Proximity failed");
+    }
+  }
+
+  /**
+   * The smallest distance between `moving` placed by the staged matrix (12
+   * numbers as transform() takes them; a move or a turn) and `other`: 0 where
+   * they touch, cross or one lies inside a solid of the other, capped at the
+   * session's search distance (which then means "nothing within it"). -1 on
+   * failure.
+   *
+   * geometryNumbers, under the search distance only: [from xyz on the placed
+   * moving shape, to xyz on other, moving face index, other face index] (a
+   * face index is -1 where one solid inside the other decided it).
+   *
+   * Exact: boxes only pick the face pairs, nearest first. Every pair whose box
+   * bound is under the best distance so far is measured face to face with
+   * BRepExtrema, so the answer is that of distance() on a moved copy.
+   */
+  double proximityPose(int id) {
+    beginOp();
+    geometry_.clear();
+    auto found = proximity_.find(id);
+    if (found == proximity_.end()) {
+      fail("Proximity failed: unknown session.");
+      return -1;
+    }
+    if (numbers_.size() != 12) {
+      fail("Proximity failed: the pose needs 12 numbers.");
+      return -1;
+    }
+    ProximitySession& s = found->second;
+    try {
+      const std::vector<double>& m = numbers_;
+      gp_Trsf trsf;
+      trsf.SetValues(m[0], m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], m[10], m[11]);
+      if (std::abs(trsf.ScaleFactor() - 1.0) > 1e-9) {
+        fail("Proximity failed: a pose only moves and turns.");
+        return -1;
+      }
+      const TopLoc_Location location(trsf);
+      // Rotation columns: the moved box's axes.
+      double axes[3][3];
+      for (int k = 0; k < 3; ++k) {
+        for (int j = 0; j < 3; ++j) axes[k][j] = m[4 * j + k];
+      }
+      ++s.pose;
+      // Candidates: every pair whose box bound is under the search distance,
+      // then bounded again by their triangles.
+      std::vector<std::pair<double, std::pair<int, int>>> pairs;
+      std::vector<std::array<double, 3>> centres(s.moving.size());
+      for (size_t i = 0; i < s.moving.size(); ++i) {
+        const ProximityFace& f = s.moving[i];
+        gp_Pnt c(f.centre[0], f.centre[1], f.centre[2]);
+        c.Transform(trsf);
+        centres[i] = {c.X(), c.Y(), c.Z()};
+      }
+      for (size_t i = 0; i < s.moving.size(); ++i) {
+        const ProximityFace& a = s.moving[i];
+        for (size_t j = 0; j < s.other.size(); ++j) {
+          const ProximityFace& b = s.other[j];
+          const double bound = proximityBound(centres[i].data(), axes, a.half, b.centre, b.half);
+          if (bound < s.search) pairs.push_back({bound, {static_cast<int>(i), static_cast<int>(j)}});
+        }
+      }
+      std::sort(pairs.begin(), pairs.end());
+      double best = s.search;
+      int bestA = -1;
+      int bestB = -1;
+      gp_Pnt from;
+      gp_Pnt to;
+      const auto exact = [&](int i, int j) {
+        const ProximityFace& a = s.moving[i];
+        const ProximityFace& b = s.other[j];
+        BRepExtrema_DistShapeShape measure(a.face.Moved(location), b.face, Extrema_ExtFlag_MIN);
+        if (!measure.IsDone() || measure.NbSolution() == 0) return;
+        const double d = measure.Value();
+        if (d < best) {
+          best = d;
+          bestA = i;
+          bestB = j;
+          from = measure.PointOnShape1(1);
+          to = measure.PointOnShape2(1);
+        }
+      };
+      const auto placed = [&](ProximityFace& a) -> const std::vector<ProximityTriangle>& {
+        if (a.pose != s.pose) {
+          a.placed = a.triangles;
+          for (ProximityTriangle& t : a.placed) proximityMove(t, trsf);
+          a.pose = s.pose;
+        }
+        return a.placed;
+      };
+      // The pair nearest at the last pose first: poses come in small steps,
+      // so it is usually nearest again, and its distance prunes the rest.
+      const std::pair<int, int> seed = s.last;
+      bool seeded = false;
+      for (const auto& [bound, pair] : pairs) {
+        if (pair == seed) {
+          exact(pair.first, pair.second);
+          seeded = true;
+          break;
+        }
+      }
+      // Bound the rest by their triangles, nearest boxes first, each pair only
+      // as far as the best distance so far needs.
+      std::vector<std::pair<double, std::pair<int, int>>> near;
+      // A pair can only matter if it may be nearer than the best by more than
+      // this (mm): under the 1e-6 the answer is held to, and over what a flat
+      // pair's bound falls short of its distance by (both faces' tolerances).
+      const double tie = 5e-7;
+      for (const auto& [bound, pair] : pairs) {
+        if (bound >= best - tie || best <= Precision::Confusion()) break;
+        if (seeded && pair == seed) continue;
+        ProximityFace& a = s.moving[pair.first];
+        const ProximityFace& b = s.other[pair.second];
+        double tight = bound;
+        if (!a.triangles.empty() && !b.triangles.empty()) {
+          const double slack = a.deflection + b.deflection;
+          tight = std::max(bound, proximityMeshDistance(placed(a), b.triangles, best + slack) - slack);
+        }
+        if (tight < best - tie) near.push_back({tight, pair});
+      }
+      std::sort(near.begin(), near.end());
+      for (const auto& [bound, pair] : near) {
+        if (bound >= best - tie || best <= Precision::Confusion()) break;
+        exact(pair.first, pair.second);
+      }
+      if (bestA >= 0) s.last = {bestA, bestB};
+      if (bestA >= 0) {
+        bestA = s.moving[bestA].index;
+        bestB = s.other[bestB].index;
+      }
+      // No face within reach of another, yet one solid may hold the other.
+      if (best > Precision::Confusion()) {
+        gp_Pnt inner;
+        if (proximityInside(s, trsf, inner)) {
+          best = 0;
+          bestA = -1;
+          bestB = -1;
+          from = inner;
+          to = inner;
+        } else if (best >= s.search) {
+          return s.search;
+        }
+      }
+      pushPoint(from);
+      pushPoint(to);
+      geometry_.push_back(bestA);
+      geometry_.push_back(bestB);
+      return best;
+    } catch (...) {
+      failFromException("Proximity failed");
+      return -1;
+    }
+  }
+
+  /** Frees a session (an unknown id is ignored). */
+  void proximityClose(int id) { proximity_.erase(id); }
+
+  /** Open sessions: a leak shows here. */
+  int proximitySessions() const { return static_cast<int>(proximity_.size()); }
 
   uintptr_t lookupPtr() const { return reinterpret_cast<uintptr_t>(lookup_.data()); }
   int lookupSize() const { return static_cast<int>(lookup_.size()); }
@@ -4226,6 +4427,411 @@ private:
   };
 
   std::unordered_map<int, TopoDS_Shape> shapes_;
+
+  /** A triangle of a face's mesh, with the sphere round it. */
+  struct ProximityTriangle {
+    double p[3][3];
+    double lo[3];
+    double hi[3];
+  };
+
+  /**
+   * A face of a proximity session: its box and its mesh in its shape's own
+   * frame, and how far the mesh may stray from the face (`deflection`).
+   */
+  struct ProximityFace {
+    TopoDS_Face face;
+    int index;
+    double centre[3];
+    double half[3];
+    std::vector<ProximityTriangle> triangles;
+    double deflection = 0;
+    /** The triangles moved to pose `pose` (moving faces only). */
+    std::vector<ProximityTriangle> placed;
+    int pose = -1;
+  };
+
+  /** A solid of a proximity session, for one body inside the other. */
+  struct ProximitySolid {
+    TopoDS_Shape solid;
+    gp_Pnt probe;
+    double centre[3];
+    double half[3];
+    std::shared_ptr<BRepClass3d_SolidClassifier> classifier;
+  };
+
+  struct ProximitySession {
+    std::vector<ProximityFace> moving;
+    std::vector<ProximityFace> other;
+    std::vector<ProximitySolid> movingSolids;
+    std::vector<ProximitySolid> otherSolids;
+    double search = 0;
+    int pose = 0;
+    /** The pair of faces (positions) nearest at the last pose. */
+    std::pair<int, int> last = {-1, -1};
+  };
+
+  std::unordered_map<int, ProximitySession> proximity_;
+  int nextProximity_ = 1;
+
+  /** Centre and half-size of a box grown by `by`; a void box gets an infinite one. */
+  static void proximityBox(const Bnd_Box& box, double centre[3], double half[3]) {
+    if (box.IsVoid()) {
+      for (int k = 0; k < 3; ++k) {
+        centre[k] = 0;
+        half[k] = Precision::Infinite();
+      }
+      return;
+    }
+    double lo[3];
+    double hi[3];
+    box.Get(lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]);
+    // Grown a little: a bound must never be above the true distance.
+    const double grow = 1e-6;
+    for (int k = 0; k < 3; ++k) {
+      centre[k] = 0.5 * (lo[k] + hi[k]);
+      half[k] = 0.5 * (hi[k] - lo[k]) + grow;
+    }
+  }
+
+  /** The mesh a proximity session bounds faces with: mm and radians. */
+  static constexpr double kProximityDeflection = 0.01;
+  static constexpr double kProximityAngle = 0.5;
+
+  static void proximityFaces(const TopoDS_Shape& shape, std::vector<ProximityFace>& out) {
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> faces;
+    TopExp::MapShapes(shape, TopAbs_FACE, faces);
+    // A copy is meshed, as exportMesh() does, so the shape's own (display)
+    // triangulation stays as it is; its faces are the shape's, in order.
+    BRepBuilderAPI_Copy copier(shape, false, false);
+    const TopoDS_Shape copy = copier.Shape();
+    BRepMesh_IncrementalMesh mesher(copy, kProximityDeflection, false, kProximityAngle, false);
+    NCollection_IndexedMap<TopoDS_Shape, TopTools_ShapeMapHasher> meshed;
+    TopExp::MapShapes(copy, TopAbs_FACE, meshed);
+    const bool paired = meshed.Extent() == faces.Extent();
+    for (int i = 1; i <= faces.Extent(); ++i) {
+      ProximityFace f;
+      f.face = TopoDS::Face(faces(i));
+      f.index = i - 1;
+      Bnd_Box box;
+      // From the geometry, not a mesh, and grown by the face's tolerance.
+      BRepBndLib::AddOptimal(f.face, box, false, true);
+      proximityBox(box, f.centre, f.half);
+      if (paired) proximityMesh(TopoDS::Face(meshed(i)), f);
+      out.push_back(f);
+    }
+  }
+
+  /**
+   * A face's triangles in its shape's frame and how far they may be from the
+   * face: the larger of the deflection asked for and the one BRepMesh measured,
+   * with a margin, plus the face's tolerance. A face that couldn't be meshed
+   * keeps no triangles, and its pairs are bounded by their boxes alone.
+   */
+  static void proximityMesh(const TopoDS_Face& face, ProximityFace& f) {
+    TopLoc_Location location;
+    const Handle(Poly_Triangulation)& triangulation = BRep_Tool::Triangulation(face, location);
+    if (triangulation.IsNull() || triangulation->NbTriangles() == 0) return;
+    const gp_Trsf transform = location.Transformation();
+    // A flat face bounded by straight edges is its triangles exactly (a box,
+    // a rib): only its tolerance is left. Ties between such faces are common
+    // (a rib's edge belongs to two faces), so this keeps them from all being
+    // measured.
+    bool exact = BRepAdaptor_Surface(face, false).GetType() == GeomAbs_Plane;
+    for (TopExp_Explorer e(face, TopAbs_EDGE); exact && e.More(); e.Next()) {
+      const TopoDS_Edge& edge = TopoDS::Edge(e.Current());
+      if (BRep_Tool::Degenerated(edge)) continue;
+      exact = BRepAdaptor_Curve(edge).GetType() == GeomAbs_Line;
+    }
+    f.deflection = BRep_Tool::Tolerance(face) + 1e-9;
+    if (!exact) f.deflection += 2 * std::max(kProximityDeflection, triangulation->Deflection());
+    f.triangles.reserve(triangulation->NbTriangles());
+    for (int t = 1; t <= triangulation->NbTriangles(); ++t) {
+      int n[3];
+      triangulation->Triangle(t).Get(n[0], n[1], n[2]);
+      ProximityTriangle tri;
+      for (int k = 0; k < 3; ++k) {
+        const gp_Pnt p = triangulation->Node(n[k]).Transformed(transform);
+        tri.p[k][0] = p.X();
+        tri.p[k][1] = p.Y();
+        tri.p[k][2] = p.Z();
+      }
+      proximityTriangleBox(tri);
+      f.triangles.push_back(tri);
+    }
+  }
+
+  static void proximityTriangleBox(ProximityTriangle& t) {
+    for (int j = 0; j < 3; ++j) {
+      t.lo[j] = std::min({t.p[0][j], t.p[1][j], t.p[2][j]});
+      t.hi[j] = std::max({t.p[0][j], t.p[1][j], t.p[2][j]});
+    }
+  }
+
+  static void proximityMove(ProximityTriangle& t, const gp_Trsf& trsf) {
+    for (int k = 0; k < 3; ++k) trsf.Transforms(t.p[k][0], t.p[k][1], t.p[k][2]);
+    proximityTriangleBox(t);
+  }
+
+  /** The smallest distance between two triangle sets, or `cutoff` if none is nearer. */
+  static double proximityMeshDistance(const std::vector<ProximityTriangle>& a,
+                                      const std::vector<ProximityTriangle>& b, double cutoff) {
+    double best = cutoff;
+    for (const ProximityTriangle& ta : a) {
+      for (const ProximityTriangle& tb : b) {
+        // The boxes' distance first: most triangles are far apart.
+        double gap = 0;
+        for (int j = 0; j < 3; ++j) {
+          const double g = std::max(ta.lo[j] - tb.hi[j], tb.lo[j] - ta.hi[j]);
+          if (g > 0) gap += g * g;
+        }
+        if (gap >= best * best) continue;
+        best = std::min(best, proximityTriangles(ta, tb));
+        if (best <= 0) return 0;
+      }
+    }
+    return best;
+  }
+
+  static double proximityDot(const double a[3], const double b[3]) {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  }
+
+  static void proximitySub(const double a[3], const double b[3], double out[3]) {
+    for (int j = 0; j < 3; ++j) out[j] = a[j] - b[j];
+  }
+
+  /** Squared distance from point p to triangle t (Ericson, Real-Time Collision Detection 5.1.5). */
+  static double proximityPointTriangle(const double p[3], const ProximityTriangle& t) {
+    const double* a = t.p[0];
+    const double* b = t.p[1];
+    const double* c = t.p[2];
+    double ab[3], ac[3], ap[3], q[3];
+    proximitySub(b, a, ab);
+    proximitySub(c, a, ac);
+    proximitySub(p, a, ap);
+    const auto at = [&](double u, double v) {
+      for (int j = 0; j < 3; ++j) q[j] = a[j] + u * ab[j] + v * ac[j];
+      double d[3];
+      proximitySub(p, q, d);
+      return proximityDot(d, d);
+    };
+    const double d1 = proximityDot(ab, ap);
+    const double d2 = proximityDot(ac, ap);
+    if (d1 <= 0 && d2 <= 0) return at(0, 0);
+    double bp[3];
+    proximitySub(p, b, bp);
+    const double d3 = proximityDot(ab, bp);
+    const double d4 = proximityDot(ac, bp);
+    if (d3 >= 0 && d4 <= d3) return at(1, 0);
+    const double vc = d1 * d4 - d3 * d2;
+    if (vc <= 0 && d1 >= 0 && d3 <= 0) return at(d1 / (d1 - d3), 0);
+    double cp[3];
+    proximitySub(p, c, cp);
+    const double d5 = proximityDot(ab, cp);
+    const double d6 = proximityDot(ac, cp);
+    if (d6 >= 0 && d5 <= d6) return at(0, 1);
+    const double vb = d5 * d2 - d1 * d6;
+    if (vb <= 0 && d2 >= 0 && d6 <= 0) return at(0, d2 / (d2 - d6));
+    const double va = d3 * d6 - d5 * d4;
+    if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
+      const double w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+      return at(1 - w, w);
+    }
+    const double denom = 1 / (va + vb + vc);
+    return at(vb * denom, vc * denom);
+  }
+
+  /** Squared distance between segments p1q1 and p2q2 (Ericson 5.1.9). */
+  static double proximitySegments(const double p1[3], const double q1[3], const double p2[3],
+                                  const double q2[3]) {
+    double d1[3], d2[3], r[3];
+    proximitySub(q1, p1, d1);
+    proximitySub(q2, p2, d2);
+    proximitySub(p1, p2, r);
+    const double a = proximityDot(d1, d1);
+    const double e = proximityDot(d2, d2);
+    const double f = proximityDot(d2, r);
+    double s = 0;
+    double t = 0;
+    const double eps = 1e-30;
+    if (a <= eps && e <= eps) {
+      s = t = 0;
+    } else if (a <= eps) {
+      t = std::clamp(f / e, 0.0, 1.0);
+    } else {
+      const double c = proximityDot(d1, r);
+      if (e <= eps) {
+        s = std::clamp(-c / a, 0.0, 1.0);
+      } else {
+        const double b = proximityDot(d1, d2);
+        const double denom = a * e - b * b;
+        s = denom > eps ? std::clamp((b * f - c * e) / denom, 0.0, 1.0) : 0.0;
+        t = (b * s + f) / e;
+        if (t < 0) {
+          t = 0;
+          s = std::clamp(-c / a, 0.0, 1.0);
+        } else if (t > 1) {
+          t = 1;
+          s = std::clamp((b - c) / a, 0.0, 1.0);
+        }
+      }
+    }
+    double d = 0;
+    for (int j = 0; j < 3; ++j) {
+      const double x = (p1[j] + d1[j] * s) - (p2[j] + d2[j] * t);
+      d += x * x;
+    }
+    return d;
+  }
+
+  /** Whether segment pq crosses triangle t (Möller–Trumbore, both ends included). */
+  static bool proximityCrosses(const double p[3], const double q[3], const ProximityTriangle& t) {
+    double dir[3], e1[3], e2[3], h[3], sv[3], qv[3];
+    proximitySub(q, p, dir);
+    proximitySub(t.p[1], t.p[0], e1);
+    proximitySub(t.p[2], t.p[0], e2);
+    h[0] = dir[1] * e2[2] - dir[2] * e2[1];
+    h[1] = dir[2] * e2[0] - dir[0] * e2[2];
+    h[2] = dir[0] * e2[1] - dir[1] * e2[0];
+    const double a = proximityDot(e1, h);
+    if (std::abs(a) < 1e-30) return false;  // parallel: the edge distances cover it
+    const double f = 1 / a;
+    proximitySub(p, t.p[0], sv);
+    const double u = f * proximityDot(sv, h);
+    if (u < 0 || u > 1) return false;
+    qv[0] = sv[1] * e1[2] - sv[2] * e1[1];
+    qv[1] = sv[2] * e1[0] - sv[0] * e1[2];
+    qv[2] = sv[0] * e1[1] - sv[1] * e1[0];
+    const double v = f * proximityDot(dir, qv);
+    if (v < 0 || u + v > 1) return false;
+    const double w = f * proximityDot(e2, qv);
+    return w >= 0 && w <= 1;
+  }
+
+  /** The distance between two triangles: 0 where they cross. */
+  static double proximityTriangles(const ProximityTriangle& a, const ProximityTriangle& b) {
+    for (int k = 0; k < 3; ++k) {
+      if (proximityCrosses(a.p[k], a.p[(k + 1) % 3], b)) return 0;
+      if (proximityCrosses(b.p[k], b.p[(k + 1) % 3], a)) return 0;
+    }
+    double best = Precision::Infinite();
+    for (int k = 0; k < 3; ++k) {
+      best = std::min(best, proximityPointTriangle(a.p[k], b));
+      best = std::min(best, proximityPointTriangle(b.p[k], a));
+      for (int l = 0; l < 3; ++l) {
+        best = std::min(best, proximitySegments(a.p[k], a.p[(k + 1) % 3], b.p[l], b.p[(l + 1) % 3]));
+      }
+    }
+    return std::sqrt(best);
+  }
+
+  static void proximitySolids(const TopoDS_Shape& shape, std::vector<ProximitySolid>& out) {
+    for (TopExp_Explorer it(shape, TopAbs_SOLID); it.More(); it.Next()) {
+      ProximitySolid s;
+      s.solid = it.Current();
+      TopExp_Explorer vertex(s.solid, TopAbs_VERTEX);
+      if (!vertex.More()) continue;
+      s.probe = BRep_Tool::Pnt(TopoDS::Vertex(vertex.Current()));
+      Bnd_Box box;
+      BRepBndLib::AddOptimal(s.solid, box, false, true);
+      proximityBox(box, s.centre, s.half);
+      out.push_back(s);
+    }
+  }
+
+  /**
+   * A lower bound of the distance between an oriented box (centre `a`, unit
+   * axes `axes[k]`, half-sizes `ha`) and an axis-aligned one (`b`, `hb`): the
+   * widest gap between their shadows on the 15 separating axes. A shadow on a
+   * unit axis is never longer than the distance it comes from, so the bound
+   * is safe, and it is exact for boxes apart across a face.
+   */
+  static double proximityBound(const double a[3], const double axes[3][3], const double ha[3],
+                               const double b[3], const double hb[3]) {
+    const double d[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+    // A sphere first: most pairs are far apart.
+    const double ra = std::sqrt(ha[0] * ha[0] + ha[1] * ha[1] + ha[2] * ha[2]);
+    const double rb = std::sqrt(hb[0] * hb[0] + hb[1] * hb[1] + hb[2] * hb[2]);
+    const double centres = std::sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+    double best = centres - ra - rb;
+    const auto gap = [&](const double l[3]) {
+      double rA = 0;
+      for (int k = 0; k < 3; ++k) {
+        rA += ha[k] * std::abs(l[0] * axes[k][0] + l[1] * axes[k][1] + l[2] * axes[k][2]);
+      }
+      const double rB = hb[0] * std::abs(l[0]) + hb[1] * std::abs(l[1]) + hb[2] * std::abs(l[2]);
+      return std::abs(l[0] * d[0] + l[1] * d[1] + l[2] * d[2]) - rA - rB;
+    };
+    for (int j = 0; j < 3; ++j) {
+      double l[3] = {0, 0, 0};
+      l[j] = 1;
+      best = std::max(best, gap(l));
+    }
+    for (int k = 0; k < 3; ++k) best = std::max(best, gap(axes[k]));
+    for (int j = 0; j < 3; ++j) {
+      for (int k = 0; k < 3; ++k) {
+        const double* u = axes[k];
+        // e_j × u_k, normalised.
+        double l[3] = {0, 0, 0};
+        l[(j + 1) % 3] = -u[(j + 2) % 3];
+        l[(j + 2) % 3] = u[(j + 1) % 3];
+        const double n = std::sqrt(l[0] * l[0] + l[1] * l[1] + l[2] * l[2]);
+        if (n < 1e-9) continue;
+        for (double& c : l) c /= n;
+        best = std::max(best, gap(l));
+      }
+    }
+    return std::max(0.0, best);
+  }
+
+  /** Whether a box (centre, half) moved by `trsf` lies inside another (axis-aligned). */
+  static bool proximityBoxInside(const double c[3], const double h[3], const gp_Trsf& trsf,
+                                 const double oc[3], const double oh[3]) {
+    for (int corner = 0; corner < 8; ++corner) {
+      gp_Pnt p(c[0] + ((corner & 1) ? h[0] : -h[0]), c[1] + ((corner & 2) ? h[1] : -h[1]),
+               c[2] + ((corner & 4) ? h[2] : -h[2]));
+      p.Transform(trsf);
+      const double q[3] = {p.X(), p.Y(), p.Z()};
+      for (int k = 0; k < 3; ++k) {
+        if (std::abs(q[k] - oc[k]) > oh[k]) return false;
+      }
+    }
+    return true;
+  }
+
+  static bool proximityIn(ProximitySolid& solid, const gp_Pnt& p) {
+    if (!solid.classifier) solid.classifier = std::make_shared<BRepClass3d_SolidClassifier>(solid.solid);
+    solid.classifier->Perform(p, Precision::Confusion());
+    return solid.classifier->State() == TopAbs_IN;
+  }
+
+  /**
+   * With no face near another: whether a solid of one shape lies inside a
+   * solid of the other at this pose (only asked where its box fits in the
+   * other's), and a point of the inner one.
+   */
+  static bool proximityInside(ProximitySession& s, const gp_Trsf& trsf, gp_Pnt& inner) {
+    const gp_Trsf back = trsf.Inverted();
+    for (ProximitySolid& a : s.movingSolids) {
+      for (ProximitySolid& b : s.otherSolids) {
+        if (proximityBoxInside(a.centre, a.half, trsf, b.centre, b.half)) {
+          const gp_Pnt p = a.probe.Transformed(trsf);
+          if (proximityIn(b, p)) {
+            inner = p;
+            return true;
+          }
+        }
+        if (proximityBoxInside(b.centre, b.half, back, a.centre, a.half)) {
+          if (proximityIn(a, b.probe.Transformed(back))) {
+            inner = b.probe;
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
   int nextHandle_;
   std::vector<int> args_;
   std::vector<int32_t> history_;

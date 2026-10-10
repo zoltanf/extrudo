@@ -115,6 +115,10 @@ export interface FacadeBinding {
   subShape(shape: number, kind: number, index: number): number;
   locate(part: number, whole: number, kind: number): number;
   distance(a: number, b: number): number;
+  proximityOpen(moving: number, other: number, search: number): number;
+  proximityPose(id: number): number;
+  proximityClose(id: number): void;
+  proximitySessions(): number;
   lookupPtr(): number;
   lookupSize(): number;
   describe(shape: number): number;

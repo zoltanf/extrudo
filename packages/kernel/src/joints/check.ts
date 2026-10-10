@@ -3,17 +3,25 @@
  * the joint's range, measures at each pose the smallest distance between the
  * moving bodies and every other live body, finds the tightest point and any
  * collision, and where the bodies come closer than the minimum gap. It runs
- * in the worker on the shapes of the last finished recompute through
- * existing `Kernel` calls only (no facade change): `transform` places a
- * moving body, `closestPoints` (or `minGap` for a mesh) measures, and where
- * the gap is 0, `common` tells touching from interference and names the
- * faces that collide.
+ * in the worker on the shapes of the last finished recompute: a
+ * `Kernel.proximity` session per pair of solid bodies measures every pose
+ * exactly without copying the moving body (ADR-0081's J3 amendment), `minGap`
+ * measures a pair with a mesh in it (on a `transform`ed copy), and where the
+ * gap is 0, `common` (on a transformed copy) tells touching from interference
+ * and names the faces that collide.
  */
 import type { BodyId, Joint, JointReport } from '@extrudo/core';
 import { apply, IDENTITY, type Matrix12, rotation, translation } from '../features/matrix';
 import { scale } from '../features/vec';
 import type { HistoryRecord } from '../history';
-import { type Kernel, KernelError, type ShapeHandle, type ShapeScope, type Vec3 } from '../kernel';
+import {
+  type Kernel,
+  KernelError,
+  type ProximitySession,
+  type ShapeHandle,
+  type ShapeScope,
+  type Vec3,
+} from '../kernel';
 import {
   coarseSamples,
   JOINT_SAMPLES,
@@ -137,6 +145,8 @@ interface Box {
 interface Pair {
   m: { id: BodyId; shape: ShapeHandle };
   o: { id: BodyId; shape: ShapeHandle };
+  /** The pose. */
+  matrix: Matrix12;
   /** The moving body placed at the pose (made once, by the first pair that asks). */
   place(): ShapeHandle;
 }
@@ -210,9 +220,21 @@ export async function checkJoint(
         return placed;
       };
       for (const [j, o] of others.entries()) {
-        if (meets(box, otherBoxes[j] as Box)) visit({ m, o, place });
+        if (meets(box, otherBoxes[j] as Box)) visit({ m, o, matrix, place });
       }
     }
+  };
+
+  /** One proximity session per pair of solid bodies, for the whole check. */
+  const sessions = new Map<string, ProximitySession>();
+  const session = (pair: Pair): ProximitySession => {
+    const key = `${pair.m.id}\u0000${pair.o.id}`;
+    let found = sessions.get(key);
+    if (!found) {
+      found = kernel.proximity(pair.m.shape, pair.o.shape, search);
+      sessions.set(key, found);
+    }
+    return found;
   };
 
   /** The smallest gap at a pose and where it is. */
@@ -221,10 +243,9 @@ export async function checkJoint(
     using scope = kernel.scope();
     pairsAt(v, scope, (pair) => {
       if (out.gap <= CONTACT) return;
-      const placed = pair.place();
-      if (kernel.isMesh(placed) || kernel.isMesh(pair.o.shape)) {
+      if (kernel.isMesh(pair.m.shape) || kernel.isMesh(pair.o.shape)) {
         // manifold-3d's own gap: a mesh has no closest points to show.
-        const gap = kernel.minGap(placed, pair.o.shape, search);
+        const gap = kernel.minGap(pair.place(), pair.o.shape, search);
         if (gap < out.gap) {
           out.gap = gap;
           out.pair = [pair.m.id, pair.o.id];
@@ -233,9 +254,10 @@ export async function checkJoint(
         }
         return;
       }
-      // Whole bodies: BRepExtrema prunes by its sub-shapes' boxes itself, and
-      // a face-by-face search from here measured slower (ADR-0081's Results).
-      const measured = kernel.closestPoints(placed, pair.o.shape);
+      // Solid bodies: the pair's session measures the pose without a copy
+      // (ADR-0081's J3 amendment). No points: nothing within the search distance.
+      const measured = session(pair).pose(pair.matrix);
+      if (measured.from === undefined) return;
       if (measured.distance < out.gap) {
         Object.assign(out, {
           gap: measured.distance,
@@ -277,168 +299,174 @@ export async function checkJoint(
   };
   const left = () => Math.max(0, MAX_JOINT_EVALS - used);
 
-  // 1. The coarse pass: gaps only.
-  const samples: Evaluation[] = [];
-  for (const [i, v] of coarse.entries()) {
-    await pause();
-    if (left() === 0) break;
-    samples.push(evaluate(v));
-    onProgress?.(i + 1, total);
-  }
-
-  // 2. Touching or interfering: a `common` at each contact run's middle; where
-  // that only touches, at its ends too, then the rest spread out. A contact
-  // sample without one is classified as the nearest one in its run that has.
-  const contact = (e: Evaluation) => e.gap <= CONTACT;
-  const runs = runsOf(samples.map(contact));
-  const measured = new Set<number>();
-  const interferes = (k: number) => ((samples[k] as Evaluation).volume ?? 0) > INTERFERENCE_VOLUME;
-  const tryCommon = async (k: number) => {
-    if (measured.has(k) || commons >= MAX_JOINT_COMMONS || left() === 0) return;
-    await pause();
-    measured.add(k);
-    overlap(samples[k] as Evaluation);
-  };
-  for (const [a, b] of runs) await tryCommon(Math.floor((a + b) / 2));
-  for (const [a, b] of runs) {
-    if (interferes(Math.floor((a + b) / 2))) continue;
-    await tryCommon(a);
-    await tryCommon(b);
-    for (let k = a; k <= b; k++) await tryCommon(k);
-  }
-  const collidesAt = (k: number): boolean => {
-    if (!contact(samples[k] as Evaluation)) return false;
-    const run = runs.find(([a, b]) => k >= a && k <= b);
-    if (!run) return false;
-    let nearest: number | undefined;
-    for (const j of measured) {
-      if (j < run[0] || j > run[1]) continue;
-      if (nearest === undefined || Math.abs(j - k) < Math.abs(nearest - k)) nearest = j;
-    }
-    // A run nobody could measure counts as a collision: say too much, not too little.
-    return nearest === undefined || interferes(nearest);
-  };
-  const state = samples.map((e, k) =>
-    collidesAt(k) ? 'collide' : e.gap < minGap ? 'under' : 'ok',
-  );
-
-  // 3. Each boundary between a colliding and a free pose, and between a pose
-  // under the minimum and one that isn't, to the step. Next to a free pose a
-  // collision starts where contact does; next to a touching one, only a
-  // `common` tells (while the budget lasts).
-  const touches = (v: number) => contact(evaluate(v));
-  const collides = (v: number) => {
-    const e = evaluate(v);
-    if (!contact(e)) return false;
-    if (commons >= MAX_JOINT_COMMONS) return true;
-    return (overlap(e).volume ?? 0) > INTERFERENCE_VOLUME;
-  };
-  const tight = (v: number) => evaluate(v).gap < minGap;
-  const collideEdge = new Map<number, number>();
-  const tightEdge = new Map<number, number>();
-  for (let k = 0; k + 1 < samples.length; k++) {
-    const a = samples[k] as Evaluation;
-    const b = samples[k + 1] as Evaluation;
-    const sa = state[k];
-    const sb = state[k + 1];
-    if ((sa === 'collide') !== (sb === 'collide')) {
+  try {
+    // 1. The coarse pass: gaps only.
+    const samples: Evaluation[] = [];
+    for (const [i, v] of coarse.entries()) {
       await pause();
-      const [free, hit] = sa === 'collide' ? [b.v, a.v] : [a.v, b.v];
-      const freeSample = sa === 'collide' ? b : a;
-      const predicate = contact(freeSample) ? collides : touches;
-      collideEdge.set(k, narrowBoundary(predicate, free, hit, step, Math.min(REFINE, left())).at);
+      if (left() === 0) break;
+      samples.push(evaluate(v));
+      onProgress?.(i + 1, total);
     }
-    if ((sa === 'ok') !== (sb === 'ok')) {
+
+    // 2. Touching or interfering: a `common` at each contact run's middle; where
+    // that only touches, at its ends too, then the rest spread out. A contact
+    // sample without one is classified as the nearest one in its run that has.
+    const contact = (e: Evaluation) => e.gap <= CONTACT;
+    const runs = runsOf(samples.map(contact));
+    const measured = new Set<number>();
+    const interferes = (k: number) =>
+      ((samples[k] as Evaluation).volume ?? 0) > INTERFERENCE_VOLUME;
+    const tryCommon = async (k: number) => {
+      if (measured.has(k) || commons >= MAX_JOINT_COMMONS || left() === 0) return;
       await pause();
-      const [free, hit] = sa === 'ok' ? [a.v, b.v] : [b.v, a.v];
-      tightEdge.set(k, narrowBoundary(tight, free, hit, step, Math.min(REFINE, left())).at);
+      measured.add(k);
+      overlap(samples[k] as Evaluation);
+    };
+    for (const [a, b] of runs) await tryCommon(Math.floor((a + b) / 2));
+    for (const [a, b] of runs) {
+      if (interferes(Math.floor((a + b) / 2))) continue;
+      await tryCommon(a);
+      await tryCommon(b);
+      for (let k = a; k <= b; k++) await tryCommon(k);
     }
-  }
-
-  const collisions: JointCheck['collisions'] = [];
-  for (const [a, b] of runsOf(state.map((s) => s === 'collide'))) {
-    const from = a > 0 ? (collideEdge.get(a - 1) ?? samples[a]?.v) : samples[a]?.v;
-    const to = b + 1 < samples.length ? (collideEdge.get(b) ?? samples[b]?.v) : samples[b]?.v;
-    let worst: Evaluation | undefined;
-    for (const e of all) {
-      if (e.volume === undefined || e.volume <= INTERFERENCE_VOLUME) continue;
-      if (e.v < (from as number) - 1e-9 || e.v > (to as number) + 1e-9) continue;
-      if (!worst || (e.volume as number) > (worst.volume as number)) worst = e;
-    }
-    collisions.push({
-      from: from as number,
-      to: to as number,
-      volume: worst?.volume ?? 0,
-      at: worst?.v ?? (samples[Math.floor((a + b) / 2)] as Evaluation).v,
-      faces: dedupe(worst?.faces ?? []),
-    });
-  }
-  const underMinimum: JointCheck['underMinimum'] = [];
-  for (const [a, b] of runsOf(state.map((s) => s !== 'ok'))) {
-    const from = a > 0 ? (tightEdge.get(a - 1) ?? samples[a]?.v) : samples[a]?.v;
-    const to = b + 1 < samples.length ? (tightEdge.get(b) ?? samples[b]?.v) : samples[b]?.v;
-    // The collisions inside cut it into the stretches before and after them.
-    let start = from as number;
-    const end = to as number;
-    const inside = collisions.filter((c) => c.to >= start && c.from <= end);
-    for (const c of inside) {
-      if (c.from > start) underMinimum.push({ from: start, to: c.from });
-      start = Math.max(start, c.to);
-    }
-    if (end > start || (end === start && !inside.some((c) => c.to >= start))) {
-      underMinimum.push({ from: start, to: end });
-    }
-  }
-
-  // 4. The tightest pose that doesn't collide, refined where it is a dip.
-  const free = (e: Evaluation) =>
-    Number.isFinite(e.gap) &&
-    !collisions.some((c) => e.v >= c.from - 1e-9 && e.v <= c.to + 1e-9) &&
-    (e.volume === undefined || e.volume <= INTERFERENCE_VOLUME);
-  const smallest = () => {
-    let best: Evaluation | undefined;
-    for (const e of all) if (free(e) && (!best || e.gap < best.gap)) best = e;
-    return best;
-  };
-  let best = smallest();
-  let over: { from: number; to: number } | undefined;
-  if (best) {
-    const k = samples.indexOf(best);
-    const flat = runsOf(samples.map((e) => free(e) && e.gap - (best as Evaluation).gap <= FLAT));
-    const stretch = flat.find(([a, b]) => k >= a && k <= b);
-    if (stretch && stretch[1] > stretch[0]) {
-      over = {
-        from: (samples[stretch[0]] as Evaluation).v,
-        to: (samples[stretch[1]] as Evaluation).v,
-      };
-      // Flat: the pose nearest as built stands for it, so its points can be shown unposed.
-      for (let j = stretch[0]; j <= stretch[1]; j++) {
-        const e = samples[j] as Evaluation;
-        if (Math.abs(e.v) < Math.abs(best.v)) best = e;
+    const collidesAt = (k: number): boolean => {
+      if (!contact(samples[k] as Evaluation)) return false;
+      const run = runs.find(([a, b]) => k >= a && k <= b);
+      if (!run) return false;
+      let nearest: number | undefined;
+      for (const j of measured) {
+        if (j < run[0] || j > run[1]) continue;
+        if (nearest === undefined || Math.abs(j - k) < Math.abs(nearest - k)) nearest = j;
       }
-    } else if (k >= 0 && best.gap > CONTACT && left() > 0) {
-      const lo = (samples[k - 1] ?? best).v;
-      const hi = (samples[k + 1] ?? best).v;
-      if (hi > lo) {
+      // A run nobody could measure counts as a collision: say too much, not too little.
+      return nearest === undefined || interferes(nearest);
+    };
+    const state = samples.map((e, k) =>
+      collidesAt(k) ? 'collide' : e.gap < minGap ? 'under' : 'ok',
+    );
+
+    // 3. Each boundary between a colliding and a free pose, and between a pose
+    // under the minimum and one that isn't, to the step. Next to a free pose a
+    // collision starts where contact does; next to a touching one, only a
+    // `common` tells (while the budget lasts).
+    const touches = (v: number) => contact(evaluate(v));
+    const collides = (v: number) => {
+      const e = evaluate(v);
+      if (!contact(e)) return false;
+      if (commons >= MAX_JOINT_COMMONS) return true;
+      return (overlap(e).volume ?? 0) > INTERFERENCE_VOLUME;
+    };
+    const tight = (v: number) => evaluate(v).gap < minGap;
+    const collideEdge = new Map<number, number>();
+    const tightEdge = new Map<number, number>();
+    for (let k = 0; k + 1 < samples.length; k++) {
+      const a = samples[k] as Evaluation;
+      const b = samples[k + 1] as Evaluation;
+      const sa = state[k];
+      const sb = state[k + 1];
+      if ((sa === 'collide') !== (sb === 'collide')) {
         await pause();
-        narrowMinimum((v) => evaluate(v).gap, lo, hi, step, Math.min(REFINE, left()));
-        best = smallest() ?? best;
+        const [free, hit] = sa === 'collide' ? [b.v, a.v] : [a.v, b.v];
+        const freeSample = sa === 'collide' ? b : a;
+        const predicate = contact(freeSample) ? collides : touches;
+        collideEdge.set(k, narrowBoundary(predicate, free, hit, step, Math.min(REFINE, left())).at);
+      }
+      if ((sa === 'ok') !== (sb === 'ok')) {
+        await pause();
+        const [free, hit] = sa === 'ok' ? [a.v, b.v] : [b.v, a.v];
+        tightEdge.set(k, narrowBoundary(tight, free, hit, step, Math.min(REFINE, left())).at);
       }
     }
-  }
-  onProgress?.(total, total);
 
-  const tightest: JointCheck['tightest'] =
-    best?.pair === undefined
-      ? undefined
-      : {
-          at: best.v,
-          gap: best.gap,
-          ...(over && { over }),
-          ...(best.from && best.to && { from: best.from, to: best.to }),
-          pair: best.pair,
+    const collisions: JointCheck['collisions'] = [];
+    for (const [a, b] of runsOf(state.map((s) => s === 'collide'))) {
+      const from = a > 0 ? (collideEdge.get(a - 1) ?? samples[a]?.v) : samples[a]?.v;
+      const to = b + 1 < samples.length ? (collideEdge.get(b) ?? samples[b]?.v) : samples[b]?.v;
+      let worst: Evaluation | undefined;
+      for (const e of all) {
+        if (e.volume === undefined || e.volume <= INTERFERENCE_VOLUME) continue;
+        if (e.v < (from as number) - 1e-9 || e.v > (to as number) + 1e-9) continue;
+        if (!worst || (e.volume as number) > (worst.volume as number)) worst = e;
+      }
+      collisions.push({
+        from: from as number,
+        to: to as number,
+        volume: worst?.volume ?? 0,
+        at: worst?.v ?? (samples[Math.floor((a + b) / 2)] as Evaluation).v,
+        faces: dedupe(worst?.faces ?? []),
+      });
+    }
+    const underMinimum: JointCheck['underMinimum'] = [];
+    for (const [a, b] of runsOf(state.map((s) => s !== 'ok'))) {
+      const from = a > 0 ? (tightEdge.get(a - 1) ?? samples[a]?.v) : samples[a]?.v;
+      const to = b + 1 < samples.length ? (tightEdge.get(b) ?? samples[b]?.v) : samples[b]?.v;
+      // The collisions inside cut it into the stretches before and after them.
+      let start = from as number;
+      const end = to as number;
+      const inside = collisions.filter((c) => c.to >= start && c.from <= end);
+      for (const c of inside) {
+        if (c.from > start) underMinimum.push({ from: start, to: c.from });
+        start = Math.max(start, c.to);
+      }
+      if (end > start || (end === start && !inside.some((c) => c.to >= start))) {
+        underMinimum.push({ from: start, to: end });
+      }
+    }
+
+    // 4. The tightest pose that doesn't collide, refined where it is a dip.
+    const free = (e: Evaluation) =>
+      Number.isFinite(e.gap) &&
+      !collisions.some((c) => e.v >= c.from - 1e-9 && e.v <= c.to + 1e-9) &&
+      (e.volume === undefined || e.volume <= INTERFERENCE_VOLUME);
+    const smallest = () => {
+      let best: Evaluation | undefined;
+      for (const e of all) if (free(e) && (!best || e.gap < best.gap)) best = e;
+      return best;
+    };
+    let best = smallest();
+    let over: { from: number; to: number } | undefined;
+    if (best) {
+      const k = samples.indexOf(best);
+      const flat = runsOf(samples.map((e) => free(e) && e.gap - (best as Evaluation).gap <= FLAT));
+      const stretch = flat.find(([a, b]) => k >= a && k <= b);
+      if (stretch && stretch[1] > stretch[0]) {
+        over = {
+          from: (samples[stretch[0]] as Evaluation).v,
+          to: (samples[stretch[1]] as Evaluation).v,
         };
-  return { samples: used, ...(tightest && { tightest }), collisions, underMinimum };
+        // Flat: the pose nearest as built stands for it, so its points can be shown unposed.
+        for (let j = stretch[0]; j <= stretch[1]; j++) {
+          const e = samples[j] as Evaluation;
+          if (Math.abs(e.v) < Math.abs(best.v)) best = e;
+        }
+      } else if (k >= 0 && best.gap > CONTACT && left() > 0) {
+        const lo = (samples[k - 1] ?? best).v;
+        const hi = (samples[k + 1] ?? best).v;
+        if (hi > lo) {
+          await pause();
+          narrowMinimum((v) => evaluate(v).gap, lo, hi, step, Math.min(REFINE, left()));
+          best = smallest() ?? best;
+        }
+      }
+    }
+    onProgress?.(total, total);
+
+    const tightest: JointCheck['tightest'] =
+      best?.pair === undefined
+        ? undefined
+        : {
+            at: best.v,
+            gap: best.gap,
+            ...(over && { over }),
+            ...(best.from && best.to && { from: best.from, to: best.to }),
+            pair: best.pair,
+          };
+    return { samples: used, ...(tightest && { tightest }), collisions, underMinimum };
+  } finally {
+    // A cancel or a failure closes them too.
+    for (const open of sessions.values()) open.close();
+  }
 }
 
 /** The faces of input `input` a `common` kept a piece of. */

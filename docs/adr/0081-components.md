@@ -657,6 +657,102 @@ the leaf's Ø10 knuckle (to `y` −5), so the hinge collided at 0°. Its plate i
 now the leaf's mirror (`y` −25.5…−5.5) with two bridges joining it to its
 knuckles, 0.5 mm clear of everything on the leaf.
 
+### J3 amendment, 2026-10-10: pose proximity
+
+The facade now measures a pair at many poses itself, the step the Results above
+recorded. **Three calls** (`packages/kernel/occt/facade/extrudo_facade.cpp`, one
+class, no overloads, no OCCT type in a signature):
+
+- `int proximityOpen(int moving, int other, double search)` → a session id (0 and
+  `lastError()` on failure). It keeps, per face of both shapes in their own
+  frames, the face (a reference, not a copy), its box (`BRepBndLib::AddOptimal`
+  from the geometry, grown by the face's tolerance and 1 µm) and its triangles
+  (a `BRepBuilderAPI_Copy` meshed at 0.01 mm and 0.5 rad, as `exportMesh` does,
+  so the shape's display triangulation is untouched), plus each solid's box,
+  a vertex of it and a `BRepClass3d_SolidClassifier` made the first time it is
+  needed.
+- `double proximityPose(int id)` reads the pose as 12 staged numbers
+  (`clearNumbers`/`pushNumber`, as `transform`) and returns the exact distance
+  between the moved `moving` and `other`, capped at `search`; under it,
+  `geometryNumbers` holds `[from xyz, to xyz, moving face, other face]` (a face
+  index is −1 where one solid inside the other decided it), the buffer
+  `closestPoints` reads. −1 on failure.
+- `void proximityClose(int id)`, and `int proximitySessions()` for leak tests.
+
+**The query moves, not the shape**: a moving face is measured as
+`face.Moved(location)` (a location, no rebuilt B-rep), its box as an oriented
+box, its triangles moved once per pose. A pose then: (1) a box bound for every
+face pair; (2) the pair nearest at the last pose measured first (poses come in
+small steps, so it usually is the nearest again, and its distance prunes the
+rest); (3) a triangle bound for each pair whose box bound is under the best so
+far; (4) `BRepExtrema_DistShapeShape` on the face pairs in order of that bound
+while it is under the best; (5) where no face is within reach, a solid of one
+inside a solid of the other (only asked where its box fits in the other's)
+gives 0, as `distance`'s `InnerSolution` does.
+
+**The lower bounds.** A pair's bound is the larger of two:
+
+- **Boxes**: the widest gap between the two boxes' shadows on the 15 separating
+  axes of an oriented box (the moved face's own-frame box) and an axis-aligned
+  one, after a sphere test. A shadow on a unit axis is never longer than the
+  distance it comes from, so it is safe whatever the geometry.
+- **Triangles**: the smallest triangle distance between the two meshes (a
+  crossing is 0; else the closest of 6 point–triangle and 9 segment–segment
+  distances, triangle boxes pruning first) **minus both faces' deflections**:
+  a face's deflection is its tolerance plus, unless it is flat and bounded by
+  straight edges (then its triangles are the face exactly), twice the larger
+  of the 0.01 mm asked for and the deflection BRepMesh measured. This trusts
+  BRepMesh's own deflection (with a factor of two) on curved faces, which is
+  what the task's choice of "a triangle distance minus both faces' mesh
+  deflections" accepts.
+
+A pair is measured exactly when its bound is under the best by more than
+5 × 10⁻⁷ mm: under the 10⁻⁶ the answer is held to, and over what a flat pair's
+bound falls short of its distance by (its two tolerances). Without that
+allowance a rib's edge, which belongs to two faces on each side, made 308 face
+pairs of one equal distance all be measured (215 ms a pose). The answer equals
+`closestPoints` on a moved copy within 10⁻⁶ mm (the native harness: within
+2 × 10⁻¹⁵ at all 66 poses of both hinges).
+
+**The kernel**: `Kernel.proximity(moving, other, search)` returns a
+`ProximitySession` (`pose(matrix) → { distance, from?, to?, faces? }`,
+`close()`, `[Symbol.dispose]`). `checkJoint` opens one per pair of solid bodies
+for the whole check and closes them all in `finally` (a cancel too); a mesh pair
+keeps `minGap` on a transformed copy, and `common` still runs on a transformed
+copy where the gap is 0. A pose with no points (nothing within `search`) counts
+as no gap for that pair, which is what `tightest`'s comment already said; the
+existing joint tests pass unedited.
+
+**Measured** (Ubuntu machine, `BENCH=1 pnpm vitest run
+packages/kernel/src/joints/check-bench --reporter=verbose`, which now also runs
+the old path through a kernel whose `proximity` is a moved copy and
+`closestPoints`, and checks that both give the same result, closest points
+aside):
+
+| Design | Faces | Poses | Old | New |
+|---|---|---|---|---|
+| The hinge fixture | 11 + 11 | 67 | 1,240 ms | 374 ms |
+| The ribbed hinge | 137 + 129 | 67 | 11,959 ms | 704 ms |
+
+(The old column is lower than the Results' 1.55 s and 16.3 s: another run on a
+quieter machine.) The native harness (`spikes/p6-05-joint-proximity/`, the
+poses that check measures, `-O2`): 1.92 s → 0.42 s and 14.7 s → 0.60 s for the
+distances alone; a session opens in 40 ms (11 faces) and 90–150 ms (137).
+
+**WASM size** (Node's zlib, gzip level 9 and brotli quality 11, as
+`scripts/measure-startup.mjs`): 20.58 / 6.66 / 4.63 MB raw / gzip / brotli
+before, 20.61 / 6.67 / 4.64 MB after (+32.6 kB raw, +14.1 kB gzip, +10.1 kB
+brotli); OCCT input hash `a246513b1c48`.
+
+Tested in `packages/kernel/src/joints/proximity.test.ts`: 50 seeded poses each
+of the fixture and the ribbed hinge (as built, turned, shifted into touching
+and overlap, and beyond `search`) equal `closestPoints` within 10⁻⁶ mm, their
+points lie on the shapes and the two faces as far apart as the distance (and
+are `closestPoints`' own wherever those agree; elsewhere the minimum is not
+unique, as the pin in its hole), the pin with no clearance, a solid inside
+another, open–200 poses–close flat on a kernel of its own with a leak control
+that must move the heap, and a cancelled check closing its sessions.
+
 ### S1–S9 (2026-10-10 to 2026-10-11)
 
 Every slice landed as §2–§9 describe; what each added beyond the text:
