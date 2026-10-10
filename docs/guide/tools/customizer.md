@@ -2,7 +2,7 @@
 title: Customizer
 section: Tools
 category: Home
-order: 16
+order: 17
 ---
 
 # Customizer

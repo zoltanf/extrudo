@@ -2126,6 +2126,18 @@ F1 (User Guide has no key), the guide's pictures are recorded by `pnpm demos
 -g guide` (`e2e/guide-shots.spec.ts`, like `-g tutorials`) and the tutorials are
 numbered 1 first-part, 2 storage-box, 3 name-tag, 4 bottle-cap.
 
+ADR-0082 (the owner, 2026-10-10) added **`.f3d` import**, `packages/f3d`
+(`@extrudo/f3d`, pure TS; deps `@extrudo/api`, core, sketch, `fflate`,
+`fzstd`; kernel test-only). `readF3d` decodes the archive into plain data
+(parameters, timeline, sketches, extrudes with their profile regions,
+fillet/chamfer edges as tagged ASM faces), `f3dToDesign` writes it through the
+API and returns a report (imported, skipped with why, notes); the format is in
+`packages/f3d/FORMAT.md`. The app's **Import .f3d…** (Home › Files,
+`importFusionFile` in `project/actions.ts`, its own lazy chunk) makes a new
+design. No sample files in the repo: `F3D_SAMPLES=<dir>` runs
+`corpus.test.ts`. Gaps (face profiles, start offsets, holes, revolves,
+patterns, components, sketch dimensions) are in the ADR.
+
 Next (tasks may run in parallel on separate branches and worktrees, merged to
 main one at a time): Phases 0, 1, 2, 3 and 5 are complete, Phase 4 is complete
 apart from **P4-12's remaining backlog** (the items `docs/03-roadmap.md` still

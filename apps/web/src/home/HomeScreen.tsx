@@ -32,6 +32,7 @@ import {
   createTutorialProject,
   describeError,
   exportProject,
+  importFusionFile,
   importProject,
 } from '../project/actions';
 import { exampleHref, navigate, projectHref } from '../routes';
@@ -104,6 +105,10 @@ export function HomeScreen({ platform }: { platform: Platform }) {
   const importFile = () =>
     importProject(platform)
       .then((summary) => summary && open(summary.id))
+      .catch((e: unknown) => push('error', `Import failed: ${describeError(e)}`));
+  const importFusion = () =>
+    importFusionFile(platform)
+      .then((id) => id && open(id))
       .catch((e: unknown) => push('error', `Import failed: ${describeError(e)}`));
 
   const actions: CardActions = {
@@ -292,6 +297,10 @@ export function HomeScreen({ platform }: { platform: Platform }) {
                   <Button onClick={() => void importFile()}>
                     <Import size={16} />
                     Import .extrudo
+                  </Button>
+                  <Button onClick={() => void importFusion()}>
+                    <Import size={16} />
+                    Import .f3d
                   </Button>
                   <Button variant="ghost" onClick={() => setShowTrash(true)}>
                     <Trash2 size={16} />

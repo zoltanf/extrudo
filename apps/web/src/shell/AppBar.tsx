@@ -47,6 +47,8 @@ export interface FileActions {
   home(): void;
   exportFile(): void;
   importFile(): void;
+  /** Picks a Fusion `.f3d` file and opens it as a new design. */
+  importFusion?(): void;
   /** Opens the model's export (STL, 3MF, STEP; P2-12). */
   exportModel?(): void;
   /** Picks a STEP, mesh or OpenSCAD file and opens the Import dialog (P4-06, P5-04). */

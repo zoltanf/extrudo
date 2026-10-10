@@ -2,7 +2,7 @@
 title: Torus
 section: Tools
 category: Solid
-order: 27
+order: 28
 ---
 
 # Torus

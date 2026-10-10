@@ -24,6 +24,7 @@ import {
   createTutorialProject,
   describeError,
   exportProject,
+  importFusionFile,
   importProject,
   loadProject,
   takeOpenNotices,
@@ -165,6 +166,11 @@ function ProjectEditor({
       importFile: () => {
         importProject(platform)
           .then((summary) => summary && navigate(projectHref(summary.id)))
+          .catch((error: unknown) => push('error', `Import failed: ${describeError(error)}`));
+      },
+      importFusion: () => {
+        importFusionFile(platform)
+          .then((id) => id && navigate(projectHref(id)))
           .catch((error: unknown) => push('error', `Import failed: ${describeError(error)}`));
       },
       // Desktop only (ADR-0075, 2026-10-09): the Home tab's Open File tile.

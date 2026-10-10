@@ -2,7 +2,7 @@
 title: 3-Point Circle
 section: Tools
 category: Sketch
-order: 72
+order: 73
 ---
 
 # 3-Point Circle

@@ -1,6 +1,6 @@
 # Can Extrudo import Fusion 360 designs? (research, 2026-10-09)
 
-Research only: no product code changed. **Deferred by the owner on 2026-10-10** (`docs/03-roadmap.md`, Open decisions 5). The probe script is
+Research only: no product code changed. **Deferred by the owner on 2026-10-10** (`docs/03-roadmap.md`, Open decisions 5); later that day the owner chose to read `.f3d` directly after all (ADR-0082, `@extrudo/f3d`), against this document's route B advice. The probe script is
 `spikes/fusion-import/inspect_f3d.py`. Not legal advice: section 2 lists what
 the owner should have checked by a lawyer.
 

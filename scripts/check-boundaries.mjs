@@ -41,6 +41,10 @@ const ALLOWED = {
   // kernel is a devDependency only, for the tests that recompute a design
   // headless (`examples.test.ts`).
   '@extrudo/api': ['@extrudo/core', '@extrudo/sketch', '@extrudo/storage', '@extrudo/kernel'],
+  // The Fusion .f3d importer: decodes the archive and builds the design
+  // through the document API (and the sketch package's profile detection, to
+  // match Fusion's profile regions). The kernel only in its tests.
+  '@extrudo/f3d': ['@extrudo/api', '@extrudo/core', '@extrudo/sketch', '@extrudo/kernel'],
   // The script runner (ADR-0070): user code in QuickJS, building features
   // through @extrudo/api. Nothing of the kernel's: the kernel gets the runner
   // injected, so this package stays out of its dependency graph.
@@ -70,6 +74,8 @@ const ALLOWED = {
   '@extrudo/web': [
     // Only the macro dialog imports it, lazily, for the emitter (P5-05, ADR-0073 §4).
     '@extrudo/api',
+    // The .f3d import, loaded lazily when the user picks a file.
+    '@extrudo/f3d',
     '@extrudo/core',
     '@extrudo/sketch',
     '@extrudo/kernel',
@@ -94,7 +100,7 @@ function* sourceFiles(dir) {
   }
 }
 
-const importPattern = /(?:from\s+|import\s*\(\s*|import\s+)['"](@extrudo\/[a-z-]+)/g;
+const importPattern = /(?:from\s+|import\s*\(\s*|import\s+)['"](@extrudo\/[a-z0-9-]+)/g;
 const problems = [];
 
 for (const dir of workspaceDirs) {

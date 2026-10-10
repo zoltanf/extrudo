@@ -1211,3 +1211,6 @@ don't let Phase 3 features be built without it.
    Autodesk's cloud conversion were rejected. Small follow-ups that need neither:
    STEP part names as body names, and a guide page on bringing a Fusion design
    over.
+   **Amended 2026-10-10 (owner):** read `.f3d` files directly after all, with
+   our own decoder (ADR-0082, `@extrudo/f3d`); a test on 250 of the owner's
+   designs showed it practical. The add-in route stays deferred.

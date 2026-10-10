@@ -2,7 +2,7 @@
 title: Sphere
 section: Tools
 category: Solid
-order: 26
+order: 27
 ---
 
 # Sphere
