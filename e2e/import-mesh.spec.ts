@@ -38,6 +38,7 @@ const CUBE_STL = 'fixtures/imports/cube.stl';
 const TWO_PARTS_3MF = 'fixtures/imports/two-parts.3mf';
 const OBJ = 'fixtures/imports/bracket-y-up.obj';
 const OPEN_STL = 'fixtures/imports/open.stl';
+const TOUCHING_CUBES = 'fixtures/imports/touching-cubes.stl';
 
 const viewport = (page: Page) => page.getByRole('region', { name: 'Viewport' });
 const dialog = (page: Page, name = 'Import dialog') => page.getByRole('region', { name });
@@ -154,6 +155,26 @@ test('an open mesh says how many open edges it has, and cannot be committed', as
   await expect(panel.getByRole('button', { name: /^OK/ })).toHaveAttribute('aria-disabled', 'true');
   await expect(chip(page, 'Import1')).toHaveCount(0);
   expect(await bodies(page)).toEqual([]);
+});
+
+test('two touching cubes separate: the import warns and gives two bodies', async ({ page }) => {
+  await openProject(page);
+  await kernelReady(page);
+  const panel = await importFile(page, TOUCHING_CUBES);
+  await expect(panel).toHaveAttribute('data-preview-status', 'warning', { timeout: 90_000 });
+  await expect(panel.getByRole('status', { name: 'Feature status' })).toContainText(
+    'touching-cubes.stl: 1 edge where parts touch was separated.',
+  );
+  await panel.getByRole('button', { name: /^OK/ }).click();
+  // The parts touch but are separate bodies now (ADR-0066's 2026-10-09 amendment).
+  await expect
+    .poll(async () => sizes(page), { timeout: 60_000 })
+    .toEqual([
+      [20, 20, 20],
+      [20, 20, 20],
+    ]);
+  expect((await bodies(page)).map((b) => b.faces)).toEqual([1, 1]);
+  await expect(chip(page, 'Import1')).toHaveAttribute('data-feature-status', 'warning');
 });
 
 test('a feature that needs a solid refuses a mesh body with one message', async ({ page }) => {

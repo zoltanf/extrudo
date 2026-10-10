@@ -31,6 +31,8 @@ export {
   type MeshObject,
   mergeMeshes,
   meshBounds,
+  type NonManifoldSplit,
+  splitNonManifoldEdges,
   type TriangleMesh,
   triangleNormal,
 } from './mesh';

@@ -1,4 +1,4 @@
-import { checkManifold, type TriangleMesh } from '@extrudo/io';
+import { checkManifold, splitNonManifoldEdges, type TriangleMesh } from '@extrudo/io';
 import { decodeHistory, type HistoryRecord, type SubShapeKind } from './history';
 import type { Manifold, ManifoldToplevel, Mat4 } from './manifold';
 import type { BodyMesh, ExportMesh, Measurements, MeshOptions } from './mesh';
@@ -539,15 +539,24 @@ export class Kernel {
    * solid, whose handles are the body. A mesh that isn't closed is refused
    * with a `MeshError` carrying what `checkManifold` found, so the feature can
    * word the message with the file's name.
+   *
+   * Where surfaces touch along an edge or at a vertex (an STL Extrudo itself
+   * wrote of two bodies that meet), the weld would glue them together
+   * (ADR-0066's 2026-10-09 amendment): `splitNonManifoldEdges` separates them
+   * first, so the parts stay distinct bodies that still touch geometrically.
+   * `onSplit` hears how many edges were separated.
    */
-  meshFrom(mesh: TriangleMesh): ShapeHandle {
+  meshFrom(mesh: TriangleMesh, onSplit?: (edges: number) => void): ShapeHandle {
     const module = this.#manifold;
     if (!module) {
       throw new KernelError(
         "Mesh bodies need the mesh kernel, which isn't loaded (the document has no mesh import).",
       );
     }
-    const report = checkManifold(mesh);
+    const separated = splitNonManifoldEdges(mesh);
+    if (separated.split > 0) onSplit?.(separated.split);
+    const solid = separated.mesh;
+    const report = checkManifold(solid);
     const problem: MeshProblem = {
       openEdges: report.boundaryEdges,
       nonManifoldEdges: report.nonManifoldEdges,
@@ -559,11 +568,13 @@ export class Kernel {
     if (!report.ok) throw new MeshError(meshNotSolid(problem), problem);
     const gl = new module.Mesh({
       numProp: 3,
-      vertProperties: Float32Array.from(mesh.positions),
-      triVerts: mesh.indices,
+      vertProperties: Float32Array.from(solid.positions),
+      triVerts: solid.indices,
     });
-    // Weld the corners that are the same point but sit apart in the file.
-    gl.merge();
+    // Weld the corners that are the same point but sit apart in the file. When
+    // the mesh was split, its duplicate nodes are deliberate: they must not be
+    // welded back together, so the split mesh is already welded by position.
+    if (solid === mesh) gl.merge();
     let manifold: Manifold | undefined;
     try {
       manifold = new module.Manifold(gl);

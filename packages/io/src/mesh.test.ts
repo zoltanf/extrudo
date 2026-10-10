@@ -1,6 +1,6 @@
 import { strFromU8, unzipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
-import { checkManifold, mergeMeshes, type TriangleMesh } from './mesh';
+import { checkManifold, mergeMeshes, splitNonManifoldEdges, type TriangleMesh } from './mesh';
 import { readStl, writeStl } from './stl';
 import { MODEL_PATH, read3mf, write3mf } from './threemf';
 
@@ -104,6 +104,54 @@ describe('checkManifold', () => {
       ok: false,
       badNodes: 1,
     });
+  });
+});
+
+describe('splitNonManifoldEdges', () => {
+  it('leaves a manifold mesh alone, as the same object', () => {
+    const mesh = box(10, 20, 30);
+    const result = splitNonManifoldEdges(mesh);
+    expect(result.split).toBe(0);
+    expect(result.mesh).toBe(mesh);
+  });
+
+  it('separates two cubes that share one edge: 4 uses become 2 + 2', () => {
+    // Through an STL: `readStl` welds the shared edge's corners, as importing does.
+    const shared = readStl(writeStl([box(10, 10, 10), box(10, 10, 10, [10, 10, 0])])).mesh;
+    expect(checkManifold(shared).nonManifoldEdges).toBe(1);
+    const { mesh, split } = splitNonManifoldEdges(shared);
+    expect(split).toBe(1);
+    expect(mesh).not.toBe(shared);
+    const report = checkManifold(mesh);
+    expect(report).toMatchObject({
+      ok: true,
+      triangles: 24,
+      nonManifoldEdges: 0,
+      boundaryEdges: 0,
+    });
+    expect(report.volume).toBeCloseTo(2000, 3);
+    // The shared edge's two end nodes became four.
+    expect(report.nodes).toBe(16);
+  });
+
+  it('separates two cubes that touch at one corner (a non-manifold vertex)', () => {
+    const touching = readStl(writeStl([box(10, 10, 10), box(10, 10, 10, [10, 10, 10])])).mesh;
+    expect(checkManifold(touching).nonManifoldEdges).toBe(0);
+    const { mesh, split } = splitNonManifoldEdges(touching);
+    expect(mesh).not.toBe(touching);
+    expect(split).toBe(0);
+    const report = checkManifold(mesh);
+    expect(report).toMatchObject({ ok: true, triangles: 24, boundaryEdges: 0 });
+    // Only the shared corner split: each cube keeps its own 18 edges.
+    expect(report.edges).toBe(36);
+  });
+
+  it('leaves an edge whose uses do not balance for checkManifold', () => {
+    const cube = box(1, 1, 1);
+    // Edge 0–1 already has one use each way; two more forward uses unbalance it.
+    const unequal = withIndices(cube, [...cube.indices, 0, 1, 4, 0, 1, 7]);
+    expect(checkManifold(unequal).nonManifoldEdges).toBeGreaterThan(0);
+    expect(checkManifold(splitNonManifoldEdges(unequal).mesh).ok).toBe(false);
   });
 });
 

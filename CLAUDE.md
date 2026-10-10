@@ -1358,7 +1358,9 @@ ADR-0066 (P4-06, slice 3) added **mesh bodies**: a mesh is a `ShapeHandle` at
 `MESH_HANDLE_BASE` (2^30) kept in `Kernel.#meshes` as a manifold-3d 3.5.4
 `Manifold`, so the engine, the cache, `hold`, scopes and strict leaks are
 unchanged and a leaked mesh fails a test like a leaked shape (`release` sends a
-mesh to the map and a shape to OCCT). `meshFrom(mesh)` welds the corners
+mesh to the map and a shape to OCCT). `meshFrom(mesh)` splits surfaces that
+touch along an edge or at a vertex (`splitNonManifoldEdges`, its 2026-10-09
+amendment) and welds the corners
 (`Mesh.merge()`) and refuses a mesh that isn't closed with `checkManifold`'s
 counts on a `MeshError`; `mesh`, `exportMesh`, `measure`, `properties`,
 `describe`, `count`, `solids` and `transform` have a mesh branch, and **every

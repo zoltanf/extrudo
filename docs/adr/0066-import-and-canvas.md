@@ -662,7 +662,68 @@ main had changed the same code, all of which had to hold:
   before it. `recomputer-recycle.test.ts` covers it with a fake kernel, and fails
   without the reset.
 
-## Rejected
+## Amendment, 2026-10-09: non-manifold edges on import
+
+The owner exported a design (a fidget spinner, two patterned arms meeting a
+hub) as STL and imported it back; the dialog refused it: "Untitled Spinner.stl
+isn't a closed solid (4 edges used by more than two triangles): repair it in
+your slicer…". Slicers take the file, so Extrudo was stricter than it needs to
+be. **Cause:** an STL has no topology, so `readStl` welds corners by exact
+position. Where two closed surfaces meet along one edge — two bodies that touch
+along an edge, written into one STL — the weld leaves that edge used by four
+triangles. Each surface is fine on its own; the weld glues them together. The
+same happens at a shared vertex.
+
+**Decision: split touching surfaces on import instead of refusing them.**
+`@extrudo/io`'s pure `splitNonManifoldEdges(mesh)` (MIT, no dependencies) runs
+before `checkManifold`, inside `kernel.meshFrom` (chosen over the evaluator so
+any caller of `meshFrom` gets it), and `meshFrom` skips `Mesh.merge()` for a
+split mesh, since merging would weld the deliberate duplicate nodes back.
+
+- **Pairing.** For an edge used by 2n triangles with n forward and n backward,
+  the uses are sorted about the edge by dihedral angle and paired with the
+  nearest opposite use that **bounds material** — each triangle's third corner
+  lies on the other's material side (the side its outward normal points away
+  from). The angle alone pairs the wrong uses where two cubes meet (their two
+  faces are 90° from the other cube's either way round); the material test
+  keeps each surface's own neighbours together.
+- Then the edge's two end nodes are duplicated per pair after the first, so
+  each pair has its own copy. **Non-manifold vertices** get the same treatment:
+  union-find over triangle corners joins two corners of a vertex when their
+  triangles share a connecting edge (a manifold edge, or a pair of a
+  non-manifold one); each component is one fan, and fans after the first get
+  their own copy of the vertex. A vertex with one fan is unchanged, so a
+  manifold mesh comes back as the **same object** with `split: 0`.
+- **What stays refused:** an edge whose uses don't balance (3 forward, 1
+  backward) is left for `checkManifold`, and open edges (a real hole) are a
+  different problem — `open.stl` is still refused with its open-edge count.
+- **The warning.** When edges were separated the feature warns (not an error):
+  "touching-cubes.stl: 1 edge where parts touch was separated." The parts touch
+  geometrically but are topologically separate; `splitSolids`/`decompose()`
+  makes them separate bodies, which is expected.
+
+**Manifold-3d accepts the result.** The touching-but-separate parts build a
+valid `Manifold` (`status` `NoError`) and `decompose()` gives one body each; it
+takes them as two closed solids that happen to touch. `meshFrom` on the corner-
+touching case even succeeded before the split (manifold-3d tolerates the
+non-manifold vertex), but its parts were one body; the split makes the parts
+distinct.
+
+**The export is right as it is.** Several bodies go into one STL (slicers
+expect a triangle list; 3MF keeps them as named objects), `meshBytes` merges
+them through `mergeMeshes`, and each body's `exportMesh` output is already
+closed and manifold (ADR-0034's topological weld). The defect was only on
+reading that file back, so the export is unchanged.
+
+Reproduction (Ubuntu machine, `mesh-nonmanifold.test.ts`): two 10 mm cubes
+sharing one edge exported through `exportMesh`+`writeStl`, read back with
+`readStl` — `checkManifold` finds 1 non-manifold edge, 24 triangles, 14 nodes,
+volume 2000 mm³; `splitNonManifoldEdges` separates it (16 nodes, `ok`), and
+`meshFrom` gives two solids of 1000 mm³ each. `fuse` of two boxes that share
+exactly one edge gives **two** solids, not one self-touching body: OCCT never
+merges along an edge alone, so the single-body case isn't made by a boolean.
+
+
 
 - **Meshes as faceted B-rep** (one OCCT face per triangle, sewn): every feature
   would work, but a 100,000-triangle STL takes minutes to sew and its booleans

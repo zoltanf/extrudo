@@ -243,7 +243,7 @@ function meshBodies(
   for (const mesh of meshes) {
     let whole: ShapeHandle;
     try {
-      whole = scope.track(kernel.meshFrom(mesh));
+      whole = scope.track(kernel.meshFrom(mesh, (edges) => ctx.warn(separatedEdges(name, edges))));
     } catch (error) {
       // What is wrong with the mesh is worth more than what went wrong
       // building it: the count of open edges is what a user can act on.
@@ -503,6 +503,17 @@ function refuseTooMany(name: string, triangles: number): void {
   throw new KernelError(
     `${name} has ${count(triangles)} triangles; Extrudo imports up to ${count(MAX_MESH_TRIANGLES)}.`,
   );
+}
+
+/**
+ * A mesh whose parts touched along an edge was separated so each is a body of
+ * its own (ADR-0066's 2026-10-09 amendment): a warning, not an error, since
+ * the touching parts are expected.
+ */
+function separatedEdges(name: string, edges: number): string {
+  return edges === 1
+    ? `${name}: 1 edge where parts touch was separated.`
+    : `${name}: ${edges} edges where parts touch were separated.`;
 }
 
 /** What a mesh isn't solid about, worded with the file's own name. */

@@ -15,6 +15,7 @@ import asciiCube from '../../../../fixtures/imports/ascii-cube.stl?url&inline';
 import obj from '../../../../fixtures/imports/bracket-y-up.obj?url&inline';
 import cubeStl from '../../../../fixtures/imports/cube.stl?url&inline';
 import openStl from '../../../../fixtures/imports/open.stl?url&inline';
+import touchingCubes from '../../../../fixtures/imports/touching-cubes.stl?url&inline';
 import twoParts from '../../../../fixtures/imports/two-parts.3mf?url&inline';
 import { Kernel } from '../kernel';
 import { loadManifold } from '../manifold';
@@ -55,6 +56,7 @@ function bytesOf(dataUrl: string): Uint8Array {
 
 const CUBE_STL = bytesOf(cubeStl);
 const OPEN_STL = bytesOf(openStl);
+const TOUCHING_CUBES = bytesOf(touchingCubes);
 const ASCII_CUBE = bytesOf(asciiCube);
 const OBJ = bytesOf(obj);
 const TWO_PARTS = bytesOf(twoParts);
@@ -224,6 +226,28 @@ describe('importing a mesh (P4-06, ADR-0066 §3)', () => {
     const [body] = bodies(result);
     expect(body?.size).toEqual([20, 20, 20].map((v) => Number((v * 25.4).toFixed(3))));
     expect(body?.volume).toBeCloseTo((20 * 25.4) ** 3, 1);
+  });
+
+  it('separates surfaces that touch along an edge, with a warning', {
+    timeout: 60_000,
+  }, async () => {
+    const result = await recompute(
+      design({
+        bytes: TOUCHING_CUBES,
+        fileName: 'touching-cubes.stl',
+        mediaType: 'model/stl',
+      }),
+    );
+    expect(result.features[IMPORT_ID]?.status).toBe('warning');
+    expect(result.features[IMPORT_ID]?.message).toBe(
+      'touching-cubes.stl: 1 edge where parts touch was separated.',
+    );
+    const got = bodies(result);
+    expect(got).toHaveLength(2);
+    expect(got.map((b) => b.size)).toEqual([
+      [20, 20, 20],
+      [20, 20, 20],
+    ]);
   });
 
   it('says what is wrong with a mesh that is not closed', { timeout: 60_000 }, async () => {

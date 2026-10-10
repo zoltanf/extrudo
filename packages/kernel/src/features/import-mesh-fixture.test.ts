@@ -114,5 +114,13 @@ it('writes the P4-06 mesh fixtures', () => {
     void write('open.stl', writeStl(open, { header: 'Extrudo fixture: a cube with a hole' }));
     void write('ascii-cube.stl', new TextEncoder().encode(ascii));
     void write('two-parts.3mf', parts);
+    // Two cubes that share one edge: importing this separates them
+    // (ADR-0066's 2026-10-09 amendment).
+    void write(
+      'touching-cubes.stl',
+      writeStl([box(20), box(20, [20, 20, 0])], {
+        header: 'Extrudo fixture: two cubes sharing an edge',
+      }),
+    );
   }
 });
