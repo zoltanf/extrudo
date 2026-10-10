@@ -114,6 +114,7 @@ import { SectionOverlay } from '../section/SectionOverlay';
 import { SectionPanel } from '../section/SectionPanel';
 import { planeName, SECTION_TOOL, useSection } from '../section/useSection';
 import { readTopology, selectionRefs, sketchEntityIdsIn } from '../selection/items';
+import { type LookSketch, selectionLookTarget } from '../selection/lookAt';
 import { useModelSelection } from '../selection/useModelSelection';
 import type { FontPicker } from '../sketch/addFont';
 import { useBodiesBefore } from '../sketch/baseBodies';
@@ -903,6 +904,33 @@ export function AppShell({
                 : { on: false, toggle: () => {} },
           }),
         ...(m === 'sketch' && { lookAtSketch: () => lookAtSketch(stores) }),
+        ...(m === 'model' &&
+          !dialogOpen &&
+          selection.length > 0 && {
+            lookAtSelection: () => {
+              const modelState = stores.model?.getState();
+              const shown: LookSketch[] = [];
+              for (const feature of stores.store.getState().doc.features) {
+                const sketch = readSketch(feature);
+                const frame =
+                  sketch &&
+                  sketchFrame(
+                    feature.id,
+                    sketch.plane,
+                    modelState?.sketches,
+                    modelState?.construction,
+                  );
+                if (sketch && frame) shown.push({ id: feature.id, frame, data: sketch.data });
+              }
+              const target = selectionLookTarget(
+                stores.session.getState().selection,
+                (modelState?.bodies ?? {}) as Record<string, BodyMesh>,
+                shown,
+              );
+              if (!target) return;
+              viewport.getState().lookAtBox(target, target.direction);
+            },
+          }),
         viewport,
         browser: { collapsed: browser.collapsed, toggle: browser.toggle },
         file: fileActions,
@@ -951,6 +979,7 @@ export function AppShell({
       remove,
       dialogOpen,
       selectedBodyIds,
+      selection,
       bodyActions,
       construction,
       stores,

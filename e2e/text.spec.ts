@@ -328,6 +328,60 @@ test('Esc closes the panel and cancels the text', async ({ page }) => {
   await expect(viewportOf(page)).not.toHaveAttribute('data-bodies', /\S/);
 });
 
+/** The draft's drawn letters in view px: the union of the preview curves' boxes. */
+async function previewBox(page: Page) {
+  return page.evaluate(`(() => {
+    const els = [...document.querySelectorAll('[data-preview="curve"]')];
+    if (els.length === 0) return null;
+    const boxes = els.map((el) => el.getBoundingClientRect());
+    const left = Math.min(...boxes.map((b) => b.left));
+    const right = Math.max(...boxes.map((b) => b.right));
+    const top = Math.min(...boxes.map((b) => b.top));
+    const bottom = Math.max(...boxes.map((b) => b.bottom));
+    return { left, right, top, bottom, width: right - left, height: bottom - top };
+  })()`) as Promise<{
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+    width: number;
+    height: number;
+  } | null>;
+}
+
+test('the preview follows the height and the alignment before OK', async ({ page }) => {
+  const at = await sketchOnXY(page);
+  await page.keyboard.press('Shift+T');
+  await expect(toolPrompt(page)).toHaveText('Click where the first line’s baseline starts.');
+  await clicker(page, at)(0, 0);
+  await expect(panel(page)).toBeVisible();
+  await panel(page).getByRole('textbox', { name: 'Text' }).fill('Ag');
+  await expect.poll(() => previewBox(page)).not.toBeNull();
+  const small = await previewBox(page);
+  if (!small) throw new Error('no preview');
+
+  // Height 10 mm → 20 mm: the letters grow while the panel is still open.
+  const height = panel(page).getByRole('textbox', { name: 'Height' });
+  await height.fill('20 mm');
+  await expect
+    .poll(async () => (await previewBox(page))?.height ?? 0)
+    .toBeGreaterThan(small.height * 1.8);
+  const tall = await previewBox(page);
+  if (!tall) throw new Error('no preview');
+  expect(tall.height).toBeLessThan(small.height * 2.2);
+
+  // Left → Centre: the letters move left about half their width, the anchor stays.
+  await panel(page).getByRole('button', { name: 'Center' }).click();
+  await expect
+    .poll(async () => (await previewBox(page))?.left ?? 1e9)
+    .toBeLessThan(tall.left - tall.width * 0.3);
+  const centred = await previewBox(page);
+  expect(centred?.width ?? 0).toBeCloseTo(tall.width, -1);
+
+  // Nothing was committed yet.
+  await expect(viewportOf(page)).not.toHaveAttribute('data-text-bounds', /\S/);
+});
+
 test('the Create menu and the palette offer the Text tool', async ({ page }) => {
   await sketchOnXY(page);
   await page.getByRole('button', { name: 'Create', exact: true }).click();

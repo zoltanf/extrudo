@@ -380,6 +380,13 @@ function modelGroups(input: ContextInput): MarkingEntry[][] {
   }
 
   const view = viewGroup(input);
+  if (selection.length > 0 && input.commands.some((c) => c.id === 'lookAtSelection')) {
+    view.unshift(
+      commandEntry(input, 'lookAtSelection', 'Look at Selection', {
+        icon: icon(<ScanEye {...small} />),
+      }),
+    );
+  }
   const hidden = bodies.filter((b) => !b.meta.visible);
   if (hidden.length > 0 && entries.every((b) => b.meta.visible)) {
     view.push({

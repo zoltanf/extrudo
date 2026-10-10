@@ -29,7 +29,7 @@ const HOME = { right: 12, top: 148 };
  *
  * Test hooks: the region "Print Info", `data-print-state` (`empty`, `pending`, `ready`,
  * `error`), rows `[data-print-row="volume|printed|weight|filament|cost"]`, the combobox
- * "Material", the textbox "Density" (custom only), the radios "1.75 mm" and "2.85 mm", and the
+ * "Material", the footnote `[data-print-footnote]` (pinned under the scrolling content), the textbox "Density" (custom only), the radios "1.75 mm" and "2.85 mm", and the
  * textboxes "Walls", "Line width", "Infill" and "Price per kg".
  */
 export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): void }) {
@@ -201,11 +201,12 @@ export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): 
             </>
           )}
         </div>
-        <p className="text-xs text-muted">
-          An estimate: walls and infill as set, no supports. Filament length is the same for every
-          material.
-        </p>
       </div>
+
+      <p className="shrink-0 border-t border-line px-3 py-2 text-xs text-muted" data-print-footnote>
+        An estimate: walls and infill as set, no supports. Filament length is the same for every
+        material.
+      </p>
 
       <footer className="flex shrink-0 justify-end gap-2 border-t border-line px-3 py-2">
         <Button variant="primary" onClick={onClose}>

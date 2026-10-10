@@ -107,8 +107,9 @@ way. Use it to find what to thicken, then confirm with the slicer.
 [Section Analysis](./tools/section.md) (`Shift+S`, in **Inspect**) cuts the view through a
 plane and fills the cut, so you can see walls, hollows and internal features. Pick an origin
 plane, a construction plane or a flat face, then drag the arrow or type an **Offset**.
-**Flip** chooses which side stays. **Add plane** adds up to three planes, and **Box** clips to a
-box instead.
+**Flip** chooses which side stays. **Add plane** (shown once a plane exists) adds up to three
+planes, and **Box** clips to a box instead. Box is also offered on the empty panel beside the
+planes, so a box section needs no plane first.
 
 Section is only a view. It changes nothing in the model and is not part of an export. Its
 entry in the browser's **Analysis** folder has an eye to switch it off and on.

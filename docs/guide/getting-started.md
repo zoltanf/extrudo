@@ -70,6 +70,7 @@ The default mouse controls are:
 | Pan | Drag with the right button |
 | Zoom | Turn the wheel (it zooms towards the pointer) |
 | Fit everything | `F6` |
+| Fit what is selected | Ctrl+K, **Look at Selection**, or the right-click list |
 
 The **Mouse controls** button in the navigation bar switches to the layout of Onshape /
 SolidWorks, Fusion, Blender or a trackpad.

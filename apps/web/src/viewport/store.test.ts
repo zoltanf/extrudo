@@ -72,6 +72,25 @@ describe('viewport store', () => {
     expect(store.getState().view.size).toBeLessThan(empty);
   });
 
+  it('looks at a box: the target moves to its middle, the direction turns the camera', () => {
+    const { store } = setup({ reducedMotion: true });
+    store.getState().setAspect(1);
+    store.getState().setBounds({
+      center: [0, 0, 0],
+      radius: 500,
+      box: { min: [-500, -500, -500], max: [500, 500, 500] },
+    });
+    store.getState().lookAtBox({ min: [10, 20, 30], max: [30, 40, 30] }, [0, 0, 1]);
+    const { view } = store.getState();
+    expect(view.target).toEqual([20, 30, 30]);
+    expect(view.size).toBeLessThan(200);
+    expect(back(view)).toEqual([0, 0, 1]);
+    // Without a direction the orientation stays.
+    store.getState().lookAtBox({ min: [0, 0, 0], max: [2, 2, 2] });
+    expect(back(store.getState().view)).toEqual([0, 0, 1]);
+    expect(store.getState().view.target).toEqual([1, 1, 1]);
+  });
+
   it('fits into the part of the view a floating panel leaves open, centred there', () => {
     // A 40 × 20 plate seen from the top in a 1000 × 500 view, orthographic.
     const { store } = setup({ reducedMotion: true });

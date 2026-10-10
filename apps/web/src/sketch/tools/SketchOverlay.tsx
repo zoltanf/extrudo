@@ -28,6 +28,7 @@ import { useStore } from 'zustand';
 import { ExpressionInput } from '../../parameters/ExpressionInput';
 import { viewProject } from '../../viewport/camera';
 import type { ViewportStore } from '../../viewport/store';
+import { textDraftStore } from '../textDraft';
 import { EntityHighlight } from './ConstraintGlyphs';
 import { DimensionGraphic, pixelGap } from './DimensionLabels';
 import { dimensionShape, dimensionText } from './dimensionLayout';
@@ -66,6 +67,9 @@ export function SketchOverlay({ host, store, viewport, sketchId, frame }: Sketch
   const projection = useStore(viewport, (s) => s.projection);
   // Re-render on every tool change.
   useStore(host.state, (s) => s.revision);
+  // The Text panel writes its draft (string, font, alignment, height) to a store of its own,
+  // not through the host: the preview it draws must follow every one of them.
+  useStore(textDraftStore);
   const { tool, pointer, screen, error, construction } = host.state.getState();
   const doc = useStore(store, (s) => s.doc);
 

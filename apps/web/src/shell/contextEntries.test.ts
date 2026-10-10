@@ -156,6 +156,14 @@ describe('the overflow list in the model', () => {
     expect(bed?.run).toHaveBeenCalled();
   });
 
+  it('offers Look at Selection first in the view group once something is selected', () => {
+    const commands = [...input().commands, cmd('lookAtSelection')];
+    expect(ids(input({ commands }))).not.toContain('lookAtSelection');
+    const list = ids(input({ commands, selection: [item('face', 'B:0:3')] }));
+    expect(list).toContain('lookAtSelection');
+    expect(list.indexOf('lookAtSelection')).toBe(list.indexOf('fit') - 1);
+  });
+
   it('offers no Sketch on Face for two faces, or for an edge', () => {
     const two = input({ selection: [item('face', 'B:0:1'), item('face', 'B:0:2')] });
     expect(ids(two)).not.toContain('sketchOnFace');

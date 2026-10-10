@@ -1,5 +1,5 @@
-import { expect, type Page, test } from '@playwright/test';
-import { openProject, pickTool, sketchOnXY } from './helpers';
+import { expect, type Locator, type Page, test } from '@playwright/test';
+import { kernelReady, openProject, pickTool, projector, sketchOnXY } from './helpers';
 
 // P1-14: the shortcut registry, the Ctrl+K command palette and the S toolbox.
 
@@ -166,4 +166,68 @@ test('the app bar opens search: a button by Undo/Redo, and the Help menu', async
   await page.getByRole('menuitem', { name: /^Toolbox/ }).click();
   await expect(toolbox(page).getByRole('combobox')).toBeFocused();
   await expect(toolbox(page).getByRole('region', { name: 'Pinned' })).toBeVisible();
+});
+
+/** Waits until the camera has stopped moving; returns a world → page mapping. */
+async function settledProjector(viewport: Locator) {
+  let last = '';
+  await expect
+    .poll(async () => {
+      const values = await Promise.all(
+        ['size', 'target', 'direction', 'shift'].map((k) =>
+          viewport.getAttribute(`data-camera-${k}`),
+        ),
+      );
+      const key = values.join(' ');
+      const still = key === last;
+      last = key;
+      return still;
+    })
+    .toBe(true);
+  return projector(viewport);
+}
+
+test('Look at Selection turns and fits the camera to the selected face (UI spec §3.1)', async ({
+  page,
+}) => {
+  const viewport = await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+
+  // Nothing selected: the command is not offered.
+  await page.keyboard.press('Control+k');
+  await palette(page).getByRole('combobox', { name: 'Search commands' }).fill('look at selection');
+  await expect(palette(page).getByRole('option', { name: /^Look at Selection/ })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // The outside of the wall (x = 0, 80 mm wide, z from 3.6 to 60 mm: centre (0, 0, 31.8)), seen from the home view.
+  await page.keyboard.press('Shift+6');
+  const at = await settledProjector(viewport);
+  const point = at([0, 0, 30]);
+  await page.mouse.move(point.x, point.y);
+  await expect(viewport).toHaveAttribute('data-model-hover', /^face:/);
+  await page.mouse.click(point.x, point.y);
+  await expect(viewport).toHaveAttribute('data-model-selection', /^face:/);
+  // Turn away and move the target off the face, so the command has something to do.
+  await page.keyboard.press('Shift+1');
+  await settledProjector(viewport);
+  await expect(viewport).toHaveAttribute('data-model-selection', /^face:/);
+  const before = await viewport.getAttribute('data-camera-target');
+
+  await page.keyboard.press('Control+k');
+  await palette(page).getByRole('combobox', { name: 'Search commands' }).fill('look at selection');
+  await palette(page)
+    .getByRole('option', { name: /^Look at Selection/ })
+    .click();
+  await settledProjector(viewport);
+  const target = ((await viewport.getAttribute('data-camera-target')) ?? '').split(',').map(Number);
+  expect(target[0]).toBeCloseTo(0, 0);
+  expect(target[1]).toBeCloseTo(0, 0);
+  // The outside fillet (1.5 × the 2.4 mm wall) takes the face's lowest 3.6 mm: 3.6..60.
+  expect(Math.abs((target[2] ?? 0) - 31.8)).toBeLessThan(1);
+  expect(await viewport.getAttribute('data-camera-target')).not.toBe(before);
+  // A flat face is faced square on: the camera looks along the face's inward normal (+X).
+  const direction = ((await viewport.getAttribute('data-camera-direction')) ?? '')
+    .split(',')
+    .map(Number);
+  expect(Math.abs(direction[0] ?? 0)).toBeCloseTo(1, 1);
 });

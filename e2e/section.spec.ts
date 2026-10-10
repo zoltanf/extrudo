@@ -338,6 +338,19 @@ test('cuts at two planes at once: a corner is gone, each row has its own arrow a
   await expect(tool.getByRole('button', { name: 'Remove', exact: true })).toHaveCount(1);
 });
 
+test('Box is offered on the empty panel, with no plane picked first', async ({ page }) => {
+  const viewport = await openProject(page);
+  await pickTool(page, 'Section');
+  const tool = panel(page);
+  await expect(tool).toHaveAttribute('data-section-state', 'choosing');
+  // Planes are the default action; Add plane only exists once a section does.
+  await expect(tool.getByRole('button', { name: 'XY plane' })).toBeVisible();
+  await expect(tool.getByRole('button', { name: 'Add plane', exact: true })).toHaveCount(0);
+  await tool.getByRole('button', { name: 'Box', exact: true }).click();
+  await expect(tool).toHaveAttribute('data-section-mode', 'box');
+  await expect(viewport).toHaveAttribute('data-section', /^box=/);
+});
+
 test('the section box cuts at six planes, its face handles drag it, and it excludes planes', async ({
   page,
 }) => {

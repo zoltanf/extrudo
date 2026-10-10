@@ -424,3 +424,14 @@ describe('buildCommands', () => {
     expect(saveToLinkedFolder).toHaveBeenCalledOnce();
   });
 });
+
+describe('Look at Selection (UI spec §3.1)', () => {
+  it('is a View command only while something can be looked at', () => {
+    expect(byId(context('model')).has('lookAtSelection')).toBe(false);
+    const run = vi.fn();
+    const command = byId(context('model', { lookAtSelection: run })).get('lookAtSelection');
+    expect(command?.group).toBe('View');
+    command?.run();
+    expect(run).toHaveBeenCalledOnce();
+  });
+});

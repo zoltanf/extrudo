@@ -247,7 +247,7 @@ brief, voice) is in **`05-brand.md`**. In short:
 | Pan | Right-drag, or Ctrl + middle-drag |
 | Zoom | Wheel (zooms toward the cursor) |
 | Fit all | F6 or double-click middle |
-| Look at selection | Nav bar "Look at" |
+| Look at selection | Ctrl+K "Look at Selection", or the right-click list (no key; only while something is selected) |
 
 The Extrudo preset is Onshape / SolidWorks with the middle and right
 buttons swapped. Other presets, in the Mouse controls menu after this one:

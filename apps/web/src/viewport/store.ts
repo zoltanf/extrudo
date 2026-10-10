@@ -200,6 +200,12 @@ export interface ViewportState extends ViewportSettings {
   step(now: number): void;
   /** Looks from `direction` (target → camera) and fits the scene. `up` defaults as in `orientationFor`. */
   lookFrom(direction: Vec3, up?: Vec3): void;
+  /**
+   * Frames a box instead of the scene (Look at Selection, UI spec §3.1): the target moves to its
+   * middle and the view fits it. With a `direction` (target → camera) the camera turns to it
+   * first; without one the orientation stays.
+   */
+  lookAtBox(box: { min: Vec3; max: Vec3 }, direction?: Vec3): void;
   fit(): void;
   /** The home view (front, right, top), fitted. `instant` skips the animation. */
   home(instant?: boolean): void;
@@ -286,8 +292,9 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
   const reducedMotion = options.reducedMotion ?? systemReducedMotion;
 
   const store = createStore<ViewportState>()((set, get) => {
-    const fitted = (view: View) => {
-      const { bounds, aspect, width, cover } = get();
+    const fitted = (view: View, only?: Bounds) => {
+      const { bounds: all, aspect, width, cover } = get();
+      const bounds = only ?? all;
       // The part of the view a floating panel doesn't cover (at least a fifth of it).
       const covered = width > 0 ? Math.min(Math.max(cover / width, 0), 0.8) : 0;
       const open = aspect * (1 - covered);
@@ -338,6 +345,26 @@ export function createViewportStore(options: ViewportStoreOptions): ViewportStor
       },
       lookFrom(direction, up) {
         get().animateTo(fitted({ ...get().view, orientation: orientationFor(direction, up) }));
+      },
+      lookAtBox(box, direction) {
+        const center: Vec3 = [
+          (box.min[0] + box.max[0]) / 2,
+          (box.min[1] + box.max[1]) / 2,
+          (box.min[2] + box.max[2]) / 2,
+        ];
+        const radius = Math.hypot(
+          box.max[0] - box.min[0],
+          box.max[1] - box.min[1],
+          box.max[2] - box.min[2],
+        );
+        const view = get().view;
+        get().animateTo(
+          fitted(direction ? { ...view, orientation: orientationFor(direction) } : view, {
+            center,
+            radius: radius / 2,
+            box,
+          }),
+        );
       },
       fit() {
         get().animateTo(fitted(get().view));

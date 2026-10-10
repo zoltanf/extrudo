@@ -127,6 +127,30 @@ test('Print Info: weight and filament length for PLA and PETG, a custom density,
   await expect(info(page).getByRole('textbox', { name: 'Infill' })).toHaveValue('100');
 });
 
+test('Print Info: the footnote stays inside the panel at 900 x 700', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 700 });
+  await openProject(page, 'wall-bracket');
+  await kernelReady(page);
+  await pickTool(page, 'Print Info');
+  const panel = info(page);
+  await expect(panel).toBeVisible();
+  await expect(row(panel, 'volume')).not.toHaveText('…');
+  const note = panel.locator('[data-print-footnote]');
+  await expect(note).toBeVisible();
+  const inside = async () => {
+    const p = await panel.boundingBox();
+    const n = await note.boundingBox();
+    if (!p || !n) return false;
+    return n.y >= p.y && n.y + n.height <= p.y + p.height && n.x >= p.x;
+  };
+  await expect.poll(inside).toBe(true);
+  // Every line is readable: the footnote is not clipped by its own box.
+  const clipped = await page.evaluate(
+    "(() => { const el = document.querySelector('[data-print-footnote]'); return !!el && el.scrollHeight > el.clientHeight; })()",
+  );
+  expect(clipped).toBe(false);
+});
+
 test('Print Info: walls and infill make the print lighter, and the cost follows the price', async ({
   page,
 }) => {

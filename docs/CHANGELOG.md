@@ -2,6 +2,13 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
+## Next
+
+- 2026-10-10 · **Print Info's footnote stays readable in a small window**: the note ("An estimate: walls and infill as set, no supports…") sits under the scrolling content instead of inside it, so it is never scrolled out of the panel (checked at 900 × 700).
+- 2026-10-10 · **The Text preview follows alignment and height**: the sketch overlay redraws the draft whenever the Text panel changes the string, font, alignment or Height, not only on OK (`e2e/text.spec.ts`).
+- 2026-10-10 · **Section Analysis: Box from an empty panel (guide, test)**: the choosing state already offered Box beside the planes (a box needs no plane first); the guide now says so, and `e2e/section.spec.ts` opens the tool on a design with no section and clicks Box straight away.
+- 2026-10-10 · **Look at Selection (UI spec §3.1)**: a View command (Ctrl+K, and the first entry of the right-click list while something is selected; no key) that fits the camera to the box of the selected faces, edges, vertices, bodies or sketch curves, turning to look square at one flat face (`selection/lookAt.ts`, `ViewportState.lookAtBox`).
+
 ## v0.5.0 (2026-10-10)
 
 - 2026-10-10 · **The notification bell moves to the status bar's right edge** (ADR-0041's amendment): always shown, quiet while the history is empty ("No notifications yet."), opens the same panel upwards; the toasts stay in the view's corner.

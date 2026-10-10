@@ -79,6 +79,8 @@ export interface CommandContext {
   /** The construction toggle (UI spec §4); absent outside a sketch. */
   construction?: { on: boolean; toggle(): void };
   lookAtSketch?: () => void;
+  /** Turns and fits the camera to what is selected (UI spec §3.1); absent with no selection. */
+  lookAtSelection?: () => void;
   viewport: ViewportStore;
   browser: { collapsed: boolean; toggle(): void };
   file: FileActions;
@@ -308,6 +310,12 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
     icon: icon(Maximize),
     keywords: 'View zoom all extents',
   });
+  if (ctx.lookAtSelection) {
+    plain('lookAtSelection', 'Look at Selection', 'View', ctx.lookAtSelection, {
+      icon: icon(ScanEye),
+      keywords: 'View camera zoom selected selection focus face edge body',
+    });
+  }
   for (const v of VIEWS) {
     const face = FACES.find((f) => f.name === v.face);
     plain(v.id, v.label, 'View', face ? () => view().lookFrom(face.normal) : () => view().home(), {
