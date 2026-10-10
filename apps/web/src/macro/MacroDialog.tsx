@@ -1,4 +1,4 @@
-import type { DocumentStore } from '@extrudo/core';
+import type { DocumentStore, SessionStore } from '@extrudo/core';
 import { type ComponentType, useEffect, useState } from 'react';
 import { Button, FloatingDialog } from '../design-system';
 import {
@@ -13,6 +13,8 @@ export interface MacroDialogProps {
   /** What Stop recorded; undefined while the dialog is closed. */
   recorded: Recorded | undefined;
   store: DocumentStore;
+  /** Stamps the Script with the active component (P6-05 S4). */
+  session?: SessionStore;
   onClose(): void;
   notify(tone: 'info' | 'success' | 'error', text: string): void;
 }
@@ -41,7 +43,7 @@ function useCodeView(wanted: boolean) {
  * ways to keep it as a Script feature. After either, it says what happened and offers Close; the
  * Script is edited from its chip like any other.
  */
-export function MacroDialog({ recorded, store, onClose, notify }: MacroDialogProps) {
+export function MacroDialog({ recorded, store, session, onClose, notify }: MacroDialogProps) {
   const [outcome, setOutcome] = useState<MacroOutcome>();
   const View = useCodeView(recorded !== undefined);
   // A new recording starts without the last one's message.
@@ -101,13 +103,19 @@ export function MacroDialog({ recorded, store, onClose, notify }: MacroDialogPro
                 variant="primary"
                 onClick={() =>
                   setOutcome(
-                    replaceWithScript(store, { recorded: recorded.ids, code: recorded.code }),
+                    replaceWithScript(store, {
+                      recorded: recorded.ids,
+                      code: recorded.code,
+                      session,
+                    }),
                   )
                 }
               >
                 Replace with a Script
               </Button>
-              <Button onClick={() => setOutcome(keepScript(store, { code: recorded.code }))}>
+              <Button
+                onClick={() => setOutcome(keepScript(store, { code: recorded.code, session }))}
+              >
                 Keep both
               </Button>
             </>

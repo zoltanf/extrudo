@@ -16,9 +16,14 @@ import {
   nextFeatureName,
   removeFeature,
   SCRIPT_LABEL,
+  type SessionStore,
   scriptFeatureOf,
 } from '@extrudo/core';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { withActiveComponent } from '../components/active';
+
+const stamp = (feature: Feature, session?: Pick<SessionStore, 'getState'>): Feature =>
+  session ? withActiveComponent(feature, session) : feature;
 
 export interface Recording {
   from: number;
@@ -116,7 +121,13 @@ export function replaceWithScript(
     recorded,
     code,
     id = newId<FeatureId>(),
-  }: { recorded: readonly FeatureId[]; code: string; id?: FeatureId },
+    session,
+  }: {
+    recorded: readonly FeatureId[];
+    code: string;
+    id?: FeatureId;
+    session?: Pick<SessionStore, 'getState'>;
+  },
 ): MacroOutcome {
   const { doc } = store.getState();
   const from = doc.features.findIndex((feature) => feature.id === recorded[0]);
@@ -126,7 +137,7 @@ export function replaceWithScript(
   try {
     store.getState().dispatch(
       insertFeature({
-        feature: scriptFeatureOf(id, name, { code, language: 'ts' }) as Feature,
+        feature: stamp(scriptFeatureOf(id, name, { code, language: 'ts' }) as Feature, session),
         index: from,
       }),
     );
@@ -148,14 +159,21 @@ export function replaceWithScript(
  */
 export function keepScript(
   store: DocumentStore,
-  { code, id = newId<FeatureId>() }: { code: string; id?: FeatureId },
+  {
+    code,
+    id = newId<FeatureId>(),
+    session,
+  }: { code: string; id?: FeatureId; session?: Pick<SessionStore, 'getState'> },
 ): MacroOutcome {
   const { doc } = store.getState();
   const name = nextFeatureName(doc, SCRIPT_LABEL);
-  const feature = {
-    ...scriptFeatureOf(id, name, { code, language: 'ts' }),
-    suppressed: true,
-  } as Feature;
+  const feature = stamp(
+    {
+      ...scriptFeatureOf(id, name, { code, language: 'ts' }),
+      suppressed: true,
+    } as Feature,
+    session,
+  );
   try {
     store.getState().dispatch(insertFeature({ feature, index: doc.features.length }));
   } catch (error) {

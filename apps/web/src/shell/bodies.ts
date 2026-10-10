@@ -40,6 +40,8 @@ import {
   updateBody,
 } from '@extrudo/core';
 
+import { withActiveComponent } from '../components/active';
+
 /** How a body is shown (ADR-0030's amendment, 2026-10-09): shown, ghost or hidden. */
 export type BodyDisplay = 'shown' | 'ghost' | 'hidden';
 
@@ -398,7 +400,7 @@ export function createBodyActions(
       const doc = store.getState().doc;
       const id = newId<FeatureId>();
       const feature = removeBodiesFeatureOf(id, nextFeatureName(doc, 'Remove'), ids);
-      if (!run(insertFeature({ feature }))) return undefined;
+      if (!run(insertFeature({ feature: withActiveComponent(feature, session) }))) return undefined;
       // The removed bodies leave the selection and the hover.
       const gone = new Set<string>(ids);
       const s = session.getState();

@@ -23,6 +23,7 @@ import {
   type SessionStore,
   type SketchFrame,
 } from '@extrudo/core';
+import { activeComponentOf } from '../components/active';
 import type { ViewportStore } from '../viewport/store';
 import { sketchFrame } from './frame';
 
@@ -64,7 +65,9 @@ export function createSketchOn(stores: SketchModeStores, plane: GeomRef): Featur
     viewport.getState().autoProject && viewport.getState().autoProjectFace && plane.kind === 'face';
   if (outline) store.getState().beginTransaction('Create sketch');
   try {
-    store.getState().dispatch(createSketch({ id, plane }));
+    store
+      .getState()
+      .dispatch(createSketch({ id, plane, component: activeComponentOf(stores.session) }));
     if (outline) {
       store
         .getState()

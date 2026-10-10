@@ -3,6 +3,7 @@ import {
   bodyDisplay,
   CANVAS_TYPE,
   type Component,
+  type ComponentId,
   type DocumentStore,
   type Feature,
   type FeatureId,
@@ -93,6 +94,9 @@ export interface BrowserPanelProps {
   bodyActions: BodyActions;
   /** Rename, show/hide, select and delete components (P6-05, ADR-0081 §6). */
   componentActions: ComponentActions;
+  /** The active and the isolated component (session state, P6-05 S4). */
+  activeComponent?: ComponentId;
+  isolatedComponent?: ComponentId;
   /** Bodies in the model selection: their rows show selected. */
   selectedBodies?: ReadonlySet<string>;
   /**
@@ -152,6 +156,8 @@ export function BrowserPanel({
   bodies,
   bodyActions,
   componentActions,
+  activeComponent,
+  isolatedComponent,
   selectedBodies = NO_BODIES,
   onPickBody,
   onHoverBody,
@@ -467,6 +473,8 @@ export function BrowserPanel({
                       key={row.component.id}
                       row={row}
                       actions={componentActions}
+                      active={row.component.id === activeComponent}
+                      isolated={isolatedComponent}
                       bodyActions={bodyActions}
                       renderBody={(body) => (
                         <BodyLeaf
@@ -1039,11 +1047,15 @@ const BODIES_MIME = 'application/x-extrudo-bodies';
 function ComponentFolder({
   row,
   actions,
+  active,
+  isolated,
   bodyActions,
   renderBody,
 }: {
   row: ComponentRow;
   actions: ComponentActions;
+  active: boolean;
+  isolated: ComponentId | undefined;
   bodyActions: BodyActions;
   renderBody(body: BodyEntry): ReactNode;
 }) {
@@ -1055,7 +1067,14 @@ function ComponentFolder({
       icon={<Boxes size={14} />}
       count={bodies.length}
       nested
-      attrs={{ 'data-component': id, 'data-component-display': display }}
+      attrs={{
+        'data-component': id,
+        'data-component-display': display,
+        'data-component-active': active ? '' : undefined,
+        'data-isolated-out': isolated !== undefined && isolated !== id ? '' : undefined,
+      }}
+      marker={active}
+      dimmed={isolated !== undefined && isolated !== id}
       dropTarget={{
         name: `component:${id}`,
         onDrop: (ids) => bodyActions.moveToComponent(ids, id),
@@ -1090,6 +1109,17 @@ function ComponentFolder({
             </MenuItem>
           )}
           <MenuSeparator />
+          {active ? (
+            <MenuItem onSelect={() => actions.activate(undefined)}>Deactivate</MenuItem>
+          ) : (
+            <MenuItem onSelect={() => actions.activate(id)}>Activate</MenuItem>
+          )}
+          {isolated === id ? (
+            <MenuItem onSelect={() => actions.isolate(undefined)}>Exit Isolation</MenuItem>
+          ) : (
+            <MenuItem onSelect={() => actions.isolate(id)}>Isolate</MenuItem>
+          )}
+          <MenuSeparator />
           <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.remove(id)}>
             Delete Component
           </MenuItem>
@@ -1111,6 +1141,8 @@ function Folder({
   menu,
   nested,
   attrs,
+  marker,
+  dimmed,
   dropTarget,
   rename,
   onSelect,
@@ -1120,6 +1152,10 @@ function Folder({
   nested?: boolean;
   /** Extra `data-*` attributes on the row's `li`. */
   attrs?: Record<`data-${string}`, string | undefined>;
+  /** A filled dot before the label: the active component. */
+  marker?: boolean;
+  /** Drawn at half opacity (another component is isolated). */
+  dimmed?: boolean;
   /** Body rows dragged onto the folder's header arrive here with their IDs. */
   dropTarget?: { name: string; onDrop(ids: BodyId[]): void };
   /** A three-state eye (shown, ghost, hidden) instead of `eye`'s two. */
@@ -1213,6 +1249,14 @@ function Folder({
             {chevron}
             <span className="grid w-4 place-items-center text-muted">{icon}</span>
           </button>
+          {marker && (
+            <span
+              data-active-marker
+              role="img"
+              aria-label="Active component"
+              className="mr-1 size-2 shrink-0 rounded-full bg-accent"
+            />
+          )}
           {labelNode ?? (
             <button
               type="button"
@@ -1254,7 +1298,10 @@ function Folder({
     </div>
   );
   return (
-    <li {...attrs} className={nested ? 'pl-3' : undefined}>
+    <li
+      {...attrs}
+      className={`${nested ? 'pl-3' : ''} ${dimmed ? 'opacity-50' : ''}`.trim() || undefined}
+    >
       <ContextMenu label={`${label} menu`} trigger={header} disabled={renaming}>
         {rename && (
           <MenuItem

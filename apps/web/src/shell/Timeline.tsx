@@ -35,6 +35,8 @@ import { useStore } from 'zustand';
 import {
   ContextMenu,
   IconButton,
+  Menu,
+  MenuItem,
   NotificationHistory,
   type NotificationStore,
   Popover,
@@ -184,6 +186,14 @@ export function Timeline({
   ).length;
   const marker = doc.timelineMarker;
   const count = doc.features.length;
+  // A stamped feature's chip says which component it was made in (P6-05 S4).
+  const chipHint = (feature: Feature): string | undefined => {
+    const name = doc.components?.find((c) => c.id === feature.component)?.name;
+    return (
+      [pluginHint?.(feature), name !== undefined && `In ${name}`].filter(Boolean).join(' · ') ||
+      undefined
+    );
+  };
   const editIndex = editing ? doc.features.findIndex((f) => f.id === editing) : -1;
   const locked = activeSketch !== undefined || editIndex >= 0;
   const plan = useMemo(() => planTimeline(doc, statuses), [doc, statuses]);
@@ -308,7 +318,7 @@ export function Timeline({
                         marker={marker}
                         problem={featureProblem(feature, index, marker, statuses)}
                         scriptStatus={statuses[feature.id]}
-                        pluginHint={pluginHint?.(feature)}
+                        pluginHint={chipHint(feature)}
                         rolledBack={index >= (markerDrag?.index ?? marker)}
                         dimmed={editIndex >= 0 && index > editIndex}
                         editable={actions.canEdit(feature, index, marker)}
@@ -377,7 +387,7 @@ export function Timeline({
                           marker={marker}
                           problem={featureProblem(feature, index, marker, statuses)}
                           scriptStatus={statuses[feature.id]}
-                          pluginHint={pluginHint?.(feature)}
+                          pluginHint={chipHint(feature)}
                           rolledBack={index >= (markerDrag?.index ?? marker)}
                           dimmed={editIndex >= 0 && index > editIndex}
                           editable={actions.canEdit(feature, index, marker)}
@@ -413,6 +423,7 @@ export function Timeline({
       </ol>
       <span className="flex-1" />
       {macro && <MacroRecording macro={macro} store={store} />}
+      {session && <ActiveComponent session={session} store={store} />}
       {session && <SelectionState session={session} store={store} size={selectionSize} />}
       <output className="font-mono text-[11px] whitespace-nowrap text-muted" aria-label="Status">
         {activeSketch ? `Editing ${activeSketch} · ` : ''}
@@ -971,6 +982,35 @@ function SelectionState({
         </Tooltip>
       )}
     </>
+  );
+}
+
+/**
+ * "Active: Lid" (P6-05 S4, ADR-0081 §6): the component new features go into, with a menu to
+ * deactivate it. Absent while none is active.
+ */
+function ActiveComponent({ session, store }: { session: SessionStore; store: DocumentStore }) {
+  const id = useStore(session, (s) => s.activeComponent);
+  const name = useStore(store, (s) => s.doc.components?.find((c) => c.id === id)?.name);
+  if (id === undefined || name === undefined) return null;
+  return (
+    <Menu
+      label="Active component"
+      trigger={
+        <button
+          type="button"
+          aria-label={`Active component: ${name}`}
+          data-active-component={name}
+          className="rounded-input px-1 font-mono text-[11px] whitespace-nowrap text-ink hover:bg-accent-soft"
+        >
+          Active: {name}
+        </button>
+      }
+    >
+      <MenuItem onSelect={() => session.getState().activateComponent(undefined)}>
+        Deactivate
+      </MenuItem>
+    </Menu>
   );
 }
 

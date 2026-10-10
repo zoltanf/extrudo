@@ -28,6 +28,10 @@ export interface ComponentActions {
   select(id: ComponentId, mode: SelectMode): void;
   /** Makes a component of `bodies` (none: an empty one); returns its ID. */
   newComponent(bodies: readonly BodyId[]): ComponentId | undefined;
+  /** Session state (ADR-0081 §6): new features are stamped into the active component. */
+  activate(id: ComponentId | undefined): void;
+  /** Session state: the view draws and picks only the isolated component. */
+  isolate(id: ComponentId | undefined): void;
 }
 
 export function createComponentActions(
@@ -66,6 +70,12 @@ export function createComponentActions(
       if (!run(removeComponent({ id }))) return;
       notify('info', `Deleted ${name}. Its bodies stay in the design.`);
     },
+    activate(id) {
+      session.getState().activateComponent(id);
+    },
+    isolate(id) {
+      session.getState().isolateComponent(id);
+    },
     select(id, mode) {
       session.getState().select(
         members(id).map((body) => ({ kind: 'body' as const, id: body })),
@@ -74,7 +84,10 @@ export function createComponentActions(
     },
     newComponent(bodies) {
       const id = newId<ComponentId>();
-      return run(addComponent({ id, bodies })) ? id : undefined;
+      if (!run(addComponent({ id, bodies }))) return undefined;
+      // New Component activates what it made (ADR-0081 §6).
+      session.getState().activateComponent(id);
+      return id;
     },
   };
 }

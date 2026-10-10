@@ -130,6 +130,11 @@ export interface ViewportProps {
   meta?: Record<BodyId, BodyMeta>;
   /** The components and their bodies for tests (`data-components`, P6-05 S3). */
   components?: string | undefined;
+  /** The active and the isolated component's names (P6-05 S4): `data-active-component`, `data-isolated`. */
+  activeComponent?: string | undefined;
+  isolatedComponent?: string | undefined;
+  /** The isolation bar's Exit button. */
+  onExitIsolation?: () => void;
   /** Sketches to draw (P1-01). */
   sketches?: readonly SketchDrawing[];
   /** The plane of the sketch being edited: the grid lies on it. */
@@ -360,6 +365,9 @@ function watchContext(
 export function Viewport({
   viewport,
   components,
+  activeComponent,
+  isolatedComponent,
+  onExitIsolation,
   bodies = NO_BODIES,
   meta = NO_META,
   sketches = NO_SKETCHES,
@@ -570,6 +578,8 @@ export function Viewport({
       data-body-appearance={appearanceKey}
       data-ghost-bodies={ghostKey}
       data-components={components}
+      data-active-component={activeComponent}
+      data-isolated={isolatedComponent}
       data-construction={constructionSummary(drawnConstruction)}
       data-ghosts={ghostsSummary(ghosts)}
       data-canvases={canvasSummary(drawnCanvases, pixels)}
@@ -585,6 +595,22 @@ export function Viewport({
       className="relative isolate min-w-0 flex-1 overflow-hidden"
       style={{ background: 'var(--x-viewport-glow)' }}
     >
+      {isolatedComponent !== undefined && (
+        <div
+          role="status"
+          data-isolation-bar
+          className="pointer-events-auto absolute top-2 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-control border border-line bg-raised px-3 py-1 text-sm shadow"
+        >
+          <span>Showing {isolatedComponent} only</span>
+          <button
+            type="button"
+            onClick={onExitIsolation}
+            className="rounded-input px-2 py-0.5 text-accent hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            Exit isolation
+          </button>
+        </div>
+      )}
       <div
         ref={surface}
         data-cursor={dragging ?? tool}

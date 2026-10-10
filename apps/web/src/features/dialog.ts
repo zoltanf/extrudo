@@ -49,6 +49,7 @@ import {
 } from '@extrudo/core';
 import type { BodyMesh, Preview, ScadParametersResult, SubShapeKind } from '@extrudo/kernel';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { withActiveComponent } from '../components/active';
 import type { ToastOptions } from '../design-system';
 import { readTopology, topologyItem } from '../selection/items';
 import { clearPickedHover, createModelSelect } from '../selection/useModelSelection';
@@ -868,7 +869,10 @@ export function createDialogController(options: DialogControllerOptions): Dialog
       if (!canCommit(fresh)) return false;
       const command: Command<unknown> =
         fresh.mode === 'create'
-          ? insertFeature({ feature: fresh.draft, index: fresh.index })
+          ? insertFeature({
+              feature: withActiveComponent(fresh.draft, session),
+              index: fresh.index,
+            })
           : updateFeatureInputs({ id: fresh.id, inputs: fresh.draft.inputs, replace: true });
       // What the feature needs beside itself (an import's attachment record),
       // in the same undo step (ADR-0066 §0).

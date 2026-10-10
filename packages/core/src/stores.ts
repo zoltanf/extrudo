@@ -17,7 +17,7 @@ import { applyCommand, type Command } from './commands';
 import type { BodyOrigins } from './components';
 import type { ConstructionReport } from './construction';
 import { type HistoryOptions, UndoHistory } from './history';
-import type { BodyId, FeatureId } from './ids';
+import type { BodyId, ComponentId, FeatureId } from './ids';
 import type { ImportReport } from './import';
 import type { ExtrudoDocument, GeomRef, GeomRefKind } from './schema';
 import type { SketchReport } from './sketch/projection';
@@ -164,6 +164,13 @@ export interface SessionState {
    * decides afresh. Session state: not saved.
    */
   sketchSliceFlip: 1 | -1 | undefined;
+  /**
+   * The component new features are stamped into (P6-05 S4, ADR-0081 §6). Session state: not
+   * saved, not undoable, kept across sketch mode.
+   */
+  activeComponent: ComponentId | undefined;
+  /** The only component the view draws and picks while set (ADR-0081 §6). Session state. */
+  isolatedComponent: ComponentId | undefined;
   enterSketch(id: FeatureId): void;
   exitSketch(): void;
   setTool(tool: string | undefined): void;
@@ -171,6 +178,8 @@ export interface SessionState {
   clearSelection(): void;
   setHover(item: SelectionItem | undefined): void;
   setSketchSliceFlip(flip: 1 | -1 | undefined): void;
+  activateComponent(id: ComponentId | undefined): void;
+  isolateComponent(id: ComponentId | undefined): void;
 }
 
 export type SessionStore = StoreApi<SessionState>;
@@ -183,6 +192,8 @@ export function createSessionStore(): SessionStore {
     selection: [],
     hover: undefined,
     sketchSliceFlip: undefined,
+    activeComponent: undefined,
+    isolatedComponent: undefined,
     enterSketch(id) {
       set({
         mode: 'sketch',
@@ -217,6 +228,12 @@ export function createSessionStore(): SessionStore {
     },
     setSketchSliceFlip(sketchSliceFlip) {
       if (sketchSliceFlip !== get().sketchSliceFlip) set({ sketchSliceFlip });
+    },
+    activateComponent(activeComponent) {
+      if (activeComponent !== get().activeComponent) set({ activeComponent });
+    },
+    isolateComponent(isolatedComponent) {
+      if (isolatedComponent !== get().isolatedComponent) set({ isolatedComponent });
     },
   }));
 }

@@ -1,5 +1,5 @@
 import { expect, type Page, test } from '@playwright/test';
-import { primitive, selectBodies } from './benchmark-helpers';
+import { primitive, selectBodies, turnView } from './benchmark-helpers';
 import { kernelReady, openProject, pickTool } from './helpers';
 
 // P6-05 S3 (ADR-0081): components in the browser. A component is a named set of bodies
@@ -34,6 +34,7 @@ const componentLeaf = (page: Page, name: string) =>
 const bodiesHeader = (page: Page) => browserOf(page).locator('[data-drop="bodies"]');
 
 test('components organise, show, ghost, hide and delete as a unit', async ({ page }) => {
+  test.setTimeout(90_000);
   await openProject(page);
   await primitive(page, 'Box', {});
   await primitive(page, 'Box', { X: '60 mm' });
@@ -96,4 +97,91 @@ test('components organise, show, ghost, hide and delete as a unit', async ({ pag
   await expect(viewport).toHaveAttribute('data-bodies', /Body1:.*Body2:/);
   await page.keyboard.press('Control+z');
   await expect(viewport).toHaveAttribute('data-components', 'Lid:Body1,Body2');
+});
+
+const componentMenu = (page: Page, name: string) =>
+  componentLeaf(page, name).locator('[data-drop]').first().click({ button: 'right' });
+
+// P6-05 S4 (ADR-0081 §6): the active component stamps new features, isolation draws and picks
+// only one component.
+test('an active component takes new bodies, isolation shows only it', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openProject(page);
+  await primitive(page, 'Box', {});
+  await kernelReady(page);
+  const viewport = viewportOf(page);
+  await expect(viewport).not.toHaveAttribute('data-active-component');
+
+  // New Component activates what it made.
+  await selectBodies(page, ['Body1']);
+  await pickTool(page, 'New Component');
+  await row(page, 'Component1').focus();
+  await page.keyboard.press('F2');
+  const field = browserOf(page).getByRole('textbox', { name: 'Rename Component1' });
+  await field.fill('Lid');
+  await field.press('Enter');
+  await expect(viewport).toHaveAttribute('data-active-component', 'Lid');
+  await expect(componentLeaf(page, 'Lid')).toHaveAttribute('data-component-active', '');
+  await expect(page.locator('button[data-active-component="Lid"]')).toHaveText('Active: Lid');
+
+  // A new primitive joins it; stamped features say so in their chip's tooltip.
+  await primitive(page, 'Box', { X: '60 mm' });
+  await expect(viewport).toHaveAttribute('data-components', 'Lid:Body1,Body2');
+
+  // Deactivate from the status bar: the next body is loose.
+  await page.locator('button[data-active-component="Lid"]').click();
+  await page.getByRole('menuitem', { name: 'Deactivate' }).click();
+  await expect(viewport).not.toHaveAttribute('data-active-component');
+  await expect(page.locator('button[data-active-component]')).toHaveCount(0);
+  await primitive(page, 'Box', { X: '-60 mm' });
+  await expect(viewport).toHaveAttribute('data-components', 'Lid:Body1,Body2');
+  await expect(bodyLeaf(page, 'Body3')).not.toHaveAttribute('data-body-component', /.+/);
+
+  // The row menu activates again.
+  await componentMenu(page, 'Lid');
+  await page.getByRole('menuitem', { name: 'Activate', exact: true }).click();
+  await expect(viewport).toHaveAttribute('data-active-component', 'Lid');
+  await expect(viewport).not.toHaveAttribute('data-isolated');
+
+  // The loose body picks in the view (home view, top of its box).
+  const view = await turnView(page, 'Shift+1');
+  const looseTop = [-60, 0, 20] as const;
+  await page.mouse.move(view(looseTop).x, view(looseTop).y);
+  await page.mouse.click(view(looseTop).x, view(looseTop).y);
+  await expect(viewport).toHaveAttribute('data-model-selection', /body|face/);
+  await page.keyboard.press('Escape');
+
+  // Isolate Lid: only its bodies are drawn, the other rows are dimmed, and the loose body
+  // can't be picked where it was.
+  await componentMenu(page, 'Lid');
+  await page.getByRole('menuitem', { name: 'Isolate', exact: true }).click();
+  await expect(viewport).toHaveAttribute('data-isolated', 'Lid');
+  await expect(page.locator('[data-isolation-bar]')).toHaveText(/Showing Lid only/);
+  const bodies = (await viewport.getAttribute('data-bodies')) ?? '';
+  expect(bodies).toMatch(/Body1:/);
+  expect(bodies).toMatch(/Body2:/);
+  expect(bodies).not.toMatch(/Body3:/);
+  await page.mouse.click(view(looseTop).x, view(looseTop).y);
+  await expect(viewport).not.toHaveAttribute('data-model-selection', /.+/);
+
+  // Exit isolation brings everything back.
+  await page
+    .locator('[data-isolation-bar]')
+    .getByRole('button', { name: 'Exit isolation' })
+    .click();
+  await expect(viewport).not.toHaveAttribute('data-isolated');
+  await expect(viewport).toHaveAttribute('data-bodies', /Body1:.*Body2:.*Body3:/);
+});
+
+test('undoing New Component clears the active marker', async ({ page }) => {
+  await openProject(page);
+  await primitive(page, 'Box', {});
+  await kernelReady(page);
+  const viewport = viewportOf(page);
+  await selectBodies(page, ['Body1']);
+  await pickTool(page, 'New Component');
+  await expect(viewport).toHaveAttribute('data-active-component', 'Component1');
+  await page.keyboard.press('Control+z');
+  await expect(viewport).not.toHaveAttribute('data-components');
+  await expect(viewport).not.toHaveAttribute('data-active-component');
 });

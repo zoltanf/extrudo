@@ -102,6 +102,19 @@ export interface CommandContext {
   repeat?: { id: string };
   /** Macro recording (P5-05): whether one runs; Record and Stop show accordingly. */
   macro?: { recording: boolean };
+  /**
+   * Components (P6-05 S4, ADR-0081 §6): the component the selected bodies all share (absent
+   * when they share none), and whether one is active or isolated. Model mode only.
+   */
+  components?: {
+    selected?: { name: string };
+    active: boolean;
+    isolated: boolean;
+    activate(): void;
+    deactivate(): void;
+    isolate(): void;
+    exitIsolation(): void;
+  };
   /** The right-click menu's style (P3-11): the ring, or one plain list. */
   markingMenu?: { radial: boolean; toggle(): void; customize?: () => void };
   theme: { choice: ThemeChoice; set(choice: ThemeChoice): void };
@@ -294,6 +307,21 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
         run: command.run,
       });
     }
+  }
+  if (ctx.mode === 'model' && ctx.components) {
+    const c = ctx.components;
+    const group = 'Solid › Component';
+    const needs = c.selected ? undefined : 'Select the bodies of one component first.';
+    plain('activateComponent', 'Activate Component', group, c.activate, {
+      keywords: 'component active new features go into',
+      ...(needs && { unavailable: needs }),
+    });
+    if (c.active) plain('deactivateComponent', 'Deactivate Component', group, c.deactivate);
+    plain('isolateComponent', 'Isolate Component', group, c.isolate, {
+      keywords: 'component show only',
+      ...(needs && { unavailable: needs }),
+    });
+    if (c.isolated) plain('exitIsolation', 'Exit Isolation', group, c.exitIsolation);
   }
   plain('undo', 'Undo', 'Edit', ctx.undo, { icon: icon(Undo2) });
   plain('redo', 'Redo', 'Edit', ctx.redo, { icon: icon(Redo2) });

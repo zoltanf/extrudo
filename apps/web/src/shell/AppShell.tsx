@@ -33,6 +33,7 @@ import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { isRepeatable } from '../commands/marking';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
+import { followComponentSession } from '../components/active';
 import { createComponentActions } from '../components/componentActions';
 import { componentRows, componentsSummary } from '../components/componentRows';
 import { CustomizerPanel } from '../customizer/CustomizerPanel';
@@ -528,6 +529,11 @@ export function AppShell({
   // The model's bodies with their names (ADR-0030): new bodies get stored names as soon as a
   // recompute shows them, amended into the undo step that made them.
   useEffect(() => followBodyNames(store, model), [store, model]);
+  // The active and the isolated component follow the document: an undo, a delete or a version
+  // restore that removes one clears it (P6-05 S4, ADR-0081 §6).
+  useEffect(() => followComponentSession(store, session), [store, session]);
+  const activeComponent = useStore(session, (s) => s.activeComponent);
+  const isolatedComponent = useStore(session, (s) => s.isolatedComponent);
   const bodyList = useMemo(
     () => bodyEntries(doc, bodies, model.getState().origins),
     [doc, bodies, model],
@@ -671,6 +677,16 @@ export function AppShell({
     () => selection.filter((item) => item.kind === 'body').map((item) => item.id as BodyId),
     [selection],
   );
+  // The component all the selected bodies share, if they share one (activate and isolate act on it).
+  const selectedComponent = useMemo(() => {
+    if (selectedBodyIds.length === 0) return undefined;
+    const owners = new Set(
+      selectedBodyIds.map((id) => bodyList.find((b) => b.id === id)?.component),
+    );
+    const [only] = [...owners];
+    return owners.size === 1 && only !== undefined ? only : undefined;
+  }, [selectedBodyIds, bodyList]);
+  const selectedComponentName = doc.components?.find((c) => c.id === selectedComponent)?.name;
   // The Project tool (P2-09) picks body edges, faces, vertices and bodies in the open sketch;
   // Intersect (P4-12) faces and bodies. "Keep linked" off makes the next picks an include.
   const [keepLinked, setKeepLinked] = useState(true);
@@ -698,7 +714,19 @@ export function AppShell({
   });
   // Editing a feature shows and picks the bodies before it (the preview's base), and so
   // does the Project tool in a sketch that later features build on.
-  const shownBodies = project.bodies ?? redefineBase ?? dialogBodies(dialogOpen, bodies);
+  const sceneBodies = project.bodies ?? redefineBase ?? dialogBodies(dialogOpen, bodies);
+  // Isolation (P6-05 S4, ADR-0081 §6): the view, its picking and Fit see only the isolated
+  // component's bodies (a body the list doesn't know, a preview's, stays).
+  const shownBodies = useMemo(() => {
+    if (isolatedComponent === undefined) return sceneBodies;
+    const owner = new Map(bodyList.map((b) => [b.id, b.component]));
+    return Object.fromEntries(
+      Object.entries(sceneBodies).filter(([id]) => {
+        const has = owner.has(id as BodyId);
+        return !has || owner.get(id as BodyId) === isolatedComponent;
+      }),
+    ) as typeof sceneBodies;
+  }, [sceneBodies, isolatedComponent, bodyList]);
   const overhang = useOverhang({
     viewport,
     doc,
@@ -976,6 +1004,30 @@ export function AppShell({
         tutorial: { start: () => startTutorialRef.current() },
         docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
         macro: { recording: recording !== undefined },
+        ...(m === 'model' && {
+          components: {
+            ...(selectedComponent !== undefined &&
+              selectedComponentName !== undefined && { selected: { name: selectedComponentName } }),
+            active: activeComponent !== undefined,
+            isolated: isolatedComponent !== undefined,
+            activate: () => {
+              if (selectedComponent === undefined) {
+                notify('info', 'Select the bodies of one component first.');
+                return;
+              }
+              session.getState().activateComponent(selectedComponent);
+            },
+            deactivate: () => session.getState().activateComponent(undefined),
+            isolate: () => {
+              if (selectedComponent === undefined) {
+                notify('info', 'Select the bodies of one component first.');
+                return;
+              }
+              session.getState().isolateComponent(selectedComponent);
+            },
+            exitIsolation: () => session.getState().isolateComponent(undefined),
+          },
+        }),
         ...(desktop &&
           platform.menus && {
             desktop: {
@@ -1003,6 +1055,11 @@ export function AppShell({
       remove,
       dialogOpen,
       selectedBodyIds,
+      selectedComponent,
+      selectedComponentName,
+      activeComponent,
+      isolatedComponent,
+      session,
       selection,
       bodyActions,
       construction,
@@ -1422,6 +1479,7 @@ export function AppShell({
       kernel: kernel as PluginCommandKernel,
       plugins: platform.plugins,
       store,
+      session,
       selection: selected,
     }).then((outcome) => notify(outcome.ok ? 'success' : 'error', outcome.message));
   };
@@ -1884,6 +1942,8 @@ export function AppShell({
             bodies={browserBodies}
             bodyActions={bodyActions}
             componentActions={componentActions}
+            activeComponent={activeComponent}
+            isolatedComponent={isolatedComponent}
             selectedBodies={selectedBodies}
             statuses={featureStatuses}
             recomputeFinished={recomputeFinished}
@@ -1964,6 +2024,9 @@ export function AppShell({
               bodies={shownBodies}
               meta={bodyMeta}
               components={componentsSummary(componentList)}
+              activeComponent={doc.components?.find((c) => c.id === activeComponent)?.name}
+              isolatedComponent={doc.components?.find((c) => c.id === isolatedComponent)?.name}
+              onExitIsolation={() => session.getState().isolateComponent(undefined)}
               sketches={sketches}
               sketchPlane={sketchPlane}
               planePicker={planePicker}
@@ -2199,6 +2262,7 @@ export function AppShell({
       <MacroDialog
         recorded={recorded}
         store={store}
+        session={session}
         notify={notify}
         onClose={() => setRecorded(undefined)}
       />
