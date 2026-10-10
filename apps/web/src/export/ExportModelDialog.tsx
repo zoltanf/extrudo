@@ -1,5 +1,6 @@
 import {
   type BodyId,
+  type Component,
   type DocumentStore,
   type EvaluateResult,
   ExprError,
@@ -82,6 +83,8 @@ interface Remembered {
   angle: string;
   /** The slicer last used (P6-02). */
   slicer?: SlicerId;
+  /** Keep each component's bodies together in a 3MF or STEP file (P6-05, ADR-0081 §7). */
+  groupComponents?: boolean;
 }
 
 const PREFERENCE = 'export.model';
@@ -90,6 +93,7 @@ const DEFAULTS: Remembered = {
   resolution: 'medium',
   deviation: '0.02 mm',
   angle: '15 deg',
+  groupComponents: true,
 };
 const RESOLUTION_LABELS: Record<Exclude<Resolution, 'custom'>, string> = {
   coarse: 'Coarse',
@@ -203,9 +207,39 @@ export function ExportModelForm({
   // ADR-0066 §3): its checkbox is off and disabled while STEP is the format,
   // and it comes back when a mesh format is picked again.
   const inStep = settings.format === 'step';
+  // The entries carry their component's name so the file can group them
+  // (P6-05, ADR-0081 §7).
+  const rows = useMemo(() => {
+    const names = new Map((doc.components ?? []).map((c) => [c.id, c.name]));
+    const groups: { component: Component; bodies: ExportBody[] }[] = (doc.components ?? []).map(
+      (component) => ({ component, bodies: [] }),
+    );
+    const byId = new Map(groups.map((g) => [g.component.id, g]));
+    const loose: ExportBody[] = [];
+    const all: ExportBody[] = bodies.map((body) => {
+      const name = body.component === undefined ? undefined : names.get(body.component);
+      const entry: ExportBody = {
+        id: body.id,
+        meta: body.meta,
+        ...(body.mesh !== undefined && { mesh: body.mesh }),
+        ...(body.component !== undefined &&
+          name !== undefined && { component: { id: body.component, name } }),
+      };
+      const group = body.component === undefined ? undefined : byId.get(body.component);
+      if (group) group.bodies.push(entry);
+      else loose.push(entry);
+      return entry;
+    });
+    return { all, groups: groups.filter((g) => g.bodies.length > 0), loose };
+  }, [bodies, doc.components]);
+  const allBodies = rows.all;
+  const componentCount = new Set(
+    allBodies.filter((b) => chosen.has(b.id) && b.component).map((b) => b.component?.id),
+  ).size;
+  const groupComponents = settings.groupComponents !== false;
   const selected = useMemo<ExportBody[]>(
-    () => bodies.filter((b) => chosen.has(b.id) && (settings.format !== 'step' || !b.mesh)),
-    [bodies, chosen, settings.format],
+    () => allBodies.filter((b) => chosen.has(b.id) && (settings.format !== 'step' || !b.mesh)),
+    [allBodies, chosen, settings.format],
   );
   /** Whether a body can go into the chosen format at all. */
   const exportable = (body: ExportBody) => settings.format !== 'step' || !body.mesh;
@@ -271,6 +305,12 @@ export function ExportModelForm({
   const ready = meshFormat ? (meshed?.key === key ? meshed.result : undefined) : undefined;
 
   const count = `${selected.length} ${selected.length === 1 ? 'body' : 'bodies'}`;
+  // ", 2 components" while the export keeps components together (P6-05,
+  // ADR-0081 §7); STL holds no structure, so it says nothing there.
+  const componentsNote =
+    groupComponents && componentCount > 0 && settings.format !== 'stl'
+      ? `, ${componentCount} component${componentCount === 1 ? '' : 's'}`
+      : '';
   let summary: { text: string; tone: 'muted' | 'error' | 'warning' };
   if (!kernel) summary = { text: "The kernel isn't running.", tone: 'error' };
   else if (bodies.length === 0) {
@@ -282,7 +322,10 @@ export function ExportModelForm({
   else if (!meshFormat) {
     summary =
       selected.length === bodies.length
-        ? { text: `${count}, exact geometry in millimetres (AP242)`, tone: 'muted' }
+        ? {
+            text: `${count}, exact geometry in millimetres (AP242)${componentsNote}`,
+            tone: 'muted',
+          }
         : {
             text: `${selected.length} of ${bodies.length} bodies: a STEP file holds exact geometry, so the meshes are left out.`,
             tone: 'warning',
@@ -300,7 +343,10 @@ export function ExportModelForm({
     const size = settings.format === 'stl' ? `, ${formatBytes(stlBytes(ready.triangles))}` : '';
     summary =
       open.length === 0
-        ? { text: `${count}, ${triangles} triangles${size}, watertight`, tone: 'muted' }
+        ? {
+            text: `${count}, ${triangles} triangles${size}, watertight${componentsNote}`,
+            tone: 'muted',
+          }
         : {
             text: `${count}, ${triangles} triangles${size}. Not closed: ${open.join(', ')}. Slicers will try to repair ${open.length === 1 ? 'it' : 'them'}.`,
             tone: 'warning',
@@ -317,8 +363,8 @@ export function ExportModelForm({
   /** The file the choices describe, as Export writes it. */
   const build = async () =>
     settings.format === 'step'
-      ? await stepFile(kernel as ModelExporter, selected, doc.name)
-      : meshFile(ready as MeshedBodies, settings.format, doc.name);
+      ? await stepFile(kernel as ModelExporter, selected, doc.name, groupComponents)
+      : meshFile(ready as MeshedBodies, settings.format, doc.name, groupComponents);
 
   const save = async () => {
     if (!canExport || !kernel) return;
@@ -363,7 +409,46 @@ export function ExportModelForm({
       else next.add(id);
       return next;
     });
-  const all = bodies.length > 0 && bodies.every((b) => chosen.has(b.id));
+  const toggleMany = (ids: readonly BodyId[], on: boolean) =>
+    setChosen((current) => {
+      const next = new Set(current);
+      for (const id of ids) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  const groupState = (list: readonly ExportBody[]) => {
+    const on = list.filter((b) => chosen.has(b.id) && exportable(b)).length;
+    if (on === 0) return 'false' as const;
+    return on === list.length ? ('true' as const) : ('mixed' as const);
+  };
+  const bodyRow = (body: ExportBody) => (
+    <label
+      key={body.id}
+      className={`flex h-7 shrink-0 items-center gap-2 rounded-input px-1 ${
+        inStep && body.mesh ? 'opacity-60' : 'cursor-pointer hover:bg-accent-soft'
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={chosen.has(body.id) && exportable(body)}
+        disabled={!exportable(body)}
+        onChange={() => toggle(body.id)}
+        className="accent-(--x-accent)"
+      />
+      <span
+        aria-hidden
+        className="size-2.5 shrink-0 rounded-full border border-line"
+        style={{ background: body.meta.color ?? 'var(--x-body-default)' }}
+      />
+      <span className={`truncate ${body.meta.visible ? '' : 'text-muted'}`}>{body.meta.name}</span>
+      {!body.meta.visible && <Hint>hidden</Hint>}
+      {!exportable(body) && <Hint>Meshes can't go into a STEP file</Hint>}
+    </label>
+  );
+  const all = allBodies.length > 0 && allBodies.every((b) => chosen.has(b.id));
+  const anyComponent = selected.some((b) => b.component !== undefined);
   const lengthSettings = { ...doc.settings, precision: Math.max(doc.settings.precision, 3) };
 
   return (
@@ -380,42 +465,56 @@ export function ExportModelForm({
           Bodies
         </legend>
         <div className="flex max-h-40 flex-col overflow-y-auto" data-export-bodies>
-          {bodies.map((body) => (
-            <label
-              key={body.id}
-              className={`flex h-7 shrink-0 items-center gap-2 rounded-input px-1 ${
-                inStep && body.mesh ? 'opacity-60' : 'cursor-pointer hover:bg-accent-soft'
-              }`}
+          {rows.groups.map((group) => (
+            <div
+              key={group.component.id}
+              className="flex flex-col"
+              data-export-component={group.component.name}
             >
-              <input
-                type="checkbox"
-                checked={chosen.has(body.id) && exportable(body)}
-                disabled={!exportable(body)}
-                onChange={() => toggle(body.id)}
-                className="accent-(--x-accent)"
-              />
-              <span
-                aria-hidden
-                className="size-2.5 shrink-0 rounded-full border border-line"
-                style={{ background: body.meta.color ?? 'var(--x-body-default)' }}
-              />
-              <span className={`truncate ${body.meta.visible ? '' : 'text-muted'}`}>
-                {body.meta.name}
-              </span>
-              {!body.meta.visible && <Hint>hidden</Hint>}
-              {!exportable(body) && <Hint>Meshes can't go into a STEP file</Hint>}
-            </label>
+              <label className="flex h-7 shrink-0 items-center gap-2 rounded-input px-1 font-medium">
+                <input
+                  type="checkbox"
+                  aria-label={`${group.component.name} (component)`}
+                  aria-checked={groupState(group.bodies)}
+                  checked={groupState(group.bodies) === 'true'}
+                  ref={(el) => {
+                    if (el) el.indeterminate = groupState(group.bodies) === 'mixed';
+                  }}
+                  onChange={() =>
+                    toggleMany(
+                      group.bodies.map((b) => b.id),
+                      groupState(group.bodies) !== 'true',
+                    )
+                  }
+                  className="accent-(--x-accent)"
+                />
+                <span className="truncate">{group.component.name}</span>
+              </label>
+              <div className="flex flex-col pl-5">{group.bodies.map(bodyRow)}</div>
+            </div>
           ))}
+          {rows.loose.map(bodyRow)}
         </div>
-        {bodies.length > 1 && (
+        {allBodies.length > 1 && (
           <label className="flex h-7 cursor-pointer items-center gap-2 px-1 text-sm text-muted">
             <input
               type="checkbox"
               checked={all}
-              onChange={() => setChosen(all ? new Set() : new Set(bodies.map((b) => b.id)))}
+              onChange={() => setChosen(all ? new Set() : new Set(allBodies.map((b) => b.id)))}
               className="accent-(--x-accent)"
             />
             All bodies
+          </label>
+        )}
+        {anyComponent && (
+          <label className="flex h-7 cursor-pointer items-center gap-2 px-1 text-sm text-muted">
+            <input
+              type="checkbox"
+              checked={groupComponents}
+              onChange={() => update({ groupComponents: !groupComponents })}
+              className="accent-(--x-accent)"
+            />
+            Keep components together
           </label>
         )}
         {inStep && bodies.some((b) => b.mesh) && (

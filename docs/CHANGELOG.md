@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## Next
 
+- 2026-10-10 · **Components, slice S6: 3MF and the Export dialog** (P6-05, ADR-0081 §7): a 3MF can group a component's bodies as one `object`'s `<components>` (one build item, a slicer reads one part made of several) and `read3mf` expands a grouped file back into meshes with their transforms, so an import makes a body per part; the Export dialog lists bodies under component headings (tri-state heading checkbox), a "Keep components together" checkbox (default on, remembered in `export.model`) drives both the 3MF grouping and STEP assemblies, the summary counts components, the file name becomes "<project> - <component>" when every chosen body is in one component, and a component row's menu exports it; `fixtures/imports/two-components.3mf`.
 - 2026-10-10 · **Named views (ADR-0008's amendment)**: the nav bar's Named views menu saves the
   camera ("Save Current View…", a name and Save on a popover) and restores a saved view, the
   browser's Named views folder restores on a click with Update to Current View, Rename (F2) and

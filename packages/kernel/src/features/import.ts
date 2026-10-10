@@ -57,7 +57,6 @@ import {
   readStl,
   stlTriangleCount,
   type ThreeMfModel,
-  type ThreeMfObject,
   type TriangleMesh,
 } from '@extrudo/io';
 import type { ScadCompiler, ScadDefine, ScadRequest, ScadResult } from '@extrudo/openscad';
@@ -335,22 +334,29 @@ function readMeshFile(
 
 /**
  * A 3MF's meshes in millimetres: one per object its build makes, in the
- * build's order. A file with no build items is read as its objects, which is
- * what it means.
+ * build's order. A grouped object expands to its components' meshes with
+ * their transforms (P6-05, ADR-0081 §7), so a component imports as its
+ * bodies. A file with no build items is read as its objects, which is what
+ * it means.
  */
 function threeMfMeshes(model: ThreeMfModel, units: MeshUnits, name: string): TriangleMesh[] {
   const factor = units === 'auto' ? (THREE_MF_UNITS[model.unit] ?? 1) : (UNIT_FACTORS[units] ?? 1);
-  const byId = new Map(model.objects.map((object) => [object.id, object]));
-  const ids = model.build.length > 0 ? model.build : model.objects.map((object) => object.id);
-  const objects = ids
-    .map((id) => byId.get(id))
-    .filter((object): object is ThreeMfObject => !!object && object.mesh.indices.length > 0);
-  if (objects.length === 0) throw new KernelError(`The file ${name} has no objects in it.`);
+  const parts: { mesh: TriangleMesh; transform?: number[] }[] =
+    model.build.length > 0
+      ? model.items.flatMap((item) =>
+          item.meshes.map((part) => ({
+            mesh: part.object.mesh,
+            ...(part.transform !== undefined && { transform: part.transform }),
+          })),
+        )
+      : model.objects.map((object) => ({ mesh: object.mesh }));
+  const meshes = parts.filter((part) => part.mesh.indices.length > 0);
+  if (meshes.length === 0) throw new KernelError(`The file ${name} has no objects in it.`);
   let triangles = 0;
-  return objects.map((object) => {
-    triangles += object.mesh.indices.length / 3;
+  return meshes.map(({ mesh, transform }) => {
+    triangles += mesh.indices.length / 3;
     refuseTooMany(name, triangles);
-    return scaled(object.mesh, factor);
+    return scaled(transform ? transformMesh(mesh, transform) : mesh, factor);
   });
 }
 
@@ -494,6 +500,48 @@ function scaled(mesh: TriangleMesh, factor: number): TriangleMesh {
     positions[i] = (mesh.positions[i] as number) * factor;
   }
   return { positions, indices: mesh.indices };
+}
+
+/**
+ * A 3MF mesh placed by a component or item transform (ADR-0081 §7): the
+ * row-major 4×3 array maps `p` to `L·p + t`, with
+ * `L = [[m0,m3,m6],[m1,m4,m7],[m2,m5,m8]]`. A transform that mirrors the
+ * mesh reverses each triangle's winding so its faces stay outward.
+ */
+function transformMesh(mesh: TriangleMesh, m: readonly number[]): TriangleMesh {
+  const [a, b, c, d, e, f, g, h, i, tx, ty, tz] = m as [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  const positions = new Float64Array(mesh.positions.length);
+  const p = mesh.positions;
+  for (let k = 0; k + 2 < p.length; k += 3) {
+    const x = p[k] as number;
+    const y = p[k + 1] as number;
+    const z = p[k + 2] as number;
+    positions[k] = a * x + d * y + g * z + tx;
+    positions[k + 1] = b * x + e * y + h * z + ty;
+    positions[k + 2] = c * x + f * y + i * z + tz;
+  }
+  const det = a * (e * i - f * h) - d * (b * i - c * h) + g * (b * f - c * e);
+  if (det >= 0) return { positions, indices: mesh.indices };
+  const indices = new Uint32Array(mesh.indices.length);
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    indices[t] = mesh.indices[t] as number;
+    indices[t + 1] = mesh.indices[t + 2] as number;
+    indices[t + 2] = mesh.indices[t + 1] as number;
+  }
+  return { positions, indices };
 }
 
 /** Refuses a file with more triangles than Extrudo reads (ADR-0066 §3). */

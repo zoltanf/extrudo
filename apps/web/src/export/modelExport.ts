@@ -70,8 +70,17 @@ const TYPES: Record<ModelFormat, string> = {
 };
 
 /** An STL (all bodies' triangles in one list) or a 3MF (an object per body, named and coloured). */
-export function meshFile(meshed: MeshedBodies, format: 'stl' | '3mf', project: string): ModelFile {
-  const bytes = meshBytes(meshed, format, { application: `Extrudo ${APP_VERSION}`, project });
+export function meshFile(
+  meshed: MeshedBodies,
+  format: 'stl' | '3mf',
+  project: string,
+  groupComponents = true,
+): ModelFile {
+  const bytes = meshBytes(meshed, format, {
+    application: `Extrudo ${APP_VERSION}`,
+    project,
+    groupComponents,
+  });
   return {
     blob: new Blob([bytes as Uint8Array<ArrayBuffer>], { type: TYPES[format] }),
     name: modelFileName(project, meshed.bodies, format),
@@ -83,8 +92,12 @@ export async function stepFile(
   kernel: ModelExporter,
   bodies: readonly ExportBody[],
   project: string,
+  groupComponents = true,
 ): Promise<ModelFile> {
-  const text = await kernel.exportStep(bodies.map(stepBody));
+  // Without grouping a body's component is dropped, so every body stays a
+  // top-level product (P6-05, ADR-0081 §7).
+  const parts = groupComponents ? bodies : bodies.map(({ component: _c, ...body }) => body);
+  const text = await kernel.exportStep(parts.map(stepBody));
   return {
     blob: new Blob([text], { type: TYPES.step }),
     name: modelFileName(project, bodies, 'step'),

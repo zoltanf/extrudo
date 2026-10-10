@@ -16,6 +16,7 @@ import obj from '../../../../fixtures/imports/bracket-y-up.obj?url&inline';
 import cubeStl from '../../../../fixtures/imports/cube.stl?url&inline';
 import openStl from '../../../../fixtures/imports/open.stl?url&inline';
 import touchingCubes from '../../../../fixtures/imports/touching-cubes.stl?url&inline';
+import twoComponents from '../../../../fixtures/imports/two-components.3mf?url&inline';
 import twoParts from '../../../../fixtures/imports/two-parts.3mf?url&inline';
 import { Kernel } from '../kernel';
 import { loadManifold } from '../manifold';
@@ -60,6 +61,7 @@ const TOUCHING_CUBES = bytesOf(touchingCubes);
 const ASCII_CUBE = bytesOf(asciiCube);
 const OBJ = bytesOf(obj);
 const TWO_PARTS = bytesOf(twoParts);
+const TWO_COMPONENTS = bytesOf(twoComponents);
 
 /** A design with one `import` of a mesh file: its record and its bytes. */
 function design(options: {
@@ -202,6 +204,29 @@ describe('importing a mesh (P4-06, ADR-0066 §3)', () => {
     expect(got[0]?.volume).toBeCloseTo(60 ** 3, 2);
     expect(got.map((b) => b.faces)).toEqual([['mesh:Import1'], ['mesh:Import1#2']]);
     expect(got.map((b) => b.triangles)).toEqual([12, 12]);
+  });
+
+  it('reads a grouped 3MF as one body per component part (P6-05, ADR-0081 §7)', {
+    timeout: 60_000,
+  }, async () => {
+    const result = await recompute(
+      design({
+        bytes: TWO_COMPONENTS,
+        fileName: 'two-components.3mf',
+        mediaType: 'model/3mf',
+      }),
+    );
+    expect(result.features[IMPORT_ID]?.status).toBe('ok');
+    const got = bodies(result);
+    // Two components of two cubes each (sides 4 and 6) and one loose cube
+    // (side 2): every mesh is its own body, whatever group it was in.
+    expect(got).toHaveLength(5);
+    expect(got.map((b) => Math.round(b.volume * 100) / 100).sort((a, b) => a - b)).toEqual([
+      8, 64, 64, 216, 216,
+    ]);
+    expect(got.every((b) => b.isMesh)).toBe(true);
+    expect(got.map((b) => b.faces.length)).toEqual([1, 1, 1, 1, 1]);
+    expect(got.map((b) => b.triangles).sort((a, b) => a - b)).toEqual([12, 12, 12, 12, 12]);
   });
 
   it('reads a Y-up OBJ, turned a quarter turn with up: y', { timeout: 60_000 }, async () => {

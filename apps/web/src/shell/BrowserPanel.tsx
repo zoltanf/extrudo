@@ -1204,6 +1204,14 @@ function ComponentFolder({
               <MenuSeparator />
             </>
           )}
+          {bodyActions.exportBodies && bodies.length > 0 && (
+            <MenuItem
+              icon={<FileDown size={14} />}
+              onSelect={() => bodyActions.exportBodies?.(bodies.map((b) => b.id))}
+            >
+              Export Component…
+            </MenuItem>
+          )}
           <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.remove(id)}>
             Delete Component
           </MenuItem>

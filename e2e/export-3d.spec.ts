@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { type Download, expect, type Page, test } from '@playwright/test';
 import { checkManifold, meshBounds, read3mf, readStl } from '../packages/io/src/index';
-import { fileAction, kernelReady, openProject } from './helpers';
+import { primitive, selectBodies } from './benchmark-helpers';
+import { fileAction, kernelReady, openProject, pickTool } from './helpers';
 
 // P2-12: the model exports as 3MF (an object per body, named, in mm), binary
 // STL and STEP AP242 from the 3D Print tab's Export, the Home tab or a
@@ -154,4 +155,41 @@ test('a body menu and the Home tab open the export', async ({ page }) => {
   await fileAction(page, 'Export Model');
   await expect(dialog(page)).toBeVisible();
   await expect(dialog(page).getByRole('checkbox', { name: 'Bracket' })).toBeChecked();
+});
+
+test('3MF keeps a component’s bodies together (P6-05, ADR-0081 §7)', async ({ page }) => {
+  test.setTimeout(90_000);
+  await openProject(page);
+  await primitive(page, 'Box', {});
+  await primitive(page, 'Box', { X: '60 mm' });
+  await primitive(page, 'Sphere', {});
+  // A component of the two boxes; the sphere stays loose.
+  await selectBodies(page, ['Body1', 'Body2']);
+  await pickTool(page, 'New Component');
+  await kernelReady(page);
+
+  await openExport(page);
+  // Grouping is on by default, remembered in `export.model`.
+  await expect(
+    dialog(page).getByRole('checkbox', { name: 'Keep components together' }),
+  ).toBeChecked();
+  // The two boxes are selected from the pick; add the loose sphere.
+  await dialog(page).getByRole('checkbox', { name: 'All bodies' }).check();
+  await expect(summary(page)).toHaveAttribute(
+    'data-export-summary',
+    /3 bodies, .*watertight, 1 component/,
+    { timeout: 20_000 },
+  );
+  const grouped = await save(page, 'Export 3MF');
+  const model = read3mf(grouped.bytes);
+  // One grouped object (the component's two meshes), then the loose sphere.
+  expect(model.items.map((item) => item.meshes.length)).toEqual([2, 1]);
+  expect(model.objects.map((o) => o.name).sort()).toEqual(['Body1', 'Body2', 'Body3']);
+
+  // Unchecking "Keep components together" makes every body its own item.
+  await openExport(page);
+  await dialog(page).getByRole('checkbox', { name: 'All bodies' }).check();
+  await dialog(page).getByRole('checkbox', { name: 'Keep components together' }).uncheck();
+  const flat = await save(page, 'Export 3MF');
+  expect(read3mf(flat.bytes).items.map((item) => item.meshes.length)).toEqual([1, 1, 1]);
 });

@@ -1,4 +1,5 @@
 import {
+  type ComponentId,
   createDocument,
   createDocumentStore,
   createModelStore,
@@ -147,6 +148,38 @@ describe('the installed slicers in the Export dialog (P6-02)', () => {
     expect(primary(normal, 'Open in slicer')).toBe(false);
     expect(primary(tile, 'Open in slicer')).toBe(true);
     expect(primary(tile, 'Export 3MF')).toBe(false);
+  });
+});
+
+describe('components in the Export dialog (P6-05, ADR-0081 §7)', () => {
+  const lid = 'cmp1' as ComponentId;
+  const body = (name: string, component?: ComponentId): BodyEntry => ({
+    id: `E1:${name}` as never,
+    meta: { name, visible: true },
+    stored: true,
+    display: 'shown',
+    ...(component && { component }),
+  });
+  const propsWithComponent = (bodies: BodyEntry[]) =>
+    props({
+      bodies,
+      store: createDocumentStore({
+        ...createDocument(),
+        components: [{ id: lid, name: 'Lid', visible: true }],
+      }),
+    });
+
+  it('groups a component’s bodies under a heading checkbox, loose bodies after', () => {
+    const out = renderToStaticMarkup(
+      <ExportModelForm
+        {...propsWithComponent([body('Lid1', lid), body('Lid2', lid), body('Pin')])}
+      />,
+    );
+    expect(out).toContain('data-export-component="Lid"');
+    expect(out).toContain('aria-label="Lid (component)"');
+    expect(out).toContain('Lid1');
+    expect(out).toContain('Lid2');
+    expect(out).toContain('Pin');
   });
 });
 

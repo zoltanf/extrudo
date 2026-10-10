@@ -101,10 +101,31 @@ it('writes the P4-06 mesh fixtures', () => {
     ],
     { unit: 'centimeter', application: 'Extrudo fixtures' },
   );
+  // Two components of two cubes each and one loose cube (P6-05 S6, ADR-0081
+  // §7): the grouped objects carry `<components>`, the loose one is its own
+  // build item.
+  const components = write3mf(
+    [
+      { name: 'Base1', mesh: box(4, [0, 0, 0]) },
+      { name: 'Base2', mesh: box(4, [0, 6, 0]) },
+      { name: 'Lid1', mesh: box(6, [10, 0, 0]) },
+      { name: 'Lid2', mesh: box(6, [10, 8, 0]) },
+      { name: 'Pin', mesh: box(2, [20, 0, 0]) },
+    ],
+    {
+      unit: 'millimeter',
+      application: 'Extrudo fixtures',
+      assemblies: [
+        { name: 'Base', parts: [0, 1] },
+        { name: 'Lid', parts: [2, 3] },
+      ],
+    },
+  );
   // Sizes: the cube's 684 bytes, the open one 634, the 3MF a couple of kB.
   expect(cube.indices.length).toBe(36);
   expect(open.indices.length).toBe(33);
   expect(parts.length).toBeGreaterThan(500);
+  expect(components.length).toBeGreaterThan(500);
 
   const ascii = writeAsciiStl(cube, 'cube');
   expect(ascii.split('\n').filter((line) => line.includes('facet normal')).length).toBe(12);
@@ -114,6 +135,7 @@ it('writes the P4-06 mesh fixtures', () => {
     void write('open.stl', writeStl(open, { header: 'Extrudo fixture: a cube with a hole' }));
     void write('ascii-cube.stl', new TextEncoder().encode(ascii));
     void write('two-parts.3mf', parts);
+    void write('two-components.3mf', components);
     // Two cubes that share one edge: importing this separates them
     // (ADR-0066's 2026-10-09 amendment).
     void write(

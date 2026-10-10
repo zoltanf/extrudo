@@ -90,6 +90,7 @@ export {
 export { CREASE, displayMesh, type MeshTriangles } from './mesh-body';
 export {
   ANGLE_RANGE,
+  componentAssemblies,
   DEFLECTION_RANGE,
   type ExportBody,
   formatBytes,

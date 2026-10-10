@@ -10,8 +10,14 @@
  * the bytes in a `Blob` to download (`modelExport.ts`); the CLI writes them to
  * a file.
  */
-import type { BodyId, BodyMeta } from '@extrudo/core';
-import { checkManifold, type ManifoldReport, write3mf, writeStl } from '@extrudo/io';
+import type { BodyId, BodyMeta, ComponentId } from '@extrudo/core';
+import {
+  checkManifold,
+  type ManifoldReport,
+  type ThreeMfAssembly,
+  write3mf,
+  writeStl,
+} from '@extrudo/io';
 import type { MeshOptions } from './mesh';
 import type { BodyExportMesh, ExportProgress } from './service';
 
@@ -81,7 +87,12 @@ export function stepGroups(bodies: readonly StepBody[]): {
 /** A body's STEP part: the name, and the colour when it has one. */
 export function stepBody(body: ExportBody): StepBody {
   const { color } = body.meta;
-  return { id: body.id, name: body.meta.name, ...(color !== undefined && { color }) };
+  return {
+    id: body.id,
+    name: body.meta.name,
+    ...(color !== undefined && { color }),
+    ...(body.component !== undefined && { component: body.component.name }),
+  };
 }
 
 export interface ExportBody {
@@ -93,6 +104,12 @@ export interface ExportBody {
    * and 3MF take its triangles as they are.
    */
   mesh?: boolean;
+  /**
+   * The component the body is in (P6-05, ADR-0081 §7), when the export keeps
+   * components together: its bodies become the parts of one 3MF object or one
+   * STEP assembly. Absent for a loose body.
+   */
+  component?: { id: ComponentId; name: string };
 }
 
 /** Meshed bodies with their check, for the summary and the file. */
@@ -146,27 +163,60 @@ export function safeFileName(name: string, extension: string): string {
   return `${base || 'Untitled'}${extension}`;
 }
 
-/** The file name: the project's, and the body's when there is only one. */
+/**
+ * The file name: the project's, and the body's when there is only one (or the
+ * component's, when every body is in the same one and there is more than one;
+ * P6-05, ADR-0081 §7).
+ */
 export function modelFileName(
   project: string,
   bodies: readonly ExportBody[],
   format: ModelFormat,
 ): string {
   const [only] = bodies;
-  const base = bodies.length === 1 && only ? `${project} - ${only.meta.name}` : project;
+  const component = only?.component;
+  let base = project;
+  if (bodies.length === 1 && only) base = `${project} - ${only.meta.name}`;
+  else if (bodies.length > 1 && component !== undefined) {
+    if (bodies.every((body) => body.component?.id === component.id)) {
+      base = `${project} - ${component.name}`;
+    }
+  }
   return safeFileName(base, format === 'step' ? '.step' : `.${format}`);
+}
+
+/** The bodies of `meshed` grouped by component, in first-seen order (ADR-0081 §7). */
+export function componentAssemblies(bodies: readonly ExportBody[]): ThreeMfAssembly[] | undefined {
+  const order: ComponentId[] = [];
+  const names = new Map<ComponentId, string>();
+  const parts = new Map<ComponentId, number[]>();
+  for (const [i, body] of bodies.entries()) {
+    const component = body.component;
+    if (component === undefined) continue;
+    const list = parts.get(component.id);
+    if (list) list.push(i);
+    else {
+      order.push(component.id);
+      names.set(component.id, component.name);
+      parts.set(component.id, [i]);
+    }
+  }
+  if (order.length === 0) return undefined;
+  return order.map((id) => ({ name: names.get(id) as string, parts: parts.get(id) as number[] }));
 }
 
 /**
  * The bytes of an STL (all bodies' triangles in one list) or a 3MF (an object
  * per body, named and coloured), written the way the app's dialog writes them:
  * the header carries the application and the design, the 3MF keeps each body's
- * name and colour.
+ * name and colour. With `groupComponents` (P6-05, ADR-0081 §7) a 3MF groups
+ * each component's bodies as one object's `<components>`, so a slicer sees one
+ * part made of several.
  */
 export function meshBytes(
   meshed: MeshedBodies,
   format: 'stl' | '3mf',
-  options: { application: string; project: string },
+  options: { application: string; project: string; groupComponents?: boolean },
 ): Uint8Array {
   const { application, project } = options;
   return format === 'stl'
@@ -183,7 +233,13 @@ export function meshBytes(
             ...(meta?.color !== undefined && { color: meta.color }),
           };
         }),
-        { title: project, application },
+        {
+          title: project,
+          application,
+          ...(options.groupComponents === true && {
+            assemblies: componentAssemblies(meshed.bodies),
+          }),
+        },
       );
 }
 

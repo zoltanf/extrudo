@@ -1,8 +1,8 @@
-import { strFromU8, unzipSync } from 'fflate';
+import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
 import { checkManifold, mergeMeshes, splitNonManifoldEdges, type TriangleMesh } from './mesh';
 import { readStl, writeStl } from './stl';
-import { MODEL_PATH, read3mf, write3mf } from './threemf';
+import { MODEL_PATH, modelXml, read3mf, write3mf } from './threemf';
 
 /** A w × d × h box at `at`, triangles counter-clockwise from outside. */
 function box(w: number, d: number, h: number, at: [number, number, number] = [0, 0, 0]) {
@@ -300,5 +300,97 @@ describe('write3mf', () => {
 
   it('refuses a colour that is not hex', () => {
     expect(() => write3mf([{ name: 'A', mesh: box(1, 1, 1), color: 'red' }])).toThrow(/colour/);
+  });
+});
+
+describe('3MF assemblies (P6-05, ADR-0081 §7)', () => {
+  const objects = [
+    { name: 'Lid1', mesh: box(4, 4, 2) },
+    { name: 'Lid2', mesh: box(4, 4, 2, [10, 0, 0]) },
+    { name: 'Box1', mesh: box(6, 6, 4, [20, 0, 0]) },
+    { name: 'Box2', mesh: box(6, 6, 4, [30, 0, 0]) },
+    { name: 'Pin', mesh: box(2, 2, 10, [40, 0, 0]) },
+  ];
+  const assemblies = [
+    { name: 'Lid', parts: [0, 1] },
+    { name: 'Box', parts: [2, 3] },
+  ];
+
+  it('groups mesh objects under a named object and builds the assemblies first', () => {
+    const xml = modelXml(objects, { assemblies });
+    // The mesh objects keep their IDs; the grouped objects follow them.
+    expect(xml).toContain('<object id="1" type="model" name="Lid1">');
+    expect(xml).toContain('<object id="5" type="model" name="Pin">');
+    expect(xml).toContain('<object id="6" type="model" name="Lid">');
+    expect(xml).toContain('<object id="7" type="model" name="Box">');
+    expect(xml).toContain('<component objectid="1"/>');
+    expect(xml).toContain('<component objectid="3"/>');
+    // Build items: the assemblies in order, then the loose body.
+    const build = xml.slice(xml.indexOf('<build>'), xml.indexOf('</build>'));
+    expect(build).toContain('<item objectid="6"/>');
+    expect(build).toContain('<item objectid="7"/>');
+    expect(build).toContain('<item objectid="5"/>');
+    expect(build).not.toContain('<item objectid="1"/>');
+    expect(build.indexOf('objectid="6"')).toBeLessThan(build.indexOf('objectid="7"'));
+    expect(build.indexOf('objectid="7"')).toBeLessThan(build.indexOf('objectid="5"'));
+  });
+
+  it('is byte-identical without assemblies, an empty list included', () => {
+    expect(write3mf(objects, { assemblies: [] })).toEqual(write3mf(objects));
+    const xml = modelXml(objects);
+    expect(xml).not.toContain('<components>');
+    expect(xml).toContain('<item objectid="1"/>');
+  });
+
+  it('refuses a part in two assemblies or not among the objects', () => {
+    expect(() =>
+      write3mf(objects, {
+        assemblies: [
+          { name: 'A', parts: [0] },
+          { name: 'B', parts: [0] },
+        ],
+      }),
+    ).toThrow(/two assemblies/);
+    expect(() => write3mf(objects, { assemblies: [{ name: 'A', parts: [9] }] })).toThrow(
+      /not one of the 5 objects/,
+    );
+  });
+
+  it('reads a grouped file: objects are the meshes, items are the expanded groups', () => {
+    const model = read3mf(write3mf(objects, { assemblies }));
+    // A grouped object is not a mesh, so it stays out of `objects`.
+    expect(model.objects.map((o) => o.name)).toEqual(['Lid1', 'Lid2', 'Box1', 'Box2', 'Pin']);
+    expect(model.build).toEqual([6, 7, 5]);
+    expect(model.items.map((item) => item.meshes.length)).toEqual([2, 2, 1]);
+    expect(model.items.map((item) => item.objectId)).toEqual([6, 7, 5]);
+    expect(model.items[0]?.meshes.map((p) => p.object.name)).toEqual(['Lid1', 'Lid2']);
+    expect(model.items[2]?.meshes[0]?.object.name).toBe('Pin');
+  });
+
+  it('reads a component transform and composes it with the item’s', () => {
+    // A grouped file whose component carries a transform, and whose build item
+    // moves the whole group: the item transform applies after the component's.
+    const entries = unzipSync(write3mf(objects, { assemblies }));
+    const xml = strFromU8(entries[MODEL_PATH] as Uint8Array).replace(
+      '<component objectid="1"/>',
+      '<component objectid="1" transform="2 0 0 0 2 0 0 0 2 5 0 0"/>',
+    );
+    const bytes = zipSync({ ...entries, [MODEL_PATH]: strToU8(xml) });
+    const model = read3mf(bytes);
+    expect(model.items[0]?.meshes[0]?.transform).toEqual([2, 0, 0, 0, 2, 0, 0, 0, 2, 5, 0, 0]);
+    expect(model.items[0]?.meshes[1]?.transform).toBeUndefined();
+    // An item transform alone reaches a plain mesh item.
+    const plain = read3mf(
+      zipSync({
+        ...entries,
+        [MODEL_PATH]: strToU8(
+          strFromU8(entries[MODEL_PATH] as Uint8Array).replace(
+            '<item objectid="5"/>',
+            '<item objectid="5" transform="1 0 0 0 1 0 0 0 1 7 0 0"/>',
+          ),
+        ),
+      }),
+    );
+    expect(plain.items[2]?.meshes[0]?.transform).toEqual([1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 0, 0]);
   });
 });
