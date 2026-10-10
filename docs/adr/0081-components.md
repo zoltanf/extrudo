@@ -1,7 +1,8 @@
 # ADR-0081: Components and simple assemblies
 
-- **Status:** Proposed, 2026-10-10 (design only; slices in
-  `.claude/handoff/p6-05-slices.md`)
+- **Status:** Accepted, 2026-10-10 (the owner: build it, starting with the
+  slices without UI; joints planned now, not deferred, for print-in-place
+  hinge checks). Slices in `docs/plans/p6-05-components.md`.
 - **Task:** P6-05 "Components and simple assemblies (multiple components,
   as-built joints), if demand warrants" (`docs/03-roadmap.md`; vision line in
   `docs/01-requirements.md` §1).
@@ -9,8 +10,10 @@
   (topological naming), ADR-0024 (recompute engine), ADR-0030 (bodies, and its
   2026-10-09 ghost amendment), ADR-0034 (STL/3MF/STEP export, STEP colours
   through XDE), ADR-0044 (Move/Copy, Mirror), ADR-0047 (patterns), ADR-0048
-  (Place on Bed, Print Info), ADR-0050 (lenient reading), ADR-0065 (timeline
-  groups), ADR-0068 (the API), ADR-0069 (the CLI), ADR-0070 (scripts), ADR-0073
+  (Place on Bed, Print Info), ADR-0050 (lenient reading), ADR-0033 (Fix
+  References), ADR-0035 (measure), ADR-0040 (construction references), ADR-0062
+  (print tolerance), ADR-0065 (timeline groups), ADR-0072 (an analysis as view
+  state), ADR-0068 (the API), ADR-0069 (the CLI), ADR-0070 (scripts), ADR-0073
   (the emitter), ADR-0079 (tabs).
 
 ## Context
@@ -39,7 +42,10 @@ The constraints that shape the decision:
 - **A future Fusion import flattens components** (`docs/research/fusion-import.md`
   §5.3: each occurrence's bodies placed by a Move feature, joints dropped with a
   note). Whatever we pick should let that importer keep the components instead
-  of flattening them.
+  of flattening them, and later its joints.
+- **Print-in-place parts move after printing.** A hinge printed assembled has
+  to keep its clearance over its whole swing; a check at the as-built position
+  alone misses the leaf that hits the base at 70°.
 
 ## Decision
 
@@ -58,13 +64,16 @@ Its uses, which are the whole of v1:
   the existing Move and Place on Bed features, §3).
 - **Print**: a 3MF file has one object per component with its bodies as parts,
   STEP one assembly product per component, Print Info a line per component.
+- **Check a motion**: an as-built joint between two components (rigid,
+  revolute, slider) can be posed in the view and checked for clearance over its
+  range (§4).
 
 **Out of scope**, explicitly: bills of materials, part numbers and
 properties; external or linked references to other designs; several
 occurrences (linked instances) of one component; nested components (deferred,
-§9); joints and motion (deferred, §4); motion studies, contact sets and
-interference over a motion; per-component timelines (§6); a component colour
-(bodies keep their own).
+§9); a joint pose that drives stored geometry, contact sets, motion studies,
+gears and couplings (deferred, §4); per-component timelines (§6); a component
+colour (bodies keep their own).
 
 ### 2. The data model: a collection in the document, membership on the body
 
@@ -163,28 +172,177 @@ and face names).
   at the end: suppress it to see the assembly, unsuppress it to print. An
   automatic plate arrangement is deferred (§9).
 
-### 4. Joints: deferred
+### 4. Joints: as-built, stored; the pose is a look; a clearance check along the motion
 
-"As-built joints" are joints whose two frames are picked where the parts
-already are, so the joint records a relationship (rigid, revolute about an
-axis, slider along one) without moving anything; a solver-free "drive" would
-then turn or slide one component in the view, and "keep this position" would
-add a Move. **No joint is in P6-05.** The reasons: nothing a printer makes
-depends on them; a driven position must either live outside the timeline (two
-coordinate systems for one body, which §3 rejects) or become a Move feature
-anyway; and interference along a motion needs repeated kernel booleans on
-transformed copies. Revisit when people ask for print-in-place hinge checks.
-The shape a later ADR should start from is recorded so nothing in this one
-blocks it:
+People who print ask for joints for one reason: a **print-in-place** part (a
+hinge printed assembled, a slide in its rail) has to keep its clearance over
+the whole motion, and the person wants to swing the leaf about its pin, or push
+the carriage along its rail, and see whether it collides or how tight it gets
+**before** printing. v1 is the smallest thing that answers that: joints are
+stored records, the pose is view state, and a kernel check samples the motion.
+
+**As-built joints.** A joint is made where the parts already are: the person
+picks a **frame on each of two components** and nothing moves. Three types:
+
+- **rigid**: the two components move as one. Its only use in v1 is to carry:
+  when a revolute or slider joint moves component A, every component joined to
+  A by rigid joints (a walk over rigid joints that never passes through the
+  joint's other side) moves with it, so a leaf made of two components still
+  swings as one.
+- **revolute**: side `a` turns about an axis, from `min` to `max` (angles; 0 is
+  the as-built position, positive right-handed about the axis, `flip` reverses
+  it). Without limits it is a whole turn.
+- **slider**: side `a` moves along a direction, from `min` to `max` (lengths; 0
+  is as built). A slider needs both limits to be posed or checked ("Give
+  Slide1 a travel to check it.").
+
+Side **`a` moves, side `b` stays**: the axis or direction is read from `b`'s
+frame and `a`'s frame must agree with it as built — a revolute's two axes
+collinear within 0.05 mm and 0.5°, a slider's two directions parallel within
+0.5° (their offset doesn't matter: a carriage's edge runs beside the rail's).
+A frame that disagrees is the joint's **warning** ("Hinge's axes are 0.4 mm
+apart: the parts aren't where the joint was made. Suppress Print layout to
+check it."), and while it disagrees the pose and the check are refused with the
+same sentence: a joint measured on parts that a print-layout Move (§3) has laid
+out apart would report nonsense.
+
+**What a joint does in v1** — three things, nothing more:
+
+1. **It is stored** (`doc.joints[]`, below), named, edited, deleted and undone
+   like any record, and its frames resolve through the naming service at every
+   recompute, so a lost frame shows up and Fix References repairs it.
+2. **The pose is view state** (`viewport.jointPose: { joint: JointId; value:
+   number } | undefined`, degrees or mm, not saved, not undoable, recomputing
+   nothing). Dragging the joint's handle in the view or its slider in the
+   Joint panel draws the moving components' meshes through a matrix
+   (`rotation`/`translation` of `kernel/src/features/matrix.ts`, re-exported for
+   the app), clamped to the limits. Bodies drawn posed are **not pickable**,
+   and starting any tool, dialog or sketch resets the pose to 0, so nothing is
+   ever modelled against a posed body; the overhang and wall-thickness shading
+   stay as-built classifications drawn on the moved mesh.
+3. **A clearance check along the motion** (on demand: the Joint panel's
+   **Check clearance**). It samples the joint's range, measures at each sample
+   the smallest distance between the moving bodies and every other live body
+   (display state ignored: a clearance is a property of the design, not the
+   view; a ghost or hidden base still counts), finds the tightest point and any
+   collision, and reports "Tightest gap 0.18 mm at 72°" or "Collides from
+   64.2° to 81.0° (3.2 mm³ at 72°)" against a **minimum gap** (view state like
+   the wall-thickness minimum: an `<ExpressionInput>`, default the document's
+   `tolerance` parameter when it has one (ADR-0062), else 0.2 mm). The tightest
+   pair of points gets a leader in the view and colliding faces are tinted
+   `--x-error`; a result's "Show" poses the joint there.
+
+**Where the check runs: the kernel worker**, on the shapes of the last finished
+recompute (`latestBody`, as `inspect` and export do, ADR-0034/0035), through a
+new `KernelApi.checkJoint(request, onProgress)` and existing `Kernel` calls
+only, so **no facade change**:
+
+- `Kernel.transform(shape, matrix)` places a moving body at a sample (one copy
+  per moving body per sample, released before the next);
+- `Kernel.distance(a, b)` / `closestPoints(a, b)` for the gap (0 where they
+  touch or overlap), and **`Kernel.minGap`** where either body is a mesh
+  (ADR-0066 §4);
+- where the gap is 0, **`Kernel.common(a, b)`** then `Kernel.properties(…)`'s
+  volume tells touching (volume ≤ 1e-6 mm³) from interference, and the common's
+  history names the input faces that collide (the transform's history maps
+  sub-shapes one to one, so a face index of the moved copy is the as-built
+  body's face index; the app gets topology items `{ body, index }`).
+
+**How it stays fast:**
+
+- **Box filter first**: a pair is measured only where the moved body's box,
+  grown by `JOINT_SEARCH` (5 mm or twice the minimum gap, whichever is larger),
+  meets the other body's box; pairs that never meet are skipped at that sample
+  and can't be the tightest.
+- **A capped coarse pass**: `JOINT_SAMPLES` evenly spaced samples including 0
+  and both limits — 36 for a revolute (10° over a whole turn), 25 for a slider
+  — capped at `MAX_JOINT_SAMPLES` = 72.
+- **Refinement where it matters**: a golden-section search on the gap between
+  the neighbours of the tightest coarse sample, and a bisection on each
+  boundary between a free and a colliding sample (to report where a collision
+  starts and ends), each stopped at 0.1° or 0.01 mm or after 8 evaluations;
+  at most `MAX_JOINT_EVALS` = 120 evaluations in all, `common` at most 12 times
+  (the colliding samples with the largest overlap first).
+- **Cancellable**: it yields between evaluations like the engine; a newer check,
+  Esc, a closed panel or a new recompute cancels it, and a document change after
+  it marks the result stale (`stale`, "The design changed: check again").
+- Budget: a print-in-place hinge of two components of about 100 faces each
+  checks a whole turn in **under 2 s** (measured in J3 with `BENCH=1`; if the
+  transformed copies dominate, a facade `distance` under a `TopLoc_Location`
+  is the recorded next step, not part of v1).
+
+**Data shape** (`docs/file-format.md` **§4.8 `joints[]` (Joint)** with
+**§4.8.1 JointFrame**; §3's additive list gains `joints`; §10 `JointId`):
 
 ```ts
-joints?: { id; name; type: 'rigid' | 'revolute' | 'slider';
-           a: { component: ComponentId; frame: GeomRef };   // a face, edge or point
-           b: { component: ComponentId; frame: GeomRef };
-           min?: Expr; max?: Expr }[]
+// packages/core/src/ids.ts
+export const JointIdSchema = id.brand<'JointId'>();
+
+// packages/core/src/schema.ts
+export const JointFrameSchema = z.strictObject({
+  component: ComponentIdSchema,   // the side's component (metadata, read by the app)
+  ref: GeomRefSchema,             // the picked geometry, by its persistent name
+});
+export const JointSchema = z.strictObject({
+  id: JointIdSchema,
+  name: z.string().min(1).max(100),          // unique, case-insensitively
+  type: z.enum(['rigid', 'revolute', 'slider']),
+  a: JointFrameSchema,                        // the side that moves
+  b: JointFrameSchema,                        // the side that stays
+  min: ExprInputSchema.optional(),            // angle (revolute) or length (slider)
+  max: ExprInputSchema.optional(),
+  flip: z.literal(true).optional(),
+  suppressed: z.literal(true).optional(),     // kept, not resolved, not posed or checked
+});
+DocumentSchema: joints?: Joint[]              // browser order; absent when none
 ```
 
-`J` stays reserved in the keymap (UI spec §shortcuts).
+- **Frames are existing reference kinds**, picked like any dialog field and
+  stored as `GeomRef`s with fingerprints: a revolute takes a **cylindrical or
+  conical face** (its axis, from `surfaceGeometry`), a **circular edge** (its
+  centre and normal, from `edgeGeometry`), a straight edge, an origin or
+  construction axis, or a sketch line; a slider takes a straight edge, a
+  **flat face** (its normal), an axis or a sketch line; a rigid joint takes any
+  face, edge or vertex, or a body. **Components still never enter a
+  reference** (§5): `component` beside the ref is plain metadata, which the app
+  checks (a frame whose body is no longer in that component is the joint's
+  warning, "Hinge's moving frame isn't on Leaf any more").
+- **Consistency** (`superRefine`): IDs and names unique, both components exist
+  and differ, `min`/`max` only for revolute and slider with the unit the type
+  takes. `removeComponent` also removes the joints that name it, in its one
+  step ("Deleted Leaf and 1 joint."). Joint limits are expression owners
+  (`joint`, never named) in the parameter graph, so deleting a parameter they
+  use is refused as for a feature input.
+- **Surviving edits: the naming service, at the marker.** After the walk, the
+  engine resolves every unsuppressed joint's two frames with the same resolver
+  features use (`ctx.resolve`, ADR-0005: exact name, related name, fingerprint
+  with a warning, else lost) in an evaluation context **at the marker**, and
+  reads the axis or direction with the existing `lineOf`/`planeOf`
+  (ADR-0040) extended by the face-axis and circular-edge cases above. The
+  result is `RecomputeResult.joints` → `ModelState.joints: Record<JointId,
+  JointReport>` (`{ status: 'ok' | 'warning' | 'error' | 'inactive'; message?;
+  refs?; axis?: { origin; direction }; offset? }`). It costs a resolve and a
+  geometry query per frame, is not cached and is no part of any feature's cache
+  key, so editing a joint recomputes no feature. A frame on a feature the marker
+  has rolled back is `inactive`, not an error.
+- **Lost frames: Fix References.** A frame the resolver can't find gives the
+  joint `error` with its `refs` (as `FeatureStatus.refs`, ADR-0033); the
+  browser row shows ✕, the row's menu has **Fix References** (the Joint dialog
+  opened with `{ fix }`) and **Keep Closest Match**, and core's
+  `replaceReferences` learns to rewrite joint frames too. The ghost of the lost
+  geometry is drawn from the fingerprint as for features.
+- **No `formatVersion` bump**: an older reader drops `joints` with its notice
+  (ADR-0050) and the geometry is unchanged, because joints move nothing that
+  is stored.
+
+**Deferred** (a later ADR): a pose that drives the stored geometry (a joint
+value that becomes a Move, "keep this position"); joint limits used to move
+bodies or to stop a drag at contact; contact sets; motion studies and
+animation; several joints posed at once (a chain, a four-bar); cylindrical,
+pin-slot, planar and ball joints; gears and couplings between joints; joints
+inside a nested component.
+
+`J` is the Joint tool's key (UI spec §shortcuts, where it was reserved).
 
 ### 5. Topological naming: components never enter a reference
 
@@ -203,7 +361,9 @@ A `GeomRef` names a body or a face, edge or vertex by its persistent name,
   *before* it see the faces where they were, exactly as for any body today;
 - a **`component` reference kind is rejected**: the engine would need
   membership at evaluation time, which is metadata stored after the recompute
-  (`followBodyNames`), a cycle.
+  (`followBodyNames`), a cycle;
+- a **joint's frames** are ordinary references too (§4): the component stored
+  beside each frame is metadata the app checks, never part of the reference.
 
 ### 6. UI
 
@@ -219,7 +379,12 @@ A `GeomRef` names a body or a face, edge or vertex by its persistent name,
     (`effectiveBodyDisplay`). The body keeps its own state underneath, so
     showing the component again restores it.
   - Its **menu**: Activate, Rename (F2), Isolate, Move Component, Copy
-    Component, Export Component…, Delete Component.
+    Component, Export Component…, New Joint…, Delete Component.
+  - After its bodies it lists the **joints whose moving side** (`a`) it is,
+    one row each with the type's icon, the name, the status (✕/⚠ with the
+    message in the tooltip) and a menu: Edit, Rename (F2), Pose…, Check
+    Clearance, Suppress, Fix References / Keep Closest Match (when lost),
+    Delete Joint. A double-click edits.
   - A **body row's menu** gains "Move to Component ▸" (each component, "New
     Component…", "No Component"); a body row **dragged** onto a component row
     joins it, onto the Bodies folder's own row leaves its component.
@@ -227,7 +392,17 @@ A `GeomRef` names a body or a face, edge or vertex by its persistent name,
   tile, **New Component** (`newComponent`, no default key): with bodies
   selected it makes a component of them ("Component1", the lowest free number),
   with none an empty one, and it activates the new component. The body menu's
-  "New Component…" and the marking menu's list do the same.
+  "New Component…" and the marking menu's list do the same. The same group
+  has **Joint** (`joint`, key `J`), which opens the Joint dialog: Type, the
+  two frame fields "Moving part" and "Fixed part" (a pick on a body outside
+  every component is refused with "Put this body in a component first."), the
+  limits as `<ExpressionInput>`s and Flip; OK adds the joint in one step.
+- **The Joint panel** (Pose… or Check Clearance on a joint row, or Ctrl+K)
+  holds the pose — a slider and an `<ExpressionInput>` for the angle or travel,
+  plus the handle in the view (an arc about the axis or an arrow along the
+  direction) — and the clearance check (Minimum gap, Check clearance, the
+  result lines with Show). Closing it resets the pose. The browser's
+  Analysis folder has a row for a check result while one exists.
 - **Activating** a component is **session state** (`SessionState.activeComponent`,
   not stored, not undoable; none when a project opens). The active row carries
   a filled marker and the status bar says "Active: Lid"; "Activate" on another
@@ -282,7 +457,7 @@ A `GeomRef` names a body or a face, edge or vertex by its persistent name,
 Components are **metadata over bodies**: the recompute, the cache keys, the
 naming and the evaluators do not read them, so creating, renaming, moving a body
 between and showing or hiding components recompute nothing. The kernel gains
-two small things:
+three small things:
 
 - **`origins`**: a feature that breaks a body into pieces reports which body
   each new piece came from (`FeatureOutput.origins`, from `splitSolids` and
@@ -293,6 +468,13 @@ two small things:
   into the box.
 - **STEP assemblies** in the facade (§7), staged like the colours: grouped
   exports go through XDE, everything else is unchanged. One OCCT rebuild.
+
+- **Joints** (§4): after the walk the engine resolves each joint's frames at
+  the marker and reports `RecomputeResult.joints` (status, lost `refs`, the
+  axis or direction); no feature's cache key includes a joint. The clearance
+  check is `KernelApi.checkJoint` on the last finished recompute's shapes,
+  through `transform`, `distance`/`closestPoints`, `minGap`, `common` and
+  `properties`: no facade call.
 
 Place on Bed's `carry` is an evaluator change; there is no new facade call.
 
@@ -310,11 +492,21 @@ Place on Bed's `carry` is an evaluator change; there is no new facade call.
   each component before the features, `{ component: lid }` on every stamped
   feature, and `lid.add(design.ref('body', …))` for each stored membership the
   rule would not give (a body moved into a component by hand). Component
-  display states are deferred like body visibility.
+  display states are deferred like body visibility. Joints follow the
+  features: `const hinge = design.joint('Hinge', { type: 'revolute', a: {
+  component: leaf, frame: pin1.face('side:wall') }, b: { … }, min: '0 deg',
+  max: '180 deg' });`.
+- **Joints in the API**: `d.joint(name, options)` returns a `JointHandle`
+  (IDs `jnt1`…); frames take the same references as feature inputs, components
+  a `ComponentHandle` or ID; a restricted `Design` refuses it like
+  `component`.
 - **The CLI**: `compute()` reports `components` (ID, name, live body IDs) and
   each body's `component`; `extrudo info` lists bodies under their components;
   `extrudo export --component <name>` (repeatable) chooses a component's bodies
-  and `--flat` writes without the component structure.
+  and `--flat` writes without the component structure; `extrudo check
+  --joints [--min-gap 0.3mm]` runs every joint's clearance check and exits 2
+  when one collides or is under the minimum, so a print-in-place design can be
+  checked in a project's CI.
 
 ### 10. What a Fusion import does with this
 
@@ -322,8 +514,10 @@ Place on Bed's `carry` is an evaluator change; there is no new facade call.
 none. With this ADR the importer keeps them: one Extrudo component per Fusion
 occurrence, its features stamped with it, its placement a Move feature as that
 section already plans, a second occurrence of one component a Move copy into a
-component of its own (the importer's "<name> (2)"), joints dropped with a note
-until §4 is revisited. Nested Fusion components flatten to one level, named
+component of its own (the importer's "<name> (2)"). Fusion's rigid, revolute
+and slider joints between two imported occurrences can become §4's joints
+once the importer can name their frames' geometry (a later task); every other
+joint type is dropped with a note. Nested Fusion components flatten to one level, named
 "Parent › Child".
 
 ## Alternatives considered and rejected
@@ -355,11 +549,33 @@ until §4 is revisited. Nested Fusion components flatten to one level, named
 - **Merging each component into one mesh for 3MF/STL**: loses per-body colours
   and parts, and a union of touching bodies can be non-manifold.
 - **A `component` reference kind**: §5.
-- **Joints in v1**: §4.
+- **Joints deferred to a later phase** (this ADR's first draft): the reason
+  people ask for joints is the print-in-place check, which needs nothing the
+  draft feared (no driven geometry, no solver); the owner asked for it now.
+- **A stored pose** (a joint value saved in the document): either the bodies
+  get a second position outside the timeline, which §3 rejects, or the value
+  becomes a Move feature, which is the deferred "keep this position". A pose
+  for a look needs neither.
+- **Joints as timeline features** (like construction geometry, ADR-0040): a
+  joint changes no geometry and relates the parts where they end up, so its
+  place is the marker, not a timeline position that later Moves would make
+  stale; as a feature it would also order against features and take part in
+  the cache.
+- **The check in the UI thread on the display meshes** (three-mesh-bvh, as the
+  wall-thickness rays): fast, but a display mesh's deflection (0.05 mm and up
+  on curved faces) is a quarter of a 0.2 mm clearance, and a pin in its hole is
+  exactly that case. The B-rep distance is exact; the box filter and the
+  sample cap keep it fast enough.
+- **A swept volume of the moving part** (one boolean against the motion's
+  envelope): OCCT has no robust sweep of a solid along a rotation, and an
+  envelope says "collides" without saying where or at what angle.
 
 ## Deferred
 
-- Joints, drive and motion (§4); a limit/interference check along a motion.
+- What §4 defers: a pose that drives stored geometry ("keep this position" as
+  a Move), limits that stop bodies or a drag at contact, contact sets, motion
+  studies and animation, several joints posed at once, joint types beyond
+  rigid/revolute/slider, gears and couplings.
 - Nested components (`Component.parent?: ComponentId`, additive later).
 - STEP import that turns a file's assemblies into components (`ImportReport`
   gains `components: { name; bodies }[]`, `followBodyNames` creates them when it
@@ -373,18 +589,24 @@ until §4 is revisited. Nested Fusion components flatten to one level, named
 ## Consequences
 
 - No format version bump, no migration; older readers keep the geometry.
-- The recompute and naming are untouched apart from `origins`; one OCCT rebuild
-  for STEP assemblies.
+- The recompute and naming are untouched apart from `origins` and the joints'
+  frame pass after the walk; one OCCT rebuild for STEP assemblies, none for
+  joints (the clearance check uses existing facade calls).
 - The browser, the Export dialog and Print Info grow a level of grouping only
   when a design has components, so every existing screenshot baseline of a
   design without components stays as it is.
-- New UI (a Solid tab group, browser rows, an isolation bar) lands before the
-  owner's UI walk that P6-04 waits for; the walk should include it.
+- New UI (a Solid tab group, browser rows, an isolation bar, the Joint dialog
+  and panel) lands before the owner's UI walk that P6-04 waits for; the walk
+  should include it.
+- A posed body is drawn where it isn't: picking it is off and any tool resets
+  the pose, so a pose can never leak into a reference.
 
 ## Slices
 
-Nine slices, in `.claude/handoff/p6-05-slices.md`: S1 core model ∥ S2 kernel
-origins; S3 browser and membership; S4 active component and isolation ∥ S5
-placement (Move/Copy/Place Component on Bed) ∥ S6 3MF and the Export dialog ∥
-S7 STEP assemblies; S8 API, emitter and CLI; S9 Print Info, the guide page and
-closing the task.
+Twelve slices, in `docs/plans/p6-05-components.md`: S1 core model ∥ S2 kernel
+origins ∥ S7 STEP assemblies (the three without UI, first); S3 browser and
+membership; S4 active component and isolation ∥ S5 placement (Move/Copy/Place
+Component on Bed) ∥ S6 3MF and the Export dialog; J1 the joint model and
+dialog; J2 the pose preview ∥ J3 the clearance check; S8 API, emitter and CLI
+(after the joints, so it covers them); S9 Print Info, the guide page and closing
+the task.

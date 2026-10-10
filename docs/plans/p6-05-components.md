@@ -1,25 +1,43 @@
 # P6-05 Components: slice plan
 
 Design: `docs/adr/0081-components.md` (read it first; section numbers below are
-its §§). Every slice is its own branch off `main` (`p6-05-s<n>-<slug>`), merges
-alone, ticks nothing in the roadmap until S9, and adds one `docs/CHANGELOG.md`
-line. Every slice: `pnpm check` passes; slices with UI run their own e2e specs
-locally (`--workers=2`) and the full suite through CI on the branch.
+its §§). Every slice is its own branch off `main` (`p6-05-s<n>-<slug>`, the
+joint slices `p6-05-j<n>-<slug>`), merges alone, ticks nothing in the roadmap
+until S9, and adds one `docs/CHANGELOG.md` line. Every slice: `pnpm check`
+passes; slices with UI run their own e2e specs locally (`--workers=2`) and the
+full suite through CI on the branch.
+
+The owner's review (2026-10-10): build it, starting with the slices that have
+no UI (S1, S2, S7), and plan joints now (ADR §4) for print-in-place hinge
+checks.
 
 ## Order and parallelism
 
 ```
-S1 core model ──┬── S3 browser & membership ──┬── S4 active & isolation ──┐
-S2 kernel origins┘   (S2 optional for S3)     ├── S5 placement           ├── S9 print info, guide, close
-                                               ├── S6 3MF + export dialog ─┤
-                    S7 STEP assemblies (facade, after S1) ─────────────────┤
-                                                 S8 API/emitter/CLI (after S1, S2, S6, S7)
+S1 core model ───┬── S3 browser & membership ──┬── S4 active & isolation ──────────────┐
+S2 kernel origins┘   (S2 optional for S3)      ├── S5 placement                        │
+S7 STEP assemblies (after S1) ─┐               ├── S6 3MF + export dialog ─┐           │
+                               │               └── J1 joint model & dialog ┼─ J2 pose ─┤
+                               │                       (after S3)          └─ J3 check ┤
+                               └──────────── S8 API/emitter/CLI (after S2, S6, S7, J1, J3)
+                                                                     S9 print info, guide, close (last)
 ```
 
-- **S1 ∥ S2** (S2 touches only the kernel and core's `ModelState`).
-- After S3: **S4 ∥ S5 ∥ S6**. **S7** needs only S1 and can start as soon as S1
-  merges (its OCCT rebuild takes ~15 min in CI: start it early).
-- **S8** after S1, S2, S6, S7. **S9** last.
+- **First, no UI: S1 ∥ S2 ∥ S7.** S2 touches only the kernel and core's
+  `ModelState`; S7 needs S1's types only for its last step (the dialog wiring
+  waits for S6), so its facade work and native harness can start with S1, and
+  its OCCT rebuild (~15 min in CI) should start early.
+- After S3: **S4 ∥ S5 ∥ S6 ∥ J1**. J1 needs S3 (a frame pick reads a body's
+  component from the browser's rows and `componentOfBody`), not S4–S6.
+- After J1: **J2 ∥ J3** (J3's kernel part needs only J1's core types and the
+  engine's frame pass, so it can start as soon as J1's core part is reviewed).
+- **S8 after S2, S6, S7, J1 and J3.** It moved after the joints because the
+  API, the emitter and the CLI must cover `doc.joints` too (`d.joint`, the
+  emitter's joint lines, `extrudo check --joints`); written before them, it
+  would need a second pass through the generator, the round-trip test and
+  `docs/cli.md`.
+- **S9 last**, after J2 and J3 as well: the guide page explains joints, the
+  pose and the check, and the roadmap tick closes P6-05 with joints in it.
 
 | Slice | Complexity | Model |
 |---|---|---|
@@ -30,6 +48,9 @@ S2 kernel origins┘   (S2 optional for S3)     ├── S5 placement          
 | S5 placement | core + kernel input + dialog | Opus (kernel part) |
 | S6 3MF + export dialog | io writer/reader + UI | Sonnet |
 | S7 STEP assemblies | C++ facade, OCCT build | strongest (Opus) |
+| J1 joint model & dialog | schema, engine pass, naming, dialog | strongest (Opus) |
+| J2 pose preview | view state, three.js matrices, picking | Sonnet |
+| J3 clearance check | kernel algorithm, performance, panel | strongest (Opus) |
 | S8 API, emitter, CLI | generator, round-trip tests | Opus |
 | S9 Print Info, guide, close | small UI + docs | Sonnet (Haiku would do the docs) |
 
@@ -376,6 +397,404 @@ green.
 
 ---
 
+## J1: the joint model and the dialog (`p6-05-j1-model`, after S3; ∥ S4, S5, S6)
+
+**Files: core**
+- `packages/core/src/ids.ts`: `JointIdSchema = id.brand<'JointId'>()`, `type JointId`.
+- `packages/core/src/schema.ts`: `JointFrameSchema`, `JointSchema` and
+  `joints: z.array(JointSchema).optional()` on `DocumentSchema` (after
+  `components`), exactly as ADR §4 lists them, with doc comments. In
+  `superRefine`: `['joints', 'id', …]` and `['joints', 'name', …, lower case]`
+  in `unique`; a new `reportJoints(ctx, doc)` adds an issue at
+  `['joints', i, 'a' | 'b', 'component']` for a missing component, at
+  `['joints', i, 'b', 'component']` when both sides name the same one ("both
+  sides are in Leaf: pick a frame on another component"), at
+  `['joints', i, 'min' | 'max']` for limits on a rigid joint or a limit whose
+  unit isn't the type's (`angle` for revolute, `length` for slider), and at
+  `['joints', i, 'a' | 'b', 'ref', 'kind']` for a kind the type doesn't take
+  (`JOINT_FRAME_KINDS` below).
+- **New** `packages/core/src/joints.ts` (exported from `index.ts`):
+
+```ts
+export type JointType = Joint['type'];
+/** Reference kinds a frame may be, per type (ADR §4). */
+export const JOINT_FRAME_KINDS: Readonly<Record<JointType, readonly GeomRefKind[]>> = {
+  rigid: ['face', 'edge', 'vertex', 'body'],
+  revolute: ['face', 'edge', 'axis', 'sketchEntity'],
+  slider: ['face', 'edge', 'axis', 'sketchEntity'],
+};
+/** "Joint1", "Joint2"…; "Hinge1"… is not guessed. */
+export function newJointName(doc: Pick<ExtrudoDocument, 'joints'>): string;
+/** The joints whose moving side is `component`, in `doc.joints` order (browser rows). */
+export function jointsOf(doc: Pick<ExtrudoDocument, 'joints'>, component: ComponentId): Joint[];
+/**
+ * The components that move when `joint` moves its side a: a's component plus every
+ * component joined to it by unsuppressed rigid joints, never crossing b's component.
+ */
+export function movingComponents(doc: Pick<ExtrudoDocument, 'joints'>, joint: Joint): ComponentId[];
+/** The limits in degrees or mm, `undefined` where absent (a revolute without both is a whole turn). */
+export function jointRange(joint: Joint, value: (input: ExprInput) => number): { min: number; max: number } | undefined;
+```
+
+- **Commands** (in `joints.ts`, each one step):
+
+| Command | Payload | Label | Rules |
+|---|---|---|---|
+| `addJoint` | `{ joint: Joint }` (ID from `newId()`) | "New joint" | name rules as components ("There is already a joint named Hinge."); both components exist and differ; appends |
+| `updateJoint` | `{ id: JointId; joint: Omit<Joint, 'id'> }` | "Edit joint" | same checks; keeps the position in `joints` |
+| `renameJoint` | `{ id; name }` | "Rename joint" | name rules |
+| `setJointSuppressed` | `{ ids: JointId[]; suppressed: boolean }` | "Suppress/Unsuppress joint(s)" | `false` deletes the key |
+| `removeJoint` | `{ ids: JointId[] }` | "Delete joint(s)" | drops `joints` when empty |
+
+  `removeComponent` (S1) also removes the joints naming the component (one
+  step; its label stays "Delete component"). `replaceReferences` takes
+  `{ id: FeatureId | JointId; … }` and, for a joint ID, rewrites its frames'
+  refs (and `checkNewReferences` is skipped: joints have no timeline position).
+  `removeFeature` does **not** refuse because a joint uses the feature: the
+  joint goes `error` and the browser says so (joints aren't ordered, ADR §4).
+  The parameter graph (`evaluateParameters`, `expr/graph`) adds owner
+  `{ type: 'joint', id, input: 'min' | 'max' }` so `removeParameter` refuses a
+  parameter a limit uses ("Hinge's maximum angle uses it").
+- `packages/core/src/stores.ts`: `ModelState.joints: Record<JointId, JointReport>`
+  (default `{}`) and `JointReport` (ADR §4: `status`, `message?`,
+  `refs?: ReferenceIssue[]`, `axis?: { origin: Vec3; direction: Vec3 }`,
+  `offset?: number`); `computed({ …, joints? })`.
+
+**Files: kernel**
+- **New** `packages/kernel/src/joints/frames.ts`:
+  `resolveJoint(ctx: EvalContext, joint: Joint): JointReport` — per side
+  `jointFrameLine(ctx, ref, label)`: a face through `ctx.resolve` +
+  `surfaceGeometry` (cylinder or cone → its axis; plane → its normal through
+  the face's centre; anything else → `KernelError("Pick a round face, a
+  straight or circular edge or an axis for the joint.")`), an edge through
+  `edgeGeometry` (circle → centre and normal; line → as `lineOf`), the other
+  kinds through `lineOf`; rigid frames are only resolved (existence). Then the
+  agreement test (revolute: distance from a's axis origin to b's line and the
+  angle between directions; slider: angle only) → `warning` with the ADR's
+  sentence and `offset`. A `LostReferenceError` → `error` with `refs`; a frame
+  on a feature after the marker → `inactive`. Labels: "Hinge's moving frame",
+  "Hinge's fixed frame".
+- `packages/kernel/src/recompute/engine.ts`: after the walk (and only for a
+  full recompute, not `preview`), an `EvalContext` at the marker with
+  `bodyAccess: 'all'` (as a feature appended there would get, through the
+  existing `#references` resolver) runs `resolveJoint` for every unsuppressed
+  joint; the reports go on the result (`RecomputeResult.joints`). Not cached,
+  not in any key. Keep that context's inputs (`#atMarker`) for the next call.
+- `packages/kernel/src/service.ts`: `KernelApi.resolveJoint(joint: Joint):
+  Promise<JointReport>` against the last finished recompute (`#atMarker`), for
+  the dialog's live readout. `recomputer.ts` passes `result.joints` to
+  `computed` and exposes `resolveJoint`.
+
+**Files: app**
+- **New** `apps/web/src/joints/`:
+  - `JointDialog.tsx`: a `FloatingDialog` (region "Joint dialog" / "Edit Hinge
+    dialog") built from the feature dialogs' field components but **not** the
+    feature controller (a joint inserts no feature and needs no recompute
+    preview): combobox "Type" (`rigid`/`revolute`/`slider`), buttons "Moving
+    part" and "Fixed part" (`exact`; selection fields over the model picker,
+    one ref each, kinds from `JOINT_FRAME_KINDS`; the text names the pick and
+    its component, "Cylinder face · Leaf"; a pick on a body in no component is
+    refused with the field hint "Put this body in a component first (Solid ›
+    New Component)."), textboxes "Minimum angle"/"Maximum angle" or "Minimum
+    travel"/"Maximum travel" (`<ExpressionInput>`, absent for rigid), checkbox
+    "Flip", a read-only line `[data-info="joint"]` from `resolveJoint` ("Turns
+    Leaf about Base's axis.", or the warning), OK/Cancel. Pre-selection fills
+    the fields in order. OK dispatches `addJoint` or `updateJoint` (one step);
+    `openJoint(id, { fix })` opens it for Fix References with the lost field
+    flagged, as `dialog.edit` does for features.
+  - `jointActions.ts`: `createJointActions(stores, notify)` → `{ start(),
+    edit(id, options?), rename(id, name): boolean, setSuppressed(ids, value),
+    remove(ids), keepClosestMatch(id) }`.
+  - `jointRows.ts` (pure): rows per component from `jointsOf` and
+    `ModelState.joints`.
+- `shell/BrowserPanel.tsx`: after a component row's bodies, its joint rows:
+  `data-joint="<id>"`, `data-joint-type`, `data-joint-status="ok|warning|error|inactive"`
+  (absent while suppressed; `data-joint-suppressed`), icon per type (new icons
+  `jointRigid`, `jointRevolute`, `jointSlider` in the icon pipeline), name
+  (F2), the status glyph with the message as tooltip, menu Edit, Rename,
+  Suppress, Fix References / Keep Closest Match (when `refs`), Delete Joint
+  (J2 adds Pose…, J3 Check Clearance). Component row menu: New Joint….
+- `shell/tools.ts`: `TOOLS` entry `joint` (label "Joint", category `construct`,
+  icon `jointRevolute`) in the Solid tab's Component group after New Component;
+  `commands/keymap.ts`: `joint: ['j']`; `shell/commands.tsx`: the command, model
+  mode only, `unavailable` with fewer than two components ("Make two
+  components first."). `docs/04-ui-spec.md` §shortcuts: `J` Joint (no longer
+  "reserved"). `pnpm docs:generate` (the tool page).
+- Viewport: `viewport/Joints.tsx` draws each `ok`/`warning` joint's axis (a
+  dashed line with a small arc for revolute, an arrow for slider) while its row
+  is hovered or the dialog is open; the Viewport region gains
+  `data-joints="Hinge:revolute:ok:<origin>:<direction>;Slide1:slider:warning:…"`
+  (names with spaces as `_`, numbers to 0.01, absent with none). The ghost of a
+  lost frame (`viewport/ghostGeometry.ts`) for the hovered joint row and the
+  dialog opened with `fix`, as for features (`data-ghosts` lists
+  `<jointId>:<type>:<x,y,z>`).
+- `apps/web/src/components/followComponentSession` (S4) is unaffected; the
+  joint dialog closes when its joint disappears (undo).
+
+**Docs**: `docs/file-format.md` **§4.8 `joints[]` (Joint)** and **§4.8.1
+JointFrame** (fields, the kinds per type, sides a moves and b stays, limits'
+units, as-built meaning of 0, "frames are references by persistent name;
+components beside them are metadata"), §3's additive list `joints`, §10
+`JointId`; `file-format-doc.test.ts` must pass. `docs/02-architecture.md`: one
+sentence on the engine's joint pass.
+
+**Tests**
+- `packages/core/src/joints.test.ts`: every command's happy path, refusals and
+  exact undo; `removeComponent` takes its joints in the same step;
+  `replaceReferences` on a joint; `movingComponents` (a rigid chain carried, a
+  rigid joint to b not crossed, a suppressed rigid joint ignored, a cycle);
+  `jointRange`; `removeParameter` refused for a limit's parameter.
+- `schema.test.ts`: each `reportJoints` issue at its path; a document without
+  `joints` loads; lenient reading drops `joints` (as S1's test does for its
+  keys).
+- `packages/kernel/src/joints/frames.test.ts` (real OCCT, `strictLeaks`): a
+  hinge from the API (the fixture below): a cylinder face and a hole wall give
+  one axis, `ok`; a circular edge gives the same axis; a flat face for a slider
+  gives its normal; axes 0.4 mm apart → `warning` with `offset` 0.4; a deleted
+  pin feature → `error` with `refs`; rolled back → `inactive`; a plane face for
+  a revolute → the error message; editing a joint in a second recompute reuses
+  every feature (`stats.reused` = all).
+- **Fixture** `fixtures/components/hinge.extrudo`, written by
+  `packages/kernel/src/joints/hinge-fixture.test.ts` with `WRITE_FIXTURES=1`
+  through `@extrudo/api` (S8 may not be merged: build the document with core's
+  commands): component **Base** (a 40 × 20 × 4 plate with two knuckles and a
+  Ø6 pin along X on its edge) and component **Leaf** (a 40 × 20 × 4 plate
+  beside it, 0.5 mm away, with a middle knuckle round the pin through a Ø6.6
+  hole: 0.3 mm radial clearance), the pin's axis at the plates' mid-height;
+  joint **Hinge**: revolute, a = the leaf's hole wall, b = the pin's wall,
+  0 to 90 deg. Dimensions are parameters (`gap`, `clearance`), so the tests
+  can work the expected angles out from them. Add it to `fuzz.test.ts`'s list (the
+  fuzzer's edits leave joints alone; it checks the joint pass doesn't leak).
+- App unit tests: `joints/jointRows.test.ts`, `jointActions.test.ts`,
+  `JointDialog.test.tsx` (the kinds offered per type, the refusal of a loose
+  body, OK dispatches one step).
+- **e2e** `e2e/joints.spec.ts` (new): open the hinge fixture through
+  `importFile` (Home › Import Design); `data-joints` reads
+  `Hinge:revolute:ok:…:1,0,0`; the Leaf row lists `[data-joint="…"]` with
+  `data-joint-status="ok"`; `j` with nothing selected opens "Joint dialog",
+  pick "Moving part" on the leaf's hole wall and "Fixed part" on the pin's wall
+  (hover until `data-model-hover` is a `face:`), Type revolute, Maximum angle
+  `90 deg` → `[data-info="joint"]` "Turns Leaf about Base's axis.", OK → a
+  second joint row; rename via F2; Ctrl+Z removes it; delete the pin feature's
+  chip ("Delete") → `data-joint-status="error"`, Fix References re-picks the
+  wall → `ok`; Ctrl+Z ×2 back.
+
+**Acceptance**: core, storage and kernel tests green, `fuzz.test.ts` green with
+the hinge, no golden table rewritten; the spec green with `--repeat-each=2`;
+`a11y.spec.ts` audits the Joint dialog in both themes.
+
+**Model**: the strongest (Opus): schema, engine pass and naming.
+
+---
+
+## J2: the pose preview (`p6-05-j2-pose`, after J1; ∥ J3)
+
+**Files**
+- `apps/web/src/viewport/store.ts`: `jointPose: JointPose | undefined` with
+  `interface JointPose { joint: JointId; value: number }` (degrees or mm) and
+  `setJointPose(pose | undefined)`. View state: not saved, not undoable. Cleared
+  by the tool/dialog/sketch starts (`AppShell.run`, the dialog controller's
+  `start`, `enterSketch`), by a document change that removes the joint, or
+  makes it not `ok`/`warning`-free (`followJointPose(store, model, viewport)`,
+  started beside `followComponentSession`), and when the Joint panel closes.
+- **New** `apps/web/src/joints/pose.ts` (pure, unit-tested):
+
+```ts
+/** The matrix that poses the moving side; IDENTITY at 0. */
+export function poseMatrix(report: JointReport, joint: Joint, value: number): Matrix12;
+/** Clamp to the joint's range (a revolute without limits wraps to (−180, 180]). */
+export function clampPose(joint: Joint, range: { min: number; max: number } | undefined, value: number): number;
+/** Live body IDs that move: the members of `movingComponents`. */
+export function posedBodies(doc: ExtrudoDocument, joint: Joint, members: ComponentMembers): BodyId[];
+```
+
+  `poseMatrix` uses `rotation(origin, direction, ±value°)` / `translation`
+  from `@extrudo/kernel`'s `features/matrix.ts` (export it through a pure entry,
+  `@extrudo/kernel/matrix`, so the app takes no OCCT code; add the entry to
+  `scripts/check-boundaries.mjs` if it needs a rule), with `flip` reversing the
+  sign.
+- `viewport/Bodies.tsx`, `GhostBodies`, edges and silhouettes: a posed body's
+  group gets the pose matrix (`matrixAutoUpdate = false`); `pick.ts`'s
+  `PickScene` leaves posed bodies out (**not pickable while posed**); section
+  clips still apply (world space). Fit ignores the pose.
+- **New** `apps/web/src/joints/JointPanel.tsx`: region **"Joint"** (`exact`),
+  header the joint's name; a Radix slider "Angle" / "Travel" over the range
+  (step 1° / 0.1 mm; a whole-turn revolute −180…180) and an
+  `<ExpressionInput>` of the same name beside it (both write the pose; typing
+  past a limit clamps and shows "Limited to 180°"), button "Reset" (pose 0),
+  "Done". Refused poses (the joint's `warning`/`error`) show the joint's
+  message instead of the controls. The panel is opened by the joint row's
+  **Pose…**, the command `poseJoint` (Ctrl+K "Pose Joint", acting on the
+  selected joint row or the only joint), and J3's Check Clearance.
+- **New** `viewport/JointHandle.tsx`: while the panel is open, an arc handle
+  about the axis (revolute) or an arrow along the direction (slider) at the
+  moving side's box centre projected on the axis, built from the dialog
+  overlay's angle and distance manipulator drawing (factor the shared SVG
+  pieces out of `features/DialogOverlay.tsx` if they aren't already);
+  dragging it sets the pose (snapping to 5° / 1 mm with no modifier, free with
+  Shift). `[data-joint-handle]` carries `cx`/`cy` in view px.
+- A bar at the view's top centre while posed: `[data-pose-bar]` (role
+  `status`) "Posed: Leaf at 72° — the design is unchanged." with "Reset".
+- Viewport region: `data-joint-pose="Hinge=72"` (absent at none or 0).
+
+**Tests**
+- `joints/pose.test.ts`: matrices for a known axis at 0/90/180 (a point maps
+  where expected), flip, slider translation, clamping, wrapping,
+  `posedBodies` with a rigid-carried component.
+- `viewport/store.test.ts`: `setJointPose`, cleared by `followJointPose` when
+  the joint is deleted (undo of `addJoint`) and when its report turns `error`.
+- `selection/pick.test.ts`: a posed body isn't picked; unposed again it is.
+- **e2e** in `e2e/joints.spec.ts`: the hinge fixture, the Leaf row's Pose… →
+  region "Joint"; fill "Angle" with `90` → `data-joint-pose="Hinge=90"` and the
+  leaf's drawn box changes (`data-bodies` is the kernel's and stays: read the
+  posed box from `data-posed-bodies="Leaf:<x,y,z min>..<max>"`, which the
+  viewport writes while posed); drag `[data-joint-handle]` along its arc →
+  the value changes in the field; a click on the posed leaf selects nothing;
+  pressing `e` (Extrude) resets the pose (`data-joint-pose` absent);
+  filling 120 (past the fixture's 90°) shows "Limited to 90°".
+
+**Docs**: `docs/04-ui-spec.md`: the Joint panel, the handle and the pose bar.
+
+**Acceptance**: spec green ×2; `bodies.spec.ts`, `section.spec.ts`,
+`model-select.spec.ts` green; no screenshot baseline changes.
+
+**Model**: Sonnet (well specified; view-side only).
+
+---
+
+## J3: the clearance check (`p6-05-j3-check`, after J1; ∥ J2, panel after J2)
+
+The kernel part needs only J1; the panel part sits in J2's Joint panel, so
+merge J2 first or put the panel section behind J2's merge (a second commit on
+the branch after rebasing).
+
+**Files: kernel**
+- **New** `packages/kernel/src/joints/sampling.ts` (pure):
+
+```ts
+export const JOINT_SAMPLES = { revolute: 36, slider: 25 } as const;
+export const MAX_JOINT_SAMPLES = 72;
+export const MAX_JOINT_EVALS = 120;
+export const MAX_JOINT_COMMONS = 12;
+/** Evenly spaced values over [min, max], both ends and 0 (when inside) included, at most MAX_JOINT_SAMPLES. */
+export function coarseSamples(range: { min: number; max: number }, count: number): number[];
+/** Golden-section search for the smallest gap in [lo, hi]; stops at `step` or `evals`. */
+export function narrowMinimum(gap: (v: number) => number, lo: number, hi: number, step: number, evals: number): { at: number; gap: number; used: number };
+/** Bisection of a free/colliding boundary in [free, hit]; the value where contact starts. */
+export function narrowBoundary(collides: (v: number) => boolean, free: number, hit: number, step: number, evals: number): { at: number; used: number };
+```
+
+  (`gap` and `collides` are synchronous here; the check wraps them with its
+  yields.)
+- **New** `packages/kernel/src/joints/check.ts`:
+
+```ts
+export interface JointCheckRequest {
+  joint: Joint;                 // as stored, its report from the last recompute
+  moving: readonly BodyId[];    // posedBodies(…)
+  others: readonly BodyId[];    // every other live body (display ignored, ADR §4)
+  range: { min: number; max: number };   // evaluated by the app
+  minGap: number;               // mm
+}
+export interface JointCheck {
+  samples: number;              // evaluations used
+  tightest: { at: number; gap: number; from: Vec3; to: Vec3; pair: [BodyId, BodyId] };
+  collisions: { from: number; to: number; volume: number; at: number;
+                faces: { body: BodyId; index: number }[] }[];   // faces of both sides at `at`
+  underMinimum: { from: number; to: number }[];                  // gap < minGap, no contact
+}
+export async function checkJoint(kernel: Kernel, bodies: BodyShapes, report: JointReport,
+  request: JointCheckRequest, yieldNow: () => Promise<boolean>, onProgress?: (done: number, of: number) => void): Promise<JointCheck>;
+```
+
+  One evaluation at value v: `poseMatrix` (shared with the app through
+  `@extrudo/kernel/matrix`); for each moving body `kernel.transform(shape, M)`
+  into a `kernel.scope()`; the moved box (`measure()`'s loose box) against each
+  other body's, grown by `JOINT_SEARCH = max(5, 2 × minGap)` mm; for each pair
+  that meets, `kernel.minGap` when either is a mesh, else
+  `kernel.closestPoints`; gap(v) = the minimum (∞ when no pair meets). Where it
+  is 0 and the commons budget allows, `kernel.common(moved, other)` +
+  `kernel.properties(result).volume` (> 1e-6 mm³ = interference) and the
+  common's history → the input face indices (moved copy's indices = the
+  as-built body's, since `transform` records every sub-shape as modified).
+  Every shape released before the next evaluation (`strictLeaks`). Then:
+  coarse samples → `narrowMinimum` around the smallest gap's neighbours (step
+  0.1° / 0.01 mm, 8 evals) → `narrowBoundary` at each free/colliding and
+  free/under-minimum change (8 evals each) → stop at `MAX_JOINT_EVALS`. A pose
+  the joint report refuses (`warning` with an offset, `error`, `inactive`)
+  throws `KernelError` with the report's message.
+- `packages/kernel/src/service.ts`: `KernelApi.checkJoint(request, onProgress):
+  Promise<JointCheck>` on `latestBody` shapes, held for the run with
+  `RecomputeEngine.hold(bodies)` (ADR-0050); a newer `checkJoint`, `cancelCheck()`
+  or a recompute request cancels it (the next yield returns `false` → a
+  `CancelledError`). `recomputer.ts`: `checkJoint`, cancelled by `recompute`.
+
+**Files: app**
+- `viewport/store.ts`: `jointCheck: JointCheckState | undefined`
+  (`{ joint: JointId; min: string /* expression */; on: boolean }`, view state
+  like `thickness`); `apps/web/src/joints/useJointCheck.ts` runs the check
+  when asked, keeps `{ state: 'idle' | 'pending' | 'ready' | 'stale' | 'error';
+  result?; progress? }`, marks `stale` on any document change after the run.
+- `JointPanel.tsx` (J2) gains a "Clearance" section: "Minimum gap"
+  (`<ExpressionInput>`, default `tolerance` when the document has the
+  parameter, else `0.2 mm`), button "Check clearance" (`Checking 12 of 36…` +
+  Cancel while pending), result lines in `[data-joint-result]`: "Tightest gap
+  0.30 mm at 0°–180°" (a flat minimum is a range), "Tightest gap 0.18 mm at
+  72°", "Under 0.3 mm from 64° to 81°", "Collides from 64.2° to 81.0° (3.2 mm³
+  at 72°)", "No collision from 0° to 180°.", each with a **Show** button that
+  poses the joint there (J2's pose). "The design changed: check again." while
+  stale.
+- View: at the shown pose, a leader between `tightest.from`/`to` with the gap
+  (`joints/ClearanceOverlay.tsx`, like `print/ThicknessOverlay.tsx`), and the
+  collision's faces tinted `--x-error` through the face colour attribute
+  (ADR-0026) while the posed value is inside that collision's range. The
+  browser's Analysis folder gets `[data-joint-check-row]` ("Clearance · Hinge",
+  eye hides the marks, menu Remove).
+- Viewport region: `data-joint-check="joint=Hinge min=0.3 tightest=0.3 at=0
+  collides=none under=none samples=44"` (collisions `collides=64.2..81.0`,
+  several joined by `,`; `pending`, `stale`, absent with no check).
+- Command `checkJointClearance` (Ctrl+K "Check Joint Clearance"), the joint
+  row's **Check Clearance**.
+
+**Tests**
+- `joints/sampling.test.ts`: samples include ends and 0, the cap; golden
+  section finds the minimum of a parabola to the step; bisection of a step
+  function to the step; the eval budgets hold.
+- `packages/kernel/src/joints/check.test.ts` (real OCCT, `strictLeaks`, on the
+  hinge fixture): 0–90° → no collision, tightest 0.30 mm (the pin's clearance,
+  ±0.001); extend the range to 0–180° → a collision whose start angle equals
+  the angle the test works out from the fixture's parameters (where the
+  folding leaf's inner edge first reaches the base, ±0.2°), its faces
+  including the leaf's and the base's facing sides, and the tightest gap
+  before it below 0.30; set `clearance` to 0 (the hole Ø6) → touching (gap 0,
+  volume 0): collides=none, tightest 0; a slider on two boxes (a carriage in a channel, 0.25 mm each
+  side) → tightest 0.25, and travel past the channel's end → a collision from
+  the end; a mesh body (the fixture's leaf exported and imported as STL)
+  → `minGap` path, same tightest within the mesh's deflection; cancelled midway
+  → `CancelledError` and no leak; never more than `MAX_JOINT_EVALS` transforms
+  (call counter).
+- `BENCH=1 pnpm vitest run packages/kernel/src/joints/check-bench`: the hinge's
+  whole turn and a 100-face-per-side hinge; record the times in ADR-0081's
+  Results; target under 2 s on the 4-core CI runner.
+- App: `useJointCheck.test.ts` (stale after a change, cancel on close),
+  `JointPanel.test.tsx` (result lines, Show sets the pose).
+- **e2e** in `e2e/joints.spec.ts`: the hinge, Check Clearance → poll
+  `data-joint-check` until `tightest=0.3`, `collides=none`; set Maximum angle to
+  180 in the joint's dialog → `stale` → check again → `collides=` a range;
+  Show on the collision line → `data-joint-pose` inside the range and the
+  leader `[data-clearance-leader]` drawn; Minimum gap `0.5 mm` → an "Under"
+  line. The spec logs the check's time for the ADR.
+
+**Docs**: `docs/04-ui-spec.md` the Clearance section; ADR-0081 Results (times).
+
+**Acceptance**: kernel tests green with `strictLeaks`, the bench under 2 s, the
+spec green ×2, `fuzz.test.ts` green.
+
+**Model**: the strongest (Opus): the sampling and refinement, the scopes and
+the performance work.
+
+---
+
 ## S6: 3MF and the Export dialog (`p6-05-s6-export`, after S3; ∥ S4, S5)
 
 **Files**
@@ -420,13 +839,18 @@ green.
   sphere → 3MF: read with `read3mf`, 2 build items, the first with 2 meshes;
   unchecking "Keep components together" → 3 items.
 
-**Acceptance**: specs green; `import-mesh.spec.ts` green. **Owner check (Arch
-workstation)**: `prusa-slicer --info` on the e2e's file shows 2 objects, the
+**Acceptance**: specs green; `import-mesh.spec.ts` green. **Owner check (a machine
+with the slicers installed)**: `prusa-slicer --info` on the e2e's file shows 2 objects, the
 component with 2 parts; Orca loads it as one object with parts.
 
 ---
 
-## S7: STEP assemblies (`p6-05-s7-step`, after S1)
+## S7: STEP assemblies (`p6-05-s7-step`, with S1; no UI)
+
+One of the three first slices (the owner's order). The facade, the native
+harness and the CI build need nothing from S1; `writeStep`'s TypeScript
+types take S1's `ComponentId` only as a name string, and the Export dialog
+wiring waits for S6.
 
 **Files**
 - `packages/kernel/occt/facade/extrudo_facade.cpp`: `clearStepGroups()`,
@@ -473,7 +897,10 @@ green (our grouped STEP imports back as 3 bodies with colours).
 
 ---
 
-## S8: API, emitter, CLI (`p6-05-s8-api`, after S1, S2, S6, S7)
+## S8: API, emitter, CLI (`p6-05-s8-api`, after S2, S6, S7, J1, J3)
+
+Moved after the joint slices so the API, the emitter and the CLI cover
+`doc.joints` in one pass (see Order and parallelism).
 
 **Files**
 - `packages/api/src/ids.ts`: `IdKind` `'component'`, prefix `cmp`; `storedIds`
@@ -510,8 +937,27 @@ green (our grouped STEP imports back as 3 bodies with colours).
   "Components" with indented bodies; `export --component <name>` (repeatable),
   `--flat`. `docs/cli.md`.
 
+- **Joints** (J1): `packages/api/src/handles.ts` `class JointHandle { readonly
+  id; get name() }`; `design.ts` `joint(name: string, options: { type:
+  JointType; a: { component: ComponentHandle | string; frame: GeomRef };
+  b: …; min?: string; max?: string; flip?: boolean; id?: string }): JointHandle`
+  (IDs `jnt1`…; the frame kinds checked against `JOINT_FRAME_KINDS`, a bad one
+  an `ApiError` at `a.frame`), `joints(): JointHandle[]`; `packages/script`
+  refuses `joint` like `component`. The emitter writes joints after the
+  features and the `lid.add` lines (`const hinge = design.joint('Hinge', …)`,
+  frames through `emit/refs.ts` as feature inputs' refs are). `docs/api/README.md`'s
+  Components section shows a joint.
+- **CLI joints**: `headless.ts` `checkJoints({ minGap }): JointCheckReport[]`
+  (each unsuppressed revolute/slider joint through `KernelApi.checkJoint`, the
+  moving and other bodies from `componentOfBody` and `movingComponents`);
+  `ComputeResult.joints` (name, type, status, message); `cli.ts`: `check
+  --joints [--min-gap <expr>]` prints "Hinge: tightest 0.30 mm at 0°–90°, no
+  collision" per joint and **exits 2** when one collides, is under the minimum
+  or has an error; `info` lists joints. `docs/cli.md`.
+
 **Tests**
-- `packages/api/src/design.test.ts`: `component` with bodies, the build
+- `packages/api/src/design.test.ts`: `joint` stores the record and refuses a bad
+  frame kind and a same-component pair without changing anything; `component` with bodies, the build
   overload stamps, nested innermost wins, unknown component option throws and
   changes nothing, determinism (`cmp1` twice gives identical JSON).
 - `packages/api/src/emit.test.ts`: round trip of a design with two components,
@@ -524,8 +970,12 @@ green (our grouped STEP imports back as 3 bodies with colours).
   lid cut through by a hole that splits off a piece) → `components` lists the
   piece under the lid (origins); `export({ components: ['Lid'] })` 3MF has one
   item; `cli.test.ts`: `info` output and `--component`.
-- `packages/cli/src/emit-recompute.test.ts` includes the new fixture; add it to
-  `packages/kernel/src/fuzz.test.ts`'s list.
+- `packages/cli/src/emit-recompute.test.ts` includes the new fixture and the
+  hinge (J1); add `lid-box` to `packages/kernel/src/fuzz.test.ts`'s list.
+- `emit.test.ts`: the hinge round-trips its joint (type, limits, frames up to
+  IDs).
+- `cli.test.ts`: `check --joints` on the hinge exits 0 and prints the tightest
+  gap; with `--min-gap 0.5mm` exits 2.
 
 **Acceptance**: `pnpm check` green, docs tests green (`docs.test.ts`).
 
@@ -542,15 +992,20 @@ green (our grouped STEP imports back as 3 bodies with colours).
 - `docs/guide/components.md` (front matter `section` as the concept pages):
   what a component is, active component, where new bodies go, pieces vs
   copies, Move/Copy/Place Component, the "Print layout" group recipe (§3),
-  export behaviour, what's not there (joints). Pictures recorded with
+  export behaviour, **joints** (making one, the pose, the clearance check
+  with a print-in-place hinge worked through, why a pose isn't saved), what's
+  not there (a pose that moves the design, motion studies, joint types beyond
+  the three). Pictures recorded with
   `pnpm demos -g guide` (add a `guide-shots.spec.ts` step).
 - `docs/04-ui-spec.md`: the browser's component rows, the Component group, the
-  isolation bar.
-- `docs/03-roadmap.md`: tick P6-05 with "Done <date> (ADR-0081): components;
-  joints deferred".
+  isolation bar (J1–J3 add the joint parts as they land; check they agree).
+- `docs/03-roadmap.md`: tick P6-05 with "Done <date> (ADR-0081): components
+  and as-built joints (rigid, revolute, slider) with the pose preview and the
+  clearance check; driven poses and motion studies deferred".
 - ADR-0081: Status "Implemented", a Results section per slice.
 - `CLAUDE.md`: a status line and an ADR-0081 paragraph plus a
-  "Components e2e" note (the `data-*` attributes above).
+  "Components e2e" note and a "Joints e2e" note (the `data-*` attributes
+  above).
 
 **Tests**: `PrintInfoPanel.test.tsx` (component rows, totals unchanged);
 `print-aids.spec.ts` new test reading `[data-print-component="Lid"]`.
@@ -560,13 +1015,15 @@ tests) green.
 
 ---
 
-## Open questions for the owner (do not block S1-S3)
+## Open questions for the owner (do not block S1, S2, S7)
 
-1. After S6, check on the Arch workstation that PrusaSlicer and OrcaSlicer load
-   a component as one object with parts (default "Keep components together" on
-   relies on it).
-2. Joints are deferred (ADR §4). Say if print-in-place hinge checks should
-   bring them forward.
+1. After S6, check on a machine with the slicers installed that PrusaSlicer and
+   OrcaSlicer load a component as one object with parts (default "Keep
+   components together" on relies on it).
+2. Joints (decided 2026-10-10, ADR §4): is a 0.2 mm default minimum gap right
+   when the design has no `tolerance` parameter, and should the check count
+   ghost and hidden bodies (the plan says yes: a clearance belongs to the
+   design, not the view)?
 3. The Solid tab's "Component" group and the browser rows are new UI ahead of
    the UI walk P6-04 waits for: merge S3/S4 before the walk so it covers them,
    or hold them until after?
