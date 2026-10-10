@@ -46,9 +46,10 @@ import {
   ToolIcon,
   Tooltip,
 } from '../design-system';
+import { PLANE_AXIS_COLOR, TOKENS } from '../viewport/colors';
 import { ProgressCube } from '../viewport/ModelProgress';
 import { activeFeatureCount } from '../viewport/progressRules';
-import { ORIGIN_ITEMS, type ViewportStore } from '../viewport/store';
+import { ORIGIN_ITEMS, type OriginItem, type ViewportStore } from '../viewport/store';
 import {
   BODY_COLORS,
   BODY_OPACITIES,
@@ -223,6 +224,14 @@ export function BrowserPanel({
                   label={`${label} menu`}
                   trigger={
                     <Leaf>
+                      {PLANE_SWATCH[value] && (
+                        <span
+                          aria-hidden
+                          data-plane-swatch={value}
+                          className="size-2.5 shrink-0 rounded-sm"
+                          style={{ background: `var(${PLANE_SWATCH[value]})` }}
+                        />
+                      )}
                       <span className={origin[value] ? '' : 'text-muted'}>{label}</span>
                       <EyeToggle
                         name={label}
@@ -1035,6 +1044,13 @@ function Folder({
     </li>
   );
 }
+
+/** The swatch of each origin plane's row: its normal axis's colour (`PLANE_AXIS_COLOR`). */
+const PLANE_SWATCH: Partial<Record<OriginItem, string>> = {
+  xy: TOKENS[PLANE_AXIS_COLOR.xy],
+  xz: TOKENS[PLANE_AXIS_COLOR.xz],
+  yz: TOKENS[PLANE_AXIS_COLOR.yz],
+};
 
 function Leaf({
   muted,

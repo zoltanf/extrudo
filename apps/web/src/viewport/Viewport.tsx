@@ -948,6 +948,8 @@ function Scene({
         store={viewport}
         visible={origin}
         point={colors.origin}
+        axisX={colors.axisX}
+        axisY={colors.axisY}
         axisZ={colors.axisZ}
         construct={colors.construct}
         picking={planePicker !== undefined}

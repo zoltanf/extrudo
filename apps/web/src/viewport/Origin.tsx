@@ -14,7 +14,7 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 import { PLANE_HALF } from '../sketch/facePick';
-import type { Rgba } from './colors';
+import { PLANE_AXIS_COLOR, type Rgba } from './colors';
 import { createDotMaterial } from './dots';
 import { GRID_RADIUS, THUMBNAIL_HIDDEN } from './GridPlane';
 import type { OriginItem, ViewportStore } from './store';
@@ -31,6 +31,8 @@ export interface OriginProps {
   store: ViewportStore;
   visible: Record<OriginItem, boolean>;
   point: Rgba;
+  axisX: Rgba;
+  axisY: Rgba;
   axisZ: Rgba;
   construct: Rgba;
   /**
@@ -66,6 +68,8 @@ export function Origin({
   store,
   visible,
   point,
+  axisX,
+  axisY,
   axisZ,
   construct,
   picking = false,
@@ -108,10 +112,11 @@ export function Origin({
           const id = `origin:${item}` as const;
           if (!picking && !visible[item]) return null;
           const hovered = picking && (hover === id || (selected?.includes(id) ?? false));
+          const axis = { axisX, axisY, axisZ }[PLANE_AXIS_COLOR[item]];
           return (
             <Plane
               key={item}
-              color={hovered ? highlight : construct}
+              color={hovered ? highlight : axis}
               strong={hovered}
               rotation={rotation}
               events={
