@@ -79,6 +79,12 @@ console.log(run);
   dimensions and a feature input's own parameter (`d1`) keep their names, so
   expressions that read them still resolve.
 - **Suppression** and **timeline groups** are kept.
+- **Components and joints** (ADR-0081 §9) are kept: a `const lid =
+  design.component('Lid');` line comes before the features, a stamped feature
+  carries `{ component: lid }`, each stored body membership becomes
+  `lid.add(design.ref('body', …))`, and each joint a `design.joint('Hinge', …)`
+  call after the features, its frames through the same reference expressions the
+  feature inputs use.
 - **What can't travel in a script** is left out with a comment: a feature that
   reads an attachment (an import, a canvas image) is skipped — a script can't
   carry the file — and a text with a user font keeps its string but falls back

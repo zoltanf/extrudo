@@ -21,7 +21,9 @@ export type IdKind =
   | 'sketchEntity'
   | 'constraint'
   | 'dimension'
-  | 'configuration';
+  | 'configuration'
+  | 'component'
+  | 'joint';
 
 const PREFIX: Readonly<Record<IdKind, string>> = {
   document: 'doc',
@@ -32,7 +34,15 @@ const PREFIX: Readonly<Record<IdKind, string>> = {
   constraint: 'c',
   dimension: 'd',
   configuration: 'cfg',
+  component: 'cmp',
+  joint: 'jnt',
 };
+
+/** The document keys `storedIds` reads: the IDs an API factory must skip past. */
+type StoredIdDocument = Pick<
+  ExtrudoDocument,
+  'features' | 'parameters' | 'groups' | 'components' | 'joints'
+>;
 
 /** Hands out the design's IDs. One call per new entity, in creation order. */
 export type IdFactory = (kind: IdKind) => string;
@@ -45,7 +55,7 @@ export class CounterIds {
   readonly #counts = new Map<IdKind, number>();
   readonly #taken: Set<string>;
 
-  constructor(doc?: Pick<ExtrudoDocument, 'features' | 'parameters' | 'groups'>) {
+  constructor(doc?: StoredIdDocument) {
     this.#taken = new Set(doc ? storedIds(doc) : []);
   }
 
@@ -53,12 +63,12 @@ export class CounterIds {
    * Takes in the IDs of a loaded document, so the counters skip past them: a
    * `from` design must not hand out an ID a stored feature already has.
    */
-  seed(doc: Pick<ExtrudoDocument, 'features' | 'parameters' | 'groups'>): void {
+  seed(doc: StoredIdDocument): void {
     for (const id of storedIds(doc)) this.#taken.add(id);
   }
 
   /** Every ID a document stores, which is what this factory skips past. */
-  static all(doc: Pick<ExtrudoDocument, 'features' | 'parameters' | 'groups'>): string[] {
+  static all(doc: StoredIdDocument): string[] {
     return storedIds(doc);
   }
 
@@ -77,10 +87,8 @@ export class CounterIds {
   };
 }
 
-/** Every ID a document stores: features, parameters, groups and sketch entities. */
-export function storedIds(
-  doc: Pick<ExtrudoDocument, 'features' | 'parameters' | 'groups'>,
-): string[] {
+/** Every ID a document stores: features, parameters, groups, components and joints. */
+export function storedIds(doc: StoredIdDocument): string[] {
   const ids: string[] = [];
   for (const parameter of doc.parameters) ids.push(parameter.id);
   for (const feature of doc.features) {
@@ -93,6 +101,8 @@ export function storedIds(
     }
   }
   for (const group of doc.groups ?? []) ids.push(group.id);
+  for (const component of doc.components ?? []) ids.push(component.id);
+  for (const joint of doc.joints ?? []) ids.push(joint.id);
   return ids;
 }
 

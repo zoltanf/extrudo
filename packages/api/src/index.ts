@@ -38,11 +38,14 @@ export type {
   Vec2,
 } from '@extrudo/core';
 export {
+  type ComponentOptions,
   Design,
   type DesignOptions,
   type FeatureLike,
   type FeatureOptions,
   type FileOptions,
+  type JointFrameInput,
+  type JointOptions,
   type ParameterLike,
   type ParameterOptions,
 } from './design';
@@ -58,7 +61,9 @@ export {
   featureMethods,
 } from './generated/features';
 export {
+  ComponentHandle,
   FeatureHandle,
+  JointHandle,
   type OriginRefs,
   originRefs,
   ParameterHandle,

@@ -25,10 +25,15 @@
  * generated from core's feature registry: see `generated/features.ts`.
  */
 import {
+  addComponent,
   addConfiguration,
+  addJoint,
   addParameter,
+  type BodyId,
   type Command,
   CommandError,
+  type Component,
+  type ComponentId,
   type ConfigurationId,
   type Customizer,
   configurationChanges,
@@ -47,6 +52,12 @@ import {
   type GroupId,
   groupFeatures,
   insertFeature,
+  JOINT_FRAME_KINDS,
+  JOINT_LIMIT_UNIT,
+  type Joint,
+  type JointFrame,
+  type JointId,
+  type JointType,
   type LengthUnit,
   type LoadResult,
   loadDocument,
@@ -63,6 +74,7 @@ import {
   renameFeature,
   SKETCH_TYPE,
   type SketchDimension,
+  setBodyComponent,
   setFeatureSuppressed,
   setParameterExpressions,
   sketchInputs,
@@ -73,7 +85,15 @@ import { writeArchive } from '@extrudo/storage';
 import { ApiError } from './error';
 import { inferUnit } from './expr';
 import { type FeatureMethods, featureMethods } from './generated/features';
-import { FeatureHandle, type OriginRefs, originRefs, ParameterHandle, ref } from './handles';
+import {
+  ComponentHandle,
+  FeatureHandle,
+  JointHandle,
+  type OriginRefs,
+  originRefs,
+  ParameterHandle,
+  ref,
+} from './handles';
 import { CounterIds, type IdFactory } from './ids';
 import { type FeatureInputValue, storedInputs } from './inputs';
 import { SketchBuilder, SketchHandle, type SketchOptions } from './sketch';
@@ -86,6 +106,11 @@ export interface FeatureOptions {
   name?: string;
   /** Timeline position to insert at (the rollback marker by default). */
   index?: number;
+  /**
+   * The component its new bodies join (ADR-0081 §6), a handle, an ID or a name.
+   * Left out inside `d.component(name, build)`, that component (the innermost).
+   */
+  component?: ComponentHandle | string;
 }
 
 /** What a parameter may carry besides its name and expression. */
@@ -97,6 +122,42 @@ export interface ParameterOptions {
   /** How the customizer shows it (ADR-0059): its slider's range, step and group. */
   customizer?: Customizer;
   /** The parameter's ID; the design's counter hands one out otherwise. */
+  id?: string;
+}
+
+/** What a component may carry besides its name. */
+export interface ComponentOptions {
+  /** The component's ID (`cmp1`… from the counter otherwise). */
+  id?: string;
+  /** Bodies that join it right away (a reference or a body ID). */
+  bodies?: (GeomRef | string)[];
+}
+
+/** One side of a joint, as `d.joint` takes it (ADR-0081 §4). */
+export interface JointFrameInput {
+  /** The side's component: a handle, an ID or a name. */
+  component: ComponentHandle | string;
+  /** The picked face, edge, axis, sketch line, vertex or body. */
+  frame: GeomRef;
+}
+
+/** What `d.joint(name, options)` takes: the type, the two frames and the limits. */
+export interface JointOptions {
+  /** `rigid`, `revolute` or `slider`. */
+  type: JointType;
+  /** The side that moves. */
+  a: JointFrameInput;
+  /** The side that stays; the axis or direction is read from its frame. */
+  b: JointFrameInput;
+  /** The lower limit: an angle (revolute) or a length (slider). */
+  min?: string;
+  /** The upper limit, in the same unit. */
+  max?: string;
+  /** Reverses the positive direction. */
+  flip?: boolean;
+  /** Kept, but not resolved, posed or checked. */
+  suppressed?: boolean;
+  /** The joint's ID (`jnt1`… from the counter otherwise). */
   id?: string;
 }
 
@@ -154,6 +215,8 @@ export class Design {
 
   readonly #store: DocumentStore;
   readonly #ids: IdFactory;
+  /** The components `build` callbacks are inside, innermost last (ADR-0081 §9). */
+  readonly #componentStack: ComponentHandle[] = [];
 
   private constructor(store: DocumentStore, ids: IdFactory, notices: readonly string[]) {
     this.#store = store;
@@ -378,12 +441,16 @@ export class Design {
       });
     }
     const id = (options.id ?? this.#ids('feature')) as FeatureId;
+    // A component: the call's option wins, else the component a `build` is
+    // inside (ADR-0081 §9), else none (a loose body).
+    const component = this.#componentOfOption(options.component);
     const feature: Feature = {
       id,
       type,
       name: options.name ?? nextFeatureName(this.doc, definition.label),
       suppressed: false,
       inputs: checkInputs(type, definition, storedInputs(type, inputs)),
+      ...(component !== undefined && { component }),
     };
     this.#dispatch(insertFeature({ feature, index: options.index }));
     return new FeatureHandle<T>(this, id, type);
@@ -432,6 +499,160 @@ export class Design {
     const id = this.#ids('group') as GroupId;
     this.#dispatch(groupFeatures({ id, features, ...options }));
     return id;
+  }
+
+  // -------------------------------------------------------------- components
+
+  /**
+   * A new component (ADR-0081 §2) and a handle to it (IDs `cmp1`, `cmp2`…):
+   *
+   * ```ts
+   * const lid = d.component('Lid');
+   * const box = d.box(…);            // loose
+   * lid.add(box.body());             // now box is the lid's body
+   *
+   * // or, with a build callback: every feature added inside defaults to it
+   * const plate = d.component('Plate', (c) => {
+   *   d.box({ length: '40 mm', width: '20 mm', height: '5 mm' });
+   * });
+   * ```
+   *
+   * `bodies` joins bodies right away. Inside `build`, features added with no
+   * explicit `component` option go into the component (nested calls: the
+   * innermost wins). A component stores no transform: moving it is a Move
+   * feature (ADR-0081 §3).
+   */
+  component(name: string, options?: ComponentOptions): ComponentHandle;
+  component(
+    name: string,
+    build: (component: ComponentHandle) => void,
+    options?: ComponentOptions,
+  ): ComponentHandle;
+  component(
+    name: string,
+    buildOrOptions?: ComponentOptions | ((component: ComponentHandle) => void),
+    options?: ComponentOptions,
+  ): ComponentHandle {
+    const setup = typeof buildOrOptions === 'function' ? (options ?? {}) : (buildOrOptions ?? {});
+    const build = typeof buildOrOptions === 'function' ? buildOrOptions : undefined;
+    const id = (setup.id ?? this.#ids('component')) as ComponentId;
+    const bodies = (setup.bodies ?? []).map((body) => this.#bodyIdOf(body));
+    this.#dispatch(addComponent({ id, name, bodies }));
+    const handle = new ComponentHandle(this, id);
+    if (!build) return handle;
+    this.#componentStack.push(handle);
+    try {
+      build(handle);
+    } finally {
+      this.#componentStack.pop();
+    }
+    return handle;
+  }
+
+  /** The components the design holds, by name and ID, in browser order. */
+  components(): ComponentHandle[] {
+    return (this.doc.components ?? []).map((c) => new ComponentHandle(this, c.id));
+  }
+
+  /** A stored component, by handle, ID or (case-insensitive) name. */
+  #componentOf(component: ComponentHandle | string): Component | undefined {
+    const id = typeof component === 'string' ? component : component.id;
+    const wanted = id.toLowerCase();
+    return (this.doc.components ?? []).find((c) => c.id === id || c.name.toLowerCase() === wanted);
+  }
+
+  /** A call's `component` option, or the component a `build` is inside, as an ID. */
+  #componentOfOption(option: ComponentHandle | string | undefined): ComponentId | undefined {
+    if (option === undefined) return this.#componentStack.at(-1)?.id;
+    const found = this.#componentOf(option);
+    if (!found) {
+      throw new ApiError(
+        `There is no component "${typeof option === 'string' ? option : option.name}".`,
+        {
+          path: 'component',
+        },
+      );
+    }
+    return found.id;
+  }
+
+  /** A body reference or ID as its ID. */
+  #bodyIdOf(body: GeomRef | string): BodyId {
+    if (typeof body === 'string') return body as BodyId;
+    if (body.kind === 'body') return body.id as BodyId;
+    throw new ApiError(`"${body.kind}" is not a body: pass a body reference or its ID.`);
+  }
+
+  /**
+   * Puts bodies into a component (`BodyMeta.component`), for `ComponentHandle.add`
+   * (ADR-0081 §2). A body can be in one component at a time, and stays there
+   * until it is moved.
+   */
+  setComponentBodies(component: ComponentId, bodies: readonly (GeomRef | string)[]): void {
+    this.#dispatch(
+      setBodyComponent({ ids: bodies.map((body) => this.#bodyIdOf(body)), component }),
+    );
+  }
+
+  // ------------------------------------------------------------------ joints
+
+  /**
+   * A new as-built joint (ADR-0081 §4) and a handle to it (IDs `jnt1`…):
+   *
+   * ```ts
+   * const hinge = d.joint('Hinge', {
+   *   type: 'revolute',
+   *   a: { component: leaf, frame: leafFace },
+   *   b: { component: base, frame: baseFace },
+   *   min: '0 deg',
+   *   max: '180 deg',
+   * });
+   * ```
+   *
+   * Side `a` moves, side `b` stays; the axis or direction is read from `b`'s
+   * frame. Nothing moves when it is made (the frames must already agree).
+   */
+  joint(name: string, options: JointOptions): JointHandle {
+    const id = (options.id ?? this.#ids('joint')) as JointId;
+    const joint: Joint = {
+      id,
+      name,
+      type: options.type,
+      a: this.#jointFrame(options.a, options.type, 'a'),
+      b: this.#jointFrame(options.b, options.type, 'b'),
+      ...(options.min !== undefined && {
+        min: { kind: 'expr', expr: options.min, unit: JOINT_LIMIT_UNIT[options.type] },
+      }),
+      ...(options.max !== undefined && {
+        max: { kind: 'expr', expr: options.max, unit: JOINT_LIMIT_UNIT[options.type] },
+      }),
+      ...(options.flip === true && { flip: true as const }),
+      ...(options.suppressed === true && { suppressed: true as const }),
+    };
+    this.#dispatch(addJoint({ joint }));
+    return new JointHandle(this, id);
+  }
+
+  /** The joints the design holds, by name and ID, in browser order. */
+  joints(): JointHandle[] {
+    return (this.doc.joints ?? []).map((j) => new JointHandle(this, j.id));
+  }
+
+  /** One side of a joint, with its component resolved and its frame kind checked. */
+  #jointFrame(side: JointFrameInput, type: JointType, which: 'a' | 'b'): JointFrame {
+    const component = this.#componentOf(side.component);
+    if (!component) {
+      throw new ApiError(
+        `There is no component "${typeof side.component === 'string' ? side.component : side.component.name}".`,
+        { path: `${which}.component` },
+      );
+    }
+    if (!JOINT_FRAME_KINDS[type].includes(side.frame.kind)) {
+      throw new ApiError(`A ${type} joint can't use a ${side.frame.kind} as a frame.`, {
+        path: `${which}.frame`,
+      });
+    }
+    return { component: component.id, ref: side.frame };
   }
 
   // -------------------------------------------------------------------- other

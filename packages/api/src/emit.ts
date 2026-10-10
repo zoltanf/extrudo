@@ -17,13 +17,18 @@
  * change).
  */
 import {
+  type Component,
+  type ComponentId,
   type ExtrudoDocument,
   type Feature,
   type FeatureDefinition,
   type FeatureInputs,
   type GeomRef,
+  type Joint,
+  type JointId,
   readSketch,
   SKETCH_TYPE,
+  scriptOfGenerated,
 } from '@extrudo/core';
 import type { EmitContext, SketchView } from './emit/context';
 import { definitionOf } from './emit/context';
@@ -70,16 +75,25 @@ export function emitScript(doc: ExtrudoDocument, options: EmitOptions = {}): str
   );
   const varOf = new Map<string, string>();
   const used = new Set<string>();
+  const featureById = new Map(doc.features.map((feature) => [feature.id, feature]));
+  const selectedIds = new Set(features.map((feature) => feature.id));
+  // Components first (ADR-0081 §9): a whole design emits every component, a run
+  // only the ones its features stamp or its bodies join.
+  const components = selectedComponents(doc, features, selectedIds, whole);
+  const componentOf = new Map<ComponentId, string>();
+  for (const component of components) {
+    componentOf.set(component.id, uniqueVariable(variableBase(component.name, 'component'), used));
+  }
   for (const feature of features) {
     if (skipped.has(feature.id)) continue;
-    const base = variableBase(feature.name, feature.type);
-    let name = base;
-    let n = 2;
-    while (used.has(name)) name = `${base}${n++}`;
-    used.add(name);
-    varOf.set(feature.id, name);
+    varOf.set(feature.id, uniqueVariable(variableBase(feature.name, feature.type), used));
   }
-  const featureById = new Map(doc.features.map((feature) => [feature.id, feature]));
+  // Joints follow the features (ADR-0081 §9).
+  const joints = selectedJoints(doc, componentOf, whole);
+  const jointOf = new Map<JointId, string>();
+  for (const joint of joints) {
+    jointOf.set(joint.id, uniqueVariable(variableBase(joint.name, 'joint'), used));
+  }
   const sketchOf = new Map<string, SketchView>();
   for (const feature of features) {
     if (feature.type !== SKETCH_TYPE) continue;
@@ -90,6 +104,8 @@ export function emitScript(doc: ExtrudoDocument, options: EmitOptions = {}): str
     doc,
     selected: new Set(features.filter((feature) => !skipped.has(feature.id)).map((f) => f.id)),
     varOf,
+    componentOf,
+    jointOf,
     featureById,
     sketchOf,
     definition: definitionOf,
@@ -99,6 +115,14 @@ export function emitScript(doc: ExtrudoDocument, options: EmitOptions = {}): str
 
   const statements: Stmt[] = [];
   if (options.parameters ?? whole) statements.push(...parameterStatements(doc));
+  for (const component of components) {
+    statements.push(
+      constant(
+        componentOf.get(component.id) as string,
+        call('design.component', [str(component.name)]),
+      ),
+    );
+  }
   const names = defaultNames(doc, start);
   for (const feature of features) {
     if (skipped.has(feature.id)) {
@@ -110,12 +134,125 @@ export function emitScript(doc: ExtrudoDocument, options: EmitOptions = {}): str
     const definition = definitionOf(feature.type);
     const label = definition?.label ?? feature.type;
     const nameOption = feature.name === names.next(label) ? undefined : feature.name;
-    statements.push(featureStatement(feature, nameOption, ctx));
+    const componentVar =
+      feature.component === undefined ? undefined : componentOf.get(feature.component);
+    statements.push(featureStatement(feature, nameOption, componentVar, ctx));
     if (feature.suppressed)
       statements.push(statement(call('design.suppress', [raw(varOf.get(feature.id) as string)])));
   }
   statements.push(...groupStatements(doc, ctx));
+  statements.push(...membershipStatements(doc, features, componentOf, ctx));
+  statements.push(...jointStatements(joints, ctx));
   return printProgram(statements);
+}
+
+/** The components to emit: all, or a run's stamped/joined ones (ADR-0081 §9). */
+function selectedComponents(
+  doc: ExtrudoDocument,
+  features: readonly Feature[],
+  selectedIds: ReadonlySet<string>,
+  whole: boolean,
+): Component[] {
+  const all = doc.components ?? [];
+  if (whole) return [...all];
+  const wanted = new Set<ComponentId>();
+  for (const feature of features) {
+    if (feature.component) wanted.add(feature.component);
+  }
+  for (const [bodyId, meta] of Object.entries(doc.bodies)) {
+    if (!meta.component) continue;
+    const owner = featureOfBody(doc, bodyId);
+    if (owner && selectedIds.has(owner.id)) wanted.add(meta.component);
+  }
+  return all.filter((component) => wanted.has(component.id));
+}
+
+/** The joints to emit: all, or a run's whose two components are emitted. */
+function selectedJoints(
+  doc: ExtrudoDocument,
+  componentOf: ReadonlyMap<ComponentId, string>,
+  whole: boolean,
+): Joint[] {
+  return (doc.joints ?? []).filter(
+    (joint) => whole || (componentOf.has(joint.a.component) && componentOf.has(joint.b.component)),
+  );
+}
+
+/** The feature that made a body, through a Script's generated ID (ADR-0070). */
+function featureOfBody(doc: ExtrudoDocument, bodyId: string): Feature | undefined {
+  const at = bodyId.lastIndexOf(':');
+  const id = at <= 0 ? bodyId : bodyId.slice(0, at);
+  const own = doc.features.find((feature) => feature.id === id);
+  if (own) return own;
+  const script = scriptOfGenerated(id, new Set(doc.features.map((feature) => feature.id)));
+  return script === undefined ? undefined : doc.features.find((feature) => feature.id === script);
+}
+
+/**
+ * The `lid.add(design.ref('body', …))` calls that give each stored membership
+ * its component (ADR-0081 §9). The API stores no body metadata on its own, so
+ * every stored membership is emitted here, whether the making feature's stamp
+ * would give it anyway or not.
+ */
+function membershipStatements(
+  doc: ExtrudoDocument,
+  features: readonly Feature[],
+  componentOf: ReadonlyMap<ComponentId, string>,
+  ctx: EmitContext,
+): Stmt[] {
+  const selected = new Set(features.map((feature) => feature.id));
+  const statements: Stmt[] = [];
+  for (const [bodyId, meta] of Object.entries(doc.bodies)) {
+    if (!meta.component) continue;
+    const variable = componentOf.get(meta.component);
+    if (!variable) continue;
+    const owner = featureOfBody(doc, bodyId);
+    if (owner && !selected.has(owner.id)) continue;
+    statements.push(
+      statement(call(`${variable}.add`, [refExpr({ kind: 'body', id: bodyId }, ctx)])),
+    );
+  }
+  return statements;
+}
+
+/** The `design.joint('Hinge', …)` calls (ADR-0081 §9). */
+function jointStatements(joints: readonly Joint[], ctx: EmitContext): Stmt[] {
+  const statements: Stmt[] = [];
+  for (const joint of joints) {
+    const options: [string, Expr][] = [
+      ['type', str(joint.type)],
+      ['a', jointFrameExpr(joint.a, ctx)],
+      ['b', jointFrameExpr(joint.b, ctx)],
+    ];
+    if (joint.min) options.push(['min', str(joint.min.expr)]);
+    if (joint.max) options.push(['max', str(joint.max.expr)]);
+    if (joint.flip) options.push(['flip', bool(true)]);
+    statements.push(
+      constant(
+        ctx.jointOf.get(joint.id) as string,
+        call('design.joint', [str(joint.name), obj(options)]),
+      ),
+    );
+  }
+  return statements;
+}
+
+/** One joint side as `{ component: leaf, frame: … }`. */
+function jointFrameExpr(frame: Joint['a'], ctx: EmitContext): Expr {
+  const component = ctx.componentOf.get(frame.component) ?? 'undefined';
+  return obj([
+    ['component', raw(component)],
+    ['frame', refExpr(frame.ref, ctx)],
+  ]);
+}
+
+/** A variable name that is not taken yet ("lid", "lid2"…). */
+function uniqueVariable(base: string, used: Set<string>): string {
+  let name = base;
+  let n = 2;
+  while (used.has(name)) name = `${base}${n++}`;
+  used.add(name);
+  return name;
 }
 
 /** The features a call emits, and whether it is the whole timeline. */
@@ -144,13 +281,17 @@ function selectionOf(
 function featureStatement(
   feature: Feature,
   nameOption: string | undefined,
+  componentVar: string | undefined,
   ctx: EmitContext,
 ): Stmt {
   const variable = ctx.varOf.get(feature.id) as string;
   const expression =
     feature.type === SKETCH_TYPE
-      ? sketchExpr(feature, nameOption, ctx)
-      : call(`design.${methodOf(feature.type)}`, callArguments(feature, nameOption, ctx));
+      ? sketchExpr(feature, nameOption, componentVar, ctx)
+      : call(
+          `design.${methodOf(feature.type)}`,
+          callArguments(feature, nameOption, componentVar, ctx),
+        );
   const base = variableBase(feature.name, feature.type);
   const nameComment = variable === base ? undefined : `// ${feature.name}`;
   return constant(variable, expression, nameComment);
@@ -163,8 +304,13 @@ function methodOf(type: string): string {
   return type;
 }
 
-/** The arguments of a feature's call: its inputs and, when needed, its name. */
-function callArguments(feature: Feature, nameOption: string | undefined, ctx: EmitContext): Expr[] {
+/** The arguments of a feature's call: its inputs and, when needed, its options. */
+function callArguments(
+  feature: Feature,
+  nameOption: string | undefined,
+  componentVar: string | undefined,
+  ctx: EmitContext,
+): Expr[] {
   const definition = ctx.definition(feature.type);
   const args: Expr[] = [];
   const inputs = Object.entries(compact(feature.inputs));
@@ -178,7 +324,10 @@ function callArguments(feature: Feature, nameOption: string | undefined, ctx: Em
       ),
     );
   }
-  if (nameOption !== undefined) args.push(obj([['name', str(nameOption)]]));
+  const options: [string, Expr][] = [];
+  if (componentVar !== undefined) options.push(['component', raw(componentVar)]);
+  if (nameOption !== undefined) options.push(['name', str(nameOption)]);
+  if (options.length > 0) args.push(obj(options));
   return args;
 }
 

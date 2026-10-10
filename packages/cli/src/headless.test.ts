@@ -58,6 +58,13 @@ async function openFixture(name: string): Promise<DesignJob> {
   return job;
 }
 
+/** A component fixture (`fixtures/components/`) opened as a job. */
+async function openComponentFixture(name: string): Promise<DesignJob> {
+  const { job } = await openDesign(fixture(`components/${name}.extrudo`));
+  open.push(job);
+  return job;
+}
+
 /** A job for a design a test builds itself, through an archive as a file is. */
 async function openBytes(bytes: Uint8Array): Promise<DesignJob> {
   const { job } = await openDesign(bytes);
@@ -462,6 +469,53 @@ describe('an OpenSCAD import (P5-04, ADR-0071)', () => {
     const [object] = read3mf(file?.bytes as Uint8Array).objects;
     expect(checkManifold(object?.mesh as Parameters<typeof checkManifold>[0]).ok).toBe(true);
     expect((await job.dispose()).liveShapes).toBe(0);
+  });
+});
+
+describe('components (P6-05 S8, ADR-0081 §9)', () => {
+  it('lists a piece under its component through the origins rule', {
+    timeout: 180_000,
+  }, async () => {
+    const job = await openComponentFixture('lid-box');
+    const result = await job.compute();
+    const lid = result.components.find((c) => c.name === 'Lid');
+    const box = result.components.find((c) => c.name === 'Box');
+    // The lid's box is split in two: both halves are the Lid's, through origins.
+    expect(box?.bodies.length).toBe(1);
+    expect(lid?.bodies.length).toBe(2);
+    for (const body of result.bodies) {
+      expect(body.component, body.name).toBeDefined();
+    }
+  });
+
+  it('exports one component as a grouped 3MF, and --flat as one per body', {
+    timeout: 180_000,
+  }, async () => {
+    const job = await openComponentFixture('lid-box');
+    const grouped = await job.export({ format: '3mf', components: ['Lid'] });
+    expect(grouped.length).toBe(1);
+    const model = read3mf(grouped[0]?.bytes as Uint8Array);
+    expect(model.items.length).toBe(1);
+    expect(model.items[0]?.meshes.length).toBe(2);
+
+    const flat = await job.export({ format: '3mf', components: ['Lid'], flat: true });
+    expect(read3mf(flat[0]?.bytes as Uint8Array).items.length).toBe(2);
+  });
+
+  it('names an unknown component', async () => {
+    const job = await openComponentFixture('lid-box');
+    await expect(job.export({ format: '3mf', components: ['Nope'] })).rejects.toThrow(
+      /No component named "Nope"/,
+    );
+  });
+
+  it('runs a joint clearance check on the hinge', { timeout: 180_000 }, async () => {
+    const job = await openComponentFixture('hinge');
+    const reports = await job.checkJoints();
+    const hinge = reports.find((r) => r.name === 'Hinge');
+    expect(hinge?.status).toBe('ok');
+    expect(hinge?.check?.collisions.length).toBe(0);
+    expect(hinge?.check?.tightest?.gap).toBeCloseTo(0.3, 2);
   });
 });
 

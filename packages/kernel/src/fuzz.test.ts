@@ -55,6 +55,7 @@ import b9 from '../../../fixtures/benchmarks/b9-bottle-cap.extrudo?url&inline';
 import b10 from '../../../fixtures/benchmarks/b10-chain-link.extrudo?url&inline';
 import p401 from '../../../fixtures/benchmarks/p4-01-sweep-loft-coil.extrudo?url&inline';
 import hinge from '../../../fixtures/components/hinge.extrudo?url&inline';
+import lidBox from '../../../fixtures/components/lid-box.extrudo?url&inline';
 import interRegular from '../../fonts/fonts/inter-regular.ttf?url&inline';
 import { kernelFeatures } from './features';
 import { Kernel } from './kernel';
@@ -505,6 +506,9 @@ describe('fuzzing the benchmark fixtures', () => {
     // A hinge of two components and a revolute joint (P6-05, ADR-0081 §4): the edits leave the
     // joint alone; the joint pass must not leak. `joints/hinge-fixture.test.ts` writes it.
     ['Hinge', hinge],
+    // A box component and a lid split in two (P6-05 S8): the piece follows its
+    // origin's component. `packages/api/src/components.test.ts` writes it.
+    ['Lid-box', lidBox],
   ];
   for (const [name, dataUrl, budget] of cases) {
     // `FUZZ_ONLY=B9,B10` runs some of them (a slow fixture on its own).

@@ -53,6 +53,8 @@ export const REFUSED_METHODS: Readonly<Record<string, string>> = {
   setParameter: 'would change a parameter',
   configuration: 'would add a configuration',
   applyConfiguration: 'would change parameters',
+  component: 'would add a component',
+  joint: 'would add a joint',
   transaction: 'needs a function a script cannot pass',
   toFile: 'would write a file',
 };
@@ -211,6 +213,16 @@ export class ScriptDesign {
     }
     if (method === 'add' && String(first) === PLUGIN_TYPE) {
       throw new ApiError(PLUGIN_IN_SCRIPT);
+    }
+    // A script's features go into the Script's own component (ADR-0081 §9): a
+    // `component` option would place them elsewhere, which the sandbox can't
+    // make a component for.
+    if (
+      third !== null &&
+      typeof third === 'object' &&
+      (third as { component?: unknown }).component !== undefined
+    ) {
+      throw new ApiError("A script's features go into the Script's own component.");
     }
     if (this.#added.length >= this.#limit) {
       throw new ScriptError(featureCountMessage(this.#limit));

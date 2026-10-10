@@ -64,9 +64,11 @@ Usage:
   extrudo info   <design.extrudo> [--json]
   extrudo export <design.extrudo> --format stl|3mf|step [--out <path>]
                 [--param name=expr]... [--config <name>] [--bodies a,b]
+                [--component name]... [--flat]
                 [--resolution coarse|medium|fine|<deviation mm>] [--json]
   extrudo set    <design.extrudo> [--param name=expr]... [--config <name>] --out <new.extrudo>
-  extrudo check  <design.extrudo> [--param name=expr]... [--config <name>] [--json]
+  extrudo check  <design.extrudo> [--param name=expr]... [--config <name>]
+                 [--joints] [--min-gap <expr>] [--json]
   extrudo script <design.extrudo> [--features a..b] [--param name=expr]...
 
 Options:
@@ -74,6 +76,10 @@ Options:
                       Repeatable. A driving dimension's own parameter works too.
   --config <name>     Put a configuration's values on the parameters.
   --bodies a,b        Export only these bodies, by name.
+  --component <name>  Export a component's live bodies (a name or ID). Repeatable.
+  --flat              Write without the component structure (one object per body).
+  --joints            Check every joint's clearance (extrudo check).
+  --min-gap <expr>    The minimum gap a joint check allows (default the design's tolerance).
   --features a..b     Emit only this run of the timeline (feature indices or IDs).
   --out <path>        Where to write. For export it is the one file to write;
                       for set it is the .extrudo file to write.
@@ -99,6 +105,10 @@ export interface Options {
   params: Record<string, string>;
   config?: string;
   bodies?: string[];
+  components?: string[];
+  flat?: boolean;
+  joints?: boolean;
+  minGap?: string;
   features?: [number | string, number | string];
   resolution?: string;
   json: boolean;
@@ -111,6 +121,10 @@ const PARSE_OPTIONS = {
   param: { type: 'string', multiple: true },
   config: { type: 'string' },
   bodies: { type: 'string' },
+  component: { type: 'string', multiple: true },
+  flat: { type: 'boolean' },
+  joints: { type: 'boolean' },
+  'min-gap': { type: 'string' },
   features: { type: 'string' },
   resolution: { type: 'string' },
   json: { type: 'boolean' },
@@ -206,6 +220,17 @@ export function parse(argv: readonly string[]): Options | { help: true } | { ver
     }
   }
   if (values.resolution !== undefined) options.resolution = values.resolution;
+  if (values.component !== undefined) {
+    options.components = values.component
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0);
+    if (options.components.length === 0) {
+      throw new UsageError('--component takes a component name or ID.');
+    }
+  }
+  if (values.flat === true) options.flat = true;
+  if (values.joints === true) options.joints = true;
+  if (values['min-gap'] !== undefined) options.minGap = values['min-gap'];
   if (values.features !== undefined) options.features = featuresOf(values.features);
   if (options.command === 'export' && options.format === undefined) {
     throw new UsageError('extrudo export needs --format stl, 3mf or step.');
@@ -218,6 +243,18 @@ export function parse(argv: readonly string[]): Options | { help: true } | { ver
   }
   if (options.command !== 'export' && options.bodies !== undefined) {
     throw new UsageError(`--bodies is for extrudo export, not ${options.command}.`);
+  }
+  if (options.command !== 'export' && options.components !== undefined) {
+    throw new UsageError(`--component is for extrudo export, not ${options.command}.`);
+  }
+  if (options.command !== 'export' && options.flat === true) {
+    throw new UsageError(`--flat is for extrudo export, not ${options.command}.`);
+  }
+  if (options.command !== 'check' && options.joints === true) {
+    throw new UsageError(`--joints is for extrudo check, not ${options.command}.`);
+  }
+  if (options.command !== 'check' && options.minGap !== undefined) {
+    throw new UsageError(`--min-gap is for extrudo check, not ${options.command}.`);
   }
   if (options.command !== 'export' && options.resolution !== undefined) {
     throw new UsageError(`--resolution is for extrudo export, not ${options.command}.`);
@@ -327,13 +364,40 @@ function report(job: DesignJob, result: ComputeResult): string[] {
       `  ${feature.status.padEnd(7)} ${feature.name}${made}${feature.message ? `: ${feature.message}` : ''}`,
     );
   }
-  lines.push('Bodies:');
-  for (const body of result.bodies) {
+  const bodyLine = (body: ComputeResult['bodies'][number]): string => {
     const size = body.size.map((v) => v.toFixed(2)).join(' × ');
-    lines.push(
+    return (
       `  ${body.name}  ${size} mm · ${body.faces} ${body.faces === 1 ? 'face' : 'faces'}` +
-        ` · ${Math.round(body.volume)} mm³${body.mesh ? ' · mesh' : ''}`,
+      ` · ${Math.round(body.volume)} mm³${body.mesh ? ' · mesh' : ''}`
     );
+  };
+  const components = result.components;
+  if (components.length > 0) {
+    // Bodies under their components, then the loose ones (P6-05 S8, ADR-0081 §6).
+    const inComponent = new Set(components.flatMap((component) => component.bodies));
+    lines.push('Components:');
+    for (const component of components) {
+      lines.push(`  ${component.name}`);
+      const members = result.bodies.filter((body) => component.bodies.includes(body.id));
+      if (members.length === 0) lines.push('    (no bodies)');
+      else for (const body of members) lines.push(`  ${bodyLine(body)}`);
+    }
+    const loose = result.bodies.filter((body) => !inComponent.has(body.id));
+    if (loose.length > 0) {
+      lines.push('Loose bodies:');
+      for (const body of loose) lines.push(bodyLine(body));
+    }
+  } else {
+    lines.push('Bodies:');
+    for (const body of result.bodies) lines.push(bodyLine(body));
+  }
+  if (result.joints.length > 0) {
+    lines.push('Joints:');
+    for (const joint of result.joints) {
+      lines.push(
+        `  ${joint.status.padEnd(8)} ${joint.name} (${joint.type})${joint.message ? `: ${joint.message}` : ''}`,
+      );
+    }
   }
   return lines;
 }
@@ -354,6 +418,8 @@ async function info(options: Options, streams: Streams): Promise<number> {
             configurations: job.configurations,
             features: result.features,
             bodies: result.bodies,
+            components: result.components,
+            joints: result.joints,
             errors: result.errors,
             warnings: result.warnings,
             ms: Math.round(result.ms),
@@ -393,6 +459,8 @@ async function exportCommand(options: Options, streams: Streams): Promise<number
     const files = await job.export({
       format,
       ...(options.bodies ? { bodies: options.bodies } : {}),
+      ...(options.components ? { components: options.components } : {}),
+      ...(options.flat === true ? { flat: true } : {}),
       ...(resolution !== undefined ? { resolution } : {}),
       // One file when the command named one, else an STL is one file per body.
       ...(options.out ? { singleFile: true } : {}),
@@ -462,49 +530,112 @@ async function set(options: Options, streams: Streams): Promise<number> {
   }
 }
 
-/** `check`: recompute and say what is wrong, for a CI of a design library. */
+/**
+ * `check --joints`: run every joint's clearance check (P6-05 S8, ADR-0081 §4)
+ * and exit 2 when one collides, is under the minimum, or has an error. Prints
+ * one line per joint, so a print-in-place design can be checked in a CI.
+ */
+async function checkJoints(job: DesignJob, options: Options, streams: Streams): Promise<number> {
+  const reports = await job.checkJoints(options.minGap ? { minGap: options.minGap } : {});
+  let failed = false;
+  const summarised = reports.map((report) => {
+    const unit = report.type === 'revolute' ? '°' : ' mm';
+    const round = (value: number) => Number(value.toFixed(2)) + 0;
+    const range = (from: number, to: number) => `${round(from)}${unit}–${round(to)}${unit}`;
+    if (report.status === 'error' || report.status === 'inactive') failed = true;
+    const check = report.check;
+    const collisions = check?.collisions ?? [];
+    const under = check?.underMinimum ?? [];
+    if (collisions.length > 0 || under.length > 0) failed = true;
+    const parts: string[] = [];
+    const tightest = check?.tightest;
+    if (tightest) {
+      const at = tightest.over
+        ? range(tightest.over.from, tightest.over.to)
+        : `${round(tightest.at)}${unit}`;
+      parts.push(`tightest ${round(tightest.gap)} mm at ${at}`);
+    } else if (check) {
+      parts.push('no contact in range');
+    }
+    parts.push(
+      collisions.length === 0
+        ? 'no collision'
+        : `collides ${collisions.map((c) => `${range(c.from, c.to)} (${round(c.volume)} mm³ at ${round(c.at)}${unit})`).join(', ')}`,
+    );
+    for (const u of under) parts.push(`under the minimum from ${range(u.from, u.to)}`);
+    if (report.message) parts.push(report.message);
+    return {
+      name: report.name,
+      type: report.type,
+      status: report.status,
+      tightest: tightest?.gap,
+      collision: collisions.length > 0,
+      under: under.length > 0,
+      text: parts.join(', '),
+    };
+  });
+  if (options.json) {
+    streams.out(JSON.stringify({ joints: summarised }, null, 2));
+  } else if (summarised.length === 0) {
+    streams.out(`${job.doc.name}: no joints.`);
+  } else {
+    for (const joint of summarised) {
+      streams.out(`${joint.name}: ${joint.text}`);
+    }
+  }
+  return failed ? DESIGN_ERROR : OK;
+}
+
+/**
+ * `check`: recompute and say what is wrong, for a CI of a design library.
+ */
 async function check(options: Options, streams: Streams): Promise<number> {
   const job = await opened(options);
   try {
-    // No volumes: a check is about the design's features, and measuring a
-    // threaded body costs more than computing it.
-    const result = await job.status();
-    const problems = result.features.filter((feature) => feature.status !== 'ok');
-    if (options.json) {
-      streams.out(
-        JSON.stringify(
-          {
-            name: job.doc.name,
-            ok: result.errors === 0,
-            errors: result.errors,
-            warnings: result.warnings,
-            features: result.features,
-            bodies: result.bodies,
-            ms: Math.round(result.ms),
-          },
-          null,
-          2,
-        ),
-      );
-    } else {
-      if (result.errors === 0) {
-        streams.out(`${job.doc.name}: no errors (${result.bodies.length} bodies).`);
-      } else {
-        streams.err(`${job.doc.name}: ${result.errors} errors.`);
-        for (const feature of problems) {
-          if (feature.status === 'error') {
-            streams.err(`  ${feature.name}: ${feature.message ?? 'Internal error'}`);
-          }
-        }
-      }
-      for (const feature of problems.filter((p) => p.status === 'warning')) {
-        streams.err(`  ${feature.name} (warning): ${feature.message ?? 'Warning'}`);
-      }
-    }
-    return result.errors > 0 ? DESIGN_ERROR : OK;
+    return options.joints
+      ? await checkJoints(job, options, streams)
+      : await checkFeatures(job, options, streams);
   } finally {
     await job.dispose();
   }
+}
+
+/** The feature half of `check` (no joints): every feature's status. */
+async function checkFeatures(job: DesignJob, options: Options, streams: Streams): Promise<number> {
+  const result = await job.status();
+  const problems = result.features.filter((feature) => feature.status !== 'ok');
+  if (options.json) {
+    streams.out(
+      JSON.stringify(
+        {
+          name: job.doc.name,
+          ok: result.errors === 0,
+          errors: result.errors,
+          warnings: result.warnings,
+          features: result.features,
+          bodies: result.bodies,
+          ms: Math.round(result.ms),
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    if (result.errors === 0) {
+      streams.out(`${job.doc.name}: no errors (${result.bodies.length} bodies).`);
+    } else {
+      streams.err(`${job.doc.name}: ${result.errors} errors.`);
+      for (const feature of problems) {
+        if (feature.status === 'error') {
+          streams.err(`  ${feature.name}: ${feature.message ?? 'Internal error'}`);
+        }
+      }
+    }
+    for (const feature of problems.filter((p) => p.status === 'warning')) {
+      streams.err(`  ${feature.name} (warning): ${feature.message ?? 'Warning'}`);
+    }
+  }
+  return result.errors > 0 ? DESIGN_ERROR : OK;
 }
 
 /**

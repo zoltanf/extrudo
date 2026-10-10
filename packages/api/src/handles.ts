@@ -8,6 +8,9 @@
  * and an undo removes what they pointed at.
  */
 import type {
+  BodyId,
+  Component,
+  ComponentId,
   ConstructionType,
   ExtrudoDocument,
   Feature,
@@ -15,6 +18,8 @@ import type {
   GeomFingerprint,
   GeomRef,
   GeomRefKind,
+  Joint,
+  JointId,
   Parameter,
   ParameterId,
 } from '@extrudo/core';
@@ -33,6 +38,12 @@ export interface HandleContext {
   readonly doc: ExtrudoDocument;
   /** The feature, or `undefined` when it is gone (deleted, undone). */
   find(id: FeatureId): Feature | undefined;
+}
+
+/** What a `ComponentHandle` adds to the handle context: putting bodies into it. */
+export interface ComponentHandleContext extends HandleContext {
+  /** Puts bodies into the component (`setBodyComponent`, ADR-0081 §2). */
+  setComponentBodies(component: ComponentId, bodies: readonly (GeomRef | string)[]): void;
 }
 
 /**
@@ -139,6 +150,84 @@ function faceList(faces: string | readonly string[]): readonly string[] {
 
 function withIndex(name: string, index?: number): string {
   return index === undefined ? name : indexedName(name, index);
+}
+
+/**
+ * One component of the design (ADR-0081 §2), by its ID. Its `name` is what the
+ * browser shows and a later rename follows; `add` puts bodies into it and
+ * `bodies` reads the ones stored in it. A component holds no geometry, so a
+ * handle changes nothing but metadata.
+ */
+export class ComponentHandle {
+  readonly id: ComponentId;
+  readonly #design: ComponentHandleContext;
+
+  constructor(design: ComponentHandleContext, id: ComponentId) {
+    this.#design = design;
+    this.id = id;
+  }
+
+  /** The component's name, as the browser shows it ("Lid"). */
+  get name(): string {
+    return this.component?.name ?? this.id;
+  }
+
+  /** The stored component, or `undefined` when it is gone (deleted, undone). */
+  get component(): Component | undefined {
+    return (this.#design.doc.components ?? []).find((c) => c.id === this.id);
+  }
+
+  /**
+   * Puts bodies into this component (`BodyMeta.component`), as "Move to
+   * Component" does (ADR-0081 §2). Bodies are a reference (a `FeatureHandle`'s
+   * `body()`) or an ID.
+   */
+  add(...bodies: (GeomRef | string)[]): this {
+    this.#design.setComponentBodies(this.id, bodies);
+    return this;
+  }
+
+  /** The IDs of the bodies stored in this component (`BodyMeta.component`). */
+  bodies(): BodyId[] {
+    return Object.entries(this.#design.doc.bodies)
+      .filter(([, meta]) => meta.component === this.id)
+      .map(([id]) => id as BodyId);
+  }
+
+  /** The name, so a message reads as the component's name. */
+  toString(): string {
+    return this.name;
+  }
+}
+
+/**
+ * One as-built joint of the design (ADR-0081 §4), by its ID. A joint change
+ * goes through `Design.joint`/its own commands; the handle names it and reads
+ * its live name.
+ */
+export class JointHandle {
+  readonly id: JointId;
+  readonly #design: HandleContext;
+
+  constructor(design: HandleContext, id: JointId) {
+    this.#design = design;
+    this.id = id;
+  }
+
+  /** The joint's name, as the browser shows it ("Hinge"). */
+  get name(): string {
+    return this.joint?.name ?? this.id;
+  }
+
+  /** The stored joint, or `undefined` when it is gone. */
+  get joint(): Joint | undefined {
+    return (this.#design.doc.joints ?? []).find((j) => j.id === this.id);
+  }
+
+  /** The name, so a message reads as the joint's name. */
+  toString(): string {
+    return this.name;
+  }
 }
 
 /** One parameter, by its name or ID. */

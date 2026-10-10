@@ -45,7 +45,7 @@ function fixtures(): [name: string, doc: ExtrudoDocument][] {
             ExtrudoDocument,
           ],
       );
-  return [...read('benchmarks'), ...read('scripts')];
+  return [...read('benchmarks'), ...read('scripts'), ...read('components')];
 }
 
 /** Runs emitted code against a fresh design, as a Script feature's `design` would. */
@@ -67,6 +67,16 @@ function idMap(original: ExtrudoDocument, recreated: ExtrudoDocument): Map<strin
   for (const parameter of original.parameters) {
     const other = recreated.parameters.find((candidate) => candidate.name === parameter.name);
     if (other) map.set(parameter.id, other.id);
+  }
+  for (const component of original.components ?? []) {
+    const other = (recreated.components ?? []).find(
+      (candidate) => candidate.name === component.name,
+    );
+    if (other) map.set(component.id, other.id);
+  }
+  for (const joint of original.joints ?? []) {
+    const other = (recreated.joints ?? []).find((candidate) => candidate.name === joint.name);
+    if (other) map.set(joint.id, other.id);
   }
   original.features.forEach((feature, index) => {
     const other = recreated.features[index];
@@ -98,6 +108,12 @@ function replaceIds(text: string, map: ReadonlyMap<string, string>): string {
 
 /** A document as the parts a round trip must preserve, with IDs mapped. */
 function canonical(doc: ExtrudoDocument, map: ReadonlyMap<string, string>): unknown {
+  const memberships: [string, string][] = [];
+  for (const [id, meta] of Object.entries(doc.bodies)) {
+    if (meta.component === undefined) continue;
+    memberships.push([replaceIds(id, map), replaceIds(meta.component, map)]);
+  }
+  memberships.sort((a, b) => a[0].localeCompare(b[0]));
   return {
     units: doc.settings.units,
     parameters: [...doc.parameters]
@@ -112,7 +128,29 @@ function canonical(doc: ExtrudoDocument, map: ReadonlyMap<string, string>): unkn
       type: feature.type,
       suppressed: feature.suppressed,
       inputs: canonicalInputs(feature.inputs, map, doc),
+      // A feature's component stamp (ADR-0081 §9), up to IDs.
+      component: feature.component ? replaceIds(feature.component, map) : null,
     })),
+    components: [...(doc.components ?? [])].map((c) => c.name).sort(),
+    // Stored membership that the stamp rule would not give (a hand-moved body).
+    memberships,
+    joints: [...(doc.joints ?? [])]
+      .map((joint) => ({
+        name: joint.name,
+        type: joint.type,
+        a: {
+          component: replaceIds(joint.a.component, map),
+          ref: canonicalRef(joint.a.ref, map, doc),
+        },
+        b: {
+          component: replaceIds(joint.b.component, map),
+          ref: canonicalRef(joint.b.ref, map, doc),
+        },
+        min: joint.min?.expr ?? null,
+        max: joint.max?.expr ?? null,
+        flip: joint.flip ?? false,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
   };
 }
 

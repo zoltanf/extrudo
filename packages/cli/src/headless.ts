@@ -43,19 +43,28 @@ import {
   type AttachmentId,
   type BodyId,
   type BodyMeta,
+  type ComponentId,
+  componentMembers,
+  componentOfBody,
   type ExtrudoDocument,
   evaluateParameters,
   type FeatureId,
   importFileOf,
   isMeshMediaType,
   isScadMediaType,
+  type Joint,
+  type JointId,
+  type JointReport,
+  jointRange,
   MODEL_MEDIA_TYPES,
   makesFeatures,
+  movingComponents,
   newBodyNames,
   pluginFileOf,
   type ReferenceIssue,
   type ScriptRunStatus,
   setSketchGeometry,
+  TOLERANCE_PARAMETER,
   updateSketchDimension,
   usedFonts,
 } from '@extrudo/core';
@@ -64,6 +73,7 @@ import type {
   BodyMesh,
   ExportBody,
   ExportProgress,
+  JointCheck,
   MeshedBodies,
   MeshOptions,
   ModelExporter,
@@ -71,7 +81,7 @@ import type {
   RecomputeResult,
   Resolution,
 } from '@extrudo/kernel';
-import { meshBodies, meshBytes, modelFileName, RESOLUTIONS } from '@extrudo/kernel';
+import { meshBodies, meshBytes, modelFileName, RESOLUTIONS, stepBody } from '@extrudo/kernel';
 import { KernelService, loadOcct } from '@extrudo/kernel/node';
 import { loadPlanegcs, SketchSolver } from '@extrudo/sketch';
 import {
@@ -131,6 +141,36 @@ export interface BodyReport {
   faces: number;
   /** The body is an imported mesh, not a solid (ADR-0066 §3). */
   mesh: boolean;
+  /** The component the body is in (P6-05, ADR-0081 §2), when it is in one. */
+  component?: { id: ComponentId; name: string };
+}
+
+/** One component after a compute (P6-05 S8, ADR-0081 §9). */
+export interface ComponentReport {
+  id: ComponentId;
+  name: string;
+  /** Its live bodies, in creation order. */
+  bodies: BodyId[];
+}
+
+/** One joint's status after a compute (P6-05 S8, ADR-0081 §9). */
+export interface JointReportSummary {
+  id: JointId;
+  name: string;
+  type: Joint['type'];
+  status: JointReport['status'];
+  message?: string;
+}
+
+/** One joint's clearance check through `KernelApi.checkJoint` (ADR-0081 §4). */
+export interface JointCheckReport {
+  id: JointId;
+  name: string;
+  type: Joint['type'];
+  status: JointReport['status'];
+  message?: string;
+  /** The result, absent when the joint's report refused the check. */
+  check?: JointCheck;
 }
 
 /** One parameter, as `info` prints it and `--param` names it. */
@@ -149,6 +189,10 @@ export interface ComputeResult {
   features: FeatureReport[];
   /** The bodies at the timeline marker, in creation order. */
   bodies: BodyReport[];
+  /** The design's components with their live bodies (P6-05 S8). */
+  components: ComponentReport[];
+  /** The design's joints with their status (P6-05 S8). */
+  joints: JointReportSummary[];
   /** How many features have an error, and how many a warning. */
   errors: number;
   warnings: number;
@@ -176,6 +220,16 @@ export interface ExportOptions {
    * left out. A name the design doesn't have is an error.
    */
   bodies?: readonly string[];
+  /**
+   * The components to export, by name or ID (`--component`); their live bodies
+   * are exported. Combined with `bodies` when both are given.
+   */
+  components?: readonly string[];
+  /**
+   * Write without the component structure (`--flat`): a 3MF with one object per
+   * body, a STEP with one product per body, as a design without components.
+   */
+  flat?: boolean;
   /** A preset or a linear deflection in mm. Medium is the app's default. */
   resolution?: Exclude<Resolution, 'custom'> | number;
   /**
@@ -241,6 +295,8 @@ export class DesignJob {
    * component work in S8; nothing reads it yet.
    */
   #origins: Record<BodyId, BodyId> = {};
+  /** The live body IDs of the last finished recompute (P6-05 S8). */
+  #liveBodies: BodyId[] = [];
   /** What the kernel has already been sent (a font ID, or `file:<id>`). */
   readonly #sent = new Set<string>();
   #disposed = false;
@@ -275,6 +331,21 @@ export class DesignJob {
    */
   get origins(): Readonly<Record<BodyId, BodyId>> {
     return this.#origins;
+  }
+
+  /**
+   * The design's components with their live bodies (P6-05 S8, ADR-0081 §2),
+   * from the last finished recompute. Empty before the first
+   * `compute`/`status`/`export`, and for a design without components.
+   */
+  get components(): ComponentReport[] {
+    const doc = this.doc;
+    const members = componentMembers(doc, this.#liveBodies, this.#origins);
+    return members.components.map(({ id, bodies }) => ({
+      id,
+      name: (doc.components ?? []).find((c) => c.id === id)?.name ?? id,
+      bodies,
+    }));
   }
 
   /**
@@ -367,6 +438,8 @@ export class DesignJob {
     return {
       features,
       bodies,
+      components: this.components,
+      joints: jointReports(this.doc, result),
       errors: features.filter((f) => f.status === 'error').length,
       warnings: features.filter((f) => f.status === 'warning').length,
       ms: result.stats.ms,
@@ -393,6 +466,70 @@ export class DesignJob {
   }
 
   /**
+   * Runs every unsuppressed revolute and slider joint's clearance check
+   * (P6-05 S8, ADR-0081 §4) through `KernelApi.checkJoint`, on the last
+   * finished recompute's shapes. A joint whose report refuses the check (an
+   * error, inactive, or a warning with a frame offset) is reported without a
+   * `check`. `minGap` is an expression (default the document's `tolerance`
+   * parameter when it has one, else 0.2 mm).
+   */
+  async checkJoints(
+    options: { minGap?: string; onProgress?: (done: number, of: number) => void } = {},
+  ): Promise<JointCheckReport[]> {
+    const service = await this.#kernel();
+    const { result } = await this.#recompute();
+    const doc = this.doc;
+    const evaluation = evaluateParameters(doc);
+    const minGap = this.#minGap(evaluation, options.minGap);
+    const live = this.#liveBodies;
+    const reports: JointCheckReport[] = [];
+    for (const joint of doc.joints ?? []) {
+      const report = result.joints?.[joint.id];
+      const base = {
+        id: joint.id,
+        name: joint.name,
+        type: joint.type,
+        status: report?.status ?? ('inactive' as const),
+        ...(report?.message ? { message: report.message } : {}),
+      };
+      if (joint.type === 'rigid' || joint.suppressed || !report) {
+        reports.push(base);
+        continue;
+      }
+      if (
+        report.status === 'error' ||
+        report.status === 'inactive' ||
+        (report.status === 'warning' && report.offset !== undefined)
+      ) {
+        reports.push(base);
+        continue;
+      }
+      const range = jointRange(joint, (input) => evaluate(evaluation, input)) ?? {
+        min: -180,
+        max: 180,
+      };
+      const moving = bodiesOfComponents(doc, movingComponents(doc, joint), live, this.#origins);
+      const moved = new Set(moving);
+      const others = live.filter((id) => !moved.has(id));
+      const check = await service.checkJoint(
+        { joint, moving, others, range, minGap },
+        options.onProgress,
+      );
+      reports.push({ ...base, check });
+    }
+    return reports;
+  }
+
+  /** The minimum gap in mm: a given expression, the design's tolerance, or 0.2 mm. */
+  #minGap(evaluation: ReturnType<typeof evaluateParameters>, given?: string): number {
+    const expression =
+      given ?? (evaluation.parameters.has(TOLERANCE_PARAMETER) ? TOLERANCE_PARAMETER : '0.2 mm');
+    const value = evaluation.evaluate(expression, 'length');
+    if (!value.ok) throw new ParameterError(`--min-gap: ${value.error.message}`);
+    return value.value;
+  }
+
+  /**
    * The recompute itself, with the resources the design needs and the names its
    * bodies have. An export needs no more: the volumes are the kernel's exact
    * mass properties, and on a body with modelled threads they cost more than
@@ -413,6 +550,7 @@ export class DesignJob {
       throw new HeadlessError('The kernel stopped before it finished the design.');
     }
     this.#origins = result.origins;
+    this.#liveBodies = result.bodies.map(({ id }) => id);
     return {
       result,
       names: bodyNames(
@@ -432,17 +570,27 @@ export class DesignJob {
     const { result, names } = await this.#recompute();
     const bodies: ExportBodyChoice[] = result.bodies.map(({ id, mesh }) => {
       const color = this.doc.bodies[id]?.color;
+      const component = componentOfBody(this.doc, id, this.#origins);
+      const componentName =
+        component === undefined
+          ? undefined
+          : (this.doc.components ?? []).find((c) => c.id === component)?.name;
       return {
         id,
         name: names[id] as string,
         mesh: mesh?.mesh === true,
         ...(color !== undefined && { color }),
+        ...(component !== undefined && componentName !== undefined
+          ? { component: { id: component, name: componentName } }
+          : {}),
       };
     });
-    const chosen = pickBodies(bodies, options.bodies);
+    const chosen = pickExport(bodies, this.doc, options, this.#origins);
     if (chosen.length === 0) {
       throw new HeadlessError('This design has no bodies to export.');
     }
+    // A 3MF or STEP keeps each component's bodies together unless `--flat`.
+    const group = options.flat !== true;
     if (options.format === 'step') {
       const solids = chosen.filter((body) => !body.mesh);
       if (solids.length === 0) {
@@ -450,16 +598,14 @@ export class DesignJob {
           'A STEP file holds exact solid geometry: every body of this design is a mesh (imported, or combined with a mesh).',
         );
       }
-      const text = await service.exportStep(
-        solids.map((b) => ({
-          id: b.id,
-          name: b.name,
-          ...(b.color !== undefined && { color: b.color }),
-        })),
-      );
+      const text = await service.exportStep(solids.map((b) => stepBody(exportBody(b, group))));
       return [
         {
-          name: modelFileName(this.doc.name, solids.map(exportBody), 'step'),
+          name: modelFileName(
+            this.doc.name,
+            solids.map((b) => exportBody(b, group)),
+            'step',
+          ),
           bytes: new TextEncoder().encode(text),
           bodies: solids.map((b) => b.name),
           triangles: 0,
@@ -469,12 +615,15 @@ export class DesignJob {
     }
     const meshed = await meshBodies(
       service,
-      chosen.map(exportBody),
+      chosen.map((b) => exportBody(b, group)),
       tessellationOf(options.resolution),
       options.onProgress,
     );
     return meshFiles(meshed, options.format, this.doc.name, {
       ...(options.singleFile ? { singleFile: true } : {}),
+      ...(group && meshed.bodies.some((b) => b.component !== undefined)
+        ? { groupComponents: true }
+        : {}),
     });
   }
 
@@ -751,6 +900,10 @@ export class DesignJob {
     return results.map(({ id, mesh }, i) => {
       const item = inspection.items[i] as { kind: string; volume?: number } | undefined;
       const box = meshBox(mesh);
+      const component = componentOfBody(this.doc, id, this.#origins);
+      const name = component
+        ? (this.doc.components ?? []).find((c) => c.id === component)?.name
+        : undefined;
       return {
         id,
         name: names[id] as string,
@@ -759,6 +912,7 @@ export class DesignJob {
         size: box.size,
         faces: mesh ? Math.floor(mesh.faceRanges.length / 2) : 0,
         mesh: mesh?.mesh === true,
+        ...(component && name !== undefined ? { component: { id: component, name } } : {}),
       };
     });
   }
@@ -783,6 +937,51 @@ function featureReports(
         ...(status?.script ? { script: status.script } : {}),
       };
     });
+}
+
+/**
+ * Every joint with the status the kernel gave it at the marker (P6-05 S8,
+ * ADR-0081 §4), in `doc.joints` order. An unsuppressed joint the kernel
+ * didn't report (a recompute without the joint pass) is `inactive`.
+ */
+function jointReports(
+  doc: ExtrudoDocument,
+  result: Extract<RecomputeResult, { status: 'done' }>,
+): JointReportSummary[] {
+  return (doc.joints ?? []).map((joint) => {
+    const report = result.joints?.[joint.id];
+    return {
+      id: joint.id,
+      name: joint.name,
+      type: joint.type,
+      status: report?.status ?? 'inactive',
+      ...(report?.message ? { message: report.message } : {}),
+    };
+  });
+}
+
+/** One joint limit or expression value, through the document's evaluation. */
+function evaluate(
+  evaluation: ReturnType<typeof evaluateParameters>,
+  input: { expr: string; unit?: 'length' | 'angle' | 'unitless' },
+): number {
+  const result = evaluation.evaluate(input.expr, input.unit ?? 'length');
+  if (!result.ok) throw new HeadlessError(`${input.expr}: ${result.error.message}`);
+  return result.value;
+}
+
+/** The live bodies in any of `components`, in `live` order. */
+function bodiesOfComponents(
+  doc: ExtrudoDocument,
+  components: readonly ComponentId[],
+  live: readonly BodyId[],
+  origins?: Readonly<Record<BodyId, BodyId>>,
+): BodyId[] {
+  const wanted = new Set(components);
+  return live.filter((id) => {
+    const component = componentOfBody(doc, id, origins);
+    return component !== undefined && wanted.has(component);
+  });
 }
 
 /**
@@ -837,12 +1036,16 @@ function meshFiles(
   meshed: MeshedBodies,
   format: 'stl' | '3mf',
   project: string,
-  options: { singleFile?: boolean } = {},
+  options: { singleFile?: boolean; groupComponents?: boolean } = {},
 ): ExportedFile[] {
   const application = `Extrudo ${EXTRUDO_VERSION}`;
   const file = (bodies: MeshedBodies): ExportedFile => ({
     name: modelFileName(project, bodies.bodies, format),
-    bytes: meshBytes(bodies, format, { application, project }),
+    bytes: meshBytes(bodies, format, {
+      application,
+      project,
+      ...(options.groupComponents === true && { groupComponents: true }),
+    }),
     bodies: bodies.bodies.map((b) => b.meta.name),
     triangles: bodies.triangles,
     closed: bodies.reports.every((r) => r.ok),
@@ -886,6 +1089,45 @@ export interface ExportBodyChoice {
   mesh: boolean;
   /** The body's colour (`#rrggbb`), written to a 3MF and a STEP file as the app writes it. */
   color?: string;
+  /** The component the body is in (P6-05 S8), when grouping keeps them together. */
+  component?: { id: ComponentId; name: string };
+}
+
+/** The bodies an export takes, by `bodies` and/or `components` (names or IDs). */
+function pickExport(
+  bodies: readonly ExportBodyChoice[],
+  doc: ExtrudoDocument,
+  options: ExportOptions,
+  origins?: Readonly<Record<BodyId, BodyId>>,
+): ExportBodyChoice[] {
+  const chosen: ExportBodyChoice[] = [];
+  const add = (body: ExportBodyChoice) => {
+    if (!chosen.includes(body)) chosen.push(body);
+  };
+  if (options.bodies) for (const body of pickBodies(bodies, options.bodies)) add(body);
+  if (options.components) {
+    const wanted = new Set<ComponentId>();
+    for (const ask of options.components) {
+      const found =
+        (doc.components ?? []).find((c) => c.id === ask || c.name === ask) ??
+        (doc.components ?? []).find((c) => c.name.toLowerCase() === ask.toLowerCase());
+      if (!found) {
+        const names = (doc.components ?? []).map((c) => c.name);
+        throw new HeadlessError(
+          names.length === 0
+            ? `This design has no components, so there is no "${ask}".`
+            : `No component named "${ask}". This design has: ${list(names)}.`,
+        );
+      }
+      wanted.add(found.id);
+    }
+    for (const body of bodies) {
+      const component = componentOfBody(doc, body.id, origins);
+      if (component !== undefined && wanted.has(component)) add(body);
+    }
+  }
+  if (!options.bodies && !options.components) return [...bodies];
+  return chosen;
 }
 
 /** The bodies an export takes, by name or ID, in the order asked or the model's. */
@@ -907,13 +1149,18 @@ function pickBodies(
   return chosen;
 }
 
-function exportBody(body: ExportBodyChoice): ExportBody {
+function exportBody(body: ExportBodyChoice, group: boolean): ExportBody {
   const meta: BodyMeta = {
     name: body.name,
     visible: true,
     ...(body.color !== undefined && { color: body.color }),
   };
-  return { id: body.id, meta, ...(body.mesh && { mesh: true }) };
+  return {
+    id: body.id,
+    meta,
+    ...(body.mesh && { mesh: true }),
+    ...(group && body.component !== undefined && { component: body.component }),
+  };
 }
 
 /** The display mesh's box: its min corner and its size, mm. */

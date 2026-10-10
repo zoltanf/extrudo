@@ -27,9 +27,10 @@ After `npm install -g @extrudo/cli` (Phase 6) the command is simply
 extrudo info   <design.extrudo> [--json]
 extrudo export <design.extrudo> --format stl|3mf|step [--out <path>]
                [--param name=expr]… [--config <name>] [--bodies a,b]
+               [--component <name>]… [--flat]
                [--resolution coarse|medium|fine|<deviation mm>] [--json]
 extrudo set    <design.extrudo> [--param name=expr]… [--config <name>] --out <new.extrudo>
-extrudo check  <design.extrudo> [--param …] [--config …] [--json]
+extrudo check  <design.extrudo> [--param …] [--config …] [--joints] [--min-gap <expr>] [--json]
 extrudo script <design.extrudo> [--features a..b] [--param name=expr]…
 ```
 
@@ -90,6 +91,10 @@ extrudo export box.extrudo --format step --resolution fine --out box.step
   `--param` reaches the `.scad` part through any override bound to that
   parameter. Its body is a mesh body like an STL's. `pnpm wasm` downloads the
   compiler with the rest.
+- `--component <name>` (repeatable) exports a component's live bodies (a name or
+  ID); with `--bodies` both are combined. A 3MF or STEP keeps a component's
+  bodies together as one object of parts (ADR-0081 §7); `--flat` writes one
+  object per body instead, as a design without components.
 - `--resolution` is `coarse` (0.1 mm), `medium` (0.02 mm, the default), `fine`
   (0.005 mm) or a deflection in millimetres.
 - With `--json` it prints `{ "files": [{ "path", "name", "bytes", "bodies",
@@ -120,6 +125,22 @@ Recomputes the design (with `--param` and `--config` applied first) and exits 2
 if any feature has an error, listing them. Warnings are printed but do not fail
 the check. `--json` prints the whole report with `"ok": false`.
 
+With **`--joints`** it runs every unsuppressed revolute and slider joint's
+clearance check (ADR-0081 §4) and prints one line per joint, so a print-in-place
+design can be checked in a CI:
+
+```sh
+$ extrudo check hinge.extrudo --joints
+Hinge: tightest 0.3 mm at 0°–90°, no collision
+$ extrudo check hinge.extrudo --joints --min-gap 0.5mm; echo $?
+Hinge: tightest 0.3 mm at 0°–90°, no collision, under the minimum from 0°–90°
+2
+```
+
+It exits 2 when a joint collides, comes under the minimum gap, or has an error.
+`--min-gap` is an expression (the document's `tolerance` parameter by default,
+else 0.2 mm); `--json` prints the checks as data.
+
 ### `script` — a design as the code that makes it again
 
 ```sh
@@ -142,6 +163,10 @@ run it against a [`Design`](api/README.md).
 | `--param name=expr` | Set a parameter to a new expression. Repeatable. The app's expression grammar with units: `width=60mm`, `tilt=30deg`, `wall=2 * tolerance`. A driving dimension's own parameter (`d1`, or the name it was given) works too and moves that sketch; a feature input's own parameter does not — the message says which feature and input it is. `info` lists all three kinds. |
 | `--config <name>` | Put a configuration's values on the parameters (ADR-0059), then re-solve. |
 | `--bodies a,b` | Export only these bodies, by name (or by ID). |
+| `--component <name>` | Export a component's live bodies, by name (or ID). Repeatable; with `--bodies`, both. |
+| `--flat` | Write without the component structure: one 3MF object or STEP product per body. |
+| `--joints` | For `check`: run every joint's clearance check (ADR-0081 §4). |
+| `--min-gap <expr>` | For `check --joints`: the minimum gap the check allows (the design's `tolerance` by default). |
 | `--features a..b` | For `script`: emit only this run of the timeline (feature indices or IDs). |
 | `--out <path>` | The file to write: the export's, or the new design for `set`. Missing folders are made. |
 | `--resolution …` | `coarse`, `medium`, `fine` or a deflection in mm. |

@@ -240,6 +240,19 @@ describe('what a script may not do', () => {
     expect(failure(run('design.unicorn();').result).message).toBe('TypeError: not a function');
   });
 
+  it('refuses a component or joint method and a component option', () => {
+    expect(failure(run('design.component("Lid");').result).message).toBe(
+      `${REFUSAL_RULE}: design.component() would add a component.`,
+    );
+    expect(failure(run('design.joint("Hinge");').result).message).toBe(
+      `${REFUSAL_RULE}: design.joint() would add a joint.`,
+    );
+    // A `component` option would place a feature outside the Script's own.
+    expect(
+      failure(run('design.box({ length: "10 mm" }, { component: "Lid" });').result).message,
+    ).toBe("A script's features go into the Script's own component.");
+  });
+
   it('offers the generated feature methods, sketch and origin', () => {
     expect(SCRIPT_METHODS).toContain('box');
     expect(SCRIPT_METHODS).toContain('hole');
