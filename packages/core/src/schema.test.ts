@@ -197,3 +197,64 @@ describe('customizer and configurations (P4-07, ADR-0059)', () => {
     expect(DocumentSchema.parse(JSON.parse(JSON.stringify(doc)))).toEqual(doc);
   });
 });
+
+describe('components (P6-05, ADR-0081 §2)', () => {
+  const box = { id: 'box', name: 'Box', visible: true };
+  const lid = { id: 'lid', name: 'Lid', visible: true };
+  function withComponents(over: Record<string, unknown> = {}) {
+    const doc = sampleDocument();
+    return {
+      ...doc,
+      components: [box, lid],
+      features: doc.features.map((f, i) => (i === 1 ? { ...f, component: 'box' } : f)),
+      bodies: { 'f2:0': { name: 'Body1', visible: true, component: 'lid' } },
+      ...over,
+    };
+  }
+
+  it('accepts components, memberships and stamps, and a design without any', () => {
+    expect(issues(withComponents())).toEqual([]);
+    expect(issues(sampleDocument())).toEqual([]);
+  });
+
+  it('reports duplicate IDs and names in another case', () => {
+    expect(
+      issues(withComponents({ components: [box, lid, { ...lid, id: 'box', name: 'Seal' }] })),
+    ).toEqual(['components.2.id: duplicate id "box"']);
+    expect(
+      issues(withComponents({ components: [box, lid, { ...lid, id: 'c3', name: 'LID' }] })),
+    ).toEqual(['components.2.name: duplicate name "LID"']);
+  });
+
+  it('reports a body or a feature naming a component the design lacks', () => {
+    expect(
+      issues(withComponents({ bodies: { 'f2:0': { name: 'B', visible: true, component: 'x' } } })),
+    ).toEqual(["bodies.f2:0.component: names component x, which the design doesn't have"]);
+    const doc = sampleDocument();
+    expect(
+      issues({
+        ...doc,
+        features: doc.features.map((f, i) => (i === 2 ? { ...f, component: 'y' } : f)),
+      }),
+    ).toEqual(["features.2.component: names component y, which the design doesn't have"]);
+  });
+
+  it('reports ghost on a visible component', () => {
+    expect(issues(withComponents({ components: [{ ...box, ghost: true }, lid] }))).toEqual([
+      'components.0.ghost: is set on a visible component (a ghost is stored with visible: false)',
+    ]);
+    expect(
+      issues(withComponents({ components: [{ ...box, visible: false, ghost: true }, lid] })),
+    ).toEqual([]);
+  });
+
+  it('checks the record itself', () => {
+    expect(issues(withComponents({ components: [{ ...box, name: '' }, lid] }))).toHaveLength(1);
+    expect(
+      issues(withComponents({ components: [{ ...box, name: 'x'.repeat(101) }, lid] })),
+    ).toHaveLength(1);
+    expect(issues(withComponents({ components: [{ ...box, transform: [] }, lid] }))).toHaveLength(
+      1,
+    );
+  });
+});

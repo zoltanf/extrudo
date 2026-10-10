@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import v0Bracket from '../fixtures/v0-bracket.json' with { type: 'json' };
 import { FORMAT_VERSION } from './format';
-import { DocumentLoadError, loadDocument, loadNotice, MIGRATIONS } from './migrations';
+import { BodyIdSchema } from './ids';
+import {
+  DocumentLoadError,
+  loadDocument,
+  loadNotice,
+  MIGRATIONS,
+  parseLeniently,
+} from './migrations';
+import { BodyMetaSchema, DocumentSchema, type ExtrudoDocument, FeatureSchema } from './schema';
 import { sampleDocument } from './testing';
+import { z } from './zod';
 
 /** Deterministic IDs for migrations: id-1, id-2, … */
 function counterIds() {
@@ -216,5 +225,44 @@ describe('loadDocument errors', () => {
     expect(error.code).toBe('invalid');
     expect(error.issues.map((i) => i.path.join('.'))).toEqual(['name', 'timelineMarker']);
     expect(error.message).toMatch(/^The document is damaged: name .*; timelineMarker .*\.$/);
+  });
+});
+
+describe('an older reader and components (P6-05, ADR-0081 §2)', () => {
+  /** DocumentSchema as it was before components: no `components`, no `component` keys. */
+  const { components: _, ...shape } = DocumentSchema.shape;
+  const olderSchema = z.strictObject({
+    ...shape,
+    features: z.array(FeatureSchema.omit({ component: true })),
+    bodies: z.record(BodyIdSchema, BodyMetaSchema.omit({ component: true })),
+  }) as unknown as z.ZodType<ExtrudoDocument>;
+
+  it('drops exactly the three keys and keeps everything else', () => {
+    const plain = sampleDocument();
+    const raw = JSON.parse(
+      JSON.stringify({
+        ...plain,
+        components: [{ id: 'lid', name: 'Lid', visible: true }],
+        features: plain.features.map((f, i) => (i === 1 ? { ...f, component: 'lid' } : f)),
+        bodies: {
+          'f2:0': { name: 'Body1', visible: true, component: 'lid' },
+          'f2:1': { name: 'Body2', visible: true },
+        },
+      }),
+    );
+    const parsed = parseLeniently(raw, olderSchema);
+    if (!parsed.ok) throw new Error('the older reader refused the file');
+    expect(parsed.dropped.sort()).toEqual([
+      'bodies.f2:0.component',
+      'components',
+      'features.1.component',
+    ]);
+    expect(parsed.doc).toEqual({
+      ...plain,
+      bodies: {
+        'f2:0': { name: 'Body1', visible: true },
+        'f2:1': { name: 'Body2', visible: true },
+      },
+    });
   });
 });

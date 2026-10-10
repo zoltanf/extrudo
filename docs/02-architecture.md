@@ -196,6 +196,17 @@ measures (`supplement`). A change to a value (in place, or a parameter a
 dimension uses) and the solves of the sketches it moves are one undo step
 (`ToolHost.apply`).
 
+**Components** (P6-05, ADR-0081, `packages/core/src/components.ts`): a design
+may hold `components[]`, named sets of bodies with a display state and no
+transform. Membership is metadata on the body (`BodyMeta.component`; absent =
+loose), and a feature may carry the `component` its new bodies join (the app
+stamps the active one). Where a body without metadata belongs is one pure rule,
+`componentOfBody` (stored metadata, else the body it was broken off, else its
+feature's stamp, else loose), read alike by the app, the CLI and the API.
+Nothing in the recompute, the cache keys or the naming reads components;
+placement is the timeline's (a Move feature), and references never name a
+component. All three keys are optional, so there was no format bump.
+
 ### 4.2 Feature registry (extension point)
 
 Every feature type registers one object. Adding a feature means adding one

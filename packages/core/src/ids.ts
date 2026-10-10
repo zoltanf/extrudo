@@ -30,6 +30,8 @@ export const DimensionIdSchema = id.brand<'DimensionId'>();
 export const ProjectionIdSchema = id.brand<'ProjectionId'>();
 /** A file that travels with the design, named in `doc.attachments` (ADR-0061). */
 export const AttachmentIdSchema = id.brand<'AttachmentId'>();
+/** A named set of bodies in one design (P6-05, ADR-0081 §2). */
+export const ComponentIdSchema = id.brand<'ComponentId'>();
 
 export type DocumentId = z.infer<typeof DocumentIdSchema>;
 export type FeatureId = z.infer<typeof FeatureIdSchema>;
@@ -43,6 +45,7 @@ export type ConstraintId = z.infer<typeof ConstraintIdSchema>;
 export type DimensionId = z.infer<typeof DimensionIdSchema>;
 export type ProjectionId = z.infer<typeof ProjectionIdSchema>;
 export type AttachmentId = z.infer<typeof AttachmentIdSchema>;
+export type ComponentId = z.infer<typeof ComponentIdSchema>;
 
 type AnyId =
   | DocumentId
@@ -56,7 +59,8 @@ type AnyId =
   | ConstraintId
   | DimensionId
   | ProjectionId
-  | AttachmentId;
+  | AttachmentId
+  | ComponentId;
 
 /**
  * A new random ID. Call it where an entity is created (a command's caller),

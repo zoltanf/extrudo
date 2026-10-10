@@ -17,6 +17,7 @@ export {
   type DocumentDraft,
   defineCommand,
 } from './commands';
+export * from './components';
 export * from './construction';
 export * from './customizer';
 export { createDocument, type NewDocumentOptions } from './document';

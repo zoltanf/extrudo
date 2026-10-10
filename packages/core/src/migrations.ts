@@ -147,16 +147,19 @@ const LENIENT_ROUNDS = 4;
  * Validates `doc` (mutated), dropping keys the schema doesn't know. The
  * schema's objects are strict, so an unknown key is an `unrecognized_keys`
  * issue with its path; when those are the only issues, the keys are removed
- * and the document is checked again. Any other issue fails.
+ * and the document is checked again. Any other issue fails. `schema` is the
+ * document's own; tests pass an older one to read a file the way a previous
+ * Extrudo would (ADR-0081: an older reader drops `components`).
  */
-function parseLeniently(
+export function parseLeniently(
   doc: JsonObject,
+  schema: z.ZodType<ExtrudoDocument> = DocumentSchema,
 ):
   | { ok: true; doc: ExtrudoDocument; dropped: string[] }
   | { ok: false; issues: z.core.$ZodIssue[] } {
   const dropped: string[] = [];
   for (let round = 0; ; round++) {
-    const parsed = DocumentSchema.safeParse(doc);
+    const parsed = schema.safeParse(doc);
     if (parsed.success) return { ok: true, doc: parsed.data, dropped };
     const { issues } = parsed.error;
     const other = issues.filter((i) => i.code !== 'unrecognized_keys');

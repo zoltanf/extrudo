@@ -21,6 +21,7 @@ export * from './refs';
 import {
   AttachmentIdSchema,
   BodyIdSchema,
+  ComponentIdSchema,
   ConfigurationIdSchema,
   DocumentIdSchema,
   FeatureIdSchema,
@@ -183,6 +184,12 @@ export const FeatureSchema = z.strictObject({
   /** `false` hides the feature's own geometry (a sketch's curves) in the view (P1-12). Absent means shown. */
   visible: z.boolean().optional(),
   inputs: FeatureInputsSchema,
+  /**
+   * The component the feature's **new** bodies join (P6-05, ADR-0081 §2 rule
+   * 3): the app stamps the active component when it inserts the feature, and
+   * editing the feature never changes it. Nothing in the recompute reads it.
+   */
+  component: ComponentIdSchema.optional(),
 });
 export type Feature = z.infer<typeof FeatureSchema>;
 
@@ -208,6 +215,11 @@ export const BodyMetaSchema = z.strictObject({
    * the body hidden (ADR-0050's lenient reading).
    */
   ghost: z.boolean().optional(),
+  /**
+   * The component the body belongs to (P6-05, ADR-0081 §2); absent: the body
+   * is loose. Membership lives here, so a body is in at most one component.
+   */
+  component: ComponentIdSchema.optional(),
 });
 export type BodyMeta = z.infer<typeof BodyMetaSchema>;
 
@@ -274,6 +286,24 @@ export const GroupSchema = z.strictObject({
 });
 export type Group = z.infer<typeof GroupSchema>;
 
+/**
+ * A component (P6-05, ADR-0081 §1-2): a named, user-made set of bodies that
+ * shows, hides, exports and is placed as a unit. It stores **no transform**:
+ * where its bodies are is where the timeline put them (§3), and membership
+ * lives on each body's metadata (`BodyMeta.component`), not in a list here.
+ * Nothing in the recompute reads components, so an older reader that leaves
+ * them out opens the same geometry as loose bodies.
+ */
+export const ComponentSchema = z.strictObject({
+  id: ComponentIdSchema,
+  /** Unique in the design, compared case-insensitively ("Lid" and "lid" are one name). */
+  name: z.string().min(1).max(100),
+  /** The same pair rule as `BodyMeta`: `ghost` only as `true`, only with `visible: false`. */
+  visible: z.boolean(),
+  ghost: z.boolean().optional(),
+});
+export type Component = z.infer<typeof ComponentSchema>;
+
 export const DocumentSchema = z
   .strictObject({
     format: z.literal(FORMAT_NAME),
@@ -291,6 +321,8 @@ export const DocumentSchema = z
     timelineMarker: z.int().min(0),
     /** Folds of the timeline (P4-09, ADR-0065 §1); absent when there are none. */
     groups: z.array(GroupSchema).optional(),
+    /** Components, in browser order (P6-05, ADR-0081); absent when there are none. */
+    components: z.array(ComponentSchema).optional(),
     bodies: z.record(BodyIdSchema, BodyMetaSchema),
     views: z.array(NamedViewSchema),
     /** Named value sets for the customizer (P4-07); absent when there are none. */
@@ -321,9 +353,13 @@ export const DocumentSchema = z
       ['configurations', 'id', (doc.configurations ?? []).map((c) => c.id)],
       // "Small" and "small" are the same configuration to a reader (P4-07).
       ['configurations', 'name', (doc.configurations ?? []).map((c) => c.name), configurationKey],
+      ['components', 'id', (doc.components ?? []).map((c) => c.id)],
+      // "Lid" and "lid" are the same component to a reader (ADR-0081 §2).
+      ['components', 'name', (doc.components ?? []).map((c) => c.name), (n) => n.toLowerCase()],
     ];
     for (const [list, key, values, fold] of unique) reportDuplicates(ctx, list, key, values, fold);
     reportGroups(ctx, doc);
+    reportComponentRefs(ctx, doc);
     // A slider range isn't a constraint (ADR-0059 §1), but min above max is a
     // mistake rather than a choice, so the document says so.
     doc.parameters.forEach((p, index) => {
@@ -372,6 +408,40 @@ function reportFiles(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>):
       });
     }
   }
+}
+
+/**
+ * Every `component` a body or a feature names must exist, and a component's
+ * `ghost` comes only with `visible: false` (P6-05, ADR-0081 §2). The issue
+ * names the body, the feature or the component, so a file's error points at it.
+ */
+function reportComponentRefs(ctx: z.RefinementCtx, doc: z.infer<typeof DocumentSchema>): void {
+  const known = new Set<string>((doc.components ?? []).map((c) => c.id));
+  const missing = (id: string) => `names component ${id}, which the design doesn't have`;
+  for (const [id, meta] of Object.entries(doc.bodies)) {
+    if (meta.component === undefined || known.has(meta.component)) continue;
+    ctx.addIssue({
+      code: 'custom',
+      path: ['bodies', id, 'component'],
+      message: missing(meta.component),
+    });
+  }
+  doc.features.forEach((feature, index) => {
+    if (feature.component === undefined || known.has(feature.component)) return;
+    ctx.addIssue({
+      code: 'custom',
+      path: ['features', index, 'component'],
+      message: missing(feature.component),
+    });
+  });
+  (doc.components ?? []).forEach((component, index) => {
+    if (!component.ghost || !component.visible) return;
+    ctx.addIssue({
+      code: 'custom',
+      path: ['components', index, 'ghost'],
+      message: 'is set on a visible component (a ghost is stored with visible: false)',
+    });
+  });
 }
 
 /**

@@ -139,8 +139,10 @@ integer; the current one is **1**). The rules:
   constraint.
 - **Additive changes do not bump it**: new optional fields (`unit` on
   expression inputs, `bodies[..].opacity`, `visible`, `ghost`, a sketch's
-  `projections`, a reference's `fingerprint` were all added this way), and new
-  feature types (`Feature.type` is an open string).
+  `projections`, a reference's `fingerprint` were all added this way, and so
+  were the components of P6-05: `components`, `bodies[..].component` and
+  `features[..].component`, section 4.7), and new feature types (`Feature.type`
+  is an open string).
 - **Objects are strict, reading is lenient.** Every object in the schema
   names the keys it doesn't know, and the reader **leaves them out** and
   tells the user (since P3-13; before, a file with an optional field added
@@ -200,6 +202,7 @@ schema names unknown keys, and a reader leaves them out (section 3).
 | `features` | array of Feature | yes | **The timeline**, in order (section 6). May be empty. |
 | `timelineMarker` | integer | yes | At least 0 and at most `features.length`. The number of *active* features: the feature at index `i >= timelineMarker` is rolled back (not evaluated). `features.length` means everything is active. |
 | `groups` | array of Group | no | Folds of the timeline (section 4.6). Absent means the design has none. |
+| `components` | array of Component | no | Named sets of bodies, in browser order (section 4.7). Absent means the design has none. |
 | `bodies` | object | yes | Record from body ID to `BodyMeta` (section 4.2). May be empty. Keys are IDs the kernel makes (section 10). |
 | `views` | array of NamedView | yes | Saved camera views (section 4.3). May be empty. |
 | `configurations` | array of Configuration | no | Named value sets for the customizer (section 5.4). Absent means the design has none. |
@@ -212,8 +215,13 @@ Whole-document rules (checked after the per-field rules):
 - Feature `id`s are unique; parameter `id`s are unique; parameter `name`s are
   unique; view `id`s are unique; group `id`s are unique; configuration `id`s are
   unique and configuration `name`s are unique **trimmed and
-  case-insensitively** ("Small box" and " small box " are the same name). Every
-  other name is compared exactly, case sensitively.
+  case-insensitively** ("Small box" and " small box " are the same name);
+  component `id`s are unique and component `name`s are unique
+  **case-insensitively** ("Lid" and "lid" are the same name). Every other name
+  is compared exactly, case sensitively.
+- Every `component` a body (4.2) or a feature (6) names must be a component of
+  `components`, and a component's `ghost` comes only with `visible: false`
+  (section 4.7).
 - Each group (section 4.6) must name features that exist, run forwards along
   the timeline, and not share a feature with another group.
 - A parameter's customizer `min` must not be above its `max` (section 5.1).
@@ -248,6 +256,7 @@ first recompute that produces it.
 | `opacity` | number 0.1 to 1 | no | Absent: opaque. |
 | `visible` | boolean | yes | Whether the body is drawn. |
 | `ghost` | boolean | no | `true` only, and only with `visible: false` (ADR-0030's amendment, 2026-10-09): the body is drawn as a grey see-through shape that takes no part in anything. Older readers leave the unknown key out and show the body hidden. |
+| `component` | ID | no | The `id` of the component (4.7) the body belongs to (P6-05, ADR-0081 §2). Absent: the body is **loose**, in no component. Must name a component of `components`. |
 
 Entries whose body no longer exists are harmless; a body without an entry
 gets one at the next recompute.
@@ -326,6 +335,38 @@ something else) is read as it is and the app repairs it with the next change.
 
 Two groups may sit next to each other (`first` of the second is the feature
 after `last` of the first); a group of a single feature is legal.
+
+### 4.7 `components[]` (Component)
+
+A component (P6-05, ADR-0081): a named, user-made set of bodies that shows,
+hides, exports and is placed as a unit (a box and its lid are two components).
+The array is in browser order. A design without `components` is a design of
+loose bodies, as before components existed.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `id` | ID | yes | Unique among components, permanent (section 10). |
+| `name` | string | yes | 1 to 100 characters, unique **case-insensitively**. Defaults are `Component1`, `Component2`, ... (the lowest free number); a copy is `<name> (2)`, `(3)`, ... |
+| `visible` | boolean | yes | Whether the component's bodies are drawn. A hidden component hides every body in it; showing it again restores each body's own state. |
+| `ghost` | boolean | no | `true` only, and only with `visible: false`, the same pair rule as a body's (4.2): the component's bodies are drawn as ghosts, apart from a body that is itself hidden. |
+
+**Membership lives on the body**: a body is in a component when its metadata's
+`component` (4.2) names it, so a body is in at most one, and there is no member
+list here. A body that has no metadata yet belongs where this rule puts it
+(`componentOfBody` in `@extrudo/core`): the component of the body it was
+broken off (a cut or Split Body that made it a piece of another body), else the
+`component` of the feature that made it (6; a Script's generated feature takes
+the Script's), else none. The app stores the answer when it first names the
+body; from then on the stored metadata is the truth. A body that disappears
+keeps its metadata, membership included, and a component whose bodies are all
+gone stays until it is deleted. Deleting a component clears every body's and
+feature's `component` that names it; its bodies stay, loose.
+
+**No transform: placement is the timeline's.** A component stores no position.
+Its bodies are where the timeline put them, and moving a component is a `move`
+feature (6.12) over its bodies. Nothing in the recompute reads `components` or
+either `component` key, so an older reader that leaves them out (section 3)
+opens the same geometry, as loose bodies.
 
 ---
 
@@ -448,6 +489,7 @@ customizer. Optional; a design without any may leave the key out.
 | `suppressed` | boolean | yes | `true`: the feature is skipped, as if not there (its dependants report errors). |
 | `visible` | boolean | no | `false` hides the feature's *own* geometry (a sketch's curves) in the view. Absent: shown. |
 | `inputs` | object | yes | Record from input name to an **Input** (below). Which names are allowed depends on `type`. |
+| `component` | ID | no | The component (4.7) the feature's **new** bodies join (P6-05, ADR-0081 §2): the app stamps the active component when it inserts the feature, and editing the feature never changes it. Must name a component of `components`. The recompute does not read it. |
 
 **Order matters.** A feature can only use things made by features *before* it.
 A feature depends on those whose IDs appear in its stored references
@@ -1714,9 +1756,10 @@ and `versions/1.json` (a document of the same shape).
 ## 10. IDs, determinism and what is derived
 
 **IDs.** Every entity that has an ID (document, feature, parameter, view,
-configuration, sketch entity, constraint, dimension, projection) gets a random
-UUID (v4, from `crypto.randomUUID()`) when it is created and keeps it for life;
-IDs are never reused. The schema only requires a non-empty string, and readers
+configuration, group, component (`ComponentId`, 4.7), sketch entity,
+constraint, dimension, projection) gets a random UUID (v4, from
+`crypto.randomUUID()`) when it is created and keeps it for life; IDs are never
+reused. The schema only requires a non-empty string, and readers
 must accept any. IDs of features are used as tokens inside references and
 persistent names, so a hand-written feature ID should use only
 `[A-Za-z0-9_.~-]` and no `/` or `:`. A feature a `script` makes has the ID
