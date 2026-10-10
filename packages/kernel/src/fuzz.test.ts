@@ -54,6 +54,7 @@ import b8 from '../../../fixtures/benchmarks/b8-name-tag.extrudo?url&inline';
 import b9 from '../../../fixtures/benchmarks/b9-bottle-cap.extrudo?url&inline';
 import b10 from '../../../fixtures/benchmarks/b10-chain-link.extrudo?url&inline';
 import p401 from '../../../fixtures/benchmarks/p4-01-sweep-loft-coil.extrudo?url&inline';
+import hinge from '../../../fixtures/components/hinge.extrudo?url&inline';
 import interRegular from '../../fonts/fonts/inter-regular.ttf?url&inline';
 import { kernelFeatures } from './features';
 import { Kernel } from './kernel';
@@ -354,6 +355,10 @@ function summary(engine: RecomputeEngine, result: Done) {
       const { volume } = kernel.measure(shape);
       return [id, Number(volume.toFixed(2))];
     }),
+    // The joint pass (P6-05, ADR-0081 §4) runs after every recompute.
+    joints: Object.fromEntries(
+      Object.entries(result.joints ?? {}).map(([id, j]) => [id, j.status]),
+    ),
   };
 }
 
@@ -497,6 +502,9 @@ describe('fuzzing the benchmark fixtures', () => {
     ['B10', b10],
     // Sweep, loft and coil (P4-01, ADR-0055): `features/sweep-loft-coil-fixture.test.ts` writes it.
     ['P4-01', p401],
+    // A hinge of two components and a revolute joint (P6-05, ADR-0081 §4): the edits leave the
+    // joint alone; the joint pass must not leak. `joints/hinge-fixture.test.ts` writes it.
+    ['Hinge', hinge],
   ];
   for (const [name, dataUrl, budget] of cases) {
     // `FUZZ_ONLY=B9,B10` runs some of them (a slow fixture on its own).

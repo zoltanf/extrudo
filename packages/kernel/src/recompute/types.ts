@@ -8,6 +8,8 @@ import type {
   FeatureInputs,
   FeatureStatus,
   GeomRef,
+  JointId,
+  JointReport,
 } from '@extrudo/core';
 import type { ScadCompiler } from '@extrudo/openscad';
 import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
@@ -317,6 +319,11 @@ export type RecomputeResult =
        * component. Previews carry it too but nothing reads it there.
        */
       origins: Record<BodyId, BodyId>;
+      /**
+       * What each unsuppressed joint's frames resolved to at the marker
+       * (P6-05, ADR-0081 §4). Recomputes only; never cached.
+       */
+      joints?: Record<JointId, JointReport>;
       /** `FeatureOutput.report` of every feature that computed and has one. */
       reports: Record<FeatureId, unknown>;
       /**

@@ -54,6 +54,8 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   axisThroughPoints: ['Shift+A'],
   constructionPoint: ['Shift+X'],
   measure: ['I'],
+  // Joints between components (P6-05, ADR-0081 §4): Fusion's key.
+  joint: ['J'],
   // Section Analysis (P3-09): Fusion has no default for it.
   section: ['Shift+S'],
   // Help (P6-06 S9): F1 opens the hovered tool's docs page, else the guide.

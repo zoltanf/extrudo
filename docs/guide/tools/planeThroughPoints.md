@@ -2,7 +2,7 @@
 title: Plane Through 3 Points
 section: Tools
 category: Construct
-order: 54
+order: 55
 ---
 
 # Plane Through 3 Points

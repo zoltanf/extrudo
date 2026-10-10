@@ -89,6 +89,8 @@ import { GhostBodies } from './GhostBodies';
 import { Ghosts } from './Ghosts';
 import { GRID_RADIUS, Grid, THUMBNAIL_HIDDEN, XY_FRAME } from './GridPlane';
 import { type Ghost, ghostsSummary } from './ghostGeometry';
+import { Joints } from './Joints';
+import type { JointDrawing } from './jointGeometry';
 import { type NamedViewEntries, NavBar } from './NavBar';
 import { NoWebgl } from './NoWebgl';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
@@ -130,6 +132,10 @@ export interface ViewportProps {
   meta?: Record<BodyId, BodyMeta>;
   /** The components and their bodies for tests (`data-components`, P6-05 S3). */
   components?: string | undefined;
+  /** The joints and their verdicts for tests (`data-joints`, P6-05 J1). */
+  joints?: string | undefined;
+  /** Joint axes to draw (P6-05 J1): the hovered joint row's and the Joint dialog's. */
+  jointAxes?: readonly JointDrawing[];
   /** The active and the isolated component's names (P6-05 S4): `data-active-component`, `data-isolated`. */
   activeComponent?: string | undefined;
   isolatedComponent?: string | undefined;
@@ -276,6 +282,7 @@ const NO_SKETCHES: readonly SketchDrawing[] = [];
 const NO_SELECTION: readonly SelectionItem[] = [];
 const NO_CONSTRUCTION: readonly ConstructionDrawing[] = [];
 const NO_GHOSTS: readonly Ghost[] = [];
+const NO_JOINT_AXES: readonly JointDrawing[] = [];
 const NO_CANVASES: readonly CanvasDrawing[] = [];
 const NO_CALIBRATION: readonly (readonly number[])[] = [];
 
@@ -386,6 +393,8 @@ export function Viewport({
   preview,
   construction = NO_CONSTRUCTION,
   ghosts = NO_GHOSTS,
+  joints,
+  jointAxes = NO_JOINT_AXES,
   canvases = NO_CANVASES,
   calibration = NO_CALIBRATION,
   viewMenu,
@@ -581,6 +590,7 @@ export function Viewport({
       data-body-appearance={appearanceKey}
       data-ghost-bodies={ghostKey}
       data-components={components}
+      data-joints={joints}
       data-active-component={activeComponent}
       data-isolated={isolatedComponent}
       data-construction={constructionSummary(drawnConstruction)}
@@ -652,6 +662,7 @@ export function Viewport({
               canvases={drawnCanvases}
               calibration={calibration}
               ghosts={ghosts}
+              jointAxes={jointAxes}
               sectionClip={sectionClip}
               sectionBox={sectionBox?.on ? sectionBox.box : undefined}
               overhang={overhang?.view}
@@ -795,6 +806,7 @@ function Scene({
   preview,
   construction,
   ghosts,
+  jointAxes,
   canvases,
   calibration,
   sectionClip,
@@ -816,6 +828,7 @@ function Scene({
   preview: ViewPreview | undefined;
   construction: readonly ConstructionDrawing[];
   ghosts: readonly Ghost[];
+  jointAxes: readonly JointDrawing[];
   canvases: readonly CanvasDrawing[];
   calibration: readonly (readonly number[])[];
   sectionClip: readonly SectionClip[] | undefined;
@@ -1008,6 +1021,7 @@ function Scene({
         states={constructionStates}
       />
       <Ghosts store={viewport} ghosts={ghosts} color={{ ...colors.sketchConflict, a: 1 }} />
+      <Joints store={viewport} joints={jointAxes} color={{ ...colors.construct, a: 1 }} />
     </>
   );
 }

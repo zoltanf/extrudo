@@ -1,4 +1,11 @@
-import type { AttachmentId, BodyId, FeatureRegistry, GeomRef } from '@extrudo/core';
+import type {
+  AttachmentId,
+  BodyId,
+  FeatureRegistry,
+  GeomRef,
+  Joint,
+  JointReport,
+} from '@extrudo/core';
 import type { ScadCompiler, ScadParametersResult } from '@extrudo/openscad';
 import { kernelFeatures } from './features';
 import type { SmoothKind, SubShapeKind } from './history';
@@ -155,6 +162,11 @@ export interface KernelApi {
    * longer in the model.
    */
   inspect(targets: readonly InspectTarget[]): Promise<Inspection>;
+  /**
+   * A joint's frames resolved against the last finished recompute (P6-05,
+   * ADR-0081 §4), for the Joint dialog's live readout. Evaluates nothing.
+   */
+  resolveJoint(joint: Joint): Promise<JointReport>;
   /** Builds, measures and meshes the P0-02 test part. */
   debugTestPart(): Promise<TestPart>;
   /** Aborts the WASM instance, to exercise crash recovery (NFR-03). */
@@ -441,6 +453,10 @@ export class KernelService implements KernelApi {
         targets.map((target) => ({ body: this.#bodyShape(target.body, 'measure'), target })),
       ),
     );
+  }
+
+  resolveJoint(joint: Joint): Promise<JointReport> {
+    return this.#run(() => this.#engineOf().resolveJoint(joint));
   }
 
   async debugTestPart(): Promise<TestPart> {

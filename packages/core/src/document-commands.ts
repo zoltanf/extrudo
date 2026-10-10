@@ -98,6 +98,14 @@ export const updateParameter = defineCommand<{
       if (mentions(holder.expr, oldName))
         holder.expr = renameReferences(holder.expr, oldName, newName);
     }
+    // A joint's limits too (ADR-0081 §4).
+    for (const joint of draft.joints ?? []) {
+      for (const limit of [joint.min, joint.max]) {
+        if (limit && mentions(limit.expr, oldName)) {
+          limit.expr = renameReferences(limit.expr, oldName, newName);
+        }
+      }
+    }
   }
 });
 
@@ -509,6 +517,12 @@ export function refuseIfUsed(
     if (except.has(holder) || holder.driven || holder.paramName === name) continue;
     if (!mentions(holder.expr, name)) continue;
     users.add(dimension && holder.paramName ? `\`${holder.paramName}\`` : feature.name);
+  }
+  // A joint's limits are expression owners too, never named (ADR-0081 §4).
+  for (const joint of draft.joints ?? []) {
+    const unit = joint.type === 'slider' ? 'travel' : 'angle';
+    if (joint.min && mentions(joint.min.expr, name)) users.add(`${joint.name}'s minimum ${unit}`);
+    if (joint.max && mentions(joint.max.expr, name)) users.add(`${joint.name}'s maximum ${unit}`);
   }
   if (users.size > 0) {
     const list = [...users];

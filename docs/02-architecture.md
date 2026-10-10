@@ -206,6 +206,12 @@ feature's stamp, else loose), read alike by the app, the CLI and the API.
 Nothing in the recompute, the cache keys or the naming reads components;
 placement is the timeline's (a Move feature), and references never name a
 component. All three keys are optional, so there was no format bump.
+**Joints** (`packages/core/src/joints.ts`, ADR-0081 §4) are `joints[]` between
+two components, a frame on each stored as an ordinary `GeomRef`; after every full
+recompute the engine resolves each unsuppressed joint's frames at the marker
+(`kernel/src/joints/frames.ts`, uncached and in no cache key) into
+`RecomputeResult.joints` → `ModelState.joints`, so editing a joint recomputes no
+feature.
 
 ### 4.2 Feature registry (extension point)
 

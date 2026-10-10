@@ -2,7 +2,7 @@
 title: Text
 section: Tools
 category: Sketch
-order: 86
+order: 87
 ---
 
 # Text

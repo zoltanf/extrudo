@@ -2,7 +2,7 @@
 title: 2-Point Rectangle
 section: Tools
 category: Sketch
-order: 66
+order: 67
 ---
 
 # 2-Point Rectangle

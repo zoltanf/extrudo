@@ -25,13 +25,18 @@ import {
   type FeatureStatus,
   type GeneratedFeatureStatus,
   type GeomRef,
+  type Joint,
+  type JointId,
+  type JointReport,
   type ParameterEvaluation,
   type ReferenceIssue,
+  referencedFeatures,
   scriptOfGenerated,
 } from '@extrudo/core';
 import type { ScadCompiler } from '@extrudo/openscad';
 import type { z } from 'zod';
 import type { SmoothKind, SubShapeKind } from '../history';
+import { resolveJoint } from '../joints/frames';
 import { type Kernel, KernelError, type ShapeHandle } from '../kernel';
 import type { MeshOptions } from '../mesh';
 import type { ShapeDescription } from '../naming/description';
@@ -130,6 +135,17 @@ type Prepared = { value: unknown } | { error: unknown };
 
 const EMPTY_BODIES = 'bodies:none';
 
+/**
+ * What a joint's frames resolve against (P6-05, ADR-0081 §4): the last
+ * finished recompute at its marker, as a feature appended there would see it.
+ */
+interface AtMarker {
+  doc: ExtrudoDocument;
+  bodies: ReadonlyMap<BodyId, ShapeHandle>;
+  outputs: ReadonlyMap<FeatureId, FeatureOutput>;
+  featureName(id: FeatureId): string | undefined;
+}
+
 export class RecomputeEngine {
   readonly #kernel: Kernel;
   readonly #registry: FeatureRegistry<KernelFeatureDefinition>;
@@ -155,6 +171,8 @@ export class RecomputeEngine {
   readonly #inFlight = new Set<Set<string>>();
   /** Recent script runs by their key (code, the document before, the parameters), oldest first. */
   readonly #runs = new Map<string, ScriptRun>();
+  /** The last finished recompute at its marker, for joints (`resolveJoint`). */
+  #atMarker: AtMarker | undefined;
 
   constructor(
     kernel: Kernel,
@@ -251,6 +269,17 @@ export class RecomputeEngine {
   }
 
   /**
+   * A joint's frames resolved against the last finished recompute (P6-05,
+   * ADR-0081 §4): the Joint dialog's live readout. Nothing is evaluated or
+   * cached; `inactive` with no recompute yet.
+   */
+  resolveJoint(joint: Joint): JointReport {
+    const at = this.#atMarker;
+    if (!at) return { status: 'inactive', message: 'The model is still being computed.' };
+    return this.#joint(joint, at);
+  }
+
+  /**
    * The shape of a body of the last finished recompute (what the model
    * store shows), for export. It stays the cache's: don't release it.
    */
@@ -285,6 +314,7 @@ export class RecomputeEngine {
     this.#entries.clear();
     this.#runs.clear();
     this.#latest = new Map();
+    this.#atMarker = undefined;
     this.#previewBase = new Map();
     this.#pinned.recompute.clear();
     this.#pinned.preview.clear();
@@ -516,7 +546,21 @@ export class RecomputeEngine {
     if (cancelled()) return { status: 'cancelled' };
     for (const [id, run] of scriptRuns) features[id] = scriptStatus(run, features);
     this.#pinned[channel] = new Set(used);
-    if (channel === 'recompute') this.#latest = bodies;
+    let joints: Record<JointId, JointReport> | undefined;
+    if (channel === 'recompute') {
+      this.#latest = bodies;
+      // The joint pass (ADR-0081 §4): every unsuppressed joint's frames at the
+      // marker. Not cached and in no key, so editing a joint recomputes nothing.
+      const outputs = new Map<FeatureId, FeatureOutput>();
+      for (const [id, p] of passed) {
+        if (p.state === 'done' && p.entry.output) outputs.set(id, p.entry.output);
+      }
+      this.#atMarker = { doc, bodies, outputs, featureName: (id) => byId.get(id)?.name };
+      joints = {};
+      for (const joint of doc.joints ?? []) {
+        if (!joint.suppressed) joints[joint.id] = this.#joint(joint, this.#atMarker);
+      }
+    }
     if (channel === 'preview') this.#previewBase = base ?? new Map();
     const results = this.#meshAll(bodies, request, features, madeBy);
     const tools = draft === undefined ? undefined : this.#toolMeshes(passed.get(draft), request);
@@ -532,6 +576,7 @@ export class RecomputeEngine {
       features,
       bodies: results,
       origins: Object.fromEntries(origins) as Record<BodyId, BodyId>,
+      ...(joints && { joints }),
       reports,
       ...(tools && { tools }),
       ...(baseResults && { base: baseResults }),
@@ -824,6 +869,72 @@ export class RecomputeEngine {
     const entry: Entry = { key, status, output, handles };
     this.#entries.set(key, entry);
     return entry;
+  }
+
+  /**
+   * One joint at the marker: `inactive` when a frame is on a feature the
+   * marker has rolled back, else its frames resolved like a feature's
+   * references there (`#references`), a guess adding its warning and `refs`.
+   */
+  #joint(joint: Joint, at: AtMarker): JointReport {
+    const { doc } = at;
+    const frames: Pick<Feature, 'id' | 'inputs'> = {
+      id: joint.id as unknown as FeatureId,
+      inputs: { frames: { kind: 'ref', refs: [joint.a.ref, joint.b.ref] } },
+    };
+    const ids = new Set<string>(doc.features.map((f) => f.id));
+    const index = new Map<string, number>(doc.features.map((f, i) => [f.id, i]));
+    const rolledBack = referencedFeatures(frames, ids).find(
+      (id) => (index.get(id) ?? 0) >= doc.timelineMarker,
+    );
+    if (rolledBack !== undefined) {
+      return {
+        status: 'inactive',
+        message: `${joint.name} uses ${at.featureName(rolledBack) ?? rolledBack}, which is rolled back.`,
+      };
+    }
+    const feature: Feature = {
+      id: joint.id as unknown as FeatureId,
+      type: 'joint',
+      name: joint.name,
+      suppressed: false,
+      inputs: frames.inputs,
+    };
+    const { warnings, issues, names, resolve } = this.#references(feature, at.bodies);
+    const ctx: EvalContext = {
+      kernel: this.#kernel,
+      feature,
+      inputs: feature.inputs,
+      bodies: at.bodies,
+      names,
+      describe: (shape) => this.#describe(shape),
+      resolve,
+      warn: (message) => warnings.push(message),
+      value: (input) => {
+        throw new Error(`${joint.name} has no expression "${input}".`);
+      },
+      output: (id) => {
+        const output = at.outputs.get(id);
+        if (!output) throw new Error(`${joint.name} can't use feature ${id}.`);
+        return output;
+      },
+      ...this.#files(doc),
+      featureName: at.featureName,
+      bodyId: (n = 0) => `${joint.id}:${n}` as BodyId,
+    };
+    const report = resolveJoint(ctx, joint);
+    if (report.status === 'error') {
+      // A lost frame resolve noted, or the one the report names.
+      const refs = issues.size > 0 ? [...issues.values()] : report.refs;
+      return { ...report, ...(refs && refs.length > 0 && { refs }) };
+    }
+    const all = [...new Set([...(report.message ? [report.message] : []), ...warnings])];
+    if (all.length === 0 && issues.size === 0) return report;
+    return {
+      ...report,
+      ...(all.length > 0 && { status: 'warning', message: all.join(' ') }),
+      ...(issues.size > 0 && { refs: [...issues.values()] }),
+    };
   }
 
   /**

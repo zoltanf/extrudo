@@ -136,6 +136,7 @@ function bind(service: KernelService) {
     exportMeshes: service.exportMeshes.bind(service),
     exportStep: service.exportStep.bind(service),
     inspect: service.inspect.bind(service),
+    resolveJoint: service.resolveJoint.bind(service),
     debugTestPart: () => service.debugTestPart(),
     debugCrash: () => service.debugCrash(),
     stats: () => service.stats(),

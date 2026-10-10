@@ -637,7 +637,7 @@ Fusion-compatible where Fusion has them; remappable in settings.
 | C | Center circle | F | Fillet |
 | A | 3-point arc (ours) | H | Hole |
 | P | Project | M | Move/Copy |
-| D | Sketch dimension | J | Joint (reserved) |
+| D | Sketch dimension | J | Joint |
 | T | Trim | S | Toolbox |
 | O | Offset | I | Measure |
 | X | Construction toggle | Delete | Delete |
@@ -649,7 +649,8 @@ Shift+1…7 are Home, Top, Bottom, Front, Back, Left, Right, by key
 position (they work on any layout). The keys live in one table,
 `apps/web/src/commands/keymap.ts`; P is Project (P2-09), Shift+P Intersect in a
 sketch (P4-12; Offset Plane on the model); Shift+S is Section
-Analysis (P3-09); Q and J wait for their tools.
+Analysis (P3-09); Q is Press/Pull (P3-08) and J the Joint dialog (P6-05,
+ADR-0081 §4).
 
 ### 5.1 Settings (ADR-0082)
 

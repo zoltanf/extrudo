@@ -32,6 +32,8 @@ export const ProjectionIdSchema = id.brand<'ProjectionId'>();
 export const AttachmentIdSchema = id.brand<'AttachmentId'>();
 /** A named set of bodies in one design (P6-05, ADR-0081 §2). */
 export const ComponentIdSchema = id.brand<'ComponentId'>();
+/** An as-built joint between two components (P6-05, ADR-0081 §4). */
+export const JointIdSchema = id.brand<'JointId'>();
 
 export type DocumentId = z.infer<typeof DocumentIdSchema>;
 export type FeatureId = z.infer<typeof FeatureIdSchema>;
@@ -46,6 +48,7 @@ export type DimensionId = z.infer<typeof DimensionIdSchema>;
 export type ProjectionId = z.infer<typeof ProjectionIdSchema>;
 export type AttachmentId = z.infer<typeof AttachmentIdSchema>;
 export type ComponentId = z.infer<typeof ComponentIdSchema>;
+export type JointId = z.infer<typeof JointIdSchema>;
 
 type AnyId =
   | DocumentId
@@ -60,7 +63,8 @@ type AnyId =
   | DimensionId
   | ProjectionId
   | AttachmentId
-  | ComponentId;
+  | ComponentId
+  | JointId;
 
 /**
  * A new random ID. Call it where an entity is created (a command's caller),

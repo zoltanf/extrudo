@@ -67,8 +67,13 @@ export function createComponentActions(
     remove(id) {
       const name = nameOf(id);
       if (name === undefined) return;
+      // Its joints go with it (ADR-0081 §4), in the same step.
+      const joints = (store.getState().doc.joints ?? []).filter(
+        (j) => j.a.component === id || j.b.component === id,
+      ).length;
       if (!run(removeComponent({ id }))) return;
-      notify('info', `Deleted ${name}. Its bodies stay in the design.`);
+      const also = joints === 0 ? '' : ` and ${joints} ${joints === 1 ? 'joint' : 'joints'}`;
+      notify('info', `Deleted ${name}${also}. Its bodies stay in the design.`);
     },
     activate(id) {
       session.getState().activateComponent(id);

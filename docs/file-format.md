@@ -141,7 +141,8 @@ integer; the current one is **1**). The rules:
   expression inputs, `bodies[..].opacity`, `visible`, `ghost`, a sketch's
   `projections`, a reference's `fingerprint` were all added this way, and so
   were the components of P6-05: `components`, `bodies[..].component` and
-  `features[..].component`, section 4.7), and new feature types (`Feature.type`
+  `features[..].component`, section 4.7, and its `joints`, section 4.8), and
+  new feature types (`Feature.type`
   is an open string).
 - **Objects are strict, reading is lenient.** Every object in the schema
   names the keys it doesn't know, and the reader **leaves them out** and
@@ -203,6 +204,7 @@ schema names unknown keys, and a reader leaves them out (section 3).
 | `timelineMarker` | integer | yes | At least 0 and at most `features.length`. The number of *active* features: the feature at index `i >= timelineMarker` is rolled back (not evaluated). `features.length` means everything is active. |
 | `groups` | array of Group | no | Folds of the timeline (section 4.6). Absent means the design has none. |
 | `components` | array of Component | no | Named sets of bodies, in browser order (section 4.7). Absent means the design has none. |
+| `joints` | array of Joint | no | As-built joints between components, in browser order (section 4.8). Absent means the design has none. |
 | `bodies` | object | yes | Record from body ID to `BodyMeta` (section 4.2). May be empty. Keys are IDs the kernel makes (section 10). |
 | `views` | array of NamedView | yes | Saved camera views (section 4.3). May be empty. |
 | `configurations` | array of Configuration | no | Named value sets for the customizer (section 5.4). Absent means the design has none. |
@@ -217,11 +219,15 @@ Whole-document rules (checked after the per-field rules):
   unique and configuration `name`s are unique **trimmed and
   case-insensitively** ("Small box" and " small box " are the same name);
   component `id`s are unique and component `name`s are unique
-  **case-insensitively** ("Lid" and "lid" are the same name). Every other name
+  **case-insensitively** ("Lid" and "lid" are the same name); joint `id`s are
+  unique and joint `name`s are unique case-insensitively too. Every other name
   is compared exactly, case sensitively.
 - Every `component` a body (4.2) or a feature (6) names must be a component of
   `components`, and a component's `ghost` comes only with `visible: false`
   (section 4.7).
+- A joint's two sides name components of `components`, and different ones;
+  its limits come only with a revolute or a slider, in the unit the type takes;
+  and each frame's reference is a kind the type reads (section 4.8).
 - Each group (section 4.6) must name features that exist, run forwards along
   the timeline, and not share a feature with another group.
 - A parameter's customizer `min` must not be above its `max` (section 5.1).
@@ -371,6 +377,54 @@ Its bodies are where the timeline put them, and moving a component is a `move`
 feature (6.12) over its bodies. Nothing in the recompute reads `components` or
 either `component` key, so an older reader that leaves them out (section 3)
 opens the same geometry, as loose bodies.
+
+### 4.8 `joints[]` (Joint)
+
+An as-built joint between two components (P6-05, ADR-0081 §4): a frame picked
+on each of two components where the parts already are, so making it moves
+nothing. Side **`a` moves, side `b` stays**: the axis or direction is read from
+`b`'s frame, and `a`'s must agree with it as built (a revolute's two axes
+collinear within 0.05 mm and 0.5°, a slider's directions parallel within 0.5°;
+a frame that disagrees is the joint's warning). A joint moves nothing stored:
+posing it is a look in the view and its clearance check a query, so nothing in
+the recompute reads `joints` and an older reader that leaves them out (section
+3) opens the same geometry. The array is in browser order.
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `id` | ID | yes | Unique among joints, permanent (section 10). |
+| `name` | string | yes | 1 to 100 characters, unique **case-insensitively**. Defaults are `Joint1`, `Joint2`, ... (the lowest free number). |
+| `type` | string | yes | `rigid` (the two components move as one: a revolute or slider joint that moves one carries the other), `revolute` (side `a` turns about an axis) or `slider` (side `a` moves along a direction). |
+| `a` | JointFrame | yes | The side that moves (4.8.1). |
+| `b` | JointFrame | yes | The side that stays (4.8.1); its component differs from `a`'s. |
+| `min` | expr input | no | The lower limit: an angle (`unit: "angle"`) for a revolute, a length for a slider; never on a rigid joint. **0 is the as-built position.** |
+| `max` | expr input | no | The upper limit, in the same unit. A revolute without both limits turns a whole turn; a slider needs both to be posed or checked. |
+| `flip` | boolean | no | `true` only: reverses the positive direction (a revolute's turn is right-handed about the axis otherwise). |
+| `suppressed` | boolean | no | `true` only: the joint is kept but not resolved, posed or checked. |
+
+The limits are expression inputs (section 6.1) whose expressions may use
+parameters; they never carry a `paramName` of their own, and a parameter they
+use can't be deleted.
+
+#### 4.8.1 `JointFrame`
+
+| Field | Type | Required | Meaning |
+|---|---|---|---|
+| `component` | ID | yes | The component (4.7) the frame is on. Must name a component of `components`. |
+| `ref` | reference | yes | The picked geometry (section 6.1), by its persistent name with a fingerprint like any feature's reference. |
+
+The kinds a frame's `ref` may be, per type: a **revolute** takes a `face` (a
+cylindrical or conical one: its axis), an `edge` (a circular one: its centre
+and normal; a straight one: its line), an `axis` (origin or construction) or a
+`sketchEntity` (a sketch line); a **slider** the same kinds, a `face` being a
+flat one (its normal through its centre); a **rigid** joint any `face`, `edge`
+or `vertex`, or a `body`. **Frames are references by persistent name;
+components beside them are metadata**: the reference never names a component,
+and the app warns when a frame's body is no longer in the frame's component.
+The kernel resolves both frames after every recompute at the timeline marker,
+like a feature appended there: a lost frame is the joint's error (Fix
+References repairs it), and a frame on a rolled-back feature makes the joint
+inactive.
 
 ---
 
@@ -1764,7 +1818,7 @@ and `versions/1.json` (a document of the same shape).
 ## 10. IDs, determinism and what is derived
 
 **IDs.** Every entity that has an ID (document, feature, parameter, view,
-configuration, group, component (`ComponentId`, 4.7), sketch entity,
+configuration, group, component (`ComponentId`, 4.7), joint (`JointId`, 4.8), sketch entity,
 constraint, dimension, projection) gets a random UUID (v4, from
 `crypto.randomUUID()`) when it is created and keeps it for life; IDs are never
 reused. The schema only requires a non-empty string, and readers

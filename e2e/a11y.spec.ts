@@ -123,6 +123,18 @@ for (const theme of ['dark', 'light'] as const) {
       );
       await audit(page, `${theme} browser with a component`);
 
+      // The Joint dialog (P6-05 J1): a second, empty component makes it available.
+      await page.keyboard.press('Escape');
+      await pickTool(page, 'New Component');
+      await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
+        'data-components',
+        /;Component2:$/,
+      );
+      await page.keyboard.press('j');
+      await expect(page.getByRole('region', { name: 'Joint dialog' })).toBeVisible();
+      await audit(page, `${theme} joint dialog`);
+      await page.getByRole('button', { name: 'Cancel Esc' }).click();
+
       // Parameters.
       await pickTool(page, 'Parameters');
       await expect(page.getByRole('dialog', { name: 'Parameters' })).toBeVisible();

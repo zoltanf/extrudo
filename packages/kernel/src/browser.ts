@@ -55,6 +55,7 @@ function connect(worker: Worker): KernelConnection {
       api.exportMeshes(bodies, tessellation, onProgress && Comlink.proxy(onProgress)),
     exportStep: (bodies) => api.exportStep(bodies),
     inspect: (targets) => api.inspect(targets),
+    resolveJoint: (joint) => api.resolveJoint(joint),
     debugTestPart: () => api.debugTestPart(),
     debugCrash: () => api.debugCrash(),
     stats: () => api.stats(),

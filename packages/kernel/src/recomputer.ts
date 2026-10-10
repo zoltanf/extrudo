@@ -32,6 +32,8 @@ import {
   isScadMediaType,
   isSweepReport,
   isThreadReport,
+  type Joint,
+  type JointReport,
   MODEL_MEDIA_TYPES,
   type ModelStore,
   makesFeatures,
@@ -393,6 +395,18 @@ export class Recomputer {
     return this.client.call((api) => api.inspect(targets));
   }
 
+  /**
+   * A joint's frames resolved against what the model store shows (P6-05,
+   * ADR-0081 §4): the Joint dialog's readout. Undefined if the kernel can't say.
+   */
+  async resolveJoint(joint: Joint): Promise<JointReport | undefined> {
+    try {
+      return await this.client.call((api) => api.resolveJoint(joint));
+    } catch {
+      return undefined;
+    }
+  }
+
   /** The dialog closed: drops a pending preview. */
   endPreview(): void {
     this.#endPreview();
@@ -658,6 +672,9 @@ export class Recomputer {
         ? previous.imports
         : (imports as Record<FeatureId, ImportReport>),
       origins: result.origins,
+      ...(result.joints && {
+        joints: sameReports(previous.joints, result.joints) ? previous.joints : result.joints,
+      }),
       stats: {
         ms: result.stats.ms,
         evaluated: result.stats.evaluated.length,

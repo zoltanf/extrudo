@@ -266,3 +266,37 @@ describe('an older reader and components (P6-05, ADR-0081 §2)', () => {
     });
   });
 });
+
+describe('an older reader and joints (P6-05, ADR-0081 §4)', () => {
+  /** DocumentSchema as it was before joints. */
+  const { joints: _, ...shape } = DocumentSchema.shape;
+  const olderSchema = z.strictObject(shape) as unknown as z.ZodType<ExtrudoDocument>;
+
+  it('drops `joints` and keeps everything else', () => {
+    const plain = {
+      ...sampleDocument(),
+      components: [
+        { id: 'base', name: 'Base', visible: true },
+        { id: 'leaf', name: 'Leaf', visible: true },
+      ],
+    };
+    const raw = JSON.parse(
+      JSON.stringify({
+        ...plain,
+        joints: [
+          {
+            id: 'j1',
+            name: 'Hinge',
+            type: 'revolute',
+            a: { component: 'leaf', ref: { kind: 'face', id: 'f' } },
+            b: { component: 'base', ref: { kind: 'face', id: 'g' } },
+          },
+        ],
+      }),
+    );
+    const parsed = parseLeniently(raw, olderSchema);
+    if (!parsed.ok) throw new Error('the older reader refused the file');
+    expect(parsed.dropped).toEqual(['joints']);
+    expect(parsed.doc).toEqual(plain);
+  });
+});

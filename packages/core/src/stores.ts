@@ -17,9 +17,10 @@ import { applyCommand, type Command } from './commands';
 import type { BodyOrigins } from './components';
 import type { ConstructionReport } from './construction';
 import { type HistoryOptions, UndoHistory } from './history';
-import type { BodyId, ComponentId, FeatureId } from './ids';
+import type { BodyId, ComponentId, FeatureId, JointId } from './ids';
 import type { ImportReport } from './import';
 import type { ExtrudoDocument, GeomRef, GeomRefKind } from './schema';
+import type { Vec3 } from './sketch/planes';
 import type { SketchReport } from './sketch/projection';
 
 export interface DocumentState {
@@ -315,6 +316,32 @@ export interface ReferenceIssue {
   now?: GeomRef;
 }
 
+/**
+ * What the kernel found for a joint at the marker (P6-05, ADR-0081 §4): its
+ * frames resolved, the axis or direction read from side b, and whether side
+ * a's frame agrees with it as built.
+ */
+export interface JointReport {
+  /**
+   * `ok`; `warning`: the frames disagree, or one was guessed; `error`: a frame
+   * is lost or can't give an axis; `inactive`: a frame is on a feature the
+   * marker has rolled back.
+   */
+  status: 'ok' | 'warning' | 'error' | 'inactive';
+  message?: string;
+  /** Frames the kernel lost or guessed, for Fix References (as `FeatureStatus.refs`). */
+  refs?: ReferenceIssue[];
+  /** A revolute's axis or a slider's direction (unit), read from side b's frame. */
+  axis?: { origin: Vec3; direction: Vec3 };
+  /** A revolute: how far a's axis is from b's, mm. */
+  offset?: number;
+  /**
+   * The body each side's frame resolved on, where it is on one: the app checks
+   * it is still in the side's component ("Hinge's moving frame isn't on Leaf").
+   */
+  bodies?: { a?: BodyId; b?: BodyId };
+}
+
 /** How the last recompute went, for the status bar. */
 export interface ModelStats {
   ms: number;
@@ -362,6 +389,8 @@ export interface ModelState<TBody> {
    * body.
    */
   origins: BodyOrigins;
+  /** What the last recompute found for each unsuppressed joint (P6-05, ADR-0081 §4). */
+  joints: Record<JointId, JointReport>;
   stats: ModelStats | undefined;
   /**
    * The document `features` and `bodies` were computed from, when the
@@ -378,6 +407,7 @@ export interface ModelState<TBody> {
     canvases?: Record<FeatureId, CanvasReport>;
     imports?: Record<FeatureId, ImportReport>;
     origins?: BodyOrigins;
+    joints?: Record<JointId, JointReport>;
     stats?: ModelStats;
     doc?: ExtrudoDocument;
   }): void;
@@ -398,6 +428,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     canvases: {} as Record<FeatureId, CanvasReport>,
     imports: {} as Record<FeatureId, ImportReport>,
     origins: {} as BodyOrigins,
+    joints: {} as Record<JointId, JointReport>,
     stats: undefined,
     doc: undefined,
   });
@@ -406,7 +437,18 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     computing() {
       set({ status: 'computing', error: undefined });
     },
-    computed({ features, bodies, sketches, construction, canvases, imports, origins, stats, doc }) {
+    computed({
+      features,
+      bodies,
+      sketches,
+      construction,
+      canvases,
+      imports,
+      origins,
+      joints,
+      stats,
+      doc,
+    }) {
       set((s) => ({
         status: 'ready',
         error: undefined,
@@ -417,6 +459,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
         canvases: canvases ?? s.canvases,
         imports: imports ?? s.imports,
         origins: origins ?? s.origins,
+        joints: joints ?? s.joints,
         stats,
         doc,
       }));

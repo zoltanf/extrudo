@@ -50,6 +50,7 @@ export { type HistoryEntry, type HistoryOptions, UndoHistory } from './history';
 export * from './hole';
 export * from './ids';
 export * from './import';
+export * from './joints';
 export * from './loft';
 export * from './media-types';
 export {
@@ -98,6 +99,7 @@ export {
   type DocumentStore,
   type FeatureStatus,
   type GeneratedFeatureStatus,
+  type JointReport,
   type ModelState,
   type ModelStats,
   type ModelStore,

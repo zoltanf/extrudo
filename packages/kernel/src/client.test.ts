@@ -66,6 +66,7 @@ describe('KernelClient', () => {
       exportMeshes: async () => [],
       exportStep: async () => '',
       inspect: async () => ({ items: [] }),
+      resolveJoint: async () => ({ status: 'ok' }),
     };
     const client = new KernelClient(() => {
       spawned++;
@@ -104,6 +105,7 @@ describe('KernelClient', () => {
       exportMeshes: async () => [],
       exportStep: async () => '',
       inspect: async () => ({ items: [] }),
+      resolveJoint: async () => ({ status: 'ok' }),
     };
     const client = new KernelClient(
       () => ({ api: crashing, terminate: () => {}, onFatal: () => {} }),

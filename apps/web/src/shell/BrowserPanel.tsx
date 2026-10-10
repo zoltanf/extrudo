@@ -10,6 +10,7 @@ import {
   type FeatureStatus,
   isConstructionType,
   isFeatureVisible,
+  type JointId,
   type NamedView,
 } from '@extrudo/core';
 import {
@@ -57,6 +58,8 @@ import {
   ToolIcon,
   Tooltip,
 } from '../design-system';
+import type { JointActions } from '../joints/jointActions';
+import type { JointRow } from '../joints/jointRows';
 import { PLANE_AXIS_COLOR, TOKENS } from '../viewport/colors';
 import { ProgressCube } from '../viewport/ModelProgress';
 import { activeFeatureCount } from '../viewport/progressRules';
@@ -99,6 +102,16 @@ export interface BrowserPanelProps {
   bodyActions: BodyActions;
   /** Rename, show/hide, select and delete components (P6-05, ADR-0081 §6). */
   componentActions: ComponentActions;
+  /**
+   * Joints (P6-05 J1, ADR-0081 §6): each component lists the joints it moves after its bodies.
+   * Absent: no joint rows (and no New Joint… in a component's menu).
+   */
+  joints?: {
+    rows(component: ComponentId): JointRow[];
+    actions: JointActions;
+    /** The pointer on a joint's row (`undefined` when it leaves): the view draws its axis. */
+    onHover(id: JointId | undefined): void;
+  };
   /** The active and the isolated component (session state, P6-05 S4). */
   activeComponent?: ComponentId;
   isolatedComponent?: ComponentId;
@@ -165,6 +178,7 @@ export function BrowserPanel({
   bodies,
   bodyActions,
   componentActions,
+  joints,
   activeComponent,
   isolatedComponent,
   placementActions,
@@ -492,6 +506,7 @@ export function BrowserPanel({
                       isolated={isolatedComponent}
                       placement={placementActions}
                       bodyActions={bodyActions}
+                      {...(joints && { joints })}
                       renderBody={(body) => (
                         <BodyLeaf
                           key={body.id}
@@ -1122,6 +1137,7 @@ function ComponentFolder({
   isolated,
   placement,
   bodyActions,
+  joints,
   renderBody,
 }: {
   row: ComponentRow;
@@ -1130,10 +1146,12 @@ function ComponentFolder({
   isolated: ComponentId | undefined;
   placement?: PlacementActions;
   bodyActions: BodyActions;
+  joints?: BrowserPanelProps['joints'];
   renderBody(body: BodyEntry): ReactNode;
 }) {
   const { component, bodies, display } = row;
   const id = component.id;
+  const jointRows = joints?.rows(id) ?? [];
   return (
     <Folder
       label={component.name}
@@ -1181,6 +1199,17 @@ function ComponentFolder({
               Hide Component
             </MenuItem>
           )}
+          {joints && (
+            <>
+              <MenuSeparator />
+              <MenuItem
+                icon={<ToolIcon name="joint-revolute" category="construct" size={14} />}
+                onSelect={() => joints.actions.start()}
+              >
+                New Joint…
+              </MenuItem>
+            </>
+          )}
           <MenuSeparator />
           {active ? (
             <MenuItem onSelect={() => actions.activate(undefined)}>Deactivate</MenuItem>
@@ -1219,7 +1248,142 @@ function ComponentFolder({
       }
     >
       {bodies.length === 0 ? <Leaf muted>No bodies</Leaf> : bodies.map((body) => renderBody(body))}
+      {joints &&
+        jointRows.map((jointRow) => (
+          <JointLeaf
+            key={jointRow.joint.id}
+            row={jointRow}
+            actions={joints.actions}
+            onHover={joints.onHover}
+          />
+        ))}
     </Folder>
+  );
+}
+
+const JOINT_ICONS = {
+  rigid: 'joint-rigid',
+  revolute: 'joint-revolute',
+  slider: 'joint-slider',
+} as const;
+
+/**
+ * A joint in its moving component's folder (P6-05 J1, ADR-0081 §6): the type's icon, the name
+ * (F2 renames, double-click or Enter edits, Delete deletes), the kernel's ✕ or ⚠ with its message,
+ * and a menu: Edit, Rename, Suppress, Fix References / Keep Closest Match, Delete Joint. The
+ * pointer on it draws its axis in the view.
+ */
+function JointLeaf({
+  row,
+  actions,
+  onHover,
+}: {
+  row: JointRow;
+  actions: JointActions;
+  onHover(id: JointId | undefined): void;
+}) {
+  const [renaming, setRenaming] = useState(false);
+  const { joint, status, message, refs } = row;
+  const suppressed = joint.suppressed === true;
+  const problem = status === 'error' || status === 'warning' ? status : undefined;
+  const fixable = (refs?.length ?? 0) > 0;
+  const guessed = refs?.some((r) => r.state === 'guessed' && r.now) ?? false;
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'F2') setRenaming(true);
+    else if (event.key === 'Delete' || event.key === 'Backspace') actions.remove([joint.id]);
+    else if (event.key === 'Enter') actions.edit(joint.id);
+    else return;
+    event.preventDefault();
+  };
+  const states = [
+    suppressed && 'suppressed',
+    status === 'inactive' && 'rolled back',
+    problem && (message ? `${problem}: ${message}` : problem),
+  ].filter(Boolean);
+  return (
+    <ContextMenu
+      label={`${joint.name} menu`}
+      disabled={renaming}
+      trigger={
+        <Leaf
+          data-joint={joint.id}
+          data-joint-type={joint.type}
+          data-joint-status={suppressed ? undefined : status}
+          data-joint-suppressed={suppressed || undefined}
+          onDoubleClick={renaming ? undefined : () => actions.edit(joint.id)}
+          onPointerEnter={() => onHover(joint.id)}
+          onPointerLeave={() => onHover(undefined)}
+        >
+          <span className="-ml-5 grid w-4 place-items-center">
+            <ToolIcon name={JOINT_ICONS[joint.type]} category="construct" size={14} />
+          </span>
+          {renaming ? (
+            <RenameField
+              name={joint.name}
+              label={`Rename ${joint.name}`}
+              className="h-6 min-w-0 flex-1 px-1"
+              onCommit={(name) => actions.rename(joint.id, name)}
+              onDone={() => setRenaming(false)}
+            />
+          ) : (
+            <button
+              type="button"
+              onKeyDown={onKeyDown}
+              aria-description={states.join(', ') || undefined}
+              className={`min-w-0 truncate rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent ${
+                suppressed || status === 'inactive' ? 'text-muted' : ''
+              } ${suppressed ? 'line-through' : ''}`}
+            >
+              {joint.name}
+            </button>
+          )}
+          {problem && !renaming && (
+            <Tooltip label={problem === 'error' ? 'Error' : 'Warning'} hint={message} side="right">
+              <span className="grid size-5 shrink-0 place-items-center">
+                <StatusGlyph status={problem} />
+              </span>
+            </Tooltip>
+          )}
+          {!renaming && (
+            <span className="ml-auto flex items-center">
+              <IconButton
+                label={`Edit ${joint.name}`}
+                className="size-6"
+                onClick={() => actions.edit(joint.id)}
+              >
+                <Pencil size={13} />
+              </IconButton>
+            </span>
+          )}
+        </Leaf>
+      }
+    >
+      <MenuItem icon={<Pencil size={14} />} onSelect={() => actions.edit(joint.id)}>
+        Edit
+      </MenuItem>
+      <MenuItem
+        icon={<TextCursorInput size={14} />}
+        shortcut="F2"
+        onSelect={() => setRenaming(true)}
+      >
+        Rename
+      </MenuItem>
+      <MenuItem onSelect={() => actions.setSuppressed([joint.id], !suppressed)}>
+        {suppressed ? 'Unsuppress' : 'Suppress'}
+      </MenuItem>
+      {fixable && (
+        <MenuItem onSelect={() => actions.edit(joint.id, { fix: refs ?? [] })}>
+          Fix References
+        </MenuItem>
+      )}
+      {guessed && (
+        <MenuItem onSelect={() => actions.keepClosestMatch(joint.id)}>Keep Closest Match</MenuItem>
+      )}
+      <MenuSeparator />
+      <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.remove([joint.id])}>
+        Delete Joint
+      </MenuItem>
+    </ContextMenu>
   );
 }
 

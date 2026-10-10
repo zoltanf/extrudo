@@ -15,6 +15,7 @@
 import { CommandError, type CommandFactory, type DocumentDraft, defineCommand } from './commands';
 import { bodyDisplay, newBodyNames } from './document-commands';
 import type { BodyId, ComponentId, FeatureId } from './ids';
+import { removeJointsFrom } from './joints';
 import type { BodyMeta, Component, ExtrudoDocument } from './schema';
 import { scriptOfGenerated } from './script';
 
@@ -153,8 +154,9 @@ export const renameComponent = defineCommand<{ id: ComponentId; name: string }>(
 );
 
 /**
- * Deletes a component: the record goes, and every body and feature that names
- * it forgets it (the bodies stay, loose). One undo step.
+ * Deletes a component: the record goes, every body and feature that names it
+ * forgets it (the bodies stay, loose), and the joints that name it go too
+ * (ADR-0081 §4). One undo step.
  */
 export const removeComponent = defineCommand<{ id: ComponentId }>(
   'component.remove',
@@ -170,6 +172,7 @@ export const removeComponent = defineCommand<{ id: ComponentId }>(
     for (const feature of draft.features) {
       if (feature.component === id) delete feature.component;
     }
+    removeJointsFrom(draft, (j) => j.a.component === id || j.b.component === id);
   },
 );
 

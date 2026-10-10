@@ -166,6 +166,17 @@ describe('buildCommands', () => {
     expect(byId(context('sketch')).has('newComponent')).toBe(false);
   });
 
+  it('offers Joint (J) in the model, unavailable with fewer than two components (P6-05 J1)', () => {
+    const none = byId(context('model')).get('joint');
+    expect(none?.group).toBe('Solid › Component');
+    expect(none?.keys).toEqual(['J']);
+    expect(none?.unavailable).toBe('Make two components first.');
+    expect(
+      byId({ ...context('model'), componentCount: 2 }).get('joint')?.unavailable,
+    ).toBeUndefined();
+    expect(byId(context('sketch')).has('joint')).toBe(false);
+  });
+
   it('offers Export Design as Script in the Home tab of the model (P5-05)', () => {
     const exportScript = vi.fn();
     const ctx = context('model');

@@ -3,6 +3,7 @@ import {
   CANVAS_TYPE,
   type Command,
   CommandError,
+  type ComponentId,
   type DocumentStore,
   type Feature,
   type FeatureId,
@@ -10,6 +11,9 @@ import {
   type GeomRef,
   IMPORT_TYPE,
   isFeatureVisible,
+  type JointId,
+  type JointReport,
+  type JointType,
   LENGTH,
   type ModelStore,
   pluginFileOf,
@@ -62,6 +66,11 @@ import { PRESS_PULL, PRESS_PULL_PROMPT, pressPullTarget } from '../features/pres
 import { cornersStore } from '../features/primitiveCorners';
 import { type FeatureDialogs, featureDialogs, specForCommand } from '../features/registry';
 import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs';
+import { JointDialog } from '../joints/JointDialog';
+import { createJointActions } from '../joints/jointActions';
+import type { JointDialogKernel } from '../joints/jointController';
+import { type JointRow, jointRows, jointsSummary } from '../joints/jointRows';
+import { useJointDialog } from '../joints/useJointDialog';
 import { MacroDialog } from '../macro/MacroDialog';
 import {
   createMacroStore,
@@ -161,6 +170,7 @@ import { canvasDrawings } from '../viewport/canvasGeometry';
 import { forgetCanvasImages } from '../viewport/canvasImages';
 import type { ConstructionDrawing } from '../viewport/constructionGeometry';
 import { ghostsOf } from '../viewport/ghostGeometry';
+import type { JointDrawing } from '../viewport/jointGeometry';
 import { ModelProgress, useRecomputeFinished } from '../viewport/ModelProgress';
 import { namedViewSaveStore } from '../viewport/namedViewSave';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
@@ -250,7 +260,11 @@ export interface AppShellProps {
    * cache (ADR-0078): listed as pending rows until a recompute finishes.
    */
   pendingBodies?: readonly string[];
-  kernel?: DialogKernel & ModelExporter & MeasureKernel & Partial<PluginCommandKernel>;
+  kernel?: DialogKernel &
+    ModelExporter &
+    MeasureKernel &
+    Partial<PluginCommandKernel> &
+    Partial<Pick<JointDialogKernel, 'resolveJoint'>>;
 }
 
 /** The app's feature dialogs (`features/registry.ts`). */
@@ -691,6 +705,34 @@ export function AppShell({
       ),
     [store, session, notify],
   );
+  // Joints (P6-05, ADR-0081 §4): the Joint dialog, the browser's rows and the view's axes.
+  const componentOfBody = useMemo(() => {
+    const of = new Map(bodyList.map((b) => [b.id, b.component]));
+    return (id: BodyId) => of.get(id);
+  }, [bodyList]);
+  const { controller: jointDialog, open: jointOpen } = useJointDialog({
+    store,
+    session,
+    model,
+    viewport,
+    kernel: kernel && {
+      reference: (body, kind, index) => kernel.reference(body, kind, index),
+      resolveJoint: (joint) => kernel.resolveJoint?.(joint) ?? Promise.resolve(undefined),
+    },
+    componentOf: componentOfBody,
+    notify,
+  });
+  const jointActions = useMemo(
+    () => jointDialog && createJointActions({ store, model, dialog: jointDialog }, notify),
+    [store, model, jointDialog, notify],
+  );
+  const jointReports = useStore(model, (s) => s.joints);
+  const [hoveredJoint, setHoveredJoint] = useState<JointId>();
+  const jointRowsOf = useCallback(
+    (component: ComponentId): JointRow[] =>
+      jointRows(doc, component, jointReports, componentOfBody),
+    [doc, jointReports, componentOfBody],
+  );
   const placementActions = useMemo(
     () =>
       dialog
@@ -816,12 +858,13 @@ export function AppShell({
   );
   // A dialog stops a nav tool, like any command.
   useEffect(() => {
-    if (dialogOpen) viewport.getState().setTool(undefined);
-  }, [dialogOpen, viewport]);
+    if (dialogOpen || jointOpen) viewport.getState().setTool(undefined);
+  }, [dialogOpen, jointOpen, viewport]);
   // Feature dialogs belong to the model: opening a sketch (from the timeline, say) ends one.
   useEffect(() => {
     if (mode === 'sketch') dialog?.cancel();
-  }, [mode, dialog]);
+    if (mode === 'sketch') jointDialog?.cancel();
+  }, [mode, dialog, jointDialog]);
 
   // A document change can make a notification's action stale (or valid again): an open
   // history panel asks again (P3-17, ADR-0041).
@@ -1044,6 +1087,7 @@ export function AppShell({
         tutorial: { start: () => startTutorialRef.current() },
         docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
         macro: { recording: recording !== undefined },
+        componentCount: doc.components?.length ?? 0,
         ...(m === 'model' && {
           components: {
             ...(selectedComponent !== undefined &&
@@ -1117,6 +1161,7 @@ export function AppShell({
       markingStyle.radial,
       markingStyle.toggle,
       platform,
+      doc.components?.length,
     ],
   );
   const commands = useMemo(() => commandBuilder(mode, false), [commandBuilder, mode]);
@@ -1205,6 +1250,13 @@ export function AppShell({
             { keys: 'Enter', run: () => dialog.ok() },
           ]
         : []),
+      // The Joint dialog (P6-05) the same way.
+      ...(jointOpen && jointDialog
+        ? [
+            { keys: 'Escape', inFields: true, run: () => jointDialog.cancel() },
+            { keys: 'Enter', run: () => void jointDialog.ok() },
+          ]
+        : []),
       ...commandShortcuts(commands),
       ...keysFor('commandPalette').map((keys) => ({
         keys,
@@ -1266,6 +1318,8 @@ export function AppShell({
       viewport,
       dialogOpen,
       dialog,
+      jointOpen,
+      jointDialog,
     ],
   );
   useShortcuts(shortcuts);
@@ -1292,6 +1346,16 @@ export function AppShell({
     session.getState().setTool(THICKNESS_TOOL);
   };
   const run = (tool: ToolId) => {
+    // Any other command ends the Joint dialog (P6-05), as it ends a feature dialog.
+    if (tool !== 'joint') jointDialog?.cancel();
+    // The Joint dialog (P6-05, ADR-0081 §6): no feature, no preview recompute.
+    if (tool === 'joint') {
+      if (mode !== 'model') return;
+      if (picking) cancelCreateSketch(stores);
+      dialog?.cancel();
+      jointActions?.start();
+      return;
+    }
     // The Home tab's file commands (ADR-0079) run what the File menu's items ran.
     if (isFileCommand(tool)) {
       fileActions[FILE_COMMANDS[tool]]?.();
@@ -1682,7 +1746,11 @@ export function AppShell({
   const calibration = calibrationPoints.length > 0 ? calibrationPoints : cornerPoints;
   // An open feature dialog's picks are what the view shows selected (a revolve's axis line,
   // the bodies in the browser).
-  const shownSelection = dialogItems ?? selection;
+  const jointItems = useMemo(
+    () => (jointOpen && jointDialog ? jointDialog.items(shownBodies) : undefined),
+    [jointOpen, jointDialog, shownBodies],
+  );
+  const shownSelection = jointItems ?? dialogItems ?? selection;
   // A dialog picking sketch points (a hole's) has the view draw every shown sketch's points.
   const pickingSketchPoints = useMemo(() => {
     const field = dialogOpen?.spec.fields.find((f) => f.name === dialogOpen.pickField);
@@ -1703,9 +1771,44 @@ export function AppShell({
         ...hoveredFeatures,
         ...(fixingId ? [fixingId] : []),
         ...pickedChips,
-      ]),
-    [doc.features, featureStatuses, hoveredFeatures, fixingId, pickedChips],
+      ]).concat(
+        // A joint's lost frames (P6-05): of the hovered joint row and the joint being fixed.
+        ghostsOf(
+          (doc.joints ?? []).map((j) => ({
+            id: j.id as unknown as FeatureId,
+            name: j.name,
+            inputs: { a: { kind: 'ref', refs: [j.a.ref] }, b: { kind: 'ref', refs: [j.b.ref] } },
+          })),
+          jointReports,
+          [...(hoveredJoint ? [hoveredJoint] : []), ...(jointOpen?.fix ? [jointOpen.id] : [])],
+        ),
+      ),
+    [
+      doc.features,
+      doc.joints,
+      featureStatuses,
+      jointReports,
+      hoveredFeatures,
+      fixingId,
+      pickedChips,
+      hoveredJoint,
+      jointOpen,
+    ],
   );
+  // The axes the view draws (P6-05): the hovered joint row's and the open Joint dialog's.
+  const jointAxes = useMemo(() => {
+    const shown: JointDrawing[] = [];
+    const add = (id: string, type: JointType, report: JointReport | undefined) => {
+      if (!report?.axis || (report.status !== 'ok' && report.status !== 'warning')) return;
+      shown.push({ id, type, origin: report.axis.origin, direction: report.axis.direction });
+    };
+    const hovered = doc.joints?.find((j) => j.id === hoveredJoint);
+    if (hovered && !hovered.suppressed) add(hovered.id, hovered.type, jointReports[hovered.id]);
+    if (jointOpen && jointOpen.id !== hoveredJoint) {
+      add(jointOpen.id, jointOpen.type, jointOpen.report);
+    }
+    return shown;
+  }, [doc.joints, hoveredJoint, jointReports, jointOpen]);
   const sketches = useMemo(() => {
     const out: SketchDrawing[] = [];
     doc.features.forEach((feature, index) => {
@@ -1796,7 +1899,7 @@ export function AppShell({
     pickedChips: useStore(timelineSelection, (s) => s.chips),
     enabled:
       mode === 'model'
-        ? !picking && !dialogOpen && !projecting && !measuring && !section.choosing
+        ? !picking && !dialogOpen && !jointOpen && !projecting && !measuring && !section.choosing
         : !projecting && sketchPlane !== undefined,
     radial: markingStyle.radial,
     overrides: markingSlots.overrides,
@@ -1808,7 +1911,7 @@ export function AppShell({
   const sessionSelect = useModelSelection(
     session,
     bodies,
-    mode === 'model' && !picking && !dialogOpen,
+    mode === 'model' && !picking && !dialogOpen && !jointOpen,
   );
   // While Measure runs, two plain clicks pick two things to measure between.
   const measureSelect = useMemo(
@@ -1817,13 +1920,15 @@ export function AppShell({
   );
   const modelSelect = section.choosing
     ? undefined
-    : dialogOpen && mode === 'model'
-      ? dialogPlanePick(dialog, dialogOpen)
-        ? undefined
-        : dialog?.select
-      : projecting
-        ? project.select
-        : (measureSelect ?? sessionSelect);
+    : jointOpen && jointDialog && mode === 'model'
+      ? jointDialog.select
+      : dialogOpen && mode === 'model'
+        ? dialogPlanePick(dialog, dialogOpen)
+          ? undefined
+          : dialog?.select
+        : projecting
+          ? project.select
+          : (measureSelect ?? sessionSelect);
   // Body rows show the bodies in the selection (the dialog's picks while one is open).
   const selectedBodies = useMemo(
     () => new Set(shownSelection.filter((i) => i.kind === 'body').map((i) => i.id)),
@@ -1986,6 +2091,9 @@ export function AppShell({
             bodyActions={bodyActions}
             viewActions={viewActions}
             componentActions={componentActions}
+            {...(jointActions && {
+              joints: { rows: jointRowsOf, actions: jointActions, onHover: setHoveredJoint },
+            })}
             activeComponent={activeComponent}
             isolatedComponent={isolatedComponent}
             placementActions={placementActions}
@@ -2070,6 +2178,8 @@ export function AppShell({
               bodies={shownBodies}
               meta={bodyMeta}
               components={componentsSummary(componentList)}
+              joints={jointsSummary(doc, jointReports, componentOfBody)}
+              jointAxes={jointAxes}
               activeComponent={doc.components?.find((c) => c.id === activeComponent)?.name}
               isolatedComponent={doc.components?.find((c) => c.id === isolatedComponent)?.name}
               onExitIsolation={() => session.getState().isolateComponent(undefined)}
@@ -2084,7 +2194,7 @@ export function AppShell({
               commandRunning={drawing || picking || projecting || measuring || section.choosing}
               onStopCommand={stopCommand}
               hover={hover}
-              selection={dialogItems ?? selection}
+              selection={jointItems ?? dialogItems ?? selection}
               modelSelect={modelSelect}
               preview={preview}
               viewMenu={viewMenu}
@@ -2205,6 +2315,7 @@ export function AppShell({
           />
         )}
         {dialog && <FeatureDialog controller={dialog} settings={doc.settings} />}
+        {jointDialog && <JointDialog controller={jointDialog} doc={doc} />}
         {sectioning && (
           <SectionPanel
             tool={section}

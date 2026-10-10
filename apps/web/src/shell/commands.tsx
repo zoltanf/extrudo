@@ -103,6 +103,8 @@ export interface CommandContext {
    * it again. Absent until one has run, or when it isn't offered in this mode.
    */
   repeat?: { id: string };
+  /** How many components the design has (P6-05): a joint needs two. */
+  componentCount?: number;
   /** Macro recording (P5-05): whether one runs; Record and Stop show accordingly. */
   macro?: { recording: boolean };
   /**
@@ -275,6 +277,7 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
         }
         const command = toolCommand(id, where, ctx);
         if (id === 'importDrawing' && ctx.mode !== 'sketch') add(noDrawing(ctx, command));
+        else if (id === 'joint' && (ctx.componentCount ?? 0) < 2) add(noJoint(ctx, command));
         else if (MODEL_ONLY.has(id) && ctx.mode === 'sketch') add(modelOnly(ctx, command));
         else add(command);
       }
@@ -516,6 +519,12 @@ function noDrawing(ctx: CommandContext, command: AppCommand): AppCommand {
     unavailable: DRAWING_IMPORT_UNAVAILABLE,
     run: () => ctx.notify('info', DRAWING_IMPORT_UNAVAILABLE),
   };
+}
+
+/** A joint with fewer than two components (ADR-0081 §4): the command with the reason. */
+function noJoint(ctx: CommandContext, command: AppCommand): AppCommand {
+  const reason = 'Make two components first.';
+  return { ...command, unavailable: reason, run: () => ctx.notify('info', reason) };
 }
 
 /** Whether a tool runs: built, or made ready by a registered feature dialog (P2-05). */
