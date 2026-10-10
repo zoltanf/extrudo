@@ -15,6 +15,7 @@
 import {
   type BodyId,
   type BodyMeta,
+  bodyDisplay,
   type Command,
   CommandError,
   type DocumentStore,
@@ -31,6 +32,19 @@ import {
   type SessionStore,
   updateBody,
 } from '@extrudo/core';
+
+/** How a body is shown (ADR-0030's amendment, 2026-10-09): shown, ghost or hidden. */
+export type BodyDisplay = 'shown' | 'ghost' | 'hidden';
+
+/** The body row's eye cycles through the states in this order (ADR-0030's amendment). */
+export function nextBodyDisplay(display: BodyDisplay): BodyDisplay {
+  return display === 'shown' ? 'ghost' : display === 'ghost' ? 'hidden' : 'shown';
+}
+
+/** The body eye's label: what a click does next (the visible next state). */
+export function bodyEyeLabel(display: BodyDisplay): string {
+  return display === 'shown' ? 'Show as ghost' : display === 'ghost' ? 'Hide' : 'Show';
+}
 
 export interface BodyEntry {
   id: BodyId;
@@ -216,8 +230,14 @@ export const BODY_OPACITIES: readonly { value: number; label: string }[] = [
 export interface BodyActions {
   /** `false` (and a message) if the name is refused. */
   rename(id: BodyId, name: string): boolean;
-  /** Shows or hides bodies; several in one undo step (a folder's eye). */
+  /** Shows or hides bodies; several in one undo step (a folder's eye). Shown clears a ghost. */
   setVisible(ids: readonly BodyId[], visible: boolean): void;
+  /**
+   * Sets a body's display state (ADR-0030's amendment): shown, ghost (a grey
+   * see-through shape that takes no part in anything) or hidden. Several in one
+   * undo step; the label is "Show/Ghost/Hide body" (plural for several).
+   */
+  setDisplay(ids: readonly BodyId[], display: BodyDisplay): void;
   /** A swatch's `#rrggbb`, or `undefined` for the default colour. */
   setColor(id: BodyId, color: string | undefined): void;
   /** 0.1…1; 1 is opaque. */
@@ -248,6 +268,33 @@ export function createBodyActions(
   /** Changes for a body, with its name while it isn't stored yet (`updateBody` then creates it). */
   const changes = (e: BodyEntry, more: Partial<BodyMeta>) =>
     e.stored ? more : { name: e.meta.name, ...more };
+  /**
+   * The `updateBody` call for one display state. Shown deletes a ghost through
+   * the command's pair rule; hidden clears it (`clear: ['ghost']`), so a ghost
+   * that is hidden (or shown) stops being one.
+   */
+  const displayChange = (e: BodyEntry, display: BodyDisplay) => {
+    const base = changes(e, {});
+    if (display === 'shown') return updateBody({ id: e.id, changes: { ...base, visible: true } });
+    if (display === 'ghost') {
+      return updateBody({ id: e.id, changes: { ...base, visible: false, ghost: true } });
+    }
+    return updateBody({ id: e.id, changes: { ...base, visible: false }, clear: ['ghost'] });
+  };
+  const setDisplay = (ids: readonly BodyId[], display: BodyDisplay) => {
+    const changed = ids
+      .map(entry)
+      .filter((e): e is BodyEntry => e !== undefined && bodyDisplay(e.meta) !== display);
+    if (changed.length === 0) return;
+    if (changed.length === 1) {
+      run(displayChange(changed[0] as BodyEntry, display));
+      return;
+    }
+    const verb = { shown: 'Show', ghost: 'Ghost', hidden: 'Hide' }[display];
+    store.getState().beginTransaction(`${verb} ${changed.length > 1 ? 'bodies' : 'body'}`);
+    for (const e of changed) run(displayChange(e, display));
+    store.getState().commitTransaction();
+  };
 
   return {
     rename(id, name) {
@@ -257,19 +304,11 @@ export function createBodyActions(
       return run(updateBody({ id, changes: changes(e, { name }) }));
     },
     setVisible(ids, visible) {
-      const changed = ids
-        .map(entry)
-        .filter((e): e is BodyEntry => e !== undefined && e.meta.visible !== visible);
-      if (changed.length === 0) return;
-      const update = (e: BodyEntry) => updateBody({ id: e.id, changes: changes(e, { visible }) });
-      if (changed.length === 1) {
-        run(update(changed[0] as BodyEntry));
-        return;
-      }
-      store.getState().beginTransaction(visible ? 'Show bodies' : 'Hide bodies');
-      for (const e of changed) run(update(e));
-      store.getState().commitTransaction();
+      // A folder's eye is two-state (ADR-0030's amendment); showing all clears
+      // ghosts too, which `setDisplay('shown')` does.
+      setDisplay(ids, visible ? 'shown' : 'hidden');
     },
+    setDisplay,
     setColor(id, color) {
       const e = entry(id);
       if (!e || e.meta.color === color) return;

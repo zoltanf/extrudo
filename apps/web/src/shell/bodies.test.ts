@@ -194,6 +194,34 @@ describe('body actions', () => {
     expect(t.store.getState().undoLabel).toBe('Change body');
   });
 
+  it('ghosts a body (while hidden) and shows or hides it again', () => {
+    const t = actions();
+    // A ghost is `visible: false` plus `ghost: true` (ADR-0030's amendment).
+    t.a.setDisplay([bid('A:0')], 'ghost');
+    expect(t.meta('A:0')).toEqual({ name: 'Body1', visible: false, ghost: true });
+    // Hiding a ghost clears the flag.
+    t.a.setDisplay([bid('A:0')], 'hidden');
+    expect(t.meta('A:0')).toEqual({ name: 'Body1', visible: false });
+    // Showing it does the same from the other side.
+    t.a.setDisplay([bid('A:0')], 'ghost');
+    t.a.setDisplay([bid('A:0')], 'shown');
+    expect(t.meta('A:0')).toEqual({ name: 'Body1', visible: true });
+    // Nothing to change leaves no undo step.
+    const before = t.store.getState().undoLabel;
+    t.a.setDisplay([bid('A:0')], 'shown');
+    expect(t.store.getState().undoLabel).toBe(before);
+  });
+
+  it('ghosts several bodies in one undo step, labelled "Ghost bodies"', () => {
+    const t = actions();
+    t.a.setDisplay([bid('A:0'), bid('B:0')], 'ghost');
+    expect([t.meta('A:0')?.ghost, t.meta('B:0')?.ghost]).toEqual([true, true]);
+    expect(t.store.getState().undoLabel).toBe('Ghost bodies');
+    t.store.getState().undo();
+    expect(t.meta('A:0')).toBeUndefined();
+    expect(t.meta('B:0')).toBeUndefined();
+  });
+
   it('colour and opacity, back to the defaults', () => {
     const t = actions();
     t.a.setColor(bid('A:0'), '#5b7cff');

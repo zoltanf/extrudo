@@ -239,19 +239,37 @@ export const moveTimelineMarker = defineCommand<{ index: number }>(
 );
 
 /** Body metadata fields that can be cleared back to their defaults. */
-export type ClearableBodyField = 'color' | 'opacity';
+export type ClearableBodyField = 'color' | 'opacity' | 'ghost';
+
+/**
+ * How a body is shown: `'shown'`, `'ghost'` (a grey see-through shape that
+ * takes no part in picking or anything else) or `'hidden'` (ADR-0030's
+ * amendment, 2026-10-09). A body with no metadata at all is `'shown'`. The
+ * stored form is `visible: false` plus `ghost: true` for a ghost; the pair is
+ * kept by `updateBody`, so no caller can store an invalid one.
+ */
+export function bodyDisplay(meta?: BodyMeta): 'shown' | 'ghost' | 'hidden' {
+  if (!meta || meta.visible) return 'shown';
+  return meta.ghost ? 'ghost' : 'hidden';
+}
 
 /**
  * Creates the body's metadata or changes part of it; `clear` removes
- * optional fields (the default colour, opaque again). A name is trimmed and
- * can't be empty.
+ * optional fields (the default colour, opaque again, a ghost). A name is
+ * trimmed and can't be empty.
+ *
+ * The ghost pair rule (ADR-0030's amendment): `ghost: true` makes the body
+ * hidden (`visible: false`), and a body that ends up `visible: true` never
+ * keeps `ghost`. So `ghost` is stored only as `true` and only with
+ * `visible: false`; hiding a ghost passes `clear: ['ghost']` (what
+ * `BodyActions.setDisplay` does).
  */
 export const updateBody = defineCommand<{
   id: BodyId;
   changes: Partial<BodyMeta>;
   clear?: readonly ClearableBodyField[];
 }>('body.update', 'Change body', (draft, { id, changes, clear = [] }) => {
-  const { name, visible, ...rest } = changes;
+  const { name, visible, ghost, ...rest } = changes;
   let body = draft.bodies[id];
   if (!body) {
     body = { name: requireName(name ?? ''), visible: visible ?? true };
@@ -264,6 +282,13 @@ export const updateBody = defineCommand<{
     if (value !== undefined) Object.assign(body, { [key]: value });
   }
   for (const key of clear) delete body[key];
+  if (ghost !== undefined) {
+    if (ghost) body.ghost = true;
+    else delete body.ghost;
+  }
+  // The pair rule: a ghost is hidden, and a visible body is never a ghost.
+  if (ghost === true) body.visible = false;
+  if (body.visible) delete body.ghost;
 });
 
 /**

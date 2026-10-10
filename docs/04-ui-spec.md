@@ -519,17 +519,21 @@ a right-click without movement, as Onshape's context menu does.
   lists the model's bodies in timeline order, with a count badge. A new
   body is named "Body1", "Body2"… (the lowest free number) as soon as it
   appears, and keeps that name: removing another body renumbers nothing.
-  Each row has a colour dot, the name and an eye. A click selects the
-  body in the model (Shift or Ctrl toggles), or puts it in an open
-  dialog's field (an extrude's Bodies); the pointer on a row highlights
-  the body in the view. F2 renames, Delete removes (all selected bodies
-  when the row is one of them). Folders have right-click menus too (P3-11:
-  Expand/Collapse, Show/Hide all, Export all bodies), and so do the origin
-  rows, user-parameter rows in the Parameters dialog and design cards on the
-  home screen. The body right-click menu: Rename, Hide/Show,
+  Each row has a colour dot, the name and an eye. The eye cycles a body
+  through **shown**, **ghost** (a grey see-through shape that takes no part
+  in picking, Fit or the print checks) and **hidden** (ADR-0030's
+  amendment). A click selects the body in the model (Shift or Ctrl toggles),
+  or puts it in an open dialog's field (an extrude's Bodies); the pointer on
+  a row highlights the body in the view. F2 renames, Delete removes (all
+  selected bodies when the row is one of them). Folders have right-click
+  menus too (P3-11: Expand/Collapse, Show/Hide all, Export all bodies), and
+  so do the origin rows, user-parameter rows in the Parameters dialog and
+  design cards on the home screen. The body right-click menu: Rename, Show
+  Body / Show as Ghost / Hide Body (the states the body is not in),
   Appearance… (a popover on the dot: colour swatches, Default first, and
   opacity Opaque, 75 %, 50 %, 25 %; each choice is one undo step) and
-  Delete. The folder's eye hides or shows all bodies in one step.
+  Delete. The folder's eye hides or shows all bodies in one step (showing
+  clears a ghost).
 - **Removing bodies:** Delete (the browser, the body menu, or Delete in
   the view with bodies selected) adds a **Remove** feature at the marker
   (a Modify chip, "Remove1"): the body is still made by its features and

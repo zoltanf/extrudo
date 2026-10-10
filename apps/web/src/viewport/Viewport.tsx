@@ -59,6 +59,7 @@ import { sketchTargetAt } from '../sketch/facePick';
 import type { PlanePointer, SketchBox } from '../sketch/tools/host';
 import { applyView } from './applyView';
 import { Bodies, clipPlanes } from './Bodies';
+import { ghostBodiesSummary } from './bodyGhosts';
 import { CameraRig } from './CameraRig';
 import { CalibrationMarks, Canvases } from './Canvas';
 import { Construction } from './Construction';
@@ -84,6 +85,7 @@ import {
   constructionSummary,
 } from './constructionGeometry';
 import { navCursor } from './cursors';
+import { GhostBodies } from './GhostBodies';
 import { Ghosts } from './Ghosts';
 import { GRID_RADIUS, Grid, THUMBNAIL_HIDDEN, XY_FRAME } from './GridPlane';
 import { type Ghost, ghostsSummary } from './ghostGeometry';
@@ -504,6 +506,7 @@ export function Viewport({
   );
   const bodiesKey = useMemo(() => bodiesSummary(bodies, meta), [bodies, meta]);
   const appearanceKey = useMemo(() => bodyAppearanceSummary(bodies, meta), [bodies, meta]);
+  const ghostKey = useMemo(() => ghostBodiesSummary(bodies, meta), [bodies, meta]);
   // Silhouette segments drawn per body (wireframe and hidden edges), summed into
   // `data-silhouettes` for tests; written straight to the element, it changes with the camera.
   const silhouettes = useMemo(() => new Map<BodyId, number>(), []);
@@ -562,6 +565,7 @@ export function Viewport({
       data-model-hover={modelSelect ? selectionKey([hover]) : undefined}
       data-bodies={bodiesKey}
       data-body-appearance={appearanceKey}
+      data-ghost-bodies={ghostKey}
       data-construction={constructionSummary(drawnConstruction)}
       data-ghosts={ghostsSummary(ghosts)}
       data-canvases={canvasSummary(drawnCanvases, pixels)}
@@ -905,6 +909,14 @@ function Scene({
         {...(sectionClip && {
           section: { clips: sectionClip, color: colors.section, hatch: colors.sectionHatch },
         })}
+      />
+      {/* Ghost bodies (ADR-0030's amendment): a vague grey shape, no picking or analysis. */}
+      <GhostBodies
+        bodies={bodies}
+        meta={meta}
+        color={colors.ghostBody}
+        edge={colors.edge}
+        {...(sectionClip && { section: { clips: sectionClip } })}
       />
       {/* Canvases lie on the model (P4-06): under the bodies and the sketches. */}
       <Canvases items={canvases} />

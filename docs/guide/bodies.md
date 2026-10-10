@@ -68,14 +68,19 @@ the easiest way to pick a body that is hidden inside another one.
 Right-click a row, or press `F2` on it, to reach:
 
 - **Rename** (`F2`).
-- **Hide** or **Show**, the same as the eye. A hidden body is not drawn, and the
-  print checks leave it out.
+- **Show Body**, **Show as Ghost** or **Hide Body**, the states the body is not in (the same as
+  the eye). A **ghost** is a grey see-through shape that takes no part in picking, Fit or the
+  print checks — handy to keep a body in sight without having it in the way. A hidden body is
+  not drawn at all, and the print checks leave it out.
 - **Appearance…**, a panel with nine swatches (Default, Blue, Teal, Green, Amber, Coral, Pink,
   Violet, White, Charcoal) and a field for any hex colour, plus an opacity of **Opaque**, 75 %,
   50 % or 25 %. Opacity helps when you want to see a body inside another. Both are stored with the body in the design.
 - **Export…**, which opens [Export Model](./printing.md) with the body ticked.
 - **Delete** (`Del`). Deleting adds a step to the timeline rather than erasing
   anything, so `Ctrl+Z` brings the body back.
+
+A body row's eye steps through **shown → ghost → hidden** and back, so one click is always the
+next faintness; the folder's eye above them still just shows or hides every body.
 
 A colour you give a body goes into a 3MF or STEP file when you export it. A body imported from a
 STEP file that names a colour starts with that colour.

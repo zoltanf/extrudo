@@ -39,6 +39,8 @@
 
   /* 3.4 Viewport and model */
   --x-body-default: #a7b0c2;
+  /* A ghost body (ADR-0030's amendment): a vague grey shape that takes no part in anything. */
+  --x-body-ghost: #8a93a6;
   --x-edge: rgb(195 202 214 / 70%);
   --x-axis-x: #f0675c;
   --x-axis-y: #5fcf78;
@@ -90,6 +92,7 @@
   --x-cat-file: #5b6375;
 
   --x-body-default: #b9c0cd;
+  --x-body-ghost: #9aa3b4;
   --x-edge: rgb(17 19 24 / 70%);
   --x-axis-x: #d9463a;
   --x-axis-y: #23994a;

@@ -210,8 +210,10 @@ test('B5: a PCB enclosure with screw posts and countersunk lid screws', async ({
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:27:80,60,25 Body2:10:80,60,3');
 
   // Mirror1: both holes to the right, about the YZ plane. With the lid hidden, the plane's
-  // square shows over the open tray: a click there picks it.
+  // square shows over the open tray: a click there picks it. The eye cycles shown → ghost →
+  // hidden, so two clicks hide it (ADR-0030's amendment).
   const browser = page.getByRole('complementary', { name: 'Browser' });
+  await browser.getByRole('button', { name: 'Show as ghost Body2' }).click();
   await browser.getByRole('button', { name: 'Hide Body2' }).click();
   await pickTool(page, 'Mirror');
   const mirror = page.getByRole('region', { name: 'Mirror dialog' });

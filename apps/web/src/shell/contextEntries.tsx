@@ -14,6 +14,7 @@
  */
 import {
   type BodyId,
+  bodyDisplay,
   type Feature,
   type FeatureId,
   isConstructionType,
@@ -27,6 +28,7 @@ import {
   CirclePlay,
   Eraser,
   Eye,
+  EyeDashed,
   EyeOff,
   FileDown,
   Folder,
@@ -239,19 +241,38 @@ function modelGroups(input: ContextInput): MarkingEntry[][] {
 
   if (entries.length > 0) {
     const plural = entries.length > 1;
-    const hide = entries.some((b) => b.meta.visible);
-    const body: MarkingEntry[] = [
-      {
-        id: hide ? 'hideBody' : 'showBody',
-        label: `${hide ? 'Hide' : 'Show'} ${plural ? 'Bodies' : 'Body'}`,
-        icon: icon(hide ? <EyeOff {...small} /> : <Eye {...small} />),
-        onSelect: () =>
-          bodyActions.setVisible(
-            entries.map((b) => b.id),
-            !hide,
-          ),
-      },
-    ];
+    const noun = plural ? 'Bodies' : 'Body';
+    const ids = entries.map((b) => b.id);
+    // The display states the picked bodies are not all in: one state offers the
+    // other two, and a mixed selection offers all three (ADR-0030's amendment).
+    const displays = new Set(entries.map((b) => bodyDisplay(b.meta)));
+    const offer = (display: 'shown' | 'ghost' | 'hidden') =>
+      displays.size > 1 || !displays.has(display);
+    const body: MarkingEntry[] = [];
+    if (offer('shown')) {
+      body.push({
+        id: 'showBody',
+        label: `Show ${noun}`,
+        icon: icon(<Eye {...small} />),
+        onSelect: () => bodyActions.setDisplay(ids, 'shown'),
+      });
+    }
+    if (offer('ghost')) {
+      body.push({
+        id: 'ghostBody',
+        label: 'Show as Ghost',
+        icon: icon(<EyeDashed {...small} />),
+        onSelect: () => bodyActions.setDisplay(ids, 'ghost'),
+      });
+    }
+    if (offer('hidden')) {
+      body.push({
+        id: 'hideBody',
+        label: `Hide ${noun}`,
+        icon: icon(<EyeOff {...small} />),
+        onSelect: () => bodyActions.setDisplay(ids, 'hidden'),
+      });
+    }
     const single = entries.length === 1 ? entries[0] : undefined;
     if (single) {
       body.push({
@@ -262,7 +283,6 @@ function modelGroups(input: ContextInput): MarkingEntry[][] {
       });
     }
     if (bodyActions.exportBodies) {
-      const ids = entries.map((b) => b.id);
       body.push({
         id: 'exportBodies',
         label: 'Export…',

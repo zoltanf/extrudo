@@ -273,3 +273,58 @@ and R3F never sets `needsUpdate`. `Body`'s `<meshStandardMaterial>` has
 (and back again gets a fresh opaque one with `depthWrite`). Autosave's
 thumbnail (a render target without tone mapping) recompiles every program and
 hid the bug after about a second, so `e2e/bodies.spec.ts` keeps it from drawing.
+
+**Amendment (2026-10-09): ghost bodies, a third display state.** The owner
+asked for a state between shown and hidden: a **ghost** body is drawn as a
+vague grey shape at about 30 % opacity and **affects nothing else** — no
+picking, no selection highlight, no Fit, no silhouettes, no print or thickness
+checks, no export default. Sketches, construction features, origin rows and
+folders keep their two-state eyes.
+
+- **Stored in the document, undoable**, like hiding. `BodyMetaSchema` gains
+  `ghost: z.boolean().optional()`, stored **only as `true` and only with
+  `visible: false`**. So every reader that already checks `visible` (picking,
+  Fit and bounds, Print Info, the wall-thickness and overhang checks, box
+  selection, Measure, export defaults) treats a ghost as hidden, which is
+  exactly right; and an older Extrudo opens the file and shows the body
+  hidden (ADR-0050's lenient reading leaves the unknown key out). No
+  migration, no format version bump.
+- **`updateBody` keeps the pair** (core's `document-commands.ts`): whenever
+  the result is `visible: true`, `ghost` is deleted; whenever `ghost: true`
+  is set, `visible` becomes `false`; `ghost` joins `ClearableBodyField`, so
+  hiding a ghost passes `clear: ['ghost']`. No caller can store the invalid
+  pair. A pure `bodyDisplay(meta?)` (`'shown' | 'ghost' | 'hidden'`, absent
+  meta `'shown'`) names the three states and is exported from core.
+- **The app** (`shell/bodies.ts`): `BodyActions.setDisplay(ids, display)`,
+  one undo step for several ids and labelled "Show body" / "Ghost body" /
+  "Hide body" (plural for several). `setVisible` stays two-state (shown or
+  hidden) and is what the Bodies folder's eye calls; showing all clears
+  ghosts too.
+- **The browser row's eye cycles shown → ghost → hidden** (`BrowserPanel.tsx`):
+  `Eye` while shown, `EyeDashed` while a ghost, `EyeOff` while hidden, the
+  label saying what the click does next ("Show as ghost", "Hide", "Show").
+  The row carries `data-body-display`; its text is dimmed for ghost and
+  hidden alike. The body's browser menu and the marking menu's list entry
+  (`contextEntries.tsx`) are built from `BodyActions`, so they offer the
+  states the bodies are not all in as entries `showBody` / `ghostBody` /
+  `hideBody` ("Show Body" / "Show as Ghost" / "Hide Body", plural "Bodies");
+  a mixed selection offers all three. No new command was needed: the marking
+  menu's list reuses `BodyActions` directly (`MarkingEntry.id` becomes the
+  `data-marking-entry`).
+- **Drawing** (`viewport/GhostBodies.tsx`): a small separate component, never
+  through `Body`, so none of the selection, analysis or section-cap machinery
+  touches it. Faces are one flat grey (`--x-body-ghost`, both themes) through
+  `MeshStandardMaterial` at opacity 0.3, `transparent` from creation (never
+  toggled — the opacity fix above), `depthWrite: false`; edges at about a
+  quarter of the edge colour's alpha; clipped by the section planes with no
+  section cap. `PickScene` gets only shown bodies, so a ghost takes no picks
+  and draws no highlight. `data-ghost-bodies` on the Viewport region names
+  the ghosted bodies (absent when there are none). The pure parts
+  (`ghostBodies`, `ghostBodiesSummary`) live in `viewport/bodyGhosts.ts`,
+  so unit tests don't load React Three Fiber.
+
+Rejected: a `display: 'shown' | 'ghost' | 'hidden'` enum replacing `visible`
+(needs a migration, and older readers would refuse or mis-read the file);
+view state outside the document (the owner treats it like hiding, which is
+stored); a "ghost" command in the command registry (the menus are built from
+`BodyActions`, so an entry is enough, and there is no toolbar tile or key).

@@ -209,6 +209,8 @@ test('a hidden body is neither measured nor counted', async ({ page }) => {
   await expect(view).toHaveAttribute('data-thickness', /min=5 thin=[1-9]/);
   expect((await counts(view)).bodies).toBe(1);
 
+  // The eye cycles shown → ghost → hidden: two clicks hide it (ADR-0030's amendment).
+  await browser.getByRole('button', { name: 'Show as ghost Body1' }).click();
   await browser.getByRole('button', { name: 'Hide Body1' }).click();
   await expect(view).toHaveAttribute(
     'data-thickness',

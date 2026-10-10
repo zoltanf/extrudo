@@ -21,6 +21,8 @@ export interface SceneColors {
   construct: Rgba;
   body: Rgba;
   edge: Rgba;
+  /** A ghost body's flat grey (ADR-0030's amendment). */
+  ghostBody: Rgba;
   /** Under-constrained sketch geometry. */
   sketch: Rgba;
   /** Fully constrained sketch geometry (`ink`, docs/05-brand.md §3.4). */
@@ -59,6 +61,7 @@ const TOKENS: Record<keyof SceneColors, string> = {
   construct: '--x-cat-construct',
   body: '--x-body-default',
   edge: '--x-edge',
+  ghostBody: '--x-body-ghost',
   sketch: '--x-sketch',
   sketchFixed: '--x-ink',
   sketchConflict: '--x-error',

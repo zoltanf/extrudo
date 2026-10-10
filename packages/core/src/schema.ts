@@ -200,6 +200,14 @@ export const BodyMetaSchema = z.strictObject({
   /** 0.1 (nearly clear) to 1; absent means opaque. Added in P2-08. */
   opacity: z.number().min(0.1).max(1).optional(),
   visible: z.boolean(),
+  /**
+   * A third display state between shown and hidden (ADR-0030's amendment,
+   * 2026-10-09): a grey see-through shape that takes no part in anything.
+   * Stored as `true` only, and only with `visible: false` (the `updateBody`
+   * command keeps the pair). Older readers leave the unknown key out and show
+   * the body hidden (ADR-0050's lenient reading).
+   */
+  ghost: z.boolean().optional(),
 });
 export type BodyMeta = z.infer<typeof BodyMetaSchema>;
 

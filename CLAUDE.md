@@ -295,7 +295,14 @@ per solid (the largest keeps the ID, others the feature's next
 rename, eye, Appearance (colour swatches, opacity via
 `BodyMeta.opacity`) and rows that pick into the selection; wireframe
 and hidden-edge styles draw silhouettes of curved faces
-(`viewport/silhouette.ts`). ADR-0031 (P2-09) added sketches on flat
+(`viewport/silhouette.ts`). **ADR-0030's amendment (2026-10-09) added ghost
+bodies**: `BodyMeta.ghost` (stored only as `true`, only with `visible: false`;
+`updateBody` keeps the pair, `bodyDisplay` names shown/ghost/hidden) draws a
+body as a vague grey shape at 30 % opacity through a separate `GhostBodies`
+component that takes no part in picking, Fit or any analysis; the browser
+row's eye cycles shown → ghost → hidden (`EyeDashed`), `data-ghost-bodies`
+names the ghosts, and the body and marking menus offer the states a body is
+not in. ADR-0031 (P2-09) added sketches on flat
 faces (`faceSketchFrame` in core: world origin projected on the plane,
 X along world X on faces within 40° of horizontal, else Y up the face;
 the kernel reports frames through `FeatureOutput.report` →
@@ -2601,7 +2608,14 @@ them. Notes further down that name a machine apply to that machine only.
 - **Bodies e2e** (`e2e/bodies.spec.ts`) reads the Viewport region's
   `data-body-appearance` ("Name:#rrggbb|default:opacity") and
   `data-silhouettes`, the browser's `[data-folder-count]` and
-  `[data-body]` rows (name button `aria-pressed` when selected). A new
+  `[data-body]` rows (name button `aria-pressed` when selected). A ghost
+  body (ADR-0030's amendment, 2026-10-09) is `data-ghost-bodies` on the
+  Viewport ("Lid", absent when none) and `data-body-display="shown|ghost|hidden"`
+  on its row; a body row's eye cycles shown → ghost → hidden (icon `EyeDashed`
+  while a ghost, labels "Show as ghost <name>" / "Hide <name>" / "Show <name>"),
+  and the body and marking menus offer `showBody` / `ghostBody` / `hideBody`
+  ("Show Body" / "Show as Ghost" / "Hide Body"). A ghost is not in
+  `data-bodies`, `data-model-hover` or `data-model-selection`. A new
   sketch opens fitted to what is drawn (a 40 × 20 plate gives about
   ±13 mm of height at 1440 × 900): keep later geometry inside that, and
   wait for the camera to stop (poll `data-camera-size`, target,

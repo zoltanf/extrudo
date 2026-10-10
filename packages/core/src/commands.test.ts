@@ -8,6 +8,7 @@ import {
 } from './customizer';
 import {
   addParameter,
+  bodyDisplay,
   insertFeature,
   isFeatureVisible,
   moveTimelineMarker,
@@ -233,6 +234,71 @@ describe('document commands', () => {
     expect(() => apply(doc, updateBody({ id: bid('b1'), changes: { name: '  ' } }))).toThrow(
       "The name can't be empty.",
     );
+  });
+
+  it('bodies get a third display state: ghost (ADR-0030\u2019s amendment)', () => {
+    // No metadata at all is shown.
+    expect(bodyDisplay(undefined)).toBe('shown');
+
+    // Creating a body makes it shown.
+    let doc = apply(sampleDocument(), updateBody({ id: bid('b1'), changes: { name: 'Body1' } }));
+    expect(bodyDisplay(doc.bodies[bid('b1')])).toBe('shown');
+    expect(doc.bodies[bid('b1')]).toEqual({ name: 'Body1', visible: true });
+
+    // Ghosting it stores the pair `visible: false, ghost: true`.
+    doc = apply(doc, updateBody({ id: bid('b1'), changes: { visible: false, ghost: true } }));
+    expect(doc.bodies[bid('b1')]).toEqual({ name: 'Body1', visible: false, ghost: true });
+    expect(bodyDisplay(doc.bodies[bid('b1')])).toBe('ghost');
+    expect(DocumentSchema.safeParse(doc).success).toBe(true);
+
+    // Showing it again drops the ghost: a visible body is never a ghost.
+    doc = apply(doc, updateBody({ id: bid('b1'), changes: { visible: true } }));
+    expect(doc.bodies[bid('b1')]).toEqual({ name: 'Body1', visible: true });
+    expect(bodyDisplay(doc.bodies[bid('b1')])).toBe('shown');
+
+    // A ghost, hidden by clearing the flag (what setDisplay('hidden') does).
+    doc = apply(doc, updateBody({ id: bid('b1'), changes: { visible: false, ghost: true } }));
+    doc = apply(doc, updateBody({ id: bid('b1'), changes: { visible: false }, clear: ['ghost'] }));
+    expect(doc.bodies[bid('b1')]).toEqual({ name: 'Body1', visible: false });
+    expect(bodyDisplay(doc.bodies[bid('b1')])).toBe('hidden');
+
+    // Setting `ghost: true` alone makes the body hidden.
+    doc = apply(doc, updateBody({ id: bid('b1'), changes: { ghost: true } }));
+    expect(doc.bodies[bid('b1')]).toEqual({ name: 'Body1', visible: false, ghost: true });
+
+    // `ghost: false` is cleared, never stored.
+    doc = apply(doc, updateBody({ id: bid('b1'), changes: { ghost: false } }));
+    expect(doc.bodies[bid('b1')]).toEqual({ name: 'Body1', visible: false });
+
+    // The pair rule wins even if a caller passes both at once: a ghost is hidden.
+    doc = apply(doc, updateBody({ id: bid('b1'), changes: { visible: true, ghost: true } }));
+    expect(doc.bodies[bid('b1')]).toEqual({ name: 'Body1', visible: false, ghost: true });
+  });
+
+  it('undoes a ghost transition back to the state before it', () => {
+    const history = new UndoHistory();
+    const original = apply(
+      sampleDocument(),
+      updateBody({ id: bid('b1'), changes: { name: 'Body1' } }),
+    );
+    const {
+      doc: changed,
+      patches,
+      inversePatches,
+    } = applyCommand(
+      original,
+      updateBody({ id: bid('b1'), changes: { visible: false, ghost: true } }),
+    );
+    expect(bodyDisplay(changed.bodies[bid('b1')])).toBe('ghost');
+    history.record({ label: 'Change body', patches, inversePatches });
+    const undone = history.undo(changed);
+    expect(undone.bodies[bid('b1')]).toEqual({ name: 'Body1', visible: true });
+    expect(bodyDisplay(undone.bodies[bid('b1')])).toBe('shown');
+    expect(history.redo(undone).bodies[bid('b1')]).toEqual({
+      name: 'Body1',
+      visible: false,
+      ghost: true,
+    });
   });
 
   it('names new bodies, keeping metadata that is there', () => {

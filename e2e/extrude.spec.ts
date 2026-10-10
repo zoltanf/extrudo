@@ -147,7 +147,7 @@ test('extrudes a profile, press-pulls its top face out and in, with undo, redo a
   // One body: the plate's six faces and the hole's wall, 15 mm thick.
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:7:60,40,15');
   const browser = page.getByRole('complementary', { name: 'Browser' });
-  await expect(browser.getByRole('button', { name: 'Hide Body1' })).toBeVisible();
+  await expect(browser.getByRole('button', { name: 'Show as ghost Body1' })).toBeVisible();
 
   // Press-pull: the top face, dragged up, joins.
   let world = await homeView(page);
@@ -229,7 +229,7 @@ test('the Wall bracket template computes its bracket; its cut edits through all'
   await kernelReady(page);
   await expect(viewport).toHaveAttribute('data-bodies', 'Bracket:12:40,80,60');
   const browser = page.getByRole('complementary', { name: 'Browser' });
-  await expect(browser.getByRole('button', { name: 'Hide Bracket' })).toBeVisible();
+  await expect(browser.getByRole('button', { name: 'Show as ghost Bracket' })).toBeVisible();
 
   await chip(page, 'Extrude2').dblclick();
   const edit = page.getByRole('region', { name: 'Edit Extrude2 dialog' });

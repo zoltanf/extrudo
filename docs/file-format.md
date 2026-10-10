@@ -138,7 +138,7 @@ integer; the current one is **1**). The rules:
   type or meaning, making an optional field required, tightening a
   constraint.
 - **Additive changes do not bump it**: new optional fields (`unit` on
-  expression inputs, `bodies[..].opacity`, `visible`, a sketch's
+  expression inputs, `bodies[..].opacity`, `visible`, `ghost`, a sketch's
   `projections`, a reference's `fingerprint` were all added this way), and new
   feature types (`Feature.type` is an open string).
 - **Objects are strict, reading is lenient.** Every object in the schema
@@ -247,6 +247,7 @@ first recompute that produces it.
 | `color` | string `#rrggbb` | no | Six hex digits (either case): a swatch or any custom colour (the app writes lower case). Absent: the theme's default body colour. |
 | `opacity` | number 0.1 to 1 | no | Absent: opaque. |
 | `visible` | boolean | yes | Whether the body is drawn. |
+| `ghost` | boolean | no | `true` only, and only with `visible: false` (ADR-0030's amendment, 2026-10-09): the body is drawn as a grey see-through shape that takes no part in anything. Older readers leave the unknown key out and show the body hidden. |
 
 Entries whose body no longer exists are harmless; a body without an entry
 gets one at the next recompute.

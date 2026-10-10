@@ -1,5 +1,6 @@
 import {
   type BodyId,
+  bodyDisplay,
   CANVAS_TYPE,
   type DocumentStore,
   type Feature,
@@ -13,6 +14,7 @@ import {
   ChevronDown,
   ChevronRight,
   Eye,
+  EyeDashed,
   EyeOff,
   FileDown,
   Palette,
@@ -51,9 +53,12 @@ import {
   BODY_COLORS,
   BODY_OPACITIES,
   type BodyActions,
+  type BodyDisplay,
   type BodyEntry,
   bodiesEmptyState,
+  bodyEyeLabel,
   isSwatch,
+  nextBodyDisplay,
   parseBodyColor,
 } from './bodies';
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
@@ -645,6 +650,7 @@ function BodyLeaf({
   const [renaming, setRenaming] = useState(false);
   const [appearance, setAppearance] = useState(false);
   const { id, meta } = body;
+  const display = bodyDisplay(meta);
   const remove = () =>
     actions.remove(selected && selection.size > 1 ? ([...selection] as BodyId[]) : [id]);
   const onKeyDown = (event: KeyboardEvent) => {
@@ -660,6 +666,7 @@ function BodyLeaf({
   const row = (
     <Leaf
       data-body={id}
+      data-body-display={display}
       // Selection is the name button's aria-pressed: a list item takes no aria-selected (axe).
       data-selected={selected || undefined}
       // A mesh body (P4-06, ADR-0066 §3) says so, next to its "Mesh" tag.
@@ -702,7 +709,7 @@ function BodyLeaf({
           aria-pressed={selected}
           onClick={onClick}
           onKeyDown={onKeyDown}
-          className={`min-w-0 truncate rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent ${meta.visible ? '' : 'text-muted'}`}
+          className={`min-w-0 truncate rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent ${display === 'shown' ? '' : 'text-muted'}`}
         >
           {meta.name}
         </button>
@@ -711,10 +718,10 @@ function BodyLeaf({
         <span className="shrink-0 rounded-full bg-accent-soft px-1.5 text-xs text-muted">Mesh</span>
       )}
       {!renaming && (
-        <EyeToggle
+        <BodyEyeToggle
           name={meta.name}
-          visible={meta.visible}
-          onToggle={() => actions.setVisible([id], !meta.visible)}
+          display={display}
+          onToggle={() => actions.setDisplay([id], nextBodyDisplay(display))}
         />
       )}
     </Leaf>
@@ -728,12 +735,21 @@ function BodyLeaf({
       >
         Rename
       </MenuItem>
-      <MenuItem
-        icon={meta.visible ? <EyeOff size={14} /> : <Eye size={14} />}
-        onSelect={() => actions.setVisible([id], !meta.visible)}
-      >
-        {meta.visible ? 'Hide' : 'Show'}
-      </MenuItem>
+      {display !== 'shown' && (
+        <MenuItem icon={<Eye size={14} />} onSelect={() => actions.setDisplay([id], 'shown')}>
+          Show Body
+        </MenuItem>
+      )}
+      {display !== 'ghost' && (
+        <MenuItem icon={<EyeDashed size={14} />} onSelect={() => actions.setDisplay([id], 'ghost')}>
+          Show as Ghost
+        </MenuItem>
+      )}
+      {display !== 'hidden' && (
+        <MenuItem icon={<EyeOff size={14} />} onSelect={() => actions.setDisplay([id], 'hidden')}>
+          Hide Body
+        </MenuItem>
+      )}
       <MenuItem icon={<Palette size={14} />} onSelect={() => setAppearance(true)}>
         Appearance…
       </MenuItem>
@@ -906,6 +922,37 @@ function EyeToggle({
       onClick={onToggle}
     >
       {visible ? <Eye size={14} /> : <EyeOff size={14} />}
+    </IconButton>
+  );
+}
+
+/**
+ * A body row's eye (ADR-0030's amendment): it cycles shown → ghost → hidden →
+ * shown, and its label says what the click does next. The icon is `Eye` while
+ * shown, `EyeDashed` while a ghost and `EyeOff` while hidden.
+ */
+function BodyEyeToggle({
+  name,
+  display,
+  onToggle,
+}: {
+  name: string;
+  display: BodyDisplay;
+  onToggle(): void;
+}) {
+  return (
+    <IconButton
+      label={`${bodyEyeLabel(display)} ${name}`}
+      className="ml-auto size-6"
+      onClick={onToggle}
+    >
+      {display === 'shown' ? (
+        <Eye size={14} />
+      ) : display === 'ghost' ? (
+        <EyeDashed size={14} />
+      ) : (
+        <EyeOff size={14} />
+      )}
     </IconButton>
   );
 }

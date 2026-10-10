@@ -22,12 +22,19 @@ const body = (id: string, visible = true): BodyEntry => ({
   meta: { name: id, visible },
   stored: true,
 });
+/** A ghost body (ADR-0030's amendment): hidden plus `ghost: true`. */
+const ghost = (id: string): BodyEntry => ({
+  id: bid(id),
+  meta: { name: id, visible: false, ghost: true },
+  stored: true,
+});
 const item = (kind: SelectionItem['kind'], id: string): SelectionItem => ({ kind, id });
 
 function bodyActions(): BodyActions {
   return {
     rename: vi.fn(() => true),
     setVisible: vi.fn(),
+    setDisplay: vi.fn(),
     setColor: vi.fn(),
     setOpacity: vi.fn(),
     remove: vi.fn(),
@@ -125,6 +132,7 @@ describe('the overflow list in the model', () => {
       'sectionHere',
       'placeOnBed',
       'measure',
+      'ghostBody',
       'hideBody',
       'appearance',
       'exportBodies',
@@ -160,7 +168,7 @@ describe('the overflow list in the model', () => {
   it('starts each group with a separator', () => {
     const entries = contextEntries(input({ selection: [item('face', 'B:0:3')] }));
     expect(entries.filter((e) => e.separatorBefore).map((e) => e.id)).toEqual([
-      'hideBody',
+      'ghostBody',
       'fit',
       'redo',
     ]);
@@ -176,13 +184,50 @@ describe('the overflow list in the model', () => {
     });
     expect(ids(i)).toContain('delete');
     find(i, 'hideBody')?.onSelect();
-    expect(actions.setVisible).toHaveBeenCalledWith(['B:0'], false);
+    expect(actions.setDisplay).toHaveBeenCalledWith(['B:0'], 'hidden');
     find(i, 'exportBodies')?.onSelect();
     expect(actions.exportBodies).toHaveBeenCalledWith(['B:0']);
     find(i, 'appearance')?.onSelect();
     expect(i.appearance).toHaveBeenCalledWith('B:0');
     find(i, 'delete')?.onSelect();
     expect(i.commands.find((c) => c.id === 'delete')?.run).toHaveBeenCalled();
+  });
+
+  it('offers Show as Ghost and Hide for a shown body, and ghosts it', () => {
+    const actions = bodyActions();
+    const i = input({
+      selection: [item('body', 'B:0')],
+      bodyActions: actions,
+      bodies: [body('B:0')],
+    });
+    expect(find(i, 'showBody')).toBeUndefined();
+    expect(find(i, 'ghostBody')?.label).toBe('Show as Ghost');
+    expect(find(i, 'hideBody')?.label).toBe('Hide Body');
+    find(i, 'ghostBody')?.onSelect();
+    expect(actions.setDisplay).toHaveBeenCalledWith(['B:0'], 'ghost');
+  });
+
+  it('offers Show and Hide for a ghost body, and Show All Bodies over empty space', () => {
+    const actions = bodyActions();
+    const i = input({
+      selection: [item('body', 'B:0')],
+      bodyActions: actions,
+      bodies: [ghost('B:0')],
+    });
+    expect(find(i, 'showBody')?.label).toBe('Show Body');
+    expect(find(i, 'ghostBody')).toBeUndefined();
+    expect(find(i, 'hideBody')?.label).toBe('Hide Body');
+    find(i, 'showBody')?.onSelect();
+    expect(actions.setDisplay).toHaveBeenCalledWith(['B:0'], 'shown');
+  });
+
+  it('offers all three display states for a mixed selection', () => {
+    const i = input({
+      selection: [item('body', 'B:0'), item('body', 'B:1')],
+      bodies: [body('B:0'), ghost('B:1')],
+    });
+    expect(ids(i)).toEqual(expect.arrayContaining(['showBody', 'ghostBody', 'hideBody']));
+    expect(find(i, 'showBody')?.label).toBe('Show Bodies');
   });
 
   it('offers Show for a hidden body, and Show All Bodies over empty space', () => {
