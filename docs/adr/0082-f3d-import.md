@@ -47,17 +47,26 @@ practical.
    - A sketch on an origin plane, or on a plane parallel to one (through an
      offset plane), keeps its curves; Fusion's XZ frame is Extrudo's turned
      180° about X. Other sketch planes are skipped.
-   - An extrude's selected regions are rebuilt from the region's own curves,
-     and every Extrudo region inside that outline is taken: Fusion records a
-     region as the curves along its boundary when it was picked, overlapping
-     collinear ones included.
+   - An extrude's or revolve's selected regions are rebuilt from the pieces
+     of curves Fusion records around each (piece k of the n pieces the
+     region's other curves cut a curve into), and every Extrudo region inside
+     them is taken (even-odd). Where the sketch changed after the pick and the
+     pieces no longer match, the region is rebuilt from its curves alone, or
+     the region along the most of its curves still there stands in; a region
+     whose curves are all gone is left out with a note.
    - A fillet's or chamfer's edges are named through the topological-naming
-     scheme (`extrude:<id>:cap:start`, `extrude:<id>:side:<curve>`) from the
-     features that made their two faces, and carry a fingerprint of the
-     edge's line or circle for where a join merged faces.
-   - Where some of a region's curves were redrawn after the pick (their tags
-     are gone), the smallest region along every listed curve still there
-     stands in for it.
+     scheme from the features that made their two faces — extrudes
+     (`extrude:<id>:cap:start`, `…:side:<curve>`), revolves
+     (`revolve:<id>:side:<curve>`) and earlier fillets and chamfers
+     (`fillet:<id>:from:(<edge>)`, Fusion's face token being the edge's place
+     in that feature's list) — and carry a fingerprint of the edge's line or
+     circle for where a join merged faces.
+   - The bodies Fusion joined, cut or intersected become the extrude's or
+     revolve's `bodies` when each is the only body of an imported feature
+     (Extrudo's default is every body it meets). Bodies hidden in Fusion are
+     hidden (`visible: false`), unless that could hide a shown body's shape
+     (a shown body made by a feature not imported, or a later join with
+     every body it meets).
    - Splines keep their poles and knots where Extrudo's control splines can
      hold them (clamped non-rational cubics; a quadratic span is raised to a
      cubic), and become fit splines through points along them otherwise;
@@ -104,13 +113,14 @@ practical.
 
 - On the owner's 250 files every file decodes and maps to a valid design.
   Rebuilt with our kernel and compared with the reference STEP (volume within
-  0.5 %, tight bounding box within 0.05 mm; 7 references hold no solid): of
-  243, 75 match (14 of them while skipping features the result does not
-  need), 93 lose some features, 65 build different geometry and 10 have no
-  body. The common gaps, by count: regions whose curves were redrawn or
-  projected, faces and edges of features other than extrudes (fillets,
-  chamfers, offset faces), older sketch texts, threads, sweeps, mirrors,
-  components, and sketch dimensions and constraints.
+  0.5 %, tight bounding box within 0.05 mm; hidden bodies left out, as Fusion's
+  STEP export leaves them out; 7 references hold no solid): of 243, 105 match
+  (26 of them while skipping features the result does not need), 72 lose some
+  features, 58 build different geometry and 8 have no body. The common gaps,
+  by count: fillet and chamfer edges Extrudo cannot find again (rough
+  fingerprints for arcs, faces gone from the final B-rep), components, faces
+  given as an extrude's profile, older sketch texts, threads, sweeps, splits,
+  mirrors, and sketch dimensions and constraints.
 - The format changes between Fusion versions (record versions, reference
   widths). Each decoder checks its record's version and reports what it does
   not know instead of guessing; the report reaches the user.

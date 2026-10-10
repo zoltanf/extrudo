@@ -17,7 +17,13 @@ import {
   type SketchBuilder,
   type SketchHandle,
 } from '@extrudo/api';
-import { faceSketchFrame, ORIGIN_PLANES, type SketchData } from '@extrudo/core';
+import {
+  type BodyId,
+  faceSketchFrame,
+  ORIGIN_PLANES,
+  type SketchData,
+  updateBody,
+} from '@extrudo/core';
 import {
   detectProfiles,
   insidePolygon,
@@ -43,6 +49,7 @@ import type {
   F3dSketchFeature,
   Matrix,
 } from './model';
+import { insidePieces, nurbsAt, regionPieces, type SketchPieces, sketchPieces } from './regions';
 
 type Vec2 = [number, number];
 
@@ -72,6 +79,10 @@ interface SketchEntry {
   /** Fusion text record → Extrudo text entity ID. */
   texts: Map<number, string>;
   fusion: F3dSketch;
+  /** Fusion curve tags its features' profiles run along (never construction). */
+  profileCurves: Set<string>;
+  /** Its curves cut at their crossings, as Fusion names regions (made when first needed). */
+  pieces?: SketchPieces;
 }
 
 /** An extrude that was imported: what naming its faces needs. */
@@ -81,6 +92,38 @@ interface ImportedExtrude {
   /** The Extrudo curves around the regions it extruded. */
   curves: string[];
   oneSided: boolean;
+  /** Which way its side 1 runs along Fusion's sketch normal: 1 or −1. */
+  side1: number;
+}
+
+/**
+ * An imported fillet or chamfer: the Extrudo name of each Fusion edge it
+ * rounds, in Fusion's order. Fusion tags the face made from the k-th edge
+ * with the token k; Extrudo names it `<op>:<feature>:from:(<edge name>)`.
+ */
+interface ImportedRound {
+  op: 'fillet' | 'chamfer';
+  id: string;
+  edges: (string | undefined)[];
+}
+
+/** A revolve that was imported: what naming its faces needs. */
+interface ImportedRevolve {
+  id: string;
+  sketch: SketchEntry;
+  /** The Extrudo curves around the regions it turned. */
+  curves: string[];
+  /** Fusion's axis, model space (cm), unit direction. */
+  axis: { point: Vec3; direction: Vec3 };
+  /** Its turn in radians (2π: a full one, without caps). */
+  angle: number;
+}
+
+/** What naming faces of earlier features needs, by Fusion feature record. */
+interface FaceNaming {
+  extrudes: Map<number, ImportedExtrude>;
+  revolves: Map<number, ImportedRevolve>;
+  rounds: Map<number, ImportedRound>;
 }
 
 /** Where a Fusion sketch lands in Extrudo: a plane and a 2D map into its frame. */
@@ -188,8 +231,28 @@ export function f3dToDesign(
 
   const sketches = new Map<number, SketchEntry>();
   const extrudes = new Map<number, ImportedExtrude>();
+  const naming: FaceNaming = { extrudes, revolves: new Map(), rounds: new Map() };
   /** Fusion feature record → the Extrudo feature a pattern can replay for it. */
   const replayable = new Map<number, { id: string; name: string }>();
+  // Extrudo names a body after the feature that made it — and, of several, by
+  // an order Fusion's need not share — so a Fusion body is known here only as
+  // the only body of an imported feature.
+  const bodyRecords = new Map(f3d.bodies.map((b) => [b.id, b]));
+  const madeBy = new Map<number, number>();
+  for (const body of f3d.bodies)
+    if (body.creator !== undefined) madeBy.set(body.creator, (madeBy.get(body.creator) ?? 0) + 1);
+  const bodyOf = (record: number): { id: BodyId; index: number; by: string } | undefined => {
+    const body = bodyRecords.get(record);
+    if (body?.creator === undefined || madeBy.get(body.creator) !== 1) return undefined;
+    const made = replayable.get(body.creator);
+    return made ? { id: `${made.id}:0` as BodyId, index: body.index, by: made.name } : undefined;
+  };
+  /** A feature's participant bodies as Extrudo references, when every one is known. */
+  const participants = (records: number[]): GeomRef[] | undefined => {
+    const ids = records.map((r) => bodyOf(r)?.id);
+    if (ids.length === 0 || ids.some((id) => id === undefined)) return undefined;
+    return ids.map((id) => ({ kind: 'body', id: id as string }));
+  };
   // Curves Fusion's own profiles run along are never construction geometry,
   // whatever the flag reading says.
   const profileCurves = new Map<number, Set<string>>();
@@ -236,7 +299,7 @@ export function f3dToDesign(
         (k) => drawSketch(k, copy, placement, { tags, texts }, used, report),
         { name },
       );
-      made = { handle, placement, tags, texts, fusion };
+      made = { handle, placement, tags, texts, fusion, profileCurves: used };
     }
     moved.set(key, made);
     return made;
@@ -284,10 +347,20 @@ export function f3dToDesign(
           tags,
           texts,
           fusion: feature.sketch,
+          profileCurves: used,
         });
         report.imported.push(feature.name);
       } else if (feature.type === 'extrude') {
-        const made = extrude(d, feature, sketches, extrudes, expressionOf, movedSketch, report);
+        const made = extrude(
+          d,
+          feature,
+          sketches,
+          naming,
+          expressionOf,
+          movedSketch,
+          participants,
+          report,
+        );
         if (typeof made === 'string')
           report.skipped.push({ name: feature.name, kind: 'Extrude', reason: made });
         else {
@@ -304,15 +377,16 @@ export function f3dToDesign(
           report.imported.push(feature.name);
         }
       } else if (feature.type === 'revolve') {
-        const made = revolve(d, feature, sketches, expressionOf);
+        const made = revolve(d, feature, sketches, expressionOf, participants, report);
         if (typeof made === 'string')
           report.skipped.push({ name: feature.name, kind: 'Revolve', reason: made });
         else {
+          naming.revolves.set(feature.id, made);
           replayable.set(feature.id, { id: made.id, name: feature.name });
           report.imported.push(feature.name);
         }
       } else if (feature.type === 'offset-faces') {
-        const reason = offsetFaces(d, feature, extrudes, expressionOf, report);
+        const reason = offsetFaces(d, feature, naming, expressionOf, report);
         if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
         else report.imported.push(feature.name);
       } else if (feature.type === 'circular-pattern') {
@@ -320,9 +394,13 @@ export function f3dToDesign(
         if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
         else report.imported.push(feature.name);
       } else if (feature.type === 'fillet' || feature.type === 'chamfer') {
-        const reason = edgeTreatment(d, feature, extrudes, expressionOf, report);
-        if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
-        else report.imported.push(feature.name);
+        const made = edgeTreatment(d, feature, naming, expressionOf, report);
+        if (typeof made === 'string')
+          report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
+        else {
+          naming.rounds.set(feature.id, made);
+          report.imported.push(feature.name);
+        }
       } else if (feature.kind === 'Component' || feature.kind === 'CreateComponent') {
         // The component's own features are on this timeline: they join the design.
         report.notes.push(
@@ -342,6 +420,30 @@ export function f3dToDesign(
         reason: (error as Error).message,
       });
     }
+  }
+  // Bodies hidden in Fusion stay hidden (its STEP export leaves them out too)
+  // — unless a shown body came from a feature not imported (Body to
+  // Component moves a body on as a new one: its shape is still the hidden
+  // one's here), or a later join here takes every body it meets (Fusion's
+  // named bodies it joins were not known), which may have merged a shown one in.
+  const shownElsewhere = f3d.bodies.some(
+    (b) => b.visible && (b.creator === undefined || !replayable.has(b.creator)),
+  );
+  const order = new Map(d.toJSON().features.map((f, i) => [f.id as string, i]));
+  let lastOpenJoin = -1;
+  d.toJSON().features.forEach((f, i) => {
+    const inputs = f.inputs as Record<string, { value?: unknown; refs?: unknown[] } | undefined>;
+    const join =
+      (f.type === 'extrude' || f.type === 'revolve') && inputs.operation?.value === 'join';
+    if (join && !inputs.bodies?.refs?.length) lastOpenJoin = i;
+  });
+  for (const body of shownElsewhere ? [] : f3d.bodies) {
+    const known = body.visible ? undefined : bodyOf(body.id);
+    if (!known || (order.get(known.id.split(':')[0] as string) ?? 0) < lastOpenJoin) continue;
+    d.state.dispatch(
+      updateBody({ id: known.id, changes: { name: `Body${known.index}`, visible: false } }),
+    );
+    report.notes.push(`Body${known.index} (made by ${known.by}) is hidden, as in Fusion.`);
   }
   return { design: d, report };
 }
@@ -508,9 +610,14 @@ function drawSketch(
     }
     const start = arcEnd(c, c.startAngle, placement);
     const end = arcEnd(c, c.endAngle, placement);
-    // Counter-clockwise about the arc's own normal in Fusion; the 2D map may mirror it.
+    // Counter-clockwise about the arc's own normal in Fusion; the 2D map may
+    // mirror it. Extrudo's arc always runs counter-clockwise from its stored
+    // start (`reversed` only says it was drawn the other way, and keeps
+    // `h.start` at Fusion's start), so a clockwise one is stored end first.
     const ccw = c.normal[2] >= 0 !== placement.mirrored;
-    const h = k.arcCentered(center, start, end, { reversed: !ccw });
+    const h = ccw
+      ? k.arcCentered(center, start, end)
+      : k.arcCentered(center, end, start, { reversed: true });
     join(c.centerPoint, h.center);
     join(c.startPoint, h.start);
     join(c.endPoint, h.end);
@@ -670,33 +777,6 @@ function splineShape(c: SketchSpline, placement: Placement): SplineShape {
   return { mode: 'fit', points };
 }
 
-/** A point on a (rational) B-spline, by de Boor's algorithm. */
-function nurbsAt(c: SketchSpline, poles: Vec2[], t: number): Vec2 {
-  const p = c.degree;
-  const k = c.knots;
-  const last = poles.length - 1;
-  let span = p;
-  while (span < last && t >= (k[span + 1] as number)) span++;
-  const d: [number, number, number][] = [];
-  for (let j = 0; j <= p; j++) {
-    const i = j + span - p;
-    const w = c.weights[i] ?? 1;
-    const q = poles[i] as Vec2;
-    d.push([q[0] * w, q[1] * w, w]);
-  }
-  for (let r = 1; r <= p; r++)
-    for (let j = p; j >= r; j--) {
-      const i = j + span - p;
-      const den = (k[i + p - r + 1] as number) - (k[i] as number);
-      const a = den === 0 ? 0 : (t - (k[i] as number)) / den;
-      const x = d[j - 1] as [number, number, number];
-      const y = d[j] as [number, number, number];
-      d[j] = [x[0] + a * (y[0] - x[0]), x[1] + a * (y[1] - x[1]), x[2] + a * (y[2] - x[2])];
-    }
-  const h = d[p] as [number, number, number];
-  return [h[0] / h[2], h[1] / h[2]];
-}
-
 const keyOf = (tags: bigint[]) => [...new Set(tags.map(String))].sort().join(',');
 
 /** Adds an extrude; returns why not when it cannot. */
@@ -704,9 +784,10 @@ function extrude(
   d: Design,
   f: F3dExtrude,
   sketches: Map<number, SketchEntry>,
-  extrudes: Map<number, ImportedExtrude>,
+  naming: FaceNaming,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   movedSketch: (entry: SketchEntry, cm: number, name: string) => SketchEntry | undefined,
+  participants: (records: number[]) => GeomRef[] | undefined,
   report: ImportReport,
 ): string | ImportedExtrude {
   if (!f.solid) return 'surface extrudes are not supported';
@@ -728,13 +809,17 @@ function extrude(
     }
     return Math.abs(cm) > 1e-9 ? cm : 0;
   };
-  const selected = selectProfiles(f.profiles, (operand) => {
-    const own = sketches.get(operand.sketch);
-    if (!own) return 'its sketch was not imported';
-    const shift = shiftFor(own);
-    const sketch = shift ? movedSketch(own, shift, `${f.name} start`) : own;
-    return sketch ?? 'its offset start plane is not along an origin axis';
-  });
+  const selected = selectProfiles(
+    f.profiles,
+    (operand) => {
+      const own = sketches.get(operand.sketch);
+      if (!own) return 'its sketch was not imported';
+      const shift = shiftFor(own);
+      const sketch = shift ? movedSketch(own, shift, `${f.name} start`) : own;
+      return sketch ?? 'its offset start plane is not along an origin axis';
+    },
+    (text) => report.notes.push(`${f.name}: ${text}`),
+  );
   if (typeof selected === 'string') return selected;
   const { profiles, entry } = selected;
   const placement = entry.placement;
@@ -764,7 +849,7 @@ function extrude(
       if (placement.opposite !== total < 0) inputs.flip = true;
       report.notes.push(`${f.name}: up to a face, imported as a distance.`);
     } else {
-      const name = faceName(toFace, extrudes);
+      const name = faceName(toFace, naming);
       if (!name) return 'it goes up to a face that could not be found';
       inputs.extent = 'to-object';
       inputs.toObject = { kind: 'face', id: name };
@@ -787,7 +872,21 @@ function extrude(
   }
   if (taper && Math.abs(taper.value) > 1e-12) inputs.taper = expressionOf(taper);
   if (flip && !(f.direction === 'one-side' && toFace)) inputs.flip = true;
+  // The bodies Fusion joined, cut or intersected; Extrudo's default is every one it meets.
+  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants);
+  if (bodies) inputs.bodies = bodies;
   const made = d.extrude(inputs as Parameters<Design['extrude']>[0], { name: f.name });
+  return {
+    id: made.id,
+    sketch: entry,
+    curves: regionCurves(entry, profiles),
+    oneSided: f.direction === 'one-side',
+    side1: f.reversed !== negative ? -1 : 1,
+  };
+}
+
+/** The Extrudo curves around the chosen regions of a sketch. */
+function regionCurves(entry: SketchEntry, profiles: GeomRef[]): string[] {
   const chosen = new Set(profiles.map((p) => p.id));
   const curves = new Set<string>();
   for (const region of entry.handle.regions) {
@@ -795,13 +894,14 @@ function extrude(
     for (const loop of [region.outer, ...region.holes])
       for (const e of loop.edges) curves.add(e.curve);
   }
-  return { id: made.id, sketch: entry, curves: [...curves], oneSided: f.direction === 'one-side' };
+  return [...curves];
 }
 
 /** The Extrudo profiles a feature's profile operands select, and the sketch they are in. */
 function selectProfiles(
   operands: ProfileOperand[],
   sketchOf: (operand: ProfileOperand) => SketchEntry | string,
+  note: (text: string) => void = () => {},
 ): { profiles: GeomRef[]; entry: SketchEntry } | string {
   const profiles: GeomRef[] = [];
   let entry: SketchEntry | undefined;
@@ -820,9 +920,42 @@ function selectProfiles(
       profiles.push(...sketch.handle.profiles());
       continue;
     }
+    const present = new Set([...sketch.tags.values()].map(String));
+    const before = profiles.length;
+    let lost = 0;
+    // A group's outline is the union of its other regions: wanted only where
+    // one of those cannot be found exactly.
+    const exact = new Map(
+      operand.regions.map((want) => [want, exactRegions(sketch, regions, want)]),
+    );
+    const whole = new Set(
+      operand.regions.filter((want) => !want.outline && !exact.get(want)).map((want) => want.group),
+    );
+    // …and when found, it stands in for them.
+    const covered = new Set(
+      operand.regions
+        .filter((want) => want.outline && whole.has(want.group) && exact.get(want))
+        .map((want) => want.group),
+    );
     for (const want of operand.regions) {
+      if (want.outline && !whole.has(want.group)) continue;
+      if (!want.outline && !exact.get(want) && covered.has(want.group)) continue;
+      const found = exact.get(want);
+      const how = found ? 'exact' : want.outline ? 'outline skipped' : 'by curves';
+      regionStats[how] = (regionStats[how] ?? 0) + 1;
+      if (found) {
+        for (const ref of found) if (!profiles.some((p) => p.id === ref.id)) profiles.push(ref);
+        continue;
+      }
+      if (want.outline) continue;
       const refs = matchRegions(sketch.handle, regions, sketch.tags, want);
       if (refs.length === 0) {
+        // Every curve around it was deleted after the pick: Fusion lost this
+        // region too, and the operand's other regions make the profile.
+        if (!want.outer.flat().some((t) => present.has(String(t)))) {
+          lost++;
+          continue;
+        }
         const have = regions
           .map((r) =>
             keyOf(
@@ -836,6 +969,9 @@ function selectProfiles(
       }
       for (const ref of refs) if (!profiles.some((p) => p.id === ref.id)) profiles.push(ref);
     }
+    if (lost && profiles.length === before)
+      return 'the curves around its profile regions were deleted';
+    if (lost) note(`${lost} profile region(s) left out: their curves were deleted in Fusion.`);
   }
   return entry ? { profiles, entry } : 'no profile';
 }
@@ -961,12 +1097,15 @@ function revolve(
   f: F3dRevolve,
   sketches: Map<number, SketchEntry>,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
-): string | { id: string } {
+  participants: (records: number[]) => GeomRef[] | undefined,
+  report: ImportReport,
+): string | ImportedRevolve {
   if (!f.axis) return 'its axis was not found';
   if (f.profiles.length === 0) return 'its profile is a face, not a sketch profile';
   const selected = selectProfiles(
     f.profiles,
     (operand) => sketches.get(operand.sketch) ?? 'its sketch was not imported',
+    (text) => report.notes.push(`${f.name}: ${text}`),
   );
   if (typeof selected === 'string') return selected;
   const { profiles, entry } = selected;
@@ -984,7 +1123,16 @@ function revolve(
   const inputs: Record<string, unknown> = { profiles, axis: axis.ref, operation: f.operation };
   if (along) inputs.angle = expressionOf(along, negative);
   if (axis.sign < 0 !== negative) inputs.flip = true;
-  return { id: d.revolve(inputs as Parameters<Design['revolve']>[0], { name: f.name }).id };
+  const bodies = f.operation === 'new-body' ? undefined : participants(f.participants);
+  if (bodies) inputs.bodies = bodies;
+  const made = d.revolve(inputs as Parameters<Design['revolve']>[0], { name: f.name });
+  return {
+    id: made.id,
+    sketch: entry,
+    curves: regionCurves(entry, profiles),
+    axis: { point: P, direction: u },
+    angle: along ? Math.abs(along.value) : 2 * Math.PI,
+  };
 }
 
 /**
@@ -1063,11 +1211,38 @@ interface EdgeShape {
 }
 
 /**
+ * A line edge through `p0` along unit `dir` (cm), ended by the bounding faces
+ * that are planes across it.
+ */
+function lineShape(p0: Vec3, dir: Vec3, bounds: F3dFace[]): EdgeShape | undefined {
+  const ts: number[] = [];
+  for (const f of bounds) {
+    const s = f.surface;
+    if (s?.kind !== 'plane') continue;
+    const nd = dot(s.normal, dir);
+    if (Math.abs(nd) < 1e-9) continue;
+    ts.push(dot(s.normal, sub(s.point, p0)) / nd);
+  }
+  if (ts.length < 2) return undefined;
+  const t0 = Math.min(...ts);
+  const t1 = Math.max(...ts);
+  if (t1 - t0 < 1e-9) return undefined;
+  const mid = add(p0, scale(dir, (t0 + t1) / 2));
+  return {
+    type: 'line',
+    at: [round6(mid[0] * 10), round6(mid[1] * 10), round6(mid[2] * 10)],
+    dir: canonical(dir),
+    size: round6((t1 - t0) * 10),
+  };
+}
+
+/**
  * An edge's geometry in mm, from its two faces' surfaces (cm): two planes
- * meet in a line, ended by the bounding faces that are planes; a plane
- * across a cylinder's axis cuts a circle. What Extrudo's fingerprint of
- * that edge would hold: type, midpoint (a circle: its centre), axis or
- * direction, length.
+ * meet in a line, and a plane touches a cylinder along it (a fillet's edge)
+ * in one, each ended by the bounding faces that are planes; a plane across
+ * a cylinder's axis cuts a circle. What Extrudo's fingerprint of that edge
+ * would hold: type, midpoint (a circle: its centre), axis or direction,
+ * length.
  */
 function edgeShape(e: F3dEdge): EdgeShape | undefined {
   const a = e.faces[0].surface;
@@ -1083,26 +1258,16 @@ function edgeShape(e: F3dEdge): EdgeShape | undefined {
     const d1 = dot(pa.normal, pa.point);
     const d2 = dot(pb.normal, pb.point);
     const p0 = scale(add(scale(cross(pb.normal, u), d1), scale(cross(u, pa.normal), d2)), 1 / uu);
-    const dir = scale(u, 1 / Math.sqrt(uu));
-    const ts: number[] = [];
-    for (const f of e.bounds) {
-      const s = f.surface;
-      if (s?.kind !== 'plane') continue;
-      const nd = dot(s.normal, dir);
-      if (Math.abs(nd) < 1e-9) continue;
-      ts.push(dot(s.normal, sub(s.point, p0)) / nd);
-    }
-    if (ts.length < 2) return undefined;
-    const t0 = Math.min(...ts);
-    const t1 = Math.max(...ts);
-    if (t1 - t0 < 1e-9) return undefined;
-    const mid = add(p0, scale(dir, (t0 + t1) / 2));
-    return {
-      type: 'line',
-      at: [round6(mid[0] * 10), round6(mid[1] * 10), round6(mid[2] * 10)],
-      dir: canonical(dir),
-      size: round6((t1 - t0) * 10),
-    };
+    return lineShape(p0, scale(u, 1 / Math.sqrt(uu)), e.bounds);
+  }
+  const touching = pa ?? pb;
+  const cylinder = a.kind === 'cone' ? a : b.kind === 'cone' ? b : undefined;
+  if (touching && cylinder?.cylinder) {
+    const axis = scale(cylinder.axis, 1 / norm(cylinder.axis));
+    const n = scale(touching.normal, 1 / norm(touching.normal));
+    const off = dot(sub(cylinder.center, touching.point), n);
+    if (Math.abs(dot(n, axis)) < 1e-9 && Math.abs(Math.abs(off) - cylinder.radius) < 1e-6)
+      return lineShape(sub(cylinder.center, scale(n, off)), axis, e.bounds);
   }
   const p = pa ?? pb;
   const c = a.kind === 'cone' ? a : b.kind === 'cone' ? b : undefined;
@@ -1137,12 +1302,6 @@ function toModel(m: Matrix, p: Vec3): Vec3 {
   ];
 }
 
-/**
- * The Extrudo name of a face Fusion's extrude made: an end cap (parallel to
- * the sketch, at the profile plane or not) or the side swept from one of the
- * curves around the extruded regions (a plane through a line's two ends, a
- * cylinder about a circle's or arc's centre).
- */
 /** Why faces could not be named, counted (for the corpus tools). */
 export const faceMisses: Record<string, number> = {};
 const miss = (why: string): undefined => {
@@ -1150,10 +1309,26 @@ const miss = (why: string): undefined => {
   return undefined;
 };
 
-function faceName(face: F3dFace, extrudes: Map<number, ImportedExtrude>): string | undefined {
+/**
+ * The Extrudo name of a face an imported feature made. A fillet's or
+ * chamfer's face: from the edge it rounds, by the face's token. An extrude's:
+ * an end cap (parallel to the sketch, at the profile plane or not) or the
+ * side swept from one of the curves around the extruded regions (a plane
+ * through a line's two ends, a cylinder about a circle's or arc's centre).
+ */
+function faceName(face: F3dFace, naming: FaceNaming): string | undefined {
   if (face.feature === undefined) return miss('no feature');
-  const ex = extrudes.get(face.feature);
-  if (!ex) return miss('feature not an imported extrude');
+  const round = naming.rounds.get(face.feature);
+  if (round) {
+    const k = Number(face.tags[0]?.token);
+    const edge = Number.isInteger(k) ? round.edges[k - 1] : undefined;
+    if (!edge) return miss(`${round.op} face: its edge has no name`);
+    return `${round.op}:${round.id}:from:(${edge})`;
+  }
+  const rev = naming.revolves.get(face.feature);
+  if (rev) return face.surface ? revolveFaceName(face.surface, rev) : miss('face not in the B-rep');
+  const ex = naming.extrudes.get(face.feature);
+  if (!ex) return miss('feature not an imported extrude, revolve, fillet or chamfer');
   const s = face.surface;
   if (!s) return miss('face not in the B-rep');
   const m = ex.sketch.fusion.frame;
@@ -1164,8 +1339,11 @@ function faceName(face: F3dFace, extrudes: Map<number, ImportedExtrude>): string
   const tol = 1e-5;
   if (s.kind === 'plane') {
     if (norm(cross(s.normal, N)) < 1e-6) {
-      if (!ex.oneSided) return miss('cap of a two-sided extrude');
-      return `extrude:${ex.id}:cap:${Math.abs(dot(sub(s.point, O), N)) < tol ? 'start' : 'end'}`;
+      const h = dot(sub(s.point, O), N);
+      if (ex.oneSided) return `extrude:${ex.id}:cap:${Math.abs(h) < tol ? 'start' : 'end'}`;
+      // Two sides: side 1 ends in `cap:end`, side 2 in `cap:start`.
+      if (Math.abs(h) < tol) return miss('profile plane of a two-sided extrude');
+      return `extrude:${ex.id}:cap:${Math.sign(h) === ex.side1 ? 'end' : 'start'}`;
     }
     for (const curve of ex.curves) {
       const l = lines.get(String(ex.sketch.tags.get(curve)));
@@ -1189,6 +1367,52 @@ function faceName(face: F3dFace, extrudes: Map<number, ImportedExtrude>): string
 }
 
 /**
+ * The Extrudo name of a face a revolve made from a line of its profile: a
+ * plane square to the axis (the line square to it too), a cylinder (the line
+ * along it) or a cone about the axis; or, turned less than a full turn, a cap
+ * through the axis — the start one in the sketch's plane.
+ */
+function revolveFaceName(s: AsmSurface, rev: ImportedRevolve): string | undefined {
+  const { point: P, direction: u } = rev.axis;
+  const m = rev.sketch.fusion.frame;
+  const N: Vec3 = [m[2] as number, m[6] as number, m[10] as number];
+  const tol = 1e-5;
+  /** A point's place along the axis and its distance from it. */
+  const axial = (A: Vec3) => {
+    const w = sub(A, P);
+    const t = dot(w, u);
+    return { t, r: norm(sub(w, scale(u, t))) };
+  };
+  const full = Math.abs(rev.angle - 2 * Math.PI) < 1e-9;
+  if (s.kind === 'plane' && !full && Math.abs(dot(s.normal, u)) < 1e-6) {
+    if (Math.abs(dot(sub(P, s.point), s.normal)) > tol) return miss('revolve: plane off the axis');
+    // Half a turn ends in the start's plane: the two caps are not told apart.
+    if (Math.abs(rev.angle - Math.PI) < 1e-9) return miss('revolve: cap of half a turn');
+    return `revolve:${rev.id}:cap:${norm(cross(s.normal, N)) < 1e-6 ? 'start' : 'end'}`;
+  }
+  const lines = new Map(rev.sketch.fusion.lines.map((l) => [String(l.tag), l]));
+  for (const curve of rev.curves) {
+    const l = lines.get(String(rev.sketch.tags.get(curve)));
+    if (!l) continue;
+    const a = axial(toModel(m, l.start));
+    const b = axial(toModel(m, l.end));
+    if (s.kind === 'plane') {
+      if (norm(cross(s.normal, u)) > 1e-6 || Math.abs(a.t - b.t) > tol) continue;
+      if (Math.abs(dot(sub(toModel(m, l.start), s.point), s.normal)) < tol)
+        return `revolve:${rev.id}:side:${curve}`;
+    } else if (s.kind === 'cone') {
+      if (norm(cross(s.axis, u)) / norm(s.axis) > 1e-6) continue;
+      if (norm(cross(sub(s.center, P), u)) > tol || Math.abs(a.t - b.t) < tol) continue;
+      if (s.cylinder !== Math.abs(a.r - b.r) < tol) continue;
+      const at = dot(sub(s.center, P), u);
+      const r = a.r + ((b.r - a.r) * (at - a.t)) / (b.t - a.t);
+      if (Math.abs(r - s.radius) < tol) return `revolve:${rev.id}:side:${curve}`;
+    }
+  }
+  return miss(`revolve: ${s.kind === 'other' ? s.type : s.kind} side: no curve`);
+}
+
+/**
  * Moves the faces that can be named (those an imported extrude made) along
  * their outward normals; returns why not when none can. Fusion's distance
  * is along the outward normal too.
@@ -1196,7 +1420,7 @@ function faceName(face: F3dFace, extrudes: Map<number, ImportedExtrude>): string
 function offsetFaces(
   d: Design,
   f: F3dOffsetFaces,
-  extrudes: Map<number, ImportedExtrude>,
+  naming: FaceNaming,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   report: ImportReport,
 ): string | undefined {
@@ -1205,15 +1429,15 @@ function offsetFaces(
     return 'its distance is 0 (Extrudo refuses an offset that moves nothing)';
   const faces: GeomRef[] = [];
   for (const face of f.faces) {
-    const id = faceName(face, extrudes);
+    const id = faceName(face, naming);
     if (id && !faces.some((r) => r.id === id)) faces.push({ kind: 'face', id });
   }
   if (faces.length === 0)
     return f.faces.length === 0 ? 'no faces' : `none of its ${f.faces.length} faces could be named`;
-  const named = f.faces.filter((face) => faceName(face, extrudes)).length;
+  const named = f.faces.filter((face) => faceName(face, naming)).length;
   if (named < f.faces.length)
     report.notes.push(
-      `${f.name}: ${f.faces.length - named} of ${f.faces.length} faces left out (not made by an imported extrude).`,
+      `${f.name}: ${f.faces.length - named} of ${f.faces.length} faces left out (not made by an imported extrude, fillet or chamfer).`,
     );
   d.offsetFace(
     { faces, distance: expressionOf(f.distance) } as Parameters<Design['offsetFace']>[0],
@@ -1224,15 +1448,19 @@ function offsetFaces(
   return undefined;
 }
 
-/** Adds a fillet or chamfer on the edges that can be named; returns why not when none can. */
+/**
+ * Adds a fillet or chamfer on the edges that can be named; returns why not
+ * when none can, or the feature and its edges' names (for its faces' names).
+ */
 function edgeTreatment(
   d: Design,
   f: F3dEdgeFeature,
-  extrudes: Map<number, ImportedExtrude>,
+  naming: FaceNaming,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   report: ImportReport,
-): string | undefined {
+): string | ImportedRound {
   const inputs: Record<string, unknown> = {};
+  const edges: (string | undefined)[] = [];
   let set = 0;
   let total = 0;
   let named = 0;
@@ -1240,11 +1468,17 @@ function edgeTreatment(
     const refs: GeomRef[] = [];
     for (const e of s.edges) {
       total++;
-      const a = faceName(e.faces[0], extrudes);
-      const b = faceName(e.faces[1], extrudes);
+      const a = faceName(e.faces[0], naming);
+      const b = faceName(e.faces[1], naming);
       const shape = edgeShape(e);
       const names = a && b && a !== b ? [a, b] : undefined;
-      if (!names && !shape) continue;
+      edges.push(names ? edgeName(names) : undefined);
+      // A fillet's or chamfer's face name is read off the edge it rounds, as
+      // named here; Extrudo may have found that edge by its shape instead,
+      // under another name. Such a name alone is too weak to hold the edge
+      // (a lost edge fails the whole feature), so it needs the shape too.
+      const guessed = names?.some((n) => /^(fillet|chamfer):/.test(n)) ?? false;
+      if (!shape && (!names || guessed)) continue;
       // The name, when both faces have one; the geometry always, so Extrudo
       // finds the edge where joins merged or split those faces.
       const id = names ? edgeName(names) : `e[f3d.edge.${f.id}.${total}]`;
@@ -1274,11 +1508,13 @@ function edgeTreatment(
   if (set === 0) return total === 0 ? 'no edges' : `none of its ${total} edges could be named`;
   if (named < total)
     report.notes.push(
-      `${f.name}: ${total - named} of ${total} edges left out (faces not made by an imported extrude).`,
+      `${f.name}: ${total - named} of ${total} edges left out (their faces could not be named).`,
     );
-  if (f.type === 'fillet') d.fillet(inputs as Parameters<Design['fillet']>[0], { name: f.name });
-  else d.chamfer(inputs as Parameters<Design['chamfer']>[0], { name: f.name });
-  return undefined;
+  const made =
+    f.type === 'fillet'
+      ? d.fillet(inputs as Parameters<Design['fillet']>[0], { name: f.name })
+      : d.chamfer(inputs as Parameters<Design['chamfer']>[0], { name: f.name });
+  return { op: f.type, id: made.id, edges };
 }
 
 /**
@@ -1289,6 +1525,44 @@ function edgeTreatment(
  * sketch whose inside lies within it is taken: one region usually, several
  * where curves drawn later (or construction lines) cut it up.
  */
+/**
+ * Regions smaller than this (mm²) are slivers between nearly coincident
+ * curves: the kernel's exact arrangement may make no face of them, and a
+ * missing profile fails the whole feature.
+ */
+const SLIVER = 0.01;
+
+/** How profile regions were found, counted (for the corpus tools). */
+export const regionStats: Record<string, number> = {
+  exact: 0,
+  'by curves': 0,
+  'outline skipped': 0,
+};
+
+/**
+ * The Extrudo regions inside a Fusion region rebuilt from its pieces of
+ * curves (`regions.ts`); undefined when the pieces are not found as Fusion
+ * counted them (the sketch changed after the pick) or enclose no region.
+ */
+function exactRegions(
+  entry: SketchEntry,
+  regions: SketchHandle['regions'],
+  want: ProfileRegion,
+): GeomRef[] | undefined {
+  entry.pieces ??= sketchPieces(entry.fusion, entry.profileCurves);
+  const lines = regionPieces(entry.pieces, [...want.outerPieces, ...want.innerPieces]);
+  if (!lines) return undefined;
+  const mapped = lines.map((line) => line.map(([u, v]) => entry.placement.map(u, v)));
+  const out: GeomRef[] = [];
+  for (const r of regions) {
+    if (r.text !== undefined || Math.abs(r.area) < SLIVER) continue;
+    const p = probeOf(r);
+    if (p && insidePieces(mapped, p))
+      out.push({ kind: 'profile', id: `${entry.handle.id}/${r.id}` });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 /**
  * A point inside a region, once per region: `interiorPoint` is slow on long
  * spline outlines, and every wanted region tests every region of the sketch.
@@ -1339,7 +1613,7 @@ function matchRegions(
     insidePolygon(region.outer.polygon, p) && !holes.some((h) => insidePolygon(h, p));
   const out: GeomRef[] = [];
   for (const r of regions) {
-    if (r.text !== undefined) continue;
+    if (r.text !== undefined || Math.abs(r.area) < SLIVER) continue;
     const p = probeOf(r);
     if (p && inside(p)) out.push({ kind: 'profile', id: `${handle.id}/${r.id}` });
   }
@@ -1348,9 +1622,11 @@ function matchRegions(
 
 /**
  * A region whose curves were edited after it was picked: some of the curves
- * Fusion lists are gone (redrawn under new IDs), so its outline no longer
- * closes. The smallest region of the sketch whose outline still runs along
- * every listed curve that is left — at least two of them — stands in for it.
+ * Fusion lists are gone (redrawn under new IDs), or they no longer close on
+ * their own (split, trimmed, filleted, moved). The region of the sketch whose
+ * outline runs along the most of the listed curves that are left — at least
+ * two of them, or the one left, and at least half — stands in for it; the
+ * smallest such region when several do.
  */
 function staleRegion(
   handle: SketchHandle,
@@ -1359,13 +1635,20 @@ function staleRegion(
   outerTags: Set<string>,
 ): GeomRef[] {
   const left = new Set([...tags.values()].map(String).filter((t) => outerTags.has(t)));
-  if (left.size < 2 || left.size === outerTags.size) return [];
-  const best = regions
-    .filter((r) => {
-      if (r.text !== undefined) return false;
-      const along = new Set(r.outer.edges.map((e) => String(tags.get(e.curve))));
-      return [...left].every((t) => along.has(t));
-    })
-    .sort((a, b) => Math.abs(a.area) - Math.abs(b.area))[0];
-  return best ? [{ kind: 'profile', id: `${handle.id}/${best.id}` }] : [];
+  if (left.size === 0) return [];
+  const need = Math.max(Math.min(2, left.size), Math.ceil(left.size / 2));
+  let best: { region: SketchHandle['regions'][number]; covered: number } | undefined;
+  for (const r of regions) {
+    if (r.text !== undefined) continue;
+    const along = new Set(r.outer.edges.map((e) => String(tags.get(e.curve))));
+    const covered = [...left].filter((t) => along.has(t)).length;
+    if (covered < need) continue;
+    if (
+      !best ||
+      covered > best.covered ||
+      (covered === best.covered && Math.abs(r.area) < Math.abs(best.region.area))
+    )
+      best = { region: r, covered };
+  }
+  return best ? [{ kind: 'profile', id: `${handle.id}/${best.region.id}` }] : [];
 }

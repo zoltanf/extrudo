@@ -11,9 +11,17 @@ import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { loadFont } from '@extrudo/sketch/text';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
 import { f3dToDesign } from './map';
 import { type F3dDesign, type F3dExtrude, type F3dSketchFeature, IDENTITY } from './model';
+
+/** A region of whole curves (each one piece of one), as the decoder gives it. */
+function region(outer: bigint[][], inner: bigint[][] = []): ProfileRegion {
+  const pieces = (loops: bigint[][]) =>
+    loops.map((loop) => loop.map((tag) => ({ tag, secondary: 0n, piece: 1, of: 1 })));
+  return { outer, inner, outerPieces: pieces(outer), innerPieces: pieces(inner) };
+}
 
 let kernel: Kernel;
 
@@ -95,13 +103,15 @@ function washer(frame = IDENTITY): F3dDesign {
     reversed: false,
     solid: true,
     start: 'profile-plane',
-    profiles: [{ id: 30, sketch: 5, regions: [{ outer: [[101n]], inner: [[102n]] }] }],
+    profiles: [{ id: 30, sketch: 5, regions: [region([[101n]], [[102n]])] }],
     faces: [],
+    participants: [],
   };
   return {
     parameters: [],
     userParameters: [parameter({ name: 'thick', expression: '0.8 mm', user: true, value: 0.08 })],
     features: [sketch, extrude],
+    bodies: [],
     problems: [],
   };
 }
@@ -273,7 +283,7 @@ describe('f3dToDesign', () => {
       },
     ];
     const extrude = f3d.features[1] as F3dExtrude;
-    extrude.profiles = [{ id: 30, sketch: 5, regions: [{ outer: [[201n, 202n]], inner: [] }] }];
+    extrude.profiles = [{ id: 30, sketch: 5, regions: [region([[201n, 202n]])] }];
     const { design } = f3dToDesign(f3d, 'Spline');
     const input = design.toJSON().features[0]?.inputs.sketch as unknown as { sketch: SketchData };
     const splines = Object.values(input.sketch.entities).filter((e) => e.type === 'spline');
@@ -290,6 +300,53 @@ describe('f3dToDesign', () => {
       prev = [x, y];
     }
     expect(await volumes(f3d)).toEqual([expect.closeTo((Math.abs(area) / 2) * 0.8, 1)]);
+  });
+
+  it("keeps an arc's side on Fusion's XZ plane, which Extrudo's frame mirrors", async () => {
+    // Fusion's XZ sketch: x along X, y along −Z, normal +Y. A 90° arc (45° to
+    // 135°, 10 mm radius) closed by its chord: the segment lies at z −7.1 to −10 mm.
+    const f3d = washer([1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1]);
+    const sketch = f3d.features[0] as F3dSketchFeature;
+    const h = Math.SQRT1_2;
+    sketch.sketch.points = [
+      { id: 70, at: [0, 0, 0], incidence: 0 },
+      { id: 71, at: [-h, h, 0], incidence: 0 },
+      { id: 72, at: [h, h, 0], incidence: 0 },
+    ];
+    sketch.sketch.lines = [
+      {
+        id: 73,
+        tag: 401n,
+        start: [-h, h, 0],
+        end: [h, h, 0],
+        startPoint: 71,
+        endPoint: 72,
+        construction: false,
+      },
+    ];
+    sketch.sketch.circulars = [
+      {
+        id: 74,
+        tag: 402n,
+        center: [0, 0, 0],
+        normal: [0, 0, 1],
+        xAxis: [1, 0, 0],
+        radius: 1,
+        startAngle: Math.PI / 4,
+        endAngle: (3 * Math.PI) / 4,
+        centerPoint: 70,
+        startPoint: 72,
+        endPoint: 71,
+        construction: false,
+      },
+    ];
+    const extrude = f3d.features[1] as F3dExtrude;
+    extrude.profiles = [{ id: 30, sketch: 5, regions: [region([[401n, 402n]])] }];
+    const [m, ...rest] = await measures(f3d);
+    expect(rest).toEqual([]);
+    expect(m?.volume).toBeCloseTo(50 * (Math.PI / 2 - 1) * 0.8, 2);
+    expect(m?.bbox.min[2]).toBeCloseTo(-10, 1);
+    expect(m?.bbox.max[2]).toBeCloseTo(-7.07, 1);
   });
 
   it('revolves a profile about an origin axis', async () => {
@@ -328,9 +385,8 @@ describe('f3dToDesign', () => {
         }),
       ],
       operation: 'new-body',
-      profiles: [
-        { id: 30, sketch: 5, regions: [{ outer: [[300n, 301n, 302n, 303n]], inner: [] }] },
-      ],
+      participants: [],
+      profiles: [{ id: 30, sketch: 5, regions: [region([[300n, 301n, 302n, 303n]])] }],
       axis: { point: [0, 0, 0], direction: [0, 1, 0] },
     };
     const { report } = f3dToDesign(f3d, 'Tube');
@@ -393,7 +449,7 @@ describe('f3dToDesign', () => {
         name: 'Extrude2',
         operation: 'cut',
         parameters: [parameter({ name: 'd5', kind: 'AlongDistance', value: 0.08 })],
-        profiles: [{ id: 31, sketch: 6, regions: [{ outer: [[401n]], inner: [] }] }],
+        profiles: [{ id: 31, sketch: 6, regions: [region([[401n]])] }],
       },
       {
         type: 'circular-pattern',

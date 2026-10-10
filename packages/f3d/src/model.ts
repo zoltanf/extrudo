@@ -7,6 +7,7 @@
 import { designSegments, type Entries, unzip } from './archive';
 import { type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
 import { F3dFormatError, Reader } from './bytes';
+import { BODY, type BodyFlags, readBody } from './decode/body';
 import {
   EDGE_OPERAND,
   EDGE_RECIPE,
@@ -40,7 +41,7 @@ import {
 } from './decode/parameters';
 import {
   BODY_LINK,
-  FEATURE_FACES_OPERAND,
+  BODY_OPERAND,
   PATTERN_COUNT,
   RECORD_REF,
   readRecordRef,
@@ -122,6 +123,8 @@ export interface F3dExtrude extends FeatureBase, ExtrudeHead {
   profiles: ProfileOperand[];
   /** Body faces it names, in reference order: the start face, the face it goes up to. */
   faces: F3dFace[];
+  /** The bodies it joins, cuts or intersects (body records); empty: none named. */
+  participants: number[];
 }
 
 /** A face an edge lies on: its tags, and what the B-rep says it is. */
@@ -155,6 +158,8 @@ export interface F3dEdgeFeature extends FeatureBase {
 export interface F3dRevolve extends FeatureBase {
   type: 'revolve';
   operation: BodyOperation;
+  /** The bodies it joins, cuts or intersects (body records); empty: none named. */
+  participants: number[];
   profiles: ProfileOperand[];
   axis?: RevolveAxis;
 }
@@ -200,10 +205,19 @@ export type F3dFeature =
   | F3dOffsetFaces
   | F3dOther;
 
+/** A body of the design: its number, whether it is shown, the feature that made it. */
+export interface F3dBody extends BodyFlags {
+  /** The body record. */
+  id: number;
+  /** The timeline feature that made it, by record. */
+  creator?: number;
+}
+
 export interface F3dDesign {
   parameters: ParameterValue[];
   userParameters: ParameterValue[];
   features: F3dFeature[];
+  bodies: F3dBody[];
   /** Records the reader could not decode, with why. */
   problems: string[];
 }
@@ -432,7 +446,14 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
           if (first) named.push(faceOf(first.tags, faces, featureOf));
         }
       }
-      features.push({ type: 'extrude', ...base, ...head, profiles, faces: named });
+      features.push({
+        type: 'extrude',
+        ...base,
+        ...head,
+        profiles,
+        faces: named,
+        participants: participantsOf(seg, scope),
+      });
     } else if (FEATURE_TYPES[type.guid] === 'Revolve') {
       const operation = tryDecode(`revolve #${id}`, () => readRevolveOperation(seg, scope));
       if (!operation) {
@@ -451,7 +472,14 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
           axis = tryDecode(`axis #${ref}`, () => readAxis(seg, refsIn(seg, f.start, f.end)));
         }
       }
-      features.push({ type: 'revolve', ...base, operation, profiles, ...(axis ? { axis } : {}) });
+      features.push({
+        type: 'revolve',
+        ...base,
+        operation,
+        profiles,
+        participants: participantsOf(seg, scope),
+        ...(axis ? { axis } : {}),
+      });
     } else if (FEATURE_TYPES[type.guid] === 'Hole') {
       const centres: Vec3[] = [];
       let plane: ModelPlane | undefined;
@@ -501,7 +529,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
           const value = inside(ref).find((r) => seg.typeOf(r)?.guid === PARAMETER_VALUE);
           if (value !== undefined)
             count ??= tryDecode(`count #${value}`, () => parameterValue.decode(seg, value));
-        } else if (t === EDGE_OPERAND || t === FEATURE_FACES_OPERAND) objects = 'faces';
+        } else if (t === EDGE_OPERAND || t === BODY_OPERAND) objects = 'faces';
       }
       features.push({
         type: 'circular-pattern',
@@ -538,10 +566,29 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     } else features.push({ type: 'other', ...base });
   }
 
+  // Bodies, and the feature that made each (from the links features keep to them).
+  const creators = new Map<number, number>();
+  for (const id of seg.idsOf(BODY_LINK)) {
+    const f = seg.frame(id);
+    const refs = refsIn(seg, f.start, f.end);
+    const at = refs.findIndex((r) => seg.typeOf(r)?.guid === BODY);
+    const body = refs[at];
+    const by = refs[at + 1];
+    if (body !== undefined && by !== undefined && !creators.has(body)) creators.set(body, by);
+  }
+  const bodies: F3dBody[] = [];
+  for (const id of seg.idsOf(BODY)) {
+    const flags = tryDecode(`body #${id}`, () => readBody(seg, id));
+    if (!flags) continue;
+    const creator = creators.get(id);
+    bodies.push({ id, ...flags, ...(creator !== undefined ? { creator } : {}) });
+  }
+
   return {
     parameters,
     userParameters: parameters.filter((p) => p.user),
     features,
+    bodies,
     problems,
   };
 }
@@ -607,6 +654,30 @@ function readTextOperand(seg: Segment, id: number): ProfileOperand {
       if (seg.typeOf(text)?.guid === SKETCH_TEXT) return { id, sketch, text };
     }
   throw new F3dFormatError(`Text profile #${id}: no text of this kind.`);
+}
+
+/**
+ * The bodies a feature's operand groups name through body operands, by body
+ * record (a body link names the body record first).
+ */
+function participantsOf(seg: Segment, scope: Scope): number[] {
+  const out: number[] = [];
+  const inside = (id: number) => {
+    const f = seg.frame(id);
+    return refsIn(seg, f.start, f.end);
+  };
+  for (const group of scope.refs) {
+    if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
+    for (const member of inside(group)) {
+      if (seg.typeOf(member)?.guid !== BODY_OPERAND) continue;
+      for (const link of inside(member)) {
+        if (seg.typeOf(link)?.guid !== BODY_LINK) continue;
+        const body = inside(link).find((r) => seg.typeOf(r)?.guid === BODY);
+        if (body !== undefined && !out.includes(body)) out.push(body);
+      }
+    }
+  }
+  return out;
 }
 
 /** The recipes an operand group's edge or face operands point to. */

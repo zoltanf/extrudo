@@ -75,10 +75,34 @@ export function readExtrudeHead(seg: Segment, scope: Scope): ExtrudeHead {
   throw new F3dFormatError(`Extrude #${scope.id}: operation block not found.`);
 }
 
+/**
+ * A stretch of a curve along a region's boundary: piece `piece` (from 1) of
+ * the `of` pieces the curve's crossings with the region's other curves cut
+ * it into, counted along the curve, as they were when the region was picked.
+ */
+export interface RegionPiece {
+  tag: bigint;
+  /** The curve's `crv_secondary_id`. */
+  secondary: bigint;
+  piece: number;
+  of: number;
+}
+
 /** One selected region of a sketch: its boundary loops as curve tags. */
 export interface ProfileRegion {
   outer: bigint[][];
   inner: bigint[][];
+  /** The same loops as the pieces of curves they run along. */
+  outerPieces: RegionPiece[][];
+  innerPieces: RegionPiece[][];
+  /** Which group of the selection it is in (from 0). */
+  group?: number;
+  /**
+   * The first region of a group that lists more: the outline of the group's
+   * other regions together (a curve can run along it twice), not a pick of
+   * its own.
+   */
+  outline?: true;
 }
 
 export interface ProfileOperand {
@@ -128,10 +152,11 @@ export function readProfileOperand(seg: Segment, id: number): ProfileOperand {
 
 /**
  * The region selection: u32 group count; per group a first region, u32 X and X
- * further regions. A region is u32 loop count and its loops; a loop is u32
- * member count, that many 40-byte curve members (u32 kind 2 or 3, u64 curve tag, then
- * zeros and incidence words) and a flag byte, 1 for the outer loop — except
- * that the record's very last loop ends without its flag.
+ * further regions (then the first is their outline). A region is u32 loop
+ * count and its loops; a loop is u32 member count, that many 40-byte curve
+ * members (u32 kind 2 or 3, u64 curve tag, u64 secondary tag, u32 direction,
+ * u32 piece, u32 pieces, 8 zero bytes) and a flag byte, 1 for the outer loop
+ * — except that the record's very last loop ends without its flag.
  */
 function readRegions(seg: Segment, id: number, operand: number): ProfileRegion[] | undefined {
   const r = seg.reader(id);
@@ -142,36 +167,55 @@ function readRegions(seg: Segment, id: number, operand: number): ProfileRegion[]
     const loops = r.u32();
     if (loops === 0 || loops > 1000)
       throw new F3dFormatError(`Profile regions #${id}: ${loops} loops.`);
-    const out: ProfileRegion = { outer: [], inner: [] };
-    const unflagged: bigint[][] = [];
+    const out: ProfileRegion = { outer: [], inner: [], outerPieces: [], innerPieces: [] };
+    const unflagged: [bigint[], RegionPiece[]][] = [];
     for (let i = 0; i < loops; i++) {
       const n = r.u32();
       if (n === 0 || n * 40 > r.remaining)
         throw new F3dFormatError(`Profile regions #${id}: bad loop.`);
       const curves: bigint[] = [];
+      const pieces: RegionPiece[] = [];
       for (let k = 0; k < n; k++) {
         const kind = r.u32();
         if (kind !== 2 && kind !== 3)
           throw new F3dFormatError(`Profile regions #${id}: member kind ${kind}.`);
-        curves.push(r.u64big());
-        r.skip(28);
+        const tag = r.u64big();
+        const secondary = r.u64big();
+        r.u32(); // direction
+        const piece = r.u32();
+        const of = r.u32();
+        r.skip(8);
+        curves.push(tag);
+        pieces.push({ tag, secondary, piece, of });
       }
-      if (r.done) unflagged.push(curves);
-      else if (r.bool()) out.outer.push(curves);
-      else out.inner.push(curves);
+      if (r.done) unflagged.push([curves, pieces]);
+      else if (r.bool()) {
+        out.outer.push(curves);
+        out.outerPieces.push(pieces);
+      } else {
+        out.inner.push(curves);
+        out.innerPieces.push(pieces);
+      }
     }
     // The last loop of the record carries no flag: it is the outer one when
     // the region has no other.
-    for (const c of unflagged) (out.outer.length === 0 ? out.outer : out.inner).push(c);
+    for (const [c, p] of unflagged) {
+      const outer = out.outer.length === 0;
+      (outer ? out.outer : out.inner).push(c);
+      (outer ? out.outerPieces : out.innerPieces).push(p);
+    }
     return out;
   };
   const regions: ProfileRegion[] = [];
   const groups = r.u32();
   for (let g = 0; g < groups && !r.done; g++) {
-    regions.push(region());
+    const first = region();
+    first.group = g;
+    regions.push(first);
     if (r.done) break;
     const more = r.u32();
-    for (let k = 0; k < more && !r.done; k++) regions.push(region());
+    if (more > 0) first.outline = true;
+    for (let k = 0; k < more && !r.done; k++) regions.push({ ...region(), group: g });
   }
   return regions;
 }

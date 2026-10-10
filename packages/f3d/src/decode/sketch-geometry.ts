@@ -120,6 +120,8 @@ export interface SketchLine {
   id: number;
   /** Persistent curve id (`crv_primary_id`). */
   tag?: bigint;
+  /** Which piece of a curve split after it was drawn (`crv_secondary_id`; 0: never split). */
+  secondary?: bigint;
   start: Vec3;
   end: Vec3;
   startPoint: number;
@@ -147,9 +149,11 @@ export const sketchLine: RecordDecoder<SketchLine> = {
       const construction = constructionFlag(r, 'line');
       r.pos = r.end; // flags and the owner backlink
       const tag = props.get('crv_primary_id');
+      const secondary = props.get('crv_secondary_id');
       return {
         id,
         ...(tag !== undefined ? { tag } : {}),
+        ...(secondary !== undefined ? { secondary } : {}),
         start,
         end: [start[0] + d[0], start[1] + d[1], start[2] + d[2]],
         startPoint,
@@ -182,6 +186,8 @@ export function refAhead(seg: Segment, r: Reader): number | undefined {
 export interface SketchCircular {
   id: number;
   tag?: bigint;
+  /** Which piece of a curve split after it was drawn (`crv_secondary_id`; 0: never split). */
+  secondary?: bigint;
   center: Vec3;
   /** The plane normal and the zero-angle direction. */
   normal: Vec3;
@@ -224,7 +230,9 @@ export const sketchCircular: RecordDecoder<SketchCircular> = {
         construction: false,
       };
       const tag = props.get('crv_primary_id');
+      const secondary = props.get('crv_secondary_id');
       if (tag !== undefined) out.tag = tag;
+      if (secondary !== undefined) out.secondary = secondary;
       // An arc names its end and start points after the centre.
       if (isPointRef(seg, r)) {
         out.endPoint = r.localRef();
@@ -261,6 +269,8 @@ export const pointIncidence: RecordDecoder<PointIncidence> = {
 export interface SketchSpline {
   id: number;
   tag?: bigint;
+  /** Which piece of a curve split after it was drawn (`crv_secondary_id`; 0: never split). */
+  secondary?: bigint;
   degree: number;
   /** The knot vector as stored (not normalised). */
   knots: number[];
@@ -311,9 +321,11 @@ export const sketchSpline: RecordDecoder<SketchSpline> = {
         continue;
       }
       const tag = props.get('crv_primary_id');
+      const secondary = props.get('crv_secondary_id');
       return {
         id,
         ...(tag !== undefined ? { tag } : {}),
+        ...(secondary !== undefined ? { secondary } : {}),
         ...curve,
         startPoint,
         endPoint,
@@ -349,9 +361,11 @@ export const sketchConic: RecordDecoder<SketchSpline> = {
       if (points.length !== 3 || shoulderPoint === undefined)
         throw new F3dFormatError(`Sketch conic #${id}: ${points.length} point references.`);
       const tag = props.get('crv_primary_id');
+      const secondary = props.get('crv_secondary_id');
       return {
         id,
         ...(tag !== undefined ? { tag } : {}),
+        ...(secondary !== undefined ? { secondary } : {}),
         ...curve,
         startPoint,
         endPoint,

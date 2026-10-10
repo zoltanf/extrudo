@@ -89,10 +89,12 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `A085449A…` | Pattern count | refers to the count's parameter value (`countU`) |
 | `90055C05…` | Record by number | 2 zero bytes, u64 record: an origin axis, or the feature a pattern repeats |
 | `D26351F0…` | Body link | wstr body GUID; refs to the body (`D3937028…`) and the feature that made it. In a pattern's geometry operand beside a `90055C05…`, the body that feature acted on |
+| `D3937028…` | Body | GUID and appearance strings, then u32 index (its number, "Body3"), u32 n, n bytes, u32, u8 1, u8 light bulb (1 shown, 0 hidden). Newer files put a −1.0 double just before the index; class version 16 starts it at payload offset 10. Fusion's STEP export leaves hidden bodies out |
+| `9716F783…` | Body operand | refers to a body link. In an extrude's or revolve's operand group, one per body it joins, cuts or intersects; in a pattern's, one per body it repeats |
 | `F2A7590D…` | Hole placement | u32 8, 6 f64 (the first three zero wherever seen, the last three the face plane's normal), …; its geometry operand holds the face's plane (`CC54ECAD…`) |
-| `2CA5A1CD…` | Operand group | one per fillet/chamfer edge set; members are edge operands |
+| `2CA5A1CD…` | Operand group | one per fillet/chamfer edge set; members are edge operands (or face or body operands, for other features) |
 | `5662F619…` | Edge or face operand | refers to its recipe; an extrude's face operands name its start face and the face it goes up to |
-| `7ACC2A03…` | Edge or face recipe | u32 1, u32 3, u32 n faces; per face u32 tags; per tag str8 token, u32 0, u32 k, k × i32 operation id, u32 0; then `edge_recipe_data` and a program (not read). An edge lists its two faces first, a face itself; the rest are neighbours |
+| `7ACC2A03…` | Edge or face recipe | u32 1, u32 3, u32 n faces; per face u32 tags; per tag str8 token, u32 0, u32 k, k × i32 operation id, u32 0; then `edge_recipe_data` and a program (not read). An edge lists its two faces first, a face itself; the rest are neighbours. A fillet's or chamfer's face has the token k of the k-th edge in that feature's list; an extrude's start cap 1, end cap 2, sides from 3 |
 
 An extrude's extent shows in the parameters it owns: `AlongDistance` for a
 distance, `Side1Offset` (and a face operand) for up to an object, none for
@@ -121,17 +123,31 @@ and for a renamed feature u32 0 and wstr name.
 ref operand, u32 1?, u32 groups
 group: region, u32 X, X × region
 region: u32 loops, loops × loop
-loop: u32 n, n × member (u32 kind 2 or 3, u64 curve tag, 4 × u32, 3 × u32 incidence, 2 × u32), u8 outer
+loop: u32 n, n × member, u8 outer
+member: u32 kind 2 or 3, u64 crv_primary_id, u64 crv_secondary_id,
+        u32 direction, u32 piece, u32 pieces, 8 zero bytes
 ```
 
-The record's very last loop has no `outer` byte. A region's curves are
-listed as they were when it was picked — every curve along its boundary,
-overlapping collinear ones included — and Fusion finds the region again
-after edits. This package rebuilds the region from those curves and takes
-every region of the current sketch inside it. Where curves were redrawn
-after the pick, some of the listed curve tags are gone from the sketch and
-the outline does not close; then the smallest region whose outline runs along
-every listed curve still there stands in for it.
+The record's very last loop has no `outer` byte. When a group lists more
+regions (X > 0), its first region is the outline of the others together; its
+loop can run along a piece twice (a slit).
+
+A member is a piece of a curve: piece k of the n pieces the curve is cut into
+by the **other curves of the same region** (all its loops) — not by the whole
+sketch, so one curve can be piece 1 of 1 in one region and 2 of 3 in another.
+An open curve's pieces count from its start; a closed curve's by where they
+end, in (0, 2π]: piece 1 ends at the first cut. Collinear curves overlapping
+along the boundary are each listed. Members are not in boundary order. A
+curve trimmed after it was drawn keeps its primary id; its pieces get new
+secondary ids.
+
+This package cuts the decoded curves the same way (`regions.ts`), checks that
+the pieces close, and takes every region of the Extrudo sketch inside them by
+the even-odd rule. Where the sketch changed after the pick (curves gone, new
+secondary ids, other counts), it falls back to the curves alone: the region
+those curves close, every region inside it; failing that, the region whose
+outline runs along the most listed curves still there. A region whose curves
+are all gone is left out.
 
 ### Construction curves
 
