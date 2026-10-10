@@ -127,3 +127,90 @@ test('a joint is made, renamed, undone, and its lost frame fixed', async ({ page
   await expect(hinge).toHaveAttribute('data-joint-status', 'ok');
   await expect(chip(page, 'Pin')).toBeVisible();
 });
+
+// P6-05 J2 (ADR-0081 §4, §6): the pose is view state, drawn through a matrix.
+test('a joint is posed in the view, and any tool puts it back', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openHinge(page);
+  const viewport = viewportOf(page);
+  const hinge = componentLeaf(page, 'Leaf').locator('[data-joint]');
+  await expect(viewport).not.toHaveAttribute('data-joint-pose', /.+/);
+  await expect(viewport).not.toHaveAttribute('data-posed-bodies', /.+/);
+  const at = await turnView(page, 'Shift+1');
+  const knuckle = at([...LEAF_KNUCKLE]);
+  await expect
+    .poll(async () => {
+      await page.mouse.move(knuckle.x, knuckle.y);
+      return (await viewport.getAttribute('data-model-hover')) ?? '';
+    })
+    .toMatch(/^face:/);
+  const leafFace = (await viewport.getAttribute('data-model-hover')) ?? '';
+
+  await hinge.click({ button: 'right' });
+  await menuItem(page, 'Pose').click();
+  const panel = page.getByRole('region', { name: 'Joint', exact: true });
+  await expect(panel).toBeVisible();
+  const angle = panel.getByRole('textbox', { name: 'Angle', exact: true });
+
+  // 90 turns the leaf about the pin: its drawn box stands up, the kernel's bodies stay.
+  const bodies = await viewport.getAttribute('data-bodies');
+  await angle.fill('90');
+  await angle.blur();
+  await expect(viewport).toHaveAttribute('data-joint-pose', 'Hinge=90');
+  await expect(viewport.locator('[data-pose-bar]')).toContainText('the design is unchanged');
+  const posed = (await viewport.getAttribute('data-posed-bodies')) ?? '';
+  const [min, max] = (posed.split(';')[0]?.split(':')[1] ?? '')
+    .split('..')
+    .map((p) => p.split(',').map(Number));
+  expect((max?.[2] ?? 0) - (min?.[2] ?? 0)).toBeGreaterThan(15);
+  expect(await viewport.getAttribute('data-bodies')).toBe(bodies);
+
+  // A posed body takes no pick: the knuckle's own place gives its face no more.
+  await page.mouse.move(knuckle.x + 3, knuckle.y);
+  await page.mouse.move(knuckle.x, knuckle.y);
+  await page.waitForTimeout(200);
+  expect((await viewport.getAttribute('data-model-hover')) ?? '').not.toBe(leafFace);
+
+  // The handle turns it: drag it a little each way until the field follows.
+  await angle.fill('45');
+  await angle.blur();
+  await expect(viewport).toHaveAttribute('data-joint-pose', 'Hinge=45');
+  const handle = viewport.locator('[data-joint-handle]');
+  await expect(handle).toBeVisible();
+  let dragged = false;
+  for (const [dx, dy] of [
+    [40, 0],
+    [0, 40],
+    [-40, 0],
+    [0, -40],
+  ] as const) {
+    const cx = Number(await handle.getAttribute('cx'));
+    const cy = Number(await handle.getAttribute('cy'));
+    const box = await viewport.boundingBox();
+    const x = (box?.x ?? 0) + cx;
+    const y = (box?.y ?? 0) + cy;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let i = 1; i <= 6; i++) await page.mouse.move(x + (dx * i) / 6, y + (dy * i) / 6);
+    await page.mouse.up();
+    if ((await viewport.getAttribute('data-joint-pose')) !== 'Hinge=45') {
+      dragged = true;
+      break;
+    }
+  }
+  expect(dragged).toBe(true);
+  await expect(angle).not.toHaveValue(/^45/);
+
+  // Past the fixture's 90°: held to the limit and said so.
+  await angle.fill('120');
+  await angle.blur();
+  await expect(panel.locator('[data-pose-limited]')).toHaveText('Limited to 90°');
+  await expect(viewport).toHaveAttribute('data-joint-pose', 'Hinge=90');
+
+  // Starting a tool (Extrude) puts everything back.
+  await blur(page);
+  await page.keyboard.press('e');
+  await expect(viewport).not.toHaveAttribute('data-joint-pose', /.+/);
+  await expect(viewport).not.toHaveAttribute('data-posed-bodies', /.+/);
+  await expect(panel).toBeHidden();
+});

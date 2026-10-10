@@ -1368,6 +1368,9 @@ function JointLeaf({
       >
         Rename
       </MenuItem>
+      {actions.pose && joint.type !== 'rigid' && !suppressed && (
+        <MenuItem onSelect={() => actions.pose?.(joint.id)}>Pose…</MenuItem>
+      )}
       <MenuItem onSelect={() => actions.setSuppressed([joint.id], !suppressed)}>
         {suppressed ? 'Unsuppress' : 'Suppress'}
       </MenuItem>

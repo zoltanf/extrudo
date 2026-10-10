@@ -11,6 +11,7 @@ import {
   worldToSketch,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
+import type { Matrix12 } from '@extrudo/kernel/matrix';
 import type { ModelSnap } from '@extrudo/sketch/inference';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import {
@@ -102,6 +103,7 @@ import {
   type ScreenPointer,
   usePointerInput,
 } from './pointer';
+import { pickableBodies, posedSummary } from './posedBodies';
 import { createRenderMeter } from './renderMeter';
 import { SectionBoxWire } from './SectionBoxWire';
 import { Sketches } from './Sketches';
@@ -136,6 +138,14 @@ export interface ViewportProps {
   joints?: string | undefined;
   /** Joint axes to draw (P6-05 J1): the hovered joint row's and the Joint dialog's. */
   jointAxes?: readonly JointDrawing[];
+  /**
+   * Bodies drawn through a joint's pose (P6-05 J2): not pickable, not in Fit.
+   * `jointPose` is the pose's summary for tests (`data-joint-pose`, "Hinge=72").
+   */
+  posed?: Readonly<Record<BodyId, Matrix12>>;
+  jointPose?: string | undefined;
+  /** The bar at the top while a joint is posed: what it says and its Reset. */
+  poseBar?: { text: string; onReset(): void };
   /** The active and the isolated component's names (P6-05 S4): `data-active-component`, `data-isolated`. */
   activeComponent?: string | undefined;
   isolatedComponent?: string | undefined;
@@ -395,6 +405,9 @@ export function Viewport({
   ghosts = NO_GHOSTS,
   joints,
   jointAxes = NO_JOINT_AXES,
+  posed,
+  jointPose,
+  poseBar,
   canvases = NO_CANVASES,
   calibration = NO_CALIBRATION,
   viewMenu,
@@ -475,8 +488,8 @@ export function Viewport({
     [construction, preview?.construction],
   );
   const modelScene = useMemo(
-    () => ({ bodies, meta, sketches, construction, clip: sectionClip }),
-    [bodies, meta, sketches, construction, sectionClip],
+    () => ({ bodies, meta, sketches, construction, clip: sectionClip, posed }),
+    [bodies, meta, sketches, construction, sectionClip, posed],
   );
   // Auto-project (P6-07): the body edge or vertex under the pointer while a
   // tool runs. Off, the view offers nothing and the tool never sees one.
@@ -530,6 +543,7 @@ export function Viewport({
   const bodiesKey = useMemo(() => bodiesSummary(bodies, meta), [bodies, meta]);
   const appearanceKey = useMemo(() => bodyAppearanceSummary(bodies, meta), [bodies, meta]);
   const ghostKey = useMemo(() => ghostBodiesSummary(bodies, meta), [bodies, meta]);
+  const posedKey = useMemo(() => posedSummary(bodies, meta, posed), [bodies, meta, posed]);
   // Silhouette segments drawn per body (wireframe and hidden edges), summed into
   // `data-silhouettes` for tests; written straight to the element, it changes with the camera.
   const silhouettes = useMemo(() => new Map<BodyId, number>(), []);
@@ -591,6 +605,8 @@ export function Viewport({
       data-ghost-bodies={ghostKey}
       data-components={components}
       data-joints={joints}
+      data-joint-pose={jointPose}
+      data-posed-bodies={posedKey}
       data-active-component={activeComponent}
       data-isolated={isolatedComponent}
       data-construction={constructionSummary(drawnConstruction)}
@@ -608,6 +624,23 @@ export function Viewport({
       className="relative isolate min-w-0 flex-1 overflow-hidden"
       style={{ background: 'var(--x-viewport-glow)' }}
     >
+      {poseBar && (
+        <div
+          role="status"
+          data-pose-bar
+          className="pointer-events-auto absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-control border border-line bg-raised px-3 py-1 text-sm shadow"
+          style={{ top: isolatedComponent !== undefined ? 44 : 8 }}
+        >
+          <span>{poseBar.text}</span>
+          <button
+            type="button"
+            onClick={poseBar.onReset}
+            className="rounded-input px-2 py-0.5 text-accent hover:bg-accent-soft focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            Reset
+          </button>
+        </div>
+      )}
       {isolatedComponent !== undefined && (
         <div
           role="status"
@@ -663,6 +696,7 @@ export function Viewport({
               calibration={calibration}
               ghosts={ghosts}
               jointAxes={jointAxes}
+              posed={posed}
               sectionClip={sectionClip}
               sectionBox={sectionBox?.on ? sectionBox.box : undefined}
               overhang={overhang?.view}
@@ -807,6 +841,7 @@ function Scene({
   construction,
   ghosts,
   jointAxes,
+  posed,
   canvases,
   calibration,
   sectionClip,
@@ -829,6 +864,7 @@ function Scene({
   construction: readonly ConstructionDrawing[];
   ghosts: readonly Ghost[];
   jointAxes: readonly JointDrawing[];
+  posed: Readonly<Record<BodyId, Matrix12>> | undefined;
   canvases: readonly CanvasDrawing[];
   calibration: readonly (readonly number[])[];
   sectionClip: readonly SectionClip[] | undefined;
@@ -955,6 +991,7 @@ function Scene({
         selection={selection}
         onBounds={setBodyBounds}
         onSilhouettes={onSilhouettes}
+        {...(posed && { posed })}
         {...(overhang && { overhang: { view: overhang, color: colors.overhang } })}
         {...(thin && { thickness: { thin, color: colors.thickness } })}
         {...(sectionClip && {
@@ -967,6 +1004,7 @@ function Scene({
         meta={meta}
         color={colors.ghostBody}
         edge={colors.edge}
+        {...(posed && { posed })}
         {...(sectionClip && { section: { clips: sectionClip } })}
       />
       {/* Canvases lie on the model (P4-06): under the bodies and the sketches. */}
@@ -1263,6 +1301,8 @@ interface ModelScene {
   construction: readonly ConstructionDrawing[];
   /** The section's clipping plane while it is on (P3-09). */
   clip?: readonly SectionClip[] | undefined;
+  /** Bodies drawn posed (P6-05 J2): they are not picked while posed. */
+  posed?: Readonly<Record<BodyId, Matrix12>> | undefined;
 }
 
 /** "Select other…": the stacked items under the pointer, and where the menu opens (client px). */
@@ -1430,9 +1470,7 @@ export function originAxes(origin: Record<OriginItem, boolean>, size: number): P
 /** The pick scene: visible bodies, drawn sketches with their shaded profiles. */
 function pickScene(scene: ModelScene, style: VisualStyle): PickScene {
   return {
-    bodies: (Object.entries(scene.bodies) as [BodyId, BodyMesh][])
-      .filter(([id]) => scene.meta[id]?.visible ?? true)
-      .map(([id, mesh]) => ({ id, mesh })),
+    bodies: pickableBodies(scene.bodies, scene.meta, scene.posed),
     sketches: scene.sketches
       .filter((s) => !s.active)
       .map((s) => ({

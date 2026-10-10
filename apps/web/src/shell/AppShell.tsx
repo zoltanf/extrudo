@@ -5,6 +5,7 @@ import {
   CommandError,
   type ComponentId,
   type DocumentStore,
+  evaluateParameters,
   type Feature,
   type FeatureId,
   formatQuantity,
@@ -14,6 +15,7 @@ import {
   type JointId,
   type JointReport,
   type JointType,
+  jointRange,
   LENGTH,
   type ModelStore,
   pluginFileOf,
@@ -24,6 +26,7 @@ import {
   type ViewId,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
+import type { Matrix12 } from '@extrudo/kernel/matrix';
 import {
   type CSSProperties,
   lazy,
@@ -66,10 +69,13 @@ import { PRESS_PULL, PRESS_PULL_PROMPT, pressPullTarget } from '../features/pres
 import { cornersStore } from '../features/primitiveCorners';
 import { type FeatureDialogs, featureDialogs, specForCommand } from '../features/registry';
 import { useDialogItems, useFeatureDialogs } from '../features/useFeatureDialogs';
+import { followJointPose } from '../joints/followPose';
 import { JointDialog } from '../joints/JointDialog';
+import { JointPanel } from '../joints/JointPanel';
 import { createJointActions } from '../joints/jointActions';
 import type { JointDialogKernel } from '../joints/jointController';
 import { type JointRow, jointRows, jointsSummary } from '../joints/jointRows';
+import { clampPose, posedBodies, poseMatrix } from '../joints/pose';
 import { useJointDialog } from '../joints/useJointDialog';
 import { MacroDialog } from '../macro/MacroDialog';
 import {
@@ -166,10 +172,12 @@ import { textDraftStore } from '../sketch/textDraft';
 import type { ToolHost } from '../sketch/tools/host';
 import { isPickingTool, isSketchTool } from '../sketch/tools/ids';
 import { IMPORT_DRAWING_TOOL } from '../sketch/tools/importDrawing';
+import { boundsOf } from '../viewport/bodyGeometry';
 import { canvasDrawings } from '../viewport/canvasGeometry';
 import { forgetCanvasImages } from '../viewport/canvasImages';
 import type { ConstructionDrawing } from '../viewport/constructionGeometry';
 import { ghostsOf } from '../viewport/ghostGeometry';
+import { JointHandle } from '../viewport/JointHandle';
 import type { JointDrawing } from '../viewport/jointGeometry';
 import { ModelProgress, useRecomputeFinished } from '../viewport/ModelProgress';
 import { namedViewSaveStore } from '../viewport/namedViewSave';
@@ -722,9 +730,28 @@ export function AppShell({
     componentOf: componentOfBody,
     notify,
   });
+  // The joint pose (P6-05 J2, ADR-0081 §4): which joint's panel is open; the pose itself is
+  // `viewport.jointPose`, view state that any tool, dialog or sketch clears.
+  const [poseJointId, setPoseJointId] = useState<JointId>();
+  const openPose = useCallback(
+    (id: JointId) => {
+      jointDialog?.cancel();
+      dialog?.cancel();
+      setPoseJointId(id);
+      viewport.getState().setJointPose({ joint: id, value: 0 });
+    },
+    [jointDialog, dialog, viewport],
+  );
+  const closePose = useCallback(() => {
+    setPoseJointId(undefined);
+    viewport.getState().setJointPose(undefined);
+  }, [viewport]);
+  useEffect(() => followJointPose(store, model, viewport), [store, model, viewport]);
   const jointActions = useMemo(
-    () => jointDialog && createJointActions({ store, model, dialog: jointDialog }, notify),
-    [store, model, jointDialog, notify],
+    () =>
+      jointDialog &&
+      createJointActions({ store, model, dialog: jointDialog, pose: openPose }, notify),
+    [store, model, jointDialog, notify, openPose],
   );
   const jointReports = useStore(model, (s) => s.joints);
   const [hoveredJoint, setHoveredJoint] = useState<JointId>();
@@ -732,6 +759,21 @@ export function AppShell({
     (component: ComponentId): JointRow[] =>
       jointRows(doc, component, jointReports, componentOfBody),
     [doc, jointReports, componentOfBody],
+  );
+  // Ctrl+K "Pose Joint": the hovered joint row's, else the only revolute or slider joint.
+  const poseCommand = useMemo(
+    () => ({
+      run() {
+        const posable = (doc.joints ?? []).filter((j) => j.type !== 'rigid' && !j.suppressed);
+        const hovered = posable.find((j) => j.id === hoveredJoint);
+        const only = posable.length === 1 ? posable[0] : undefined;
+        const joint = hovered ?? only;
+        if (joint) openPose(joint.id);
+        else if (posable.length === 0) notify('info', 'Make a revolute or slider joint first.');
+        else notify('info', "Choose Pose… on a joint's row in the browser.");
+      },
+    }),
+    [doc.joints, hoveredJoint, openPose, notify],
   );
   const placementActions = useMemo(
     () =>
@@ -1088,6 +1130,7 @@ export function AppShell({
         docs: { open: (page: DocsPage) => platform.openDocs(docsPath(page)) },
         macro: { recording: recording !== undefined },
         componentCount: doc.components?.length ?? 0,
+        pose: poseCommand,
         ...(m === 'model' && {
           components: {
             ...(selectedComponent !== undefined &&
@@ -1162,6 +1205,7 @@ export function AppShell({
       markingStyle.toggle,
       platform,
       doc.components?.length,
+      poseCommand,
     ],
   );
   const commands = useMemo(() => commandBuilder(mode, false), [commandBuilder, mode]);
@@ -1795,6 +1839,60 @@ export function AppShell({
       jointOpen,
     ],
   );
+  // Posing (P6-05 J2, ADR-0081 §4): any tool, dialog or sketch puts the joint back, so nothing
+  // is ever modelled against a posed body; a joint that goes away closes its panel.
+  useEffect(() => {
+    if (activeTool !== undefined || dialogOpen || jointOpen || mode === 'sketch') closePose();
+  }, [activeTool, dialogOpen, jointOpen, mode, closePose]);
+  useEffect(() => {
+    if (poseJointId && !doc.joints?.some((j) => j.id === poseJointId)) closePose();
+  }, [doc.joints, poseJointId, closePose]);
+  const jointPose = useStore(viewport, (s) => s.jointPose);
+  const poseJoint = poseJointId ? doc.joints?.find((j) => j.id === poseJointId) : undefined;
+  const poseReport = poseJoint ? jointReports[poseJoint.id] : undefined;
+  const poseRange = useMemo(() => {
+    if (!poseJoint || poseJoint.type === 'rigid') return undefined;
+    const evaluation = evaluateParameters(doc);
+    const unit = poseJoint.type === 'slider' ? 'length' : 'angle';
+    const range = jointRange(poseJoint, (input) => {
+      const r = evaluation.evaluate(input.expr, unit);
+      return r.ok ? r.value : Number.NaN;
+    });
+    return range && Number.isFinite(range.min) && Number.isFinite(range.max) ? range : undefined;
+  }, [doc, poseJoint]);
+  const posing = useMemo(() => {
+    if (!jointPose || jointPose.value === 0) return undefined;
+    const joint = doc.joints?.find((j) => j.id === jointPose.joint);
+    const report = jointReports[jointPose.joint];
+    if (!joint || joint.suppressed || report?.status !== 'ok') return undefined;
+    const matrix = poseMatrix(report, joint, jointPose.value);
+    const members = componentList.map((r) => ({
+      id: r.component.id,
+      bodies: r.bodies.map((b) => b.id),
+    }));
+    const moving = posedBodies(doc, joint, members).filter((id) => id in shownBodies);
+    if (moving.length === 0) return undefined;
+    const value = Number(jointPose.value.toFixed(2));
+    const mover = doc.components?.find((c) => c.id === joint.a.component)?.name ?? joint.name;
+    return {
+      matrices: Object.fromEntries(moving.map((id) => [id, matrix])) as Record<BodyId, Matrix12>,
+      summary: `${joint.name.replace(/\s+/g, '_')}=${value}`,
+      text: `Posed: ${mover} at ${value}${joint.type === 'slider' ? ' mm' : '°'} — the design is unchanged.`,
+    };
+  }, [jointPose, doc, jointReports, componentList, shownBodies]);
+  // The handle stands at the moving side's box centre, as built.
+  const poseCentre = useMemo(() => {
+    if (!poseJoint || poseJoint.type === 'rigid' || !poseReport?.axis) return undefined;
+    const members = componentList.map((r) => ({
+      id: r.component.id,
+      bodies: r.bodies.map((b) => b.id),
+    }));
+    const meshes = posedBodies(doc, poseJoint, members).flatMap((id) => {
+      const mesh = shownBodies[id];
+      return mesh ? [mesh] : [];
+    });
+    return boundsOf(meshes)?.center;
+  }, [poseJoint, poseReport?.axis, doc, componentList, shownBodies]);
   // The axes the view draws (P6-05): the hovered joint row's and the open Joint dialog's.
   const jointAxes = useMemo(() => {
     const shown: JointDrawing[] = [];
@@ -2180,6 +2278,15 @@ export function AppShell({
               components={componentsSummary(componentList)}
               joints={jointsSummary(doc, jointReports, componentOfBody)}
               jointAxes={jointAxes}
+              {...(posing && {
+                posed: posing.matrices,
+                jointPose: posing.summary,
+                poseBar: {
+                  text: posing.text,
+                  onReset: () =>
+                    viewport.getState().setJointPose(jointPose && { ...jointPose, value: 0 }),
+                },
+              })}
               activeComponent={doc.components?.find((c) => c.id === activeComponent)?.name}
               isolatedComponent={doc.components?.find((c) => c.id === isolatedComponent)?.name}
               onExitIsolation={() => session.getState().isolateComponent(undefined)}
@@ -2215,6 +2322,21 @@ export function AppShell({
                   viewport={viewport}
                   settings={doc.settings}
                   bodies={shownBodies}
+                />
+              )}
+              {poseJoint && poseReport?.status === 'ok' && poseCentre && jointPose && (
+                <JointHandle
+                  viewport={viewport}
+                  joint={poseJoint}
+                  report={poseReport}
+                  centre={poseCentre}
+                  value={jointPose.value}
+                  onChange={(value) =>
+                    viewport.getState().setJointPose({
+                      joint: poseJoint.id,
+                      value: clampPose(poseJoint, poseRange, value),
+                    })
+                  }
                 />
               )}
               {thickness.spot && (
@@ -2316,6 +2438,17 @@ export function AppShell({
         )}
         {dialog && <FeatureDialog controller={dialog} settings={doc.settings} />}
         {jointDialog && <JointDialog controller={jointDialog} doc={doc} />}
+        {poseJoint && !jointOpen && (
+          <JointPanel
+            doc={doc}
+            joint={poseJoint}
+            report={poseReport}
+            range={poseRange}
+            value={jointPose?.joint === poseJoint.id ? jointPose.value : 0}
+            onPose={(value) => viewport.getState().setJointPose({ joint: poseJoint.id, value })}
+            onClose={closePose}
+          />
+        )}
         {sectioning && (
           <SectionPanel
             tool={section}

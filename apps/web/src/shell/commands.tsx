@@ -105,6 +105,8 @@ export interface CommandContext {
   repeat?: { id: string };
   /** How many components the design has (P6-05): a joint needs two. */
   componentCount?: number;
+  /** Opens the Joint panel on a joint (P6-05 J2): the hovered row's, else the only one. */
+  pose?: { run(): void };
   /** Macro recording (P5-05): whether one runs; Record and Stop show accordingly. */
   macro?: { recording: boolean };
   /**
@@ -394,6 +396,12 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
       icon: icon(Settings),
       inFields: true,
       keywords: 'Panels settings preferences options theme density material units mouse navigation',
+    });
+  }
+  if (ctx.pose && ctx.mode === 'model' && (ctx.componentCount ?? 0) >= 2) {
+    plain('poseJoint', 'Pose Joint', 'Solid › Component', ctx.pose.run, {
+      icon: icon(Circle),
+      keywords: 'Solid component joint pose move swing slide preview hinge slider revolute',
     });
   }
   if (ctx.markingMenu) {

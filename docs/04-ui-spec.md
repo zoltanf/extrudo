@@ -652,6 +652,24 @@ sketch (P4-12; Offset Plane on the model); Shift+S is Section
 Analysis (P3-09); Q is Press/Pull (P3-08) and J the Joint dialog (P6-05,
 ADR-0081 §4).
 
+### 5.0 Posing a joint (P6-05 J2, ADR-0081 §4, §6)
+
+A joint row's **Pose…** (or Ctrl+K "Pose Joint": the hovered row's joint, else the
+only revolute or slider one) opens the **Joint** panel on the right: a slider and
+an expression field of the same name, "Angle" (degrees, a whole turn −180…180
+without limits) or "Travel" (mm, needs both limits), Reset and Done. A value
+typed past a limit is held to it and the panel says "Limited to 90°". A joint
+whose frames disagree, or are lost, is not posed: the panel shows the joint's
+own message. While the panel is open the view has a **handle**: an arc about
+the axis (revolute) or an arrow along the direction (slider) at the moving
+side's box centre; dragging it poses the joint, snapping to 5° or 1 mm unless
+Shift is held. A bar at the view's top centre says "Posed: Leaf at 72° — the
+design is unchanged." with Reset. The pose is **view state**: not saved, not
+undoable, recomputes nothing; the moving components (and what rigid joints
+carry with them) are drawn through the pose's matrix, are **not pickable** while
+posed, take no section cap, and Fit ignores the pose. Starting any tool, dialog
+or sketch, closing the panel, or the joint going away puts everything back.
+
 ### 5.1 Settings (ADR-0082)
 
 Ctrl+, opens the Settings dialog from anywhere (the gear's first item, Ctrl+K

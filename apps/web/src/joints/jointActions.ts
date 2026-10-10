@@ -26,15 +26,22 @@ export interface JointActions {
   rename(id: JointId, name: string): boolean;
   setSuppressed(ids: readonly JointId[], suppressed: boolean): void;
   remove(ids: readonly JointId[]): void;
+  /** Opens the Joint panel to pose a joint (P6-05 J2); absent where there is no view. */
+  pose?(id: JointId): void;
   /** Stores what the kernel guessed for each guessed frame, so it resolves exactly again. */
   keepClosestMatch(id: JointId): void;
 }
 
 export function createJointActions(
-  stores: { store: DocumentStore; model: ModelStore<unknown>; dialog: JointDialog },
+  stores: {
+    store: DocumentStore;
+    model: ModelStore<unknown>;
+    dialog: JointDialog;
+    pose?: (id: JointId) => void;
+  },
   notify: (tone: 'info' | 'error', text: string) => void,
 ): JointActions {
-  const { store, model, dialog } = stores;
+  const { store, model, dialog, pose } = stores;
   const run = (command: Command<unknown>): boolean => {
     try {
       store.getState().dispatch(command);
@@ -58,6 +65,7 @@ export function createJointActions(
     edit(id, options) {
       dialog.edit(id, options);
     },
+    ...(pose && { pose }),
     rename(id, name) {
       const joint = jointOf(id);
       if (!joint) return false;

@@ -287,3 +287,24 @@ describe('gridStep', () => {
     expect(shownOrigin(all, true)).toBe(all);
   });
 });
+
+describe('joint pose (P6-05 J2)', () => {
+  it('is view state: set, replaced and cleared', () => {
+    const { store } = setup();
+    expect(store.getState().jointPose).toBeUndefined();
+    store.getState().setJointPose({ joint: 'j1' as never, value: 45 });
+    expect(store.getState().jointPose).toEqual({ joint: 'j1', value: 45 });
+    const same = store.getState().jointPose;
+    store.getState().setJointPose({ joint: 'j1' as never, value: 45 });
+    expect(store.getState().jointPose).toBe(same);
+    store.getState().setJointPose(undefined);
+    expect(store.getState().jointPose).toBeUndefined();
+  });
+
+  it('is not part of the saved preferences', () => {
+    const { store, preferences } = setup();
+    store.getState().setJointPose({ joint: 'j1' as never, value: 45 });
+    store.getState().setGrid(false);
+    expect(JSON.stringify(preferences.get('viewport', {}))).not.toContain('jointPose');
+  });
+});
