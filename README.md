@@ -5,7 +5,7 @@
   </picture>
 </p>
 
-<h1 align="center">Extrudo</h1>
+<h1 align="center">Extrudo <a href="https://extrudo.org">extrudo.org</a></h1>
 <p align="center">
   <a href="https://extrudo.org">extrudo.org</a>
   Parametric CAD for 3D printing, in your browser. Free and open source.
