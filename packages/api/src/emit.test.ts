@@ -149,6 +149,7 @@ function canonical(doc: ExtrudoDocument, map: ReadonlyMap<string, string>): unkn
         min: joint.min?.expr ?? null,
         max: joint.max?.expr ?? null,
         flip: joint.flip ?? false,
+        suppressed: joint.suppressed ?? false,
       }))
       .sort((a, b) => a.name.localeCompare(b.name)),
   };
@@ -413,6 +414,28 @@ describe('emitScript', () => {
         expect(code).toContain(`\${script1.id}.f1`);
       });
     }
+  });
+
+  it('round-trips a suppressed joint', () => {
+    const design = Design.create();
+    const base = design.component('Base');
+    const leaf = design.component('Leaf');
+    const baseBox = design.box({}, { component: base });
+    const leafBox = design.box({}, { component: leaf });
+    design.joint('Hinge', {
+      type: 'revolute',
+      a: { component: leaf, frame: leafBox.face('side:front') },
+      b: { component: base, frame: baseBox.face('side:front') },
+      suppressed: true,
+    });
+    const doc = design.toJSON();
+    const code = emitScript(doc);
+    expect(code).toContain('suppressed: true');
+    const recreated = run(code, doc);
+    expect(recreated.joints?.[0]?.suppressed).toBe(true);
+    const map = idMap(doc, recreated);
+    expect(canonical(recreated, map)).toEqual(canonical(doc, map));
+    expect(biomeFormat(code)).toBe(code);
   });
 
   it('names variables from feature names, de-duplicating collisions', () => {

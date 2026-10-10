@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { meshBounds } from '../packages/io/src/index';
-import { exportModel, objectsOf3mf, primitive, solidTab } from './benchmark-helpers';
+import { exportModel, objectsOf3mf, primitive, selectBodies, solidTab } from './benchmark-helpers';
 import { kernelReady, openProject, pickTool, projector } from './helpers';
 
 // P3-10: the 3D-print aids (FR-3DP-02..04, ADR-0048). Print Info gives a weight, a filament
@@ -224,6 +224,51 @@ test('Print Info: walls and infill make the print lighter, and the cost follows 
   await expect(again.getByRole('textbox', { name: 'Price per kg' })).toHaveValue('100');
   await expect(again.getByRole('textbox', { name: 'Walls' })).toHaveValue('4');
   expect(numberOf(await row(again, 'printed').textContent())).toBeCloseTo(8, 2);
+});
+
+test('Print Info: a component and the loose bodies get rows under the totals (P6-05 S9)', async ({
+  page,
+}) => {
+  await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Box', { Length: '20', Width: '20', Height: '20' });
+  await primitive(page, 'Box', { X: '60 mm', Length: '10', Width: '10', Height: '10' });
+  await kernelReady(page);
+  await openPrintTab(page);
+  await page.getByRole('button', { name: /^Print Info/ }).click();
+  const panel = info(page);
+  await expect(panel).toHaveAttribute('data-print-state', 'ready', { timeout: 20_000 });
+  // No components: no rows.
+  await expect(panel.locator('[data-print-component]')).toHaveCount(0);
+  await expect
+    .poll(async () => numberOf(await row(panel, 'volume').textContent()))
+    .toBeCloseTo(9, 2);
+
+  // Body1 becomes the component "Lid"; Body2 stays loose. With a body selected Print Info
+  // counts only the selection, so close the panel and clear it before looking again.
+  await panel.getByRole('button', { name: 'Done' }).click();
+  await selectBodies(page, ['Body1']);
+  await pickTool(page, 'New Component');
+  const browser = page.getByRole('complementary', { name: 'Browser' });
+  await browser.getByRole('button', { name: 'Component1', exact: true }).focus();
+  await page.keyboard.press('F2');
+  const field = browser.getByRole('textbox', { name: 'Rename Component1' });
+  await field.fill('Lid');
+  await field.press('Enter');
+  await page.evaluate('document.activeElement && document.activeElement.blur()');
+  await page.keyboard.press('Escape');
+  await openPrintTab(page);
+  await page.getByRole('button', { name: /^Print Info/ }).click();
+  await expect(panel).toHaveAttribute('data-print-state', 'ready', { timeout: 20_000 });
+  const lid = panel.locator('[data-print-component="Lid"]');
+  const loose = panel.locator('[data-print-component="Loose bodies"]');
+  await expect(lid).toContainText('1 bodies');
+  await expect(loose).toContainText('1 bodies');
+  // The 20 mm cube prints 3.04 cm³ of PLA (3.8 g); the 10 mm one is 0.8 g.
+  await expect(lid).toContainText('3.8 g');
+  await expect(loose).not.toContainText('3.8 g');
+  // The totals are the same bodies as before.
+  expect(numberOf(await row(panel, 'volume').textContent())).toBeCloseTo(9, 2);
 });
 
 test('Overhang analysis: shading counts follow the angle, the down direction and the bed', async ({

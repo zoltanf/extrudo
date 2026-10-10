@@ -244,3 +244,33 @@ test('the Versions dialog', async ({ page }) => {
   await ensureDir(file);
   await writeFile(file, await indexed(page, await dialog.screenshot()));
 });
+
+// P6-05 S9: the concept page for components.
+test('the browser with a component', async ({ page }) => {
+  await page.goto('./');
+  await page.getByRole('button', { name: 'Start from the Box with a lid template' }).click();
+  await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
+  await kernelReady(page);
+  const browser = page.getByRole('complementary', { name: 'Browser' });
+  const viewport = page.getByRole('region', { name: 'Viewport' });
+  const bodies = ((await viewport.getAttribute('data-bodies')) ?? '')
+    .split(' ')
+    .map((entry) => entry.split(':')[0] ?? '');
+  expect(bodies.length).toBeGreaterThan(1);
+  const [first] = bodies;
+  await browser.getByRole('button', { name: first, exact: true }).click();
+  await pickTool(page, 'New Component');
+  await expect(viewport).toHaveAttribute('data-components', /.+/);
+  await page.mouse.move(900, 450);
+  await page.waitForTimeout(1500);
+  const box = await browser.boundingBox();
+  if (!box) throw new Error('no browser');
+  const file = out('components', 'browser');
+  await ensureDir(file);
+  await save(page, file, {
+    x: Math.max(0, box.x - 8),
+    y: Math.max(0, box.y - 8),
+    width: box.width + 16,
+    height: Math.min(box.height + 16, 600),
+  });
+});

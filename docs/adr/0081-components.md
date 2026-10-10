@@ -1,6 +1,6 @@
 # ADR-0081: Components and simple assemblies
 
-- **Status:** Accepted, 2026-10-10 (the owner: build it, starting with the
+- **Status:** Implemented, 2026-10-11 (accepted 2026-10-10; the owner: build it, starting with the
   slices without UI; joints planned now, not deferred, for print-in-place
   hinge checks). Slices in `docs/plans/p6-05-components.md`.
 - **Task:** P6-05 "Components and simple assemblies (multiple components,
@@ -656,6 +656,26 @@ and `data-joint-check` reads `at=0` for the fixture.
 the leaf's Ø10 knuckle (to `y` −5), so the hinge collided at 0°. Its plate is
 now the leaf's mirror (`y` −25.5…−5.5) with two bridges joining it to its
 knuckles, 0.5 mm clear of everything on the leaf.
+
+### S1–S9 (2026-10-10 to 2026-10-11)
+
+Every slice landed as §2–§9 describe; what each added beyond the text:
+
+- **S1 core** `components[]`, `BodyMeta.component`, `Feature.component`, §2's rule in
+  `componentOfBody` and six commands; no format bump. **S2** `origins` from the kernel for broken
+  pieces. **S7** STEP assemblies through XDE (native harness `spikes/p6-05-step-assembly/`).
+- **S3–S5, S6** The browser rows, the active and isolated component (session state, followed by
+  `followComponentSession`), Move/Copy/Place Component (Place on Bed's `carry` input), the 3MF
+  `<components>` writer and reader and the Export dialog's grouping.
+- **J1, J2** The joint records and dialog, the engine's frame pass after the walk, the pose as
+  view state with its handle; **J3** above.
+- **S8** The API (`d.component`, `d.joint`), the emitter and the CLI (`check --joints`).
+- **S9** Print Info's per-component rows split the counted bodies by `BodyEntry.component`, which
+  is `componentOfBody` with the kernel's origins, so the same rule applies as in the browser; a
+  body naming a missing component is loose. The guide page is `docs/guide/components.md`. The
+  emitter wrote `design.box({ component })` for a feature with no inputs, which the API refuses
+  (the options object became the inputs); an empty inputs object now holds its place. A joint's
+  `suppressed` flag round-trips through `d.joint`, the emitter and `emit.test.ts`.
 
 ## Slices
 

@@ -227,6 +227,7 @@ function jointStatements(joints: readonly Joint[], ctx: EmitContext): Stmt[] {
     if (joint.min) options.push(['min', str(joint.min.expr)]);
     if (joint.max) options.push(['max', str(joint.max.expr)]);
     if (joint.flip) options.push(['flip', bool(true)]);
+    if (joint.suppressed) options.push(['suppressed', bool(true)]);
     statements.push(
       constant(
         ctx.jointOf.get(joint.id) as string,
@@ -327,7 +328,8 @@ function callArguments(
   const options: [string, Expr][] = [];
   if (componentVar !== undefined) options.push(['component', raw(componentVar)]);
   if (nameOption !== undefined) options.push(['name', str(nameOption)]);
-  if (options.length > 0) args.push(obj(options));
+  // The options are the second argument: an empty inputs object holds its place.
+  if (options.length > 0) args.push(...(args.length === 0 ? [obj([])] : []), obj(options));
   return args;
 }
 

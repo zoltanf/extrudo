@@ -159,6 +159,19 @@ brief, voice) is in **`05-brand.md`**. In short:
   at once); the preview shows the body turned so the face lies on the bed
   (z = 0); a warning says when part of the body would end up below it. Also
   "Place on Bed" in the context list of a flat face.
+- **Components** (P6-05 S3–S5, S9, ADR-0081 §6). Solid › **Component** group:
+  New Component (no key; the selected bodies, or an empty one, which it
+  activates) and Joint (`J`). In the browser the Bodies folder lists a nested
+  row per component first (count badge, eye shown → ghost → hidden, `F2`
+  rename, a filled marker while active), its bodies and the joints whose moving
+  side it is under it; loose bodies follow at the folder's own level. A click
+  selects its bodies; a body row dragged onto it joins it, onto the Bodies
+  header leaves. Its menu: Activate/Deactivate, Isolate/Exit Isolation, Move
+  Component, Copy Component, Export Component…, Delete Component. The **status
+  bar** says "Active: Lid" (menu: Deactivate); the **isolation bar** at the
+  top centre of the view says "Showing Lid only" with Exit isolation, next to
+  the pose bar (J2). Print Info lists a row per component under its totals,
+  "Loose bodies" for the rest.
 - **Joint clearance** (P6-05 J3, ADR-0081 §4). A revolute or slider joint's
   row has **Check Clearance** (also Ctrl+K "Check Joint Clearance", on the
   joint being checked or the only joint that moves): it opens the Joint panel

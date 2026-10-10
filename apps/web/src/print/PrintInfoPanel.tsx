@@ -30,6 +30,9 @@ const HOME = { right: 12, top: 148 };
  * kg. Supports are not modelled: generating them needs a slicer. Everything the panel sets is
  * remembered in the `print.material` preference.
  *
+ * With components, rows `[data-print-component="<name>"]` (weight, filament and cost of the
+ * counted bodies in it; "Loose bodies" for the rest) sit under the totals.
+ *
  * Test hooks: the region "Print Info", `data-print-state` (`empty`, `pending`, `ready`,
  * `error`), rows `[data-print-row="volume|printed|weight|filament|cost"]`, the combobox
  * "Material", the footnote `[data-print-footnote]` (pinned under the scrolling content), the textbox "Density" (custom only), the radios "1.75 mm" and "2.85 mm", and the
@@ -210,6 +213,29 @@ export function PrintInfoPanel({ info, onClose }: { info: PrintInfo; onClose(): 
                   {estimate ? costText(estimate.cost) : '…'}
                 </Row>
               </dl>
+              {info.components.length > 0 && (
+                <ul
+                  aria-label="Per component"
+                  className="m-0 mt-3 flex list-none flex-col gap-1.5 border-t border-line p-0 pt-3 text-sm"
+                >
+                  {info.components.map((c) => (
+                    <li
+                      key={c.id ?? 'loose'}
+                      data-print-component={c.name}
+                      className="flex flex-col"
+                    >
+                      <span className="font-medium">
+                        {c.name} <span className="text-muted">· {c.count} bodies</span>
+                      </span>
+                      <span className="tabular-nums text-muted">
+                        {c.estimate
+                          ? `${weightText(c.estimate.weight)} · ${lengthText(c.estimate.filament)} · ${costText(c.estimate.cost)}`
+                          : '…'}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
               {info.density === undefined && (
                 <p className="mt-2 text-sm text-error" role="status">
                   Enter a density above 0 to see the weight.

@@ -1114,8 +1114,10 @@ end to end, faster than in Fusion 360.
   the manifest, "Update to <version>"). *Slice 4 done 2026-10-07* (the review's
   fixes: bounded inflation, a foreign `in:` input, manifest strings, docs, tests).
 - [ ] **P6-04 i18n** (community translations).
-- [ ] **P6-05 Components and simple assemblies** (multiple components, as-built
-  joints), if demand warrants. Designed in
+- [x] **P6-05 Components and simple assemblies** (multiple components, as-built
+  joints), if demand warrants. Done 2026-10-11 (ADR-0081): components and
+  as-built joints (rigid, revolute, slider) with the pose preview and the
+  clearance check; driven poses and motion studies deferred. Designed in
   [ADR-0081](adr/0081-components.md) (2026-10-10): components as named sets of
   bodies, placement through the timeline, as-built joints (rigid, revolute,
   slider) with a pose preview and a clearance check along the motion (planned

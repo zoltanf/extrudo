@@ -11,6 +11,7 @@
 import {
   type BodyId,
   type BodyMeta,
+  type ComponentId,
   type EvaluateResult,
   ExprError,
   type ExtrudoDocument,
@@ -70,6 +71,17 @@ export interface PrintInfoBody {
   area: number;
 }
 
+/** One component's share of the counted bodies (P6-05 S9, ADR-0081 §7). */
+export interface PrintInfoComponent {
+  /** Undefined for the "Loose bodies" row. */
+  id: ComponentId | undefined;
+  name: string;
+  /** How many of the counted bodies it holds. */
+  count: number;
+  /** Undefined while measuring or while a setting doesn't evaluate. */
+  estimate: PrintEstimate | undefined;
+}
+
 export interface PrintInfo {
   /** Estimates come from these bodies: the selected ones, or every shown one. */
   scope: 'selected' | 'shown';
@@ -84,6 +96,11 @@ export interface PrintInfo {
   /** Total solid volume, mm³. */
   volume: number | undefined;
   estimate: PrintEstimate | undefined;
+  /**
+   * Per component, under the totals: the counted bodies split by component, in the browser's
+   * order, then "Loose bodies" when some are loose. Empty when the design has no components.
+   */
+  components: PrintInfoComponent[];
   error?: string;
 }
 
@@ -93,7 +110,7 @@ export interface PrintInfoOptions {
   doc: ExtrudoDocument;
   selection: readonly SelectionItem[];
   /** The model's bodies with their names, and their meshes (a change asks the kernel again). */
-  bodyList: readonly { id: BodyId; meta: BodyMeta }[];
+  bodyList: readonly { id: BodyId; meta: BodyMeta; component?: ComponentId }[];
   meshes: Readonly<Record<BodyId, BodyMesh>>;
   /** The panel is open. */
   active: boolean;
@@ -194,16 +211,44 @@ export function usePrintInfo({
     });
   }, [fresh, ids, names]);
   const volume = fresh?.inspection ? bodies.reduce((sum, b) => sum + b.volume, 0) : undefined;
+  const walls = number('walls');
+  const lineWidth = number('lineWidth');
+  const infill = number('infill');
+  const price = number('price');
   const settings = {
     density: density ?? 0,
     diameter: choice.diameter,
-    walls: number('walls'),
-    lineWidth: number('lineWidth'),
-    infill: number('infill'),
-    price: number('price'),
+    walls,
+    lineWidth,
+    infill,
+    price,
   };
   const estimate =
     volume !== undefined && density !== undefined ? printEstimate(bodies, settings) : undefined;
+  // The same counted bodies, split by component (a body naming a missing component is loose).
+  const components = ((): PrintInfoComponent[] => {
+    const list = doc.components ?? [];
+    if (list.length === 0 || volume === undefined) return [];
+    const owner = new Map(bodyList.map((b) => [b.id, b.component]));
+    const known = new Set(list.map((c) => c.id));
+    const group = (id: ComponentId | undefined) =>
+      bodies.filter((b) => {
+        const c = owner.get(b.id);
+        return id === undefined ? c === undefined || !known.has(c) : c === id;
+      });
+    const row = (id: ComponentId | undefined, name: string): PrintInfoComponent => {
+      const members = group(id);
+      return {
+        id,
+        name,
+        count: members.length,
+        estimate: density !== undefined ? printEstimate(members, settings) : undefined,
+      };
+    };
+    const rows = list.map((c) => row(c.id, c.name)).filter((r) => r.count > 0);
+    const loose = row(undefined, 'Loose bodies');
+    return loose.count > 0 ? [...rows, loose] : rows;
+  })();
   const state: PrintInfo['state'] =
     ids.length === 0 ? 'empty' : fresh?.error ? 'error' : fresh?.inspection ? 'ready' : 'pending';
   return {
@@ -216,6 +261,7 @@ export function usePrintInfo({
     bodies,
     volume,
     estimate,
+    components,
     ...(fresh?.error && { error: fresh.error }),
   };
 }
