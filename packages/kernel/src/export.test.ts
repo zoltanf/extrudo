@@ -6,6 +6,7 @@ import { checkManifold, readStl, writeStl } from '@extrudo/io';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Kernel, KernelError, type ShapeHandle, stepString, type Vec3 } from './kernel';
 import type { MeshOptions } from './mesh';
+import { stepGroups } from './model-export';
 import { loadOcct } from './occt/load';
 import type { PlanarCurve, PlanarFrame } from './planar';
 import { testDocument, testFeature } from './recompute/testing';
@@ -207,6 +208,58 @@ describe('writeStep', () => {
     }
   });
 
+  it('groups parts into one assembly product per component (P6-05, ADR-0081 §7)', () => {
+    const boxes = [
+      kernel.box([10, 10, 10], [0, 0, 0]),
+      kernel.box([20, 10, 10], [30, 0, 0]),
+      kernel.box([10, 10, 30], [60, 0, 0]),
+    ];
+    const [lid, seal, base] = boxes as [ShapeHandle, ShapeHandle, ShapeHandle];
+    try {
+      const parts = [
+        { shape: lid, name: 'Lid top', color: '#c81e28', group: 0 },
+        { shape: seal, name: 'Seal', group: 0 },
+        { shape: base, name: 'Base', color: '#1080ff' },
+      ];
+      const text = kernel.writeStep(parts, ['Lid']);
+      expect(text).toContain("PRODUCT('Lid'");
+      for (const name of ['Lid top', 'Seal', 'Base']) expect(text).toContain(`PRODUCT('${name}'`);
+      // Lid's two parts are its components; the loose Base is a top-level
+      // product, no component of anything.
+      expect(text.match(/NEXT_ASSEMBLY_USAGE_OCCURRENCE/g)).toHaveLength(2);
+      expect(text.match(/PRODUCT\(/g)).toHaveLength(4);
+      expect(text).not.toMatch(/PRODUCT\('Product/);
+      expect(text).toContain('SI_UNIT(.MILLI.,.METRE.)');
+      expect(/[^\t\n\r\x20-\x7e]/.test(text)).toBe(false);
+      expect(kernel.readStepColors(text)).toEqual({
+        solids: ['#c81e28', undefined, '#1080ff'],
+        coloredFaces: 0,
+      });
+      const back = kernel.readStep(text);
+      const solids = kernel.solids(back);
+      try {
+        expect(solids.map((s) => Math.round(kernel.measure(s).volume))).toEqual([1000, 2000, 3000]);
+      } finally {
+        kernel.release(...solids, back);
+      }
+
+      // A component's name is a STEP string like a body's.
+      const german = kernel.writeStep(parts, ['Deckel ö']);
+      expect(german).toContain("PRODUCT('Deckel \\X2\\00F6\\X0\\'");
+
+      // No part in a group: the file is the one written without groups.
+      const data = (t: string) => t.slice(t.indexOf('DATA;'));
+      const plain = kernel.writeStep(parts.map(({ group: _, ...part }) => part));
+      expect(plain).not.toContain('NEXT_ASSEMBLY_USAGE_OCCURRENCE');
+      expect(data(kernel.writeStep(parts))).toBe(data(plain));
+      expect(data(kernel.writeStep(parts, []))).toBe(data(plain));
+      const unnamed = parts.map((part) => ({ ...part, group: -1 }));
+      expect(data(kernel.writeStep(unnamed, ['Lid']))).toBe(data(plain));
+    } finally {
+      kernel.release(...boxes);
+    }
+  });
+
   it('refuses unknown shapes and unreadable text', () => {
     expect(() => kernel.writeStep([{ shape: 999_999 as ShapeHandle, name: 'X' }])).toThrow(
       KernelError,
@@ -223,6 +276,21 @@ describe('stepString', () => {
     expect(stepString('Rocket 🚀!')).toBe('Rocket \\X4\\0001F680\\X0\\!');
     expect(stepString('tab\there\nnew')).toBe('tabherenew');
     expect(stepString('é🚀é')).toBe('\\X2\\00E9\\X0\\\\X4\\0001F680\\X0\\\\X2\\00E9\\X0\\');
+  });
+});
+
+describe('stepGroups (P6-05, ADR-0081 §7)', () => {
+  it('numbers components in first-seen order and leaves loose bodies out', () => {
+    const body = (id: string, component?: string) => ({
+      id: id as BodyId,
+      name: id,
+      ...(component !== undefined && { component }),
+    });
+    expect(stepGroups([body('a', 'Lid'), body('b'), body('c', 'Box'), body('d', 'Lid')])).toEqual({
+      groups: ['Lid', 'Box'],
+      of: [0, undefined, 1, 0],
+    });
+    expect(stepGroups([body('a'), body('b')])).toEqual({ groups: [], of: [undefined, undefined] });
   });
 });
 
@@ -272,6 +340,19 @@ describe('KernelService export (the primitives of P2-10)', () => {
     );
     expect(coloured.match(/COLOUR_RGB/g)).toHaveLength(1);
     for (const name of ['Ball', 'Ring', 'Block']) expect(coloured).toContain(`PRODUCT('${name}'`);
+
+    // A body's component makes it a part of an assembly product named after
+    // the component, components in first-seen order (P6-05, ADR-0081 §7).
+    const grouped = await service.exportStep(
+      ids.map((id, i) => ({
+        id,
+        name: ['Block', 'Ball', 'Ring'][i] as string,
+        ...(i !== 1 && { component: 'Toys' }),
+      })),
+    );
+    expect(grouped).toContain("PRODUCT('Toys'");
+    expect(grouped.match(/NEXT_ASSEMBLY_USAGE_OCCURRENCE/g)).toHaveLength(2);
+    for (const name of ['Ball', 'Ring', 'Block']) expect(grouped).toContain(`PRODUCT('${name}'`);
 
     await expect(service.exportMeshes(['gone' as BodyId], MEDIUM)).rejects.toThrow(
       /no longer in the model/,

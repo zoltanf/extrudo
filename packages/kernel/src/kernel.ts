@@ -1668,24 +1668,38 @@ export class Kernel {
    * (P2-12). The text is ASCII. A mesh body is refused: STEP holds exact
    * B-rep geometry (ADR-0066 §3). A part's `color` (`#rrggbb`) is written as
    * its solid's colour (P4-12, ADR-0034's amendment); with no colour at all
-   * the file is exactly what it was before colours.
+   * the file is exactly what it was before colours. A part's `group` (an
+   * index into `groups`, the groups' names) makes it a component of an
+   * assembly product named after its group (P6-05, ADR-0081 §7): the groups
+   * come first, in order, then the parts in no group; with no part in a group
+   * the file is exactly what it was before groups.
    */
-  writeStep(parts: readonly { shape: ShapeHandle; name: string; color?: string }[]): string {
+  writeStep(
+    parts: readonly { shape: ShapeHandle; name: string; color?: string; group?: number }[],
+    groups: readonly string[] = [],
+  ): string {
     for (const { shape } of parts) this.#solid(shape, 'A STEP file');
+    const grouped = parts.some(
+      ({ group }) => group !== undefined && group >= 0 && group < groups.length,
+    );
     const f = this.#facade;
     f.clearArgs();
     f.clearStepNames();
     f.clearStepColors();
-    for (const { shape, name, color } of parts) {
+    f.clearStepGroups();
+    for (const { shape, name, color, group } of parts) {
       f.pushArg(shape);
       f.pushStepName(stepString(name));
       const rgb = color === undefined ? undefined : hexToRgb(color);
       if (rgb) f.stageStepColor(rgb[0], rgb[1], rgb[2]);
       else f.stageStepColor(-1, -1, -1);
+      if (grouped) f.pushStepGroup(group ?? -1);
     }
+    if (grouped) for (const name of groups) f.pushStepGroupName(stepString(name));
     const size = f.writeStep();
     f.clearStepNames();
     f.clearStepColors();
+    f.clearStepGroups();
     if (size < 0) throw new KernelError(f.lastError() || "Couldn't write the STEP file.");
     try {
       return new TextDecoder('latin1').decode(this.#copy(Uint8Array, f.exportTextPtr(), size));

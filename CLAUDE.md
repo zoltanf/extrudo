@@ -420,7 +420,7 @@ files into `dist/sw.js` and versions it; registration in
 manifest and icons; `scripts/measure-startup.mjs` measures size and
 startup against NFR-02 (all three targets hold with a wide margin). It
 also found that the kernel uses no raw OCCT bindings, so the build's
-binding list is now just `ExtrudoFacade` (built by CI: WASM 20.57 MB raw,
+binding list is now just `ExtrudoFacade` (built by CI: WASM 20.58 MB raw,
 6.66 MB gzip, 4.63 MB brotli (Node's zlib at its best settings), after
 P4-04/P4-05/P4-10's facade methods, P4-12's `DYNAMIC_EXECUTION: 0`, P4-12
 §H3's `integrateVolume`, P4-12's split boolean and `extendFace` (about 10 kB)
@@ -439,9 +439,11 @@ match (2026-10-07, under 0.01 MB) and the taper review's identity pairing
 conics (`sketchConic`, the Gauss–Kronrod volume and `GCPnts_AbscissaPoint`:
 +75 kB raw, +34 kB brotli; 20.50 / 6.62 / 4.60 MB before) and P4-12's tapered
 threads (`threadFace` on cones, `threadSweep`'s taper, `helixWire`: +339 bytes
-raw, +1.3 kB brotli, 20.57 / 6.66 / 4.63 MB unchanged); the 15.76 MB / 3.69 MB brotli
+raw, +1.3 kB brotli, 20.57 / 6.66 / 4.63 MB unchanged) and P6-05's STEP
+assemblies (`pushStepGroup`, `writeStepAssembly`: +4.9 kB raw, +3 kB brotli;
+20.57 / 6.66 / 4.63 MB before); the 15.76 MB / 3.69 MB brotli
 of ADR-0037 was P2-15's; OCCT input hash
-`ec62df7eead4` (release `occt-ec62df7eead4`); **don't
+`f206ac972cd1` (release `occt-f206ac972cd1`); **don't
 expose an OCCT type in a facade method**, and no raw access from JS: the
 memory test's leak control leaks through the facade).
 ADR-0039 (P2-17) built benchmarks B2 and B3 through the UI

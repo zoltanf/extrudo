@@ -6,7 +6,7 @@ import { type Inspection, type InspectTarget, inspectShapes } from './inspect';
 import { type HeapUsage, Kernel, KernelError, type KernelStats, type ShapeHandle } from './kernel';
 import { loadManifold, type ManifoldLoadOptions } from './manifold';
 import type { ExportMesh, MeshOptions } from './mesh';
-import type { StepBody } from './model-export';
+import { type StepBody, stepGroups } from './model-export';
 import type { OcctModule } from './occt/types';
 import {
   type PluginCommandRequest,
@@ -417,13 +417,19 @@ export class KernelService implements KernelApi {
   }
 
   exportStep(bodies: readonly StepBody[]): Promise<string> {
+    const { groups, of } = stepGroups(bodies);
     return this.#run((kernel) =>
       kernel.writeStep(
-        bodies.map(({ id, name, color }) => ({
-          shape: this.#bodyShape(id),
-          name,
-          ...(color !== undefined && { color }),
-        })),
+        bodies.map(({ id, name, color }, i) => {
+          const group = of[i];
+          return {
+            shape: this.#bodyShape(id),
+            name,
+            ...(color !== undefined && { color }),
+            ...(group !== undefined && { group }),
+          };
+        }),
+        groups,
       ),
     );
   }

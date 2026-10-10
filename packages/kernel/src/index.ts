@@ -105,6 +105,7 @@ export {
   type StepBody,
   safeFileName,
   stepBody,
+  stepGroups,
   stlBytes,
 } from './model-export';
 export {

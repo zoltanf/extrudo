@@ -148,15 +148,22 @@ describe("the import feature's colours (P4-12)", () => {
     return { report: isImportReport(own) ? (own as ImportReport) : undefined, volumes };
   }
 
-  function written(withColors: boolean): string {
+  /** Three boxes, coloured or not; `grouped` puts the first two in a component "Lid" (P6-05). */
+  function written(withColors: boolean, grouped = false): string {
     const boxes = threeBoxes();
     try {
       const colors = ['#c81e28', undefined, '#1080ff'];
       return kernel.writeStep(
         boxes.map((shape, i) => {
           const color = withColors ? colors[i] : undefined;
-          return { shape, name: `Part${i + 1}`, ...(color && { color }) };
+          return {
+            shape,
+            name: `Part${i + 1}`,
+            ...(color && { color }),
+            ...(grouped && i < 2 && { group: 0 }),
+          };
         }),
+        grouped ? ['Lid'] : [],
       );
     } finally {
       kernel.release(...boxes);
@@ -177,6 +184,20 @@ describe("the import feature's colours (P4-12)", () => {
     // Turned with Up: the same bodies, the same colours.
     const turned = await report(design(written(true), 'y'));
     expect(turned.report?.colors).toEqual(got.colors);
+  });
+
+  it('our grouped STEP file imports back as its bodies with their colours (P6-05)', {
+    timeout: 60_000,
+  }, async () => {
+    const text = written(true, true);
+    expect(text.match(/NEXT_ASSEMBLY_USAGE_OCCURRENCE/g)).toHaveLength(2);
+    const { report: got, volumes } = await report(design(text));
+    if (!got) throw new Error('no import report');
+    expect(Object.values(volumes).sort((a, b) => a - b)).toEqual([1000, 2000, 3000]);
+    const byVolume = Object.fromEntries(
+      Object.entries(got.colors).map(([id, color]) => [volumes[id], color]),
+    );
+    expect(byVolume).toEqual({ 1000: '#c81e28', 3000: '#1080ff' });
   });
 
   it('a file without colours has no report', { timeout: 60_000 }, async () => {

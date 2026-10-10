@@ -47,12 +47,35 @@ export interface ModelExporter {
 
 /**
  * A body as a STEP export takes it: its name (the product's) and its colour
- * (`#rrggbb`, the solid's styled item; P4-12, ADR-0034's amendment).
+ * (`#rrggbb`, the solid's styled item; P4-12, ADR-0034's amendment), and the
+ * name of its component when the export keeps components together (P6-05,
+ * ADR-0081 §7): the bodies of one component are the parts of one assembly
+ * product named after it.
  */
 export interface StepBody {
   id: BodyId;
   name: string;
   color?: string;
+  component?: string;
+}
+
+/**
+ * The STEP groups of `bodies` (P6-05, ADR-0081 §7): each body's index into
+ * the component names in first-seen order, or `undefined` for a loose body.
+ */
+export function stepGroups(bodies: readonly StepBody[]): {
+  groups: string[];
+  of: (number | undefined)[];
+} {
+  const groups: string[] = [];
+  const of = bodies.map(({ component }) => {
+    if (component === undefined) return undefined;
+    const at = groups.indexOf(component);
+    if (at >= 0) return at;
+    groups.push(component);
+    return groups.length - 1;
+  });
+  return { groups, of };
 }
 
 /** A body's STEP part: the name, and the colour when it has one. */

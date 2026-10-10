@@ -205,6 +205,9 @@ export interface FacadeBinding {
   pushStepName(name: string): void;
   clearStepColors(): void;
   stageStepColor(r: number, g: number, b: number): void;
+  clearStepGroups(): void;
+  pushStepGroup(group: number): void;
+  pushStepGroupName(name: string): void;
   writeStep(): number;
   readStep(text: string): number;
   readStepColors(text: string): number;
