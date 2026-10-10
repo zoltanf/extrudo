@@ -223,11 +223,14 @@ across the edge into the face, and **two distances** also gets a Second distance
 arrow (`distanceB<n>`) along the other face (`faceDirections`, `edgeHandles.ts`):
 the reference face is the picked one, else the lower-numbered of the edge's two
 by the body mesh's face order (the kernel's rule), or the other with Flip.
-Both faces must be flat (mesh flatness ≥ 0.98) and the edge straight, the
-direction is `t × n` turned towards where the face's nodes lie, and a picked
-face that isn't one of the edge's two gives nothing. Where any of that can't be
+The direction is `t × n` turned towards where the face's nodes lie, and a picked
+face that isn't one of the edge's two gives nothing. (The fourth amendment
+below later made this read the directions **locally at the edge's middle**, so
+a curved edge and a curved face work too; as written here it needed both faces
+flat and the edge straight, and a chamfer on a cylinder rim kept the single
+bisector arrow.) Where any of that can't be
 read the set **keeps the single bisector arrow** for Distance and has no
-Second distance arrow: a chamfer on a cylinder rim is the usual case. Distance
+Second distance arrow. Distance
 and angle has the Distance arrow only. `e2e/chamfer.spec.ts` reads the arrows'
 screen positions and then checks them against the kernel by the footprint on the
 top face (the handle on the top face is the one whose value the top face gives
@@ -253,10 +256,77 @@ Where `faceDirections` can't read the two directions — a curved edge or face,
 a face the meshes lack, a reference face that isn't the edge's — the set keeps
 its single bisector handle and gets **no arc**. Equal and two-distance sets
 are unchanged. Tests: `edgeHandles.test.ts` "a distance-and-angle set's angle
-arc" (the zero, the axis and its sign, the arc's `follows`, a bent edge that
-keeps the bisector alone) and `e2e/chamfer.spec.ts` "distance and angle: the
+arc" (the zero, the axis and its sign, the arc's `follows`) and
+`e2e/chamfer.spec.ts` "distance and angle: the
 Angle field gets an arc, which a drag turns".
 
 Rejected: an arc for the equal set's 45°. An equal chamfer's face always lies
 on the bisector of its two faces, so the arc would show a value that only the
 Distance arrow moves — the bisector arrow already stands where that face is.
+
+### Fourth amendment (2026-10-10): face handles on curved edges and faces (P4-12)
+
+The remaining P4-12 chamfer backlog was "a chamfer's handles on curved faces
+or edges (they keep the single bisector handle)": a two-distance chamfer on a
+cylinder's top rim (a circular edge between a flat cap and a cylindrical wall)
+showed one bisector arrow, not the two face arrows, and a distance-and-angle
+set had no arc. The cause was that `faceDirections` read the directions from
+**whole-edge geometry**: it required a straight edge (every polyline point on
+the line through the ends) between two **flat** faces (`flatness ≥ 0.98`) and
+took each face's mean normal. A cylinder rim failed both tests, so the dialog
+fell back to the bisector.
+
+**The directions are now read locally at the handle's base point.** A new pure
+helper `localFaceDirections(mesh, edgeIndex, faceA, faceB)` (`edgeHandles.ts`)
+takes:
+
+1. **The base point and edge tangent** from an `edgeLocator`: the point halfway
+   along the edge's display polyline **by arc length** — for a closed polyline
+   (the first point repeated at the end) halfway round the loop — and the unit
+   direction of the polyline segment that contains it. A straight two-point
+   edge gives exactly the old middle and direction. The tangent's sign is
+   arbitrary: the sign test below fixes the facing either way.
+2. **Each face's normal** from its display **triangle** nearest the base point
+   (`nearestTriangleNormal`): the triangle's own normal from its winding
+   (counter-clockwise seen from outside), so a flat face gives one normal and a
+   curved face the normal where the base point is.
+3. **The direction into each face** as `normalise(tangent × normal)`, signed so
+   `dot(direction, centroid − base) > 0` — towards the nearest triangle's own
+   centroid. This is the same "into the face, away from the edge" rule the flat
+   case used, written once.
+
+`faceDirections` keeps its signature: it still decides the two face names from
+the edge's `e[<face>|<face>]` name, the kernel's reference-face order and the
+picked face or `flip`, then calls `localFaceDirections` for the two face
+indices. `chamferSetManipulators` is unchanged, so the two distance arrows and
+the angle arc now appear on a curved edge too.
+
+**Refusals** (the set keeps its single bisector handle, and no arc):
+
+- a **seam** edge and an edge of **more than two faces** (the caller's
+  `parsed.faces.length !== 2`);
+- a **face the meshes lack** (no `faceIds` entry, or no triangle);
+- **two faces whose normals agree within 60°** (`dot > 0.5`) — a smooth chain,
+  the rule ADR-0038's amendment uses, where there is no corner to point away
+  from;
+- an edge whose **polyline has fewer than two points** (a degenerate edge);
+- **the two directions within 10° of each other** (`dot > cos 10°`) — a nearly
+  straight corner whose two "into the face" arrows say nothing apart.
+
+**The drag is approximate on a curved face.** The handle measures along `d`
+from the base point, i.e. the distance along the face's tangent plane there.
+For a straight edge between flat faces that is exactly the kernel's chamfer
+distance. On a curved face the kernel measures the chamfer along the surface,
+so for a large distance the displayed value and the built chamfer differ a
+little; the two agree as the distance goes to 0. The kernel is not changed.
+
+**Tests.** `edgeHandles.test.ts` has a new describe over hand-built meshes —
+a box edge (same answers as the whole-edge reading), a capped cylinder's rim
+(across the cap towards the axis, down the wall), a frustum's rim (across the
+cap, down the slanted wall), and the refusals (seam, a missing face, a shallow
+tent whose two normals agree within 60°) — and the old "keeps the single
+bisector on a curved edge" test is replaced by one that reads the curved edge,
+since a bent edge is now read locally. `e2e/chamfer.spec.ts` adds a Cylinder
+primitive and a two-distance chamfer on its top rim: both arrows appear, each
+head dragged further out grows its own field and not the other, a commit gives
+a body with more faces, and reopening as distance-and-angle shows the arc.

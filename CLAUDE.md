@@ -586,8 +586,9 @@ chain query) and the dialog `apps/web/src/features/chamfer.ts` (a Type
 dropdown per set, a Reference face under it, and a Distance handle per set as
 ADR-0038's amendments have it: the unequal types run Distance along the
 reference face and two distances a **Second distance** arrow along the other
-(`faceDirections`; flat faces and a straight edge only, else the single
-bisector arrow; ADR-0043's second amendment), and a distance-and-angle set's
+(`faceDirections`; the directions are read locally at the edge's middle, so a
+curved edge and a curved face work too, else the single bisector arrow;
+ADR-0043's second and fourth amendments), and a distance-and-angle set's
 **Angle** an arc from the reference face's direction towards the other face's
 about the edge (`cross(first, second)` signed so that turn is positive; its
 head sits on the chamfer face; none where the directions can't be read;
@@ -2839,7 +2840,10 @@ them. Notes further down that name a machine apply to that machine only.
   face's footprint from a 3MF to check it; P4-12's third amendment adds the
   angle arc: a distance-and-angle set's `data-manipulators` reads
   `distance:distance angle:angle`, and the drag turns the Angle by going along
-  the arc — perpendicular to its radius on screen, either way round): the tool has no key: click
+  the arc — perpendicular to its radius on screen, either way round; P4-12's fourth
+  amendment adds a Cylinder rim: a two-distance chamfer reads
+  `distance:distance distance:distanceB` and each head dragged along its own
+  arm (learned from the head's move between two field values) grows its field): the tool has no key: click
   the toolbar's Chamfer tile (`getByRole('button', { name: /^Chamfer/ })`,
   after picking an edge for pre-selection). The dialog is the region
   "Chamfer dialog" / "Edit Chamfer1 dialog"; set 1 has the button "Edges"

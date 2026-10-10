@@ -4,6 +4,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## Next
 
+- 2026-10-10 · **A chamfer's face handles on curved edges and faces (P4-12, ADR-0043's fourth amendment)**: the two-distance face arrows and the distance-and-angle arc are read **locally at the edge's middle** (by arc length, per display triangle) instead of from whole-edge flat geometry, so a chamfer on a cylinder's top rim now shows `distance:distance distance:distanceB` and an angle arc.
 - 2026-10-10 · **The chip menu offers Hide only where it does something**: `Feature.visible` changes what is drawn only for sketches, construction geometry and canvases, so a fillet's, chamfer's, shell's or pattern's menu no longer offers a Hide that drew the same thing either way (`shell/featureVisibility.ts`'s list; the marking menu's list already followed the rule).
 - 2026-10-10 · **Send to Slicer on the web says what to do instead**: the tile stays disabled, but a tool can now word its own unavailable reason, and the tooltip (and the command palette) reads "Sending to a slicer needs the desktop app. In the browser, export a 3MF and open it in your slicer." instead of "Arrives with the desktop app.".
 - 2026-10-10 · **Print Info's footnote stays readable in a small window**: the note ("An estimate: walls and infill as set, no supports…") sits under the scrolling content instead of inside it, so it is never scrolled out of the panel (checked at 900 × 700).

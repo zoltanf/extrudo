@@ -863,8 +863,10 @@ end to end, faster than in Fusion 360.
     chamfer's face directions are done** (2026-10-05, the amendments' second
     part), and ~~a handle for a chamfer's Angle~~ is **done 2026-10-07**
     (ADR-0043's third amendment: an arc from the reference face's direction
-    towards the other face's, about the edge). Still open: a chamfer's handles
-    on curved faces or edges (they keep the single bisector handle).
+    towards the other face's, about the edge). ~~Still open: a chamfer's handles
+    on curved faces or edges (they keep the single bisector handle).~~ **Done
+    2026-10-10** (ADR-0043's fourth amendment: the face directions are read
+    locally at the edge's middle, so a curved edge and a curved face work too).
   - Shell: ~~a thickness per face~~; ~~removing faces next to a fillet~~
     (ADR-0046's amendment; done 2026-10-06: wall sets, and a flat face next to
     a fillet opened as a plug. Still open: an opening through a curved face

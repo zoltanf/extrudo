@@ -22,12 +22,13 @@
  * for its Distance on the set's first edge (`edgeHandles.ts`): away from the
  * body for equal distances; for the unequal types along the reference face (the
  * picked one, else the kernel's choice, or the other with Flip) across the edge,
- * and for two distances a Second distance arrow along the other face, where both
- * faces are flat and the edge straight (else Distance keeps the bisector arrow
- * and there is no second). A distance-and-angle set's Angle is an arc from the
- * reference face's direction towards the other face's, about the edge, which a
- * drag turns (P4-12, ADR-0043's third amendment). The overlay draws the set
- * last focused prominent.
+ * and for two distances a Second distance arrow along the other face. The face
+ * directions are read locally at the edge's middle, so a curved edge between a
+ * flat and a cylindrical face (a cylinder rim) works too (ADR-0043's fourth
+ * amendment). A distance-and-angle set's Angle is an arc from the reference
+ * face's direction towards the other face's, about the edge, which a drag turns
+ * (P4-12, ADR-0043's third amendment). The overlay draws the set last focused
+ * prominent.
  */
 import {
   CHAMFER_EDGE_KINDS,

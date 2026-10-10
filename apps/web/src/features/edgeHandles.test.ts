@@ -1,3 +1,4 @@
+import type { BodyMesh } from '@extrudo/kernel';
 import { describe, expect, it } from 'vitest';
 import {
   chainEnds,
@@ -5,11 +6,12 @@ import {
   type EdgeHandle,
   edgeHandle,
   faceDirections,
+  localFaceDirections,
   setDistanceManipulator,
   variableSetManipulators,
 } from './edgeHandles';
 import type { DialogValues } from './spec';
-import { BOX, namedBoxEdgesMesh, namedBoxMesh } from './testing';
+import { BOX, cylinderMesh, namedBoxEdgesMesh, namedBoxMesh } from './testing';
 
 const bodies = { [BOX]: namedBoxEdgesMesh() };
 
@@ -217,7 +219,7 @@ describe('a chamfer’s distances along the faces', () => {
     expect(near(again?.first)).toEqual([0, 0, -1]);
   });
 
-  it('is left out for a face that isn’t one of the edge’s, a curved edge or a missing face', () => {
+  it('is left out for a face that isn’t one of the edge’s, a seam or a missing face', () => {
     expect(faceDirections(bodies, edgeRef(TOP_FRONT_EDGE), faceRef('left'), false)).toBeUndefined();
     expect(
       faceDirections(bodies, { kind: 'edge', id: 'e[box:top|box:gone]' }, undefined, false),
@@ -371,10 +373,13 @@ describe('a distance-and-angle set’s angle arc', () => {
     return { ...mesh, edgePoints: new Float32Array(points), edgeRanges: new Uint32Array(ranges) };
   })();
 
-  it('keeps the single bisector on a curved edge: no pair, no arc', () => {
-    expect(
-      faceDirections({ [BOX]: bent }, edgeRef(TOP_FRONT_EDGE), undefined, false),
-    ).toBeUndefined();
+  it('reads a curved edge too: both directions at the bend, so the arc appears (P4-12 fourth amendment)', () => {
+    // The bend's middle is (5, 0, 12); its tangent runs up and along x, so the
+    // front wall's direction leans with it but the top's does not.
+    const d = faceDirections({ [BOX]: bent }, edgeRef(TOP_FRONT_EDGE), undefined, false);
+    expect(round(d?.origin ?? [])).toEqual([5, 0, 12]);
+    expect(round(d?.first ?? [])).toEqual([0, 1, 0]);
+    expect(round(d?.second ?? [])).toEqual([0.371, 0, -0.928]);
     const out = chamferSetManipulators(
       {
         edges: 'edges',
@@ -388,11 +393,158 @@ describe('a distance-and-angle set’s angle arc', () => {
       values({ edges: [edgeRef(TOP_FRONT_EDGE)] }),
       { [BOX]: bent },
     );
-    expect(out).toHaveLength(1);
-    const only = out[0];
-    if (only?.kind !== 'distance') throw new Error('no bisector');
-    // The handle stands on the bend's middle, on the bisector of the two faces.
-    expect(round(only.origin)).toEqual([5, 0, 12]);
-    expect(round(only.direction)).toEqual(half([0, 0, 1], [0, -1, 0]));
+    expect(out.map((m) => m.kind)).toEqual(['distance', 'angle']);
+    expect(round(out[0]?.kind === 'distance' ? out[0].origin : [])).toEqual([5, 0, 12]);
+  });
+});
+
+/** A capped cylinder: a wall of `segments` quads, a top-cap fan and a rim edge between them. */
+function cappedCylinder(segments = 5): { mesh: BodyMesh; rim: number } {
+  const wall = cylinderMesh(10, 20, segments);
+  const positions = [...wall.positions];
+  const normals = [...wall.normals];
+  const indices = [...wall.indices];
+  const capStart = wall.faceRanges[1] ?? 0;
+  const centre = positions.length / 3;
+  positions.push(0, 0, 20);
+  normals.push(0, 0, 1);
+  const rimNode = (s: number): number => {
+    const angle = (2 * Math.PI * s) / segments;
+    const node = positions.length / 3;
+    positions.push(10 * Math.cos(angle), 10 * Math.sin(angle), 20);
+    normals.push(0, 0, 1);
+    return node;
+  };
+  const rim: number[] = [];
+  for (let s = 0; s < segments; s++) rim.push(rimNode(s));
+  // A fan from the centre, counter-clockwise seen from +z.
+  for (let s = 0; s < segments; s++) {
+    indices.push(centre, rim[s] as number, rim[(s + 1) % segments] as number);
+  }
+  const edgePoints: number[] = [];
+  for (let s = 0; s <= segments; s++) {
+    const angle = (2 * Math.PI * s) / segments;
+    edgePoints.push(10 * Math.cos(angle), 10 * Math.sin(angle), 20);
+  }
+  const mesh: BodyMesh = {
+    positions: new Float32Array(positions),
+    normals: new Float32Array(normals),
+    indices: new Uint32Array(indices),
+    faceRanges: new Uint32Array([0, segments * 2, capStart, segments]),
+    edgePoints: new Float32Array(edgePoints),
+    edgeRanges: new Uint32Array([0, segments + 1]),
+    edgeFlags: new Uint8Array(1),
+    vertices: new Float32Array(0),
+    faceIds: ['cyl:wall', 'cyl:cap'],
+    edgeIds: ['e[cyl:cap|cyl:wall]'],
+  };
+  return { mesh, rim: 0 };
+}
+
+/** A frustum (bottom radius 10, top radius 5, height 20) with a cap fan and a rim edge. */
+function cappedCone(segments = 5): BodyMesh {
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+  const radiusAt = (z: number) => 10 - 0.25 * z;
+  const node = (s: number, top: boolean) => {
+    const angle = (2 * Math.PI * s) / segments;
+    const z = top ? 20 : 0;
+    positions.push(radiusAt(z) * Math.cos(angle), radiusAt(z) * Math.sin(angle), z);
+    const n = Math.hypot(Math.cos(angle), Math.sin(angle), 0.25);
+    normals.push(Math.cos(angle) / n, Math.sin(angle) / n, 0.25 / n);
+  };
+  for (let s = 0; s < segments; s++) {
+    node(s, false);
+    node(s, true);
+    node(s + 1, false);
+    node(s + 1, true);
+    const base = 4 * s;
+    indices.push(base, base + 2, base + 3, base, base + 3, base + 1);
+  }
+  const capStart = indices.length / 3;
+  const centre = positions.length / 3;
+  positions.push(0, 0, 20);
+  normals.push(0, 0, 1);
+  const rim: number[] = [];
+  for (let s = 0; s < segments; s++) {
+    const angle = (2 * Math.PI * s) / segments;
+    rim.push(positions.length / 3);
+    positions.push(5 * Math.cos(angle), 5 * Math.sin(angle), 20);
+    normals.push(0, 0, 1);
+  }
+  for (let s = 0; s < segments; s++) {
+    indices.push(centre, rim[s] as number, rim[(s + 1) % segments] as number);
+  }
+  const edgePoints: number[] = [];
+  for (let s = 0; s <= segments; s++) {
+    const angle = (2 * Math.PI * s) / segments;
+    edgePoints.push(5 * Math.cos(angle), 5 * Math.sin(angle), 20);
+  }
+  return {
+    positions: new Float32Array(positions),
+    normals: new Float32Array(normals),
+    indices: new Uint32Array(indices),
+    faceRanges: new Uint32Array([0, segments * 2, capStart, segments]),
+    edgePoints: new Float32Array(edgePoints),
+    edgeRanges: new Uint32Array([0, segments + 1]),
+    edgeFlags: new Uint8Array(1),
+    vertices: new Float32Array(0),
+    faceIds: ['cone:wall', 'cone:cap'],
+    edgeIds: ['e[cone:cap|cone:wall]'],
+  };
+}
+
+describe('the local face directions read at the edge’s middle (P4-12, fourth amendment)', () => {
+  it('gives a box edge the same answers as the whole-edge reading', () => {
+    const d = localFaceDirections(mesh, TOP_FRONT_EDGE, 1, 2);
+    expect(round(d?.origin ?? [])).toEqual([5, 0, 10]);
+    expect(round(d?.first ?? [])).toEqual([0, 1, 0]);
+    expect(round(d?.second ?? [])).toEqual([0, 0, -1]);
+  });
+
+  it('reads a cylinder’s top rim: across the cap towards the axis, down the wall', () => {
+    const { mesh: cylinder } = cappedCylinder(5);
+    const d = localFaceDirections(cylinder, 0, 1, 0);
+    // The ring’s middle by arc length is the chord midpoint opposite the start.
+    expect(round(d?.origin ?? [])).toEqual([-8.09, 0, 20]);
+    expect(round(d?.first ?? [])).toEqual([1, 0, 0]);
+    expect(round(d?.second ?? [])).toEqual([0, 0, -1]);
+  });
+
+  it('reads a cone’s rim: across the cap towards the axis, down the slanted wall', () => {
+    const cone = cappedCone(5);
+    const d = localFaceDirections(cone, 0, 1, 0);
+    expect(round(d?.origin ?? [])).toEqual([-4.045, 0, 20]);
+    expect(round(d?.first ?? [])).toEqual([1, 0, 0]);
+    expect(round(d?.second ?? [])).toEqual([-0.198, 0, -0.98]);
+  });
+
+  it('refuses a seam (one face), a missing face, and a smooth or nearly straight corner', () => {
+    // A seam edge: named with one face, so `faceDirections` gives nothing.
+    expect(
+      faceDirections(bodies, { kind: 'edge', id: 'e[box:top]' }, undefined, false),
+    ).toBeUndefined();
+    // A face the mesh lacks.
+    const { mesh: cylinder } = cappedCylinder(4);
+    expect(localFaceDirections(cylinder, 0, 1, 9)).toBeUndefined();
+    // Two faces whose normals agree within 60°: a shallow tent, flat enough to
+    // run together, so there is no corner.
+    const tent: BodyMesh = {
+      positions: new Float32Array([0, 0, 0, 10, 0, 0, 5, 5, 1, 5, -5, 1]),
+      normals: new Float32Array(12),
+      indices: new Uint32Array([0, 1, 2, 0, 3, 1]),
+      faceRanges: new Uint32Array([0, 1, 1, 1]),
+      edgePoints: new Float32Array([0, 0, 0, 10, 0, 0]),
+      edgeRanges: new Uint32Array([0, 2]),
+      edgeFlags: new Uint8Array(1),
+      vertices: new Float32Array(0),
+      faceIds: ['sh:one', 'sh:two'],
+      edgeIds: ['e[sh:one|sh:two]'],
+    };
+    expect(localFaceDirections(tent, 0, 0, 1)).toBeUndefined();
+    expect(
+      faceDirections({ [BOX]: tent }, { kind: 'edge', id: 'e[sh:one|sh:two]' }, undefined, false),
+    ).toBeUndefined();
   });
 });

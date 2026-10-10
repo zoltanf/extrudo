@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
-import { exportModel, objectsOf3mf, solidTab } from './benchmark-helpers';
+import { exportModel, objectsOf3mf, primitive, solidTab } from './benchmark-helpers';
 import { kernelReady, openProject, pickTool, projector } from './helpers';
 
 // P3-02: Chamfer (ADR-0043, FR-FT-05, FR-UX-06). Edges are picked in the
@@ -527,4 +527,127 @@ test('distance and angle: the Angle field gets an arc, which a drag turns', asyn
   await expect(dialog).toBeHidden();
   await kernelReady(page);
   await expect(viewport).toHaveAttribute('data-bodies', 'Body1:7:20,20,20');
+});
+
+/**
+ * Points around a Ø20 cylinder's top rim (z = 20, radius 10) the home view shows.
+ */
+const RIM: readonly (readonly [number, number, number])[] = [
+  [10, 0, 20],
+  [7.07, -7.07, 20],
+  [0, -10, 20],
+  [5, -8.66, 20],
+  [8.66, -5, 20],
+];
+
+/** Clicks the cylinder's top rim at the first of those points the view picks an edge at. */
+async function clickRim(page: Page, at: (p: [number, number, number]) => { x: number; y: number }) {
+  const viewport = viewportOf(page);
+  for (const p of RIM) {
+    const { x, y } = at([...p]);
+    await page.mouse.move(x, y + 2);
+    const edge = await expect
+      .poll(() => viewport.getAttribute('data-model-hover'), { timeout: 1_000 })
+      .toMatch(/^edge:/)
+      .then(() => true)
+      .catch(() => false);
+    if (!edge) continue;
+    await page.mouse.click(x, y + 2);
+    return;
+  }
+  throw new Error('the cylinder’s rim was not pickable');
+}
+
+test('P4-12 fourth amendment: a curved edge reads both face directions, so a cylinder rim gets two distance handles and an angle arc', async ({
+  page,
+}) => {
+  const viewport = viewportOf(page);
+  await openProject(page);
+  await kernelReady(page);
+  await primitive(page, 'Cylinder', {});
+  await expect(viewport).toHaveAttribute('data-bodies', 'Body1:3:20,20,20');
+  const at = await settledProjector(viewport);
+
+  // The top rim, between the top cap and the wall: a curved edge of two faces.
+  await clickRim(page, at);
+  await expect(viewport).toHaveAttribute('data-model-selection', /^edge:/);
+  await startChamfer(page);
+  const dialog = page.getByRole('region', { name: 'Chamfer dialog' });
+  await expect(dialog.getByRole('button', { name: 'Edges', exact: true })).toHaveText('1 edge');
+  await dialog
+    .getByRole('combobox', { name: 'Type', exact: true })
+    .selectOption({ label: 'Two distances' });
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  // Both arrows appear: one across the cap towards the axis, one down the wall.
+  await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
+    'data-manipulators',
+    'distance:distance distance:distanceB',
+  );
+
+  const distance = dialog.getByRole('textbox', { name: 'Distance', exact: true });
+  const second = dialog.getByRole('textbox', { name: 'Second distance', exact: true });
+  await distance.fill('1 mm');
+  await second.fill('1 mm');
+  await second.blur();
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  const small = {
+    d: await handleAt(viewport, 'distance'),
+    b: await handleAt(viewport, 'distanceB'),
+  };
+  // A larger value moves each head along its own direction: the arm from one
+  // value to the next is that direction on screen.
+  await distance.fill('3 mm');
+  await second.fill('3 mm');
+  await second.blur();
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await expect
+    .poll(async () => (await handleAt(viewport, 'distance')).x, { timeout: 5_000 })
+    .not.toBe(small.d.x);
+  const big = {
+    d: await handleAt(viewport, 'distance'),
+    b: await handleAt(viewport, 'distanceB'),
+  };
+  const armD = { x: big.d.x - small.d.x, y: big.d.y - small.d.y };
+  const armB = { x: big.b.x - small.b.x, y: big.b.y - small.b.y };
+  expect(Math.hypot(armD.x, armD.y), 'Distance arm').toBeGreaterThan(4);
+  expect(Math.hypot(armB.x, armB.y), 'Second distance arm').toBeGreaterThan(4);
+
+  // Dragging Distance further out grows the cap-side value; the wall's stays.
+  await distance.blur();
+  await dragBy(page, big.d, armD.x, armD.y);
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await distance.blur();
+  expect(Number.parseFloat(await distance.inputValue()), 'Distance').toBeGreaterThan(3);
+  await expect(second).toHaveValue('3 mm');
+
+  // And Second distance's head grows the wall-side value.
+  await second.blur();
+  await dragBy(page, big.b, armB.x, armB.y);
+  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await second.blur();
+  expect(Number.parseFloat(await second.inputValue()), 'Second distance').toBeGreaterThan(3);
+  await dialog.getByRole('button', { name: 'OK' }).click();
+  await expect(dialog).toBeHidden();
+  await kernelReady(page);
+  // A valid body: the rim's chamfer adds its face(s) to the cylinder's three.
+  const bodies = (await viewport.getAttribute('data-bodies')) ?? '';
+  const faces = Number.parseInt(bodies.match(/^Body1:(\d+):/)?.[1] ?? '0', 10);
+  expect(faces, `faces in ${bodies}`).toBeGreaterThan(3);
+
+  // Reopening and switching to Distance and angle shows the arc on the curved edge too.
+  await chip(page, 'Chamfer1').dblclick();
+  const edit = page.getByRole('region', { name: 'Edit Chamfer1 dialog' });
+  await expect(edit).toBeVisible();
+  await edit
+    .getByRole('combobox', { name: 'Type', exact: true })
+    .selectOption({ label: 'Distance and angle' });
+  await edit.getByRole('textbox', { name: 'Distance', exact: true }).fill('2 mm');
+  await edit.getByRole('textbox', { name: 'Distance', exact: true }).blur();
+  await expect(edit).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
+  await expect(viewport.locator('[data-manipulators]')).toHaveAttribute(
+    'data-manipulators',
+    'distance:distance angle:angle',
+  );
+  await edit.getByRole('button', { name: 'Cancel Esc' }).click();
+  await expect(edit).toBeHidden();
 });

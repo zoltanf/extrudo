@@ -18,17 +18,28 @@
  * (`variableSetManipulators`): Radius where the round starts and End radius
  * where it ends, each on the bisector at that end of the tangent chain. **A
  * chamfer of the unequal types** takes its distances along the faces
- * themselves (`faceDirections`, `chamferManipulators`), and **a
- * distance-and-angle set's Angle is an arc** from the reference face's
- * direction towards the other face's, about the edge itself.
+ * themselves (`faceDirections`, `chamferManipulators`), read locally at the
+ * edge's middle (`localFaceDirections`), so a curved edge and a curved face
+ * work too; **a distance-and-angle set's Angle is an arc** from the reference
+ * face's direction towards the other face's, about the edge itself (P4-12,
+ * ADR-0043's fourth amendment).
  */
 import type { BodyId, GeomRef, Vec3 } from '@extrudo/core';
 import { type BodyMesh, parseCompound } from '@extrudo/kernel';
-import { meshFaceFrame, meshSurfaceFrameAt } from './geometry';
+import { meshSurfaceFrameAt } from './geometry';
 import type { DialogValues, Manipulator } from './spec';
 
 /** Below this the two normals are too much alike for a bisector that means anything. */
 const MIN_BISECTOR = 0.5;
+
+/**
+ * Two faces whose normals agree within this much run smoothly into each other,
+ * so there is no corner for a chamfer handle to point away from (ADR-0038).
+ */
+const SMOOTH_COS = 0.5;
+
+/** The two local face directions point within this much of each other: no corner. */
+const ALIGNED_COS = Math.cos((10 * Math.PI) / 180);
 
 /** A point on a body's mesh. */
 type MeshPoint = { mesh: BodyMesh; point: Vec3 };
@@ -295,15 +306,144 @@ const cross = (a: Vec3, b: Vec3): Vec3 => [
   a[0] * b[1] - a[1] * b[0],
 ];
 const dot = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const unit = (v: Vec3): Vec3 | undefined => {
+  const length = Math.hypot(v[0], v[1], v[2]);
+  return length > 1e-12 ? [v[0] / length, v[1] / length, v[2] / length] : undefined;
+};
+
+/** The middle of an edge's polyline and the direction of the segment there. */
+interface EdgeLocator {
+  point: Vec3;
+  /** Unit direction of the polyline segment containing the middle (sign arbitrary). */
+  tangent: Vec3;
+}
 
 /**
- * Where a chamfer's two distances run (P4-12): from the middle of a straight
- * edge between two **flat** faces, along each face across the edge into the
- * face. `reference` is the face that takes the first distance: the picked one,
- * else the lower-numbered of the edge's two (the kernel's own rule) or, with
- * `flip`, the other. Undefined where that can't be read reliably: a curved
- * edge or face, a face the meshes lack, or a reference face that isn't one of
- * the edge's two — the dialog then keeps its single bisector handle.
+ * Where an edge's handle stands and which way the edge runs there (P4-12,
+ * ADR-0043's fourth amendment): the point halfway along the display polyline
+ * **by arc length** — for a closed loop, halfway round it — and the direction
+ * of the segment that contains it. A straight two-point edge gives exactly
+ * the old middle. Undefined for a degenerate edge (fewer than two points).
+ */
+export function edgeLocator(mesh: BodyMesh, edge: number): EdgeLocator | undefined {
+  const first = mesh.edgeRanges[2 * edge] ?? 0;
+  const count = mesh.edgeRanges[2 * edge + 1] ?? 0;
+  if (count < 2) return undefined;
+  const at = (i: number): Vec3 => [
+    mesh.edgePoints[3 * i] ?? 0,
+    mesh.edgePoints[3 * i + 1] ?? 0,
+    mesh.edgePoints[3 * i + 2] ?? 0,
+  ];
+  let total = 0;
+  for (let i = 0; i < count - 1; i++) total += Math.hypot(...sub(at(first + i + 1), at(first + i)));
+  if (!(total > 0)) return undefined;
+  let remaining = total / 2;
+  for (let i = 0; i < count - 1; i++) {
+    const a = at(first + i);
+    const b = at(first + i + 1);
+    const span = sub(b, a);
+    const length = Math.hypot(...span);
+    if (remaining <= length || i === count - 2) {
+      const t = length > 0 ? remaining / length : 0;
+      const point: Vec3 = [a[0] + span[0] * t, a[1] + span[1] * t, a[2] + span[2] * t];
+      const tangent = unit(span);
+      return tangent ? { point, tangent } : undefined;
+    }
+    remaining -= length;
+  }
+  return undefined;
+}
+
+/** A face triangle touched: its own outward normal and its centroid. */
+interface TriangleAt {
+  normal: Vec3;
+  centroid: Vec3;
+}
+
+/**
+ * The face `face`'s display triangle nearest `at`: its own normal (from the
+ * triangle's winding, counter-clockwise seen from outside) and its centroid.
+ * A flat face gives its one normal, a curved face the one where `at` is.
+ */
+export function nearestTriangleNormal(
+  mesh: BodyMesh,
+  face: number,
+  at: Vec3,
+): TriangleAt | undefined {
+  const first = mesh.faceRanges[2 * face] ?? 0;
+  const count = mesh.faceRanges[2 * face + 1] ?? 0;
+  if (count <= 0) return undefined;
+  const p = mesh.positions;
+  const node = (i: number): Vec3 => [p[3 * i] ?? 0, p[3 * i + 1] ?? 0, p[3 * i + 2] ?? 0];
+  let best: TriangleAt | undefined;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let t = first; t < first + count; t++) {
+    const a = node(mesh.indices[3 * t] ?? 0);
+    const b = node(mesh.indices[3 * t + 1] ?? 0);
+    const c = node(mesh.indices[3 * t + 2] ?? 0);
+    const centroid: Vec3 = [
+      (a[0] + b[0] + c[0]) / 3,
+      (a[1] + b[1] + c[1]) / 3,
+      (a[2] + b[2] + c[2]) / 3,
+    ];
+    const distance = Math.hypot(...sub(centroid, at));
+    if (distance >= bestDistance) continue;
+    const normal = unit(cross(sub(b, a), sub(c, a)));
+    if (!normal) continue;
+    bestDistance = distance;
+    best = { normal, centroid };
+  }
+  return best;
+}
+
+/**
+ * The two directions a chamfer's distances run, read **locally at the edge's
+ * middle** (P4-12, ADR-0043's fourth amendment): each face's normal from its
+ * display triangle nearest that point, and the direction across the face as
+ * `tangent × normal`, signed towards the triangle's centroid, so it runs into
+ * the face and away from the edge. `faceA` gives `first`, `faceB` `second`.
+ * Works on a curved edge and a curved face. Undefined where it can't be read:
+ * a degenerate edge, a face the mesh lacks, two faces whose normals agree
+ * within 60° (a smooth chain), or two directions within 10° of each other.
+ */
+export function localFaceDirections(
+  mesh: BodyMesh,
+  edge: number,
+  faceA: number,
+  faceB: number,
+): FaceDirections | undefined {
+  const loc = edgeLocator(mesh, edge);
+  if (!loc) return undefined;
+  const a = nearestTriangleNormal(mesh, faceA, loc.point);
+  const b = nearestTriangleNormal(mesh, faceB, loc.point);
+  if (!a || !b) return undefined;
+  if (dot(a.normal, b.normal) > SMOOTH_COS) return undefined;
+  const into = (tri: TriangleAt): Vec3 | undefined => {
+    const side = cross(loc.tangent, tri.normal);
+    const direction = unit(side);
+    if (!direction) return undefined;
+    const lean = dot(direction, sub(tri.centroid, loc.point));
+    if (Math.abs(lean) < 1e-9) return undefined;
+    return lean > 0 ? direction : [-direction[0], -direction[1], -direction[2]];
+  };
+  const first = into(a);
+  const second = into(b);
+  if (!first || !second) return undefined;
+  if (dot(first, second) > ALIGNED_COS) return undefined;
+  return { origin: loc.point, first, second };
+}
+
+/**
+ * Where a chamfer's two distances run (P4-12): from the middle of the set's
+ * first edge, along each face across the edge into the face — read locally, so
+ * a curved edge and a curved face work too (`localFaceDirections`).
+ * `reference` is the face that takes the first distance: the picked one, else
+ * the lower-numbered of the edge's two (the kernel's own rule) or, with
+ * `flip`, the other. Undefined where that can't be read reliably: a seam edge,
+ * a face the meshes lack, a reference face that isn't one of the edge's two,
+ * or a smooth or nearly straight corner — the dialog then keeps its single
+ * bisector handle.
  */
 export function faceDirections(
   bodies: Readonly<Record<BodyId, BodyMesh>>,
@@ -317,27 +457,6 @@ export function faceDirections(
   const found = Object.values(bodies).find((m) => (m.edgeIds?.indexOf(ref.id) ?? -1) >= 0);
   if (!found) return undefined;
   const edge = found.edgeIds?.indexOf(ref.id) ?? -1;
-  const first = found.edgeRanges[2 * edge] ?? 0;
-  const count = found.edgeRanges[2 * edge + 1] ?? 0;
-  const origin = edgeMidpoint(found, edge);
-  if (!origin || count < 2) return undefined;
-  const pt = (i: number): Vec3 => [
-    found.edgePoints[3 * i] ?? 0,
-    found.edgePoints[3 * i + 1] ?? 0,
-    found.edgePoints[3 * i + 2] ?? 0,
-  ];
-  const a = pt(first);
-  const z = pt(first + count - 1);
-  const span: Vec3 = [z[0] - a[0], z[1] - a[1], z[2] - a[2]];
-  const length = Math.hypot(...span);
-  if (!(length > 0)) return undefined;
-  const t: Vec3 = [span[0] / length, span[1] / length, span[2] / length];
-  // A straight edge: every point of its polyline on the line through the ends.
-  for (let i = first + 1; i < first + count - 1; i++) {
-    const p = pt(i);
-    const off = cross([p[0] - a[0], p[1] - a[1], p[2] - a[2]], t);
-    if (Math.hypot(...off) > 1e-3 * length) return undefined;
-  }
   const [nameA, nameB] = parsed.faces as [string, string];
   const order = (name: string) => found.faceIds?.indexOf(name) ?? -1;
   if (order(nameA) < 0 || order(nameB) < 0) return undefined;
@@ -350,37 +469,7 @@ export function faceDirections(
     one = reference.id;
   }
   const other = one === nameA ? nameB : nameA;
-  const across = (name: string): Vec3 | undefined => {
-    const face = order(name);
-    const frame = meshFaceFrame(found, face);
-    if (!frame || (frame.flatness ?? 1) < 0.98) return undefined;
-    const n = frame.normal;
-    if (Math.abs(dot(n, t)) > 0.02) return undefined;
-    const side = cross(t, n);
-    const sideLength = Math.hypot(...side);
-    if (!(sideLength > 0)) return undefined;
-    const d: Vec3 = [side[0] / sideLength, side[1] / sideLength, side[2] / sideLength];
-    // Into the face: where the bulk of its nodes lie.
-    const start = found.faceRanges[2 * face] ?? 0;
-    const triangles = found.faceRanges[2 * face + 1] ?? 0;
-    let lean = 0;
-    for (let k = 0; k < 3 * triangles; k++) {
-      const node = found.indices[3 * start + k] ?? 0;
-      lean += dot(
-        [
-          (found.positions[3 * node] ?? 0) - origin[0],
-          (found.positions[3 * node + 1] ?? 0) - origin[1],
-          (found.positions[3 * node + 2] ?? 0) - origin[2],
-        ],
-        d,
-      );
-    }
-    if (lean === 0) return undefined;
-    return lean > 0 ? d : [-d[0], -d[1], -d[2]];
-  };
-  const along = across(one);
-  const second = across(other);
-  return along && second ? { origin, first: along, second } : undefined;
+  return localFaceDirections(found, edge, order(one), order(other));
 }
 
 /**
