@@ -177,6 +177,13 @@ export type DialogField =
 export interface DialogContext {
   /** The document as it is (the draft isn't in it). */
   doc: ExtrudoDocument;
+  /**
+   * The draft's ID in create mode, the edited feature's otherwise. The
+   * `commitWith` hook uses it: Copy Component stamps the Move it makes
+   * (ADR-0081 §3), and the feature isn't in `doc` yet. Optional so a spec's
+   * pure unit tests need not name it.
+   */
+  featureId?: FeatureId;
   /** The model's body meshes (what the view shows and picks). */
   bodies: Readonly<Record<BodyId, BodyMesh>>;
   /** The feature being edited; absent for a new one. */

@@ -114,9 +114,14 @@ function block(id: string, x: number, y: number, w = 40, d = 30, h = 20): Featur
   ];
 }
 
-const placeOnBed = (id: string, face: GeomRef | GeomRef[], spin?: string): Feature => ({
+const placeOnBed = (
+  id: string,
+  face: GeomRef | GeomRef[],
+  spin?: string,
+  carry?: readonly GeomRef[],
+): Feature => ({
   ...testFeature(id, 'placeOnBed'),
-  inputs: placeOnBedInputs(face, spin),
+  inputs: placeOnBedInputs(face, spin, carry),
 });
 
 async function run(features: Feature[]): Promise<Done> {
@@ -317,6 +322,57 @@ describe('placeOnBed', { timeout: 120_000 }, () => {
     const result = await run([...A, placeOnBed('P', [top, side])]);
     expect(status(result, 'P')).toMatchObject({ status: 'error' });
     expect(status(result, 'P').message).toMatch(/same body/);
+  });
+
+  it('carries other bodies through the same turn and drop, keeping their names', async () => {
+    const C = block('C', 0, 30, 40, 30, 20);
+    const first = await run([...A, ...C]);
+    // A side face: A's 40 mm along X becomes the height, so C's does too.
+    const side = faceWhere(first, 'A:0', facing([1, 0, 0]));
+    const carried: GeomRef = { kind: 'body', id: 'C:0' };
+    const result = await run([...A, ...C, placeOnBed('P', side, undefined, [carried])]);
+    expect(status(result, 'P')).toEqual({ status: 'ok' });
+    const c = shapeOf('C:0');
+    expect(round((c.max[2] as number) - (c.min[2] as number))).toBe(40);
+    expect(round(c.min[2])).toBe(0);
+    expect(round((c.max[0] as number) - (c.min[0] as number))).toBe(20);
+    expect(round((c.max[1] as number) - (c.min[1] as number))).toBe(30);
+  });
+
+  it('carries bodies only with one face, and never the face’s own body', async () => {
+    const C = block('C', 100, 0, 40, 30, 20);
+    const first = await run([...A, ...C]);
+    const topA = faceWhere(first, 'A:0', facing([0, 0, 1]));
+    const sideA = faceWhere(first, 'A:0', facing([1, 0, 0]));
+    const carried: GeomRef = { kind: 'body', id: 'C:0' };
+    const twoFaces = await run([...A, ...C, placeOnBed('P', [topA, sideA], undefined, [carried])]);
+    expect(status(twoFaces, 'P')).toMatchObject({ status: 'error' });
+    expect(status(twoFaces, 'P').message).toMatch(/Pick one face/);
+    const own = await run([
+      ...A,
+      ...C,
+      placeOnBed('P', topA, undefined, [{ kind: 'body', id: 'A:0' }]),
+    ]);
+    expect(status(own, 'P')).toMatchObject({ status: 'error' });
+    expect(status(own, 'P').message).toMatch(/face's own body/);
+  });
+
+  it('warns when a carried body ends below the bed', async () => {
+    const C = block('C', 100, 0, 40, 30, 20);
+    const lifted = {
+      ...testFeature('L', 'move'),
+      inputs: moveInputs(['C:0'], { dz: '40 mm' }),
+    };
+    const first = await run([...A, ...C, lifted]);
+    const top = faceWhere(first, 'A:0', facing([0, 0, 1]));
+    const result = await run([
+      ...A,
+      ...C,
+      lifted,
+      placeOnBed('P', top, undefined, [{ kind: 'body', id: 'C:0' }]),
+    ]);
+    expect(status(result, 'P')).toMatchObject({ status: 'warning' });
+    expect(status(result, 'P').message).toMatch(/below the bed/);
   });
 
   it('says what is missing or wrong', async () => {

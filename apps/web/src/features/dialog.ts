@@ -332,6 +332,7 @@ export function createDialogController(options: DialogControllerOptions): Dialog
     const draftSweep = open.preview?.sweep;
     return {
       doc,
+      featureId: open.id,
       bodies,
       sketches,
       construction,

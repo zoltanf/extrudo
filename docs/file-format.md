@@ -830,6 +830,7 @@ rotation and the move are computed on every recompute, not stored.
 |---|---|---|---|
 | `face` | `ref` | yes | Refs of kind `face`, flat faces, at most one per body (two faces of one body are an error). Empty: an error until one is picked. Before P3-17 at most one |
 | `spin` | `expr` (angle) | no | A turn about the vertical (+Z) through the face's centre, after the face lies on the bed. Absent: no turn |
+| `carry` | `ref` | no | Refs of kind `body` (P6-05 S5, ADR-0081 §3): bodies that take the same turn and drop as the face's body, so a component is placed as one. Only with exactly one `face`; a carried body that is also the face's body is an error. Empty: no carried bodies |
 
 Each body is the one its face is in. It turns by the smallest rotation that
 makes the face's outward normal point along -Z (about the horizontal axis
@@ -840,6 +841,8 @@ face's centre. The X and Y of the face's centre stay where they were. Every
 body keeps its ID and every face keeps its name, so references to the body
 and its faces still resolve. The feature warns when every face is already on
 the bed (and there is no spin), and when part of a body ends up below z = 0.
+Each `carry` body takes the face body's own rotation and move, keeps its ID
+and names, and is warned about on the same rule.
 
 ### 6.16 Patterns: `rectangularPattern`, `circularPattern`, `pathPattern`
 

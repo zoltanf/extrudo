@@ -16,10 +16,12 @@ import {
   Boxes,
   ChevronDown,
   ChevronRight,
+  Copy,
   Eye,
   EyeDashed,
   EyeOff,
   FileDown,
+  Move3d,
   Palette,
   PanelLeftClose,
   PanelLeftOpen,
@@ -42,6 +44,7 @@ import {
 import { useStore } from 'zustand';
 import type { ComponentActions } from '../components/componentActions';
 import { type ComponentRow, componentRows } from '../components/componentRows';
+import type { PlacementActions } from '../components/placement';
 import {
   ContextMenu,
   IconButton,
@@ -97,6 +100,8 @@ export interface BrowserPanelProps {
   /** The active and the isolated component (session state, P6-05 S4). */
   activeComponent?: ComponentId;
   isolatedComponent?: ComponentId;
+  /** Move, copy and place a component as one (P6-05 S5, ADR-0081 §3). */
+  placementActions?: PlacementActions;
   /** Bodies in the model selection: their rows show selected. */
   selectedBodies?: ReadonlySet<string>;
   /**
@@ -158,6 +163,7 @@ export function BrowserPanel({
   componentActions,
   activeComponent,
   isolatedComponent,
+  placementActions,
   selectedBodies = NO_BODIES,
   onPickBody,
   onHoverBody,
@@ -475,6 +481,7 @@ export function BrowserPanel({
                       actions={componentActions}
                       active={row.component.id === activeComponent}
                       isolated={isolatedComponent}
+                      placement={placementActions}
                       bodyActions={bodyActions}
                       renderBody={(body) => (
                         <BodyLeaf
@@ -1049,6 +1056,7 @@ function ComponentFolder({
   actions,
   active,
   isolated,
+  placement,
   bodyActions,
   renderBody,
 }: {
@@ -1056,6 +1064,7 @@ function ComponentFolder({
   actions: ComponentActions;
   active: boolean;
   isolated: ComponentId | undefined;
+  placement?: PlacementActions;
   bodyActions: BodyActions;
   renderBody(body: BodyEntry): ReactNode;
 }) {
@@ -1120,6 +1129,17 @@ function ComponentFolder({
             <MenuItem onSelect={() => actions.isolate(id)}>Isolate</MenuItem>
           )}
           <MenuSeparator />
+          {placement && bodies.length > 0 && (
+            <>
+              <MenuItem icon={<Move3d size={14} />} onSelect={() => placement.move(id)}>
+                Move Component
+              </MenuItem>
+              <MenuItem icon={<Copy size={14} />} onSelect={() => placement.copy(id)}>
+                Copy Component
+              </MenuItem>
+              <MenuSeparator />
+            </>
+          )}
           <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.remove(id)}>
             Delete Component
           </MenuItem>

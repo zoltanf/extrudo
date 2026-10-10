@@ -51,6 +51,7 @@ function ribSketch() {
 
 const context = (t: ReturnType<typeof ribSketch>): DialogContext => ({
   doc: t.store.getState().doc,
+  featureId: 'F' as FeatureId,
   bodies,
 });
 

@@ -15,6 +15,7 @@ import {
   resolveSlots,
   SKETCH_SLOTS,
 } from '../commands/marking';
+import type { PlacementActions } from '../components/placement';
 import { type MarkingSlot, Popover, ToolIcon } from '../design-system';
 import type { Preferences } from '../platform/preferences';
 import type { ViewportStore } from '../viewport/store';
@@ -90,6 +91,8 @@ export interface ViewMenuInput {
   };
   /** Grouping the timeline's picked chips, which the list offers as "Group…" (P4-09). */
   groupActions: GroupActions;
+  /** Placing a component as one (P6-05 S5, ADR-0081 §3): the context list's "Place Component on Bed". */
+  placement?: PlacementActions;
   /** The feature chips picked in the timeline (P3-17, P4-09). */
   pickedChips: readonly FeatureId[];
   /** The menu is offered: nothing else (a dialog, Measure, Create Sketch) owns the pointer. */
@@ -111,7 +114,8 @@ export function useViewMenu(input: ViewMenuInput): {
 } {
   const [appearance, setAppearance] = useState<{ id: BodyId; at: { x: number; y: number } }>();
   const { enabled, mode, session, radial, commands, bodies, bodyActions, overrides } = input;
-  const { viewport, features, featureActions, groupActions, pickedChips, runningTool } = input;
+  const { viewport, features, featureActions, groupActions, pickedChips, runningTool, placement } =
+    input;
 
   const menu = useMemo<ViewMenu | undefined>(() => {
     if (!enabled) return undefined;
@@ -158,6 +162,7 @@ export function useViewMenu(input: ViewMenuInput): {
           clearSelection: () => session.getState().clearSelection(),
           appearance: (id) => setAppearance({ id, at }),
           ...(runningTool && { runningTool }),
+          ...(placement && { placement }),
         });
         return { radial, slots, entries };
       },
@@ -177,6 +182,7 @@ export function useViewMenu(input: ViewMenuInput): {
     pickedChips,
     viewport,
     runningTool,
+    placement,
   ]);
 
   const body = appearance && bodies.find((b) => b.id === appearance.id);

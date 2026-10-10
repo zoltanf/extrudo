@@ -9,8 +9,8 @@ describe('the Place on Bed dialog', () => {
     expect(specForCommand(featureDialogs(), 'placeOnBed')?.type).toBe('placeOnBed');
   });
 
-  it('takes faces (one per body) and a spin angle', () => {
-    expect(placeOnBedDialog.fields).toHaveLength(2);
+  it('takes faces (one per body), a spin angle and carried bodies', () => {
+    expect(placeOnBedDialog.fields).toHaveLength(3);
     expect(placeOnBedDialog.fields[0]).toMatchObject({
       kind: 'selection',
       name: 'face',
@@ -21,6 +21,24 @@ describe('the Place on Bed dialog', () => {
       kind: 'expression',
       name: 'spin',
       unit: 'angle',
+    });
+    expect(placeOnBedDialog.fields[2]).toMatchObject({
+      kind: 'selection',
+      name: 'carry',
+      accepts: ['body'],
+      min: 0,
+    });
+  });
+
+  it('stores the carry only when a body is picked (ADR-0081 §3)', () => {
+    const t = setupDialogs([placeOnBedDialog]);
+    t.session.getState().select([faceItem(1)]);
+    t.controller.start('placeOnBed');
+    expect(t.open()?.draft.inputs).not.toHaveProperty('carry');
+    t.controller.setRefs('carry', [{ kind: 'body', id: 'box:0' }]);
+    expect(t.open()?.draft.inputs.carry).toEqual({
+      kind: 'ref',
+      refs: [{ kind: 'body', id: 'box:0' }],
     });
   });
 

@@ -18,6 +18,22 @@ describe('place on bed inputs', () => {
     expect(placeOnBedInputs(a).spin).toBeUndefined();
   });
 
+  it('takes carried bodies (ADR-0081 §3), only bodies, and none makes no input', () => {
+    const face = { kind: 'face', id: 'a' } as const;
+    const body = { kind: 'body', id: 'A:0' } as const;
+    const inputs = placeOnBedInputs(face, '0 deg', [body]);
+    expect(inputs.carry).toEqual({ kind: 'ref', refs: [body] });
+    expect(PlaceOnBedInputsSchema.safeParse(inputs).success).toBe(true);
+    // Empty carry is left out, so a plain place reads as it always did.
+    expect(placeOnBedInputs(face, undefined, []).carry).toBeUndefined();
+    expect(
+      PlaceOnBedInputsSchema.safeParse({
+        face: { kind: 'ref', refs: [face] },
+        carry: { kind: 'ref', refs: [face] },
+      }).success,
+    ).toBe(false);
+  });
+
   it('refuses a spin that is not an angle, and anything but a face', () => {
     const face = { kind: 'face', id: 'a' } as const;
     expect(

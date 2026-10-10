@@ -36,6 +36,7 @@ import { isEditable, useShortcuts } from '../commands/shortcuts';
 import { followComponentSession } from '../components/active';
 import { createComponentActions } from '../components/componentActions';
 import { componentRows, componentsSummary } from '../components/componentRows';
+import { createPlacementActions } from '../components/placement';
 import { CustomizerPanel } from '../customizer/CustomizerPanel';
 import { CUSTOMIZER_TOOL, useCustomizer } from '../customizer/useCustomizer';
 import {
@@ -672,6 +673,22 @@ export function AppShell({
         notify,
       ),
     [store, session, notify],
+  );
+  const placementActions = useMemo(
+    () =>
+      dialog
+        ? createPlacementActions({
+            store,
+            session,
+            dialog,
+            members: (id) =>
+              componentListRef.current
+                .find((r) => r.component.id === id)
+                ?.bodies.map((b) => b.id) ?? [],
+            notify,
+          })
+        : undefined,
+    [store, session, dialog, notify],
   );
   const selectedBodyIds = useMemo(
     () => selection.filter((item) => item.kind === 'body').map((item) => item.id as BodyId),
@@ -1758,6 +1775,7 @@ export function AppShell({
         : !projecting && sketchPlane !== undefined,
     radial: markingStyle.radial,
     overrides: markingSlots.overrides,
+    placement: placementActions,
     ...(runningTool && { runningTool }),
   });
   // In the model, with no command running, the view picks bodies, sketch curves and
@@ -1944,6 +1962,7 @@ export function AppShell({
             componentActions={componentActions}
             activeComponent={activeComponent}
             isolatedComponent={isolatedComponent}
+            placementActions={placementActions}
             selectedBodies={selectedBodies}
             statuses={featureStatuses}
             recomputeFinished={recomputeFinished}
