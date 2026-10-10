@@ -4,6 +4,8 @@ One line per completed roadmap task, newest first. Dates are absolute.
 
 ## Next
 
+- 2026-10-10 · **The chip menu offers Hide only where it does something**: `Feature.visible` changes what is drawn only for sketches, construction geometry and canvases, so a fillet's, chamfer's, shell's or pattern's menu no longer offers a Hide that drew the same thing either way (`shell/featureVisibility.ts`'s list; the marking menu's list already followed the rule).
+- 2026-10-10 · **Send to Slicer on the web says what to do instead**: the tile stays disabled, but a tool can now word its own unavailable reason, and the tooltip (and the command palette) reads "Sending to a slicer needs the desktop app. In the browser, export a 3MF and open it in your slicer." instead of "Arrives with the desktop app.".
 - 2026-10-10 · **Print Info's footnote stays readable in a small window**: the note ("An estimate: walls and infill as set, no supports…") sits under the scrolling content instead of inside it, so it is never scrolled out of the panel (checked at 900 × 700).
 - 2026-10-10 · **The Text preview follows alignment and height**: the sketch overlay redraws the draft whenever the Text panel changes the string, font, alignment or Height, not only on OK (`e2e/text.spec.ts`).
 - 2026-10-10 · **Section Analysis: Box from an empty panel (guide, test)**: the choosing state already offered Box beside the planes (a box needs no plane first); the guide now says so, and `e2e/section.spec.ts` opens the tool on a design with no section and clicks Box straight away.

@@ -83,8 +83,10 @@ chip back. Click one chip and `Shift`-click another to pick a run, and drag any 
 the lot. **Move to End** in the menu does the same without dragging.
 
 **Suppress and hide.** **Suppress** turns a feature off without deleting it: its chip dims and the
-model is computed without it. Choose it again to bring it back. **Hide** hides a sketch's curves
-in the view without changing the model (a body is hidden with its eye in the browser). **Delete** removes a feature, but
+model is computed without it. Choose it again to bring it back. **Hide** hides a sketch's curves in
+the view without changing the model; its menu is only on the features whose drawn geometry hiding
+changes (sketches, construction geometry, canvases — a body is hidden with its eye in the browser).
+**Delete** removes a feature, but
 refuses while a later one uses it, and tells you which.
 
 **Groups.** Pick a run of neighbouring chips, right-click, and choose **Group 3 features**. A group

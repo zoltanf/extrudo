@@ -37,6 +37,14 @@ const drawn = async (page: Page) =>
 const menuItem = (page: Page, name: string) =>
   page.getByRole('menuitem', { name: new RegExp(`^${name}`) });
 
+async function dismiss(page: Page) {
+  const toast = page.getByRole('alert');
+  if ((await toast.count()) > 0) {
+    await toast.getByRole('button', { name: 'Dismiss' }).click();
+    await expect(toast).toHaveCount(0);
+  }
+}
+
 test('hovering a chip or a browser row highlights the sketch', async ({ page }) => {
   const viewport = await openProject(page, 'wall-bracket');
   await expect(viewport).not.toHaveAttribute('data-highlight', /./);
@@ -146,6 +154,21 @@ test('suppress and delete from the menus; not while a sketch is open', async ({ 
   await expect(menuItem(page, 'Suppress')).toHaveAttribute('aria-disabled', 'true');
   await page.keyboard.press('Escape');
   await expect(row(page, 'Sketch1')).toBeVisible();
+});
+
+test('Hide is offered only where it changes what is drawn', async ({ page }) => {
+  await openProject(page, 'wall-bracket');
+  await dismiss(page);
+  // Hiding a fillet draws exactly what it drew before: no Hide on its chip menu.
+  await chip(page, 'Fillet1').click({ button: 'right' });
+  await expect(menuItem(page, 'Hide')).toHaveCount(0);
+  await expect(menuItem(page, 'Show')).toHaveCount(0);
+  await expect(menuItem(page, 'Suppress')).toBeVisible();
+  await page.keyboard.press('Escape');
+  // A sketch's curves do disappear: the menu offers Hide.
+  await chip(page, 'Sketch1').click({ button: 'right' });
+  await expect(menuItem(page, 'Hide')).toBeVisible();
+  await page.keyboard.press('Escape');
 });
 
 test('two chips fit without a scrollbar, with the marker at either end', async ({ page }) => {

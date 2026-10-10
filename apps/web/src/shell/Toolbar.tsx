@@ -447,7 +447,9 @@ function ToolButton({
   const tooltip = {
     label: label ?? tool.label,
     shortcut,
-    hint: unavailable ? `${tool.hint} Arrives with ${tool.comesWith}.` : tool.hint,
+    hint: unavailable
+      ? (tool.unavailable ?? `${tool.hint} Arrives with ${tool.comesWith}.`)
+      : tool.hint,
     demo: <ToolDemo tool={tool.id} />,
     footer: 'F1 for more',
   };

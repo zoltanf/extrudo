@@ -17,6 +17,12 @@ export interface Tool {
   hint: string;
   /** Roadmap task that makes it work; absent when it works today. */
   comesWith?: string;
+  /**
+   * Why the tile is unavailable where it is, wording of its own instead of
+   * "Arrives with `comesWith`.": the tooltip's hint and the command's
+   * unavailable reason say this while the tile is disabled (`isToolReady`).
+   */
+  unavailable?: string;
 }
 
 export const TOOLS = {
@@ -822,6 +828,8 @@ export const TOOLS = {
     hint: 'Open the model in your slicer.',
     // Ready where the platform has `openInSlicer`: the desktop app (P6-02, ADR-0062).
     comesWith: 'the desktop app',
+    unavailable:
+      'Sending to a slicer needs the desktop app. In the browser, export a 3MF and open it in your slicer.',
   },
   // The Home tab's file actions (ADR-0079): commands, run through the page's `FileActions`
   // (`FILE_COMMANDS`), not tools; listed here for their tiles, icons and hints.

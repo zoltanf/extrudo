@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_KEYMAP, keysFor } from '../commands/keymap';
 import { shortcutLabel } from '../commands/shortcuts';
-import { TABS, TOOLS } from './tools';
+import { TABS, TOOLS, type Tool } from './tools';
 
 // FR-UX-04 (P3-12): every tool's tooltip says its name, its key and one sentence.
 describe('tool tooltips', () => {
@@ -22,6 +22,16 @@ describe('tool tooltips', () => {
     }
     const keyed = tools.filter((t) => t.id in DEFAULT_KEYMAP);
     expect(keyed.length).toBeGreaterThan(15);
+  });
+
+  it('a tool with its own unavailable reason sentences it (Send to Slicer on the web)', () => {
+    for (const tool of tools as Tool[]) {
+      if (!tool.unavailable) continue;
+      expect(tool.unavailable.trim(), tool.id).toMatch(/^[A-Z0-9].{8,}[.!]$/);
+    }
+    expect(TOOLS.slicer.unavailable).toBe(
+      'Sending to a slicer needs the desktop app. In the browser, export a 3MF and open it in your slicer.',
+    );
   });
 
   it('has every tool on the toolbar a catalogue entry', () => {

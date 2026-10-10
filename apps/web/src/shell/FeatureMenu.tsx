@@ -21,6 +21,7 @@ import {
 import { type KeyboardEvent, useEffect, useRef } from 'react';
 import { MenuItem, MenuSeparator, TextInput } from '../design-system';
 import type { FeatureActions } from './featureActions';
+import { visibilityApplies } from './featureVisibility';
 import type { GroupActions } from './groupActions';
 import type { GroupRun } from './timelineGroups';
 
@@ -28,9 +29,10 @@ import type { GroupRun } from './timelineGroups';
  * A feature's right-click menu in the timeline and the browser (FR-TL-03):
  * edit sketch or feature, Redefine Plane for a sketch, Fix References and
  * Keep Closest Match when the kernel lost or guessed a reference (FR-TL-05),
- * rename, show/hide, suppress, export a sketch (P1-13), roll the marker to
- * it, move it to the end (P2-11), delete. With two or more chips picked it
- * groups them first (P4-09).
+ * rename, show/hide (only for the feature types hiding changes what is
+ * drawn, `featureVisibility`), suppress, export a sketch (P1-13), roll the
+ * marker to it, move it to the end (P2-11), delete. With two or more chips
+ * picked it groups them first (P4-09).
  */
 export function FeatureMenuItems({
   feature,
@@ -105,12 +107,16 @@ export function FeatureMenuItems({
       <MenuItem icon={<TextCursorInput size={14} />} shortcut="F2" onSelect={onRename}>
         Rename
       </MenuItem>
-      <MenuItem
-        icon={visible ? <EyeOff size={14} /> : <Eye size={14} />}
-        onSelect={() => actions.setVisible([feature.id], !visible)}
-      >
-        {visible ? 'Hide' : 'Show'}
-      </MenuItem>
+      {/* Hide draws nothing new for a body-making feature: only sketches,
+           construction geometry and canvases take the eye (featureVisibility). */}
+      {visibilityApplies(feature) && (
+        <MenuItem
+          icon={visible ? <EyeOff size={14} /> : <Eye size={14} />}
+          onSelect={() => actions.setVisible([feature.id], !visible)}
+        >
+          {visible ? 'Hide' : 'Show'}
+        </MenuItem>
+      )}
       <MenuItem
         icon={feature.suppressed ? <CirclePlay size={14} /> : <CirclePause size={14} />}
         disabled={locked}

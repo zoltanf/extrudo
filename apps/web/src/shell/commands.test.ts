@@ -248,10 +248,15 @@ describe('buildCommands', () => {
   it('says when a tool arrives instead of running it (Send to Slicer on the web)', () => {
     const ctx = context('model');
     const slicer = byId(ctx).get('slicer');
-    expect(slicer?.unavailable).toBe('Arrives with the desktop app.');
+    expect(slicer?.unavailable).toBe(
+      'Sending to a slicer needs the desktop app. In the browser, export a 3MF and open it in your slicer.',
+    );
     slicer?.run();
     expect(ctx.runTool).not.toHaveBeenCalled();
-    expect(ctx.notify).toHaveBeenCalledWith('info', 'Send to Slicer arrives with the desktop app.');
+    expect(ctx.notify).toHaveBeenCalledWith(
+      'info',
+      'Sending to a slicer needs the desktop app. In the browser, export a 3MF and open it in your slicer.',
+    );
   });
 
   it('runs Send to Slicer where the platform can launch one (P6-02), and a ready tool in general (P2-05)', () => {

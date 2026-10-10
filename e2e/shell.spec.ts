@@ -135,7 +135,10 @@ test('tools that are not built yet say when they arrive', async ({ page }) => {
   await open(page);
   await page.getByRole('tab', { name: '3D Print' }).click();
   await page.getByRole('button', { name: 'Send to Slicer', exact: true }).hover();
-  await expect(page.getByRole('tooltip')).toContainText('Arrives with the desktop app.');
+  // The web build has no slicer to launch: the tooltip says what to do instead (ADR-0062).
+  await expect(page.getByRole('tooltip')).toContainText(
+    'Sending to a slicer needs the desktop app. In the browser, export a 3MF and open it in your slicer.',
+  );
   await expect(page.getByRole('button', { name: 'Send to Slicer', exact: true })).toHaveAttribute(
     'aria-disabled',
     'true',

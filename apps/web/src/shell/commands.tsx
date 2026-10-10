@@ -160,7 +160,8 @@ const VIEWS: { id: string; face?: FaceName; label: string }[] = [
 
 function toolCommand(id: ToolId, group: string, ctx: CommandContext): AppCommand {
   const tool: Tool = TOOLS[id];
-  const unavailable = !isToolReady(tool, ctx.ready) && `Arrives with ${tool.comesWith}.`;
+  const reason = tool.unavailable ?? `Arrives with ${tool.comesWith}.`;
+  const unavailable = !isToolReady(tool, ctx.ready) && reason;
   return {
     id,
     label: tool.label,
@@ -170,9 +171,7 @@ function toolCommand(id: ToolId, group: string, ctx: CommandContext): AppCommand
     icon: <ToolIcon name={tool.icon} category={tool.category} size={16} />,
     keys: keysFor(id),
     ...(unavailable && { unavailable }),
-    run: unavailable
-      ? () => ctx.notify('info', `${tool.label} arrives with ${tool.comesWith}.`)
-      : () => ctx.runTool(id),
+    run: unavailable ? () => ctx.notify('info', reason) : () => ctx.runTool(id),
   };
 }
 
