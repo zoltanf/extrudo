@@ -2,7 +2,7 @@
 title: Angled Midplane
 section: Tools
 category: Construct
-order: 55
+order: 56
 ---
 
 # Angled Midplane

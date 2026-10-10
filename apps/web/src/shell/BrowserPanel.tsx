@@ -2,6 +2,7 @@ import {
   type BodyId,
   bodyDisplay,
   CANVAS_TYPE,
+  type Component,
   type DocumentStore,
   type Feature,
   type FeatureId,
@@ -11,6 +12,7 @@ import {
 } from '@extrudo/core';
 import {
   Box,
+  Boxes,
   ChevronDown,
   ChevronRight,
   Eye,
@@ -27,6 +29,7 @@ import {
   Video,
 } from 'lucide-react';
 import {
+  type DragEvent,
   type HTMLAttributes,
   type KeyboardEvent,
   type MouseEvent,
@@ -36,11 +39,14 @@ import {
   useState,
 } from 'react';
 import { useStore } from 'zustand';
+import type { ComponentActions } from '../components/componentActions';
+import { type ComponentRow, componentRows } from '../components/componentRows';
 import {
   ContextMenu,
   IconButton,
   MenuItem,
   MenuSeparator,
+  MenuSub,
   Popover,
   TextInput,
   ToolIcon,
@@ -85,6 +91,8 @@ export interface BrowserPanelProps {
   bodies: readonly BodyEntry[];
   /** Rename, show/hide, colour, opacity and remove bodies (P2-08). */
   bodyActions: BodyActions;
+  /** Rename, show/hide, select and delete components (P6-05, ADR-0081 §6). */
+  componentActions: ComponentActions;
   /** Bodies in the model selection: their rows show selected. */
   selectedBodies?: ReadonlySet<string>;
   /**
@@ -143,6 +151,7 @@ export function BrowserPanel({
   actions,
   bodies,
   bodyActions,
+  componentActions,
   selectedBodies = NO_BODIES,
   onPickBody,
   onHoverBody,
@@ -168,7 +177,9 @@ export function BrowserPanel({
   const canvasShown = canvasFeatures.some(({ feature }) => isFeatureVisible(feature));
   const originShown = ORIGIN_ITEMS.some(({ value }) => origin[value]);
   const sketchesShown = sketches.some(({ feature }) => isFeatureVisible(feature));
-  const bodiesShown = bodies.some(({ meta }) => meta.visible);
+  const bodiesShown = bodies.some(({ display }) => display === 'shown');
+  const grouped = componentRows(doc, bodies);
+  const components = doc.components ?? [];
 
   // The panel floats over the view's left edge in frosted glass (like the nav bar), so the
   // view never resizes. Collapsed, it slides out to the left, then turns invisible
@@ -403,6 +414,10 @@ export function BrowserPanel({
               label="Bodies"
               icon={<Box size={14} />}
               count={bodies.length}
+              dropTarget={{
+                name: 'bodies',
+                onDrop: (ids) => bodyActions.moveToComponent(ids, null),
+              }}
               menu={
                 bodies.length > 0 && bodyActions.exportBodies ? (
                   <MenuItem
@@ -426,7 +441,7 @@ export function BrowserPanel({
                   : undefined
               }
             >
-              {bodies.length === 0 ? (
+              {bodies.length === 0 && components.length === 0 ? (
                 bodiesEmptyState({
                   listed: bodies.length,
                   finished: recomputeFinished,
@@ -446,21 +461,44 @@ export function BrowserPanel({
                   <Leaf muted>No bodies yet</Leaf>
                 )
               ) : (
-                bodies.map((body) =>
-                  body.pending ? (
-                    <PendingBodyLeaf key={body.id} body={body} actions={bodyActions} />
-                  ) : (
-                    <BodyLeaf
-                      key={body.id}
-                      body={body}
-                      selected={selectedBodies.has(body.id)}
-                      selection={selectedBodies}
-                      actions={bodyActions}
-                      onPick={onPickBody}
-                      onHover={onHoverBody}
+                <>
+                  {grouped.rows.map((row) => (
+                    <ComponentFolder
+                      key={row.component.id}
+                      row={row}
+                      actions={componentActions}
+                      bodyActions={bodyActions}
+                      renderBody={(body) => (
+                        <BodyLeaf
+                          key={body.id}
+                          body={body}
+                          selected={selectedBodies.has(body.id)}
+                          selection={selectedBodies}
+                          actions={bodyActions}
+                          components={components}
+                          onPick={onPickBody}
+                          onHover={onHoverBody}
+                        />
+                      )}
                     />
-                  ),
-                )
+                  ))}
+                  {grouped.loose.map((body) =>
+                    body.pending ? (
+                      <PendingBodyLeaf key={body.id} body={body} actions={bodyActions} />
+                    ) : (
+                      <BodyLeaf
+                        key={body.id}
+                        body={body}
+                        selected={selectedBodies.has(body.id)}
+                        selection={selectedBodies}
+                        actions={bodyActions}
+                        components={components}
+                        onPick={onPickBody}
+                        onHover={onHoverBody}
+                      />
+                    ),
+                  )}
+                </>
               )}
             </Folder>
           </ul>
@@ -646,6 +684,7 @@ function BodyLeaf({
   selected,
   selection,
   actions,
+  components,
   onPick,
   onHover,
 }: {
@@ -653,13 +692,19 @@ function BodyLeaf({
   selected: boolean;
   selection: ReadonlySet<string>;
   actions: BodyActions;
+  /** The design's components, for the menu's "Move to Component". */
+  components: readonly Component[];
   onPick?(id: BodyId, toggle: boolean): void;
   onHover?(id: BodyId | undefined): void;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [appearance, setAppearance] = useState(false);
   const { id, meta } = body;
-  const display = bodyDisplay(meta);
+  // The eye acts on the body's own state; the row shows what is drawn (a component's
+  // hidden or ghost state wins, ADR-0081 §6).
+  const own = bodyDisplay(meta);
+  const display = body.display;
+  const dragIds = () => (selected && selection.size > 1 ? ([...selection] as BodyId[]) : [id]);
   const remove = () =>
     actions.remove(selected && selection.size > 1 ? ([...selection] as BodyId[]) : [id]);
   const onKeyDown = (event: KeyboardEvent) => {
@@ -676,6 +721,12 @@ function BodyLeaf({
     <Leaf
       data-body={id}
       data-body-display={display}
+      data-body-component={body.component}
+      draggable
+      onDragStart={(event: DragEvent) => {
+        event.dataTransfer?.setData(BODIES_MIME, JSON.stringify(dragIds()));
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+      }}
       // Selection is the name button's aria-pressed: a list item takes no aria-selected (axe).
       data-selected={selected || undefined}
       // A mesh body (P4-06, ADR-0066 §3) says so, next to its "Mesh" tag.
@@ -729,8 +780,8 @@ function BodyLeaf({
       {!renaming && (
         <BodyEyeToggle
           name={meta.name}
-          display={display}
-          onToggle={() => actions.setDisplay([id], nextBodyDisplay(display))}
+          display={own}
+          onToggle={() => actions.setDisplay([id], nextBodyDisplay(own))}
         />
       )}
     </Leaf>
@@ -744,17 +795,17 @@ function BodyLeaf({
       >
         Rename
       </MenuItem>
-      {display !== 'shown' && (
+      {own !== 'shown' && (
         <MenuItem icon={<Eye size={14} />} onSelect={() => actions.setDisplay([id], 'shown')}>
           Show Body
         </MenuItem>
       )}
-      {display !== 'ghost' && (
+      {own !== 'ghost' && (
         <MenuItem icon={<EyeDashed size={14} />} onSelect={() => actions.setDisplay([id], 'ghost')}>
           Show as Ghost
         </MenuItem>
       )}
-      {display !== 'hidden' && (
+      {own !== 'hidden' && (
         <MenuItem icon={<EyeOff size={14} />} onSelect={() => actions.setDisplay([id], 'hidden')}>
           Hide Body
         </MenuItem>
@@ -762,6 +813,21 @@ function BodyLeaf({
       <MenuItem icon={<Palette size={14} />} onSelect={() => setAppearance(true)}>
         Appearance…
       </MenuItem>
+      <MenuSub label="Move to Component" icon={<Boxes size={14} />}>
+        {components
+          .filter((c) => c.id !== body.component)
+          .map((c) => (
+            <MenuItem key={c.id} onSelect={() => actions.moveToComponent(dragIds(), c.id)}>
+              {c.name}
+            </MenuItem>
+          ))}
+        <MenuItem onSelect={() => actions.newComponent(dragIds())}>New Component…</MenuItem>
+        {body.component !== undefined && (
+          <MenuItem onSelect={() => actions.moveToComponent(dragIds(), null)}>
+            No Component
+          </MenuItem>
+        )}
+      </MenuSub>
       {actions.exportBodies && (
         <MenuItem
           icon={<FileDown size={14} />}
@@ -966,15 +1032,102 @@ function BodyEyeToggle({
   );
 }
 
+/** What a body row drag carries: a JSON list of body IDs (P6-05 S3). */
+const BODIES_MIME = 'application/x-extrudo-bodies';
+
+/** A component in the Bodies folder (ADR-0081 §6): a nested folder of its live bodies. */
+function ComponentFolder({
+  row,
+  actions,
+  bodyActions,
+  renderBody,
+}: {
+  row: ComponentRow;
+  actions: ComponentActions;
+  bodyActions: BodyActions;
+  renderBody(body: BodyEntry): ReactNode;
+}) {
+  const { component, bodies, display } = row;
+  const id = component.id;
+  return (
+    <Folder
+      label={component.name}
+      icon={<Boxes size={14} />}
+      count={bodies.length}
+      nested
+      attrs={{ 'data-component': id, 'data-component-display': display }}
+      dropTarget={{
+        name: `component:${id}`,
+        onDrop: (ids) => bodyActions.moveToComponent(ids, id),
+      }}
+      rename={{ onCommit: (name) => actions.rename(id, name) }}
+      onSelect={(mode) => actions.select(id, mode)}
+      displayEye={{
+        display,
+        onToggle: () => actions.setDisplay([id], nextBodyDisplay(display)),
+      }}
+      menu={
+        <>
+          {display !== 'shown' && (
+            <MenuItem icon={<Eye size={14} />} onSelect={() => actions.setDisplay([id], 'shown')}>
+              Show Component
+            </MenuItem>
+          )}
+          {display !== 'ghost' && (
+            <MenuItem
+              icon={<EyeDashed size={14} />}
+              onSelect={() => actions.setDisplay([id], 'ghost')}
+            >
+              Show as Ghost
+            </MenuItem>
+          )}
+          {display !== 'hidden' && (
+            <MenuItem
+              icon={<EyeOff size={14} />}
+              onSelect={() => actions.setDisplay([id], 'hidden')}
+            >
+              Hide Component
+            </MenuItem>
+          )}
+          <MenuSeparator />
+          <MenuItem icon={<Trash2 size={14} />} onSelect={() => actions.remove(id)}>
+            Delete Component
+          </MenuItem>
+        </>
+      }
+    >
+      {bodies.length === 0 ? <Leaf muted>No bodies</Leaf> : bodies.map((body) => renderBody(body))}
+    </Folder>
+  );
+}
+
 function Folder({
   label,
   icon,
   defaultOpen = true,
   eye,
+  displayEye,
   count,
   menu,
+  nested,
+  attrs,
+  dropTarget,
+  rename,
+  onSelect,
   children,
 }: {
+  /** Listed inside another folder: one level deeper. */
+  nested?: boolean;
+  /** Extra `data-*` attributes on the row's `li`. */
+  attrs?: Record<`data-${string}`, string | undefined>;
+  /** Body rows dragged onto the folder's header arrive here with their IDs. */
+  dropTarget?: { name: string; onDrop(ids: BodyId[]): void };
+  /** A three-state eye (shown, ghost, hidden) instead of `eye`'s two. */
+  displayEye?: { display: BodyDisplay; onToggle(): void };
+  /** The label renames in place (F2, double-click, or the menu's Rename). */
+  rename?: { onCommit(name: string): boolean };
+  /** A click on the label selects what is in the folder (`Shift` adds); the chevron toggles. */
+  onSelect?(mode: 'replace' | 'add'): void;
   label: string;
   icon: ReactNode;
   defaultOpen?: boolean;
@@ -990,28 +1143,104 @@ function Folder({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  const [renaming, setRenaming] = useState(false);
+  const [over, setOver] = useState(false);
+  const accepts = (event: DragEvent) =>
+    dropTarget !== undefined && event.dataTransfer?.types.includes(BODIES_MIME) === true;
+  const labelNode =
+    renaming && rename ? (
+      <RenameField
+        name={label}
+        label={`Rename ${label}`}
+        className="h-6 min-w-0 flex-1 px-1"
+        onCommit={rename.onCommit}
+        onDone={() => setRenaming(false)}
+      />
+    ) : null;
+  const onLabelKey = (event: KeyboardEvent) => {
+    if (event.key === 'F2' && rename) {
+      setRenaming(true);
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+  const chevron = (
+    <span className="text-muted">
+      {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+    </span>
+  );
+  const countBadge = count !== undefined && count > 0 && (
+    <span
+      data-folder-count={count}
+      className="ml-1 rounded-full bg-accent-soft px-1.5 font-mono text-xs text-muted"
+    >
+      {count}
+    </span>
+  );
   const header = (
-    <div className="flex h-7 items-center rounded-input pr-1 hover:bg-accent-soft">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-input px-1 text-left"
-      >
-        <span className="text-muted">
-          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-        </span>
-        <span className="grid w-4 place-items-center text-muted">{icon}</span>
-        {label}
-        {count !== undefined && count > 0 && (
-          <span
-            data-folder-count={count}
-            className="ml-1 rounded-full bg-accent-soft px-1.5 font-mono text-xs text-muted"
+    // biome-ignore lint/a11y/noStaticElementInteractions: a pointer-only drop target for body rows; the Move to Component menu is the keyboard path
+    <div
+      data-drop={dropTarget?.name}
+      data-drop-over={over || undefined}
+      className={`flex h-7 items-center rounded-input pr-1 hover:bg-accent-soft ${over ? 'bg-accent-soft outline-2 outline-accent' : ''}`}
+      onDragOver={(event) => {
+        if (!accepts(event)) return;
+        event.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(event) => {
+        setOver(false);
+        if (!accepts(event) || !dropTarget) return;
+        event.preventDefault();
+        try {
+          const ids = JSON.parse(event.dataTransfer.getData(BODIES_MIME)) as BodyId[];
+          if (Array.isArray(ids)) dropTarget.onDrop(ids);
+        } catch {
+          // Not ours.
+        }
+      }}
+    >
+      {onSelect ? (
+        <>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-label={`${open ? 'Collapse' : 'Expand'} ${label}`}
+            onClick={() => setOpen(!open)}
+            className="flex h-7 shrink-0 items-center gap-1.5 rounded-input px-1"
           >
-            {count}
-          </span>
-        )}
-      </button>
+            {chevron}
+            <span className="grid w-4 place-items-center text-muted">{icon}</span>
+          </button>
+          {labelNode ?? (
+            <button
+              type="button"
+              onClick={(event) =>
+                onSelect(event.shiftKey || event.ctrlKey || event.metaKey ? 'add' : 'replace')
+              }
+              onDoubleClick={() => rename && setRenaming(true)}
+              onKeyDown={onLabelKey}
+              className="flex h-7 min-w-0 flex-1 items-center rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <span className="min-w-0 truncate">{label}</span>
+            </button>
+          )}
+          {countBadge}
+        </>
+      ) : (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className="flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-input px-1 text-left"
+        >
+          {chevron}
+          <span className="grid w-4 place-items-center text-muted">{icon}</span>
+          {label}
+          {countBadge}
+        </button>
+      )}
       {eye && (
         <EyeToggle
           name={`all ${label.toLowerCase()}`}
@@ -1019,11 +1248,23 @@ function Folder({
           onToggle={eye.onToggle}
         />
       )}
+      {displayEye && !renaming && (
+        <BodyEyeToggle name={label} display={displayEye.display} onToggle={displayEye.onToggle} />
+      )}
     </div>
   );
   return (
-    <li>
-      <ContextMenu label={`${label} menu`} trigger={header}>
+    <li {...attrs} className={nested ? 'pl-3' : undefined}>
+      <ContextMenu label={`${label} menu`} trigger={header} disabled={renaming}>
+        {rename && (
+          <MenuItem
+            icon={<TextCursorInput size={14} />}
+            shortcut="F2"
+            onSelect={() => setRenaming(true)}
+          >
+            Rename
+          </MenuItem>
+        )}
         <MenuItem
           icon={open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
           onSelect={() => setOpen(!open)}

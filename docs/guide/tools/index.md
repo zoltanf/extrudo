@@ -78,6 +78,10 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 - [Record Macro](./recordMacro.md) — Start recording: what you make from here on becomes code you can keep as a Script.
 - [Stop Macro](./stopMacro.md) — Stop recording and see the code for what you made.
 
+### Component
+
+- [New Component](./newComponent.md) — Gather the selected bodies into a named component, to show, hide and export as one part.
+
 ## Modify
 
 ### Modify

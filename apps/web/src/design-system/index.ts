@@ -26,6 +26,7 @@ export {
   MenuLabel,
   MenuRadioGroup,
   MenuSeparator,
+  MenuSub,
   PointMenu,
 } from './Menu';
 export { NotificationHistory } from './NotificationHistory';

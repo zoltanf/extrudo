@@ -128,6 +128,8 @@ export interface ViewportProps {
   bodies?: Record<BodyId, BodyMesh>;
   /** Body names, colours and visibility from the document. */
   meta?: Record<BodyId, BodyMeta>;
+  /** The components and their bodies for tests (`data-components`, P6-05 S3). */
+  components?: string | undefined;
   /** Sketches to draw (P1-01). */
   sketches?: readonly SketchDrawing[];
   /** The plane of the sketch being edited: the grid lies on it. */
@@ -357,6 +359,7 @@ function watchContext(
 
 export function Viewport({
   viewport,
+  components,
   bodies = NO_BODIES,
   meta = NO_META,
   sketches = NO_SKETCHES,
@@ -566,6 +569,7 @@ export function Viewport({
       data-bodies={bodiesKey}
       data-body-appearance={appearanceKey}
       data-ghost-bodies={ghostKey}
+      data-components={components}
       data-construction={constructionSummary(drawnConstruction)}
       data-ghosts={ghostsSummary(ghosts)}
       data-canvases={canvasSummary(drawnCanvases, pixels)}

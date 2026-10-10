@@ -13,13 +13,19 @@
  * listed.
  */
 import {
+  addComponent,
   type BodyId,
   type BodyMeta,
+  type BodyOrigins,
   bodyDisplay,
   type Command,
   CommandError,
+  type Component,
+  type ComponentId,
+  componentOfBody,
   type DocumentStore,
   type ExtrudoDocument,
+  effectiveBodyDisplay,
   type FeatureId,
   insertFeature,
   type ModelState,
@@ -30,6 +36,7 @@ import {
   nextFeatureName,
   removeBodiesFeatureOf,
   type SessionStore,
+  setBodyComponent,
   updateBody,
 } from '@extrudo/core';
 
@@ -64,7 +71,24 @@ export interface BodyEntry {
    * selection, menu or appearance, only the eye.
    */
   pending?: boolean;
+  /**
+   * The component the body belongs to (ADR-0081 §2's rule: stored metadata, else its
+   * source's, else the making feature's stamp); absent: loose.
+   */
+  component?: ComponentId;
+  /**
+   * How the body is drawn (ADR-0081 §6): its own state, overridden by a hidden or
+   * ghost component. `meta` keeps the body's own state underneath.
+   */
+  display: BodyDisplay;
 }
+
+/** The document pieces entries need: bodies, features and the components. */
+type EntryDoc = Pick<ExtrudoDocument, 'bodies' | 'features'> &
+  Partial<Pick<ExtrudoDocument, 'components'>>;
+
+const componentById = (doc: EntryDoc, id: ComponentId | undefined): Component | undefined =>
+  id === undefined ? undefined : doc.components?.find((c) => c.id === id);
 
 /**
  * The bodies the last finished recompute made (the model cache's IDs), as rows
@@ -72,17 +96,19 @@ export interface BodyEntry {
  * and look come from the stored `doc.bodies` metadata; an ID with none is
  * skipped (it never got a name, so there is nothing true to show).
  */
-export function pendingBodyEntries(
-  doc: Pick<ExtrudoDocument, 'bodies' | 'features'>,
-  ids: readonly string[],
-): BodyEntry[] {
+export function pendingBodyEntries(doc: EntryDoc, ids: readonly string[]): BodyEntry[] {
   const known = (ids as readonly BodyId[]).filter((id) => doc.bodies[id]);
-  return sortBodyIds(doc, known).map((id) => ({
-    id,
-    meta: doc.bodies[id] as BodyMeta,
-    stored: true,
-    pending: true,
-  }));
+  return sortBodyIds(doc, known).map((id) => {
+    const meta = doc.bodies[id] as BodyMeta;
+    return {
+      id,
+      meta,
+      stored: true,
+      pending: true,
+      ...(meta.component !== undefined && { component: meta.component }),
+      display: effectiveBodyDisplay(meta, componentById(doc, meta.component)),
+    };
+  });
 }
 
 /** Body IDs in timeline order: the feature that made each, then its number. */
@@ -106,8 +132,9 @@ export function sortBodyIds(
 
 /** The live bodies in timeline order, with their metadata (or the name they will get). */
 export function bodyEntries(
-  doc: Pick<ExtrudoDocument, 'bodies' | 'features'>,
+  doc: EntryDoc,
   live: Readonly<Record<BodyId, unknown>>,
+  origins?: BodyOrigins,
 ): BodyEntry[] {
   const ids = sortBodyIds(doc, Object.keys(live) as BodyId[]);
   const names = newBodyNames(
@@ -117,19 +144,35 @@ export function bodyEntries(
   return ids.map((id) => {
     const stored = doc.bodies[id];
     const mesh = (live[id] as { mesh?: boolean } | undefined)?.mesh === true;
-    if (stored) return { id, meta: stored, stored: true, ...(mesh && { mesh: true }) };
+    const component = componentOfBody(doc, id, origins);
+    const meta: BodyMeta = stored ?? { name: names[id] as string, visible: true };
     return {
       id,
-      meta: { name: names[id] as string, visible: true },
-      stored: false,
+      meta,
+      stored: stored !== undefined,
       ...(mesh && { mesh: true }),
+      ...(component !== undefined && { component }),
+      display: effectiveBodyDisplay(meta, componentById(doc, component)),
     };
   });
 }
 
-/** The metadata of every live body (names about to be stored included), for the view. */
+/**
+ * The metadata of every live body (names about to be stored included), for the view, with
+ * a hidden or ghost component's state applied (`BodyEntry.display`, ADR-0081 §6).
+ */
 export function bodyMetaOf(entries: readonly BodyEntry[]): Record<BodyId, BodyMeta> {
-  return Object.fromEntries(entries.map((e) => [e.id, e.meta])) as Record<BodyId, BodyMeta>;
+  return Object.fromEntries(
+    entries.map((e) => {
+      if (bodyDisplay(e.meta) === e.display) return [e.id, e.meta];
+      const { ghost: _ghost, ...rest } = e.meta;
+      const meta: BodyMeta =
+        e.display === 'ghost'
+          ? { ...rest, visible: false, ghost: true }
+          : { ...rest, visible: e.display === 'shown' };
+      return [e.id, meta];
+    }),
+  ) as Record<BodyId, BodyMeta>;
 }
 
 /**
@@ -141,10 +184,12 @@ export function bodyMetaOf(entries: readonly BodyEntry[]): Record<BodyId, BodyMe
  */
 export function followBodyNames(store: DocumentStore, model: ModelStore<unknown>): () => void {
   const check = () => {
-    const { doc: source, bodies, status, imports } = model.getState();
+    const state = model.getState();
+    const { doc: source, bodies, status, imports } = state;
     const { doc } = store.getState();
     if (status !== 'ready' || source !== doc) return;
-    const missing = bodyEntries(doc, bodies).filter((e) => !e.stored);
+    // The kernel's `origins`: the pieces a body was broken into follow it (ADR-0081 §2).
+    const missing = bodyEntries(doc, bodies, state.origins).filter((e) => !e.stored);
     if (missing.length === 0) return;
     const colors = importedColors(imports);
     store.getState().amend(
@@ -152,7 +197,12 @@ export function followBodyNames(store: DocumentStore, model: ModelStore<unknown>
         bodies: Object.fromEntries(
           missing.map((e) => {
             const color = colors.get(e.id);
-            return [e.id, color === undefined ? e.meta : { ...e.meta, color }];
+            const meta: BodyMeta = {
+              ...e.meta,
+              ...(color !== undefined && { color }),
+              ...(e.component !== undefined && { component: e.component }),
+            };
+            return [e.id, meta];
           }),
         ),
       }),
@@ -246,6 +296,10 @@ export interface BodyActions {
   remove(ids: readonly BodyId[]): FeatureId | undefined;
   /** Opens the export with these bodies (P2-12); absent where there is no export. */
   exportBodies?(ids: readonly BodyId[]): void;
+  /** Puts bodies into a component, or (`null`) takes them out of theirs: one undo step. */
+  moveToComponent(ids: readonly BodyId[], component: ComponentId | null): void;
+  /** Makes a component of the bodies (none: an empty one) and returns its ID. */
+  newComponent(ids: readonly BodyId[]): ComponentId | undefined;
 }
 
 export function createBodyActions(
@@ -326,6 +380,14 @@ export function createBodyActions(
           ? updateBody({ id, changes: changes(e, {}), clear: ['opacity'] })
           : updateBody({ id, changes: changes(e, { opacity }) }),
       );
+    },
+    moveToComponent(ids, component) {
+      if (ids.length === 0) return;
+      run(setBodyComponent({ ids, component }));
+    },
+    newComponent(ids) {
+      const id = newId<ComponentId>();
+      return run(addComponent({ id, bodies: ids })) ? id : undefined;
     },
     remove(ids) {
       if (ids.length === 0) return undefined;

@@ -33,6 +33,8 @@ import { useStore } from 'zustand';
 import { keysFor } from '../commands/keymap';
 import { isRepeatable } from '../commands/marking';
 import { isEditable, useShortcuts } from '../commands/shortcuts';
+import { createComponentActions } from '../components/componentActions';
+import { componentRows, componentsSummary } from '../components/componentRows';
 import { CustomizerPanel } from '../customizer/CustomizerPanel';
 import { CUSTOMIZER_TOOL, useCustomizer } from '../customizer/useCustomizer';
 import {
@@ -524,7 +526,10 @@ export function AppShell({
   // The model's bodies with their names (ADR-0030): new bodies get stored names as soon as a
   // recompute shows them, amended into the undo step that made them.
   useEffect(() => followBodyNames(store, model), [store, model]);
-  const bodyList = useMemo(() => bodyEntries(doc, bodies), [doc, bodies]);
+  const bodyList = useMemo(
+    () => bodyEntries(doc, bodies, model.getState().origins),
+    [doc, bodies, model],
+  );
   // Until the first recompute has finished the browser lists the bodies the last one made
   // (the model cache, ADR-0078) as pending rows; everything else sees only computed bodies.
   const recomputed = useRecomputeFinished(model);
@@ -644,6 +649,20 @@ export function AppShell({
       // A body's menu exports it (P2-12).
       exportBodies: (ids: readonly BodyId[]) => setModelExport({ bodies: ids }),
     }),
+    [store, session, notify],
+  );
+  const componentList = useMemo(() => componentRows(doc, bodyList).rows, [doc, bodyList]);
+  const componentListRef = useRef(componentList);
+  componentListRef.current = componentList;
+  const componentActions = useMemo(
+    () =>
+      createComponentActions(
+        { store, session },
+        (id) =>
+          componentListRef.current.find((r) => r.component.id === id)?.bodies.map((b) => b.id) ??
+          [],
+        notify,
+      ),
     [store, session, notify],
   );
   const selectedBodyIds = useMemo(
@@ -1219,6 +1238,17 @@ export function AppShell({
       if (mode !== 'model') return;
       const { features, timelineMarker } = store.getState().doc;
       macro.getState().start(timelineMarker, features.length);
+      return;
+    }
+    // P6-05 S3: New Component makes a component of the selected bodies (none: an empty one).
+    if (tool === 'newComponent') {
+      if (mode !== 'model') return;
+      componentActions.newComponent(
+        session
+          .getState()
+          .selection.filter((item) => item.kind === 'body')
+          .map((item) => item.id as BodyId),
+      );
       return;
     }
     if (tool === 'stopMacro') {
@@ -1847,6 +1877,7 @@ export function AppShell({
             actions={featureActions}
             bodies={browserBodies}
             bodyActions={bodyActions}
+            componentActions={componentActions}
             selectedBodies={selectedBodies}
             statuses={featureStatuses}
             recomputeFinished={recomputeFinished}
@@ -1926,6 +1957,7 @@ export function AppShell({
               viewport={viewport}
               bodies={shownBodies}
               meta={bodyMeta}
+              components={componentsSummary(componentList)}
               sketches={sketches}
               sketchPlane={sketchPlane}
               planePicker={planePicker}

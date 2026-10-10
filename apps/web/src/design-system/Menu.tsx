@@ -165,6 +165,43 @@ export function MenuItem({
   );
 }
 
+/**
+ * A submenu (P6-05: a body's "Move to Component ▸"): a trigger row that opens a nested
+ * list of `MenuItem`s, in a dropdown or a context menu.
+ */
+export function MenuSub({
+  label,
+  icon,
+  children,
+}: {
+  label: string;
+  icon?: ReactNode;
+  children: ReactNode;
+}) {
+  const inContext = useContext(InContextMenu);
+  const Parts = inContext ? RadixContext : Radix;
+  return (
+    <Parts.Sub>
+      <Parts.SubTrigger className={item}>
+        <span className="grid w-4 place-items-center text-muted">{icon}</span>
+        <span className="flex-1">{label}</span>
+        <span aria-hidden className="text-muted">
+          ▸
+        </span>
+      </Parts.SubTrigger>
+      <Parts.Portal>
+        <Parts.SubContent
+          className={inContext ? contextContent : dropContent}
+          aria-label={label}
+          collisionPadding={8}
+        >
+          {children}
+        </Parts.SubContent>
+      </Parts.Portal>
+    </Parts.Sub>
+  );
+}
+
 export function MenuRadioGroup<T extends string>({
   value,
   onChange,

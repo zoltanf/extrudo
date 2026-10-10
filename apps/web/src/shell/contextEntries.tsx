@@ -25,6 +25,7 @@ import {
 } from '@extrudo/core';
 import {
   ArrowDownToLine,
+  Boxes,
   CirclePlay,
   Eraser,
   Eye,
@@ -290,6 +291,9 @@ function modelGroups(input: ContextInput): MarkingEntry[][] {
         onSelect: () => bodyActions.exportBodies?.(ids),
       });
     }
+    body.push(
+      commandEntry(input, 'newComponent', 'New Component…', { icon: icon(<Boxes {...small} />) }),
+    );
     if (selection.some((i) => i.kind === 'body')) {
       body.push(commandEntry(input, 'delete', 'Delete', { icon: icon(<Trash2 {...small} />) }));
     }

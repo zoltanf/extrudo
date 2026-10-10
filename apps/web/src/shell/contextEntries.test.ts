@@ -21,12 +21,14 @@ const body = (id: string, visible = true): BodyEntry => ({
   id: bid(id),
   meta: { name: id, visible },
   stored: true,
+  display: visible ? 'shown' : 'hidden',
 });
 /** A ghost body (ADR-0030's amendment): hidden plus `ghost: true`. */
 const ghost = (id: string): BodyEntry => ({
   id: bid(id),
   meta: { name: id, visible: false, ghost: true },
   stored: true,
+  display: 'ghost',
 });
 const item = (kind: SelectionItem['kind'], id: string): SelectionItem => ({ kind, id });
 
@@ -38,6 +40,8 @@ function bodyActions(): BodyActions {
     setColor: vi.fn(),
     setOpacity: vi.fn(),
     remove: vi.fn(),
+    moveToComponent: vi.fn(),
+    newComponent: vi.fn(),
     exportBodies: vi.fn(),
   };
 }
@@ -136,6 +140,7 @@ describe('the overflow list in the model', () => {
       'hideBody',
       'appearance',
       'exportBodies',
+      'newComponent',
       'fit',
       'home',
       'projection',

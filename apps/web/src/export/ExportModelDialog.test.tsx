@@ -39,7 +39,12 @@ function props(over: Partial<ExportModelDialogProps> = {}): ExportModelDialogPro
     },
   };
   const bodies: BodyEntry[] = [
-    { id: 'E1:Bracket' as never, meta: { name: 'Bracket', visible: true }, stored: true },
+    {
+      id: 'E1:Bracket' as never,
+      meta: { name: 'Bracket', visible: true },
+      stored: true,
+      display: 'shown',
+    },
   ];
   return {
     store: createDocumentStore(createDocument()),
@@ -150,6 +155,7 @@ describe('a mesh body in the Export dialog (P4-06, ADR-0066 §3)', () => {
     id: 'Import1:0' as never,
     meta: { name: 'Bracket', visible: true },
     stored: true,
+    display: 'shown',
     mesh: true,
   };
 

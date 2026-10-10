@@ -70,6 +70,7 @@ export const ICON_NAMES = [
   'rib',
   'script',
   'record-macro',
+  'component',
   'stop-macro',
   'fillet',
   'chamfer',

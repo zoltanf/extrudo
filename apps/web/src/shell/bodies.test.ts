@@ -1,5 +1,7 @@
 import {
+  addComponent,
   type BodyId,
+  type ComponentId,
   createDocument,
   createDocumentStore,
   createModelStore,
@@ -77,6 +79,73 @@ function setup() {
 
 const names = (store: DocumentStore) =>
   Object.fromEntries(Object.entries(store.getState().doc.bodies).map(([id, m]) => [id, m.name]));
+
+describe('components in the entries (P6-05 S3, ADR-0081)', () => {
+  const cmp = (id: string) => id as ComponentId;
+  const lid = {
+    id: cmp('c1'),
+    name: 'Lid',
+    visible: false,
+  };
+
+  it('gives each entry its component and the drawn display, the body keeping its own state', () => {
+    const doc = {
+      features: [feature('A')],
+      bodies: {
+        [bid('A:0')]: { name: 'Body1', visible: true, component: cmp('c1') },
+        [bid('A:1')]: { name: 'Body2', visible: true },
+      },
+      components: [lid],
+    };
+    const entries = bodyEntries(doc, live('A:0', 'A:1'));
+    expect(entries.map((e) => [e.id, e.component, e.display])).toEqual([
+      ['A:0', 'c1', 'hidden'],
+      ['A:1', undefined, 'shown'],
+    ]);
+    expect(entries[0]?.meta.visible).toBe(true);
+    expect(bodyMetaOf(entries)[bid('A:0')]).toEqual({
+      name: 'Body1',
+      visible: false,
+      component: 'c1',
+    });
+    const ghost = bodyEntries({ ...doc, components: [{ ...lid, ghost: true }] }, live('A:0'));
+    expect(bodyMetaOf(ghost)[bid('A:0')]).toMatchObject({ visible: false, ghost: true });
+  });
+
+  it('takes the making feature stamp, and a piece takes its origin component', () => {
+    const doc = {
+      features: [{ ...feature('A'), component: cmp('c1') }, feature('B')],
+      bodies: {},
+      components: [lid],
+    };
+    const entries = bodyEntries(doc, live('A:0', 'B:0'), { [bid('B:0')]: bid('A:0') });
+    expect(entries.map((e) => e.component)).toEqual(['c1', 'c1']);
+    expect(bodyEntries(doc, live('B:0'))[0]?.component).toBeUndefined();
+  });
+
+  it('followBodyNames stores the stamped component and nothing for a loose body', () => {
+    const store = createDocumentStore(createDocument());
+    store
+      .getState()
+      .dispatch(insertFeature({ feature: { ...feature('A'), component: cmp('c1') } }));
+    store.getState().dispatch(insertFeature({ feature: feature('B') }));
+    const model = createModelStore<object>();
+    store.getState().dispatch(addComponent({ id: cmp('c1'), name: 'Lid' }));
+    store
+      .getState()
+      .dispatch(insertFeature({ feature: { ...feature('C'), component: cmp('c1') } }));
+    model.getState().computed({
+      features: {},
+      bodies: live('A:0', 'B:0', 'C:0'),
+      doc: store.getState().doc,
+    });
+    followBodyNames(store, model as ModelStore<unknown>);
+    const stored = store.getState().doc.bodies;
+    expect(stored[bid('A:0')]?.component).toBe('c1');
+    expect(stored[bid('B:0')]).toEqual({ name: 'Body2', visible: true });
+    expect(stored[bid('C:0')]?.component).toBe('c1');
+  });
+});
 
 describe('followBodyNames', () => {
   it('stores names for new bodies in the step that made them', () => {

@@ -110,6 +110,19 @@ for (const theme of ['dark', 'light'] as const) {
       await audit(page, `${theme} macro dialog`);
       await page.getByRole('button', { name: 'Close', exact: true }).click();
 
+      // The browser with a component holding a body (P6-05).
+      await page
+        .getByRole('complementary', { name: 'Browser' })
+        .locator('[data-body] button')
+        .first()
+        .click();
+      await pickTool(page, 'New Component');
+      await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
+        'data-components',
+        /^Component1:/,
+      );
+      await audit(page, `${theme} browser with a component`);
+
       // Parameters.
       await pickTool(page, 'Parameters');
       await expect(page.getByRole('dialog', { name: 'Parameters' })).toBeVisible();

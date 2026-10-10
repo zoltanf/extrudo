@@ -129,6 +129,13 @@ describe('buildCommands', () => {
     expect(byId(context('sketch')).has('recordMacro')).toBe(false);
   });
 
+  it('offers New Component in the Solid tab of the model only, with no key (P6-05 S3)', () => {
+    const model = byId(context('model')).get('newComponent');
+    expect(model?.group).toBe('Solid › Component');
+    expect(model?.keys).toEqual([]);
+    expect(byId(context('sketch')).has('newComponent')).toBe(false);
+  });
+
   it('offers Export Design as Script in the Home tab of the model (P5-05)', () => {
     const exportScript = vi.fn();
     const ctx = context('model');
