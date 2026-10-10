@@ -1,6 +1,6 @@
 {
   "name": "@extrudo/io",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "description": "Format-level readers and writers (STL, 3MF, OBJ, SVG, DXF). MIT-licensed and standalone so other tools can reuse it.",
   "license": "MIT",

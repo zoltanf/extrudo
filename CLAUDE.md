@@ -2135,7 +2135,7 @@ rest), and Phase 6 has P6-04 (i18n) and P6-05 (components) left (P6-06 is done,
 2026-10-07). The repository is public (2026-10-04); the first public
 release is **v0.4.0** (no v0.3.0 tag): the owner does the slicer check and a
 fresh look on edge, the agent then bumps the versions to 0.4.0, and **the owner
-tags** (`docs/release-checklist.md`; don't tag yourself).
+tags** (`docs/release-checklist.md`; don't tag yourself). v0.4.1 fixed the desktop build; **v0.5.0** (2026-10-10) is the next release.
 
 ## Commands
 

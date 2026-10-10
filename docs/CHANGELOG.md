@@ -2,7 +2,7 @@
 
 One line per completed roadmap task, newest first. Dates are absolute.
 
-## v0.5.0 (unreleased)
+## v0.5.0 (2026-10-10)
 
 - 2026-10-10 · **The notification bell moves to the status bar's right edge** (ADR-0041's amendment): always shown, quiet while the history is empty ("No notifications yet."), opens the same panel upwards; the toasts stay in the view's corner.
 - 2026-10-10 · **The macOS app is ad-hoc signed and has its own icon**: v0.4.1's unsigned bundle said "damaged" on Apple silicon; `mac.identity: '-'` signs it ad hoc (Open Anyway works), the `desktop` workflow verifies the signature in the zip and the dmg and launches the app, and the macOS icon sits on Apple's 824-in-1024 grid (`build/icon-mac.png`, `scripts/make-icons.mjs`; ADR-0075's amendment).

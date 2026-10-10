@@ -1,6 +1,6 @@
 {
   "name": "@extrudo/fonts",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "description": "Bundled fonts for sketch text: OFL-licensed, subsetted static TTFs with a manifest.",
   "license": "OFL-1.1",

@@ -1,6 +1,6 @@
 {
   "name": "@extrudo/site",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
   "description": "The landing page at extrudo.org. The app itself is apps/web (app.extrudo.org, edge.extrudo.org).",
   "license": "GPL-3.0-or-later",
