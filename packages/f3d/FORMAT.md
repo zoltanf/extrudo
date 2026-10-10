@@ -84,6 +84,7 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `994C518A…` | Model point | 2 bytes, the point (3 f64), a byte and, in the long form, the 4 × 4 sketch-to-model matrix of the sketch it is in |
 | `CC54ECAD…` | Model plane | 3 bytes, origin, x direction, y direction (9 f64) |
 | `1C037A07…` | Hole | see below |
+| `D087EFE5…` | Offset faces | the distance is a parameter it owns (`distance`, along the outward normal); an operand group of face operands (`5662F619…`), each recipe naming its face first |
 | `11F1A5CE…` | Circular pattern | the total angle is a parameter it owns (`TotalAngle`); a count record; an operand group of what it repeats; the axis as a geometry operand with a model line |
 | `A085449A…` | Pattern count | refers to the count's parameter value (`countU`) |
 | `90055C05…` | Record by number | 2 zero bytes, u64 record: an origin axis, or the feature a pattern repeats |

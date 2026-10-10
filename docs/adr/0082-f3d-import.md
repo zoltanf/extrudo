@@ -29,6 +29,7 @@ practical.
      selected profile regions, the faces they start from or go up to),
      revolves (profile, axis, angles), holes (sizes, face plane, centres),
      circular patterns (the features they repeat, axis, count, angle),
+     offset faces (the faces, the distance),
      fillets and chamfers (their edges as tagged B-rep faces) and every other
      feature by kind and name.
    - `f3dToDesign(f3d, name)` writes that through `@extrudo/api` into a new
@@ -83,6 +84,9 @@ practical.
      repeats (Fusion's patterns in the corpus all repeat features) about an
      origin axis or a sketch line; fillets and chamfers in it are left out
      with a note.
+   - Offset faces move the faces that can be named (those an imported
+     extrude made) by the same distance; the others are left out with a
+     note, and an offset of 0 (which Fusion allows) is skipped.
    - Components' features join the one design, with a note (Extrudo has no
      components yet, ADR-0081).
    - Everything else is skipped and listed in the report.
@@ -101,12 +105,12 @@ practical.
 - On the owner's 250 files every file decodes and maps to a valid design.
   Rebuilt with our kernel and compared with the reference STEP (volume within
   0.5 %, tight bounding box within 0.05 mm; 7 references hold no solid): of
-  243, 74 match (14 of them while skipping features the result does not
-  need), 105 lose some features, 54 build different geometry and 10 have no
-  body. The common gaps, by count: offset faces, regions whose curves were
-  redrawn or projected, older sketch texts, fillet and chamfer edges on faces of
-  features other than extrudes, threads, sweeps, mirrors, components, and
-  sketch dimensions and constraints.
+  243, 75 match (14 of them while skipping features the result does not
+  need), 93 lose some features, 65 build different geometry and 10 have no
+  body. The common gaps, by count: regions whose curves were redrawn or
+  projected, faces and edges of features other than extrudes (fillets,
+  chamfers, offset faces), older sketch texts, threads, sweeps, mirrors,
+  components, and sketch dimensions and constraints.
 - The format changes between Fusion versions (record versions, reference
   widths). Each decoder checks its record's version and reports what it does
   not know instead of guessing; the report reaches the user.

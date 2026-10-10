@@ -456,6 +456,30 @@ describe('f3dToDesign', () => {
     expect(letter?.bbox.max[1]).toBeCloseTo(7.16, 1);
   });
 
+  it("moves an extrude's face along its outward normal", async () => {
+    const f3d = washer();
+    f3d.features.push({
+      type: 'offset-faces',
+      id: 3,
+      kind: 'OffsetFaces',
+      name: 'OffsetFaces1',
+      suppressed: false,
+      parameters: [],
+      // The ring's top: made by Extrude1 (record 2), 0.8 mm up.
+      faces: [
+        {
+          tags: [],
+          feature: 2,
+          surface: { kind: 'plane', point: [0, 0, 0.08], normal: [0, 0, 1] },
+        },
+      ],
+      distance: parameter({ name: 'd5', kind: 'distance', value: 0.02 }),
+    });
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).toContain('OffsetFaces1');
+    expect(await volumes(f3d)).toEqual([expect.closeTo((RING * 1.0) / 0.8, 3)]);
+  });
+
   it("reads Fusion's 180° drill point as flat, and its flip", async () => {
     const f3d = washer();
     f3d.features.push({

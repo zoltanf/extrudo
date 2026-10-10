@@ -37,6 +37,7 @@ import type {
   F3dExtrude,
   F3dFace,
   F3dHole,
+  F3dOffsetFaces,
   F3dRevolve,
   F3dSketch,
   F3dSketchFeature,
@@ -310,6 +311,10 @@ export function f3dToDesign(
           replayable.set(feature.id, { id: made.id, name: feature.name });
           report.imported.push(feature.name);
         }
+      } else if (feature.type === 'offset-faces') {
+        const reason = offsetFaces(d, feature, extrudes, expressionOf, report);
+        if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
+        else report.imported.push(feature.name);
       } else if (feature.type === 'circular-pattern') {
         const reason = circularPattern(d, feature, replayable, sketches, expressionOf, report);
         if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
@@ -1181,6 +1186,42 @@ function faceName(face: F3dFace, extrudes: Map<number, ImportedExtrude>): string
     return miss('cylinder side: no curve');
   }
   return miss(`surface ${s.kind === 'other' ? s.type : s.kind}`);
+}
+
+/**
+ * Moves the faces that can be named (those an imported extrude made) along
+ * their outward normals; returns why not when none can. Fusion's distance
+ * is along the outward normal too.
+ */
+function offsetFaces(
+  d: Design,
+  f: F3dOffsetFaces,
+  extrudes: Map<number, ImportedExtrude>,
+  expressionOf: (p: ParameterValue, negate?: boolean) => string,
+  report: ImportReport,
+): string | undefined {
+  if (!f.distance) return 'its distance was not found';
+  if (Math.abs(f.distance.value) < 1e-12)
+    return 'its distance is 0 (Extrudo refuses an offset that moves nothing)';
+  const faces: GeomRef[] = [];
+  for (const face of f.faces) {
+    const id = faceName(face, extrudes);
+    if (id && !faces.some((r) => r.id === id)) faces.push({ kind: 'face', id });
+  }
+  if (faces.length === 0)
+    return f.faces.length === 0 ? 'no faces' : `none of its ${f.faces.length} faces could be named`;
+  const named = f.faces.filter((face) => faceName(face, extrudes)).length;
+  if (named < f.faces.length)
+    report.notes.push(
+      `${f.name}: ${f.faces.length - named} of ${f.faces.length} faces left out (not made by an imported extrude).`,
+    );
+  d.offsetFace(
+    { faces, distance: expressionOf(f.distance) } as Parameters<Design['offsetFace']>[0],
+    {
+      name: f.name,
+    },
+  );
+  return undefined;
 }
 
 /** Adds a fillet or chamfer on the edges that can be named; returns why not when none can. */

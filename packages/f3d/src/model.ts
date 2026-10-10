@@ -179,6 +179,13 @@ export interface F3dCircularPattern extends FeatureBase {
   count?: ParameterValue;
 }
 
+export interface F3dOffsetFaces extends FeatureBase {
+  type: 'offset-faces';
+  /** The faces it moves, each named by its recipe's first face. */
+  faces: F3dFace[];
+  distance?: ParameterValue;
+}
+
 export interface F3dOther extends FeatureBase {
   type: 'other';
 }
@@ -190,6 +197,7 @@ export type F3dFeature =
   | F3dHole
   | F3dEdgeFeature
   | F3dCircularPattern
+  | F3dOffsetFaces
   | F3dOther;
 
 export interface F3dDesign {
@@ -502,6 +510,23 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         features: repeated,
         ...(axis ? { axis } : {}),
         ...(count ? { count } : {}),
+      });
+    } else if (FEATURE_TYPES[type.guid] === 'OffsetFaces') {
+      // Its face operands sit in an operand group; each recipe names the face first.
+      const moved: F3dFace[] = [];
+      for (const group of scope.refs) {
+        if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
+        for (const recipe of recipesIn(seg, group)) {
+          const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
+          if (first) moved.push(faceOf(first.tags, faces, featureOf));
+        }
+      }
+      const distance = base.parameters.find((p) => p.kind === 'distance');
+      features.push({
+        type: 'offset-faces',
+        ...base,
+        faces: moved,
+        ...(distance ? { distance } : {}),
       });
     } else if (FEATURE_TYPES[type.guid] === 'Fillet' || FEATURE_TYPES[type.guid] === 'Chamfer') {
       const kind = FEATURE_TYPES[type.guid] === 'Fillet' ? 'fillet' : 'chamfer';
