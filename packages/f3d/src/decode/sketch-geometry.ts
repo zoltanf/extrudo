@@ -1,5 +1,5 @@
 /**
- * Sketch geometry: points, lines, and circles and arcs. Coordinates are in the
+ * Sketch geometry: points, lines, circles and arcs, splines and conics. Coordinates are in the
  * sketch's own frame, in centimetres. A point and every curve end with a
  * reference to the sketch they belong to (the "owner backlink"); a curve names
  * its points directly (a line its end and start, a circle its centre).
@@ -11,6 +11,8 @@ import { decodeLevel, type RecordDecoder, unsupported } from './common';
 export const SKETCH_POINT = 'C2CEDAE7-1716-47C1-B7B1-07B70081D0FB';
 export const SKETCH_LINE = 'DCA267ED-D615-4934-B64F-AD805E8003E2';
 export const SKETCH_CIRCULAR = 'F0130424-8B7E-4092-93C9-1CA807482534';
+export const SKETCH_SPLINE = 'D82E012F-6DDD-4AED-BDE1-C0F7F9100B9B';
+export const SKETCH_CONIC = '111A78C2-801B-4D1D-B92D-05E2B34D991F';
 /** The point ↔ curves companion: which curves end or centre at a point. */
 export const POINT_INCIDENCE = '362B7EC3-0F09-47C8-A3BE-DC066715CDAE';
 
@@ -21,7 +23,7 @@ function vec3(r: Reader): Vec3 {
 }
 
 /** The sketch a point or curve belongs to, read from its last eleven bytes. */
-function ownerAtEnd(seg: Segment, r: Reader): number | undefined {
+export function ownerAtEnd(seg: Segment, r: Reader): number | undefined {
   const save = r.pos;
   try {
     // Eleven bytes, or fifty-one where references carry the target's type GUID.
@@ -255,3 +257,141 @@ export const pointIncidence: RecordDecoder<PointIncidence> = {
       return { id, curves, point };
     }),
 };
+
+export interface SketchSpline {
+  id: number;
+  tag?: bigint;
+  degree: number;
+  /** The knot vector as stored (not normalised). */
+  knots: number[];
+  /** One per pole for a rational curve; empty otherwise. */
+  weights: number[];
+  /** Control points in the sketch frame, cm. */
+  poles: Vec3[];
+  startPoint?: number;
+  endPoint?: number;
+  /** A conic's rho (its poles are start, shoulder and end), and its shoulder point. */
+  rho?: number;
+  shoulderPoint?: number;
+  construction: boolean;
+  owner?: number;
+}
+
+/**
+ * A spline: the most-derived level holds the curve's ids and an 8-byte carrier
+ * (all 0xff, or a reference); the base level names two helper records, the
+ * end and start points, then `u8 1, u8 0`, u32 degree, f64 fit tolerance and
+ * three arrays — knots, weights (empty when not rational) and xyz poles — each
+ * `u32 count, u32 count, u32 8` and the values. Then a trailer this does not
+ * read, and the owner backlink.
+ */
+export const sketchSpline: RecordDecoder<SketchSpline> = {
+  name: 'sketch spline',
+  decode: (seg, id) => {
+    const props = decodeLevel(seg, id, 'sketch spline', (r, props, version) => {
+      if (version !== 3) unsupported('sketch spline', version);
+      r.skip(8); // the carrier
+      return props;
+    });
+    const r = seg.baseReader(id);
+    const owner = ownerAtEnd(seg, r);
+    for (; r.remaining > 64; r.pos++) {
+      const at = r.pos;
+      if (!isPointRef(seg, r)) continue;
+      const endPoint = r.localRef();
+      // A closed spline may name its one point once.
+      const startPoint = isPointRef(seg, r) ? r.localRef() : endPoint;
+      let curve: ReturnType<typeof readNurbs>;
+      if (r.peekU8() === 1 && r.peekU8(1) === 0) {
+        r.skip(2);
+        curve = readNurbs(r);
+      }
+      if (!curve) {
+        r.pos = at;
+        continue;
+      }
+      const tag = props.get('crv_primary_id');
+      return {
+        id,
+        ...(tag !== undefined ? { tag } : {}),
+        ...curve,
+        startPoint,
+        endPoint,
+        construction: false,
+        ...(owner !== undefined ? { owner } : {}),
+      };
+    }
+    throw new F3dFormatError(`Sketch spline #${id}: no curve found.`);
+  },
+};
+
+/**
+ * A conic curve (v0): after the curve ids, f64 rho and `u8 1, u8 0`, the curve
+ * as a spline stores it — a rational quadratic with weights 1, rho / (1 − rho),
+ * 1 and the start, shoulder and end as poles — then a trailer this does not
+ * read and references to the shoulder, end and start points. The base level
+ * ends in the owner backlink.
+ */
+export const sketchConic: RecordDecoder<SketchSpline> = {
+  name: 'sketch conic',
+  decode: (seg, id) => {
+    const out = decodeLevel(seg, id, 'sketch conic', (r, props, version): SketchSpline => {
+      if (version !== 0) unsupported('sketch conic', version);
+      const rho = r.f64();
+      const curve = r.u8() === 1 && r.u8() === 0 ? readNurbs(r) : undefined;
+      if (curve?.degree !== 2 || curve.poles.length !== 3 || !(rho > 0 && rho < 1))
+        throw new F3dFormatError(`Sketch conic #${id}: no conic found.`);
+      const points: number[] = [];
+      while (r.remaining > 0)
+        if (isPointRef(seg, r)) points.push(r.localRef());
+        else r.pos++;
+      const [shoulderPoint, endPoint, startPoint] = points;
+      if (points.length !== 3 || shoulderPoint === undefined)
+        throw new F3dFormatError(`Sketch conic #${id}: ${points.length} point references.`);
+      const tag = props.get('crv_primary_id');
+      return {
+        id,
+        ...(tag !== undefined ? { tag } : {}),
+        ...curve,
+        startPoint,
+        endPoint,
+        rho,
+        shoulderPoint,
+        construction: false,
+      };
+    });
+    const owner = ownerAtEnd(seg, seg.baseReader(id));
+    return owner !== undefined ? { ...out, owner } : out;
+  },
+};
+
+/** u32 degree, f64 fit tolerance, knots, weights and poles; undefined when the bytes are not one. */
+function readNurbs(
+  r: Reader,
+): Pick<SketchSpline, 'degree' | 'knots' | 'weights' | 'poles'> | undefined {
+  if (r.remaining < 12 + 36) return undefined;
+  const degree = r.u32();
+  const tolerance = r.f64();
+  if (degree < 1 || degree > 25 || !(tolerance >= 0 && tolerance < 1)) return undefined;
+  const array = (width: number): number[] | undefined => {
+    if (r.remaining < 12) return undefined;
+    const n = r.u32();
+    r.u32(); // the count again
+    if (r.u32() !== 8 || n * width * 8 > r.remaining) return undefined;
+    const out: number[] = [];
+    for (let i = 0; i < n * width; i++) out.push(r.f64());
+    return out;
+  };
+  const knots = array(1);
+  const weights = knots && array(1);
+  const flat = weights && array(3);
+  if (!knots || !weights || !flat) return undefined;
+  const poles: Vec3[] = [];
+  for (let i = 0; i < flat.length; i += 3)
+    poles.push([flat[i] as number, flat[i + 1] as number, flat[i + 2] as number]);
+  if (poles.length < 2 || knots.length !== poles.length + degree + 1) return undefined;
+  if (weights.length !== 0 && weights.length !== poles.length) return undefined;
+  for (let i = 1; i < knots.length; i++)
+    if ((knots[i] as number) < (knots[i - 1] as number)) return undefined;
+  return { degree, knots, weights, poles };
+}

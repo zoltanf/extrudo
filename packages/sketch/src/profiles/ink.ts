@@ -173,7 +173,9 @@ export function interiorPoint(
       for (const [f0, f1] of freeIntervals(outerX[i] as number, outerX[i + 1] as number, blocked)) {
         const point: Vec2 = [(f0 + f1) / 2, y];
         const width = f1 - f0;
-        const ok = minEdgeDistance(point, allRings) >= margin;
+        // Every point is far enough from the edges without a margin: skip
+        // the distance (all edges, every candidate: slow on long outlines).
+        const ok = margin <= 0 || minEdgeDistance(point, allRings) >= margin;
         if (!best || (ok && !best.ok) || (ok === best.ok && width > best.width)) {
           best = { point, width, ok };
         }

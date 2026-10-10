@@ -22,6 +22,8 @@ export const FEATURE_TYPES: Record<string, string> = {
   'F757D611-217B-4B72-9C41-B617BDCE43DA': 'Chamfer',
   'D869265F-F339-4751-A066-91D30F81FF08': 'WorkPlane',
   'E3849A15-2FC6-42A0-AF3A-2F1D7273B406': 'Revolve',
+  '1C037A07-4A15-43F6-ABFC-BBF61B9038D4': 'Hole',
+  '11F1A5CE-2B57-4476-8480-6994621493C9': 'CircularPattern',
 };
 
 const scopeDecoder: RecordDecoder<unknown> = { name: 'feature scope', decode: readScope };

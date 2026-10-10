@@ -15,12 +15,22 @@ import {
   readEdgeRecipe,
 } from './decode/edges';
 import {
+  type BodyOperation,
   type ExtrudeHead,
   type ProfileOperand,
   readExtrudeHead,
   readProfileOperand,
   SKETCH_PROFILE_OPERAND,
 } from './decode/extrude';
+import {
+  HOLE_PLACEMENT,
+  MODEL_PLANE,
+  MODEL_POINT,
+  type ModelPlane,
+  readHoleFlipped,
+  readModelPlane,
+  readModelPoint,
+} from './decode/hole';
 import { FEATURE_TYPES } from './decode/index';
 import {
   PARAMETER_OWNER,
@@ -28,18 +38,37 @@ import {
   type ParameterValue,
   parameterValue,
 } from './decode/parameters';
+import {
+  BODY_LINK,
+  FEATURE_FACES_OPERAND,
+  PATTERN_COUNT,
+  RECORD_REF,
+  readRecordRef,
+} from './decode/pattern';
+import {
+  GEOMETRY_OPERAND,
+  type RevolveAxis,
+  readAxis,
+  readRevolveOperation,
+} from './decode/revolve';
 import { readScope, type Scope } from './decode/scope';
 import {
   refAhead,
   SKETCH_CIRCULAR,
+  SKETCH_CONIC,
   SKETCH_LINE,
   SKETCH_POINT,
+  SKETCH_SPLINE,
   type SketchCircular,
   type SketchLine,
   type SketchPoint,
+  type SketchSpline,
   sketchCircular,
+  sketchConic,
   sketchLine,
   sketchPoint,
+  sketchSpline,
+  type Vec3,
 } from './decode/sketch-geometry';
 import { TIMELINE, timeline } from './decode/timeline';
 import { Segment } from './segment';
@@ -66,6 +95,8 @@ export interface F3dSketch {
   points: SketchPoint[];
   lines: SketchLine[];
   circulars: SketchCircular[];
+  /** Splines and conics. */
+  splines: SketchSpline[];
 }
 
 interface FeatureBase {
@@ -87,6 +118,8 @@ export interface F3dSketchFeature extends FeatureBase {
 export interface F3dExtrude extends FeatureBase, ExtrudeHead {
   type: 'extrude';
   profiles: ProfileOperand[];
+  /** Body faces it names, in reference order: the start face, the face it goes up to. */
+  faces: F3dFace[];
 }
 
 /** A face an edge lies on: its tags, and what the B-rep says it is. */
@@ -117,11 +150,45 @@ export interface F3dEdgeFeature extends FeatureBase {
   sets: F3dEdgeSet[];
 }
 
+export interface F3dRevolve extends FeatureBase {
+  type: 'revolve';
+  operation: BodyOperation;
+  profiles: ProfileOperand[];
+  axis?: RevolveAxis;
+}
+
+export interface F3dHole extends FeatureBase {
+  type: 'hole';
+  /** The plane of the face the holes start on, model space. */
+  plane?: ModelPlane;
+  /** Hole centres in model space, cm. */
+  centres: Vec3[];
+  /** Drills along the plane's normal (x × y), not against it. */
+  flipped: boolean;
+}
+
+export interface F3dCircularPattern extends FeatureBase {
+  type: 'circular-pattern';
+  /** What it repeats: features, or faces (not read further). */
+  objects: 'features' | 'faces';
+  /** The features it repeats, by record. */
+  features: number[];
+  axis?: RevolveAxis;
+  count?: ParameterValue;
+}
+
 export interface F3dOther extends FeatureBase {
   type: 'other';
 }
 
-export type F3dFeature = F3dSketchFeature | F3dExtrude | F3dEdgeFeature | F3dOther;
+export type F3dFeature =
+  | F3dSketchFeature
+  | F3dExtrude
+  | F3dRevolve
+  | F3dHole
+  | F3dEdgeFeature
+  | F3dCircularPattern
+  | F3dOther;
 
 export interface F3dDesign {
   parameters: ParameterValue[];
@@ -244,7 +311,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         placement !== undefined
           ? (tryDecode(`placement #${placement}`, () => readPlacement(seg, placement)) ?? IDENTITY)
           : IDENTITY;
-      s = { id, frame, points: [], lines: [], circulars: [] };
+      s = { id, frame, points: [], lines: [], circulars: [], splines: [] };
       sketches.set(id, s);
     }
     return s;
@@ -262,40 +329,22 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     const c = tryDecode(`circle #${id}`, () => sketchCircular.decode(seg, id));
     if (c?.owner !== undefined) sketchOf(c.owner).circulars.push(c);
   }
+  for (const id of seg.idsOf(SKETCH_SPLINE)) {
+    const c = tryDecode(`spline #${id}`, () => sketchSpline.decode(seg, id));
+    if (c?.owner !== undefined) sketchOf(c.owner).splines.push(c);
+  }
+  for (const id of seg.idsOf(SKETCH_CONIC)) {
+    const c = tryDecode(`conic #${id}`, () => sketchConic.decode(seg, id));
+    if (c?.owner !== undefined) sketchOf(c.owner).splines.push(c);
+  }
 
   // Face tags name the feature that made a face by its operation ID; the
-  // operation table maps those IDs to feature records. Its last member before
-  // the closing owner reference is u32 n and n pairs of (u64 operation ID,
-  // u64 record); version 1 puts another table in front, so it is read from
-  // the end.
-  const operations = new Map<number, number>();
+  // operation table maps those IDs to feature records.
+  const operations = new Map<number, number[]>();
   for (const id of seg.idsOf(OPERATION_TABLE)) {
-    tryDecode(`operation table #${id}`, () => {
-      const f = seg.frame(id);
-      // The closing reference (11 bytes, 51 with its type GUID), after a u32 0
-      // in version 1. The longest list that fits wins: an empty one also fits
-      // on that zero word.
-      let best: [number, number][] | undefined;
-      for (const tail of [11, 15, 51, 55]) {
-        for (let n = 1; n <= 100000; n++) {
-          const at = f.end - tail - 16 * n - 4;
-          if (at < f.start) break;
-          const r = new Reader(seg.bulk, at, f.end - tail);
-          if (r.u32() !== n) continue;
-          const pairs: [number, number][] = [];
-          for (let i = 0; i < n; i++) pairs.push([r.u64(), r.u64()]);
-          if (!pairs.every(([, rec]) => seg.has(rec))) continue;
-          if (!best || pairs.length > best.length) best = pairs;
-        }
-      }
-      if (best) {
-        for (const [op, rec] of best) operations.set(op, rec);
-        return;
-      }
-      throw new F3dFormatError('no operation pairs');
-    });
+    const table = tryDecode(`operation table #${id}`, () => readOperationTable(seg, id));
+    for (const [op, records] of table ?? []) operations.set(op, records);
   }
-  const featureOf = (design: number): number | undefined => operations.get(design);
 
   // The timeline, in order.
   const items: number[] = [];
@@ -303,6 +352,12 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     const t = tryDecode(`timeline #${id}`, () => timeline.decode(seg, id));
     if (t) items.push(...t.items);
   }
+  // An operation can list several records; the timeline feature among them made the face.
+  const onTimeline = new Set(items);
+  const featureOf = (design: number): number | undefined => {
+    const records = operations.get(design);
+    return records?.find((r) => onTimeline.has(r)) ?? records?.[0];
+  };
   const features: F3dFeature[] = [];
   for (const id of items) {
     const type = seg.typeOf(id);
@@ -349,7 +404,94 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         const p = tryDecode(`profile #${ref}`, () => readProfileOperand(seg, ref));
         if (p) profiles.push(p);
       }
-      features.push({ type: 'extrude', ...base, ...head, profiles });
+      // A face operand's recipe lists the face first, then its neighbours.
+      const named: F3dFace[] = [];
+      for (const group of scope.refs) {
+        if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
+        for (const recipe of recipesIn(seg, group)) {
+          const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
+          if (first) named.push(faceOf(first.tags, faces, featureOf));
+        }
+      }
+      features.push({ type: 'extrude', ...base, ...head, profiles, faces: named });
+    } else if (FEATURE_TYPES[type.guid] === 'Revolve') {
+      const operation = tryDecode(`revolve #${id}`, () => readRevolveOperation(seg, scope));
+      if (!operation) {
+        features.push({ type: 'other', ...base });
+        continue;
+      }
+      const profiles: ProfileOperand[] = [];
+      let axis: RevolveAxis | undefined;
+      for (const ref of scope.refs) {
+        const t = seg.typeOf(ref)?.guid;
+        if (t === SKETCH_PROFILE_OPERAND) {
+          const p = tryDecode(`profile #${ref}`, () => readProfileOperand(seg, ref));
+          if (p) profiles.push(p);
+        } else if (t === GEOMETRY_OPERAND && !axis) {
+          const f = seg.frame(ref);
+          axis = tryDecode(`axis #${ref}`, () => readAxis(seg, refsIn(seg, f.start, f.end)));
+        }
+      }
+      features.push({ type: 'revolve', ...base, operation, profiles, ...(axis ? { axis } : {}) });
+    } else if (FEATURE_TYPES[type.guid] === 'Hole') {
+      const centres: Vec3[] = [];
+      let plane: ModelPlane | undefined;
+      const inside = (ref: number) => {
+        const f = seg.frame(ref);
+        return refsIn(seg, f.start, f.end);
+      };
+      for (const ref of scope.refs) {
+        const t = seg.typeOf(ref)?.guid;
+        if (t === GEOMETRY_OPERAND)
+          for (const q of inside(ref))
+            if (seg.typeOf(q)?.guid === MODEL_POINT) {
+              const c = tryDecode(`hole centre #${q}`, () => readModelPoint(seg, q));
+              if (c) centres.push(c);
+            }
+        if (t === HOLE_PLACEMENT && !plane)
+          for (const g of inside(ref))
+            if (seg.typeOf(g)?.guid === GEOMETRY_OPERAND)
+              for (const q of inside(g))
+                if (seg.typeOf(q)?.guid === MODEL_PLANE)
+                  plane ??= tryDecode(`hole plane #${q}`, () => readModelPlane(seg, q));
+      }
+      const flipped = readHoleFlipped(seg, scope);
+      features.push({ type: 'hole', ...base, centres, flipped, ...(plane ? { plane } : {}) });
+    } else if (FEATURE_TYPES[type.guid] === 'CircularPattern') {
+      const inside = (ref: number) => {
+        const f = seg.frame(ref);
+        return refsIn(seg, f.start, f.end);
+      };
+      const repeated: number[] = [];
+      let objects: F3dCircularPattern['objects'] = 'features';
+      let axis: RevolveAxis | undefined;
+      let count: ParameterValue | undefined;
+      for (const ref of scope.refs) {
+        const t = seg.typeOf(ref)?.guid;
+        if (t === GEOMETRY_OPERAND) {
+          const refs = inside(ref);
+          // A feature it repeats names the body it acted on; the axis does not.
+          if (refs.some((r) => seg.typeOf(r)?.guid === BODY_LINK)) {
+            for (const r of refs)
+              if (seg.typeOf(r)?.guid === RECORD_REF) {
+                const record = tryDecode(`record #${r}`, () => readRecordRef(seg, r));
+                if (record !== undefined && !repeated.includes(record)) repeated.push(record);
+              }
+          } else axis ??= tryDecode(`axis #${ref}`, () => readAxis(seg, refs));
+        } else if (t === PATTERN_COUNT) {
+          const value = inside(ref).find((r) => seg.typeOf(r)?.guid === PARAMETER_VALUE);
+          if (value !== undefined)
+            count ??= tryDecode(`count #${value}`, () => parameterValue.decode(seg, value));
+        } else if (t === EDGE_OPERAND || t === FEATURE_FACES_OPERAND) objects = 'faces';
+      }
+      features.push({
+        type: 'circular-pattern',
+        ...base,
+        objects,
+        features: repeated,
+        ...(axis ? { axis } : {}),
+        ...(count ? { count } : {}),
+      });
     } else if (FEATURE_TYPES[type.guid] === 'Fillet' || FEATURE_TYPES[type.guid] === 'Chamfer') {
       const kind = FEATURE_TYPES[type.guid] === 'Fillet' ? 'fillet' : 'chamfer';
       const sets = tryDecode(`${kind} #${id}`, () =>
@@ -366,6 +508,83 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     features,
     problems,
   };
+}
+
+/**
+ * The operation table: after the prologue, one or two lists, the last of
+ * which maps operation IDs to records — u32 n × (u64 operation, u64 record),
+ * or in newer files u32 n × (u64 operation, u32 m, m × u64 records) — then
+ * u32 k, k × u64 (not read) and the closing reference. Found by shape: the
+ * longest list whose records all exist and that the trailer ends exactly.
+ */
+function readOperationTable(seg: Segment, id: number): Map<number, number[]> {
+  const f = seg.frame(id);
+  const endsHere = (r: Reader): boolean => {
+    if (r.remaining < 4) return false;
+    const k = r.u32();
+    if (k * 8 > r.remaining) return false;
+    r.skip(8 * k);
+    return r.ref() !== null && r.done;
+  };
+  let best: Map<number, number[]> | undefined;
+  let size = -1;
+  for (let at = f.start; at + 4 <= f.end; at++) {
+    for (const lists of [false, true]) {
+      const r = new Reader(seg.bulk, at, f.end);
+      const n = r.u32();
+      if (n <= size || n * 16 > r.remaining) continue;
+      try {
+        const table = new Map<number, number[]>();
+        let ok = true;
+        for (let i = 0; i < n && ok; i++) {
+          const op = r.u64();
+          const m = lists ? r.u32() : 1;
+          if (m === 0 || m * 8 > r.remaining) ok = false;
+          const records: number[] = [];
+          for (let j = 0; j < m && ok; j++) records.push(r.u64());
+          ok &&= records.every((x) => seg.has(x));
+          table.set(op, records);
+        }
+        if (ok && endsHere(r)) {
+          best = table;
+          size = n;
+        }
+      } catch {
+        // not a table at this offset
+      }
+    }
+  }
+  if (!best) throw new F3dFormatError('no operation table found');
+  return best;
+}
+
+/** The recipes an operand group's edge or face operands point to. */
+function recipesIn(seg: Segment, group: number): number[] {
+  const f = seg.frame(group);
+  const out: number[] = [];
+  for (const member of refsIn(seg, f.start, f.end)) {
+    if (seg.typeOf(member)?.guid !== EDGE_OPERAND) continue;
+    const m = seg.frame(member);
+    const recipe = refsIn(seg, m.start, m.end).find((r) => seg.typeOf(r)?.guid === EDGE_RECIPE);
+    if (recipe !== undefined) out.push(recipe);
+  }
+  return out;
+}
+
+/** A face named by its tags: the feature that made it and, from the B-rep, its surface. */
+function faceOf(
+  tags: FaceTag[],
+  faces: Map<string, AsmFace[]>,
+  featureOf: (design: number) => number | undefined,
+): F3dFace {
+  const first = tags[0];
+  const design = first ? Math.abs(first.designs[0] ?? -1) : -1;
+  const out: F3dFace = { tags };
+  const feature = design >= 0 ? featureOf(design) : undefined;
+  if (feature !== undefined) out.feature = feature;
+  const found = first ? faces.get(`${first.token}@${design}`)?.[0] : undefined;
+  if (found) out.surface = found.surface;
+  return out;
 }
 
 function nameOf(scope: Scope): string {
@@ -390,25 +609,11 @@ function readEdgeSets(
   const sizes = [...parameters]
     .sort((a, b) => a.number - b.number)
     .filter((p) => (kind === 'fillet' ? p.kind === 'Radius' : p.kind !== 'TangencyWeight'));
-  const face = (tags: FaceTag[]): F3dFace => {
-    const first = tags[0];
-    const design = first ? Math.abs(first.designs[0] ?? -1) : -1;
-    const out: F3dFace = { tags };
-    const feature = design >= 0 ? featureOf(design) : undefined;
-    if (feature !== undefined) out.feature = feature;
-    const found = first ? faces.get(`${first.token}@${design}`)?.[0] : undefined;
-    if (found) out.surface = found.surface;
-    return out;
-  };
+  const face = (tags: FaceTag[]) => faceOf(tags, faces, featureOf);
   const perSet = kind === 'chamfer' && sizes.length >= 2 * groups.length ? 2 : 1;
   return groups.map((group, i) => {
-    const f = seg.frame(group);
     const edges: F3dEdge[] = [];
-    for (const member of refsIn(seg, f.start, f.end)) {
-      if (seg.typeOf(member)?.guid !== EDGE_OPERAND) continue;
-      const m = seg.frame(member);
-      const recipeId = refsIn(seg, m.start, m.end).find((r) => seg.typeOf(r)?.guid === EDGE_RECIPE);
-      if (recipeId === undefined) continue;
+    for (const recipeId of recipesIn(seg, group)) {
       const recipe = readEdgeRecipe(seg, recipeId);
       const [a, b, ...rest] = recipe.faces;
       if (a && b)

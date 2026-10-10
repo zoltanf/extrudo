@@ -24,10 +24,13 @@ practical.
    `fflate` and `fzstd` (Zstandard entries since 2025); `@extrudo/kernel` is a
    test-only dependency. Two layers:
    - `readF3d(bytes)` decodes the archive into plain data: user and model
-     parameters, the timeline, sketches (plane, points, lines, circles, arcs),
-     extrudes (operation, direction, distances, tapers, selected profile
-     regions), fillets and chamfers (their edges as tagged B-rep faces) and
-     every other feature by kind and name.
+     parameters, the timeline, sketches (plane, points, lines, circles, arcs,
+     splines, conics), extrudes (operation, direction, distances, tapers,
+     selected profile regions, the faces they start from or go up to),
+     revolves (profile, axis, angles), holes (sizes, face plane, centres),
+     circular patterns (the features they repeat, axis, count, angle),
+     fillets and chamfers (their edges as tagged B-rep faces) and every other
+     feature by kind and name.
    - `f3dToDesign(f3d, name)` writes that through `@extrudo/api` into a new
      design and returns a report: what was imported, what was skipped and why.
    `importF3d(bytes, name)` does both; `f3dPreview(bytes)` returns the stored
@@ -51,6 +54,30 @@ practical.
      scheme (`extrude:<id>:cap:start`, `extrude:<id>:side:<curve>`) from the
      features that made their two faces, and carry a fingerprint of the
      edge's line or circle for where a join merged faces.
+   - Where some of a region's curves were redrawn after the pick (their tags
+     are gone), the smallest region along every listed curve still there
+     stands in for it.
+   - Splines keep their poles and knots where Extrudo's control splines can
+     hold them (clamped non-rational cubics; a quadratic span is raised to a
+     cubic), and become fit splines through points along them otherwise;
+     conics stay conics (start, shoulder, end, rho).
+   - An extrude that starts at an offset, or from a face parallel to its
+     sketch, takes its profiles from a copy of the sketch moved that far
+     along its normal (Extrudo's extrude starts on its sketch). One that goes
+     up to a parallel plane becomes that distance; up to another face, a
+     to-object extent when the face can be named.
+   - A revolve about an origin axis or a line of its own sketch keeps its
+     angle.
+   - A hole on a face parallel to an origin plane becomes a sketch of its
+     centres on that plane and a blind hole (simple, countersink or
+     counterbore) drilling into the face; Fusion's 180° drill point is
+     Extrudo's flat 0°.
+   - A circular pattern replays the imported extrudes, revolves and holes it
+     repeats (Fusion's patterns in the corpus all repeat features) about an
+     origin axis or a sketch line; fillets and chamfers in it are left out
+     with a note.
+   - Components' features join the one design, with a note (Extrudo has no
+     components yet, ADR-0081).
    - Everything else is skipped and listed in the report.
 4. **In the app**, Home › Files has **Import .f3d…** (and the home screen a
    button; Import .extrudo accepts `.f3d` too). Each import makes a new design
@@ -65,13 +92,14 @@ practical.
 ## Consequences
 
 - On the owner's 250 files every file decodes and maps to a valid design.
-  Rebuilt with our kernel and compared with the reference STEP: 13 match,
-  120 lose some features, 34 build different geometry and 83 have no body
-  (their first extrude did not map). The common gaps, by count: profiles that
-  are body faces, extrudes that start from a face or offset, fillet edges on
-  faces from features other than extrudes, components, holes, offset faces,
-  patterns, revolves, sketches on other planes, and sketch dimensions and
-  constraints.
+  Rebuilt with our kernel and compared with the reference STEP (volume within
+  0.5 %, tight bounding box within 0.05 mm; 7 references hold no solid): of
+  243, 72 match (14 of them while skipping features the result does not
+  need), 111 lose some features, 50 build different geometry and 10 have no
+  body. The common gaps, by count: offset faces, regions whose curves were
+  redrawn or projected, sketch text, fillet and chamfer edges on faces of
+  features other than extrudes, threads, sweeps, mirrors, components, and
+  sketch dimensions and constraints.
 - The format changes between Fusion versions (record versions, reference
   widths). Each decoder checks its record's version and reports what it does
   not know instead of guessing; the report reaches the user.

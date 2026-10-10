@@ -127,7 +127,7 @@ export function readProfileOperand(seg: Segment, id: number): ProfileOperand {
 /**
  * The region selection: u32 group count; per group a first region, u32 X and X
  * further regions. A region is u32 loop count and its loops; a loop is u32
- * member count, that many 40-byte curve members (u32 3, u64 curve tag, then
+ * member count, that many 40-byte curve members (u32 kind 2 or 3, u64 curve tag, then
  * zeros and incidence words) and a flag byte, 1 for the outer loop — except
  * that the record's very last loop ends without its flag.
  */
@@ -148,7 +148,9 @@ function readRegions(seg: Segment, id: number, operand: number): ProfileRegion[]
         throw new F3dFormatError(`Profile regions #${id}: bad loop.`);
       const curves: bigint[] = [];
       for (let k = 0; k < n; k++) {
-        if (r.u32() !== 3) throw new F3dFormatError(`Profile regions #${id}: member kind.`);
+        const kind = r.u32();
+        if (kind !== 2 && kind !== 3)
+          throw new F3dFormatError(`Profile regions #${id}: member kind ${kind}.`);
         curves.push(r.u64big());
         r.skip(28);
       }
