@@ -657,6 +657,7 @@ export class Recomputer {
       imports: sameReports(previous.imports, imports)
         ? previous.imports
         : (imports as Record<FeatureId, ImportReport>),
+      origins: result.origins,
       stats: {
         ms: result.stats.ms,
         evaluated: result.stats.evaluated.length,

@@ -8,7 +8,9 @@ import {
   createDocumentStore,
   createModelStore,
   type DocumentStore,
+  type ExtrudeInputOptions,
   type ExtrudoDocument,
+  extrudeInputs,
   type Feature,
   type FeatureId,
   type GeomRef,
@@ -16,7 +18,11 @@ import {
   type ModelStore,
   originPlaneRef,
   renameFeature,
+  type SketchData,
+  sketchInputs,
 } from '@extrudo/core';
+import { SketchBuilder } from '@extrudo/sketch/fixtures';
+import { detectProfiles } from '@extrudo/sketch/profiles';
 import { afterEach, describe, expect, it } from 'vitest';
 import interRegular from '../fonts/fonts/inter-regular.ttf?url&inline';
 import type { KernelConnection } from './client';
@@ -143,6 +149,31 @@ function edit(document: DocumentStore, change: (doc: ExtrudoDocument) => Extrudo
 }
 
 const ready = (model: ModelStore<BodyMesh>) => model.getState().status === 'ready';
+
+function rectangle(x: number, y: number, w: number, h: number): SketchData {
+  const b = new SketchBuilder();
+  b.line(x, y, x + w, y);
+  b.line(x + w, y, x + w, y + h);
+  b.line(x + w, y + h, x, y + h);
+  b.line(x, y + h, x, y);
+  return b.sketch;
+}
+
+function sketch(id: string, data: SketchData): Feature {
+  return { ...testFeature(id, 'sketch'), inputs: sketchInputs(originPlaneRef('origin:xy'), data) };
+}
+
+function extrude(
+  id: string,
+  sketchId: string,
+  data: SketchData,
+  options: ExtrudeInputOptions,
+): Feature {
+  const [largest] = detectProfiles(data).sort((a, b) => b.area - a.area);
+  if (!largest) throw new Error('no profile');
+  const ref: GeomRef = { kind: 'profile', id: `${sketchId}/${largest.id}` };
+  return { ...testFeature(id, 'extrude'), inputs: extrudeInputs([ref], options) };
+}
 
 describe('Recomputer', () => {
   it('computes the document and fills the model store', { timeout: 30_000 }, async () => {
@@ -602,5 +633,27 @@ describe('Recomputer', () => {
     expect(preview?.tools.map((t) => t.style)).toEqual(['cut']);
     // The cut changed the box: a new mesh, not the model store's.
     expect(preview?.bodies['box:0' as BodyId]).not.toBe(model.getState().bodies['box:0' as BodyId]);
+  });
+
+  it('fills ModelState.origins with where each piece came from (ADR-0081 §2)', {
+    timeout: 30_000,
+  }, async () => {
+    const block = rectangle(0, 0, 40, 30);
+    const cutter = rectangle(15, -5, 5, 40);
+    const doc = testDocument([
+      sketch('SB', block),
+      extrude('B', 'SB', block, { distance: '20 mm' }),
+      sketch('SC', cutter),
+      extrude('C', 'SC', cutter, {
+        direction: 'symmetric',
+        extent: 'through-all',
+        operation: 'cut',
+      }),
+    ]);
+    const { model } = setup(doc);
+    await until(() => ready(model));
+    expect(Object.keys(model.getState().bodies).sort()).toEqual(['B:0', 'C:0']);
+    // The cut broke a piece off B:0; the model store carries that for the app.
+    expect(model.getState().origins).toEqual({ 'C:0': 'B:0' });
   });
 });

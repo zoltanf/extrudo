@@ -82,6 +82,7 @@ function fakeSpawn(options: FakeOptions) {
           features: { f1: { status: 'ok' } },
           bodies: [],
           reports: {},
+          origins: {},
           stats: { evaluated: ['f1'], reused: 0, ms: 1, liveShapes: 0 },
         };
       },
@@ -92,6 +93,7 @@ function fakeSpawn(options: FakeOptions) {
           features: { f1: { status: 'ok' } },
           bodies: [],
           reports: {},
+          origins: {},
           stats: { evaluated: [], reused: 0, ms: 1, liveShapes: 0 },
         };
       },

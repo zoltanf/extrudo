@@ -341,6 +341,9 @@ export class RecomputeEngine {
     let reused = 0;
     let bodies: ReadonlyMap<BodyId, ShapeHandle> = new Map();
     let bodiesKey = EMPTY_BODIES;
+    // Where each piece came from (P6-05, ADR-0081 §2), collected from every
+    // feature's output as the walk passes it; never pruned within a walk.
+    const origins = new Map<BodyId, BodyId>();
 
     /** The bodies before the draft (previews). */
     let base: ReadonlyMap<BodyId, ShapeHandle> | undefined;
@@ -500,6 +503,9 @@ export class RecomputeEngine {
         continue;
       }
       passed.set(feature.id, { state: 'done', entry });
+      if (entry.output.origins) {
+        for (const [piece, source] of entry.output.origins) origins.set(piece, source);
+      }
       if (entry.output.report !== undefined) reports[feature.id] = entry.output.report;
       if (access === 'write' && entry.output.bodies) {
         bodies = entry.output.bodies;
@@ -525,6 +531,7 @@ export class RecomputeEngine {
       status: 'done',
       features,
       bodies: results,
+      origins: Object.fromEntries(origins) as Record<BodyId, BodyId>,
       reports,
       ...(tools && { tools }),
       ...(baseResults && { base: baseResults }),

@@ -235,6 +235,12 @@ export class DesignJob {
   #meshesEnabled = false;
   #scriptsEnabled = false;
   #openscadEnabled = false;
+  /**
+   * Where each body the last recompute broke off another came from (P6-05,
+   * ADR-0081 §2): a piece → the body it came from. Kept for the CLI's own
+   * component work in S8; nothing reads it yet.
+   */
+  #origins: Record<BodyId, BodyId> = {};
   /** What the kernel has already been sent (a font ID, or `file:<id>`). */
   readonly #sent = new Set<string>();
   #disposed = false;
@@ -260,6 +266,15 @@ export class DesignJob {
   /** The document as it is now. */
   get doc(): ExtrudoDocument {
     return this.design.doc;
+  }
+
+  /**
+   * Where each body the last compute broke off another came from (P6-05,
+   * ADR-0081 §2): a piece → the body it came from, from the last finished
+   * recompute. Empty before the first `compute`/`status`/`export`.
+   */
+  get origins(): Readonly<Record<BodyId, BodyId>> {
+    return this.#origins;
   }
 
   /**
@@ -397,6 +412,7 @@ export class DesignJob {
     if (result.status !== 'done') {
       throw new HeadlessError('The kernel stopped before it finished the design.');
     }
+    this.#origins = result.origins;
     return {
       result,
       names: bodyNames(

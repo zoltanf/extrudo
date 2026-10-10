@@ -214,6 +214,15 @@ export interface FeatureOutput {
   /** Turns the status to `warning`. */
   warnings?: readonly string[];
   /**
+   * The bodies this feature broke off another (P6-05, ADR-0081 §2): a fresh
+   * body ID → the body it was cut from, **only for pieces of a body that
+   * existed before this feature** (a copy or a body the feature itself made
+   * has no origin). `splitSolids` and Split Body fill it; the engine collects
+   * it into `RecomputeResult.origins` (a piece stays with its source's
+   * component).
+   */
+  origins?: ReadonlyMap<BodyId, BodyId>;
+  /**
    * Shapes a feature dialog's live preview draws over the model (UI spec
    * §3.4, ADR-0027): an extrude's prism, styled by what it does to the
    * bodies. The cache owns them like the other shapes (they may be the same
@@ -301,6 +310,13 @@ export type RecomputeResult =
       features: Record<FeatureId, FeatureStatus>;
       /** The bodies at the timeline marker, in creation order. */
       bodies: BodyResult[];
+      /**
+       * Where each body the walk broke off another came from (P6-05,
+       * ADR-0081 §2): a piece → the body it came from, at the marker. A plain
+       * record; the app reads it to place a new piece in its source's
+       * component. Previews carry it too but nothing reads it there.
+       */
+      origins: Record<BodyId, BodyId>;
       /** `FeatureOutput.report` of every feature that computed and has one. */
       reports: Record<FeatureId, unknown>;
       /**

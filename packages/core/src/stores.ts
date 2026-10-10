@@ -14,6 +14,7 @@ import { freeze } from 'immer';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { CanvasReport } from './canvas';
 import { applyCommand, type Command } from './commands';
+import type { BodyOrigins } from './components';
 import type { ConstructionReport } from './construction';
 import { type HistoryOptions, UndoHistory } from './history';
 import type { BodyId, FeatureId } from './ids';
@@ -337,6 +338,13 @@ export interface ModelState<TBody> {
    * into `doc.bodies` once, when it first names a body.
    */
   imports: Record<FeatureId, ImportReport>;
+  /**
+   * Where each body the last recompute broke off another came from (P6-05,
+   * ADR-0081 §2): a piece → the body it was cut from. The app reads it to put a
+   * new piece in the component its source is in. Empty when no feature split a
+   * body.
+   */
+  origins: BodyOrigins;
   stats: ModelStats | undefined;
   /**
    * The document `features` and `bodies` were computed from, when the
@@ -352,6 +360,7 @@ export interface ModelState<TBody> {
     construction?: Record<FeatureId, ConstructionReport>;
     canvases?: Record<FeatureId, CanvasReport>;
     imports?: Record<FeatureId, ImportReport>;
+    origins?: BodyOrigins;
     stats?: ModelStats;
     doc?: ExtrudoDocument;
   }): void;
@@ -371,6 +380,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     construction: {} as Record<FeatureId, ConstructionReport>,
     canvases: {} as Record<FeatureId, CanvasReport>,
     imports: {} as Record<FeatureId, ImportReport>,
+    origins: {} as BodyOrigins,
     stats: undefined,
     doc: undefined,
   });
@@ -379,7 +389,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
     computing() {
       set({ status: 'computing', error: undefined });
     },
-    computed({ features, bodies, sketches, construction, canvases, imports, stats, doc }) {
+    computed({ features, bodies, sketches, construction, canvases, imports, origins, stats, doc }) {
       set((s) => ({
         status: 'ready',
         error: undefined,
@@ -389,6 +399,7 @@ export function createModelStore<TBody>(): ModelStore<TBody> {
         construction: construction ?? s.construction,
         canvases: canvases ?? s.canvases,
         imports: imports ?? s.imports,
+        origins: origins ?? s.origins,
         stats,
         doc,
       }));
