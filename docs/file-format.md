@@ -263,11 +263,15 @@ gets one at the next recompute.
 
 ### 4.3 `views[]` (NamedView)
 
+A view the user saved from the nav bar's Named views menu or the browser's
+Named views folder (added 2026-10-10; ADR-0008's amendment). Nothing refers to
+a view, so deleting one is always allowed.
+
 | Field | Type | Required | Meaning |
 |---|---|---|---|
 | `id` | ID | yes | Unique among views. |
-| `name` | string | yes | Non-empty. |
-| `camera` | object | yes | `projection` (`"perspective"` or `"orthographic"`), `position`, `target`, `up`: each of the last three is a `[x, y, z]` array of three numbers, in world millimetres. The world is **Z up**. |
+| `name` | string | yes | Non-empty. Defaults are `View1`, `View2`, ... the lowest number no view uses; a name taken by another view is saved as the next free "`<name>` 2". |
+| `camera` | object | yes | `projection` (`"perspective"` or `"orthographic"`), `position`, `target`, `up`: each of the last three is a `[x, y, z]` array of three numbers, in world millimetres. The world is **Z up**. `position` is the camera's own point; `up` the camera's up direction. An optional `size` (number, positive) holds the visible height through the target in mm — **orthographic views only**: their camera sits far back at a distance that depends on the zoom, so `position`, `target` and `up` alone don't fix the view's size. A perspective view needs no `size`: its position's distance from the target already fixes it. |
 
 ### 4.4 `meta`
 
@@ -1736,7 +1740,8 @@ test parses this block against the real schema, so it stays valid.)
         "projection": "orthographic",
         "position": [0, -200, 0],
         "target": [0, 0, 0],
-        "up": [0, 0, 1]
+        "up": [0, 0, 1],
+        "size": 100
       }
     }
   ],

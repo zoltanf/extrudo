@@ -17,6 +17,7 @@ import {
   redefineSketchPlane,
   type SelectionItem,
   type SessionStore,
+  type ViewId,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
 import {
@@ -161,6 +162,7 @@ import { forgetCanvasImages } from '../viewport/canvasImages';
 import type { ConstructionDrawing } from '../viewport/constructionGeometry';
 import { ghostsOf } from '../viewport/ghostGeometry';
 import { ModelProgress, useRecomputeFinished } from '../viewport/ModelProgress';
+import { namedViewSaveStore } from '../viewport/namedViewSave';
 import type { SketchDrawing } from '../viewport/sketchGeometry';
 import type { ViewportStore } from '../viewport/store';
 import type { PlanePicker, SketchInput } from '../viewport/Viewport';
@@ -187,6 +189,7 @@ import { docsPath } from './docsLinks';
 import { createFeatureActions } from './featureActions';
 import { createGroupActions } from './groupActions';
 import { menuModel, NATIVE_MENU_OWN, QUIT_ID, SAVE_AS_ID } from './menuModel';
+import { createViewActions } from './namedViews';
 import { Splitter, usePanel } from './panels';
 import { watchRecomputeErrors } from './recomputeErrors';
 import { Timeline } from './Timeline';
@@ -660,6 +663,20 @@ export function AppShell({
     }),
     [store, session, notify],
   );
+  // The named views (ADR-0008's amendment): the browser's rows, the nav bar's
+  // menu and the commands' shared actions.
+  const viewActions = useMemo(
+    () => createViewActions(store, viewport, notify),
+    [store, viewport, notify],
+  );
+  const namedViewEntries = useMemo(
+    () => ({
+      views: doc.views,
+      restore: (id: ViewId) => viewActions.restore(id),
+      save: (name: string) => viewActions.save(name),
+    }),
+    [doc.views, viewActions],
+  );
   const componentList = useMemo(() => componentRows(doc, bodyList).rows, [doc, bodyList]);
   const componentListRef = useRef(componentList);
   componentListRef.current = componentList;
@@ -1002,6 +1019,12 @@ export function AppShell({
         viewport,
         browser: { collapsed: browser.collapsed, toggle: browser.toggle },
         file: fileActions,
+        // Named views (ADR-0008's amendment): save opens the nav bar's prompt.
+        views: {
+          list: doc.views.map((v) => ({ id: v.id, name: v.name })),
+          save: () => namedViewSaveStore.getState().show(),
+          restore: (id: ViewId) => viewActions.restore(id),
+        },
         theme: { choice, set: setChoice },
         settings: { open: () => setSettingsOpen(true) },
         ...(listing
@@ -1079,6 +1102,8 @@ export function AppShell({
       session,
       selection,
       bodyActions,
+      viewActions,
+      doc.views,
       construction,
       stores,
       viewport,
@@ -1959,6 +1984,7 @@ export function AppShell({
             actions={featureActions}
             bodies={browserBodies}
             bodyActions={bodyActions}
+            viewActions={viewActions}
             componentActions={componentActions}
             activeComponent={activeComponent}
             isolatedComponent={isolatedComponent}
@@ -2040,6 +2066,7 @@ export function AppShell({
           >
             <Viewport
               viewport={viewport}
+              namedViews={namedViewEntries}
               bodies={shownBodies}
               meta={bodyMeta}
               components={componentsSummary(componentList)}

@@ -120,6 +120,35 @@ describe('buildCommands', () => {
     expect(Object.keys(DEFAULT_KEYMAP).filter((id) => !ids.has(id))).toEqual([]);
   });
 
+  it('offers Save Current View… and one command per named view, with no key (ADR-0008\u2019s amendment)', () => {
+    const restore = vi.fn();
+    const save = vi.fn();
+    const ctx = context('model', {
+      views: {
+        list: [
+          { id: 'v1' as never, name: 'Front' },
+          { id: 'v2' as never, name: 'Top 2' },
+        ],
+        save,
+        restore,
+      },
+    });
+    const commands = byId(ctx);
+    expect(commands.get('saveNamedView')).toMatchObject({
+      label: 'Save Current View…',
+      group: 'View',
+      keys: [],
+    });
+    commands.get('saveNamedView')?.run();
+    expect(save).toHaveBeenCalled();
+    expect(commands.get('namedView:v1')).toMatchObject({ label: 'View: Front', keys: [] });
+    commands.get('namedView:v2')?.run();
+    expect(restore).toHaveBeenCalledWith('v2');
+    // The commands are offered in a sketch too, and absent without views.
+    expect(byId(context('sketch', { views: ctx.views })).has('saveNamedView')).toBe(true);
+    expect(byId(context('model')).has('saveNamedView')).toBe(false);
+  });
+
   it('offers Record Macro, then only Stop Macro while recording (P5-05)', () => {
     const idle = byId(context('model'));
     expect(idle.get('recordMacro')?.group).toBe('Solid › Program');

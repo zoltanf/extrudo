@@ -10,6 +10,7 @@ import {
   type FeatureStatus,
   isConstructionType,
   isFeatureVisible,
+  type NamedView,
 } from '@extrudo/core';
 import {
   Box,
@@ -75,6 +76,7 @@ import {
 import { FeatureMenuItems, RenameField } from './FeatureMenu';
 import type { FeatureActions } from './featureActions';
 import { type FeatureProblem, featureProblem, StatusGlyph } from './featureStatus';
+import type { ViewActions } from './namedViews';
 import { toolForFeature } from './tools';
 
 export const BROWSER_ID = 'browser-panel';
@@ -125,6 +127,8 @@ export interface BrowserPanelProps {
   statuses?: Readonly<Record<string, FeatureStatus | undefined>>;
   /** A recompute has finished since the page opened (default: yes). Until then an empty Bodies folder is "computing" (ADR-0078). */
   recomputeFinished?: boolean;
+  /** Restore, update, rename and delete the named views (ADR-0008's amendment, 2026-10-10). */
+  viewActions: ViewActions;
 }
 
 /** One row of the Analysis folder: a view analysis with its eye, its panel and its removal. */
@@ -172,6 +176,7 @@ export function BrowserPanel({
   thickness,
   statuses = NO_STATUSES,
   recomputeFinished = true,
+  viewActions,
 }: BrowserPanelProps) {
   const doc = useStore(store, (s) => s.doc);
   const origin = useStore(viewport, (s) => s.origin);
@@ -226,9 +231,13 @@ export function BrowserPanel({
               </Leaf>
             </Folder>
             <Folder label="Named views" icon={<Video size={14} />} defaultOpen={false}>
-              <Leaf muted>
-                {doc.views.length === 0 ? 'No named views yet' : `${doc.views.length} views`}
-              </Leaf>
+              {doc.views.length === 0 ? (
+                <Leaf muted>No named views yet</Leaf>
+              ) : (
+                doc.views.map((view) => (
+                  <ViewLeaf key={view.id} view={view} actions={viewActions} />
+                ))
+              )}
             </Folder>
             <Folder
               label="Origin"
@@ -691,6 +700,61 @@ function PendingBodyLeaf({ body, actions }: { body: BodyEntry; actions: BodyActi
         onToggle={() => actions.setVisible([id], !meta.visible)}
       />
     </Leaf>
+  );
+}
+
+/**
+ * A named view's row (ADR-0008's amendment, 2026-10-10): a click restores the
+ * saved camera (an animated move, not a command), F2 or Rename renames it,
+ * Update to Current View overwrites its camera, Delete removes it.
+ */
+function ViewLeaf({ view, actions }: { view: NamedView; actions: ViewActions }) {
+  const [renaming, setRenaming] = useState(false);
+  const onKeyDown = (event: KeyboardEvent) => {
+    if (event.key === 'F2') setRenaming(true);
+    else if (event.key === 'Delete' || event.key === 'Backspace') actions.remove(view.id);
+    else if (event.key === 'Enter') actions.restore(view.id);
+    else return;
+    // Handled here: not a shortcut for the view as well.
+    event.preventDefault();
+  };
+  return (
+    <ContextMenu
+      label={`${view.name} menu`}
+      disabled={renaming}
+      trigger={
+        <Leaf data-view={view.id}>
+          {renaming ? (
+            <RenameField
+              name={view.name}
+              label={`Rename ${view.name}`}
+              className="h-6 min-w-0 flex-1 px-1"
+              onCommit={(name) => actions.rename(view.id, name)}
+              onDone={() => setRenaming(false)}
+            />
+          ) : (
+            <button
+              type="button"
+              onClick={() => actions.restore(view.id)}
+              onKeyDown={onKeyDown}
+              className="min-w-0 truncate rounded-input text-left focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              {view.name}
+            </button>
+          )}
+        </Leaf>
+      }
+    >
+      <MenuItem onSelect={() => actions.restore(view.id)}>Restore</MenuItem>
+      <MenuItem onSelect={() => actions.update(view.id)}>Update to Current View</MenuItem>
+      <MenuItem icon={<Pencil size={14} />} shortcut="F2" onSelect={() => setRenaming(true)}>
+        Rename
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem icon={<Trash2 size={14} />} shortcut="Del" onSelect={() => actions.remove(view.id)}>
+        Delete
+      </MenuItem>
+    </ContextMenu>
   );
 }
 

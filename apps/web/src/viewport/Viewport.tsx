@@ -89,7 +89,7 @@ import { GhostBodies } from './GhostBodies';
 import { Ghosts } from './Ghosts';
 import { GRID_RADIUS, Grid, THUMBNAIL_HIDDEN, XY_FRAME } from './GridPlane';
 import { type Ghost, ghostsSummary } from './ghostGeometry';
-import { NavBar } from './NavBar';
+import { type NamedViewEntries, NavBar } from './NavBar';
 import { NoWebgl } from './NoWebgl';
 import { dragAction, dragZoomFactor, type NavAction, ORBIT_RATE, wheelAction } from './navigation';
 import { Origin } from './Origin';
@@ -151,6 +151,8 @@ export interface ViewportProps {
    */
   commandRunning?: boolean;
   onStopCommand?(): void;
+  /** The document's named views for the nav bar's menu (ADR-0008's amendment). */
+  namedViews?: NamedViewEntries;
   /** The item under the pointer (session hover): bodies highlight it (P2-03). */
   hover?: SelectionItem;
   /** The session's selection: bodies highlight it (P2-03). */
@@ -377,6 +379,7 @@ export function Viewport({
   children,
   commandRunning = false,
   onStopCommand,
+  namedViews,
   hover,
   selection = NO_SELECTION,
   modelSelect,
@@ -696,7 +699,12 @@ export function Viewport({
         onSelectOther={(hits, at) => setOtherMenu({ hits: [...hits], at, toggle: false })}
       />
       <ViewCube store={viewport} />
-      <NavBar store={viewport} commandRunning={commandRunning} onStopCommand={onStopCommand} />
+      <NavBar
+        store={viewport}
+        commandRunning={commandRunning}
+        onStopCommand={onStopCommand}
+        {...(namedViews && { namedViews })}
+      />
       <ViewStatus viewport={viewport} />
     </section>
   );

@@ -54,7 +54,9 @@ that hides or shows everything in it, and a right-click menu with **Collapse** a
 - **Canvases** appears when the design has a [Canvas](./tools/canvas.md) picture.
 
 Two more folders, **Document settings** and **Named views**, sit collapsed at the top. The first
-shows the design's unit.
+shows the design's unit. **Named views** lists the views saved from the navigation bar's Named
+views menu (see [moving the view](./getting-started.md)): a click on a row restores it, and its
+right-click menu has Restore, Update to Current View, Rename (`F2`) and Delete.
 
 While a design opens, the Bodies folder shows the bodies the last session made as faint rows
 and the view says "Preparing your design…". They turn solid when the model has been computed.

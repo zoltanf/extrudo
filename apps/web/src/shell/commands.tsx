@@ -5,6 +5,8 @@
  * Ctrl+K palette and the S toolbox, so a command found in search runs the
  * same way as its key.
  */
+
+import type { ViewId } from '@extrudo/core';
 import {
   Bell,
   BookOpen,
@@ -29,6 +31,7 @@ import {
   SunMoon,
   Trash2,
   Undo2,
+  Video,
   Wrench,
 } from 'lucide-react';
 import type { ReactNode } from 'react';
@@ -143,6 +146,16 @@ export interface CommandContext {
     quit(): void;
     checkForUpdates?(): void;
     clearRecent?(): void;
+  };
+  /**
+   * The document's named views (ADR-0008's amendment, 2026-10-10): "Save
+   * Current View…" opens the nav bar's save prompt, and one command per view
+   * restores it. Saving and restoring camera views is never a key.
+   */
+  views?: {
+    list: readonly { id: ViewId; name: string }[];
+    save(): void;
+    restore(id: ViewId): void;
   };
 }
 
@@ -352,6 +365,19 @@ export function buildCommands(ctx: CommandContext): AppCommand[] {
       icon: icon(face ? Box : House),
       keywords: 'View standard orientation camera',
     });
+  }
+  // Named views (ADR-0008's amendment): save the camera now, or restore one.
+  if (ctx.views) {
+    plain('saveNamedView', 'Save Current View…', 'View', ctx.views.save, {
+      icon: icon(Video),
+      keywords: 'View named save camera recall orientation store',
+    });
+    for (const v of ctx.views.list) {
+      plain(`namedView:${v.id}`, `View: ${v.name}`, 'View', () => ctx.views?.restore(v.id), {
+        icon: icon(Video),
+        keywords: `View named restore camera ${v.name}`,
+      });
+    }
   }
   plain(
     'toggleBrowser',

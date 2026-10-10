@@ -223,15 +223,29 @@ export const BodyMetaSchema = z.strictObject({
 });
 export type BodyMeta = z.infer<typeof BodyMetaSchema>;
 
+/**
+ * A named view's camera (ADR-0008's amendment, 2026-10-10): the camera's pose
+ * as a renderer keeps it. `position` is the camera's own point (a
+ * perspective camera sits `distance` from the target, so position and target
+ * together also fix the view's `size`); `up` is the camera's up direction.
+ * `size` is stored only for orthographic views: the orthographic camera sits
+ * far back at a distance that depends on the zoom, so position, target and up
+ * alone don't say how tall the view is (the viewport's visible height through
+ * the target, in mm).
+ */
+export const ViewCameraSchema = z.strictObject({
+  projection: z.enum(['perspective', 'orthographic']),
+  position: Vec3Schema,
+  target: Vec3Schema,
+  up: Vec3Schema,
+  size: z.number().positive().optional(),
+});
+export type ViewCamera = z.infer<typeof ViewCameraSchema>;
+
 export const NamedViewSchema = z.strictObject({
   id: ViewIdSchema,
   name: z.string().min(1),
-  camera: z.strictObject({
-    projection: z.enum(['perspective', 'orthographic']),
-    position: Vec3Schema,
-    target: Vec3Schema,
-    up: Vec3Schema,
-  }),
+  camera: ViewCameraSchema,
 });
 export type NamedView = z.infer<typeof NamedViewSchema>;
 

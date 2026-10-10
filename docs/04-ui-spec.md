@@ -196,6 +196,19 @@ brief, voice) is in **`05-brand.md`**. In short:
   views. The wireframe and hidden-edge styles also draw the silhouettes
   of curved faces (the outline of a hole or a cylinder as seen now), which
   follow the camera; seams are never drawn (P2-08).
+- **Named views (ADR-0008's amendment, 2026-10-10):** the nav bar's Named
+  views menu lists the saved views by name (a click restores the camera,
+  animated; the saved projection comes with it), then Save Current View…,
+  which opens a small popover on the button: a Name field prefilled with
+  "View1", "View2"… (the lowest number no view uses; a taken name saves as
+  "`<name>` 2"), Save and Cancel (Enter/Esc). Ctrl+K has the same "Save
+  Current View…" (no key) and one "View: `<name>`" command per view. The
+  browser's Named views rows restore on a click; their right-click menu has
+  Restore, Update to Current View (overwrites the saved camera with the
+  current one), Rename (F2) and Delete. Saving, updating, renaming and
+  deleting are document commands (one undo step each); restoring only moves
+  the camera and is never undoable. A view holds only the camera: no
+  thumbnails, no section or display settings.
 - A running tool is highlighted on the toolbar: its tile, or, for a tool
   from a group's menu, the group's label.
 - **Command dialog (right, floating):** appears for the active feature and is

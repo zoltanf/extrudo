@@ -80,6 +80,14 @@ Bottom, `Shift+4` Front, `Shift+5` Back, `Shift+6` Left and `Shift+7` Right. Cli
 the ViewCube does the same. **Orthographic** in the navigation bar turns perspective off, which
 is what you want when you read a position off the screen.
 
+Beyond the seven standard views you can save your own **named views** (2026-10-10): the
+navigation bar's **Named views** menu lists them to restore, and **Save Current View…** stores
+where the camera is now (name, then Save). A saved view comes back exactly — including whether
+it was orthographic — as one entry of the design, so it survives undo, reload and export. The
+browser's **Named views** folder has the same views: a click restores, and the right-click menu
+updates one to where the camera is now, renames it or deletes it. Views hold only the camera: a
+section plane or a hidden body is not part of one.
+
 ## Selecting
 
 Hover to see what a click would take, click to select, and `Shift` or `Ctrl` with a click adds

@@ -73,7 +73,12 @@ sample document in memory until storage exists. ADR-0008 (P0-05) set the
 viewport (`apps/web/src/viewport/`): Z-up world in mm, our own camera
 controller (target + quaternion + size, both projections), mouse presets as
 tables, shader grid, CSS 3D ViewCube, a viewport store with display settings
-as preferences. ADR-0009 (P0-08) set storage (`packages/storage`):
+as preferences. **Named views (ADR-0008's amendment, 2026-10-10)** save and
+restore the camera: core's `saveView`/`updateView`/`removeView` commands over
+`doc.views` (a view camera is `projection`/`position`/`target`/`up`, plus
+`size` for orthographic only; the conversion is `viewport/namedView.ts`), the
+nav bar's Named views menu and the browser's rows restore, update, rename and
+delete (one undo step; restoring is view state, never a command). ADR-0009 (P0-08) set storage (`packages/storage`):
 `ProjectStore` over an IndexedDB index and OPFS files, `.extrudo` zips through
 core's migrations; in the web app, an async `webPlatform()` with projects,
 persistent storage and file download/pick, autosave (`project/autosave.ts`;
@@ -2373,6 +2378,16 @@ them. Notes further down that name a machine apply to that machine only.
   `data-ready` (first frame drawn; the viewport is a lazy chunk). WebGL runs
   on SwiftShader in headless Chromium (unless `E2E_GPU=1`) and renders the
   same in the Arch and Ubuntu images.
+- **Named views e2e** (`e2e/named-views.spec.ts`, ADR-0008's amendment): the
+  nav bar's "Named views" button opens the menu (its save prompt is the
+  dialog "Save current view", a textbox "Name" prefilled "View1" and
+  Save/Cancel); restore is an animated move, so wait for
+  `data-camera-direction`/`-size` to settle (the attributes are rounded to
+  1e-3, so exact string compares are within 1e-3). The browser's "Named
+  views" folder is closed by default — `openViewsFolder` in the spec only
+  clicks it when `aria-expanded` is `false` (a second click closes it).
+  Rows are buttons named after the view inside the `complementary` "Browser"
+  (`data-view` on the row); their right-click menu is `menu` "<name> menu".
 - Biome needs `css.parser.tailwindDirectives` for Tailwind's `@theme` and
   `@custom-variant`, and the icon sources are exempt from
   `noSvgWithoutTitle` (they are decorative; controls carry the label).
