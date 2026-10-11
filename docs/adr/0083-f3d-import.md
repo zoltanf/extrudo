@@ -231,3 +231,91 @@ Component" design whose moved bodies are now known matches. Open: a design
 whose shown body came from a feature not imported still shows every hidden
 body (the rule above), and bodies a feature makes several of are not put into
 another component when "Body to Component" moves them.
+
+## Amendment, 2026-10-11: mirrors, rectangular patterns, sweeps, splits, threads and copied faces
+
+The first import skipped five feature kinds the corpus uses (threads in 6
+files, sweeps in 7, splits in 3, mirrors in 4, rectangular and path patterns
+in 5) and could not name a face a pattern had copied. This amendment maps
+them; the decoders are `decode/copies.ts`, `decode/sweep.ts` and
+`decode/thread.ts`, the mappers `map-more.ts`, and the layouts are in
+`packages/f3d/FORMAT.md`.
+
+1. **Mirror** (of features or bodies) becomes Extrudo's Mirror in a plane
+   built as a sketch's (an origin plane, one moved along its normal, or one
+   turned about an origin axis). **Rectangular pattern** (of features or
+   bodies) becomes Extrudo's, `measure: extent`: the file's distance is the
+   whole run from the first instance to the last (both corpus patterns fit
+   only that reading), signed along the direction; a direction group's own
+   vector can point against its line, and then the pattern runs the other
+   way. A grid's second direction is mapped the same way (none in the
+   corpus). Mirrors and patterns of faces stay skipped: Extrudo copies bodies
+   and features, not faces.
+2. **Sweep** of sketch profiles along a chain of sketch curves, with its
+   operation, twist and named bodies. Extrudo sweeps the whole path; a sweep
+   that follows only part of it (`AlongDistance` and `AgainstDistance` both
+   under 1), follows a guide rail, tapers or runs along body edges is skipped.
+   The file's profiles need not touch the path and are carried along it
+   where they are drawn, which is what Extrudo does too (it warns).
+3. **Split body** by a plane, both sides kept, for bodies known as the one
+   body of an imported feature. Splits by a face are skipped (none in the
+   corpus).
+4. **Thread**: Extrudo's modeled thread at the file's major diameter and
+   pitch with no clearance (the file stores the thread class's own
+   diameters), full length or a length from an offset. The file resizes the
+   face to the thread (a shaft's to the major diameter, a hole's to the
+   minor), so the face is found as the sketch circle of the side nearest that
+   crest, not by the B-rep's radius. A thread in a hole wider than the thread
+   is skipped (the file fills the hole in first; Extrudo only cuts). 55° pipe
+   threads get Extrudo's 60° profile, with a note. Every thread in the corpus
+   is modeled; a cosmetic flag was not found, so a cosmetic thread would be
+   cut too.
+5. **Faces a pattern or mirror copied** carry the tag `[source op, pattern
+   op, instance op]`. The face is named after the face it copies (the B-rep
+   face with the source's tag and not the pattern's) as Extrudo names a
+   copy, `<op>:<feature>:<label>:from:(<name>)` (a mirror's without a
+   label). The label comes from the copying feature's instance list: a
+   circular pattern numbers its instances from 1 (the original), a
+   rectangular pattern Cantor-pairs its two indexes, a mirror has one copy.
+
+**Results** (the same check as above, 250 files): match 113 → 116, match
+while skipping 7 → 6, partial 60 → 56, different geometry 54 → 56 (two
+partials now map every feature and land within 2 %), no body 8, kernel
+crash 1. Sweeps took four rails and boxes from 40-56 % volume error to
+0.5-3 %; the threaded pipe adapter went from 23 % to 1.4 % (the 55°
+profile). One file got worse: its reference is the swept body alone,
+because the straight body it was made beside was moved into a component and
+hidden, which this import does not follow yet.
+
+**Not done:** splits of bodies Extrudo can only know by position.
+
+**Second round (same day).**
+
+6. **Path pattern** of features or bodies along a chain of sketch curves.
+   The file stores the start point; Extrudo walks a chain from its first
+   curve's own start (or its far end with `flip`), so the line at the start
+   point goes first, flipped when the start is its end; a path that doesn't
+   start with a line is skipped. The distance is the whole extent (the data
+   record's u32 2, as a rectangular pattern's) and the copies turn with the
+   path where the file's flag says so. Checked against the copied faces in
+   the file's B-rep: the copies land within 0.06 mm (Extrudo samples a
+   curved path as a polyline). Its instance code is 1.
+7. **Hole faces** are named `hole:<id>:side:<point>.<role>` by geometry: the
+   hole whose axis the surface lies on, the role by shape and size (wall or
+   counterbore wall by radius, countersink cone or drill point, counterbore
+   floor or flat bottom by depth). The file's face tokens for holes are not
+   used. Few references need it (6 in 2 files), but a thread on a hole's wall
+   now imports.
+8. **An offset of faces a pattern copied is skipped again.** The one such
+   offset in the corpus failed in the kernel, not in the import: Offset Face
+   refuses every face of a body that has a notch across a cylinder's seam (a
+   cylinder with a rectangular cut at +X reproduces it; at +Y or −X it
+   works). That is the kernel's to fix.
+
+The second round's results: match 116, match while skipping 6, partial 55,
+different geometry 57, no body 8, crash 1. The two path-pattern rails halve
+their volume error (0.53 % → 0.22 %, 0.46 % → 0.15 %); the threaded
+pipe inlet's thread now imports (41 % → 28 %; the rest is an extrude's
+region). For a threaded part, the reference STEP's tight box is inflated by
+its spline thread faces (a mesh of the same STEP spans the part exactly), so
+the box check can fail where the geometry agrees.

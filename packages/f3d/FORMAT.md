@@ -102,13 +102,19 @@ local reference is `01 + u64 + 00 00` (11 bytes).
 | `CC54ECAD…` | Model plane | 3 bytes, origin, x direction, y direction (9 f64) |
 | `1C037A07…` | Hole | see below |
 | `D087EFE5…` | Offset faces | the distance is a parameter it owns (`distance`, along the outward normal); an operand group of face operands (`5662F619…`), each recipe naming its face first |
+| `FCBB1707…` | Sweep | op u32 at payload offset 6 (after an empty property block; as an extrude's: 1 join, 2 cut, 3 intersect, 4 new body); an operand group with the sketch-profile operand; an operand group of geometry operands, the path, each naming a sketch curve (`E2CEFD18…`) beside the curve in model space; a body operand per body it joins or cuts. Parameters it owns: `AlongDistance` and `AgainstDistance` (how much of the path it follows from the profile, one way and back, as fractions), `TwistAngle`, `TaperAngle`, and `AlongRailDistance`/`AgainstRailDistance` for a guide rail. The profile need not touch the path |
+| `B0B3D9E5…` | Path pattern | what it copies as a mirror's; a count record (`countU`); the distance a parameter it owns (`PathPatternDelta`); the path an operand group of geometry operands, each naming a sketch curve. Its data record (`BE1FB171…`): u8, u32 2 (extent, as a rectangular pattern's), the count record, 4 zero bytes, the distance's parameter owner, 5 zero bytes, the original's reference point (3 f64, cm), four flag bytes (`01 00 01 00` in both files: the first is 1 where the copies turn with the path, which the copied faces in the B-rep confirm), the path group, the distance again (f64, cm), the start group and the instance list. The start group (`69EE2FA7…`, an operand-group subtype): 19 bytes, the start point on the path (3 f64, cm), a geometry operand naming the path's first curve. A copy is the original moved by the way the path went from the start point to the point the distance along it, and turned with it about the start point; its instance code is 1 |
+| `65CA3206…` | Split body | an operand group with a body operand per body it splits; an operand group with the splitting tool: a geometry operand naming a plane (record reference) beside the plane in model space (`CC54ECAD…`), as a mirror's. Both sides are kept |
+| `584D9526…` | Thread | after the prologue and an empty property block (offset 6, or 2 without one): f64 profile angle (60 metric, 55 pipe), u8 external (1 on a shaft, 0 in a hole), wstr class (`6g`, `6H`, `A`), wstr designation (`M10x1.5`, `G 1/2-14`), wstr size, wstr family (`ISO Metric profile`, `BSP Pipe Threads`), u8 full length (0: `ThreadLength` and `ThreadOffset` are parameters it owns), u32 1 or 2 (not known), f64 major and minor diameters, a byte, f64 pitch, f64 pitch diameter (cm; the class's own sizes, so a `6H` major is above the nominal). An operand group with a face operand per face. The file resizes the face to the thread (an external one's crest to the major diameter, a hole's to the minor), so the face's B-rep radius is not its sketch circle's. Every thread in the corpus is modeled (the reference STEPs have the thread's faces); a cosmetic flag was not found |
 | `11F1A5CE…` | Circular pattern | the total angle is a parameter it owns (`TotalAngle`); a count record; an operand group of what it repeats; the axis as a geometry operand with a model line |
 | `A085449A…` | Pattern count | refers to the count's parameter value (`countU`) |
+| `D1728651…` | Mirror | shares the circular pattern's base type. An operand group of what it copies: per feature a geometry operand with a record reference and a body link, per body a body operand, per face a face operand; the plane is a geometry operand holding a record reference to the plane it names (origin or construction plane) and that plane in model space (`CC54ECAD…`). Its count record says 2 |
+| `AE12AD3F…` | Rectangular pattern | what it copies as a mirror's; count records `countU`, `CountV`; the distances are parameters it owns (`uSpaceDistance`, `vSpaceDistance`): the whole extent from the first instance to the last, signed; each direction is a direction group (`F2A7590D…`) holding a geometry operand with the direction's model line. The group opens with two zero bytes, a u32 (8 or 16), a point and a vector (3 f64 each); the vector can point against the line (the pattern then runs the other way). Spacing instead of extent, and a symmetric pattern, have not been seen |
 | `90055C05…` | Record by number | 2 zero bytes, u64 record: an origin axis, or the feature a pattern repeats |
 | `D26351F0…` | Body link | wstr body GUID; refs to the body (`D3937028…`) and the feature that made it. In a pattern's geometry operand beside a `90055C05…`, the body that feature acted on |
 | `D3937028…` | Body | GUID and appearance strings, then u32 index (its number, "Body3"), u32 n, n bytes, u32, u8 1, u8 light bulb (1 shown, 0 hidden). Newer files put a −1.0 double just before the index; class version 16 starts it at payload offset 10. a STEP export of the design leaves hidden bodies out |
 | `9716F783…` | Body operand | refers to a body link. In an extrude's or revolve's operand group, one per body it joins, cuts or intersects; in a pattern's, one per body it repeats |
-| `F2A7590D…` | Hole placement | u32 8, 6 f64 (the first three zero wherever seen, the last three the face plane's normal), …; its geometry operand holds the face's plane (`CC54ECAD…`) |
+| `F2A7590D…` | Hole placement, pattern direction (an operand-group subtype) | u32 8, 6 f64 (the first three zero wherever seen, the last three the face plane's normal), …; its geometry operand holds the face's plane (`CC54ECAD…`) |
 | `2CA5A1CD…` | Operand group | one per fillet/chamfer edge set; members are edge operands (or face or body operands, for other features) |
 | `5662F619…` | Edge or face operand | refers to its recipe; an extrude's face operands name its start face and the face it goes up to |
 | `7ACC2A03…` | Edge or face recipe | u32 1, u32 3, u32 n faces; per face u32 tags; per tag str8 token, u32 0, u32 k, k × i32 operation id, u32 0; then `edge_recipe_data` and a program (not read). An edge lists its two faces first, a face itself; the rest are neighbours. A fillet's or chamfer's face often has the token k of the k-th edge in that feature's list, but the tokens count other faces too (a one-edge fillet's face can be 4; a four-edge chamfer's 1, 2, 5, 6); an extrude's start cap 1, end cap 2, sides from 3 |
@@ -216,8 +222,18 @@ table gives the feature that made each face.
 A face merged from coplanar faces (after a join) carries one tag per
 face merged into it, sorted by operation id: `[18@303 5@303 4@305 6@307]` is
 two sides of operation 303 and faces of 305 and 307. A face copied by a
-pattern carries tags with several operation ids: the source feature's, the
-pattern's and the instance's.
+pattern or mirror carries tags with several operation ids: the source
+feature's, the pattern's and the instance's (`[5@309/311/328]`); the face it
+copies is the one with the source's tag and not the pattern's.
+
+A copying feature's data record (the first record its members name:
+`C444E6AD…` for a mirror, `EA0E146E…` for a rectangular pattern,
+`7493A99D…` for a circular one) lists its instances: `u8 1, u32 n, n ×
+(u64 code, u64 operation id)`, then `u32 m` and m instance records
+(`AD719C1A…`; m can exceed n). A circular pattern's codes number the
+instances from 1, the original; a rectangular pattern's Cantor-pair its two
+indexes, the original's (1, 0), so a row's instance u has code u(u + 1)/2; a
+mirror's one copy is 2.
 
 `cone-surface`: centre, axis (unit), major axis (its length the radius at
 the centre), ratio, then the sine and cosine of the half-angle. The radius at
