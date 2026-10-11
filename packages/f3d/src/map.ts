@@ -1757,6 +1757,10 @@ function offsetFaces(
   report: ImportReport,
 ): string | undefined {
   if (!f.distance) return 'its distance was not found';
+  // The one such offset in the files seen fails in the kernel: its body has a
+  // notch across a cylinder's seam, where Offset Face refuses every face.
+  if (f.faces.some((face) => face.instance))
+    return 'it moves faces a pattern or mirror copied (not imported yet)';
   if (Math.abs(f.distance.value) < 1e-12)
     return 'its distance is 0 (Extrudo refuses an offset that moves nothing)';
   const faces: GeomRef[] = [];

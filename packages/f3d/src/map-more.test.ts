@@ -680,4 +680,29 @@ describe('f3dToDesign: copying features', () => {
     const [volume] = await volumes(f3d);
     expect(volume).toBeLessThan(RING - HOLE);
   });
+
+  it('leaves out an offset of faces a pattern copied, saying why', () => {
+    const f3d = washerWithHole();
+    f3d.features.push({
+      ...base,
+      type: 'offset-faces',
+      id: 8,
+      kind: 'OffsetFaces',
+      name: 'OffsetFaces1',
+      distance: parameter({ name: 'd9', kind: 'distance', value: -0.02 }),
+      faces: [
+        {
+          tags: [{ token: '3', designs: [303, 307, 308] }],
+          feature: 4,
+          instance: { pattern: 7, code: 2 },
+        },
+      ],
+    });
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toContainEqual({
+      name: 'OffsetFaces1',
+      kind: 'OffsetFaces',
+      reason: 'it moves faces a pattern or mirror copied (not imported yet)',
+    });
+  });
 });
