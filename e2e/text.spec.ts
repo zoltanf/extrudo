@@ -393,7 +393,7 @@ test('the Create menu and the palette offer the Text tool', async ({ page }) => 
 
   // The palette finds it in a sketch (ADR-0023: only this mode's tools are listed).
   await page.keyboard.press('Control+k');
-  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  const palette = page.getByRole('dialog', { name: 'Search', exact: true });
   await palette.getByRole('combobox', { name: 'Search commands' }).fill('text');
   await expect(palette.getByRole('option', { name: /^Text/ }).first()).toBeVisible();
   await page.keyboard.press('Enter');

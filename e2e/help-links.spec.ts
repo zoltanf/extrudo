@@ -90,7 +90,7 @@ test('Ctrl+K Tool Reference opens the tool index (P6-06 S9)', async ({ page }) =
   const url = await popupUrl(page, async () => {
     await page.keyboard.press('Control+k');
     const search = page
-      .getByRole('dialog', { name: 'Command palette' })
+      .getByRole('dialog', { name: 'Search', exact: true })
       .getByRole('combobox', { name: 'Search commands' });
     await search.fill('tool ref');
     await page.keyboard.press('Enter');

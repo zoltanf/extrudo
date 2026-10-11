@@ -1,6 +1,6 @@
 /**
- * Fuzzy command search for the Ctrl+K palette and the S toolbox (P1-14,
- * ADR-0023). A query matches a label when its letters appear in order;
+ * Fuzzy command search for the one search dialog (P1-14, ADR-0023 and its
+ * 2026-10-11 amendment). A query matches a label when its letters appear in order;
  * letters at word starts and runs of letters score higher, so "3pr" finds
  * "3-Point Rectangle" before "Inscribed Polygon". Separators in the query
  * are ignored. A query that doesn't match the label can still match the

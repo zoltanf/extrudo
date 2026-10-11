@@ -71,7 +71,7 @@ export const SECTIONS: readonly SectionInfo[] = [
 /** Preferences with no control in Settings, and why. */
 export const NOT_IN_SETTINGS: readonly { key: string; reason: string }[] = [
   { key: 'settings.section', reason: "The dialog's own memory of the last section." },
-  { key: 'toolbox.pins', reason: 'Edited in place: the pin on a command in the Toolbox.' },
+  { key: 'toolbox.pins', reason: 'Edited in place: the pin on a command in Search.' },
   { key: 'panel.*', reason: 'Layout state: panel sizes and collapsed state, set by dragging.' },
   { key: 'onboarding.tour', reason: 'Progress, not a choice: the tutorial restarts from Help.' },
   {

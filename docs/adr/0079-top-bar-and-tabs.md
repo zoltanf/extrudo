@@ -182,7 +182,8 @@ Decisions:
   `ThemeMenu` stays for the home screen.
 - **The cluster is Undo, Redo, Toolbox, Search**; Toolbox (lucide `LayoutGrid`) opens the
   S toolbox at the button (`onSearch('toolbox', at)`). The right side is Version history,
-  Settings, Help.
+  Settings, Help. *(Round 4, R3-05: the cluster is Search, Undo, Redo; there is one search
+  and no Toolbox button.)*
 - **The title group** (name, then the save state's dot and word) is centred in the space
   between the cluster's last button and Version history. `shell/titleFit.ts`'s pure
   `titleFit(available, nameWidth, statusWidth)` answers `full`, `dot` (the word becomes
@@ -282,4 +283,9 @@ item lands in its own slice; this section grows with them.
 - **Plugins leave the Home tab** (R3-12, slice C; ADR-0077's amendment): the Extend group is
   gone; Plugins… is in the Settings menu and Ctrl+K, and on macOS in the app menu beside
   Settings….
-
+- **One search, first in the cluster** (R3-05, slice H; ADR-0023's amendment): "the search
+  icon should be moved left to the undo button, so it should be the first one, then undo,
+  redo … no need here for two". The cluster is **Search, Undo, Redo**; the Toolbox button is
+  gone, and the Search button drops the one search dialog from its bottom-left corner over a
+  dimmed page (`onSearch(at)`; without `at`, the Help menu's single "Search…" item, it opens
+  centred). The title group is centred between Redo and Version history.

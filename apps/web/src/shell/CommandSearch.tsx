@@ -12,16 +12,28 @@ import { type SearchResult, searchCommands } from '../commands/search';
 import { shortcutLabel } from '../commands/shortcuts';
 import { FloatingDialog } from '../design-system';
 import type { AppCommand } from './commands';
+import { canTogglePin, PIN_LIMIT, PINS_FULL, shownPins } from './searchPins';
 
-/** Which search is open: the Ctrl+K palette, or the S toolbox at the pointer. */
-export type SearchOpen = { kind: 'palette' } | { kind: 'toolbox'; at: { x: number; y: number } };
+/** A point on the page, in px. */
+type Point = { x: number; y: number };
+
+/**
+ * How the search was opened (UI review 3, R3-05): centred over a dimmed page
+ * (Ctrl+K, the Help menu), at the pointer with the page left clear (S), or
+ * dropped from the top bar's Search button over a dimmed page. `at` is the
+ * pointer, or the button's bottom-left corner.
+ */
+export type SearchOpen =
+  | { from: 'centre' }
+  | { from: 'pointer'; at: Point }
+  | { from: 'button'; at: Point };
 
 export interface CommandSearchProps {
   open: SearchOpen | undefined;
   commands: readonly AppCommand[];
   /** Command IDs, most recent first. */
   recent: readonly string[];
-  /** The toolbox's pinned command IDs, in order. */
+  /** The pinned command IDs, in order (the `toolbox.pins` preference). */
   pinned: readonly string[];
   onTogglePin(id: string): void;
   /** Runs a command the user picked; the search has closed by then. */
@@ -30,28 +42,42 @@ export interface CommandSearchProps {
 }
 
 const RECENT = 5;
+const WIDTH = 480;
+const MAX_HEIGHT = 440;
+/** The dialog opens with the pointer this far inside its top-left corner. */
+const POINTER_INSET = 24;
+/** The gap between the Search button and the dialog dropped from it. */
+const BUTTON_GAP = 4;
+
+/** Where the dialog's top-left corner goes; top centre when undefined. */
+function placement(open: SearchOpen | undefined): Point | undefined {
+  if (open?.from === 'pointer')
+    return { x: open.at.x - POINTER_INSET, y: open.at.y - POINTER_INSET };
+  if (open?.from === 'button') return { x: open.at.x, y: open.at.y + BUTTON_GAP };
+  return undefined;
+}
 
 /**
- * Command search (P1-14, UI spec §3.3): the Ctrl+K palette at the top of the
- * window and the S toolbox at the pointer, with the toolbox's pinned
- * commands above the search. Type to filter (fuzzy); arrows move, Enter
- * runs, Shift+Enter pins or unpins, Esc closes.
+ * Search (P1-14, UI spec §5; one dialog since the owner's UI review 3,
+ * R3-05): the pinned commands as tiles, at most ten in two rows of five,
+ * over the grouped list of every command offered here. Type to filter
+ * (fuzzy); arrows move, Enter runs, Shift+Enter pins or unpins, Esc closes.
  */
 export function CommandSearch(props: CommandSearchProps) {
   const { open, onClose } = props;
   const ran = useRef(false);
-  const toolbox = open?.kind === 'toolbox';
+  const at = placement(open);
   return (
     <FloatingDialog
       open={open !== undefined}
       onOpenChange={(next) => {
         if (!next) onClose();
       }}
-      title={toolbox ? 'Toolbox' : 'Command palette'}
-      {...(open?.kind === 'toolbox' && { at: { x: open.at.x - 24, y: open.at.y - 24 } })}
-      width={toolbox ? 360 : 560}
-      maxHeight={toolbox ? 440 : 480}
-      dim={!toolbox}
+      title="Search"
+      {...(at && { at })}
+      width={WIDTH}
+      maxHeight={MAX_HEIGHT}
+      dim={open?.from !== 'pointer'}
       keepFocus={() => {
         // A command that opened a dialog keeps its focus; otherwise focus goes back.
         const keep = ran.current;
@@ -62,7 +88,6 @@ export function CommandSearch(props: CommandSearchProps) {
       {open && (
         <SearchBody
           {...props}
-          toolbox={toolbox}
           onRun={(command) => {
             ran.current = true;
             props.onRun(command);
@@ -78,16 +103,11 @@ interface Section {
   results: SearchResult<AppCommand>[];
 }
 
-function SearchBody({
-  commands,
-  recent,
-  pinned,
-  onTogglePin,
-  onRun,
-  toolbox,
-}: CommandSearchProps & { toolbox: boolean }) {
+function SearchBody({ commands, recent, pinned, onTogglePin, onRun }: CommandSearchProps) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  // Set when a pin was refused because the pins are full; cleared by the next toggle.
+  const [full, setFull] = useState(false);
   const id = useId();
 
   const sections = useMemo<Section[]>(() => {
@@ -137,14 +157,18 @@ function SearchBody({
       event.preventDefault();
       const command = flat[current];
       if (event.shiftKey) {
-        if (command) onTogglePin(command.id);
+        if (command) togglePin(command.id);
       } else run(command);
     }
   };
 
-  const pins = pinned
-    .map((p) => commands.find((c) => c.id === p))
-    .filter((c): c is AppCommand => c !== undefined);
+  const pins = shownPins(pinned, commands);
+  const pinsFull = pins.length >= PIN_LIMIT;
+  const togglePin = (commandId: string) => {
+    const allowed = canTogglePin(commandId, pinned, pins.length);
+    setFull(!allowed);
+    if (allowed) onTogglePin(commandId);
+  };
   let index = -1;
 
   return (
@@ -159,49 +183,52 @@ function SearchBody({
           aria-controls={`${id}-list`}
           aria-autocomplete="list"
           aria-activedescendant={current >= 0 ? optionId(current) : undefined}
-          aria-label={toolbox ? 'Search tools' : 'Search commands'}
-          placeholder={toolbox ? 'Search tools' : 'Search commands'}
+          aria-label="Search commands"
+          placeholder="Search commands"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={onKeyDown}
           className="h-11 min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-muted"
         />
       </div>
-      {toolbox && (
-        <section aria-label="Pinned" className="border-b border-line px-2 py-2">
-          {pins.length > 0 ? (
-            <div className="grid grid-cols-5 gap-0.5">
-              {pins.map((command) => (
-                <button
-                  key={command.id}
-                  type="button"
-                  aria-label={command.label}
-                  aria-disabled={command.unavailable ? true : undefined}
-                  title={
-                    command.unavailable ? `${command.label}. ${command.unavailable}` : command.label
-                  }
-                  onClick={() => (command.unavailable ? command.run() : onRun(command))}
-                  className={`flex min-w-0 flex-col items-center gap-1 rounded-control px-1 py-1.5 text-[11px] text-muted hover:bg-accent-soft hover:text-ink ${command.unavailable ? 'opacity-55' : ''}`}
-                >
-                  <span className="grid size-5 place-items-center text-ink">{command.icon}</span>
-                  <span className="w-full truncate text-center">
-                    {command.short ?? command.label}
-                  </span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="px-1 text-sm text-muted">
-              Pin a command to keep it here: Shift+Enter, or its pin.
-            </p>
-          )}
-        </section>
-      )}
+      <section aria-label="Pinned" className="border-b border-line px-2 py-2">
+        {pins.length > 0 ? (
+          <div className="grid grid-cols-5 gap-0.5">
+            {pins.map((command) => (
+              <button
+                key={command.id}
+                type="button"
+                aria-label={command.label}
+                aria-disabled={command.unavailable ? true : undefined}
+                title={
+                  command.unavailable ? `${command.label}. ${command.unavailable}` : command.label
+                }
+                onClick={() => (command.unavailable ? command.run() : onRun(command))}
+                className={`flex min-w-0 flex-col items-center gap-1 rounded-control px-1 py-1.5 text-[11px] text-muted hover:bg-accent-soft hover:text-ink ${command.unavailable ? 'opacity-55' : ''}`}
+              >
+                <span className="grid size-5 place-items-center text-ink">{command.icon}</span>
+                <span className="w-full truncate text-center">
+                  {command.short ?? command.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="px-1 text-sm text-muted">
+            Pin a command to keep it here: Shift+Enter, or its pin.
+          </p>
+        )}
+        {/* An eleventh pin is refused with a reason, read out where it was asked for. */}
+        <p role="status" className="px-1 text-xs text-muted">
+          {full ? PINS_FULL : ''}
+        </p>
+      </section>
       <div
         id={`${id}-list`}
         role="listbox"
-        aria-label={toolbox ? 'Tools' : 'Commands'}
-        className="min-h-0 flex-1 overflow-y-auto p-1"
+        aria-label="Commands"
+        // No horizontal scroll bar at any width (R3-05): a row's parts truncate instead.
+        className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-1"
       >
         {flat.length === 0 && <p className="px-2 py-3 text-sm text-muted">No command matches.</p>}
         {sections.map((section) => (
@@ -226,10 +253,11 @@ function SearchBody({
                   positions={positions}
                   active={i === current}
                   pinned={pinned.includes(item.id)}
+                  pinsFull={pinsFull}
                   showGroup={!section.title}
                   onHover={() => setActive(i)}
                   onRun={() => run(item)}
-                  onTogglePin={() => onTogglePin(item.id)}
+                  onTogglePin={() => togglePin(item.id)}
                 />
               );
             })}
@@ -260,6 +288,7 @@ function Option({
   positions,
   active,
   pinned,
+  pinsFull,
   showGroup,
   onHover,
   onRun,
@@ -270,6 +299,8 @@ function Option({
   positions: number[];
   active: boolean;
   pinned: boolean;
+  /** Ten commands are pinned: this one's pin is refused unless it is one of them. */
+  pinsFull: boolean;
   showGroup: boolean;
   onHover(): void;
   onRun(): void;
@@ -277,6 +308,7 @@ function Option({
 }) {
   const keys = command.keys[0];
   const PinIcon = pinned ? PinOff : Pin;
+  const refused = pinsFull && !pinned;
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: the search field drives the keyboard
     <div
@@ -287,7 +319,7 @@ function Option({
       aria-disabled={command.unavailable ? true : undefined}
       onMouseMove={active ? undefined : onHover}
       onClick={onRun}
-      className={`group flex h-9 cursor-default items-center gap-2.5 rounded-input px-2 text-sm ${active ? 'bg-accent-soft' : ''} ${command.unavailable ? 'text-muted' : ''}`}
+      className={`group flex h-9 min-w-0 cursor-default items-center gap-2.5 rounded-input px-2 text-sm ${active ? 'bg-accent-soft' : ''} ${command.unavailable ? 'text-muted' : ''}`}
     >
       <span
         className={`grid w-4 shrink-0 place-items-center ${command.unavailable ? 'opacity-55' : ''}`}
@@ -298,7 +330,12 @@ function Option({
         <Highlight text={command.label} positions={positions} />
       </span>
       {command.unavailable && (
-        <span className="shrink-0 text-xs text-muted">{command.unavailable}</span>
+        <span
+          title={command.unavailable}
+          className="min-w-0 flex-1 basis-0 truncate text-xs text-muted"
+        >
+          {command.unavailable}
+        </span>
       )}
       <span className="ml-auto flex shrink-0 items-center gap-2">
         {showGroup && <span className="text-xs text-muted">{command.group}</span>}
@@ -306,12 +343,13 @@ function Option({
         {/* Pointer shortcut for Shift+Enter, so not a separate stop for assistive tech. */}
         <span
           aria-hidden="true"
-          title={pinned ? 'Unpin from the toolbox' : 'Pin to the toolbox'}
+          data-pin={pinned ? 'pinned' : refused ? 'full' : 'free'}
+          title={pinned ? 'Unpin' : refused ? PINS_FULL : 'Pin to the top'}
           onClick={(event) => {
             event.stopPropagation();
             onTogglePin();
           }}
-          className={`grid size-6 place-items-center rounded-control text-muted hover:bg-accent-soft hover:text-ink ${pinned || active ? '' : 'invisible group-hover:visible'}`}
+          className={`grid size-6 place-items-center rounded-control text-muted ${refused ? 'cursor-not-allowed opacity-40' : 'hover:bg-accent-soft hover:text-ink'} ${pinned || active ? '' : 'invisible group-hover:visible'}`}
         >
           <PinIcon size={13} strokeWidth={1.75} />
         </span>

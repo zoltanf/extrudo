@@ -11,7 +11,7 @@ export interface FloatingDialogProps {
   width: number;
   /** The height it may grow to, for keeping it on screen. */
   maxHeight: number;
-  /** Dim the page behind it (the command palette), or leave it clear (the toolbox). */
+  /** Dim the page behind it, or leave it clear (the search opened at the pointer). */
   dim?: boolean;
   /** Called as it closes; return true to leave the focus where it went (another dialog opened). */
   keepFocus?(): boolean;
@@ -24,7 +24,7 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 /**
  * A borderless modal (Radix) for quick pickers: focus trap, Esc and a click
  * outside close it, focus returns where it was. No title bar: the body is
- * the whole dialog (P1-14's command palette and toolbox).
+ * the whole dialog (P1-14's search, the macro dialog).
  */
 export function FloatingDialog({
   open,
@@ -54,6 +54,7 @@ export function FloatingDialog({
         />
         <Radix.Content
           aria-describedby={undefined}
+          data-dim={dim ? 'true' : 'false'}
           style={style}
           className="fixed z-40 flex flex-col overflow-hidden rounded-dialog border border-line bg-raised text-ink shadow-raised"
           onCloseAutoFocus={(event) => {

@@ -111,9 +111,9 @@ describe('buildCommands', () => {
     const ids = new Set([
       ...buildCommands(context('model')).map((c) => c.id),
       ...buildCommands(context('sketch')).map((c) => c.id),
-      // The shell opens these two itself.
-      'commandPalette',
-      'toolbox',
+      // The shell opens the search itself, centred or at the pointer.
+      'search',
+      'searchAtPointer',
       // The desktop app's commands exist only there (ADR-0075, 2026-10-09).
       ...buildCommands(withDesktop(context('model'))).map((c) => c.id),
     ]);

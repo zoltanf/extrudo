@@ -151,7 +151,7 @@ test('lists earlier notifications, errors first, with actions that still apply',
 
   // Ctrl+K opens the (empty) history too.
   await page.keyboard.press('Control+k');
-  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  const palette = page.getByRole('dialog', { name: 'Search', exact: true });
   await palette.getByRole('combobox', { name: 'Search commands' }).fill('notification');
   await expect(palette.getByRole('option').first()).toHaveAccessibleName(
     /^Notification History Panels/,

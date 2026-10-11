@@ -41,9 +41,9 @@ You start on the home screen:
 
 ![The app's layout, with numbers for the parts listed below](./images/getting-started/layout.png)
 
-1. **The top bar** has the logo (back to the home screen), the tabs, **Undo**, **Redo**,
-   **Toolbox** and **Search commands**, then the design's name with its save state, **Version
-   history**, **Settings** and **Help**.
+1. **The top bar** has the logo (back to the home screen), the tabs, **Search**, **Undo** and
+   **Redo**, then the design's name with its save state, **Version history**, **Settings** and
+   **Help**.
 2. **The toolbar** shows the groups of the selected tab. In a model the tabs are Home, Solid,
    Modify, Construct and 3D Print; while a sketch is open they are Home and Sketch. Home holds
    what concerns the whole design: importing and exporting files, versions and parameters.
@@ -116,9 +116,10 @@ There are four ways to a tool, and you will use all of them:
   Extrude, Fillet, Move, Press Pull, Undo, Repeat last and Delete; in a sketch it has Line,
   Rectangle, Circle, Dimension, Trim, Undo, Construction and Finish Sketch. A right-drag still
   pans. You can remap the wedges under **Settings › Customize Marking Menu…**.
-- **`Ctrl+K`** opens a search over every command. Type a few letters of a name and press `Enter`.
-- **`S`** opens the toolbox at the top bar: your pinned tools as tiles, and the same search under
-  them. `Shift+Enter` on a result pins it.
+- **Search** finds every command. `Ctrl+K` opens it in the middle of the window, `S` opens it
+  where the pointer is, and the **Search** button in the top bar opens it under the button. Type a
+  few letters of a name and press `Enter`. Your pinned commands sit at the top as tiles, up to
+  ten; `Shift+Enter` on a result pins or unpins it.
 
 Every tool has its own page in the [tool reference](./tools/index.md). The **Help** menu in the
 top bar links to these pages: **User Guide**, **Tutorials**, **Examples** and **Tool Reference**

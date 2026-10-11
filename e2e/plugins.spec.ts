@@ -24,7 +24,7 @@ const pluginFile = () =>
   );
 
 const dialog = (page: Page) => page.getByRole('dialog', { name: 'Plugins' });
-const palette = (page: Page) => page.getByRole('dialog', { name: 'Command palette' });
+const palette = (page: Page) => page.getByRole('dialog', { name: 'Search', exact: true });
 
 /** Opens the Plugins dialog from the Settings (gear) menu (R3-12: it left the Home tab). */
 async function openPlugins(page: Page) {

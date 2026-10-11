@@ -38,5 +38,5 @@ is g/cm³ and a line width mm whatever your design's units are.
 ## What is not here
 
 Document settings (units, precision) are in Home › Design, and keyboard shortcuts can't be
-remapped yet. Panel sizes, the pinned tools in the Toolbox and the tutorial's progress are kept,
+remapped yet. Panel sizes, the pinned commands in Search and the tutorial's progress are kept,
 but are changed where they live.

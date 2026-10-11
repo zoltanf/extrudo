@@ -1,7 +1,7 @@
 /**
  * The default keymap (UI spec §5): the usual CAD keys where there are any.
  * This is the one table of command keys (ADR-0023). The toolbar, menus, the
- * command palette and the shortcut handler all read it, so a settings page
+ * search and the shortcut handler all read it, so a settings page
  * can remap them later by layering overrides on top. Keys are written like
  * `Shortcut.keys`: "Mod+K", "Shift+2", "F6", "L".
  *
@@ -9,11 +9,11 @@
  * Sketch Fillet in a sketch and Fillet on the model.
  */
 export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
-  // Search (P1-14)
-  commandPalette: ['Mod+K'],
+  // Search (P1-14; one dialog since UI review 3, R3-05): centred, or at the pointer.
+  search: ['Mod+K'],
+  searchAtPointer: ['S'],
   // Settings (ADR-0082): the dialog of the person's preferences.
   openSettings: ['Mod+,'],
-  toolbox: ['S'],
   // Edit
   undo: ['Mod+Z'],
   redo: ['Mod+Y', 'Mod+Shift+Z'],

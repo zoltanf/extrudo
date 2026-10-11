@@ -232,7 +232,7 @@ test('nothing in a whole session evaluates a string', async ({ page, request }) 
 
   // The command palette, and a file out through a blob URL and a worker-free zip.
   await page.keyboard.press('Control+k');
-  await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Search', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
   const exported = await exportModel(page, '3MF');
   expect(objectsOf3mf(exported)).toHaveLength(2);

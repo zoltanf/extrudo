@@ -4,10 +4,8 @@ import {
   CircleHelp,
   GraduationCap,
   History,
-  LayoutGrid,
   ListChecks,
   Mouse,
-  PanelsTopLeft,
   Puzzle,
   Redo2,
   RefreshCw,
@@ -91,8 +89,11 @@ export interface AppBarProps {
   tabs: ReactNode;
   theme: ThemeChoice;
   onThemeChange(theme: ThemeChoice): void;
-  /** Opens command search: the Ctrl+K palette, or the S toolbox at a point (P1-14). */
-  onSearch(kind: 'palette' | 'toolbox', at?: { x: number; y: number }): void;
+  /**
+   * Opens the search (P1-14, R3-05): dropped from the Search button's bottom-left corner
+   * `at`, or centred when absent (the Help menu).
+   */
+  onSearch(at?: { x: number; y: number }): void;
   /** The view's display settings: Settings › General reads and writes the auto-project ones. */
   viewport: ViewportStore;
   /** Opens "Customize Marking Menu…". */
@@ -122,8 +123,8 @@ const keyLabel = (id: string) => {
 const Separator = () => <div className="mx-1.5 h-5 w-px shrink-0 bg-line" aria-hidden="true" />;
 
 /**
- * The top bar (UI spec §2, ADR-0079): the logo, the toolbar's tabs, undo, redo,
- * the toolbox and command search, the design's name and save state centred
+ * The top bar (UI spec §2, ADR-0079): the logo, the toolbar's tabs, search, undo,
+ * redo (UI review 3, R3-05), the design's name and save state centred
  * between them and the right-hand buttons: version history, settings (with the
  * theme) and help. The File menu it once had is the Home tab.
  */
@@ -165,6 +166,7 @@ export function AppBar({
       {tabs}
       <div className="flex shrink-0 items-center">
         <Separator />
+        <SearchButton onSearch={onSearch} />
         <IconButton
           label="Undo"
           shortcut={keyLabel('undo')}
@@ -182,15 +184,6 @@ export function AppBar({
           onClick={redo}
         >
           <Redo2 size={18} strokeWidth={1.75} />
-        </IconButton>
-        <ToolboxButton onSearch={onSearch} />
-        <IconButton
-          label="Search commands"
-          shortcut={keyLabel('commandPalette')}
-          hint="Find and run any command by name."
-          onClick={() => onSearch('palette')}
-        >
-          <Search size={18} strokeWidth={1.75} />
         </IconButton>
       </div>
 
@@ -228,17 +221,10 @@ export function AppBar({
           <MenuLabel>Help</MenuLabel>
           <MenuItem
             icon={<Search size={14} />}
-            shortcut={keyLabel('commandPalette')}
-            onSelect={() => onSearch('palette')}
+            shortcut={keyLabel('search')}
+            onSelect={() => onSearch()}
           >
-            Search commands…
-          </MenuItem>
-          <MenuItem
-            icon={<PanelsTopLeft size={14} />}
-            shortcut={keyLabel('toolbox')}
-            onSelect={() => onSearch('toolbox')}
-          >
-            Toolbox…
+            Search…
           </MenuItem>
           <MenuSeparator />
           {/* Five steps that build a box (P3-12). */}
@@ -277,21 +263,24 @@ export function AppBar({
   );
 }
 
-/** The toolbox opens at the button, so it also opens from the keyboard (ADR-0023). */
-function ToolboxButton({ onSearch }: Pick<AppBarProps, 'onSearch'>) {
+/**
+ * The search drops from its button over a dimmed page (R3-05); Ctrl+K opens it
+ * centred and S at the pointer. Its tooltip names Ctrl+K.
+ */
+function SearchButton({ onSearch }: Pick<AppBarProps, 'onSearch'>) {
   const ref = useRef<HTMLSpanElement>(null);
   return (
     <span ref={ref} className="inline-flex">
       <IconButton
-        label="Toolbox"
-        shortcut={keyLabel('toolbox')}
-        hint="Your pinned tools and every command, in a box at the button."
+        label="Search"
+        shortcut={keyLabel('search')}
+        hint="Your pinned commands, and every command by name. S opens it at the pointer."
         onClick={() => {
           const r = ref.current?.getBoundingClientRect();
-          onSearch('toolbox', r && { x: r.left + r.width / 2, y: r.bottom });
+          onSearch(r && { x: r.left, y: r.bottom });
         }}
       >
-        <LayoutGrid size={18} strokeWidth={1.75} />
+        <Search size={18} strokeWidth={1.75} />
       </IconButton>
     </span>
   );

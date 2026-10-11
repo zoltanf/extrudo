@@ -155,10 +155,10 @@ for (const theme of ['dark', 'light'] as const) {
       await audit(page, `${theme} settings 3D printing`);
       await page.keyboard.press('Escape');
 
-      // Command palette.
+      // Search (one dialog since UI review 3, R3-05).
       await page.keyboard.press('Control+k');
-      await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
-      await audit(page, `${theme} command palette`);
+      await expect(page.getByRole('dialog', { name: 'Search', exact: true })).toBeVisible();
+      await audit(page, `${theme} search`);
       await page.keyboard.press('Escape');
 
       // Export.

@@ -18,9 +18,7 @@ const BASELINE = `(el) => {
   return y;
 }`;
 
-test('the tabs share the wordmark baseline and undo, redo, toolbox and search line up', async ({
-  page,
-}) => {
+test('the tabs share the wordmark baseline and search, undo and redo line up', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
   const m = (await page.evaluate(`(() => {
@@ -34,7 +32,7 @@ test('the tabs share the wordmark baseline and undo, redo, toolbox and search li
     return {
       word: baseline(document.querySelector('[data-topbar-logo] span')),
       tabs: [...document.querySelectorAll('[role=tab][data-tab]')].map(baseline),
-      glyphs: ['Undo', 'Redo', 'Toolbox', 'Search commands'].map(centre),
+      glyphs: ['Search', 'Undo', 'Redo'].map(centre),
     };
   })()`)) as { word: number; tabs: number[]; glyphs: number[] };
   console.log(
@@ -57,7 +55,7 @@ test('one top bar: the tabs in order, no File menu, undo, redo and search work',
   // The tabs and the buttons are in one header, the toolbar's tools under it.
   const header = page.locator('header');
   await expect(header.getByRole('tablist', { name: 'Toolbar tabs' })).toBeVisible();
-  for (const name of ['Undo', 'Redo', 'Toolbox', 'Search commands']) {
+  for (const name of ['Search', 'Undo', 'Redo']) {
     await expect(header.getByRole('button', { name, exact: true })).toBeVisible();
   }
   const chrome = await page.evaluate(
@@ -83,9 +81,9 @@ test('one top bar: the tabs in order, no File menu, undo, redo and search work',
   await redo.click();
   await expect(viewport).toHaveAttribute('data-bodies', /Body1:6:/);
 
-  // Search opens the palette.
-  await header.getByRole('button', { name: 'Search commands', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
+  // Search opens the search.
+  await header.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Search', exact: true })).toBeVisible();
   await page.keyboard.press('Escape');
 
   // The Home tab holds what the File menu had.
@@ -202,25 +200,22 @@ const box = async (page: Page, name: string) => {
   return b;
 };
 
-test('the cluster is Undo, Redo, Toolbox, Search; the toolbox opens; no theme button', async ({
-  page,
-}) => {
+test('the cluster is Search, Undo, Redo; no Toolbox or theme button (R3-05)', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await openProject(page);
   const xs: number[] = [];
-  for (const name of ['Undo', 'Redo', 'Toolbox', 'Search commands'])
-    xs.push((await box(page, name)).x);
+  for (const name of ['Search', 'Undo', 'Redo']) xs.push((await box(page, name)).x);
   expect([...xs].sort((a, b) => a - b)).toEqual(xs);
   const ys = await Promise.all(
-    ['Undo', 'Redo', 'Toolbox', 'Search commands'].map(async (n) => {
+    ['Search', 'Undo', 'Redo'].map(async (n) => {
       const b = await box(page, n);
       return b.y + b.height / 2;
     }),
   );
   expect(Math.max(...ys) - Math.min(...ys)).toBeLessThanOrEqual(1);
   await expect(header(page).getByRole('button', { name: 'Theme', exact: true })).toHaveCount(0);
-  await header(page).getByRole('button', { name: 'Toolbox', exact: true }).click();
-  await expect(page.getByRole('dialog', { name: 'Toolbox' })).toBeVisible();
+  await expect(header(page).getByRole('button', { name: 'Toolbox', exact: true })).toHaveCount(0);
+  await expect(header(page).getByRole('button', { name: 'Search commands' })).toHaveCount(0);
 });
 
 test('the right side is Version history, Settings, Help', async ({ page }) => {
@@ -328,13 +323,14 @@ test.describe('with a light system theme and nothing stored', () => {
 
 /** The title group's centre against the middle of the gap between the cluster and the history button. */
 async function titleCentring(page: Page) {
-  const search = await box(page, 'Search commands');
+  // The cluster ends with Redo since R3-05 (Search, Undo, Redo).
+  const last = await box(page, 'Redo');
   const history = await box(page, 'Version history');
   const group = (await page.locator('[data-title-group]').boundingBox()) as {
     x: number;
     width: number;
   };
-  const gapMiddle = (search.x + search.width + history.x) / 2;
+  const gapMiddle = (last.x + last.width + history.x) / 2;
   return { offset: group.x + group.width / 2 - gapMiddle, group };
 }
 

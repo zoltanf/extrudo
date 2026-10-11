@@ -189,10 +189,12 @@ added commands: **keys are declared only in `commands/keymap.ts`**
 (`DEFAULT_KEYMAP`, `keysFor`; tool IDs are command IDs; toolbar and menus
 read it); `shell/commands.tsx` `buildCommands(ctx)` lists the commands
 offered in the current mode (shown tabs' tools, edit, view, panels, file,
-theme) and drives the shortcuts, the Ctrl+K palette and the S toolbox
-(`shell/CommandSearch.tsx` on the design system's `FloatingDialog`;
-fuzzy scorer in `commands/search.ts`; pins in the `toolbox.pins`
-preference). A new command goes in `buildCommands`. ADR-0024 (P2-01) added
+theme) and drives the shortcuts and **one search** (ADR-0023's amendment,
+UI review 3 R3-05: `shell/CommandSearch.tsx` on the design system's
+`FloatingDialog`, opened centred by Ctrl+K (`search`), at the pointer by S
+(`searchAtPointer`) or dropped from the top bar's Search button; fuzzy scorer
+in `commands/search.ts`; pins in the `toolbox.pins` preference, at most ten
+shown, `shell/searchPins.ts`). A new command goes in `buildCommands`. ADR-0024 (P2-01) added
 the recompute engine (`packages/kernel/src/recompute/engine.ts`): a
 feature is a `KernelFeatureDefinition` (core's definition + `evaluate` +
 `bodyAccess`) registered in `kernelFeatures()` (`src/features/`; the
@@ -2121,9 +2123,9 @@ points at a tool's tab when its tile isn't shown (`toolOrTabSelector`). e2e:
 system theme and the baselines are dark), the gear is a **Settings menu**
 (`SettingsMenu` in `AppBar.tsx`: General — Auto-project body edges / face outline on the
 viewport store, **Radial right-click menu** (a checkbox on the same state as the `Right-Click Menu: Use a List / Use the Ring` command, `markingStyle`; 2026-10-09), Customize Marking Menu… — and Theme; the bar's theme button is gone,
-`ThemeMenu` remains on the home screen), the cluster is **Undo, Redo, Toolbox, Search**
-(Toolbox opens the S toolbox at the button: `onSearch('toolbox', at)`), the right side is
-Version history, Settings, Help, and the name plus the save dot are one `TitleGroup`
+`ThemeMenu` remains on the home screen), the cluster is **Search, Undo, Redo** (R3-05:
+Search drops the one search from the button, `onSearch(at)`; no Toolbox button), the right
+side is Version history, Settings, Help, and the name plus the save dot are one `TitleGroup`
 centred between the cluster and Version history; the pure `titleFit`
 (`shell/titleFit.ts`) drops the save word first (`data-title-fit="dot"`), then truncates
 the name (`truncate`, `title` = full name). The separator after the cluster is gone. **Tiles first**: Home's file groups have no fixed `more` (Import: Import Design, Import Model — `importBody`, full label "Import STEP, mesh, OpenSCAD or .f3d…" —, Import Drawing, Canvas; Export: Export Design, Export Model, Export as Script, Save to Linked Folder; one Files group until R3-09), Construct › Planes shows all seven planes as tiles, and a tile is a fixed 64 px wide, its label the tool's full name wrapped onto up to two 11 px lines when it fits, its short name otherwise (ADR-0079 round 3).
@@ -2610,9 +2612,17 @@ them. Notes further down that name a machine apply to that machine only.
   same face (sharing a vertex). The facade handles all four; see ADR-0025.
 - OCCT's STEP writer prints a banner to stdout from inside WASM. Route
   Emscripten's `print` to a logger (or ignore it in tests).
-- **Command search e2e** (`e2e/commands.spec.ts`): the palette is
-  `dialog` "Command palette", the toolbox `dialog` "Toolbox" with a
-  "Pinned" region; results are `option`s whose names end with their group
+- **Command search e2e** (`e2e/commands.spec.ts`): one `dialog` "Search"
+  (`exact: true`: other names contain the word) since R3-05, opened by
+  Ctrl+K (centred), S (at the pointer) or the top bar's button "Search"; its
+  `data-dim` is `true` except at the pointer. The combobox is "Search
+  commands", the pins the region "Pinned" (tiles are buttons named after the
+  command; at most ten, the refusal in its `status`, a row's pin glyph is
+  `[data-pin="free|pinned|full"]`, visible on hover), the list the listbox
+  "Commands". Seed pins with an init script setting
+  `localStorage['extrudo.toolbox.pins']` (JSON). Measure the top bar's
+  buttons **before** opening it: a modal takes the page out of the
+  accessibility tree. Results are `option`s whose names end with their group
   and key ("3-Point Rectangle Sketch › Create"), so match with `/^…/`.
   Only the current mode's commands are listed: Extrude isn't found inside
   a sketch, and a sketch tool's pin is hidden after a reload (the project

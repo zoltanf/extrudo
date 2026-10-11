@@ -224,7 +224,7 @@ import {
 import { FILE_COMMANDS, isFileCommand, TOOLS, type ToolId } from './tools';
 import { useMarkingSlots, useMarkingStyle, useViewMenu } from './viewMenu';
 
-/** The toolbox's pins until the user changes them (P1-14). */
+/** The search's pins until the user changes them (P1-14, R3-05). */
 const DEFAULT_PINS = ['sketch', 'line', 'rectangle', 'circle', 'dimension', 'trim', 'parameters'];
 const PINS_KEY = 'toolbox.pins';
 const RECENT = 8;
@@ -974,7 +974,8 @@ export function AppShell({
   // `apply` (ADR-0059).
   const tolerance = useTolerance({ doc, apply });
 
-  // Commands (P1-14): the shortcuts, the Ctrl+K palette and the S toolbox run the same list.
+  // Commands (P1-14): the shortcuts and the search (Ctrl+K, S, the top bar's button) run the
+  // same list.
   const construction = useHostState(host, (s) => s.construction);
   const [search, setSearch] = useState<SearchOpen>();
   const [recent, setRecent] = useState<string[]>([]);
@@ -991,7 +992,7 @@ export function AppShell({
       platform.preferences.set(PINS_KEY, next);
       return next;
     });
-  // The toolbox opens at the pointer: the last place it was seen over the page.
+  // S opens the search at the pointer: the last place it was seen over the page.
   const pointer = useRef<{ x: number; y: number }>(undefined);
   useEffect(() => {
     const onMove = (event: PointerEvent) => {
@@ -1259,16 +1260,11 @@ export function AppShell({
         : { model: [], sketch: [] },
     [markingDialog, commandBuilder],
   );
-  const openToolbox = useMemo(
-    () => (at?: { x: number; y: number }) =>
-      setSearch({
-        kind: 'toolbox',
-        at: at ?? pointer.current ?? { x: window.innerWidth / 2, y: window.innerHeight / 3 },
-      }),
+  const searchAtPointer = useMemo(
+    () => () =>
+      setSearch(pointer.current ? { from: 'pointer', at: pointer.current } : { from: 'centre' }),
     [],
   );
-  const openSearch = (kind: 'palette' | 'toolbox', at?: { x: number; y: number }) =>
-    kind === 'palette' ? setSearch({ kind: 'palette' }) : openToolbox(at);
   const runCommand = (command: AppCommand) => {
     setSearch(undefined);
     setRecent((r) => [command.id, ...r.filter((id) => id !== command.id)].slice(0, RECENT));
@@ -1342,11 +1338,8 @@ export function AppShell({
           ]
         : []),
       ...commandShortcuts(commands),
-      ...keysFor('commandPalette').map((keys) => ({
-        keys,
-        run: () => setSearch({ kind: 'palette' }),
-      })),
-      ...keysFor('toolbox').map((keys) => ({ keys, run: () => openToolbox() })),
+      ...keysFor('search').map((keys) => ({ keys, run: () => setSearch({ from: 'centre' }) })),
+      ...keysFor('searchAtPointer').map((keys) => ({ keys, run: searchAtPointer })),
       ...(picking ? [{ keys: 'Escape', run: () => cancelCreateSketch(stores) }] : []),
       ...(projecting ? [{ keys: 'Escape', run: () => session.getState().setTool(undefined) }] : []),
       ...(drawing && host
@@ -1385,7 +1378,7 @@ export function AppShell({
     ],
     [
       commands,
-      openToolbox,
+      searchAtPointer,
       session,
       stores,
       picking,
@@ -2198,7 +2191,7 @@ export function AppShell({
         tabs={<ToolbarTabs mode={mode} tab={toolbarTab} onTab={setToolbarTab} />}
         theme={choice}
         onThemeChange={setChoice}
-        onSearch={openSearch}
+        onSearch={(at) => setSearch(at ? { from: 'button', at } : { from: 'centre' })}
         onTutorial={startTutorial}
         onDocs={(page) => platform.openDocs(docsPath(page))}
         onHelp={() => commands.find((c) => c.id === 'help')?.run()}

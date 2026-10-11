@@ -48,7 +48,7 @@ async function debugPage(page: Page) {
 
 async function openPressPull(page: Page) {
   await page.keyboard.press('Control+K');
-  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  const palette = page.getByRole('dialog', { name: 'Search', exact: true });
   await palette.getByRole('combobox').fill('press pull');
   await palette.getByRole('option', { name: /^Press Pull \(test\)/ }).click();
   const dialog = page.getByRole('region', { name: 'Press Pull dialog' });

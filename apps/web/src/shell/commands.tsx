@@ -1,9 +1,9 @@
 /**
  * The shell's commands (P1-14, ADR-0023): every tool on the tabs shown in
  * the current mode plus edit, view, panel, file and theme commands, each
- * with its keys from the keymap. The same list drives the shortcuts, the
- * Ctrl+K palette and the S toolbox, so a command found in search runs the
- * same way as its key.
+ * with its keys from the keymap. The same list drives the shortcuts and the
+ * search (Ctrl+K, S, the top bar's button), so a command found in search runs
+ * the same way as its key.
  */
 
 import type { ViewId } from '@extrudo/core';
@@ -58,7 +58,7 @@ export interface AppCommand extends Searchable {
   /** A tool ID, or a keymap ID such as `undo` or `viewTop`. */
   id: string;
   label: string;
-  /** A tile's label when `label` is too long (the toolbox's pins). */
+  /** A tile's label when `label` is too long (the search's pins). */
   short?: string;
   /** Where it lives, shown beside it in search results: "Sketch › Create". */
   group: string;

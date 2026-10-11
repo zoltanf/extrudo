@@ -78,7 +78,7 @@ test('the layout of the app', async ({ page }) => {
     [3, 130, 128],
     [4, 1075, 818],
     [5, 440, 876],
-    [6, 930, 876],
+    [6, 912, 876],
   ]);
   const file = out('getting-started', 'layout');
   await ensureDir(file);

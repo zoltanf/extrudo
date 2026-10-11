@@ -5,8 +5,7 @@ it to understand *behaviour* only. Never copy their icons, images, text or
 branding.
 
 **Changes decided, not built yet (2026-10-11):** the owner's UI review 3 changes
-command search (one dialog for Ctrl+K and S, ten pins) and tooltip clips. The
-items are in
+the tooltip clips. The items are in
 [`plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md); this spec
 still describes the app as it is, and each slice updates the sections it
 changes.
@@ -60,11 +59,11 @@ brief, voice) is in **`05-brand.md`**. In short:
 ```
 
 - **Top bar** (ADR-0079, one row of 40 px): the logo (a link to all designs),
-  the toolbar's tabs, a separator, then undo, redo, the toolbox (opens at the button)
-  and command search (the Ctrl+K palette). The project name and the save state
-  (a dot and its word) sit together, centred between the search button and the
-  right-hand buttons: version history, settings and help (menu: Search commands,
-  Toolbox, Tutorial, P3-12). Settings holds Settings…, Plugins… (R3-12), General
+  the toolbar's tabs, a separator, then search (the search drops from the button
+  over a dimmed page; Ctrl+K; R3-05), undo and redo. The project name and the save
+  state (a dot and its word) sit together, centred between redo and the
+  right-hand buttons: version history, settings and help (menu: Search…,
+  Tutorial, P3-12). Settings holds Settings…, Plugins… (R3-12), General
   (auto-project, the Radial right-click menu, Customize Marking Menu…, and **Mouse
   controls ▸**, a submenu of the presets with each one's bindings under its name, R3-03)
   and the Theme (System by default, Light, Dark). The tab labels
@@ -77,7 +76,7 @@ brief, voice) is in **`05-brand.md`**. In short:
   tile whenever there is room, and the ▾ menu holds only what the fit rule moved.
 - **Versions** (P2-14, ADR-0036): Ctrl+S, Home › Save Version or
   Version History, the clock icon beside the project name, or the
-  palette open one dialog: a Description field with Save version on top
+  search open one dialog: a Description field with Save version on top
   (Enter saves V<n> and closes; a toast says so), then the saved
   versions newest first (V<n>, description, when, the name if it has
   changed) with Open copy (a new design, "<name> V<n>") and Restore (one
@@ -385,8 +384,9 @@ Crank or Glide. Since the right button drags, the right-click marking menu
 
 ### 3.3 Commands
 
-- **Toolbar**, **shortcut**, **S toolbox** (searchable popup at the cursor,
-  pinnable), **Ctrl+K** command palette, and the **right-click marking menu**
+- **Toolbar**, **shortcut**, **search** (one dialog with pinned commands over
+  the full list: Ctrl+K centred, **S** at the cursor, or the top bar's Search
+  button; R3-05), and the **right-click marking menu**
   (radial, 8 slots, or one list; P3-11, ADR-0042).
 - **The marking menu (P3-11):** a right-click **without movement** (a
   right-drag navigates) opens a ring of eight wedges round the pointer,
@@ -422,15 +422,25 @@ Crank or Glide. Since the right button drags, the right-click marking menu
   some are hidden; in a sketch, Cancel (while a tool runs), Delete
   (named for a constraint or dimension), Look At Sketch, Fit, Redo,
   Repeat.
-- **Search (P1-14):** the palette opens at the top of the window over a
-  dimmed page, the toolbox at the pointer with its pinned commands as
-  tiles above the search field's results. Both search the commands
-  offered in the current mode, fuzzy, by label first (word starts count
-  most), then by group and hint words. An empty search lists recent
-  commands, then all by group. Arrows move, Enter runs, Shift+Enter (or
-  a row's pin) pins or unpins, Esc closes. Tools that aren't built yet
-  are listed dimmed with the task that brings them; their keys say so
-  in a toast.
+- **Search (P1-14; one dialog since the owner's UI review 3, R3-05):** the
+  dialog "Search", 480 px wide, opens three ways: **Ctrl+K** (and Help ›
+  Search…) at the top centre of the window over a dimmed page, **S** at the
+  pointer with the page left clear, and the top bar's **Search** button
+  dropped from the button's bottom-left corner over a dimmed page. It is
+  the same everywhere: the search field, the **pinned commands** as tiles,
+  at most **ten in two rows of five**, then the list. It searches the
+  commands offered in the current mode, fuzzy, by label first (word starts
+  count most), then by group and hint words. An empty search lists recent
+  commands, then all by group. Arrows move, Enter runs, Shift+Enter (or a
+  row's pin) pins or unpins, Esc closes. With ten pins showing, a pin is
+  refused: the row's pin is dimmed and says "Up to 10 pins: unpin one
+  first.", and Shift+Enter says the same in the dialog's status line. The
+  pins are one stored list (`toolbox.pins`) for both modes; the tiles are
+  the first ten the mode offers, so a longer list pinned before the cap
+  keeps the rest stored, and they show as soon as there is room. A row
+  never scrolls sideways: its label and reason are cut short instead.
+  Tools that aren't built yet are listed dimmed with the task that brings
+  them; their keys say so in a toast.
 - Pre-selection works: select edges, press F, and the Fillet dialog opens with
   those edges already chosen.
 - Tools repeat: after OK, pressing Enter again or right-click → "Repeat
@@ -718,10 +728,10 @@ Follow mainstream CAD tools where they have a shortcut; remappable in settings.
 | A | 3-point arc (ours) | H | Hole |
 | P | Project | M | Move/Copy |
 | D | Sketch dimension | J | Joint |
-| T | Trim | S | Toolbox |
+| T | Trim | S | Search at the pointer |
 | O | Offset | I | Measure |
 | X | Construction toggle | Delete | Delete |
-| Ctrl+Z / Ctrl+Y | Undo / Redo | Ctrl+K | Command palette |
+| Ctrl+Z / Ctrl+Y | Undo / Redo | Ctrl+K | Search |
 | Ctrl+S | Save version | Esc | Cancel / clear |
 | F6 | Fit | Shift+1…7 | Standard views (ours) |
 
