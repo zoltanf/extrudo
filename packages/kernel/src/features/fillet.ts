@@ -4,11 +4,13 @@ import {
   type FilletSet,
   filletFeature,
   filletSets,
+  skipsLostEdges,
 } from '@extrudo/core';
 import { FilletError, type FilletProblem, KernelError, type ShapeHandle } from '../kernel';
 import type { TopoNames } from '../naming/names';
 import { type NamedShape, withHistory } from '../naming/ops';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import { edgeResolver } from './lost-edges';
 
 /**
  * The fillet feature in the kernel (P3-01, ADR-0038): rounds the picked
@@ -28,6 +30,10 @@ import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../rec
  * A failure is turned into a message a person can act on (FR-UX-06): which
  * edge, and the largest radius that works ("radius too large for edge 12,
  * max ≈ 2.4 mm"). The kernel finds that number (facade `fillet`).
+ *
+ * With `skipLostEdges` (ADR-0038's amendment, 2026-10-11) a lost edge is
+ * left out with a warning instead (`edgeResolver`); with none found the
+ * fillet fails as without.
  */
 export const kernelFillet: KernelFeatureDefinition<FilletInputs> = {
   ...filletFeature,
@@ -52,10 +58,16 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
 
   // Edges by body, each with its set's radii.
   const byBody = new Map<BodyId, EdgePick[]>();
+  const edges = edgeResolver(ctx, {
+    label: 'an edge to fillet',
+    feature: 'fillet',
+    skip: skipsLostEdges(ctx.inputs),
+  });
   for (const set of sets) {
     const radii = setRadii(ctx, set);
     for (const ref of set.edges) {
-      const hit = ctx.resolve(ref, { label: 'an edge to fillet' });
+      const hit = edges.resolve(ref);
+      if (!hit) continue;
       const picks = byBody.get(hit.body) ?? [];
       const same = picks.find((p) => p.index === hit.index);
       if (same) {
@@ -70,6 +82,7 @@ function evaluateFillet(ctx: EvalContext<FilletInputs>): FeatureOutput {
       byBody.set(hit.body, picks);
     }
   }
+  edges.finish();
   const variable = sets.some((set) => set.radiusEnd !== undefined);
 
   using scope = kernel.scope();

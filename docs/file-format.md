@@ -716,6 +716,7 @@ file written with fewer sets reads unchanged.
 | `radius`, `radius2` ... `radius32` | `expr` | Length; greater than 0 when the kernel evaluates it (not checked by the schema); a set with edges needs its radius |
 | `radiusEnd`, `radiusEnd2` ... `radiusEnd32` | `expr` | Length, greater than 0; the radius at the chain's other end. **A set with one is variable** |
 | `swap`, `swap2` ... `swap32` | `bool` | Puts the end radius at the other end of the chain (which end that is depends on the topology) |
+| `skipLostEdges` | `bool` | With `true`, the fillet is built from the edges the kernel finds and warns how many it left out (they stay listed for Fix References) instead of failing; with none found it fails. Stored only as `true`; absent, one lost edge fails the fillet (2026-10-11) |
 
 The kernel rounds the whole chain of tangent-continuous edges around each
 edge you name, so edges of one chain must share their radii (two sets that
@@ -743,6 +744,7 @@ set 1 are plain, set `n` appends its number: `edges`, `mode`, `distance`,
 | `angle`, `angle2` ... | `expr` | Angle, between 0 and 90 deg (exclusive) when evaluated: the angle of `distance-angle` |
 | `flip`, `flip2` ... | `bool` | Swaps which of the edge's two faces takes `distance`, for `two-distances` and `distance-angle` (default false) |
 | `face`, `face2` ... `face32` | `ref` | One ref of kind `face` (a persistent face name, section 8): the face `distance` is measured on, for `two-distances` and `distance-angle` (P4-12). It must touch every edge of the set; while it is there, `flip` is ignored. `equal` sets ignore it |
+| `skipLostEdges` | `bool` | As the fillet's: lost edges are left out with a warning instead of failing; a set none of whose edges is found is left out whole, its `face` too (2026-10-11) |
 
 `equal` puts the chamfer `distance` from the edge on both faces.
 `two-distances` puts `distance` on the set's first face and `distanceB` on

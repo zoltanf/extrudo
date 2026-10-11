@@ -24,6 +24,10 @@
  * end of its tangent chain (swapped, they change ends); none where the chain has
  * no ends to read (a closed one). The overlay draws the set last focused
  * prominent and the others small and faint.
+ *
+ * **Skip lost edges (ADR-0038's amendment, 2026-10-11).** The last field, a
+ * toggle stored only while on: the fillet then builds from the edges it finds
+ * and warns about the rest (`skipLostEdges.ts`).
  */
 import {
   FILLET_EDGE_KINDS,
@@ -35,6 +39,7 @@ import {
   filletSwapKey,
 } from '@extrudo/core';
 import { setDistanceManipulator, variableSetManipulators } from './edgeHandles';
+import { skipLostEdgesField, withoutSkipOff } from './skipLostEdges';
 import { type DialogField, type DialogValues, defineFeatureDialog, type Manipulator } from './spec';
 import { defaultFromInputs, defaultInputs } from './values';
 
@@ -110,12 +115,15 @@ function setFields(n: number): DialogField[] {
 export const filletDialog = defineFeatureDialog({
   ...filletFeature,
   command: 'fillet',
-  fields: Array.from({ length: FILLET_MAX_SETS }, (_, i) => setFields(i + 1)).flat(),
+  fields: [
+    ...Array.from({ length: FILLET_MAX_SETS }, (_, i) => setFields(i + 1)).flat(),
+    skipLostEdgesField,
+  ],
   // Variable is not an input: the stored inputs are the two radii and the swap.
   toInputs(values) {
     const inputs = defaultInputs(filletDialog, values);
     for (let n = 1; n <= FILLET_MAX_SETS; n++) delete inputs[variableKey(n)];
-    return inputs;
+    return withoutSkipOff(inputs);
   },
   // A set is variable exactly when it has an end radius.
   fromInputs(inputs) {

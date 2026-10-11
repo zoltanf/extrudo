@@ -4,6 +4,7 @@ import {
   type ChamferSet,
   chamferFeature,
   chamferSets,
+  skipsLostEdges,
 } from '@extrudo/core';
 import {
   ChamferError,
@@ -16,6 +17,7 @@ import type { TopoNames } from '../naming/names';
 import { type NamedShape, withHistory } from '../naming/ops';
 import type { ResolvedRef } from '../naming/resolve';
 import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../recompute/types';
+import { edgeResolver } from './lost-edges';
 
 /**
  * The chamfer feature in the kernel (P3-02, ADR-0043): bevels the picked
@@ -37,6 +39,12 @@ import type { EvalContext, FeatureOutput, KernelFeatureDefinition } from '../rec
  * `flip` taking the other, so a picked face is turned into that `flip` here,
  * edge by edge, from the body's description (`Kernel.describe`). A face that
  * doesn't touch one of the set's edges is an error.
+ *
+ * **Lost edges (ADR-0043's amendment, 2026-10-11).** With `skipLostEdges` a
+ * lost edge is left out with a warning (`edgeResolver`, as in the fillet),
+ * and a set none of whose edges is found is left out whole: its reference
+ * face is not looked for. A lost reference face of a set that keeps edges
+ * still fails the chamfer, since without it the bevel would go the other way.
  */
 export const kernelChamfer: KernelFeatureDefinition<ChamferInputs> = {
   ...chamferFeature,
@@ -59,16 +67,27 @@ function evaluateChamfer(ctx: EvalContext<ChamferInputs>): FeatureOutput {
 
   // Edges by body, each with its set's spec.
   const byBody = new Map<BodyId, EdgePick[]>();
+  const skip = skipsLostEdges(ctx.inputs);
+  const edges = edgeResolver(ctx, { label: 'an edge to chamfer', feature: 'chamfer', skip });
   for (const set of sets) {
     const plain = specOf(ctx, set);
     // A set's reference face (P4-12) decides `flip` edge by edge; an equal
     // distance chamfer has no reference face at all.
-    const face =
+    const faceOf = () =>
       set.face && plain.mode !== 'equal'
         ? ctx.resolve(set.face, { label: 'the chamfer’s reference face' })
         : undefined;
+    // Skipping lost edges, the face is looked for at the set's first edge
+    // found; otherwise first, as it always was.
+    let looked = !skip;
+    let face = looked ? faceOf() : undefined;
     for (const ref of set.edges) {
-      const hit = ctx.resolve(ref, { label: 'an edge to chamfer' });
+      const hit = edges.resolve(ref);
+      if (!hit) continue;
+      if (!looked) {
+        face = faceOf();
+        looked = true;
+      }
       const spec = face ? { ...plain, flip: flipAt(ctx, face, hit, set.n) } : plain;
       const picks = byBody.get(hit.body) ?? [];
       const same = picks.find((p) => p.index === hit.index);
@@ -84,6 +103,7 @@ function evaluateChamfer(ctx: EvalContext<ChamferInputs>): FeatureOutput {
       byBody.set(hit.body, picks);
     }
   }
+  edges.finish();
 
   using scope = kernel.scope();
   const bodies = new Map(ctx.bodies);

@@ -424,6 +424,7 @@ export interface FeatureMethods {
    * @param inputs.radius32 Set 32's radius; a length. Radius 0 leaves the edges as they are.
    * @param inputs.radiusEnd32 Set 32's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain.
    * @param inputs.swap32 Set 32's radius runs from the chain's other end. Default false.
+   * @param inputs.skipLostEdges Build with the edges that can still be found and leave out the ones that can't, with a warning, instead of failing. Default false.
    *
    * The faces it makes, as `handle.face(role)` takes them:
    * - `from:(<edge>)` — The round: a face the fillet makes from each edge it rounds.
@@ -656,6 +657,7 @@ export interface FeatureMethods {
    * @param inputs.angle32 Set 32's angle to the first distance, with distance-angle; an angle.
    * @param inputs.flip32 Set 32's first distance goes on the other face. Default false.
    * @param inputs.face32 The face the chamfer's distances are measured from, for this set's edges.
+   * @param inputs.skipLostEdges Build with the edges that can still be found and leave out the ones that can't, with a warning, instead of failing. Default false.
    *
    * The faces it makes, as `handle.face(role)` takes them:
    * - `from:(<edge>)` — The bevel: a face the chamfer makes from each edge it bevels.

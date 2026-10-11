@@ -21,6 +21,13 @@
  * edges once one of them is given, with one radius. A dialog therefore adds
  * the chain of an edge you pick, and two sets that reach one chain with
  * different radii fail with a message (`mixed-radii`).
+ *
+ * **Lost edges (ADR-0038's amendment, 2026-10-11).** One edge the kernel can't
+ * find fails the whole fillet (ADR-0033: Fix References offers it). With
+ * `skipLostEdges` on, the fillet is built from the edges that are found and
+ * warns how many it left out, still listing them for Fix References; when
+ * none is found it fails as before. Stored only when true, so a document
+ * without it computes as it always did. The chamfer takes the same input.
  */
 import { exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
@@ -40,6 +47,23 @@ export const filletRadiusKey = (n: number) => (n === 1 ? 'radius' : `radius${n}`
 export const filletEndKey = (n: number) => (n === 1 ? 'radiusEnd' : `radiusEnd${n}`);
 /** The input holding set `n`'s end swap: `swap`, `swap2`, … */
 export const filletSwapKey = (n: number) => (n === 1 ? 'swap' : `swap${n}`);
+
+/**
+ * The input that builds a fillet or chamfer from the edges that are found,
+ * leaving lost ones out with a warning (a `bool`, stored only when true).
+ */
+export const SKIP_LOST_EDGES_KEY = 'skipLostEdges';
+
+/** The input's schema, shared by the fillet and the chamfer. */
+export const skipLostEdgesSchema = () =>
+  BoolInputSchema.optional().describe(
+    "Build with the edges that can still be found and leave out the ones that can't, with a warning, instead of failing. Default false.",
+  );
+
+/** Whether a fillet's or chamfer's inputs ask to leave lost edges out. */
+export function skipsLostEdges(inputs: Record<string, Input>): boolean {
+  return (inputs[SKIP_LOST_EDGES_KEY] as BoolInput | undefined)?.value === true;
+}
 
 /** The kinds of reference a fillet takes: edges of bodies. */
 export const FILLET_EDGE_KINDS = ['edge'] as const;
@@ -62,6 +86,8 @@ for (let n = 1; n <= FILLET_MAX_SETS; n++) {
     `${set}'s radius runs from the chain's other end. Default false.`,
   );
 }
+
+shape[SKIP_LOST_EDGES_KEY] = skipLostEdgesSchema();
 
 /** A fillet's inputs: `edges`/`radius`, `edges2`/`radius2` … (all optional). */
 export type FilletInputs = Record<string, Input>;

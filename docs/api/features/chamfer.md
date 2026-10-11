@@ -244,6 +244,7 @@ a valid feature.
 | `angle32` | `string \| number \| ParameterHandle` | optional | Set 32's angle to the first distance, with distance-angle; an angle. |
 | `flip32` | `boolean` | default `false` | Set 32's first distance goes on the other face. |
 | `face32` | `GeomRef \| GeomRef[]` (`face`) | optional | The face the chamfer's distances are measured from, for this set's edges. |
+| `skipLostEdges` | `boolean` | default `false` | Build with the edges that can still be found and leave out the ones that can't, with a warning, instead of failing. |
 
 ## Faces
 

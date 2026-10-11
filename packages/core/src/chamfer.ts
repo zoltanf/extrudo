@@ -32,9 +32,15 @@
  * **Tangent chains.** As in a fillet, OCCT chamfers the whole chain of
  * tangent-continuous edges once one of them is given, with one setting. A
  * dialog therefore adds the chain of an edge you pick.
+ *
+ * **Lost edges.** `skipLostEdges` (shared with the fillet, ADR-0043's
+ * amendment of 2026-10-11) builds the chamfer from the edges that are found
+ * and warns about the rest; a set none of whose edges is found is left out
+ * whole, reference face and all.
  */
 import { enumInput, exprOf, refsOf } from './feature-inputs';
 import type { FeatureDefinition } from './features';
+import { SKIP_LOST_EDGES_KEY, skipLostEdgesSchema } from './fillet';
 import { type BoolInput, BoolInputSchema, type GeomRef, type Input } from './schema';
 import { z } from './zod';
 
@@ -95,6 +101,8 @@ for (let n = 1; n <= CHAMFER_MAX_SETS; n++) {
     .optional()
     .describe("The face the chamfer's distances are measured from, for this set's edges.");
 }
+
+shape[SKIP_LOST_EDGES_KEY] = skipLostEdgesSchema();
 
 /** A chamfer's inputs: `edges`/`mode`/`distance`/… and their numbered copies (all optional). */
 export type ChamferInputs = Record<string, Input>;

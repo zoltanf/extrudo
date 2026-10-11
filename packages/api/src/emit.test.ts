@@ -605,6 +605,20 @@ describe('emitScript', () => {
     expect(canonical(recreated, map)).toEqual(canonical(doc, map));
   });
 
+  it('emits a fillet’s and a chamfer’s skipLostEdges (ADR-0038/0043 amendments)', () => {
+    const design = Design.create();
+    const box = design.box({ length: '10 mm', width: '10 mm', height: '10 mm' });
+    const edge = box.edge(['side:front', 'side:top']);
+    design.fillet({ edges: [edge], radius: '1 mm', skipLostEdges: true });
+    design.chamfer({ edges: [edge], distance: '1 mm', skipLostEdges: true });
+    const doc = structuredClone(design.toJSON());
+    const code = emitScript(doc);
+    expect(code.match(/skipLostEdges: true/g)).toHaveLength(2);
+    const recreated = run(code, doc);
+    const map = idMap(doc, recreated);
+    expect(canonical(recreated, map)).toEqual(canonical(doc, map));
+  });
+
   it('emits timeline groups', () => {
     const design = Design.create();
     const first = design.box({ length: '10 mm', width: '10 mm', height: '10 mm' });

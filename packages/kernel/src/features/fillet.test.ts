@@ -449,6 +449,87 @@ describe('fillet', { timeout: 120_000 }, () => {
     expect(st.refs).toEqual([{ ref: { kind: 'edge', id: gone.id }, state: 'lost' }]);
   });
 
+  describe('skipLostEdges (ADR-0038 amendment, 2026-10-11)', () => {
+    const gone: GeomRef = { kind: 'edge', id: 'e[nothing:here|nor:there]' };
+    const skipping = (id: string, sets: Parameters<typeof filletInputs>[0]): Feature => ({
+      ...testFeature(id, 'fillet'),
+      inputs: { ...filletInputs(sets), skipLostEdges: { kind: 'bool', value: true } },
+    });
+
+    it('builds with the edges found, warns about the lost one and keeps it for Fix References', async () => {
+      const base = block();
+      const first = ok(await run(testDocument(base.features)));
+      const front = refTo(first, 'edge', between(cap, side(base.lines.bottom)));
+      const alone = ok(
+        await runWithShapes(
+          testDocument([...base.features, fillet('F', [{ edges: [front], radius: '2 mm' }])]),
+        ),
+      );
+      expect(alone.bodies).toHaveLength(1);
+      const expected = measure('B:0');
+
+      const result = await runWithShapes(
+        testDocument([
+          ...base.features,
+          skipping('F', [
+            { edges: [front, gone], radius: '2 mm' },
+            { edges: [gone], radius: '3 mm' },
+          ]),
+        ]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('warning');
+      expect(st.message).toBe(
+        "2 of 3 edges can't be found and are left out of the fillet. Use Fix References to pick them again.",
+      );
+      expect(st.refs).toEqual([{ ref: { kind: 'edge', id: gone.id }, state: 'lost' }]);
+      expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
+      expect(measure('B:0').faces).toBe(expected.faces);
+      expect(result.bodies[0]?.mesh?.faceIds).toContain(
+        `fillet:F:from:(${between(cap, side(base.lines.bottom))})`,
+      );
+    });
+
+    it('a variable set takes the same path', async () => {
+      const base = block();
+      const first = ok(await run(testDocument(base.features)));
+      const front = refTo(first, 'edge', between(cap, side(base.lines.bottom)));
+      const result = await run(
+        testDocument([
+          ...base.features,
+          skipping('F', [{ edges: [gone, front], radius: '1 mm', radiusEnd: '3 mm' }]),
+        ]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('warning');
+      expect(st.message).toMatch(/^1 of 2 edges can't be found and is left out of the fillet/);
+    });
+
+    it('with no edge found it fails as without the option', async () => {
+      const base = block();
+      const result = await run(
+        testDocument([...base.features, skipping('F', [{ edges: [gone], radius: '1 mm' }])]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('error');
+      expect(st.message).toMatch(/Can't find an edge to fillet any more/);
+      expect(st.refs).toEqual([{ ref: { kind: 'edge', id: gone.id }, state: 'lost' }]);
+    });
+
+    it('without the option one lost edge fails the whole fillet, as before', async () => {
+      const base = block();
+      const first = ok(await run(testDocument(base.features)));
+      const front = refTo(first, 'edge', between(cap, side(base.lines.bottom)));
+      const result = await run(
+        testDocument([...base.features, fillet('F', [{ edges: [front, gone], radius: '2 mm' }])]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('error');
+      expect(st.message).toMatch(/Can't find an edge to fillet any more/);
+      expect(st.refs).toEqual([{ ref: { kind: 'edge', id: gone.id }, state: 'lost' }]);
+    });
+  });
+
   it('golden table of cases', async () => {
     const base = block();
     const l = base.lines;

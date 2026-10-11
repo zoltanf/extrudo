@@ -547,6 +547,8 @@ describe('f3dToDesign: copying features', () => {
         `^e\\[extrude:${id('Extrude1')}:cap:end\\|pattern:${id('C-Pattern1')}:1:from:\\(extrude:${id('Extrude2')}:side:[^)]+\\)\\]$`,
       ),
     );
+    // A lost edge would be left out with a warning, not fail the chamfer.
+    expect(chamfer?.inputs.skipLostEdges).toEqual({ kind: 'bool', value: true });
     // The chamfer is built on that edge.
     const [volume] = await volumes(f3d);
     expect(volume).toBeLessThan(RING - 2 * HOLE);

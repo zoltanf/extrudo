@@ -29,6 +29,9 @@
  * face's direction towards the other face's, about the edge, which a drag turns
  * (P4-12, ADR-0043's third amendment). The overlay draws the set last focused
  * prominent.
+ *
+ * **Skip lost edges (ADR-0043's amendment, 2026-10-11).** The last field, as in
+ * the fillet dialog (`skipLostEdges.ts`).
  */
 import {
   CHAMFER_EDGE_KINDS,
@@ -42,9 +45,12 @@ import {
   chamferFeature,
   chamferFlipKey,
   chamferModeKey,
+  type FeatureInputs,
 } from '@extrudo/core';
 import { chamferSetManipulators } from './edgeHandles';
+import { skipLostEdgesField, withoutSkipOff } from './skipLostEdges';
 import { type DialogField, type DialogValues, defineFeatureDialog, type Manipulator } from './spec';
+import { defaultInputs } from './values';
 
 const hasEdges = (values: DialogValues, n: number) =>
   (values.refs[chamferEdgesKey(n)]?.length ?? 0) > 0;
@@ -146,7 +152,13 @@ function setFields(n: number): DialogField[] {
 export const chamferDialog = defineFeatureDialog({
   ...chamferFeature,
   command: 'chamfer',
-  fields: Array.from({ length: CHAMFER_MAX_SETS }, (_, i) => setFields(i + 1)).flat(),
+  fields: [
+    ...Array.from({ length: CHAMFER_MAX_SETS }, (_, i) => setFields(i + 1)).flat(),
+    skipLostEdgesField,
+  ],
+  toInputs(values): FeatureInputs {
+    return withoutSkipOff(defaultInputs(chamferDialog, values));
+  },
   // The result replaces the body it bevels: drawn as the body itself.
   previewStyle: () => 'new',
   manipulators: (values, ctx) => {

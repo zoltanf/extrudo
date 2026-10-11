@@ -148,6 +148,7 @@ a valid feature.
 | `radius32` | `string \| number \| ParameterHandle` | optional | Set 32's radius; a length. Radius 0 leaves the edges as they are. |
 | `radiusEnd32` | `string \| number \| ParameterHandle` | optional | Set 32's radius at the other end of each edge's tangent chain; a length. With one, the round tapers along the chain. |
 | `swap32` | `boolean` | default `false` | Set 32's radius runs from the chain's other end. |
+| `skipLostEdges` | `boolean` | default `false` | Build with the edges that can still be found and leave out the ones that can't, with a warning, instead of failing. |
 
 ## Faces
 

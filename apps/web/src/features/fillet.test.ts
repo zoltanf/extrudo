@@ -5,6 +5,7 @@ import {
   filletInputs,
   filletSets,
   insertFeature,
+  SKIP_LOST_EDGES_KEY,
 } from '@extrudo/core';
 import { describe, expect, it } from 'vitest';
 import { filletDialog } from './fillet';
@@ -12,6 +13,12 @@ import { featureDialogs, specForCommand } from './registry';
 import type { DialogValues } from './spec';
 import { BOX, namedBoxEdgesMesh, settle, setupDialogs } from './testing';
 import { defaultValues, mergeValues, shownFields } from './values';
+
+/** The sets' shown fields: the always-shown last toggle is skipLostEdges.test.ts's. */
+const setFieldNames = (values: DialogValues) =>
+  shownFields(filletDialog, values)
+    .map((f) => f.name)
+    .filter((name) => name !== SKIP_LOST_EDGES_KEY);
 
 const edgeItem = (index: number) => ({ kind: 'edge' as const, id: `${BOX}:${index}` });
 const edgeRef = (index: number) => ({ kind: 'edge' as const, id: `box:e${index}` });
@@ -38,20 +45,11 @@ describe('the fillet dialog', () => {
 
   it('starts with one set; the next set shows once this one has edges', () => {
     const empty = defaultValues(filletDialog);
-    expect(shownFields(filletDialog, empty).map((f) => f.name)).toEqual([
-      'edges',
-      'radius',
-      'variable',
-    ]);
+    expect(setFieldNames(empty)).toEqual(['edges', 'radius', 'variable']);
     const some: DialogValues = mergeValues(empty, { refs: { edges: [edgeRef(3)] } });
-    expect(shownFields(filletDialog, some).map((f) => f.name)).toEqual([
-      'edges',
-      'radius',
-      'variable',
-      'edges2',
-    ]);
+    expect(setFieldNames(some)).toEqual(['edges', 'radius', 'variable', 'edges2']);
     const two: DialogValues = mergeValues(some, { refs: { edges2: [edgeRef(4)] } });
-    expect(shownFields(filletDialog, two).map((f) => f.name)).toEqual([
+    expect(setFieldNames(two)).toEqual([
       'edges',
       'radius',
       'variable',
@@ -62,7 +60,7 @@ describe('the fillet dialog', () => {
     ]);
     // Emptying the first set doesn't drop the second one's fields.
     const gap: DialogValues = mergeValues(empty, { refs: { edges2: [edgeRef(4)] } });
-    expect(shownFields(filletDialog, gap).map((f) => f.name)).toContain('radius2');
+    expect(setFieldNames(gap)).toContain('radius2');
   });
 
   it('has room for the feature’s maximum number of sets', () => {
@@ -141,9 +139,9 @@ describe('the fillet dialog’s variable radius', () => {
     const picked: DialogValues = mergeValues(defaultValues(filletDialog), {
       refs: { edges: [edgeRef(3)] },
     });
-    expect(shownFields(filletDialog, picked).map((f) => f.name)).not.toContain('radiusEnd');
+    expect(setFieldNames(picked)).not.toContain('radiusEnd');
     const variable: DialogValues = mergeValues(picked, { toggles: { variable: true } });
-    expect(shownFields(filletDialog, variable).map((f) => f.name)).toEqual([
+    expect(setFieldNames(variable)).toEqual([
       'edges',
       'radius',
       'variable',
@@ -152,7 +150,7 @@ describe('the fillet dialog’s variable radius', () => {
       'edges2',
     ]);
     const back = mergeValues(variable, { toggles: { variable: false } });
-    expect(shownFields(filletDialog, back).map((f) => f.name)).not.toContain('radiusEnd');
+    expect(setFieldNames(back)).not.toContain('radiusEnd');
     // The labels of a later set carry its number, as the others do.
     expect(filletDialog.fields.filter((f) => /[^0-9]2$/.test(f.name)).map((f) => f.label)).toEqual([
       'Edges 2',
@@ -219,7 +217,7 @@ describe('the fillet dialog’s variable radius', () => {
     const values = t.open()?.values;
     expect(values?.toggles.variable).toBe(true);
     expect(values?.exprs.radiusEnd).toBe('5 mm');
-    const shown = shownFields(filletDialog, values as DialogValues).map((f) => f.name);
+    const shown = setFieldNames(values as DialogValues);
     expect(shown).toContain('radiusEnd');
     // The stored radius and end radius come back; the swap shows now, off, so it
     // joins the inputs.

@@ -1986,6 +1986,10 @@ function edgeTreatment(
     report.notes.push(
       `${f.name}: ${total - named} of ${total} edges left out (their faces could not be named).`,
     );
+  // A lost edge (on an earlier round the kernel couldn't make, or a face not
+  // imported) leaves that edge out with a warning instead of failing the whole
+  // round (ADR-0083's amendment, 2026-10-11).
+  inputs.skipLostEdges = true;
   const made =
     f.type === 'fillet'
       ? d.fillet(inputs as Parameters<Design['fillet']>[0], { name: f.name })

@@ -719,6 +719,85 @@ describe('chamfer', { timeout: 120_000 }, () => {
     expect(st.refs).toEqual([{ ref: { kind: 'edge', id: gone.id }, state: 'lost' }]);
   });
 
+  describe('skipLostEdges (ADR-0043 amendment, 2026-10-11)', () => {
+    const gone: GeomRef = { kind: 'edge', id: 'e[nothing:here|nor:there]' };
+    const lostFace: GeomRef = { kind: 'face', id: 'nothing:here' };
+    const skipping = (id: string, sets: ChamferSetSpec[]): Feature => ({
+      ...testFeature(id, 'chamfer'),
+      inputs: { ...chamferInputs(sets), skipLostEdges: { kind: 'bool', value: true } },
+    });
+
+    it('builds with the edges found and leaves out a set none of whose edges is found, face and all', async () => {
+      const { base, ref } = await withFrontEdge();
+      ok(
+        await runWithShapes(
+          testDocument([...base.features, chamfer('F', [{ edges: [ref], distance: '2 mm' }])]),
+        ),
+      );
+      const expected = measure('B:0');
+      const result = await runWithShapes(
+        testDocument([
+          ...base.features,
+          skipping('F', [
+            { edges: [gone, ref], distance: '2 mm' },
+            // Its reference face is lost too, but never looked for.
+            {
+              edges: [gone],
+              mode: 'two-distances',
+              distance: '1 mm',
+              distanceB: '2 mm',
+              face: lostFace,
+            },
+          ]),
+        ]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('warning');
+      expect(st.message).toBe(
+        "2 of 3 edges can't be found and are left out of the chamfer. Use Fix References to pick them again.",
+      );
+      expect(st.refs).toEqual([{ ref: { kind: 'edge', id: gone.id }, state: 'lost' }]);
+      expect(measure('B:0').volume).toBeCloseTo(expected.volume, 6);
+    });
+
+    it('a lost reference face of a set that keeps edges still fails', async () => {
+      const { base, ref } = await withFrontEdge();
+      const result = await run(
+        testDocument([
+          ...base.features,
+          skipping('F', [
+            {
+              edges: [ref, gone],
+              mode: 'two-distances',
+              distance: '1 mm',
+              distanceB: '2 mm',
+              face: lostFace,
+            },
+          ]),
+        ]),
+      );
+      const st = status(result, 'F');
+      expect(st.status).toBe('error');
+      expect(st.refs).toContainEqual({ ref: { kind: 'face', id: lostFace.id }, state: 'lost' });
+    });
+
+    it('with no edge found it fails, and without the option one lost edge fails', async () => {
+      const { base, ref } = await withFrontEdge();
+      const none = await run(
+        testDocument([...base.features, skipping('F', [{ edges: [gone], distance: '1 mm' }])]),
+      );
+      expect(status(none, 'F').status).toBe('error');
+      expect(status(none, 'F').message).toMatch(/Can't find an edge to chamfer any more/);
+      const plain = await run(
+        testDocument([...base.features, chamfer('F', [{ edges: [ref, gone], distance: '1 mm' }])]),
+      );
+      expect(status(plain, 'F').status).toBe('error');
+      expect(status(plain, 'F').refs).toEqual([
+        { ref: { kind: 'edge', id: gone.id }, state: 'lost' },
+      ]);
+    });
+  });
+
   it('golden table of cases', async () => {
     const base = block();
     const l = base.lines;
