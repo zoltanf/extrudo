@@ -118,7 +118,8 @@ describe('elliptical arcs', () => {
   it('draws an arc as conics of at most a quarter turn, ending on the file points', () => {
     const { design } = f3dToDesign(halfEllipse(), 'Half');
     const sketch = design.toJSON().features.find((f) => f.type === 'sketch');
-    const data = (sketch?.inputs.sketch as { sketch: SketchData }).sketch;
+    if (!sketch) throw new Error('No sketch.');
+    const data = (sketch.inputs.sketch as { sketch: SketchData }).sketch;
     const conics = Object.values(data.entities).filter((e) => e.type === 'spline');
     expect(conics).toHaveLength(2);
     for (const c of conics)
