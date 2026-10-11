@@ -37,12 +37,14 @@ import { ComponentMapping } from './components';
 import type { ProfileOperand, ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
 import type { RevolveAxis } from './decode/revolve';
-import type {
-  SketchCircular,
-  SketchLine,
-  SketchPoint,
-  SketchSpline,
-  Vec3,
+import {
+  ellipseSweep,
+  type SketchCircular,
+  type SketchEllipse,
+  type SketchLine,
+  type SketchPoint,
+  type SketchSpline,
+  type Vec3,
 } from './decode/sketch-geometry';
 import type { SketchText } from './decode/text';
 import { type EdgeShape, edgeShape } from './edge-shape';
@@ -776,6 +778,14 @@ function drawSketch(
     const p = points.get(id)?.at ?? fallback;
     return placement.map(p[0], p[1]);
   };
+  /** A point of an ellipse at parameter angle `t`, `scale` times as far from its centre. */
+  const mapped = (e: SketchEllipse, t: number, scale = 1): Vec2 => {
+    const [c, s2] = [Math.cos(t) * scale, Math.sin(t) * scale];
+    return placement.map(
+      e.center[0] + e.major[0] * e.majorRadius * c + e.minor[0] * e.minorRadius * s2,
+      e.center[1] + e.major[1] * e.majorRadius * c + e.minor[1] * e.minorRadius * s2,
+    );
+  };
   /** Extrudo point handles per f3d point: joined by coincident constraints. */
   const joined = new Map<number, ReturnType<SketchBuilder['point']>[]>();
   const join = (sourcePoint: number, handle: ReturnType<SketchBuilder['point']>) => {
@@ -881,6 +891,37 @@ function drawSketch(
     }
     if (c.tag !== undefined) tags.set(h.id, c.tag);
     if (c.construction) setConstruction(h.id);
+  }
+  // Elliptical arcs: Extrudo's ellipse is whole, so an arc is drawn as exact
+  // conics (rational quadratics), one per quarter turn at most, joined end to end.
+  for (const e of s.ellipses ?? []) {
+    const t0 = e.startAngle;
+    const sweep = ellipseSweep(e);
+    const n = Math.max(1, Math.ceil(sweep / (Math.PI / 2) - 1e-9));
+    const step = sweep / n;
+    let previous: ReturnType<SketchBuilder['point']> | undefined;
+    for (let i = 0; i < n; i++) {
+      const [a, b] = [t0 + i * step, t0 + (i + 1) * step];
+      const p0 = i === 0 && e.startPoint !== undefined ? at(e.startPoint, e.center) : mapped(e, a);
+      const p2 = i === n - 1 && e.endPoint !== undefined ? at(e.endPoint, e.center) : mapped(e, b);
+      // The tangents at the two ends meet at the shoulder: the circle's corner
+      // point, scaled by 1 / cos(step / 2), carried by the ellipse's axes.
+      const shoulder = mapped(e, (a + b) / 2, 1 / Math.cos(step / 2));
+      const w = Math.cos(step / 2);
+      const h = k.conic(p0, shoulder, p2, w / (1 + w));
+      const [hs, , he] = h.points;
+      if (i === 0 && e.startPoint !== undefined && hs) {
+        join(e.startPoint, hs);
+        used.add(e.startPoint);
+      }
+      if (i === n - 1 && e.endPoint !== undefined && he) {
+        join(e.endPoint, he);
+        used.add(e.endPoint);
+      }
+      if (previous && hs) k.coincident(previous, hs);
+      previous = he;
+      if (e.tag !== undefined) tags.set(h.id, e.tag);
+    }
   }
   for (const t of s.texts) {
     const base = [Math.cos(t.angle), Math.sin(t.angle)] as const;

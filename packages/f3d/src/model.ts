@@ -85,15 +85,19 @@ import {
   refAhead,
   SKETCH_CIRCULAR,
   SKETCH_CONIC,
+  SKETCH_ELLIPSE,
   SKETCH_LINE,
+  SKETCH_LINE_ALT,
   SKETCH_POINT,
   SKETCH_SPLINE,
   type SketchCircular,
+  type SketchEllipse,
   type SketchLine,
   type SketchPoint,
   type SketchSpline,
   sketchCircular,
   sketchConic,
+  sketchEllipse,
   sketchLine,
   sketchPoint,
   sketchSpline,
@@ -139,6 +143,8 @@ export interface F3dSketch {
   /** Splines and conics. */
   splines: SketchSpline[];
   texts: SketchText[];
+  /** Ellipses and elliptical arcs (absent when the sketch has none). */
+  ellipses?: SketchEllipse[];
   /** Its geometric constraints and dimensions, as the file stores them. */
   relations?: SketchRelation[];
   dimensions?: SketchDimensionRecord[];
@@ -468,7 +474,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     if (p?.owner !== undefined && seg.typeOf(p.owner)?.guid === SKETCH_CONTAINER)
       sketchOf(p.owner).points.push(p);
   }
-  for (const id of seg.idsOf(SKETCH_LINE)) {
+  for (const id of [...seg.idsOf(SKETCH_LINE), ...seg.idsOf(SKETCH_LINE_ALT)]) {
     const l = tryDecode(`line #${id}`, () => sketchLine.decode(seg, id));
     if (l?.owner !== undefined) sketchOf(l.owner).lines.push(l);
   }
@@ -494,6 +500,13 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     if (t?.old && box) t.old.box = boxSize(t, box);
     if (t?.owner !== undefined) sketchOf(t.owner).texts.push(t);
   }
+  for (const id of seg.idsOf(SKETCH_ELLIPSE)) {
+    const e = tryDecode(`ellipse #${id}`, () => sketchEllipse.decode(seg, id));
+    if (e?.owner === undefined) continue;
+    const s = sketchOf(e.owner);
+    s.ellipses ??= [];
+    s.ellipses.push(e);
+  }
   for (const id of seg.idsOf(SKETCH_CONIC)) {
     const c = tryDecode(`conic #${id}`, () => sketchConic.decode(seg, id));
     if (c?.owner !== undefined) sketchOf(c.owner).splines.push(c);
@@ -502,7 +515,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   // Constraints and dimensions, in the sketch their points and curves are in.
   const geometryOwner = new Map<number, number>();
   for (const s of sketches.values())
-    for (const g of [...s.points, ...s.lines, ...s.circulars, ...s.splines])
+    for (const g of [...s.points, ...s.lines, ...s.circulars, ...s.splines, ...(s.ellipses ?? [])])
       geometryOwner.set(g.id, s.id);
   const constraints = readSketchConstraints(seg, parameters, (r) => geometryOwner.get(r), problems);
   for (const [id, c] of constraints) {

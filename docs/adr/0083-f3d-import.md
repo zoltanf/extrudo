@@ -458,3 +458,40 @@ The review for untrusted files changed three things in the constraint import:
 3. **A solver failure stays in its sketch**: the sketch keeps its geometry and
    joins, and all of its constraints and dimensions are left out as `failed`.
    The app's import no longer fails when disposing a broken solver throws.
+
+## Amendment (2026-10-11): elliptical arcs
+
+The file's ellipse record (`FF23079A…`: centre, unit major and minor axes,
+radii, parameter angles, and the centre, end and start points) is read; all
+69 in the owner's corpus are arcs (up to 190°), in 7 files. Extrudo's
+`ellipse` entity (ADR-0014) is whole and has no arc, so an arc is drawn as
+**exact conics** (ADR-0063's `mode: 'conic'`, a rational quadratic): one per
+quarter turn at most, each from the affine image of a circular arc — the
+shoulder is where the tangents at its ends meet, `rho = w / (1 + w)` with
+`w = cos(Δt / 2)` — joined end to end with coincident constraints, the first
+and last ending on the file's own points. The profile regions trace the arc
+over its parameter angle. The kernel's conic is exact (P4-12), so a half
+ellipse closed by a line extrudes to its exact volume. A whole ellipse would
+map onto the `ellipse` entity; none is in the corpus, so none is read yet.
+No constraint or dimension of the corpus names an ellipse (only its points),
+so the conics take no constraint.
+
+A line subclass (`AE42BAB6…`, 20 in 7 files) with a line's members after a
+reference to its incidence record is read as a **construction line** (drawn
+as profile curves, it split the profiles it crosses); the constraints naming
+it (midpoints, tangents, parallels) now go through the vetting.
+
+What stays in the "names geometry the import doesn't draw" count is the
+boxes of texts: newer texts' box lines (`EA3B930A…`), older texts' box lines
+(`16DEFC4D…`) and their corner points (`00D157C2…`). Most of those
+constraints hold the box together (parallel and perpendicular sides); the
+rest place a text against other geometry, which Extrudo's text (an anchor
+and a height, its own font's width) cannot follow faithfully. Deferred.
+
+Results on the owner's 250 files: 9,300 constraints and 4,779 dimensions
+imported (+20 constraints, all on the construction lines); left out 89 with
+no counterpart, 123 that don't match the geometry, 145 that over-constrain
+(+4), 126 naming geometry not drawn (150 before; what is left is text boxes),
+2 that would move geometry. No imported sketch over-constrained or
+conflicting; largest move 8.5e-7 mm. Rebuilt geometry: no verdict changes;
+one file imports one more feature (still partial, volume error 2.544 % → 2.536 %).

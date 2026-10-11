@@ -10,9 +10,15 @@ import { decodeLevel, type RecordDecoder, unsupported } from './common';
 
 export const SKETCH_POINT = 'C2CEDAE7-1716-47C1-B7B1-07B70081D0FB';
 export const SKETCH_LINE = 'DCA267ED-D615-4934-B64F-AD805E8003E2';
+/**
+ * A line subclass (v0) with a line's members after a reference to its
+ * incidence record; in the files it runs across profiles (construction).
+ */
+export const SKETCH_LINE_ALT = 'AE42BAB6-643F-4169-A33C-529C8E0A4D84';
 export const SKETCH_CIRCULAR = 'F0130424-8B7E-4092-93C9-1CA807482534';
 export const SKETCH_SPLINE = 'D82E012F-6DDD-4AED-BDE1-C0F7F9100B9B';
 export const SKETCH_CONIC = '111A78C2-801B-4D1D-B92D-05E2B34D991F';
+export const SKETCH_ELLIPSE = 'FF23079A-D99C-47AB-940E-2F4E18F022AB';
 /** The point ↔ curves companion: which curves end or centre at a point. */
 export const POINT_INCIDENCE = '362B7EC3-0F09-47C8-A3BE-DC066715CDAE';
 
@@ -134,7 +140,8 @@ export const sketchLine: RecordDecoder<SketchLine> = {
   name: 'sketch line',
   decode: (seg, id) =>
     decodeLevel(seg, id, 'sketch line', (r, props, version) => {
-      if (version !== 1 && version !== 2) unsupported('sketch line', version);
+      const alt = seg.typeOf(id)?.guid === SKETCH_LINE_ALT;
+      if (alt ? version !== 0 : version !== 1 && version !== 2) unsupported('sketch line', version);
       const owner = ownerAtEnd(seg, r);
       // A referenced analytic wrapper may precede the line.
       if (refAhead(seg, r) !== undefined) r.ref();
@@ -146,7 +153,9 @@ export const sketchLine: RecordDecoder<SketchLine> = {
       if (!isPointRef(seg, r)) vec3(r);
       const endPoint = r.localRef();
       const startPoint = r.localRef();
-      const construction = constructionFlag(r, 'line');
+      // The subclass is drawn through profiles without splitting them: taken
+      // as construction (a profile running along one still uses it).
+      const construction = alt || constructionFlag(r, 'line');
       r.pos = r.end; // flags and the owner backlink
       const tag = props.get('crv_primary_id');
       const secondary = props.get('crv_secondary_id');
@@ -408,4 +417,114 @@ function readNurbs(
   for (let i = 1; i < knots.length; i++)
     if ((knots[i] as number) < (knots[i - 1] as number)) return undefined;
   return { degree, knots, weights, poles };
+}
+
+export interface SketchEllipse {
+  id: number;
+  tag?: bigint;
+  secondary?: bigint;
+  center: Vec3;
+  /** Unit directions of the major and minor axes (the plane normal is major × minor). */
+  major: Vec3;
+  minor: Vec3;
+  majorRadius: number;
+  minorRadius: number;
+  /** Parameter angles: the point at t is center + major·a·cos t + minor·b·sin t. */
+  startAngle: number;
+  endAngle: number;
+  centerPoint: number;
+  /** An arc's end points (absent for a whole ellipse). */
+  startPoint?: number;
+  endPoint?: number;
+  owner?: number;
+}
+
+/**
+ * An ellipse or elliptical arc (v2): after the curve ids, [a wrapper
+ * reference], the centre, the unit major and minor axis directions (3 f64
+ * each), the major and minor radii, the start and end parameter angles, then
+ * references to the centre point and, for an arc, its end and start points;
+ * flags and the owner backlink.
+ */
+export const sketchEllipse: RecordDecoder<SketchEllipse> = {
+  name: 'sketch ellipse',
+  decode: (seg, id) =>
+    decodeLevel(seg, id, 'sketch ellipse', (r, props, version) => {
+      if (version !== 2) unsupported('sketch ellipse', version);
+      const owner = ownerAtEnd(seg, r);
+      if (refAhead(seg, r) !== undefined) r.ref();
+      const center = vec3(r);
+      const major = vec3(r);
+      const minor = vec3(r);
+      const majorRadius = r.f64();
+      const minorRadius = r.f64();
+      const startAngle = r.f64();
+      const endAngle = r.f64();
+      checkEllipse(id, center, major, minor, majorRadius, minorRadius, startAngle, endAngle);
+      const centerPoint = r.localRef();
+      const out: SketchEllipse = {
+        id,
+        center,
+        major,
+        minor,
+        majorRadius,
+        minorRadius,
+        startAngle,
+        endAngle,
+        centerPoint,
+      };
+      const tag = props.get('crv_primary_id');
+      const secondary = props.get('crv_secondary_id');
+      if (tag !== undefined) out.tag = tag;
+      if (secondary !== undefined) out.secondary = secondary;
+      if (isPointRef(seg, r)) {
+        out.endPoint = r.localRef();
+        if (!isPointRef(seg, r)) r.skip(2);
+        out.startPoint = r.localRef();
+      }
+      if (owner !== undefined) out.owner = owner;
+      r.pos = r.end;
+      return out;
+    }),
+};
+
+/**
+ * Refuses an ellipse no sketch could hold: a number that isn't finite, a
+ * radius not between 1e-9 and 1e6 cm, axes that aren't unit and square to
+ * each other, or an angle past ±1,000 radians (the files keep them in a turn
+ * or two). Whatever the file says, the curve then costs a bounded amount to
+ * draw and trace.
+ */
+function checkEllipse(
+  id: number,
+  center: Vec3,
+  major: Vec3,
+  minor: Vec3,
+  a: number,
+  b: number,
+  t0: number,
+  t1: number,
+): void {
+  const numbers = [...center, ...major, ...minor, a, b, t0, t1];
+  const unit = (v: Vec3) => Math.abs(Math.hypot(v[0], v[1], v[2]) - 1) < 1e-6;
+  const square = Math.abs(major[0] * minor[0] + major[1] * minor[1] + major[2] * minor[2]) < 1e-6;
+  const radius = (r: number) => r > 1e-9 && r < 1e6;
+  if (
+    !numbers.every(Number.isFinite) ||
+    !unit(major) ||
+    !unit(minor) ||
+    !square ||
+    !radius(a) ||
+    !radius(b) ||
+    Math.abs(t0) > 1000 ||
+    Math.abs(t1) > 1000
+  )
+    throw new F3dFormatError(`Sketch ellipse #${id}: not a curve a sketch can hold.`);
+}
+
+/** How far an elliptical arc turns, in (0, 2π]: from its start angle round to its end. */
+export function ellipseSweep(e: Pick<SketchEllipse, 'startAngle' | 'endAngle'>): number {
+  const turn = 2 * Math.PI;
+  const sweep = (((e.endAngle - e.startAngle) % turn) + turn) % turn;
+  return sweep === 0 ? turn : sweep;
 }
