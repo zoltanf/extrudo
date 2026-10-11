@@ -2115,7 +2115,7 @@ viewport store, **Radial right-click menu** (a checkbox on the same state as the
 Version history, Settings, Help, and the name plus the save dot are one `TitleGroup`
 centred between the cluster and Version history; the pure `titleFit`
 (`shell/titleFit.ts`) drops the save word first (`data-title-fit="dot"`), then truncates
-the name (`truncate`, `title` = full name). The separator after the cluster is gone. **Tiles first**: Home › Files has no fixed `more` (Import Design, Import Model — `importBody`, full label "Import STEP, mesh or OpenSCAD…" —, Import Drawing, Canvas, Export Design, Export Model, Export as Script, Save to Linked Folder), Construct › Planes shows all seven planes as tiles, and a tile is a fixed 64 px wide, its label the tool's full name wrapped onto up to two 11 px lines when it fits, its short name otherwise (ADR-0079 round 3).
+the name (`truncate`, `title` = full name). The separator after the cluster is gone. **Tiles first**: Home › Files has no fixed `more` (Import Design, Import Model — `importBody`, full label "Import STEP, mesh, OpenSCAD or .f3d…" —, Import Drawing, Canvas, Export Design, Export Model, Export as Script, Save to Linked Folder), Construct › Planes shows all seven planes as tiles, and a tile is a fixed 64 px wide, its label the tool's full name wrapped onto up to two 11 px lines when it fits, its short name otherwise (ADR-0079 round 3).
 
 ADR-0080 (P6-06, slice S1) made the docs site one site: `apps/site/src/docs.ts`'s
 `COLLECTIONS` map `docs/guide` → `/docs/`, `guide/tutorials` → `/docs/tutorials/`,
@@ -2199,9 +2199,11 @@ ADR-0083 (the owner, 2026-10-10) added **`.f3d` import**, `packages/f3d`
 (parameters, timeline, sketches, extrudes with their profile regions,
 fillet/chamfer edges as tagged ASM faces), `f3dToDesign` writes it through the
 API and returns a report (imported, skipped with why, notes); the format is in
-`packages/f3d/FORMAT.md`. The app's **Import .f3d…** (Home › Files,
-`importF3dFile` in `project/actions.ts`, its own lazy chunk) makes a new
-design. No sample files in the repo: `F3D_SAMPLES=<dir>` runs
+`packages/f3d/FORMAT.md`. Home › Files › **Import Model** takes an `.f3d` too
+(`importF3dFile` in `project/actions.ts`, its own lazy chunk) and makes a new
+design of it (no separate tile, 2026-10-11). The home screen's one **Import…** card
+(Start row; `importAnyFile`) takes `.extrudo`, `.f3d` and model files; a model file makes a
+new design that opens with the Import dialog on it (`requestModelImport`). No sample files in the repo: `F3D_SAMPLES=<dir>` runs
 `corpus.test.ts`. Gaps (face profiles, start offsets, holes, revolves,
 patterns, components, sketch dimensions) are in the ADR.
 

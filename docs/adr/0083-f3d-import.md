@@ -111,11 +111,16 @@ with a reference STEP) showed it is practical.
    - Components' features join the one design, with a note (Extrudo has no
      components yet, ADR-0081).
    - Everything else is skipped and listed in the report.
-4. **In the app**, Home › Files has **Import .f3d…** (and the home screen a
-   button; Import .extrudo accepts `.f3d` too). Each import makes a new design
-   with the file's preview as its thumbnail; when it opens, a notice says how
-   many timeline features came across and lists the rest. The package is its
-   own lazy chunk.
+4. **In the app**, Home › Files › **Import Model** accepts `.f3d` (Import
+   .extrudo… too). The home screen's one **Import…** card (the Start row,
+   beside New design) takes `.extrudo`, `.f3d` and the model files (STEP,
+   meshes, OpenSCAD); a model file makes a new design named for it, which
+   opens with Import Model's dialog on the file. An `.f3d` import makes a new
+   design with the file's preview as its thumbnail; when it opens, a notice
+   says how many timeline features came across and lists the rest. The
+   package is its own lazy chunk. Amended 2026-10-11 (the owner): the separate
+   Import .f3d… tile and home-screen button went into Import Model and
+   Import….
 5. **No sample files in the repository.** The designs used to work out the
    format are other people's or the owner's own; `corpus.test.ts` reads a
    folder of them when `F3D_SAMPLES` points at one. `map.test.ts` covers the

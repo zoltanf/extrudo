@@ -2,7 +2,7 @@
 title: Horizontal
 section: Tools
 category: Sketch
-order: 110
+order: 109
 ---
 
 # Horizontal

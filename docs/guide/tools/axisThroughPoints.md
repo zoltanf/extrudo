@@ -2,7 +2,7 @@
 title: Axis Through 2 Points
 section: Tools
 category: Construct
-order: 59
+order: 58
 ---
 
 # Axis Through 2 Points

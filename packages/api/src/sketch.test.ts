@@ -365,6 +365,39 @@ describe('constraints and dimensions', () => {
     expect(d.validate()).toEqual([]);
   });
 
+  it("doesn't give an unnamed dimension a name another call in the sketch gave", () => {
+    const d = Design.create(FIXED);
+    const s = d.sketch(d.origin.xy, (k) => {
+      const a = k.line([0, 0], [40, 0]);
+      const b = k.line([0, 10], [40, 10]);
+      const c = k.line([0, 20], [40, 20]);
+      k.dimension(a, '40 mm');
+      k.dimension(b, '40 mm', { name: 'd1' });
+      k.dimension(c, '40 mm', { name: 'd2' });
+      k.diameter(k.circle([0, 40], '3 mm'), '6 mm');
+    });
+    const dims = dimensions(s.data) as Record<string, unknown>[];
+    expect(dims.map((x) => x.paramName)).toEqual(['d3', 'd1', 'd2', 'd4']);
+    expect(d.validate()).toEqual([]);
+  });
+
+  it('skips names the document already uses, a user parameter included', () => {
+    const d = Design.create(FIXED);
+    d.parameter('d2', '5 mm');
+    d.sketch(d.origin.xy, (k) => {
+      k.dimension(k.line([0, 0], [10, 0]), '10 mm');
+    });
+    const s = d.sketch(d.origin.xz, (k) => {
+      const a = k.line([0, 0], [10, 0]);
+      const b = k.line([0, 10], [10, 10]);
+      k.dimension(a, '10 mm', { name: 'd4' });
+      k.dimension(b, '10 mm');
+    });
+    const dims = dimensions(s.data) as Record<string, unknown>[];
+    expect(dims.map((x) => x.paramName)).toEqual(['d4', 'd5']);
+    expect(d.validate()).toEqual([]);
+  });
+
   it('measures what the entity is, the way the Dimension tool works it out', () => {
     const d = Design.create(FIXED);
     const s = d.sketch(d.origin.xy, (k) => {

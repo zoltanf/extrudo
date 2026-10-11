@@ -2,7 +2,7 @@
 title: Rectangular Pattern
 section: Tools
 category: Solid
-order: 32
+order: 31
 ---
 
 # Rectangular Pattern

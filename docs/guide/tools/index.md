@@ -25,8 +25,7 @@ Every tool in the toolbar, by tab. On a Mac, Ctrl is ⌘.
 ### Files
 
 - [Import .extrudo](./importProject.md) — Open an .extrudo file as a new design.
-- [Import .f3d](./importF3d.md) — Open an .f3d design file as a new design: its parameters, sketches, pulled solids, fillets and chamfers.
-- [Import STEP, mesh or OpenSCAD](./importBody.md) — Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print.
+- [Import STEP, mesh, OpenSCAD or .f3d](./importBody.md) — Bring in a STEP file, a mesh (STL, 3MF, OBJ) or an OpenSCAD file as bodies you can cut, combine and print. An .f3d file opens as a new design.
 - [Import Drawing](./importDrawing.md) — Bring an SVG or DXF drawing into the sketch as ordinary curves.
 - [Canvas](./canvas.md) — Lay a picture on a plane as a reference to trace, and calibrate it to real scale.
 - [Export .extrudo](./exportProject.md) — Download the whole design as an .extrudo file, with its versions and attachments.
