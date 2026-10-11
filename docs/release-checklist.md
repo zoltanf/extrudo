@@ -112,6 +112,12 @@ job, never by hand.
   `gh workflow run desktop.yml --ref main -f cask_tag=v0.4.1`: only the
   `homebrew` job runs, taking the zip from that tag's release.
 
+### The landing site (ADR-0057's amendment of 2026-10-11)
+
+- [ ] **Each release:** take the "Latest build" tags (`<span class="tag">`) off
+  `apps/site/features/index.html` for the features the release ships: the site
+  deploys from main, so they mark what app.extrudo.org doesn't have yet.
+
 ## Hosting (docs/deploy.md has the steps)
 
 - [x] Cloudflare: create the Pages project `extrudo` (Direct Upload). Done
