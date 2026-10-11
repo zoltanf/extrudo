@@ -1399,7 +1399,7 @@ export function createToolHost(options: ToolHostOptions): ToolHost {
       if (!solver || move) return true;
       const selected = selectedEntities(sketch.data);
       const dragged = selected.includes(hit) ? selected : [hit];
-      // A circle's rim resizes it when its radius can change (as in Fusion); else it moves.
+      // A circle's rim resizes it when its radius can change; else it moves.
       const rim = dragged.length === 1 ? rimDrag(solver, sketch, hit) : undefined;
       if (rim) {
         move = { from: pointer.point, rim };

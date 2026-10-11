@@ -192,7 +192,7 @@ placeholder tool `pattern` is gone.
   new; `SketchOutputData.curves` too.
 - Open: skipping instances ("skip list"); patterns of faces; a count handle;
   a path pattern's placement is relative to the path's start, not to the
-  object (Fusion places the object on the path's start by an option);
+  object (some CAD tools place the object on the path's start by an option);
   patterns of a feature that changes a body (fillet, chamfer, Shell) or of
   a Hole feature, once P3-04 lands, should go through the same route
   (`operate`) or a `tool` output of their own.
@@ -371,14 +371,14 @@ before.
 - **Filtering in the app** (dropping the ghosts or the copies from the preview
   drawing): the preview comes from the kernel and the bodies are what it is, so
   the kernel has to do it, and `skip` has to be an input for the same reason.
-- **A per-instance boolean in the document** (the Fusion way, `skip1 = true`):
+- **A per-instance boolean in the document** (the usual CAD way, `skip1 = true`):
   it grows with the count, and a flag that names a position by index is exactly
   the thing that goes stale when the count changes. A label list is the same
   information and cannot.
 - **Repeating the layout maths in the app** so the handles need no report: it
   would be a second copy of `rectangularPlacements` and friends, drifting from
   the kernel's. The path pattern cannot be worked out in the app at all.
-- **Dragging a count handle changes the distance** instead (what Fusion does):
+- **Dragging a count handle changes the distance** instead (what other CAD tools do):
   a count is the thing the handle sits on, and the distance already has an
   arrow. Making the distance change too would mean every instance moving under
   the pointer.

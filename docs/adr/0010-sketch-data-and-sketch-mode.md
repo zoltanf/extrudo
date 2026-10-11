@@ -34,8 +34,8 @@ collapses them into one step at the end.
    radius) and `arc` (center, start, end, counter-clockwise, radius from the
    start point); lines, circles and arcs have a `construction` flag.
    Curves refer to their points by ID. Two curves that meet don't share a
-   point: a `coincident` constraint joins their endpoints, as in FreeCAD and
-   Fusion and as ADR-0002 decided for the solver. The schema rejects a point
+   point: a `coincident` constraint joins their endpoints, as in FreeCAD
+   and as ADR-0002 decided for the solver. The schema rejects a point
    used by two curves, so there is one way to say "these meet".
 3. **Records keyed by ID, not arrays.** `entities`, `constraints` and
    `dimensions` are records. Deleting an entity is one small Immer patch; in

@@ -24,9 +24,9 @@ and visibility for it. There is nothing above a body. People who print want
 to keep the parts that belong together in one design (a box and its lid, a
 hinge's two leaves, a lid and its seal printed in a second colour), to show,
 hide, export and weigh each part as a unit, and to hand a slicer one object
-per part. Fusion calls such a unit a component and adds joints, occurrences,
-external references and motion studies on top; Fusion is a conceptual
-reference only (no text, icons or behaviour copied wholesale).
+per part. Mainstream CAD calls such a unit a component and adds joints,
+occurrences, external references and motion studies on top; those tools are a
+conceptual reference only (no text, icons or behaviour copied wholesale).
 
 The constraints that shape the decision:
 
@@ -529,10 +529,10 @@ joint type is dropped with a note. Nested Fusion components flatten to one level
 - **A member list on the component** (`bodies: BodyId[]`): a body could be
   listed twice, every move is two writes, and bodies with no metadata yet (CLI,
   API) need a rule anyway. Rejected for `BodyMeta.component`.
-- **Every body in a component** (Fusion's root component as a real record):
+- **Every body in a component** (a root component as a real record, as in mainstream CAD):
   forces a migration onto every existing design and gains nothing for a
   one-part design; "loose" is the root.
-- **A stored transform per component** (Fusion's occurrence transform), applied
+- **A stored transform per component** (the usual CAD occurrence transform), applied
   after the timeline: every body would have a modelling position and a placed
   position, and picking, sketches on faces, measure, section, the print aids
   and export would each have to apply it, while face names and kernel positions

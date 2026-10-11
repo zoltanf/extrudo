@@ -9,7 +9,7 @@
 ## Context
 
 P0-05 asks for the R3F canvas, an adaptive infinite grid, the origin planes,
-axes and point, camera controls with the Fusion mouse mapping and presets
+axes and point, camera controls with the Shift orbit mouse mapping and presets
 (FR-VP-01), a ViewCube with faces, edges, corners, home and rotate arrows
 (FR-VP-02), perspective/orthographic and four visual styles (FR-VP-03), and
 the grid and origin (FR-VP-04). The brand fixes the look: a glowing
@@ -48,7 +48,7 @@ clicks the ViewCube's Top face and checks the camera orientation.
    `{ projection, position, target, up }` (and `size` for orthographic; the
    amendment of 2026-10-10).
 4. **Mouse mapping as tables** (`viewport/navigation.ts`): one pure function
-   from button + modifiers to orbit/pan/zoom per preset. Fusion (the
+   from button + modifiers to orbit/pan/zoom per preset. Shift orbit (the
    default until 2026-09-27; see the amendment):
    middle-drag pans, Shift+middle orbits, wheel zooms, middle double-click
    fits. Blender: middle orbits, Shift pans, Ctrl zooms. Onshape/SolidWorks:
@@ -70,7 +70,7 @@ clicks the ViewCube's Top face and checks the camera orientation.
    in perspective. It fades out radially (0.1 → 0.95 view sizes from the
    target) and at grazing angles. The X and Y axes are drawn by the same
    shader; the Z axis is a line that fades the same way. The origin planes are
-   hidden by default (as in Fusion) and toggled from the Browser's Origin
+   hidden by default (as is usual in CAD) and toggled from the Browser's Origin
    folder; they and the Z axis scale with the view so they keep their screen
    size.
 7. **Scene colours come from the design tokens** at runtime (read from

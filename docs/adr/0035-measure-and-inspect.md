@@ -113,7 +113,7 @@ a face's surface or a closest point.
 - **A feature-dialog spec for Measure** (selection fields, no OK):
   dialogs pick into persistent references and commit a command; Measure
   wants the plain selection and never commits.
-- **Two dedicated selection slots (Fusion's "Selection 1 / 2")**: the
+- **Two dedicated selection slots (the usual "Selection 1 / 2")**: the
   session selection already has order, highlight and pruning after
   recomputes; a click rule on top of it was enough.
 

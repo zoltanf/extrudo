@@ -1,10 +1,9 @@
 # ADR-0074: Auto-project
 
 - **Status:** Accepted, 2026-10-06
-- **Task:** P6-07 (FR-SK-17: "Auto-project (Fusion's 'auto project edges on
-  reference'): a body edge or vertex a sketch tool snaps, constrains or
-  dimensions to is projected into the sketch on the fly … optionally the
-  face's outline when a sketch starts on a face").
+- **Task:** P6-07 (FR-SK-17: "Auto-project: a body edge or vertex a sketch
+  tool snaps, constrains or dimensions to is projected into the sketch on the
+  fly … optionally the face's outline when a sketch starts on a face").
 - **Builds on:** ADR-0031 and its P4-12 amendment (projections: a
   `SketchData.projections` record, `addProjection`, the kernel reporting
   curves on the next recompute, `ToolHost.syncProjections`), ADR-0012 (the
@@ -17,8 +16,8 @@
 
 A sketch is a snapshot of a plane. To line geometry up with the body it is
 drawn on, the user must project the body's edges into the sketch first — the
-Project tool (P, ADR-0031) by hand, one pick at a time. Fusion's "auto
-project edges on reference" removes that step: as soon as a sketch tool
+Project tool (P, ADR-0031) by hand, one pick at a time. Auto-project of
+edges as reference removes that step: as soon as a sketch tool
 snaps to a body edge or vertex, the edge or vertex is projected into the
 sketch on the fly, as if the user had projected it.
 

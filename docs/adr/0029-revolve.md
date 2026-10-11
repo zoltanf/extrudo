@@ -93,7 +93,7 @@ inputs for tests and scripts. `BODY_OPERATIONS`, `enumInput`, `exprOf` and
 
 Side 1 turns right-handed about the axis direction (counter-clockwise
 seen from its tip); Flip reverses the direction. A user who gets the
-wrong way round flips, as in Fusion; the arc in the view shows the way.
+wrong way round flips, as is usual in CAD; the arc in the view shows the way.
 
 ### 3. What may be turned
 
@@ -105,8 +105,8 @@ source. Two checks come before the sweep:
   normal, a point on it within 1e-6 mm): "The axis doesn't lie in the
   profile's plane. Pick an axis in that plane." An axis off the plane
   (parallel to it or not) can make valid solids, but whether the sweep
-  passes through itself then depends on more than a side test; Fusion and
-  most CAD refuse it too.
+  passes through itself then depends on more than a side test; most
+  CAD tools refuse it too.
 - **Every profile lies on one side of the axis**, touching at most: each
   part's area inside a half-plane face on the axis's positive side
   (`boolean('common')` with a big rectangle from `planarFaces`) must be
@@ -212,7 +212,7 @@ reading nearest the last one, within ±360°) instead of wrapping at
 
 ## Consequences
 
-- The Revolve tool is live (Solid › Create, no key, as in Fusion). The
+- The Revolve tool is live (Solid › Create, no key, as is usual in CAD). The
   shell's and the commands' "arrives with" examples moved to Shell
   (P3-03).
 - `revolve.test.ts` covers full and partial turns (volumes against
@@ -271,7 +271,7 @@ reading nearest the last one, within ±360°) instead of wrapping at
 - ~~Construction axes (P3-05) as `axis` references; the kernel says "Can't
   find the axis…" for anything but the origin axes today.~~ Done in P3-05
   (`lineOf`, ADR-0040).
-- Revolve "to object" (Fusion's "To"), and an angle measured from a
+- Revolve "to object" (the usual "To"), and an angle measured from a
   reference other than the profile.
 - ~~The field names a sketch-line axis "1 sketch curve"; "Line · Sketch1"
   would read better (all selection fields could name single picks).~~

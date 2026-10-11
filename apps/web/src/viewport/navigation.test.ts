@@ -28,11 +28,11 @@ describe('dragAction', () => {
     ['extrudo', input(MIDDLE, { ctrlKey: true }), 'pan'],
     ['extrudo', input(RIGHT), 'pan'],
     ['extrudo', input(LEFT), undefined],
-    // Fusion
-    ['fusion', input(MIDDLE), 'pan'],
-    ['fusion', input(MIDDLE, { shiftKey: true }), 'orbit'],
-    ['fusion', input(LEFT), undefined],
-    ['fusion', input(RIGHT), undefined],
+    // Shift orbit
+    ['shift-orbit', input(MIDDLE), 'pan'],
+    ['shift-orbit', input(MIDDLE, { shiftKey: true }), 'orbit'],
+    ['shift-orbit', input(LEFT), undefined],
+    ['shift-orbit', input(RIGHT), undefined],
     // Blender
     ['blender', input(MIDDLE), 'orbit'],
     ['blender', input(MIDDLE, { shiftKey: true }), 'pan'],
@@ -52,12 +52,12 @@ describe('dragAction', () => {
   });
 
   it('turns a left-drag into the active nav-bar tool in every preset', () => {
-    for (const preset of ['extrudo', 'fusion', 'blender', 'onshape', 'trackpad'] as const) {
+    for (const preset of ['extrudo', 'shift-orbit', 'blender', 'onshape', 'trackpad'] as const) {
       expect(dragAction(preset, input(LEFT), 'zoom')).toBe('zoom');
       expect(dragAction(preset, input(LEFT), 'pan')).toBe('pan');
     }
     // Other buttons keep their mapping.
-    expect(dragAction('fusion', input(MIDDLE), 'orbit')).toBe('pan');
+    expect(dragAction('shift-orbit', input(MIDDLE), 'orbit')).toBe('pan');
   });
 });
 
@@ -73,8 +73,8 @@ describe('wheelAction', () => {
   });
 
   it('zooms out on scroll down and in on scroll up', () => {
-    const out = wheelAction('fusion', wheel(100));
-    const into = wheelAction('fusion', wheel(-100));
+    const out = wheelAction('shift-orbit', wheel(100));
+    const into = wheelAction('shift-orbit', wheel(-100));
     if (out.action !== 'zoom' || into.action !== 'zoom') throw new Error('expected zoom');
     expect(out.factor).toBeGreaterThan(1);
     expect(into.factor).toBeLessThan(1);
@@ -82,8 +82,8 @@ describe('wheelAction', () => {
   });
 
   it('counts line-mode deltas as 16 px', () => {
-    const lines = wheelAction('fusion', wheel(3, { deltaMode: 1 }));
-    const pixels = wheelAction('fusion', wheel(48));
+    const lines = wheelAction('shift-orbit', wheel(3, { deltaMode: 1 }));
+    const pixels = wheelAction('shift-orbit', wheel(48));
     expect(lines).toEqual(pixels);
   });
 

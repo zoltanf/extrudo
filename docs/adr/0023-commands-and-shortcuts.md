@@ -17,8 +17,8 @@
 ## Context
 
 FR-UX-03 asks for command search (an "S" toolbox and a Ctrl+K palette), a
-marking menu, and Fusion-compatible default shortcuts that the user can
-remap. P1-14 is the first part: a shortcut registry with Fusion's keys,
+marking menu, and default shortcuts that follow mainstream CAD tools and that
+the user can remap. P1-14 is the first part: a shortcut registry with mainstream CAD keys,
 the toolbox and the palette. Before it, keys were declared in three
 places: `shortcut` on tools in `shell/tools.ts` (for tooltips), a
 `TOOL_KEYS` table in `AppShell` (for running them) and hard-coded strings

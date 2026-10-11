@@ -125,7 +125,7 @@ everything had to come from what the kernel already reports.
 ## Open items
 
 - No "Point on path", "Point through two edges", "Plane along path" or
-  midplane for non-parallel planes (Fusion has them); sketch points can't
+  midplane for non-parallel planes (some CAD tools have them); sketch points can't
   be picked as points yet (only vertices and construction points).
 - Planes aren't box-selected, and can't be renamed by a click in the view.
 - The kernel reports a plane's square as an anchor only: a plane through

@@ -1,9 +1,9 @@
 # Extrudo — agent context
 
 Open-source, browser-based parametric CAD for the 3D-printing community, with a
-Fusion 360-style workflow (sketch → features → timeline, parameters everywhere)
-and a playful modern UI. Web first (PWA). An Electron desktop build comes later
-from the same codebase.
+parametric, timeline-based workflow (sketch → features → timeline, parameters
+everywhere) and a playful modern UI. Web first (PWA). An Electron desktop build
+comes later from the same codebase.
 
 **Repo:** <https://github.com/zoltanf/extrudo>. **Public** since 2026-10-04
 (P3-15 prepared it; `docs/release-checklist.md` lists the owner's remaining
@@ -1812,11 +1812,11 @@ one transaction** (insert the Script at the first recorded feature, then
 recorded one is always inside the run, so only an expression outside it (a user
 parameter reading a recorded sketch's `d1`) refuses a Replace in the UI.
 
-ADR-0074 (P6-07) added **auto-project** (Fusion's "auto project edges on
-reference"): while a drawing, constraint or dimension tool runs, the view
-offers the shown bodies' edges and vertices under the pointer behind the
-sketch's own geometry (`apps/web/src/sketch/autoProject.ts`'s `modelSnapAt`
-through `pickStack` with an edges-and-vertices filter, a vertex before an
+ADR-0074 (P6-07) added **auto-project** (a body edge a sketch tool snaps to is
+projected into the sketch as reference): while a drawing, constraint or
+dimension tool runs, the view offers the shown bodies' edges and vertices under
+the pointer behind the sketch's own geometry
+(`apps/web/src/sketch/autoProject.ts`'s `modelSnapAt` through `pickStack` with an edges-and-vertices filter, a vertex before an
 edge, visible before hidden; `autoProjectSnap` gates it on the preference
 `viewport.autoProject`, **on** by default, whose sketch-palette checkbox and
 `toggleAutoProject` command turn it off). The snap reaches the tool as
@@ -2253,8 +2253,10 @@ Vitest + Playwright · Biome. Desktop later: Electron.
   `apps/web/src/platform/` interfaces. This keeps the Electron port cheap.
 - **Every numeric input is an `<ExpressionInput>`** (expressions and
   parameters, with units).
-- **Fusion 360 is a conceptual reference only.** Never copy its code, icons,
-  images, text or branding.
+- **Other CAD tools are conceptual references only.** Never copy their code,
+  icons, images, text or branding. Never name the vendor of the `.f3d` format
+  or its products anywhere in the repository (code, docs, commit messages, PR
+  text): say "f3d" or "the file".
 - `packages/core` has no DOM and no WASM. `packages/kernel` and
   `packages/sketch` must run in Node (for tests and the CLI).
 

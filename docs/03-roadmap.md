@@ -28,7 +28,7 @@ split before starting.
 
 ## Phase 0 — Foundations (→ v0.0 "empty workshop")
 
-Goal: a running app with the Fusion-like shell, a navigable 3D viewport, a
+Goal: a running app with a familiar CAD shell, a navigable 3D viewport, a
 project store, the parameter engine, and proof that the kernel and solver work
 in the browser.
 
@@ -61,8 +61,8 @@ in the browser.
   layout matching `04-ui-spec.md §2` with placeholder content.
   *AC:* Screenshot test of the shell in both themes; panels resize and collapse.
 - [x] **P0-05 Viewport.** *(done 2026-09-25, ADR-0008)* R3F canvas; adaptive infinite grid; origin
-  planes/axes/point; camera controls with Fusion mouse mapping and presets;
-  ViewCube (click faces/edges/corners, home, animated transitions); nav bar
+  planes/axes/point; camera controls with the Shift orbit mouse mapping and
+  presets; ViewCube (click faces/edges/corners, home, animated transitions); nav bar
   (orbit, pan, zoom, fit, ortho/perspective, visual style, grid toggle).
   *AC:* FR-VP-01..04; E2E clicks the ViewCube "Top" face and asserts the camera
   orientation.
@@ -101,7 +101,7 @@ in the browser.
   0 bytes of heap growth over 2000 rebuilds. See ADR-0001, *Follow-up: P0-09*.
 
 **Phase 0 exit:** the app opens to a home screen; a new project shows the
-viewport; navigation feels like Fusion; save and reload work; the kernel renders
+viewport; navigation feels like established CAD; save and reload work; the kernel renders
 a test solid.
 
 ---
@@ -196,7 +196,7 @@ Benchmark **B1** buildable.
   Inkscape. *Done 2026-09-27, ADR-0022. Size checked in Inkscape 1.4.4 (100 × 60 mm
   plate: 100 × 60 mm page), DXF with ezdxf's audit. Not yet: export from model-mode selection or the File menu.*
 - [x] **P1-14 Command search and shortcuts v1.** Shortcut registry with
-  Fusion defaults (`L R C A P D T O X E` …); `S` toolbox and Ctrl+K palette
+  mainstream CAD defaults (`L R C A P D T O X E` …); `S` toolbox and Ctrl+K palette
   (fuzzy search over commands).
   *AC:* FR-UX-03 (partial).
 - [x] **P1-15 Benchmark B1 E2E.** Playwright builds B1 through the UI, changes a
@@ -757,7 +757,7 @@ Goal: the modify toolset that makes parts printable and pretty. Benchmarks
     `splitSolids`, body names and colours (P2-08); the Move wedge (P3-06).
 
 **Phase 3 exit (v0.3 MVP):** a hobbyist can model typical functional prints
-end to end, faster than in Fusion 360.
+end to end, faster than in established desktop CAD.
 
 ---
 
@@ -1133,7 +1133,7 @@ end to end, faster than in Fusion 360.
   bottle cap), four tested tutorials in all, each a Playwright spec that checks
   its page; S9 the in-app links (Help menu, F1, "F1 for more" in tooltips); S10
   the review's fixes (link schemes, route decoding, F1 in fields).
-- [x] **P6-07 Auto-project** (Fusion's "auto project edges on reference"): a
+- [x] **P6-07 Auto-project**: a
   body edge or vertex a sketch tool snaps, constrains or dimensions to is
   projected into the sketch on the fly (a P2-09 projection record), with a
   preference to turn it off; optionally the face's outline when a sketch
@@ -1173,11 +1173,11 @@ don't let Phase 3 features be built without it.
 | OCCT operations fail on edge cases (fillets especially) | Features go red | Friendly messages with suggested values; fall back to per-edge attempts; a fuzz test corpus. |
 | OCCT WASM size and load time | Slow first start | Trimmed custom build; PWA cache; show the home screen before the kernel is ready. |
 | WASM memory leaks (manual `delete()`) | Tab crashes after long sessions | Disposal scopes as a lint-checked rule; a memory test that recomputes a fixture 500×. |
-| Scope creep toward "full Fusion" | Never ships | Phases with exit criteria and benchmark models; out-of-scope list in requirements. |
+| Scope creep toward "full desktop CAD" | Never ships | Phases with exit criteria and benchmark models; out-of-scope list in requirements. |
 | Solver instability (flipping solutions) | Sketches jump on edit | Start from stored solved positions; small-step drag solving; tests. |
 | Large coupled sketch components solve slowly (planegcs uses dense matrices; ADR-0002) | Dragging a 200-entity single component runs at ~12 fps; edits take 0.1–1 s. **Measured in P1-03 (ADR-0011): a closed gear outline drags far worse than its size suggests, about 120 ms per step at 52 curves and 1–5 s at 104, because planegcs's drag solve (SQP) needs ~30 iterations per step on a coupled loop of arcs** | Per-component solving covers the usual sketch. For loops like gears: solve drags of large components in a worker at the latest pointer position; keep the SQP's BFGS matrix between drag steps or patch it to sparse matrices in our build; or drag with a lighter formulation. P1-09 (ADR-0018) drags on the UI thread, one solve per pointer move, which is fine for ordinary sketches; the gear case is still open. |
 | LGPL obligations misunderstood | Legal trouble when public | Separate WASM files; NOTICE file (done in P3-15). |
-| Mimicking Fusion too closely (trade dress) | Legal risk | Own icons, names and branding; copy concepts and workflow only. |
+| Mimicking another CAD tool too closely (trade dress) | Legal risk | Own icons, names and branding; copy concepts and workflow only. |
 
 ## Open decisions (for the project owner)
 

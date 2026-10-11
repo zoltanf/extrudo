@@ -119,7 +119,7 @@ native harness on the pinned image):
    (optional), Body (shown while no face is picked, or once a body is: a body
    selected before Shell fills it), Thickness (default 2 mm) and Direction.
    No on-canvas handle yet. The tool is the Modify group's Shell tile; **it
-   has no default key** (Fusion has none either); it is in Ctrl+K and the
+   has no default key** (mainstream CAD tools have none either); it is in Ctrl+K and the
    toolbox like every command.
 9. **Memory:** `memory.test.ts` runs 1000 rounds of shells inside, outside
    and closed, a filleted body hollowed closed, a wall too thick with its

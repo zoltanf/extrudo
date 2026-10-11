@@ -104,10 +104,10 @@ its value, or a parameter it uses, has to move the geometry.
 - **Driven dimensions as parameters holding their measurement:** geometry
   would feed back into expressions, and through them into the solver.
   Possible later with care; nothing asks for it yet.
-- **Refusing an over-constraining dimension outright:** Fusion offers to
+- **Refusing an over-constraining dimension outright:** CAD tools often offer to
   make it driven instead, which is what the user usually wants; P1-08 adds
   the question.
-- **A radius for circles:** Fusion and most drawings use the diameter;
+- **A radius for circles:** most CAD tools and drawings use the diameter;
   the radius is for arcs.
 - **Inline definitions in every `<ExpressionInput>`:** the heads-up box
   and feature dialogs need their own create step (the parameter must exist

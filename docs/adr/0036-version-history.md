@@ -23,7 +23,7 @@
 
 FR-PRJ-03: autosave with a visible save state (done in P0-08), plus an
 explicit "Save version" with a description that keeps a history like
-Fusion's, and restoring any version. Autosave already writes the working
+other CAD tools', and restoring any version. Autosave already writes the working
 document shortly after every change, so a version isn't about not losing
 work; it is a named state to come back to. The undo history lives only
 while the page is open.

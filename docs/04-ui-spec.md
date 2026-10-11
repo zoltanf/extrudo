@@ -1,8 +1,8 @@
 # 04 — User Interface Specification
 
-Reference for concepts: the public Fusion 360 help at
-`https://help.autodesk.com/view/fusion360/ENU/`. Use it to understand
-*behaviour* only. Never copy its icons, images, text or branding.
+Reference for concepts: the public help of established desktop CAD tools. Use
+it to understand *behaviour* only. Never copy their icons, images, text or
+branding.
 
 ## 1. Design language
 
@@ -302,7 +302,7 @@ brief, voice) is in **`05-brand.md`**. In short:
 The Extrudo preset is Onshape / SolidWorks with the middle and right
 buttons swapped. Other presets, in the Mouse controls menu after this one:
 Onshape / SolidWorks (right-drag orbit, middle-drag or Ctrl + right-drag
-pan), Fusion (MMB pan, Shift+MMB orbit), Blender (MMB orbit, Shift+MMB
+pan), Shift orbit (MMB pan, Shift+MMB orbit), Blender (MMB orbit, Shift+MMB
 pan), Trackpad (two-finger pan, pinch zoom, Alt+drag orbit). Since the
 right button drags, the right-click marking menu (§3.3) must open only on
 a right-click without movement, as Onshape's context menu does.
@@ -407,7 +407,7 @@ a right-click without movement, as Onshape's context menu does.
   keeps the last valid result, dimmed.
 - OK commits one undoable step and adds (or updates) the timeline chip.
   A new feature that used sketch profiles hides those sketches in the same
-  step (as Fusion does), so a used profile doesn't float in front of the
+  step (as is usual in CAD), so a used profile doesn't float in front of the
   faces made from it and take their clicks. A toast (bottom right, 12 s)
   says so ("Sketch1 is hidden: Extrude1 used its profile.") with a Show
   button; the eye in the browser shows it again too. Editing a feature
@@ -665,7 +665,7 @@ a right-click without movement, as Onshape's context menu does.
 
 ## 5. Default keyboard shortcuts
 
-Fusion-compatible where Fusion has them; remappable in settings.
+Follow mainstream CAD tools where they have a shortcut; remappable in settings.
 
 | Key | Command | Key | Command |
 |---|---|---|---|

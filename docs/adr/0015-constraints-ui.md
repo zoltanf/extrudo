@@ -56,7 +56,7 @@ the geometry with a hover highlight, selectable and deletable glyphs, and a
    with a plausible DOF count. For a constraint the user asked for, the host
    checks the solved sketch: a line, circle, arc or ellipse that shrinks
    below 1 µm makes it refuse the constraint as a conflict.
-4. **Coincident covers both shapes,** as in Fusion: two points make
+4. **Coincident covers both shapes,** as is usual in CAD: two points make
    `coincident`, a point and a curve (either order) `pointOnCurve`.
    Horizontal and vertical take a line at once, or two points. Fix on a
    fixed entity frees it (`SketchEdit.remove`). A tangent between curves

@@ -29,8 +29,8 @@
 ## Context
 
 FR-FT-03 asks for box, cylinder, sphere and torus "as parametric
-features", and the roadmap for "placement on a plane or face". Fusion has
-one command per primitive, each placed on a plane or planar face with a
+features", and the roadmap for "placement on a plane or face". Mainstream
+CAD has one command per primitive, each placed on a plane or planar face with a
 sketch-like point and sizes, and a body operation. The OCCT facade already
 had `makeBox` and `makeCylinder`, but they return shapes without history,
 so their faces would only get positional names; and the facade belonged
@@ -64,8 +64,8 @@ resolved through topological naming on every recompute, so a primitive
 on a face follows the face's plane as a sketch does (ADR-0031). X and Y
 are measured in that frame, like sketch coordinates. A box and a cylinder
 stand on the plane (their base centred on the point, a negative height
-going into it); a sphere and a torus are centred on the point (Fusion
-places them the same way). `PRIMITIVE_SIZES` and `PLACEMENT_NUMBERS` list
+going into it); a sphere and a torus are centred on the point (other CAD
+tools place them the same way). `PRIMITIVE_SIZES` and `PLACEMENT_NUMBERS` list
 every number with its label, unit, default expression and default value,
 shared by the kernel (defaults, positivity checks) and the dialogs (the
 fields).
@@ -135,7 +135,7 @@ for an origin plane.
 ## Consequences
 
 - Box, Cylinder, Sphere and Torus are live in Solid › Create's menu (no
-  keys, as in Fusion). Their chips, edit, suppress and delete work like
+  keys, as is usual in CAD). Their chips, edit, suppress and delete work like
   any feature's.
 - The kernel suite covers every type and origin plane, placement and
   rotation, negative heights, a cylinder joined on a face that follows the
@@ -155,8 +155,8 @@ for an origin plane.
   size changes; and the facade was P2-12's this round.
 - **One `primitive` type with a `shape` enum:** one chip icon and label
   for four things, inputs that mean different things per shape, and
-  switching shapes in a dialog isn't something Fusion or users do.
-- **A box anchored at a corner** (Fusion draws it from two corners): a
+  switching shapes in a dialog isn't something CAD tools or users do.
+- **A box anchored at a corner** (other CAD tools draw it from two corners): a
   centred box turns about its centre, is symmetric about the point and
   matches the other three primitives.
 - **Placing on the face's centroid** instead of the face's sketch frame:
@@ -179,8 +179,8 @@ for an origin plane.
   P3-05 (`planeOf`, ADR-0040).
 - The dialog's Plane field keeps the origin planes on screen while it is
   the pick field, even after a plane is picked.
-- ~~Fusion's torus position option (inside / on centre / outside)~~ Done
-  2026-10-06 as `axis` and `seat` (the amendment below; Fusion's inside /
+- ~~The usual torus position option (inside / on centre / outside)~~ Done
+  2026-10-06 as `axis` and `seat` (the amendment below; the usual inside /
   outside, which resizes the ring around the point, stays deferred).
 
 ## Amendment 2026-10-06: placement by handle and click (P4-12)
@@ -257,7 +257,7 @@ computes exactly as before, and the face name stays
   `Body1:1:10,50,50` (one face; the default 40/10 torus on XY). The golden
   table grew four rows (`torus axis x/y`, `torus seat plane`, `torus axis
   x seat plane`); the diff is additions only. No facade change.
-- **Rejected:** Fusion's inside / outside position (the ring resized
+- **Rejected:** the usual inside / outside position (the ring resized
   around the point, inside the tube) — `seat: 'plane'` covers resting the
   torus, and inside/outside changes what `diameter` means, which the
   templates and files rely on.

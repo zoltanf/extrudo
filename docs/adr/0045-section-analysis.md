@@ -150,7 +150,7 @@ long).
 ## Rejected
 
 - **Storing the section in the document** (a feature or an "Analysis"
-  entry, as Fusion keeps analyses in the browser). It would need a schema
+  entry, as other CAD tools keep analyses in the browser). It would need a schema
   change, a migration, `docs/file-format.md`, undo steps for dragging an
   arrow and a recompute path that computes nothing; and a saved section
   would make every file open half-cut. Nothing here needs it; the day it

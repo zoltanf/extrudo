@@ -1250,7 +1250,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
   and an arc to drag, and new body, join, cut or intersect. A primitive on
   a face follows the face when the model changes.
 - 2026-09-28 · Fix: a new extrude or revolve hides the sketches whose
-  profiles it used (one undo step with it, as in Fusion), so a used
+  profiles it used (one undo step with it, as is usual in CAD), so a used
   profile no longer floats over a pocket and takes the clicks meant for a
   sketch on its floor. A toast bottom left says which sketch was hidden,
   with a Show button, for 12 seconds.
@@ -1362,7 +1362,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
   pointer. ADR-0008 amended.
 - 2026-09-27 · **Onshape / SolidWorks mouse controls by default** (owner's
   choice): first in the Mouse controls menu and the default preset
-  (right-drag orbits, middle-drag pans); Fusion's mapping is second.
+  (right-drag orbits, middle-drag pans); the Shift orbit mapping is second.
   FR-VP-01, UI spec §3.1 and ADR-0008 updated.
 - 2026-09-27 · **No browser menu on right-click** (user report): the
   browser's own "Copy / Select all" menu no longer opens over the view,
@@ -1381,7 +1381,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
   showed a hand). The Solid tab's Select tile is gone; a tool from a
   group's menu lights up its group's label. ADR-0007 and ADR-0008 amended.
 - 2026-09-27 · **P1-14** Command search and shortcuts v1: one keymap
-  table (`commands/keymap.ts`, Fusion's keys plus Shift+1…7 for the
+  table (`commands/keymap.ts`, mainstream CAD keys plus Shift+1…7 for the
   standard views) that the toolbar, menus and shortcut handler all read;
   a per-mode command list (`shell/commands.tsx`: the shown tabs' tools,
   edit, view, panel, file and theme commands); fuzzy search that favours
@@ -1554,7 +1554,7 @@ One line per completed roadmap task, newest first. Dates are absolute.
 - 2026-09-25 · **P0-05** Viewport: R3F canvas over the glowing background,
   Z-up world; our own camera controller (target + quaternion + size, one
   scale for perspective and orthographic, zoom to cursor, fit, 350 ms
-  transitions, instant under reduced motion); Fusion, Blender,
+  transitions, instant under reduced motion); Shift orbit, Blender,
   Onshape/SolidWorks and trackpad mouse presets; adaptive shader grid with X/Y
   axes, Z axis, origin point and planes (Browser eyes); CSS 3D ViewCube with
   faces, edges, corners, home, turn and roll arrows; nav bar (orbit/pan/zoom

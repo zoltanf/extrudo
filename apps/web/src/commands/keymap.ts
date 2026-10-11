@@ -1,5 +1,5 @@
 /**
- * The default keymap (UI spec §5): Fusion 360's keys where Fusion has them.
+ * The default keymap (UI spec §5): the usual CAD keys where there are any.
  * This is the one table of command keys (ADR-0023). The toolbar, menus, the
  * command palette and the shortcut handler all read it, so a settings page
  * can remap them later by layering overrides on top. Keys are written like
@@ -32,7 +32,7 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   arc: ['A'],
   dimension: ['D'],
   trim: ['T'],
-  // Text (P4-03): Fusion's key is T, which is Trim here.
+  // Text (P4-03): the usual key is T, which is Trim here.
   text: ['Shift+T'],
   sketchOffset: ['O'],
   sketchFillet: ['F'],
@@ -44,23 +44,23 @@ export const DEFAULT_KEYMAP: Readonly<Record<string, readonly string[]>> = {
   // Solid (these tools arrive in Phases 2 and 3)
   extrude: ['E'],
   fillet: ['F'],
-  // Press Pull (P3-08): Fusion's key.
+  // Press Pull (P3-08): the usual key.
   pressPull: ['Q'],
   hole: ['H'],
   // Transform and combine bodies (P3-06): M is Move in the model, Sketch Move in a sketch.
   move: ['M'],
-  // Construction geometry (P3-05): Fusion has no defaults for these.
+  // Construction geometry (P3-05): there are no usual keys for these.
   offsetPlane: ['Shift+P'],
   axisThroughPoints: ['Shift+A'],
   constructionPoint: ['Shift+X'],
   measure: ['I'],
-  // Joints between components (P6-05, ADR-0081 §4): Fusion's key.
+  // Joints between components (P6-05, ADR-0081 §4): the usual key.
   joint: ['J'],
-  // Section Analysis (P3-09): Fusion has no default for it.
+  // Section Analysis (P3-09): there is no usual key for it.
   section: ['Shift+S'],
   // Help (P6-06 S9): F1 opens the hovered tool's docs page, else the guide.
   help: ['F1'],
-  // View: F6 is Fusion's; Shift+1…7 are ours.
+  // View: F6 fits; Shift+1…7 are ours.
   fit: ['F6'],
   viewHome: ['Shift+1'],
   viewTop: ['Shift+2'],

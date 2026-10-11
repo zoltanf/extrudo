@@ -84,7 +84,7 @@ roadmap asks for a dialog instead.
 - **Keep the solver's `overdetermined` in `over`.** It turned an ordinary
   Fix red (decision 3).
 - **Colour construction geometry by status.** It would compete with the
-  dashes; Fusion keeps construction in its own colour as well.
+  dashes; other CAD tools keep construction in its own colour as well.
 - **Status for sketches that aren't open.** Every sketch would need a solve
   on every change; the open one is what the colours are for.
 

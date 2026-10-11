@@ -167,7 +167,7 @@ package that solves each independent component separately.**
    position.
 4. **Tangency at endpoints** uses `angle_via_point`. The adapter picks 0 or π
    from the current geometry when the constraint is created.
-5. **The document keeps coincident constraints** (FreeCAD and Fusion do the
+5. **The document keeps coincident constraints** (FreeCAD does the
    same). Merging coincident points before solving cut the single-system
    diagnosis 1.8–5×, but with per-component solving it makes no noticeable
    difference, so it isn't worth the bookkeeping now.

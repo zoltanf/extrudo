@@ -10,7 +10,7 @@
 //
 // Two ways to join curves:
 // - 'coincident': every curve has its own endpoints, joined by coincident
-//   constraints (how FreeCAD and Fusion store sketches).
+//   constraints (how FreeCAD stores sketches).
 // - 'shared': joined curves reference the same point, so the coincident
 //   constraints disappear (an adapter could merge coincident points first).
 import type { SketchParam, SketchPrimitive } from '@salusoft89/planegcs';

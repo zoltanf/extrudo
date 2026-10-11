@@ -39,8 +39,8 @@ that double-clicking a sketch in the browser opens it.
    drawn, except while it is open.
 2. **Suppressed and rolled-back sketches aren't drawn** (as before);
    suppressed chips are dashed and see-through, suppressed rows struck
-   through. A suppressed sketch's named dimensions stay parameters, as in
-   Fusion.
+   through. A suppressed sketch's named dimensions stay parameters, as is
+   usual in CAD.
 3. **Deleting is refused when something would break.** `removeFeature`
    refuses, naming the users, while another feature has a `ref` whose ID
    is the feature's ID or starts with `<id>/` (profile references), or
@@ -55,7 +55,7 @@ that double-clicking a sketch in the browser opens it.
    transaction and stay available.
 5. **Double-click edits, F2 renames.** Double-clicking a sketch in the
    browser or the timeline opens it (UI spec §4, and what users expect
-   from Fusion's timeline); renaming is F2 on a focused row, or Rename in
+   from a CAD timeline); renaming is F2 on a focused row, or Rename in
    either menu. In the browser the name becomes a field in the row; on a
    chip, a popover above it. Enter or leaving the field keeps the name,
    Esc puts the old one back, an empty name is refused with a message.

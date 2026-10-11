@@ -12,7 +12,7 @@
 
 A rib (a gusset, a web) is a thin wall that fills the space between a sketch
 line and the body: in an L-bracket, a diagonal line on the bracket's midplane
-becomes a triangular stiffener that meets both legs. Fusion and SolidWorks build
+becomes a triangular stiffener that meets both legs. Mainstream CAD tools such as SolidWorks build
 it from an **open** sketch curve, a thickness about the sketch plane and a
 direction in the plane; the material stops where it meets the body.
 

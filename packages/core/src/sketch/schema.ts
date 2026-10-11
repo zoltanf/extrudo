@@ -10,7 +10,7 @@
  * The model follows the solver's (ADR-0002): points are entities of their
  * own, and curves refer to them. Each point belongs to at most one curve:
  * two lines that meet share no point, a coincident constraint joins their
- * endpoints, as in FreeCAD and Fusion.
+ * endpoints, as in FreeCAD.
  * Entities, constraints and dimensions are records keyed by ID rather than
  * arrays, so deleting one gives one small undo patch instead of shifting
  * every later element.

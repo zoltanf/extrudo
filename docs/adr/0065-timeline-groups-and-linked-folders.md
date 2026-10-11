@@ -11,7 +11,7 @@
 
 ## Context
 
-Long timelines need folding: Fusion groups neighbouring features into one chip
+Long timelines need folding: CAD tools group neighbouring features into one chip
 that opens and closes. Separately, people who keep their designs in a synced
 folder (git, Dropbox, a NAS) want Extrudo to read and write `.extrudo` files
 there, not only in the browser's private storage. Chromium's File System Access
