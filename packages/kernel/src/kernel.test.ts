@@ -6,6 +6,7 @@ import {
   Kernel,
   KernelError,
   OffsetFaceError,
+  type ShapeHandle,
   ShellError,
 } from './kernel';
 import { EDGE_SEAM } from './mesh';
@@ -180,6 +181,50 @@ describe('errors and ownership', () => {
       expect(problem.factor).toBeGreaterThan(0.7);
       expect(problem.factor).toBeLessThan(0.86);
       scope.track(kernel.fillet(box, all, 6 * problem.factor));
+    }
+  });
+
+  it('refuses rounds that meet at a corner where one runs over a rod, instead of trapping OCCT', {
+    timeout: 60_000,
+  }, () => {
+    using scope = kernel.scope();
+    // A 20 × 100 × 25 bar stepped down to z = 12.5 from y = 40 on, with a rod of radius 7.5
+    // along the step (axis x = 10, z = 11): its top stands 6 mm proud of the floor, so it
+    // notches the step's wall 6.5 mm below the wall's top edge. The rod is turned half a
+    // turn about its axis, which puts its seam under the floor: the body that trapped.
+    const bar = scope.track(kernel.box([20, 100, 25]));
+    const notch = scope.track(kernel.box([22, 61, 13.5], [-1, 40, 12.5]));
+    const stepped = scope.track(kernel.cut(bar, notch)).shape;
+    const rod = scope.track(kernel.cylinder(7.5, 60, [10, 40, 11], [0, 1, 0]));
+    const turned = scope.track(kernel.transform(rod, [-1, 0, 0, 20, 0, 1, 0, 0, 0, 0, -1, 22]));
+    const above = scope.track(kernel.box([22, 62, 20], [-1, 39, 12.5]));
+    const bump = scope.track(kernel.common(turned.shape, above)).shape;
+    const body = scope.track(kernel.fuse(stepped, bump)).shape;
+    const edgeAt = (at: [number, number, number]) =>
+      kernel
+        .describe(body)
+        .edges.findIndex((e) => e.midpoint.every((v, i) => Math.abs(v - (at[i] as number)) < 1e-6));
+    const wallTop = edgeAt([10, 40, 25]);
+    const sideTop = edgeAt([0, 20, 25]);
+    expect(wallTop).toBeGreaterThanOrEqual(0);
+    expect(sideTop).toBeGreaterThanOrEqual(0);
+    // Alone, a 10 mm round on the wall's top edge reaches 10 mm down the wall and over the rod.
+    expect(kernel.isValid(scope.track(kernel.fillet(body, [wallTop], 10)).shape)).toBe(true);
+    // With the side's top edge rounded too, meeting it at (0, 40, 25), OCCT's rebuild of the
+    // solid trapped ("memory access out of bounds"): refused before OCCT runs.
+    try {
+      kernel.fillet(body, [wallTop, sideTop], 10);
+      expect.unreachable('two 10 mm rounds meeting where one runs over the rod');
+    } catch (error) {
+      expect(error).toBeInstanceOf(FilletError);
+      const [problem] = (error as FilletError).problems;
+      expect(problem?.kind).toBe('together');
+      if (problem?.kind !== 'together') return;
+      // Below 6.5 mm the round stays above the rod.
+      expect(10 * problem.factor).toBeGreaterThan(6);
+      expect(10 * problem.factor).toBeLessThan(6.5);
+      const smaller = scope.track(kernel.fillet(body, [wallTop, sideTop], 10 * problem.factor));
+      expect(kernel.isValid(smaller.shape)).toBe(true);
     }
   });
 
@@ -516,6 +561,79 @@ describe('errors and ownership', () => {
     expect(() => kernel.offsetFaces(box, [0], 0)).toThrow(/must not be 0/);
     expect(() => kernel.offsetFaces(box, [], 1)).toThrow(/no face to offset/);
     expect(() => kernel.tangentFaces(box, 99)).toThrow(/out of range/);
+  });
+
+  it("offsets the faces of a notch across a cylinder's seam as it does anywhere else round the wall", {
+    timeout: 120_000,
+  }, () => {
+    using scope = kernel.scope();
+    // A Ø70 × 21 cylinder with a 20 × 2 × 12 slot cut into its side. Its seam is at +X, so the
+    // slot at +X cuts the seam edge in two: OCCT's offset then "succeeded" with no shape for
+    // every face of the body, and at 12 mm it made a valid 5 mm disk of it (ADR-0051's
+    // amendment, 2026-10-11). The same slot at +Y is the same body turned a quarter: every
+    // offset must come out the same.
+    const notched = (seam: boolean) => {
+      const cylinder = scope.track(kernel.cylinder(35, 21));
+      const slot = seam
+        ? scope.track(kernel.box([20, 2, 12], [20, -1, 5]))
+        : scope.track(kernel.box([2, 20, 12], [-1, 20, 5]));
+      return scope.track(kernel.cut(cylinder, slot, { simplify: true })).shape;
+    };
+    const outcomes = (body: ShapeHandle, distance: number) => {
+      const out: string[] = [];
+      for (let face = 0; face < kernel.count(body, 'face'); face++) {
+        try {
+          const moved = scope.track(kernel.offsetFaces(body, [face], distance));
+          expect(kernel.isValid(moved.shape)).toBe(true);
+          expect(kernel.count(moved.shape, 'face')).toBe(8);
+          const generated = moved.history.filter(
+            (r) => r.from.kind === 'face' && r.relation === 'generated',
+          );
+          expect(generated).toHaveLength(8);
+          out.push(`ok ${kernel.measure(moved.shape).volume.toFixed(2)}`);
+        } catch (error) {
+          expect(error).toBeInstanceOf(OffsetFaceError);
+          const [problem] = (error as OffsetFaceError).problems;
+          out.push(`${problem?.kind} ${problem?.kind === 'too-far' ? problem.max.toFixed(2) : ''}`);
+        }
+      }
+      return out.sort();
+    };
+    const seam = notched(true);
+    const turned = notched(false);
+    expect(kernel.count(seam, 'face')).toBe(8);
+    for (const distance of [-0.2, 0.5, -12]) {
+      const across = outcomes(seam, distance);
+      expect(across).toEqual(outcomes(turned, distance));
+      if (distance === -0.2) expect(across.every((o) => o.startsWith('ok'))).toBe(true);
+    }
+  });
+
+  it('has the stack OCCT needs on B-spline faces: a chamfer and a STEP export after a non-uniform scale', () => {
+    using scope = kernel.scope();
+    // A non-uniform scale makes every surface and curve a B-spline (ADR-0053), and OCCT's
+    // B-spline evaluation takes large stack frames. With Emscripten's default 64 kB stack the
+    // chamfer below ran past the stack's end and wrote over static data: the module carried
+    // on, and this STEP export then failed ("the file couldn't be written"); in a bigger
+    // design a later call trapped (ADR-0001's amendment, 2026-10-11).
+    const cylinder = scope.track(kernel.cylinder(10, 20));
+    const oval = scope.track(kernel.scale(cylinder, [0, 0, 0], [1.5, 1, 1])).shape;
+    const top = kernel
+      .describe(oval)
+      .edges.findIndex((e) => Math.abs((e.midpoint[2] ?? 0) - 20) < 1e-6);
+    expect(top).toBeGreaterThanOrEqual(0);
+    const chamfered = scope.track(
+      kernel.chamfer(oval, [top], { mode: 'equal', distance: 1 }),
+    ).shape;
+    expect(kernel.isValid(chamfered)).toBe(true);
+    // 1.5 π r² × 20 less the chamfer's ring: a 0.5 mm² section along a rim shorter than 3 π r.
+    const volume = kernel.measure(chamfered).volume;
+    expect(volume).toBeLessThan(1.5 * Math.PI * 100 * 20);
+    expect(volume).toBeGreaterThan(1.5 * Math.PI * 100 * 20 - 1.5 * Math.PI * 10);
+    const step = kernel.writeStep([{ shape: chamfered, name: 'Oval' }]);
+    const back = scope.track(kernel.readStep(step));
+    expect(kernel.measure(back).volume).toBeCloseTo(volume, 1);
+    expect(kernel.writeStep([{ shape: oval, name: 'Oval' }])).toContain('B_SPLINE_SURFACE');
   });
 
   it('releases scoped shapes', () => {

@@ -268,3 +268,44 @@ give it, but `replayFeatures` only knows tools, not faces). See the open items.
   plane its offset.
 - **Extrude's own press-pull** (E on a face) remains; whether it should be
   removed from the dialog's prompts is a UX question for the owner.
+
+## Amendment 2026-10-11: a notch across a seam, and junk that kept its volume
+
+A design's Offset Face refused every face of its body ("can't be offset, at any
+distance"). Rebuilt by hand: a Ø70 × 21 cylinder with a 20 × 2 × 12 slot cut into
+its side at +X, where OCCT puts a cylinder's seam, so the slot cuts the seam edge
+in two. `BRepOffset_MakeOffset` then reports success (`IsDone`, no error) with a
+**null shape**, whichever face is moved and with every option tried (tolerance
+1e-5 to 1e-3, `Intersection` and `RemoveIntEdges` on and off). The same slot at
++Y or −X, or in a box, offsets fine.
+
+**Decision.**
+
+- **A divided retry.** When the plain offset fails and the body has a seam,
+  `offsetFaces` tries again on a copy whose closed faces are divided into
+  seamless pieces (`ShapeUpgrade_ShapeDivideClosed`, one split point), moves the
+  pieces of the picked faces, and merges the pieces back
+  (`ShapeUpgrade_UnifySameDomain`), which gives the body its original faces
+  again (8 faces, 18 edges for the slot). The history is composed through the
+  three steps (`DividedOffset`: a face's pieces, their offset images, those
+  images merged), with the offset's own relations, so every face keeps its name
+  as before. The merge must leave the volume as it was. `offsetWorks` takes the
+  same retry, so the diagnosis bisects with it. Only a body with a seam pays for
+  it, and only after the plain build failed.
+- **Faces far from the move must come through unchanged** (`farFacesKept`, in
+  `offsetIsGood`, for both paths): every face that neither moves nor shares an
+  edge with a moving face keeps its area and its centre. With the seam notch,
+  the slot's cap pushed 12 mm through the slot made a **valid 5 mm disk** of the
+  21 mm cylinder, which shrank as asked and kept its moved face far enough from
+  where it was, so `offsetIsGood` took it; its bottom face kept its area at
+  another height, which the centre shows. The same slot at +Y refuses that
+  distance ("too far, max ≈ 3.9 mm"), and with the check the two bodies give the
+  same answer for every face at every distance tried. The check is strict on
+  purpose: faces next to a moving one are extended or trimmed by design and are
+  not checked, and one further away has no business changing.
+
+Native harness: the facade over the image's libraries, the body built from
+`makeCylinder`/`makeBox`/`boolean`, every face at −0.2, 0.5 and −12 mm on both
+bodies. Test: `kernel.test.ts` "offsets the faces of a notch across a cylinder's
+seam as it does anywhere else round the wall" (every face of the seam body was
+"unoffsettable" before).

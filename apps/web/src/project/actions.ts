@@ -102,11 +102,26 @@ export async function importF3dFile(
     );
   const bytes = new Uint8Array(await file.arrayBuffer());
   const { importF3d } = await import('@extrudo/f3d');
+  // The solver vets the file's sketch constraints and dimensions; without it
+  // the sketches still come over, unconstrained.
+  const solver = await import('@extrudo/sketch/browser')
+    .then((m) => m.loadSketchSolver())
+    .catch(() => undefined);
   const name = file.name.replace(/\.f3d$/i, '') || 'Imported design';
-  const { design, report, preview } = importF3d(bytes, name, {
-    id: crypto.randomUUID(),
-    appVersion: APP_VERSION,
-  });
+  let imported: ReturnType<typeof importF3d>;
+  try {
+    imported = importF3d(bytes, name, {
+      id: crypto.randomUUID(),
+      appVersion: APP_VERSION,
+      ...(solver ? { solver } : {}),
+    });
+  } finally {
+    // A solver that failed may fail to dispose too: that must not lose the import.
+    try {
+      solver?.dispose();
+    } catch {}
+  }
+  const { design, report, preview } = imported;
   const doc = design.toJSON();
   const id = await createProject(
     platform,
@@ -121,6 +136,7 @@ export async function importF3dFile(
 function importNotices(report: {
   imported: string[];
   skipped: { name: string; kind: string; reason: string }[];
+  constraints?: { constraints: number; dimensions: number; leftOut: Record<string, number> };
 }): string[] {
   const skipped = report.skipped.filter((s) => s.reason !== 'suppressed in the file');
   const total = report.imported.length + skipped.length;
@@ -132,6 +148,12 @@ function importNotices(report: {
     const more = skipped.length - shown.length;
     out.push(`Not imported: ${shown.join('; ')}${more > 0 ? `; and ${more} more` : ''}.`);
   }
+  const c = report.constraints;
+  const left = c ? Object.values(c.leftOut).reduce((a, b) => a + b, 0) : 0;
+  if (c && c.constraints + c.dimensions + left > 0)
+    out.push(
+      `Sketches keep ${c.constraints} constraints and ${c.dimensions} dimensions from the file${left > 0 ? `; ${left} were left out because they would over-constrain or move the geometry, or have no counterpart` : ''}.`,
+    );
   return out;
 }
 

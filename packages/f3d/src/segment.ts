@@ -92,7 +92,8 @@ export class Segment {
     const next = new Map<number, number>();
     for (let k = 0; k + 1 < starts.length; k++)
       next.set(starts[k] as number, starts[k + 1] as number);
-    for (const [id, at] of this.primary) this.#ends.set(id, next.get(at) ?? bulk.length);
+    for (const [id, at] of this.primary)
+      this.#ends.set(id, Math.min(next.get(at) ?? bulk.length, bulk.length));
   }
 
   typeOf(id: number): TypeEntry | undefined {

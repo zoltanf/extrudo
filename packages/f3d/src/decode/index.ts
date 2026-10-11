@@ -25,6 +25,12 @@ export const FEATURE_TYPES: Record<string, string> = {
   '1C037A07-4A15-43F6-ABFC-BBF61B9038D4': 'Hole',
   '11F1A5CE-2B57-4476-8480-6994621493C9': 'CircularPattern',
   'D087EFE5-2D28-42E6-BB45-61739E7D0204': 'OffsetFaces',
+  'D1728651-3640-4CCF-8083-AF7703013978': 'Mirror',
+  'AE12AD3F-BB81-4B59-9D34-A599E58E4BF6': 'RectangularPattern',
+  'FCBB1707-4450-46B3-9E65-0F61682EA8CA': 'Sweep',
+  '65CA3206-E33A-471E-8E40-2C72B57C6181': 'Split',
+  '584D9526-EF22-4F6F-9FE1-5FCF1F3CE575': 'Thread',
+  'B0B3D9E5-1C25-47BC-ABCD-E723F193DF1B': 'PathPattern',
 };
 
 const scopeDecoder: RecordDecoder<unknown> = { name: 'feature scope', decode: readScope };

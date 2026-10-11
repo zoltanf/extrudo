@@ -330,3 +330,21 @@ since a bent edge is now read locally. `e2e/chamfer.spec.ts` adds a Cylinder
 primitive and a two-distance chamfer on its top rim: both arrows appear, each
 head dragged further out grows its own field and not the other, a commit gives
 a body with more faces, and reopening as distance-and-angle shows the arc.
+
+## Amendment 2026-10-11: the chamfer trap was the stack
+
+A design trapped the kernel in a chamfer of four circular edges ("table index is
+out of bounds"). Nothing in the chamfer was at fault: an earlier boolean on
+B-spline faces had run past the end of the 64 kB WASM stack and written over
+static data, and the chamfer's call through a damaged vtable trapped (a STEP
+export of the same body failed the same way). ADR-0001's amendment of the same
+day gives the build an 8 MB stack and the facade a guard, so an overflow stops
+the module where it happens. The chamfer itself is unchanged; on that design it
+now ends in an ordinary diagnosis ("Distance 0.75 mm is too large for edge 222
+(max ≈ 0.74 mm)"), since OCCT can't build it on the geometry it is given.
+
+A chamfer is also one of the deepest calls on B-spline edges: one 1 mm chamfer
+of a non-uniformly scaled cylinder's rim used the whole 64 kB stack. The test
+"has the stack OCCT needs on B-spline faces: a chamfer and a STEP export after a
+non-uniform scale" in `kernel.test.ts` builds exactly that and failed on the old
+build.
