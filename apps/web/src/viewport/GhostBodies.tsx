@@ -117,7 +117,12 @@ function GhostBody({
       }),
     [resolution],
   );
-  useEffect(() => () => shells.forEach((m) => m.dispose()), [shells]);
+  useEffect(
+    () => () => {
+      for (const material of shells) material.dispose();
+    },
+    [shells],
+  );
   resolution.set(size.width, size.height);
   for (const material of shells) {
     material.color = faceColor;
