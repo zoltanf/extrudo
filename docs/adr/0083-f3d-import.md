@@ -239,7 +239,35 @@ profile). One file got worse: its reference is the swept body alone,
 because the straight body it was made beside was moved into a component and
 hidden, which this import does not follow yet.
 
-**Not done:** path patterns (2 files, both already within 0.5 % without
-them; the start point and orientation fields are not decoded), threads on
-holes (a hole's faces are not named yet), and splits of bodies Extrudo can
-only know by position.
+**Not done:** splits of bodies Extrudo can only know by position.
+
+**Second round (same day).**
+
+6. **Path pattern** of features or bodies along a chain of sketch curves.
+   The file stores the start point; Extrudo walks a chain from its first
+   curve's own start (or its far end with `flip`), so the line at the start
+   point goes first, flipped when the start is its end; a path that doesn't
+   start with a line is skipped. The distance is the whole extent (the data
+   record's u32 2, as a rectangular pattern's) and the copies turn with the
+   path where the file's flag says so. Checked against the copied faces in
+   the file's B-rep: the copies land within 0.06 mm (Extrudo samples a
+   curved path as a polyline). Its instance code is 1.
+7. **Hole faces** are named `hole:<id>:side:<point>.<role>` by geometry: the
+   hole whose axis the surface lies on, the role by shape and size (wall or
+   counterbore wall by radius, countersink cone or drill point, counterbore
+   floor or flat bottom by depth). The file's face tokens for holes are not
+   used. Few references need it (6 in 2 files), but a thread on a hole's wall
+   now imports.
+8. **An offset of faces a pattern copied is skipped again.** The one such
+   offset in the corpus failed in the kernel, not in the import: Offset Face
+   refuses every face of a body that has a notch across a cylinder's seam (a
+   cylinder with a rectangular cut at +X reproduces it; at +Y or −X it
+   works). That is the kernel's to fix.
+
+The second round's results: match 116, match while skipping 6, partial 55,
+different geometry 57, no body 8, crash 1. The two path-pattern rails halve
+their volume error (0.53 % → 0.22 %, 0.46 % → 0.15 %); the threaded
+pipe inlet's thread now imports (41 % → 28 %; the rest is an extrude's
+region). For a threaded part, the reference STEP's tight box is inflated by
+its spline thread faces (a mesh of the same STEP spans the part exactly), so
+the box check can fail where the geometry agrees.

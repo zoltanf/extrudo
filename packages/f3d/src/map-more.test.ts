@@ -673,7 +673,8 @@ describe('f3dToDesign: copying features', () => {
     expect(report.imported).toEqual(expect.arrayContaining(['Hole1', 'Chamfer1']));
     const doc = design.toJSON();
     const hole = doc.features.find((f) => f.name === 'Hole1');
-    const point = (hole?.inputs.points as { refs: { id: string }[] }).refs[0]?.id.split('/')[1];
+    const points = hole?.inputs.points as { refs: { id: string }[] } | undefined;
+    const point = points?.refs[0]?.id.split('/')[1];
     const chamfer = doc.features.find((f) => f.name === 'Chamfer1');
     const ref = (chamfer?.inputs.edges as { refs: { id: string }[] } | undefined)?.refs[0]?.id;
     expect(ref).toContain(`hole:${hole?.id}:side:${point}.wall`);
