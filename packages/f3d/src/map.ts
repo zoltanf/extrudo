@@ -31,6 +31,7 @@ import {
   type Profile,
 } from '@extrudo/sketch/profiles';
 import type { AsmSurface } from './asm';
+import { ComponentMapping } from './components';
 import type { ProfileOperand, ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
 import type { RevolveAxis } from './decode/revolve';
@@ -202,6 +203,7 @@ export function f3dToDesign(
     ...(options.appVersion ? { appVersion: options.appVersion } : {}),
   });
   const userNames = new Set<string>();
+  const components = new ComponentMapping(d, f3d, report);
 
   // User parameters, in the order they were made.
   for (const p of [...f3d.userParameters].sort((a, b) => a.number - b.number)) {
@@ -257,7 +259,7 @@ export function f3dToDesign(
   for (const body of f3d.bodies)
     if (body.creator !== undefined) madeBy.set(body.creator, (madeBy.get(body.creator) ?? 0) + 1);
   const bodyOf = (record: number): { id: BodyId; index: number; by: string } | undefined => {
-    const body = bodyRecords.get(record);
+    const body = bodyRecords.get(components.aliases.get(record) ?? record);
     if (body?.creator === undefined || madeBy.get(body.creator) !== 1) return undefined;
     const made = replayable.get(body.creator);
     return made ? { id: `${made.id}:0` as BodyId, index: body.index, by: made.name } : undefined;
@@ -322,6 +324,7 @@ export function f3dToDesign(
   };
 
   for (const feature of f3d.features) {
+    components.enter(feature);
     if (feature.suppressed) {
       report.skipped.push({
         name: feature.name,
@@ -435,10 +438,12 @@ export function f3dToDesign(
           report.imported.push(feature.name);
         }
       } else if (feature.kind === 'Component' || feature.kind === 'CreateComponent') {
-        // The component's own features are on this timeline: they join the design.
-        report.notes.push(
-          `${feature.name}: components are not supported yet; its features are part of this design.`,
-        );
+        // An Extrudo component already stands for it; its features follow on this timeline.
+        report.imported.push(feature.name);
+      } else if (components.isBodyMove(feature)) {
+        const reason = components.bodyMove(feature, bodyOf);
+        if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
+        else report.imported.push(feature.name);
       } else {
         report.skipped.push({
           name: feature.name,
@@ -454,13 +459,17 @@ export function f3dToDesign(
       });
     }
   }
+  components.enter(undefined);
   // Bodies hidden in the file stay hidden (a STEP export of the same design leaves them out too)
   // — unless a shown body came from a feature not imported (Body to
   // Component moves a body on as a new one: its shape is still the hidden
   // one's here), or a later join here takes every body it meets (the file's
   // named bodies it joins were not known), which may have merged a shown one in.
   const shownElsewhere = f3d.bodies.some(
-    (b) => b.visible && (b.creator === undefined || !replayable.has(b.creator)),
+    (b) =>
+      b.visible &&
+      !components.aliases.has(b.id) &&
+      (b.creator === undefined || !replayable.has(b.creator)),
   );
   const order = new Map(d.toJSON().features.map((f, i) => [f.id as string, i]));
   let lastOpenJoin = -1;
@@ -471,13 +480,14 @@ export function f3dToDesign(
     if (join && !inputs.bodies?.refs?.length) lastOpenJoin = i;
   });
   for (const body of shownElsewhere ? [] : f3d.bodies) {
-    const known = body.visible ? undefined : bodyOf(body.id);
+    const known = components.shown(body) ? undefined : bodyOf(body.id);
     if (!known || (order.get(known.id.split(':')[0] as string) ?? 0) < lastOpenJoin) continue;
     d.state.dispatch(
       updateBody({ id: known.id, changes: { name: `Body${known.index}`, visible: false } }),
     );
     report.notes.push(`Body${known.index} (made by ${known.by}) is hidden, as in the file.`);
   }
+  components.finish(bodyOf);
   return { design: d, report };
 }
 

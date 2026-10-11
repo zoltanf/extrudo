@@ -9,6 +9,15 @@ import { type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
 import { F3dFormatError, Reader } from './bytes';
 import { BODY, type BodyFlags, readBody } from './decode/body';
 import {
+  BODY_TO_COMPONENT,
+  componentOfBody,
+  componentOfFeature,
+  type F3dBodyMove,
+  type F3dComponent,
+  readBodyMove,
+  readComponents,
+} from './decode/component';
+import {
   EDGE_OPERAND,
   EDGE_RECIPE,
   type FaceTag,
@@ -120,6 +129,8 @@ interface FeatureBase {
   suppressed: boolean;
   /** Parameters this feature owns, by kind ("AlongDistance", "Linear Dimension-2", …). */
   parameters: ParameterValue[];
+  /** The component it belongs to (component record), when the file says. */
+  component?: number;
 }
 
 export interface F3dSketchFeature extends FeatureBase {
@@ -220,6 +231,8 @@ export interface F3dBody extends BodyFlags {
   id: number;
   /** The timeline feature that made it, by record. */
   creator?: number;
+  /** The component it is in (component record), when the file says. */
+  component?: number;
 }
 
 export interface F3dDesign {
@@ -227,6 +240,10 @@ export interface F3dDesign {
   userParameters: ParameterValue[];
   features: F3dFeature[];
   bodies: F3dBody[];
+  /** The components, the root (the design itself) first. */
+  components?: F3dComponent[];
+  /** The "Body to Component" items, in timeline order. */
+  bodyMoves?: F3dBodyMove[];
   /** Records the reader could not decode, with why. */
   problems: string[];
 }
@@ -607,11 +624,31 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     bodies.push({ id, ...flags, ...(creator !== undefined ? { creator } : {}) });
   }
 
+  // Components: which one each feature and body belongs to, and the bodies moved between them.
+  const tree = tryDecode('components', () => readComponents(seg));
+  const bodyMoves: F3dBodyMove[] = [];
+  if (tree) {
+    for (const f of features) {
+      const component = tryDecode(`feature #${f.id}`, () => componentOfFeature(seg, tree, f.id));
+      if (component !== undefined) f.component = component;
+      if (seg.typeOf(f.id)?.guid === BODY_TO_COMPONENT) {
+        const move = tryDecode(`body move #${f.id}`, () => readBodyMove(seg, tree, f.id));
+        if (move) bodyMoves.push(move);
+      }
+    }
+    for (const b of bodies) {
+      const component = tryDecode(`body #${b.id}`, () => componentOfBody(seg, tree, b.id));
+      if (component !== undefined) b.component = component;
+    }
+  }
+
   return {
     parameters,
     userParameters: parameters.filter((p) => p.user),
     features,
     bodies,
+    ...(tree ? { components: tree.components } : {}),
+    bodyMoves,
     problems,
   };
 }
