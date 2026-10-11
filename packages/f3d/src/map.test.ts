@@ -774,9 +774,10 @@ describe('f3dToDesign', () => {
     });
     const { design } = f3dToDesign(f3d, 'Washer');
     const chamfer = design.toJSON().features.find((f) => f.type === 'chamfer');
-    const refs = (
-      chamfer?.inputs.edges as { refs: { id: string; fingerprint?: { dir?: number[] } }[] }
-    ).refs;
+    const edges = chamfer?.inputs.edges as
+      | { refs: { id: string; fingerprint?: { dir?: number[] } }[] }
+      | undefined;
+    const refs = edges?.refs ?? [];
     expect(refs).toHaveLength(2);
     expect(refs[0]?.id).toMatch(/^e\[extrude:/);
     expect(refs[1]?.fingerprint?.dir).toEqual([1, 0, 0]);
