@@ -133,7 +133,7 @@ for the phase's release, **S** = should, **C** = could.
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
 | FR-TL-01 | Timeline shows every feature as an icon chip in order. Hovering highlights the feature's geometry. | M | 1 |
-| FR-TL-02 | A draggable marker rolls the model back. Playback buttons: start, step back, step forward, end. New features are inserted at the marker. | M | 2 |
+| FR-TL-02 | A draggable marker rolls the model back; its keys step it (arrows, Home, End). New features are inserted at the marker. (No playback buttons: the owner's UI review of 2026-10-11, R3-01.) | M | 2 |
 | FR-TL-03 | Right-click menu: edit feature, edit sketch, rename, suppress/unsuppress, delete, roll back to here, move to end. | M | 1–2 |
 | FR-TL-04 | Drag to reorder, rejected if it would break a dependency. | S | 2 |
 | FR-TL-05 | Error (red) and warning (yellow) states with a readable message and a "fix references" flow when a referenced face or edge is lost. | M | 2 |
@@ -144,7 +144,7 @@ for the phase's release, **S** = should, **C** = could.
 
 | ID | Requirement | Pri | Phase |
 |---|---|---|---|
-| FR-VP-01 | Orbit, pan and zoom with the Extrudo mouse mapping by default (middle-drag orbits, right-drag pans: Onshape/SolidWorks with those buttons swapped; 2026-09-28, after Onshape's on 2026-09-27 and Shift orbit's before). Presets for Onshape/SolidWorks, Shift orbit (middle-drag pans, Shift+middle-drag orbits), Blender and trackpad. | M | 0 |
+| FR-VP-01 | Orbit, pan and zoom with the **Spindle** mouse mapping by default (middle-drag orbits, right-drag pans; Shift swaps them). Presets **Crank** (right-drag orbits, middle-drag pans; Shift swaps them), **Glide** (middle-drag pans, Shift+middle-drag orbits), Blender and Trackpad, chosen in the Settings menu with each preset's bindings shown. No preset is named after another CAD product. (Renamed by the owner's UI review of 2026-10-11, R3-03/R3-04: Spindle was "Extrudo", Crank was named after two CAD products, Glide was "Shift orbit".) | M | 0 |
 | FR-VP-02 | ViewCube with click-to-orient (faces, edges, corners), home, and rotate arrows. | M | 0 |
 | FR-VP-03 | Perspective and orthographic. Visual styles: shaded, shaded with edges, wireframe, hidden edges. | M | 0 |
 | FR-VP-04 | Infinite adaptive grid and origin planes/axes. | M | 0 |
@@ -192,7 +192,7 @@ for the phase's release, **S** = should, **C** = could.
 |---|---|---|---|
 | FR-UX-01 | Familiar CAD layout. See `04-ui-spec.md`. | M | 0 |
 | FR-UX-02 | Light and dark theme. A consistent custom icon set with a colour per tool category. | M | 0 |
-| FR-UX-03 | Command search ("S" toolbox and Ctrl+K palette), a right-click marking menu, and default shortcuts that follow mainstream CAD tools and that the user can remap. | M | 1–2 |
+| FR-UX-03 | One command search with up to ten pinned commands (two rows of five) over the full list, opened from the top bar's Search button, by "S" at the pointer or by Ctrl+K centred (the owner's UI review of 2026-10-11, R3-05, merging the "S" toolbox and the Ctrl+K palette); a right-click marking menu (the ring alone, or a list); and default shortcuts that follow mainstream CAD tools and that the user can remap. | M | 1–2 |
 | FR-UX-04 | Tooltips with a short description and a small animated demo per tool. | S | 3 |
 | FR-UX-05 | First-run guided tutorial ("make your first box") and a starter template gallery. | S | 3 |
 | FR-UX-06 | Friendly error messages. A failed fillet says "radius too large for edge X (max ≈ 2.4 mm)", not a kernel error code. | M | 3 |

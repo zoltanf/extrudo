@@ -4,6 +4,17 @@ Reference for concepts: the public help of established desktop CAD tools. Use
 it to understand *behaviour* only. Never copy their icons, images, text or
 branding.
 
+**Changes decided, not built yet (2026-10-11):** the owner's UI review 3 changes
+the timeline (no playback buttons), the mouse controls (into the Settings menu;
+presets Spindle, Crank, Glide, Blender, Trackpad), command search (one dialog for
+Ctrl+K and S, ten pins), ghost bodies, the right-click menu (the ring alone when
+radial), the tabs (Home's Import and Export groups, Inspect inside Construct, no
+3D Print tab in a sketch, Plugins in the Settings menu), the new-design hint
+(removed), tooltip clips and long notifications. The items are in
+[`plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md); this spec
+still describes the app as it is, and each slice updates the sections it
+changes.
+
 ## 1. Design language
 
 The full visual system (logo, colour tokens, type, radius, motion, icon
