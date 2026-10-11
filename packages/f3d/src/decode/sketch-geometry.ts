@@ -460,6 +460,7 @@ export const sketchEllipse: RecordDecoder<SketchEllipse> = {
       const minorRadius = r.f64();
       const startAngle = r.f64();
       const endAngle = r.f64();
+      checkEllipse(id, center, major, minor, majorRadius, minorRadius, startAngle, endAngle);
       const centerPoint = r.localRef();
       const out: SketchEllipse = {
         id,
@@ -486,3 +487,44 @@ export const sketchEllipse: RecordDecoder<SketchEllipse> = {
       return out;
     }),
 };
+
+/**
+ * Refuses an ellipse no sketch could hold: a number that isn't finite, a
+ * radius not between 1e-9 and 1e6 cm, axes that aren't unit and square to
+ * each other, or an angle past ±1,000 radians (the files keep them in a turn
+ * or two). Whatever the file says, the curve then costs a bounded amount to
+ * draw and trace.
+ */
+function checkEllipse(
+  id: number,
+  center: Vec3,
+  major: Vec3,
+  minor: Vec3,
+  a: number,
+  b: number,
+  t0: number,
+  t1: number,
+): void {
+  const numbers = [...center, ...major, ...minor, a, b, t0, t1];
+  const unit = (v: Vec3) => Math.abs(Math.hypot(v[0], v[1], v[2]) - 1) < 1e-6;
+  const square = Math.abs(major[0] * minor[0] + major[1] * minor[1] + major[2] * minor[2]) < 1e-6;
+  const radius = (r: number) => r > 1e-9 && r < 1e6;
+  if (
+    !numbers.every(Number.isFinite) ||
+    !unit(major) ||
+    !unit(minor) ||
+    !square ||
+    !radius(a) ||
+    !radius(b) ||
+    Math.abs(t0) > 1000 ||
+    Math.abs(t1) > 1000
+  )
+    throw new F3dFormatError(`Sketch ellipse #${id}: not a curve a sketch can hold.`);
+}
+
+/** How far an elliptical arc turns, in (0, 2π]: from its start angle round to its end. */
+export function ellipseSweep(e: Pick<SketchEllipse, 'startAngle' | 'endAngle'>): number {
+  const turn = 2 * Math.PI;
+  const sweep = (((e.endAngle - e.startAngle) % turn) + turn) % turn;
+  return sweep === 0 ? turn : sweep;
+}

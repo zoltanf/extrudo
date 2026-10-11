@@ -13,7 +13,13 @@
  * exactly; splines as polylines.
  */
 import type { RegionPiece } from './decode/extrude';
-import type { SketchCircular, SketchEllipse, SketchSpline, Vec3 } from './decode/sketch-geometry';
+import {
+  ellipseSweep,
+  type SketchCircular,
+  type SketchEllipse,
+  type SketchSpline,
+  type Vec3,
+} from './decode/sketch-geometry';
 import type { F3dSketch } from './model';
 
 export type Vec2 = [number, number];
@@ -354,7 +360,7 @@ function trace(s: F3dSketch, profileCurves: Set<string>): Traced[] {
   // Ellipses and elliptical arcs as polylines over their parameter angle.
   for (const e of s.ellipses ?? []) {
     const t0 = e.startAngle;
-    const t1 = e.endAngle > e.startAngle ? e.endAngle : e.endAngle + 2 * Math.PI;
+    const t1 = t0 + ellipseSweep(e);
     const n = Math.max(16, Math.ceil(((t1 - t0) / (2 * Math.PI)) * 96));
     const params = Array.from({ length: n + 1 }, (_, i) => t0 + ((t1 - t0) * i) / n);
     const pts = params.map((t) => ellipseAt(e, t));

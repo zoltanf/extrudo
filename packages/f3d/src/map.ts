@@ -37,13 +37,14 @@ import { ComponentMapping } from './components';
 import type { ProfileOperand, ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
 import type { RevolveAxis } from './decode/revolve';
-import type {
-  SketchCircular,
-  SketchEllipse,
-  SketchLine,
-  SketchPoint,
-  SketchSpline,
-  Vec3,
+import {
+  ellipseSweep,
+  type SketchCircular,
+  type SketchEllipse,
+  type SketchLine,
+  type SketchPoint,
+  type SketchSpline,
+  type Vec3,
 } from './decode/sketch-geometry';
 import type { SketchText } from './decode/text';
 import { type EdgeShape, edgeShape } from './edge-shape';
@@ -895,8 +896,7 @@ function drawSketch(
   // conics (rational quadratics), one per quarter turn at most, joined end to end.
   for (const e of s.ellipses ?? []) {
     const t0 = e.startAngle;
-    let sweep = e.endAngle - e.startAngle;
-    while (sweep <= 0) sweep += 2 * Math.PI;
+    const sweep = ellipseSweep(e);
     const n = Math.max(1, Math.ceil(sweep / (Math.PI / 2) - 1e-9));
     const step = sweep / n;
     let previous: ReturnType<SketchBuilder['point']> | undefined;

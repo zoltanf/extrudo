@@ -1,6 +1,12 @@
 /** The ellipse and line readers on hand-built records (no real file's bytes). */
 import { describe, expect, it } from 'vitest';
-import { SKETCH_ELLIPSE, SKETCH_LINE_ALT, sketchEllipse, sketchLine } from './sketch-geometry';
+import {
+  ellipseSweep,
+  SKETCH_ELLIPSE,
+  SKETCH_LINE_ALT,
+  sketchEllipse,
+  sketchLine,
+} from './sketch-geometry';
 import { Bytes, POINT, SKETCH, segment } from './test-segment';
 
 const f64s = (b: Bytes, ...values: number[]) => {
@@ -44,6 +50,51 @@ describe('sketch ellipses', () => {
       startPoint: 3,
       owner: 50,
     });
+  });
+});
+
+describe('hostile ellipses', () => {
+  const record = (numbers: number[]) =>
+    segment([
+      { guid: SKETCH, id: 50, body: [0] },
+      ...POINTS,
+      {
+        guid: SKETCH_ELLIPSE,
+        version: 2,
+        id: 10,
+        body: f64s(new Bytes().u8(0).u8(0), ...numbers)
+          .ref(1)
+          .ref(2)
+          .raw([0, 0])
+          .ref(3)
+          .raw([0, 0, 0, 1, 1, 0, 0, 0])
+          .ref(50).out,
+      },
+    ]);
+  const ok = [0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 2, 0, 1];
+
+  it('refuses numbers no sketch can hold, so drawing it costs nothing unbounded', () => {
+    const bad: [number, number][] = [
+      [12, -1e300], // an end angle that would take forever to bring round
+      [12, Number.POSITIVE_INFINITY],
+      [9, Number.NaN],
+      [9, 0], // no radius
+      [3, 2], // a major axis that isn't a unit direction
+      [6, 1], // a minor axis that isn't square to the major one
+    ];
+    for (const [at, value] of bad) {
+      const numbers = [...ok];
+      numbers[at] = value;
+      expect(() => sketchEllipse.decode(record(numbers), 10)).toThrow(/not a curve/);
+    }
+    expect(sketchEllipse.decode(record(ok), 10).majorRadius).toBe(3);
+  });
+
+  it('turns an arc by its angles brought into one turn', () => {
+    expect(ellipseSweep({ startAngle: 0, endAngle: Math.PI / 2 })).toBeCloseTo(Math.PI / 2, 12);
+    expect(ellipseSweep({ startAngle: 3, endAngle: 1 })).toBeCloseTo(2 * Math.PI - 2, 12);
+    expect(ellipseSweep({ startAngle: 1, endAngle: 1 })).toBe(2 * Math.PI);
+    expect(ellipseSweep({ startAngle: -900, endAngle: 900 })).toBeLessThanOrEqual(2 * Math.PI);
   });
 });
 
