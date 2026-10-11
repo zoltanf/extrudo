@@ -1,7 +1,8 @@
 /**
  * Components through the mapper, on hand-built decoded designs: a box in the
  * root and a lid in a component of its own; a component the file hides; and a
- * body that "Body to Component" moved out of the root. The bodies are
+ * body that "Body to Component" moved out of the root; a mirror and a split
+ * inside a component. The bodies are
  * recomputed and grouped as the app groups them (ADR-0081's rule).
  */
 import { type BodyId, componentMembers } from '@extrudo/core';
@@ -253,6 +254,47 @@ describe('components', () => {
     expect(loose).toEqual([]);
     expect(report.imported).toContain('Body to Component');
     expect(report.notes.filter((n) => n.includes('hidden'))).toEqual([]);
+  });
+
+  it("keeps the bodies a mirror or a split makes inside the component it belongs to", async () => {
+    // The Lid's 1 cm cube, copied in the YZ plane by a mirror of the Lid.
+    const mirrored = boxAndLid();
+    mirrored.features.push({
+      type: 'mirror',
+      id: 7,
+      kind: 'Mirror',
+      name: 'Mirror1',
+      suppressed: false,
+      parameters: [],
+      component: LID,
+      objects: 'bodies',
+      features: [],
+      bodies: [501],
+      plane: { origin: [0, 0, 0], x: [0, 1, 0], y: [0, 0, 1] },
+    });
+    mirrored.bodies.push({ id: 503, index: 2, visible: true, creator: 7, component: LID });
+    const copy = await grouped(mirrored);
+    expect(copy.report.imported).toContain('Mirror1');
+    expect(copy.components).toEqual({ Lid: [1000, 1000] });
+    expect(copy.loose).toEqual([4000]);
+
+    // The same cube cut in half by a plane 5.5 cm along X, split in the Lid.
+    const split = boxAndLid();
+    split.features.push({
+      type: 'split',
+      id: 7,
+      kind: 'Split',
+      name: 'Split1',
+      suppressed: false,
+      parameters: [],
+      component: LID,
+      bodies: [501],
+      plane: { origin: [5.5, 0, 0], x: [0, 1, 0], y: [0, 0, 1] },
+    });
+    const halves = await grouped(split);
+    expect(halves.report.imported).toContain('Split1');
+    expect(halves.components).toEqual({ Lid: [500, 500] });
+    expect(halves.loose).toEqual([4000]);
   });
 
   it('leaves a Body to Component out when the body it takes was not imported', () => {
