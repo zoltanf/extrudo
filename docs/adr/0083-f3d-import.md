@@ -188,3 +188,17 @@ work and its memory (the security review of PR #7). The rules:
   that application, which a person leaving it may no longer have.
 - **Geometry only from the B-rep** (ASM SAB): no history, and a STEP export
   already gives that.
+
+## Amendment 2026-10-11: no kernel crash left in the corpus
+
+The one file whose rebuild crashed the kernel (an OCCT trap on a chamfer, see
+Consequences) was the kernel's fault, not the import's: the OCCT WASM ran on a
+64 kB stack, which an earlier boolean on B-spline faces ran past, and the
+chamfer tripped over the damage (ADR-0001's amendment of the same day: an 8 MB
+stack and a guard). That file now rebuilds to its end and counts among those
+that build different geometry: **120 match, 60 lose some features, 55 build
+different geometry, 8 have no body, none crash** (every other file's volume,
+box, skips and failures are unchanged). Its chamfer and four other edge or face
+features end in ordinary messages ("Distance 0.75 mm is too large… (max ≈
+0.74 mm)"), and one more chamfer loses its edge: OCCT can't build them on the
+geometry the import gives them, which is an import question, not a kernel one.
