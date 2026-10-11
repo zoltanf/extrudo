@@ -7,9 +7,8 @@ branding.
 **Changes decided, not built yet (2026-10-11):** the owner's UI review 3 changes
 the mouse controls (into the Settings menu; presets Spindle, Crank, Glide,
 Blender, Trackpad), command search (one dialog for Ctrl+K and S, ten pins), ghost
-bodies, the right-click menu (the ring alone when radial), the tabs (Home's Import
-and Export groups, Inspect inside Construct, Plugins in the Settings menu)
-and tooltip clips. The items are in
+bodies, the tabs (Home's Import and Export groups, Inspect inside Construct, Plugins
+in the Settings menu) and tooltip clips. The items are in
 [`plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md); this spec
 still describes the app as it is, and each slice updates the sections it
 changes.
@@ -340,9 +339,10 @@ a right-click without movement, as Onshape's context menu does.
   profiles and faces front to back (hidden ones marked "(hidden)"), then
   bodies. The pointer or the arrow keys on a row pre-highlight it; a
   click selects it. **Since P3-11 (ADR-0042) a right-click without
-  movement opens the marking menu (§3.3)**, whose list starts with
-  "Select other…"; the long press still opens the list directly, and
-  where the marking menu isn't offered (a feature dialog, Measure) a
+  movement opens the marking menu (§3.3)**, whose list style starts its
+  entries with "Select other…"; the long press still opens the list
+  directly (the only way with the ring, which has no list since R3-08),
+  and where the marking menu isn't offered (a feature dialog, Measure) a
   right-click opens it as before.
 - **In the model (P2-03, ADR-0026)** the pointer picks body faces, edges
   (within 6 px) and vertices (within 8 px), sketch curves and profiles. A
@@ -376,11 +376,13 @@ a right-click without movement, as Onshape's context menu does.
 
 - **Toolbar**, **shortcut**, **S toolbox** (searchable popup at the cursor,
   pinnable), **Ctrl+K** command palette, and the **right-click marking menu**
-  (radial, 8 slots, plus an overflow list below; P3-11, ADR-0042).
+  (radial, 8 slots, or one list; P3-11, ADR-0042).
 - **The marking menu (P3-11):** a right-click **without movement** (a
-  right-drag navigates) opens a ring of eight wedges round the pointer and
-  a list under it (above it when there is no room; both stay inside the
-  window). A right-click first selects what is under the pointer, unless it
+  right-drag navigates) opens a ring of eight wedges round the pointer,
+  **alone** (the owner's UI review 3, R3-08: what only its list offered is
+  in Ctrl+K, the browser's and timeline's menus and the long press, and a
+  wedge can be remapped to any command), inside the window. The **list
+  style** (below) is one list instead. A right-click first selects what is under the pointer, unless it
   is selected already. Each wedge is a command, so it has the command's
   keys and availability: one that can't run here, or isn't built yet,
   stays in place, dimmed, with the reason as its tooltip. In the model, clockwise from the top: **Sketch, Extrude, Fillet,
@@ -390,11 +392,17 @@ a right-click without movement, as Onshape's context menu does.
   centre picks the wedge, so it needn't touch the label) or by a **flick**:
   press the left button in the ring, drag towards a wedge, release. A press
   and release in the ring's middle does nothing; Esc or a click outside
-  closes. Keyboard: arrows jump to the wedge in that direction (Down from
-  the bottom wedge goes into the list), Tab walks everything, Enter runs.
+  closes. Keyboard: arrows jump to the wedge in that direction, Tab walks
+  the wedges, Enter runs.
   **Repeat last** runs the last tool started through the commands, the
   toolbar or the menu (not Undo, Delete, views or dialogs such as
-  Parameters). The **list** depends on what was right-clicked: for a
+  Parameters). **The list style** ("Right-Click Menu: Use a List" in
+  Ctrl+K, or the Settings menu's "Radial right-click menu" off) is one list:
+  the wedges' commands first, then the entries for what was right-clicked,
+  **every row shown with no scroll bar**: under the pointer when all of it
+  fits there, else above it, else beside it (moved up or down until it
+  fits); it scrolls only in a window shorter than the whole list (R3-08).
+  Arrows, Home and End walk it. The **entries** depend on what was right-clicked: for a
   face, edge or vertex, Select other…, Sketch on Face (one flat face),
   Measure, Hide Body, Appearance…, Export…; for a body also Delete; for a
   profile or sketch curve, Edit Sketch and Hide Sketch; for a construction
@@ -402,8 +410,7 @@ a right-click without movement, as Onshape's context menu does.
   Fit, Home View, Orthographic/Perspective, Redo and Show All Bodies when
   some are hidden; in a sketch, Cancel (while a tool runs), Delete
   (named for a constraint or dimension), Look At Sketch, Fit, Redo,
-  Repeat. "Right-Click Menu: Use a List" in Ctrl+K swaps the ring for one
-  plain list.
+  Repeat.
 - **Search (P1-14):** the palette opens at the top of the window over a
   dimmed page, the toolbox at the pointer with its pinned commands as
   tiles above the search field's results. Both search the commands

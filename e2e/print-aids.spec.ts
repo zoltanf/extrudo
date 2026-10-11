@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { meshBounds } from '../packages/io/src/index';
 import { exportModel, objectsOf3mf, primitive, selectBodies, solidTab } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool, projector } from './helpers';
+import { kernelReady, listStyleMenu, openProject, pickTool, projector } from './helpers';
 
 // P3-10: the 3D-print aids (FR-3DP-02..04, ADR-0048). Print Info gives a weight, a filament
 // length and a cost from the exact volume, with the walls, infill and price a person prints
@@ -485,6 +485,8 @@ test('Overhangs take a picked face as down, and Place on Bed spins the part (P3-
 });
 
 test('Place on Bed is in the context list of a flat face', async ({ page }) => {
+  // The entry is the list style's (R3-08: the ring has no list).
+  await listStyleMenu(page);
   const viewport = await openProject(page, 'wall-bracket');
   await kernelReady(page);
   await page.keyboard.press('Shift+6');

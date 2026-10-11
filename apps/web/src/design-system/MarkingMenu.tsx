@@ -32,7 +32,7 @@ export interface MarkingSlot {
   onSelect(): void;
 }
 
-/** A row of the list under the ring. */
+/** A row of the list style's menu, after the wedges' rows. */
 export interface MarkingEntry {
   id: string;
   label: string;
@@ -52,7 +52,7 @@ export interface MarkingMenuProps {
   at: { x: number; y: number } | undefined;
   /** Eight wedges clockwise from the top; `undefined` leaves one empty. */
   slots: readonly (MarkingSlot | undefined)[];
-  /** The overflow list below the ring. */
+  /** The list style's rows after the wedges'; the ring alone shows none (R3-08). */
   entries: readonly MarkingEntry[];
   /** `false`: no ring, one plain list (the slots first, then the entries). */
   radial?: boolean;
@@ -62,11 +62,13 @@ export interface MarkingMenuProps {
 
 /**
  * The marking menu (P3-11, FR-UX-03, ADR-0042): a ring of eight wedges round
- * the pointer and an overflow list below it. Point at a wedge (the pointer
- * or the arrow keys) and click, or press anywhere in the ring, drag towards
- * a wedge and release (the classic flick); Esc or a click outside closes it.
- * The pointer's direction from the ring's centre picks the wedge, so a
- * flick doesn't have to hit the label.
+ * the pointer, or (the list style) one list of the wedges' commands and the
+ * entries. Point at a wedge (the pointer or the arrow keys) and click, or
+ * press anywhere in the ring, drag towards a wedge and release (the classic
+ * flick); Esc or a click outside closes it. The pointer's direction from the
+ * ring's centre picks the wedge, so a flick doesn't have to hit the label.
+ * Since the owner's UI review 3 (R3-08) the ring has no list under it, and the
+ * list style shows every row, scrolling only in a window too short for it.
  */
 export function MarkingMenu(props: MarkingMenuProps) {
   if (!props.at) return null;
@@ -90,7 +92,9 @@ function OpenMenu({
   const gesture = useRef(false);
 
   const rows = useMemo<MarkingEntry[]>(() => {
-    if (radial) return [...entries];
+    // The ring alone (R3-08): what only the list offered is in Ctrl+K, the browser's and the
+    // timeline's menus and the long press.
+    if (radial) return [];
     const first = slots
       .filter((s): s is MarkingSlot => s !== undefined)
       .map<MarkingEntry>((s) => ({ ...s }));
@@ -191,18 +195,11 @@ function OpenMenu({
     } else if (radial && (inRing || target === root.current) && event.key in ARROW_SLOT) {
       event.preventDefault();
       const index = ARROW_SLOT[event.key] as number;
-      const wedge = root.current?.querySelector<HTMLElement>(`[data-slot="${index}"]`);
-      // Down from the bottom wedge (or with none there) carries on into the list.
-      if (event.key === 'ArrowDown' && (!wedge || target === wedge)) {
-        list.current?.querySelector<HTMLElement>(ITEM)?.focus();
-      } else wedge?.focus();
+      root.current?.querySelector<HTMLElement>(`[data-slot="${index}"]`)?.focus();
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       const step = event.key === 'ArrowDown' ? 1 : -1;
-      const first = list.current?.querySelector<HTMLElement>(ITEM);
-      if (radial && event.key === 'ArrowUp' && target === first) {
-        root.current?.querySelector<HTMLElement>('[data-slot="4"]')?.focus();
-      } else move(target?.matches(ITEM) ? target : undefined, step, list.current);
+      move(target?.matches(ITEM) ? target : undefined, step, list.current);
     } else if (event.key === 'Home' || event.key === 'End') {
       event.preventDefault();
       const items = list.current ? [...list.current.querySelectorAll<HTMLElement>(ITEM)] : [];
@@ -310,7 +307,7 @@ function OpenMenu({
           ref={list}
           role="group"
           aria-label="More"
-          data-marking-list
+          data-marking-list={place.list.side}
           className="absolute overflow-y-auto rounded-dialog border border-line bg-raised p-1 text-base text-ink shadow-raised"
           style={{
             left: place.list.left,

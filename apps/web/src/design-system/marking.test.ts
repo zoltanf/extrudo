@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   GAP,
-  LIST_MAX_HEIGHT,
+  LIST_BORDER,
   LIST_ROW,
   listHeight,
   MARGIN,
@@ -70,24 +70,28 @@ describe('slotCenter', () => {
 });
 
 describe('listHeight', () => {
-  it('sums rows and separators, and stops at the cap', () => {
+  it('sums rows, separators, padding and border, with no cap (R3-08)', () => {
     expect(listHeight(0, 0)).toBe(0);
-    expect(listHeight(3, 1)).toBe(3 * LIST_ROW + 9 + 8);
-    expect(listHeight(40, 5)).toBe(LIST_MAX_HEIGHT);
+    expect(listHeight(3, 1)).toBe(3 * LIST_ROW + 9 + 8 + LIST_BORDER);
+    // A long list is as tall as its rows: it scrolls only where the window is shorter.
+    expect(listHeight(40, 5)).toBe(40 * LIST_ROW + 5 * 9 + 8 + LIST_BORDER);
   });
 });
 
 describe('placeMenu', () => {
   const view = { width: 1440, height: 900 };
   const list = { rows: 5, separators: 1 };
+  const inside = (p: ReturnType<typeof placeMenu>, v = view) => {
+    expect(p.list.left).toBeGreaterThanOrEqual(MARGIN);
+    expect(p.list.left + p.list.width).toBeLessThanOrEqual(v.width - MARGIN);
+    expect(p.list.top).toBeGreaterThanOrEqual(MARGIN);
+    expect(p.list.top + p.list.height).toBeLessThanOrEqual(v.height - MARGIN);
+  };
 
-  it('centres the ring on the pointer, the list below it', () => {
+  it('centres the ring on the pointer, with no list under it (R3-08)', () => {
     const p = placeMenu({ x: 700, y: 300 }, view, list);
     expect(p.center).toEqual({ x: 700, y: 300 });
-    expect(p.list.top).toBe(300 + RING_OUTER + GAP);
-    expect(p.list.height).toBe(listHeight(5, 1));
-    // Centred under the ring.
-    expect(p.list.left + p.list.width / 2).toBeCloseTo(700);
+    expect(p.list.height).toBe(0);
   });
 
   it('keeps the whole ring in the window in every corner', () => {
@@ -102,32 +106,50 @@ describe('placeMenu', () => {
       expect(p.center.x + RING_OUTER).toBeLessThanOrEqual(view.width - MARGIN);
       expect(p.center.y - RING_OUTER).toBeGreaterThanOrEqual(MARGIN);
       expect(p.center.y + RING_OUTER).toBeLessThanOrEqual(view.height - MARGIN);
-      expect(p.list.left).toBeGreaterThanOrEqual(MARGIN);
-      expect(p.list.left + p.list.width).toBeLessThanOrEqual(view.width - MARGIN);
-      expect(p.list.top).toBeGreaterThanOrEqual(MARGIN);
-      expect(p.list.top + p.list.height).toBeLessThanOrEqual(view.height - MARGIN);
     }
   });
 
-  it('puts the list above the ring when the bottom has no room', () => {
-    const p = placeMenu({ x: 700, y: 760 }, view, { rows: 9, separators: 2 });
-    expect(p.list.top + p.list.height).toBeLessThanOrEqual(p.center.y - RING_OUTER);
+  it('opens the list below the pointer when all of it fits there', () => {
+    const p = placeMenu({ x: 300, y: 200 }, view, { rows: 14, separators: 3 }, null);
+    expect(p.list).toMatchObject({ left: 300, top: 200, side: 'below' });
+    expect(p.list.height).toBe(listHeight(14, 3));
+    inside(p);
   });
 
-  it('shortens the list (it scrolls) when neither side has room', () => {
-    const small = { width: 800, height: 600 };
-    const p = placeMenu({ x: 400, y: 300 }, small, { rows: 12, separators: 3 });
-    expect(p.list.height).toBeLessThan(listHeight(12, 3));
-    expect(p.list.top + p.list.height).toBeLessThanOrEqual(small.height - MARGIN);
+  it('opens the list above the pointer when only the top has room for all of it', () => {
+    const p = placeMenu({ x: 300, y: 820 }, view, { rows: 14, separators: 3 }, null);
+    expect(p.list.side).toBe('above');
+    expect(p.list.top + p.list.height).toBe(820);
+    expect(p.list.height).toBe(listHeight(14, 3));
+    inside(p);
   });
 
-  it('opens the plain list at the pointer, moved in when it would leave the window', () => {
-    const at = placeMenu({ x: 300, y: 200 }, view, list, null);
-    expect(at.list.left).toBe(300);
-    expect(at.list.top).toBe(200);
+  it('opens the list beside the pointer when neither side has room for all of it', () => {
+    // 20 rows are 693 px: the window has room for them, but not above or below y = 450.
+    const rows = { rows: 20, separators: 3 };
+    const p = placeMenu({ x: 300, y: 450 }, view, rows, null);
+    expect(p.list.side).toBe('beside');
+    expect(p.list.left).toBe(300 + GAP);
+    expect(p.list.height).toBe(listHeight(20, 3));
+    inside(p);
+    // At the right edge it goes to the pointer's left.
+    const right = placeMenu({ x: 1400, y: 450 }, view, rows, null);
+    expect(right.list.side).toBe('beside');
+    expect(right.list.left + right.list.width).toBe(1400 - GAP);
+    inside(right);
+  });
+
+  it('scrolls only when the window is shorter than the whole list', () => {
+    const small = { width: 800, height: 400 };
+    const p = placeMenu({ x: 400, y: 200 }, small, { rows: 14, separators: 3 }, null);
+    expect(p.list.side).toBe('short');
+    expect(p.list.height).toBe(small.height - 2 * MARGIN);
+    inside(p, small);
+  });
+
+  it('moves the list in at the window’s edges', () => {
     const edge = placeMenu({ x: 1430, y: 890 }, view, list, null);
-    expect(edge.list.left + edge.list.width).toBeLessThanOrEqual(view.width - MARGIN);
-    expect(edge.list.top + edge.list.height).toBeLessThanOrEqual(view.height - MARGIN);
+    inside(edge);
   });
 });
 

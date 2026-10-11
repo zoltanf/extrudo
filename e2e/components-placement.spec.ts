@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page, test } from '@playwright/test';
 import { meshBounds } from '../packages/io/src/index';
 import { exportModel, objectsOf3mf, primitive, selectBodies } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool, projector } from './helpers';
+import { kernelReady, listStyleMenu, openProject, pickTool, projector } from './helpers';
 
 // P6-05 S5 (ADR-0081 §3): placement. A component stores no transform, so a
 // component is moved, copied or laid on the bed through the existing Move and
@@ -146,6 +146,8 @@ test('Place Component on Bed carries the component’s other bodies with the fac
   page,
 }) => {
   test.slow();
+  // The entry is the list style's (R3-08: the ring has no list).
+  await listStyleMenu(page);
   const viewport = viewportOf(page);
   await openProject(page);
   await kernelReady(page);
