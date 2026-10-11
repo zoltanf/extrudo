@@ -116,7 +116,10 @@ export async function importF3dFile(
       ...(solver ? { solver } : {}),
     });
   } finally {
-    solver?.dispose();
+    // A solver that failed may fail to dispose too: that must not lose the import.
+    try {
+      solver?.dispose();
+    } catch {}
   }
   const { design, report, preview } = imported;
   const doc = design.toJSON();

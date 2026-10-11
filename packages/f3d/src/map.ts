@@ -301,10 +301,12 @@ export function f3dToDesign(
         values.set(p.name, q);
     }
     // Names the file gives its own parameters stay free for them; Extrudo's
-    // own new names (a text's height) count on from past the last of them.
+    // own new names (a text's height, a dimension whose file name can't be
+    // taken) count on from past the last of them.
     let next = 1;
     for (const p of f3d.parameters) {
-      const n = /^d(\d+)$/.exec(p.name);
+      // A safe integer only: past 2^53, counting on from it would stand still.
+      const n = /^d(\d{1,9})$/.exec(p.name);
       if (n) next = Math.max(next, Number(n[1]) + 1);
     }
     const taken = new Set(userNames);
