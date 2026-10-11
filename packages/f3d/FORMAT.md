@@ -196,8 +196,9 @@ generations.
 | `CE2913AA…` | Occurrence | a reference to the component; after a stretch that differs between generations, u32 ordinal (1 for a component's first occurrence, 2, 3… for copies), wstr component GUID, wstr occurrence GUID; when placed, a row-major 4 × 4 rigid transform (cm) after those. The root's is named `rootInstance`. A component's occurrence list references the occurrences of its children |
 | `2BB3BB69…` | Hidden occurrence | references a component (first) and its occurrence; one per occurrence whose light bulb is off. Worked out from the samples alone: in each of them, the components these name are the ones a STEP export of the design leaves out |
 | `56225BC7…` | Body to Component (timeline item) | a body operand (`9716F783…` → body link → body) names the body it takes; it makes a new body record in the target component, whose body link names the item or one of its own records as the feature that made it. The body it took stays in its old component, hidden |
+| `BA3059E4…` | Cut and paste of bodies (`CutPasteBodies`, timeline item) | the same shape as Body to Component (body operand → body link → the body it takes; a new body record in the target component whose body link names one of the item's own records); its scope has **no history state**, like a sketch, so a missing state doesn't mean suppressed. The plain cut and paste (`D57B1A22…`, `CutPaste`) names no body operand and is not read |
 
-Seen in the samples: no component placed twice, none nested, and placed
+Seen in the samples: no component placed twice, nesting in a few designs, and placed
 occurrences away from the origin only in a design with no timeline.
 
 A body's index sits after a −1.0 double in most files (payload offset 10 in

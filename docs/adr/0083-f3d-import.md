@@ -319,3 +319,37 @@ pipe inlet's thread now imports (41 % → 28 %; the rest is an extrude's
 region). For a threaded part, the reference STEP's tight box is inflated by
 its spline thread faces (a mesh of the same STEP spans the part exactly), so
 the box check can fail where the geometry agrees.
+
+## Amendment, 2026-10-11 (components and features together)
+
+The components amendment and the features amendment were written in
+parallel; this one records what changed when they met.
+
+1. **Features inside components.** Every timeline step stamps the Extrudo
+   features it adds with its component, so a mirror, pattern, sweep, split
+   or thread in a component puts its bodies there too: copies and split
+   pieces follow ADR-0081's rule (the stamp, or the body a piece broke off).
+2. **A cut and paste of bodies is a body move.** Its records have Body to
+   Component's shape (body operand → link → the body it takes; the body it
+   makes is in the target component), so it is read the same way. Its scope
+   keeps no history state, which the first import read as "suppressed", so
+   the paste was dropped and a body pasted into a hidden component stayed in
+   view. Two designs now match (a rail whose straight body went to a hidden
+   component: 98.6 % → 0.12 % volume error; a power-supply module: 495 % →
+   0.34 %). The plain cut and paste names no body and stays unread.
+3. **Hostile files.** The new decoders walk references several levels deep.
+   Each record's references are now read once and each record visited once
+   per walk, a pattern's instance list is checked pair by pair, a record's
+   end and every reader stop at the end of the bytes, and a malformed
+   mirror, pattern, split, sweep or thread record becomes an unread item
+   instead of failing the whole import. A component name cut to 90
+   characters is trimmed again, so it can't clash after Extrudo trims it.
+
+Corpus (250 files; bodies of hidden components left out, as a STEP export
+leaves them out): match 118, match while skipping 8, partial 48, different
+geometry 60, no body 8, crash 1, no reference 7 — from 113, 7, 60, 54, 8, 1,
+7 before both amendments, 115, 7, 59, 53 after components alone and 116, 6,
+55, 57 after features alone. No file is worse than with the features
+amendment alone; the four worse than with components alone are the features
+amendment's own (threads now cut where the rest of the part is still off,
+and one chamfer on copied faces).
