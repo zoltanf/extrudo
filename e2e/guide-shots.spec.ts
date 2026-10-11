@@ -11,6 +11,7 @@ import {
   openProject,
   pickTool,
   selectTab,
+  startFromTemplate,
 } from './helpers';
 import { indexed } from './indexed-png';
 
@@ -173,7 +174,7 @@ test('the Parameters dialog', async ({ page }) => {
 // Part 2 (P6-06 slice S7): bodies, printing and files.
 test('the browser with its folders', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: 'Start from the Box with a lid template' }).click();
+  await startFromTemplate(page, 'Box with a lid');
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   await kernelReady(page);
   await pickTool(page, 'Section Analysis');
@@ -248,7 +249,7 @@ test('the Versions dialog', async ({ page }) => {
 // P6-05 S9: the concept page for components.
 test('the browser with a component', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: 'Start from the Box with a lid template' }).click();
+  await startFromTemplate(page, 'Box with a lid');
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   await kernelReady(page);
   const browser = page.getByRole('complementary', { name: 'Browser' });

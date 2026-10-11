@@ -21,7 +21,15 @@ import {
   zoomOutTo,
 } from './benchmark-helpers';
 import { type Clip, CURSOR_SCRIPT, clipOf, DEMO_STYLE, Recorder } from './demo-recorder';
-import { kernelReady, mapping, newSketchOnXY, openProject, pickTool, projector } from './helpers';
+import {
+  kernelReady,
+  mapping,
+  newSketchOnXY,
+  openProject,
+  pickTool,
+  projector,
+  startFromTemplate,
+} from './helpers';
 
 // Regenerates the assets the app ships for onboarding (P3-12, ADR-0052):
 //
@@ -59,7 +67,7 @@ const TEMPLATE_CARDS = [
 for (const { id, name } of TEMPLATE_CARDS) {
   test(`thumbnail of the ${name} template`, async ({ page }) => {
     await page.goto('./');
-    await page.getByRole('button', { name: `Start from the ${name} template` }).click();
+    await startFromTemplate(page, name);
     await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
     await expect(viewportOf(page)).toHaveAttribute('data-ready', 'true');
     await expect(page.getByRole('button', { name: `Project name: ${name}. Rename` })).toBeVisible();

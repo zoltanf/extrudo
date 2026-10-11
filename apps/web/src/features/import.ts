@@ -46,12 +46,15 @@ import { overrideInputs, overrideIssue, overrideValues } from './scadRows';
 import { type DialogContext, type DialogValues, defineFeatureDialog } from './spec';
 import { defaultFromInputs, shownFields } from './values';
 
-/** What the platform's file picker is asked for: the model files of §0. */
-export const IMPORT_ACCEPT = '.step,.stp,.stl,.3mf,.obj,.scad';
+/**
+ * What the platform's file picker is asked for: the model files of §0, and an
+ * `.f3d` file, which opens as a new design instead (ADR-0083 §4).
+ */
+export const IMPORT_ACCEPT = '.step,.stp,.stl,.3mf,.obj,.scad,.f3d';
 
 /** What a file the picker refuses says so, in the app's voice. */
 export const IMPORT_REFUSED =
-  'Extrudo imports STEP files (.step, .stp), meshes (.stl, .3mf, .obj) and OpenSCAD files (.scad).';
+  'Extrudo imports STEP files (.step, .stp), meshes (.stl, .3mf, .obj), OpenSCAD files (.scad) and .f3d files.';
 
 /** The file the dialog is about, while it is open (the picked bytes and record). */
 export interface PendingImport {
@@ -71,16 +74,22 @@ export function pendingImport(): PendingImport | undefined {
  * Picks a model file and puts its bytes with the design (ADR-0061 §2), ready
  * for the dialog to preview: the new attachment's ID, its record, and the
  * bytes in the app's cache under that ID. `undefined` when the user cancels or
- * the file is refused, which it then says.
+ * the file is refused, which it then says, or is an `.f3d`, which `openF3d`
+ * opens as a new design.
  */
 export async function pickImportFile(deps: {
   files: Pick<FileAccess, 'pick'>;
   projects: ProjectStore;
   store: DocumentStore;
   notify(tone: 'info' | 'error', message: string): void;
+  openF3d?(file: File): void;
 }): Promise<PendingImport | undefined> {
   const file = await deps.files.pick(IMPORT_ACCEPT);
   if (!file) return undefined;
+  if (/\.f3d$/i.test(file.name) && deps.openF3d) {
+    deps.openF3d(file);
+    return undefined;
+  }
   const mediaType = mediaTypeOf(file.name);
   if (!modelKind(mediaType)) {
     deps.notify('error', IMPORT_REFUSED);
@@ -119,6 +128,24 @@ export async function pickImportFile(deps: {
   putAttachmentBytes(id, bytes);
   pendingImportStore.setState({ pending });
   return pending;
+}
+
+const requestedModels = new Map<string, File>();
+
+/**
+ * Asks the design that opens next, `id`, to open Import Model's dialog on
+ * `file`: the home screen's Import… makes a new design for a model file
+ * (ADR-0083 §4).
+ */
+export function requestModelImport(id: string, file: File): void {
+  requestedModels.set(id, file);
+}
+
+/** The model file `id` was asked to import, once. */
+export function takeModelImport(id: string): File | undefined {
+  const file = requestedModels.get(id);
+  requestedModels.delete(id);
+  return file;
 }
 
 /** Forgets the picked file: the dialog was cancelled, or its feature is stored. */

@@ -2,7 +2,7 @@
 title: Combine
 section: Tools
 category: Modify
-order: 49
+order: 48
 ---
 
 # Combine

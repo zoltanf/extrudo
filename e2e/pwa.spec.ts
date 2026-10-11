@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
-import { kernelReady, saveStatus, selectTab } from './helpers';
+import { kernelReady, saveStatus, selectTab, startFromTemplate } from './helpers';
 import { type StaticHost, startStaticHost } from './static-host';
 
 // The rest of the suite blocks service workers (playwright.config.ts); this
@@ -43,7 +43,7 @@ test('the service worker precaches the app, WASM included, and the app opens off
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
-  await page.getByRole('button', { name: 'Start from the Wall bracket template' }).click();
+  await startFromTemplate(page, 'Wall bracket');
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   await kernelReady(page);
   await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
@@ -53,7 +53,7 @@ test('the service worker precaches the app, WASM included, and the app opens off
 
   // A template that comes from a file works offline too.
   await page.goto('./');
-  await page.getByRole('button', { name: 'Start from the Storage box template' }).click();
+  await startFromTemplate(page, 'Storage box');
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   await kernelReady(page);
   await expect(

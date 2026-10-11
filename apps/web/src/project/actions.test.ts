@@ -1,8 +1,9 @@
 import { createDocument } from '@extrudo/core';
 import { memoryProjectStore, writeArchive } from '@extrudo/storage';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { takeModelImport } from '../features/import';
 import type { Platform } from '../platform';
-import { importF3dFile, MAX_F3D_BYTES, openExternalFile } from './actions';
+import { importAnyFile, importF3dFile, MAX_F3D_BYTES, openExternalFile } from './actions';
 
 const fakePlatform = (projects: ReturnType<typeof memoryProjectStore>): Platform =>
   ({ projects }) as unknown as Platform;
@@ -69,5 +70,35 @@ describe('importF3dFile (M1)', () => {
       /too large to import/,
     );
     expect(read).toBe(false);
+  });
+});
+
+describe("the home screen's Import… (ADR-0083 §4)", () => {
+  const platformPicking = (projects: ReturnType<typeof memoryProjectStore>, file: File) =>
+    ({
+      projects,
+      files: { pick: async () => file },
+      storage: { requestPersistence: async () => true },
+    }) as unknown as Platform;
+
+  it('makes a new design for a model file and asks it to open the Import dialog', async () => {
+    const projects = memoryProjectStore();
+    const file = new File([new Uint8Array([1])], 'Bracket.stl');
+    const summary = await importAnyFile(platformPicking(projects, file));
+    expect(summary).toBeDefined();
+    const id = summary?.id ?? '';
+    expect((await projects.load(id as never)).name).toBe('Bracket');
+    expect(takeModelImport(id)).toBe(file);
+    expect(takeModelImport(id)).toBeUndefined();
+  });
+
+  it('imports an .extrudo file as itself, with no Import dialog', async () => {
+    const projects = memoryProjectStore();
+    const bytes = writeArchive(createDocument({ name: 'Saved' }));
+    const file = new File([bytes as Uint8Array<ArrayBuffer>], 'Saved.extrudo');
+    const summary = await importAnyFile(platformPicking(projects, file));
+    const id = summary?.id ?? '';
+    expect((await projects.load(id as never)).name).toBe('Saved');
+    expect(takeModelImport(id)).toBeUndefined();
   });
 });

@@ -2,7 +2,7 @@
 title: Collinear
 section: Tools
 category: Sketch
-order: 104
+order: 103
 ---
 
 # Collinear

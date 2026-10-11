@@ -2,7 +2,7 @@
 title: Measure
 section: Tools
 category: Inspect
-order: 65
+order: 64
 ---
 
 # Measure

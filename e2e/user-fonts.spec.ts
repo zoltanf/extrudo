@@ -188,7 +188,7 @@ test('a font added to the design shapes a text, and travels with the design', as
   await page.goto('./');
   const [chooser] = await Promise.all([
     page.waitForEvent('filechooser'),
-    page.getByRole('button', { name: 'Import .extrudo' }).click(),
+    page.getByRole('button', { name: 'Import…', exact: true }).click(),
   ]);
   await chooser.setFiles(file);
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);

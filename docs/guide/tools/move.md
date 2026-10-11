@@ -2,7 +2,7 @@
 title: Move/Copy
 section: Tools
 category: Modify
-order: 47
+order: 46
 ---
 
 # Move/Copy

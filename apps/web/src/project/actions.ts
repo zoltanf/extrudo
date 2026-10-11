@@ -4,6 +4,8 @@ import {
   DocumentLoadError,
   type ExtrudoDocument,
   FILE_EXTENSION,
+  mediaTypeOf,
+  modelKind,
 } from '@extrudo/core';
 import {
   ArchiveError,
@@ -11,6 +13,7 @@ import {
   ProjectNotFoundError,
   type ProjectSummary,
 } from '@extrudo/storage';
+import { IMPORT_ACCEPT, requestModelImport } from '../features/import';
 import { type OpenedFile, type Platform, safeFileName } from '../platform';
 import { navigate, projectHref } from '../routes';
 import { APP_VERSION } from '../version';
@@ -60,13 +63,15 @@ export function loadProject(platform: Platform, id: ProjectId): Promise<ExtrudoD
 }
 
 /**
- * Lets the user pick an `.extrudo` file and imports it; `undefined` if they
- * cancel. An `.f3d` picked here is imported as one too.
+ * Lets the user pick an `.extrudo` file (or takes `picked`) and imports it;
+ * `undefined` if they cancel. An `.f3d` picked here is imported as one too.
  */
 export async function importProject(
   platform: Platform,
+  picked?: File,
 ): Promise<Pick<ProjectSummary, 'id'> | undefined> {
-  const file = await platform.files.pick(`${FILE_EXTENSION},application/zip,${F3D_ACCEPT}`);
+  const file =
+    picked ?? (await platform.files.pick(`${FILE_EXTENSION},application/zip,${F3D_ACCEPT}`));
   if (!file) return undefined;
   if (/\.f3d$/i.test(file.name)) {
     const id = await importF3dFile(platform, file);
@@ -76,6 +81,24 @@ export async function importProject(
   const summary = await platform.projects.importFile(file, { onNotice: (m) => notices.push(m) });
   for (const notice of notices) noteOnOpen(summary.id, notice);
   return summary;
+}
+
+/**
+ * The home screen's Import… (ADR-0083 §4): a design file (`.extrudo`, `.f3d`)
+ * comes in as `importProject` brings it; a model file (STEP, mesh, OpenSCAD)
+ * makes a new design named for it, which opens with Import Model's dialog on
+ * the file. `undefined` if they cancel.
+ */
+export async function importAnyFile(
+  platform: Platform,
+): Promise<Pick<ProjectSummary, 'id'> | undefined> {
+  const file = await platform.files.pick(`${FILE_EXTENSION},application/zip,${IMPORT_ACCEPT}`);
+  if (!file) return undefined;
+  if (!modelKind(mediaTypeOf(file.name))) return importProject(platform, file);
+  const name = file.name.replace(/\.[^.]+$/, '') || 'Imported model';
+  const id = await createProject(platform, createDocument({ name, appVersion: APP_VERSION }));
+  requestModelImport(id, file);
+  return { id };
 }
 
 /** What an `.f3d` file is picked as. */

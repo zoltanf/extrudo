@@ -6,7 +6,7 @@ import {
   primitive,
   viewportOf,
 } from './benchmark-helpers';
-import { kernelReady, openProject, pickTool } from './helpers';
+import { kernelReady, openProject, pickTool, startFromTemplate } from './helpers';
 
 // P4-07 (FR-PAR-05 and FR-PAR-06): the Customizer panel. A starred parameter
 // gets a slider, the model follows it, one undo takes the drag back, and named
@@ -200,7 +200,7 @@ test('a value outside the range is kept, and the row warns about it', async ({ p
 
 test('a template opens with its parameters exposed and its configurations', async ({ page }) => {
   await page.goto('./');
-  await page.getByRole('button', { name: 'Start from the Storage box template' }).click();
+  await startFromTemplate(page, 'Storage box');
   await expect(page).toHaveURL(/#\/p\/[0-9a-f-]+$/);
   const viewport = viewportOf(page);
   await expect(viewport).toHaveAttribute('data-ready', 'true');

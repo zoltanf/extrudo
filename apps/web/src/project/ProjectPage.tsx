@@ -168,8 +168,8 @@ function ProjectEditor({
           .then((summary) => summary && navigate(projectHref(summary.id)))
           .catch((error: unknown) => push('error', `Import failed: ${describeError(error)}`));
       },
-      importF3d: () => {
-        importF3dFile(platform)
+      importF3d: (picked) => {
+        importF3dFile(platform, picked)
           .then((id) => id && navigate(projectHref(id)))
           .catch((error: unknown) => push('error', `Import failed: ${describeError(error)}`));
       },
