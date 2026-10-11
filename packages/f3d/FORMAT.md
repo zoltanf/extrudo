@@ -283,3 +283,42 @@ the centre), ratio, then the sine and cosine of the half-angle. The radius at
 h cm along the axis is r + h · sine / cosine; a negative sine narrows the cone
 along its axis (a countersink drilled along the axis). A sine of 0 is a
 cylinder.
+
+### Topology, and earlier states
+
+The faces reach their edges the usual ACIS way (each record: attribute
+pointer, a history slot, a spare pointer, then):
+
+| record | pointers after those three |
+|---|---|
+| `face` | next face, first loop, shell, subshell, surface (then sense flags) |
+| `loop` | next loop, first coedge, face |
+| `coedge` | next, previous, partner coedge, edge, (sense,) loop, pcurve |
+| `edge` | start vertex, (parameter,) end vertex, (parameter,) a coedge, curve (then sense and a convexity string) |
+| `vertex` | an edge, (an int,) point |
+| `point` | its position |
+
+`straight-curve` is a point and a direction; `ellipse-curve` a centre, the
+normal, the major axis (as long as the major radius) and the minor-to-major
+ratio (1: a circle). Subtypes (`tedge-edge`, `tvertex-vertex`) end in the
+base type's name.
+
+The streams hold more than the solved B-rep: earlier versions of faces (one
+face tag can appear on several faces with different extents) and their
+edges. So the edge a fillet or chamfer rounded is often still there between
+two faces carrying its recipe's two tags: about half the corpus's
+fillet and chamfer edges are. Its vertices are exact, but they may belong to
+another state than the one the fillet saw (for nearly half of the lines the
+edge was longer or shorter then), so they tell which line or circle the
+edge is on, and which stretch of it when the bounding faces leave a choice,
+not where it ends on their own.
+
+### Fillet and chamfer faces
+
+A fillet's own faces (tagged with its operation ids) are cylinders of its
+radius: in 443 of the 444 fillets with such faces, every set's radius is
+one of them. A chamfer with two distances, or a distance and an angle
+(`leftDistance` and `rotateAngle`), makes a plane or cone that meets the
+face taking the first distance that far from the edge, and the other face
+d · tan θ (or the second distance) from it; nothing else in the records says
+which face is which.

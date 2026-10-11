@@ -55,13 +55,12 @@ for (const theme of ['dark', 'light'] as const) {
       await audit(page, `${theme} home`);
     });
 
-    test('onboarding: the empty design hint, the tutorial card and a tooltip with a demo', async ({
+    test('onboarding: an empty design, the tutorial card and a tooltip with a demo', async ({
       page,
     }) => {
       await openProject(page);
       await kernelReady(page);
-      await expect(page.locator('[data-viewport-hint]')).toBeVisible();
-      await audit(page, `${theme} empty design hint`);
+      await audit(page, `${theme} empty design`);
 
       await page.getByRole('button', { name: 'Help' }).click();
       // "Tutorials" (the docs page) also matches a plain 'Tutorial'.

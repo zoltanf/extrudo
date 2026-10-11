@@ -103,7 +103,6 @@ import { MeasureOverlay } from '../measure/MeasureOverlay';
 import { MeasurePanel } from '../measure/MeasurePanel';
 import { TutorialCard } from '../onboarding/TutorialCard';
 import { useTutorial } from '../onboarding/useTutorial';
-import { ViewportHint } from '../onboarding/ViewportHint';
 import { ParametersDialog } from '../parameters/ParametersDialog';
 import type { Platform } from '../platform';
 import {
@@ -2211,15 +2210,6 @@ export function AppShell({
         onSettings={() => setSettingsOpen(true)}
       />
       <TutorialCard tutorial={tutorial} />
-      <ViewportHint
-        show={
-          doc.features.length === 0 &&
-          mode === 'model' &&
-          activeTool === undefined &&
-          !tutorial.open &&
-          !dialogOpen
-        }
-      />
       <Toolbar
         mode={mode}
         tab={toolbarTab}

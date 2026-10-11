@@ -61,9 +61,17 @@ test('the palette finds commands by fuzzy search and runs them', async ({ page }
   const recent = palette(page).getByRole('group', { name: 'Recent' }).getByRole('option');
   await expect(recent).toHaveCount(1);
   await expect(recent).toHaveAccessibleName(/^3-Point Rectangle/);
-  // Only the Sketch tab's tools are offered in a sketch; later ones say when they arrive.
+  // Only the Sketch tab's tools are offered in a sketch, and since the owner's UI review 3
+  // (R3-11) a sketch has no 3D Print tab, so its commands wait for the model too.
   await palette(page).getByRole('combobox').fill('extrude');
   await expect(palette(page).getByRole('option')).toHaveCount(0);
+  await palette(page).getByRole('combobox').fill('send to slicer');
+  await expect(palette(page).getByRole('option')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(palette(page)).toBeHidden();
+  await page.getByRole('button', { name: 'Finish Sketch' }).last().click();
+  // In the model, a command that can't run here says why.
+  await page.keyboard.press('Control+k');
   await palette(page).getByRole('combobox').fill('send to slicer');
   const later = palette(page).getByRole('option', { name: /^Send to Slicer/ });
   await expect(later).toHaveAttribute('aria-disabled', 'true');

@@ -34,16 +34,19 @@ test('offers the tour on the home screen once, and Help restarts it', async ({ p
   await expect(page.getByRole('heading', { name: 'Your designs' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Take the tour' })).toHaveCount(0);
 
-  // A new design shows the hint; Help › Tutorial starts the tour in it, at once.
+  // A new design shows no hint (R3-15); Help › Tutorial starts the tour in it, at once.
   await page.getByRole('button', { name: 'New design' }).click();
-  await expect(page.locator('[data-viewport-hint]')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Viewport' })).toHaveAttribute(
+    'data-ready',
+    'true',
+  );
+  await expect(page.getByRole('note', { name: 'How to start' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Help' }).click();
   // "Tutorials" (the docs page, P6-06 S9) also matches a plain 'Tutorial'.
   await page.getByRole('menuitem', { name: /^Tutorial$/ }).click();
   await expect(card(page)).toBeVisible();
   await expect(card(page)).toContainText('Step 1 of 5');
-  // The card takes the hint's place, and points at Create Sketch.
-  await expect(page.locator('[data-viewport-hint]')).toHaveCount(0);
+  // The card points at Create Sketch.
   await expect(page.locator('[data-tutorial-ring="sketch"]')).toBeVisible();
 
   // Esc closes it while focus is in the card; Ctrl+K brings it back.

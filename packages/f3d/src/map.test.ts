@@ -11,8 +11,10 @@ import { Kernel } from '@extrudo/kernel';
 import { kernelFeatures, loadOcct, RecomputeEngine } from '@extrudo/kernel/node';
 import { loadFont } from '@extrudo/sketch/text';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { AsmSurface } from './asm';
 import type { ProfileRegion } from './decode/extrude';
 import type { ParameterValue } from './decode/parameters';
+import type { Vec3 } from './decode/sketch-geometry';
 import { f3dToDesign } from './map';
 import { type F3dDesign, type F3dExtrude, type F3dSketchFeature, IDENTITY } from './model';
 
@@ -663,5 +665,121 @@ describe('f3dToDesign', () => {
     const hole = design.toJSON().features.find((f) => f.type === 'hole');
     expect(hole?.inputs.tipAngle).toMatchObject({ expr: '0 deg' });
     expect(await volumes(f3d)).toEqual([expect.closeTo(RING - Math.PI * 0.5 ** 2 * 0.4, 3)]);
+  });
+
+  it("puts a chamfer's first distance on the face the file's chamfer face shows", async () => {
+    // The ring's outer top rim: 0.2 mm in on the top, at 60° to it (0.346 mm
+    // down the side). The file's chamfer cone meets the top at r = 5.3 mm.
+    const f3d = washer();
+    const top: AsmSurface = { kind: 'plane', point: [0, 0, 0.08], normal: [0, 0, 1] };
+    const side: AsmSurface = {
+      kind: 'cone',
+      center: [0, 0, 0],
+      axis: [0, 0, 1],
+      radius: 0.55,
+      cylinder: true,
+      slope: 0,
+    };
+    const b = 0.02 * Math.tan(Math.PI / 3);
+    f3d.features.push({
+      type: 'chamfer',
+      id: 3,
+      kind: 'Chamfer',
+      name: 'Chamfer1',
+      suppressed: false,
+      parameters: [],
+      sets: [
+        {
+          // The side first: the top is the face the distance goes on all the same.
+          edges: [
+            {
+              faces: [
+                { tags: [], feature: 2, surface: side },
+                { tags: [], feature: 2, surface: top },
+              ],
+              bounds: [],
+            },
+          ],
+          size: parameter({ name: 'd5', kind: 'leftDistance', value: 0.02 }),
+          size2: parameter({ name: 'd6', kind: 'rotateAngle', unit: 'deg', value: Math.PI / 3 }),
+        },
+      ],
+      made: [
+        {
+          kind: 'cone',
+          center: [0, 0, 0.08],
+          axis: [0, 0, 1],
+          radius: 0.53,
+          cylinder: false,
+          slope: -0.02 / b,
+        },
+      ],
+    });
+    const { design } = f3dToDesign(f3d, 'Washer');
+    const chamfer = design.toJSON().features.find((f) => f.type === 'chamfer');
+    expect(chamfer?.inputs.face).toMatchObject({
+      refs: [{ kind: 'face', id: expect.stringMatching(/:cap:end$/) }],
+    });
+    // Pappus: the bevel's triangle, ½ · 0.2 · b mm², about its centroid 5.5 − 0.2 / 3 mm out.
+    const cut = 0.5 * 0.2 * (b * 10) * 2 * Math.PI * (5.5 - 0.2 / 3);
+    expect(await volumes(f3d)).toEqual([expect.closeTo(RING - cut, 3)]);
+  });
+
+  it('leaves out a weak edge that only runs on from a named edge (one tangent chain)', () => {
+    // On the ring's top: a short arc of its outer rim, named, and two lines at
+    // its end (5.5, 0) along a face no imported feature made: one runs on
+    // tangent (down Y), the other turns off (along X).
+    const f3d = washer();
+    const top: AsmSurface = { kind: 'plane', point: [0, 0, 0.08], normal: [0, 0, 1] };
+    const plane = (point: Vec3, normal: Vec3): AsmSurface => ({ kind: 'plane', point, normal });
+    const ours = (surface: AsmSurface) => ({ tags: [], feature: 2, surface });
+    const other = (surface: AsmSurface) => ({ tags: [], feature: 99, surface });
+    const rim = ours({
+      kind: 'cone',
+      center: [0, 0, 0],
+      axis: [0, 0, 1],
+      radius: 0.55,
+      cylinder: true,
+      slope: 0,
+    });
+    f3d.features.push({
+      type: 'chamfer',
+      id: 3,
+      kind: 'Chamfer',
+      name: 'Chamfer1',
+      suppressed: false,
+      parameters: [],
+      sets: [
+        {
+          edges: [
+            {
+              faces: [ours(top), rim],
+              bounds: [
+                ours(plane([0, 0, 0], [0, -1, 0])),
+                ours(plane([0.44, 0.33, 0], [0.8944272, 0.4472136, 0])),
+              ],
+            },
+            {
+              faces: [ours(top), other(plane([0.55, 0, 0], [1, 0, 0]))],
+              bounds: [ours(plane([0, 0, 0], [0, 1, 0])), ours(plane([0, -1, 0], [0, -1, 0]))],
+            },
+            {
+              faces: [ours(top), other(plane([0, 0, 0], [0, -1, 0]))],
+              bounds: [ours(plane([0.55, 0, 0], [-1, 0, 0])), ours(plane([0.7, 0, 0], [1, 0, 0]))],
+            },
+          ],
+          size: parameter({ name: 'd5', kind: 'Distance', value: 0.01 }),
+        },
+      ],
+    });
+    const { design } = f3dToDesign(f3d, 'Washer');
+    const chamfer = design.toJSON().features.find((f) => f.type === 'chamfer');
+    const edges = chamfer?.inputs.edges as
+      | { refs: { id: string; fingerprint?: { dir?: number[] } }[] }
+      | undefined;
+    const refs = edges?.refs ?? [];
+    expect(refs).toHaveLength(2);
+    expect(refs[0]?.id).toMatch(/^e\[extrude:/);
+    expect(refs[1]?.fingerprint?.dir).toEqual([1, 0, 0]);
   });
 });

@@ -54,7 +54,6 @@ test('the gallery offers four templates, each opens as a copy with its name and 
   await kernelReady(page);
   await expect(projectName(page, 'Box with a lid')).toBeVisible();
   await expect(viewport).toHaveAttribute('data-bodies', /Box:\d+:.* Lid:\d+:/);
-  await expect(page.locator('[data-viewport-hint]')).toHaveCount(0);
 
   // Opening the same template again makes a second design, not the first one again.
   await page.goto('./');
@@ -74,31 +73,16 @@ test('the gallery offers four templates, each opens as a copy with its name and 
   await expect(viewport).toHaveAttribute('data-bodies', /Enclosure:\d+:.* Lid:\d+:/);
 });
 
-test('an empty design points at Create Sketch until it has a feature', async ({ page }) => {
+// R3-15 (the owner's UI review 3): the hint that pointed an empty design at Create Sketch
+// is gone; the tutorial stays.
+test('an empty design shows no hint', async ({ page }) => {
   await openProject(page);
-  const hint = page.locator('[data-viewport-hint]');
-  await expect(hint).toBeVisible();
-  await expect(hint).toContainText('Start with a sketch: press Create Sketch and pick a plane.');
-  // It takes no clicks: the view under it works.
-  await expect(hint).toHaveCSS('pointer-events', 'none');
-
-  // Create Sketch waiting for a plane has its own prompt: the hint steps aside.
-  await pickTool(page, 'Create Sketch');
-  await expect(hint).toHaveCount(0);
-  await page.keyboard.press('Escape');
-  await expect(hint).toBeVisible();
-
-  // The first feature takes it away for good.
-  await pickTool(page, 'Box');
-  const dialog = page.getByRole('region', { name: 'Box dialog' });
-  await expect(dialog).toHaveAttribute('data-preview-status', 'ok', { timeout: 15_000 });
-  await expect(hint).toHaveCount(0);
-  await dialog.getByRole('button', { name: 'OK' }).click();
   await kernelReady(page);
-  await expect(hint).toHaveCount(0);
-  // Undo brings it back with the empty design.
-  await page.keyboard.press('Control+z');
-  await expect(hint).toBeVisible();
+  await expect(page.getByRole('note', { name: 'How to start' })).toHaveCount(0);
+  await expect(page.getByText('Start with a sketch')).toHaveCount(0);
+  await pickTool(page, 'Create Sketch');
+  await page.keyboard.press('Escape');
+  await expect(page.getByText('Start with a sketch')).toHaveCount(0);
 });
 
 test('a toolbar tooltip has the name, the key, a sentence and a looping demo', async ({ page }) => {

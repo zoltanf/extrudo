@@ -948,8 +948,9 @@ it), Esc closes it while focus is in it. It runs on an empty design: the home
 card, Help › Tutorial and the Ctrl+K command `tutorial` start it (a design
 with features gets a new one: `FileActions.startTutorial`, `requestTutorial`
 taken once by `useTutorial`); the `onboarding.tour` preference (`new` shows
-the home card, `started`, `dismissed`, `done`) is all it remembers.
-`ViewportHint` points at Create Sketch while `doc.features` is empty. **The
+the home card, `started`, `dismissed`, `done`) is all it remembers. An
+empty design shows no hint (`ViewportHint` was removed in the owner's UI review 3,
+R3-15; ADR-0052's amendment). **The
 home screen's gallery is `home/gallery.ts`** (the Wall bracket from code, B2,
 B4, B5 from `fixtures/benchmarks/*.extrudo` as hashed assets through
 `readArchive`, so migrations apply and they are precached; each opens as a copy
@@ -2088,8 +2089,8 @@ help and theme — and `shell/Toolbar.tsx` the selected tab's groups below it (t
 Export Design / Export Model / Export as Script ▾ Import .extrudo, Save to Linked
 Folder, Parameters with Customizer, Extend with Plugins); the tabs are **Home, Solid
 (Create, Primitives, Features, Pattern, Program), Modify (Modify, Transform), Construct
-(Planes, Axes, Points), Inspect, 3D Print** in the model and **Home, Sketch, 3D Print**
-in a sketch (`visibleTabs`, `defaultTab`, `tabOfTool` in `shell/tools.ts`); there is no
+(Planes, Axes, Points), Inspect, 3D Print** in the model and **Home, Sketch** in a
+sketch (3D Print went in the owner's UI review 3, R3-11; `visibleTabs`, `defaultTab`, `tabOfTool` in `shell/tools.ts`); there is no
 Insert tab. **Home's file actions are commands, not tools**: `TOOLS` lists them (category
 `file`, token `--x-cat-file`, nine new icons) and `FILE_COMMANDS` names the
 `FileActions` method each runs (`AppShell.run` for a tile, `fileCommand` in
@@ -2849,7 +2850,13 @@ them. Notes further down that name a machine apply to that machine only.
   open): the marker is the
   slider "Timeline marker" (`aria-valuenow` = active features,
   `aria-valuetext` "After Extrude1"); while it is dragged the real marker
-  stays and `[data-marker-ghost]` holds the target index. A dragged chip
+  stays and `[data-marker-ghost]` holds the target index. There are no playback
+  buttons (R3-01): `rollMarker(page, 'Home' | 'End' | 'ArrowLeft' |
+  'ArrowRight')` (`e2e/helpers.ts`) focuses the marker and presses the key, and a
+  disabled marker (a sketch or dialog open) has `aria-disabled="true"`. Neither
+  the ghost nor a chip's drop line may widen the list (R3-02: `insideContent`;
+  `e2e/timeline.spec.ts` checks `scrollWidth <= clientWidth` with the PCB
+  enclosure's nine chips). A dragged chip
   shows `[data-drop-index]` (and `data-drop-refused`); drag with
   `mouse.down` and several `mouse.move` steps (> 4 px), dropping at a
   chip's left edge + 3 px lands before it. Chips carry
@@ -3619,7 +3626,7 @@ them. Notes further down that name a machine apply to that machine only.
   the region "Tutorial" (`data-tutorial-step` `sketch`, `rectangle`, `dimension`,
   `extrude`, `round`, `finished`; text "Step 2 of 5"; buttons "Skip step", "Close
   tutorial", "Keep designing"), the ring round the control it points at is
-  `[data-tutorial-ring="<tool id>"]`, the empty-design hint `[data-viewport-hint]`.
+  `[data-tutorial-ring="<tool id>"]` (the empty-design hint is gone, R3-15).
   Toolbar tiles carry `data-tool`. A tooltip is `getByRole('tooltip')` with a
   `kbd` and, for the thirteen tools with a clip, `video[data-tool-demo="<id>"]`
   (`data-playing` false under reduced motion). **Radix keeps a tooltip open

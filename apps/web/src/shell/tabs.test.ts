@@ -19,8 +19,10 @@ describe('visibleTabs (ADR-0079 §2)', () => {
     ]);
   });
 
-  it('replaces the model tabs with Sketch while a sketch is open', () => {
-    expect(labels('sketch')).toEqual(['Home', 'Sketch', '3D Print']);
+  it('replaces the model tabs with Sketch while a sketch is open, 3D Print too (R3-11)', () => {
+    expect(labels('sketch')).toEqual(['Home', 'Sketch']);
+    expect(tabOfTool('printInfo', 'sketch')).toBeUndefined();
+    expect(tabOfTool('exportSketch', 'sketch')).toBe('sketch');
   });
 
   it('opens on Solid in the model and Sketch in a sketch', () => {

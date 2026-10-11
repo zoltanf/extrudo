@@ -37,6 +37,19 @@ export async function startFromTemplate(page: Page, name: string) {
 
 export const saveStatus = (page: Page) => page.getByRole('status', { name: 'Save status' });
 
+/** The timeline's rollback marker, a slider (FR-TL-02). */
+export const timelineMarker = (page: Page) => page.getByRole('slider', { name: 'Timeline marker' });
+
+/**
+ * Moves the timeline marker with its keys, as the playback buttons did before the owner's
+ * UI review 3 (R3-01): Home rolls back to the start, End forward to the end, the arrows step
+ * (a folded group whole). The marker keeps the focus in its new place.
+ */
+export async function rollMarker(page: Page, key: 'Home' | 'End' | 'ArrowLeft' | 'ArrowRight') {
+  await timelineMarker(page).focus();
+  await page.keyboard.press(key);
+}
+
 /** Waits until the kernel has computed the document (P2-01): chips show their status. */
 export async function kernelReady(page: Page) {
   await expect(page.getByRole('status', { name: 'Kernel' })).toHaveAttribute(

@@ -13,14 +13,7 @@ import {
   type SketchData,
 } from '@extrudo/core';
 import type { BodyMesh } from '@extrudo/kernel';
-import {
-  ChevronFirst,
-  ChevronLast,
-  ChevronLeft,
-  ChevronRight,
-  Folder,
-  FolderOpen,
-} from 'lucide-react';
+import { ChevronRight, Folder, FolderOpen } from 'lucide-react';
 import {
   Fragment,
   type KeyboardEvent,
@@ -114,6 +107,9 @@ interface MarkerDrag {
   x: number;
 }
 
+/** Half the width of the marker's ghost (3 px) and of a chip's drop line (2 px), px. */
+const GHOST_HALF = 1.5;
+const DROP_HALF = 1;
 /** How far the pointer moves before a press on a chip becomes a drag, px. */
 const DRAG_THRESHOLD = 4;
 /**
@@ -149,9 +145,11 @@ function useEdgeScroll(
 }
 
 /**
- * Timeline and status bar (UI spec §2). Chips follow the document's features;
- * the playback buttons, dragging the marker and its arrow keys move the
- * rollback marker (FR-TL-02), each one undoable step. A chip opens its
+ * Timeline and status bar (UI spec §2). Chips follow the document's features
+ * from the row's left edge; dragging the marker and its keys (the arrows, Home
+ * and End) move the rollback marker (FR-TL-02), each one undoable step. The
+ * playback buttons that stood before the chips went in the owner's UI review 3
+ * (R3-01): the marker's keys reach every place they did. A chip opens its
  * sketch or dialog on double-click, highlights its geometry on hover, has a
  * right-click menu (P1-12, P2-11) and moves when dragged (FR-TL-04,
  * refused with a message when it would break a reference). An active
@@ -231,9 +229,6 @@ export function Timeline({
     pick([], run.group.id);
     anchor.current = run.members[0]?.id;
   };
-  // The marker one step on, over a folded group whole.
-  const stepBack = stepMarker(plan.gaps, marker, -1);
-  const stepForward = stepMarker(plan.gaps, marker, 1);
   const markerAt = (index: number) => (
     <Marker
       list={list}
@@ -253,36 +248,6 @@ export function Timeline({
       aria-label="Timeline"
       className="flex min-h-9 items-center gap-2 border-t border-line bg-panel px-2 py-1"
     >
-      <fieldset className="m-0 flex border-0 p-0" aria-label="Playback">
-        <IconButton
-          label="Roll back to start"
-          disabled={locked || marker === 0}
-          onClick={() => move(0)}
-        >
-          <ChevronFirst size={16} />
-        </IconButton>
-        <IconButton
-          label="Step back"
-          disabled={locked || stepBack === marker}
-          onClick={() => move(stepBack)}
-        >
-          <ChevronLeft size={16} />
-        </IconButton>
-        <IconButton
-          label="Step forward"
-          disabled={locked || stepForward === marker}
-          onClick={() => move(stepForward)}
-        >
-          <ChevronRight size={16} />
-        </IconButton>
-        <IconButton
-          label="Roll forward to end"
-          disabled={locked || marker === count}
-          onClick={() => move(count)}
-        >
-          <ChevronLast size={16} />
-        </IconButton>
-      </fieldset>
       {/* px-1 leaves room for the marker's triangle, which is wider than its bar: at the
               ends it stuck out and a scrollbar showed with room to spare. */}
       <ol
@@ -415,6 +380,7 @@ export function Timeline({
         {markerDrag && markerDrag.index !== marker && (
           <li
             aria-hidden="true"
+            data-indicator=""
             data-marker-ghost={markerDrag.index}
             className="pointer-events-none absolute top-1 bottom-1 w-[3px] -translate-x-1/2 rounded-sm bg-accent opacity-70"
             style={{ left: markerDrag.x }}
@@ -488,7 +454,7 @@ function useChipDrag(options: {
       ids,
       index: target,
       active,
-      x: at - el.getBoundingClientRect().left + el.scrollLeft,
+      x: insideContent(el, at - el.getBoundingClientRect().left + el.scrollLeft, DROP_HALF),
       problem: unchanged
         ? undefined
         : actions.moveProblem(ids.length === 1 ? (ids[0] as FeatureId) : ids, target),
@@ -1075,6 +1041,30 @@ function centreOf(el: HTMLElement): number {
 }
 
 /**
+ * Keeps a drag's indicator (the marker's ghost, a chip's drop line), centred at `x` in the
+ * list's scroll coordinates and `half` px either side of it, inside the list's own content:
+ * drawn past the last item it widened what scrolls, and a scroll bar showed under chips that
+ * fit (R3-02). Past the ends it sits in the list's padding.
+ */
+function insideContent(list: HTMLElement, x: number, half: number): number {
+  const items = [...list.children].filter(
+    (child): child is HTMLElement => child instanceof HTMLElement && !child.dataset.indicator,
+  );
+  const last = items.at(-1);
+  if (!last) return x;
+  const box = list.getBoundingClientRect();
+  const style = getComputedStyle(list);
+  const end =
+    last.getBoundingClientRect().right -
+    box.left +
+    list.scrollLeft +
+    Number.parseFloat(getComputedStyle(last).marginRight || '0') +
+    Number.parseFloat(style.paddingRight || '0');
+  // Half a pixel to spare: sub-pixel layout rounds the scroll width up.
+  return Math.min(Math.max(x, half), Math.max(half, end - half - 0.5));
+}
+
+/**
  * The rollback marker (FR-TL-02, UI spec §2): a slider over the gaps
  * between chips. Drag it (it follows the pointer; the model rolls when it
  * is let go, one undo step), or focus it and use the arrow keys, Home and
@@ -1134,7 +1124,10 @@ function Marker({
         : left !== undefined
           ? left + 4
           : (right ?? 0) - 4;
-    return { index: at, x: px - el.getBoundingClientRect().left + el.scrollLeft };
+    return {
+      index: at,
+      x: insideContent(el, px - el.getBoundingClientRect().left + el.scrollLeft, GHOST_HALF),
+    };
   };
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || locked) return;
@@ -1234,6 +1227,7 @@ function DropIndicator({ drag }: { drag: ChipDrag }) {
   return (
     <li
       aria-hidden="true"
+      data-indicator=""
       data-drop-index={drag.index}
       data-drop-refused={refused || undefined}
       title={drag.problem}

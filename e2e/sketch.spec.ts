@@ -68,7 +68,10 @@ test('Create Sketch on a plane picked in the view, then Finish Sketch', async ({
   await expect(viewport).toHaveAttribute('data-camera-direction', '0,0,-1');
   await expect(viewport).toHaveAttribute('data-camera-up', '0,1,0');
   // The marker can't move while a sketch is open.
-  await expect(page.getByRole('button', { name: 'Step back' })).toBeDisabled();
+  await expect(page.getByRole('slider', { name: 'Timeline marker' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
 
   await page
     .getByRole('group', { name: 'Finish' })

@@ -68,10 +68,9 @@ Double-clicking a sketch chip opens the sketch instead.
 ![The timeline with the marker rolled back after the first extrude, and the later chips dimmed](./images/features-and-timeline/timeline.png)
 
 **The marker** is the amber bar between chips. Features before it are in the model, and features after it are
-dimmed and not computed. Drag the marker to roll the model back. Focus it and use the arrow keys,
-`Home` and `End`, or use the playback buttons at the left (roll back to start, step back, step
-forward, roll forward to end). Right-click a chip and choose **Roll Back to Here** to put the
-marker just after it.
+dimmed and not computed. Drag the marker to roll the model back, or focus it and use the arrow
+keys to step it, `Home` to roll back to the start and `End` to roll forward to the end.
+Right-click a chip and choose **Roll Back to Here** to put the marker just after it.
 
 New features always go in at the marker. Roll back, add a feature, and it lands in the middle
 of the history, with the later ones recomputed on top. Moving the marker is one undo step.
