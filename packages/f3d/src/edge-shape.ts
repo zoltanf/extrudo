@@ -488,3 +488,21 @@ export function edgeShape(e: F3dEdge): EdgeShape | undefined {
         : circleShape(curve.center, curve.axis, curve.radius, e.bounds, known);
   return shape && chosen ? { ...shape, chosen: true } : shape;
 }
+
+/** Whether two edges meet end to end, running on smoothly (one tangent chain). */
+export function continues(a: EdgeShape, b: EdgeShape): boolean {
+  if (!a.ends || !b.ends) return false;
+  const tangent = (e: EdgeShape, p: Vec3): Vec3 | undefined => {
+    if (e.type === 'line') return e.dir;
+    if (e.type === 'circle' && e.circle) return cross(e.circle.axis, sub(p, e.circle.center));
+    return undefined;
+  };
+  for (const p of a.ends)
+    for (const q of b.ends) {
+      if (norm(sub(p, q)) > 1e-4) continue;
+      const u = tangent(a, p);
+      const v = tangent(b, q);
+      if (u && v && norm(cross(u, v)) < 1e-3 * norm(u) * norm(v)) return true;
+    }
+  return false;
+}

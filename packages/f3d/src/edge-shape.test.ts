@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AsmSurface } from './asm';
 import type { Vec3 } from './decode/sketch-geometry';
-import { edgeShape } from './edge-shape';
+import { continues, edgeShape } from './edge-shape';
 import type { F3dEdge, F3dFace, KnownEdge } from './model';
 
 const face = (surface: AsmSurface): F3dFace => ({ tags: [], surface });
@@ -180,5 +180,31 @@ describe('edgeShape', () => {
     expect(shape?.at[2]).toBeCloseTo(10 * (1 - Math.cos(t)), 5);
     // ∫ √(1 + sin² t) dt over the arc, × 10 mm
     expect(shape?.size).toBeCloseTo(1.560518, 4);
+  });
+
+  it('tells a tangent chain from a corner', () => {
+    // A short arc of the 1 cm circle about Z from (1, 0, 0), and lines at (1, 0, 0).
+    const arc = edgeShape(
+      edge(plane([0, 0, 0], [0, 0, 1]), cylinder([0, 0, 0], [0, 0, 1], 1), [
+        plane([0, 0, 0], [0, -1, 0]),
+        plane([0.8, 0.6, 0], [0.8944272, 0.4472136, 0]),
+      ]),
+    );
+    const along = edgeShape(
+      edge(plane([0, 0, 0], [0, 0, 1]), plane([1, 0, 0], [1, 0, 0]), [
+        plane([0, 0, 0], [0, 1, 0]),
+        plane([0, -1, 0], [0, -1, 0]),
+      ]),
+    );
+    const across = edgeShape(
+      edge(plane([0, 0, 0], [0, 0, 1]), plane([0, 0, 0], [0, -1, 0]), [
+        plane([1, 0, 0], [-1, 0, 0]),
+        plane([2, 0, 0], [1, 0, 0]),
+      ]),
+    );
+    if (!arc || !along || !across) throw new Error('no shape');
+    expect(continues(arc, along)).toBe(true);
+    expect(continues(along, arc)).toBe(true);
+    expect(continues(arc, across)).toBe(false);
   });
 });

@@ -44,7 +44,7 @@ import type {
   Vec3,
 } from './decode/sketch-geometry';
 import type { SketchText } from './decode/text';
-import { type EdgeShape, edgeShape } from './edge-shape';
+import { continues, type EdgeShape, edgeShape } from './edge-shape';
 import {
   type CopyContext,
   type MadeCopies,
@@ -1828,6 +1828,9 @@ function edgeTreatment(
   let named = 0;
   for (const s of f.sets) {
     const refs: GeomRef[] = [];
+    // Edges held only by a guessed name or one face's, with their shapes.
+    const weak = new Map<GeomRef, EdgeShape | undefined>();
+    const strong = new Map<GeomRef, EdgeShape | undefined>();
     // A chamfer with two sizes: each edge's two faces, the one its first
     // distance goes on first, when the file's chamfer faces show it.
     const sides = new Map<GeomRef, [string, string]>();
@@ -1898,6 +1901,7 @@ function edgeTreatment(
           Math.hypot(...at.map((v, i) => v - (r.fingerprint?.at?.[i] ?? 0))) < 1e-3);
       if (!refs.some(same)) {
         refs.push(ref);
+        (guessed || !names ? weak : strong).set(ref, shape);
         if (names) pairs.set(ref, names);
         const k =
           names && shape && second !== undefined && s.size && f.made
@@ -1908,6 +1912,24 @@ function edgeTreatment(
       trace(ref);
       named++;
     }
+    // The kernel rounds a whole tangent chain whichever of its edges it is
+    // given. A weak edge that only continues the chain of an edge held by
+    // name adds nothing then, and when it lies on an earlier round the
+    // kernel could not make, it is lost and fails this round too: left out.
+    const chained = new Set<GeomRef>();
+    const holders = [...strong.values()];
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const [ref, shape] of weak) {
+        if (chained.has(ref) || !shape) continue;
+        if (holders.some((h) => h && continues(shape, h))) {
+          chained.add(ref);
+          holders.push(shape);
+          grew = true;
+        }
+      }
+    }
+    for (const ref of chained) refs.splice(refs.indexOf(ref), 1);
     if (refs.length === 0 || !s.size) continue;
     // Extrudo takes one reference face per set, which must touch each of its
     // edges: the face every edge shown takes its first distance on, or, with
