@@ -66,7 +66,7 @@ function segment(records: Rec[]): Segment {
     ...u32(4),
     ...u32(0),
     ...str8('DesignSegment'),
-    ...str8('Fusion'),
+    ...str8('Design'),
     ...u64(0),
     ...u32(types.length),
     ...types.flatMap((t) => {
