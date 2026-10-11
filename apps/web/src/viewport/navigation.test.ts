@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   dragAction,
   dragZoomFactor,
+  NAV_PRESETS,
   type NavAction,
   type NavPreset,
   type PointerInput,
+  RENAMED_PRESETS,
   wheelAction,
 } from './navigation';
 
@@ -23,26 +25,34 @@ const input = (button: number, mods: Partial<PointerInput> = {}): PointerInput =
 
 describe('dragAction', () => {
   it.each<[NavPreset, PointerInput, NavAction | undefined]>([
-    // Extrudo, the default (UI spec §3.1): Onshape's buttons swapped
-    ['extrudo', input(MIDDLE), 'orbit'],
-    ['extrudo', input(MIDDLE, { ctrlKey: true }), 'pan'],
-    ['extrudo', input(RIGHT), 'pan'],
-    ['extrudo', input(LEFT), undefined],
-    // Shift orbit
-    ['shift-orbit', input(MIDDLE), 'pan'],
-    ['shift-orbit', input(MIDDLE, { shiftKey: true }), 'orbit'],
-    ['shift-orbit', input(LEFT), undefined],
-    ['shift-orbit', input(RIGHT), undefined],
+    // Spindle, the default (UI spec §3.1): middle orbits, right pans; Shift swaps them (R3-04)
+    ['spindle', input(MIDDLE), 'orbit'],
+    ['spindle', input(MIDDLE, { ctrlKey: true }), 'pan'],
+    ['spindle', input(MIDDLE, { metaKey: true }), 'pan'],
+    ['spindle', input(MIDDLE, { shiftKey: true }), 'pan'],
+    ['spindle', input(RIGHT), 'pan'],
+    ['spindle', input(RIGHT, { shiftKey: true }), 'orbit'],
+    ['spindle', input(LEFT), undefined],
+    // Shift + a left-click stays add-to-selection.
+    ['spindle', input(LEFT, { shiftKey: true }), undefined],
+    // Crank: right orbits, middle pans; the same Shift swap
+    ['crank', input(RIGHT), 'orbit'],
+    ['crank', input(RIGHT, { ctrlKey: true }), 'pan'],
+    ['crank', input(RIGHT, { shiftKey: true }), 'pan'],
+    ['crank', input(MIDDLE), 'pan'],
+    ['crank', input(MIDDLE, { shiftKey: true }), 'orbit'],
+    ['crank', input(LEFT), undefined],
+    ['crank', input(LEFT, { shiftKey: true }), undefined],
+    // Glide (was "Shift orbit")
+    ['glide', input(MIDDLE), 'pan'],
+    ['glide', input(MIDDLE, { shiftKey: true }), 'orbit'],
+    ['glide', input(LEFT), undefined],
+    ['glide', input(RIGHT), undefined],
     // Blender
     ['blender', input(MIDDLE), 'orbit'],
     ['blender', input(MIDDLE, { shiftKey: true }), 'pan'],
     ['blender', input(MIDDLE, { ctrlKey: true }), 'zoom'],
     ['blender', input(LEFT), undefined],
-    // Onshape / SolidWorks
-    ['onshape', input(RIGHT), 'orbit'],
-    ['onshape', input(RIGHT, { ctrlKey: true }), 'pan'],
-    ['onshape', input(MIDDLE), 'pan'],
-    ['onshape', input(LEFT), undefined],
     // Trackpad
     ['trackpad', input(LEFT, { altKey: true }), 'orbit'],
     ['trackpad', input(LEFT, { altKey: true, shiftKey: true }), 'pan'],
@@ -51,13 +61,35 @@ describe('dragAction', () => {
     expect(dragAction(preset, pointer)).toBe(expected);
   });
 
+  it('names no preset after another CAD product, and says what each does (R3-04)', () => {
+    expect(NAV_PRESETS.map((p) => p.label)).toEqual([
+      'Spindle',
+      'Crank',
+      'Glide',
+      'Blender',
+      'Trackpad',
+    ]);
+    for (const p of NAV_PRESETS) {
+      expect(p.label + p.summary).not.toMatch(/onshape|solidworks|fusion|freecad|inventor/i);
+      // Orbit and pan are always named, and zoom.
+      expect(p.summary).toMatch(/orbit/);
+      expect(p.summary).toMatch(/pan/);
+      expect(p.summary).toMatch(/zoom/);
+    }
+    expect(RENAMED_PRESETS).toEqual({
+      extrudo: 'spindle',
+      onshape: 'crank',
+      'shift-orbit': 'glide',
+    });
+  });
+
   it('turns a left-drag into the active nav-bar tool in every preset', () => {
-    for (const preset of ['extrudo', 'shift-orbit', 'blender', 'onshape', 'trackpad'] as const) {
+    for (const preset of ['spindle', 'crank', 'glide', 'blender', 'trackpad'] as const) {
       expect(dragAction(preset, input(LEFT), 'zoom')).toBe('zoom');
       expect(dragAction(preset, input(LEFT), 'pan')).toBe('pan');
     }
     // Other buttons keep their mapping.
-    expect(dragAction('shift-orbit', input(MIDDLE), 'orbit')).toBe('pan');
+    expect(dragAction('glide', input(MIDDLE), 'orbit')).toBe('pan');
   });
 });
 
@@ -73,8 +105,8 @@ describe('wheelAction', () => {
   });
 
   it('zooms out on scroll down and in on scroll up', () => {
-    const out = wheelAction('shift-orbit', wheel(100));
-    const into = wheelAction('shift-orbit', wheel(-100));
+    const out = wheelAction('glide', wheel(100));
+    const into = wheelAction('glide', wheel(-100));
     if (out.action !== 'zoom' || into.action !== 'zoom') throw new Error('expected zoom');
     expect(out.factor).toBeGreaterThan(1);
     expect(into.factor).toBeLessThan(1);
@@ -82,8 +114,8 @@ describe('wheelAction', () => {
   });
 
   it('counts line-mode deltas as 16 px', () => {
-    const lines = wheelAction('shift-orbit', wheel(3, { deltaMode: 1 }));
-    const pixels = wheelAction('shift-orbit', wheel(48));
+    const lines = wheelAction('glide', wheel(3, { deltaMode: 1 }));
+    const pixels = wheelAction('glide', wheel(48));
     expect(lines).toEqual(pixels);
   });
 

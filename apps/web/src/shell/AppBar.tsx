@@ -6,6 +6,7 @@ import {
   History,
   LayoutGrid,
   ListChecks,
+  Mouse,
   PanelsTopLeft,
   Puzzle,
   Redo2,
@@ -30,6 +31,7 @@ import {
   MenuLabel,
   MenuRadioGroup,
   MenuSeparator,
+  MenuSub,
   Popover,
   TextInput,
   type ThemeChoice,
@@ -38,6 +40,7 @@ import {
 } from '../design-system';
 import type { Autosaver } from '../project/autosave';
 import { HOME_HREF } from '../routes';
+import { NAV_PRESETS } from '../viewport/navigation';
 import type { ViewportStore } from '../viewport/store';
 import type { DocsPage } from './docsLinks';
 import { TITLE_GAP, type TitleFit, titleFit } from './titleFit';
@@ -319,6 +322,7 @@ function SettingsMenu({
 }) {
   const autoProject = useStore(viewport, (s) => s.autoProject);
   const autoProjectFace = useStore(viewport, (s) => s.autoProjectFace);
+  const preset = useStore(viewport, (s) => s.preset);
   return (
     <Menu
       label="Settings"
@@ -360,6 +364,20 @@ function SettingsMenu({
         Radial right-click menu
       </MenuCheckboxItem>
       <MenuItem onSelect={onCustomizeMarking}>Customize Marking Menu…</MenuItem>
+      {/* The nav bar's Mouse controls moved here (the owner's UI review 3, R3-03); each
+          preset says what it binds before it is chosen. The Settings dialog's "Mouse
+          buttons" is the same preference. */}
+      <MenuSub label="Mouse controls" icon={<Mouse size={14} />}>
+        <MenuRadioGroup
+          value={preset}
+          onChange={(value) => viewport.getState().setPreset(value)}
+          options={NAV_PRESETS.map((p) => ({
+            value: p.value,
+            label: p.label,
+            description: p.summary,
+          }))}
+        />
+      </MenuSub>
       <MenuSeparator />
       <MenuLabel>Theme</MenuLabel>
       <MenuRadioGroup

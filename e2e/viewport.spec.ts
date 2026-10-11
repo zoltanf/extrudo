@@ -81,16 +81,70 @@ test('ViewCube edges, turn arrows and roll arrows', async ({ page }) => {
   await expect(viewport).toHaveAttribute('data-camera-up', '0,0,1');
 });
 
-test('Extrudo is the first preset and the default', async ({ page }) => {
+/** Opens the Settings (gear) menu's Mouse controls submenu (R3-03: it left the nav bar). */
+async function mouseControls(page: Page) {
+  await page.locator('header').getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Mouse controls' }).click();
+  return page.getByRole('menu', { name: 'Mouse controls' });
+}
+
+/**
+ * Chooses a mouse preset in the Settings menu, by keyboard: a pointer jumping straight from the
+ * submenu's trigger to an item (as Playwright's click moves it) closes a Radix submenu, which a
+ * real pointer, moving through the space between, doesn't.
+ */
+async function choosePreset(page: Page, name: string) {
+  const menu = await mouseControls(page);
+  await menu.getByRole('menuitemradio', { name, exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+}
+
+test('Spindle is the first preset and the default, and each says what it binds', async ({
+  page,
+}) => {
   await open(page);
-  await page.getByRole('button', { name: 'Mouse controls' }).click();
-  const presets = page.getByRole('menuitemradio');
-  await expect(presets.first()).toHaveAccessibleName(/ Extrudo$/);
+  // The nav bar has no mouse button any more (R3-03).
+  await expect(
+    page.getByRole('navigation', { name: 'View navigation' }).getByRole('button', {
+      name: 'Mouse controls',
+    }),
+  ).toHaveCount(0);
+  const menu = await mouseControls(page);
+  const presets = menu.getByRole('menuitemradio');
+  await expect(presets).toHaveCount(5);
+  for (const [i, name] of ['Spindle', 'Crank', 'Glide', 'Blender', 'Trackpad'].entries())
+    await expect(presets.nth(i)).toHaveAccessibleName(name);
   await expect(presets.first()).toHaveAttribute('aria-checked', 'true');
-  await expect(presets.nth(1)).toHaveAccessibleName(/Onshape \/ SolidWorks/);
+  // Every preset's bindings are readable before choosing it (R3-03).
+  await expect(presets.first()).toHaveAccessibleDescription(
+    'Middle-drag orbits, right-drag pans; Shift swaps them. The wheel zooms.',
+  );
+  for (let i = 0; i < 5; i++)
+    await expect(presets.nth(i)).toHaveAccessibleDescription(/orbit.*pan|pan.*orbit/);
+  await page.keyboard.press('Escape');
 });
 
-test('Extrudo mouse: middle-drag orbits, right-drag pans, left-drag does neither', async ({
+test('the Settings menu and the Settings dialog set the same preset (R3-03)', async ({ page }) => {
+  await open(page);
+  await choosePreset(page, 'Crank');
+  await page.keyboard.press('Control+,');
+  const dialog = page.getByRole('dialog', { name: 'Settings' });
+  await expect(dialog).toBeVisible();
+  await dialog.locator('[data-settings-nav] [data-settings-section="view"]').click();
+  const field = dialog.getByRole('combobox', { name: 'Mouse buttons' });
+  await expect(field).toHaveValue('crank');
+  await field.selectOption('glide');
+  await page.keyboard.press('Escape');
+  const menu = await mouseControls(page);
+  await expect(menu.getByRole('menuitemradio', { name: 'Glide', exact: true })).toHaveAttribute(
+    'aria-checked',
+    'true',
+  );
+  await page.keyboard.press('Escape');
+});
+
+test('Spindle mouse: middle-drag orbits, right-drag pans, left-drag does neither', async ({
   page,
 }) => {
   const viewport = await open(page);
@@ -122,15 +176,28 @@ test('Extrudo mouse: middle-drag orbits, right-drag pans, left-drag does neither
   await page.mouse.up();
   await expect(viewport).toHaveAttribute('data-camera-direction', orbited);
   await expect(viewport).toHaveAttribute('data-camera-target', target);
+
+  // Shift swaps them (R3-04): Shift+middle-drag pans, Shift+right-drag orbits.
+  await page.keyboard.down('Shift');
+  await page.mouse.move(x, y);
+  await page.mouse.down({ button: 'middle' });
+  await page.mouse.move(x - 60, y - 40, { steps: 6 });
+  await page.mouse.up({ button: 'middle' });
+  await expect(viewport).toHaveAttribute('data-camera-direction', orbited);
+  await expect(viewport).not.toHaveAttribute('data-camera-target', target);
+  await page.mouse.move(x, y);
+  await page.mouse.down({ button: 'right' });
+  await page.mouse.move(x + 90, y + 20, { steps: 6 });
+  await page.mouse.up({ button: 'right' });
+  await page.keyboard.up('Shift');
+  await expect(viewport).not.toHaveAttribute('data-camera-direction', orbited);
 });
 
-test('Shift-orbit mouse: middle-drag pans, Shift+middle-drag orbits, the wheel zooms, F6 fits', async ({
+test('Glide mouse: middle-drag pans, Shift+middle-drag orbits, the wheel zooms, F6 fits', async ({
   page,
 }) => {
   const viewport = await open(page);
-  await page.getByRole('button', { name: 'Mouse controls' }).click();
-  await page.getByRole('menuitemradio', { name: 'Shift orbit' }).click();
-  await page.keyboard.press('Escape');
+  await choosePreset(page, 'Glide');
   const { x, y } = await centre(viewport);
   const direction = await attr(viewport, 'data-camera-direction');
   const fitted = await attr(viewport, 'data-camera-size');
@@ -168,9 +235,7 @@ test('Shift-orbit mouse: middle-drag pans, Shift+middle-drag orbits, the wheel z
 
 test('the Blender preset orbits with the middle button, and is remembered', async ({ page }) => {
   let viewport = await open(page);
-  await page.getByRole('button', { name: 'Mouse controls' }).click();
-  await page.getByRole('menuitemradio', { name: 'Blender' }).click();
-  await page.keyboard.press('Escape');
+  await choosePreset(page, 'Blender');
 
   await page.reload();
   viewport = page.getByRole('region', { name: 'Viewport' });
@@ -303,9 +368,7 @@ test("the browser's right-click menu stays out of the view and panels, not text 
   page,
 }) => {
   const viewport = await open(page);
-  await page.getByRole('button', { name: 'Mouse controls' }).click();
-  await page.getByRole('menuitemradio', { name: /Onshape/ }).click();
-  await page.keyboard.press('Escape');
+  await choosePreset(page, 'Crank');
   // Every right-click the page leaves to the browser, by what was under it.
   await page.evaluate(`
     window.__menus = [];

@@ -53,7 +53,7 @@ You start on the home screen:
    or shows an item, a click selects it, and `F2` renames.
 4. **The view** is where the model is. The ViewCube in its corner turns the model, and the
    navigation bar under it holds Select, Orbit, Pan, Zoom, Fit, Orthographic, the visual
-   style, the grid and the mouse controls.
+   style and the grid. The mouse controls are in the **Settings** menu.
 5. **The timeline** is the row of chips along the bottom: one per sketch or feature, in the
    order they were made. See [features and the timeline](./features-and-timeline.md).
 6. **The status bar** is at the right end of the same row: how many features there are, the
@@ -75,9 +75,10 @@ The default mouse controls are:
 | Fit everything | `F6` |
 | Fit what is selected | Ctrl+K, **Look at Selection**, or the right-click list |
 
-The **Mouse controls** button in the navigation bar switches to the layout of Onshape /
-SolidWorks, Shift orbit (middle-drag pans, Shift+middle-drag orbits), Blender or
-a trackpad.
+Hold **Shift** to swap them: Shift + middle-drag pans and Shift + right-drag orbits. The
+**Settings** menu's **Mouse controls** switches to another layout, each with its bindings under
+its name: **Crank** (right-drag orbits, middle-drag pans), **Glide** (middle-drag pans,
+Shift + middle-drag orbits), **Blender** or a **Trackpad**.
 
 Seven keys jump to a named view: `Shift+1` is the home view, then `Shift+2` Top, `Shift+3`
 Bottom, `Shift+4` Front, `Shift+5` Back, `Shift+6` Left and `Shift+7` Right. Clicking a face of

@@ -5,9 +5,8 @@ it to understand *behaviour* only. Never copy their icons, images, text or
 branding.
 
 **Changes decided, not built yet (2026-10-11):** the owner's UI review 3 changes
-the mouse controls (into the Settings menu; presets Spindle, Crank, Glide,
-Blender, Trackpad), command search (one dialog for Ctrl+K and S, ten pins)
-and tooltip clips. The items are in
+command search (one dialog for Ctrl+K and S, ten pins) and tooltip clips. The
+items are in
 [`plans/ui-review-2026-10-11.md`](plans/ui-review-2026-10-11.md); this spec
 still describes the app as it is, and each slice updates the sections it
 changes.
@@ -65,8 +64,10 @@ brief, voice) is in **`05-brand.md`**. In short:
   and command search (the Ctrl+K palette). The project name and the save state
   (a dot and its word) sit together, centred between the search button and the
   right-hand buttons: version history, settings and help (menu: Search commands,
-  Toolbox, Tutorial, P3-12). Settings holds General (auto-project, the Radial right-click menu,
-  Customize Marking Menu…) and the Theme (System by default, Light, Dark). The tab labels
+  Toolbox, Tutorial, P3-12). Settings holds Settings…, Plugins… (R3-12), General
+  (auto-project, the Radial right-click menu, Customize Marking Menu…, and **Mouse
+  controls ▸**, a submenu of the presets with each one's bindings under its name, R3-03)
+  and the Theme (System by default, Light, Dark). The tab labels
   sit on the wordmark's baseline. There is no File menu: its items are the Home
   tab (on the desktop app also Open File, Save As and Open Recent, and Help has
   Check for Updates…); Windows and Linux have no native menu bar either, macOS
@@ -248,8 +249,8 @@ brief, voice) is in **`05-brand.md`**. In short:
   runs. Pressing Select stops the nav tool or the command; starting a
   command ends a nav tool. Each nav tool has its own cursor (an orbit
   arrow, a magnifier, a hand), also during a navigation drag. Then fit
-  (F6), ortho/perspective, visual style, grid, mouse controls and named
-  views. The wireframe and hidden-edge styles also draw the silhouettes
+  (F6), ortho/perspective, visual style, grid and named views (the mouse
+  controls moved to the Settings menu, R3-03). The wireframe and hidden-edge styles also draw the silhouettes
   of curved faces (the outline of a hole or a cylinder as seen now), which
   follow the camera; seams are never drawn (P2-08).
 - **Named views (ADR-0008's amendment, 2026-10-10):** the nav bar's Named
@@ -312,7 +313,7 @@ brief, voice) is in **`05-brand.md`**. In short:
 
 ## 3. Core interactions
 
-### 3.1 Mouse and keyboard navigation (Extrudo preset, the default)
+### 3.1 Mouse and keyboard navigation (Spindle preset, the default)
 
 | Action | Input |
 |---|---|
@@ -322,13 +323,21 @@ brief, voice) is in **`05-brand.md`**. In short:
 | Fit all | F6 or double-click middle |
 | Look at selection | Ctrl+K "Look at Selection", or the right-click list (no key; only while something is selected) |
 
-The Extrudo preset is Onshape / SolidWorks with the middle and right
-buttons swapped. Other presets, in the Mouse controls menu after this one:
-Onshape / SolidWorks (right-drag orbit, middle-drag or Ctrl + right-drag
-pan), Shift orbit (MMB pan, Shift+MMB orbit), Blender (MMB orbit, Shift+MMB
-pan), Trackpad (two-finger pan, pinch zoom, Alt+drag orbit). Since the
-right button drags, the right-click marking menu (§3.3) must open only on
-a right-click without movement, as Onshape's context menu does.
+In Spindle, **Shift swaps orbit and pan**: Shift + middle-drag pans and
+Shift + right-drag orbits (the owner's UI review 3, R3-04); Shift + a
+left-click still adds to the selection. The presets are in the Settings
+(gear) menu's **Mouse controls ▸** submenu, each with its bindings on a
+line under its name, and in the Settings dialog's "Mouse buttons" (the
+same preference; R3-03, there is no nav-bar button). After Spindle:
+**Crank** (right-drag orbits, middle-drag or Ctrl + right-drag pans; Shift
+swaps them), **Glide** (middle-drag pans, Shift + middle-drag orbits),
+**Blender** (middle-drag orbits, Shift + middle-drag pans, Ctrl +
+middle-drag zooms) and **Trackpad** (two-finger pan, pinch zoom, Alt + drag
+orbits, Alt + Shift + drag pans). No preset is named after another CAD
+product (Blender keeps its name by the owner's choice); a value stored
+under an old name (`extrudo`, `onshape`, `shift-orbit`) reads as Spindle,
+Crank or Glide. Since the right button drags, the right-click marking menu
+(§3.3) opens only on a right-click without movement.
 
 ### 3.2 Selection
 

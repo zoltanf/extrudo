@@ -5,32 +5,52 @@
  */
 
 export type NavAction = 'orbit' | 'pan' | 'zoom';
-export type NavPreset = 'extrudo' | 'shift-orbit' | 'blender' | 'onshape' | 'trackpad';
+export type NavPreset = 'spindle' | 'crank' | 'glide' | 'blender' | 'trackpad';
 
-/** The presets in menu order; the first is the default (`DEFAULT_SETTINGS.preset`). */
+/**
+ * The presets in menu order; the first is the default (`DEFAULT_SETTINGS.preset`). The first
+ * three are named after a workshop motion that says what the drag does (the owner's UI review 3,
+ * R3-04): no preset is named after another CAD product; Blender keeps its name by the owner's
+ * choice. `summary` is the one line the Settings menu shows under the preset and the Settings
+ * dialog under its field: what orbits, pans and zooms, and what Shift does.
+ */
 export const NAV_PRESETS: readonly { value: NavPreset; label: string; summary: string }[] = [
   {
-    value: 'extrudo',
-    label: 'Extrudo',
-    summary: 'Middle-drag orbits, right-drag pans',
+    value: 'spindle',
+    label: 'Spindle',
+    summary: 'Middle-drag orbits, right-drag pans; Shift swaps them. The wheel zooms.',
   },
   {
-    value: 'onshape',
-    label: 'Onshape / SolidWorks',
-    summary: 'Right-drag orbits, middle-drag pans',
+    value: 'crank',
+    label: 'Crank',
+    summary: 'Right-drag orbits, middle-drag pans; Shift swaps them. The wheel zooms.',
   },
   {
-    value: 'shift-orbit',
-    label: 'Shift orbit',
-    summary: 'Middle-drag pans, Shift+middle-drag orbits',
+    value: 'glide',
+    label: 'Glide',
+    summary: 'Middle-drag pans, Shift+middle-drag orbits. The wheel zooms.',
   },
-  { value: 'blender', label: 'Blender', summary: 'Middle-drag orbits, Shift+middle-drag pans' },
+  {
+    value: 'blender',
+    label: 'Blender',
+    summary: 'Middle-drag orbits, Shift+middle-drag pans, Ctrl+middle-drag zooms. The wheel zooms.',
+  },
   {
     value: 'trackpad',
     label: 'Trackpad',
-    summary: 'Two-finger scroll pans, pinch zooms, Alt+drag orbits',
+    summary: 'Two-finger scroll pans, pinch zooms, Alt+drag orbits (with Shift, pans).',
   },
 ];
+
+/**
+ * The values presets were stored under before R3-04, read as their new names by the
+ * preference reader (`loadSettings`): never a document change.
+ */
+export const RENAMED_PRESETS: Readonly<Record<string, NavPreset>> = {
+  extrudo: 'spindle',
+  onshape: 'crank',
+  'shift-orbit': 'glide',
+};
 
 /** The parts of a pointer event the mapping looks at. */
 export interface PointerInput {
@@ -54,21 +74,25 @@ export function dragAction(
 ): NavAction | undefined {
   const { button, shiftKey, ctrlKey, altKey, metaKey } = input;
   if (button === 0 && tool) return tool;
+  // Shift + a left-click stays add-to-selection in every preset: only the middle and right
+  // buttons navigate (or the left one with a nav-bar tool, or Alt on a trackpad).
   switch (preset) {
-    case 'extrudo':
-      // Onshape's buttons swapped: the middle button orbits, the right one pans.
-      if (button === 1) return ctrlKey || metaKey ? 'pan' : 'orbit';
-      if (button === 2) return 'pan';
+    case 'spindle':
+      // The middle button orbits, the right one pans; Shift swaps them (R3-04). Ctrl/⌘ +
+      // middle pans as before.
+      if (button === 1) return ctrlKey || metaKey || shiftKey ? 'pan' : 'orbit';
+      if (button === 2) return shiftKey ? 'orbit' : 'pan';
       return undefined;
-    case 'shift-orbit':
+    case 'crank':
+      // Spindle's buttons the other way round, with the same Shift swap.
+      if (button === 2) return ctrlKey || metaKey || shiftKey ? 'pan' : 'orbit';
+      if (button === 1) return shiftKey ? 'orbit' : 'pan';
+      return undefined;
+    case 'glide':
       if (button === 1) return shiftKey ? 'orbit' : 'pan';
       return undefined;
     case 'blender':
       if (button === 1) return shiftKey ? 'pan' : ctrlKey ? 'zoom' : 'orbit';
-      return undefined;
-    case 'onshape':
-      if (button === 2) return ctrlKey || metaKey ? 'pan' : 'orbit';
-      if (button === 1) return 'pan';
       return undefined;
     case 'trackpad':
       if (button === 0 && altKey) return shiftKey ? 'pan' : 'orbit';

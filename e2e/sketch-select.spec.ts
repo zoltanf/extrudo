@@ -173,7 +173,7 @@ test('typed coordinates move a point; Delete takes geometry with its constraints
 test('a press released over the nav bar leaves no box behind', async ({ page }) => {
   await sketchOnXY(page);
   const nav = page.getByRole('navigation', { name: 'View navigation' });
-  const button = nav.getByRole('button', { name: 'Mouse controls' });
+  const button = nav.getByRole('button', { name: 'Grid', exact: true });
   const b = await button.boundingBox();
   const n = await nav.boundingBox();
   if (!b || !n) throw new Error('no nav bar');

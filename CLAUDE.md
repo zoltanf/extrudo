@@ -72,7 +72,9 @@ design system (`apps/web/src/design-system/`: tokens → Tailwind v4, Radix
 wrappers, icon pipeline) and the shell (`apps/web/src/shell/`), which opens a
 sample document in memory until storage exists. ADR-0008 (P0-05) set the
 viewport (`apps/web/src/viewport/`): Z-up world in mm, our own camera
-controller (target + quaternion + size, both projections), mouse presets as
+controller (target + quaternion + size, both projections), mouse presets (Spindle the
+default, Crank, Glide, Blender, Trackpad; Shift swaps orbit and pan in Spindle and Crank; in
+the Settings menu's Mouse controls ▸ since R3-03/R3-04, ADR-0008's amendment) as
 tables, shader grid, CSS 3D ViewCube, a viewport store with display settings
 as preferences. **Named views (ADR-0008's amendment, 2026-10-10)** save and
 restore the camera: core's `saveView`/`updateView`/`removeView` commands over

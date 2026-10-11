@@ -183,8 +183,21 @@ describe('viewport store', () => {
     const { store } = setup({ stored: { viewport: { preset: 'no-such-preset', grid: false } } });
     expect(store.getState().preset).toBe(DEFAULT_SETTINGS.preset);
     expect(store.getState().grid).toBe(false);
-    const kept = setup({ stored: { viewport: { preset: 'shift-orbit' } } });
-    expect(kept.store.getState().preset).toBe('shift-orbit');
+    const kept = setup({ stored: { viewport: { preset: 'glide' } } });
+    expect(kept.store.getState().preset).toBe('glide');
+  });
+
+  it('reads a preset stored under its old name as its new one (R3-04)', () => {
+    for (const [old, now] of [
+      ['extrudo', 'spindle'],
+      ['onshape', 'crank'],
+      ['shift-orbit', 'glide'],
+    ] as const) {
+      const { store } = setup({ stored: { viewport: { preset: old, grid: false } } });
+      expect(store.getState().preset).toBe(now);
+      expect(store.getState().grid).toBe(false);
+    }
+    expect(DEFAULT_SETTINGS.preset).toBe('spindle');
   });
 });
 

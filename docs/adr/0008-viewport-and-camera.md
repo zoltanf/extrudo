@@ -249,3 +249,31 @@ placeholders; nothing wrote to it. Now it works:
 - **Not here:** thumbnails per view, saving section or display settings with
   a view, and keyboard slots for views stay out (the owner's request was
   save/restore/rename/delete).
+
+## Amendment, 2026-10-11: presets renamed, Shift swaps, the menu moves
+
+The owner's UI review 3 (R3-03, R3-04; `docs/plans/ui-review-2026-10-11.md`), decided the same
+day:
+
+- **Names.** No preset is named after another CAD product (the hard rule for the UI); the first
+  three are named after a workshop motion that says what the drag does: **Spindle** (was
+  "Extrudo", the default: middle orbits, right pans), **Crank** (was named after two CAD
+  products: right orbits, middle pans) and **Glide** (was "Shift orbit": middle pans,
+  Shift + middle orbits); Blender and Trackpad keep theirs. The values are `spindle`, `crank`,
+  `glide`, `blender`, `trackpad`; `loadSettings` reads a value stored under an old name
+  (`RENAMED_PRESETS`: `extrudo`, `onshape`, `shift-orbit`) as its new one — a preference, never a
+  document change. The history above keeps the old names.
+- **Shift swaps orbit and pan** in Spindle (the owner's) and in Crank (the same rule, for
+  symmetry): Shift + middle-drag pans and Shift + right-drag orbits in Spindle, the other way
+  round in Crank. Ctrl/⌘ + drag keeps panning where it did, and Shift + a left-click stays
+  add-to-selection (only the middle and right buttons navigate).
+- **Where.** The nav bar's Mouse controls button is gone. The app bar's Settings (gear) menu has a
+  **Mouse controls ▸** submenu under General: the presets as radio items, each with its bindings
+  (`NAV_PRESETS`' `summary`: what orbits, pans and zooms and what Shift does) as a line under
+  its name and as the item's accessible description (`MenuRadioGroup`'s `description`), so every
+  preset's bindings are readable before choosing it. The Settings dialog's "Mouse buttons" field
+  is the same preference.
+- FR-VP-01 says the same (amended 2026-10-11). Tests: `navigation.test.ts` (both Shift swaps,
+  Shift + left-click, the names), `store.test.ts` (old values), `e2e/viewport.spec.ts` (the
+  submenu, its descriptions, the dialog in step with it, Spindle's Shift swap by real drags).
+

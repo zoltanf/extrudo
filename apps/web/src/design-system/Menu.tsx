@@ -1,5 +1,5 @@
 import { DropdownMenu as Radix, ContextMenu as RadixContext } from 'radix-ui';
-import { createContext, type ReactElement, type ReactNode, useContext } from 'react';
+import { createContext, type ReactElement, type ReactNode, useContext, useId } from 'react';
 
 const content =
   'z-50 min-w-48 overflow-y-auto rounded-dialog border border-line bg-raised p-1 text-base text-ink shadow-raised';
@@ -13,6 +13,9 @@ const dropContent = `${content} max-h-[var(--radix-dropdown-menu-content-availab
 const contextContent = `${content} max-h-[var(--radix-context-menu-content-available-height)]`;
 const item =
   'flex h-8 cursor-default select-none items-center gap-2 rounded-input px-2 outline-none data-highlighted:bg-accent-soft data-disabled:text-muted data-disabled:opacity-60';
+/** An item with a line under its label: as tall as it needs, the indicator at the top. */
+const described =
+  'flex min-h-8 cursor-default select-none items-start gap-2 rounded-input px-2 py-1.5 outline-none data-highlighted:bg-accent-soft data-disabled:text-muted data-disabled:opacity-60';
 
 export interface MenuProps {
   trigger: ReactElement;
@@ -202,6 +205,11 @@ export function MenuSub({
   );
 }
 
+/**
+ * Radio items; an option's `description` is a muted line under its label (the mouse
+ * presets' bindings, R3-03), readable before it is chosen and part of its accessible
+ * description.
+ */
 export function MenuRadioGroup<T extends string>({
   value,
   onChange,
@@ -209,18 +217,39 @@ export function MenuRadioGroup<T extends string>({
 }: {
   value: T;
   onChange(value: T): void;
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; description?: string }[];
 }) {
+  const base = useId();
   return (
     <Radix.RadioGroup value={value} onValueChange={(v) => onChange(v as T)}>
-      {options.map((o) => (
-        <Radix.RadioItem key={o.value} value={o.value} className={item}>
-          <span className="grid w-4 place-items-center text-accent">
-            <Radix.ItemIndicator>●</Radix.ItemIndicator>
-          </span>
-          {o.label}
-        </Radix.RadioItem>
-      ))}
+      {options.map((o) => {
+        const id = `${base}-${o.value}`;
+        return (
+          <Radix.RadioItem
+            key={o.value}
+            value={o.value}
+            className={o.description ? described : item}
+            {...(o.description && {
+              'aria-labelledby': `${id}-label`,
+              'aria-describedby': `${id}-description`,
+            })}
+          >
+            <span className="grid w-4 place-items-center text-accent">
+              <Radix.ItemIndicator>●</Radix.ItemIndicator>
+            </span>
+            {o.description ? (
+              <span className="flex max-w-64 flex-col">
+                <span id={`${id}-label`}>{o.label}</span>
+                <span id={`${id}-description`} className="text-muted text-sm">
+                  {o.description}
+                </span>
+              </span>
+            ) : (
+              o.label
+            )}
+          </Radix.RadioItem>
+        );
+      })}
     </Radix.RadioGroup>
   );
 }

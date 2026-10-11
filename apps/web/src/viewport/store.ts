@@ -25,7 +25,7 @@ import {
   type View,
   withShift,
 } from './camera';
-import { NAV_PRESETS, type NavAction, type NavPreset } from './navigation';
+import { NAV_PRESETS, type NavAction, type NavPreset, RENAMED_PRESETS } from './navigation';
 import type { RenderStats } from './renderMeter';
 
 /** A joint posed in the view (P6-05 J2, ADR-0081 §4): degrees for a revolute, mm for a slider. */
@@ -103,9 +103,9 @@ export const DEFAULT_SETTINGS: ViewportSettings = {
   projection: 'perspective',
   visualStyle: 'shadedEdges',
   grid: true,
-  // Middle-drag orbits, right-drag pans (2026-09-28, the owner's choice; Onshape's buttons
-  // swapped). Onshape / SolidWorks, the default before, stays in the menu.
-  preset: 'extrudo',
+  // Spindle: middle-drag orbits, right-drag pans, Shift swaps them (2026-09-28, the owner's
+  // choice; renamed and given the Shift swap in the owner's UI review 3, R3-04).
+  preset: 'spindle',
   // The origin planes stay hidden until something needs them.
   origin: { point: true, xy: false, xz: false, yz: false, x: true, y: true, z: true },
   sketchPoints: true,
@@ -302,12 +302,14 @@ const PREFERENCES_KEY = 'viewport';
 
 export function loadSettings(preferences: Preferences): ViewportSettings {
   const stored = preferences.get<Partial<ViewportSettings>>(PREFERENCES_KEY, {});
-  const known = NAV_PRESETS.some((p) => p.value === stored.preset);
+  // A preset stored under its old name (before R3-04) reads as its new one.
+  const preset = RENAMED_PRESETS[stored.preset as string] ?? stored.preset;
+  const known = NAV_PRESETS.some((p) => p.value === preset);
   return {
     ...DEFAULT_SETTINGS,
     ...stored,
     // A stored preset that no longer exists falls back to the default.
-    preset: known ? (stored.preset as NavPreset) : DEFAULT_SETTINGS.preset,
+    preset: known ? (preset as NavPreset) : DEFAULT_SETTINGS.preset,
     origin: { ...DEFAULT_SETTINGS.origin, ...stored.origin },
   };
 }

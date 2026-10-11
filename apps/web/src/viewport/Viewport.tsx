@@ -1627,7 +1627,7 @@ function useNavigation(
           button: number;
         }
       | undefined;
-    // After a right-button drag (Onshape's orbit) the browser's menu stays shut for a moment,
+    // After a right-button drag (the Crank preset's orbit) the browser's menu stays shut for a moment,
     // wherever the button came up: some platforms open it on release.
     let quietUntil = -Infinity;
     let lastMiddle = { time: -Infinity, x: 0, y: 0 };
@@ -1703,7 +1703,7 @@ function useNavigation(
       else setView(pan(current, result.dx, result.dy, view.clientHeight));
     };
 
-    // The right button can orbit (Onshape preset), so the browser's own menu never opens
+    // The right button can orbit (the Crank preset, or Shift with Spindle), so the browser's own menu never opens
     // over the view or anything on it (nav bar, ViewCube, overlays), except in a text field.
     const onContextMenu = (e: MouseEvent) => {
       if (!isEditable(e.target)) e.preventDefault();

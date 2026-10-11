@@ -287,7 +287,7 @@ const APP_DIALOGS = featureDialogs();
 /**
  * The browser's own right-click menu ("Copy, Select all") has nothing for a
  * CAD app outside text fields, links and selected text, and it gets in the
- * way of right-button orbiting (Onshape preset). Our menus (timeline chips,
+ * way of right-button orbiting (the Crank preset). Our menus (timeline chips,
  * browser rows) open as before: they handle the event first. Dialogs in
  * portals are covered too, since the listener is on the window.
  */

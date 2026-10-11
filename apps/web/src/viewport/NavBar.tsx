@@ -6,7 +6,6 @@ import {
   Grid3x3,
   Hand,
   Maximize,
-  Mouse,
   MousePointer2,
   Orbit,
   Video,
@@ -29,7 +28,7 @@ import {
 } from '../design-system';
 import { FILTER_KINDS, isFiltered } from '../selection/filter';
 import { namedViewSaveStore } from './namedViewSave';
-import { NAV_PRESETS, type NavAction } from './navigation';
+import type { NavAction } from './navigation';
 import { VISUAL_STYLES, type ViewportStore } from './store';
 
 const TOOLS: readonly { value: NavAction; label: string; hint: string; icon: ReactNode }[] = [
@@ -83,14 +82,13 @@ export interface NamedViewEntries {
  * (docs/05-brand.md §5).
  */
 export function NavBar({ store, commandRunning = false, onStopCommand, namedViews }: NavBarProps) {
-  const { tool, projection, visualStyle, grid, preset, selectionFilter } = useStore(
+  const { tool, projection, visualStyle, grid, selectionFilter } = useStore(
     store,
-    useShallow(({ tool, projection, visualStyle, grid, preset, selectionFilter }) => ({
+    useShallow(({ tool, projection, visualStyle, grid, selectionFilter }) => ({
       tool,
       projection,
       visualStyle,
       grid,
-      preset,
       selectionFilter,
     })),
   );
@@ -204,23 +202,8 @@ export function NavBar({ store, commandRunning = false, onStopCommand, namedView
       >
         <Grid3x3 size={16} strokeWidth={1.75} />
       </IconButton>
+      {/* The mouse controls moved to the Settings menu (the owner's UI review 3, R3-03). */}
       <div className="mx-1 h-4 w-px bg-line" />
-      <Menu
-        label="Mouse controls"
-        align="center"
-        trigger={
-          <IconButton label="Mouse controls" hint="Orbit, pan and zoom like the CAD tool you know.">
-            <Mouse size={16} strokeWidth={1.75} />
-          </IconButton>
-        }
-      >
-        <MenuLabel>Mouse controls</MenuLabel>
-        <MenuRadioGroup value={preset} onChange={s.setPreset} options={NAV_PRESETS} />
-        <p className="max-w-60 px-2 pt-1 pb-1.5 text-sm text-muted">
-          {NAV_PRESETS.find((p) => p.value === preset)?.summary}. The wheel zooms towards the
-          cursor.
-        </p>
-      </Menu>
       {/* Named views (ADR-0008's amendment): the saved views to restore, then
           the save prompt on a popover anchored on this button. The popover's
           anchor wraps the menu's trigger, since both live on one button. The
