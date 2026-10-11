@@ -1,6 +1,6 @@
 /**
  * Mapping of the features added after the first import (ADR-0083's
- * amendment of 2026-10-11): mirror, rectangular pattern, sweep and split body. Each
+ * amendment of 2026-10-11): mirror, rectangular pattern, sweep, split body and thread. Each
  * returns why it was left out, or what it made.
  */
 import type { Design, GeomRef } from '@extrudo/api';
@@ -10,7 +10,14 @@ import type { ParameterValue } from './decode/parameters';
 import type { RevolveAxis } from './decode/revolve';
 import type { Vec3 } from './decode/sketch-geometry';
 import { axisRef, type ImportReport, placeSketch, type SketchEntry, selectProfiles } from './map';
-import type { F3dMirror, F3dRectangularPattern, F3dSplit, F3dSweep } from './model';
+import type {
+  F3dFace,
+  F3dMirror,
+  F3dRectangularPattern,
+  F3dSplit,
+  F3dSweep,
+  F3dThread,
+} from './model';
 
 /** What the copying features need from the import so far. */
 export interface CopyContext {
@@ -204,5 +211,55 @@ export function splitBody(d: Design, f: F3dSplit, context: CopyContext): string 
   const plane = planeRef(d, f.plane, f.name, context.report, 'splits on');
   if (!plane) return 'its plane is not along an origin axis';
   d.splitBody({ bodies, plane } as Parameters<Design['splitBody']>[0], { name: f.name });
+  return undefined;
+}
+
+/**
+ * A modeled thread on cylindrical faces, at the file's major diameter and
+ * pitch with no clearance (the file's diameters are the thread's own).
+ * Extrudo's tooth is the 60° ISO profile: a 55° pipe thread comes out a
+ * little deeper. The file first resizes the face to the thread's crest;
+ * Extrudo cuts the thread into the face as it is, so a hole wider than the
+ * thread is left out.
+ */
+export function thread(
+  d: Design,
+  f: F3dThread,
+  /** The Extrudo name of a face, and its sketch circle's radius (cm) where known. */
+  faceName: (face: F3dFace) => { id: string; radius?: number | undefined } | undefined,
+  expressionOf: (p: ParameterValue, negate?: boolean) => string,
+  report: ImportReport,
+): string | undefined {
+  const { spec } = f;
+  const faces: GeomRef[] = [];
+  for (const face of f.faces) {
+    const named = faceName(face);
+    if (!named || faces.some((r) => r.id === named.id)) continue;
+    // The file resizes the face to the thread; Extrudo only cuts into it.
+    if (!spec.external && named.radius !== undefined && named.radius >= spec.major / 2)
+      return 'its hole is wider than the thread (the file fills it in to the thread first)';
+    faces.push({ kind: 'face', id: named.id });
+  }
+  if (faces.length === 0)
+    return f.faces.length === 0 ? 'its face was not found' : 'its face could not be named';
+  const mm = (cm: number) => `${Number((cm * 10).toPrecision(12))} mm`;
+  const inputs: Record<string, unknown> = {
+    faces,
+    diameter: mm(spec.major),
+    pitch: mm(spec.pitch),
+    tolerance: '0 mm',
+  };
+  if (!spec.full) {
+    const length = f.parameters.find((p) => p.kind === 'ThreadLength');
+    const offset = f.parameters.find((p) => p.kind === 'ThreadOffset');
+    inputs.extent = 'length';
+    if (length) inputs.length = expressionOf(length);
+    if (offset && Math.abs(offset.value) > 1e-12) inputs.offset = expressionOf(offset);
+  }
+  if (Math.abs(spec.angle - 60) > 1e-6)
+    report.notes.push(
+      `${f.name}: ${spec.designation} has a ${spec.angle}° profile; imported with Extrudo's 60° one.`,
+    );
+  d.thread(inputs as Parameters<Design['thread']>[0], { name: f.name });
   return undefined;
 }

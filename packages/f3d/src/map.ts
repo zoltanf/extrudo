@@ -43,7 +43,7 @@ import type {
 } from './decode/sketch-geometry';
 import type { SketchText } from './decode/text';
 import { type EdgeShape, edgeShape } from './edge-shape';
-import { type CopyContext, mirror, rectangularPattern, splitBody, sweep } from './map-more';
+import { type CopyContext, mirror, rectangularPattern, splitBody, sweep, thread } from './map-more';
 import type {
   F3dCircularPattern,
   F3dDesign,
@@ -425,6 +425,21 @@ export function f3dToDesign(
         else report.imported.push(feature.name);
       } else if (feature.type === 'circular-pattern') {
         const reason = circularPattern(d, feature, replayable, sketches, expressionOf, report);
+        if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
+        else report.imported.push(feature.name);
+      } else if (feature.type === 'thread') {
+        const { major, minor, external } = feature.spec;
+        const crest = { radius: (external ? major : minor) / 2, slack: major - minor };
+        const reason = thread(
+          d,
+          feature,
+          (face) => {
+            const id = faceName(face, naming, undefined, crest);
+            return id ? { id, radius: sideRadius(id, naming) } : undefined;
+          },
+          expressionOf,
+          report,
+        );
         if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
         else report.imported.push(feature.name);
       } else if (feature.type === 'sweep') {
@@ -1412,7 +1427,16 @@ const miss = (why: string): undefined => {
  * side swept from one of the curves around the extruded regions (a plane
  * through a line's two ends, a cylinder about a circle's or arc's centre).
  */
-function faceName(face: F3dFace, naming: FaceNaming, hint?: Vec3): string | undefined {
+function faceName(
+  face: F3dFace,
+  naming: FaceNaming,
+  hint?: Vec3,
+  /**
+   * A thread's face: its crest radius and how far (cm) the cylinder may have
+   * moved off its sketch circle; the nearest coaxial circle is taken.
+   */
+  crest?: { radius: number; slack: number },
+): string | undefined {
   if (face.feature === undefined) return miss('no feature');
   const round = naming.rounds.get(face.feature);
   if (round) {
@@ -1466,13 +1490,16 @@ function faceName(face: F3dFace, naming: FaceNaming, hint?: Vec3): string | unde
   if (s.kind === 'cone' && norm(cross(s.axis, N)) / norm(s.axis) < 1e-6) {
     // A cylinder, or a cone where the extrude tapers: the curve's radius in the sketch plane.
     const axis = scale(s.axis, 1 / norm(s.axis));
-    const hits = ex.curves.filter((curve) => {
+    const gap = (curve: string) => {
       const c = circle(curve);
-      if (!c) return false;
+      if (!c) return Number.POSITIVE_INFINITY;
       const off = sub(toModel(m, c.center), s.center);
-      if (norm(cross(off, axis)) >= tol) return false;
-      return Math.abs(c.radius - (s.radius + s.slope * dot(off, axis))) < tol;
-    });
+      if (norm(cross(off, axis)) >= tol) return Number.POSITIVE_INFINITY;
+      return Math.abs(c.radius - ((crest?.radius ?? s.radius) + s.slope * dot(off, axis)));
+    };
+    const near = ex.curves.filter((curve) => gap(curve) < tol + (crest?.slack ?? 0));
+    // A thread's face: the nearest circle alone.
+    const hits = crest ? near.sort((a, b) => gap(a) - gap(b)).slice(0, 1) : near;
     const curve = sideCurve(hits, face, hint, (curve, p) => {
       const c = circle(curve) as SketchCircular;
       const span = c.endAngle - c.startAngle;
@@ -1491,6 +1518,18 @@ function faceName(face: F3dFace, naming: FaceNaming, hint?: Vec3): string | unde
 }
 
 /** The named edge of a fillet or chamfer nearest a point (cm), by its geometry. */
+/** The sketch circle's radius (cm) behind an imported extrude's side face name. */
+function sideRadius(name: string, naming: FaceNaming): number | undefined {
+  const m = /^extrude:([^:]+):side:(.+)$/.exec(name);
+  if (!m) return undefined;
+  for (const ex of naming.extrudes.values()) {
+    if (ex.id !== m[1]) continue;
+    const c = ex.sketch.curves.get(m[2] as string);
+    return c && 'center' in c ? c.radius : undefined;
+  }
+  return undefined;
+}
+
 function nearestEdge(round: ImportedRound, p: Vec3): number | undefined {
   let best: number | undefined;
   let bestDistance = Number.POSITIVE_INFINITY;

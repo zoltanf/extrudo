@@ -370,4 +370,113 @@ describe('f3dToDesign: copying features', () => {
       expect.closeTo((RING - HOLE) / 2, 3),
     ]);
   });
+
+  it("threads a rod's side, found by its crest where the thread moved it off the sketch circle", async () => {
+    // A Ø10 × 10 mm rod; the file's B-rep has its side at the thread's crest, Ø9.85.
+    const f3d: F3dDesign = {
+      parameters: [],
+      userParameters: [],
+      features: [
+        sketch(1, 5, 'Sketch1', [circle(10, 101n, 0.5)]),
+        {
+          ...extrude(2, 'Extrude1', 5, 'new-body', 101n),
+          parameters: [parameter({ name: 'd2', kind: 'AlongDistance', value: 1 })],
+        },
+        {
+          ...base,
+          type: 'thread',
+          id: 3,
+          kind: 'Thread',
+          name: 'Thread1',
+          spec: {
+            angle: 60,
+            external: true,
+            designation: 'M10x1.5',
+            family: 'ISO Metric profile',
+            full: false,
+            major: 0.985,
+            minor: 0.8141,
+            pitch: 0.15,
+          },
+          parameters: [
+            parameter({ name: 'd3', kind: 'ThreadLength', value: 0.6 }),
+            parameter({ name: 'd4', kind: 'ThreadOffset', value: 0 }),
+          ],
+          faces: [
+            {
+              tags: [{ token: '3', designs: [301] }],
+              feature: 2,
+              surface: {
+                kind: 'cone',
+                center: [0, 0, 0],
+                axis: [0, 0, 1],
+                radius: 0.4925,
+                cylinder: true,
+                slope: 0,
+              },
+            },
+          ],
+        },
+      ],
+      bodies: [],
+      problems: [],
+    };
+    const { design, report } = f3dToDesign(f3d, 'Rod');
+    expect(report.imported).toContain('Thread1');
+    const feature = design.toJSON().features.find((f) => f.name === 'Thread1');
+    expect(feature?.inputs).toMatchObject({
+      diameter: { expr: '9.85 mm' },
+      pitch: { expr: '1.5 mm' },
+      extent: { value: 'length' },
+      length: { expr: '6 mm' },
+      tolerance: { expr: '0 mm' },
+    });
+    const [volume] = await volumes(f3d);
+    // A 6 mm thread cuts some of the rod away, never more than the ring down to its minor diameter.
+    const rod = Math.PI * 25 * 10;
+    expect(volume).toBeLessThan(rod - 1);
+    expect(volume).toBeGreaterThan(rod - Math.PI * (25 - 4.0705 ** 2) * 6 - 1);
+  });
+
+  it('leaves out an internal thread on a hole wider than the thread', () => {
+    const f3d = washerWithHole();
+    f3d.features.push({
+      ...base,
+      type: 'thread',
+      id: 7,
+      kind: 'Thread',
+      name: 'Thread1',
+      // M4 in the washer's Ø4.2 hole: the file would fill the hole to Ø3.3 first.
+      spec: {
+        angle: 60,
+        external: false,
+        designation: 'M4x0.7',
+        family: 'ISO Metric profile',
+        full: true,
+        major: 0.4,
+        minor: 0.33,
+        pitch: 0.07,
+      },
+      faces: [
+        {
+          tags: [{ token: '4', designs: [301] }],
+          feature: 2,
+          surface: {
+            kind: 'cone',
+            center: [0, 0, 0],
+            axis: [0, 0, 1],
+            radius: 0.165,
+            cylinder: true,
+            slope: 0,
+          },
+        },
+      ],
+    });
+    const { report } = f3dToDesign(f3d, 'Washer');
+    expect(report.skipped).toContainEqual({
+      name: 'Thread1',
+      kind: 'Thread',
+      reason: 'its hole is wider than the thread (the file fills it in to the thread first)',
+    });
+  });
 });

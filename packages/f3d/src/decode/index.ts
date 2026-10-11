@@ -29,6 +29,7 @@ export const FEATURE_TYPES: Record<string, string> = {
   'AE12AD3F-BB81-4B59-9D34-A599E58E4BF6': 'RectangularPattern',
   'FCBB1707-4450-46B3-9E65-0F61682EA8CA': 'Sweep',
   '65CA3206-E33A-471E-8E40-2C72B57C6181': 'Split',
+  '584D9526-EF22-4F6F-9FE1-5FCF1F3CE575': 'Thread',
 };
 
 const scopeDecoder: RecordDecoder<unknown> = { name: 'feature scope', decode: readScope };

@@ -89,6 +89,7 @@ import {
   sketchTextOld,
   TEXT_PROFILE_OPERAND,
 } from './decode/text';
+import { readThreadSpec, type ThreadSpec } from './decode/thread';
 import { TIMELINE, timeline } from './decode/timeline';
 import { Segment } from './segment';
 
@@ -242,6 +243,13 @@ export interface F3dSplit extends FeatureBase {
   plane?: ModelPlane;
 }
 
+export interface F3dThread extends FeatureBase {
+  type: 'thread';
+  spec: ThreadSpec;
+  /** The faces it threads, each named by its recipe's first face. */
+  faces: F3dFace[];
+}
+
 export interface F3dOther extends FeatureBase {
   type: 'other';
 }
@@ -258,6 +266,7 @@ export type F3dFeature =
   | F3dRectangularPattern
   | F3dSweep
   | F3dSplit
+  | F3dThread
   | F3dOther;
 
 /** A body of the design: its number, whether it is shown, the feature that made it. */
@@ -645,6 +654,18 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         directions: tryDecode(`directions #${id}`, () => readDirections(seg, scope, inside)) ?? [],
         counts: tryDecode(`counts #${id}`, () => readCounts(seg, scope, inside)) ?? [],
       });
+    } else if (FEATURE_TYPES[type.guid] === 'Thread') {
+      const spec = tryDecode(`thread #${id}`, () => readThreadSpec(seg, scope));
+      const threaded: F3dFace[] = [];
+      for (const group of scope.refs) {
+        if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
+        for (const recipe of recipesIn(seg, group)) {
+          const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
+          if (first) threaded.push(faceOf(first.tags, faces, featureOf));
+        }
+      }
+      if (spec) features.push({ type: 'thread', ...base, spec, faces: threaded });
+      else features.push({ type: 'other', ...base });
     } else if (FEATURE_TYPES[type.guid] === 'Split') {
       const inside = (ref: number) => {
         const f = seg.frame(ref);
