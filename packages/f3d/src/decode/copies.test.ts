@@ -7,7 +7,16 @@ import { describe, expect, it } from 'vitest';
 import { Reader } from '../bytes';
 import type { Segment } from '../segment';
 import { BODY } from './body';
-import { cantorPair, readCopied, readDirections, readInstances, readMirrorPlane } from './copies';
+import {
+  cantorPair,
+  PATH_PATTERN_DATA,
+  PATH_START,
+  readCopied,
+  readDirections,
+  readInstances,
+  readMirrorPlane,
+  readPathPattern,
+} from './copies';
 import { EDGE_OPERAND, OPERAND_GROUP } from './edges';
 import { SKETCH_PROFILE_OPERAND } from './extrude';
 import { HOLE_PLACEMENT, MODEL_PLANE } from './hole';
@@ -172,5 +181,26 @@ describe('copying features', () => {
       [3, 0],
       [8, 0],
     ]);
+  });
+
+  it("reads a path pattern's path, start point and flags", () => {
+    const ref = (id: number) => [1, ...u64(id), 0, 0];
+    const data = [1, ...u32(2), ...ref(30), 0, 0, 0, 0, ...ref(31), 0, 0, 0, 0, 0];
+    data.push(...f64s(2, 0.3, 0.96), 1, 0, 1, 0);
+    const { seg, inside, scope } = fixture({
+      1: { guid: 'pattern', refs: [10] },
+      10: { guid: PATH_PATTERN_DATA, bytes: data },
+      2: { guid: OPERAND_GROUP, refs: [3] },
+      3: { guid: GEOMETRY_OPERAND, refs: [4] },
+      4: { guid: SKETCH_CURVE_REF, bytes: [0, 0, ...u64(0), ...u64(1037), ...u64(238)] },
+      5: { guid: PATH_START, bytes: [...new Array(19).fill(0), ...f64s(2, 0, 0)] },
+    });
+    expect(readPathPattern(seg, scope([2, 5], 1), inside)).toEqual({
+      path: [{ sketch: 1037, tag: 238n }],
+      start: [2, 0, 0],
+      extent: true,
+      aligned: true,
+      flag: 0,
+    });
   });
 });

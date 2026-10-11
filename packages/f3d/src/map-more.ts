@@ -13,10 +13,12 @@ import { axisRef, type ImportReport, placeSketch, type SketchEntry, selectProfil
 import type {
   F3dFace,
   F3dMirror,
+  F3dPathPattern,
   F3dRectangularPattern,
   F3dSplit,
   F3dSweep,
   F3dThread,
+  Matrix,
 } from './model';
 
 /** What the copying features need from the import so far. */
@@ -278,4 +280,69 @@ export function thread(
     );
   d.thread(inputs as Parameters<Design['thread']>[0], { name: f.name });
   return undefined;
+}
+
+/** A sketch point (cm) in model space through the sketch's frame. */
+function modelPoint(m: Matrix, p: Vec3): Vec3 {
+  const r = (i: number) =>
+    (m[4 * i] as number) * p[0] +
+    (m[4 * i + 1] as number) * p[1] +
+    (m[4 * i + 2] as number) * p[2] +
+    (m[4 * i + 3] as number);
+  return [r(0), r(1), r(2)];
+}
+
+/**
+ * A path pattern of features or bodies along a chain of sketch curves.
+ * Extrudo walks the chain from its first curve's own start, or from its far
+ * end with `flip`; the file starts at a point it stores. So the curve at
+ * that point goes first: a line (whose direction Extrudo keeps), walked from
+ * the start point. Extrudo, like the file, takes the original to sit at the
+ * start and moves each copy by the way the path went from there.
+ */
+export function pathPattern(
+  d: Design,
+  f: F3dPathPattern,
+  context: CopyContext,
+): string | MadeCopies {
+  const copied = copiedInputs(f, context);
+  if (typeof copied === 'string') return copied;
+  if (f.path.length === 0) return 'its path was not found (only sketch curves are imported)';
+  if (!f.start) return 'its start point was not found';
+  if (f.flag !== 0) return 'it has a setting not read yet';
+  const distance = f.parameters.find((p) => p.kind === 'PathPatternDelta');
+  if (!f.count || !distance) return 'its count or distance was not found';
+  const S = f.start;
+  const close = (a: Vec3) => Math.hypot(a[0] - S[0], a[1] - S[1], a[2] - S[2]) < 1e-5;
+  let first: { ref: GeomRef; flip: boolean } | undefined;
+  const rest: GeomRef[] = [];
+  for (const curve of f.path) {
+    const entry = context.sketches.get(curve.sketch);
+    if (!entry) return "its path's sketch was not imported";
+    const tag = String(curve.tag);
+    const ids = [...entry.tags].filter(([, t]) => String(t) === tag).map(([id]) => id);
+    if (ids.length === 0) return 'a curve of its path was not found in its sketch';
+    const line = entry.source.lines.find((l) => String(l.tag) === tag);
+    const m = entry.source.frame;
+    const at =
+      line && ids.length === 1 ? [line.start, line.end].map((p) => close(modelPoint(m, p))) : [];
+    const refs = ids.map(
+      (id): GeomRef => ({ kind: 'sketchEntity', id: `${entry.handle.id}/${id}` }),
+    );
+    if (!first && (at[0] || at[1])) first = { ref: refs[0] as GeomRef, flip: !at[0] };
+    else rest.push(...refs);
+  }
+  if (!first) return 'its path does not start with a sketch line at its start point';
+  const inputs: Record<string, unknown> = {
+    ...copied,
+    path: [first.ref, ...rest],
+    count: context.expressionOf(f.count),
+    distance: context.expressionOf(distance),
+    measure: f.extent ? 'extent' : 'spacing',
+  };
+  if (f.aligned) inputs.aligned = true;
+  if (first.flip) inputs.flip = true;
+  const made = d.pathPattern(inputs as Parameters<Design['pathPattern']>[0], { name: f.name });
+  // The one instance seen has code 1.
+  return { op: 'pattern', id: made.id, label: (code) => (code >= 1 ? String(code) : undefined) };
 }

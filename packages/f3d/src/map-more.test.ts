@@ -551,4 +551,67 @@ describe('f3dToDesign: copying features', () => {
     const [volume] = await volumes(f3d);
     expect(volume).toBeLessThan(RING - 2 * HOLE);
   });
+
+  it('repeats a cut along a sketch line, walked from the start point the file gives', async () => {
+    for (const [start, flip] of [
+      [[0, 0, 0], false],
+      [[0, 0.3, 0], true],
+    ] as const) {
+      const f3d = washerWithHole();
+      f3d.features.push(
+        {
+          type: 'sketch',
+          id: 5,
+          kind: 'Sketch',
+          name: 'Sketch3',
+          suppressed: false,
+          parameters: [],
+          sketch: {
+            id: 9,
+            frame: IDENTITY,
+            points: [
+              { id: 91, at: [0, 0, 0], incidence: 0 },
+              { id: 92, at: [0, 0.3, 0], incidence: 0 },
+            ],
+            lines: [
+              {
+                id: 90,
+                tag: 901n,
+                start: [0, 0, 0],
+                end: [0, 0.3, 0],
+                startPoint: 91,
+                endPoint: 92,
+                construction: true,
+              },
+            ],
+            circulars: [],
+            splines: [],
+            texts: [],
+          },
+        },
+        {
+          ...base,
+          type: 'path-pattern',
+          id: 7,
+          kind: 'PathPattern',
+          name: 'PathPattern1',
+          parameters: [parameter({ name: 'd9', kind: 'PathPatternDelta', value: 0.3 })],
+          objects: 'features',
+          features: [4],
+          path: [{ sketch: 9, tag: 901n }],
+          start: [...start],
+          extent: true,
+          aligned: false,
+          flag: 0,
+          count: parameter({ name: 'd8', kind: 'countU', unit: '', value: 2 }),
+        },
+      );
+      const { design, report } = f3dToDesign(f3d, 'Washer');
+      expect(report.imported).toContain('PathPattern1');
+      const pattern = design.toJSON().features.find((f) => f.name === 'PathPattern1');
+      expect(pattern?.inputs).toMatchObject({ distance: { expr: '3 mm' }, count: { expr: '2' } });
+      expect(pattern?.inputs.flip !== undefined).toBe(flip);
+      expect(await volumes(f3d)).toEqual([expect.closeTo(RING - 2 * HOLE, 3)]);
+    }
+  });
 });

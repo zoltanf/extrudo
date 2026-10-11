@@ -21,9 +21,10 @@ import { EDGE_OPERAND, OPERAND_GROUP } from './edges';
 import { HOLE_PLACEMENT, MODEL_PLANE, type ModelPlane, readModelPlane } from './hole';
 import { PARAMETER_VALUE, type ParameterValue, parameterValue } from './parameters';
 import { BODY_LINK, BODY_OPERAND, PATTERN_COUNT, RECORD_REF, readRecordRef } from './pattern';
-import { GEOMETRY_OPERAND, type RevolveAxis, readAxis } from './revolve';
+import { GEOMETRY_OPERAND, type RevolveAxis, readAxis, SKETCH_CURVE_REF } from './revolve';
 import type { Scope } from './scope';
 import type { Vec3 } from './sketch-geometry';
+import { type CurveRef, readCurveRef } from './sweep';
 
 export const MIRROR = 'D1728651-3640-4CCF-8083-AF7703013978';
 export const RECTANGULAR_PATTERN = 'AE12AD3F-BB81-4B59-9D34-A599E58E4BF6';
@@ -180,4 +181,63 @@ export function cantorPair(code: number): [number, number] {
   const w = Math.floor((Math.sqrt(8 * code + 1) - 1) / 2);
   const v = code - (w * (w + 1)) / 2;
   return [w - v, v];
+}
+
+/** A path pattern's data record. */
+export const PATH_PATTERN_DATA = 'BE1FB171-D98A-4A4D-99C2-3738627CF79C';
+/** A path pattern's start-point group (an operand-group subtype). */
+export const PATH_START = '69EE2FA7-BCC7-449E-9CA9-976CEFDFED44';
+
+/** What a path pattern's own records say beyond what it copies. */
+export interface PathPatternSpec {
+  /** The sketch curves of the path. */
+  path: CurveRef[];
+  /** Where on the path the pattern starts, model space (cm). */
+  start?: Vec3;
+  /** The distance is the whole extent (the data record's u32 is 2, as a rectangular pattern's). */
+  extent: boolean;
+  /** Instances turn with the path's direction. */
+  aligned: boolean;
+  /** A flag beside `aligned` that was 0 in every file seen (perhaps the direction flipped). */
+  flag: number;
+}
+
+/**
+ * A path pattern's path, start and flags. The path is an operand group whose
+ * geometry operands each name a sketch curve. The data record
+ * (`BE1FB171…`): u8, u32 2 (extent, as a rectangular pattern's), a ref to the
+ * count record, 4 zero bytes, a ref to the distance's parameter owner, 5
+ * zero bytes, the original's reference point (3 f64, cm), then four bytes:
+ * 1 where the instances turn with the path (seen in both files), 0, 1, 0;
+ * then the path group and the distance (f64, cm). The start group
+ * (`69EE2FA7…`): 19 bytes, the start point (3 f64), then a geometry operand
+ * naming the path's first curve.
+ */
+export function readPathPattern(seg: Segment, scope: Scope, inside: Inside): PathPatternSpec {
+  let path: CurveRef[] = [];
+  for (const group of scope.refs) {
+    if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
+    const members = inside(group).filter((m) => seg.typeOf(m)?.guid === GEOMETRY_OPERAND);
+    const curves = members.flatMap((m) => {
+      const ref = inside(m).find((r) => seg.typeOf(r)?.guid === SKETCH_CURVE_REF);
+      return ref !== undefined ? [readCurveRef(seg, ref)] : [];
+    });
+    if (curves.length > 0 && curves.length === members.length) path = curves;
+  }
+  const out: PathPatternSpec = { path, extent: false, aligned: false, flag: 0 };
+  const startGroup = scope.refs.find((r) => seg.typeOf(r)?.guid === PATH_START);
+  if (startGroup !== undefined) {
+    const r = seg.reader(startGroup);
+    r.skip(19);
+    out.start = [r.f64(), r.f64(), r.f64()];
+  }
+  const data = inside(scope.id).find((r) => seg.typeOf(r)?.guid === PATH_PATTERN_DATA);
+  if (data !== undefined) {
+    const f = seg.frame(data);
+    const b = seg.bulk;
+    out.extent = new Reader(b, f.start + 1, f.end).u32() === 2;
+    out.aligned = b[f.start + 60] === 1;
+    out.flag = b[f.start + 61] as number;
+  }
+  return out;
 }

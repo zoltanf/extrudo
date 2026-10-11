@@ -11,12 +11,15 @@ import { BODY, type BodyFlags, readBody } from './decode/body';
 import {
   type CopiedObjects,
   MIRROR,
+  PATH_PATTERN,
+  type PathPatternSpec,
   RECTANGULAR_PATTERN,
   readCopied,
   readCounts,
   readDirections,
   readInstances,
   readMirrorPlane,
+  readPathPattern,
 } from './decode/copies';
 import {
   EDGE_OPERAND,
@@ -244,6 +247,11 @@ export interface F3dSweep extends FeatureBase {
   participants: number[];
 }
 
+export interface F3dPathPattern extends FeatureBase, CopiedObjects, PathPatternSpec {
+  type: 'path-pattern';
+  count?: ParameterValue;
+}
+
 export interface F3dSplit extends FeatureBase {
   type: 'split';
   /** The bodies it splits, by body record. */
@@ -275,6 +283,7 @@ export type F3dFeature =
   | F3dRectangularPattern
   | F3dSweep
   | F3dSplit
+  | F3dPathPattern
   | F3dThread
   | F3dOther;
 
@@ -475,7 +484,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
   };
   // Instance operation id → instance code, over every copying feature.
   const instances = new Map<number, number>();
-  for (const guid of [MIRROR, RECTANGULAR_PATTERN, CIRCULAR_PATTERN])
+  for (const guid of [MIRROR, RECTANGULAR_PATTERN, CIRCULAR_PATTERN, PATH_PATTERN])
     for (const id of seg.idsOf(guid)) {
       const scope = tryDecode(`feature #${id}`, () => readScope(seg, id));
       const inside = (ref: number) => {
@@ -686,6 +695,22 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         }
       }
       if (spec) features.push({ type: 'thread', ...base, spec, faces: threaded });
+      else features.push({ type: 'other', ...base });
+    } else if (FEATURE_TYPES[type.guid] === 'PathPattern') {
+      const inside = (ref: number) => {
+        const f = seg.frame(ref);
+        return refsIn(seg, f.start, f.end);
+      };
+      const spec = tryDecode(`path pattern #${id}`, () => readPathPattern(seg, scope, inside));
+      const count = tryDecode(`count #${id}`, () => readCounts(seg, scope, inside))?.[0];
+      if (spec)
+        features.push({
+          type: 'path-pattern',
+          ...base,
+          ...readCopied(seg, scope, inside),
+          ...spec,
+          ...(count ? { count } : {}),
+        });
       else features.push({ type: 'other', ...base });
     } else if (FEATURE_TYPES[type.guid] === 'Split') {
       const inside = (ref: number) => {

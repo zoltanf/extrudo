@@ -47,6 +47,7 @@ import {
   type CopyContext,
   type MadeCopies,
   mirror,
+  pathPattern,
   rectangularPattern,
   splitBody,
   sweep,
@@ -478,6 +479,7 @@ export function f3dToDesign(
       } else if (
         feature.type === 'mirror' ||
         feature.type === 'rectangular-pattern' ||
+        feature.type === 'path-pattern' ||
         feature.type === 'split'
       ) {
         const context: CopyContext = {
@@ -495,7 +497,9 @@ export function f3dToDesign(
           const made =
             feature.type === 'mirror'
               ? mirror(d, feature, context)
-              : rectangularPattern(d, feature, context);
+              : feature.type === 'path-pattern'
+                ? pathPattern(d, feature, context)
+                : rectangularPattern(d, feature, context);
           if (typeof made === 'string')
             report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
           else {
