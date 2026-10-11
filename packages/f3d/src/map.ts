@@ -1540,8 +1540,21 @@ function toModel(m: Matrix, p: Vec3): Vec3 {
 
 /** Why faces could not be named, counted (for the corpus tools). */
 export const faceMisses: Record<string, number> = {};
+/** For the corpus tools: called with every fillet or chamfer edge as it is named. */
+export const edgeTrace: {
+  edge?: (row: {
+    feature: string;
+    edge: F3dEdgeFeature['sets'][number]['edges'][number];
+    names: (string | undefined)[];
+    why: (string | undefined)[];
+    shape?: EdgeShape;
+    ref?: GeomRef;
+  }) => void;
+} = {};
+let lastMiss: string | undefined;
 const miss = (why: string): undefined => {
   faceMisses[why] = (faceMisses[why] ?? 0) + 1;
+  lastMiss = why;
   return undefined;
 };
 
@@ -1817,22 +1830,45 @@ function edgeTreatment(
     for (const e of s.edges) {
       total++;
       const shape = edgeShape(e);
+      lastMiss = undefined;
       const a = faceName(e.faces[0], naming, shape?.mid);
+      const whyA = a ? undefined : lastMiss;
+      lastMiss = undefined;
       const b = faceName(e.faces[1], naming, shape?.mid);
+      const trace = (ref?: GeomRef) =>
+        edgeTrace.edge?.({
+          feature: f.name,
+          edge: e,
+          names: [a, b],
+          why: [whyA, b ? undefined : lastMiss],
+          ...(shape ? { shape } : {}),
+          ...(ref ? { ref } : {}),
+        });
       const names = a && b && a !== b ? [a, b] : undefined;
       edges.push(names ? edgeName(names) : undefined);
       shapes.push(shape);
       // A fillet's or chamfer's face name is read off the edge it rounds, as
       // named here; Extrudo may have found that edge by its shape instead,
       // under another name. Such a name alone is too weak to hold the edge
-      // (a lost edge fails the whole feature), so it needs the shape too.
+      // (a lost edge fails the whole feature), so it needs the shape too:
+      // a line or circle the two surfaces meet in. Ellipses and curves the
+      // file's B-rep edges chose help find an edge both faces name, but
+      // letting them hold such an edge added whole-feature failures in the
+      // files seen (it lay on an earlier round the kernel could not make).
       const guessed = names?.some((n) => /^(fillet|chamfer):/.test(n)) ?? false;
-      if (!shape && (!names || guessed)) continue;
+      const sure = !!shape && shape.type !== 'ellipse' && !shape.chosen;
+      if (!sure && (!names || guessed)) {
+        trace();
+        continue;
+      }
       // Geometry alone, without a named face beside it, matches some other
       // edge of that kind and size as readily as this one (most such picks
       // in the corpus were wrong): left out.
       const beside = names ?? [...new Set([a, b].filter((x): x is string => !!x))];
-      if (beside.length === 0) continue;
+      if (beside.length === 0) {
+        trace();
+        continue;
+      }
       // The name, when both faces have one; the geometry always, so Extrudo
       // finds the edge where joins merged or split those faces.
       const id = names ? edgeName(names) : `e[f3d.edge.${f.id}.${total}]`;
@@ -1850,6 +1886,7 @@ function edgeTreatment(
           !r.fingerprint?.at ||
           Math.hypot(...at.map((v, i) => v - (r.fingerprint?.at?.[i] ?? 0))) < 1e-3);
       if (!refs.some(same)) refs.push(ref);
+      trace(ref);
       named++;
     }
     if (refs.length === 0 || !s.size || set >= 32) continue;

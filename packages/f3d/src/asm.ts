@@ -203,12 +203,35 @@ export type AsmSurface =
     }
   | { kind: 'other'; type: string };
 
+/** An edge's curve, in model space (cm). */
+export type AsmCurve =
+  | { kind: 'line'; point: [number, number, number]; direction: [number, number, number] }
+  | {
+      kind: 'ellipse';
+      center: [number, number, number];
+      normal: [number, number, number];
+      /** The major axis, as long as the major radius. */
+      major: [number, number, number];
+      /** Minor over major radius (1: a circle). */
+      ratio: number;
+    }
+  | { kind: 'other'; type: string };
+
+/** One edge around a face: its curve, its vertices (cm) and the tags of the face across it. */
+export interface AsmEdge {
+  curve: AsmCurve;
+  points: [number, number, number][];
+  across: { token: string; design: number }[];
+}
+
 /** A face with the tags the file gave it. */
 export interface AsmFace {
   index: number;
   surface: AsmSurface;
   /** (token, design record) pairs from `generic_tag_attrib_def`. */
   tags: { token: string; design: number }[];
+  /** The edges of all its loops. */
+  edges: AsmEdge[];
 }
 
 const vec = (v: AsmValue | undefined): [number, number, number] | undefined =>
@@ -238,6 +261,19 @@ function surfaceOf(r: AsmRecord | undefined): AsmSurface {
       slope: cylinder || Math.abs(cosine) < 1e-12 ? 0 : sine / cosine,
     };
   }
+  return { kind: 'other', type: r.type };
+}
+
+function curveOf(r: AsmRecord | undefined): AsmCurve {
+  if (!r) return { kind: 'other', type: 'none' };
+  const vs = r.values
+    .filter((v) => v.t === 'vec')
+    .map((v) => (v as { v: [number, number, number] }).v);
+  const ds = r.values.filter((v) => v.t === 'dbl').map((v) => (v as { v: number }).v);
+  if (r.type.endsWith('straight-curve') && vs[0] && vs[1])
+    return { kind: 'line', point: vs[0], direction: vs[1] };
+  if (r.type.endsWith('ellipse-curve') && vs[0] && vs[1] && vs[2] && ds[0] !== undefined)
+    return { kind: 'ellipse', center: vs[0], normal: vs[1], major: vs[2], ratio: ds[0] };
   return { kind: 'other', type: r.type };
 }
 
@@ -273,12 +309,77 @@ function tagsOf(r: AsmRecord): { token: string; design: number }[] {
   return out;
 }
 
-/** The faces of an ASM stream with their surfaces and tags. */
+const pointers = (r: AsmRecord | undefined): number[] =>
+  r ? r.values.filter((v) => v.t === 'ptr').map((v) => (v as { v: number }).v) : [];
+
+/**
+ * A face's edges: its loops (a loop points at the next loop and its first
+ * coedge), each loop's coedges (the coedge pointers are next, previous and
+ * partner, in that order), each coedge's edge with its curve and its
+ * vertices' points, and the face across (the partner's loop's face). The
+ * pointers are followed by the type they point at, and no loop or coedge is
+ * walked twice, so a crafted stream can't loop.
+ */
+function faceEdges(
+  records: AsmRecord[],
+  face: number[],
+  tagsOfFace: (index: number) => { token: string; design: number }[],
+): AsmEdge[] {
+  // A type or a subtype of it (`tedge-edge`, `tvertex-vertex`).
+  const is = (p: number, type: string) => {
+    const t = p >= 0 ? records[p]?.type : undefined;
+    return t === type || t?.endsWith(`-${type}`) === true;
+  };
+  const of = (ptrs: number[], type: string) => ptrs.find((p) => is(p, type)) ?? -1;
+  const out: AsmEdge[] = [];
+  // Each loop and coedge once: a crafted stream's cycles end there.
+  const seen = new Set<number>();
+  let loop = of(face, 'loop');
+  while (loop >= 0 && !seen.has(loop)) {
+    seen.add(loop);
+    const lp = pointers(records[loop]);
+    let coedge = of(lp, 'coedge');
+    while (coedge >= 0 && !seen.has(coedge)) {
+      seen.add(coedge);
+      const cp = pointers(records[coedge]);
+      const coedges = cp.filter((p) => is(p, 'coedge'));
+      const edge = of(cp, 'edge');
+      if (edge >= 0) {
+        const ep = pointers(records[edge]);
+        const points: [number, number, number][] = [];
+        for (const v of ep) {
+          if (!is(v, 'vertex')) continue;
+          const at = vec(
+            records[of(pointers(records[v]), 'point')]?.values.find((x) => x.t === 'vec'),
+          );
+          if (at) points.push(at);
+        }
+        const curve = ep.find((p) => p >= 0 && records[p]?.type.endsWith('curve') === true) ?? -1;
+        const partner = coedges[2];
+        const across =
+          partner === undefined
+            ? -1
+            : of(pointers(records[of(pointers(records[partner]), 'loop')]), 'face');
+        out.push({
+          curve: curveOf(records[curve]),
+          points,
+          across: across >= 0 ? tagsOfFace(across) : [],
+        });
+      }
+      coedge = coedges[0] ?? -1;
+    }
+    loop = lp.find((p) => p !== loop && is(p, 'loop')) ?? -1;
+  }
+  return out;
+}
+
+/** The faces of an ASM stream with their surfaces, tags and edges. */
 export function asmFaces(records: AsmRecord[]): AsmFace[] {
   const faces: AsmFace[] = [];
+  const tagsAt = new Map<number, { token: string; design: number }[]>();
   records.forEach((r, index) => {
     if (r.type !== 'face') return;
-    const ptrs = r.values.filter((v) => v.t === 'ptr').map((v) => (v as { v: number }).v);
+    const ptrs = pointers(r);
     // face: attribute, (history id), next face, loop, shell, subshell, surface
     const surfacePtr = ptrs[ptrs.length - 1] ?? -1;
     const tags: { token: string; design: number }[] = [];
@@ -292,8 +393,11 @@ export function asmFaces(records: AsmRecord[]): AsmFace[] {
       const ap = ar.values.filter((v) => v.t === 'ptr').map((v) => (v as { v: number }).v);
       a = ap[1] ?? -1;
     }
-    faces.push({ index, surface: surfaceOf(records[surfacePtr]), tags });
+    faces.push({ index, surface: surfaceOf(records[surfacePtr]), tags, edges: [] });
+    tagsAt.set(index, tags);
   });
+  for (const face of faces)
+    face.edges = faceEdges(records, pointers(records[face.index]), (i) => tagsAt.get(i) ?? []);
   return faces;
 }
 
