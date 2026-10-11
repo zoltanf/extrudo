@@ -321,6 +321,14 @@ export function componentOfBody(seg: Segment, tree: ComponentTree, id: number): 
 
 /** "Body to Component": moves bodies into another component. */
 export const BODY_TO_COMPONENT = '56225BC7-69B7-446A-9AEA-6AA25BC7806E';
+/**
+ * A cut and paste of bodies into another component (`CutPasteBodies`): its
+ * records have a Body to Component's shape, so it is read as one. It keeps
+ * no history state of its own, so a missing state doesn't mean suppressed.
+ */
+export const CUT_PASTE_BODIES = 'BA3059E4-4B23-4D02-9D18-E7BB95C991F3';
+/** The timeline items that move bodies into another component. */
+export const BODY_MOVES: ReadonlySet<string> = new Set([BODY_TO_COMPONENT, CUT_PASTE_BODIES]);
 
 /**
  * One "Body to Component": the bodies it takes (body records, in the component

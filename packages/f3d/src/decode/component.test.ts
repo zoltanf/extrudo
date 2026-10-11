@@ -2,16 +2,19 @@
  * The component tree on a synthetic segment, built in code: a root and a
  * "Lid" component, the Lid's occurrence (placed, and hidden), a feature and
  * bodies in each, and a "Body to Component" that moves a root body into the
- * Lid. Only the references and strings the decoder reads are written.
+ * Lid (and the same as a cut and paste of bodies). Only the references and
+ * strings the decoder reads are written.
  */
 import { describe, expect, it } from 'vitest';
 import { Segment } from '../segment';
 import { BODY } from './body';
 import {
   BODY_CONTAINER,
+  BODY_MOVES,
   BODY_TO_COMPONENT,
   COMPONENT,
   COMPONENT_HISTORY,
+  CUT_PASTE_BODIES,
   componentOfBody,
   componentOfFeature,
   FEATURE_LIST,
@@ -115,7 +118,7 @@ const hidden = (path: number[], component: number): Rec => ({
 });
 
 /** The design, the Lid's occurrence hidden by default; a Knob inside the Lid. */
-function design(hide: Rec = hidden([60], 20)): Segment {
+function design(hide: Rec = hidden([60], 20), move = BODY_TO_COMPONENT): Segment {
   return segment([
     component(3, 10, 4, 'Box v2'),
     { id: 4, type: OCCURRENCE_LIST, payload: [...ref(60), ...ref(3)] },
@@ -168,7 +171,7 @@ function design(hide: Rec = hidden([60], 20)): Segment {
     { id: 61, type: OCCURRENCE, name: 'rootInstance', payload: [...ref(3), 0, 0, 0] },
     hide,
     // Body to Component: takes #41 (operand → link → body), makes #42 (its link names #84).
-    { id: 80, type: BODY_TO_COMPONENT, payload: [...ref(81), ...ref(84)] },
+    { id: 80, type: move, payload: [...ref(81), ...ref(84)] },
     { id: 81, type: BODY_OPERAND, payload: ref(82) },
     { id: 82, type: BODY_LINK, payload: [...wstr(guid(41)), ...ref(41), ...ref(50)] },
     { id: 83, type: BODY_LINK, payload: [...wstr(guid(42)), ...ref(42), ...ref(84)] },
@@ -212,6 +215,17 @@ describe('readComponents', () => {
 describe('readBodyMove', () => {
   it('reads the bodies a Body to Component takes and makes, and its target', () => {
     const seg = design();
+    expect(readBodyMove(seg, readComponents(seg), 80)).toEqual({
+      id: 80,
+      sources: [41],
+      made: [42],
+      target: 20,
+    });
+  });
+
+  it('reads a cut and paste of bodies the same way, as a body move', () => {
+    const seg = design(hidden([60], 20), CUT_PASTE_BODIES);
+    expect(BODY_MOVES.has(CUT_PASTE_BODIES)).toBe(true);
     expect(readBodyMove(seg, readComponents(seg), 80)).toEqual({
       id: 80,
       sources: [41],

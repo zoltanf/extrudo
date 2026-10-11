@@ -9,7 +9,7 @@ import { type AsmFace, type AsmSurface, asmFaces, readAsm } from './asm';
 import { F3dFormatError, Reader } from './bytes';
 import { BODY, type BodyFlags, readBody } from './decode/body';
 import {
-  BODY_TO_COMPONENT,
+  BODY_MOVES,
   componentOfBody,
   componentOfFeature,
   type F3dBodyMove,
@@ -532,7 +532,8 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         id,
         kind: scope?.kind ?? label ?? type?.guid ?? '?',
         name: scope ? nameOf(scope) : (label ?? 'Timeline item'),
-        suppressed: scope ? scope.state === null : false,
+        // A body move keeps no history state: none doesn't mean suppressed there.
+        suppressed: scope ? scope.state === null && !BODY_MOVES.has(type?.guid ?? '') : false,
         parameters: byScope.get(id) ?? [],
       });
       continue;
@@ -817,7 +818,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     for (const f of features) {
       const component = tryDecode(`feature #${f.id}`, () => componentOfFeature(seg, tree, f.id));
       if (component !== undefined) f.component = component;
-      if (seg.typeOf(f.id)?.guid === BODY_TO_COMPONENT) {
+      if (BODY_MOVES.has(seg.typeOf(f.id)?.guid ?? '')) {
         const move = tryDecode(`body move #${f.id}`, () => readBodyMove(seg, tree, f.id));
         if (move) bodyMoves.push(move);
       }
