@@ -3052,6 +3052,20 @@ them. Notes further down that name a machine apply to that machine only.
   api:generate` before `pnpm build` when the Markdown changed, and the unit tests
   are `apps/site/src/docs.test.ts` (every file becomes a page, links point to
   pages, the sidebar's order).
+- **Features, download and FAQ e2e** (`e2e/site.spec.ts`, ADR-0057's amendment of
+  2026-10-11): `/features/` is a second page of the site (`apps/site/features/index.html`;
+  both pages take the header, footer and icon sprite from `apps/site/src/partials.ts`
+  through `<!-- site:… -->` markers, the header marking the current page with
+  `aria-current`). Its `nav` "On this page" links seven sections (`#sketch` … `#yours`),
+  the format matrix is the `table` "File formats Extrudo imports and exports" (13 rows,
+  cells "Yes: …" / "No" through `.sr-only`), and a **"Latest build" tag** (`.tag`) marks
+  what only edge has: take the tags off when a release ships those features. The landing
+  page keeps `nav` "Features" (links to `/features/#…`) and `[data-all-features]`, and its
+  FAQ is the `region` "Questions and answers" (eleven `<details>`). `/download/` (the
+  hero's pill `[data-download]`, "Available", and the footer's "Desktop app" lead there)
+  has `nav` "Platforms" and the regions "Windows", "macOS" and "Linux"; it names files by
+  their ending and links `releases/latest`, never a version. The contrast measurement
+  and axe run on all three pages with every `<details>` open and skip `.sr-only` text.
 - **Update toast e2e** (`e2e/pwa.spec.ts`, "an update is waiting"): the host
   swaps `/sw.js` for a copy with another `VERSION`, `registration.update()` makes
   the browser install it, and it **waits** (the old version stays active:
