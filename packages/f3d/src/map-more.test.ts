@@ -479,4 +479,76 @@ describe('f3dToDesign: copying features', () => {
       reason: 'its hole is wider than the thread (the file fills it in to the thread first)',
     });
   });
+
+  it("names a face a pattern copied after the copy, as Extrudo's pattern names it", async () => {
+    const f3d = washerWithHole();
+    f3d.features.push(
+      {
+        ...base,
+        type: 'circular-pattern',
+        id: 7,
+        kind: 'C-Pattern',
+        name: 'C-Pattern1',
+        parameters: [parameter({ name: 'd6', kind: 'TotalAngle', unit: 'deg', value: Math.PI })],
+        objects: 'features',
+        features: [4],
+        axis: { point: [0, 0, 0], direction: [0, 0, 1] },
+        count: parameter({ name: 'countU', kind: 'countU', unit: '', value: 2 }),
+      },
+      {
+        ...base,
+        type: 'chamfer',
+        id: 8,
+        kind: 'Chamfer',
+        name: 'Chamfer1',
+        sets: [
+          {
+            size: parameter({ name: 'd7', kind: 'Distance', value: 0.01 }),
+            edges: [
+              {
+                // The top of the ring, and the wall of the copied hole (instance 2, the first
+                // copy; its tag carries the hole's, the pattern's and the instance's ops).
+                faces: [
+                  {
+                    tags: [{ token: '2', designs: [301] }],
+                    feature: 2,
+                    surface: { kind: 'plane', point: [0, 0, 0.08], normal: [0, 0, 1] },
+                  },
+                  {
+                    tags: [{ token: '3', designs: [303, 307, 308] }],
+                    feature: 4,
+                    instance: { pattern: 7, code: 2 },
+                    // The surface of the face it copies, at (3.8, 0) mm.
+                    surface: {
+                      kind: 'cone',
+                      center: [0.38, 0, 0],
+                      axis: [0, 0, 1],
+                      radius: 0.05,
+                      cylinder: true,
+                      slope: 0,
+                    },
+                  },
+                ],
+                bounds: [],
+              },
+            ],
+          },
+        ],
+      },
+    );
+    const { design, report } = f3dToDesign(f3d, 'Washer');
+    expect(report.imported).toEqual(expect.arrayContaining(['C-Pattern1', 'Chamfer1']));
+    const doc = design.toJSON();
+    const id = (name: string) => doc.features.find((f) => f.name === name)?.id;
+    const chamfer = doc.features.find((f) => f.name === 'Chamfer1');
+    const ref = (chamfer?.inputs.edges as { refs: { id: string }[] }).refs[0]?.id;
+    expect(ref).toMatch(
+      new RegExp(
+        `^e\\[extrude:${id('Extrude1')}:cap:end\\|pattern:${id('C-Pattern1')}:1:from:\\(extrude:${id('Extrude2')}:side:[^)]+\\)\\]$`,
+      ),
+    );
+    // The chamfer is built on that edge.
+    const [volume] = await volumes(f3d);
+    expect(volume).toBeLessThan(RING - 2 * HOLE);
+  });
 });

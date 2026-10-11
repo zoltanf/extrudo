@@ -4,7 +4,7 @@
  * returns why it was left out, or what it made.
  */
 import type { Design, GeomRef } from '@extrudo/api';
-import type { CopiedObjects } from './decode/copies';
+import { type CopiedObjects, cantorPair } from './decode/copies';
 import type { ModelPlane } from './decode/hole';
 import type { ParameterValue } from './decode/parameters';
 import type { RevolveAxis } from './decode/revolve';
@@ -102,15 +102,23 @@ function copiedInputs(
   return { objects: 'features', features };
 }
 
+/** What a mirror or pattern made, for naming the faces it copied (`FaceNaming.copies`). */
+export interface MadeCopies {
+  op: 'pattern' | 'mirror';
+  id: string;
+  /** Extrudo's label of the file's instance code. */
+  label: (code: number) => string | undefined;
+}
+
 /** A mirror of features or bodies in a plane. */
-export function mirror(d: Design, f: F3dMirror, context: CopyContext): string | undefined {
+export function mirror(d: Design, f: F3dMirror, context: CopyContext): string | MadeCopies {
   if (!f.plane) return 'its plane was not found';
   const copied = copiedInputs(f, context);
   if (typeof copied === 'string') return copied;
   const plane = planeRef(d, f.plane, f.name, context.report, 'mirrors in');
   if (!plane) return 'its plane is not along an origin axis';
-  d.mirror({ ...copied, plane } as Parameters<Design['mirror']>[0], { name: f.name });
-  return undefined;
+  const made = d.mirror({ ...copied, plane } as Parameters<Design['mirror']>[0], { name: f.name });
+  return { op: 'mirror', id: made.id, label: () => '' };
 }
 
 /**
@@ -123,7 +131,7 @@ export function rectangularPattern(
   d: Design,
   f: F3dRectangularPattern,
   context: CopyContext,
-): string | undefined {
+): string | MadeCopies {
   const copied = copiedInputs(f, context);
   if (typeof copied === 'string') return copied;
   const inputs: Record<string, unknown> = { ...copied };
@@ -146,8 +154,16 @@ export function rectangularPattern(
     inputs[`measure${n}`] = 'extent';
   }
   if (!inputs.direction1) return 'its count was not found';
-  d.rectangularPattern(inputs as Parameters<Design['rectangularPattern']>[0], { name: f.name });
-  return undefined;
+  const made = d.rectangularPattern(inputs as Parameters<Design['rectangularPattern']>[0], {
+    name: f.name,
+  });
+  // The file's code pairs the instance's indexes (u from 1, the original's, v from 0); a row only.
+  const row = inputs.direction2 === undefined;
+  const label = (code: number) => {
+    const [u, v] = cantorPair(code);
+    return row && v === 0 && u >= 2 ? String(u - 1) : undefined;
+  };
+  return { op: 'pattern', id: made.id, label };
 }
 
 /**

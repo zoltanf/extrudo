@@ -14,6 +14,7 @@
  * records and its distances the parameters it owns (`uSpaceDistance`,
  * `vSpaceDistance`), signed along the line.
  */
+import { Reader } from '../bytes';
 import type { Segment } from '../segment';
 import { BODY } from './body';
 import { EDGE_OPERAND, OPERAND_GROUP } from './edges';
@@ -136,4 +137,47 @@ export function readCounts(seg: Segment, scope: Scope, inside: Inside): Paramete
     if (value !== undefined) out.push(parameterValue.decode(seg, value));
   }
   return out;
+}
+
+/**
+ * A copying feature's instances: in the data record its own members name
+ * first (`C444E6AD…`, `EA0E146E…`, `7493A99D…`, …), `u8 1, u32 n, n ×
+ * (u64 code, u64 operation id)`, then `u32 m` and m instance records. Faces
+ * an instance made carry the tag `[source op, pattern op, instance op]`. The
+ * code numbers the instance: a circular pattern's from 1 (the original), a
+ * rectangular pattern's Cantor-pairs its two indexes, a mirror's single one
+ * is 2. Found by shape. Returns instance operation id → code.
+ */
+export function readInstances(seg: Segment, scope: Scope, inside: Inside): Map<number, number> {
+  const out = new Map<number, number>();
+  for (const data of inside(scope.id).slice(0, 4)) {
+    const f = seg.frame(data);
+    for (let at = f.start; at + 5 <= f.end; at++) {
+      if (seg.bulk[at] !== 1) continue;
+      try {
+        const r = new Reader(seg.bulk, at + 1, f.end);
+        const n = r.u32();
+        if (n < 1 || n > 10_000 || n * 16 > r.remaining) continue;
+        const list: [number, number][] = [];
+        for (let i = 0; i < n; i++) list.push([r.u64(), r.u64()]);
+        if (list.some(([code, op]) => code < 1 || code > 1e8 || op < 1 || op > 1e9)) continue;
+        // The instance records follow.
+        const m = r.u32();
+        if (m < 1 || m > 10_000) continue;
+        for (let i = 0; i < m; i++) if (!seg.has(r.localRef())) throw new Error('no record');
+        for (const [code, op] of list) out.set(op, code);
+        return out;
+      } catch {
+        // not the list at this offset
+      }
+    }
+  }
+  return out;
+}
+
+/** A rectangular pattern's instance code as its (u, v) indexes, the original (1, 0). */
+export function cantorPair(code: number): [number, number] {
+  const w = Math.floor((Math.sqrt(8 * code + 1) - 1) / 2);
+  const v = code - (w * (w + 1)) / 2;
+  return [w - v, v];
 }

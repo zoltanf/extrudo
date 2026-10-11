@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { Reader } from '../bytes';
 import type { Segment } from '../segment';
 import { BODY } from './body';
-import { readCopied, readDirections, readMirrorPlane } from './copies';
+import { cantorPair, readCopied, readDirections, readInstances, readMirrorPlane } from './copies';
 import { EDGE_OPERAND, OPERAND_GROUP } from './edges';
 import { SKETCH_PROFILE_OPERAND } from './extrude';
 import { HOLE_PLACEMENT, MODEL_PLANE } from './hole';
@@ -29,13 +29,22 @@ interface Rec {
 
 /** A segment over records by id, and `inside` from their listed references. */
 function fixture(records: Record<number, Rec>) {
+  // Every record's bytes one after another, for readers of whole frames.
+  const frames = new Map<number, { start: number; end: number }>();
+  const all: number[] = [];
+  for (const [id, rec] of Object.entries(records)) {
+    frames.set(Number(id), { start: all.length, end: all.length + (rec.bytes?.length ?? 0) });
+    all.push(...(rec.bytes ?? []));
+  }
   const seg = {
+    bulk: new Uint8Array(all),
+    frame: (id: number) => frames.get(id),
     typeOf: (id: number) => (records[id] ? { guid: records[id].guid } : undefined),
     reader: (id: number) => new Reader(new Uint8Array(records[id]?.bytes ?? [])),
     has: (id: number) => id in records,
   } as unknown as Segment;
   const inside = (id: number) => records[id]?.refs ?? [];
-  const scope = (refs: number[]) => ({ refs }) as unknown as Scope;
+  const scope = (refs: number[], id = 0) => ({ id, refs }) as unknown as Scope;
   return { seg, inside, scope };
 }
 
@@ -125,5 +134,43 @@ describe('copying features', () => {
     expect(readSweepOperation(record, { id: 1, start: 0, end: bulk.length } as Scope)).toBe(
       'new-body',
     );
+  });
+
+  it("reads a pattern's instances: operation id → code, from its data record", () => {
+    const ref = (id: number) => [1, ...u64(id), 0, 0];
+    const { seg, inside, scope } = fixture({
+      1: { guid: 'pattern', refs: [10] },
+      10: {
+        guid: 'data',
+        bytes: [
+          0,
+          0,
+          ...ref(20),
+          1,
+          ...u32(2),
+          ...u64(2),
+          ...u64(312),
+          ...u64(3),
+          ...u64(313),
+          ...u32(1),
+          ...ref(20),
+        ],
+      },
+      20: { guid: 'instance' },
+    });
+    expect([...readInstances(seg, scope([], 1), inside)]).toEqual([
+      [312, 2],
+      [313, 3],
+    ]);
+  });
+
+  it("unpairs a rectangular pattern's instance codes", () => {
+    // A row: (u, 0) codes u(u + 1) / 2 — 1 the original, 3 the second, 36 the eighth.
+    expect([1, 3, 6, 36].map(cantorPair)).toEqual([
+      [1, 0],
+      [2, 0],
+      [3, 0],
+      [8, 0],
+    ]);
   });
 });

@@ -10,9 +10,12 @@ import { F3dFormatError, Reader } from './bytes';
 import { BODY, type BodyFlags, readBody } from './decode/body';
 import {
   type CopiedObjects,
+  MIRROR,
+  RECTANGULAR_PATTERN,
   readCopied,
   readCounts,
   readDirections,
+  readInstances,
   readMirrorPlane,
 } from './decode/copies';
 import {
@@ -49,6 +52,7 @@ import {
 import {
   BODY_LINK,
   BODY_OPERAND,
+  CIRCULAR_PATTERN,
   PATTERN_COUNT,
   RECORD_REF,
   readRecordRef,
@@ -152,6 +156,11 @@ export interface F3dFace {
   feature?: number;
   /** The face's surface in model space, cm, when the B-rep still has it. */
   surface?: AsmSurface;
+  /**
+   * A face a mirror or pattern copied: the copying feature (record) and the
+   * instance's code; `feature` and `surface` are then the face it copies.
+   */
+  instance?: { pattern: number; code: number };
 }
 
 /** An edge, as the two faces it runs between and the faces that end it. */
@@ -464,6 +473,18 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     const records = operations.get(design);
     return records?.find((r) => onTimeline.has(r)) ?? records?.[0];
   };
+  // Instance operation id → instance code, over every copying feature.
+  const instances = new Map<number, number>();
+  for (const guid of [MIRROR, RECTANGULAR_PATTERN, CIRCULAR_PATTERN])
+    for (const id of seg.idsOf(guid)) {
+      const scope = tryDecode(`feature #${id}`, () => readScope(seg, id));
+      const inside = (ref: number) => {
+        const f = seg.frame(ref);
+        return refsIn(seg, f.start, f.end);
+      };
+      if (scope)
+        for (const [op, code] of readInstances(seg, scope, inside)) instances.set(op, code);
+    }
   const features: F3dFeature[] = [];
   for (const id of items) {
     const type = seg.typeOf(id);
@@ -521,7 +542,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
         for (const recipe of recipesIn(seg, group)) {
           const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
-          if (first) named.push(faceOf(first.tags, faces, featureOf));
+          if (first) named.push(faceOf(first.tags, faces, featureOf, instances));
         }
       }
       features.push({
@@ -624,7 +645,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
         for (const recipe of recipesIn(seg, group)) {
           const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
-          if (first) moved.push(faceOf(first.tags, faces, featureOf));
+          if (first) moved.push(faceOf(first.tags, faces, featureOf, instances));
         }
       }
       const distance = base.parameters.find((p) => p.kind === 'distance');
@@ -661,7 +682,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
         if (seg.typeOf(group)?.guid !== OPERAND_GROUP) continue;
         for (const recipe of recipesIn(seg, group)) {
           const first = tryDecode(`face #${recipe}`, () => readEdgeRecipe(seg, recipe))?.faces[0];
-          if (first) threaded.push(faceOf(first.tags, faces, featureOf));
+          if (first) threaded.push(faceOf(first.tags, faces, featureOf, instances));
         }
       }
       if (spec) features.push({ type: 'thread', ...base, spec, faces: threaded });
@@ -705,7 +726,7 @@ export function readSegment(seg: Segment, faces: Map<string, AsmFace[]> = new Ma
     } else if (FEATURE_TYPES[type.guid] === 'Fillet' || FEATURE_TYPES[type.guid] === 'Chamfer') {
       const kind = FEATURE_TYPES[type.guid] === 'Fillet' ? 'fillet' : 'chamfer';
       const sets = tryDecode(`${kind} #${id}`, () =>
-        readEdgeSets(seg, scope, base.parameters, kind, faces, featureOf),
+        readEdgeSets(seg, scope, base.parameters, kind, faces, featureOf, instances),
       );
       if (sets) features.push({ type: kind, ...base, sets });
       else features.push({ type: 'other', ...base });
@@ -849,13 +870,25 @@ function faceOf(
   tags: FaceTag[],
   faces: Map<string, AsmFace[]>,
   featureOf: (design: number) => number | undefined,
+  instances?: Map<number, number>,
 ): F3dFace {
   const first = tags[0];
   const design = first ? Math.abs(first.designs[0] ?? -1) : -1;
   const out: F3dFace = { tags };
   const feature = design >= 0 ? featureOf(design) : undefined;
   if (feature !== undefined) out.feature = feature;
-  const found = first ? faces.get(`${first.token}@${design}`)?.[0] : undefined;
+  const [, patternOp = -1, instanceOp = -1] = first?.designs ?? [];
+  const code = patternOp > 0 && instanceOp > 0 ? instances?.get(instanceOp) : undefined;
+  const pattern = code !== undefined ? featureOf(patternOp) : undefined;
+  const candidates = first ? (faces.get(`${first.token}@${design}`) ?? []) : [];
+  if (code !== undefined && pattern !== undefined) {
+    // A copy: named after the face it copies, whose surface is the one without the pattern's tag.
+    out.instance = { pattern, code };
+    const source = candidates.find((f) => !f.tags.some((t) => t.design === patternOp));
+    if (source) out.surface = source.surface;
+    return out;
+  }
+  const found = candidates[0];
   if (found) out.surface = found.surface;
   return out;
 }
@@ -877,12 +910,13 @@ function readEdgeSets(
   kind: 'fillet' | 'chamfer',
   faces: Map<string, AsmFace[]>,
   featureOf: (design: number) => number | undefined,
+  instances: Map<number, number>,
 ): F3dEdgeSet[] {
   const groups = scope.refs.filter((r) => seg.typeOf(r)?.guid === OPERAND_GROUP);
   const sizes = [...parameters]
     .sort((a, b) => a.number - b.number)
     .filter((p) => (kind === 'fillet' ? p.kind === 'Radius' : p.kind !== 'TangencyWeight'));
-  const face = (tags: FaceTag[]) => faceOf(tags, faces, featureOf);
+  const face = (tags: FaceTag[]) => faceOf(tags, faces, featureOf, instances);
   const perSet = kind === 'chamfer' && sizes.length >= 2 * groups.length ? 2 : 1;
   return groups.map((group, i) => {
     const edges: F3dEdge[] = [];

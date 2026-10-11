@@ -43,7 +43,15 @@ import type {
 } from './decode/sketch-geometry';
 import type { SketchText } from './decode/text';
 import { type EdgeShape, edgeShape } from './edge-shape';
-import { type CopyContext, mirror, rectangularPattern, splitBody, sweep, thread } from './map-more';
+import {
+  type CopyContext,
+  type MadeCopies,
+  mirror,
+  rectangularPattern,
+  splitBody,
+  sweep,
+  thread,
+} from './map-more';
 import type {
   F3dCircularPattern,
   F3dDesign,
@@ -140,6 +148,12 @@ interface FaceNaming {
   extrudes: Map<number, ImportedExtrude>;
   revolves: Map<number, ImportedRevolve>;
   rounds: Map<number, ImportedRound>;
+  /**
+   * Imported mirrors and patterns, by f3d record: Extrudo names a copied
+   * face `<op>:<feature>:<label>:from:(<name>)` (a mirror's has no label);
+   * `label` turns the file's instance code into Extrudo's label.
+   */
+  copies: Map<number, MadeCopies>;
 }
 
 /** Where an f3d sketch lands in Extrudo: a plane and a 2D map into its frame. */
@@ -247,7 +261,12 @@ export function f3dToDesign(
 
   const sketches = new Map<number, SketchEntry>();
   const extrudes = new Map<number, ImportedExtrude>();
-  const naming: FaceNaming = { extrudes, revolves: new Map(), rounds: new Map() };
+  const naming: FaceNaming = {
+    extrudes,
+    revolves: new Map(),
+    rounds: new Map(),
+    copies: new Map(),
+  };
   /** f3d feature record → the Extrudo feature a pattern can replay for it. */
   const replayable = new Map<number, { id: string; name: string }>();
   // Extrudo names a body after the feature that made it — and, of several, by
@@ -424,9 +443,15 @@ export function f3dToDesign(
         if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
         else report.imported.push(feature.name);
       } else if (feature.type === 'circular-pattern') {
-        const reason = circularPattern(d, feature, replayable, sketches, expressionOf, report);
-        if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
-        else report.imported.push(feature.name);
+        const made = circularPattern(d, feature, replayable, sketches, expressionOf, report);
+        if (typeof made === 'string')
+          report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
+        else {
+          // The file numbers instances from 1, the original; Extrudo from 0.
+          const label = (code: number) => (code >= 2 ? String(code - 1) : undefined);
+          naming.copies.set(feature.id, { op: 'pattern', id: made.id, label });
+          report.imported.push(feature.name);
+        }
       } else if (feature.type === 'thread') {
         const { major, minor, external } = feature.spec;
         const crest = { radius: (external ? major : minor) / 2, slack: major - minor };
@@ -462,14 +487,22 @@ export function f3dToDesign(
           bodies: participants,
           report,
         };
-        const reason =
-          feature.type === 'mirror'
-            ? mirror(d, feature, context)
-            : feature.type === 'split'
-              ? splitBody(d, feature, context)
+        if (feature.type === 'split') {
+          const reason = splitBody(d, feature, context);
+          if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
+          else report.imported.push(feature.name);
+        } else {
+          const made =
+            feature.type === 'mirror'
+              ? mirror(d, feature, context)
               : rectangularPattern(d, feature, context);
-        if (reason) report.skipped.push({ name: feature.name, kind: feature.kind, reason });
-        else report.imported.push(feature.name);
+          if (typeof made === 'string')
+            report.skipped.push({ name: feature.name, kind: feature.kind, reason: made });
+          else {
+            naming.copies.set(feature.id, made);
+            report.imported.push(feature.name);
+          }
+        }
       } else if (feature.type === 'fillet' || feature.type === 'chamfer') {
         const made = edgeTreatment(d, feature, naming, expressionOf, report);
         if (typeof made === 'string')
@@ -1350,7 +1383,7 @@ function circularPattern(
   sketches: Map<number, SketchEntry>,
   expressionOf: (p: ParameterValue, negate?: boolean) => string,
   report: ImportReport,
-): string | undefined {
+): string | { id: string } {
   if (f.objects !== 'features' || f.features.length === 0)
     return 'it repeats faces (only features are imported)';
   if (!f.axis) return 'its axis was not found';
@@ -1377,8 +1410,7 @@ function circularPattern(
     count: expressionOf(f.count),
   };
   if (angle) inputs.angle = expressionOf(angle, axis.sign < 0);
-  d.circularPattern(inputs as Parameters<Design['circularPattern']>[0], { name: f.name });
-  return undefined;
+  return d.circularPattern(inputs as Parameters<Design['circularPattern']>[0], { name: f.name });
 }
 
 /**
@@ -1437,6 +1469,16 @@ function faceName(
    */
   crest?: { radius: number; slack: number },
 ): string | undefined {
+  if (face.instance) {
+    // A copy: named after the face it copies.
+    const { instance, ...source } = face;
+    const copy = naming.copies.get(instance.pattern);
+    if (!copy) return miss('copied by a mirror or pattern not imported');
+    const label = copy.label(instance.code);
+    if (label === undefined) return miss('copy: instance not known');
+    const name = faceName(source, naming, undefined, crest);
+    return name && `${copy.op}:${copy.id}:${label === '' ? '' : `${label}:`}from:(${name})`;
+  }
   if (face.feature === undefined) return miss('no feature');
   const round = naming.rounds.get(face.feature);
   if (round) {

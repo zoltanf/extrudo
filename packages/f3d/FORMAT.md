@@ -198,8 +198,18 @@ table gives the feature that made each face.
 A face merged from coplanar faces (after a join) carries one tag per
 face merged into it, sorted by operation id: `[18@303 5@303 4@305 6@307]` is
 two sides of operation 303 and faces of 305 and 307. A face copied by a
-pattern carries tags with several operation ids: the source feature's, the
-pattern's and the instance's.
+pattern or mirror carries tags with several operation ids: the source
+feature's, the pattern's and the instance's (`[5@309/311/328]`); the face it
+copies is the one with the source's tag and not the pattern's.
+
+A copying feature's data record (the first record its members name:
+`C444E6AD…` for a mirror, `EA0E146E…` for a rectangular pattern,
+`7493A99D…` for a circular one) lists its instances: `u8 1, u32 n, n ×
+(u64 code, u64 operation id)`, then `u32 m` and m instance records
+(`AD719C1A…`; m can exceed n). A circular pattern's codes number the
+instances from 1, the original; a rectangular pattern's Cantor-pair its two
+indexes, the original's (1, 0), so a row's instance u has code u(u + 1)/2; a
+mirror's one copy is 2.
 
 `cone-surface`: centre, axis (unit), major axis (its length the radius at
 the centre), ratio, then the sine and cosine of the half-angle. The radius at
