@@ -507,10 +507,10 @@ refuses ("too large", max a hair under the face's width: two towel holders
 now fail there instead of bevelling the wrong face); rounds on edges whose
 faces belong to features not imported (regions not found, sweeps).
 
-Corpus (250 files, bodies of hidden components left out): match 122, match
-while skipping 8, partial 48, different geometry 56, no body 8, crash 1, no
-reference 7 — from 118, 8, 48, 60, 8, 1, 7 (counting hidden components'
-bodies: 120, 6, 50, 58 from 116, 6, 50, 62). Six designs match that did
+Corpus (250 files, bodies of hidden components left out, sketches vetted by
+the solver as in the app): match 122, match while skipping 8, partial 48,
+different geometry 57, no body 8, crash 0, no reference 7 — from 118, 8, 48,
+61, 8, 0, 7 with the import before this amendment. Four designs match that did
 not; references whose pick lies on the file's edge rose (by name 3,732 →
 3,843 before item 4) and picks off it fell (by name 118 → 57). Worse: the two
 towel holders above, a box insert whose fillet now rounds all four of the
